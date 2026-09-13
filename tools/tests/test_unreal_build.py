@@ -280,6 +280,155 @@ class TestASkippedHalfIsReported:
             f"looks for {unreal_build.SKIPPED_HALF.pattern!r}.")
 
 
+#: A run in which the engine refused to register a test because another class
+#: already held its name. Taken from a real log, with the surrounding module-load
+#: lines kept because that is where it appears: registration happens when the
+#: game module loads, not when a test is selected.
+TEST_LOG_WITH_A_REFUSED_REGISTRATION = """\
+LogModuleManager: InternalLoadLibrary: 'Cataclysm' ('.../UnrealEditor-Cataclysm.dll')
+LogAutomationTest: Warning: Failed to register test with the name \
+'FCataclysmWeaponSubTypeTest'. Test with the same name is already registered \
+and will not be overridden.
+LogModuleManager: InternalLoadLibrary: 'CataclysmEmpire' ('.../UnrealEditor-CataclysmEmpire.dll')
+LogAutomationController: Display: Test Completed. Result={Success} Name={ItLobsTheRock}
+LogAutomationController: Display: ...Automation Test Queue Empty 1 tests performed.
+"""
+
+
+#: The same run with two refusals, so the plural wording is executed by
+#: something rather than only written. One collision is what happened in issue
+#: #1666; two is what happens the moment somebody adds a second, and the message
+#: has to read properly then without anybody revisiting it.
+TEST_LOG_WITH_TWO_REFUSED_REGISTRATIONS = """\
+LogAutomationTest: Warning: Failed to register test with the name \
+'FCataclysmWeaponSubTypeTest'. Test with the same name is already registered \
+and will not be overridden.
+LogAutomationTest: Warning: Failed to register test with the name \
+'FCataclysmArmorCurveTest'. Test with the same name is already registered \
+and will not be overridden.
+LogAutomationController: Display: Test Completed. Result={Success} Name={ItLobsTheRock}
+LogAutomationController: Display: ...Automation Test Queue Empty 1 tests performed.
+"""
+
+
+class TestARefusedRegistrationIsReported:
+    """A test the engine refused to register vanishes without trace. Issue #1736.
+
+    WHAT WAS WRONG. Unreal registers an automation test under its C++ CLASS name
+    in a map that compares keys without regard to case. Two classes one letter's
+    capitalisation apart are one key; the second is refused, does not run, is not
+    listed, and is not counted. The run then reports "15 tests performed, 15
+    succeeded, 0 failed", which is what a run with nothing missing also reports.
+
+    That happened, and the test was gone for a month -- issue #1666. The warning
+    below was printed at every editor start throughout and nobody read it,
+    because reading it means finding one line in a log of roughly 370,000
+    characters.
+
+    WHY THIS IS NOT THE SAME AS A SKIPPED HALF, which is the class just above.
+    A skipped half is expected: the Paragon art is absent from every worktree and
+    from continuous integration, and it can never be fixed there. A refused
+    registration is always a defect, and it always means the count is wrong.
+    """
+
+    def test_the_refused_test_is_read_out_of_the_log(self) -> None:
+        tests = parse_test_log(TEST_LOG_WITH_A_REFUSED_REGISTRATION)
+        assert tests.refused_registration == ("FCataclysmWeaponSubTypeTest",)
+
+    def test_the_summary_says_so_even_though_nothing_failed(self) -> None:
+        """The whole point: a clean-looking run with a test silently missing."""
+        summary = parse_test_log(TEST_LOG_WITH_A_REFUSED_REGISTRATION).summary
+        assert "1 succeeded, 0 failed" in summary
+        assert "FCataclysmWeaponSubTypeTest" in summary
+        assert "refused to register" in summary
+
+    def test_one_refusal_is_described_in_the_singular(self) -> None:
+        """A message that cannot count is a message nobody trusts.
+
+        THIS EXISTS BECAUSE THE FIRST VERSION GOT IT WRONG. It read "refused to
+        register 1, so they did not run", which a reader meets at the moment
+        they have just been told their test run is missing something. A tool
+        that cannot say "one test" is not one they will believe about anything
+        harder.
+        """
+        summary = parse_test_log(TEST_LOG_WITH_A_REFUSED_REGISTRATION).summary
+        assert "refused to register 1 test," in summary, (
+            f"one refusal must say '1 test', not '1'. It reads: {summary!r}")
+        assert "so it never ran and is not in the counts above" in summary, (
+            f"one refusal must be 'it ... is', not 'they ... are'. It reads: "
+            f"{summary!r}")
+        assert "That is a C++ class name" in summary
+
+    def test_two_refusals_are_described_in_the_plural(self) -> None:
+        """The reading that had never been executed at all.
+
+        EVERY FIXTURE AND ASSERTION WRITTEN FOR THIS FEATURE HAD EXACTLY ONE
+        REFUSED CLASS, so the plural branch of the sentence was text nobody had
+        run -- which is the same fault as a declared test that never runs, in
+        the output this file produces. Issue #1666 is that fault in C++; this is
+        it in a format string.
+        """
+        summary = parse_test_log(TEST_LOG_WITH_TWO_REFUSED_REGISTRATIONS).summary
+        assert "refused to register 2 tests," in summary, (
+            f"two refusals must say '2 tests'. It reads: {summary!r}")
+        assert "so they never ran and are not in the counts above" in summary, (
+            f"two refusals must be 'they ... are'. It reads: {summary!r}")
+        assert "Those are C++ class names" in summary
+        assert "FCataclysmArmorCurveTest" in summary
+        assert "FCataclysmWeaponSubTypeTest" in summary
+
+    def test_it_names_the_class_rather_than_the_test(self) -> None:
+        """Because the class name is what collides, and what has to be renamed.
+
+        A READER GIVEN THE READABLE TEST NAME COULD NOT ACT ON IT. The engine
+        does not know which readable name was lost -- the instance that would
+        have carried it never registered. What it can say is which C++ class was
+        refused, and that is the identifier somebody has to change.
+        """
+        (refused,) = parse_test_log(TEST_LOG_WITH_A_REFUSED_REGISTRATION).refused_registration
+        assert refused.startswith("FCataclysm")
+        assert "." not in refused, (
+            "a readable test name was captured instead of the C++ class name")
+
+    def test_a_run_with_no_refusals_says_nothing_about_them(self) -> None:
+        """No noise on the ordinary case, which is every healthy run."""
+        tests = parse_test_log(TEST_LOG)
+        assert tests.refused_registration == ()
+        assert "refused to register" not in tests.summary
+
+    def test_a_refusal_is_not_counted_as_a_failed_test(self) -> None:
+        """No test failed. A test is missing, which is a different thing.
+
+        `any_failed` feeds `CppGuardResult`, where it means "a guard noticed the
+        break". A refusal must not read as that, or a guard proof would report a
+        break as caught when the only thing that happened was a name collision.
+        """
+        assert not parse_test_log(TEST_LOG_WITH_A_REFUSED_REGISTRATION).any_failed
+
+    def test_python_and_the_engine_spell_the_warning_the_same(self) -> None:
+        """The engine's wording is the whole interface and nothing pins it.
+
+        UNLIKE THE SKIPPED-HALF TOKEN, WHICH THIS PROJECT WRITES, this sentence
+        belongs to Unreal and can change in an engine upgrade. If it does, every
+        refusal goes unreported again and nothing else notices. So the engine's
+        own source is read and compared, and this fails on the upgrade that
+        changes it rather than months later.
+        """
+        source = pathlib.Path(
+            "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Core"
+            "/Private/Misc/AutomationTest.cpp")
+        if not source.is_file():
+            pytest.skip(f"the engine source is not present at {source}")
+
+        text = source.read_text(encoding="utf-8", errors="replace")
+        assert "Failed to register test with the name" in text, (
+            "the engine no longer prints 'Failed to register test with the "
+            "name', so unreal_build.REFUSED_REGISTRATION matches nothing and "
+            "every refused registration is silent again. Find the new wording "
+            "in FAutomationTestBase::FAutomationTestBase and update the "
+            "pattern.")
+
+
 def test_an_empty_log_reports_nothing_rather_than_success() -> None:
     """A run that wrote no results must not read as a clean pass.
 
@@ -419,6 +568,35 @@ def test_a_failing_test_is_a_failure() -> None:
 
 def test_a_clean_run_is_the_only_success() -> None:
     assert exit_code_for(TestOutcome(3, ("a", "b", "c"), ())) == 0
+
+
+def test_a_refused_registration_is_a_failure() -> None:
+    """Every test that ran passed, and the run is still wrong. Issue #1736.
+
+    THIS IS THE ONE CASE WHERE EVERY NUMBER IN THE REPORT IS FINE AND THE REPORT
+    IS NOT. Three performed, three succeeded, none failed -- and a fourth test
+    exists in the source that the engine refused to register, so it did not run
+    and is not in any of those three numbers.
+
+    Exiting zero here is the same fault as issue #436, which was a command that
+    did nothing and said nothing: a caller who checks the exit code, as
+    `CLAUDE.md` tells them to, gets "everything is fine" from a run that lost a
+    test.
+    """
+    assert exit_code_for(
+        TestOutcome(3, ("a", "b", "c"), (), (), ("FSomeTest",))) != 0
+
+
+def test_a_skipped_half_is_still_not_a_failure() -> None:
+    """The contrast that makes the case above mean something.
+
+    A GUARD THAT FAILED ON BOTH WOULD BE USELESS HERE, because continuous
+    integration and every worktree lack the Paragon art and report skipped halves
+    on every run. If this started failing too, the exit code would carry no
+    information at all.
+    """
+    assert exit_code_for(
+        TestOutcome(3, ("a", "b", "c"), (), ("Cataclysm.Brute.Whatever",))) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1194,6 +1372,41 @@ def test_the_build_command_says_when_it_compiled_nothing(
     assert "nothing compiled" in printed, (
         f"the command must say the build compiled nothing. It printed: "
         f"{printed!r}")
+
+
+def test_the_tests_command_reports_a_refused_registration_without_claiming_a_crash(
+        monkeypatch, capsys) -> None:
+    """The command line, and the message that must NOT appear. Issue #1736.
+
+    NOTHING EXERCISED THIS BRANCH BEFORE. `main` printed "No test results were
+    read" whenever the exit code was non-zero and no test had failed, and until
+    now those two were the same condition. Making a refused registration
+    non-zero separates them: this run performs a test, passes it, and exits
+    non-zero -- and the old condition would have told the reader to go looking
+    for an editor that never started.
+
+    So this asserts on the sentence being ABSENT, which is the half a reader of
+    the diff would not think to check.
+    """
+    import unreal_build as module
+
+    monkeypatch.setattr(module, "build",
+                        lambda *args, **kwargs: outcome(BUILD_THAT_DID_NOTHING))
+    monkeypatch.setattr(
+        module, "run_automation_tests",
+        lambda *args, **kwargs: module.parse_test_log(
+            TEST_LOG_WITH_A_REFUSED_REGISTRATION))
+
+    assert module.main(["tests"]) == 1, (
+        "a run that lost a test to a refused registration must not exit 0")
+    printed = capsys.readouterr().out
+
+    assert "FCataclysmWeaponSubTypeTest" in printed, (
+        f"the command must name the class the engine refused. It printed: "
+        f"{printed!r}")
+    assert "No test results were read" not in printed, (
+        f"results WERE read -- one test ran and passed. Saying otherwise sends "
+        f"the reader after a crashed editor. It printed: {printed!r}")
 
 
 def test_a_failed_build_still_prints_the_compilers_own_words(

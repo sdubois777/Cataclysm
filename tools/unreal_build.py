@@ -153,6 +153,30 @@ TESTS_PERFORMED = re.compile(r"Automation Test Queue Empty\s+(\d+) tests perform
 #: into a set rather than counted. Issue #467.
 SKIPPED_HALF = re.compile(r"CATACLYSM_SKIPPED_HALF\s+(\S+)\s+--")
 
+#: The engine refusing to register a test, capturing the C++ class name.
+#:
+#: A REFUSED TEST DOES NOT RUN, IS NOT LISTED, AND IS NOT COUNTED, so the run
+#: reports a clean pass with one test missing. Unreal registers a test under its
+#: CLASS name -- the macro passes `TEXT(#TClass)` to `FAutomationTestBase` -- in a
+#: `TMap<FString, ...>`, which compares keys without regard to case. Two classes
+#: one letter's capitalisation apart are one key and the second is refused.
+#:
+#: That happened and cost a month. Issue #1666. The warning was printed at every
+#: editor start throughout and nobody read it, because reading it means finding
+#: one line in a log of roughly 370,000 characters.
+#:
+#: THE CLASS NAME IS THE ONLY THING THE ENGINE CAN NAME HERE. The readable test
+#: name lives on the instance that never registered, so it is not in the message
+#: and cannot be. The class name is also the identifier somebody has to change,
+#: which makes it the more useful of the two to report.
+#:
+#: UNLIKE `SKIPPED_HALF`, THIS WORDING IS THE ENGINE'S AND NOT THIS PROJECT'S. An
+#: engine upgrade could change it and silence every refusal.
+#: `tools/tests/test_unreal_build.py` reads the engine source and fails when the
+#: sentence is no longer there.
+REFUSED_REGISTRATION = re.compile(
+    r"Failed to register test with the name '([^']+)'")
+
 
 class BuildDidNothing(RuntimeError):
     """A build reported success without compiling anything that was asked for.
@@ -315,6 +339,15 @@ class TestOutcome:
     #: them had a subject left. Issue #467.
     skipped_half: tuple[str, ...] = ()
 
+    #: C++ test classes the engine refused to register, so their tests never ran.
+    #:
+    #: NOT THE SAME KIND OF THING AS `skipped_half`, which is why it is a
+    #: separate field rather than another entry in that one. A skipped half is a
+    #: test that ran and checked less than its name claims; this is a test that
+    #: did not run at all and is absent from every count in the report. Issue
+    #: #1736.
+    refused_registration: tuple[str, ...] = ()
+
     @property
     def crashed(self) -> bool:
         """The run never reported how many tests it performed.
@@ -360,6 +393,33 @@ class TestOutcome:
         if self.skipped_half:
             line += (f". {len(self.skipped_half)} skipped part of what they "
                      f"check: " + ", ".join(self.skipped_half))
+
+        # SAID LAST BECAUSE IT IS THE ONLY ONE THAT MAKES THE COUNT ITSELF WRONG.
+        # A failure and a skipped half are both statements about tests that ran;
+        # this says a test did not, so every number earlier in the line is short
+        # by however many are named here. Putting it at the end keeps it next to
+        # nothing else and makes it the last thing read.
+        if self.refused_registration:
+            # SAID PROPERLY FOR ONE AND FOR MANY. The first version of this read
+            # "refused to register 1, so they did not run", which is a sentence
+            # that cannot count, in the one message whose whole job is to be
+            # believed by somebody who has just been told their run is wrong.
+            # Both readings are tested, because until they were, only the
+            # singular one had ever been executed -- which is the same fault as
+            # a declared test that never runs, in the text this file prints.
+            count = len(self.refused_registration)
+            one = count == 1
+            line += (f". The engine refused to register {count} "
+                     f"{'test' if one else 'tests'}, so "
+                     f"{'it' if one else 'they'} never ran and "
+                     f"{'is' if one else 'are'} not in the counts above: "
+                     + ", ".join(self.refused_registration)
+                     + (". That is a C++ class name" if one
+                        else ". Those are C++ class names")
+                     + ". A class name is the registry key and is compared "
+                       "without regard to case, so the cause is usually another "
+                       "test class whose name differs only in capitalisation. "
+                       "Issue #1666.")
         return line
 
 
@@ -619,12 +679,22 @@ def parse_test_log(text: str) -> TestOutcome:
     # routes on purpose. See SKIPPED_HALF.
     skipped = sorted(set(SKIPPED_HALF.findall(text)))
 
+    # DE-DUPLICATED DEFENSIVELY, NOT BECAUSE IT IS KNOWN TO REPEAT. Measured on
+    # 2026-09-13: the engine printed this exactly once per refusal, in each of
+    # nine logs, and a log holds one editor run -- `Cataclysm.log` carries a
+    # single "Log file open" line and is overwritten at the next start. That is
+    # unlike the skips above, which really are written twice by two routes.
+    # A set costs nothing and means a log that did hold two runs would report one
+    # collision once rather than as two separate problems.
+    refused = sorted(set(REFUSED_REGISTRATION.findall(text)))
+
     performed_match = TESTS_PERFORMED.search(text)
     return TestOutcome(
         int(performed_match.group(1)) if performed_match else None,
         tuple(succeeded),
         tuple(failed),
         tuple(skipped),
+        tuple(refused),
     )
 
 
@@ -927,6 +997,41 @@ def exit_code_for(tests: TestOutcome | None) -> int:
     """
     if tests is None or tests.performed is None or tests.performed == 0:
         return 1
+
+    # A TEST THE ENGINE REFUSED TO REGISTER IS A FAILURE THOUGH NOTHING FAILED.
+    # It is the one case where every number in the report is correct and the
+    # report is still wrong: the refused test is absent from performed, from
+    # succeeded and from failed alike, so a caller checking the exit code -- which
+    # `CLAUDE.md` tells every caller to do -- would read "everything is fine" from
+    # a run that lost a test. Issue #1736.
+    #
+    # NOT A NEW PRINCIPLE. The branch above already exits non-zero when the
+    # measurement cannot be trusted and no test failed: a run that reported no
+    # count, or a count of zero, fails here even though nothing failed. A refused
+    # registration is the same category -- a count that cannot be trusted --
+    # rather than a new kind of thing to fail on.
+    #
+    # AND PRINTING A LINE WAS ALREADY TRIED, BY THE ENGINE, AND DID NOT WORK.
+    # Unreal prints this refusal in plain words at every editor start. It did so
+    # across seven editor starts over five days while the missing test was being
+    # hunted, and nobody read it. Printing a line and stopping there would be
+    # choosing the one mechanism with a measured record of failing at this.
+    #
+    # MADE FATAL AT THE MOMENT THE COUNT WAS CLEAN, WHICH IS WHY IT COULD BE. On
+    # 2026-09-13, immediately after issue #1666 removed the only collision in the
+    # project, a whole-tree run reported 1,761 performed and zero refusals. So
+    # this breaks nothing on the day it lands. The same change a month later
+    # would have failed somebody's unrelated work and been blamed on this
+    # wrapper.
+    #
+    # A SKIPPED HALF IS DELIBERATELY NOT TREATED THIS WAY. Continuous integration
+    # and every worktree lack the Paragon art and report skipped halves on every
+    # run, so failing on those would make the exit code carry no information at
+    # all. The difference is that a skipped half can never be fixed there and a
+    # refused registration is always a defect.
+    if tests.refused_registration:
+        return 1
+
     return 1 if tests.any_failed else 0
 
 
@@ -960,7 +1065,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Tests: {tests.summary}")
 
     code = exit_code_for(tests)
-    if code != 0 and not tests.any_failed:
+
+    # THE CONDITION USED TO BE "NON-ZERO AND NOTHING FAILED", which was the same
+    # thing as "no results were read" until a refused registration became a
+    # reason to exit non-zero. It is not the same thing now: a run can perform
+    # 1,761 tests, pass all of them, and still exit non-zero because one more was
+    # refused. Printing "No test results were read" there would be false, and
+    # false in the direction of sending the reader to look for a crashed editor.
+    # So this asks the question it means. Issues #436 and #1736.
+    if tests.crashed:
         print(f"No test results were read from {TEST_LOG}. Either the run did "
               f"not happen or its log could not be read. That is reported as a "
               f"failure rather than a pass on purpose; see issue #436.")
