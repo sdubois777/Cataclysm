@@ -62,6 +62,12 @@ class UCataclysmAbilitySystemComponent;
  * dying: the project owner ruled on 2026-09-10 that a death clears every stack,
  * including the three a Masochist earns through passive nodes, issue #1535.
  * Short of those two, a stack leaves only when its window runs out.
+ *
+ * AND ONE PLACE COULD TAKE A SINGLE STACK, THOUGH NOTHING DOES YET.
+ * `Spend` below removes one and leaves the rest, for issue #1720. It has no
+ * caller: the row that wants it, `Debuff_Touch_of_Nothing`, also needs a
+ * route to remove a buff from a character, and this game has none. The
+ * sentence above stays true until something calls it.
  */
 UENUM(BlueprintType)
 enum class ECataclysmStackKind : uint8
@@ -256,6 +262,31 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stacks")
 	static int32 Held(const UCataclysmAbilitySystemComponent* AbilitySystem,
+					  ECataclysmStackKind Kind);
+
+	/**
+	 * Take ONE stack of a kind off this character, leaving the rest.
+	 *
+	 * THE COUNTERPART TO `Held`, AND THE SAME DIVISION OF LABOUR. This knows
+	 * the kind's own window and the component does not, exactly as `Held`
+	 * does, so no caller has to hold a number that belongs to the design.
+	 *
+	 * THE FIRST REMOVAL THAT LEAVES ANYTHING BEHIND. Issue #1720.
+	 * `UCataclysmAbilitySystemComponent::ClearStacks` empties a kind and this
+	 * takes one; between them they are the whole of removal. See that
+	 * component's `SpendStack` for why spending does not move the expiry.
+	 *
+	 * NO CALLER TODAY, AND THAT IS WORTH SAYING RATHER THAN HIDING. It exists
+	 * for `Debuff_Touch_of_Nothing` in `game/Data/StatusEffects.csv` -- "a
+	 * stack of this debuff is consumed to negate that buff completely" -- and
+	 * that row needs a second thing this game does not have, a route to remove
+	 * a buff from a character. So this closes one of that row's two blockers
+	 * and the row stays unbuilt. Issue #1673 records the other.
+	 *
+	 * @return whether a stack was actually taken. False for no character, for
+	 *         a character holding none, and for a count that has lapsed.
+	 */
+	static bool Spend(UCataclysmAbilitySystemComponent* AbilitySystem,
 					  ECataclysmStackKind Kind);
 
 	/** The name a console command and a log line print for a kind. */

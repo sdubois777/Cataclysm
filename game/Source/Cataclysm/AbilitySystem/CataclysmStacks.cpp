@@ -140,6 +140,22 @@ int32 UCataclysmStacks::Held(
 	return AbilitySystem->StacksHeld(Kind, WindowSecondsFor(Kind));
 }
 
+bool UCataclysmStacks::Spend(UCataclysmAbilitySystemComponent* AbilitySystem,
+							 ECataclysmStackKind Kind)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	// THE KIND'S OWN WINDOW, PASSED IN, exactly as `Held` above passes it. A
+	// kind this build does not know answers a window of nothing, so its count
+	// has already lapsed at every instant and nothing is ever spent from it --
+	// the same safe direction `WindowSecondsFor` argues for at the top of this
+	// file.
+	return AbilitySystem->SpendStack(Kind, WindowSecondsFor(Kind));
+}
+
 bool UCataclysmStacks::NoteHealthCostPaid(
 	UCataclysmAbilitySystemComponent* AbilitySystem)
 {

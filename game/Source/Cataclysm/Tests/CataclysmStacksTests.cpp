@@ -791,4 +791,124 @@ bool FCataclysmStackKindTableTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Spending one stack rather than all of them
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpendOneStackTest,
+	"Cataclysm.Stacks.SpendingTakesOneAndLeavesTheExpiryWhereItWas",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSpendOneStackTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using Stacks = UCataclysmStacks;
+
+	// ISSUE #1720. Until this, `ClearStacks` was the only way to remove stacks
+	// and it removed all of them. One row in `game/Data/StatusEffects.csv`
+	// wants the other half -- Touch of Nothing consumes ONE stack to negate a
+	// buff -- and a decrement with no floor is the defect this shape usually
+	// ships with.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world with a clock"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedHolder Holder(World);
+	constexpr ECataclysmStackKind Kind = ECataclysmStackKind::Carnage;
+	const float Window = Stacks::WindowSecondsFor(Kind);
+	const int32 Cap = Stacks::CapFor(Kind);
+
+	// NO CHARACTER SPENDS NOTHING, the same refusal every function here makes.
+	TestFalse(TEXT("no ability system spends nothing"),
+			  Stacks::Spend(nullptr, Kind));
+
+	// AND NEITHER DOES A CHARACTER HOLDING NONE. Checked BEFORE anything is
+	// granted, because a floor tested only after counting down cannot tell a
+	// refusal from a subtraction that happened to land on zero.
+	TestFalse(TEXT("a character holding nothing spends nothing"),
+			  Stacks::Spend(Holder.AbilitySystem, Kind));
+	TestEqual(TEXT("and still holds nothing"), Holder.Held(Kind), 0);
+
+	// THREE, THEN TWO. One stack goes and the rest stay, which is the whole
+	// difference from `ClearStacks`.
+	for (int32 Grant = 0; Grant < 3; ++Grant)
+	{
+		Holder.AbilitySystem->GrantStack(Kind, Window, Cap);
+	}
+	TestEqual(TEXT("three grants are three stacks"), Holder.Held(Kind), 3);
+
+	TestTrue(TEXT("spending one says it took one"),
+			 Stacks::Spend(Holder.AbilitySystem, Kind));
+	TestEqual(TEXT("three less one is two, not none"), Holder.Held(Kind), 2);
+
+	// AND THE FLOOR. Counted down to nothing and then asked again: the answer
+	// is a refusal and the count stays at zero rather than going to minus one.
+	TestTrue(TEXT("a second spend takes another"),
+			 Stacks::Spend(Holder.AbilitySystem, Kind));
+	TestTrue(TEXT("and the third empties it"),
+			 Stacks::Spend(Holder.AbilitySystem, Kind));
+	TestEqual(TEXT("spent down to nothing"), Holder.Held(Kind), 0);
+
+	TestFalse(TEXT("spending from nothing takes nothing"),
+			  Stacks::Spend(Holder.AbilitySystem, Kind));
+	TestEqual(TEXT("and the count does not go below zero"),
+			  Holder.Held(Kind), 0);
+
+	// ONE KIND AT A TIME. Spending Carnage must not move Bloodlust, which is
+	// the failure a single shared counter would produce.
+	Holder.AbilitySystem->GrantStack(Kind, Window, Cap);
+	Holder.AbilitySystem->GrantStack(Kind, Window, Cap);
+	Holder.AbilitySystem->GrantStack(
+		ECataclysmStackKind::Bloodlust,
+		Stacks::WindowSecondsFor(ECataclysmStackKind::Bloodlust),
+		Stacks::CapFor(ECataclysmStackKind::Bloodlust));
+
+	TestTrue(TEXT("spending Carnage takes a Carnage stack"),
+			 Stacks::Spend(Holder.AbilitySystem, Kind));
+	TestEqual(TEXT("Carnage went down by one"), Holder.Held(Kind), 1);
+	TestEqual(TEXT("and Bloodlust did not move"),
+			  Holder.Held(ECataclysmStackKind::Bloodlust), 1);
+
+	// A COUNT THAT HAS ALREADY LAPSED HOLDS NOTHING TO SPEND. Without this a
+	// spend would take one off a stored number nobody can still see, and the
+	// next grant -- which restarts a lapsed count at one -- would disagree with
+	// it.
+	World->TimeSeconds += Window + 0.1f;
+	TestEqual(TEXT("the stacks lapsed"), Holder.Held(Kind), 0);
+	TestFalse(TEXT("and a lapsed count has nothing to spend"),
+			  Stacks::Spend(Holder.AbilitySystem, Kind));
+
+	// AND THE DECISION THIS TEST EXISTS FOR: SPENDING DOES NOT MOVE THE EXPIRY.
+	//
+	// Gaining a stack refreshes the whole lot, which is the rule `GrantStack`
+	// follows and which this project read off Path of Exile's charges. Spending
+	// is not gaining. If spending refreshed the expiry, a debuff could be held
+	// open indefinitely by the very thing that is supposed to be using it up.
+	//
+	// THE CHECK IS BUILT SO THAT THE WRONG ANSWER SURVIVES IT VISIBLY: the
+	// spend happens just INSIDE the window, and the clock is then moved just
+	// PAST the original expiry. A version that refreshed would still be holding
+	// two here rather than none.
+	for (int32 Grant = 0; Grant < 3; ++Grant)
+	{
+		Holder.AbilitySystem->GrantStack(Kind, Window, Cap);
+	}
+	TestEqual(TEXT("three again, on a fresh window"), Holder.Held(Kind), 3);
+
+	World->TimeSeconds += Window - 0.1f;
+	TestTrue(TEXT("spending just inside the window still takes one"),
+			 Stacks::Spend(Holder.AbilitySystem, Kind));
+	TestEqual(TEXT("two are left"), Holder.Held(Kind), 2);
+
+	World->TimeSeconds += 0.2f;
+	TestEqual(
+		TEXT("and they lapse on the original expiry rather than a refreshed one"),
+		Holder.Held(Kind), 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
