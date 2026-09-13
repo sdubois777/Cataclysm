@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmStacks.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -104,6 +105,22 @@ namespace CataclysmCommanderTest
 				.DurationSeconds;
 		return UCataclysmSkillEffects::ApplyNamedEffect(
 			From, Target, CrippleTag(), Seconds);
+	}
+
+	static FGameplayTag FeastingTag()
+	{
+		return UCataclysmSkillShapes::StatusTagFor(TEXT("Feasting"));
+	}
+
+	/** Puts Feasting on a creature. Its row states NO duration -- it describes a
+	 *  trait rather than a timed buff -- so whatever applies it chooses one,
+	 *  exactly as the Succubus chooses Commander's. `ApplyNamedEffect` cannot be
+	 *  used here for that reason: it reads the row's duration, which is zero,
+	 *  and `ApplyTagForDuration` refuses a duration of zero. */
+	static bool Feast(AActor* From, AActor* Target, float Seconds)
+	{
+		return UCataclysmSkillEffects::ApplyTagForDuration(
+			From, Target, FeastingTag(), Seconds);
 	}
 
 	template <typename T>
@@ -561,6 +578,183 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 		TestEqual(TEXT("**a buffed Corrupted Sentinel still cannot move**"),
 			Sentinel->GetCharacterMovement()->MaxWalkSpeed, 0.0f);
 	}
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Feasting, the first creature buff whose size grows with a count. Issue #1720.
+// --------------------------------------------------------------------------
+
+/**
+ * A feasting creature attacks faster the more it is hit, and walks no faster.
+ *
+ * THE ROW, in game/Data/StatusEffects.csv: "This enemy gains a stack of "Feast"
+ * every time it is hit, up to 5 stacks, and for every stack its attack speed is
+ * increased by 4%. A stack lasts 5 seconds."
+ *
+ * WHY THE WALK SPEED IS HALF OF WHAT THIS CHECKS. Commander and Cripple, above,
+ * each name BOTH movement and attack speed and so share one multiplier. This row
+ * names one of the two. The obvious way to build it -- adding it to
+ * `SpeedMultiplier` beside the other two -- would also speed the creature's
+ * WALKING up, which its row does not say, and nothing else in the project would
+ * report it. So the control here is a number that must NOT move.
+ *
+ * WHERE THIS TEST STARTS, STATED SO IT IS NOT MISTAKEN FOR MORE THAN IT IS. It
+ * calls `UCataclysmStacks::NoteDamageTaken` directly, which is the function the
+ * real damage path calls one line into
+ * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. That the damage path
+ * reaches that function at all is covered by
+ * `Cataclysm.ConditionalDamage.TakingDamageBuildsABloodlustStack`. This starts
+ * one step in, and checks what the stacks then do.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmFeastingSpeedsUpAttacks,
+	"Cataclysm.Enemy.FeastingSpeedsUpACreaturesAttacksAndNotItsWalking",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFeastingSpeedsUpAttacks::RunTest(const FString&)
+{
+	using namespace CataclysmCommanderTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	// TWO IMPS AND NOT A SUCCUBUS, for the reason the Cripple test above gives:
+	// a Succubus grants Commander to the allies around it and every figure here
+	// would come out 1.2 times what it should be.
+	ACataclysmImpCharacter* Imp =
+		Spawn<ACataclysmImpCharacter>(World, FVector::ZeroVector);
+	ACataclysmImpCharacter* Other =
+		Spawn<ACataclysmImpCharacter>(World, FVector(500.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("an Imp"), Imp)
+		|| !TestNotNull(TEXT("something to apply the buff"), Other))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* Eating =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Imp));
+	if (!TestNotNull(TEXT("the Imp has a Cataclysm ability system"), Eating))
+	{
+		return false;
+	}
+
+	const float DesignedInterval = Imp->DesignedSecondsBetweenAttacks();
+	const float DesignedWalk = Imp->DesignedWalkSpeedCmPerSecond;
+	if (DesignedInterval <= 0.0f || DesignedWalk <= 0.0f)
+	{
+		AddError(FString::Printf(
+			TEXT("the Imp's designed interval is %.4f and its designed walk "
+				 "speed is %.1f. Both must be above zero or this test would "
+				 "pass by comparing nothing."),
+			DesignedInterval, DesignedWalk));
+		return false;
+	}
+
+	// --- NOT FEASTING, WHICH IS THE CONTROL -------------------------------
+	//
+	// AND IT IS HIT FIRST, WHICH IS THE POINT OF DOING IT HERE. A creature
+	// without the buff must bank no stacks at all, so that one which gains the
+	// buff part way through a fight starts at nothing rather than inheriting a
+	// count from the blows it took before.
+	UCataclysmStacks::NoteDamageTaken(Eating);
+	UCataclysmStacks::NoteDamageTaken(Eating);
+
+	TestEqual(TEXT("a creature without the buff banks no Feast stacks"),
+			  UCataclysmStacks::Held(Eating, ECataclysmStackKind::Feast), 0);
+	TestEqual(TEXT("and its multiplier is exactly one"),
+			  Imp->FeastingMultiplier(), 1.0f);
+	TestEqual(TEXT("and it attacks on its designed interval"),
+			  Imp->SecondsBetweenAttacks(), DesignedInterval);
+
+	// --- FEASTING, BUT NOT YET HIT ----------------------------------------
+
+	if (!Feast(Other, Imp, /*Seconds=*/30.0f))
+	{
+		AddError(TEXT("Feasting could not be applied to the Imp"));
+		return false;
+	}
+
+	Imp->RefreshWalkSpeed();
+	TestEqual(TEXT("holding the buff and unhit, the multiplier is still one"),
+			  Imp->FeastingMultiplier(), 1.0f);
+	TestEqual(TEXT("and it still attacks on its designed interval"),
+			  Imp->SecondsBetweenAttacks(), DesignedInterval);
+
+	// --- FED ---------------------------------------------------------------
+
+	// THE ROW'S OWN FIGURE RATHER THAN A LITERAL 4, so re-tuning the buff in the
+	// sheet does not break this test -- and it cannot be re-tuned to nothing
+	// without the guard below noticing.
+	const float PerStack =
+		UCataclysmSkillEffects::NumbersForEffectTag(FeastingTag()).Strength;
+	if (PerStack <= 0.0f)
+	{
+		AddError(FString::Printf(
+			TEXT("the Feasting row states %.2f per stack. At zero every "
+				 "comparison below would hold for a buff that does nothing."),
+			PerStack));
+		return false;
+	}
+
+	UCataclysmStacks::NoteDamageTaken(Eating);
+	TestEqual(TEXT("one blow is one stack"),
+			  UCataclysmStacks::Held(Eating, ECataclysmStackKind::Feast), 1);
+	TestEqual(TEXT("and one stack is one step faster"),
+			  Imp->FeastingMultiplier(), 1.0f + PerStack / 100.0f);
+
+	// AND THE INTERVAL SHORTENS RATHER THAN LENGTHENING. The stored figure is
+	// seconds BETWEEN attacks and the buff is a SPEED, so more attack speed
+	// makes this number smaller. Getting it backwards reads as the buff working.
+	TestTrue(TEXT("one stack shortens the interval"),
+			 Imp->SecondsBetweenAttacks() < DesignedInterval);
+	TestEqual(TEXT("by exactly the row's figure"),
+			  Imp->SecondsBetweenAttacks(),
+			  DesignedInterval / (1.0f + PerStack / 100.0f));
+
+	// --- THE STAT THAT MUST NOT MOVE ---------------------------------------
+
+	Imp->RefreshWalkSpeed();
+	TestEqual(TEXT("and it walks at exactly its designed speed, unchanged"),
+			  Imp->GetCharacterMovement()->MaxWalkSpeed, DesignedWalk);
+	TestEqual(TEXT("because Feasting is not in SpeedMultiplier"),
+			  Imp->SpeedMultiplier(), 1.0f);
+
+	// --- THE CAP -----------------------------------------------------------
+
+	// PUSHED WELL PAST IT, because a cap that only bites at exactly the limit is
+	// a cap nobody has tested.
+	for (int32 Blow = 0; Blow < 20; ++Blow)
+	{
+		UCataclysmStacks::NoteDamageTaken(Eating);
+	}
+
+	const int32 Cap = UCataclysmStacks::CapFor(ECataclysmStackKind::Feast);
+	TestEqual(TEXT("twenty-one blows are capped at the row's five"),
+			  UCataclysmStacks::Held(Eating, ECataclysmStackKind::Feast), Cap);
+	TestEqual(TEXT("and a full creature is exactly as quick as an inspired one"),
+			  Imp->FeastingMultiplier(),
+			  1.0f + ACataclysmEnemyCharacter::CommanderIncreasePercent
+						 / 100.0f);
+
+	Imp->RefreshWalkSpeed();
+	TestEqual(TEXT("and still walks at its designed speed with five stacks"),
+			  Imp->GetCharacterMovement()->MaxWalkSpeed, DesignedWalk);
+
+	// --- AND IT LAPSES -----------------------------------------------------
+
+	World->TimeSeconds +=
+		UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::Feast) + 0.1f;
+	TestEqual(TEXT("left alone past the window it holds nothing"),
+			  UCataclysmStacks::Held(Eating, ECataclysmStackKind::Feast), 0);
+	TestEqual(TEXT("and is back to its designed interval with nothing cleared"),
+			  Imp->SecondsBetweenAttacks(), DesignedInterval);
 
 	return true;
 }

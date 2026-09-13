@@ -247,11 +247,26 @@ def test_the_buff_divides_the_interval_rather_than_multiplying_it():
     # second one: the curse reduces movement AND attack speed by 30% and could
     # reach neither before. Issue #1152. Dividing is unchanged and is still
     # what this test is for.
+    #
+    # AND `FeastingMultiplier` BESIDE IT SINCE 2026-09-13. Issue #1720. It is
+    # the first effect that names ONE of the two stats: the Buff_Feasting row
+    # says "its attack speed is increased" and says nothing about movement, so
+    # it cannot go inside `SpeedMultiplier`, which `RefreshWalkSpeed` also
+    # reads. A creature that walked faster as it fed would be doing something
+    # its own row does not say, and no other test in the project would report
+    # it. `Cataclysm.Enemy.FeastingSpeedsUpACreaturesAttacksAndNotItsWalking`
+    # is the one that checks the walk speed stays put.
+    #
+    # THE RULE THIS EXPECTATION NOW ENCODES: anything naming BOTH stats belongs
+    # inside `SpeedMultiplier`; anything naming attack speed alone is a second
+    # factor here. A third factor appearing without that being true is what
+    # this line is for.
     body = " ".join(match.group(1).split())
-    assert body == "DesignedSecondsBetweenAttacks() / SpeedMultiplier()", (
+    assert body == ("DesignedSecondsBetweenAttacks() "
+                    "/ (SpeedMultiplier() * FeastingMultiplier())"), (
         f"SecondsBetweenAttacks returns {body!r}. It must DIVIDE the designed "
-        f"interval by the multiplier: more attack speed means less time between "
-        f"attacks, and less attack speed means more.")
+        f"interval by the multipliers: more attack speed means less time "
+        f"between attacks, and less attack speed means more.")
 
 
 def test_the_final_keyword_is_what_makes_it_a_compile_error():

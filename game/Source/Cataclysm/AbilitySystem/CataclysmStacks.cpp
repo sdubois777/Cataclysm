@@ -4,6 +4,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -28,6 +29,12 @@ float UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind Kind)
 	// break off rather than a timer that always runs out.
 	case ECataclysmStackKind::InfernalBrand:	return 8.0f;
 
+	// FIVE, AND THE ROW SAYS SO: "A stack lasts 5 seconds." It is the same
+	// five Bloodlust runs for, which is not a coincidence -- both are granted
+	// by taking a hit, so both need a window that outlasts the gap between
+	// blows without letting a count survive a creature being left alone.
+	case ECataclysmStackKind::Feast:			return 5.0f;
+
 	default:									break;
 	}
 
@@ -49,6 +56,11 @@ int32 UCataclysmStacks::CapFor(ECataclysmStackKind Kind)
 	// explodes". The cap and the trigger are the same number here, unlike
 	// every kind above, where the cap is where counting stops.
 	case ECataclysmStackKind::InfernalBrand:	return 5;
+
+	// FIVE, AND THE ROW SAYS SO: "up to 5 stacks". Five stacks of the row's
+	// 4% is 20%, which is exactly what Commander gives a creature -- so a
+	// fully fed creature attacks as fast as an inspired one and no faster.
+	case ECataclysmStackKind::Feast:			return 5;
 	default:									break;
 	}
 
@@ -125,6 +137,7 @@ const TCHAR* UCataclysmStacks::NameOf(ECataclysmStackKind Kind)
 	case ECataclysmStackKind::Bloodlust:		return TEXT("Bloodlust");
 	case ECataclysmStackKind::Carnage:			return TEXT("Carnage");
 	case ECataclysmStackKind::InfernalBrand:	return TEXT("Infernal Brand");
+	case ECataclysmStackKind::Feast:			return TEXT("Feast");
 	default:									return TEXT("(unknown)");
 	}
 }
@@ -259,6 +272,28 @@ bool UCataclysmStacks::NoteDamageTaken(
 		UE_LOG(LogCataclysm, Verbose,
 			   TEXT("A hit taken granted a Carnage stack, now %d."),
 			   Held(AbilitySystem, ECataclysmStackKind::Carnage));
+	}
+
+	// AND A FEAST STACK FOR A CREATURE CARRYING THE FEASTING BUFF. The
+	// `Buff_Feasting` row of `game/Data/StatusEffects.csv`: "This enemy
+	// gains a stack of "Feast" every time it is hit".
+	//
+	// GATED ON THE TAG RATHER THAN GRANTED TO EVERY CHARACTER, WHICH IS THE
+	// OPPOSITE OF BLOODLUST ABOVE. Bloodlust is granted to whoever was hit
+	// and costs nothing to hold, because only a Masochist node reads it. A
+	// Feast count is read by the creature's own attack interval, so a
+	// creature that gains the buff part way through a fight must start at
+	// nothing rather than inherit a count from the blows it took before it
+	// was feasting. Refusing the grant while the buff is off is the only
+	// place that can be arranged: `Held` cannot tell when a stack arrived.
+	const FGameplayTag Feasting =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Feasting"));
+	if (Feasting.IsValid() && AbilitySystem->HasMatchingGameplayTag(Feasting))
+	{
+		AbilitySystem->GrantStack(
+			ECataclysmStackKind::Feast,
+			WindowSecondsFor(ECataclysmStackKind::Feast),
+			CapFor(ECataclysmStackKind::Feast));
 	}
 
 	return true;
