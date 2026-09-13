@@ -520,6 +520,27 @@ public:
 	float SecondsSinceAuraPulse = 0.0f;
 
 	/**
+	 * True when the floor's Field Medic rule chose this creature.
+	 *
+	 * WHAT SETS IT. `ACataclysmDungeonGameMode::PopulateFloor` marks one
+	 * creature per floor when the floor carries `War_Field_Medic`. Nothing
+	 * else writes it, and a creature spawned anywhere else is never a medic.
+	 *
+	 * A FLAG RATHER THAN A MODIFIER ROW, AND THAT IS DELIBERATE. Being a
+	 * medic is a **dungeon** rule, from `game/Data/DungeonModifiers.csv`,
+	 * while `ModifierRows` above holds keys from
+	 * `game/Data/EnemyModifiers.csv`. Putting a dungeon key into that array
+	 * would leave a reader looking it up in the wrong table and finding
+	 * nothing. `SightRadiusMultiplier` on the shared character base is the
+	 * same shape for the same reason: a per-floor decision written onto the
+	 * creature at spawn.
+	 *
+	 * NOT SAVED. A floor restored from a save re-runs its rules.
+	 */
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bHealsAlliesForTheFloorRule = false;
+
+	/**
 	 * How long since a creature carrying Phasewalker last teleported.
 	 *
 	 * PUBLIC FOR THE REASON `SecondsSinceAuraPulse` ABOVE IS: the rule that

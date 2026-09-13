@@ -15,6 +15,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::ForcedMarchKey =
 	TEXT("War_Forced_March");
 const TCHAR* UCataclysmDungeonModifierEffects::NihilsEmbraceKey =
 	TEXT("Void_The_Nihil_s_Embrace");
+const TCHAR* UCataclysmDungeonModifierEffects::FieldMedicKey =
+	TEXT("War_Field_Medic");
 
 namespace
 {
@@ -123,6 +125,23 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		return ECataclysmModifierBuilt::Built;
 	}
 
+	// PARTLY, AND WHICH HALF IS MISSING IS NAMED. The row is "An elite 'Medic'
+	// enemy is present on each floor. It does not attack, but constantly heals
+	// all other enemies in a large radius."
+	//
+	// THE HEALING IS BUILT. `PopulateFloor` marks one creature and
+	// `UCataclysmEnemyModifiers::AuraStep` heals its living allies within the
+	// aura radius once a second.
+	//
+	// "IT DOES NOT ATTACK" IS NOT BUILT, and nothing in the game can express
+	// it: there is no lever anywhere under `game/Source/` that stops a
+	// creature attacking. Saying `Built` here would put a wrong answer into
+	// the one place the project asks what is finished. Issue #1680.
+	if (RowKey == FName(FieldMedicKey))
+	{
+		return ECataclysmModifierBuilt::Partly;
+	}
+
 	// PARTLY. Its rule draws another dungeon modifier onto the floor, where the
 	// row asks for "a new, random modifier to all enemies on the next floor", and
 	// it adds that modifier on floor 1 as well, where no floor has been cleared.
@@ -137,11 +156,19 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 
 TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 {
+	// SEVEN, AND TWO OF THEM WERE MISSING BEFORE ISSUE #1677. This list and
+	// `BuiltStateOf` above are two statements of the same fact, and nothing
+	// made them agree: `DeathsEmbraceKey` was returned as Built and was absent
+	// from here. The test that reads these walks THIS list and asks
+	// `BuiltStateOf` about each entry, so a key missing from here never enters
+	// the loop and the gap could not be seen from either end.
 	return {
 		FName(StarvationKey),
 		FName(DehydrationKey),
 		FName(ForcedMarchKey),
 		FName(NihilsEmbraceKey),
+		FName(DeathsEmbraceKey),
+		FName(FieldMedicKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
