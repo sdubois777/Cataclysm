@@ -2076,6 +2076,28 @@ def test_no_node_is_worth_nothing_to_its_own_class(effects):
         | gen.item_base_flat_stats(rows_of(ITEM_BASES_CSV))
         | gen.item_base_column_stats(rows_of(ITEM_BASES_CSV))
         | set(gen.ENGINE_SUPPLIED_BASES)
+        # AND THE STATS THAT NEED NO BASE AT ALL, since issue #1733.
+        #
+        # THE TWO LINES ABOVE AND BELOW MEAN OPPOSITE THINGS AND SIT IN ONE SET,
+        # which is how the next reader misreads it, so: `ENGINE_SUPPLIED_BASES`
+        # promises a base EXISTS and names the code that puts it on the
+        # character. This one says NO BASE IS NEEDED, because nothing multiplies
+        # one. `IncreasesForStat` returns the sum of the increases and the engine
+        # applies that to the minion's own figure from `game/Data/
+        # MinionTypes.csv`, whose columns are BaseHealth, BaseDamage and
+        # AttackIntervalSeconds. The base is on the minion and cannot be on the
+        # character.
+        #
+        # SO "THIS CLASS HAS NO BASE FOR IT" IS TRUE HERE AND WILL STAY TRUE,
+        # and it still does not mean the node does nothing -- which is the
+        # premise this test rests on and the reason it fires on all thirteen.
+        #
+        # IT DOES NOT WEAKEN WHAT THIS CATCHES. A node granting any OTHER stat
+        # its class has no base for still fails, which is what caught #1105.
+        # `test_the_dead_node_check_still_catches_a_stat_with_no_base` holds
+        # that, because a test that was just widened cannot prove itself by
+        # passing.
+        | gen.stats_with_no_attribute()
     )
 
     #: A flat row supplies its stat to the tree it is in, and only to that tree.
