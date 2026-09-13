@@ -94,6 +94,7 @@ namespace
 												ECataclysmStatCondition::TargetCarriesCrippleAndWeaken },
 		{ TEXT("opponent_carries_weaken"),      ECataclysmStatCondition::OpponentCarriesWeaken },
 		{ TEXT("target_health_below"),          ECataclysmStatCondition::TargetHealthBelowPercent },
+		{ TEXT("energy_shield_at_maximum"),     ECataclysmStatCondition::EnergyShieldAtMaximum },
 	};
 
 	struct FNamedStatScale
@@ -177,6 +178,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	{
 	case ECataclysmStatCondition::WhileBleeding:
 	case ECataclysmStatCondition::ClassResourceAtMaximum:
+	case ECataclysmStatCondition::EnergyShieldAtMaximum:
 	case ECataclysmStatCondition::HitIsMeleeAttack:
 	case ECataclysmStatCondition::HitIsRangedAttack:
 	case ECataclysmStatCondition::HitIsSpell:
@@ -189,13 +191,43 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
 	case ECataclysmStatCondition::OpponentCarriesWeaken:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the thirteen says
+		// nothing for a number to be compared against. Each of the fourteen says
 		// so in its own comment in the header.
 		//
 		// THE COUNT IN THAT SENTENCE SAID "TEN" FOR THREE NAMES. It is written
 		// out because a list nobody counts is a list somebody extends without
 		// reading, and `test_condition_lists_agree_with_the_code.py` holds this
 		// list against two others rather than against this number.
+		//
+		// IT FAILED ON ITS OWN AUTHOR, IN THE COMMIT THAT WROTE IT. Issue #1750
+		// added the three ailment conditions above, corrected THIS count from
+		// ten to thirteen, wrote the sentence about a list nobody counts, added
+		// 131 lines to the header -- and left the header's own count reading
+		// "TEN OF THE TWENTY-ONE", which is the sentence the line above points
+		// at. Writing the rule down and breaking it were the same commit.
+		//
+		// AND THE PARAGRAPH BELOW WENT STALE THE SAME WAY, having said "the
+		// last two" while those two were last. Two records of drift, in one
+		// comment, about itself.
+		//
+		// THE SUCCESS IS THE CHANGE THAT ADDED `EnergyShieldAtMaximum`. Issue
+		// #1515. Somebody reading this switch for an unrelated reason saw the
+		// number, counted the case labels, got thirteen, and noticed their own
+		// change made it fourteen -- before publishing. That is the job this
+		// sentence was written for, and it is the first time it has done it.
+		//
+		// SO THE HONEST ACCOUNT IS ONE FAILURE AND ONE SUCCESS, AND NEITHER HALF
+		// ALONE IS FAIR. Quoting only the failure argues for deleting a defence
+		// that has since worked; quoting only the success hides that it failed
+		// immediately, on the person who wrote it.
+		//
+		// SO DO NOT DELETE THE NUMBER ON THE STRENGTH OF THE FAILURE ALONE.
+		// A defence is easiest to remove at the moment its record looks worst,
+		// which is usually just before anybody has tried using it as intended.
+		// Membership is enforced elsewhere --
+		// `test_condition_lists_agree_with_the_code.py` holds this list against
+		// two others -- so the number protects nothing a test covers, and is
+		// kept for the reader rather than for the suite.
 		//
 		// `WhileMoving` AND `WhileStationary` ARE ISSUE #41'S SLICE 2: whether the
 		// character moved in the last sample, and whether it did not. Its other
@@ -371,10 +403,18 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		//
 		// BOTH READINGS HAVE TO BE KNOWN, AND THAT IS WHAT REFUSES AN ENEMY. An
 		// ability system with no class resource attribute set leaves both
-		// negative, and this is the one place where "there is no bar" and "the
-		// bar is empty" have to be told apart: an unknown pair would otherwise
-		// compare -1 against -1 and answer yes, handing every enemy in the game
-		// a bonus written for a full Masochist.
+		// negative, and every pool asking whether it is full has to tell "there
+		// is no bar" apart from "the bar is empty": an unknown pair would
+		// otherwise compare -1 against -1 and answer yes, handing every enemy in
+		// the game a bonus written for a full Masochist.
+		//
+		// THE POOLS THAT ASK IT ARE THIS ONE AND `EnergyShieldAtMaximum` BELOW.
+		// A third belongs on that list rather than in a fresh claim about which
+		// place is the only one. This sentence read "this is the one place"
+		// while that was true, and adding the second pool is what made it false
+		// -- with nothing able to notice, because it is prose no test reads and
+		// a reviewer comparing the two conditions sees two matching comments
+		// rather than one gone stale.
 		//
 		// A MAXIMUM OF NOTHING REFUSES TOO. A pool that cannot hold anything is
 		// not at its maximum in any sense a node means, and answering yes would
@@ -382,6 +422,59 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		return State.ClassResourceHeld >= 0.0f
 			&& State.ClassResourceMaximum > 0.0f
 			&& State.ClassResourceHeld >= State.ClassResourceMaximum;
+
+	case ECataclysmStatCondition::EnergyShieldAtMaximum:
+		// NO THRESHOLD, SO `Value` IS NOT READ, the same as the predicate above.
+		// Issue #1515. Cold Reading is the node: "+2% increased Spell Damage per
+		// point while your Energy Shield is full."
+		//
+		// THE SAME THREE CLAUSES AS THE CLASS RESOURCE ABOVE, IN THE SAME ORDER.
+		// The reading has to be known, the bar has to be able to hold something,
+		// and then the shield has to be at the top of it.
+		//
+		// THE FIRST CLAUSE IS REDUNDANT TODAY AND IS KEPT ANYWAY. Say so rather
+		// than let a reader assume all three do work. `CurrentConditions` writes
+		// both readings together inside one block or writes neither, so a shield
+		// reading below zero always comes with a maximum below zero -- and the
+		// middle clause refuses that already. Whenever the middle clause passes,
+		// the first has passed too. It cannot be broken in a way any test
+		// distinguishes, and no guard proof for it exists, because there is no
+		// reachable state where it is the clause doing the refusing.
+		//
+		// IT IS KEPT FOR TWO REASONS. `ClassResourceAtMaximum` above carries the
+		// identical redundancy for the identical reason, and a reader comparing
+		// the two should find the same shape rather than wonder which is wrong.
+		// And the redundancy is a property of the FILL, not of this predicate: a
+		// future fill that wrote the maximum from one attribute set and the
+		// shield from another would make the two readings disagree about being
+		// known, and this clause is what would refuse the half-read state.
+		//
+		// THE MIDDLE CLAUSE CARRIES MORE WEIGHT HERE THAN IT DOES ABOVE. Only
+		// the Ritualist has a `max_energy_shield` line in
+		// `game/Data/ClassStats.csv`, so a maximum of zero is the ordinary state
+		// of every other class and every enemy rather than a corner case, and
+		// each of them holds zero of zero. Without this clause all of them would
+		// satisfy a node written for a full shield.
+		//
+		// GREATER-OR-EQUAL RATHER THAN EQUAL, AND THE DIFFERENCE IS REACHABLE IN
+		// ORDINARY PLAY RATHER THAN DEFENSIVE. `UCataclysmVitalAttributeSet`
+		// clamps the shield to its maximum whenever the SHIELD changes -- in
+		// `PreAttributeChange`, in `PostGameplayEffectExecute`, and where a blow
+		// is absorbed -- and never when the MAXIMUM changes. There is no
+		// proportional adjustment on the maximum the way some attribute sets
+		// carry one. So lowering `MaxEnergyShield` leaves the current shield
+		// standing above it: raise the maximum, fill the shield, lower the
+		// maximum, and the character holds more shield than its bar now has.
+		// Any effect or item that grants maximum energy shield and then ends
+		// produces exactly that.
+		//
+		// SUCH A CHARACTER IS FULL, AND `==` WOULD ANSWER NO. Its shield is at
+		// the top of its bar and over it, which is what the node's sentence
+		// means by full, so the test that pins this writes the state the way the
+		// game reaches it rather than by writing a raw number.
+		return State.EnergyShieldHeld >= 0.0f
+			&& State.EnergyShieldMaximum > 0.0f
+			&& State.EnergyShieldHeld >= State.EnergyShieldMaximum;
 
 	case ECataclysmStatCondition::HitIsMeleeAttack:
 		// NO THRESHOLD, SO `Value` IS NOT READ, and nothing to refuse as unknown.

@@ -244,3 +244,4 @@ Ritualist_basic_a_stem1#1,Ritualist_basic_a_stem1,spell_damage,increased,2.0,,ta
 Ritualist_capstone_200#1,Ritualist_capstone_200,attack_damage,more,4.0,,,0.0,minions_held,1.0,2,-1.0
 Ritualist_capstone_200#2,Ritualist_capstone_200,spell_damage,more,4.0,,,0.0,minions_held,1.0,2,-1.0
 Ritualist_capstone_200#3,Ritualist_capstone_200,max_energy_shield,increased,4.0,,,0.0,minions_held,1.0,2,-1.0
+Ritualist_basic_c_a2#1,Ritualist_basic_c_a2,spell_damage,increased,2.0,,energy_shield_at_maximum,0.0,,0.0,0,-1.0
