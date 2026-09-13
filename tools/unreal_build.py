@@ -400,14 +400,26 @@ class TestOutcome:
         # by however many are named here. Putting it at the end keeps it next to
         # nothing else and makes it the last thing read.
         if self.refused_registration:
-            line += (f". The engine refused to register "
-                     f"{len(self.refused_registration)}, so they did not run "
-                     f"and are not in the counts above: "
+            # SAID PROPERLY FOR ONE AND FOR MANY. The first version of this read
+            # "refused to register 1, so they did not run", which is a sentence
+            # that cannot count, in the one message whose whole job is to be
+            # believed by somebody who has just been told their run is wrong.
+            # Both readings are tested, because until they were, only the
+            # singular one had ever been executed -- which is the same fault as
+            # a declared test that never runs, in the text this file prints.
+            count = len(self.refused_registration)
+            one = count == 1
+            line += (f". The engine refused to register {count} "
+                     f"{'test' if one else 'tests'}, so "
+                     f"{'it' if one else 'they'} never ran and "
+                     f"{'is' if one else 'are'} not in the counts above: "
                      + ", ".join(self.refused_registration)
-                     + ". Those are C++ class names. A class name is the "
-                       "registry key and is compared without regard to case, so "
-                       "the cause is usually another test class whose name "
-                       "differs only in capitalisation. Issue #1666.")
+                     + (". That is a C++ class name" if one
+                        else ". Those are C++ class names")
+                     + ". A class name is the registry key and is compared "
+                       "without regard to case, so the cause is usually another "
+                       "test class whose name differs only in capitalisation. "
+                       "Issue #1666.")
         return line
 
 

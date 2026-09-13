@@ -295,6 +295,22 @@ LogAutomationController: Display: ...Automation Test Queue Empty 1 tests perform
 """
 
 
+#: The same run with two refusals, so the plural wording is executed by
+#: something rather than only written. One collision is what happened in issue
+#: #1666; two is what happens the moment somebody adds a second, and the message
+#: has to read properly then without anybody revisiting it.
+TEST_LOG_WITH_TWO_REFUSED_REGISTRATIONS = """\
+LogAutomationTest: Warning: Failed to register test with the name \
+'FCataclysmWeaponSubTypeTest'. Test with the same name is already registered \
+and will not be overridden.
+LogAutomationTest: Warning: Failed to register test with the name \
+'FCataclysmArmorCurveTest'. Test with the same name is already registered \
+and will not be overridden.
+LogAutomationController: Display: Test Completed. Result={Success} Name={ItLobsTheRock}
+LogAutomationController: Display: ...Automation Test Queue Empty 1 tests performed.
+"""
+
+
 class TestARefusedRegistrationIsReported:
     """A test the engine refused to register vanishes without trace. Issue #1736.
 
@@ -325,6 +341,41 @@ class TestARefusedRegistrationIsReported:
         assert "1 succeeded, 0 failed" in summary
         assert "FCataclysmWeaponSubTypeTest" in summary
         assert "refused to register" in summary
+
+    def test_one_refusal_is_described_in_the_singular(self) -> None:
+        """A message that cannot count is a message nobody trusts.
+
+        THIS EXISTS BECAUSE THE FIRST VERSION GOT IT WRONG. It read "refused to
+        register 1, so they did not run", which a reader meets at the moment
+        they have just been told their test run is missing something. A tool
+        that cannot say "one test" is not one they will believe about anything
+        harder.
+        """
+        summary = parse_test_log(TEST_LOG_WITH_A_REFUSED_REGISTRATION).summary
+        assert "refused to register 1 test," in summary, (
+            f"one refusal must say '1 test', not '1'. It reads: {summary!r}")
+        assert "so it never ran and is not in the counts above" in summary, (
+            f"one refusal must be 'it ... is', not 'they ... are'. It reads: "
+            f"{summary!r}")
+        assert "That is a C++ class name" in summary
+
+    def test_two_refusals_are_described_in_the_plural(self) -> None:
+        """The reading that had never been executed at all.
+
+        EVERY FIXTURE AND ASSERTION WRITTEN FOR THIS FEATURE HAD EXACTLY ONE
+        REFUSED CLASS, so the plural branch of the sentence was text nobody had
+        run -- which is the same fault as a declared test that never runs, in
+        the output this file produces. Issue #1666 is that fault in C++; this is
+        it in a format string.
+        """
+        summary = parse_test_log(TEST_LOG_WITH_TWO_REFUSED_REGISTRATIONS).summary
+        assert "refused to register 2 tests," in summary, (
+            f"two refusals must say '2 tests'. It reads: {summary!r}")
+        assert "so they never ran and are not in the counts above" in summary, (
+            f"two refusals must be 'they ... are'. It reads: {summary!r}")
+        assert "Those are C++ class names" in summary
+        assert "FCataclysmArmorCurveTest" in summary
+        assert "FCataclysmWeaponSubTypeTest" in summary
 
     def test_it_names_the_class_rather_than_the_test(self) -> None:
         """Because the class name is what collides, and what has to be renamed.
