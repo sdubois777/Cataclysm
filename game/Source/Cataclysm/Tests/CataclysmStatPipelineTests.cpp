@@ -8,6 +8,9 @@
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Tests/CataclysmTestWorld.h"
+#include "Misc/ScopeExit.h"
+#include "Engine/World.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "GameplayEffectAggregator.h"
 #include "GameplayEffectTypes.h"
@@ -2591,18 +2594,41 @@ bool FCataclysmPricedHitAsksTheCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmStatTest;
 
-	// NO WORLD, because none is needed. `CurrentConditions` reads attribute
-	// sets and never asks for a clock or an actor's location, so a bare
-	// component with a vital attribute set is a character as far as a health
-	// condition is concerned. Every other test in this file works the same way.
+	// A WORLD AND A REAL ACTOR, WHICH THE FIRST VERSION OF THIS TEST DID NOT
+	// HAVE. It built the component with a bare `NewObject` and no owner, on the
+	// reasoning that `CurrentConditions` only reads attribute sets and never
+	// asks for a world. That is true of `CurrentConditions` and false of this
+	// test: WRITING an attribute needs an owner, and the engine says so --
+	// "This ActiveGameplayEffectsContainer has an invalid owner. Unable to set
+	// attribute MaxHealth" -- and then takes the whole automation run down,
+	// which reports as no results rather than as a failure.
+	//
+	// THIS IS THE FIXTURE CataclysmStacksTests.cpp USES, and for the same
+	// reason: an actor, a registered component, the attribute sets, then
+	// `InitAbilityActorInfo`.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("an actor to own the ability system"), Actor))
+	{
+		return false;
+	}
+
 	UCataclysmAbilitySystemComponent* AbilitySystem =
-		NewObject<UCataclysmAbilitySystemComponent>();
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
 
 	// Raw pointer on purpose: AddAttributeSetSubobject is a template and a
 	// TObjectPtr deduces the wrapper rather than the set.
 	UCataclysmVitalAttributeSet* Vitals =
-		NewObject<UCataclysmVitalAttributeSet>(AbilitySystem);
+		NewObject<UCataclysmVitalAttributeSet>(Actor);
 	AbilitySystem->AddAttributeSetSubobject(Vitals);
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
 	// A CHARACTER AT A TENTH OF ITS HEALTH, well under the threshold below, so
 	// the check is not about where the boundary falls.
@@ -2655,8 +2681,15 @@ bool FCataclysmPricedHitAsksTheCharacterTest::RunTest(const FString&)
 	// says that this change fixes the conditional case WITHOUT disturbing the
 	// case everything currently relies on.
 
+	AActor* Bare = World->SpawnActor<AActor>();
 	UCataclysmAbilitySystemComponent* Plain =
-		NewObject<UCataclysmAbilitySystemComponent>();
+		NewObject<UCataclysmAbilitySystemComponent>(Bare);
+	Plain->RegisterComponent();
+	Plain->InitAbilityActorInfo(Bare, Bare);
+
+	// NO ATTRIBUTE SET ON THIS ONE, deliberately. It is a character of which
+	// nothing is known, which is what every enemy's plain melee attack is when
+	// it comes through here.
 	Plain->AddStatModifier(Increased(50.0f));
 	TestEqual(
 		TEXT("an unconditional increase prices the same, with no attribute set "
