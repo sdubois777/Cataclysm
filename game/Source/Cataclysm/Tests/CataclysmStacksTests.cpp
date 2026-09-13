@@ -702,4 +702,93 @@ bool FCataclysmZeroCapGrantTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The three numbers every kind carries
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStackKindTableTest,
+	"Cataclysm.Stacks.EveryKindsWindowCapAndNameAreTheDesignsOwnNumbers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmStackKindTableTest::RunTest(const FString&)
+{
+	using Stacks = UCataclysmStacks;
+
+	// WHY THIS EXISTS ALONGSIDE THE TESTS ABOVE, WHICH LOOK LIKE THEY COVER IT.
+	// They pin the three Masochist kinds' windows and caps as literals, and they
+	// pin Infernal Brand's cap through the pattern its explosions make. What
+	// none of them pins is Infernal Brand's WINDOW, any kind's NAME, or the
+	// answer for a kind the build does not know. Issue #1720 proposes replacing
+	// all three switches with a table read from data, and this is the reading
+	// such a table would have to reproduce exactly.
+	//
+	// EVERY OTHER TEST IN THIS FILE READS THESE NUMBERS BACK OUT OF THE SAME
+	// SWITCHES IT IS CHECKING whenever it drives a grant -- `GrantStack(Kind,
+	// WindowSecondsFor(Kind), CapFor(Kind))`. A switch that answered differently
+	// would move both sides of those checks at once and they would still pass.
+	// This asserts the numbers against nothing but themselves written down.
+	//
+	// NO WORLD AND NO CHARACTER, which is the point the class's own header
+	// makes about why it is static functions: "the rules are arithmetic on a few
+	// numbers, so they can be checked by passing numbers in rather than by
+	// building a character, a world and an effect spec for every case."
+
+	// ONE LINE PER COLUMN RATHER THAN TWELVE SEPARATE ASSERTIONS, so a failure
+	// prints the whole table and a single changed number can be read off
+	// against its neighbours. The same shape the Infernal Brand test above uses
+	// and for the same reason.
+	TArray<FString> Windows;
+	TArray<FString> Caps;
+	TArray<FString> Names;
+	for (int32 Index = 0; Index < Stacks::KindCount; ++Index)
+	{
+		const ECataclysmStackKind Kind = static_cast<ECataclysmStackKind>(Index);
+
+		// TWO DECIMAL PLACES, NOT ZERO. Printed with `%.0f` a window that moved
+		// from 8 to 8.4 would still read as "8" and this test would pass.
+		Windows.Add(
+			FString::Printf(TEXT("%.2f"), Stacks::WindowSecondsFor(Kind)));
+		Caps.Add(FString::FromInt(Stacks::CapFor(Kind)));
+		Names.Add(Stacks::NameOf(Kind));
+	}
+
+	// IN ENUM ORDER: Sanguine Momentum, Bloodlust, Carnage, Infernal Brand.
+	// Three of these four windows are their node's own words; Infernal Brand's
+	// eight is a judgement recorded at `CataclysmStacks.cpp:24`, and it is the
+	// one a table would be likeliest to drop, because no design document states
+	// it.
+	TestEqual(TEXT("every kind's window in seconds, in enum order"),
+			  FString::Join(Windows, TEXT(" ")),
+			  FString(TEXT("3.00 5.00 8.00 8.00")));
+
+	TestEqual(TEXT("every kind's cap, in enum order"),
+			  FString::Join(Caps, TEXT(" ")), FString(TEXT("5 5 10 5")));
+
+	// THE NAMES ARE ASSERTED BY NOTHING ELSE IN THE PROJECT. `NameOf` has one
+	// caller, the `Cataclysm.ShowStacks` console command, and a console command
+	// has no test -- so a case dropped from that switch would return
+	// "(unknown)" in play and fail nowhere.
+	TestEqual(TEXT("every kind's name, in enum order"),
+			  FString::Join(Names, TEXT(", ")),
+			  FString(TEXT(
+				  "Sanguine Momentum, Bloodlust, Carnage, Infernal Brand")));
+
+	// AND THE ARM THAT NO TEST REACHED, WHICH IS THE ONE A TABLE CHANGES. Both
+	// switches answer nothing for a kind they do not know and both say why in
+	// as many words: a window of nothing makes `Held` answer zero at every
+	// instant, and a cap of nothing grants nothing "rather than growing without
+	// bound". A table read from data has a miss for the same reason a switch has
+	// a default, so the answer to a miss is the part that must not move.
+	TestEqual(TEXT("a kind this build does not know lasts no time"),
+			  Stacks::WindowSecondsFor(ECataclysmStackKind::Count), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("and holds nothing"),
+			  Stacks::CapFor(ECataclysmStackKind::Count), 0);
+	TestEqual(TEXT("and prints as unknown rather than as one of the four"),
+			  FString(Stacks::NameOf(ECataclysmStackKind::Count)),
+			  FString(TEXT("(unknown)")));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
