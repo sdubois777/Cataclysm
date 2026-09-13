@@ -85,6 +85,31 @@ Only the Ritualist has a `max_energy_shield` line, so every other class, every
 enemy and every test character built without one holds zero of zero. Without that
 clause all of them satisfy a node written for a full shield.
 
+### How often "full" is actually true, which the condition does not say
+
+**A condition that holds while a bar is full is worth what it is worth because of
+how fast the bar comes back**, and that is decided elsewhere. Recorded here so a
+reader judging Cold Reading's eight points does not have to find it.
+
+`docs/Cataclysm_GDD_v2.md` states that an energy shield refills after the
+character last took damage, and the rule that **every source of maximum energy
+shield grants a fifth of what it gave as energy shield regeneration** — so a full
+shield comes back in five seconds however it was built.
+`tools/tests/test_an_energy_shield_refills_in_five_seconds.py` holds that by
+reading both numbers out of the data and dividing, which is what stops one moving
+without the other.
+
+**The Ritualist's own class stats satisfy it exactly.** From
+`game/Data/ClassStats.csv`: `max_energy_shield` 40 with 8 per level,
+`energy_shield_regen` 8 with 1.6 per level — **a fifth on both the base and the
+per-level figure.**
+
+**So a Ritualist returns to full a fixed few seconds after the last hit, at every
+level**, and Cold Reading is a bonus that lapses in a fight and comes back
+between fights rather than one a player loses for the rest of a run. **A
+condition on a pool that did NOT refill would be a different node**, which is why
+this was checked rather than assumed.
+
 ### An unknown reading refuses, because these are bonuses
 
 The rule stated in the entry below this one — an unknown reading must never make
