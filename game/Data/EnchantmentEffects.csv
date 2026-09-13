@@ -107,3 +107,4 @@ Negative_Spells_deal_20_35_less_damage_while_you_are_mo#2,Negative_Spells_deal_2
 Negative_Ranged_skills_deal_15_30_less_damage_at_close#1,Negative_Ranged_skills_deal_15_30_less_damage_at_close,attack_damage,more,-15.0,-30.0,Type.Ranged,target_within_metres,5.0,,0.0
 Negative_Ranged_skills_deal_15_30_less_damage_at_close#2,Negative_Ranged_skills_deal_15_30_less_damage_at_close,spell_damage,more,-15.0,-30.0,Type.Ranged,target_within_metres,5.0,,0.0
 Positive_When_your_class_resource_is_full_your_movement#1,Positive_When_your_class_resource_is_full_your_movement,movement_speed,increased,15.0,30.0,,class_resource_at_maximum,0.0,,0.0
+Negative_Your_ultimate_ability_cannot_be_used_unless_you#1,Negative_Your_ultimate_ability_cannot_be_used_unless_you,skill_locked,flat,1.0,1.0,Slot.Ultimate,health_at_or_above,50.0,,0.0

@@ -77,6 +77,23 @@ namespace CataclysmEnchantmentEffectTest
 		TEXT("Negative_You_cannot_use_movement_abilities_while_stationa");
 
 	/**
+	 * The second drawback that locks a slot, and the first row in the game to use
+	 * `health_at_or_above`. Issue #1754.
+	 *
+	 * "Your ultimate ability cannot be used unless you are below 50% HP", which the
+	 * Enchantment Effects sheet writes as the `skill_locked` stat, flat, 1, required
+	 * tag `Slot.Ultimate`, condition `health_at_or_above` with 50.
+	 *
+	 * THE PREDICATE WAS BUILT FOR THIS ROW AND THEN NOTHING USED IT. Issue #1653
+	 * added `health_at_or_above` and closed; the row it was named for stayed
+	 * unwritten, and `docs/DECISIONS.md` went on saying the predicate did not exist.
+	 * So this test is the first thing anywhere to drive that condition through a
+	 * real data row rather than through a state built in code.
+	 */
+	const TCHAR* UltimateLockDrawback =
+		TEXT("Negative_Your_ultimate_ability_cannot_be_used_unless_you");
+
+	/**
 	 * The two rows that carry a tag scope AND a condition. Issue #1686, the two
 	 * rows corrected out of its group C.
 	 *
@@ -921,6 +938,182 @@ bool FCataclysmEnchantmentEffectLockTest::RunTest(const FString& Parameters)
 	Wearer.Equipment->RefreshAttributes(ASC);
 	TestEqual(TEXT("and taking the boots off leaves the skill free"),
 			  ASC->StatForSkill(Stat, MovementSkillTags, 0.0f), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentUltimateLockTest,
+	"Cataclysm.Enchantments.TheUltimateLockHoldsAtExactlyHalfHealthAndReleasesBelowIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentUltimateLockTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BOUNDARY IS THE WHOLE POINT OF THIS ROW. Issue #1754. "Cannot be used
+	// unless you are below 50% HP" means locked AT 50 as well as above it, and
+	// `health_above` is strictly above -- so a character parked on exactly half
+	// health would fire an ultimate the row forbids. `health_at_or_above` exists
+	// for that one case, and a test that only checked 100% and 10% would pass with
+	// the wrong predicate written on the row.
+	//
+	// AND IT IS THE FIRST ROW ANYWHERE TO USE THAT PREDICATE. Issue #1653 built it
+	// for this sentence and closed with the row unwritten, so until now nothing
+	// drove it through a data row at all.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FTables Tables;
+	if (!LoadAll(*this, Tables))
+	{
+		return false;
+	}
+
+	// THE TAGS COME OFF A REAL SKILL ROW, for the reason the lock test above gives:
+	// a lock whose required tag no skill carries is scoped to the empty set and
+	// reads as a lock that does not work.
+	const UDataTable* Skills =
+		LoadCsv<FCataclysmWeaponSkillRow>(TEXT("WeaponSkills.csv"));
+	if (!TestNotNull(TEXT("the weapon skill table reads"), Skills))
+	{
+		return false;
+	}
+
+	const FGameplayTag UltimateTag =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Slot.Ultimate")));
+	if (!TestTrue(TEXT("Slot.Ultimate is a registered tag"), UltimateTag.IsValid()))
+	{
+		return false;
+	}
+
+	FGameplayTagContainer UltimateSkillTags;
+	FGameplayTagContainer OtherSkillTags;
+	int32 UltimateRows = 0;
+	for (const TPair<FName, uint8*>& Row : Skills->GetRowMap())
+	{
+		const auto* Skill =
+			reinterpret_cast<const FCataclysmWeaponSkillRow*>(Row.Value);
+		if (!Skill)
+		{
+			continue;
+		}
+
+		FGameplayTagContainer Held;
+		TArray<FString> Names;
+		Skill->Tags.ParseIntoArray(Names, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Name : Names)
+		{
+			Name.TrimStartAndEndInline();
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(
+				FName(*Name), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Held.AddTag(Tag);
+			}
+		}
+
+		if (Held.HasTag(UltimateTag))
+		{
+			++UltimateRows;
+			if (UltimateSkillTags.IsEmpty())
+			{
+				UltimateSkillTags = Held;
+			}
+		}
+		else if (OtherSkillTags.IsEmpty()
+				 && Held.HasTag(FGameplayTag::RequestGameplayTag(
+						FName(TEXT("Slot.Movement")))))
+		{
+			OtherSkillTags = Held;
+		}
+	}
+
+	// Without these the reads below ask about empty containers, a modifier
+	// requiring a tag refuses an empty container, and every figure would be zero
+	// while the test reported a pass.
+	if (!TestTrue(FString::Printf(
+			TEXT("the data holds ultimate skills carrying Slot.Ultimate: %d"),
+			UltimateRows), UltimateRows > 0))
+	{
+		return false;
+	}
+	if (!TestFalse(TEXT("and a skill in another slot to compare against"),
+				   OtherSkillTags.IsEmpty()))
+	{
+		return false;
+	}
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FName Stat = FName(UCataclysmSkillSlots::LockedStat);
+
+	// A THOUSAND, SO THE BOUNDARY IS EXACT. 500 of 1000 is exactly 0.5 and exactly
+	// 50.0 after the multiplication, both being representable, so "at or above 50"
+	// is tested at 50 rather than near it.
+	constexpr float PoolMax = 1000.0f;
+	ASC->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), PoolMax);
+	ASC->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax);
+
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(TEXT("a character wearing nothing has no lock on its ultimate"),
+			  ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f), 0.0f, 0.001f);
+
+	// THE DRAWBACK, PAIRED WITH A BENEFIT THAT HAS NO EFFECT ROW, so the lock is
+	// the only thing this item changes.
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, UltimateLockDrawback),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	TestTrue(TEXT("at full health the worn drawback locks the ultimate"),
+			 ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f) > 0.0f);
+
+	// AND NOTHING ELSE. The row scopes itself to one slot.
+	TestEqual(TEXT("and leaves a skill in another slot alone"),
+			  ASC->StatForSkill(Stat, OtherSkillTags, 0.0f), 0.0f, 0.001f);
+
+	// THE CHARACTER SHEET SHOWS NO LOCK, which is the same reading with no skill
+	// in hand. A scoped modifier must not apply to a bare stat.
+	TestEqual(TEXT("and shows nothing with no skill in hand"),
+			  ASC->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 0.0f, 0.001f);
+
+	// EXACTLY HALF, AND STILL LOCKED. This is the assertion the predicate exists
+	// for, and the one that fails if the row is ever written with `health_above`.
+	// No refresh between this read and the last: the condition is judged when the
+	// question is asked, not when the gear was put on.
+	ASC->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax * 0.5f);
+	TestTrue(TEXT("at exactly half health the ultimate is still locked"),
+			 ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f) > 0.0f);
+
+	// ONE POINT BELOW, AND FREE. The row says "unless you are below 50%".
+	ASC->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax * 0.5f - 1.0f);
+	TestEqual(TEXT("one point below half health releases the ultimate"),
+			  ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f), 0.0f, 0.001f);
+
+	// AND HEALING BACK TO HALF LOCKS IT AGAIN, with no refresh between. That is
+	// what makes this a condition rather than a state written onto the character.
+	ASC->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax * 0.5f);
+	TestTrue(TEXT("and healing back to half locks it again"),
+			 ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f) > 0.0f);
+
+	// AND TAKING THE HELM OFF GIVES IT BACK, which says the lock came from the
+	// item rather than from the character's health.
+	Wearer.Equipment->Unequip(Slot, Removed);
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(TEXT("and taking the helm off leaves the ultimate free"),
+			  ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f), 0.0f, 0.001f);
 
 	return true;
 }
