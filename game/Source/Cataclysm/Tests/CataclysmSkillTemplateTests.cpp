@@ -13352,11 +13352,42 @@ namespace CataclysmChargeKnockdownTest
 {
 	using namespace CataclysmSkillTest;
 
-	/** Seconds of knockdown this character's skills carry. */
-	void GiveKnockdown(FScopedFighter& Fighter, float Seconds)
+	/**
+	 * Seconds of knockdown this character's CHARGE skills carry.
+	 *
+	 * RECORDED AS A STAT LINE, NOT WRITTEN ONTO THE ATTRIBUTE, and the difference
+	 * is the whole test. `StatForSkill` answers from the recorded stat line and
+	 * falls back to the number it is handed when there is none -- so a character
+	 * whose attribute was set by hand and whose stat line is empty answers the
+	 * fallback, which is zero here, and nothing happens.
+	 *
+	 * THE FIRST VERSION OF THIS HELPER SET THE ATTRIBUTE. Every "does not knock
+	 * down" test passed and both "does knock down" tests failed, because the
+	 * lookup returned zero for all five. The three negative tests were passing
+	 * because the feature did nothing at all.
+	 *
+	 * AND THE REQUIRED TAG HAS TO BE HERE RATHER THAN IN THE STAT'S NAME. This is
+	 * what the enchantment row's `RequiredTags=Keyword.Charge` becomes, and it is
+	 * the only thing that scopes the knockdown to charges. Recording it here is
+	 * what makes the scoping test test the scoping.
+	 */
+	void GiveChargeKnockdown(FScopedFighter& Fighter, float Seconds)
 	{
-		Fighter.AbilitySystem->SetNumericAttributeBase(
-			UCataclysmCombatAttributeSet::GetKnockdownSecondsAttribute(), Seconds);
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::Enchantment;
+		Modifier.Value = Seconds;
+		Modifier.RequiredTags.AddTag(
+			UGameplayTagsManager::Get().RequestGameplayTag(
+				FName(TEXT("Keyword.Charge")), /*ErrorIfNotFound=*/false));
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers = { Modifier };
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmSkillEffects::KnockdownSecondsStat), Inputs);
+		Fighter.AbilitySystem->SetStatInputs(MoveTemp(Stats));
 	}
 
 	/** The Tags cell a charge skill carries, read the way the real path reads it. */
@@ -13379,7 +13410,7 @@ bool FCataclysmChargeKnockdownLandsTest::RunTest(const FString&)
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
-	GiveKnockdown(Caster, 1.5f);
+	GiveChargeKnockdown(Caster, 1.5f);
 
 	UCataclysmStrikeSkill* Charge = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
@@ -13429,7 +13460,7 @@ bool FCataclysmChargeKnockdownIsScopedTest::RunTest(const FString&)
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
-	GiveKnockdown(Caster, 1.5f);
+	GiveChargeKnockdown(Caster, 1.5f);
 
 	UCataclysmStrikeSkill* Plain = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
@@ -13512,7 +13543,7 @@ bool FCataclysmChargeKnockdownStaggersTest::RunTest(const FString&)
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
-	GiveKnockdown(Caster, 1.5f);
+	GiveChargeKnockdown(Caster, 1.5f);
 
 	UCataclysmStrikeSkill* Charge = GrantSkill<UCataclysmStrikeSkill>(
 		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
@@ -13567,7 +13598,7 @@ bool FCataclysmChargeKnockdownNeedsALandedBlowTest::RunTest(const FString&)
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
-	GiveKnockdown(Caster, 1.5f);
+	GiveChargeKnockdown(Caster, 1.5f);
 
 	Enemy.AbilitySystem->SetNumericAttributeBase(
 		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 1000.0f);
