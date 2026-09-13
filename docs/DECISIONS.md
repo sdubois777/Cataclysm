@@ -2226,9 +2226,41 @@ session.
    can land on either entry and this one reads as a complete answer.
 3. **Eleven enchantment rows read this state, not ten.** The owner's answer says
    ten. `game/Data/EnchantmentsPositive.csv` has nine and
-   `EnchantmentsNegative.csv` has two: P092, P093, P224, P253, P254, P255, P268,
-   P293, P307, N150 and N151. The difference is recorded rather than resolved,
-   because which row the owner was not counting cannot be read off the data.
+   `EnchantmentsNegative.csv` has two, tabled below. The difference is recorded
+   rather than resolved, because which row the owner was not counting cannot be
+   read off the data.
+
+**The eleven codes are positions, not names.** `P092` is the 92nd data row of
+`game/Data/EnchantmentsPositive.csv` and `N151` the 151st of
+`EnchantmentsNegative.csv`, counting from 1 below the header. **Nothing in the
+project stores a `P092`**: the generated tables carry no identifier column and
+the workbook sheet behind them carries none either, so a code cannot be looked
+up, only counted to. One row inserted above shifts every code after it, and a
+shifted code still names a real row -- so this entry would go on reading as
+though it were right. The row text is quoted with each code because the text is
+durable and the position is not, and
+`tools/tests/test_the_decisions_log_enchantment_codes_resolve.py` fails if any
+position stops holding the text quoted for it.
+
+| Code | The row that position holds |
+| :-- | :-- |
+| P092 | Staggered enemies take 20%-35% increased damage from all sources |
+| P093 | Enemies you stagger are also briefly rooted for 0.5-1.5 seconds |
+| P224 | Gadgets apply a 1-2 second stagger to enemies they hit, once every 5 seconds |
+| P253 | Stagger effects you apply last 50%-100% longer |
+| P254 | Hitting a staggered enemy resets your heavy attack cooldown |
+| P255 | Charge skills knock down enemies they hit for 1-2 seconds |
+| P268 | Your first hit against each enemy has a 50%-100% chance to stagger them |
+| P293 | Retaliation damage has a 20%-40% chance to stagger the attacker |
+| P307 | Enemies that enter your persistent AOE zones are briefly staggered |
+| N150 | Staggered enemies deal 15%-30% increased damage to you |
+| N151 | You cannot stagger enemies above 50% HP |
+
+**P255 never says "stagger" and belongs anyway.** A charge skill knocks down,
+and `ApplyKnockdown` is one of the three calls above that leave the state, so
+that row reads it without naming it. Searching these two tables for the word
+finds ten and drops P255, which is why the eleven are listed here rather than
+described.
 
 **Not in this change.** None of those eleven rows. They need what their own
 words ask for: a root, a gadget trigger, a first-hit scope, a retaliation
