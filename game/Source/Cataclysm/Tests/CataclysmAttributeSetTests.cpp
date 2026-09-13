@@ -290,7 +290,14 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// character. `stagger_duration` lengthens a stagger this character applies to
 	// SOMEONE ELSE. Both scale one stagger, from opposite ends, and they
 	// multiply.
-	constexpr int32 OffSheetCombatStats = 31;
+	//
+	// THIRTY-TWO SINCE THE KNOCKDOWN A SKILL CARRIES, issue #45: how long a
+	// skill this character lands knocks its target down for. It meets the rule
+	// for the eighteenth time -- no affix grants it, nothing scales it, no class
+	// differs on it, and one enchantment scoped to charge skills is its only
+	// source. Zero for every character without that row, and a player sees an
+	// enemy fall over rather than reading a number.
+	constexpr int32 OffSheetCombatStats = 32;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

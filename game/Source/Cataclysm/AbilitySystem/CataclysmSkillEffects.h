@@ -1517,6 +1517,16 @@ public:
 	static const TCHAR* StaggerHealthCeilingStat;
 
 	/**
+	 * Seconds a skill this character lands knocks its target down for. #45.
+	 *
+	 * NO KEYWORD IN THE NAME. The row that grants it scopes itself with
+	 * `RequiredTags=Keyword.Charge`, and those tags are what the stat pipeline
+	 * actually matches on. A keyword here as well would say it twice and leave
+	 * the two free to disagree, with only the tags deciding.
+	 */
+	static const TCHAR* KnockdownSecondsStat;
+
+	/**
 	 * Leave a target staggered for a second.
 	 *
 	 * IT DOES NOT STOP THE TARGET ACTING. That is the owner's answer of

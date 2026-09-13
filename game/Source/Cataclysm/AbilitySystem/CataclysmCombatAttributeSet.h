@@ -252,6 +252,33 @@ public:
 	FGameplayAttributeData StaggerHealthCeilingReduction;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, StaggerHealthCeilingReduction)
 
+	/**
+	 * Seconds a skill this character lands knocks its target down for. Issue #45.
+	 *
+	 * "Charge skills knock down enemies they hit for 1-2 seconds" is the only row
+	 * that grants it today, and it grants 1 to 2.
+	 *
+	 * NOT NAMED FOR THE CHARGE, DELIBERATELY. The row scopes itself with
+	 * `RequiredTags=Keyword.Charge`, and that copy is the one the stat pipeline
+	 * reads. Putting the keyword in the stat name as well would state it twice
+	 * and leave the name free to drift from the tags, which is what actually
+	 * decides. A later row reading "heavy skills knock down" is then a data row
+	 * with different tags rather than a second stat and a second read site.
+	 *
+	 * ZERO FOR EVERY CLASS AND NO ENGINE-SUPPLIED BASE. A flat row supplies its
+	 * own stat, so unlike `StaggerDuration` this needs no entry in
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`: zero seconds is the
+	 * correct answer for a character without the row, and `ApplyKnockdown`
+	 * refuses a non-positive duration.
+	 *
+	 * IT IS STILL IN THE NAME-TO-ATTRIBUTE MAP, which is not bookkeeping.
+	 * `ApplyTo` resolves only the stats that map names, so a stat missing from it
+	 * never has its inputs recorded and the lookup answers its fallback for ever.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_KnockdownSeconds)
+	FGameplayAttributeData KnockdownSeconds;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, KnockdownSeconds)
+
 	/** Percentage points subtracted from a target's RESISTANCE. */
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_Penetration)
 	FGameplayAttributeData Penetration;
@@ -860,6 +887,7 @@ protected:
 	UFUNCTION() void OnRep_StaggerDuration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_StaggerHealthCeilingReduction(
 		const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_KnockdownSeconds(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Penetration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ArmorPenetration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_SpellDamage(const FGameplayAttributeData& OldValue);

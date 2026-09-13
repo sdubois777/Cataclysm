@@ -664,6 +664,15 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("stagger_health_ceiling_reduction"),
 		 TEXT("the enchantment that refuses to stagger an enemy above half "
 			  "health, as a flat modifier")},
+
+		// Issue #45. How long a skill this character lands knocks its target
+		// down for. Zero for every class, and NO CLASS LINE MAY NAME IT: a class
+		// whose every skill knocked its target down would hand out an
+		// enchantment's whole effect for free, and the row scopes itself to
+		// charge skills which a class line cannot express.
+		{TEXT("knockdown_seconds"),
+		 TEXT("the enchantment that makes charge skills knock down, as a flat "
+			  "modifier scoped by RequiredTags to Keyword.Charge")},
 	};
 
 	for (const TPair<FString, FGameplayAttribute>& Pair : Map)
