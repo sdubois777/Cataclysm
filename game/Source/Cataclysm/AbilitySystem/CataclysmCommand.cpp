@@ -6,6 +6,8 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
+// For healing a subjugated enemy to full when it is taken. Issue #340.
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -389,6 +391,52 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 	// other is half taken.
 	Taken->SetOwner(Commander);
 	Taken->SetGenericTeamId(UCataclysmTeams::TeamOf(Commander));
+
+	// AND IT IS HEALED TO FULL, ONCE, AT THE MOMENT IT IS TAKEN. The project
+	// owner's ruling: "it should heal to full, and the enemy you take over should
+	// be considered a minion". Only the first half is here; the second is the
+	// gear-modifier path and a separate change.
+	//
+	// WHY IT NEEDS SAYING AT ALL. The skill only works on a target below half
+	// health, so without this every thrall arrives damaged, and one taken at a
+	// sliver dies to the first blow after joining. That is a creature the player
+	// spent an ultimate and 30 reserved Fervour on.
+	//
+	// A DIRECT WRITE OF THE ATTRIBUTE, NOT A HEALING EFFECT, AND THAT IS NOT A
+	// BYPASS. `HealingCeilingReduction` limits healing that arrives as a gameplay
+	// effect, which is how regeneration and a heal from a skill reach a
+	// character. This writes the base value, so no ceiling is in the path to
+	// ignore. It is also what "to full" has to mean: a ceiling that left the
+	// creature short would contradict the words of the ruling.
+	//
+	// WHETHER A CURSE SHOULD CUT IT IS OPEN, AND THIS DOES NOT DECIDE IT. Issue
+	// #1713. The owner also ruled, on 2026-09-12, that healing received is "one
+	// stat covering every route that restores health", and taking a creature and
+	// healing it is such a route -- so on a floor carrying Death's Embrace the
+	// two rulings pull opposite ways.
+	//
+	// IT CANNOT ARISE YET, WHICH IS WHY THIS SHIPS RATHER THAN WAITS. Measured:
+	// `healing_received_reduction` reaches a character through the player's class
+	// stat map and through a dungeon rule, and both of the dungeon rule's call
+	// sites in `CataclysmDungeonGameMode` apply it to the PLAYER. A thrall is a
+	// creature, so its reduction is zero whatever the floor and every reading of
+	// the two rulings behaves identically. The enchantment row "Disease effects
+	// reduce enemy healing by 50%-100%" is what will make it live.
+	//
+	// THE MAXIMUM IS READ RATHER THAN ASSUMED, because a creature's maximum is
+	// whatever its archetype and the difficulty tier gave it, and nothing here
+	// knows that figure.
+	if (UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Taken))
+	{
+		const float Full = System->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		if (Full > 0.0f)
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), Full);
+		}
+	}
 
 	// NOTHING HAS TO BE DONE TO ITS BRAIN, and it is worth saying why rather
 	// than leaving the absence to be read as an oversight.

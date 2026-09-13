@@ -1359,4 +1359,62 @@ bool FCataclysmBindingSigilsLeakTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateHealsTest,
+	"Cataclysm.Command.SubjugateHealsWhatItTakesToFull",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A taken enemy arrives at full health. The project owner's ruling of 2026-09-13:
+ * "it should heal to full".
+ *
+ * WHY IT MATTERS RATHER THAN BEING A COURTESY. Subjugate only works on a target
+ * the blow left below half health, so without this every thrall arrives damaged
+ * and one taken at a sliver dies to the next blow after joining -- a creature the
+ * player spent an ultimate and 30 reserved Fervour on.
+ *
+ * THE SECOND HALF IS A CONTROL ON THE FIRST. A take that is REFUSED must not
+ * heal, or the skill would be a free heal for any enemy it cannot take. Without
+ * it, an implementation that healed before deciding would pass the first
+ * assertion and be wrong.
+ */
+bool FCataclysmSubjugateHealsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Commander(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	FScopedCreature Wounded(World, FVector(3 * M, 0, 0), ECataclysmTeam::Monsters);
+
+	// BELOW THE HALF THE SKILL NEEDS, and far enough below that a partial heal
+	// could not be mistaken for a full one.
+	Wounded.SetHealthTo(200.0f);
+	if (!TestEqual(TEXT("the creature starts wounded"), Wounded.Health(), 200.0f,
+				   0.01f))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("it can be taken"),
+			 UCataclysmCommand::Subjugate(Commander.Actor, Wounded.Actor));
+
+	TestEqual(TEXT("and taking it heals it to full"), Wounded.Health(), 1000.0f,
+			  0.01f);
+
+	// THE CONTROL: A REFUSED TAKE HEALS NOTHING. This one is already on the
+	// commander's side, which `Subjugate` refuses so that one creature cannot
+	// reserve a second 30 Fervour.
+	FScopedCreature Ours(World, FVector(4 * M, 0, 0), ECataclysmTeam::Players);
+	Ours.SetHealthTo(300.0f);
+
+	TestFalse(TEXT("something already ours cannot be taken"),
+			  UCataclysmCommand::Subjugate(Commander.Actor, Ours.Actor));
+
+	TestEqual(TEXT("and a refused take leaves its health alone"), Ours.Health(),
+			  300.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
