@@ -99,7 +99,8 @@ Every other occurrence of the three phrases is the enemy modifier or the status 
 applies: `game/Data/StatusEffects.csv`, `game/Config/Tags/CataclysmTags.ini` (whose own
 comment names the Debuffs sheet as its source), `CataclysmStacks.h` and `.cpp`,
 `CataclysmEnemyModifiers.*`, `CataclysmVitalAttributeSet.cpp`, five test files, and
-`docs/Cataclysm_GDD_v2.md` line 5644, whose paragraph is explicitly about
+the paragraph of `docs/Cataclysm_GDD_v2.md` beginning "A modifier belonging to a
+different Cataclysm is not a clash", which is explicitly about
 `game/Data/EnemyModifiers.csv`. Twenty-one files were searched and each given a verdict.
 
 ### The guard, written to fail before the rename
