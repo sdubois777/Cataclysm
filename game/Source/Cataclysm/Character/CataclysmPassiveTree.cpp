@@ -979,6 +979,16 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 				}
 			}
 
+			// AND HOW FAR "NEAR" IS, FOR THE TWO READINGS THAT COUNT NEARBY
+			// ENEMIES. Issue #1597. Copied unconditionally rather than inside
+			// the two branches above, because the condition and the scale can
+			// both want it and a row may carry one of each.
+			//
+			// A ROW THAT COUNTS NOTHING CARRIES -1 AND IS LEFT AT -1, which is
+			// what `FCataclysmStatModifier` already defaults to, so this line
+			// changes nothing for the rows that do not count enemies.
+			Modifier.ReachMetres = Effect->ReachMetres;
+
 			Totals.FindOrAdd(FName(*Effect->Stat)).Add(Modifier);
 			++Added;
 		}

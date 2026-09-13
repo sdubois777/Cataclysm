@@ -404,7 +404,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: condition `attacker_beyond_metres`, because until that day nothing in the
 #: game could answer how far away the character that struck had stood. One row,
 #: one node, and the stat it moves already existed.
-AUTHORED_ROWS = 209
+#: AND TO 216 ON 2026-09-12, for the seven rows that count the enemies
+#: standing near a character. Issue #1597. Five Ravager nodes, and seven
+#: rows rather than five: `In Among Them` says "you deal 2% more damage"
+#: without naming a type, which the decision of 2026-08-25 makes attack
+#: damage AND spell damage, and `Wade In` names two stats in one sentence.
+AUTHORED_ROWS = 216
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -625,7 +630,14 @@ AUTHORED_ROWS = 209
 #: exist until that day -- how far away the character that struck had stood --
 #: which is why it was among the unauthored rather than among the missed. The
 #: Ritualist is now 37 of its 74.
-AUTHORED_NODES = 149
+#: AND TO 153 ON 2026-09-12, for four Ravager nodes that count nearby
+#: enemies: `Weight of the Axe`, `Onset`, `Unbreaking` and `In Among
+#: Them`. Issue #1597. The fifth node authored that day,
+#: `The First Onslaught`, was already counted -- it had a row for another
+#: of its three options -- which is exactly the blind spot
+#: `AUTHORED_OPTIONS` below exists to cover. The Ravager is now 38 of
+#: its 74.
+AUTHORED_NODES = 153
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -681,7 +693,12 @@ AUTHORED_NODES = 149
 #:
 #: If this number rises without one of the four unfinished trees being
 #: started, something has been authored by accident.
-AUTHORED_OPTIONS = 16
+#: AND TO 17 ON 2026-09-12, for `Wade In`, the first option of the
+#: Ravager's 25-point capstone: "Each enemy within 4 metres of you
+#: grants 3% increased Armor and 3% increased Attack Damage". Issue
+#: #1597. Its node already had a row for option 3, so `AUTHORED_NODES`
+#: did not move for it and this number did.
+AUTHORED_OPTIONS = 17
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -957,6 +974,27 @@ CONDITION_WORDS = {
     # THE VALUE FORM CARRIES NO PERCENT SIGN, unlike every entry above, because
     # the number is a distance rather than a share of anything.
     "attacker_beyond_metres": ("more than", "{value:g} metre"),
+
+    # THE FIRST PREDICATE WHOSE VALUE IS A COUNT OF THINGS RATHER THAN A
+    # THRESHOLD ON ONE. Issue #1597. "While an enemy is within 4 metres" is
+    # this with 1 and "while three or more enemies are within 4 metres" is
+    # the same name with 3, because the first is the special case of the
+    # second.
+    #
+    # THE FRAGMENT IS "within" AND NOT THE RADIUS, deliberately. Both nodes
+    # say "within 4 metres", and writing "within 4 metre" here would pass
+    # today and refuse the next row at 3 or 8 metres -- which the data already
+    # uses elsewhere. The radius is checked by the generator's own bound, not
+    # by this sentence match.
+    #
+    # THE VALUE FORM IS A MAPPING, WHICH IS NEW IN THIS FILE. Every entry
+    # above formats the value as digits and looks for them; these two nodes
+    # write their counts as WORDS and contain no such digit. "1" appears in
+    # neither sentence, so a numeric form would fail on a correct row -- and
+    # a form of `None` is worse, because that means "this predicate compares
+    # nothing" and would assert the count must be zero.
+    "enemies_in_reach_at_least": ("within",
+                                 {1.0: "an enemy", 3.0: "three or more"}),
 }
 
 #: Words a node must NOT say, for a condition whose required words are a
@@ -1038,7 +1076,28 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
             )
             continue
 
-        printed = value_form.format(value=value)
+        if isinstance(value_form, dict):
+            # A COUNT WRITTEN IN WORDS RATHER THAN DIGITS. Issue #1597.
+            # "While an enemy is within 4 metres" is a value of 1 and
+            # says no "1"; "three or more enemies" is a value of 3 and
+            # says no "3". So the words are listed against the value
+            # rather than formatted from it.
+            #
+            # AN UNLISTED VALUE IS REFUSED RATHER THAN SKIPPED. A row
+            # authored with a count nobody has written words for would
+            # otherwise pass unchecked, which is the one thing this file
+            # exists to stop.
+            printed = value_form.get(value)
+            assert printed is not None, (
+                f"{row['Node']} carries {condition!r} with a value of "
+                f"{value:g}, and this test has no words listed for that "
+                f"count. Known: {sorted(value_form)}. The trees write "
+                "small counts as words, so add the wording here beside "
+                "the others."
+            )
+        else:
+            printed = value_form.format(value=value)
+
         assert printed.lower() in words, (
             f"{row['Node']} carries {condition!r} with a value written "
             f"{printed!r}, and the node says:\n"
@@ -1164,6 +1223,22 @@ SCALE_WORDS = {
     # 1 and that is asserted instead. Looking for a "1" would find the rate's own
     # number -- "1 per second" -- and pass for the wrong reason.
     "minions_held": (("minion", "you have"), None, None),
+
+    # A COUNT OF THE ENEMIES STANDING NEAR THE CHARACTER. Issue #1597. Two
+    # nodes read it: "You deal 2% more damage for each enemy within 4 metres
+    # of you", and the Wade In capstone option, "Each enemy within 4 metres of
+    # you grants 3% increased Armor and 3% increased Attack Damage".
+    #
+    # BOTH FRAGMENTS ARE NEEDED AND NEITHER IS THE RADIUS. "each" alone is
+    # shared with several scales above, and "enemy within" is what makes this
+    # one. The number of metres is deliberately not here, for the reason the
+    # condition entry gives: the data already uses 3, 4 and 8.
+    #
+    # A STEP FORM OF `None`, as the debuff and minion counts use. Both
+    # sentences say "each enemy" and name no step, so the step can only be 1,
+    # and that is asserted instead. Looking for a "1" would find the bonus's
+    # own number in "2% more damage" territory and pass for the wrong reason.
+    "enemies_in_reach": (("each", "enemy within"), None, None),
 }
 
 

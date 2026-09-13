@@ -2018,6 +2018,29 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	int32 Option = 0;
+
+	/**
+	 * How far away an enemy may stand and still be counted, in metres, for
+	 * the two readings that count nearby enemies. Issue #1597.
+	 *
+	 * -1 ON EVERY OTHER ROW, AND THAT IS NOT A DEFAULT TO BE TIDIED AWAY. A
+	 * row that does not count enemies has no radius, and a modifier whose
+	 * reach is negative counts nobody rather than everybody. The generator
+	 * refuses a row that states one without naming a reading, and refuses a
+	 * row that names a reading without stating one.
+	 *
+	 * A COLUMN OF ITS OWN BECAUSE NEITHER NEIGHBOUR CAN HOLD IT.
+	 * `ConditionValue` holds the COUNT for `enemies_in_reach_at_least` --
+	 * "three or more enemies within four metres" is two numbers -- and
+	 * `ScaleStep` holds how many enemies one step is worth for
+	 * `enemies_in_reach`.
+	 *
+	 * PER ROW RATHER THAN ONE CONSTANT FOR THE GAME. The authored rows need
+	 * 3, 4 and 8 metres, and `docs/DECISIONS.md` of 2026-09-12 records Path
+	 * of Exile's developers stating that "nearby" is set per effect.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
+	float ReachMetres = -1.0f;
 };
 
 /**
