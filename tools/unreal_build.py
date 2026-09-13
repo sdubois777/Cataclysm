@@ -768,6 +768,13 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
     # THE SAME `test_prefix`, WHICH IS WHAT MAKES THE TWO COMPARABLE. Passing it
     # again rather than re-deriving it also means the selection rules cannot
     # differ between the halves, whatever they are.
+    # A FAILURE IN THIS RUN PROPAGATES AND TAKES THE BROKEN HALF WITH IT, WHICH
+    # IS THE RIGHT DIRECTION EVEN THOUGH IT LOSES EVIDENCE ALREADY PAID FOR. If
+    # the second run cannot happen -- the machine taken, the editor gone -- then
+    # what is left is a broken half on its own, and reporting that as a proof is
+    # the whole fault issue #1663 is about. Losing four builds is the cheaper
+    # mistake. The worktree is safe either way: the restore and its rebuild have
+    # both completed by the time this line runs.
     if broken.build.succeeded and broken.tests.performed is not None:
         return dataclasses.replace(broken, tests_restored=tester(test_prefix))
     return broken
