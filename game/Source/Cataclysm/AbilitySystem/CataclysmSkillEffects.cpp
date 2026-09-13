@@ -588,12 +588,12 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 	// `ApplyHit` is the one caller of the five with a target in hand, the same
 	// one that supplies the four facts above; the other four pass nothing and a
 	// row asking about an ailment correctly grants them nothing.
-	// `WithTargetAilments` walks the target's tags only if one of these rows
+	// `WithTargetState` walks the target's tags only if one of these rows
 	// asks, so a skill with no such row pays one pass over its own modifier
 	// list.
 	return UCataclysmStatPipeline::Evaluate(
 		BaseDamage, Modifiers, SkillTags,
-		UCataclysmAbilitySystemComponent::WithTargetAilments(
+		UCataclysmAbilitySystemComponent::WithTargetState(
 			Modifiers, Target,
 			Cataclysm->CurrentConditions(SkillHealthCostPercent,
 										 FCataclysmBlowContext(),
@@ -741,7 +741,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// still should not reach a minion's blow.
 	//
 	// NULL RATHER THAN A SECOND FLAG, because null is already what every caller
-	// with no target passes and what `WithTargetAilments` already refuses on.
+	// with no target passes and what `WithTargetState` already refuses on.
 	// A flag would be a second way to say the same thing and a second way to
 	// forget it.
 	const AActor* const AilmentTarget =

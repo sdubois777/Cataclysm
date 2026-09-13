@@ -244,7 +244,7 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 *
 	 * FILLED ON EVERY HIT RATHER THAN ONLY WHEN A ROW ASKS, WHICH IS THE ONE
 	 * PLACE THIS MECHANISM DOES NOT GATE THE WALK. The attacker's side is gated
-	 * -- `UCataclysmAbilitySystemComponent::WithTargetAilments` has the rows in
+	 * -- `UCataclysmAbilitySystemComponent::WithTargetState` has the rows in
 	 * hand and skips the walk unless one of them asks. This site has only the two
 	 * characters, so there is nothing here to ask.
 	 *
@@ -253,7 +253,7 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 * bounded by the hits a character TAKES rather than the blows every creature
 	 * DEALS, which is the side that made the attacker's gate worth building. If a
 	 * row ever lands on `opponent_carries_weaken` and this shows up in a profile,
-	 * `WithTargetAilments` is the pattern to copy -- the defender's own stat list
+	 * `WithTargetState` is the pattern to copy -- the defender's own stat list
 	 * is available inside its lookup, which is where the question can be asked.
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
