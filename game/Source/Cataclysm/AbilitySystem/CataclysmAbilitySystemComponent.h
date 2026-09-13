@@ -288,7 +288,8 @@ public:
 		float SkillHealthCostPercent = -1.0f,
 		float MetresMovedBeforeBlow = -1.0f,
 		float TargetDistanceMetres = -1.0f,
-		bool bTargetIsStaggered = false) const;
+		bool bTargetIsStaggered = false,
+		const AActor* Target = nullptr) const;
 
 	/**
 	 * The increases this character carries for a named stat, as a fraction.
@@ -354,7 +355,8 @@ public:
 		float SkillHealthCostPercent = -1.0f,
 		float MetresMovedBeforeBlow = -1.0f,
 		float TargetDistanceMetres = -1.0f,
-		bool bTargetIsStaggered = false) const;
+		bool bTargetIsStaggered = false,
+		const AActor* Target = nullptr) const;
 
 	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
@@ -441,7 +443,8 @@ public:
 						   FCataclysmBlowContext(),
 					   float MetresMovedBeforeBlow = -1.0f,
 					   float TargetDistanceMetres = -1.0f,
-					   bool bTargetIsStaggered = false) const;
+					   bool bTargetIsStaggered = false,
+					   const AActor* Target = nullptr) const;
 
 	/**
 	 * What is true of this character right now, for a conditional bonus.
@@ -503,6 +506,39 @@ public:
 	FCataclysmStatConditions WithEnemiesInReach(
 		const TArray<FCataclysmStatModifier>& Modifiers,
 		FCataclysmStatConditions State) const;
+
+	/**
+	 * Fill in which debuffs the character being HIT is carrying, but only if one
+	 * of the rows about to be evaluated asks. Issue #1515.
+	 *
+	 * THE SAME SHAPE AS `WithEnemiesInReach` ABOVE AND FOR THE SAME REASON. The
+	 * answer depends on the rows being evaluated as well as on the target, and
+	 * the walk must not be paid for by the lookups that do not ask.
+	 * `UCataclysmDebuffs::DamageAgainstSharedDebuff` names that cost in its own
+	 * words -- "asking the other way round would walk two tag containers on every
+	 * blow anybody strikes" -- and this would be a third walk on every blow.
+	 *
+	 * STATIC, UNLIKE `WithEnemiesInReach`, because it reads nothing about this
+	 * component. That one measures from the avatar and needs the world's target
+	 * lists; this one asks the target actor what it is carrying.
+	 *
+	 * IT ANSWERS ONLY THE ATTACKER'S SIDE. `OpponentCarriesWeaken` reads
+	 * `FCataclysmBlowContext::OpponentDebuffs`, which describes whoever struck
+	 * this character and is filled where the incoming hit is built. Filling it
+	 * here would answer a question about one character with facts about another.
+	 *
+	 * @param Modifiers  the rows about to be evaluated, read only to find whether
+	 *        any of them asks about an ailment on the target
+	 * @param Target  the character being hit, or null for a lookup with no target
+	 *        in hand -- a character sheet, or any of the four callers that price
+	 *        a blow with no single target
+	 * @param State  the conditions to fill in, taken by value and returned, so a
+	 *        caller can nest it inside `WithEnemiesInReach(...)` in one
+	 *        expression
+	 */
+	static FCataclysmStatConditions WithTargetAilments(
+		const TArray<FCataclysmStatModifier>& Modifiers, const AActor* Target,
+		FCataclysmStatConditions State);
 
 	/**
 	 * Record that this character has just paid a health cost. Issue #962.

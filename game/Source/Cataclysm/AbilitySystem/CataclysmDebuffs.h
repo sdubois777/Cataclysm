@@ -72,9 +72,18 @@ public:
 	 * THE SHEET AN EFFECT COMES FROM IS NOW A SEGMENT OF ITS TAG.
 	 * `tools/generate_gameplay_tags.py` emits `Status.Buff.DivineAegis` from the
 	 * Buffs sheet and `Status.Debuff.Cripple` from the Debuffs sheet, so naming
-	 * `Status.Debuff` here takes all 27 named curses and cannot take a buff. The
+	 * `Status.Debuff` here takes all 28 named curses and cannot take a buff. The
 	 * project owner chose this over an exclusion list on 2026-09-04; see
 	 * `docs/DECISIONS.md`.
+	 *
+	 * THAT FIGURE SAID 27 AND WAS ONE SHORT. Measured 2026-09-13 from
+	 * `game/Data/StatusEffects.csv`: 28 rows whose `EffectKind` is `Debuff`. The
+	 * count went stale the way every hand-written count does, by the sheet
+	 * growing, and nothing compares it against anything. **It is worth knowing
+	 * that this sentence is the reason the branch quoting it got the number
+	 * wrong too** -- a count copied out of a comment is not a measurement, and
+	 * this one was copied into three other files before anybody counted the
+	 * rows.
 	 *
 	 * `State.StunImmune` IS THE CASE THAT PROVES A BRANCH IS NOT ENOUGH BY
 	 * ITSELF. It is granted to the target at the same instant as `State.Stunned`,
@@ -215,6 +224,27 @@ public:
 	 * disagreement that matters.
 	 */
 	static FGameplayTag BleedTag();
+
+	/**
+	 * `Status.Debuff.Cripple`, or an invalid tag if the vocabulary has lost it.
+	 * Issue #1515.
+	 *
+	 * HERE RATHER THAN WHERE IT IS READ, so the tag name is written once. The
+	 * stat pipeline judges two conditions that name Cripple and one that names
+	 * Weaken; `UCataclysmAilments` already names both in its own table, and a
+	 * third and fourth copy of the string is how a renamed effect leaves a
+	 * condition matching nothing while every test still passes.
+	 *
+	 * REQUESTED BY NAME RATHER THAN DECLARED AS A NATIVE TAG, for the reason
+	 * `BleedTag` above gives: a native declaration would create the tag whether
+	 * or not the workbook still lists it, hiding exactly the disagreement that
+	 * matters.
+	 */
+	static FGameplayTag CrippleTag();
+
+	/** `Status.Debuff.Weaken`, or an invalid tag if the vocabulary has lost it.
+	 *  The sibling of `CrippleTag` above and requested the same way. */
+	static FGameplayTag WeakenTag();
 
 	/**
 	 * Whether this character is Bleeding, which Thirst for Pain asks.

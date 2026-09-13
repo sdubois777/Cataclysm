@@ -175,6 +175,11 @@ FCataclysmBlowContext UCataclysmDamageCalculation::BlowContextFor(
 	// `UCataclysmCombatEvents` reports one for ticks -- and `docs/DECISIONS.md`
 	// carries it with what it costs the player.
 	Blow.OpponentDistanceMetres = Hit.OpponentDistanceMetres;
+
+	// AND WHICH DEBUFFS WHOEVER THREW IT IS CARRYING. Issue #1515. Copied across
+	// like every fact above, and a tick returned before reaching this line keeps
+	// an empty container, which is what `OpponentCarriesWeaken` refuses on.
+	Blow.OpponentDebuffs = Hit.AttackerDebuffs;
 	return Blow;
 }
 

@@ -3427,6 +3427,39 @@ CONDITIONS = {
     # twenty is far likelier to be a distance written in the count column
     # than a node that means it.
     "enemies_in_reach_at_least": (1.0, 20.0, "a number of enemies"),
+
+    # THE THREE PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER, and the
+    # first that read one at all. Issue #1515.
+    #
+    #   "against Crippled enemies"                     target_carries_cripple
+    #   "against enemies that are both Crippled
+    #    and Weakened"                    target_carries_cripple_and_weaken
+    #   "against enemies you have Weakened"          opponent_carries_weaken
+    #
+    # NONE TAKES A VALUE, because each names its ailment. A predicate asking
+    # "carrying at least N debuffs" would compare a number and is a different
+    # question; nothing has asked for it.
+    #
+    # THE THIRD IS THE MIRROR OF THE FIRST TWO AND READS THE OTHER END OF THE
+    # BLOW. `target_*` is filled only on the attacker's own lookups and
+    # `opponent_*` only on the defender's damage taken lookup, exactly as
+    # `target_is_staggered` and `opponent_is_staggered` are, so a row carrying
+    # the wrong one of the pair grants nothing rather than answering about the
+    # character at the other end.
+    #
+    # THE CONJUNCTION IS ONE NAME AND NOT TWO ROWS, and that is arithmetic.
+    # `UCataclysmStatPipeline::Accumulate` sums increases, so a row for each
+    # ailment would pay when EITHER is present and pay TWICE when both are.
+    #
+    # THIS SET DOES NOT SCALE AND IS NOT MEANT TO. Twenty-eight debuffs, two
+    # ends of the blow and every combination is not a vocabulary. Add a name
+    # when a node's own sentence names the ailment, never speculatively; at a
+    # fourth and a fifth the right answer is a column naming the ailment on the
+    # row instead, and `docs/DECISIONS.md` records that so whoever adds the
+    # sixth reads it first.
+    "target_carries_cripple": None,
+    "target_carries_cripple_and_weaken": None,
+    "opponent_carries_weaken": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.

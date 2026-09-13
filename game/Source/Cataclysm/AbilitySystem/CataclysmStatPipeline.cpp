@@ -1,6 +1,11 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmStatPipeline.h"
+// For the Cripple and Weaken tags the three ailment conditions name. Issue
+// #1515. The tag names live there beside the other debuff vocabulary rather
+// than being spelled again here; this is a .cpp include, so it adds no header
+// dependency and the pipeline's own header stays free of it.
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "Cataclysm.h"
 
 FGameplayTag UCataclysmStatPipeline::GlobalScopeTag()
@@ -84,6 +89,10 @@ namespace
 		{ TEXT("attacker_beyond_metres"),       ECataclysmStatCondition::OpponentBeyondMetres },
 		{ TEXT("target_within_metres"),         ECataclysmStatCondition::TargetWithinMetres },
 		{ TEXT("enemies_in_reach_at_least"),    ECataclysmStatCondition::EnemiesInReachAtLeast },
+		{ TEXT("target_carries_cripple"),       ECataclysmStatCondition::TargetCarriesCripple },
+		{ TEXT("target_carries_cripple_and_weaken"),
+												ECataclysmStatCondition::TargetCarriesCrippleAndWeaken },
+		{ TEXT("opponent_carries_weaken"),      ECataclysmStatCondition::OpponentCarriesWeaken },
 	};
 
 	struct FNamedStatScale
@@ -175,14 +184,29 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetIsStaggered:
 	case ECataclysmStatCondition::WhileMoving:
 	case ECataclysmStatCondition::WhileStationary:
+	case ECataclysmStatCondition::TargetCarriesCripple:
+	case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
+	case ECataclysmStatCondition::OpponentCarriesWeaken:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the ten says
+		// nothing for a number to be compared against. Each of the thirteen says
 		// so in its own comment in the header.
 		//
-		// THE LAST TWO ARE ISSUE #41'S SLICE 2: whether the character moved in
-		// the last sample, and whether it did not. Its other three movement
-		// conditions DO compare a number -- a wait in seconds or a distance in
-		// metres -- so they belong under the default below and not here.
+		// THE COUNT IN THAT SENTENCE SAID "TEN" FOR THREE NAMES. It is written
+		// out because a list nobody counts is a list somebody extends without
+		// reading, and `test_condition_lists_agree_with_the_code.py` holds this
+		// list against two others rather than against this number.
+		//
+		// `WhileMoving` AND `WhileStationary` ARE ISSUE #41'S SLICE 2: whether the
+		// character moved in the last sample, and whether it did not. Its other
+		// three movement conditions DO compare a number -- a wait in seconds or a
+		// distance in metres -- so they belong under the default below and not
+		// here. That sentence said "the last two" while they were last, and the
+		// three ailment conditions below have since been added after them.
+		//
+		// THE THREE AILMENT CONDITIONS NAME THEIR AILMENTS, so there is nothing
+		// for a number to say. Issue #1515. A condition asking "carries at least
+		// N debuffs" would compare one, and is a different question nothing has
+		// asked for.
 		return false;
 
 	case ECataclysmStatCondition::Always:
@@ -395,6 +419,42 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// character sheet built with no blow and no target answers false here, so
 		// a bonus conditioned on a staggered target is correctly withheld from it.
 		return State.bTargetIsStaggered;
+
+	case ECataclysmStatCondition::TargetCarriesCripple:
+		// THE EXPLICIT TAG AND NOT AN IMPLIED PARENT. Issue #1515.
+		// `UCataclysmDebuffs::TagsOnActor` fills this with what was really
+		// applied, one entry per effect, and `HasTagExact` compares those.
+		// `HasTag` would also answer yes to a child tag nobody applied, the day
+		// the Debuffs branch grows one.
+		//
+		// AN INVALID TAG REFUSES RATHER THAN MATCHING EVERYTHING. The vocabulary
+		// is generated from the workbook, so an effect removed from the sheet
+		// leaves `CrippleTag` invalid; `HasTagExact` on an invalid tag is false,
+		// which withholds the bonus instead of granting it unconditionally.
+		//
+		// AN EMPTY CONTAINER REFUSES, AND IT HAS THREE MEANINGS. No target in
+		// hand, a target carrying nothing, or no row in this lookup asking about
+		// an ailment so the walk was skipped. All three mean no bonus.
+		return State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::CrippleTag());
+
+	case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
+		// BOTH, WHICH IS WHY THIS IS ONE CONDITION AND NOT TWO ROWS. Issue
+		// #1515. `Accumulate` sums increases, so a row per ailment would pay on
+		// either and pay twice on both; `Ravager_basic_c_c1` Nothing Left In Them
+		// pays on both and not otherwise, and a modifier carries one condition.
+		return State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::CrippleTag())
+			&& State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::WeakenTag());
+
+	case ECataclysmStatCondition::OpponentCarriesWeaken:
+		// THE MIRROR OF THE TWO ABOVE, READING A DIFFERENT FIELD, and that is the
+		// safeguard `OpponentIsStaggered` and `TargetIsStaggered` rely on. The
+		// blow record is filled only on the defender's damage taken lookup and
+		// `TargetDebuffs` only on the attacker's own lookups, so a row carrying
+		// the wrong condition of this pair reads a field nothing filled and
+		// grants nothing rather than reading the ailments on the character at the
+		// other end of the blow.
+		return State.Blow.OpponentDebuffs.HasTagExact(
+			UCataclysmDebuffs::WeakenTag());
 
 	case ECataclysmStatCondition::WhileMoving:
 		// NO THRESHOLD, SO `Value` IS NOT READ. A caller with no character leaves

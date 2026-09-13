@@ -2,6 +2,211 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A modifier may ask which ailment the character at the other end of the blow is carrying, "enemies you have Weakened" means an enemy carrying Weaken, and a combination of two ailments is written out as its own name
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`, `CataclysmSkillEffects.h`
+and `.cpp`, `CataclysmDamageCalculation.h` and `.cpp`,
+`CataclysmVitalAttributeSet.cpp`, `CataclysmDebuffs.h` and `.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmTargetAilmentTests.cpp` (new),
+`CataclysmPassiveTreeTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/generate_datatables.py`,
+`tools/tests/test_passive_effects_match_the_node_text.py`, the Passive Effects
+sheet of `docs/All_Things_Cataclysm.xlsx`, the
+`game/Data/PassiveEffects.csv` generated from it, and `docs/README.md`. Issues
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515) and
+[#1748](https://github.com/sdubois777/Cataclysm/issues/1748). **Applied.**
+
+### The question
+
+Three Ravager nodes in the Cripple and Weaken branch granted nothing, and each
+needed the same thing that did not exist — a way to ask what ailment the
+character at the other end of the blow is carrying:
+
+| Node | Text | Max points |
+| :-- | :-- | --: |
+| `Ravager_basic_c_a2` Run Them Ragged | +2% increased Attack Damage per point against Crippled enemies. | 8 |
+| `Ravager_basic_c_b2` Wearing Them Down | +2% increased Damage Reduction per point against enemies you have Weakened. | 8 |
+| `Ravager_basic_c_c1` Nothing Left In Them | +2% increased Attack Damage per point against enemies that are both Crippled and Weakened. | 6 |
+
+`game/Data/PassiveNodes.csv` and the design document
+`docs/Ravager_Class_Tree_Final.json` state all three identically, so there is no
+third reading to choose between.
+
+### What the genre research settled, and what it did not
+
+**The primary wikis could not be read**, which is recorded rather than glossed
+over: `pathofexile.fandom.com` returns HTTP 402 and `www.poewiki.net` serves a
+bot-protection page.
+
+**Settled — a discrete named condition per ailment, with combinations written
+out.** `poedb.tw/us/Chill` lists Path of Exile's chill-conditional modifiers and
+they are separate named mods, with a disjunction spelled out rather than left to
+emerge from two mods:
+
+> "(26—30)% increased Damage with Hits against Chilled Enemies"
+> "Adds (17—23) to (35—41) Cold Damage against Chilled or Frozen Enemies"
+
+**Not settled — how a conjunction of two named ailments should be expressed.**
+**No modifier on that page requires two named ailments at once.** The nearest is
+a count rather than a conjunction — "Enemies take (5—10)% increased Damage for
+each type of Ailment you have inflicted on them" — which is a *scale* in this
+project's vocabulary and cannot express a node naming two specific ailments. So
+the conjunction below is a judgement, labelled as one.
+
+**Last Epoch was read and does not cover this.**
+`maxroll.gg/last-epoch/resources/ailments-explained` explains the ailments
+themselves and says nothing about player modifiers conditional on an enemy
+carrying one.
+
+**Diablo 4 was not obtained.** The Icy Veins damage-bucket page tried returned
+HTTP 404. Two web-search summaries were read and **discarded rather than used**,
+because they contradicted each other on whether a Frozen enemy counts as Chilled.
+Nothing here rests on them.
+
+### The decision: three named conditions in the existing `Condition` column
+
+```
+target_carries_cripple               attacker's own lookups
+target_carries_cripple_and_weaken    attacker's own lookups
+opponent_carries_weaken              the defender's damage taken lookup
+```
+
+**No schema change.** These are names in the column that already holds
+`opponent_is_staggered` and `target_is_staggered`, and the split across the two
+ends of the blow is that pair's, decided on 2026-09-12 and recorded in this log:
+separate names reading separate fields, so a row carrying the wrong one of a pair
+reads a field nothing filled and grants nothing rather than answering about the
+character at the other end.
+
+**The conjunction is one name and not two rows, and that is arithmetic rather
+than taste.** `UCataclysmStatPipeline::Accumulate` sums increases, so a row per
+ailment would pay on a target carrying **either** and pay **twice** on one
+carrying both. The node's sentence says it pays on both and not otherwise, and a
+modifier carries one condition.
+
+### The rule that bounds this, which matters more than the three names
+
+**Add a name when a node's own sentence names the ailment. Never speculatively.
+At a fourth and a fifth, the right answer is a column naming the ailment on the
+row, and this decision should be revisited rather than extended.**
+
+Twenty-eight debuffs, two ends of the blow and every combination between them is
+not a vocabulary. Three names are what three nodes need. The parameterised column
+was considered and rejected **for now** on cost: it adds a field to
+`FCataclysmPassiveEffectRow`, so a new CSV column, a workbook column insertion,
+and it breaks the inline CSV fixtures that build these rows in
+`CataclysmPassiveTreeTests.cpp`. That cost is small and it is paid for a
+generality nothing has asked for yet.
+
+### "Against enemies you have Weakened" is read as "an enemy carrying Weaken"
+
+**Nothing in the game records who applied a debuff.** A gameplay tag has no
+applier, and `UCataclysmAilments` reads the instigator at the moment of
+application and passes it on as the source rather than storing it. The strict
+reading would need a per-debuff author record on every character, which is a
+second mechanism and not this one.
+
+**The bonus already shipped for the same idea does not ask either.**
+`UCataclysmDebuffs::DamageAgainstSharedDebuff` — the Masochist's Wound
+Channeling, "you deal 1% increased damage per point to enemies carrying a debuff
+you also carry" — compares two tag lists and never asks who applied them. The
+strict reading would make this node behave differently from a node the project
+already shipped for the same idea.
+
+**Path of Exile words these the same way:** "against Chilled Enemies", not
+"against enemies you have Chilled".
+
+**The stricter reading remains available and would need its own mechanism.** This
+was decided rather than skipped, and the project owner can overrule it.
+
+### What is deliberately NOT built: the row for Wearing Them Down
+
+`opponent_carries_weaken` exists and is tested. **Its row is not authored**, and
+that is a decision waiting on the project owner rather than an oversight.
+
+The node grants increased **damage reduction**, and
+`UCataclysmDamageCalculation::Resolve` hands the blow record to exactly one
+lookup:
+
+```
+step 5, flat damage reduction
+    DefenderStat(Defender, TEXT("damage_reduction"), ...)          <- no blow
+
+step 6, how much damage this character takes
+    DefenderStat(Defender, DamageTakenStat, ..., BlowOf(Hit))      <- the blow
+```
+
+**That boundary is deliberate and documented**, in the comment on `DefenderStat`
+in that file: *"A BLOW, FOR THE ONE STEP THAT ASKS ABOUT THE HIT. Issue #666...
+Every other step passes nothing."* So a row on `damage_reduction` carrying this
+condition would be accepted by every check, would validate, and would grant
+nothing.
+
+The two readings are not the same number. At 8 points, `damage_reduction` with
+`increased` is +16% of the stat — on a 30% base, 34.8%, about 4.8 percentage
+points of the hit, inside the 75% cap. A `damage_taken` multiplier of 16% less is
+considerably stronger and outside that cap. **Converting between them means
+choosing a number**, which is why it is
+[#1748](https://github.com/sdubois777/Cataclysm/issues/1748) and not a judgement
+made here.
+
+**The two steps are named rather than numbered above, and the reason is this
+change.** Those calls sat at lines 583 and 643 when this was written, and the
+edit to `BlowContextFor` in the same commit moved both down by five. A citation
+that locates by position goes stale, sometimes inside the change that makes it
+wrong.
+
+**Measured, and the measurement answers only half the question:** passing the
+blow to the damage reduction lookup would change no authored row today. Every row
+in `game/Data`
+whose condition is a blow fact — 3 melee, 2 ranged, 2 spell, 3 boss, 1 staggered,
+1 `attacker_beyond_metres`, twelve in all — sits on `damage_taken`, which already
+receives it, and the five `damage_reduction` rows that exist carry no condition at
+all. **That says the change would be harmless. It does not say it is right**, and
+the argument for moving a line somebody drew on purpose belongs to the owner.
+
+### How the facts reach the pipeline, and what the walk costs
+
+The ailments travel as a **tag container** on each side rather than a boolean per
+ailment: `FCataclysmStatConditions::TargetDebuffs` and
+`FCataclysmBlowContext::OpponentDebuffs`. A fact about the target is threaded
+through seven functions between where the blow is struck and where the condition
+is judged, and `bTargetIsStaggered` costs one parameter on each of them. A
+container costs one parameter once, and a later ailment condition costs none.
+
+**The attacker's side walks the target's tags only when a row asks**, in
+`UCataclysmAbilitySystemComponent::WithTargetAilments`, which copies the shape
+`WithEnemiesInReach` already uses. The reason is this project's own recorded
+judgement rather than a new one: `DamageAgainstSharedDebuff` reads its stat before
+comparing anything and says why — *"asking the other way round would walk two tag
+containers on every blow anybody strikes."* This would have been a third walk, on
+every blow every creature throws.
+
+**The defender's side is not gated, and that is stated rather than left to be
+found.** The site that fills it, where the incoming hit is built, has the two
+characters and not the rows, so there is nothing there to ask. It costs one
+`TagsOnActor` call per hit **taken**, beside the `IsStaggered` call already on the
+line above it — bounded by the hits a character receives rather than the blows
+every creature deals, which is the side that made the attacker's gate worth
+building. **Neither cost has been profiled**; both are reasoned from the judgement
+quoted above.
+
+**A minion's blow earns none of the attacker-side bonus.** `ApplyHit` passes a
+null target behind `FCataclysmHitDelivery::bCarriesNoTargetState`, the same flag
+that already withholds the staggered state, and for the reason this log records
+beside it: the ailments on a minion's target are a true fact about that target,
+and a player's conditional damage bonus still should not reach a minion's blow.
+
+### What it moves
+
+**Two nodes go from granting nothing to working.** `PassiveEffects.csv` goes 238
+to 240 rows and authored nodes 172 to 174. The Ravager is 45 of its 74, measured
+rather than incremented — the previous entry said 38, and 38 plus two would have
+been 40.
+
+---
+
 ## 2026-09-13 — "Close range" on an enchantment is five metres, and the sentence says so rather than the table saying it quietly
 
 **Affects:**

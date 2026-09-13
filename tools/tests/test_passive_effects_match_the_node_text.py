@@ -430,9 +430,22 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: RE-DERIVED FROM THE REGENERATED FILE RATHER THAN ADDED TO. Incrementing a
 #: count preserves a wrong one.
-AUTHORED_ROWS = 238
+#:
+#: AND TO 240 ON 2026-09-13. Two Ravager nodes, `Run Them Ragged` and `Nothing
+#: Left In Them`, which are the first rows in the game to ask what ailment the
+#: character being hit is carrying. Issue #1515. A third node in the same branch,
+#: `Wearing Them Down`, has its condition built and no row: it grants increased
+#: DAMAGE REDUCTION, and which stat that row should target is with the project
+#: owner on issue #1748.
+AUTHORED_ROWS = 240
 
-#: How many of the 293 nodes have an authored effect.
+#: How many of the 441 nodes have an authored effect.
+#:
+#: THAT FIGURE SAID 293 AND MATCHED NOTHING IN THE DATA. Measured on 2026-09-13
+#: from `game/Data/PassiveNodes.csv`: 441 nodes, of which 327 are basic, 90 are
+#: keystones and 24 are capstones, across six trees of 74 apiece except the
+#: Berserker's 71. None of those is 293, so it was not a subset either -- it is
+#: a total from before the trees were finished, left behind when they grew.
 #:
 #: PINNED RATHER THAN LEFT AS A FLOOR, and the reason is that this number is the
 #: honest measure of how much of the passive tree actually does anything. Issue
@@ -673,7 +686,17 @@ AUTHORED_ROWS = 238
 #: that the next rise had to be bought with code. It was, by #1724 and #1732:
 #: the three minion stats are now read by the engine, and #1733 stopped three
 #: checks refusing rows that name them. Thirteen nodes followed.
-AUTHORED_NODES = 172
+#: AND TO 174 ON 2026-09-13, BOUGHT WITH CODE AGAIN AND BY THE SAME ROUTE. Issue
+#: #1515. The stat pipeline could ask whether the character being hit was
+#: staggered and whether it was a boss, but not what ailment it was carrying.
+#: `Run Them Ragged` and `Nothing Left In Them` are the first two nodes that
+#: could be authored once it could. The Ravager is now 45 of its 74.
+#:
+#: THAT 45 WAS MEASURED AND NOT ADDED. The entry above says 38, and 38 plus this
+#: change's two is 40, which is wrong -- work merged in between raised it. The
+#: line eight comments up already says "incrementing a count preserves a wrong
+#: one" and this is what it was warning about.
+AUTHORED_NODES = 174
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1056,6 +1079,31 @@ CONDITION_WORDS = {
     # nothing" and would assert the count must be zero.
     "enemies_in_reach_at_least": ("within",
                                  {1.0: "an enemy", 3.0: "three or more"}),
+
+    # THE THREE PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER. Issue
+    # #1515. Each names its ailment, so the value form is None: there is no
+    # threshold, and looking for a number would find the 2 belonging to the
+    # bonus itself, which is the trap `while_bleeding` above records.
+    #
+    # THE FRAGMENTS ARE WHOLE PHRASES RATHER THAN THE AILMENT'S NAME, and that
+    # is what keeps each off the other two nodes. All three sentences contain
+    # "crippled" or "weakened", so a one-word fragment would pass on any of
+    # them; "against crippled enemies" appears only in Run Them Ragged, "both
+    # crippled and weakened" only in Nothing Left In Them, and "you have
+    # weakened" only in Wearing Them Down.
+    #
+    # NO `CONDITION_WORDS_MUST_NOT_SAY` ENTRY IS NEEDED, and that was checked
+    # rather than assumed: none of these three fragments is a substring of
+    # either other sentence, which is the condition that map exists for.
+    "target_carries_cripple": ("against crippled enemies", None),
+    "target_carries_cripple_and_weaken": ("both crippled and weakened", None),
+
+    # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
+    # REDUCTION, and which stat that row should use is with the project owner
+    # on issue #1748. The entry is here because a name missing from this map is
+    # a name whose row nothing compares against its node's own words -- the
+    # reason the five movement conditions above were added before their rows.
+    "opponent_carries_weaken": ("you have weakened", None),
 }
 
 #: Words a node must NOT say, for a condition whose required words are a

@@ -1579,7 +1579,14 @@ namespace CataclysmPassiveConditionTest
 			// ISSUE #41'S SLICE 2. The other three movement conditions compare
 			// a number, so they are deliberately absent.
 			|| Name == TEXT("while_moving")
-			|| Name == TEXT("while_stationary");
+			|| Name == TEXT("while_stationary")
+			// ISSUE #1515, THE THREE THAT READ AN AILMENT ON THE OTHER
+			// CHARACTER. Each names its ailment, so there is no threshold for a
+			// number to be. The third reads the other end of the blow, which
+			// changes nothing about whether it compares a value.
+			|| Name == TEXT("target_carries_cripple")
+			|| Name == TEXT("target_carries_cripple_and_weaken")
+			|| Name == TEXT("opponent_carries_weaken");
 	}
 }
 

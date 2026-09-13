@@ -659,7 +659,8 @@ public:
 								float SkillHealthCostPercent = -1.0f,
 								float MetresMovedBeforeBlow = -1.0f,
 								float TargetDistanceMetres = -1.0f,
-								bool bTargetIsStaggered = false);
+								bool bTargetIsStaggered = false,
+								const AActor* Target = nullptr);
 
 	/**
 	 * Deal a hit of an amount already worked out.
@@ -1015,7 +1016,8 @@ public:
 							   const FGameplayTagContainer& SkillTags,
 							   float SkillHealthCostPercent = -1.0f,
 							   float TargetDistanceMetres = -1.0f,
-							   bool bTargetIsStaggered = false);
+							   bool bTargetIsStaggered = false,
+							   const AActor* Target = nullptr);
 
 	/**
 	 * The sum of increases already applied to this character's attack damage.
@@ -1056,7 +1058,8 @@ public:
 								   float SkillHealthCostPercent = -1.0f,
 								   float MetresMovedBeforeBlow = -1.0f,
 								   float TargetDistanceMetres = -1.0f,
-								   bool bTargetIsStaggered = false);
+								   bool bTargetIsStaggered = false,
+								   const AActor* Target = nullptr);
 
 	/**
 	 * How much larger an attack should be than its attack-damage attribute
@@ -1077,7 +1080,8 @@ public:
 							  float SkillHealthCostPercent = -1.0f,
 							  float MetresMovedBeforeBlow = -1.0f,
 							  float TargetDistanceMetres = -1.0f,
-							  bool bTargetIsStaggered = false);
+							  bool bTargetIsStaggered = false,
+							  const AActor* Target = nullptr);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;

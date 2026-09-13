@@ -370,6 +370,23 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			Hit.bFromStaggered = UCataclysmSkillEffects::IsStaggered(
 				Data.EffectSpec.GetContext().GetEffectCauser());
 
+			// AND WHICH DEBUFFS IT IS CARRYING, for "+2% increased Damage
+			// Reduction per point against enemies you have Weakened". Issue
+			// #1515. The same causer the line above reads, and outside the
+			// creature cast for the same reason: a debuff lands on anything a
+			// skill applies one to, the player included.
+			//
+			// "ENEMIES YOU HAVE WEAKENED" IS READ AS "AN ENEMY CARRYING WEAKEN",
+			// which is a ruling rather than a shortcut. Nothing in the game
+			// records who applied a debuff: a tag has no applier, and
+			// `UCataclysmAilments` reads the instigator at the moment of
+			// application and passes it on rather than storing it. The bonus
+			// already shipped for the same idea does not ask either --
+			// `UCataclysmDebuffs::DamageAgainstSharedDebuff` compares two tag
+			// lists. `docs/DECISIONS.md` carries it.
+			Hit.AttackerDebuffs = UCataclysmDebuffs::TagsOnActor(
+				Data.EffectSpec.GetContext().GetEffectCauser());
+
 			// AND HOW FAR APART THE TWO CHARACTERS STOOD, for "You take 25% less
 			// damage from enemies more than 6 metres away from you".
 			//

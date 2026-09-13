@@ -305,7 +305,7 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback,
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
-	bool bTargetIsStaggered) const
+	bool bTargetIsStaggered, const AActor* Target) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -326,16 +326,19 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
 			   WithEnemiesInReach(
 				   Inputs->Modifiers,
-				   CurrentConditions(SkillHealthCostPercent, Blow,
-									 MetresMovedBeforeBlow,
-									 TargetDistanceMetres,
-									 bTargetIsStaggered))).Final;
+				   WithTargetAilments(
+					   Inputs->Modifiers, Target,
+					   CurrentConditions(SkillHealthCostPercent, Blow,
+										 MetresMovedBeforeBlow,
+										 TargetDistanceMetres,
+										 bTargetIsStaggered)))).Final;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
-	float TargetDistanceMetres, bool bTargetIsStaggered) const
+	float TargetDistanceMetres, bool bTargetIsStaggered,
+	const AActor* Target) const
 {
 	// THE SAME KEY `UCataclysmPlayerClassStats::ApplyTo` RECORDED IT UNDER, and
 	// the shared constant rather than a second spelling of the name, because a
@@ -358,11 +361,13 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 			   Inputs->Base, Inputs->Modifiers, SkillTags,
 			   WithEnemiesInReach(
 				   Inputs->Modifiers,
-				   CurrentConditions(SkillHealthCostPercent,
-									 FCataclysmBlowContext(),
-									 MetresMovedBeforeBlow,
-									 TargetDistanceMetres,
-									 bTargetIsStaggered)))
+				   WithTargetAilments(
+					   Inputs->Modifiers, Target,
+					   CurrentConditions(SkillHealthCostPercent,
+										 FCataclysmBlowContext(),
+										 MetresMovedBeforeBlow,
+										 TargetDistanceMetres,
+										 bTargetIsStaggered))))
 			   .SumOfIncreases / 100.0f;
 }
 
@@ -395,7 +400,8 @@ float UCataclysmAbilitySystemComponent::IncreasesForStat(
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
-	float TargetDistanceMetres, bool bTargetIsStaggered) const
+	float TargetDistanceMetres, bool bTargetIsStaggered,
+	const AActor* Target) const
 {
 	// THE SAME KEY `AttackDamageIncreasesForSkill` READS, for the reason it
 	// gives: a name that did not match would fall back in silence and read as a
@@ -437,10 +443,13 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 		Inputs->Base, Inputs->Modifiers, SkillTags,
 		WithEnemiesInReach(
 			Inputs->Modifiers,
-			CurrentConditions(SkillHealthCostPercent, FCataclysmBlowContext(),
-							  MetresMovedBeforeBlow,
-							  TargetDistanceMetres,
-							  bTargetIsStaggered))).MoreMultiplier;
+			WithTargetAilments(
+				Inputs->Modifiers, Target,
+				CurrentConditions(SkillHealthCostPercent,
+								  FCataclysmBlowContext(),
+								  MetresMovedBeforeBlow,
+								  TargetDistanceMetres,
+								  bTargetIsStaggered)))).MoreMultiplier;
 
 	// THE FLOOR ONLY GUARDS A LIST BUILT BY HAND. The pipeline clamps every
 	// "less" at -99 per cent, so a product of them cannot reach zero.
@@ -728,6 +737,52 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 			State.HostileDistancesMetres);
 	}
 
+	return State;
+}
+
+FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetAilments(
+	const TArray<FCataclysmStatModifier>& Modifiers, const AActor* Target,
+	FCataclysmStatConditions State)
+{
+	// NOTHING UNLESS A ROW ACTUALLY ASKS, the shape `WithEnemiesInReach` above
+	// uses and for a cost this project has already measured and named. Issue
+	// #1515. `UCataclysmDebuffs::DamageAgainstSharedDebuff` reads its stat before
+	// comparing anything and says why in its own words: "asking the other way
+	// round would walk two tag containers on every blow anybody strikes." A walk
+	// here would be a third, on every blow every creature in the game throws.
+	//
+	// THIS LOOP IS THE WHOLE COST TO A LOOKUP THAT ASKS ABOUT NO AILMENT, which
+	// is every lookup in the game today except one row on each of two Ravager
+	// nodes.
+	bool bAsked = false;
+	for (const FCataclysmStatModifier& Modifier : Modifiers)
+	{
+		if (Modifier.Condition == ECataclysmStatCondition::TargetCarriesCripple
+			|| Modifier.Condition
+				== ECataclysmStatCondition::TargetCarriesCrippleAndWeaken)
+		{
+			bAsked = true;
+			break;
+		}
+	}
+
+	// NO ROW ASKING AND NO TARGET BOTH LEAVE IT EMPTY, and an empty container is
+	// what the conditions refuse on. The two cases are not distinguished because
+	// nothing could do anything differently with the distinction: a lookup with
+	// no row asking has no condition to answer.
+	if (!bAsked || !Target)
+	{
+		return State;
+	}
+
+	// `OpponentCarriesWeaken` IS DELIBERATELY NOT IN THAT LOOP. It reads
+	// `State.Blow.OpponentDebuffs`, which is the other end of the blow and is
+	// filled where the incoming hit is built, not here. A row carrying it is
+	// asking about whoever struck this character, and this function has the
+	// character this one is striking. Answering it from here would read the
+	// ailments of the wrong character, which is the exact fault the separate
+	// names exist to prevent.
+	State.TargetDebuffs = UCataclysmDebuffs::TagsOnActor(Target);
 	return State;
 }
 
