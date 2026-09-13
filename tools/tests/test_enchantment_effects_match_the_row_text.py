@@ -169,8 +169,18 @@ JUDGED_NUMBERS = {
 #: sentence was changed rather than this file. `docs/DECISIONS.md` carries why
 #: five metres, and why an appended clause is safe when a reworded opening is
 #: not.
-AUTHORED_ROWS = 107
-AUTHORED_ENCHANTMENTS = 90
+#: AND 108 OVER 91 SINCE THE MOVEMENT SPEED A FULL CLASS RESOURCE GRANTS, issue
+#: #1686: "When your class resource is full, your movement speed is increased by
+#: 15%-30%". ONE ROW OVER ONE ENCHANTMENT, so both numbers move by one -- unlike
+#: the entry above, where four rows covered two enchantments.
+#:
+#: ITS PRECEDENT IS ONE ROW UP IN THE SAME TABLE. The critical strike sibling,
+#: "When your class resource is full, critical strike chance is increased by
+#: 15%-30%", is built on the same condition and states no duration either. The
+#: third sibling says "for 3 seconds" and stays unwritten, because a duration
+#: needs a condition the pipeline has not got.
+AUTHORED_ROWS = 108
+AUTHORED_ENCHANTMENTS = 91
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
