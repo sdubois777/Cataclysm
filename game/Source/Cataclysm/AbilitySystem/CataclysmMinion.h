@@ -148,6 +148,27 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	int32 AttacksMade = 0;
 
+	/**
+	 * What one of this minion's own blows is worth, settled when it was
+	 * summoned. Issue #340.
+	 *
+	 * ITS OWN, NOT A SHARE OF ITS SUMMONER'S. The design of 2026-08-06 says a
+	 * minion reaches its summoner through three channels and nothing else, and
+	 * one of them is "the type's own base, raised by the summoner's level".
+	 * A percentage of the summoner's weapon is a fourth channel however it is
+	 * written, which is why this is a flat figure.
+	 *
+	 * SETTLED ONCE, AT SPAWN, rather than read on every blow. A minion's
+	 * damage rises with the summoner's LEVEL, and a level does not change
+	 * during the twenty seconds an imp exists. Reading it per blow would cost
+	 * a table lookup for every swing of every minion in a Horde wave.
+	 *
+	 * ZERO MEANS NO TYPE WAS NAMED, and `AttackTarget` then falls back to the
+	 * old share of the summoner. Both callers in the game name a type; a
+	 * minion without one exists only in the tests that predate the type table.
+	 */
+	float OwnDamagePerHit = 0.0f;
+
 	/** A stand-in body, so an imp is visible before there is any art. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Placeholder")
 	TObjectPtr<UStaticMeshComponent> PlaceholderBody;

@@ -26,12 +26,21 @@ So this file now checks the design against the data rather than against one
 constant: the counts it claims, the two minion stat blocks it quotes, and the
 enchantment it names as the one exception to the blocking rule.
 
-WHAT IS DELIBERATELY RECORDED RATHER THAN FIXED. The four constants in
-`CataclysmMinion.h` are now behind the design. They cannot be changed in the same
-work, because `Build.bat` refuses to run while the Unreal editor is open, and a
-C++ change that cannot be compiled should not be shipped. Issue #340 tracks it and
-`test_the_code_is_recorded_as_behind_the_design` is what stops that being
-forgotten.
+WHAT HAS SINCE BEEN BUILT, AND WHAT HAS NOT. This file used to say the four
+constants in `CataclysmMinion.h` were all behind the design and could not be
+changed in the same work. Three of them were never behind it: `DefaultReachCm`,
+`DefaultNoticeRadiusCm` and `DefaultAttackIntervalSeconds` are fallbacks that
+`ACataclysmMinion::Spawn` overwrites from the minion type row. The fourth,
+`DamagePercentOfSummoner`, was the rule and is now only a fallback for a minion
+summoned with no type name.
+
+A minion now takes its own base health and damage from `game/Data/MinionTypes.csv`
+and raises both by its summoner's level, which is the second of the three channels
+the decision of 2026-08-06 allows. The third -- increased damage from one primary
+attribute declared per minion type -- is still not built, and issue #340 tracks
+it. `test_a_minion_takes_its_own_health_and_damage_from_its_type_row` guards the
+half that is built and `test_the_attribute_channel_is_recorded_as_still_missing`
+records the half that is not.
 """
 
 from __future__ import annotations
@@ -47,6 +56,9 @@ DESIGN_DOC = REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md"
 DECISIONS = REPO_ROOT / "docs" / "DECISIONS.md"
 MINION_HEADER = (
     REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem" / "CataclysmMinion.h"
+)
+MINION_SOURCE = (
+    REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem" / "CataclysmMinion.cpp"
 )
 WEAPON_SKILLS = REPO_ROOT / "game" / "Data" / "WeaponSkills.csv"
 ENCHANTMENTS = REPO_ROOT / "game" / "Data" / "EnchantmentsPositive.csv"
@@ -240,24 +252,65 @@ def test_the_count_enchantments_the_rule_depends_on_exist():
 # The gap that is recorded rather than hidden
 # --------------------------------------------------------------------------
 
-def test_the_code_is_recorded_as_behind_the_design():
-    """SAY WHAT DID NOT WORK. `CataclysmMinion.h` still holds the two constants
-    the design reversed, because Build.bat refuses to run while the Unreal
-    editor is open and a C++ change that cannot be compiled should not ship.
+def test_a_minion_takes_its_own_health_and_damage_from_its_type_row():
+    """The half of the minion model that is now built, guarded so it cannot go
+    back quietly.
 
-    This test asserts the gap is TRACKED, not that it is closed. When issue #340
-    lands, rewrite this to compare the header against the minion type table.
+    WHAT THIS REPLACES, AND WHY IT COULD NOT STAY. This was
+    `test_the_code_is_recorded_as_behind_the_design`, and it recorded a gap
+    rather than checking anything. Its stated reason was that the constants
+    "cannot be changed in the same work, because `Build.bat` refuses to run
+    while the Unreal editor is open". They have now been changed and compiled,
+    so that reason is no longer true and the test could not be left saying it.
+
+    IT ALSO CHECKED A NAME THAT WAS NEVER STALE. The old list was
+    `DamagePercentOfSummoner` and `AttackIntervalSeconds`, and the second
+    matched as a SUBSTRING of `DefaultAttackIntervalSeconds` -- a fallback that
+    `ACataclysmMinion::Spawn` overwrites from the type row, and has for as long
+    as the type table has existed. Half of what this test reported as behind the
+    design was already correct when it was written.
+
+    WHAT IS CHECKED NOW. `ACataclysmMinion::Spawn` reads all four scaling
+    columns out of the minion type row, which is the second of the three
+    channels the decision of 2026-08-06 (issue #209) allows a minion to reach
+    its summoner through: "its base health and damage raised by the summoner's
+    level".
+    """
+    source = MINION_SOURCE.read_text(encoding="utf-8")
+    missing = [column for column in ("BaseHealth", "HealthPerLevel",
+                                     "BaseDamage", "DamagePerLevel")
+               if f"Type->{column}" not in source]
+    assert not missing, (
+        f"{MINION_SOURCE.name} no longer reads {', '.join(missing)} from the "
+        f"minion type row, so a minion has stopped taking its own health or "
+        f"damage from {WEAPON_SKILLS.parent.name}/MinionTypes.csv. The decision "
+        f"of 2026-08-06 (issue #209) states a minion scales through its own "
+        f"base figures raised by the summoner's level.")
+
+
+def test_the_attribute_channel_is_recorded_as_still_missing():
+    """SAY WHAT DID NOT WORK. The third channel is not built.
+
+    The decision of 2026-08-06 (issue #209) allows a minion to reach its
+    summoner through three things and no others: its side, its base health and
+    damage raised by the summoner's level, and INCREASED DAMAGE FROM ONE PRIMARY
+    ATTRIBUTE DECLARED PER MINION TYPE. The second is built and the third is
+    not, so a minion's damage does not yet move when its summoner's primary
+    attribute does.
+
+    THIS ASSERTS THE GAP IS TRACKED, NOT THAT IT IS CLOSED. `CataclysmMinion.h`
+    still declares `DamagePercentOfSummoner`, which is now reached only by a
+    minion summoned with no type name -- a shape that exists in tests written
+    before the type table and nowhere in the game. When the attribute channel
+    lands and that fallback goes, rewrite this test rather than deleting it.
     """
     header = MINION_HEADER.read_text(encoding="utf-8")
-    stale = [name for name in ("DamagePercentOfSummoner", "AttackIntervalSeconds")
-             if name in header]
-    if not stale:
+    if "DamagePercentOfSummoner" not in header:
         pytest.fail(
-            f"{MINION_HEADER.name} no longer declares "
-            f"{', '.join(('DamagePercentOfSummoner', 'AttackIntervalSeconds'))}, "
-            f"so issue #340 has been done. Rewrite this test to compare the "
-            f"header against the minion type table instead of recording a gap "
-            f"that has closed.")
+            f"{MINION_HEADER.name} no longer declares DamagePercentOfSummoner, "
+            f"so the last route from a summoner's weapon to a minion's blow has "
+            f"gone. Rewrite this test to check the primary attribute channel "
+            f"instead of recording a gap that has closed.")
     assert "#209" in DECISIONS.read_text(encoding="utf-8"), (
         "docs/DECISIONS.md does not record the minion reversal, so the reason "
         "the code and the design disagree is written nowhere.")
