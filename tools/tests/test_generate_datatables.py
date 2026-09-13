@@ -1497,6 +1497,71 @@ class TestAPassiveNodeCanGrantSeveralStats:
         assert "no passive node is called Ghost" in problems[0]
 
 
+class TestARowCountingNearbyEnemiesIsRefusedUntilItCanCarryARadius:
+    """ISSUE #1597. The engine reads two names that count the enemies standing
+    near a character: the condition `enemies_in_reach_at_least` and the scale
+    `enemies_in_reach`. Both need a radius, which a modifier carries in its own
+    `ReachMetres` field.
+
+    THE SHEET HAS NOWHERE TO WRITE THAT RADIUS YET. There is no `Reach Metres`
+    column and this file does not carry one through, so a row using either name
+    would arrive with a reach of -1 and count nobody.
+
+    SO THE ROW IS REFUSED AT IMPORT RATHER THAN IMPORTED AND WORTH NOTHING,
+    which is the direction the generator always chooses: a node granting nothing
+    is invisible, and an import that stops is not.
+
+    THESE TESTS GO WHEN THE COLUMN ARRIVES, together with the refusal they cover.
+    """
+
+    @staticmethod
+    def sheet(rows: list[list]) -> list[list]:
+        return [["Node", "Stat", "Value Kind", "Value Per Point",
+                 "Condition", "Condition Value", "Scale", "Scale Step"]] + rows
+
+    def book(self, tmp_path, rows: list[list]):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "reach.xlsx", {"Passive Effects": self.sheet(rows)}))
+
+    def test_a_row_naming_the_condition_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["Ravager_basic_spine_003", "attack_damage", "increased", 2,
+             "enemies_in_reach_at_least", 1, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="Reach Metres"):
+            gen.passive_effects(rows)
+
+    def test_a_row_naming_the_scale_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["Ravager_keystone_d_kB", "attack_damage", "more", 2,
+             None, None, "enemies_in_reach", 1],
+        ])
+        with pytest.raises(gen.DataError, match="Reach Metres"):
+            gen.passive_effects(rows)
+
+    def test_the_refusal_names_the_issue_so_the_next_reader_can_find_it(
+            self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "enemies_in_reach_at_least", 1, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="#1597"):
+            gen.passive_effects(rows)
+
+    def test_a_row_using_neither_name_still_imports(self, tmp_path):
+        """The control. Without it, a refusal that fired on every row would pass
+        all three tests above and nothing here would say so."""
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "health_at_or_below", 20, "minions_held", 1],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert len(out) == 1
+        assert out[0]["Condition"] == "health_at_or_below"
+        assert out[0]["Scale"] == "minions_held"
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 

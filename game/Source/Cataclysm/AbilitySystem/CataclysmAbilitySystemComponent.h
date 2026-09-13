@@ -441,6 +441,38 @@ public:
 		bool bTargetIsStaggered = false) const;
 
 	/**
+	 * The same conditions with the nearby enemies' distances filled in, when a
+	 * row in the list actually asks for them. Issue #1597.
+	 *
+	 * BESIDE `CurrentConditions` ABOVE RATHER THAN INSIDE IT, because the
+	 * answer depends on the rows being evaluated and not only on the character.
+	 * Two lookups on the same character in the same instant ask for different
+	 * radii, or one asks and the other does not, so there is no one answer for
+	 * a character to carry.
+	 *
+	 * NOTHING IS WALKED UNLESS A ROW ASKS. A lookup whose rows carry no
+	 * enemies-in-reach condition and no per-enemy scale leaves the list empty
+	 * and touches no character. That is almost every lookup in the game, and
+	 * some of them run on every hit, so the cost of the ones that ask must not
+	 * be paid by the ones that do not.
+	 *
+	 * ONE WALK, FOR THE WIDEST REACH ASKED FOR.
+	 * `UCataclysmTargetCandidates::HostileDistancesWithinMetres` returns
+	 * distances rather than a count for this reason: a character whose rows ask
+	 * about 3, 4 and 8 metres is walked once at 8 metres, and each row counts
+	 * the entries inside its own reach.
+	 *
+	 * @param Modifiers  the rows about to be evaluated, read only to find
+	 *        whether any of them asks and how far the widest one reaches
+	 * @param State  the conditions to fill in, taken by value and returned, so
+	 *        that a caller can write `WithEnemiesInReach(Rows,
+	 *        CurrentConditions(...))` in one expression
+	 */
+	FCataclysmStatConditions WithEnemiesInReach(
+		const TArray<FCataclysmStatModifier>& Modifiers,
+		FCataclysmStatConditions State) const;
+
+	/**
 	 * Record that this character has just paid a health cost. Issue #962.
 	 *
 	 * WHAT IT IS FOR. A passive node can grant a bonus "for 2 seconds after you

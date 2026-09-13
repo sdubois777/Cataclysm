@@ -164,16 +164,106 @@ bool UCataclysmTargetCandidates::CapsuleReachesInto(const ACataclysmCharacterBas
 	// ANY PART OF IT INSIDE, NOT ONLY ITS CENTRE. A capsule is every point within
 	// its radius of the line between its two end centres, so it reaches into the
 	// sphere when that line comes within the two radii of the sphere's centre.
-	const float CapsuleRadius = Capsule->GetScaledCapsuleRadius();
+	//
+	// NOT CALLED `CapsuleRadius`, AND IT IS NOT A STYLE CHOICE.
+	// `CataclysmPlayerCharacter.cpp` holds a `CapsuleRadius` of 42 in an
+	// anonymous namespace. Unreal compiles this module as a UNITY BUILD --
+	// several source files concatenated into one translation unit -- and an
+	// anonymous namespace is file scope to the compiler but MODULE scope
+	// inside that unit. So the constant is visible here, this local hides it,
+	// and the build treats that warning as an error.
+	//
+	// A LOCAL BUILD CANNOT SEE IT WHILE YOU ARE EDITING THIS FILE, and the
+	// build log says why: "Using 'git status' to determine working set for
+	// adaptive non-unity build". A file you have modified is compiled ON ITS
+	// OWN, where nothing else declares the same names. Every local build on
+	// the change that hit this passed; the runner, building a clean tree,
+	// refused.
+	//
+	// NO MECHANISM IS OFFERED FOR WHY THESE TWO FILES MET. Both declarations
+	// are older than the change that exposed the collision, and issue #1469
+	// carries its own correction withdrawing exactly that kind of causal
+	// claim: pulling a modified file out of the unity set also repacks the
+	// blocks, so a build log cannot tell the two stories apart. That issue
+	// records this collision ONCE before, between two constants rather than
+	// between a constant and a local.
+	//
+	// `RadiusCm` BELOW IS THE SPHERE'S AND THIS IS THE BODY'S, which is what
+	// the two names are for.
+	const float BodyRadiusCm = Capsule->GetScaledCapsuleRadius();
 	const float HalfLine =
-		FMath::Max(0.0f, Capsule->GetScaledCapsuleHalfHeight() - CapsuleRadius);
+		FMath::Max(0.0f, Capsule->GetScaledCapsuleHalfHeight() - BodyRadiusCm);
 	const FVector Centre = Capsule->GetComponentLocation();
 	const FVector Along = Capsule->GetUpVector() * HalfLine;
 	const FVector Closest =
 		FMath::ClosestPointOnSegment(Origin, Centre - Along, Centre + Along);
 
 	return FVector::DistSquared(Origin, Closest)
-		<= FMath::Square(static_cast<double>(RadiusCm) + CapsuleRadius);
+		<= FMath::Square(static_cast<double>(RadiusCm) + BodyRadiusCm);
+}
+
+void UCataclysmTargetCandidates::HostileDistancesWithinMetres(
+	const ACataclysmCharacterBase* Searcher, const FVector& Origin, float Metres,
+	TArray<float>& OutMetres)
+{
+	OutMetres.Reset();
+	LookedAt = 0;
+	if (!Searcher || Metres <= 0.0f)
+	{
+		return;
+	}
+
+	BuildTheListsIfStale();
+
+	// THE SAME ARITHMETIC AS `UCataclysmTargeting::MetresBetween`, on a location
+	// rather than an actor: centimetres apart divided by a hundred. Compared
+	// squared so the walk needs no square roots, and converted only for the few
+	// that are inside.
+	const double LimitSquared = static_cast<double>(Metres) * 100.0
+		* static_cast<double>(Metres) * 100.0;
+
+	const auto LookAt = [&](const TArray<TWeakObjectPtr<ACataclysmCharacterBase>>& Entries)
+	{
+		for (const TWeakObjectPtr<ACataclysmCharacterBase>& Entry : Entries)
+		{
+			++LookedAt;
+
+			// A DESTROYED CHARACTER READS AS NOTHING, as it does for the search
+			// below, which is why removing one needs no rebuild.
+			ACataclysmCharacterBase* Candidate = Entry.Get();
+			if (!Candidate || Candidate == Searcher)
+			{
+				continue;
+			}
+
+			// CHEAPEST FIRST, for the reason `NearestHostile` gives: the distance
+			// is arithmetic, and the hostility test reads ability systems and
+			// walks owner chains, so it is asked only of a candidate already
+			// known to be inside the radius.
+			const double DistanceSquared =
+				FVector::DistSquared(Candidate->GetActorLocation(), Origin);
+			if (DistanceSquared > LimitSquared
+				|| !UCataclysmTargeting::IsHostileTo(Candidate, Searcher))
+			{
+				continue;
+			}
+
+			OutMetres.Add(static_cast<float>(FMath::Sqrt(DistanceSquared) / 100.0));
+		}
+	};
+
+	// READ LIVE, NOT FROM THE LISTS, for the reason the search below gives: the
+	// searcher's own Madness and side decide which lists it looks at, and a stale
+	// answer here would hide a whole side.
+	const bool bMaddened = UCataclysmTeams::IsMaddened(Searcher);
+	const FGenericTeamId Mine = UCataclysmTeams::TeamOf(Searcher);
+
+	for (const FCataclysmSideCandidates& List : Sides)
+	{
+		const bool bWholeList =
+			bMaddened || Mine == FGenericTeamId::NoTeam || List.Side != Mine;
+		LookAt(bWholeList ? List.Everyone : List.Maddened);
+	}
 }
 
 AActor* UCataclysmTargetCandidates::NearestHostile(const ACataclysmCharacterBase* Searcher,

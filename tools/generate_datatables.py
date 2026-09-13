@@ -3402,6 +3402,31 @@ CONDITIONS = {
     # THE SAME 0 TO 100 METRE BOUND AND THE SAME JUDGEMENT BEHIND IT as the row
     # above. A threshold past 100 would be a row nothing could satisfy.
     "target_within_metres": (0.0, 100.0, "a distance in metres"),
+
+    # "while an enemy is within 4 metres" is
+    # `enemies_in_reach_at_least` with 1, and "while three or more enemies
+    # are within 4 metres" is the same name with 3. Issue #1597.
+    #
+    # ONE NAME FOR BOTH SENTENCES, because the first is the special case of
+    # the second where the count is one. Two names would be two spellings of
+    # one reading.
+    #
+    # THE VALUE IS THE COUNT AND NOT THE RADIUS. The radius is a column of
+    # its own, because a condition carries one number and this sentence needs
+    # two. `Reach Metres` is that column and it is not built yet; the refusal
+    # in `passive_effects` below is what stops a row being authored before it
+    # exists.
+    #
+    # AT LEAST ONE, BECAUSE AT LEAST NOUGHT IS TRUE OF AN EMPTY ROOM. A row
+    # whose count was left blank would otherwise grant its bonus everywhere,
+    # silently and in the player's favour. The engine refuses it a second
+    # time for the same reason.
+    #
+    # THE UPPER BOUND IS A JUDGEMENT, in the shape the windows above use. The
+    # highest count any authored node states is three. A threshold past
+    # twenty is far likelier to be a distance written in the count column
+    # than a node that means it.
+    "enemies_in_reach_at_least": (1.0, 20.0, "a number of enemies"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -3521,6 +3546,27 @@ SCALES = {
     # the Ritualist's 150, so five -- plus the three imps `MaxActive` allows.
     # Ten is past any army the game can currently field.
     "minions_held": (0.0, 10.0, "a number of minions"),
+
+    # "for each enemy within 4 metres of you" is `enemies_in_reach` with a
+    # step of 1. Issue #1597, and the third scale that is a count of things
+    # after the debuffs carried and the minions held.
+    #
+    # COUNTED WHOLE THE WAY A DEBUFF AND A MINION ARE, because a creature
+    # standing near you is a whole thing: there is nothing to divide and
+    # nothing to round.
+    #
+    # THE STEP IS NOT THE RADIUS EITHER. Same column, same reason as the
+    # condition above: `ScaleStep` holds how many enemies one step is worth,
+    # so the distance needs `Reach Metres`, which is not built yet.
+    #
+    # THE COUNT ITSELF IS NOT CAPPED, RULED BY THE PROJECT OWNER ON
+    # 2026-09-12 against a recommendation to cap it at ten. The design
+    # document's rule is quoted in `docs/DECISIONS.md`: a multiplicative
+    # source needs no cap because the product cannot reach immunity. THIS
+    # BOUND IS ON THE STEP AND NOT ON THE COUNT, so it is no part of that
+    # ruling. A step above ten enemies would be a bonus that almost never
+    # moves, which is far likelier to be a mistake than a design.
+    "enemies_in_reach": (0.0, 10.0, "a number of enemies"),
 }
 
 
@@ -3634,6 +3680,27 @@ def passive_effects(book) -> list[dict]:
                 f"Passive Effects row {index}: {node} names the scale "
                 f"{scale!r}, which the game cannot judge. Known: "
                 f"{', '.join(sorted(SCALES))}.")
+
+        # THE TWO NAMES THAT COUNT NEARBY ENEMIES NEED A RADIUS AND THERE IS
+        # NOWHERE TO WRITE ONE YET. Issue #1597. The engine reads both, and a
+        # modifier carries its own `ReachMetres`, but the sheet has no
+        # `Reach Metres` column and this file does not carry one through, so
+        # every row using them would arrive with a reach of -1 and count
+        # nobody.
+        #
+        # REFUSED RATHER THAN IMPORTED, which is the direction this file
+        # always chooses: a row that cannot work must say so at import rather
+        # than be a node granting nothing that nobody notices. DELETE THIS
+        # BLOCK in the change that adds the column.
+        needs_a_reach = {"enemies_in_reach_at_least", "enemies_in_reach"}
+        named = needs_a_reach & {condition, scale}
+        if named:
+            raise DataError(
+                f"Passive Effects row {index}: {node} names "
+                f"{', '.join(sorted(named))}, which counts the enemies within a "
+                f"radius. The radius needs a 'Reach Metres' column on this "
+                f"sheet, and that column is not built yet, so the row would "
+                f"count nobody. Issue #1597.")
 
         scale_step = 0.0
         if scale:
