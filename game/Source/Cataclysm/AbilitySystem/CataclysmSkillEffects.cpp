@@ -514,7 +514,34 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 	// written against what the skill deals -- Burning Wrath reads "4% increased
 	// fire damage", not "4% increased weapon damage" -- so the skill's own
 	// percentage has already been applied by the time this runs.
-	return UCataclysmStatPipeline::Evaluate(BaseDamage, Modifiers, SkillTags).Final;
+	// AND ASKED AGAINST WHAT IS TRUE OF THE CHARACTER, NOT AGAINST NOTHING.
+	// Issue #1685. This passed three arguments, and `Evaluate`'s fourth defaults
+	// to an empty `FCataclysmStatConditions` -- so every CONDITION on a runtime
+	// modifier was judged against a world in which nothing is true and the
+	// modifier was worth nothing. Four live damage paths come through here:
+	// retaliation, a hit, a skill template's hit damage and a damage-over-time
+	// tick.
+	//
+	// IT COST NOTHING VISIBLE, WHICH IS WHY IT LASTED. Both runtime modifiers
+	// the game adds are unconditional -- a skill's own self buff and an aura's
+	// ally increase -- so nothing was wrong until somebody wrote the first
+	// conditional one, at which point it would have been silently zero in the
+	// player's favour.
+	//
+	// `CurrentConditions` IS PUBLIC FOR EXACTLY THIS CALLER. Its comment says so:
+	// "PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than
+	// building its own and getting a different answer."
+	//
+	// THE PER-BLOW FACTS STAY AT THEIR DEFAULTS AND THAT IS DELIBERATE. The
+	// health cost paid, the blow being taken, the distance moved and the
+	// target's distance are not properties of the character, so `CurrentConditions`
+	// takes them as arguments and this function does not have them. Two of the
+	// four callers could supply them and two could not, so threading them is a
+	// larger change than this one. Every condition about the CHARACTER -- its
+	// health, its stacks, the debuffs it carries, the minions it commands,
+	// whether it is moving -- needs nothing from the caller and works now.
+	return UCataclysmStatPipeline::Evaluate(BaseDamage, Modifiers, SkillTags,
+											Cataclysm->CurrentConditions()).Final;
 }
 
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
