@@ -191,6 +191,75 @@ def test_the_nihils_embrace_says_permanent_and_asks_for_a_boss():
         "update docs/DECISIONS.md.")
 
 
+def test_singularity_wells_still_says_it_slows_by_forty():
+    """The one number its row states, and the rule uses it as stated.
+
+    `SingularityWellsSlowPercent` is not a judgement for that reason, and it is the
+    only one of the row's six constants that is not.
+    """
+    words = flat(rows()["Void_Singularity_Wells"]["Description"])
+    percent = constant("SingularityWellsSlowPercent")
+
+    assert f"slowing movement by {percent:g}%" in words, words
+
+
+def test_singularity_wells_other_five_figures_are_judgements():
+    """Its row states the 40% and nothing else about the wells.
+
+    FIVE OF ITS SIX CONSTANTS ARE NOT THE ROW'S: how wide a well is, how far from
+    the player it appears, how many burn at once, how much of the player's maximum
+    health a second inside one costs, and how often another appears.
+    `docs/DECISIONS.md` records each. IF THE ROW EVER STATES ONE, this fails, so the
+    constant is checked against it and the log stops calling it a judgement.
+    """
+    words = flat(rows()["Void_Singularity_Wells"]["Description"])
+
+    assert [c for c in words if c.isdigit()] == ["4", "0"], (
+        "The Singularity Wells row now states a number besides its 40%. Check "
+        "SingularityWellsRadiusCm, SingularityWellsFallsWithinCm, "
+        "SingularityWellsMostWells, SingularityWellsPercentPerSecond and "
+        "SingularityWellsSecondsBetweenWells against it and update "
+        "docs/DECISIONS.md.")
+
+
+def test_singularity_wells_damage_is_void_and_comes_from_its_own_column():
+    """Why the wells are typed without any type being named in code.
+
+    The row says "dealing void damage", and its `CataclysmType` column says Void, so
+    the rule reads the column rather than naming a type. That is what lets a row
+    retyped in the design workbook retype its wells with no code change — and it is
+    what stops the damage meeting none of the player's eight resistances, which is
+    what untyped hazard damage did before issue #1605.
+    """
+    row = rows()["Void_Singularity_Wells"]
+    words = flat(row["Description"]).lower()
+
+    assert "void damage" in words, words
+    assert row["CataclysmType"] == "Void", row["CataclysmType"]
+
+
+def test_singularity_wells_still_asks_for_a_pull_it_does_not_have():
+    """The row asks for a pull, and that is why it is only partly built.
+
+    THIS TEST IS A REMINDER, NOT A GUARD, and says so. The pull is unbuilt:
+    `UCataclysmSkillEffects::ApplyPull` cannot be used on a repeating beat because
+    the diminishing-returns rule halves every displacement inside a five second
+    window, and a projectile's direction is private and fixed at launch.
+
+    IF THE ROW EVER STOPS ASKING FOR A PULL, this fails — and the partly-built state
+    in `UCataclysmDungeonModifierEffects::BuiltStateOf` has to be revisited, because
+    the thing it is waiting for would no longer be wanted.
+    """
+    words = flat(rows()["Void_Singularity_Wells"]["Description"]).lower()
+
+    assert "pull" in words, (
+        "The Singularity Wells row no longer asks for a pull. Its built state is "
+        "Partly because the pull is missing; re-read BuiltStateOf.")
+    assert "projectiles" in words, (
+        "The Singularity Wells row no longer mentions projectiles. The pull has two "
+        "halves and this was the second; re-read BuiltStateOf.")
+
+
 def test_infernal_rain_still_says_its_patches_last_ten_seconds():
     """The one number its row states, and the rule reads it.
 

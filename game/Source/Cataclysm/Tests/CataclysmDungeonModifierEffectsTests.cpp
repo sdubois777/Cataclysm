@@ -88,6 +88,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	const FName InfernalRain(TEXT("Demonic_Infernal_Rain"));
 
+	/** And the one that changes both: it places actors AND moves a stat. */
+	const FName SingularityWells(TEXT("Void_Singularity_Wells"));
+
 	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
 	 * of a real one: a player state holding the ability system component, a
@@ -1445,10 +1448,35 @@ bool FCataclysmFieldMedicBuiltTest::RunTest(const FString& Parameters)
 				  FName(UCataclysmDungeonModifierEffects::InfernalRainKey))),
 			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
-	TestEqual(TEXT("and a row with no rule is not built at all"),
+	// THE NOT-BUILT CONTROL USED TO BE Void_Singularity_Wells AND THAT ROW IS NOW
+	// PARTLY BUILT, so it had to be replaced. Chaos_Echo_Chamber takes its place
+	// for a stated reason rather than because it happened to be unbuilt.
+	//
+	// IT IS BLOCKED BY AN OWNER RULE, NOT BY MISSING CODE, which is what makes it
+	// a control likely to last. Its row asks for "a ghostly copy of that ability
+	// ... it can also hit you, dealing a small amount of damage", and
+	// `tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side`
+	// records the rule it breaks: "A creature does not burn itself or its own
+	// side. Set by the project owner on 2026-08-20 as a general rule." That test
+	// also records that the opposite was asserted once and deliberately reversed,
+	// so somebody has already tried the other way.
+	//
+	// "NOT BUILT" AND "NOT BUILDABLE UNDER A STANDING RULE" READ THE SAME HERE AND
+	// MEAN DIFFERENT THINGS. Whoever replaces this control next should say which
+	// applies to their choice.
+	TestEqual(TEXT("and a row blocked by an owner rule is not built at all"),
 			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
-				  FName(TEXT("Void_Singularity_Wells")))),
+				  FName(TEXT("Chaos_Echo_Chamber")))),
 			  static_cast<int32>(ECataclysmModifierBuilt::NotBuilt));
+
+	// AND SINGULARITY WELLS IS THE THIRD PARTLY BUILT ROW, written to be revisited
+	// the way the other two were. Its orbs are placed, typed and damaging, and
+	// standing in one slows the player by the 40% its row states. Nothing pulls,
+	// and the row names the pull first.
+	TestEqual(TEXT("Singularity Wells is partly built: nothing pulls"),
+			  static_cast<int32>(UCataclysmDungeonModifierEffects::BuiltStateOf(
+				  FName(UCataclysmDungeonModifierEffects::SingularityWellsKey))),
+			  static_cast<int32>(ECataclysmModifierBuilt::Partly));
 
 	return true;
 }
@@ -1847,6 +1875,298 @@ bool FCataclysmInfernalRainBeatTest::RunTest(const FString& Parameters)
 	Beats(BeatsPerCadence);
 	TestTrue(TEXT("and the rain starts again once there is room"),
 			 CountPatches() > 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellCadenceTest,
+	"Cataclysm.DungeonModifierEffects.SingularityWellsAppearOnTheirCadenceUpToTheirCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellCadenceTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHEN A FLOOR PLACES ANOTHER VOID ORB. Issues #1605 and #41. The row states
+	// no cadence and no count, so both of these figures are judgements and this is
+	// what makes changing either deliberate.
+	const float Cadence = Effects::SingularityWellsSecondsBetweenWells;
+	const int32 Cap = Effects::SingularityWellsMostWells;
+
+	// NOTHING BEFORE THE CADENCE HAS PASSED.
+	TestFalse(TEXT("no well appears on the first beat of a floor"),
+		Effects::SingularityWellIsDue(0.25f, 0));
+	TestFalse(TEXT("nor a hair before the cadence"),
+		Effects::SingularityWellIsDue(Cadence - 0.01f, 0));
+
+	// AT THE FIGURE, NOT PAST IT. The beat is a quarter of a second, so insisting
+	// on strictly past would put every well one beat late for no observable reason.
+	TestTrue(TEXT("one appears at exactly the cadence"),
+		Effects::SingularityWellIsDue(Cadence, 0));
+	TestTrue(TEXT("and at any time past it"),
+		Effects::SingularityWellIsDue(Cadence * 3.0f, 0));
+
+	// THE CAP HOLDS HOWEVER LONG THE FLOOR HAS WAITED, because the function asks
+	// it before it asks the clock.
+	TestTrue(TEXT("one below the cap still appears"),
+		Effects::SingularityWellIsDue(Cadence, Cap - 1));
+	TestFalse(TEXT("at the cap nothing appears"),
+		Effects::SingularityWellIsDue(Cadence, Cap));
+	TestFalse(TEXT("and a long wait does not defeat the cap"),
+		Effects::SingularityWellIsDue(Cadence * 100.0f, Cap));
+	TestFalse(TEXT("nor does somehow being above it"),
+		Effects::SingularityWellIsDue(Cadence * 100.0f, Cap + 5));
+
+	// AND A FULL FLOOR DOES NOT SWALLOW THE CLOCK. This is the half a test
+	// checking only "a full floor places nothing" would miss: the caller keeps
+	// counting while the floor is full, so the beat a well is destroyed on places
+	// the next one at once rather than starting a fresh eight seconds.
+	TestTrue(TEXT("the beat a well is destroyed on places the next at once"),
+		Effects::SingularityWellIsDue(Cadence * 4.0f, Cap - 1));
+
+	// THE CAP IS MORE THAN ONE, because the row says orbs rather than an orb, and
+	// it is small, because the coverage arithmetic is what makes the slow
+	// avoidable. Three wells of this radius cover 18.8% of the circle they can
+	// land in; the header carries the working.
+	TestTrue(TEXT("more than one well may exist at once"), Cap > 1);
+	TestTrue(TEXT("and few enough to leave most of the floor clear"), Cap <= 5);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellDamageTest,
+	"Cataclysm.DungeonModifierEffects.ASingularityWellCostsLessASecondThanBurningGround",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellDamageTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT ONE SECOND IN A VOID ORB COSTS. Issues #1605 and #41.
+	//
+	// A SHARE OF MAXIMUM HEALTH, which is what every dungeon modifier here uses,
+	// so one figure means the same thing at every character level.
+
+	// A THOUSAND MAXIMUM HEALTH MAKES THE ARITHMETIC READABLE: one per cent is 10.
+	const float Expected =
+		1'000.0f * Effects::SingularityWellsPercentPerSecond / 100.0f;
+	TestEqual(TEXT("a second in a well costs its share of maximum health"),
+		Effects::SingularityWellDamagePerSecond(1'000.0f), Expected, 0.01f);
+
+	// IT SCALES WITH THE CHARACTER, which is the whole reason it is a share.
+	TestEqual(TEXT("twice the maximum health costs twice as much"),
+		Effects::SingularityWellDamagePerSecond(2'000.0f), Expected * 2.0f, 0.01f);
+
+	// AND IT IS THE SMALLEST OF THE HAZARDS HERE, which is the assertion this test
+	// exists for. A well slows and is meant to pull as well as damaging, so its
+	// damage is the least of what it does; Infernal Rain's patches only damage.
+	// Diablo IV's pulling affix states the same shape in words -- it "deals light
+	// damage and pulls in players".
+	TestTrue(FString::Printf(
+		TEXT("a well costs %.0f a second where burning ground costs %.0f"),
+		Effects::SingularityWellDamagePerSecond(1'000.0f),
+		Effects::InfernalRainDamagePerSecond(1'000.0f)),
+		Effects::SingularityWellDamagePerSecond(1'000.0f)
+			< Effects::InfernalRainDamagePerSecond(1'000.0f));
+
+	// NO MAXIMUM HEALTH MEANS NO DAMAGE, rather than a negative figure reaching
+	// the well. The rule that places them refuses a non-positive damage rather
+	// than relying on the ground zone to notice.
+	TestEqual(TEXT("a character with no maximum health takes nothing"),
+		Effects::SingularityWellDamagePerSecond(0.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("and a negative reading takes nothing rather than healing"),
+		Effects::SingularityWellDamagePerSecond(-500.0f), 0.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellBeatTest,
+	"Cataclysm.DungeonModifierEffects.AVoidOrbSlowsAPlayerStandingInItAndStopsWhenTheyLeave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellBeatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	// THE WHOLE RULE, DRIVEN THE WAY THE GAME DRIVES IT. Issues #1605 and #41.
+	//
+	// WHAT THIS PROVES THAT THE TWO TESTS ABOVE CANNOT. Slice 2 of issue #41
+	// shipped two mechanisms nothing ever called, and no test of their arithmetic
+	// could have seen it. This asserts that a floor carrying the row produces an
+	// orb, that standing in one changes the speed the character walks at, and that
+	// walking out puts it back.
+	//
+	// IT NEVER REFRESHES THE ATTRIBUTES ITSELF. `ApplyToCharacter` calls
+	// `UCataclysmEquipmentComponent::RefreshAttributes`, so the rule is the only
+	// thing that writes the attribute this test reads. A test that refreshed them
+	// would pass with the rule's own apply deleted.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const auto Beats = [Mode](int32 How)
+	{
+		for (int32 Index = 0; Index < How; ++Index)
+		{
+			Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		}
+	};
+	const int32 BeatsPerCadence = FMath::CeilToInt(
+		Effects::SingularityWellsSecondsBetweenWells
+		/ ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const auto CountWells = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				++Count;
+			}
+		}
+		return Count;
+	};
+	const auto FirstWell = [World]() -> ACataclysmGroundZone*
+	{
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	};
+
+	// A FLOOR WITHOUT THE ROW FIRST, while nothing has been placed yet, so the
+	// question needs nothing unpicked afterwards.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Beats(BeatsPerCadence * 2);
+	TestEqual(TEXT("a floor without Singularity Wells places none"),
+			  CountWells(), 0);
+	TestNull(TEXT("and makes no hazard source at all"),
+			 ACataclysmFloorHazardSource::Existing(World));
+
+	// NOW THE FLOOR THAT CARRIES IT. Changing the floor also forgets the clock,
+	// through `ApplyFloorRulesToPlayer`.
+	Mode->DungeonModifiers = {SingularityWells};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the raining floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Singularity Wells"),
+			 Mode->FloorBrief.Modifiers.Contains(SingularityWells));
+
+	// THE SPEED BEFORE ANY WELL EXISTS, which is what the slow is measured against.
+	const float FullSpeed = Player.Read(Combat::GetMovementSpeedAttribute());
+	TestTrue(TEXT("the player has a walking speed to lose"), FullSpeed > 0.0f);
+
+	// NOTHING UNTIL THE CADENCE HAS PASSED.
+	Beats(BeatsPerCadence - 1);
+	TestEqual(TEXT("no well appears before the cadence"), CountWells(), 0);
+	TestEqual(TEXT("and the player is not slowed yet"),
+			  Player.Read(Combat::GetMovementSpeedAttribute()), FullSpeed, 0.01f);
+
+	// AND ONE ON THE BEAT IT FALLS DUE.
+	Beats(1);
+	TestEqual(TEXT("the cadence's beat places exactly one well"), CountWells(), 1);
+
+	ACataclysmGroundZone* Well = FirstWell();
+	if (!TestNotNull(TEXT("the well is readable"), Well))
+	{
+		return false;
+	}
+
+	// WHAT THE WELL IS: the stated width, the share of maximum health, and lasting
+	// the floor rather than expiring, which is the difference from burning ground.
+	TestEqual(TEXT("the well is as wide as the figure says"),
+			  Well->RadiusCm, Effects::SingularityWellsRadiusCm, 0.01f);
+	TestEqual(TEXT("it costs a share of the player's maximum health"),
+			  Well->DamagePerTick,
+			  Effects::SingularityWellDamagePerSecond(
+				  Player.Read(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())),
+			  0.01f);
+	TestTrue(TEXT("and it lasts the floor rather than expiring"),
+			 Well->bLastsTheFloor);
+
+	// AND IT IS TYPED VOID, OFF ITS OWN ROW. Without a type this damage would meet
+	// none of the player's eight resistances.
+	ACataclysmFloorHazardSource* Source =
+		ACataclysmFloorHazardSource::Existing(World);
+	if (!TestNotNull(TEXT("the rule made a hazard source"), Source))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the well is typed Void, as its row says"),
+			  Source->DamageType, FName(TEXT("Void")));
+
+	// IT DID NOT APPEAR ON THE PLAYER'S FEET, which is what makes a slow something
+	// to walk out of. `Covers` is the well's own answer, and the same test its
+	// sweep makes.
+	const FVector Feet = Player.Character->GetActorLocation();
+	TestFalse(TEXT("the player is outside it when it appears"),
+			  Well->Covers(Feet));
+	TestEqual(TEXT("so they are not slowed by a well they are not in"),
+			  Player.Read(Combat::GetMovementSpeedAttribute()), FullSpeed, 0.01f);
+
+	// NOW STAND IN IT. The well lands at a random angle and distance, so this
+	// reads where it went rather than guessing.
+	const FVector Centre = Well->GetActorLocation();
+	Player.Character->SetActorLocation(Centre);
+	TestTrue(TEXT("the player is now inside the well"),
+			 Well->Covers(Player.Character->GetActorLocation()));
+
+	Beats(1);
+	const float Slowed = Player.Read(Combat::GetMovementSpeedAttribute());
+	TestTrue(FString::Printf(
+		TEXT("standing in a well slows the player: %.2f from %.2f"),
+		Slowed, FullSpeed), Slowed < FullSpeed);
+
+	// AND BY THE SHARE THE ROW STATES. The pipeline multiplies by
+	// (1 + Value / 100), so a Less of 40 is times 0.6.
+	const float Share = 1.0f - Effects::SingularityWellsSlowPercent / 100.0f;
+	TestEqual(FString::Printf(TEXT("and by the row's own %.0f%%"),
+							  Effects::SingularityWellsSlowPercent),
+			  Slowed, FullSpeed * Share, 0.05f);
+
+	// AND WALKING OUT PUTS IT BACK. This is the half that fails if the rule only
+	// sets the slow on the beats it places something: the beat a player leaves a
+	// well is a beat on which nothing is placed.
+	Player.Character->SetActorLocation(
+		Centre + FVector(Effects::SingularityWellsFallsWithinCm * 3.0f, 0.0f, 0.0f));
+	TestFalse(TEXT("the player is outside every well again"),
+			  Well->Covers(Player.Character->GetActorLocation()));
+	Beats(1);
+	TestEqual(TEXT("walking out puts the speed back"),
+			  Player.Read(Combat::GetMovementSpeedAttribute()), FullSpeed, 0.01f);
+
+	// THE CAP. Enough beats for more wells than the cap allows, with nothing
+	// expiring, because these last the floor.
+	Beats(BeatsPerCadence * (Effects::SingularityWellsMostWells + 2));
+	TestEqual(TEXT("the floor stops at its cap however long it goes on"),
+			  CountWells(), Effects::SingularityWellsMostWells);
 
 	return true;
 }
