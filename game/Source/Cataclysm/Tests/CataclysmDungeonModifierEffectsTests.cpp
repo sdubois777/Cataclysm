@@ -2207,6 +2207,22 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// THE GAME MODE'S OWN StartPlay BINDS THE DEATH HANDLER, and a test world
+	// never calls it, so the binding is made the way StartPlay makes it. This is
+	// the same line the boss-cleanse test above needs, for the same reason.
+	//
+	// LEAVING IT OUT IS WHAT THE FIRST RUN OF THIS TEST DID. Every earlier
+	// assertion passed -- the rule is wired into the beat, a floor without the row
+	// places nothing, forty beats with nothing dying place nothing -- and then a
+	// creature died and no patch appeared, because nothing was listening. The rule
+	// was right and the test was one line short.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
 	const auto Beat = [Mode]()
 	{
 		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
@@ -2228,7 +2244,19 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 	// the correction another test in this file records: creatures carry a capsule
 	// and the default handling refuses a blocked spawn, which reads as "no creature
 	// spawned" and names the symptom rather than the cause.
-	const auto KillACreatureAt = [World, &Player](const FVector& Where)
+	//
+	// IT ASSERTS EACH STEP RATHER THAN ONLY THE OUTCOME, and that is the
+	// correction to a first version of this test. That version asserted only that
+	// a creature spawned, and its failure read "its death leaves exactly one patch
+	// to be 1, but it was 0" -- which cannot tell four faults apart: a creature
+	// spawned with no health, a blow that did not kill, a death notice that never
+	// reached the dungeon game mode, or a patch spawn that refused. A failing test
+	// that does not say which side is wrong costs a whole build to find out.
+	// WHERE THE LAST CREATURE KILLED BY THE HELPER BELOW WAS STANDING.
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where)
+		-> ACataclysmEnemyCharacter*
 	{
 		FActorSpawnParameters Spawn;
 		Spawn.SpawnCollisionHandlingOverride =
@@ -2237,9 +2265,41 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 			World->SpawnActor<ACataclysmEnemyCharacter>(
 				ACataclysmEnemyCharacter::StaticClass(), Where,
 				FRotator::ZeroRotator, Spawn);
-		if (Creature)
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
 		{
-			UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+			return nullptr;
+		}
+
+		// IT HAS HEALTH TO LOSE. A creature whose maximum health is zero is
+		// already dead, and `UCataclysmSkillEffects::MarkDead` refuses a second
+		// time -- so no death would be announced and nothing downstream would
+		// run, with no error naming the cause.
+		UAbilitySystemComponent* Theirs = Creature->GetAbilitySystemComponent();
+		if (!TestNotNull(TEXT("the creature has an ability system"), Theirs))
+		{
+			return nullptr;
+		}
+		const float Health = Theirs->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature has health to lose: %.1f"), Health),
+					  Health > 0.0f))
+		{
+			return nullptr;
+		}
+
+		// WHERE IT ACTUALLY STANDS, READ BEFORE THE BLOW. The spawn above passes
+		// `AdjustIfPossibleButAlwaysSpawn`, which lets the engine move the actor
+		// when the asked-for spot is blocked -- so the point passed in is a
+		// request and not a fact. Read after the blow it would be a dead actor's
+		// location, which is a thing this project has been bitten by.
+		StoodAt = Creature->GetActorLocation();
+
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		if (!TestTrue(TEXT("the blow killed the creature"),
+					  UCataclysmSkillEffects::IsDead(Creature)))
+		{
+			return nullptr;
 		}
 		return Creature;
 	};
@@ -2301,6 +2361,11 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	// THE HAZARD SOURCE FIRST. The rule makes it before it asks for a patch, so
+	// its presence says the death reached the handler and its absence says the
+	// handler never ran. Without this the next line's 0 means either.
+	TestNotNull(TEXT("the death reached the rule, which made a hazard source"),
+				ACataclysmFloorHazardSource::Existing(World));
 	TestEqual(TEXT("its death leaves exactly one patch"), CountPatches(), 1);
 
 	ACataclysmGroundZone* Patch = nullptr;
@@ -2319,8 +2384,11 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 
 	// WHAT THE PATCH IS: where the creature died, the house width, lasting the
 	// floor, and taking no health -- the first hazard here that does not burn.
-	TestTrue(TEXT("the patch is where the creature died"),
-			 Patch->GetActorLocation().Equals(DiedAt, 1.0));
+	TestTrue(FString::Printf(
+				 TEXT("the patch is where the creature stood: %s against %s"),
+				 *Patch->GetActorLocation().ToCompactString(),
+				 *StoodAt.ToCompactString()),
+			 Patch->GetActorLocation().Equals(StoodAt, 1.0));
 	TestEqual(TEXT("and as wide as the figure says"),
 			  Patch->RadiusCm, Effects::WitheredGroundPatchRadiusCm, 0.01f);
 	TestTrue(TEXT("and lasts the floor rather than expiring"),
@@ -2336,7 +2404,7 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 	const FVector Outside = Player.Character->GetActorLocation();
 	TestTrue(FString::Printf(
 				 TEXT("the player stands %.0f cm from a patch of radius %.0f"),
-				 FVector::Dist(Outside, DiedAt),
+				 FVector::Dist(Outside, Patch->GetActorLocation()),
 				 Effects::WitheredGroundPatchRadiusCm),
 			 !Patch->Covers(Outside));
 	Beat();
@@ -2346,7 +2414,7 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 			  Player.Read(Vital::GetManaRegenAttribute()), FullManaRegen, 0.01f);
 
 	// NOW STAND ON IT.
-	Player.Character->SetActorLocation(DiedAt);
+	Player.Character->SetActorLocation(Patch->GetActorLocation());
 	TestTrue(TEXT("the player is now on the patch"),
 			 Patch->Covers(Player.Character->GetActorLocation()));
 
@@ -2364,7 +2432,8 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 	// sets the reduction on beats where something died: the beat a player steps
 	// off a patch is a beat on which nothing was placed.
 	Player.Character->SetActorLocation(
-		DiedAt + FVector(Effects::WitheredGroundPatchRadiusCm * 5.0f, 0.0f, 0.0f));
+		Patch->GetActorLocation()
+		+ FVector(Effects::WitheredGroundPatchRadiusCm * 5.0f, 0.0f, 0.0f));
 	TestFalse(TEXT("the player is off every patch again"),
 			  Patch->Covers(Player.Character->GetActorLocation()));
 	Beat();
