@@ -324,7 +324,12 @@ CATACLYSM_TEST(FCataclysmEnergyShieldTest,
 	return true;
 }
 
-CATACLYSM_TEST(FCataclysmWeaponSubtypeTest,
+// THIS CLASS NAME MUST NOT GO BACK TO FCataclysmWeaponSubtypeTest. Unreal
+// registers a test under its CLASS name and compares those without regard to
+// case, so that name and FCataclysmWeaponSubTypeTest in
+// CataclysmWeaponSlotsTests.cpp were one key. The second to register was
+// refused with a log warning and did not run for a month. Issue #1666.
+CATACLYSM_TEST(FCataclysmSlashingAndMagicPoolsTest,
 	"Cataclysm.Damage.SlashingAndMagicTargetDifferentPools")
 {
 	UWorld* World = CataclysmDamageTest::MakeWorld();
