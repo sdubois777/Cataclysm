@@ -100,13 +100,33 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float HealingReceivedLessPercent = 0.0f;
 
+	/**
+	 * How much slower the character moves, in percent. Singularity Wells.
+	 * Issues #1605 and #41.
+	 *
+	 * ON AND OFF AS THE PLAYER WALKS IN AND OUT OF A WELL, so it is worked out on
+	 * the beat rather than once a floor, and it is the only field here that can
+	 * go back to nothing without the floor changing.
+	 *
+	 * A MULTIPLIER ON `movement_speed` AND DELIBERATELY NOT A STATUS EFFECT ROW.
+	 * `UCataclysmSkillEffects::ApplyNamedEffect` resolves what to move from the
+	 * `MovesStat` column of game/Data/StatusEffects.csv and then SUBTRACTS a flat
+	 * value clamped against the attribute's own current value. A player's
+	 * `movement_speed` is 4.0 metres a second, so a magnitude of 40 would clamp
+	 * to 4.0 and leave them standing still. That path is built for resistances,
+	 * where subtracting points is the right shape, and a speed is not that.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float MovementSpeedLessPercent = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
 		return MaxHealthLessPercent <= 0.0f && MaxEnergyShieldLessPercent <= 0.0f
 			&& MaxManaLessPercent <= 0.0f && ResistanceLessPercent <= 0.0f
 			&& ResistanceMorePercent <= 0.0f
-			&& HealingReceivedLessPercent <= 0.0f;
+			&& HealingReceivedLessPercent <= 0.0f
+			&& MovementSpeedLessPercent <= 0.0f;
 	}
 };
 
@@ -210,6 +230,25 @@ public:
 	static const TCHAR* NihilsEmbraceKey;
 	static const TCHAR* DeathsEmbraceKey;
 	static const TCHAR* FieldMedicKey;
+
+	/**
+	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
+	 *
+	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
+	 * deal void damage read off the row's own type, and standing in one slows the
+	 * player by the 40% the row states. **Nothing pulls.** The row names the pull
+	 * first, so `BuiltStateOf` answers `Partly` and the floor panel says so.
+	 *
+	 * THE PULL IS TWO SEPARATE PIECES OF WORK AND NEITHER IS HERE. Pulling the
+	 * player cannot go through `UCataclysmSkillEffects::ApplyPull` on a repeating
+	 * beat: the diminishing-returns rule halves every displacement inside a five
+	 * second window, so a pulsing pull would fade to nothing within about a
+	 * second. `ACataclysmTether::Check` documents the way round it and writes a
+	 * swept `SetActorLocation` four times a second instead. Pulling a projectile
+	 * needs a new mid-flight re-aim; `ACataclysmProjectile::GlanceOnwardFrom` is
+	 * the pattern and `Direction` is private today.
+	 */
+	static const TCHAR* SingularityWellsKey;
 
 	/**
 	 * What Starvation takes per floor, and the most it takes.
@@ -369,6 +408,80 @@ public:
 		"walk out of, not a death sentence for being caught once.");
 
 	/**
+	 * Singularity Wells' six figures, and which of them are judgements.
+	 *
+	 * THE ROW STATES ONE: "slowing movement by 40%". That is
+	 * `SingularityWellsSlowPercent` and it is not a choice.
+	 *
+	 * TWO ARE BORROWED FROM THIS PROJECT RATHER THAN CHOSEN. The radius is the
+	 * burning ground's `SoulfallGroundRadiusCm`, so a well is the size of a patch
+	 * a player has already learned to step out of; the distance is Infernal
+	 * Rain's, for the reason that comment gives.
+	 *
+	 * THE OTHER THREE ARE JUDGEMENTS, and `docs/DECISIONS.md` carries the
+	 * research behind each. What follows is the short form.
+	 *
+	 * WHAT THE GENRE SAYS TO WORRY ABOUT, AND WHY IT WAS THE WRONG WORRY. Path of
+	 * Exile 2 ships a movement-slowing map modifier that its players object to in
+	 * at least eight feedback threads, at a published 30% -- less than this row's
+	 * 40% -- and the complaint is that it is "impossible to actually interact with
+	 * and avoid". So this was designed for avoidability first.
+	 *
+	 * THEN THE ARITHMETIC REVERSED IT. Three wells of this radius cover 0.33% of
+	 * a 160 by 160 metre floor. The risk was never that the slow is everywhere;
+	 * it is that a player never meets the modifier at all, which is how a row
+	 * ends up doing nothing. So the wells are placed near the player, the way
+	 * Infernal Rain's patches are, and then they cover 18.8% of the twelve metre
+	 * circle around them and leave 81% of it clear.
+	 *
+	 * WALKING OUT OF ONE TAKES 1.2 SECONDS FROM ITS CENTRE, at the slowed speed
+	 * of 2.4 metres a second. That is the figure that makes this avoidable rather
+	 * than the 40%, and it is why three is the cap.
+	 *
+	 * ONE PER CENT A SECOND IS THE SMALLEST DAMAGE OF THE THREE HAZARDS HERE, at
+	 * half Infernal Rain's. Diablo IV's pulling affix Tempest "deals light damage
+	 * and pulls in players", and where a shipped affix both moves a player and
+	 * hurts them the damage is the lesser half. This row slows AND pulls AND
+	 * damages, so its damage is the least of what it does.
+	 *
+	 * EIGHT SECONDS BETWEEN WELLS IS THE ONLY FIGURE THE RESEARCH OFFERED. Diablo
+	 * IV publishes cadences for the affixes that act rather than persist --
+	 * Teleporter every 8 seconds, Hellbound every 15 -- and publishes no radius,
+	 * pull distance or slow percentage for any of them. So eight is the bottom of
+	 * a shipped range rather than a number of mine.
+	 *
+	 * **Expect these to need tuning against real play**, which Forced March and
+	 * Infernal Rain both say of their own figures.
+	 */
+	static constexpr float SingularityWellsSlowPercent = 40.0f;
+	static constexpr float SingularityWellsRadiusCm = 300.0f;
+	static constexpr float SingularityWellsFallsWithinCm = 1200.0f;
+	static constexpr int32 SingularityWellsMostWells = 3;
+	static constexpr float SingularityWellsPercentPerSecond = 1.0f;
+	static constexpr float SingularityWellsSecondsBetweenWells = 8.0f;
+
+	static_assert(
+		SingularityWellsSlowPercent > 0.0f && SingularityWellsSlowPercent < 100.0f,
+		"Singularity Wells' slow is no longer a fraction of a character's speed. "
+		"At 100 it stops the player dead, which the row does not ask for, and the "
+		"pipeline floors a Less at -99 so the figure would stop meaning what it "
+		"says.");
+
+	static_assert(
+		SingularityWellsFallsWithinCm > SingularityWellsRadiusCm,
+		"A Singularity Well can no longer land clear of the player. The nearest "
+		"distance is past the radius so a well does not cover someone standing "
+		"still, and the furthest has to be beyond that for there to be anywhere "
+		"to put one.");
+
+	static_assert(
+		SingularityWellsPercentPerSecond < InfernalRainPercentPerSecond,
+		"A Singularity Well now costs at least as much a second as a patch of "
+		"Infernal Rain. A well slows and pulls as well as damaging, so its damage "
+		"is meant to be the least of the three things it does; the burning ground "
+		"only damages.");
+
+	/**
 	 * The Nihil's Embrace: how far the player walks for each point of resistance
 	 * lost, the most it takes, and what defeating a high tier enemy gives back.
 	 *
@@ -517,6 +630,42 @@ public:
 	 * @return the damage one sweep deals, or zero for a maximum of nothing
 	 */
 	static float InfernalRainDamagePerSecond(float MaximumHealth);
+
+	/**
+	 * Whether a floor carrying Singularity Wells should place another one now.
+	 *
+	 * THE CAP IS ASKED BEFORE THE CLOCK, so a floor already carrying its limit
+	 * does no arithmetic and, more to the point, does not swallow the clock: the
+	 * caller keeps counting, so the beat a well is destroyed on places the next
+	 * one at once rather than waiting a further eight seconds.
+	 *
+	 * AT OR PAST THE CADENCE, NOT PAST IT. The beat is a quarter of a second, so
+	 * insisting on strictly past would put every well one beat later than the
+	 * figure says for no reason anybody could observe.
+	 *
+	 * @param SecondsSinceLastWell  how long since one was last placed
+	 * @param WellsAlive            how many are on the floor now
+	 */
+	static bool SingularityWellIsDue(float SecondsSinceLastWell, int32 WellsAlive);
+
+	/**
+	 * What one second inside a Singularity Well costs a character.
+	 *
+	 * A SHARE OF THE CHARACTER'S OWN MAXIMUM HEALTH, so the figure means the same
+	 * thing at every level, which is what every dungeon modifier here does. The
+	 * well sweeps once a second -- `ACataclysmGroundZone::TickSeconds` is 1 -- so
+	 * this is both the per-second share and the per-sweep damage.
+	 *
+	 * NOT A SHARE OF AN ORDINARY HIT, which is the other burning-ground rule in
+	 * this project. A creature prices its patch from `WeaponDamageOf` its own
+	 * ability system; a floor hazard carries no attribute sets at all, because
+	 * the damage calculation reads the defender's attributes and not the
+	 * source's, so there is no hit to take a share of.
+	 *
+	 * @param MaximumHealth  the character's maximum health
+	 * @return the damage one sweep deals, or zero for a maximum of nothing
+	 */
+	static float SingularityWellDamagePerSecond(float MaximumHealth);
 
 	/**
 	 * What that many stacks cost a second, as a share of maximum health.

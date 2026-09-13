@@ -1781,6 +1781,140 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 	InfernalRainSecondsSinceLastPatch = 0.0f;
 }
 
+void ACataclysmDungeonGameMode::StepSingularityWells(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT IS STILL THERE, ASKED RATHER THAN REMEMBERED. A well is destroyed with
+	// the rest of the floor's contents, so a weak pointer going invalid IS that.
+	SingularityWells.RemoveAll([](const TWeakObjectPtr<ACataclysmGroundZone>& Well)
+	{
+		return !Well.IsValid();
+	});
+
+	// THE SLOW FIRST, FROM WHAT EXISTS, ON EVERY BEAT. This is the half that must
+	// not sit inside the placement branch: the beat a player walks out of a well
+	// is a beat on which nothing is placed, and a slow left behind would follow
+	// them around the floor.
+	//
+	// EACH WELL IS ASKED WHETHER IT COVERS THE PLAYER. `Covers` is the same test
+	// the well's own sweep makes, so what slows a character and what damages them
+	// cannot disagree about where the well is.
+	const FVector Feet = Player->GetActorLocation();
+	bool bInsideAWell = false;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Well : SingularityWells)
+	{
+		if (Well.IsValid() && Well->Covers(Feet))
+		{
+			bInsideAWell = true;
+			break;
+		}
+	}
+
+	// ONE WELL OR THREE MAKE NO DIFFERENCE, and that is deliberate rather than an
+	// oversight. The row states one figure, 40%, and says nothing about standing
+	// in two at once; stacking it would reach 120% on three overlapping wells,
+	// which the pipeline floors at -99 anyway and which the row does not ask for.
+	const float Wanted = bInsideAWell ? Effects::SingularityWellsSlowPercent : 0.0f;
+	if (!FMath::IsNearlyEqual(Wanted, SingularityWellsSlowApplied))
+	{
+		SingularityWellsSlowApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	// AND NOW WHETHER TO PLACE ANOTHER. The cap is asked inside the predicate,
+	// before its clock, so a floor at its limit does not swallow the count.
+	SingularityWellsSecondsSinceLastWell += SecondsBetweenWaveChecks;
+	if (!Effects::SingularityWellIsDue(SingularityWellsSecondsSinceLastWell,
+									   SingularityWells.Num()))
+	{
+		return;
+	}
+
+	// EVERYTHING THAT CAN REFUSE IS ASKED BEFORE ANYTHING IS CREATED, because
+	// `ACataclysmFloorHazardSource::ForFloor` SPAWNS the source when a floor has
+	// none, and an actor nothing uses would be left behind otherwise.
+	//
+	// THE TYPE COMES OUT OF THE ROW. Every row of game/Data/DungeonModifiers.csv
+	// carries a CataclysmType -- this one is Void -- so the damage cannot disagree
+	// with the modifier that placed it, and a row retyped in the design workbook
+	// retypes its wells with no code change. An unreadable table places nothing
+	// rather than guessing: an empty type is untyped damage, which meets none of
+	// the player's eight resistances.
+	const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+		FName(Effects::SingularityWellsKey));
+	if (!Row)
+	{
+		return;
+	}
+
+	// A SHARE OF THE PLAYER'S OWN MAXIMUM HEALTH, read through the ability system
+	// the same way the rules above read it.
+	const float PerSecond = Effects::SingularityWellDamagePerSecond(
+		AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+	if (PerSecond <= 0.0f)
+	{
+		return;
+	}
+
+	// WHERE IT APPEARS: near the player, past its own radius, at their height.
+	//
+	// NEAR THE PLAYER BECAUSE OTHERWISE NOBODY MEETS IT, and that is measured
+	// rather than assumed. Three wells of this radius cover 0.33% of a 160 by 160
+	// metre floor; placed within this distance they cover 18.8% of the circle
+	// around the player and leave 81% of it clear.
+	//
+	// PAST THE RADIUS RATHER THAN AT IT, for the reason `StepInfernalRain` gives:
+	// `UCataclysmTargeting::IsInLine` decides who is inside with `<=`, so a well
+	// centred at exactly the radius covers a player standing still. A well that
+	// slows on arrival is worse than a patch that burns on arrival, because the
+	// player cannot step out as quickly.
+	const FVector Centre = Player->GetActorLocation();
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const float Away = FMath::FRandRange(Effects::SingularityWellsRadiusCm + 1.0f,
+										 Effects::SingularityWellsFallsWithinCm);
+	const FVector Where(Centre.X + Away * FMath::Cos(Angle),
+						Centre.Y + Away * FMath::Sin(Angle),
+						Centre.Z);
+
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+	Source->DamageType = FName(*Row->CataclysmType);
+
+	// IT LASTS THE FLOOR, WHICH THE ROW NEITHER STATES NOR CONTRADICTS.
+	// `SpawnForTheFloor` exists for the hazard rows of issue #1605 that state no
+	// duration, and "pulsing void orbs" reads as a feature of the floor rather
+	// than a passing strike. The cap of three is what keeps that from becoming a
+	// floor that is slow everywhere.
+	//
+	// START AND END THE SAME POINT MAKES IT ROUND, which is how `Spawn` builds a
+	// circle too: a segment of no length is a circle at that point.
+	ACataclysmGroundZone* Well = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Where, Where, Effects::SingularityWellsRadiusCm, PerSecond);
+	if (!Well)
+	{
+		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
+		// rather than waiting a whole cadence for a well that never existed.
+		return;
+	}
+
+	SingularityWells.Add(Well);
+	SingularityWellsSecondsSinceLastWell = 0.0f;
+}
+
 void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 {
 	// NOTHING TO DO ON A FLOOR CARRYING NONE OF THEM, which is almost every
@@ -1798,7 +1932,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// touches no stat at all.
 	const bool bInfernalRain = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::InfernalRainKey));
-	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain)
+	// AND THE SECOND RULE THAT CHANGES THE FLOOR RATHER THAN ONLY THE PLAYER.
+	// Issues #1605 and #41. It does both: it places actors AND it moves a stat.
+	const bool bSingularityWells = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::SingularityWellsKey));
+	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
+		&& !bSingularityWells)
 	{
 		return;
 	}
@@ -1844,6 +1983,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bInfernalRain)
 	{
 		StepInfernalRain(Player, AbilitySystem);
+	}
+
+	// AND SINGULARITY WELLS LAST, for the same reason Infernal Rain is late: it
+	// spawns an actor. It differs from every rule above in doing two things on one
+	// beat -- it places wells and it sets a stat -- so it calls the shared applier
+	// itself when the slow changes, rather than only writing a field.
+	if (bSingularityWells)
+	{
+		StepSingularityWells(Player, AbilitySystem);
 	}
 }
 
@@ -1970,6 +2118,11 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 		UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
 			DeathsEmbraceStacksApplied);
 
+	// AND THE SLOW SINGULARITY WELLS HAS IN FORCE. Issues #1605 and #41. Read
+	// unconditionally like the rest: a floor without that row leaves the field at
+	// nothing, and nothing is what the effects already hold.
+	Effects.MovementSpeedLessPercent = SingularityWellsSlowApplied;
+
 	UCataclysmDungeonModifierEffects::ApplyToCharacter(Effects, AbilitySystem,
 													  Player->GetEquipment());
 }
@@ -2057,6 +2210,18 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// against the cap and stop the rain entirely.
 		InfernalRainSecondsSinceLastPatch = 0.0f;
 		InfernalRainPatches.Empty();
+
+		// AND SINGULARITY WELLS FORGETS ITS CLOCK, ITS WELLS AND ITS SLOW. Issues
+		// #1605 and #41. The clock so the first well of a floor does not arrive on
+		// its first beat carrying the last floor's wait; the list because
+		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed those
+		// actors and a stale list would count them against the cap and stop the
+		// wells entirely; the slow because the call above has already taken it off
+		// the character, so leaving the figure here would make the next beat
+		// believe it was still applied and never put it back.
+		SingularityWellsSecondsSinceLastWell = 0.0f;
+		SingularityWells.Empty();
+		SingularityWellsSlowApplied = 0.0f;
 
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is
