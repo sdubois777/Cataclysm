@@ -28,6 +28,7 @@ notices the edit anyway, because that is a working environment, not a fault.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import pathlib
 import subprocess
@@ -403,3 +404,188 @@ def test_named_failures_reads_the_tests_that_noticed() -> None:
         "2 failed in 0.2s\n", "")
     assert result.named_failures == ("a.py::test_one", "b.py::test_two")
 
+
+
+# ---------------------------------------------------------------------------
+# Both halves of a guard proof. Issue #1735.
+# ---------------------------------------------------------------------------
+
+#: A broken half that did what a guard proof needs: a named test failed.
+BROKE_AND_A_TEST_NOTICED = GuardResult(
+    1, "FAILED tools/tests/test_x.py::test_y - AssertionError\n"
+       "1 failed, 2 passed in 0.10s\n", "")
+
+#: A restored half where everything passed.
+RESTORED_AND_CLEAN = GuardResult(0, "3 passed in 0.10s\n", "")
+
+
+def paired(broken: GuardResult, restored: GuardResult) -> GuardResult:
+    return dataclasses.replace(broken, restored=restored)
+
+
+def test_a_failing_half_alone_is_not_a_proof() -> None:
+    """The defect issue #1735 is about, stated as a test.
+
+    A named test failed with the break in. That is the first of the two claims a
+    guard proof makes and it is the only one `break_and_run` could ever produce
+    before this. `proved` must not be True on it.
+    """
+    assert BROKE_AND_A_TEST_NOTICED.named_failures
+    assert BROKE_AND_A_TEST_NOTICED.failed
+    assert not BROKE_AND_A_TEST_NOTICED.proved, (
+        "a result with no second half cannot claim the pair held")
+
+
+def test_both_halves_holding_is_a_proof() -> None:
+    result = paired(BROKE_AND_A_TEST_NOTICED, RESTORED_AND_CLEAN)
+    assert result.proved
+    assert result.summary.startswith("PROVED: ")
+    assert "restored: 3 passed" in result.summary
+
+
+def test_a_test_that_fails_in_both_halves_is_not_a_proof() -> None:
+    """THE CASE THE WHOLE ISSUE EXISTS FOR, and it is invisible without pairing.
+
+    A test that was already failing, or that fails for a reason unrelated to the
+    break, produces a first half byte-identical to a real proof: a name in
+    `named_failures`, a plausible summary, a non-zero exit. The only thing that
+    tells it apart is running the same command with the files put back.
+
+    Note the broken half here IS a genuine-looking first half -- `failed` and
+    `named_failures` both say what a caller following `CLAUDE.md` would assert
+    on -- and the verdict is still not a proof.
+    """
+    result = paired(BROKE_AND_A_TEST_NOTICED, BROKE_AND_A_TEST_NOTICED)
+
+    assert result.failed, "the half a caller used to see still looks convincing"
+    assert result.named_failures, "and so does the list they were told to assert"
+    assert not result.proved
+    assert "files PUT BACK" in result.summary, (
+        f"the report must say the tests were failing before the break. It "
+        f"reads: {result.summary!r}")
+
+
+def test_a_run_that_failed_without_naming_a_test_is_not_a_proof() -> None:
+    """Different from nothing failing, and the report must say which.
+
+    A count with no names has measured something and the question is why the
+    names are missing -- a second `-q` does this. Nothing failing has measured
+    that the break does not bite, and the answer is a different break. Telling a
+    reader the wrong one of those sends them the wrong way.
+    """
+    no_names = GuardResult(1, "collected 3 items\n\n1 failed, 2 passed in 0.1s\n", "")
+    result = paired(no_names, RESTORED_AND_CLEAN)
+
+    assert not result.proved
+    assert "named no test" in result.summary
+    assert "-q" in result.summary, "the likeliest cause is worth naming"
+
+
+def test_nothing_failing_with_the_break_in_is_reported_as_that() -> None:
+    clean = GuardResult(0, "3 passed in 0.1s\n", "")
+    result = paired(clean, RESTORED_AND_CLEAN)
+
+    assert not result.proved
+    assert "nothing failed with the break in" in result.summary
+
+
+def test_a_restored_half_that_crashed_proves_nothing() -> None:
+    """An unusable second half is not a passing second half."""
+    crashed = GuardResult(2, "collected 0 items\nERROR tools/tests/test_x.py\n", "")
+    result = paired(BROKE_AND_A_TEST_NOTICED, crashed)
+
+    assert not result.proved
+    assert "no usable result" in result.summary
+
+
+def test_a_summary_with_no_second_half_is_exactly_what_it_always_was() -> None:
+    """The contract this property already had, kept.
+
+    `summary` is documented as the last line of output and two tests assert it
+    by exact equality. The verdict is appended only when there is a second half
+    to report, so a caller who never asked for pairing sees the same line.
+    """
+    assert BROKE_AND_A_TEST_NOTICED.summary == "1 failed, 2 passed in 0.10s"
+
+
+def test_opting_out_says_so_and_names_what_supplies_the_other_half() -> None:
+    """A sentence, not a flag, and it has to reach the report."""
+    result = dataclasses.replace(
+        BROKE_AND_A_TEST_NOTICED,
+        restored_half_supplied_by="the enclosing pytest run")
+
+    assert not result.proved, (
+        "opting out says a passing half exists elsewhere; it does not let this "
+        "object claim to have seen one")
+    assert "NOT PAIRED BY THIS CALL" in result.summary
+    assert "the enclosing pytest run" in result.summary
+
+
+def test_the_inner_result_never_carries_its_own_second_half() -> None:
+    """The rule that keeps the type from nesting without end.
+
+    Both halves are a `GuardResult` here, unlike the C++ version whose two
+    halves are different types and which therefore stops after one level on its
+    own. If this ever fails, something has started building an inner result the
+    long way round and the field will nest.
+    """
+    result = paired(BROKE_AND_A_TEST_NOTICED, RESTORED_AND_CLEAN)
+    assert result.restored is not None
+    assert result.restored.restored is None
+
+
+def test_break_and_run_really_runs_the_command_twice() -> None:
+    """END TO END, because every test above builds its result by hand.
+
+    THOSE TESTS CHECK THE VERDICT LOGIC AND NOTHING ELSE. Delete the second run
+    from `break_and_run` and all of them still pass, because they never call it.
+    This one does: it breaks a real file, runs a real pytest selection, and
+    requires that the result carries a second half the function fetched itself.
+
+    THE TARGET IS DELIBERATELY NOT `prove_guard.py`. Breaking the module the
+    inner run has to import risks a collection error, which is a crash rather
+    than a guard firing -- issue #1314 -- and would make this test prove the
+    opposite of what it says. `unreal_build.py` has tests that do not recurse.
+    """
+    target = "tools/unreal_build.py"
+    before = (REPO_ROOT / target).read_bytes()
+
+    result = break_and_run(
+        {target: lambda text: text.replace(
+            "CATACLYSM_SKIPPED_HALF", "CATACLYSM_NO_SUCH_TOKEN")},
+        [sys.executable, "-m", "pytest",
+         "tools/tests/test_unreal_build.py", "-k", "skipped_half",
+         "-p", "no:randomly"],
+    )
+
+    assert (REPO_ROOT / target).read_bytes() == before, (
+        "the file must be back before the second run, and after it")
+
+    assert result.named_failures, (
+        f"the break should have fired a test. Summary: {result.summary!r}")
+    assert result.restored is not None, (
+        "break_and_run must fetch a second half itself. If this is None the "
+        "run after the restore did not happen, which is issue #1735 back.")
+    assert not result.restored.reported_a_failing_test, (
+        f"the same selection must pass with the file restored. Restored half: "
+        f"{result.restored.summary!r}")
+    assert result.proved, f"both halves held, so: {result.summary!r}"
+    assert result.summary.startswith("PROVED: ")
+
+
+def test_a_command_that_is_not_a_test_run_gets_no_second_half() -> None:
+    """`break_and_run` takes ANY command, and a second run of one that is not a
+    test runner says nothing the exit code did not.
+
+    `looks_like_a_test_run` already decided this question for `failed`; it
+    decides this one too rather than a new concept being invented for it.
+    """
+    result = break_and_run(
+        {"tools/prove_guard.py": lambda text: text.replace(
+            "REPO_ROOT", "REPO_ROOT_BROKEN")},
+        [sys.executable, "-c", "print('not a test run')"],
+    )
+
+    assert not result.looks_like_a_test_run
+    assert result.restored is None, (
+        "a command with no test output has no second half worth taking")
