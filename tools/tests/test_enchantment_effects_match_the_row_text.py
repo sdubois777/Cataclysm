@@ -179,8 +179,22 @@ JUDGED_NUMBERS = {
 #: 15%-30%", is built on the same condition and states no duration either. The
 #: third sibling says "for 3 seconds" and stays unwritten, because a duration
 #: needs a condition the pipeline has not got.
-AUTHORED_ROWS = 108
-AUTHORED_ENCHANTMENTS = 91
+#: AND 109 OVER 92 SINCE THE ULTIMATE LOCK, issue #1754: "Your ultimate ability
+#: cannot be used unless you are below 50% HP". ONE ROW OVER ONE ENCHANTMENT, so
+#: both numbers move by one -- the enchantment had no effect row at all before
+#: this, which is what makes it newly authored as well as newly rowed.
+#:
+#: IT IS THE FIRST ROW IN THE GAME TO USE `health_at_or_above`. Issue #1653 added
+#: that predicate for this exact sentence and closed, leaving the row unwritten
+#: and `docs/DECISIONS.md` still saying the predicate did not exist. Nothing used
+#: it for the whole time in between.
+#:
+#: THE SHAPE IS COPIED FROM THE MOVEMENT LOCK and not invented: same `skill_locked`
+#: stat, same `flat` 1, a slot tag in place of a slot tag and a condition in place
+#: of a condition. The only fields that differ are `Slot.Ultimate` for
+#: `Slot.Movement` and `health_at_or_above` 50 for `stationary_for_seconds` 2.
+AUTHORED_ROWS = 109
+AUTHORED_ENCHANTMENTS = 92
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's

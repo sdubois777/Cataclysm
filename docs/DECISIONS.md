@@ -2,6 +2,116 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — The ultimate-disabling enchantment is written, the predicate built for it is finally used, and a restriction inverts the unknown-reading rule
+
+**Affects:** the Enchantment Effects page of `docs/All_Things_Cataclysm.xlsx`, the
+`game/Data/EnchantmentEffects.csv` generated from it,
+`game/Content/Data/DT_EnchantmentEffects.uasset` built from that,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`,
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, `docs/README.md`.
+Issue [#1754](https://github.com/sdubois777/Cataclysm/issues/1754).
+
+### The row
+
+`EnchantmentsNegative.csv` has carried this sentence for a long time:
+
+> "Your ultimate ability cannot be used unless you are below 50% HP"
+
+It had **no effect row**, so it did nothing. One row now gives it one, copied from
+the movement lock that already works — the same `skill_locked` stat, `flat`, 1,
+with a slot tag in place of a slot tag and a condition in place of a condition:
+
+| | the working movement lock | this row |
+| :-- | :-- | :-- |
+| required tag | `Slot.Movement` | `Slot.Ultimate` |
+| condition | `stationary_for_seconds` 2 | `health_at_or_above` 50 |
+
+**Nothing else differs**, which is what made this one row rather than a mechanism.
+
+### A MECHANISM SAT FINISHED AND UNUSED WHILE THE DESIGN LOG SAID IT DID NOT EXIST
+
+Issue [#1653](https://github.com/sdubois777/Cataclysm/issues/1653) was titled *"Add
+`health_at_or_above`, which is what the ultimate-disabling enchantment needs"*. It
+added the predicate, wired it end to end with nine test references — **and closed
+with the row still unwritten.** No row in the game used it, and the 2026-09-12
+entry went on stating *"There is no `health_at_or_above`"* as the reason this row
+could not be built. That paragraph is corrected in place rather than deleted.
+
+**This is the shape a check now exists for**, added the same day in
+`tools/tests/test_every_condition_is_recorded_in_the_decisions_log.py`: a condition
+whose reasoning lives nowhere a reader will find it. Here the failure ran the other
+way — the log recorded an absence that had been filled — but the cause is the same,
+that **nothing notices a written statement quietly becoming false.**
+
+### THE BOUNDARY IS WHY THE PREDICATE EXISTS AND IT IS ONE CASE WIDE
+
+"Cannot be used unless you are **below** 50%" locks the skill **at** 50 as well as
+above it. `health_above` is strictly above, so a character parked on exactly half
+health would fire an ultimate the sentence forbids. **A test that checked full
+health and near-death would pass with the wrong predicate on the row**, so the test
+written here asserts at exactly half.
+
+### AN UNREADABLE HEALTH REFUSES, AND THE PROJECT'S RULE POINTS THE OTHER WAY
+
+`health_at_or_above` already refuses an unknown reading, and its comment names this
+very row. **That was not decided here; it was inherited.** Saying so because the
+rule this project states appears to disagree:
+
+> an unknown reading must never make a row **stronger** than its own sentence — a
+> bonus refuses, a drawback does not.
+
+**This is a drawback, so by the letter of that rule it should APPLY on an unknown
+and lock the ultimate. It does not.** The rule does not settle this case, and the
+reason is worth having:
+
+**The rule was written for conditions gating a bonus, or a drawback's magnitude,
+where "the row applies" and "the player loses" move together. This row grants a
+RESTRICTION, so they invert:**
+
+| | the row | the player |
+| :-- | :-- | :-- |
+| refuse on unknown | weaker than its sentence | **stronger** than intended |
+| apply on unknown | as its sentence | weaker, if truly below 50% |
+
+**Neither is safe in general**, because an unknown reading means nobody knows which
+side of the threshold the character is on.
+
+**What settles it is that the disagreement is unreachable.**
+`FCataclysmStatConditions::FromHealth` fills the reading whenever maximum health is
+above zero, and maximum health **cannot** be zero — `UCataclysmVitalAttributeSet`
+initialises it to 100 and floors it at 1, with the comment *"The one maximum that
+cannot be zero."* So health reads as unknown only for an ability system built with
+no vital attribute set: not a character, no health, and nothing that could use an
+ultimate ability.
+
+**If a drawback should ever bite on an unreadable reading as a general rule, that
+is a change to four health predicates and separate work.** It is not started here
+and nothing here waits on it.
+
+### Counts
+
+```
+game/Data/EnchantmentEffects.csv rows     108 -> 109
+AUTHORED_ROWS                             108 -> 109
+AUTHORED_ENCHANTMENTS                      91 ->  92
+the EnchantmentEffects pin in CataclysmDataTableTests.cpp   108 -> 109
+docs/README.md, Enchantment Effects       108 -> 109
+EnchantmentsNegative.csv                  196, UNCHANGED
+EnchantmentsPositive.csv                  379, UNCHANGED
+```
+
+**`AUTHORED_ENCHANTMENTS` moves because this enchantment had no effect row at
+all**, so the row makes it newly authored as well as newly rowed. **The two source
+lists do not move**: this adds an effect for an enchantment that already existed.
+
+**And `AUTHORED_ENCHANTMENTS` would not have been caught by running the test.** The
+row-count assertion sits above it in the same test and fails first, so the
+enchantment count is never reached until the row count is fixed. It was found by
+predicting which counts move, not by reading a failure.
+
+---
+
 ## 2026-09-13 — A modifier may ask whether a pool is at the top of its bar, "full" names the top rather than a number, and the argument for that does NOT transfer between pools
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
@@ -2368,22 +2478,38 @@ things this game has not got, and a larger piece of work than the lock was.
 nothing about the CSV row says so. The set rules are in the generator and the
 identifier is hidden in a column named for something else.
 
-### Four negative enchantments take a skill away, and three of them are blocked
+### Four negative enchantments take a skill away, and two of them are blocked
 
 | row | type | what blocks it |
 | :-- | :-- | :-- |
 | `Your own ultimate ability is disabled` | Set 14 | enemy-side silence, [#1652](https://github.com/sdubois777/Cataclysm/issues/1652) |
-| `Your ultimate ability cannot be used unless you are below 50% HP` | Generic | a missing predicate, [#1653](https://github.com/sdubois777/Cataclysm/issues/1653) |
+| `Your ultimate ability cannot be used unless you are below 50% HP` | Generic | **nothing** — written 2026-09-13, see the correction below |
 | `Can't use a basic attack` | Generic | the lock's own exemption, [#1651](https://github.com/sdubois777/Cataclysm/issues/1651) |
 | `You cannot use movement abilities while stationary for more than 2 seconds` | Generic | **nothing** |
 
 **The ultimate row fails on a boundary rather than on an idea.** "Cannot be used
-unless below 50%" means locked at or above 50, and the three health predicates are
-`health_at_or_below`, `health_below` and `health_above` — the last strictly above.
-There is no `health_at_or_above`, the pipeline has no "not", and a character can park
-on exactly half health and stay there, so `health_above` would let the ultimate fire
-where the row forbids it. That is the same reason `health_below` and
-`health_at_or_below` are two predicates and not one.
+unless below 50%" means locked at or above 50, and **at the time this was written**
+the three health predicates were `health_at_or_below`, `health_below` and
+`health_above` — the last strictly above. **There was no `health_at_or_above`**, the
+pipeline has no "not", and a character can park on exactly half health and stay
+there, so `health_above` would let the ultimate fire where the row forbids it. That
+is the same reason `health_below` and `health_at_or_below` are two predicates and
+not one.
+
+**THAT SENTENCE IS NO LONGER TRUE AND THE ROW IS WRITTEN**, on 2026-09-13. Issue
+[#1653](https://github.com/sdubois777/Cataclysm/issues/1653) added
+`health_at_or_above` **for this row specifically**, and then closed — leaving the
+row it was built for unwritten, and this paragraph standing as the reason it could
+not be. **Nothing in the game used the predicate at all** until issue
+[#1754](https://github.com/sdubois777/Cataclysm/issues/1754), so a finished
+mechanism sat unused while the design log said it did not exist.
+
+**A rule whose only evidence is an absence goes false without anybody touching
+it.** The paragraph was correct when written, the absence it describes was filled
+by a different change, and no test can notice a sentence that has stopped being
+true. **The file already contradicted itself**: an entry nearer the top lists
+`health_at_or_above` among the predicates that name health, and this one says there
+is none. Seven conditions name health now.
 
 **The basic-attack row fails on a decision taken in the entry below this one.** The
 refusal exempts the basic attack **unconditionally**, which is right for a
