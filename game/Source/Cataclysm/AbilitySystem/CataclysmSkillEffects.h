@@ -631,10 +631,35 @@ public:
 	 *
 	 * Separated from ApplyHit so a test can read the number without a defender,
 	 * and so the burning ground can price a tick the same way a hit is priced.
+	 *
+	 * THE FOUR PER-BLOW FACTS ARE ARGUMENTS BECAUSE THEY ARE NOT PROPERTIES OF
+	 * THE CHARACTER. Everything a condition can ask about the character -- its
+	 * health, the stacks it holds, the debuffs it carries, whether it is moving
+	 * -- `CurrentConditions` reads for itself. These four belong to the blow
+	 * being dealt and nothing can read them from the caster, so a caller that
+	 * knows them has to say. Issue #1729.
+	 *
+	 * EVERY ONE DEFAULTS TO "NOT KNOWN", AND THAT IS A REAL ANSWER RATHER THAN
+	 * A PLACEHOLDER. `-1.0f` is the convention the stat pipeline already uses
+	 * for "no blow in hand". A caller with no blow -- retaliation, a burn spread
+	 * priced from the caster's own attack, a patch of burning ground priced once
+	 * when it is created and deliberately not per tick -- passes nothing, and a
+	 * modifier conditioned on a per-blow fact correctly does not apply to it.
+	 *
+	 * @param SkillHealthCostPercent what the skill in hand cost in health, or -1
+	 * @param MetresMovedBeforeBlow  how far the caster moved since its own last
+	 *        attack, measured when the skill was paid for, or -1
+	 * @param TargetDistanceMetres   how far away the character being hit stood,
+	 *        or -1
+	 * @param bTargetIsStaggered     whether that character was staggered
 	 */
 	static float ModifiedDamage(const UAbilitySystemComponent* Source,
 								float BaseDamage,
-								const FGameplayTagContainer& SkillTags);
+								const FGameplayTagContainer& SkillTags,
+								float SkillHealthCostPercent = -1.0f,
+								float MetresMovedBeforeBlow = -1.0f,
+								float TargetDistanceMetres = -1.0f,
+								bool bTargetIsStaggered = false);
 
 	/**
 	 * Deal a hit of an amount already worked out.

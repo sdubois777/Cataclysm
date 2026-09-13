@@ -2700,4 +2700,127 @@ bool FCataclysmPricedHitAsksTheCharacterTest::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * Pricing a hit asks about the BLOW as well as about the character.
+ *
+ * WHAT WAS WRONG, AND IT IS THE SECOND HALF OF THE TEST ABOVE. Issue #1729.
+ * #1685 made `ModifiedDamage` ask the character what is true of it, which fixed
+ * every condition about health, stacks, debuffs and movement. It left the four
+ * facts that belong to the BLOW at their defaults -- the health cost paid, the
+ * distance moved, the target's distance, whether the target was staggered --
+ * because they are not properties of a character and the function did not have
+ * them. So a modifier conditioned on one was still judged against a world in
+ * which no blow exists, and was still silently worth nothing.
+ *
+ * WHY THE TEST ABOVE COULD NOT CATCH IT. It builds a modifier conditioned on
+ * the character's health. That is exactly the half that was fixed. A condition
+ * about the blow takes a different route through the same call and nothing
+ * exercised it.
+ *
+ * THE THIRD CHECK IS THE ONE THAT WOULD HAVE BEEN NEW. The first two are the
+ * same shape of control the test above uses, and the fourth is the case that
+ * must NOT change: a caller with no blow in hand still gets no increase, which
+ * is what retaliation, a burn spread and a patch of burning ground all are.
+ * Without that fourth check this test would pass just as happily if the
+ * defaults had been changed to "always true", which would be a worse fault than
+ * the one being fixed.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPricedHitAsksAboutTheBlowTest,
+	"Cataclysm.StatPipeline.PricingAHitAsksWhatIsTrueOfTheBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPricedHitAsksAboutTheBlowTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	// THE SAME FIXTURE AS THE TEST ABOVE, and for the same reason: writing an
+	// attribute needs an owner, and a bare NewObject component takes the whole
+	// automation run down rather than failing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("an actor to own the ability system"), Actor))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	// 50% INCREASED WHILE THE TARGET IS WITHIN FIVE METRES. Written large so a
+	// wrong answer is the base amount rather than something near it, and chosen
+	// because the distance is the per-blow fact that already reaches the
+	// pipeline from the item path -- so a failure here is this call site and not
+	// the condition itself.
+	FCataclysmStatModifier WhileClose = Increased(50.0f);
+	WhileClose.Condition = ECataclysmStatCondition::TargetWithinMetres;
+	WhileClose.ConditionValue = 5.0f;
+	TArray<FCataclysmStatModifier> Modifiers = { WhileClose };
+
+	// --- CONTROL ONE: the pipeline applies it when handed a target ---------
+
+	TestEqual(
+		TEXT("handed a state saying the target stands two metres away, the "
+			 "pipeline applies the increase"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags, TargetAt(2.0f)).Final,
+		150.0f, 0.01f);
+
+	// --- CONTROL TWO: and refuses when no target is known ------------------
+	//
+	// THIS IS WHAT MAKES THE THIRD CHECK MEAN ONE THING. The character's own
+	// reading of itself cannot satisfy this modifier, because a target distance
+	// is not something a character knows about itself. So if the priced hit
+	// below comes out at 150 it can only be because the distance was passed in.
+
+	TestEqual(
+		TEXT("and the character's own reading of itself does NOT satisfy it, "
+			 "because no character knows how far away it is being hit from"),
+		FPipeline::Evaluate(100.0f, Modifiers, NoTags,
+							AbilitySystem->CurrentConditions()).Final,
+		100.0f, 0.01f);
+
+	// --- THE SUBJECT -------------------------------------------------------
+
+	AbilitySystem->AddStatModifier(WhileClose);
+	TestEqual(TEXT("the character is holding it"),
+		AbilitySystem->GetStatModifiers().Num(), 1);
+
+	TestEqual(
+		TEXT("pricing a hit told the target stands two metres away applies it"),
+		UCataclysmSkillEffects::ModifiedDamage(
+			AbilitySystem, 100.0f, NoTags,
+			/*SkillHealthCostPercent=*/-1.0f,
+			/*MetresMovedBeforeBlow=*/-1.0f,
+			/*TargetDistanceMetres=*/2.0f),
+		150.0f, 0.01f);
+
+	// --- AND THE CASE THAT MUST NOT CHANGE ---------------------------------
+	//
+	// A CALLER WITH NO BLOW IN HAND STILL GETS NOTHING, and that is correct
+	// rather than a gap. Retaliation takes a defender and an amount; a burn
+	// spread prices the caster's own attack with no target chosen; a patch of
+	// burning ground is priced ONCE when it is created, deliberately not per
+	// tick, because it outlives the skill that left it. A modifier conditioned
+	// on the target's distance has no target to measure against in any of them.
+	//
+	// WITHOUT THIS CHECK the test would pass just as happily if "not known" had
+	// been made to satisfy every condition, which would be a worse fault than
+	// the silent zero being fixed: every conditional modifier would apply to
+	// everything.
+
+	TestEqual(
+		TEXT("and a hit priced with no blow in hand still gets no increase"),
+		UCataclysmSkillEffects::ModifiedDamage(AbilitySystem, 100.0f, NoTags),
+		100.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

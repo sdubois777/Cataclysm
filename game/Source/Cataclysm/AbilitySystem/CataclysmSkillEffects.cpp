@@ -492,7 +492,11 @@ float UCataclysmSkillEffects::DamageAgainstTypeOf(
 
 float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Source,
 											 float BaseDamage,
-											 const FGameplayTagContainer& SkillTags)
+											 const FGameplayTagContainer& SkillTags,
+											 float SkillHealthCostPercent,
+											 float MetresMovedBeforeBlow,
+											 float TargetDistanceMetres,
+											 bool bTargetIsStaggered)
 {
 	// An ability system component this project did not make carries no modifier
 	// list, which is not a fault: an enemy's plain melee attack goes through
@@ -532,16 +536,57 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 	// "PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than
 	// building its own and getting a different answer."
 	//
-	// THE PER-BLOW FACTS STAY AT THEIR DEFAULTS AND THAT IS DELIBERATE. The
-	// health cost paid, the blow being taken, the distance moved and the
-	// target's distance are not properties of the character, so `CurrentConditions`
-	// takes them as arguments and this function does not have them. Two of the
-	// four callers could supply them and two could not, so threading them is a
-	// larger change than this one. Every condition about the CHARACTER -- its
-	// health, its stacks, the debuffs it carries, the minions it commands,
-	// whether it is moving -- needs nothing from the caller and works now.
-	return UCataclysmStatPipeline::Evaluate(BaseDamage, Modifiers, SkillTags,
-											Cataclysm->CurrentConditions()).Final;
+	// AND THE PER-BLOW FACTS ARE NOW PASSED THROUGH. Issue #1729. They stayed at
+	// their defaults when #1685 was fixed, which left a condition about the BLOW
+	// -- the health cost paid, the distance moved, the target's distance, whether
+	// the target was staggered -- judged against a world in which no blow exists.
+	// That is the same silent zero as #1685, one layer in, and it cost nothing
+	// only because the two runtime modifiers the game adds are unconditional.
+	//
+	// ONLY ONE CALLER HAS ANYTHING TO PASS, MEASURED RATHER THAN ASSUMED.
+	// `ApplyHit` computes all four and was already handing them to `MoreForSkill`
+	// and `SpellDamageOf` three lines above its call to this function. The other
+	// four callers -- retaliation, two burn spreads and a patch of burning
+	// ground -- have no blow in hand and pass nothing, which is the correct
+	// answer for them rather than a gap:
+	//
+	//   retaliation prices ONE amount and pays it to every enemy in a sphere --
+	//     `UCataclysmRetaliation::Pay` calls `AmountFor` once, before its loop --
+	//     so there is no single target distance to pass rather than one that is
+	//     merely out of scope. Pricing per target would change what retaliation
+	//     IS, from one payment to a payment each, which is a design question;
+	//   a burn spread prices the caster's own attack with no target chosen;
+	//   burning ground is priced ONCE when the patch is created, deliberately
+	//     not per tick, because a patch outlives the skill that left it.
+	//
+	// So a modifier conditioned on a per-blow fact does not apply to those, and
+	// that is what the design says should happen.
+	//
+	// ONE OF THE FOUR IS A JUDGEMENT RATHER THAN A FACT, AND IT IS WORTH SAYING
+	// WHICH. The target's distance is genuinely absent at all four: there is no
+	// target, or there are many. The health cost a skill paid is different --
+	// a skill that cost health has a cost whether or not this function was
+	// handed it, and the two burn spreads simply do not have it in scope. It is
+	// "not known" today because nothing asks. `CataclysmSkillTemplate.cpp` at
+	// 1191 and 1292 both anticipate the caller that would: "a future ailment
+	// stating a percent of the hit would need exactly this number." Whoever
+	// writes that has to decide separately whether the per-blow conditions
+	// apply to it, and should not read these defaults as settling it.
+	//
+	// THE BLOW BEING TAKEN IS NOT AMONG THEM, AND IS NOT AN OMISSION.
+	// `CurrentConditions` also accepts an `FCataclysmBlowContext` describing a
+	// blow being TAKEN, for the conditions that ask what hit the character. This
+	// function prices a blow being DEALT, and the only caller in the project that
+	// supplies one is the defender-side stat lookup in
+	// `CataclysmAbilitySystemComponent.cpp`. Adding it here would be a parameter
+	// no caller could fill.
+	return UCataclysmStatPipeline::Evaluate(
+		BaseDamage, Modifiers, SkillTags,
+		Cataclysm->CurrentConditions(SkillHealthCostPercent,
+									 FCataclysmBlowContext(),
+									 MetresMovedBeforeBlow,
+									 TargetDistanceMetres,
+									 bTargetIsStaggered)).Final;
 }
 
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
@@ -719,11 +764,19 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 						TargetDistanceMetres, bTargetIsStaggered)
 		: 0.0f;
 
+	// THE SAME FOUR FACTS THE TWO CALLS ABOVE ALREADY USE. Issue #1729. They were
+	// computed for `MoreForSkill` and `SpellDamageOf` and then stopped here, so a
+	// runtime stat modifier conditioned on the blow was judged against no blow.
+	// This is the one call site in the project that has them.
 	const float Damage = ModifiedDamage(
 		Source,
 		(BeforeIncreases * DamagePercent / 100.0f + Flat)
 			* (1.0f + Applying + Conditional),
-		SkillTags);
+		SkillTags,
+		Delivery.SkillHealthCostPercent,
+		Delivery.MetresMovedBeforeBlow,
+		TargetDistanceMetres,
+		bTargetIsStaggered);
 	if (Damage <= 0.0f)
 	{
 		// A character with no weapon damage. Expected before a weapon is
