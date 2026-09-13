@@ -189,7 +189,7 @@ namespace CataclysmMinionOwnStatsTest
 // files concatenated with this one.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionOwnDamageTest,
-	"Cataclysm.MinionStats.AMinionDealsItsOwnDamageAndTheSummonersIncreasesDoNotReachIt",
+	"Cataclysm.MinionStats.AMinionDealsItsOwnDamageAndTheSummonersGeneralIncreasesDoNotReachIt",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -268,6 +268,14 @@ bool FCataclysmMinionOwnDamageTest::RunTest(const FString&)
 	// half that the flat damage path exists for: `ApplyHit` would run the
 	// summoner's own stat modifiers over the figure, and this one takes it as
 	// given. A doubling that reached the minion would be visible at once.
+	//
+	// `attack_damage` AND NOT `minion_damage`, AND THE DIFFERENCE IS THE WHOLE
+	// RULE. A stat that NAMES minions is meant to reach one -- the decision of
+	// 2026-08-06 says "Everything else is blocked unless a modifier names
+	// minions" -- and since issue #898 one does. This test is about the general
+	// increases a summoner carries, which stay blocked. The name of this test
+	// said "the summoner's increases" until then, which had become a wider claim
+	// than it measures; `Cataclysm.MinionGear` holds the other half.
 	{
 		FCataclysmStatModifier Doubling;
 		Doubling.Bucket = ECataclysmStatBucket::Increased;
