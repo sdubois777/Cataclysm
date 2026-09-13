@@ -3493,9 +3493,16 @@ CONDITIONS = {
     #
     # THE REASON THAT DOES APPLY IS THE LEVEL CURVE. `max_energy_shield` is 40
     # with 8 added per level, so the top of the bar moves as a character grows:
-    # a points threshold of 48 reads as "full" at level one and as about 40% of
+    # a points threshold of 40 is exactly full at level one and about 36% of
     # the bar at level ten. Points and percentage still disagree, over one
     # character's lifetime rather than between two classes.
+    #
+    # THAT SAID 48 AND 40% AND WAS WRONG: IT USED THE MINION LEVEL FORMULA.
+    # `UCataclysmClassStats::BaseFor` computes `Base + PerLevel * (Level - 1)`,
+    # so a level 1 character has exactly the base; the minion helper computes
+    # `Base + PerLevel * Level`. The bar is 40 at level one and 112 at level
+    # ten. 48 is the level TWO maximum, which is why the wrong figure read as
+    # plausible.
     #
     # A FUTURE "while your Energy Shield is above 75%" WANTS ITS OWN NAME, for
     # the same reason a future "while above 75 Fervour" does. That one is a
