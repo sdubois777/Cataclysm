@@ -72,6 +72,23 @@ changed the first 48 characters would have that cost and this one does not.
 The generator still reads exactly one range in the sentence, `(15.0, 30.0)`, so
 the count `STATED_RANGES` pins does not move either.
 
+### What the coverage moves to, and the four places that state it
+
+Read off the regenerated `game/Data/EnchantmentEffects.csv`, not added to the
+old figures: **107 rows over 90 enchantments**, from 103 over 88. Two
+enchantments and four rows, because a row about the damage a character's own
+skills deal becomes one row on attack damage and one on spell damage.
+
+| where | what it holds | what catches a stale one |
+| :-- | :-- | :-- |
+| `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` | the row count for this table | the Unreal automation run |
+| `docs/README.md` | a row count per workbook sheet | `test_docs_readme_sheet_table_is_true.py` |
+| `tools/tests/test_enchantment_effects_match_the_row_text.py` | `AUTHORED_ROWS` and `AUTHORED_ENCHANTMENTS` | its own test |
+| this entry | the same two numbers | **nothing** |
+
+**The two numbers do not move by the same amount**, which is why both are read
+rather than one inferred from the other: four rows over two enchantments.
+
 ### The other row this unblocks needed no such choice
 
 "Spells deal 20%-35% less damage while you are moving" states everything it

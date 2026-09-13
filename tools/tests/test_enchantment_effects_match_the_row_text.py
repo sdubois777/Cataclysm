@@ -157,8 +157,20 @@ JUDGED_NUMBERS = {
 #: the damage a character's own skills deal becomes one row on `attack_damage`
 #: and one on `spell_damage`, which is what the built "Melee skills deal
 #: 20%-40% increased damage" does. The two about damage TAKEN are one row each.
-AUTHORED_ROWS = 103
-AUTHORED_ENCHANTMENTS = 88
+#: AND 107 OVER 90 SINCE THE TWO ROWS THAT NEED A TAG AND A CONDITION AT ONCE,
+#: issue #1686: "Spells deal 20%-35% less damage while you are moving" and
+#: "Ranged skills deal 15%-30% less damage at close range (within 5 meters)".
+#: TWO ENCHANTMENTS AND FOUR ROWS, the same doubling as the entry above.
+#:
+#: THE SECOND SENTENCE GAINED ITS DISTANCE SO THIS FILE COULD KEEP REFUSING A
+#: HIDDEN NUMBER. `test_every_condition_value_appears_in_the_words_too` rejected
+#: the row while it said only "at close range", and it was right to:
+#: `target_within_metres` acts on a number the player could not read. The
+#: sentence was changed rather than this file. `docs/DECISIONS.md` carries why
+#: five metres, and why an appended clause is safe when a reworded opening is
+#: not.
+AUTHORED_ROWS = 107
+AUTHORED_ENCHANTMENTS = 90
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
