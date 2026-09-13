@@ -993,6 +993,25 @@ def exit_code_for(tests: TestOutcome | None) -> int:
     # `CLAUDE.md` tells every caller to do -- would read "everything is fine" from
     # a run that lost a test. Issue #1736.
     #
+    # NOT A NEW PRINCIPLE. The branch above already exits non-zero when the
+    # measurement cannot be trusted and no test failed: a run that reported no
+    # count, or a count of zero, fails here even though nothing failed. A refused
+    # registration is the same category -- a count that cannot be trusted --
+    # rather than a new kind of thing to fail on.
+    #
+    # AND PRINTING A LINE WAS ALREADY TRIED, BY THE ENGINE, AND DID NOT WORK.
+    # Unreal prints this refusal in plain words at every editor start. It did so
+    # across seven editor starts over five days while the missing test was being
+    # hunted, and nobody read it. Printing a line and stopping there would be
+    # choosing the one mechanism with a measured record of failing at this.
+    #
+    # MADE FATAL AT THE MOMENT THE COUNT WAS CLEAN, WHICH IS WHY IT COULD BE. On
+    # 2026-09-13, immediately after issue #1666 removed the only collision in the
+    # project, a whole-tree run reported 1,761 performed and zero refusals. So
+    # this breaks nothing on the day it lands. The same change a month later
+    # would have failed somebody's unrelated work and been blamed on this
+    # wrapper.
+    #
     # A SKIPPED HALF IS DELIBERATELY NOT TREATED THIS WAY. Continuous integration
     # and every worktree lack the Paragon art and report skipped halves on every
     # run, so failing on those would make the exit code carry no information at
