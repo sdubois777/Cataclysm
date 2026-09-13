@@ -128,6 +128,41 @@ public:
 	static const TMap<FString, FGameplayAttribute>& StatToAttribute();
 
 	/**
+	 * The stats deliberately carried WITHOUT a gameplay attribute, whose
+	 * increases bespoke code reads directly. Issues #898 and #1733.
+	 *
+	 * NOT A GAP AND NOT A LIST OF FAULTS. Every other stat with no attribute has
+	 * been one: #894 gave twelve of them attributes, #895 and #897 emptied their
+	 * shares, and the remaining three are here because they are meant to be.
+	 *
+	 * WHY THESE THREE CANNOT HAVE ONE. A minion's damage, health and attack
+	 * interval come from its own row in `game/Data/MinionTypes.csv`, raised by
+	 * its summoner's level. The summoner's gear and passives supply an INCREASE
+	 * to apply to that figure rather than a value of their own, so there is
+	 * nothing for an attribute to hold. An increase against a base of zero is
+	 * zero, which is why a stat like this is normally a defect.
+	 *
+	 * WHAT READS THEM. `UCataclysmCommand::AttackIntervalScaleFor` reads
+	 * `minion_attack_speed`; `ACataclysmMinion::AttackTarget` reads
+	 * `minion_damage` at the blow and `ACataclysmMinion::Spawn` reads
+	 * `minion_health` at the summoning. All three go through
+	 * `UCataclysmAbilitySystemComponent::IncreasesForStat`, which returns the
+	 * SUM of the increases rather than the stat's value.
+	 *
+	 * THIS LIST DOES REAL WORK, WHICH IS WHY IT IS THE ONE TO SHARE. `ApplyTo`
+	 * loops over it to record these stats onto a character. So adding a name has
+	 * an immediate effect rather than merely silencing a check, and a dead entry
+	 * of the kind issue #1025 produced cannot exist in it.
+	 *
+	 * RECORDING IS NOT READING, WHICH IS WHY THERE IS ALSO A KEEPER.
+	 * `minion_damage` was recorded and read by nothing between #1724 and #1732.
+	 * `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`
+	 * holds every name here to a probe that observes the reading code change its
+	 * answer, and fails by name when a name has none.
+	 */
+	static const TArray<FString>& StatsWithNoAttribute();
+
+	/**
 	 * Bases the engine states in C++, for stats no class line should name.
 	 *
 	 * WHAT IT IS FOR. An `increased` row multiplies a base, and a base of zero

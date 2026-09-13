@@ -2044,7 +2044,30 @@ bool FCataclysmPassiveStatsHaveAttributesTest::RunTest(const FString&)
 	const TMap<FString, FGameplayAttribute>& Attributes =
 		UCataclysmPlayerClassStats::StatToAttribute();
 
+	// AND THE STATS THAT DELIBERATELY HAVE NO ATTRIBUTE. Issue #1733.
+	//
+	// THE REASON ABOVE STOPPED BEING TRUE WHEN #1724 MERGED, and this is where
+	// it shows. `ApplyTo` no longer loops only over `StatToAttribute`: a third
+	// pass loops over `StatsWithNoAttribute()` and RECORDS those stats without
+	// writing any attribute, so a passive row naming one of them is not dropped.
+	// Bespoke code reads their increases directly --
+	// `UCataclysmCommand::AttackIntervalScaleFor`,
+	// `ACataclysmMinion::AttackTarget` and `ACataclysmMinion::Spawn`.
+	//
+	// READ FROM THE ENGINE'S OWN LIST RATHER THAN RESTATED HERE, so this test
+	// and the code it checks cannot disagree about which stats are exempt. Three
+	// places needed these names and each had its own copy before #1733.
+	//
+	// AN EXEMPTION IS A PROMISE AND THIS TEST DOES NOT KEEP IT. All it does is
+	// stop refusing them. That every name on that list is really read by code is
+	// held by
+	// `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`,
+	// which is the half issue #1025 was missing.
+	const TArray<FString>& Exempt =
+		UCataclysmPlayerClassStats::StatsWithNoAttribute();
+
 	int32 Checked = 0;
+	int32 Exempted = 0;
 	for (const TPair<FName, uint8*>& Row : EffectTable->GetRowMap())
 	{
 		const auto* Effect =
@@ -2055,11 +2078,26 @@ bool FCataclysmPassiveStatsHaveAttributesTest::RunTest(const FString&)
 		}
 
 		++Checked;
+		if (Exempt.Contains(Effect->Stat))
+		{
+			++Exempted;
+			continue;
+		}
+
 		TestTrue(*FString::Printf(
 					 TEXT("%s grants '%s', which has an attribute behind it"),
 					 *Row.Key.ToString(), *Effect->Stat),
 				 Attributes.Contains(Effect->Stat));
 	}
+
+	// AND SAY HOW MANY TOOK THE EXEMPTION, so a build where the exemption
+	// swallowed everything is visible rather than silently green. A reader who
+	// sees this climb without the list growing has found a misspelling that
+	// happens to match an exempt name.
+	AddInfo(FString::Printf(
+		TEXT("%d passive rows checked, %d of them exempt from needing an "
+			 "attribute"),
+		Checked, Exempted));
 
 	// Without this the loop above passes on an empty table, which is what a
 	// stale or unbuilt asset looks like.

@@ -790,7 +790,22 @@ def stats() -> set[str]:
             # nearest a Python test can get to holding the other side of it. The
             # rest is held in the engine, by
             # `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`.
-            | set(gen.ENGINE_SUPPLIED_BASES))
+            | set(gen.ENGINE_SUPPLIED_BASES)
+            # AND THE STATS THAT DELIBERATELY HAVE NO ATTRIBUTE, since #1733.
+            #
+            # A DIFFERENT KIND OF ENTRY FROM THE LINE ABOVE, and the difference
+            # is the whole reason it is a separate call. `ENGINE_SUPPLIED_BASES`
+            # promises code puts a BASE on the character. These three have no
+            # base and can have none: a minion's damage, health and attack
+            # interval come from its own type row, and a summoner's gear supplies
+            # an increase to apply to that rather than a value of its own.
+            #
+            # READ OUT OF THE C++ RATHER THAN RESTATED. `ENGINE_SUPPLIED_BASES`
+            # is a Python restatement held honest by a symbol-existence check;
+            # this one cannot drift because there is only one list.
+            # `test_the_exempt_stats_are_read_from_the_engine` below states what
+            # that parse is allowed to return.
+            | gen.stats_with_no_attribute())
 
 
 @pytest.fixture(scope="module")
@@ -2084,6 +2099,45 @@ def test_no_node_is_worth_nothing_to_its_own_class(effects):
         + "\n\nEither give the class a base -- a flat row on a node in the same "
           "tree is how issue #1105 was fixed -- or take the node's rows off a "
           "stat it cannot have.")
+
+
+def test_the_exempt_stats_are_read_from_the_engine():
+    """The stats exempt from needing an attribute come out of the C++, not a copy.
+
+    WHAT THIS GUARDS, AND IT IS THE PARSE RATHER THAN THE NAMES. `gen.
+    stats_with_no_attribute()` reads
+    `UCataclysmPlayerClassStats::StatsWithNoAttribute()` out of the engine source.
+    If that accessor is renamed or reshaped, the regex stops matching. A parse
+    that returned an empty set on failure would silently refuse every passive row
+    that needs the exemption, and the error would name a data row rather than the
+    parse -- which is the wrong place to look and the expensive kind of wrong.
+
+    SO THE FUNCTION RAISES AND THIS CHECKS IT RETURNS SOMETHING, rather than
+    checking for particular names. Naming the three here would put back the second
+    copy the whole change exists to remove: the point is that Python holds no
+    list, so a name added or removed in the C++ needs no edit here.
+
+    IT DOES ASSERT THE SHAPE, because a parse that matched the wrong construct
+    could return real-looking rubbish. Every name is a lower-case stat identifier,
+    which is what every stat name in this project is.
+
+    WHAT IT CANNOT CHECK: that anything READS these stats. That is an exemption's
+    promise, it is held in the engine by
+    `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, and issue
+    #1025 is what an unkept one costs.
+    """
+    names = gen.stats_with_no_attribute()
+
+    assert names, (
+        "the exempt-stat list parsed to nothing. gen.stats_with_no_attribute() "
+        "raises rather than returning empty, so reaching this means the "
+        "contract changed.")
+
+    for name in names:
+        assert re.fullmatch(r"[a-z][a-z0-9_]*", name), (
+            f"{name!r} came out of the exempt-stat parse and is not shaped like "
+            f"a stat name, so the regex is matching the wrong construct in "
+            f"CataclysmPlayerClassStats.cpp.")
 
 
 def test_every_engine_supplied_base_names_code_that_exists():

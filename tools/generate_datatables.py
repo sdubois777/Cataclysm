@@ -4273,6 +4273,71 @@ ENGINE_SUPPLIED_BASES = {
 }
 
 
+#: Where the engine keeps the stats that deliberately have NO gameplay attribute.
+PLAYER_CLASS_STATS_CPP = (
+    REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+    / "CataclysmPlayerClassStats.cpp")
+
+#: The shape of that accessor, so a rename fails loudly here rather than
+#: silently returning an empty set and refusing every row that needs it.
+_STATS_WITH_NO_ATTRIBUTE = re.compile(
+    r"UCataclysmPlayerClassStats::StatsWithNoAttribute\(\)\s*\{.*?"
+    r"static const TArray<FString> Stats = \{(?P<body>.*?)\};",
+    re.S)
+
+
+def stats_with_no_attribute() -> set[str]:
+    """The stats exempt from needing a gameplay attribute, READ FROM THE ENGINE.
+
+    NOT RESTATED HERE, AND THAT IS THE WHOLE POINT. `ENGINE_SUPPLIED_BASES` above
+    is a Python restatement of a C++ fact, held honest only by a test checking the
+    named symbols exist. This one cannot drift, because there is only one list and
+    Python reads it.
+
+    WHY THESE STATS ARE EXEMPT. A minion's damage, health and attack interval come
+    from its own row in `game/Data/MinionTypes.csv`, raised by its summoner's
+    level. A summoner's gear supplies an INCREASE to apply to that figure rather
+    than a value of its own, so there is nothing for an attribute to hold. An
+    increase against a base of zero is zero, which is why a stat like this is
+    normally a defect and why the exemption is named rather than inferred.
+    Issues #898 and #1733.
+
+    AN EXEMPTION IS A PROMISE AND THIS DOES NOT KEEP IT. All this does is stop the
+    sheet being refused. That every name here is really read by code is held by
+    `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, which grants
+    each stat and asserts the reading code answers differently. Issue #1025 is what
+    an unkept exemption costs: one inert entry, one node converting damage for zero
+    seconds, and five further nodes starved.
+
+    RAISES RATHER THAN RETURNING EMPTY when the accessor cannot be found. An empty
+    set would silently refuse every row that needs the exemption, and the error
+    would name the row rather than the parse — which is the wrong place to look.
+    """
+    if not PLAYER_CLASS_STATS_CPP.is_file():
+        raise DataError(
+            f"{PLAYER_CLASS_STATS_CPP} is missing, so the stats exempt from "
+            f"needing a gameplay attribute cannot be read. That file holds the "
+            f"one list; this module does not keep a copy on purpose.")
+
+    source = PLAYER_CLASS_STATS_CPP.read_text(encoding="utf-8", errors="replace")
+    found = _STATS_WITH_NO_ATTRIBUTE.search(source)
+    if not found:
+        raise DataError(
+            f"could not find UCataclysmPlayerClassStats::StatsWithNoAttribute() "
+            f"in {PLAYER_CLASS_STATS_CPP.name}. If it was renamed or reshaped, "
+            f"update _STATS_WITH_NO_ATTRIBUTE here rather than restating the "
+            f"names, so the two cannot disagree.")
+
+    names = set(re.findall(r'TEXT\("(\w+)"\)', found.group("body")))
+    if not names:
+        raise DataError(
+            f"UCataclysmPlayerClassStats::StatsWithNoAttribute() was found in "
+            f"{PLAYER_CLASS_STATS_CPP.name} and parsed to nothing. An empty "
+            f"exemption refuses every row that needs it, so this is raised here "
+            f"rather than reported later against a row.")
+    return names
+
+
 def validate_passive_effects(tables: dict[str, list[dict]],
                              known: set[str]) -> list[str]:
     """Every passive effect names a real node, a real stat and declared tags.
@@ -4344,7 +4409,8 @@ def validate_passive_effects(tables: dict[str, list[dict]],
              if str(row["ValueKind"]).lower() == "flat"} | \
             item_base_flat_stats(tables.get("ItemBases")) | \
             item_base_column_stats(tables.get("ItemBases")) | \
-            set(ENGINE_SUPPLIED_BASES)
+            set(ENGINE_SUPPLIED_BASES) | \
+            stats_with_no_attribute()
 
     problems = []
     for row in effects:
@@ -4405,6 +4471,11 @@ def _stats_with_a_base(tables: dict[str, list[dict]]) -> set[str]:
     That function still builds it inline; moving it onto this helper waits for
     the passive-tree work on another branch to merge, for the reason
     `_condition_and_scale` gives.
+
+    SO THE TWO HAVE TO BE WIDENED TOGETHER, which is why the exempt stats are
+    here as well as there. Issue #1733. Widening only the passive one would make
+    the sentence above false and would leave an enchantment naming a minion stat
+    refused for a reason that no longer applies to the identical passive row.
     """
     class_rows = tables.get("ClassStats")
     attribute_rows = tables.get("Attributes")
@@ -4413,7 +4484,8 @@ def _stats_with_a_base(tables: dict[str, list[dict]]) -> set[str]:
                if attribute_rows else set())
             | item_base_flat_stats(tables.get("ItemBases"))
             | item_base_column_stats(tables.get("ItemBases"))
-            | set(ENGINE_SUPPLIED_BASES))
+            | set(ENGINE_SUPPLIED_BASES)
+            | stats_with_no_attribute())
 
 
 def validate_enchantment_effects(tables: dict[str, list[dict]],
