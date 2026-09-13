@@ -409,7 +409,19 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: rows rather than five: `In Among Them` says "you deal 2% more damage"
 #: without naming a type, which the decision of 2026-08-25 makes attack
 #: damage AND spell damage, and `Wade In` names two stats in one sentence.
-AUTHORED_ROWS = 216
+#: AND TO 223 ON 2026-09-13, for the six nodes that were the ONLY six of the 73
+#: unbuilt Ravager and Ritualist nodes that could be authored at all. Issue
+#: #1718 surveys the other 67 and names the mechanism each waits on. Seven rows
+#: rather than six: `Wearing Blows` grants a chance at both debuffs in one
+#: sentence.
+#:
+#: FIVE OF THE SEVEN ARE FLAT AND NOT INCREASED. `CrippleChance` and
+#: `WeakenChance` both start at zero, and the pipeline computes
+#: `(base + flat) * (1 + increases)`, so an increase against a base of nothing
+#: is worth nothing. `bleed_on_crit_chance` and `debuff_spread_chance` are the
+#: existing rows of that shape; `crit_chance` uses `increased` and is right to,
+#: because it has a real base of 5.
+AUTHORED_ROWS = 223
 
 #: How many of the 293 nodes have an authored effect.
 #:
@@ -637,7 +649,17 @@ AUTHORED_ROWS = 216
 #: of its three options -- which is exactly the blind spot
 #: `AUTHORED_OPTIONS` below exists to cover. The Ravager is now 38 of
 #: its 74.
-AUTHORED_NODES = 153
+#: AND TO 159 ON 2026-09-13. Six nodes, and they are the whole of what could be
+#: authored: issue #1718 surveyed all 73 unbuilt Ravager and Ritualist nodes and
+#: found six writable with the stats, conditions and scales that exist. The
+#: other 67 wait on about a dozen mechanisms, the largest group being the 14
+#: that need the three minion stats of #898.
+#:
+#: SO THIS NUMBER IS NOW NEAR ITS CEILING UNTIL A MECHANISM LANDS, which is
+#: worth saying beside a figure described as what the feature is judged on. It
+#: cannot be raised again by authoring; the next rise has to be bought with
+#: code.
+AUTHORED_NODES = 159
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -948,7 +970,13 @@ CONDITION_WORDS = {
     # writes the first such row has to either reword the node or widen this
     # entry, rather than discovering later that the row and the sentence
     # disagreed.
-    "stationary_for_seconds": ("stationary for", "{value:g} second"),
+    # WIDENED ON 2026-09-13, WHICH IS WHAT THE PARAGRAPH ABOVE SAID TO DO. The
+    # Ritualist's `Unbroken Focus` is the first row to carry this condition and
+    # it is written the second way: "while you have not moved for 2 seconds".
+    # The prose is good and says exactly what the condition means, so the entry
+    # widened rather than the node being reworded to suit a test.
+    "stationary_for_seconds": (("stationary for", "not moved for"),
+                               "{value:g} second"),
 
     # "while you have not attacked in the last 3 seconds" is the only wording in
     # the trees, and "not attacked" is unique to it.
@@ -1041,9 +1069,24 @@ def test_a_condition_matches_the_words_of_the_node_it_is_on(effects, nodes):
 
         described = words_of(row, nodes)
         words = described.lower()
-        assert expected_words in words, (
+
+        # ONE FRAGMENT OR SEVERAL, AND SEVERAL MEANS "ANY OF THESE WILL DO".
+        # A condition can be stated in more than one natural way -- "remaining
+        # stationary for 2 seconds" and "you have not moved for 2 seconds" are
+        # the same promise -- and a single fragment forces the design prose to
+        # be worded around this test. Widening the entry is what the comment on
+        # `stationary_for_seconds` says to do in that case; this is what makes
+        # widening possible.
+        #
+        # IT DOES NOT WEAKEN THE CHECK. Every alternative still has to appear in
+        # the sentence, so a row whose description says none of them fails
+        # exactly as before. What it stops is a row failing because the designer
+        # chose the other true wording.
+        allowed = ((expected_words,) if isinstance(expected_words, str)
+                   else tuple(expected_words))
+        assert any(fragment in words for fragment in allowed), (
             f"{row['Node']} carries the condition {condition!r} and its "
-            f"description does not say {expected_words!r}:\n"
+            f"description says none of {list(allowed)!r}:\n"
             f"    {described}"
         )
 
@@ -1352,6 +1395,15 @@ def test_a_scale_is_actually_used(effects):
 #: that is a plain count, like Low Life's "10 Fervour per second", still has
 #: nowhere to say so.
 VALUE_FORMS = {
+    # THE TWO DEBUFF CHANCES, WHICH ARE THE FIRST TWO FLAT ROWS ON ONE NODE.
+    # The Ravager's `Wearing Blows` reads "+2% chance to Cripple and +2% chance
+    # to Weaken on melee hit per point", so both its rows carry the same number
+    # and without these entries each is checked against the same "2%" -- and a
+    # workbook that swapped them would pass. Issue #990. The words that follow
+    # each number are what tell them apart.
+    "cripple_chance": "{value:g}% chance to Cripple",
+    "weaken_chance": "{value:g}% chance to Weaken",
+
     "health_debt_delay_extension": "{value:g} second",
 
     # A PLAIN COUNT OF FERVOUR, which is the last form issue #990 named and had

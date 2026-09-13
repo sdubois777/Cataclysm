@@ -385,7 +385,17 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// attack damage AND spell damage by the decision of 2026-08-25, and `Wade
 	// In` names two stats in one sentence. They are also the first rows to
 	// carry a `ReachMetres`, which is the radius the count is taken inside.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        216)
+	//
+	// AND 223 SINCE THE SIX AUTHORABLE NODES WERE AUTHORED, which is every node
+	// of the 73 still unbuilt across the Ravager and the Ritualist that could be
+	// written at all. Issue #1718 surveys the other 67 and names what each
+	// waits on. Seven rows rather than six: `Wearing Blows` grants a chance at
+	// both debuffs in one sentence.
+	//
+	// FIVE OF THE SEVEN ARE FLAT AND NOT INCREASED, because `CrippleChance` and
+	// `WeakenChance` both start at zero and `(base + flat) * (1 + increases)`
+	// makes an increase against nothing worth nothing.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        223)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

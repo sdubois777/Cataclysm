@@ -215,3 +215,10 @@ Ravager_keystone_d_kB#1,Ravager_keystone_d_kB,attack_damage,more,2.0,,,0.0,enemi
 Ravager_keystone_d_kB#2,Ravager_keystone_d_kB,spell_damage,more,2.0,,,0.0,enemies_in_reach,1.0,0,4.0
 Ravager_capstone_25#2,Ravager_capstone_25,armor,increased,3.0,,,0.0,enemies_in_reach,1.0,1,4.0
 Ravager_capstone_25#3,Ravager_capstone_25,attack_damage,increased,3.0,,,0.0,enemies_in_reach,1.0,1,4.0
+Ravager_basic_spine_007#1,Ravager_basic_spine_007,cripple_chance,flat,2.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_spine_007#2,Ravager_basic_spine_007,weaken_chance,flat,2.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_c_stem0#1,Ravager_basic_c_stem0,cripple_chance,flat,3.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_c_stem1#1,Ravager_basic_c_stem1,weaken_chance,flat,3.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_c_a0#1,Ravager_basic_c_a0,cripple_chance,flat,4.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_c_b0#1,Ravager_basic_c_b0,weaken_chance,flat,4.0,,,0.0,,0.0,0,-1.0
+Ritualist_basic_d_b2#1,Ritualist_basic_d_b2,spell_damage,increased,2.0,,stationary_for_seconds,2.0,,0.0,0,-1.0
