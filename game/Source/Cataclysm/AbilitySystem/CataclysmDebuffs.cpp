@@ -214,6 +214,18 @@ FGameplayTag UCataclysmDebuffs::BleedTag()
 		FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
 }
 
+FGameplayTag UCataclysmDebuffs::CrippleTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Status.Debuff.Cripple")), /*ErrorIfNotFound=*/false);
+}
+
+FGameplayTag UCataclysmDebuffs::WeakenTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Status.Debuff.Weaken")), /*ErrorIfNotFound=*/false);
+}
+
 bool UCataclysmDebuffs::IsBleeding(const UAbilitySystemComponent* AbilitySystem)
 {
 	const FGameplayTag Bleed = BleedTag();

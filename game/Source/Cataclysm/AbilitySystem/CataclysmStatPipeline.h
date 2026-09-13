@@ -620,6 +620,86 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	EnemiesInReachAtLeast
 		UMETA(DisplayName = "Enemies In Reach At Least"),
+
+	/**
+	 * The character being HIT is carrying Cripple. Issue #1515.
+	 *
+	 * `Ravager_basic_c_a2` Run Them Ragged is the node: "+2% increased Attack
+	 * Damage per point against Crippled enemies."
+	 *
+	 * THE FIRST CONDITION THAT READS AN AILMENT ON THE OTHER CHARACTER, and it
+	 * is built as the staggered pair above is: a fact about the target read
+	 * where the blow is struck and carried into the lookup, not a search done
+	 * inside `ConditionHolds`. The pipeline is handed facts and judges them; it
+	 * has no actor to ask.
+	 *
+	 * WHAT "CARRYING" MEANS IS THE EXPLICIT TAG AND NOT AN IMPLIED PARENT.
+	 * `UCataclysmDebuffs::TagsOnActor` returns what was really applied, one
+	 * entry per effect, and `HasTagExact` compares those. Asking `HasTag` would
+	 * match a child tag nobody applied the day the branch grew one.
+	 *
+	 * A CHARACTER SHEET WITH NO TARGET GETS NOTHING, the refusal every blow
+	 * predicate makes. `TargetDebuffs` is empty for a caller with no target, so
+	 * this answers false rather than holding by accident.
+	 */
+	TargetCarriesCripple
+		UMETA(DisplayName = "Target Carries Cripple"),
+
+	/**
+	 * The character being HIT is carrying Cripple AND Weaken at once. Issue
+	 * #1515.
+	 *
+	 * `Ravager_basic_c_c1` Nothing Left In Them is the node: "+2% increased
+	 * Attack Damage per point against enemies that are both Crippled and
+	 * Weakened."
+	 *
+	 * ONE NAME AND NOT TWO ROWS, AND THAT IS ARITHMETIC RATHER THAN TASTE.
+	 * `UCataclysmStatPipeline::Accumulate` sums increases, so a row for each
+	 * ailment would pay when EITHER is present and pay TWICE when both are. The
+	 * node's sentence says it pays when both are present and not otherwise, and
+	 * only one condition can say that: a modifier carries one condition.
+	 *
+	 * IT DOES NOT SCALE AND THAT IS DELIBERATE. Twenty-seven debuffs, two ends
+	 * of the blow and every combination is not a vocabulary. A name is added
+	 * when a node's own sentence names the ailment, never speculatively, and at
+	 * a fourth and fifth the right answer is a column naming the ailment on the
+	 * row instead. `docs/DECISIONS.md` carries that rule so the person adding
+	 * the sixth reads it before this comment.
+	 */
+	TargetCarriesCrippleAndWeaken
+		UMETA(DisplayName = "Target Carries Cripple And Weaken"),
+
+	/**
+	 * Whoever threw the blow is carrying Weaken. Issue #1515.
+	 *
+	 * THE MIRROR OF `TargetCarriesCripple` ABOVE, READING A DIFFERENT FIELD, and
+	 * that is the whole safeguard -- the same one `OpponentIsStaggered` and
+	 * `TargetIsStaggered` rely on. The blow record is filled only on the
+	 * defender's damage taken lookup and `TargetDebuffs` only on the attacker's
+	 * own lookups, so a row carrying the wrong one of this pair reads a field
+	 * nothing filled and grants nothing, rather than reading the ailments of the
+	 * character at the other end of the blow.
+	 *
+	 * "AGAINST ENEMIES YOU HAVE WEAKENED" IS READ AS "AN ENEMY CARRYING WEAKEN".
+	 * `Ravager_basic_c_b2` Wearing Them Down words it the first way, and nothing
+	 * in the game records who applied a debuff: a tag has no applier, and
+	 * `UCataclysmAilments` reads the instigator at the moment of application and
+	 * passes it on rather than storing it. The bonus already shipped for this
+	 * idea does not ask either -- `UCataclysmDebuffs::DamageAgainstSharedDebuff`,
+	 * "enemies carrying a debuff you also carry", compares two tag lists.
+	 * `docs/DECISIONS.md` carries the ruling and says the stricter reading
+	 * remains available and would need its own mechanism.
+	 *
+	 * NO ROW USES THIS YET, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT.
+	 * Wearing Them Down grants increased DAMAGE REDUCTION, and
+	 * `UCataclysmDamageCalculation::Resolve` does not hand the blow to its
+	 * damage reduction lookup -- only to the damage taken one. Which of the two
+	 * stats that row should use is with the project owner on issue #1748, and
+	 * the answer decides whether a line in `Resolve` changes. The condition is
+	 * correct for either answer, which is why it is here now.
+	 */
+	OpponentCarriesWeaken
+		UMETA(DisplayName = "Opponent Carries Weaken"),
 };
 
 /**
@@ -912,6 +992,29 @@ struct CATACLYSM_API FCataclysmBlowContext
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bOpponentIsStaggered = false;
+
+	/**
+	 * The debuffs the character on the other side of the blow is carrying, as
+	 * the explicit tags `UCataclysmDebuffs::TagsOnActor` returns. Issue #1515.
+	 *
+	 * A CONTAINER RATHER THAN A BOOLEAN PER AILMENT, and the reason is the
+	 * signature chain rather than this struct. A fact about the target has to be
+	 * read where the blow is struck and threaded through every lookup between
+	 * there and `ConditionHolds`; `bOpponentIsStaggered` above costs one
+	 * parameter on each of eight of them. Twenty-seven debuffs cannot each cost
+	 * that, so the tags travel once and a condition names the one it wants.
+	 *
+	 * EMPTY IS "NO BLOW, OR NOTHING CARRIED", AND BOTH CORRECTLY REFUSE. A
+	 * character sheet built with no blow leaves it empty, so a bonus against a
+	 * Weakened attacker is withheld from it, which is the argument every other
+	 * field here makes.
+	 *
+	 * A DAMAGE OVER TIME TICK CARRIES NONE OF THEM. `BlowContextFor` returns a
+	 * default-constructed context for a tick before reading any field, so this
+	 * is empty there with no special case, the same as every fact beside it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FGameplayTagContainer OpponentDebuffs;
 };
 
 /**
@@ -1273,6 +1376,34 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	TArray<float> HostileDistancesMetres;
+
+	/**
+	 * The debuffs the character being HIT is carrying, as the explicit tags
+	 * `UCataclysmDebuffs::TagsOnActor` returns. Issue #1515.
+	 *
+	 * THE MIRROR OF `FCataclysmBlowContext::OpponentDebuffs`, READING THE OTHER
+	 * END OF THE BLOW, and the pair is separate for the reason
+	 * `bTargetIsStaggered` and `bOpponentIsStaggered` are: the blow record is
+	 * filled only on the defender's damage taken lookup and this only on the
+	 * attacker's own lookups, so a row carrying the wrong condition of a pair
+	 * reads a field nothing filled and grants nothing.
+	 *
+	 * FILLED ONLY WHEN A ROW ACTUALLY ASKS, exactly as
+	 * `HostileDistancesMetres` above is, and for a cost this project has already
+	 * named. `UCataclysmDebuffs::DamageAgainstSharedDebuff` reads its stat before
+	 * comparing anything and says why: "asking the other way round would walk two
+	 * tag containers on every blow anybody strikes." A walk here would be a third,
+	 * on every blow every creature throws. `UCataclysmAbilitySystemComponent::
+	 * WithTargetAilments` is the gate, and its whole cost to a lookup that asks
+	 * about no ailment is one pass over that stat's own modifier list.
+	 *
+	 * EMPTY IS "NO TARGET, NOTHING CARRIED, OR NO ROW ASKED", AND ALL THREE
+	 * CORRECTLY REFUSE. The third is not a hidden failure: a lookup with no row
+	 * asking has no condition to answer, so there is nothing for the empty
+	 * container to be wrong about.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FGameplayTagContainer TargetDebuffs;
 
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)

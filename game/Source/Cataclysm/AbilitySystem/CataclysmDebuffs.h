@@ -217,6 +217,27 @@ public:
 	static FGameplayTag BleedTag();
 
 	/**
+	 * `Status.Debuff.Cripple`, or an invalid tag if the vocabulary has lost it.
+	 * Issue #1515.
+	 *
+	 * HERE RATHER THAN WHERE IT IS READ, so the tag name is written once. The
+	 * stat pipeline judges two conditions that name Cripple and one that names
+	 * Weaken; `UCataclysmAilments` already names both in its own table, and a
+	 * third and fourth copy of the string is how a renamed effect leaves a
+	 * condition matching nothing while every test still passes.
+	 *
+	 * REQUESTED BY NAME RATHER THAN DECLARED AS A NATIVE TAG, for the reason
+	 * `BleedTag` above gives: a native declaration would create the tag whether
+	 * or not the workbook still lists it, hiding exactly the disagreement that
+	 * matters.
+	 */
+	static FGameplayTag CrippleTag();
+
+	/** `Status.Debuff.Weaken`, or an invalid tag if the vocabulary has lost it.
+	 *  The sibling of `CrippleTag` above and requested the same way. */
+	static FGameplayTag WeakenTag();
+
+	/**
 	 * Whether this character is Bleeding, which Thirst for Pain asks.
 	 *
 	 * A CHILD OF THE DAMAGE OVER TIME BRANCH, so a character that is Bleeding is
