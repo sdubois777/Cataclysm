@@ -1051,9 +1051,11 @@ bool FCataclysmEnchantmentUltimateLockTest::RunTest(const FString& Parameters)
 	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
 	const FName Stat = FName(UCataclysmSkillSlots::LockedStat);
 
-	// A THOUSAND, SO THE BOUNDARY IS EXACT. 500 of 1000 is exactly 0.5 and exactly
-	// 50.0 after the multiplication, both being representable, so "at or above 50"
-	// is tested at 50 rather than near it.
+	// A STARTING STATE OF FULL HEALTH, AND NOTHING MORE. This maximum does NOT
+	// decide the boundary arithmetic below: equipping the helm runs
+	// `RefreshAttributes`, which recomputes maximum health from the gear and
+	// replaces this figure. The half-health reads further down take the maximum
+	// as it is at that moment instead.
 	constexpr float PoolMax = 1000.0f;
 	ASC->SetNumericAttributeBase(
 		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), PoolMax);
@@ -1086,25 +1088,49 @@ bool FCataclysmEnchantmentUltimateLockTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and shows nothing with no skill in hand"),
 			  ASC->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 0.0f, 0.001f);
 
+	// THE MAXIMUM IS READ HERE AND NOT ASSUMED, BECAUSE EQUIPPING CHANGES IT.
+	// `RefreshAttributes` recomputes the character's attributes from the gear it
+	// is wearing, so a maximum health written before the helm went on does not
+	// survive putting it on. The first version of this test wrote 1000 up front
+	// and then set health to 500 expecting half; the maximum was 510 by then, so
+	// 500 was 98% and the lock held for a reason the test was not testing.
+	const float MaxHealthNow = ASC->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the character has a maximum health to take half of"),
+				  MaxHealthNow > 1.0f))
+	{
+		return false;
+	}
+
 	// EXACTLY HALF, AND STILL LOCKED. This is the assertion the predicate exists
 	// for, and the one that fails if the row is ever written with `health_above`.
 	// No refresh between this read and the last: the condition is judged when the
 	// question is asked, not when the gear was put on.
+	//
+	// THE HEALTH IS ASSERTED BEFORE THE LOCK IS, and that is what caught the fault
+	// above. A write that does not land leaves the character at full health, where
+	// the lock holds for the WRONG reason and the behaviour assertion reads as a
+	// pass.
 	ASC->SetNumericAttributeBase(
-		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax * 0.5f);
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), MaxHealthNow * 0.5f);
+	TestEqual(TEXT("the character really is on exactly half health"),
+			  ASC->CurrentConditions().HealthPercent, 50.0f, 0.001f);
 	TestTrue(TEXT("at exactly half health the ultimate is still locked"),
 			 ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f) > 0.0f);
 
 	// ONE POINT BELOW, AND FREE. The row says "unless you are below 50%".
 	ASC->SetNumericAttributeBase(
-		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax * 0.5f - 1.0f);
+		UCataclysmVitalAttributeSet::GetHealthAttribute(),
+		MaxHealthNow * 0.5f - 1.0f);
+	TestTrue(TEXT("the character really is below half health"),
+			 ASC->CurrentConditions().HealthPercent < 50.0f);
 	TestEqual(TEXT("one point below half health releases the ultimate"),
 			  ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f), 0.0f, 0.001f);
 
 	// AND HEALING BACK TO HALF LOCKS IT AGAIN, with no refresh between. That is
 	// what makes this a condition rather than a state written onto the character.
 	ASC->SetNumericAttributeBase(
-		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax * 0.5f);
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), MaxHealthNow * 0.5f);
 	TestTrue(TEXT("and healing back to half locks it again"),
 			 ASC->StatForSkill(Stat, UltimateSkillTags, 0.0f) > 0.0f);
 
