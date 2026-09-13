@@ -85,6 +85,33 @@ namespace CataclysmMinionGearTest
 	 *  figure by arithmetic coincidence. */
 	constexpr float SummonerWeapon = 1000.0f;
 
+	/**
+	 * The health a target is given, and it is SMALL ON PURPOSE.
+	 *
+	 * A BLOW IS MEASURED AS THE DIFFERENCE OF TWO HEALTH READINGS, so the pool
+	 * size decides how finely a blow can be read at all. A `float` near
+	 * 1,000,000 steps in units of 0.0625: every value between is rounded to one
+	 * of them, so a difference taken there cannot resolve anything smaller.
+	 *
+	 * THAT IS NOT HYPOTHETICAL. This file first used 1,000,000, copied from the
+	 * fixture beside it, and the reduction case failed by 0.0125 -- an imp's
+	 * 220.5 reduced by 40% is 132.300003, and a difference taken near 1,000,000
+	 * reads it as 132.3125. The code was right and the ruler was too coarse.
+	 *
+	 * WHY THE OTHER CASES PASSED ANYWAY, which is the part worth knowing: 220.5,
+	 * 275.625 and 0 are all exact multiples of 0.0625, so they survive the
+	 * rounding untouched. A test whose expected figure happens to land on a
+	 * representable point passes for a reason that has nothing to do with what it
+	 * checks. `CataclysmMinionOwnStatsTests.cpp` still measures against
+	 * 1,000,000 and passes for exactly that reason.
+	 *
+	 * 10,000 STEPS IN UNITS OF ABOUT 0.001, which is fifty times inside the
+	 * tolerance these cases ask for, and the two largest blows here take 551 of
+	 * it -- so nothing approaches death and a reading is the blow rather than
+	 * the health that was left.
+	 */
+	constexpr float TargetHealthPool = 10'000.0f;
+
 	float RaisedByLevel(float Base, float PerLevel, int32 Level)
 	{
 		return Base + PerLevel * static_cast<float>(Level);
@@ -108,6 +135,10 @@ namespace CataclysmMinionGearTest
 	 * THE FOUR SETS ARE COPIED FROM `CataclysmMinionOwnStatsTests.cpp`, which
 	 * copied them from a fixture known to work. Nothing here mitigates a blow, so
 	 * a reading is the whole figure that was swung.
+	 *
+	 * THE HEALTH POOL IS THE ONE THING THAT DIFFERS FROM THAT FIXTURE, and it
+	 * differs because a case here failed against its figure. `TargetHealthPool`
+	 * has the measurement.
 	 */
 	struct FScopedFighter
 	{
@@ -135,12 +166,14 @@ namespace CataclysmMinionGearTest
 			AbilitySystem->AddAttributeSetSubobject(NewAllResist);
 			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
 
-			// LARGE ENOUGH THAT NOTHING HERE APPROACHES DEATH, so a reading is the
-			// blow rather than the health that was left.
+			// LARGE ENOUGH THAT NOTHING HERE APPROACHES DEATH AND SMALL ENOUGH
+			// THAT A BLOW CAN BE READ, which are opposing requirements.
+			// `TargetHealthPool` records the arithmetic behind the number and the
+			// measurement that forced it.
 			AbilitySystem->SetNumericAttributeBase(
-				Vital::GetMaxHealthAttribute(), 1'000'000.0f);
+				Vital::GetMaxHealthAttribute(), TargetHealthPool);
 			AbilitySystem->SetNumericAttributeBase(
-				Vital::GetHealthAttribute(), 1'000'000.0f);
+				Vital::GetHealthAttribute(), TargetHealthPool);
 			AbilitySystem->SetNumericAttributeBase(
 				Combat::GetAttackDamageAttribute(), AttackDamage);
 		}
