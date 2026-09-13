@@ -985,6 +985,22 @@ def exit_code_for(tests: TestOutcome | None) -> int:
     """
     if tests is None or tests.performed is None or tests.performed == 0:
         return 1
+
+    # A TEST THE ENGINE REFUSED TO REGISTER IS A FAILURE THOUGH NOTHING FAILED.
+    # It is the one case where every number in the report is correct and the
+    # report is still wrong: the refused test is absent from performed, from
+    # succeeded and from failed alike, so a caller checking the exit code -- which
+    # `CLAUDE.md` tells every caller to do -- would read "everything is fine" from
+    # a run that lost a test. Issue #1736.
+    #
+    # A SKIPPED HALF IS DELIBERATELY NOT TREATED THIS WAY. Continuous integration
+    # and every worktree lack the Paragon art and report skipped halves on every
+    # run, so failing on those would make the exit code carry no information at
+    # all. The difference is that a skipped half can never be fixed there and a
+    # refused registration is always a defect.
+    if tests.refused_registration:
+        return 1
+
     return 1 if tests.any_failed else 0
 
 
@@ -1018,7 +1034,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"Tests: {tests.summary}")
 
     code = exit_code_for(tests)
-    if code != 0 and not tests.any_failed:
+
+    # THE CONDITION USED TO BE "NON-ZERO AND NOTHING FAILED", which was the same
+    # thing as "no results were read" until a refused registration became a
+    # reason to exit non-zero. It is not the same thing now: a run can perform
+    # 1,761 tests, pass all of them, and still exit non-zero because one more was
+    # refused. Printing "No test results were read" there would be false, and
+    # false in the direction of sending the reader to look for a crashed editor.
+    # So this asks the question it means. Issues #436 and #1736.
+    if tests.crashed:
         print(f"No test results were read from {TEST_LOG}. Either the run did "
               f"not happen or its log could not be read. That is reported as a "
               f"failure rather than a pass on purpose; see issue #436.")

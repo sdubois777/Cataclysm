@@ -519,6 +519,35 @@ def test_a_clean_run_is_the_only_success() -> None:
     assert exit_code_for(TestOutcome(3, ("a", "b", "c"), ())) == 0
 
 
+def test_a_refused_registration_is_a_failure() -> None:
+    """Every test that ran passed, and the run is still wrong. Issue #1736.
+
+    THIS IS THE ONE CASE WHERE EVERY NUMBER IN THE REPORT IS FINE AND THE REPORT
+    IS NOT. Three performed, three succeeded, none failed -- and a fourth test
+    exists in the source that the engine refused to register, so it did not run
+    and is not in any of those three numbers.
+
+    Exiting zero here is the same fault as issue #436, which was a command that
+    did nothing and said nothing: a caller who checks the exit code, as
+    `CLAUDE.md` tells them to, gets "everything is fine" from a run that lost a
+    test.
+    """
+    assert exit_code_for(
+        TestOutcome(3, ("a", "b", "c"), (), (), ("FSomeTest",))) != 0
+
+
+def test_a_skipped_half_is_still_not_a_failure() -> None:
+    """The contrast that makes the case above mean something.
+
+    A GUARD THAT FAILED ON BOTH WOULD BE USELESS HERE, because continuous
+    integration and every worktree lack the Paragon art and report skipped halves
+    on every run. If this started failing too, the exit code would carry no
+    information at all.
+    """
+    assert exit_code_for(
+        TestOutcome(3, ("a", "b", "c"), (), ("Cataclysm.Brute.Whatever",))) == 0
+
+
 # ---------------------------------------------------------------------------
 # Proving a guard on a constant that lives in a header
 #
@@ -1292,6 +1321,41 @@ def test_the_build_command_says_when_it_compiled_nothing(
     assert "nothing compiled" in printed, (
         f"the command must say the build compiled nothing. It printed: "
         f"{printed!r}")
+
+
+def test_the_tests_command_reports_a_refused_registration_without_claiming_a_crash(
+        monkeypatch, capsys) -> None:
+    """The command line, and the message that must NOT appear. Issue #1736.
+
+    NOTHING EXERCISED THIS BRANCH BEFORE. `main` printed "No test results were
+    read" whenever the exit code was non-zero and no test had failed, and until
+    now those two were the same condition. Making a refused registration
+    non-zero separates them: this run performs a test, passes it, and exits
+    non-zero -- and the old condition would have told the reader to go looking
+    for an editor that never started.
+
+    So this asserts on the sentence being ABSENT, which is the half a reader of
+    the diff would not think to check.
+    """
+    import unreal_build as module
+
+    monkeypatch.setattr(module, "build",
+                        lambda *args, **kwargs: outcome(BUILD_THAT_DID_NOTHING))
+    monkeypatch.setattr(
+        module, "run_automation_tests",
+        lambda *args, **kwargs: module.parse_test_log(
+            TEST_LOG_WITH_A_REFUSED_REGISTRATION))
+
+    assert module.main(["tests"]) == 1, (
+        "a run that lost a test to a refused registration must not exit 0")
+    printed = capsys.readouterr().out
+
+    assert "FCataclysmWeaponSubTypeTest" in printed, (
+        f"the command must name the class the engine refused. It printed: "
+        f"{printed!r}")
+    assert "No test results were read" not in printed, (
+        f"results WERE read -- one test ran and passed. Saying otherwise sends "
+        f"the reader after a crashed editor. It printed: {printed!r}")
 
 
 def test_a_failed_build_still_prints_the_compilers_own_words(
