@@ -142,6 +142,32 @@ class GuardResult:
     #: trusted. Empty on an ordinary run. See `break_and_run`.
     disturbed: tuple[str, ...] = ()
 
+    #: The same command run again with the files put back, which is the other
+    #: half of a guard proof. None when there is no second half.
+    #:
+    #: THIS FIELD MUST ALWAYS BE None ON THE INNER RESULT, and that asymmetry is
+    #: deliberate rather than an oversight somebody should tidy. Both halves of a
+    #: Python guard proof are a `GuardResult`, so an inner one carrying its own
+    #: `restored` would nest without end. The C++ side has no such rule because
+    #: `CppGuardResult` carries a `TestOutcome` -- two different types, so it
+    #: stops after one level on its own.
+    #:
+    #: None MEANS "THERE IS NO SECOND HALF", and it must not be given a second
+    #: meaning. A restored run that was attempted and failed has to be
+    #: distinguishable from one that was never attempted, or this reproduces
+    #: issue #1657's defect -- one value standing for two states -- inside the
+    #: function written to stop half-proofs.
+    restored: "GuardResult | None" = None
+
+    #: Why the caller says a second run is unnecessary, when they opted out.
+    #:
+    #: A SENTENCE RATHER THAN A FLAG, ON PURPOSE. A boolean can be set without
+    #: thought and reviewed without thought. A required sentence puts the reason
+    #: at the call site where a reviewer meets a claim they can check, and makes
+    #: anybody adding a third opt-out write one -- which is where they find out
+    #: they do not have one.
+    restored_half_supplied_by: str | None = None
+
     @property
     def named_failures(self) -> tuple[str, ...]:
         """The tests the run reported as failed, by name.
@@ -223,6 +249,32 @@ class GuardResult:
                 and not self.crashed)
 
     @property
+    def proved(self) -> bool:
+        """Whether BOTH halves held: it failed broken, and passed restored.
+
+        THIS IS THE WHOLE POINT OF ISSUE #1735. A guard proof is two claims --
+        the test fails without the fix and passes with it -- and until this
+        existed `break_and_run` could only ever produce the first. A test that
+        fails for the wrong reason, or fails always, gives a byte-identical
+        first half: a name in `named_failures`, a plausible `summary`, and an
+        exit code that satisfies the assertion `CLAUDE.md` tells callers to
+        write. Only the second half tells those apart.
+
+        FALSE WHEN THERE IS NO SECOND HALF, including when the caller opted out.
+        An opt-out says a passing half exists somewhere else; it does not let
+        this object claim to have seen one. `summary` says which case this is
+        rather than leaving a bare False to be read as a guard that did not
+        fire -- that is issue #1313's mistake and it is easy to repeat here.
+        """
+        if self.restored is None:
+            return False
+        return (self.failed
+                and bool(self.named_failures)
+                and not self.restored.disturbed
+                and not self.restored.crashed
+                and not self.restored.reported_a_failing_test)
+
+    @property
     def summary(self) -> str:
         """The last line of output, which for pytest is its result line."""
         if self.disturbed:
@@ -236,7 +288,49 @@ class GuardResult:
                     "this. Make the break surgical and run it again. "
                     "Issue #1314.")
         lines = [line for line in (self.stdout + self.stderr).splitlines() if line.strip()]
-        return lines[-1].strip() if lines else "(no output)"
+        broken_half = lines[-1].strip() if lines else "(no output)"
+
+        # THE VERDICT GOES HERE RATHER THAN ON A PROPERTY OF ITS OWN, because
+        # `CLAUDE.md` tells every caller to write `print(result.summary)`. A
+        # verdict a caller following the documentation never sees would be issue
+        # #1735's own defect one level up.
+        #
+        # AND IT IS APPENDED ONLY WHEN THERE IS A SECOND HALF TO REPORT. This
+        # property has a stated contract -- "the last line of output" -- and two
+        # tests assert it by exact equality. Both build a result with no second
+        # half, so they are untouched, and a caller who never asked for pairing
+        # still gets exactly the line they always got.
+        if self.restored_half_supplied_by is not None:
+            return (f"{broken_half} | NOT PAIRED BY THIS CALL: the caller says "
+                    f"the passing half comes from "
+                    f"{self.restored_half_supplied_by}")
+        if self.restored is None:
+            return broken_half
+
+        line = f"{broken_half} | restored: {self.restored.summary}"
+        if self.proved:
+            return f"PROVED: {line}"
+        if self.restored.disturbed or self.restored.crashed:
+            return (f"NOT A PROOF: the restored run gave no usable result, so "
+                    f"nothing says the break is what caused the failure. {line}")
+        if self.restored.reported_a_failing_test:
+            return (f"NOT A PROOF: tests fail with the files PUT BACK, so they "
+                    f"were failing before the break went in. {line}")
+
+        # TWO DIFFERENT WAYS TO HAVE NO FIRST HALF, AND SAYING "NOTHING FAILED"
+        # FOR BOTH SENDS HALF OF THEM THE WRONG WAY. A run that failed while
+        # naming no test has measured something -- the count is there -- and the
+        # fix is to find out why the names are missing. A run where nothing
+        # failed has measured that the break does not bite, and the fix is a
+        # different break. `named_failures` is what a guard proof means, so it
+        # is what `proved` requires, but the report has to say which is absent.
+        if self.failed and not self.named_failures:
+            return (f"NOT A PROOF: the run failed with the break in but named "
+                    f"no test, so nothing says a test reached its assertions. "
+                    f"A suppressed short summary does this -- check for a "
+                    f"second `-q`. {line}")
+        return (f"NOT A PROOF: nothing failed with the break in, so no test "
+                f"noticed it. {line}")
 
 
 def clear_bytecode_caches(root: pathlib.Path | None = None) -> int:
@@ -280,8 +374,18 @@ def run_without_bytecode(command: Sequence[str],
 
 def break_and_run(edits: Mapping[str, Callable[[str], str]],
                   command: Sequence[str],
-                  env: Mapping[str, str] | None = None) -> GuardResult:
-    """Apply each edit, run the command, and restore every file.
+                  env: Mapping[str, str] | None = None,
+                  *,
+                  restored_half_supplied_by: str | None = None) -> GuardResult:
+    """Apply each edit, run the command, restore every file, and run it again.
+
+    BOTH HALVES, BECAUSE ONE IS NOT A PROOF. A guard proof is two claims: the
+    test fails without the fix and passes with it. Until issue #1735 this ran
+    the command once, with the break in place, and returned only that. A test
+    that fails for the wrong reason -- or that was already failing -- produces a
+    byte-identical first half, and the assertion `CLAUDE.md` tells callers to
+    write is satisfied by it. `result.proved` is the answer to the question the
+    caller is actually asking.
 
     @param edits    path relative to the repository root, and a function taking
                     the file's text and returning the broken text. An edit that
@@ -289,6 +393,17 @@ def break_and_run(edits: Mapping[str, Callable[[str], str]],
                     anything would produce a passing run and look like a
                     worthless guard.
     @param command  what to run while the files are broken
+    @param restored_half_supplied_by
+                    pass a sentence naming what already supplies the passing
+                    half, and the second run is skipped. For a proof that runs
+                    INSIDE the suite it is proving, the enclosing run is that
+                    passing half and a second one would be waste.
+
+                    A SENTENCE RATHER THAN A FLAG, ON PURPOSE. A boolean can be
+                    set and reviewed without thought; a sentence puts a claim at
+                    the call site that a reviewer can check, and makes anybody
+                    adding a third opt-out write one -- which is where they find
+                    out they do not have one.
     """
     if not edits:
         raise ValueError("break_and_run needs at least one edit to make.")
@@ -330,7 +445,7 @@ def break_and_run(edits: Mapping[str, Callable[[str], str]],
             for path, content in written.items()
             if not path.is_file() or path.read_bytes() != content)
 
-        return dataclasses.replace(result, disturbed=disturbed)
+        broken = dataclasses.replace(result, disturbed=disturbed)
     finally:
         # IN A FINALLY, so a raising edit, a crashing command and an interrupt
         # all leave the repository as they found it.
@@ -338,16 +453,51 @@ def break_and_run(edits: Mapping[str, Callable[[str], str]],
             path.write_bytes(content)
         clear_bytecode_caches()
 
+    # THE SECOND HALF RUNS HERE, AFTER THE finally AND NOT INSIDE IT. That block
+    # is what makes a crashing command or an interrupt leave the repository as it
+    # found it, and every line added to it is another way for the restore to
+    # fail. By this point the files are back and the bytecode caches are cleared,
+    # so this run sees the tree as it was before anything was broken.
+    #
+    # A FAILURE HERE PROPAGATES AND TAKES THE BROKEN HALF WITH IT. Losing
+    # evidence already paid for is the cheaper mistake: a broken half returned on
+    # its own, with nothing saying the pairing was attempted and lost, is exactly
+    # the half-proof this function now exists to refuse.
+    if restored_half_supplied_by is not None:
+        return dataclasses.replace(
+            broken, restored_half_supplied_by=restored_half_supplied_by)
+
+    # NOTHING TO PAIR WITH. `break_and_run` takes ANY command, not only a test
+    # runner, and for one that is not, a clean second run says nothing the exit
+    # code did not. `looks_like_a_test_run` is the existing property that decides
+    # this and it needs no new concept.
+    if not broken.looks_like_a_test_run:
+        return broken
+
+    return dataclasses.replace(broken, restored=run_without_bytecode(command, env))
+
 
 def prove_each(cases: Iterable[tuple[str, Mapping[str, Callable[[str], str]]]],
-               command: Sequence[str]) -> list[tuple[str, GuardResult]]:
+               command: Sequence[str],
+               *,
+               restored_half_supplied_by: str | None = None,
+               ) -> list[tuple[str, GuardResult]]:
     """Run `break_and_run` once per case and collect what each printed.
 
     For the common shape: several guards, one command, and a report of which
     case made it fail. Each case is restored before the next one starts, so one
     case cannot be attributed to another.
+
+    THE OPT-OUT APPLIES TO EVERY CASE OR TO NONE, which is the right shape here:
+    the cases share one command, so whatever supplies a passing half for one
+    supplies it for all of them. Each case still pairs by default, so N cases
+    cost N second runs -- which is the honest cost, and the reason the opt-out
+    exists for proofs that run inside the suite they are proving.
     """
-    return [(label, break_and_run(edits, command)) for label, edits in cases]
+    return [(label, break_and_run(
+                edits, command,
+                restored_half_supplied_by=restored_half_supplied_by))
+            for label, edits in cases]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
