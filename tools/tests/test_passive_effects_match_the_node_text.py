@@ -1169,6 +1169,19 @@ CONDITION_WORDS = {
     # contains no "50" anywhere, so a numeric form would fail a correct row.
     "target_health_below": ("against enemies below",
                             {35.0: "35%", 50.0: "half health"}),
+
+    # THE SECOND POOL ASKED WHETHER IT IS FULL, AND THE FRAGMENT HAS TO KEEP IT
+    # OFF THE OTHER TWELVE. Issue #1515. Thirteen nodes mention an energy shield
+    # and only `Ritualist_basic_c_a2` Cold Reading says it is FULL: the rest
+    # raise "Maximum Energy Shield", raise "Energy Shield Regeneration", or
+    # describe what the shield absorbs. "energy shield is full" appears in that
+    # one node alone, measured across all 441 nodes, so no MUST_NOT_SAY entry is
+    # needed the way `health_below` needed one.
+    #
+    # THE VALUE FORM IS None BECAUSE "FULL" NAMES THE TOP OF THE BAR. Looking
+    # for a number would find the 2 belonging to the bonus itself, which is the
+    # trap `while_bleeding` records above.
+    "energy_shield_at_maximum": ("energy shield is full", None),
 }
 
 #: Words a node must NOT say, for a condition whose required words are a

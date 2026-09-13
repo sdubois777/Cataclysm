@@ -490,6 +490,32 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	{
 		State = FCataclysmStatConditions::FromHealth(Vitals->GetHealth(),
 													 Vitals->GetMaxHealth());
+
+		// AND HOW MUCH ENERGY SHIELD IS IN HAND, WITH THE TOP OF THAT BAR.
+		// Issue #1515. Cold Reading asks for it: "+2% increased Spell Damage per
+		// point while your Energy Shield is full."
+		//
+		// AFTER THE ASSIGNMENT ABOVE AND NOT BEFORE IT. `FromHealth` returns a
+		// whole state and this line replaces every field of `State`, so a
+		// reading taken first would be silently discarded and the condition
+		// would refuse for every character in the game.
+		//
+		// NO VITAL ATTRIBUTE SET MEANS UNKNOWN, which is why both live inside
+		// this block rather than beside it. Skipping the write is what leaves
+		// the negative defaults standing, and those defaults are what
+		// `EnergyShieldAtMaximum` reads as "there is no shield to ask about".
+		// Writing zero here instead would erase the difference between an
+		// ability system that has no shield attributes and a character whose
+		// shield is simply empty.
+		//
+		// FLOORED AT ZERO AND NOT CAPPED AT THE MAXIMUM, the same shape as the
+		// class resource pair below. The attribute set clamps both ends
+		// already, so the floor guards only a value written before that ran;
+		// capping the held value here would hide a pool pushed above its top
+		// rather than answer "full" for it.
+		State.EnergyShieldHeld = FMath::Max(0.0f, Vitals->GetEnergyShield());
+		State.EnergyShieldMaximum =
+			FMath::Max(0.0f, Vitals->GetMaxEnergyShield());
 	}
 
 	State.SecondsSinceHealthCost = SecondsSinceHealthCostPaid();

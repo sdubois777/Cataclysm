@@ -3480,6 +3480,27 @@ CONDITIONS = {
     # is a row that never applies or always does, which is the silent failure
     # every entry here is bounded against.
     "target_health_below": (0.0, 100.0, "a percentage of maximum health"),
+
+    # "while your Energy Shield is full" is `energy_shield_at_maximum`, and it
+    # takes no value. Issue #1515. Cold Reading is the node.
+    #
+    # THE SECOND POOL TO ASK WHETHER IT IS FULL, after
+    # `class_resource_at_maximum` above. Same answer, and NOT the same argument.
+    # That one reasons from classes disagreeing with each other -- the
+    # Ritualist's `class_resource` is 150 where every other class's is 100 --
+    # and the Ritualist is the ONLY class with an energy shield, so there is no
+    # disagreement between classes to point at here.
+    #
+    # THE REASON THAT DOES APPLY IS THE LEVEL CURVE. `max_energy_shield` is 40
+    # with 8 added per level, so the top of the bar moves as a character grows:
+    # a points threshold of 48 reads as "full" at level one and as about 40% of
+    # the bar at level ten. Points and percentage still disagree, over one
+    # character's lifetime rather than between two classes.
+    #
+    # A FUTURE "while your Energy Shield is above 75%" WANTS ITS OWN NAME, for
+    # the same reason a future "while above 75 Fervour" does. That one is a
+    # threshold and this one is not.
+    "energy_shield_at_maximum": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.

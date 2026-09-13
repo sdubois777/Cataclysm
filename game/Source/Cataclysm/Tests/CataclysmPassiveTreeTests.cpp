@@ -1586,7 +1586,11 @@ namespace CataclysmPassiveConditionTest
 			// changes nothing about whether it compares a value.
 			|| Name == TEXT("target_carries_cripple")
 			|| Name == TEXT("target_carries_cripple_and_weaken")
-			|| Name == TEXT("opponent_carries_weaken");
+			|| Name == TEXT("opponent_carries_weaken")
+			// ISSUE #1515, THE SECOND POOL ASKED WHETHER IT IS FULL. "Full"
+			// names the top of the bar rather than a number, the same as
+			// `class_resource_at_maximum` above.
+			|| Name == TEXT("energy_shield_at_maximum");
 	}
 }
 

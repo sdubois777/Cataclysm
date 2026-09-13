@@ -749,6 +749,49 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetHealthBelowPercent
 		UMETA(DisplayName = "Target Health Below Percent"),
+
+	/**
+	 * The character's energy shield is at the top of its bar. Issue #1515.
+	 * Cold Reading is the node: "+2% increased Spell Damage per point while your
+	 * Energy Shield is full."
+	 *
+	 * THE SECOND POOL TO ASK THIS, AND IT COPIES `ClassResourceAtMaximum`'S
+	 * SHAPE DELIBERATELY. Three clauses, in the same order, for the same three
+	 * reasons: an unknown reading refuses, a maximum of nothing refuses, and
+	 * anything at or above the top holds.
+	 *
+	 * NO THRESHOLD, SO `Value` IS NOT READ. "Full" names the top of the bar
+	 * rather than a number, and `tools/generate_datatables.py` refuses a value
+	 * on a row carrying it.
+	 *
+	 * THE REASON IS NOT THE ONE THE CLASS RESOURCE GIVES, and copying that one
+	 * would have been wrong. Its argument is that classes disagree with each
+	 * other -- the Ritualist's `class_resource` is 150 where every other
+	 * class's is 100 -- but the Ritualist is the ONLY class with an energy
+	 * shield, so there is no disagreement between classes to point at. The
+	 * conclusion survives on a different fact: `max_energy_shield` is 40 with 8
+	 * added per level, so the top of the bar moves as a character grows. A
+	 * points threshold of 48 would read as "full" at level one and as about 40%
+	 * of the bar at level ten. Points and percentage still disagree; they
+	 * disagree over one character's lifetime rather than between two classes.
+	 * A future "while your Energy Shield is above 75%" is a threshold and wants
+	 * its own enumerator, exactly as a future "while above 75 Fervour" does.
+	 *
+	 * A MAXIMUM OF NOTHING REFUSES, the same judgement and for the same stated
+	 * reason as the class resource: a bar that cannot hold anything is not at
+	 * its maximum in any sense a node means. It is not a hypothetical case
+	 * here. `game/Data/ClassStats.csv` gives `max_energy_shield` to the
+	 * Ritualist alone, so every other class, every enemy and every test
+	 * character built without one sits at a maximum of zero, and each of them
+	 * would otherwise satisfy a node written for a full shield.
+	 *
+	 * AN UNKNOWN READING REFUSES BECAUSE THIS IS A BONUS. An unknown reading
+	 * must never make a row stronger than its own sentence; a drawback may
+	 * hold on unknown and this may not. See `TargetHealthBelowPercent` for the
+	 * same rule stated against the stagger ceiling, which points the other way.
+	 */
+	EnergyShieldAtMaximum
+		UMETA(DisplayName = "Energy Shield At Maximum"),
 };
 
 /**
@@ -1475,6 +1518,42 @@ struct CATACLYSM_API FCataclysmStatConditions
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float TargetHealthPercent = -1.0f;
 
+	/**
+	 * How much energy shield the character is carrying. Issue #1515.
+	 *
+	 * NEGATIVE MEANS UNKNOWN, the same convention as the class resource pair
+	 * above and set the same way: an ability system with no vital attribute set
+	 * never runs the fill, so the default stands.
+	 *
+	 * ZERO IS A REAL READING AND IS NOT UNKNOWN. A shield that has been broken
+	 * is a character at zero of a real maximum, which is the ordinary case this
+	 * condition has to answer "no" for. "There is no shield" is a different
+	 * statement, carried by the maximum below, and the two are told apart on
+	 * purpose.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float EnergyShieldHeld = -1.0f;
+
+	/**
+	 * The largest that shield can be for this character. Issue #1515.
+	 *
+	 * A SECOND READING RATHER THAN A PERCENTAGE ON THE FIRST, for the reason
+	 * `ClassResourceMaximum` gives: "full" asks about the top of the bar, and a
+	 * percentage would have to be divided back out to answer it.
+	 *
+	 * READ BESIDE THE SHIELD AND NOT DERIVED FROM IT, so the two cannot be a
+	 * frame apart.
+	 *
+	 * A MAXIMUM OF ZERO REFUSES `EnergyShieldAtMaximum`, and it is the common
+	 * case rather than a corner. Only the Ritualist has a `max_energy_shield`
+	 * line in `game/Data/ClassStats.csv`, so every other class and every enemy
+	 * carries a maximum of zero while holding zero -- and without this reading
+	 * the condition would compare nothing against nothing and answer yes for
+	 * all of them.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float EnergyShieldMaximum = -1.0f;
+
 	/** A state built from a character's own numbers. Refuses nothing it knows. */
 	static FCataclysmStatConditions FromHealth(float Health, float MaxHealth)
 	{
@@ -1869,14 +1948,27 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TEN OF THE TWENTY-ONE COMPARE NOTHING: `WhileBleeding`,
-	 * `ClassResourceAtMaximum`, the three that ask what kind of blow this is,
-	 * the two that ask whether whoever threw it is a boss or staggered, the
-	 * two that ask whether the character is moving or standing still, and the
-	 * one that asks whether the character being hit is staggered.
+	 * FOURTEEN OF THE TWENTY-EIGHT COMPARE NOTHING: `WhileBleeding`,
+	 * `ClassResourceAtMaximum`, `EnergyShieldAtMaximum`, the three that ask
+	 * what kind of blow this is, the two that ask whether whoever threw it is a
+	 * boss or staggered, the two that ask whether the character is moving or
+	 * standing still, the one that asks whether the character being hit is
+	 * staggered, and the three that ask which ailment the character at the
+	 * other end of the blow is carrying.
 	 * Each says so in its own comment above, and
 	 * `tools/generate_datatables.py` refuses to write a value on a row carrying
 	 * one, so there is no number to carry across.
+	 *
+	 * THIS SENTENCE SAID "TEN OF THE TWENTY-ONE" AND WAS WRONG IN BOTH NUMBERS
+	 * AND IN ITS LIST. Issue #1750 added the three ailment conditions, corrected
+	 * the matching count in `ConditionTakesAValue` from ten to thirteen, wrote a
+	 * comment there explaining that a list nobody counts is a list somebody
+	 * extends without reading -- and did not touch this one, which is the list
+	 * that comment points at. The same change added 131 lines to this file.
+	 *
+	 * SO THE TWO COUNTS HAVE TO MOVE TOGETHER, and nothing enforces it. Neither
+	 * is reachable by a test: both are prose. `ConditionTakesAValue` in
+	 * `CataclysmStatPipeline.cpp` holds the other one.
 	 *
 	 * A READER COPYING THE VALUE ANYWAY IS WRONG EVEN THOUGH IT LOOKS HARMLESS,
 	 * because the column is only empty while the generator is the only writer.
