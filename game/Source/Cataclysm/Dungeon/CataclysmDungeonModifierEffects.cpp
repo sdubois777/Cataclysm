@@ -520,5 +520,36 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 		Clauses.Add(FString::Printf(TEXT("healing %.0f%% less"),
 									Effects.HealingReceivedLessPercent));
 	}
+
+	// AND THE SLOW A PLAYER IS UNDER RIGHT NOW. Added for Singularity Wells
+	// in #1719 and left out of here, while being present in `IsEmpty` and in
+	// `StatModifiersFor`. Issue #41.
+	//
+	// NOTHING OBSERVABLE WAS WRONG, AND SAYING SO IS THE POINT. This function
+	// has exactly one caller -- the floor's log line in
+	// `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer` -- and that caller
+	// passes the output of `PlayerEffectsFor`, which fills the three per-floor
+	// fields and leaves the four beat-driven ones at zero. So the clause that
+	// was missing could not have fired through the only route that reaches it.
+	//
+	// THE GAP IS REAL ANYWAY, and it is the shape rather than the symptom. The
+	// function takes a whole `FCataclysmPlayerFloorEffects` and is named for
+	// describing one; `ApplyChangingFloorEffects` builds a complete one four
+	// times a second. The first caller that passes a full struct -- a floor
+	// panel showing what is on the player right now is the obvious one -- gets
+	// a sentence with one effect silently absent from it, and nothing would
+	// report that. The Python test named after this pair of readers,
+	// `test_every_floor_effect_field_is_read_by_both_readers.py` under
+	// `tools/tests/`, now fails when a field is missing from here.
+	//
+	// WORTH KNOWING IF YOU ADD A CALLER: this is the only field that reports
+	// where the player is STANDING rather than what the floor is. It turns on
+	// and off as they walk in and out of a well, where every other clause holds
+	// for a floor or changes slowly.
+	if (Effects.MovementSpeedLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less"),
+									Effects.MovementSpeedLessPercent));
+	}
 	return FString::Join(Clauses, TEXT(", "));
 }
