@@ -22,6 +22,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::FieldMedicKey =
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
+const TCHAR* UCataclysmDungeonModifierEffects::WitheredGroundKey =
+	TEXT("Famine_Withered_Ground");
 
 namespace
 {
@@ -45,6 +47,23 @@ namespace
 		TEXT("healing_received_reduction");
 	const TCHAR* const DungeonModifierEffectsMovementSpeedStat =
 		TEXT("movement_speed");
+
+	/**
+	 * The four stats Withered Ground's row calls "Health and Mana recovery
+	 * (regen/leech)".
+	 *
+	 * THE SPELLINGS ARE THE ONES THE REST OF THE GAME USES, not new ones.
+	 * `UCataclysmRegeneration::HealthRegenStat` and `ManaRegenStat` are the
+	 * same two strings, and the leech pair are keys of
+	 * `UCataclysmPlayerClassStats::StatToAttribute`. They are repeated here
+	 * rather than included because this file already keeps its other five stat
+	 * names this way, and the Python test on the row's wording is what holds
+	 * them honest.
+	 */
+	const TCHAR* const DungeonModifierEffectsHealthRegenStat = TEXT("health_regen");
+	const TCHAR* const DungeonModifierEffectsManaRegenStat = TEXT("mana_regen");
+	const TCHAR* const DungeonModifierEffectsLifeLeechStat = TEXT("life_leech");
+	const TCHAR* const DungeonModifierEffectsManaLeechStat = TEXT("mana_leech");
 
 	/**
 	 * One multiplier from a dungeon rule, or nothing for a value of nothing.
@@ -121,8 +140,9 @@ namespace
 
 ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName RowKey)
 {
-	// SIX ARE BUILT. Slice 2 added Forced March and The Nihil's Embrace, slice
-	// 5 Death's Embrace, and issue #1648 the Field Medic. Each does everything
+	// SEVEN ARE BUILT. Slice 2 added Forced March and The Nihil's Embrace, slice
+	// 5 Death's Embrace, issue #1648 the Field Medic, and Withered Ground is
+	// the seventh. Each does everything
 	// its row describes -- The Nihil's Embrace including its cleanse on a high
 	// tier enemy's defeat, Death's Embrace including the reset on a new floor,
 	// and the Field Medic including "it does not attack" -- so none is
@@ -135,12 +155,16 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// missing half, so the answer changes.
 	if (RowKey == FName(StarvationKey) || RowKey == FName(DehydrationKey)
 		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey)
-		|| RowKey == FName(DeathsEmbraceKey) || RowKey == FName(FieldMedicKey))
+		|| RowKey == FName(DeathsEmbraceKey) || RowKey == FName(FieldMedicKey)
+		|| RowKey == FName(WitheredGroundKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
 
-	// TWO ARE PARTLY BUILT, AND FOR DIFFERENT REASONS.
+	// THE ROWS BELOW ARE PARTLY BUILT, EACH FOR ITS OWN REASON. Issue #1760:
+	// this line used to write the count out and said "two" while listing
+	// three, because a comment counting the thing under it goes wrong without
+	// being touched. Count the arms rather than reading a number here.
 	//
 	// UNSTABLE DIMENSIONS. Its rule draws another dungeon modifier onto the
 	// floor, where the row asks for "a new, random modifier to all enemies on the
@@ -269,6 +293,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(FieldMedicKey),
 		FName(InfernalRainKey),
 		FName(SingularityWellsKey),
+		FName(WitheredGroundKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -452,6 +477,39 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  DungeonModifierEffectsMovementSpeedStat,
 								  Effects.MovementSpeedLessPercent);
 
+	// AND WITHERED GROUND, WHICH IS ONE FIELD AND FOUR STATS. The row states
+	// one figure for all of them: "your Health and Mana recovery (regen/leech)
+	// is reduced by 80%".
+	//
+	// THE REGENERATION PAIR REACH THE CHARACTER AND THE LEECH PAIR MOSTLY DO
+	// NOT, and that is a property of the class data rather than of this code.
+	// A Less multiplies, so a multiplier on a base of zero is zero.
+	// `game/Data/ClassStats.csv` gives `health_regen` and `mana_regen` a
+	// Default row, so every class carries both; it gives `life_leech` to the
+	// Ravager alone and gives no class any `mana_leech`. All four are written
+	// because the row names leech, because the reduction is right for whoever
+	// does carry it, and because it becomes right for everyone the day a class
+	// line or an affix grants leech -- with no change here.
+	//
+	// `UCataclysmRegeneration::ApplyStep` IS WHAT PICKS THE FIRST TWO UP. It
+	// reads each rate by stat name through `StatForSkill` with an empty tag
+	// container -- its own comment says "NO TAGS, because nothing is
+	// happening" -- so an unscoped rule like this one applies to both. Leech
+	// reads its attribute directly, which the recorded modifiers reach the
+	// same way every other dungeon rule's do.
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsHealthRegenStat,
+								  Effects.RecoveryLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsManaRegenStat,
+								  Effects.RecoveryLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsLifeLeechStat,
+								  Effects.RecoveryLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsManaLeechStat,
+								  Effects.RecoveryLessPercent);
+
 	return Modifiers;
 }
 
@@ -550,6 +608,17 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less"),
 									Effects.MovementSpeedLessPercent));
+	}
+
+	// AND WITHERED GROUND, SAID AS ONE CLAUSE FOR FOUR STATS. The field is one
+	// figure covering health regeneration, mana regeneration and both leeches,
+	// and "recovery 80% less" is what the row itself calls them together.
+	// Naming all four would be longer and would tell a player about two stats
+	// most characters do not have.
+	if (Effects.RecoveryLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("health and mana recovery %.0f%% less"),
+									Effects.RecoveryLessPercent));
 	}
 	return FString::Join(Clauses, TEXT(", "));
 }

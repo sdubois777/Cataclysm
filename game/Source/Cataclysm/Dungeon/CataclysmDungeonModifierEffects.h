@@ -44,10 +44,16 @@ enum class ECataclysmModifierBuilt : uint8
  * whose modifiers do nothing to the player, which is what every floor was
  * before issue #41.
  *
- * THE LAST TWO ARE NOT PER-FLOOR SHARES, unlike the three above them. They
- * change while the player plays, so the dungeon game mode works them out on
- * its quarter-second beat and sets them here before applying. Issue #41,
+ * THE FIELDS BELOW THE FIRST THREE ARE NOT PER-FLOOR SHARES. The first three
+ * are worked out once when a floor is entered; the rest change while the
+ * player plays, so the dungeon game mode works them out on its
+ * quarter-second beat and sets them here before applying. Issue #41,
  * slice 2.
+ *
+ * SAID THAT WAY RATHER THAN AS A COUNT, because it used to read "THE LAST
+ * TWO" and there are now more than two. Issue #1760. A comment that counts
+ * the members beneath it becomes wrong the next time one is added, and
+ * nothing reports it.
  */
 USTRUCT(BlueprintType)
 struct CATACLYSM_API FCataclysmPlayerFloorEffects
@@ -119,6 +125,37 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float MovementSpeedLessPercent = 0.0f;
 
+	/**
+	 * How much less health and mana the character gets back, in percent.
+	 * Withered Ground. Issue #41.
+	 *
+	 * ON AND OFF AS THE PLAYER WALKS IN AND OUT OF A PATCH, like the field
+	 * above it and unlike the three per-floor shares. The two are the only
+	 * fields here that report where the player is STANDING rather than what
+	 * the floor is.
+	 *
+	 * ONE FIELD FOR FOUR STATS, because the row states one figure for all of
+	 * them -- "your Health and Mana recovery (regen/leech) is reduced by
+	 * 80%". `StatModifiersFor` turns it into four Less multipliers, on
+	 * `health_regen`, `mana_regen`, `life_leech` and `mana_leech`.
+	 *
+	 * TWO OF THOSE FOUR ARE WORTH NOTHING TO ALMOST EVERY CHARACTER TODAY,
+	 * which is worth knowing before somebody reports it as a bug. A Less
+	 * multiplies, and a multiplier on a base of zero is zero.
+	 * `game/Data/ClassStats.csv` gives `health_regen` and `mana_regen` a
+	 * Default row, so every class has them; it gives `life_leech` to the
+	 * Ravager alone and gives NO class any `mana_leech`. So the regeneration
+	 * half of this reaches everyone and the leech half reaches a Ravager and
+	 * anyone whose gear grants leech.
+	 *
+	 * ALL FOUR ARE WRITTEN ANYWAY, AND THAT IS THE DECISION RATHER THAN AN
+	 * OVERSIGHT. The row names leech, the reduction is correct for the
+	 * characters that carry it, and it becomes correct for the rest the day a
+	 * class line or an affix grants leech -- with no change here.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float RecoveryLessPercent = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
@@ -126,7 +163,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& MaxManaLessPercent <= 0.0f && ResistanceLessPercent <= 0.0f
 			&& ResistanceMorePercent <= 0.0f
 			&& HealingReceivedLessPercent <= 0.0f
-			&& MovementSpeedLessPercent <= 0.0f;
+			&& MovementSpeedLessPercent <= 0.0f
+			&& RecoveryLessPercent <= 0.0f;
 	}
 };
 
@@ -249,6 +287,20 @@ public:
 	 * the pattern and `Direction` is private today.
 	 */
 	static const TCHAR* SingularityWellsKey;
+
+	/**
+	 * Withered Ground: "Enemies leave patches of Barren Earth on death. While
+	 * standing on it, your Health and Mana recovery (regen/leech) is reduced
+	 * by 80%." Issue #41.
+	 *
+	 * THE ONLY RULE HERE PLACED BY AN EVENT RATHER THAN BY A CLOCK. Infernal
+	 * Rain and Singularity Wells both drop a hazard on a cadence and cap how
+	 * many may exist. This one places a patch every time a creature dies, and
+	 * caps nothing, because the row states the trigger and states no limit:
+	 * a cap would make "enemies leave patches on death" stop being true at
+	 * whichever enemy hit it.
+	 */
+	static const TCHAR* WitheredGroundKey;
 
 	/**
 	 * What Starvation takes per floor, and the most it takes.
@@ -480,6 +532,57 @@ public:
 		"Infernal Rain. A well slows and pulls as well as damaging, so its damage "
 		"is meant to be the least of the three things it does; the burning ground "
 		"only damages.");
+
+	/**
+	 * Withered Ground: how much recovery a patch takes, and how wide a patch is.
+	 *
+	 * THE FIRST IS THE ROW'S OWN NUMBER AND NOT A JUDGEMENT. "reduced by 80%"
+	 * is stated, which makes this the only hazard rule here whose main figure
+	 * came with the row. `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
+	 * holds the two together, so the row and this constant cannot drift.
+	 *
+	 * 80% IS INSIDE THE PIPELINE'S FLOOR, which matters because the pipeline
+	 * clamps a single Less at -99 and counts the clamp.
+	 * `UCataclysmStatPipeline::LessMultiplierFloor` is -99, so an 80 applies as
+	 * written and the figure keeps meaning what the row says.
+	 *
+	 * THE RADIUS IS A JUDGEMENT AND IT IS THE HOUSE FIGURE. Three separate
+	 * things already use 300 cm for a patch of ground a player stands in: the
+	 * Gatekeeper's Soulfall burning ground, Infernal Rain's patches, and a
+	 * Singularity Well. Choosing a fourth number would make this row's patch
+	 * differently sized for no reason the row gives.
+	 *
+	 * NO CAP AND NO CADENCE CONSTANT, WHICH IS WHY THERE ARE ONLY TWO FIGURES
+	 * HERE. The two hazard rules above need `Most...` and `SecondsBetween...`
+	 * because a clock places them; this one is placed by a death, and the row
+	 * gives neither a limit nor a chance.
+	 *
+	 * IF A LIMIT EVER BECOMES NECESSARY it is a performance concern -- actor
+	 * count on a floor with many kills -- and the project owner deprioritised
+	 * performance work on 2026-09-10 with "do not make feature work wait on a
+	 * performance capture". The version to build then is replacing the oldest
+	 * patch rather than refusing a new one, because that is the only form that
+	 * keeps the row's sentence true.
+	 */
+	static constexpr float WitheredGroundRecoveryLessPercent = 80.0f;
+	static constexpr float WitheredGroundPatchRadiusCm = 300.0f;
+
+	static_assert(
+		WitheredGroundRecoveryLessPercent > 0.0f
+			&& WitheredGroundRecoveryLessPercent < 100.0f,
+		"Withered Ground's reduction is no longer a fraction of what a character "
+		"recovers. At 100 it stops recovery dead, which the row does not ask for, "
+		"and the pipeline floors a Less at -99 so the figure would stop meaning "
+		"what it says.");
+
+	static_assert(
+		WitheredGroundPatchRadiusCm == SingularityWellsRadiusCm
+			&& WitheredGroundPatchRadiusCm == InfernalRainRadiusCm,
+		"A patch of Barren Earth is no longer the size of the other two patches a "
+		"player can stand in. That was the whole argument for the figure -- no row "
+		"states a radius, so the three agree rather than each inventing one. If "
+		"this row's patch should differ, say why beside the constant and delete "
+		"this assertion rather than loosening it.");
 
 	/**
 	 * The Nihil's Embrace: how far the player walks for each point of resistance
