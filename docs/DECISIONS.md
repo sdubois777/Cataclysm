@@ -17,9 +17,22 @@ Decisions made outside the Google Drive documents, newest first.
 **This entry is written after the fact and covers TWO conditions, one of which
 shipped without a record long before the other.** `energy_shield_at_maximum`
 landed in commit `c63f01fb`; `class_resource_at_maximum` landed well before it
-and was never recorded at all. **Every argument below existed only as a comment
-in `CataclysmStatPipeline.cpp` until now**, which is the reason the second
-condition was nearly written on the first one's reasoning.
+and was never recorded at all.
+
+**WHY THE ENTRY EXISTS, WHICH IS NOT THE SAME AS WHY THE CONDITIONS EXIST.**
+Until now a third pool's author would have found **no design-log entry for either
+existing pool**, so the only record of how a "is this bar full" condition behaves
+was a comment in `CataclysmStatPipeline.cpp`. **That is not a safe place for it
+to live alone: three statements in that same file went stale and had to be
+corrected by the change this entry describes**, one of them already wrong before
+that change began.
+
+**And it is exactly how the mistake nearly happened.** Writing the second
+condition, the obvious move was to copy the first one's stated reason for taking
+no numeric threshold. **That reason is false for the second pool and the
+conclusion is true anyway** — so copying it would have produced a correct rule
+resting on a wrong argument, which nothing in the build, the tests or a review
+would have caught.
 
 ### The two conditions
 
