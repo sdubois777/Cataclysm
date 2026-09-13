@@ -20,6 +20,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::NihilsEmbraceKey =
 const TCHAR* UCataclysmDungeonModifierEffects::FieldMedicKey =
 	TEXT("War_Field_Medic");
 
+const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
+	TEXT("Void_Singularity_Wells");
+
 namespace
 {
 	/**
@@ -40,6 +43,8 @@ namespace
 	const TCHAR* const DungeonModifierEffectsMaxManaStat = TEXT("max_mana");
 	const TCHAR* const DungeonModifierEffectsHealingReceivedStat =
 		TEXT("healing_received_reduction");
+	const TCHAR* const DungeonModifierEffectsMovementSpeedStat =
+		TEXT("movement_speed");
 
 	/**
 	 * One multiplier from a dungeon rule, or nothing for a value of nothing.
@@ -149,8 +154,16 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	// `Built` here would put a wrong answer on the floor panel, which is the one
 	// place the project tells the player what is finished -- the same reason the
 	// Field Medic was held at `Partly` until #1680.
+	//
+	// SINGULARITY WELLS. Its orbs are placed, they deal void damage read off the
+	// row's own type, and standing in one slows the player by the 40% the row
+	// states. **Nothing pulls**, and the row names the pull before anything else,
+	// so this cannot be `Built`. Pulling the player and pulling a projectile are
+	// two further pieces of work; the key's comment in the header says what each
+	// needs and why neither is a line or two.
 	if (RowKey == FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey)
-		|| RowKey == FName(InfernalRainKey))
+		|| RowKey == FName(InfernalRainKey)
+		|| RowKey == FName(SingularityWellsKey))
 	{
 		return ECataclysmModifierBuilt::Partly;
 	}
@@ -175,6 +188,40 @@ bool UCataclysmDungeonModifierEffects::InfernalRainPatchIsDue(
 	// would put every patch one beat later than the figure says for no reason
 	// anybody could observe.
 	return SecondsSinceLastPatch >= InfernalRainSecondsBetweenPatches;
+}
+
+bool UCataclysmDungeonModifierEffects::SingularityWellIsDue(
+	float SecondsSinceLastWell, int32 WellsAlive)
+{
+	// THE CAP FIRST, so a floor already carrying its limit does no arithmetic and
+	// does not swallow the clock: the caller keeps counting, so the beat a well is
+	// destroyed on places the next one at once.
+	if (WellsAlive >= SingularityWellsMostWells)
+	{
+		return false;
+	}
+
+	// AT OR PAST, NOT PAST. The beat is a quarter of a second and the cadence is
+	// eight, so insisting on strictly past would put every well one beat later
+	// than the figure says for no reason anybody could observe.
+	return SecondsSinceLastWell >= SingularityWellsSecondsBetweenWells;
+}
+
+float UCataclysmDungeonModifierEffects::SingularityWellDamagePerSecond(
+	float MaximumHealth)
+{
+	// A CHARACTER WITH NO MAXIMUM HEALTH TAKES NOTHING, rather than a negative
+	// figure reaching the well. A zero here would place a well that does nothing,
+	// and the rule that places them refuses that rather than relying on the
+	// ground zone to notice -- `ACataclysmGroundZone::Sweep` skips a patch only
+	// when it neither damages nor applies an effect, which is a rule about other
+	// patches.
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * SingularityWellsPercentPerSecond / 100.0f;
 }
 
 float UCataclysmDungeonModifierEffects::InfernalRainDamagePerSecond(
@@ -221,6 +268,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DeathsEmbraceKey),
 		FName(FieldMedicKey),
 		FName(InfernalRainKey),
+		FName(SingularityWellsKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -383,6 +431,26 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddFlat(Modifiers,
 								  DungeonModifierEffectsHealingReceivedStat,
 								  Effects.HealingReceivedLessPercent);
+
+	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
+	// and #41.
+	//
+	// A MULTIPLIER RATHER THAN A FLAT TAKE, because `movement_speed` is a real
+	// number for every class -- 4.0 by default, 4.6 for the Ravager, 3.5 for the
+	// Ritualist -- so a share of it means the same thing to each of them, and the
+	// row says "by 40%" rather than by an amount.
+	//
+	// NOTHING ELSE IS NEEDED TO REACH THE CHARACTER, which is worth saying because
+	// it looks too easy. `movement_speed` is in
+	// `UCataclysmPlayerClassStats::StatToAttribute`, so it is recorded; writing
+	// the attribute fires the delegate
+	// `ACataclysmPlayerCharacter::OnMovementSpeedChanged` bound in
+	// `InitAbilityActorInfo`; that re-reads the attribute through
+	// `RefreshMovementSpeed` and writes `MaxWalkSpeed`. The whole chain existed
+	// before this rule.
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsMovementSpeedStat,
+								  Effects.MovementSpeedLessPercent);
 
 	return Modifiers;
 }

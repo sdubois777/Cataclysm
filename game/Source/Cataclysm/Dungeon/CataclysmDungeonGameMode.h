@@ -1007,6 +1007,30 @@ private:
 		class ACataclysmPlayerCharacter* Player,
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
+	/**
+	 * Singularity Wells: places void orbs and slows whoever stands in one.
+	 * Issues #1605 and #41.
+	 *
+	 * TWO JOBS ON ONE BEAT, AND THE ORDER MATTERS. It sets the slow from the wells
+	 * that exist BEFORE it considers placing another, because the beat a player
+	 * walks out of a well is a beat on which nothing is placed. Placing first and
+	 * setting the slow inside that branch would leave a character slowed by a well
+	 * they had left, or by one that had been destroyed.
+	 *
+	 * THE SLOW IS A FIELD AND NOT AN APPLY. See `ApplyChangingFloorEffects`: a
+	 * rule that assembled its own effects would undo every other rule's four
+	 * times a second.
+	 *
+	 * IT ASKS EACH WELL WHETHER IT COVERS THE PLAYER rather than measuring
+	 * distances itself. `ACataclysmGroundZone::Covers` is the same test the zone's
+	 * own sweep makes, so the thing that slows a character and the thing that
+	 * damages them cannot disagree about where the well is. That function's
+	 * comment says "Read by tests", and this is the first production caller.
+	 */
+	void StepSingularityWells(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
 	void StepDeathsEmbrace(class ACataclysmPlayerCharacter* Player,
 						   class UCataclysmAbilitySystemComponent* AbilitySystem);
 
@@ -1131,6 +1155,28 @@ private:
 	 */
 	float InfernalRainSecondsSinceLastPatch = 0.0f;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> InfernalRainPatches;
+
+	/**
+	 * Singularity Wells' clock, the wells on this floor, and the slow in force.
+	 * Issues #1605 and #41.
+	 *
+	 * ONE THING ADVANCES THE CLOCK, AND THAT IS `StepSingularityWells`. The
+	 * per-floor reset clears it, which is a different act, and the rule needs
+	 * both. A fault repaired on 2026-09-12 had two functions each advancing and
+	 * resetting one timer: whichever ran first reset it, so the other never fired.
+	 *
+	 * THE WELLS LAST THE FLOOR, so this list only ever shrinks by something
+	 * destroying a well -- which `UCataclysmFloorContents::ClearTheFloor` does
+	 * when the player leaves. A weak pointer going invalid IS that, so nothing has
+	 * to be told.
+	 *
+	 * THE SLOW IN FORCE IS REMEMBERED SO A BEAT THAT CHANGES NOTHING ASKS FOR NO
+	 * REFRESH, which is what every other beat-driven field here does. It is also
+	 * the only one that can fall back to nothing without the floor changing.
+	 */
+	float SingularityWellsSecondsSinceLastWell = 0.0f;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> SingularityWells;
+	float SingularityWellsSlowApplied = 0.0f;
 
 	/**
 	 * The arriving wave's creatures that are not on the floor yet, in the order

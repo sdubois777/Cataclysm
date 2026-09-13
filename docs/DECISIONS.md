@@ -2,6 +2,192 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — Singularity Wells slows a player standing in one, and the figure that makes it fair is how much floor it covers rather than the 40%
+
+**Affects:**
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`.
+Issues [#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+[#1605](https://github.com/sdubois777/Cataclysm/issues/1605), which carries the eight
+hazard rows. **Applied, and the row is `Partly` built: nothing pulls.**
+
+Every path above is written out in full rather than in this log's usual shorthand,
+because `tools/tests/test_the_decisions_log_names_real_files.py` keeps only backticked
+items containing a slash. Issue
+[#1709](https://github.com/sdubois777/Cataclysm/issues/1709) is about that.
+
+### The row
+
+| Row | Its words |
+| :-- | :-- |
+| `Void_Singularity_Wells`, weight 15.0, Void | "Pulsing void orbs pull players and projectiles toward them, dealing void damage and slowing movement by 40%." |
+
+**It states one number and the rule needs six.**
+
+| Figure | Value | Where it comes from |
+| :-- | :-- | :-- |
+| `SingularityWellsSlowPercent` | 40% | **The row.** "slowing movement by 40%" |
+| `SingularityWellsRadiusCm` | 300 cm | **Borrowed from this project**: the Gatekeeper's burning ground, so a well is the size of a patch a player has already learned to step out of |
+| `SingularityWellsFallsWithinCm` | 1200 cm | **Borrowed**: Infernal Rain's figure, for the reason that entry gives |
+| `SingularityWellsMostWells` | 3 | **A judgement**, from the coverage arithmetic below |
+| `SingularityWellsPercentPerSecond` | 1% of maximum health | **A judgement**, from Diablo IV's pulling affix |
+| `SingularityWellsSecondsBetweenWells` | 8 s | **A judgement**, from the only cadence the research published |
+
+### The research told me what to worry about, and the arithmetic said it was the wrong worry
+
+**This is recorded because a reader who sees only the conclusion will not know
+avoidability was considered, and will not know which way the evidence pointed.**
+
+**What the research said.** Path of Exile 2 ships a movement-slowing map modifier that
+its players object to in at least eight Early Access feedback threads. Read in full, the
+complaint separates, and the decisive part is not the size:
+
+> "Chilled Ground is impossible to actually interact with and avoid"
+
+> "an INSTANT, effectively unavoidable, 30% action speed penalty for stepping onto some
+> fresh powder is a little harsh"
+
+**It publishes the magnitude: 30%.** This row states 40%, larger than a figure players in
+a shipped game already call harsh. **So the first design made the wells sparse and
+scattered across the floor, to be avoidable.**
+
+**Then the arithmetic reversed it.** A floor is 40 by 40 cells of 400 cm, so 160 by 160
+metres:
+
+| | |
+| :-- | --: |
+| three wells of 300 cm radius | 84.8 m² |
+| a floor | 25,600 m² |
+| **share of the floor covered** | **0.33%** |
+
+**The risk was never that the slow is everywhere. It is that a player never meets the
+modifier at all**, which is how a row ends up doing nothing — the same failure as a
+modifier that draws another modifier on floor 1, recorded against Unstable Dimensions.
+
+**So the wells are placed near the player**, the way Infernal Rain's patches are, and the
+numbers that describe play are local:
+
+| | |
+| :-- | --: |
+| the circle a well can appear in, 1200 cm radius | 452.4 m² |
+| three wells in it | **18.8% covered, 81% clear** |
+| walking out from a well's centre at the slowed 2.4 m/s | **1.2 s** |
+| from just inside its edge | 0.2 s |
+
+**That 1.2 seconds is what makes this avoidable, not the 40%.** And it is why the cap is
+three: a fourth would take a quarter of the ground around the player.
+
+Sources:
+[Elite and Affixes Overview — Maxroll](https://maxroll.gg/d4/resources/elites-affixes),
+[too oppressive, makes endgame unenjoyable — Path of Exile forum](https://www.pathofexile.com/forum/view-thread/3854833),
+[please tone down the number of these modifiers — Path of Exile forum](https://www.pathofexile.com/forum/view-thread/3849201).
+
+### The three judgements, each with what it rests on
+
+**Three wells.** From the arithmetic above. Diablo IV's **Debilitating Storm** "spawns a
+set of storms that Blinds and Slows players within them" and **Death's Grasp** "summons a
+field of Undead Hands that Slows the player", so several placed regions that slow whoever
+is inside is a shipped shape rather than an invention — but neither publishes a count.
+
+**One per cent of maximum health a second**, which is half Infernal Rain's and the
+smallest damage of the three hazards in this file. Diablo IV's **Tempest** "deals light
+damage and pulls in players and their minions": where a shipped affix both moves a player
+and hurts them, **the damage is the lesser half**. This row slows and pulls as well as
+damaging, so its damage is the least of what it does. A compile-time assertion holds it
+below the burning ground's rate.
+
+**Eight seconds between wells.** The only numeric evidence the research produced was about
+cadence: Diablo IV publishes 8 seconds for Teleporter and 15 for Hellbound, and publishes
+no radius, pull distance or slow percentage for any affix of this kind. So eight is the
+bottom of a shipped range rather than a number of mine.
+
+**Expect all three to need tuning against real play**, which Forced March and Infernal
+Rain both say of their own figures.
+
+### The route that looked obvious would have stopped the player dead
+
+`Debuff_Cripple` slows a creature, and its `MovesStat` column in
+`game/Data/StatusEffects.csv` is deliberately empty because a creature applies that slow
+from C++. **The apparent lesson was to give Singularity Wells a status effect row with
+`MovesStat=movement_speed`. That would have been worse than redundant.**
+
+`UCataclysmSkillEffects::ApplyNamedEffect` resolves which attributes to move from that
+column and then **subtracts a flat value clamped against the attribute's own current
+value**. A player's `movement_speed` is 4.0 metres a second. A magnitude of 40 clamps to
+4.0 and is subtracted, **leaving zero**.
+
+**That path is built for resistances, where subtracting points is the right shape, and a
+speed in metres per second is not that.**
+
+### What it uses instead, which needed no new mechanism
+
+A multiplier on `movement_speed`, added the way Starvation adds its own. The chain existed
+already and each link was checked rather than assumed:
+
+| Link | Where |
+| :-- | :-- |
+| the stat is authored data | `game/Data/ClassStats.csv`, and item, affix and enchantment rows |
+| the attribute exists | `UCataclysmCombatAttributeSet::MovementSpeed`, 4.0 by default |
+| **it is in the stat-to-attribute map**, so it is recorded rather than dropped | `UCataclysmPlayerClassStats::StatToAttribute` |
+| a dungeon modifier reaches it | `UCataclysmEquipmentComponent::RefreshAttributes` folds the dungeon modifiers in before applying |
+| the attribute reaches the character | an attribute-change delegate re-reads it and writes `MaxWalkSpeed` |
+| a per-beat condition can drive it | Forced March already computes a magnitude each beat |
+
+**So the decision was to accept quarter-second granularity rather than build something
+finer.** The slow lands up to a quarter second after entering a well and lifts up to a
+quarter second after leaving. **That is a judgement, not a derivation:** it is the rate
+every other beat rule runs at, and for a movement slow it is not worth a second mechanism.
+
+### Two things the implementation does that are not obvious
+
+**The order inside the rule is the design.** It sets the slow from the wells that exist
+**before** considering whether to place another, because the beat a player walks out of a
+well is a beat on which nothing is placed. Placing first and setting the slow inside that
+branch would leave a character slowed by a well they had left, for the rest of the floor.
+The end-to-end test fails if the two halves are reordered.
+
+**It asks each well `Covers()` rather than measuring distances**, so what slows a
+character and what damages them cannot disagree about where the well is. That function's
+comment says it is read by tests; this is its first production caller.
+
+**And the slow does not stack across overlapping wells**, deliberately: the row states one
+figure and says nothing about standing in two. Three overlapping wells would otherwise
+reach 120%, which the pipeline floors at −99 anyway.
+
+### Why the row is `Partly` built
+
+**Nothing pulls, and the row names the pull first.** Both halves are separate work:
+
+- **Pulling the player** cannot go through `UCataclysmSkillEffects::ApplyPull` on a
+  repeating beat. A diminishing-returns rule halves every displacement inside a five
+  second window, so a pulsing pull would fade to nothing within about a second.
+  `ACataclysmTether::Check` documents the way round it and writes a swept
+  `SetActorLocation` four times a second instead.
+- **Pulling a projectile** needs a new mid-flight re-aim.
+  `ACataclysmProjectile::GlanceOnwardFrom` is the pattern, and `Direction` is private with
+  its path fixed at launch.
+
+Marking the row `Built` would put a wrong answer on the floor panel, which is the one
+place the project tells a player what is finished. Same call as the burning ground with no
+fireball drawn, issue
+[#1699](https://github.com/sdubois777/Cataclysm/issues/1699), and the Field Medic before
+issue [#1680](https://github.com/sdubois777/Cataclysm/issues/1680).
+
+### What is not covered, said plainly
+
+- **The pull**, both halves.
+- **That a real frame reaches the beat.** The test calls the game mode's `Tick` directly,
+  because `StartPlay` cannot be called from an automation test.
+- **The floor panel's line for this row.** Showing it needs a player controller of the
+  project's own class and these tests possess with a plain one, so the panel call is
+  skipped rather than checked. A pre-existing limit.
+
+---
+
 ## 2026-09-13 — A subjugated enemy is a minion, is healed to full when taken, and says so in its own description
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp`,
