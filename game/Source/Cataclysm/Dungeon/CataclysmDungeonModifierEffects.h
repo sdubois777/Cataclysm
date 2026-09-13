@@ -338,7 +338,22 @@ public:
 	static constexpr float InfernalRainPercentPerSecond = 2.0f;
 	static constexpr float InfernalRainSecondsBetweenPatches = 5.0f;
 	static constexpr int32 InfernalRainMostPatches = 3;
-	static constexpr float InfernalRainFallsWithinCm = 1'200.0f;
+	// NO DIGIT SEPARATOR IN THIS NUMBER, AND THAT IS NOT A STYLE CHOICE. With an
+	// apostrophe between the thousands and the hundreds, this file does not build:
+	// Unreal Header Tool reads the apostrophe as the start of a character literal
+	// and fails with "Unterminated character constant" before the compiler ever
+	// sees the line. Measured on this line, which was written that way first.
+	//
+	// EVERY DIGIT SEPARATOR IN game/Source IS IN A .cpp FILE, which Unreal Header
+	// Tool does not parse, and this was the only one in a header. So the project's
+	// practice was already right and nothing stated it.
+	//
+	// AN APOSTROPHE IN A COMMENT IS FINE, which is worth saying because the
+	// failure was a tokeniser error and the cautious reading would be that no
+	// apostrophe may appear anywhere. Counted: this header on development carries
+	// 55 of them in prose and builds. It is the one in the number that breaks it.
+	// Issue #1703.
+	static constexpr float InfernalRainFallsWithinCm = 1200.0f;
 
 	static_assert(
 		InfernalRainSecondsBetweenPatches < InfernalRainPatchSeconds,

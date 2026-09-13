@@ -1780,7 +1780,12 @@ bool FCataclysmInfernalRainBeatTest::RunTest(const FString& Parameters)
 	// is what makes the line above guaranteed rather than almost always true.
 	const FVector Feet = Player.Character->GetActorLocation();
 	const FVector Fell = Patch->GetActorLocation();
-	TestEqual(TEXT("it fell at the player's own height"), Fell.Z, Feet.Z, 1.0f);
+	// A DOUBLE TOLERANCE, NOT A FLOAT ONE. `FVector`'s components are doubles in
+	// Unreal 5, so `1.0f` here makes `TestEqual` ambiguous between its float and
+	// double overloads and the file does not compile. The error names the overloads
+	// rather than the literal. `CataclysmDropPickupTests.cpp` compares rectangle
+	// edges the same way, with a double literal.
+	TestEqual(TEXT("it fell at the player's own height"), Fell.Z, Feet.Z, 1.0);
 	TestFalse(TEXT("the player is outside it when it is laid"),
 			  Patch->Covers(Feet));
 	TestTrue(TEXT("and the patch does cover its own centre"),
