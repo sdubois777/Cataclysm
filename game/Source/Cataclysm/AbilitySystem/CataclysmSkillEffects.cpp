@@ -356,7 +356,8 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 										   const FGameplayTagContainer& SkillTags,
 										   float SkillHealthCostPercent,
 										   float TargetDistanceMetres,
-										   bool bTargetIsStaggered)
+										   bool bTargetIsStaggered,
+										   const AActor* Target)
 {
 	const FGameplayAttribute Spell =
 		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
@@ -386,7 +387,8 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 								  FromAttribute, SkillHealthCostPercent,
 								  FCataclysmBlowContext(),
 								  /*MetresMovedBeforeBlow=*/-1.0f,
-								  TargetDistanceMetres, bTargetIsStaggered)
+								  TargetDistanceMetres, bTargetIsStaggered,
+								  Target)
 		: FromAttribute;
 
 	return FMath::Max(0.0f, Value);
@@ -409,7 +411,7 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	const UAbilitySystemComponent* Source,
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
-	bool bTargetIsStaggered)
+	bool bTargetIsStaggered, const AActor* Target)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -424,14 +426,14 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	return FMath::Max(
 		0.0f, Cataclysm->AttackDamageIncreasesForSkill(
 				  SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow,
-				  TargetDistanceMetres, bTargetIsStaggered));
+				  TargetDistanceMetres, bTargetIsStaggered, Target));
 }
 
 float UCataclysmSkillEffects::MoreForSkill(
 	const UAbilitySystemComponent* Source,
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
-	bool bTargetIsStaggered)
+	bool bTargetIsStaggered, const AActor* Target)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -443,7 +445,7 @@ float UCataclysmSkillEffects::MoreForSkill(
 		? Cataclysm->AttackDamageMoreForSkill(SkillTags, SkillHealthCostPercent,
 											  MetresMovedBeforeBlow,
 											  TargetDistanceMetres,
-											  bTargetIsStaggered)
+											  bTargetIsStaggered, Target)
 		: 1.0f;
 }
 
@@ -496,7 +498,8 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 											 float SkillHealthCostPercent,
 											 float MetresMovedBeforeBlow,
 											 float TargetDistanceMetres,
-											 bool bTargetIsStaggered)
+											 bool bTargetIsStaggered,
+											 const AActor* Target)
 {
 	// An ability system component this project did not make carries no modifier
 	// list, which is not a fault: an enemy's plain melee attack goes through
@@ -580,13 +583,23 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 	// supplies one is the defender-side stat lookup in
 	// `CataclysmAbilitySystemComponent.cpp`. Adding it here would be a parameter
 	// no caller could fill.
+	//
+	// AND WHICH AILMENTS THE TARGET IS CARRYING, WHEN THERE IS ONE. Issue #1515.
+	// `ApplyHit` is the one caller of the five with a target in hand, the same
+	// one that supplies the four facts above; the other four pass nothing and a
+	// row asking about an ailment correctly grants them nothing.
+	// `WithTargetAilments` walks the target's tags only if one of these rows
+	// asks, so a skill with no such row pays one pass over its own modifier
+	// list.
 	return UCataclysmStatPipeline::Evaluate(
 		BaseDamage, Modifiers, SkillTags,
-		Cataclysm->CurrentConditions(SkillHealthCostPercent,
-									 FCataclysmBlowContext(),
-									 MetresMovedBeforeBlow,
-									 TargetDistanceMetres,
-									 bTargetIsStaggered)).Final;
+		UCataclysmAbilitySystemComponent::WithTargetAilments(
+			Modifiers, Target,
+			Cataclysm->CurrentConditions(SkillHealthCostPercent,
+										 FCataclysmBlowContext(),
+										 MetresMovedBeforeBlow,
+										 TargetDistanceMetres,
+										 bTargetIsStaggered))).Final;
 }
 
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
@@ -721,11 +734,25 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const bool bTargetIsStaggered =
 		!Delivery.bCarriesNoTargetState && IsStaggered(Target);
 
+	// AND THE TARGET ITSELF, FOR THE CONDITIONS THAT ASK WHICH AILMENTS IT IS
+	// CARRYING. Issue #1515. Withheld by the same flag and for the same reason
+	// as the staggered state directly above: the ailments on a minion's target
+	// are a true fact about that target, and a player's conditional damage bonus
+	// still should not reach a minion's blow.
+	//
+	// NULL RATHER THAN A SECOND FLAG, because null is already what every caller
+	// with no target passes and what `WithTargetAilments` already refuses on.
+	// A flag would be a second way to say the same thing and a second way to
+	// forget it.
+	const AActor* const AilmentTarget =
+		Delivery.bCarriesNoTargetState ? nullptr : Target;
+
 	const float Folded = IncreasesBehindAttackDamage(Source);
 	const float Applying =
 		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
 						  Delivery.MetresMovedBeforeBlow,
-						  TargetDistanceMetres, bTargetIsStaggered);
+						  TargetDistanceMetres, bTargetIsStaggered,
+						  AilmentTarget);
 	// AND A SECOND BONUS DECIDED BY THE TARGET, added into the same sum. Issue
 	// #1061. The Masochist's Wound Channeling: "you deal 1% increased damage per
 	// point to enemies carrying a debuff you also carry."
@@ -758,10 +785,11 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
 		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
 					  Delivery.MetresMovedBeforeBlow, TargetDistanceMetres,
-					  bTargetIsStaggered);
+					  bTargetIsStaggered, AilmentTarget);
 	const float Flat = IsSpell(SkillTags)
 		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,
-						TargetDistanceMetres, bTargetIsStaggered)
+						TargetDistanceMetres, bTargetIsStaggered,
+						AilmentTarget)
 		: 0.0f;
 
 	// THE SAME FOUR FACTS THE TWO CALLS ABOVE ALREADY USE. Issue #1729. They were
@@ -776,7 +804,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		Delivery.SkillHealthCostPercent,
 		Delivery.MetresMovedBeforeBlow,
 		TargetDistanceMetres,
-		bTargetIsStaggered);
+		bTargetIsStaggered,
+		AilmentTarget);
 	if (Damage <= 0.0f)
 	{
 		// A character with no weapon damage. Expected before a weapon is

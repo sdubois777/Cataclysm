@@ -230,6 +230,34 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bFromStaggered = false;
+
+	/**
+	 * Which debuffs whoever threw the blow is carrying. Issue #1515.
+	 *
+	 * READ OFF THE EFFECT'S CAUSER AS AN ACTOR, for the reason `bFromStaggered`
+	 * above is: a debuff lands on anything, the player included, so this is not a
+	 * property of an enemy creature and is read outside that cast.
+	 *
+	 * A CONTAINER RATHER THAN A BOOLEAN PER AILMENT, so that a later condition
+	 * naming a different debuff needs no new field here and no new line at the
+	 * one place that fills this.
+	 *
+	 * FILLED ON EVERY HIT RATHER THAN ONLY WHEN A ROW ASKS, WHICH IS THE ONE
+	 * PLACE THIS MECHANISM DOES NOT GATE THE WALK. The attacker's side is gated
+	 * -- `UCataclysmAbilitySystemComponent::WithTargetAilments` has the rows in
+	 * hand and skips the walk unless one of them asks. This site has only the two
+	 * characters, so there is nothing here to ask.
+	 *
+	 * WHAT IT COSTS, PLAINLY: one `UCataclysmDebuffs::TagsOnActor` call per hit
+	 * taken, beside the `IsStaggered` call already on the line above. It is
+	 * bounded by the hits a character TAKES rather than the blows every creature
+	 * DEALS, which is the side that made the attacker's gate worth building. If a
+	 * row ever lands on `opponent_carries_weaken` and this shows up in a profile,
+	 * `WithTargetAilments` is the pattern to copy -- the defender's own stat list
+	 * is available inside its lookup, which is where the question can be asked.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	FGameplayTagContainer AttackerDebuffs;
 };
 
 /** What the calculation decided, step by step, so it can be inspected. */
