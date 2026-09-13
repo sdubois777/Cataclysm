@@ -1497,69 +1497,119 @@ class TestAPassiveNodeCanGrantSeveralStats:
         assert "no passive node is called Ghost" in problems[0]
 
 
-class TestARowCountingNearbyEnemiesIsRefusedUntilItCanCarryARadius:
-    """ISSUE #1597. The engine reads two names that count the enemies standing
-    near a character: the condition `enemies_in_reach_at_least` and the scale
-    `enemies_in_reach`. Both need a radius, which a modifier carries in its own
-    `ReachMetres` field.
+class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
+    """ISSUE #1597. Two readings count the enemies standing near a character: the
+    condition `enemies_in_reach_at_least` and the scale `enemies_in_reach`. Both
+    need a radius, and neither neighbouring column can hold it -- `Condition
+    Value` holds the COUNT asked for, `Scale Step` holds how many enemies one
+    step is worth -- so the radius has a column of its own, `Reach Metres`.
 
-    THE SHEET HAS NOWHERE TO WRITE THAT RADIUS YET. There is no `Reach Metres`
-    column and this file does not carry one through, so a row using either name
-    would arrive with a reach of -1 and count nobody.
+    THREE RULES, AND EACH FAILS IN THE DIRECTION THAT IS VISIBLE.
 
-    SO THE ROW IS REFUSED AT IMPORT RATHER THAN IMPORTED AND WORTH NOTHING,
-    which is the direction the generator always chooses: a node granting nothing
-    is invisible, and an import that stops is not.
+    A row naming either reading MUST state a radius, because a modifier with no
+    radius counts nobody: the node would import cleanly, grant nothing, and say
+    so nowhere.
 
-    THESE TESTS GO WHEN THE COLUMN ARRIVES, together with the refusal they cover.
+    A row naming neither MUST NOT state one, because nothing would read it. A
+    number in a column the game never looks at is a statement somebody believes
+    is doing something.
+
+    A radius must be above nothing and no larger than 100 metres, which is the
+    bound `target_within_metres` uses and for the same reason.
+
+    THIS CLASS REPLACED ONE COVERING A TEMPORARY REFUSAL. Between the engine
+    learning the two names and the sheet gaining the column, a row using either
+    was refused outright, because it could only have counted nobody.
     """
 
     @staticmethod
     def sheet(rows: list[list]) -> list[list]:
         return [["Node", "Stat", "Value Kind", "Value Per Point",
-                 "Condition", "Condition Value", "Scale", "Scale Step"]] + rows
+                 "Condition", "Condition Value", "Scale", "Scale Step",
+                 "Reach Metres"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
             tmp_path / "reach.xlsx", {"Passive Effects": self.sheet(rows)}))
 
-    def test_a_row_naming_the_condition_is_refused(self, tmp_path):
+    def test_a_condition_row_carries_its_radius_to_the_output(self, tmp_path):
         rows = self.book(tmp_path, [
             ["Ravager_basic_spine_003", "attack_damage", "increased", 2,
-             "enemies_in_reach_at_least", 1, None, None],
+             "enemies_in_reach_at_least", 1, None, None, 4],
         ])
-        with pytest.raises(gen.DataError, match="Reach Metres"):
-            gen.passive_effects(rows)
+        out = gen.passive_effects(rows)
 
-    def test_a_row_naming_the_scale_is_refused(self, tmp_path):
+        assert len(out) == 1
+        assert out[0]["Condition"] == "enemies_in_reach_at_least"
+        assert out[0]["ConditionValue"] == 1.0
+        assert out[0]["ReachMetres"] == 4.0
+
+    def test_a_scale_row_carries_its_radius_to_the_output(self, tmp_path):
         rows = self.book(tmp_path, [
             ["Ravager_keystone_d_kB", "attack_damage", "more", 2,
-             None, None, "enemies_in_reach", 1],
+             None, None, "enemies_in_reach", 1, 4],
         ])
-        with pytest.raises(gen.DataError, match="Reach Metres"):
+        out = gen.passive_effects(rows)
+
+        assert out[0]["Scale"] == "enemies_in_reach"
+        assert out[0]["ScaleStep"] == 1.0
+        assert out[0]["ReachMetres"] == 4.0
+
+    def test_a_row_that_counts_nobody_says_so_rather_than_importing(self, tmp_path):
+        """The radius is missing, so the row would grant nothing silently."""
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 2,
+             "enemies_in_reach_at_least", 1, None, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="counts nobody"):
             gen.passive_effects(rows)
 
-    def test_the_refusal_names_the_issue_so_the_next_reader_can_find_it(
-            self, tmp_path):
+    def test_a_scale_row_with_no_radius_is_refused_too(self, tmp_path):
         rows = self.book(tmp_path, [
-            ["A_node", "armor", "increased", 3,
-             "enemies_in_reach_at_least", 1, None, None],
+            ["A_node", "attack_damage", "more", 2,
+             None, None, "enemies_in_reach", 1, None],
         ])
-        with pytest.raises(gen.DataError, match="#1597"):
+        with pytest.raises(gen.DataError, match="counts nobody"):
             gen.passive_effects(rows)
 
-    def test_a_row_using_neither_name_still_imports(self, tmp_path):
-        """The control. Without it, a refusal that fired on every row would pass
-        all three tests above and nothing here would say so."""
+    def test_a_radius_on_a_row_that_reads_none_is_refused(self, tmp_path):
+        """Nothing would read it, so it is a number that looks as though it works."""
         rows = self.book(tmp_path, [
             ["A_node", "armor", "increased", 3,
-             "health_at_or_below", 20, "minions_held", 1],
+             "health_at_or_below", 20, None, None, 4],
+        ])
+        with pytest.raises(gen.DataError, match="Nothing would read it"):
+            gen.passive_effects(rows)
+
+    def test_a_radius_of_nothing_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 2,
+             "enemies_in_reach_at_least", 1, None, None, 0],
+        ])
+        with pytest.raises(gen.DataError, match="above 0"):
+            gen.passive_effects(rows)
+
+    def test_a_radius_past_a_hundred_metres_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 2,
+             "enemies_in_reach_at_least", 1, None, None, 140],
+        ])
+        with pytest.raises(gen.DataError, match="up to 100"):
+            gen.passive_effects(rows)
+
+    def test_a_row_using_neither_reading_still_imports_with_no_radius(self, tmp_path):
+        """The control. Without it, a refusal firing on every row would pass the
+        five refusal tests above and nothing here would say so."""
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "health_at_or_below", 20, "minions_held", 1, None],
         ])
         out = gen.passive_effects(rows)
 
         assert len(out) == 1
         assert out[0]["Condition"] == "health_at_or_below"
         assert out[0]["Scale"] == "minions_held"
+        assert out[0]["ReachMetres"] == -1.0
 
 
 class TestEnchantmentEffects:
