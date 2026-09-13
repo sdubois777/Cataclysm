@@ -644,6 +644,41 @@ def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> 
         os.utime(path, (stamp, stamp))
 
 
+def state_after_a_failed_restore(broken_build: "BuildOutcome | None") -> str:
+    """What the worktree holds when the rebuild after a restore did not compile.
+
+    THREE STATES, AND THEY DIFFER IN WHETHER A TEST RUN HERE MEANS ANYTHING.
+    Issue #1657. The exception raised for all three used to be identical.
+
+    A SEPARATE FUNCTION SO IT CAN BE READ WITHOUT RUNNING FOUR BUILDS, and so the
+    `finally` it is called from stays short. That block is built so a failure
+    during the restore cannot hide the failure that caused the run to unwind --
+    issue #384 -- and every line added to it is another thing that can raise in
+    the wrong place.
+    """
+    if broken_build is None:
+        # The build command itself never returned. Nothing was measured and
+        # nothing is known about the binaries, which is its own answer.
+        return ("The build with the break in it never reported at all, so what "
+                "these binaries hold is unknown. Build again before running any "
+                "test in this worktree.")
+
+    if not broken_build.succeeded:
+        # The break never compiled, so no test ever ran and no broken object was
+        # ever produced. The source on disk is correct and a build is owed.
+        return ("The break never compiled, so nothing ran against it and these "
+                "binaries are from the last good build, from correct source. A "
+                "build is owed because the restore moved the file's modification "
+                "time, and it will report actions -- that is expected here and is "
+                "NOT evidence the binaries held the break.")
+
+    return ("THE BINARIES IN THIS WORKTREE CONTAIN THE BREAK. The break compiled, "
+            "the tests ran against it, and the rebuild that was meant to undo it "
+            "did not compile. The source on disk is correct and the binaries are "
+            "not. Build again before running any test here, and discard any "
+            "timing or result taken from this worktree since.")
+
+
 def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
                     test_prefix: str = "Cataclysm",
                     target: str = DEFAULT_TARGET,
@@ -695,6 +730,20 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
     #: records seeing exactly that.
     first_failure: BaseException | None = None
 
+    #: What the build with the break in it reported, or None if it never got that
+    #: far.
+    #:
+    #: BOUND HERE AND NOT ONLY IN THE `try`, WHICH THE HAPPY PATH NEVER NEEDS.
+    #: The `finally` below reads it to say which state the worktree was left in.
+    #: `builder(target)` can raise -- the mutex denied, the wrapper gone, the
+    #: machine taken -- and then the assignment inside the `try` never happens; a
+    #: read of an unbound name there would raise `UnboundLocalError` OVER the
+    #: failure that explains the run. That is issue #384's fault arriving from a
+    #: new direction: the code reporting which case you are in destroying the
+    #: report. `test_a_builder_that_raises_leaves_the_original_exception_intact`
+    #: is what keeps this line, because nothing else exercises it.
+    broken_build: BuildOutcome | None = None
+
     try:
         for relative, edit in edits.items():
             path = REPO_ROOT / relative
@@ -737,6 +786,18 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
             try:
                 require_compiled(restored_build, list(edits))
             except BuildDidNothing as restore_failure:
+                # AND SAY WHICH WORKTREE THIS LEAVES, WHICH THE SAME EXCEPTION
+                # USED TO ANSWER FOR TWO VERY DIFFERENT STATES. Issue #1657.
+                #
+                # A session that hit this reported the danger correctly and
+                # attributed it to the wrong one of the two, because nothing in
+                # the exception told them apart. Nor does the obvious check:
+                # building again reports actions in BOTH cases, because
+                # `restore_and_touch` forces the restored file's modification
+                # time past the break so the next build cannot skip it. That is
+                # what issue #139 asked for, and it means "1 file compiled" is
+                # not evidence the binaries had held the break.
+                restore_failure.add_note(state_after_a_failed_restore(broken_build))
                 if first_failure is None:
                     raise
                 # THE FIRST FAILURE IS THE ONE THAT EXPLAINS THE RUN, so it is

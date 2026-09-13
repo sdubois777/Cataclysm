@@ -678,6 +678,123 @@ def test_a_bad_restore_build_does_not_hide_the_failure_that_came_first(
 
 
 # ---------------------------------------------------------------------------
+# Which worktree a failed restore left behind. Issue #1657.
+#
+# When the restore rebuild fails, prove_cpp_guard raises the same BuildDidNothing
+# for two states that differ completely in how far the worktree can be trusted:
+#
+#   the break build FAILED    nothing ever ran; binaries are from the last good
+#                             build, from correct source.        HARMLESS
+#   the break build SUCCEEDED tests ran against broken binaries, and those
+#                             binaries are still there.          DANGEROUS
+#
+# The session that found this reported the danger correctly and attributed it to
+# the wrong one of the two, because the exception carries nothing that tells them
+# apart. And the obvious diagnostic does not separate them either: building again
+# reports actions in BOTH cases, because restore_and_touch deliberately forces the
+# restored file's modification time past the break so the next build cannot skip
+# it.
+# ---------------------------------------------------------------------------
+
+
+class BuildsThenRaises:
+    """A builder that raises on its first call and answers on later ones.
+
+    FOR THE ONE PATH THE HAPPY CASE NEVER EXERCISES. `broken_build` is assigned
+    inside the `try`; if the build command itself raises, the name is never bound,
+    and anything in the `finally` that reads it raises UnboundLocalError OVER the
+    original exception. That is the fault issue #384 fixed, arriving from a new
+    direction: the code that reports which case you are in destroying the report.
+    """
+
+    def __init__(self, error: BaseException, *later: BuildOutcome) -> None:
+        self.error = error
+        self.later = list(later)
+        self.calls = 0
+
+    def __call__(self, target: str) -> BuildOutcome:
+        self.calls += 1
+        if self.calls == 1:
+            raise self.error
+        return self.later.pop(0) if self.later else self.later[-1]
+
+
+def test_a_failed_restore_after_a_compiled_break_says_the_binaries_hold_it(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """THE DANGEROUS STATE. The message must say so in as many words."""
+    a_source_file(tmp_path, monkeypatch)
+
+    builds = RecordedBuilds(build_that_compiled_thing(),       # the break compiled
+                            outcome(BUILD_THAT_DID_NOTHING))   # the restore did not
+
+    with pytest.raises(BuildDidNothing) as raised:
+        prove_cpp_guard(
+            {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+            builder=builds, tester=lambda prefix: TestOutcome(2, ("a",), ("b",)))
+
+    # READ FROM THE NOTES, NOT THE MESSAGE. This file's existing test for the
+    # restore failure does the same, because add_note is how this function
+    # attaches context without replacing the exception that explains the run.
+    message = " ".join(getattr(raised.value, "__notes__", []))
+    assert "CONTAIN THE BREAK" in message, (
+        "the break compiled and the tests ran against those binaries, and the "
+        "restore rebuild then failed, so the binaries in this worktree still "
+        f"hold the break. The message does not say so: {message}")
+
+
+def test_a_failed_restore_after_a_break_that_did_not_compile_says_they_are_clean(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """THE HARMLESS STATE, and it must NOT be described as the dangerous one."""
+    a_source_file(tmp_path, monkeypatch)
+
+    builds = RecordedBuilds(outcome(BUILD_THAT_FAILED, returncode=6),  # break failed
+                            outcome(BUILD_THAT_DID_NOTHING))           # restore too
+
+    with pytest.raises(BuildDidNothing) as raised:
+        prove_cpp_guard(
+            {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+            builder=builds, tester=lambda prefix: TestOutcome(0, (), ()))
+
+    message = " ".join(getattr(raised.value, "__notes__", []))
+    assert "CONTAIN THE BREAK" not in message, (
+        "the break never compiled, so nothing ever ran and the binaries are from "
+        f"the last good build. Calling this dangerous is a false alarm: {message}")
+    assert "last good build" in message, (
+        f"the message does not say what state the worktree IS in: {message}")
+
+
+def test_a_builder_that_raises_leaves_the_original_exception_intact(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The path the happy case never exercises, and the reason for one line.
+
+    `broken_build` is assigned inside the `try`. A build command that raises --
+    the mutex denied, the wrapper gone -- leaves it unbound, and the `finally`
+    now reads it to say which case the caller is in. Without an initialisation
+    before the `try`, that read raises UnboundLocalError and REPLACES the failure
+    that explains the run.
+    """
+    a_source_file(tmp_path, monkeypatch)
+
+    builds = BuildsThenRaises(RuntimeError("the build command exploded"),
+                              outcome(BUILD_THAT_DID_NOTHING))
+
+    with pytest.raises(RuntimeError) as raised:
+        prove_cpp_guard(
+            {"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+            builder=builds, tester=lambda prefix: TestOutcome(0, (), ()))
+
+    assert "the build command exploded" in str(raised.value), (
+        "the exception that reached the caller is not the one that explains the "
+        f"run: {raised.value!r}")
+
+    notes = getattr(raised.value, "__notes__", [])
+    assert any("restore build was also unsatisfactory" in note for note in notes), (
+        "the restore build's own problem was dropped")
+    assert not any("UnboundLocalError" in note for note in notes), (
+        "reading broken_build in the finally raised over the real failure")
+
+
+# ---------------------------------------------------------------------------
 # Both halves of the proof. Issue #1663.
 #
 # A guard proof is two claims: the test FAILS without the fix, and the test
