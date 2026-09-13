@@ -468,7 +468,14 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// THEY ARE THE FIRST ROWS ON A DAMAGE STAT TO CARRY BOTH a `RequiredTags`
 	// and a `Condition`; before them exactly one row in this table and
 	// PassiveEffects.csv together carried both, and that one is a flag stat.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    107)
+	// AND 108 OVER 91 SINCE THE MOVEMENT SPEED A FULL CLASS RESOURCE GRANTS,
+	// issue #1686: "When your class resource is full, your movement speed is
+	// increased by 15%-30%". ONE ROW OVER ONE ENCHANTMENT, because movement
+	// speed is one stat rather than the pair of damage types a skill can deal.
+	// The sentence states NO DURATION, which is what makes
+	// `class_resource_at_maximum` the honest reading; its neighbour saying "for
+	// 3 seconds" is deliberately still unwritten.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    108)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
