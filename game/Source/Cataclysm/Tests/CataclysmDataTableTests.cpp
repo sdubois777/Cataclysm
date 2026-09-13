@@ -461,7 +461,14 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// deal, scoped to a slot, a type or a keyword. SIX ENCHANTMENTS AND TEN ROWS,
 	// because a row about the damage a character's skills deal becomes one row on
 	// weapon damage and one on spell damage.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    103)
+	// AND 107 OVER 90 SINCE THE TWO ROWS THAT NEED A TAG AND A CONDITION AT
+	// ONCE, issue #1686: "Spells deal 20%-35% less damage while you are moving"
+	// and "Ranged skills deal 15%-30% less damage at close range (within 5
+	// meters)". TWO ENCHANTMENTS AND FOUR ROWS, the same doubling as above.
+	// THEY ARE THE FIRST ROWS ON A DAMAGE STAT TO CARRY BOTH a `RequiredTags`
+	// and a `Condition`; before them exactly one row in this table and
+	// PassiveEffects.csv together carried both, and that one is a flag stat.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    107)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

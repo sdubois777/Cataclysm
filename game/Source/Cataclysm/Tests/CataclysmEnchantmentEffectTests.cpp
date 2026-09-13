@@ -76,6 +76,23 @@ namespace CataclysmEnchantmentEffectTest
 	const TCHAR* SlotLockDrawback =
 		TEXT("Negative_You_cannot_use_movement_abilities_while_stationa");
 
+	/**
+	 * The two rows that carry a tag scope AND a condition. Issue #1686, the two
+	 * rows corrected out of its group C.
+	 *
+	 * THE FIRST ROWS ON A DAMAGE STAT TO NEED BOTH HALVES AT ONCE. Measured
+	 * across `EnchantmentEffects.csv` and `PassiveEffects.csv` together, exactly
+	 * one row carried a `RequiredTags` and a `Condition` before these -- the slot
+	 * lock above -- and that one is a flag stat rather than a damage stat. So
+	 * these are the first data anywhere to ask the pipeline for the AND on a
+	 * number, and the two tests at the end of this file assert it rather than
+	 * reading it off `FCataclysmStatModifier`'s comment.
+	 */
+	const TCHAR* SpellsMovingDrawback =
+		TEXT("Negative_Spells_deal_20_35_less_damage_while_you_are_mo");
+	const TCHAR* RangedCloseDrawback =
+		TEXT("Negative_Ranged_skills_deal_15_30_less_damage_at_close");
+
 	/** A real affix granting increased maximum health, top value 12. */
 	const TCHAR* IncreasedHealthAffix = TEXT("Stat_Increased_maximum_health");
 
@@ -191,7 +208,8 @@ namespace CataclysmEnchantmentEffectTest
 			}
 		}
 		for (const TCHAR* Name :
-			 {HealthDrawback, DrawbackWithNoEffect, SetDrawback, SlotLockDrawback})
+			 {HealthDrawback, DrawbackWithNoEffect, SetDrawback, SlotLockDrawback,
+			  SpellsMovingDrawback, RangedCloseDrawback})
 		{
 			if (!Out.Negative->FindRow<FCataclysmEnchantmentRow>(
 					FName(Name), TEXT("LoadAll"), /*bWarnIfMissing=*/false))
@@ -1027,6 +1045,233 @@ bool FCataclysmWhileStationaryReductionTest::RunTest(const FString&)
 				 TEXT("and standing still, it takes less: %.2f against a normal %.2f"),
 				 Still, Normal),
 			 Still < Normal);
+
+	return true;
+}
+
+
+// --------------------------------------------------------------------------
+// The two rows that need a tag scope AND a condition at once. Issue #1686, the
+// two rows its group C listed as blocked and which are not.
+//
+// WHAT MAKES THEM WORTH A TEST RATHER THAN AN ASSUMPTION.
+// `FCataclysmStatModifier` says "BOTH THIS AND `RequiredTags` MUST HOLD", and
+// until these rows exactly ONE row in `EnchantmentEffects.csv` and
+// `PassiveEffects.csv` together carried both -- the slot lock above, which is a
+// flag stat. No row anywhere had asked the pipeline for that AND on a damage
+// number, so these are the first, and being the first to rely on something is
+// where an unexercised path gets found.
+//
+// EACH TEST BREAKS THE PAIR BOTH WAYS. The right tag with the condition false,
+// and the wrong tag with the condition true, both have to grant nothing: a test
+// that only showed the reduction arriving could not tell a correctly scoped row
+// from one that applies to every skill.
+//
+// AND EACH ASKS BOTH BUCKETS, WHICH IS HOW THE BUCKET IS SEEN AT ALL. One
+// modifier alone cannot show which bucket it is in, because `base x 0.65` and
+// `base x (1 - 0.35)` are the same number. `MoreForSkill` and
+// `IncreasesForSkill` read the two buckets separately, so a row that landed in
+// the wrong one moves the wrong figure and is caught.
+// --------------------------------------------------------------------------
+
+namespace CataclysmEnchantmentEffectTest
+{
+	/** One skill tag, or an empty container if the vocabulary has lost it. */
+	FGameplayTagContainer SkillTagged(const TCHAR* Name)
+	{
+		FGameplayTagContainer Tags;
+		const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(
+			FName(Name), /*ErrorIfNotFound=*/false);
+		if (Tag.IsValid())
+		{
+			Tags.AddTag(Tag);
+		}
+		return Tags;
+	}
+
+	/** Whether the character carries any modifier at all on a stat. */
+	bool CarriesAModifierOn(const UCataclysmAbilitySystemComponent* System,
+							const TCHAR* Stat)
+	{
+		const FCataclysmStatInputs* Inputs = System->GetStatInputs(FName(Stat));
+		return Inputs && Inputs->Modifiers.Num() > 0;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellsMovingDrawbackTest,
+	"Cataclysm.Enchantments.TheSpellMovingDrawbackNeedsTheTagAndTheMovementTogether",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Spells deal 20%-35% less damage while you are moving".
+ *
+ * TWO ROWS AND NOT ONE, on `attack_damage` and on `spell_damage`, because that
+ * is what the built "Spells deal 20%-40% increased damage" does: the pair of
+ * stats is the pair of damage types a skill can deal, and the skill TYPE is
+ * carried by the tag. This test drives the attack damage half.
+ */
+bool FCataclysmSpellsMovingDrawbackTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	const FGameplayTagContainer Spell = SkillTagged(TEXT("Type.Spell"));
+	const FGameplayTagContainer Melee = SkillTagged(TEXT("Type.Melee"));
+	if (!TestFalse(TEXT("the Type.Spell tag is in the vocabulary"),
+				   Spell.IsEmpty())
+		|| !TestFalse(TEXT("and so is Type.Melee"), Melee.IsEmpty()))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, SpellsMovingDrawback),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	// THE ROW REACHED THE CHARACTER AT ALL, asked first so a failure below says
+	// which of the two things went wrong. A row that never arrived and a
+	// condition that never fires look identical from the number alone.
+	if (!TestTrue(
+			TEXT("the worn drawback put a modifier on attack damage"),
+			CarriesAModifierOn(ASC, UCataclysmItemModifiers::AttackDamageStat)))
+	{
+		return false;
+	}
+
+	// STANDING STILL, A SPELL IS NOT REDUCED. One half of the pair alone.
+	ASC->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	TestEqual(TEXT("standing still, a spell is not reduced"),
+			  ASC->AttackDamageMoreForSkill(Spell), 1.0f, 0.001f);
+
+	ASC->NoteMovedMetres(1.0f);
+
+	// MOVING, A MELEE SKILL IS NOT REDUCED. The other half alone.
+	TestEqual(TEXT("moving, a melee skill is not reduced"),
+			  ASC->AttackDamageMoreForSkill(Melee), 1.0f, 0.001f);
+
+	// AND BOTH AT ONCE IS THE ROW. A roll of 1 takes the far end of the range,
+	// which is 35% less, so the multiplier is 0.65.
+	const float Both = ASC->AttackDamageMoreForSkill(Spell);
+	TestTrue(*FString::Printf(
+				 TEXT("moving, a spell IS reduced: %.4f against 1.0"), Both),
+			 Both < 1.0f);
+	TestEqual(TEXT("by 35 per cent, the far end of the row's range"), Both,
+			  0.65f, 0.001f);
+
+	// AND IT IS A MULTIPLIER RATHER THAN AN INCREASE, which the number above
+	// cannot show on its own. An `increased` row would move this sum instead.
+	TestEqual(TEXT("and the increases sum is untouched"),
+			  ASC->AttackDamageIncreasesForSkill(Spell), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRangedCloseRangeDrawbackTest,
+	"Cataclysm.Enchantments.TheRangedCloseRangeDrawbackNeedsTheTagAndTheDistanceTogether",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Ranged skills deal 15%-30% less damage at close range (within 5 meters)".
+ *
+ * THE SENTENCE STATES THE DISTANCE BECAUSE THE ROW USES ONE. "At close range"
+ * alone names no number, and a condition value the player cannot read is a
+ * hidden number. `docs/DECISIONS.md` carries why five metres and why the
+ * sentence says so rather than the table saying it quietly.
+ *
+ * AN UNKNOWN DISTANCE REFUSES, pinned below rather than left to the condition's
+ * own comment: a minion's blow reports -1 deliberately, so a wearer's minions do
+ * not carry this drawback.
+ */
+bool FCataclysmRangedCloseRangeDrawbackTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	const FGameplayTagContainer Ranged = SkillTagged(TEXT("Type.Ranged"));
+	const FGameplayTagContainer Melee = SkillTagged(TEXT("Type.Melee"));
+	if (!TestFalse(TEXT("the Type.Ranged tag is in the vocabulary"),
+				   Ranged.IsEmpty())
+		|| !TestFalse(TEXT("and so is Type.Melee"), Melee.IsEmpty()))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, RangedCloseDrawback),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	if (!TestTrue(
+			TEXT("the worn drawback put a modifier on attack damage"),
+			CarriesAModifierOn(ASC, UCataclysmItemModifiers::AttackDamageStat)))
+	{
+		return false;
+	}
+
+	// The fourth argument is how far away the target stood, in metres.
+	const auto More = [ASC](const FGameplayTagContainer& Tags, float Metres)
+	{
+		return ASC->AttackDamageMoreForSkill(Tags, -1.0f, -1.0f, Metres);
+	};
+
+	// A RANGED SKILL AT TEN METRES IS NOT REDUCED. Outside the distance.
+	TestEqual(TEXT("a ranged skill at ten metres is not reduced"),
+			  More(Ranged, 10.0f), 1.0f, 0.001f);
+
+	// A MELEE SKILL INSIDE THE DISTANCE IS NOT REDUCED. The wrong tag.
+	TestEqual(TEXT("a melee skill at three metres is not reduced"),
+			  More(Melee, 3.0f), 1.0f, 0.001f);
+
+	// AN UNKNOWN DISTANCE REFUSES, which is what -1 means and what a minion's
+	// blow reports.
+	TestEqual(TEXT("and an unknown distance grants nothing"),
+			  More(Ranged, -1.0f), 1.0f, 0.001f);
+
+	// BOTH TOGETHER IS THE ROW. A roll of 1 takes the far end, 30 per cent less.
+	const float Both = More(Ranged, 3.0f);
+	TestTrue(*FString::Printf(
+				 TEXT("a ranged skill at three metres IS reduced: %.4f "
+					  "against 1.0"),
+				 Both),
+			 Both < 1.0f);
+	TestEqual(TEXT("by 30 per cent, the far end of the row's range"), Both,
+			  0.70f, 0.001f);
+
+	// AT OR WITHIN, BECAUSE THE SENTENCE WRITES "within 5 meters". A target at
+	// exactly five metres is within five metres, which is the boundary Brute's
+	// Heart already draws, so the drawback applies there too.
+	TestEqual(TEXT("and at exactly five metres it still applies"),
+			  More(Ranged, 5.0f), 0.70f, 0.001f);
+
+	TestEqual(TEXT("and the increases sum is untouched"),
+			  ASC->AttackDamageIncreasesForSkill(Ranged, -1.0f, -1.0f, 3.0f),
+			  0.0f, 0.001f);
 
 	return true;
 }
