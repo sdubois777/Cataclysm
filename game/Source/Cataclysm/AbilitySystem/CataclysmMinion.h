@@ -78,14 +78,22 @@ public:
 	 * asked for a real figure and the design now states 30, taken from Diablo IV,
 	 * whose Necromancer minions gain 30% of the player's weapon damage.
 	 *
-	 * STILL A SINGLE RULE, AND THE DESIGN NO LONGER AGREES WITH IT. Issue #209
-	 * replaced this with each type's own base damage plus an amount per level,
-	 * scaled by an attribute through `game/Data/MinionScaling.csv`. That model is
-	 * NOT implemented here and this constant is what still runs. Two things it
-	 * needs do not exist: a way to read the summoner's level, and any code at all
-	 * that applies the minion scaling table. **Issue #340 tracks the remaining
-	 * gap**, and `test_the_code_is_recorded_as_behind_the_design` in
-	 * `tools/tests/test_minion_damage.py` fails if that stops being true.
+	 * IT IS NO LONGER THE RULE, IT IS THE FALLBACK. Issue #209 replaced it with
+	 * each type's own base damage plus an amount per level, and issue #340 built
+	 * that half: `Spawn` reads `BaseDamage` and `DamagePerLevel` from the minion
+	 * type row and raises them by the summoner's level, and `AttackTarget` deals
+	 * the result. This constant is reached only by a minion that named no type,
+	 * which `CataclysmSkillTemplates.cpp:3260` produces for a summoning skill
+	 * whose shape parameters name no minion kind.
+	 *
+	 * WHAT IS STILL MISSING IS THE ATTRIBUTE CHANNEL, the third of the three the
+	 * design allows. `game/Data/MinionScaling.csv` states it -- spirit for
+	 * creatures, agility for machines, one percent of damage per point -- and no
+	 * code in the engine reads that table. The only read of a `PercentPerPoint`
+	 * column is `CataclysmClassStats.cpp:198`, and it reads the PLAYER attribute
+	 * table. **Issue #340 tracks the remaining gap**, and
+	 * `test_the_attribute_channel_is_recorded_as_still_missing` in
+	 * `tools/tests/test_minion_damage.py` fails when this constant goes.
 	 */
 	static constexpr float DamagePercentOfSummoner = 30.0f;
 
@@ -128,15 +136,23 @@ public:
 	 * zero for that type's health unchanged.
 	 *
 	 * RECORDED AND NOT YET APPLIED, WHICH IS SAID HERE RATHER THAN HIDDEN.
-	 * Health cannot be set from the type until the summoner's level can be read,
-	 * because the table states BaseHealth and HealthPerLevel rather than one
-	 * number. Issue #340 holds that. Iron Fortress is the only skill that states
-	 * this, at 150.
+	 * THE BLOCKER THIS COMMENT USED TO NAME IS GONE: it said health could not be
+	 * set from the type until the summoner's level could be read, and issue #340
+	 * built that -- `Spawn` now sets a minion's health from `BaseHealth` and
+	 * `HealthPerLevel` in its type row, raised by that level.
+	 *
+	 * What is still not applied is THIS number, the percentage of that health a
+	 * deploying skill asked for. Iron Fortress is the only skill that states
+	 * one, at 150.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	float DeployedHealthPercent = 0.0f;
 
-	/** Whose it is. Its damage is a share of this actor's weapon damage. */
+	/**
+	 * Whose it is. Its side is this actor's, and its blows are dealt in this
+	 * actor's name, so credit for what it kills stays with this actor. Its
+	 * DAMAGE is its own, from its type row -- see `AttackTarget`.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	TObjectPtr<AActor> Summoner;
 
