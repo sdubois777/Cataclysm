@@ -704,8 +704,11 @@ AUTHORED_ROWS = 242
 #: AND TO 176 ON 2026-09-13, bought with code for the third time in one day and
 #: by the same route each time. Issue #1515. The stat pipeline gained a
 #: predicate reading the TARGET's share of its own maximum health, which no
-#: existing one could express: all eight health predicates before it were the
-#: character's own or a cost. `Cornered Quarry` and `Broken Will` followed.
+#: existing one could express: all six health predicates before it read the
+#: character's own health, its cost, or the time since it paid one. Measured from
+#: `CONDITIONS` in `tools/generate_datatables.py`, not counted by eye -- a first
+#: draft said eight by counting `FCataclysmStatConditions` FIELDS as predicates,
+#: which they are not. `Cornered Quarry` and `Broken Will` followed.
 #:
 #: MEASURED, NOT INCREMENTED, AND THE TREE FIGURES WITH IT. The Ravager is 46 of
 #: its 74 and the Ritualist 52 of its 74. The entry above says the Ravager was

@@ -2,6 +2,212 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A modifier may ask how much health the character being hit has left, it is measured before the blow lands, and an unknown reading must never make a row stronger than its own sentence
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`,
+`CataclysmSkillEffects.cpp`, `CataclysmDamageCalculation.h`,
+`game/Source/Cataclysm/Tests/CataclysmTargetHealthTests.cpp` (new),
+`CataclysmDataTableTests.cpp`, `tools/generate_datatables.py`,
+`tools/tests/test_passive_effects_match_the_node_text.py`, the Passive Effects
+sheet of `docs/All_Things_Cataclysm.xlsx`, the `game/Data/PassiveEffects.csv`
+generated from it, and `docs/README.md`. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515). **Applied.**
+
+### The question
+
+Two nodes granted nothing, and the stat pipeline had no way to ask what either
+of them asks:
+
+| Node | Text | Max |
+| :-- | :-- | --: |
+| `Ravager_basic_d_a2` **Cornered Quarry** | +2% increased Attack Damage per point against enemies **below 35% health**. | 6 |
+| `Ritualist_basic_a_stem1` **Broken Will** | +2% increased Spell Damage per point against enemies **below half health**. | 6 |
+
+`game/Data/PassiveNodes.csv` and `docs/Ravager_Class_Tree_Final.json` /
+`docs/Ritualist_Class_Tree_Final.json` state them identically.
+
+**Six predicates mentioned health and every one read the character's own** —
+measured from `CONDITIONS` in `tools/generate_datatables.py` rather than counted
+by eye:
+
+```
+health_above              the character's own level
+health_at_or_above        the character's own level
+health_at_or_below        the character's own level
+health_below              the character's own level
+skill_health_cost_above   a cost the character paid
+seconds_after_health_cost a timer since the character paid one
+```
+
+**None could express a bonus against a wounded enemy.**
+
+**A first draft of this entry said eight**, listing `HealthPercent`,
+`HealthOwedPercent` and `SkillHealthCostPercent` among them. Those are **fields
+on `FCataclysmStatConditions`**, not predicates — the readings a predicate
+compares against. Counting a state field as a predicate inflates the figure, and
+the sentence claimed predicates.
+
+### The decision
+
+**One condition, `target_health_below`, strictly below, a percentage of the
+target's own maximum health.**
+
+**ONE NAME AND NO INCLUSIVE TWIN.** Both node sentences say "below" and neither
+says "at or below". The character's own pair exists because real nodes differ;
+the second name here waits for a node whose sentence asks for it. That is the
+same rule recorded on 2026-09-13 for the ailment conditions — add a name when a
+node's own sentence names the thing, never speculatively.
+
+**A SHARE OF MAXIMUM, WHICH IS THE PROJECT'S READING ELSEWHERE.** The Staff's
+Subjugate gives the reason, and it is about creature rarity rather than about
+arithmetic: *"a Common enemy and a Rare one do not have the same numbers."*
+
+**And the expression is character-for-character identical to the one
+`UCataclysmSkillEffects::ApplyStagger` already uses** for the enchantment "You
+cannot stagger enemies above 50% HP":
+
+```
+FMath::Clamp(Health / MaxHealth * 100.0f, 0.0f, 100.0f)
+```
+
+The new reading calls `FCataclysmStatConditions::FromHealth`, which is that same
+expression and is what the character's own share is computed with. **So the two
+ends of a blow cannot disagree about what a share of maximum health means, and
+that can be said because it is the same code rather than because the two look
+alike.**
+
+### MEASURED BEFORE THE BLOW LANDS, AND SUBJUGATE MEASURES AFTER
+
+This is the one behavioural decision in the change and it is written into the
+code because **nothing enforces it**.
+
+Subjugate takes an enemy *"if the blow leaves it below half health"*, and
+`CataclysmSkillTemplates.cpp` states the rule in its own words:
+
+> *"the health that matters is what is left when the damage has landed"*
+
+**This condition must read the other one.** It increases the damage of the blow
+being priced, so reading the result of that blow would be circular.
+
+**It comes out right today purely because the stat lookup runs before the damage
+is applied.** That is an ordering which carries meaning and says nothing about
+itself, which is exactly what a later tidy-up breaks without noticing. The
+condition's comment names Subjugate so the contrast is findable from either end.
+
+### AN UNKNOWN READING MUST NEVER MAKE A ROW STRONGER THAN ITS OWN SENTENCE
+
+**This is the generally useful part of the change and it was found by reading
+code that appears to contradict it.**
+
+`ApplyStagger` leaves a target whose health cannot be read **staggerable** rather
+than refusing, and says why:
+
+> *"refusing on an unknown would make the row stronger than it says"*
+
+The new condition does the **opposite** — an unreadable target earns no bonus.
+**Both are the same rule, and which way it points is decided by which way the row
+points:**
+
+| Row | Unknown reading | Why |
+| :-- | :-- | :-- |
+| "You cannot stagger enemies above 50% HP" — a **drawback** | does **not** refuse | refusing would widen the drawback |
+| "+2% against enemies below 35% health" — a **bonus** | **refuses** | granting would widen the bonus |
+
+**A sentinel value says the reading was not supplied. It does not say what to do
+about that**, and the two predicates reading the same quantity correctly behave
+oppositely. Whoever writes the next target-side predicate will meet this fork and
+the nearest example points the other way, so the rule is stated in the condition's
+comment rather than left to be inferred.
+
+### Genre research
+
+**Readable sources named; unreadable ones named as unreadable.**
+`pathofexile.fandom.com` returns HTTP 402 and `www.poewiki.net` serves a
+bot-protection page, as recorded before. `poedb.tw/us/Modifiers` was readable and
+carries no low-life damage modifier.
+`icy-veins.com/d4/affixes-and-tempering-affixes` and
+`maxroll.gg/poe2/getting-started/ailments-poe2` both returned HTTP 404.
+
+**SETTLED — a bonus against enemies below a share of health is a named, shipped
+mechanic, and 35% is the genre's own number.** Diablo 4 calls it Injured, from
+`icy-veins.com/d4/guides/injured-status-effect/`:
+
+> *"Injured characters or targets have less than 35% of their Health Remaining"*
+> *"Both players and enemies can be Injured. Enemies follow the same rules."*
+> *"Injured is frequently used by skills and items that grant bonus damage to
+> low-health targets."*
+
+**`Cornered Quarry`'s 35% is the same threshold Diablo 4 uses for the same idea.**
+Worth recording because it means the number was not invented here. **It is not a
+reason to change anything** — both thresholds are already in the design document
+and neither was touched.
+
+**NOT SETTLED — whether the boundary is strict.** That same page says both *"less
+than 35%"* and *"Life falls to 35% or less"* in two different sentences.
+
+**A source that contradicts itself on the boundary does not settle the boundary,
+and it is a better argument for this project's strict-and-inclusive pair than the
+pair's own comment gives.** The pair is not pedantry: it guards an ambiguity that
+a shipped game's own documentation falls into within one page. A web search
+asserting Path of Exile's "Low Life" is 35%, and separately that it is 50%, was
+**discarded** — both from pages that could not be opened, and they disagree.
+
+### What it cost, and the one thing that was not free
+
+**No schema change, no new column, no new parameter on any signature.** The
+plumbing was built by the ailment conditions earlier the same day:
+`ApplyHit` already passes the target actor to the three attacker-side lookups
+behind `FCataclysmHitDelivery::bCarriesNoTargetState`, so **a minion's blow earns
+none of this with no new code**.
+
+`WithTargetAilments` became `WithTargetState`, because it stops being about
+ailments alone and because that flag already carries the name. **One pass over
+the modifier list answers both questions**, and each fact is gated separately: a
+row asking only about health makes nothing walk the target's tags.
+
+**THE ONE THING THAT WAS NOT FREE: the new predicate opened a hole in an existing
+check, and closing it belongs to this change.** `health_below` reads the
+character's **own** health and its required sentence fragment is the bare word
+"below". `Cornered Quarry` says *"against enemies below 35% health"* — which
+contains "below", does not contain the phrase that would disqualify it, and
+states 35. **A row carrying `health_below` on that node passed both halves of the
+word check**, and would have granted the bonus when the player was wounded rather
+than when the enemy was, with nothing reporting it.
+
+`CONDITION_WORDS_MUST_NOT_SAY` now takes one phrase or several — the same
+one-or-many shape `expected_words` already had — and `health_below` forbids both
+"at or below" and "against enemies below". **A change that makes a
+previously-safe check unsafe owns the repair**: left for later it is a fault
+nobody can attribute, because the guard was correct when written and the new
+predicate is correct in itself.
+
+**The new predicate's own fragment names the subject rather than the comparison**
+— "against enemies below" — which is the shape `health_above` already uses, for
+the reason its comment gives: *"Requiring the subject as well as the word is what
+keeps this row off that node."*
+
+### What it moves, and two nodes it unblocks for somebody else
+
+```
+game/Data/PassiveEffects.csv     240 -> 242 rows
+nodes with at least one row      174 -> 176
+Ravager                          46 of 74
+Ritualist                        52 of 74
+```
+
+All re-derived from the regenerated file rather than incremented.
+
+**And the sentence fragment is deliberately not unique to these two nodes.**
+`Berserker_twoh_007` and `Berserker_dw_013` also say "against enemies below", at
+25% and 20%. **Neither is authored and both now have their predicate** — they
+need only the weapon-configuration scope they separately want, which does not
+exist. A fragment identifying a family rather than one node is the right breadth.
+
+---
+
+---
+
 ## 2026-09-13 — A modifier may ask which ailment the character at the other end of the blow is carrying, "enemies you have Weakened" means an enemy carrying Weaken, and a combination of two ailments is written out as its own name
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
