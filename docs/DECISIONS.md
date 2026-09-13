@@ -2,6 +2,162 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A modifier may ask whether a pool is at the top of its bar, "full" names the top rather than a number, and the argument for that does NOT transfer between pools
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmEnergyShieldFullTests.cpp`,
+`CataclysmPassiveTreeTests.cpp`, `CataclysmDataTableTests.cpp`,
+`tools/generate_datatables.py`,
+`tools/tests/test_passive_effects_match_the_node_text.py`,
+`tools/tests/test_every_condition_is_recorded_in_the_decisions_log.py` (new),
+`game/Data/PassiveEffects.csv`, `docs/README.md`, the Passive Effects page of
+`docs/All_Things_Cataclysm.xlsx`.
+
+**This entry is written after the fact and covers TWO conditions, one of which
+shipped without a record long before the other.** `energy_shield_at_maximum`
+landed in commit `c63f01fb`; `class_resource_at_maximum` landed well before it
+and was never recorded at all. **Every argument below existed only as a comment
+in `CataclysmStatPipeline.cpp` until now**, which is the reason the second
+condition was nearly written on the first one's reasoning.
+
+### The two conditions
+
+| Name | Asks | The node that wanted it |
+| :-- | :-- | :-- |
+| `class_resource_at_maximum` | is the class resource bar full | Communion of Pain, *"While your Fervour is at maximum…"* |
+| `energy_shield_at_maximum` | is the energy shield bar full | `Ritualist_basic_c_a2` Cold Reading, *"+2% increased Spell Damage per point while your Energy Shield is full"* |
+
+Both use the same three-clause shape:
+
+```cpp
+Held >= 0.0f && Maximum > 0.0f && Held >= Maximum
+```
+
+### Neither compares a number, and "full" is why
+
+**"Full" names the top of whatever bar the class has.** It is not a threshold
+with the value set to a hundred, and `tools/generate_datatables.py` refuses a
+value on a row carrying either name, so a number typed into that column is caught
+when the file is written rather than ignored at run time.
+
+**THE REASON FOR THAT DIFFERS BETWEEN THE TWO POOLS, AND THIS IS THE PART THAT
+WAS NEARLY GOT WRONG.** The class resource argues from classes disagreeing with
+each other: the Ritualist's `class_resource` is 150 where every other class's is
+100, so a points threshold and a percentage threshold cannot both be right.
+
+**That argument does not apply to the energy shield at all**, because
+`game/Data/ClassStats.csv` gives `max_energy_shield` to the **Ritualist alone** —
+there is no second class to disagree with. Copying the sentence would have put a
+false statement in the file while reaching the correct answer, which is the hard
+kind to catch because the conclusion checks out.
+
+**The conclusion survives on a different disagreement: levels instead of
+classes.** `max_energy_shield` is 40 with **8 added per level**, so the top of the
+bar moves as a character grows. A points threshold of 48 reads as "full" at level
+one and as about 40% of the bar at level ten. Points and percentage still
+disagree — over one character's own lifetime rather than between two classes.
+
+**A future "while your Energy Shield is above 75%" wants its own name**, exactly
+as a future "while above 75 Fervour" does. Those are thresholds; these are not.
+
+### A maximum of zero refuses, and for the energy shield it is the common case
+
+A pool that cannot hold anything is not at its maximum in any sense a node means,
+and answering yes would hand the bonus to a character that has never generated a
+point.
+
+**For the energy shield that is the ordinary state rather than a corner case.**
+Only the Ritualist has a `max_energy_shield` line, so every other class, every
+enemy and every test character built without one holds zero of zero. Without that
+clause all of them satisfy a node written for a full shield.
+
+### An unknown reading refuses, because these are bonuses
+
+The rule stated in the entry below this one — an unknown reading must never make
+a row stronger than its own sentence — sends both of these to refusing. A
+drawback may deliberately go the other way; these do not.
+
+### Greater-or-equal rather than equal, and it is reachable in play
+
+`UCataclysmVitalAttributeSet` clamps the energy shield in three places, and **all
+three fire when the SHIELD changes; none fires when the MAXIMUM changes.** There
+is no proportional adjustment on a maximum moving —
+`AdjustAttributeForMaxChange` appears nowhere in `game/Source`.
+
+So raising the maximum, filling the shield and lowering the maximum leaves the
+character holding more shield than its bar now has, which any item or effect
+granting maximum energy shield produces when it ends. **Such a character is full,
+and `==` would answer no.** Whether keeping that excess is intended is a separate
+open question, issue #1757; the condition behaves correctly either way.
+
+### A CLAUSE THAT CANNOT CURRENTLY FIRE IS KEPT WHEN THE REASON IT MIGHT FIRE
+### LATER IS WRITTEN BESIDE IT
+
+**Both of these predicates carry a first clause that is redundant today**, and so
+does `health_at_or_above` beside them. This is the project's habit rather than an
+oversight, and it is recorded here so that nobody deletes one as dead code.
+
+- `Held >= 0.0f` in both pool predicates: `CurrentConditions` writes a pool's two
+  readings **together inside one block or writes neither**, so a reading below
+  zero always comes with a maximum below zero — which the middle clause refuses
+  already. There is no reachable state where the first clause is the one
+  refusing, so **no guard proof of it exists or can exist.**
+- `HealthPercent >= 0.0f` in the upward health predicates: with a reading of −1
+  and any threshold the validator allows, the comparison alone already answers
+  no. The guard changes an answer only for the two predicates that point *down*.
+
+**They are kept because the redundancy is a property of the FILL, not of the
+predicate.** A future fill reading a maximum from one attribute set and a current
+value from another would make the two readings disagree about being known, and
+these clauses are what would refuse the half-read state.
+
+**A proof was available for the energy shield clause that would have LOOKED like
+proving it** — break the negative default so the test's own setup assertion fails
+— and it was not run, because it proves the test notices its own fixture rather
+than that the clause does anything. **Reporting the absence is the honest form.**
+
+### What this change also had to correct, which is the reason for the new test
+
+Adding the second condition made three written statements false, none of them
+reachable by any test:
+
+1. A comment claiming its pool was *"the one place"* where "there is no bar" and
+   "the bar is empty" have to be told apart. **The act of copying it is what made
+   it false.** Now a list naming both pools.
+2. A count of how many conditions compare nothing, in `ConditionTakesAValue`.
+3. The same count in the header — **already wrong before this branch**, in both
+   its numbers and its list. Measured: 27 condition names and 13 comparing
+   nothing before this change; 28 and 14 after.
+
+**The change that wrote "a list nobody counts is a list somebody extends without
+reading" broke that rule in the same commit**, correcting one of the two counts
+and leaving the other. The rule worked on the next reader, who counted the case
+labels while investigating something else and caught it before publishing. **One
+failure and one success is the fair account, and both are now in the comment**:
+quoting only the failure argues for deleting a defence that has since worked.
+
+### The check that makes this entry enforceable
+
+`tools/tests/test_every_condition_is_recorded_in_the_decisions_log.py` asserts
+that every condition name `tools/generate_datatables.py` recognises is mentioned
+in this file. **Run before this entry existed it failed, naming both conditions
+above; it passes now.**
+
+**Why it is derived from the KIND of change rather than its content.** A review
+derives its checks from the diff — rows added, counts moved, tests written — and
+**an omission leaves no diff to derive a check from.** The pull request adding
+`energy_shield_at_maximum` was reviewed against 21 separate controls and not one
+of them could have asked whether the change recorded its decisions.
+
+**Two scale names are the same gap and are deliberately not covered**:
+`health_missing` and `health_owed`, used by nine rows and mentioned nowhere here.
+Issue #1759 carries them. A check that needs four gaps closed before it can be
+added tends not to be added at all, so the condition half landed at 28 of 28
+while the scale half waits.
+
+---
+
 ## 2026-09-13 — Three dungeon modifiers are renamed because a name is a DataTable row key, and the dungeon side moves rather than the enemy side
 
 **Affects:** the Dungeon Modifiers sheet of `docs/All_Things_Cataclysm.xlsx`, the
