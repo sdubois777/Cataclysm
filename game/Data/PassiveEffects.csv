@@ -237,3 +237,5 @@ Ritualist_basic_b_stem1#1,Ritualist_basic_b_stem1,minion_attack_speed,increased,
 Ritualist_basic_b_b1#1,Ritualist_basic_b_b1,minion_attack_speed,increased,2.0,,,0.0,,0.0,0,-1.0
 Ritualist_capstone_25#5,Ritualist_capstone_25,minion_damage,increased,25.0,,,0.0,,0.0,1,-1.0
 Ritualist_capstone_25#6,Ritualist_capstone_25,minion_health,increased,25.0,,,0.0,,0.0,1,-1.0
+Ravager_basic_c_a2#1,Ravager_basic_c_a2,attack_damage,increased,2.0,,target_carries_cripple,0.0,,0.0,0,-1.0
+Ravager_basic_c_c1#1,Ravager_basic_c_c1,attack_damage,increased,2.0,,target_carries_cripple_and_weaken,0.0,,0.0,0,-1.0
