@@ -531,13 +531,25 @@ def test_the_guards_fail_when_the_document_regresses(name, edit, expected):
     back and confirms the test that should catch it does."""
     result = break_and_run(
         {"docs/Cataclysm_GDD_v2.md": edit},
+        # NO `-q` HERE. `pyproject.toml` already sets `addopts = "-q"`, so a
+        # second one is `-qq`, and at `-qq` pytest prints no count line at all.
+        # Measured 2026-09-13. Issue #1612, and it is why `named_failures` could
+        # not be used below until now. `-x` stays: stopping at the first failure
+        # is what this file wants and has nothing to do with the count line.
         ["python", "-m", "pytest", "tools/tests/test_what_a_run_ending_costs.py",
-         "-x", "-q", "-k", "not regress"],
+         "-x", "-k", "not regress"],
+        restored_half_supplied_by=(
+            "the enclosing pytest run, which executes this same file with the "
+            "document unbroken"),
     )
     output = result.stdout + result.stderr
-    assert result.failed, (
+    # ASSERTING ON `named_failures` RATHER THAN ON `failed`, which is what
+    # `CLAUDE.md` tells every caller to do. `failed` says only that the command
+    # exited non-zero, and a break that stops a module importing does that
+    # without running a single test -- issue #1314.
+    assert result.named_failures, (
         f"breaking the document so that {name} did not fail any test. "
         f"{expected} is supposed to catch it. Output:\n{output[-3000:]}")
-    assert expected in output, (
+    assert any(expected in named for named in result.named_failures), (
         f"breaking the document so that {name} failed, but not in {expected}. "
-        f"Output:\n{output[-3000:]}")
+        f"It failed: {result.named_failures}")
