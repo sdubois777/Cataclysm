@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
@@ -902,6 +903,130 @@ bool FCataclysmEnchantmentEffectLockTest::RunTest(const FString& Parameters)
 	Wearer.Equipment->RefreshAttributes(ASC);
 	TestEqual(TEXT("and taking the boots off leaves the skill free"),
 			  ASC->StatForSkill(Stat, MovementSkillTags, 0.0f), 0.0f, 0.001f);
+
+	return true;
+}
+
+
+// --------------------------------------------------------------------------
+// The two conditions for moving and standing still, which are fully wired and
+// which NO DATA ROW HAS EVER USED until issue #1686's first group. These are the
+// first rows to rely on them, so the behaviour is asserted rather than inferred
+// from the wiring being present.
+//
+// EACH CONDITION NEEDS A CASE WHERE IT FIRES. A test showing only that the
+// reduction is absent cannot tell "correctly scoped" from "never reached" -- the
+// charge knockdown row proved that the hard way, with three such tests passing
+// while the feature did nothing.
+// --------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWhileMovingReductionTest,
+	"Cataclysm.Enchantments.TheWhileMovingReductionReachesAMovingCharacter",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWhileMovingReductionTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FName Stat = FName(UCataclysmDamageCalculation::DamageTakenStat);
+
+	// STANDING STILL HAS TO BE STARTED, as the slot-lock test above records: a
+	// character that has never moved reads as unknown rather than as stationary.
+	ASC->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(World, 3.0f);
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"),
+				 TEXT("Positive_While_moving_you_take_10_20_less_damage"),
+				 DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const float Normal = UCataclysmDamageCalculation::NormalDamageTaken;
+
+	// STANDING STILL, THE ROW GRANTS NOTHING.
+	TestEqual(TEXT("standing still, the wearer takes normal damage"),
+			  ASC->StatForSkill(Stat, FGameplayTagContainer(), Normal),
+			  Normal, 0.001f);
+
+	// AND ONE STEP TAKEN IS ENOUGH. This is the assertion the row exists for, and
+	// the first time any data row has asked this condition for anything.
+	ASC->NoteMovedMetres(1.0f);
+	const float Moving = ASC->StatForSkill(Stat, FGameplayTagContainer(), Normal);
+	TestTrue(*FString::Printf(
+				 TEXT("and moving, it takes less: %.2f against a normal %.2f"),
+				 Moving, Normal),
+			 Moving < Normal);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWhileStationaryReductionTest,
+	"Cataclysm.Enchantments.TheWhileStationaryReductionNeedsStandingStillToHaveStarted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The mirror, and it carries the trap the other one only mentions.
+ *
+ * A CHARACTER THAT HAS NEVER MOVED IS NOT STATIONARY. The reading is seconds
+ * since it last moved, which answers unknown for a character that has never
+ * moved at all, and an unknown reading is refused. So a freshly spawned wearer
+ * gets nothing from a "while stationary" row until it has moved once and stopped
+ * -- which is worth pinning, because it is the opposite of what the row's English
+ * suggests and a player standing still from the start would see no benefit.
+ */
+bool FCataclysmWhileStationaryReductionTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FName Stat = FName(UCataclysmDamageCalculation::DamageTakenStat);
+	const float Normal = UCataclysmDamageCalculation::NormalDamageTaken;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"),
+				 TEXT("Positive_While_stationary_you_take_15_30_less_damage"),
+				 DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	// MOVING, IT GRANTS NOTHING.
+	ASC->NoteMovedMetres(1.0f);
+	TestEqual(TEXT("moving, the wearer takes normal damage"),
+			  ASC->StatForSkill(Stat, FGameplayTagContainer(), Normal),
+			  Normal, 0.001f);
+
+	// AND STANDING STILL, ONCE STANDING STILL HAS BEGUN, IT FIRES.
+	ASC->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(World, 3.0f);
+	const float Still = ASC->StatForSkill(Stat, FGameplayTagContainer(), Normal);
+	TestTrue(*FString::Printf(
+				 TEXT("and standing still, it takes less: %.2f against a normal %.2f"),
+				 Still, Normal),
+			 Still < Normal);
 
 	return true;
 }

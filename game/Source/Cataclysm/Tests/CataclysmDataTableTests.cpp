@@ -424,7 +424,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// day: `stagger_duration`, how long a stagger this character applies runs,
 	// and `stagger_health_ceiling_reduction`, the health above which it cannot
 	// stagger at all. One row each. Issue #45.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",     93)
+	// AND 103 OVER 88 SINCE THE FIRST SIX DAMAGE-CHANGE ROWS THAT NEEDED NO NEW
+	// MECHANISM, issue #1686 group A: two about the damage this character takes
+	// while moving or standing still, and four about the damage its own skills
+	// deal, scoped to a slot, a type or a keyword. SIX ENCHANTMENTS AND TEN ROWS,
+	// because a row about the damage a character's skills deal becomes one row on
+	// weapon damage and one on spell damage.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    103)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
