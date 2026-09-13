@@ -504,6 +504,89 @@ bool FCataclysmEnemiesInReachAlliesTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemiesInReachDeadEnemyTest,
+	"Cataclysm.EnemiesInReach.ADeadEnemyStandingNextToYouCountsForNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A creature that has been killed stops counting, and it is the HOSTILITY test
+ * that decides so rather than the side filter.
+ *
+ * THIS IS THE ONLY CASE IN THIS FILE THAT REACHES THAT TEST, and it exists
+ * because a guard proof showed the others cannot. Removing
+ * `UCataclysmTargeting::IsHostileTo` from the walk failed none of the other
+ * seven: in the ally case the searcher is on the players' side and not maddened,
+ * so the side filter looks only at that side's MADDENED characters, an empty
+ * list, and an ally never arrives at the hostility test at all.
+ *
+ * `UCataclysmTargeting::MatchesAttitude` refuses a dead character before it
+ * compares sides, so a corpse on the other side passes the side filter and is
+ * refused only there.
+ *
+ * NOT A CONTRIVANCE TO COVER A LINE. A Ravager fighting a crowd is killing the
+ * crowd, and a bonus that kept counting the bodies would be largest just after a
+ * fight rather than during one. The class comment on
+ * `UCataclysmTargetCandidates` records that a corpse is left standing for a
+ * while before it is removed, so this is the ordinary state of a fight.
+ *
+ * TWO ENEMIES AND ONE DEATH, so the reading before the death is the control. A
+ * build that counted corpses would report the same number twice, and asserting
+ * one figure alone could not tell that from a build that counted correctly.
+ */
+bool FCataclysmEnemiesInReachDeadEnemyTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemiesInReachTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Ravager =
+		SpawnOn(World, FVector::ZeroVector, ECataclysmTeam::Players);
+	UCataclysmAbilitySystemComponent* System = SystemOf(Ravager);
+	if (!TestNotNull(TEXT("a character carrying the node"), System))
+	{
+		return false;
+	}
+
+	GiveLine(System, {Row(ECataclysmStatBucket::Increased, 10.0f,
+						  ECataclysmStatCondition::Always, 0.0f,
+						  ECataclysmStatScale::PerEnemyInReach, 1.0f,
+						  /*ReachMetres=*/4.0f)});
+
+	ACataclysmEnemyCharacter* Living =
+		SpawnOn(World, FVector(0.0f, 2.0f * M, 0.0f), ECataclysmTeam::Monsters);
+	ACataclysmEnemyCharacter* Killed =
+		SpawnOn(World, FVector(2.0f * M, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	if (!TestNotNull(TEXT("one enemy that lives"), Living)
+		|| !TestNotNull(TEXT("one enemy to kill"), Killed))
+	{
+		return false;
+	}
+
+	const float WithBothAlive = AttackDamage(System);
+
+	// KILLED THE WAY EVERY DEATH IN THE GAME IS RECORDED, so the test is not
+	// asserting against a state only a test can produce.
+	const bool bMarked = UCataclysmSkillEffects::MarkDead(Killed);
+	if (!TestTrue(TEXT("the second enemy was actually marked dead"), bMarked))
+	{
+		return false;
+	}
+
+	const float WithOneDead = AttackDamage(System);
+
+	TestEqual(TEXT("two living enemies are worth twenty per cent"),
+			  WithBothAlive, 120.0f, 0.01f);
+	TestEqual(TEXT("and the corpse among them counts for nothing"),
+			  WithOneDead, 110.0f, 0.01f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnemiesInReachRealBlowTest,
 	"Cataclysm.EnemiesInReach.TheCountReachesARealBlow",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
