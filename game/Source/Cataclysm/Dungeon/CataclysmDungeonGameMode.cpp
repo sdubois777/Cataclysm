@@ -1717,8 +1717,15 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 	//
 	// `InfernalRainDamagePerSecond` answers zero for a character with no maximum,
 	// and nothing is spawned for a reading nobody can have. The check below is not
-	// belt and braces: a patch refuses a non-positive damage in its own sweep, so
-	// without it this rule would place invisible patches for ever.
+	// belt and braces: without it this rule would lay patches that do nothing,
+	// three at a time, for ever, and the cap would count them.
+	//
+	// AND IT IS THIS RULE'S JOB RATHER THAN THE PATCH'S. `ACataclysmGroundZone`
+	// skips a sweep only when a patch neither damages nor applies an effect, which
+	// changed with issue #1701 so that Singularity Wells can have a well that slows
+	// without damaging. Infernal Rain's patches carry no effect, so a zero-damage
+	// one would do nothing -- but relying on the patch to notice is relying on a
+	// rule that is about other patches.
 	const float PerSecond =
 		UCataclysmDungeonModifierEffects::InfernalRainDamagePerSecond(
 			AbilitySystem->GetNumericAttribute(

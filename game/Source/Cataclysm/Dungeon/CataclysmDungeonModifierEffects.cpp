@@ -181,10 +181,16 @@ float UCataclysmDungeonModifierEffects::InfernalRainDamagePerSecond(
 	float MaximumHealth)
 {
 	// A CHARACTER WITH NO MAXIMUM HEALTH TAKES NOTHING, rather than a negative
-	// figure reaching the patch. `ACataclysmGroundZone` refuses a non-positive
-	// damage outright -- its sweep returns early -- so a zero here produces a
-	// patch that does nothing at all, which is the right answer for a reading
-	// nobody can have.
+	// figure reaching the patch. A zero here would produce a patch that does
+	// nothing at all, which is the right answer for a reading nobody can have.
+	//
+	// WHY "DOES NOTHING AT ALL" AND NOT "IS REFUSED". `ACataclysmGroundZone::Sweep`
+	// skips a patch only when it neither damages nor applies an effect. An earlier
+	// version of this comment said the sweep refuses a non-positive damage
+	// outright, which WAS true and stopped being true with issue #1701: a patch
+	// carrying an effect and no damage now does sweep, because Singularity Wells
+	// needs a well that slows without damaging. Infernal Rain's patches carry no
+	// effect, so for them a zero damage still means a patch that does nothing.
 	if (MaximumHealth <= 0.0f)
 	{
 		return 0.0f;
