@@ -357,17 +357,44 @@ the count is authorable. The row also states an attack-hit half and a decay, and
 | `Ravager_keystone_b_kC` | "Your melee attacks reach 2 metres further than the skill states" is a skill's own reach, not a count of who is inside one |
 | `Berserker_twoh_016`, `Berserker_capstone_50` option | radius stated as "melee range", which is not a number |
 
-### The data rows are not in this change
+### The data rows, which are a second change on top of the mechanism
 
-The rows live in the 'Passive Effects' sheet of `docs/All_Things_Cataclysm.xlsx`,
-and carrying them needs a `ReachMetres` column in that sheet, in
-`tools/generate_datatables.py`, in `game/Data/PassiveEffects.csv` and on
-`FCataclysmPassiveEffectRow`. A new COLUMN is more disruptive to a concurrent
-editor of that workbook than new rows are, which is the reason it is held back
-rather than bundled here. That is its
-own piece of work and it waits for the workbook. **Until it lands, every node in
-the tables above still grants nothing**, and this entry describes a mechanism with
-no data behind it yet.
+**The mechanism landed first with nothing using it, deliberately.** A mechanism
+is reviewable on its own, and a change carrying a mechanism plus its rows is two
+concerns in one. The rows followed immediately after.
+
+Carrying them took a `Reach Metres` column on the 'Passive Effects' sheet of
+`docs/All_Things_Cataclysm.xlsx`, carried through
+`tools/generate_datatables.py` into `game/Data/PassiveEffects.csv`, onto
+`FCataclysmPassiveEffectRow`, and onto the modifier in
+`CataclysmPassiveTree.cpp`. **Without that last line the column would reach the
+DataTable and stop**, which is the fault shape this whole entry is about.
+
+**SEVEN ROWS FOR THE FIVE NODES, and the two extra are the project's own rules
+rather than a choice.** `In Among Them` says "you deal 2% more damage" without
+naming a type, which the decision of 2026-08-25 makes attack damage AND spell
+damage; `Masochist_keystone_ll_kB` carries exactly that pair for the same
+wording. `Wade In` names two stats in its own sentence.
+
+**THE COLUMN IS REFUSED IN BOTH DIRECTIONS.** A row naming either reading must
+state a radius, because one with no radius counts nobody and would import
+cleanly while granting nothing. A row naming neither must not state one, because
+nothing would read it.
+
+**THE COUNT IS WRITTEN IN WORDS AND THE CHECK HAD TO LEARN THAT.** Every entry in
+`tools/tests/test_passive_effects_match_the_node_text.py` formats a condition's
+value as digits and looks for them in the node's sentence. These two nodes say
+"while an enemy is within 4 metres" and "while three or more enemies are within 4
+metres": a value of 1 and a value of 3, and neither sentence contains the digit.
+So a value may now be listed against the words that state it.
+
+**AND ADDING THE FIELD BROKE TEN TESTS, WHICH IS THE RIGHT BEHAVIOUR.** Unreal's
+comma-separated-value importer refuses a row missing a column the row struct
+declares -- "Expected column 'ReachMetres' not found in input" -- rather than
+leaving the field at its default. Ten tests build a DataTable from a string
+written inline and every one of them failed. Recorded because the same field
+added to any other row struct will do the same thing, and because a silent
+default would have been far worse than a loud refusal.
 
 ---
 
