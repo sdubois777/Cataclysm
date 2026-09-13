@@ -1766,20 +1766,32 @@ bool FCataclysmInfernalRainBeatTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("the patch expires rather than lasting the floor"),
 			  Patch->bLastsTheFloor);
 
-	// WHERE IT FELL: near the player, at the player's own height, and not on
-	// their feet. `Covers` is the patch's own answer to "is this point inside
-	// me", so asking it about the player's feet is the assertion that the row
-	// describes ground to walk out of rather than an unavoidable hit.
+	// WHERE IT FELL: near the player, at the player's own height, and leaving the
+	// player outside it. `Covers` is the patch's own answer to "is this point
+	// inside me", so asking it about the player's feet is the assertion that the
+	// row describes ground to walk out of rather than an unavoidable hit, and it
+	// is a cross-check: a patch laid at a distance my arithmetic thinks is clear
+	// but the patch's own extent does not would fail here and nowhere else.
+	//
+	// STRICTLY PAST THE RADIUS, NOT AT IT, AND THAT IS LOAD-BEARING.
+	// `UCataclysmTargeting::IsInLine` decides who is inside with `<=`, so a patch
+	// centred at exactly the radius DOES cover a standing player. The placer takes
+	// its nearest distance one centimetre past the radius for that reason, which
+	// is what makes the line above guaranteed rather than almost always true.
 	const FVector Feet = Player.Character->GetActorLocation();
 	const FVector Fell = Patch->GetActorLocation();
 	TestEqual(TEXT("it fell at the player's own height"), Fell.Z, Feet.Z, 1.0f);
-	TestFalse(TEXT("it did not fall on the player's feet"), Patch->Covers(Feet));
+	TestFalse(TEXT("the player is outside it when it is laid"),
+			  Patch->Covers(Feet));
+	TestTrue(TEXT("and the patch does cover its own centre"),
+			 Patch->Covers(Fell));
 	const float Away = FVector::Dist2D(Fell, Feet);
 	TestTrue(FString::Printf(TEXT("it fell %.0fcm away, within %.0f"),
 							 Away, Effects::InfernalRainFallsWithinCm),
 			 Away <= Effects::InfernalRainFallsWithinCm);
-	TestTrue(TEXT("and no closer than its own radius"),
-			 Away >= Effects::InfernalRainRadiusCm - 0.01f);
+	TestTrue(FString::Printf(TEXT("and %.0fcm is past its own radius %.0f"),
+							 Away, Effects::InfernalRainRadiusCm),
+			 Away > Effects::InfernalRainRadiusCm);
 
 	// THE TYPE, WHICH IS THE WHOLE REASON THE FIRST COMMIT ON THIS BRANCH EXISTS.
 	// Untyped hazard damage meets none of the player's eight resistances.
@@ -1813,6 +1825,20 @@ bool FCataclysmInfernalRainBeatTest::RunTest(const FString& Parameters)
 	// patches without adding a beat.
 	CataclysmTestWorld::RunClock(World, Effects::InfernalRainPatchSeconds + 1.0f);
 	TestEqual(TEXT("the patches burn out on their own"), CountPatches(), 0);
+
+	// THE PLAYER IS STILL THERE, asserted so that a failure below is attributed
+	// to the right thing. The clock above is the only stretch of this test in
+	// which a patch can sweep, and the beat needs a player to find: if the
+	// sweeps had killed this one, "the rain did not start again" would be the
+	// symptom and the cause would be invisible. The patches are laid no closer
+	// than their own radius, so this is expected to hold rather than being a
+	// tolerance.
+	if (!TestTrue(TEXT("the player survived the patches burning out"),
+				  IsValid(Player.Character)))
+	{
+		return false;
+	}
+
 	Beats(BeatsPerCadence);
 	TestTrue(TEXT("and the rain starts again once there is room"),
 			 CountPatches() > 0);

@@ -4,15 +4,15 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Data/CataclysmDataRows.h"
-#include "AbilitySystem/CataclysmGroundZone.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
-#include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
+#include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
@@ -1686,15 +1686,12 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 		return;
 	}
 
-	// THE SOURCE, AND THE TYPE THAT MAKES A RESISTANCE APPLY. Without the type
-	// this patch would meet none of the player's eight resistances, which is what
-	// the first commit on this branch exists to fix. It is read off the row rather
-	// than chosen, so the damage cannot disagree with the modifier that placed it.
-	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
-	if (!Source)
-	{
-		return;
-	}
+	// EVERYTHING THE PATCH NEEDS IS IN HAND BEFORE ANYTHING IS CREATED, and the
+	// order is deliberate. `ACataclysmFloorHazardSource::ForFloor` SPAWNS the
+	// source when a floor has none, so asking it first and then finding a reason
+	// not to place a patch would leave an actor on the floor that nothing uses.
+	// The two reasons are a table that will not load and a player with no maximum
+	// health, and both are cheap to check.
 
 	// THE TYPE COMES OUT OF THE ROW AND IS NOT WRITTEN HERE. Every row of
 	// game/Data/DungeonModifiers.csv carries a CataclysmType -- this one is
@@ -1702,17 +1699,14 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 	// that placed it, and a row retyped in the workbook retypes its hazard with no
 	// code change. A constant here would be this file's opinion of the data.
 	//
-	// AN UNREADABLE TABLE LEAVES THE TYPE ALONE RATHER THAN GUESSING. An empty
-	// type is untyped damage, which meets no resistance -- harsher than the row
-	// intends -- so a missing table must not silently produce one.
-	if (const FCataclysmDungeonModifierRow* Row =
-			UCataclysmDungeonModifierTable::FindRow(
-				UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
-				FName(UCataclysmDungeonModifierEffects::InfernalRainKey)))
-	{
-		Source->DamageType = FName(*Row->CataclysmType);
-	}
-	else
+	// AN UNREADABLE TABLE PLACES NOTHING RATHER THAN GUESSING. An empty type is
+	// untyped damage, which meets none of the player's eight resistances -- harsher
+	// than the row intends, and the fault the first commit on this branch exists to
+	// fix -- so a missing table must not silently produce one.
+	const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+		FName(UCataclysmDungeonModifierEffects::InfernalRainKey));
+	if (!Row)
 	{
 		return;
 	}
@@ -1738,19 +1732,34 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 	// only thing this rule can locate on every beat. Flattened to the player's own
 	// height so a patch is on the floor they are standing on rather than at a
 	// height picked from a random vector.
+	//
+	// NOT ON THE PLAYER'S FEET, AND NOT TOUCHING THEM EITHER, WHICH IS WHY THE
+	// NEAREST DISTANCE IS PAST THE PATCH'S OWN RADIUS RATHER THAN AT IT. A patch
+	// that covers a standing player the instant it is laid damages them before
+	// they can react, and the row describes ground to get off rather than an
+	// unavoidable hit. `UCataclysmTargeting::IsInLine` decides who is inside with
+	// `<=`, so a centre at exactly the radius DOES clip them; one centimetre past
+	// it is what makes "outside when laid" true rather than almost always true.
+	// Path of Exile 2's players complain about exactly this in its own
+	// burning-ground modifier -- a patch that damages instantly on appearing.
 	const FVector Centre = Player->GetActorLocation();
 	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
 	const float Away = FMath::FRandRange(
-		UCataclysmDungeonModifierEffects::InfernalRainRadiusCm,
+		UCataclysmDungeonModifierEffects::InfernalRainRadiusCm + 1.0f,
 		UCataclysmDungeonModifierEffects::InfernalRainFallsWithinCm);
 	const FVector Where(Centre.X + Away * FMath::Cos(Angle),
 						Centre.Y + Away * FMath::Sin(Angle),
 						Centre.Z);
 
-	// NOT ON THE PLAYER'S FEET, WHICH IS WHY THE NEAREST DISTANCE IS THE PATCH'S
-	// OWN RADIUS. A patch centred where they stand catches them with no chance to
-	// move, and the row describes ground to get off rather than an unavoidable
-	// hit. At exactly that distance it still clips them, which is the warning.
+	// THE SOURCE IS MADE LAST, because `ForFloor` spawns one when the floor has
+	// none and everything that could refuse has now been asked.
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+	Source->DamageType = FName(*Row->CataclysmType);
+
 	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
 		Source, Where, UCataclysmDungeonModifierEffects::InfernalRainRadiusCm,
 		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, PerSecond);

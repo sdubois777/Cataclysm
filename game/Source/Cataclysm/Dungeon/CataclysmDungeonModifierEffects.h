@@ -325,6 +325,13 @@ public:
 	 * players complain about exactly that, a patch that damages instantly on
 	 * appearing -- and near enough that moving a few steps is not an escape from
 	 * the modifier itself.
+	 *
+	 * THIS IS THE FURTHEST AND THE NEAREST IS NOT A CONSTANT, which is worth
+	 * knowing before reading the placer. The nearest is one centimetre PAST
+	 * `InfernalRainRadiusCm` rather than at it, because
+	 * `UCataclysmTargeting::IsInLine` decides who is inside with `<=`: a patch
+	 * centred at exactly the radius covers a standing player, and the point of the
+	 * nearest distance is that it does not.
 	 */
 	static constexpr float InfernalRainPatchSeconds = 10.0f;
 	static constexpr float InfernalRainRadiusCm = 300.0f;

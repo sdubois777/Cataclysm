@@ -47,10 +47,20 @@ Volcanic dungeon affix is almost this row and says where its hazard goes: gouts 
 flame periodically erupt *near players*. So "near the player" is what a shipped
 game means by the same sentence.
 
-**Twelve metres, and no closer than the patch's own radius.** Far enough that a
-patch is not laid on a standing player's feet, near enough that a few steps is not
-an escape from the modifier itself. The automation test asks the patch's own
-`Covers` whether it contains the player's feet and requires no.
+**Twelve metres at the furthest, and no closer than just past the patch's own
+radius.** Far enough that a patch is not laid on a standing player's feet, near
+enough that a few steps is not an escape from the modifier itself.
+
+**"Just past" and not "at", and the centimetre is load-bearing.**
+`UCataclysmTargeting::IsInLine` decides who is inside a patch with `<=`, so a
+patch centred at exactly the radius *does* cover a standing player and damages
+them before they can react. Path of Exile 2's players complain about exactly that
+in its own burning-ground modifier — a patch that damages instantly on appearing —
+so the nearest distance is one centimetre past the radius. That is what makes
+"the player is outside it when it is laid" a guarantee rather than something that
+is almost always true. The automation test asserts it both ways: the patch's own
+`Covers` says no to the player's feet and yes to its own centre, so the placer's
+arithmetic and the patch's notion of its own extent cannot drift apart.
 
 ### Two per cent a second, and why it is lower than Forced March
 
