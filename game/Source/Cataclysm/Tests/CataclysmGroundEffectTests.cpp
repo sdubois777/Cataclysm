@@ -6,6 +6,9 @@
 
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -1149,6 +1152,94 @@ bool FCataclysmOnlyATravellingPatchTicks::RunTest(const FString& Parameters)
 	Patch->TravelAt(FVector::ZeroVector);
 	TestFalse(TEXT("and one that stops travelling stops ticking"),
 			  Patch->IsActorTickEnabled());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPatchThatOnlyCursesStillLooks,
+	"Cataclysm.Effects.APatchWithNoDamageStillFindsWhoIsStandingInIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPatchThatOnlyCursesStillLooks::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmGroundEffectTest;
+
+	// UNTIL ISSUE #1649 THE SWEEP ASKED ONLY WHETHER THERE WAS DAMAGE, so a
+	// patch carrying a curse and no damage returned without ever looking. It
+	// then reported nobody inside, which reads as an empty patch rather than a
+	// patch that never checked.
+	//
+	// SINGULARITY WELLS IS THE ROW THAT WOULD HAVE HIT IT: it slows and pulls,
+	// and a well authored without damage would have done nothing at all while
+	// looking finished.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// A SOURCE AND SOMEBODY IT COUNTS AS AN ENEMY, because the sweep searches
+	// for the source's enemies and a patch with nothing to find cannot tell
+	// "it looked and found nobody" from "it never looked".
+	ACataclysmEnemyCharacter* Source =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+													FRotator::ZeroRotator);
+	ACataclysmEnemyCharacter* Standing =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(1.0f * M, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a source"), Source)
+		|| !TestNotNull(TEXT("somebody standing in it"), Standing))
+	{
+		return false;
+	}
+	Source->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Source->SetHealth(500.0f);
+	Standing->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	Standing->SetHealth(500.0f);
+
+	// ONE: A PATCH THAT DAMAGES. The control that says the search works at
+	// these positions at all.
+	ACataclysmGroundZone* Burning = ACataclysmGroundZone::Spawn(
+		Source, FVector::ZeroVector, /*RadiusCm=*/4.0f * M,
+		/*Duration=*/30.0f, /*DamagePerTick=*/10.0f);
+	if (!TestNotNull(TEXT("a damaging patch"), Burning))
+	{
+		return false;
+	}
+	Burning->Sweep();
+	if (!TestEqual(TEXT("a damaging patch finds the one standing in it"),
+				   Burning->LastSweepCount, 1))
+	{
+		return false;
+	}
+
+	// TWO: A PATCH THAT DOES NOTHING AT ALL. The control that says the skip is
+	// still there and this change did not simply delete it.
+	ACataclysmGroundZone* Inert = ACataclysmGroundZone::Spawn(
+		Source, FVector::ZeroVector, /*RadiusCm=*/4.0f * M,
+		/*Duration=*/30.0f, /*DamagePerTick=*/0.0f);
+	if (!TestNotNull(TEXT("a patch that does nothing"), Inert))
+	{
+		return false;
+	}
+	Inert->Sweep();
+	TestEqual(TEXT("a patch that neither damages nor curses does not look"),
+			  Inert->LastSweepCount, 0);
+
+	// THREE: NO DAMAGE, BUT A CURSE. This is the case that did nothing before.
+	ACataclysmGroundZone* Cursing = ACataclysmGroundZone::Spawn(
+		Source, FVector::ZeroVector, /*RadiusCm=*/4.0f * M,
+		/*Duration=*/30.0f, /*DamagePerTick=*/0.0f);
+	if (!TestNotNull(TEXT("a cursing patch"), Cursing))
+	{
+		return false;
+	}
+	Cursing->AlsoApply(UCataclysmSkillShapes::StatusTagFor(TEXT("Cripple")),
+					   /*Seconds=*/4.0f, /*Magnitude=*/0.0f, NAME_None);
+	Cursing->Sweep();
+	TestEqual(TEXT("a patch that only curses still finds who is standing in it"),
+			  Cursing->LastSweepCount, 1);
 
 	return true;
 }

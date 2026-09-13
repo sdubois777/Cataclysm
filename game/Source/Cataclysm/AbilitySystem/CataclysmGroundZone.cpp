@@ -283,7 +283,22 @@ void ACataclysmGroundZone::Sweep()
 	// Named Source rather than Instigator: AActor already has a member of that
 	// name, and shadowing it is an error at this project's warning level.
 	AActor* Source = GetOwner();
-	if (!IsValid(Source) || DamagePerTick <= 0.0f)
+
+	// WHAT THIS PATCH ACTUALLY DOES TO WHOEVER STANDS IN IT. Either or both.
+	const bool bDamages = DamagePerTick > 0.0f;
+	const bool bCurses = AppliedEffect.IsValid() && AppliedEffectSeconds > 0.0f;
+
+	// A PATCH THAT DOES NEITHER IS SKIPPED, AND UNTIL ISSUE #1649 THE TEST WAS
+	// ONLY ABOUT DAMAGE. A patch carrying a curse and no damage returned here
+	// without ever asking who was inside, so it silently did nothing while
+	// looking authored -- and `LastSweepCount` reported zero, which reads as
+	// "nobody was standing in it" rather than "it never looked".
+	//
+	// SINGULARITY WELLS IS THE ROW THAT NEEDS THIS: "Pulsing void orbs pull
+	// players and projectiles toward them, dealing void damage and slowing
+	// movement by 40%." A well authored to slow without damaging would have
+	// been the first thing to hit it.
+	if (!IsValid(Source) || (!bDamages && !bCurses))
 	{
 		LastSweepCount = 0;
 		return;
@@ -314,15 +329,22 @@ void ACataclysmGroundZone::Sweep()
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = true;
 		Delivery.bIsDamageOverTime = true;
-		UCataclysmSkillEffects::ApplyDirectDamage(Source, Target, DamagePerTick,
-												  Delivery);
+		// ONLY IF THERE IS DAMAGE TO DEAL. A patch that only curses reaches here
+		// now, and a hit of zero is still a hit: it would announce itself, count
+		// towards anything that reacts to being struck, and read in a combat log
+		// as an attack that did nothing.
+		if (bDamages)
+		{
+			UCataclysmSkillEffects::ApplyDirectDamage(Source, Target,
+													  DamagePerTick, Delivery);
+		}
 
 		// AND THE CURSE, IF THIS ZONE CARRIES ONE. The Wand's Foul Wake: "the
 		// ground you fled ... strips the Demonic resistance of anything that
 		// walks into it". Laid on every sweep, which refreshes rather than
 		// stacks, so the curse runs its own duration from the moment the target
 		// last stood here.
-		if (AppliedEffect.IsValid() && AppliedEffectSeconds > 0.0f)
+		if (bCurses)
 		{
 			UCataclysmSkillEffects::ApplyNamedEffect(
 				Source, Target, AppliedEffect, AppliedEffectSeconds,
