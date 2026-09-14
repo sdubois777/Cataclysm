@@ -62,10 +62,39 @@ namespace
 		// in for six different slots.
 		for (const FGameplayAbilitySpec& Spec : Abilities->GetActivatableAbilities())
 		{
-			if (Spec.GetDynamicSpecSourceTags().HasTagExact(SlotTag))
+			if (!Spec.GetDynamicSpecSourceTags().HasTagExact(SlotTag))
 			{
-				return Cast<UCataclysmGameplayAbility>(Spec.Ability);
+				continue;
 			}
+
+			// THE GRANTED INSTANCE, NOT THE CLASS DEFAULT OBJECT, AND THIS LINE
+			// USED TO BE THE OTHER WAY. Issue #1810. `Spec.Ability` is the class
+			// default object, and everything that tells one granted skill from
+			// another is stamped on the INSTANCE:
+			// `UCataclysmWeaponSlotsComponent` writes `SkillName`,
+			// `SkillDescription`, `Params`, `SkillTags` and `CritChancePercent`
+			// onto `Spec->GetPrimaryInstance()`, with its own comment saying why
+			// -- one class stands for every skill of that shape.
+			//
+			// WHAT IT COST BEFORE THE LOCK WORK FOUND IT: every box showed its
+			// slot's generic name. `DisplayedName()` returns `SkillName`, which
+			// is empty on the class default object, so `Read` fell through to
+			// `NameForEmptySlot` every time and the bar read "Heavy", "Special",
+			// "Support", "Aura", "Ultimate", "Movement" whatever the weapon had
+			// granted. The fallback written to stop an empty box was covering
+			// it, and nothing noticed because nothing called `Read` with a real
+			// character until the tests for issue #1810 did.
+			//
+			// A CLASS DEFAULT OBJECT IS STILL BETTER THAN NOTHING when there is
+			// no instance: an ability granted but never instanced still fills
+			// its slot, and a box that vanished would be worse than one naming
+			// its slot.
+			if (const UCataclysmGameplayAbility* Instance =
+					Cast<UCataclysmGameplayAbility>(Spec.GetPrimaryInstance()))
+			{
+				return Instance;
+			}
+			return Cast<UCataclysmGameplayAbility>(Spec.Ability);
 		}
 
 		return nullptr;

@@ -863,4 +863,69 @@ bool FCataclysmSkillBarLockedWordTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarGrantedNameTest,
+	"Cataclysm.SkillBar.ABoxShowsTheNameOfTheSkillTheWeaponGranted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarGrantedNameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillBarTest;
+
+	// THIS IS A DEFECT THE LOCK WORK FOUND, NOT PART OF THE LOCK. Issue #1810.
+	// `CataclysmSkillBarAbilityIn` returned `Spec.Ability`, which is the CLASS
+	// DEFAULT OBJECT. Everything that tells one granted skill from another is
+	// stamped on the INSTANCE by `UCataclysmWeaponSlotsComponent`, so
+	// `DisplayedName()` answered empty and `Read` fell through to
+	// `NameForEmptySlot` -- every box on the bar showed its slot's generic name
+	// instead of the skill the weapon granted, for as long as that helper has
+	// existed.
+	//
+	// NOTHING NOTICED BECAUSE NOTHING CALLED `Read` WITH A CHARACTER. The only
+	// call in this file before the lock tests was `Read(nullptr)`. This test
+	// exists so the fallback written to stop an empty box cannot go back to
+	// covering a real name.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FBarCharacter Who(World);
+	UCataclysmStrikeSkill* Granted =
+		Grant<UCataclysmStrikeSkill>(Who, ECataclysmAbilitySlot::Heavy,
+									 TEXT("Radius=4; Angle=360"), TEXT("Slot.Heavy"));
+	if (!TestNotNull(TEXT("a skill was granted"), Granted))
+	{
+		return false;
+	}
+
+	// A NAME THAT COULD NOT COME FROM ANYWHERE ELSE, so a box carrying it proves
+	// the instance was read. The slot's own fallback is the string this is being
+	// told apart from, and it is asserted below rather than assumed.
+	Granted->SkillName = TEXT("Riven Arc");
+
+	const TArray<FCataclysmSkillBarSlot> Bar = UCataclysmSkillBar::Read(Who.Actor);
+	const FCataclysmSkillBarSlot* Box = BoxFor(Bar, ECataclysmAbilitySlot::Heavy);
+	if (!TestNotNull(TEXT("the bar drew a box for the granted skill"), Box))
+	{
+		return false;
+	}
+
+	const FString Fallback =
+		UCataclysmSkillBar::NameForEmptySlot(ECataclysmAbilitySlot::Heavy);
+	if (!TestFalse(TEXT("the granted name and the slot's fallback differ, so an "
+						"answer exists"),
+				   Granted->SkillName.Equals(Fallback)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the box shows the granted skill's own name"),
+			  Box->Name, FString(TEXT("Riven Arc")));
+	TestNotEqual(TEXT("and not the slot's generic name"), Box->Name, Fallback);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
