@@ -1542,6 +1542,23 @@ public:
 	 * a decision rather than a contradiction. Diablo IV makes the other choice
 	 * and keeps immunity as a separate mechanic.
 	 *
+	 * ASKED THROUGH THE STAT PIPELINE SINCE ISSUE #1515, not read off the
+	 * gameplay attribute. A CONDITIONED row is never folded into an attribute,
+	 * so while this read the attribute directly a row granting resistance "while
+	 * an enemy is within 4 metres" reached nothing at all and would have
+	 * reported the base for ever. The same defect was fixed for evasion in issue
+	 * #947 and for the regeneration rates in issue #1038, and the repair is the
+	 * same: ask `StatForSkill`, passing the attribute as the fallback so a
+	 * character the pipeline knows nothing about -- every creature, and a player
+	 * before its first refresh -- answers exactly what it answered before.
+	 *
+	 * ASKED AFRESH AT THE MOMENT THE EFFECT LANDS, which is what lets the
+	 * condition be one that changes. Both callers ask here and neither keeps the
+	 * answer: `ApplyStun` asks as the stun is applied, and the shared
+	 * displacement body asks as the shove is resolved. A stat asked once and
+	 * cached could not carry "while an enemy is within 4 metres", because the
+	 * condition turning true later would never arrive.
+	 *
 	 * @param Amount  seconds, or centimetres, or whatever the effect is measured
 	 *                in. Zero or less answers zero
 	 * @return what is left, or zero when the target resists it entirely. A
@@ -1550,6 +1567,17 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static float AfterCrowdControlResistance(const AActor* Target, float Amount);
+
+	/**
+	 * The stat name a crowd control resistance row is written against.
+	 *
+	 * ONE SPELLING, BECAUSE TWO WOULD FAIL SILENTLY. This name has to match the
+	 * key in `UCataclysmPlayerClassStats::StatToAttribute` and the `Stat` column
+	 * of the data rows; a character that disagreed by one character would grant
+	 * the row and never read it, with nothing anywhere saying so.
+	 * `Cataclysm.Unstoppable.TheStatNameIsTheOneTheMapKnows` asserts the match.
+	 */
+	static const TCHAR* CrowdControlResistanceStat;
 
 	/** Whether this actor is stunned right now and may not act. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
