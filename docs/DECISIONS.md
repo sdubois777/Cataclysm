@@ -122,6 +122,8 @@ not on the critical path. **The workbook was not, and the editor was.** Adding t
 properties to the row struct forces the generated CSV to gain columns of the same
 names, because `tools/tests/test_csv_columns_match_their_row_structs.py` compares the
 two — so the built asset had to be rebuilt after all.
+---
+
 ## 2026-09-14 — Nine rows make eight keystones do what they say, and a keystone states its value in words rather than digits
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet),
