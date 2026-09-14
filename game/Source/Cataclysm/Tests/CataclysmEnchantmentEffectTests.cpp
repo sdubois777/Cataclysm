@@ -9,7 +9,9 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
@@ -118,6 +120,40 @@ namespace CataclysmEnchantmentEffectTest
 	const TCHAR* RangedCloseDrawback =
 		TEXT("Negative_Ranged_skills_deal_15_30_less_damage_at_close");
 
+	/**
+	 * Four of the rows written from the survey on issue #1642, each the first
+	 * of its kind in this file.
+	 *
+	 * THE SPECIAL ABILITY ROW IS THE FIRST TAG-AND-CONDITION ROW IN THE
+	 * `increased` BUCKET. The two rows above carry a tag and a condition
+	 * together and both are `more`. A `more` modifier that does not apply
+	 * leaves a multiplier of exactly 1, which is also what no modifier at all
+	 * leaves; an `increased` one that does not apply leaves a sum of zero. The
+	 * two buckets fail differently, so the AND is worth asserting in both.
+	 *
+	 * THE HEALING ROW IS THE FIRST DATA ROW ANYWHERE ON ITS STAT.
+	 * `healing_received_reduction` had no row in `EnchantmentEffects.csv` or in
+	 * `PassiveEffects.csv`. Its only source was C++, the Death's Embrace dungeon
+	 * rule at `CataclysmDungeonModifierEffects.cpp:457`.
+	 *
+	 * THE REFLECT ROW IS THE FIRST `flat` RETALIATION ROW FROM AN ENCHANTMENT.
+	 * The stat is already a share of the blow taken, so a flat 20 reflects 20
+	 * per cent, and its base is zero for every class but the Masochist -- which
+	 * is why the row must be `flat` and could not be `increased`.
+	 *
+	 * THE BELOW-HALF ROW IS THE FIRST ENCHANTMENT ROW TO USE
+	 * `target_health_below`. Two passive nodes use it; no enchantment did, so
+	 * nothing proved the condition survives the route an enchantment takes.
+	 */
+	const TCHAR* SpecialMovingBenefit =
+		TEXT("Positive_Your_special_ability_deals_20_40_increased_dam");
+	const TCHAR* HealingReducedDrawback =
+		TEXT("Negative_Healing_effects_on_you_are_reduced_by_30_50");
+	const TCHAR* ReflectBenefit =
+		TEXT("Positive_Reflect_20_50_of_damage_taken_back_to_attacker");
+	const TCHAR* BelowHalfDrawback =
+		TEXT("Negative_You_deal_25_40_less_damage_to_enemies_below_50");
+
 	/** A real affix granting increased maximum health, top value 12. */
 	const TCHAR* IncreasedHealthAffix = TEXT("Stat_Increased_maximum_health");
 
@@ -222,7 +258,8 @@ namespace CataclysmEnchantmentEffectTest
 
 		bool bAllReal = true;
 		for (const TCHAR* Name :
-			 {ShieldBenefit, LowHealthBenefit, BenefitWithNoEffect, SetMarker})
+			 {ShieldBenefit, LowHealthBenefit, BenefitWithNoEffect, SetMarker,
+			  SpecialMovingBenefit, ReflectBenefit})
 		{
 			if (!Out.Positive->FindRow<FCataclysmEnchantmentRow>(
 					FName(Name), TEXT("LoadAll"), /*bWarnIfMissing=*/false))
@@ -234,7 +271,8 @@ namespace CataclysmEnchantmentEffectTest
 		}
 		for (const TCHAR* Name :
 			 {HealthDrawback, DrawbackWithNoEffect, SetDrawback, SlotLockDrawback,
-			  SpellsMovingDrawback, RangedCloseDrawback})
+			  SpellsMovingDrawback, RangedCloseDrawback,
+			  HealingReducedDrawback, BelowHalfDrawback})
 		{
 			if (!Out.Negative->FindRow<FCataclysmEnchantmentRow>(
 					FName(Name), TEXT("LoadAll"), /*bWarnIfMissing=*/false))
@@ -685,7 +723,34 @@ bool FCataclysmEnchantmentEffectAttributesTest::RunTest(const FString& Parameter
 	const TMap<FString, FGameplayAttribute>& Attributes =
 		UCataclysmPlayerClassStats::StatToAttribute();
 
+	// AND THE STATS THAT DELIBERATELY HAVE NO ATTRIBUTE, which this test did not
+	// know about until an enchantment row needed one.
+	//
+	// `ApplyTo` STOPPED LOOPING ONLY OVER `StatToAttribute` WHEN #1724 MERGED: a
+	// third pass loops over `StatsWithNoAttribute()` and records those stats
+	// without writing any attribute, so a row naming one of them is not dropped.
+	// Bespoke code reads their increases directly --
+	// `UCataclysmCommand::AttackIntervalScaleFor`,
+	// `ACataclysmMinion::AttackTarget` and `ACataclysmMinion::Spawn`.
+	//
+	// `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt`
+	// GAINED THIS IN #1733 AND THIS TEST DID NOT, because no enchantment row
+	// granted a minion stat at the time and so nothing failed. "Summoned minions
+	// have 30%-50% increased HP" is the first, and it failed here while working
+	// perfectly in play. The two checks are the same check on two sheets and
+	// they should not disagree about which stats are exempt.
+	//
+	// READ FROM THE ENGINE'S OWN LIST RATHER THAN RESTATED HERE, for the reason
+	// the passive one gives: a copy here could drift from the code it checks.
+	//
+	// AN EXEMPTION IS A PROMISE AND THIS TEST DOES NOT KEEP IT. All it does is
+	// stop refusing them. That every name on that list is really read by code is
+	// held by `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+	const TArray<FString>& Exempt =
+		UCataclysmPlayerClassStats::StatsWithNoAttribute();
+
 	int32 Checked = 0;
+	int32 Exempted = 0;
 	for (const TPair<FName, uint8*>& Row : EffectTable->GetRowMap())
 	{
 		const auto* Effect =
@@ -696,11 +761,26 @@ bool FCataclysmEnchantmentEffectAttributesTest::RunTest(const FString& Parameter
 		}
 
 		++Checked;
+		if (Exempt.Contains(Effect->Stat))
+		{
+			++Exempted;
+			continue;
+		}
+
 		TestTrue(*FString::Printf(
 					 TEXT("%s grants '%s', which has an attribute behind it"),
 					 *Row.Key.ToString(), *Effect->Stat),
 				 Attributes.Contains(Effect->Stat));
 	}
+
+	// AND SAY HOW MANY TOOK THE EXEMPTION, so a build where the exemption
+	// swallowed everything is visible rather than silently green. A reader who
+	// sees this climb without the list growing has found a misspelling that
+	// happens to match an exempt name.
+	AddInfo(FString::Printf(
+		TEXT("%d enchantment rows checked, %d of them exempt from needing an "
+			 "attribute"),
+		Checked, Exempted));
 
 	// Without this the loop above passes on an empty table, which is what a
 	// stale or unbuilt asset looks like.
@@ -1657,6 +1737,344 @@ bool FCataclysmEnchantmentChargeKnockdownTest::RunTest(const FString& Parameters
 	Wearer.Equipment->RefreshAttributes(ASC);
 	TestEqual(TEXT("and taking the helm off leaves the charge skill alone"),
 			  ASC->StatForSkill(Stat, ChargeSkillTags, 0.0f), 0.0f, 0.001f);
+
+	return true;
+}
+
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpecialMovingBenefitTest,
+	"Cataclysm.Enchantments.TheSpecialAbilityBenefitNeedsTheSlotAndTheMovementTogether",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your special ability deals 20%-40% increased damage while you are moving".
+ *
+ * THE SAME SHAPE AS THE SPELLS-MOVING DRAWBACK ABOVE, IN THE OTHER BUCKET.
+ * That row is `more`, and a `more` modifier which does not apply leaves a
+ * multiplier of exactly 1 -- which is also what carrying no modifier at all
+ * leaves. This row is `increased`, so one which does not apply leaves the
+ * increases sum at zero instead. Both rows need the tag and the state together
+ * and the two buckets fail in different places, so neither test covers the
+ * other.
+ *
+ * `Slot.Special` IS ON 79 OF THE 403 ROWS OF `game/Data/WeaponSkills.csv`, one
+ * per weapon type, so this row has real reach. The tag is asked for by name
+ * rather than typed into an expectation, so a tag that left the vocabulary
+ * fails here rather than silently matching nothing.
+ */
+bool FCataclysmSpecialMovingBenefitTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	const FGameplayTagContainer Special = SkillTagged(TEXT("Slot.Special"));
+	const FGameplayTagContainer Ultimate = SkillTagged(TEXT("Slot.Ultimate"));
+	if (!TestFalse(TEXT("the Slot.Special tag is in the vocabulary"),
+				   Special.IsEmpty())
+		|| !TestFalse(TEXT("and so is Slot.Ultimate"), Ultimate.IsEmpty()))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), SpecialMovingBenefit, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	// THE ROW REACHED THE CHARACTER AT ALL, asked first so that a zero below
+	// says which of the two things went wrong. A row that never arrived and a
+	// condition that never fires are the same number.
+	if (!TestTrue(
+			TEXT("the worn benefit put a modifier on attack damage"),
+			CarriesAModifierOn(ASC, UCataclysmItemModifiers::AttackDamageStat)))
+	{
+		return false;
+	}
+
+	// STANDING STILL, THE SPECIAL SLOT GAINS NOTHING. One half of the pair.
+	ASC->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	TestEqual(TEXT("standing still, a special ability gains nothing"),
+			  ASC->AttackDamageIncreasesForSkill(Special), 0.0f, 0.001f);
+
+	ASC->NoteMovedMetres(1.0f);
+
+	// MOVING, ANOTHER SLOT GAINS NOTHING. The other half.
+	TestEqual(TEXT("moving, an ultimate gains nothing"),
+			  ASC->AttackDamageIncreasesForSkill(Ultimate), 0.0f, 0.001f);
+
+	// AND BOTH AT ONCE IS THE ROW. A rolled enchantment built in code carries a
+	// roll of 1, which `UCataclysmItemValues::EnchantmentValue` puts on the
+	// second number, so this is the 40 and not the 20.
+	//
+	// THE EXACT FIGURE RATHER THAN "MORE THAN NOTHING", which is what catches a
+	// row whose two ends were written the wrong way round. It is a fraction
+	// because `AttackDamageIncreasesForSkill` divides the pipeline's percentage
+	// points by 100.
+	TestEqual(TEXT("moving, a special ability gains the far end of the range"),
+			  ASC->AttackDamageIncreasesForSkill(Special), 0.4f, 0.001f);
+
+	// AND IT IS AN INCREASE RATHER THAN A MULTIPLIER, which the number above
+	// cannot show on its own. A `more` row would move this one instead.
+	TestEqual(TEXT("and the more multiplier is untouched"),
+			  ASC->AttackDamageMoreForSkill(Special), 1.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBelowHalfDrawbackTest,
+	"Cataclysm.Enchantments.TheBelowHalfDrawbackNeedsATargetUnderTheThreshold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You deal 25%-40% less damage to enemies below 50% HP".
+ *
+ * THE FIRST ENCHANTMENT ROW TO USE `target_health_below`. Two passive nodes use
+ * the condition, so the pipeline's half is covered. What nothing covered is
+ * that the condition survives the route an enchantment takes, which runs
+ * through `UCataclysmItemModifiers` and `UCataclysmPlayerClassStats::ApplyTo`
+ * rather than through a stat line written in code.
+ *
+ * THE CONDITION IS REFUSED WHEN NO TARGET IS IN HAND, which the first assertion
+ * pins. `UCataclysmAbilitySystemComponent::WithTargetState` leaves the reading
+ * at -1 for a null target and `UCataclysmStatPipeline::ConditionHolds` refuses
+ * a negative reading. So a character asking for its damage with nobody in front
+ * of it -- the character sheet, for one -- correctly sees no reduction.
+ *
+ * STRICTLY BELOW, so a target sitting on exactly half health is not under the
+ * threshold. That boundary is asserted rather than assumed, and the health it
+ * is asserted at is read back after being written, so a target that failed to
+ * take the health it was given cannot pass this as though the condition had
+ * done the refusing.
+ */
+bool FCataclysmBelowHalfDrawbackTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	FWearer Enemy(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, BelowHalfDrawback),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	if (!TestTrue(
+			TEXT("the worn drawback put a modifier on attack damage"),
+			CarriesAModifierOn(ASC, UCataclysmItemModifiers::AttackDamageStat)))
+	{
+		return false;
+	}
+
+	// NO TARGET IN HAND, NO REDUCTION.
+	TestEqual(TEXT("with nobody in front of it, damage is not reduced"),
+			  ASC->AttackDamageMoreForSkill(FGameplayTagContainer()), 1.0f,
+			  0.001f);
+
+	// A TARGET ON EXACTLY HALF HEALTH IS NOT BELOW HALF. The state is built and
+	// then read back before anything is concluded from it.
+	UCataclysmAbilitySystemComponent* Theirs = Enemy.AbilitySystem;
+	Theirs->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 100.0f);
+	Theirs->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 50.0f);
+	if (!TestEqual(TEXT("the target really is on exactly half health"),
+				   Theirs->GetNumericAttribute(
+					   UCataclysmVitalAttributeSet::GetHealthAttribute()),
+				   50.0f, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a target on exactly half health is not below half"),
+			  ASC->AttackDamageMoreForSkill(FGameplayTagContainer(), -1.0f,
+											-1.0f, -1.0f, false, Enemy.Actor),
+			  1.0f, 0.001f);
+
+	// AND ONE POINT UNDER IT IS. A roll of 1 takes the far end of the range,
+	// which is 40% less, so the multiplier is 0.6.
+	Theirs->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 49.0f);
+	TestEqual(TEXT("and a target below half takes the far end of the range"),
+			  ASC->AttackDamageMoreForSkill(FGameplayTagContainer(), -1.0f,
+											-1.0f, -1.0f, false, Enemy.Actor),
+			  0.6f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHealingReducedDrawbackTest,
+	"Cataclysm.Enchantments.TheHealingReductionCutsWhatATopUpReturns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Healing effects on you are reduced by 30%-50%".
+ *
+ * THE FIRST DATA ROW ANYWHERE ON `healing_received_reduction`. Until this row
+ * the stat's only source was C++ -- the Death's Embrace dungeon rule at
+ * `CataclysmDungeonModifierEffects.cpp:457` -- so nothing proved a row in a
+ * sheet can reach it.
+ *
+ * IT MUST BE `flat` AND NOT `increased`. The stat's base is zero, no class line
+ * names it and `EngineSuppliedBases` does not either, so an increase would
+ * multiply nothing and the wearer would be healed in full.
+ *
+ * THE STAT DOES MORE THAN THIS SENTENCE SAYS, AND THAT IS DELIBERATE. The
+ * project owner ruled on 2026-09-12 that healing received covers regeneration
+ * and leech as well as direct healing, and issue #1609 is the standing record
+ * that these words do not say so. This test drives the regeneration route,
+ * because that is the route `UCataclysmRegeneration::TopUp` takes, and is
+ * asserting the ruled behaviour rather than the sentence.
+ */
+bool FCataclysmHealingReducedDrawbackTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+
+	// A POOL WITH ROOM IN IT, so that what is offered is not trimmed by the
+	// maximum and the only thing that can shrink it is the row.
+	ASC->SetNumericAttributeBase(MaxHealth, 1000.0f);
+	ASC->SetNumericAttributeBase(Health, 0.0f);
+
+	// WHAT AN UNREDUCED TOP-UP RETURNS, measured on this character before the
+	// item goes on rather than assumed to be the number offered.
+	UCataclysmRegeneration::TopUp(*ASC, Health, MaxHealth, 100.0f);
+	const float Unreduced = ASC->GetNumericAttribute(Health);
+	if (!TestEqual(TEXT("with nothing worn, a top-up of 100 returns 100"),
+				   Unreduced, 100.0f, 0.001f))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, HealingReducedDrawback),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	// THE ROW REACHED THE ATTRIBUTE. This stat is read off the attribute rather
+	// than asked for through `StatForSkill`, so the attribute is what has to
+	// have moved. A roll of 1 takes the far end of the range, which is 50.
+	TestEqual(
+		TEXT("the worn drawback wrote 50 onto the healing reduction"),
+		ASC->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealingReceivedReductionAttribute()),
+		50.0f, 0.001f);
+
+	// AND THE SAME TOP-UP NOW RETURNS HALF OF IT.
+	ASC->SetNumericAttributeBase(Health, 0.0f);
+	UCataclysmRegeneration::TopUp(*ASC, Health, MaxHealth, 100.0f);
+	const float Reduced = ASC->GetNumericAttribute(Health);
+	TestEqual(TEXT("and wearing it, the same top-up returns 50"), Reduced,
+			  50.0f, 0.001f);
+	TestTrue(*FString::Printf(
+				 TEXT("which is less than the %.1f it returned before"),
+				 Unreduced),
+			 Reduced < Unreduced);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReflectBenefitTest,
+	"Cataclysm.Enchantments.TheReflectBenefitSendsBackAShareOfTheBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Reflect 20%-50% of damage taken back to attackers".
+ *
+ * THE STAT IS ALREADY A SHARE OF THE BLOW TAKEN, so the row is `flat` 20 to 50
+ * rather than a percentage of some other figure.
+ * `UCataclysmRetaliation::AmountFor` divides by 100, so a value of 50 sends
+ * back half of what was taken.
+ *
+ * `flat` AND NOT `increased`, because the stat's base is zero for every class
+ * but the Masochist. An increase would multiply nothing.
+ *
+ * ONE OF TWO NEARLY IDENTICAL ENCHANTMENTS, and they are separate rows of
+ * `game/Data/EnchantmentsPositive.csv` rather than one duplicated: this one
+ * states 20%-50%, and "Reflect 20%-40% of damage taken back at attackers as
+ * retaliation damage" states 20%-40%. Both were written, each with its own
+ * range.
+ */
+bool FCataclysmReflectBenefitTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	// NOTHING COMES BACK BEFORE THE ITEM GOES ON, measured rather than assumed.
+	// A class line granting retaliation would make every figure below larger,
+	// and this is what would catch it.
+	if (!TestEqual(TEXT("wearing nothing, a blow of 200 sends nothing back"),
+				   UCataclysmRetaliation::AmountFor(ASC, 200.0f), 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), ReflectBenefit, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	// A ROLL OF 1 TAKES THE FAR END, which is 50, so half of a blow of 200 is
+	// 100. The exact figure rather than "more than nothing", because that is
+	// what catches a row whose two ends were written the wrong way round.
+	TestEqual(TEXT("wearing it, a blow of 200 sends back half of it"),
+			  UCataclysmRetaliation::AmountFor(ASC, 200.0f), 100.0f, 0.001f);
+
+	// AND IT SCALES WITH THE BLOW RATHER THAN BEING A FIXED AMOUNT, which one
+	// figure on its own cannot show.
+	TestEqual(TEXT("and half of a blow of 60 is 30"),
+			  UCataclysmRetaliation::AmountFor(ASC, 60.0f), 30.0f, 0.001f);
 
 	return true;
 }
