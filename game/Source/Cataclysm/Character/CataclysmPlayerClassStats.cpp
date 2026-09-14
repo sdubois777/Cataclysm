@@ -783,6 +783,15 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("weaken_chance"), Combat::GetWeakenChanceAttribute()},
 			{TEXT("shred_chance"), Combat::GetShredChanceAttribute()},
 			{TEXT("stun_chance"), Combat::GetStunChanceAttribute()},
+
+			// HOW LARGE A CRIPPLE OR A WEAKEN THIS CHARACTER APPLIES, in per
+			// cent of the effect's own figure, where 100 is unchanged. Issue
+			// #1767. They are here rather than in `StatsWithNoAttribute`
+			// because they HAVE an attribute and need its base of 100: an
+			// exempt stat is one bespoke code reads by name, and these are
+			// read through this map like every other modifier.
+			{TEXT("cripple_magnitude"), Combat::GetCrippleMagnitudeAttribute()},
+			{TEXT("weaken_magnitude"), Combat::GetWeakenMagnitudeAttribute()},
 		};
 	}();
 

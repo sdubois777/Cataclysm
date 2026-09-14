@@ -121,6 +121,25 @@ namespace CataclysmAilmentTest
 			AbilitySystem->SetNumericAttributeBase(Kind.Attribute(), Percent);
 		}
 
+		/**
+		 * What a passive node raising this ailment's magnitude would have
+		 * written, in per cent, where 100 is the effect's own figure.
+		 *
+		 * ONLY TWO AILMENTS HAVE ONE. Issue #1767. Calling this for one that
+		 * does not would dereference a null attribute accessor, so it refuses
+		 * and says so rather than crashing the whole run.
+		 */
+		bool SetMagnitude(const FCataclysmAilmentKind& Kind, float Percent) const
+		{
+			if (!Kind.MagnitudeAttribute)
+			{
+				return false;
+			}
+			AbilitySystem->SetNumericAttributeBase(Kind.MagnitudeAttribute(),
+												   Percent);
+			return true;
+		}
+
 		void SetAllResistance(float Percent) const
 		{
 			AbilitySystem->SetNumericAttributeBase(
@@ -787,5 +806,149 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentSkillTagsTest,
 }
 
 #undef CATACLYSM_AILMENT_TEST
+
+
+// ---------------------------------------------------------------------------
+// The magnitude stats. Issue #1767.
+// ---------------------------------------------------------------------------
+
+CATACLYSM_AILMENT_TEST(FCataclysmAilmentMagnitudeStatArithmeticTest,
+	"Cataclysm.Ailments.AMagnitudeStatScalesWhatChanceOverflowProduced")
+{
+	// A HUNDRED IS UNCHANGED, which is what the two attributes start at and the
+	// reason `NormalMagnitude` exists. Following `UCataclysmDebuffs::
+	// NormalDuration`, the same shape for the nearest existing stat.
+	const float Cap = UCataclysmAilments::ChanceCap;
+	const float Normal = UCataclysmAilments::NormalMagnitude;
+
+	float Chance = 0.0f;
+	float Magnitude = 0.0f;
+
+	UCataclysmAilments::Application(Cap, Chance, Magnitude);
+	TestEqual(TEXT("at the cap and no stat, magnitude is one"), Magnitude, 1.0f,
+			  0.001f);
+
+	UCataclysmAilments::Application(Cap, Chance, Magnitude, Normal);
+	TestEqual(TEXT("and a stat of 100 changes nothing"), Magnitude, 1.0f, 0.001f);
+
+	// THE HALF THAT WOULD BE LOST BY MULTIPLYING BEFORE THE FLOOR RATHER THAN
+	// AFTER IT. A character at or below the cap has a magnitude of exactly one
+	// from chance alone, so a build that applied the stat first and floored
+	// afterwards would floor the investment away and read 1.0 here. Most
+	// characters are below the cap, so that build would look correct in play
+	// only for the few above it.
+	UCataclysmAilments::Application(Cap, Chance, Magnitude, 150.0f);
+	TestEqual(TEXT("a stat of 150 at the cap gives one and a half"), Magnitude,
+			  1.5f, 0.001f);
+
+	UCataclysmAilments::Application(Cap / 2.0f, Chance, Magnitude, 150.0f);
+	TestEqual(TEXT("and the same below the cap, where chance overflow gives nothing"),
+			  Magnitude, 1.5f, 0.001f);
+
+	// AND IT MULTIPLIES THE OVERFLOW RATHER THAN REPLACING IT. 250% chance is
+	// magnitude 2.5 on its own; a stat of 200 makes it 5.
+	UCataclysmAilments::Application(Cap * 2.5f, Chance, Magnitude);
+	TestEqual(TEXT("250% chance alone is two and a half"), Magnitude, 2.5f, 0.001f);
+
+	UCataclysmAilments::Application(Cap * 2.5f, Chance, Magnitude, 200.0f);
+	TestEqual(TEXT("and a stat of 200 on top of it is five"), Magnitude, 5.0f,
+			  0.001f);
+
+	// A NEGATIVE STAT IS REFUSED RATHER THAN INVERTING THE EFFECT.
+	UCataclysmAilments::Application(Cap, Chance, Magnitude, -50.0f);
+	TestEqual(TEXT("a negative stat applies nothing rather than reversing it"),
+			  Magnitude, 0.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_AILMENT_TEST(FCataclysmCrippleMagnitudeStatReachesTheEnemyTest,
+	"Cataclysm.Ailments.ACrippleMagnitudeStatMakesTheAppliedCrippleLarger")
+{
+	using namespace CataclysmAilmentTest;
+
+	// WHY A REAL BLOW RATHER THAN CALLING `Apply` DIRECTLY. The stat is resolved
+	// on the attacker's side in `ChancesFor`, travels on the damage effect, and
+	// is read back where the roll is made. A test that handed the magnitude in
+	// would prove the arithmetic above and nothing about that journey -- which
+	// is the half that was missing for `Wearing Them Down` and is the failure
+	// this whole class of work produces: a row that validates and grants
+	// nothing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FCataclysmAilmentKind* Cripple = KindOf(TEXT("Cripple"));
+	if (!TestNotNull(TEXT("Cripple is an ailment"), Cripple))
+	{
+		return false;
+	}
+
+	// THE STATE THIS TEST BUILDS IS ASSERTED BEFORE THE BEHAVIOUR IS. An ailment
+	// with no magnitude stat would make both halves below measure the same
+	// thing, and `SetMagnitude` returning false is how that shows.
+	const FScopedFighter Plain(World);
+	const FScopedFighter Invested(World);
+	Plain.ArmFor(1'000.0f);
+	Invested.ArmFor(1'000.0f);
+	Plain.SetChance(*Cripple, UCataclysmAilments::ChanceCap);
+	Invested.SetChance(*Cripple, UCataclysmAilments::ChanceCap);
+
+	if (!TestTrue(TEXT("Cripple has a magnitude stat to raise"),
+				  Invested.SetMagnitude(*Cripple, 150.0f))
+		|| !TestTrue(TEXT("and the plain attacker is left at the normal figure"),
+					 Plain.SetMagnitude(*Cripple,
+										UCataclysmAilments::NormalMagnitude)))
+	{
+		return false;
+	}
+
+	// A ROLL OF ZERO LANDS EVERY CHANCE ABOVE NOTHING, so both blows apply.
+	const CataclysmTestWorld::FScopedAilmentRoll Roll(0.0f);
+
+	const FScopedFighter StruckByPlain(World);
+	const FScopedFighter StruckByInvested(World);
+	UCataclysmSkillEffects::ApplyHit(Plain.Actor, StruckByPlain.Actor, 100.0f);
+	UCataclysmSkillEffects::ApplyHit(Invested.Actor, StruckByInvested.Actor,
+									 100.0f);
+
+	if (!TestTrue(TEXT("both targets carry the Cripple"),
+				  StruckByPlain.Carries(Cripple->TagName)
+				  && StruckByInvested.Carries(Cripple->TagName)))
+	{
+		return false;
+	}
+
+	// THE ROW'S OWN FIGURES, READ RATHER THAN TYPED, so re-tuning the curse in
+	// the sheet does not break this. Cripple states 30 with a cap of 80, so 150%
+	// gives 45 and both are under the cap -- which is deliberate: a figure at the
+	// cap would be identical for both attackers and prove nothing.
+	// READ BY THE ROW NAME THE AILMENT ITSELF CARRIES, so this needs no tag and
+	// no second spelling of "Cripple" that could drift from the table's.
+	const FCataclysmStatusEffectNumbers Row =
+		UCataclysmSkillEffects::StatusEffectNumbers(Cripple->StatusRow,
+												   Cripple->Ailment);
+
+	const float FromPlain = StruckByPlain.StatedOn(Cripple->TagName);
+	const float FromInvested = StruckByInvested.StatedOn(Cripple->TagName);
+
+	if (!TestTrue(FString::Printf(
+			TEXT("the row's strength and cap leave room to scale, got %.1f and %.1f"),
+			Row.Strength, Row.StrengthCap),
+		Row.Strength > 0.0f && Row.StrengthCap > Row.Strength * 1.5f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an attacker with no investment applies the row's own figure"),
+			  FromPlain, Row.Strength, 0.01f);
+	TestEqual(TEXT("and one with 150% magnitude applies half again as much"),
+			  FromInvested, Row.Strength * 1.5f, 0.01f);
+
+	return true;
+}
 
 #endif // WITH_AUTOMATION_TESTS

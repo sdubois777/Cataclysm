@@ -120,6 +120,26 @@ struct FCataclysmAilmentKind
 	/** The gameplay attribute holding the chance. */
 	FGameplayAttribute (*Attribute)();
 
+	/**
+	 * The stat scaling how LARGE this ailment is, in per cent, where 100 is the
+	 * effect's own designed figure: "cripple_magnitude". Null for an ailment
+	 * nothing scales.
+	 *
+	 * NULL FOR NINE OF THE ELEVEN, AND THAT IS CORRECT AUTHORING. Two passive
+	 * nodes ask for this -- the Ravager's `Dragging Weight` and `Sapped` -- and
+	 * no row anywhere asks for the other nine. A stat added for an ailment
+	 * nothing scales would be a name in the map with nothing behind it, which
+	 * `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` exists to
+	 * refuse for the exempt list and which is no better here. Issue #1767.
+	 *
+	 * IT MULTIPLIES THE MAGNITUDE RATHER THAN REPLACING IT. Magnitude's other
+	 * source is chance overflow, and this scales whatever that produced.
+	 */
+	const TCHAR* MagnitudeStat;
+
+	/** The gameplay attribute behind `MagnitudeStat`, or null with it. */
+	FGameplayAttribute (*MagnitudeAttribute)();
+
 	ECataclysmAilmentShape Shape;
 };
 
@@ -165,6 +185,14 @@ public:
 	static constexpr float ChanceCap = 100.0f;
 
 	/**
+	 * What a magnitude stat holds for a character with none of it, in per cent.
+	 *
+	 * A HUNDRED MEANS UNCHANGED, following `UCataclysmDebuffs::NormalDuration`,
+	 * which is the same shape for the nearest existing stat. Issue #1767.
+	 */
+	static constexpr float NormalMagnitude = 100.0f;
+
+	/**
 	 * A total chance, split into the chance that is rolled and the magnitude
 	 * the ailment lands at. Mirrors `ailment_application` in
 	 * `sim/cataclysm_sim/affixes.py`.
@@ -177,7 +205,9 @@ public:
 	 * A NEGATIVE TOTAL IS NO CHANCE AT ALL, where the model raises an error,
 	 * because a running game should not stop over one bad row.
 	 */
-	static void Application(float TotalChance, float& OutChance, float& OutMagnitude);
+	static void Application(float TotalChance, float& OutChance,
+							float& OutMagnitude,
+							float MagnitudePercent = NormalMagnitude);
 
 	/**
 	 * What the attacker has a chance to apply with a skill carrying these tags,

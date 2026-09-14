@@ -510,6 +510,40 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, StunChance)
 
 	/**
+	 * How large a Cripple or a Weaken this character applies, in percent of the
+	 * effect's own designed figure.
+	 *
+	 * A HUNDRED IS NORMAL, which is the shape `DebuffDurationTaken` already uses
+	 * for the nearest thing to these -- `UCataclysmDebuffs::DurationOn` divides
+	 * by `NormalDuration`, also 100, so a character with no investment is
+	 * unchanged. Following it rather than inventing a base is deliberate: two
+	 * conventions for one shape is how somebody divides by the wrong number.
+	 *
+	 * THEY MULTIPLY THE MAGNITUDE, THEY DO NOT REPLACE IT. Magnitude's only
+	 * other source is chance overflow -- `UCataclysmAilments::Application` turns
+	 * everything above 100% chance into it -- and these scale whatever that
+	 * produced. A character at 100% chance and 124 here applies a Cripple a
+	 * quarter larger than its row states.
+	 *
+	 * TWO OF THE ELEVEN AILMENTS, BECAUSE TWO NODES ASK. The Ravager's
+	 * `Dragging Weight` and `Sapped` are the rows; the other nine ailments have
+	 * no magnitude stat and that is correct authoring rather than an omission,
+	 * the same way `Debuff_Cripple` names no stat in `MovesStat`. Issue #1767,
+	 * which the project owner ruled on 2026-09-14.
+	 *
+	 * THEY BELONG TO WHOEVER SWUNG, like the chances above, and are asked for
+	 * through `StatForSkill` rather than read, so a row scoped to melee counts
+	 * only for a melee skill. The attribute is the fallback.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_CrippleMagnitude)
+	FGameplayAttributeData CrippleMagnitude;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CrippleMagnitude)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Ailments", ReplicatedUsing = OnRep_WeakenMagnitude)
+	FGameplayAttributeData WeakenMagnitude;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, WeakenMagnitude)
+
+	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
 	 * A HUNDRED IS NORMAL, so 120 is a fifth more and 75 is a quarter less. It is
@@ -914,6 +948,8 @@ protected:
 	UFUNCTION() void OnRep_WeakenChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShredChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_StunChance(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_CrippleMagnitude(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_WeakenMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);
