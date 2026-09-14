@@ -385,12 +385,24 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDominionRaisesTheThresholdTest,
  * so a test at either end would pass against a build that ignored the stat
  * entirely.
  *
- * THE BAND IS ASSERTED AND NOT ASSUMED. The caster deals 300 against a creature
- * of 1000, so starting at 900 leaves 600 -- but that arithmetic is this test's
- * belief about the skill's damage, not a fact it controls. The control below
- * reads the health back and fails loudly if the blow did not land where this
- * test needs it, rather than passing for a reason that has nothing to do with
- * the threshold.
+ * THE CASTERS DEAL NO DAMAGE, WHICH IS THE ONLY WAY TO PLACE A CREATURE
+ * PRECISELY BETWEEN TWO THRESHOLDS. The threshold is judged on the health left
+ * when the blow has landed, so a blow of unknown size makes the band unknown
+ * too. Setting attack damage to zero leaves the health at the figure this test
+ * wrote, and the comparison -- which is the whole subject -- is reached exactly
+ * as it would be after a real blow.
+ *
+ * THE FIRST VERSION OF THIS TEST ASSUMED THE BLOW DEALT 300 against a creature
+ * of 1000 and started it at 900. The blow deals more than that: it carried the
+ * creature under half, the plain caster took it, and `Subjugate` heals a thrall
+ * to full the moment it takes one -- so the health read back as 1000 of 1000 and
+ * the band assertion caught it. THAT THE BLOW LANDS AND HURTS IS ALREADY COVERED
+ * by `Cataclysm.Command.SubjugateTakesAnEnemyTheBlowLeftBelowHalfHealth`; what
+ * is new here is the threshold, and it is the only thing this test varies.
+ *
+ * THE BAND IS STILL ASSERTED AND NOT ASSUMED, because a future change that made
+ * the blow deal damage regardless of the stat, or that clamped the health write,
+ * would otherwise leave this passing for a reason unrelated to the threshold.
  *
  * THE STAT IS WRITTEN ONTO THE ATTRIBUTE RATHER THAN RESOLVED FROM A PASSIVE
  * ROW, because what is under test is the comparison reading it. That the row
@@ -411,14 +423,22 @@ bool FCataclysmDominionRaisesTheThresholdTest::RunTest(const FString&)
 		TEXT("Range=15; MaxTargets=1; Radius=15; Burn=1; Possess=1; "
 			 "FervourReserve=30; HealthThresholdPercent=50");
 
-	constexpr float StartingHealth = 900.0f;
+	// SIXTY PER CENT OF A CREATURE'S THOUSAND: above the ordinary half and
+	// below Dominion's 65%, and away from both edges so neither threshold is
+	// being tested at a boundary where a strict and an inclusive comparison
+	// would agree.
+	constexpr float HealthInTheBand = 600.0f;
 	constexpr float OrdinaryThreshold = 500.0f;   // half of a creature's 1000
 	constexpr float DominionThreshold = 650.0f;   // 65% of the same
 
 	// --- THE CONTROL: NO BONUS, SO THE ORDINARY THRESHOLD REFUSES -----------
 	FScopedCaster Plain(World, FVector::ZeroVector);
 	FScopedCreature Hurt(World, FVector(3 * M, 0, 0));
-	Hurt.SetHealthTo(StartingHealth);
+	Hurt.SetHealthTo(HealthInTheBand);
+
+	// NO DAMAGE, SO THE HEALTH AT THE MOMENT OF THE CHECK IS THE FIGURE
+	// WRITTEN ABOVE. See the comment on this test for why.
+	Plain.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 0.0f);
 
 	UCataclysmSummonSkill* PlainTry = GrantSkill<UCataclysmSummonSkill>(
 		Plain, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
@@ -451,8 +471,10 @@ bool FCataclysmDominionRaisesTheThresholdTest::RunTest(const FString&)
 	// it fires and the first creature has already been hit.
 	FScopedCaster Dominant(World, FVector(0, 30 * M, 0));
 	FScopedCreature AlsoHurt(World, FVector(3 * M, 30 * M, 0));
-	AlsoHurt.SetHealthTo(StartingHealth);
+	AlsoHurt.SetHealthTo(HealthInTheBand);
 
+	Dominant.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(),
+				 0.0f);
 	Dominant.Set(
 		UCataclysmCombatAttributeSet::GetPossessionThresholdBonusAttribute(),
 		15.0f);
