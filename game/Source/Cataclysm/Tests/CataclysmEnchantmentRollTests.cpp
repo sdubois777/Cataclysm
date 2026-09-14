@@ -88,10 +88,11 @@ namespace CataclysmEnchantmentRollTest
 		Table->RowStruct = FCataclysmEnchantmentEffectRow::StaticStruct();
 		const FString Csv =
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
-						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep\n"))
-			+ FString::Printf(TEXT("%s#1,%s,block_chance,increased,10,20,,,0,,0\n"),
+						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
+						 "Action,ActionEvent,FractionOf\n"))
+			+ FString::Printf(TEXT("%s#1,%s,block_chance,increased,10,20,,,0,,0,,,\n"),
 							  BlockBenefit, BlockBenefit)
-			+ FString::Printf(TEXT("%s#1,%s,attack_speed,increased,-20,-35,,,0,,0\n"),
+			+ FString::Printf(TEXT("%s#1,%s,attack_speed,increased,-20,-35,,,0,,0,,,\n"),
 							  SlowerDrawback, SlowerDrawback);
 		const TArray<FString> Problems = Table->CreateTableFromCSVString(Csv);
 		for (const FString& Problem : Problems)
