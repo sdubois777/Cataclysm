@@ -36,10 +36,40 @@ enum class ECataclysmAilmentShape : uint8
 	/** Madness, whose row says "Magnitude extends the duration". */
 	LongerWithMagnitude,
 
-	/** Cripple and Weaken, at the row's own figures. Their rows say magnitude
-	 *  raises the reduction to 80% and then extends the duration. Neither half
-	 *  is built, so a chance past 100% applies them no harder yet. */
+	/** Weaken, at the row's own figures. Its row says magnitude raises the
+	 *  reduction to 80% and then extends the duration, and neither half is
+	 *  built, so a chance past 100% applies it no harder yet. Issue #1256.
+	 *
+	 *  CRIPPLE LEFT THIS CASE AND WEAKEN HAS NOT YET, which is the whole of why
+	 *  the two are separate changes. Cripple's reduction is applied by
+	 *  `ACataclysmEnemyCharacter::CrippleMultiplier` today, so there is a
+	 *  behaviour to reproduce exactly before scaling it. Weaken's is applied by
+	 *  NOTHING, so there is nothing to check a result against. */
 	AtItsRowsFigures,
+
+	/**
+	 * Cripple: the row's strength times the magnitude up to the row's cap, and
+	 * the magnitude left over extends the duration instead. Issue #1256.
+	 *
+	 * THE DESIGN DOCUMENT STATES THIS SHAPE, twice. `docs/Cataclysm_GDD_v2.md`
+	 * gives the general rule -- "A strength with a cap, such as a slow: the
+	 * strength up to that cap, then the duration instead" -- and again per
+	 * effect, "Cripple: the reduction, to a cap of 80%, then the duration". It
+	 * also says magnitude "is never wasted", and names Stun as the one effect
+	 * where it is.
+	 *
+	 * THE DIVISION AT THE CAP IS A JUDGEMENT THE DOCUMENT DOES NOT MAKE. It
+	 * fixes that surplus becomes duration and not how much. The multiplier is
+	 * split rather than a rate applied, so that the whole of it is spent and
+	 * the two sides meet: `Scale / CapScale` is exactly 1 at the cap, which
+	 * leaves the duration at the row's own figure there. `docs/DECISIONS.md`
+	 * carries the reasoning and the alternative it was chosen over.
+	 *
+	 * IT NEEDS NO CONSTANT NOBODY HAS, which is the argument that decided it.
+	 * A rate in seconds per surplus point would be a number the design states
+	 * nowhere, and the project owner declined to invent one.
+	 */
+	StrongerThenLongerWithMagnitude,
 
 	/** Stun, which shares one roll with a blunt weapon's own 10%. */
 	Stun,

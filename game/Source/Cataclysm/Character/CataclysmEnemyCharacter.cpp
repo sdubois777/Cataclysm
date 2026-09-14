@@ -610,11 +610,24 @@ float ACataclysmEnemyCharacter::CrippleMultiplier() const
 		return 1.0f;
 	}
 
-	// THE ROW'S OWN FIGURE, so re-tuning the curse is a data change. Thirty
-	// per cent as the sheet stands.
-	const float Reduction = FMath::Clamp(
-		UCataclysmSkillEffects::NumbersForEffectTag(Cripple).Strength,
-		0.0f, 100.0f);
+	// WHAT THE APPLICATION STATED, AND THE ROW'S OWN FIGURE WHEN IT STATED
+	// NOTHING. Issue #1256. Until that issue this read the row alone, so every
+	// Cripple in the game was the designed 30% however it was applied and the
+	// row's promise of a cap at 80% could not be true of anything.
+	//
+	// THE ROW IS STILL THE ANSWER FOR AN APPLICATION THAT STATES NOTHING, so
+	// re-tuning the curse remains a data change and anything applying the tag
+	// by another route still slows a creature by the designed amount.
+	const float Stated = UCataclysmSkillEffects::StatedStrengthOn(this, Cripple);
+	const float Designed =
+		UCataclysmSkillEffects::NumbersForEffectTag(Cripple).Strength;
+
+	// CLAMPED AT A HUNDRED WHATEVER IT CAME FROM. The row's own cap is 80 and
+	// the applier holds the figure to it, but this is the last place before a
+	// multiplier and a row edited past 100 should still slow a creature to a
+	// crawl rather than reverse it.
+	const float Reduction =
+		FMath::Clamp(Stated >= 0.0f ? Stated : Designed, 0.0f, 100.0f);
 
 	// A HUNDRED PER CENT WOULD BE A CREATURE THAT CANNOT MOVE AT ALL AND
 	// CANNOT ATTACK EVER, and the second half is the dangerous one: the

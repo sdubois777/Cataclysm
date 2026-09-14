@@ -720,12 +720,25 @@ public:
 	 * THE REDUCTION IS THE ROW'S OWN Strength, read out of the Status Effects
 	 * sheet rather than written here, so re-tuning the curse needs no code.
 	 *
-	 * ITS StrengthCap OF 80 IS NOT REACHED AND IS NOT CHECKED. The row says a
-	 * magnitude raises the reduction to that cap and then extends the
-	 * duration instead, and no magnitude survives the path that applies this
-	 * curse: `UCataclysmSkillEffects::ApplyNamedEffect` grants the tag and
-	 * keeps no number, so every Cripple in the game is the designed 30%.
-	 * Issue #1144 is the column that would change that.
+	 * ITS StrengthCap OF 80 IS REACHED AND CHECKED SINCE ISSUE #1256, and this
+	 * comment said the opposite until then: "no magnitude survives the path
+	 * that applies this curse... so every Cripple in the game is the designed
+	 * 30%." That was true and is no longer.
+	 *
+	 * WHAT CHANGED IS WHERE THE FIGURE COMES FROM, not where the reduction is
+	 * applied. The applier holds the strength to the row's cap and rolls the
+	 * surplus into the duration, and states the capped figure on the effect;
+	 * this reads that figure back and falls back to the row when an
+	 * application states none.
+	 *
+	 * IT WAS NOT MOVED ONTO THE SHARED PATH, AND THAT IS DELIBERATE. Issue
+	 * #1256 proposed filling the `MovesStat` column and deleting this
+	 * function. Measured, that would have stopped the curse working:
+	 * `ApplyNamedEffect` SUBTRACTS its figure from an attribute, which is
+	 * right for Shred taking 10 off a resistance and wrong for a percentage;
+	 * and no enemy attribute is read for speed, since walk speed is
+	 * `DesignedWalkSpeedCmPerSecond * SpeedMultiplier()` and the attack
+	 * interval divides by the same. The issue carries the measurement.
 	 */
 	float CrippleMultiplier() const;
 

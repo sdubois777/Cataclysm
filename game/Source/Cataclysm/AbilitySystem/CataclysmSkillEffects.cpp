@@ -1301,6 +1301,14 @@ FCataclysmStatusEffectNumbers UCataclysmSkillEffects::StatusEffectNumbers(
 	// carry a strength and no per-tick amount, and Shred does.
 	Numbers.Strength = Row->Strength;
 
+	// AND WHERE THAT STRENGTH STOPS. Issue #1256. The column has existed since
+	// issue #904 and NOTHING READ IT: it was declared on the row struct,
+	// mentioned in one comment saying it "IS NOT REACHED AND IS NOT CHECKED",
+	// and read by no code anywhere in `game/Source`. Cripple's row promised a
+	// cap of 80% that could not be enforced because the figure never left the
+	// table.
+	Numbers.StrengthCap = Row->StrengthCap;
+
 	// BOTH HALVES ARE NEEDED AND EITHER ONE MISSING IS THE SAME FAULT. Burn had
 	// neither until issue #895, and an effect lasting zero seconds or worth zero
 	// damage is indistinguishable from an effect nobody wrote -- which is exactly
@@ -2826,9 +2834,35 @@ bool UCataclysmSkillEffects::HasTag(const AActor* Actor, const FGameplayTag& Tag
 	return AbilitySystem && Tag.IsValid() && AbilitySystem->HasMatchingGameplayTag(Tag);
 }
 
+float UCataclysmSkillEffects::StatedStrengthOn(const AActor* Target,
+											   const FGameplayTag& EffectTag)
+{
+	const UAbilitySystemComponent* Defender =
+		UCataclysmTargeting::AbilitySystemOf(Target);
+	if (!Defender || !EffectTag.IsValid())
+	{
+		return -1.0f;
+	}
+
+	// THE SAME READ THE STRONGEST-WINS RULE MAKES, rather than a second way of
+	// asking. `RunningApplicationOf` answers with the running application that
+	// stated the most, which is the one whose figure is in force.
+	const FRunningApplication Running = RunningApplicationOf(
+		const_cast<UAbilitySystemComponent*>(Defender), EffectTag);
+	if (!Running.bFound || Running.Stated <= 0.0f)
+	{
+		// NOTHING RUNNING, OR RUNNING AND STATING NOTHING. Both are "no figure
+		// to report" and the caller falls back to the row. They are not told
+		// apart because no caller has a different answer for them.
+		return -1.0f;
+	}
+
+	return Running.Stated;
+}
+
 bool UCataclysmSkillEffects::ApplyTagForDuration(
 	AActor* Instigator, AActor* Target, const FGameplayTag& EffectTag,
-	float DurationSeconds)
+	float DurationSeconds, float StatedStrength)
 {
 	if (!EffectTag.IsValid() || DurationSeconds <= 0.0f)
 	{
@@ -2874,24 +2908,48 @@ bool UCataclysmSkillEffects::ApplyTagForDuration(
 	// A REFRESH MOVES ONLY THE RUNNING EFFECT'S START, the refresh `ApplyPin`,
 	// `ApplyNamedEffect` and `ApplyDamageOverTime` already use. The tag is never
 	// taken off and put back, so nothing waiting for it to end sees it end.
+	// THAT EXEMPTION ENDS WHERE A FIGURE BEGINS. Issue #1256. The judgement above
+	// rests on an effect having "no figure but its duration", and Cripple now
+	// states one: the slow it applied, after its cap. So the owner's ruling of
+	// 2026-09-09 applies to it in full rather than in the reduced form -- the
+	// STRONGER APPLICATION'S FIGURE WINS, and a weaker one still refreshes the
+	// duration without shortening it.
+	//
+	// EVERY CALLER THAT STATES NOTHING IS UNTOUCHED, which before this change was
+	// all of them: `StatedStrength` is zero, the running figure is zero, and
+	// `0 > 0` is false, so the branch below is never taken and the effect is
+	// compared by duration exactly as issue #1576 decided.
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
-	if (Running.bFound)
+	if (Running.bFound && StatedStrength <= Running.Stated)
 	{
 		RefreshRunningApplication(Defender, Running, OnTarget);
 		return true;
 	}
 
+	// A STRONGER FIGURE REPLACES THE RUNNING ONE AND NEVER SHORTENS IT. "Its
+	// figures are refused; its timing is not" is the ruling for the weaker
+	// direction, and the same sentence read the other way is why this takes the
+	// longer of the two durations rather than its own.
+	const float Lasts = Running.bFound
+		? FMath::Max(OnTarget, Running.SecondsLeft)
+		: OnTarget;
+
 	UGameplayEffect* Effect = MakeRuntimeEffect(
 		FString::Printf(TEXT("CataclysmStatus_%s"), *EffectTag.ToString()));
 	Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
 	Effect->DurationMagnitude =
-		FGameplayEffectModifierMagnitude(FScalableFloat(OnTarget));
+		FGameplayEffectModifierMagnitude(FScalableFloat(Lasts));
 
 	TagAndReplaceAnyExisting(Effect, EffectTag, Target);
 
-	FGameplayEffectContextHandle Context = Source->MakeEffectContext();
-	Context.AddInstigator(Instigator, Instigator);
-	Defender->ApplyGameplayEffectToSelf(Effect, /*Level=*/1.0f, Context);
+	// APPLIED SO IT CARRIES WHAT IT STATED, which is the whole of the per-target
+	// store this change needed and did not have to build. `ApplyStating` writes
+	// the figure as a set-by-caller magnitude on the spec and
+	// `RunningApplicationOf` above reads it back, both of which existed for the
+	// strongest-wins rule. The one thing missing was this path calling it: it
+	// used `ApplyGameplayEffectToSelf` directly, so every tag-only effect stated
+	// zero and the comparison was nothing against nothing.
+	ApplyStating(Effect, Source, Defender, Instigator, StatedStrength);
 
 	return true;
 }
@@ -2919,8 +2977,24 @@ namespace
 	 *
 	 * TWO EFFECTS WITH A STRENGTH ARE DELIBERATELY NOT IN THE COLUMN. Cripple's
 	 * slow is applied by its own code: an enemy's speed reads its tag (issue
-	 * #1152), so moving it onto this path would apply it twice. Weaken's damage
-	 * reduction is applied by nothing yet, and building it is separate work.
+	 * #1152). Weaken's damage reduction is applied by nothing yet, and building
+	 * it is separate work.
+	 *
+	 * THIS SAID MOVING CRIPPLE HERE "WOULD APPLY IT TWICE" AND THAT WAS WRONG.
+	 * Measured for issue #1256: it would apply it ZERO times, for two reasons
+	 * either of which is enough. This path SUBTRACTS its figure from an
+	 * attribute, which is right for Shred taking 10 off a resistance of 40 and
+	 * wrong for Cripple's 30, which means thirty per cent SLOWER. And no enemy
+	 * attribute is read for speed at all: walk speed is
+	 * `DesignedWalkSpeedCmPerSecond * SpeedMultiplier()` and the attack interval
+	 * divides by the same, so a modifier on `movement_speed` would move a number
+	 * nothing reads. An enemy's `attack_speed` starts at zero and is never
+	 * written, so `FMath::Min(Size, Current)` is zero there and the loop below
+	 * adds no modifier at all.
+	 *
+	 * THE CORRECTION MATTERS BECAUSE THE WRONG VERSION POINTED SOMEWHERE
+	 * DANGEROUS. "It would apply twice" tells the next person to delete the
+	 * working reader, which is the one change that stops the curse working.
 	 */
 	TArray<FGameplayAttribute> CataclysmStatsMovedByEffect(
 		const UDataTable* StatusEffectTable, const FGameplayTag& EffectTag,
