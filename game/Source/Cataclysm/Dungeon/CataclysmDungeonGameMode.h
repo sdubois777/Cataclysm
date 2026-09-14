@@ -1441,6 +1441,12 @@ private:
 	 * IT ASKS THE ROWS WHETHER THEY ARE ON THE FLOOR, so a floor carrying neither
 	 * hands the panel an empty map and every line reads exactly as it did before
 	 * any of this existed.
+	 *
+	 * NOTHING TESTS THAT THIS IS CALLED, AND ISSUE #1841 CARRIES WHY. The tests
+	 * read `LiveCountsForTheFloor` below, which is the figure the panel is handed
+	 * and not the handing, so deleting a call to this from a listener leaves
+	 * every one of them passing. Closing it needs a test world with a game
+	 * instance, which is that issue's subject and not a rule's to widen into.
 	 */
 	void RefreshFloorModifierPanel();
 

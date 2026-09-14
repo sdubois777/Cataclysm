@@ -6710,7 +6710,8 @@ bool FCataclysmFloorPanelCountIsLiveTest::RunTest(const FString& Parameters)
 	// it: `RefreshFloorModifierPanel` needs an `ACataclysmPlayerController` and
 	// these tests possess with a plain `APlayerController`, which this file's own
 	// header already records as not covered. Deleting the refresh call from the
-	// listener would leave this test passing.
+	// listener would leave this test passing. ISSUE #1841 CARRIES THAT GAP, what
+	// closes it, and how to tell when it is closed.
 	//
 	// THE WIDGET CANNOT CLOSE THAT GAP HERE EITHER, and it was checked rather
 	// than assumed: `game/Content/Interface/WBP_FloorModifiers.uasset` is in git,

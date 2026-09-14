@@ -65,6 +65,10 @@ passing**. A break for it was planned, traced, found to prove nothing, and repla
 `APlayerController` — a gap `CataclysmDungeonModifierEffectsTests.cpp`'s own header already
 recorded before this change, now one line larger.
 
+**Issue [#1841](https://github.com/sdubois777/Cataclysm/issues/1841) carries this gap**, what
+would close it, and the one-line check that says when it is closed: delete a
+`RefreshFloorModifierPanel()` call and run the group, which passes today and should not.
+
 **The widget cannot close it either, and that was checked rather than assumed.**
 `game/Content/Interface/WBP_FloorModifiers.uasset` is in git, but `CreateWidget` wants a game
 instance and `CataclysmTestWorld::MakeWorldThatHasBegunPlay` builds a world that has none — its
