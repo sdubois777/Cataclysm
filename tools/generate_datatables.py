@@ -4116,6 +4116,7 @@ POOL_ACTIONS = (
 FRACTION_BASES = (
     "maximum",
     "current",
+    "event_amount",
 )
 
 #: The events an action may hang on, DERIVED FROM THE CLOCK CONDITIONS rather
@@ -4128,11 +4129,44 @@ FRACTION_BASES = (
 #: both.
 ACTION_EVENT_PREFIX = "seconds_after_"
 
+#: Events an action may hang on that have NO clock of their own.
+#:
+#: EVERY CLOCK IS SOMETHING DONE TO THE CHARACTER and these are things the
+#: character DID, which is why none of them is a clock: a clock is stamped on
+#: whoever the blow landed on, and these belong to whoever dealt it.
+#:
+#: `hit_dealt` IS NOT `hit_taken`. They are the same word at opposite ends of
+#: one blow. `seconds_after_hit_taken` is stamped on the character that was
+#: hit; `hit_dealt` fires on the character that hit.
+ACTION_ONLY_EVENTS = (
+    "kill",
+    "critical_strike",
+    "nearby_death",
+    "skill_use",
+    "hit_dealt",
+)
+
+#: The events that carry an amount of their own, so a row may take a fraction
+#: OF THAT AMOUNT rather than of a pool.
+#:
+#: A SHORT LIST ON PURPOSE. A row asking for a fraction of an amount on an
+#: event that carries none would resolve to nothing and say so nowhere, which
+#: is the silent failure this table keeps producing.
+EVENTS_WITH_AN_AMOUNT = (
+    "health_cost",
+)
+
 
 def action_events() -> set[str]:
-    """Every event name an action row may use."""
+    """Every event name an action row may use: the clocks, and the five that
+    have no clock.
+
+    THE CLOCK HALF IS DERIVED RATHER THAN REPEATED, so a clock added later
+    cannot be missing here. The other half is written out, because those events
+    have no clock to derive from.
+    """
     return {name[len(ACTION_EVENT_PREFIX):] for name in CONDITIONS
-            if name.startswith(ACTION_EVENT_PREFIX)}
+            if name.startswith(ACTION_EVENT_PREFIX)} | set(ACTION_ONLY_EVENTS)
 
 def _check_pool_action(index: int, who: str, action: str, event: str,
                        fraction_of: str, kind: str, raw,
@@ -4144,11 +4178,13 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
     the sheet has a number in it, the generator writes it, the game reads a
     name it has no case for, and nothing anywhere says so.
 
-    A CONDITION AND A SCALE ARE REFUSED ON AN ACTION ROW FOR NOW. Neither is
-    judged at the moment an action fires -- the pipeline asks them when a stat
-    is read, which is not when a pool moves -- so a row carrying one would have
-    it quietly dropped. The enchantments that want one ("killing an enemy while
-    below 30% HP...") arrive with the events that do not exist yet.
+    A SCALE IS STILL REFUSED. It sizes a stat's modifier by a state of the
+    character, and an action has no stat, so a row carrying one would have it
+    dropped without anything saying so.
+
+    A CONDITION IS NO LONGER REFUSED. It was, while nothing judged it at the
+    moment an action fires; the change that added the five clockless events
+    judges it there, so "killing an enemy while below 30% HP" can be written.
     """
     if action not in POOL_ACTIONS:
         raise DataError(
@@ -4180,15 +4216,19 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"the value kind {kind!r}. The three buckets multiply a stat and an "
             f"action has no stat, so the column must be empty on an action row.")
 
-    for column in ("Condition", "Scale"):
-        written = clean(_cell(raw, headers, column))
-        if written:
-            raise DataError(
-                f"Enchantment Effects row {index}: {who} moves a pool and carries "
-                f"the {column.lower()} {written!r}. Neither is judged at the "
-                f"moment an action fires, so it would be dropped without "
-                f"anything saying so. Those rows wait for the events that "
-                f"carry them.")
+    if fraction_of == "event_amount" and event not in EVENTS_WITH_AN_AMOUNT:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} takes a fraction of the "
+            f"amount its event carried, and {event!r} carries no amount. The "
+            f"events that do: {', '.join(EVENTS_WITH_AN_AMOUNT)}.")
+
+    written = clean(_cell(raw, headers, "Scale"))
+    if written:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} moves a pool and carries "
+            f"the scale {written!r}. A scale sizes a stat's modifier and an "
+            f"action has no stat, so it would be dropped without anything "
+            f"saying so.")
 
 def _condition_and_scale(raw, headers: dict[str, int], sheet: str, index: int,
                          who: str) -> tuple[str, float, str, float]:
