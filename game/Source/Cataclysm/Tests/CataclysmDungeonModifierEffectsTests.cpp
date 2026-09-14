@@ -242,6 +242,48 @@ namespace CataclysmDungeonModifierEffectsTest
 		IConsoleVariable* Variable = nullptr;
 	};
 
+	/**
+	 * A creature placed clear of whatever is already standing there, able to land
+	 * a blow that actually hurts. Issues #1786 and #41.
+	 *
+	 * THE ATTACK DAMAGE IS THE WHOLE REASON THIS EXISTS, and leaving it out cost
+	 * a build cycle: `UCataclysmCombatAttributeSet` starts `AttackDamage` at 0 --
+	 * its own comment says it is "supplied by the equipped weapon" -- and a
+	 * creature spawned bare has no weapon. `UCataclysmSkillEffects::ApplyHit`
+	 * scales its percentage by `WeaponDamageOf` the source, so every blow such a
+	 * creature lands deals nothing, whatever percentage is asked for. Two tests
+	 * here failed on "the creature's blow landed on the player" for exactly that.
+	 *
+	 * A HUNDRED, WHICH IS THE FIGURE THE REST OF THE PROJECT'S TESTS USE.
+	 * `FScopedFighter` in `CataclysmSkillTemplateTests.cpp` sets the same
+	 * attribute the same way.
+	 *
+	 * SPAWNED WITH COLLISION HANDLING SET, because creatures carry a capsule and
+	 * the default handling refuses a spawn whose place is blocked -- which
+	 * answers null and reports as "no creature spawned", naming the symptom
+	 * rather than the cause. The cleanse test above records losing time to it.
+	 */
+	ACataclysmEnemyCharacter* SpawnCreatureThatCanHit(UWorld* World, float AlongX)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Enemy = World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(),
+			FVector(AlongX, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+		if (!Enemy)
+		{
+			return nullptr;
+		}
+
+		if (UAbilitySystemComponent* System = Enemy->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		}
+		return Enemy;
+	}
+
 	/** The one dungeon-rule modifier on a stat in a character's stored inputs. */
 	const FCataclysmStatModifier* DungeonRuleOn(
 		const UCataclysmAbilitySystemComponent* AbilitySystem, const TCHAR* Stat)
@@ -2949,14 +2991,12 @@ bool FCataclysmWastingBlowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and Starvation"),
 			 Mode->FloorBrief.Modifiers.Contains(Starvation));
 
-	// A CREATURE TO BE STRUCK BY, spawned clear of the player.
-	FActorSpawnParameters Spawn;
-	Spawn.SpawnCollisionHandlingOverride =
-		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-	ACataclysmEnemyCharacter* Enemy = World->SpawnActor<ACataclysmEnemyCharacter>(
-		ACataclysmEnemyCharacter::StaticClass(), FVector(700.0f, 0.0f, 0.0f),
-		FRotator::ZeroRotator, Spawn);
-	if (!TestNotNull(TEXT("a creature spawned"), Enemy))
+	// A CREATURE TO BE STRUCK BY, WITH DAMAGE TO STRIKE WITH. See
+	// `SpawnCreatureThatCanHit`: a creature spawned bare lands blows worth
+	// nothing, and this test failed on exactly that before the attack damage was
+	// set.
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("a creature that can hit spawned"), Enemy))
 	{
 		return false;
 	}
@@ -3081,12 +3121,14 @@ bool FCataclysmWastingCureTest::RunTest(const FString& Parameters)
 
 	// TAKE TWO BLOWS, SO THE CURE HAS SOMETHING TO REMOVE AND THE SECOND SAYS THE
 	// STACKS ACCUMULATE IN PLAY RATHER THAN ONLY IN THE PURE RULE.
+	//
+	// A SMALL SHARE OF THE CREATURE'S DAMAGE, DELIBERATELY. The player must
+	// SURVIVE both blows: their own death is this rule's other cure, so a test
+	// that killed them would clear the stacks it is about to check and pass for
+	// the wrong reason.
 	const auto StruckOnce = [&](float Where) -> bool
 	{
-		ACataclysmEnemyCharacter* Enemy =
-			World->SpawnActor<ACataclysmEnemyCharacter>(
-				ACataclysmEnemyCharacter::StaticClass(),
-				FVector(Where, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+		ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, Where);
 		if (!Enemy)
 		{
 			return false;
@@ -3099,6 +3141,11 @@ bool FCataclysmWastingCureTest::RunTest(const FString& Parameters)
 
 	if (!TestTrue(TEXT("a first blow landed"), StruckOnce(700.0f))
 		|| !TestTrue(TEXT("a second blow landed"), StruckOnce(1100.0f)))
+	{
+		return false;
+	}
+	if (!TestFalse(TEXT("and the player survived both, so nothing else cured it"),
+				   UCataclysmSkillEffects::IsDead(Player.Character)))
 	{
 		return false;
 	}
