@@ -113,6 +113,34 @@ LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
 #: magnitude nobody wrote down.
 FLAG_STATS = {"skill_locked"}
 
+#: Stats whose row carries 100 MINUS a number the sentence states, so the row
+#: and the words say the same thing two ways round. The ruling of 2026-09-14 on
+#: issue #1793, made by the coordinating session under the project owner's
+#: delegation of that date.
+#:
+#: `healing_ceiling_reduction` IS WHAT THIS EXISTS FOR, and it is not in the
+#: list yet. `UCataclysmRegeneration::TopUp` computes
+#: `Ceiling *= (100 - Reduction) / 100`, so "You cannot heal above 60% of your
+#: maximum HP" is a row carrying 40. The sentence says 60 and the row must say
+#: 40, and `test_a_single_value_appears_in_its_words_outside_any_range` is right
+#: to refuse a value that appears nowhere in its own words.
+#:
+#: THE SENTENCE IS THE CLEARER OF THE TWO AND STAYS AS IT IS. A player reads a
+#: ceiling more easily than a reduction, and the stat stays a reduction for the
+#: reasons `CataclysmVitalAttributeSet.h:183-189` gives: a stat holding the
+#: ceiling itself would need 0 to mean "no cap", which reads as "cannot be
+#: healed at all", and two such sources would sum in the flat bucket to 100 and
+#: thereby REMOVE the cap. So neither the words nor the stat move, and the check
+#: learns the relationship between them instead.
+#:
+#: EMPTY UNTIL ITS ROWS EXIST, which is the whole reason
+#: `test_the_complement_list_holds_what_it_is_measured_to_hold` is below. The
+#: two rows that fill it -- "You cannot heal above 60% of your maximum HP" and
+#: "You cannot be healed above 75% of your maximum HP" -- are authored in the
+#: design workbook, and a name added here before them would be an exemption with
+#: nothing to excuse.
+COMPLEMENT_STATS: set[str] = set()
+
 #: Enchantments whose sentence states no number, so the number was chosen under
 #: the project owner's delegation of 2026-09-11 and recorded as a labelled
 #: judgement in docs/DECISIONS.md. Each is excused from the two checks that need
@@ -299,6 +327,37 @@ def takes_something_away(stat: str, words: str) -> bool:
         stat in LONGER_WHEN_NEGATIVE and bool(LONGER.search(words)))
 
 
+def value_is_stated(stat: str, value: float, words: str,
+                    complement_stats: set[str] | None = None) -> bool:
+    """Whether a row's single value can be read out of its own sentence.
+
+    THREE WAYS IT CAN BE: the number itself is in the words; a multiplying word
+    such as "doubled" means it; or, for a stat in `complement_stats`, the words
+    state 100 minus it.
+
+    THE EXEMPT SET IS A PARAMETER SO IT CAN BE EXERCISED WHILE THE REAL ONE IS
+    EMPTY. `test_the_complement_exemption_reads_only_its_own_stats` passes a set
+    of its own, which is the arrangement
+    `test_longer_excuses_a_negative_value_on_one_stat_only` uses above and for
+    the same reason: a check proved only against the real tables stops being
+    proved the moment those tables change.
+    """
+    if complement_stats is None:
+        complement_stats = COMPLEMENT_STATS
+
+    stated = numbers_in(outside_ranges(words))
+    if abs(value) in stated:
+        return True
+
+    spelled = {word.lower() for word in re.findall(r"[A-Za-z]+", words)}
+    if any(MULTIPLYING_WORDS.get(word) == value for word in spelled):
+        return True
+
+    # AND THE COMPLEMENT, FOR THE STATS THAT CARRY ONE. A row of 40 on a
+    # sentence saying 60 is the same fact twice, not a number nobody wrote.
+    return stat in complement_stats and (100.0 - abs(value)) in stated
+
+
 def test_every_effect_names_an_enchantment_that_exists(effects, enchantments):
     missing = sorted(r["Name"] for r in effects
                      if r["Enchantment"] not in enchantments)
@@ -397,14 +456,12 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
         if row["Stat"] in FLAG_STATS:
             continue
         text = words_of(row, enchantments)
-        words = {word.lower() for word in re.findall(r"[A-Za-z]+", text)}
-        said = abs(value) in numbers_in(outside_ranges(text)) or any(
-            MULTIPLYING_WORDS.get(word) == value for word in words)
-        if not said:
+        if not value_is_stated(row["Stat"], value, text):
             wrong.append(f"{row['Name']}: {value:g} against {text!r}")
     assert not wrong, (
         "these values appear nowhere in their enchantment's words outside a "
-        "range, as a number or as a multiplying word: " + "; ".join(wrong))
+        "range, as a number, as a multiplying word, or as the complement of a "
+        "number for a stat in COMPLEMENT_STATS: " + "; ".join(wrong))
 
 
 def test_every_condition_value_appears_in_the_words_too(effects, enchantments):
@@ -445,6 +502,66 @@ def test_a_negative_value_is_on_words_that_take_something_away(effects,
              if float(r["ValueLow"]) < 0
              and not takes_something_away(r["Stat"], words_of(r, enchantments))]
     assert not wrong, "; ".join(wrong)
+
+
+def test_the_complement_exemption_reads_only_its_own_stats():
+    """The complement check, on made-up rows, so that no change to the real
+    tables can hide a mistake in it and so that it is exercised at all while
+    COMPLEMENT_STATS is empty. The same arrangement, and the same argument, as
+    `test_longer_excuses_a_negative_value_on_one_stat_only` below."""
+    exempt = {"healing_ceiling_reduction"}
+    ceiling = "You cannot heal above 60% of your maximum HP"
+
+    # THE CASE IT EXISTS FOR: the row says 40 and the words say 60.
+    assert value_is_stated("healing_ceiling_reduction", 40.0, ceiling, exempt)
+    assert value_is_stated(
+        "healing_ceiling_reduction", 25.0,
+        "You cannot be healed above 75% of your maximum HP", exempt)
+
+    # AND IT IS THE COMPLEMENT AND NOT ANY NUMBER. A row of 40 against a
+    # sentence saying 70 is a mismatch and stays one.
+    assert not value_is_stated(
+        "healing_ceiling_reduction", 40.0,
+        "You cannot heal above 70% of your maximum HP", exempt)
+
+    # AND IT REACHES ONLY THE STATS NAMED. The same row on another stat is
+    # refused, so the exemption cannot leak across the sheet.
+    assert not value_is_stated("max_health", 40.0, ceiling, exempt)
+
+    # AND AN EMPTY SET CHANGES NOTHING ABOUT THE ORDINARY TWO WAYS. This is what
+    # holds while the real list is empty: the check still accepts a number in
+    # the words and a multiplying word, and still refuses everything else.
+    assert value_is_stated("max_health", 50.0, "Your health is reduced by 50%", set())
+    assert value_is_stated("max_energy_shield", 100.0, "Double your energy shield", set())
+    assert not value_is_stated("healing_ceiling_reduction", 40.0, ceiling, set())
+
+
+def test_every_complement_stat_is_still_used(effects):
+    """An exemption that outlives its reason hides a real mismatch, which is the
+    argument `test_every_flag_stat_is_still_used` and
+    `test_every_judged_number_is_still_needed` both make."""
+    written = {r["Stat"] for r in effects}
+    unused = sorted(COMPLEMENT_STATS - written)
+    assert not unused, (
+        f"{unused} are excused the value-in-words check by way of their "
+        f"complement and no row grants them")
+
+
+def test_the_complement_list_holds_what_it_is_measured_to_hold():
+    """WITHOUT THIS THE TWO TESTS ABOVE CANNOT FAIL. Both loop over
+    COMPLEMENT_STATS, and it is empty, so both pass having checked nothing --
+    which is the "guard over an empty list" this project already warns about in
+    `CataclysmPassiveTreeTests.cpp`. This says what the list holds today, so
+    filling it is a deliberate edit here rather than a silent one.
+
+    IT IS EMPTY BECAUSE ITS ROWS ARE NOT WRITTEN YET. `healing_ceiling_reduction`
+    goes in when "You cannot heal above 60% of your maximum HP" and "You cannot
+    be healed above 75% of your maximum HP" get their rows, which needs the
+    design workbook. Issue #1793."""
+    assert COMPLEMENT_STATS == set(), (
+        f"COMPLEMENT_STATS holds {sorted(COMPLEMENT_STATS)}. If that is "
+        f"deliberate, change this test and check that every name in it has a "
+        f"row in game/Data/EnchantmentEffects.csv.")
 
 
 def test_longer_excuses_a_negative_value_on_one_stat_only():
