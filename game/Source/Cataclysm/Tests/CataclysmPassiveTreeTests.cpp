@@ -9556,8 +9556,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveNothingMovesYouOnARealCharacte
 
 /** `Ravager_keystone_a_kB` Nothing Moves You, first clause: "Crowd control
  *  effects on you last half as long." Fifty is that half, by the arithmetic
- *  `AfterCrowdControlResistance` already uses. Its second clause, about an
- *  effect ending when its applier dies, is not this row and is not built. */
+ *  `AfterCrowdControlResistance` already uses.
+ *
+ *  THE NODE HAS TWO ROWS NOW, one per clause, so this looks its row up BY
+ *  STAT NAME rather than taking the first. The second clause -- a stun ending
+ *  when the character kills the enemy that applied it -- is
+ *  `Ravager_keystone_a_kB#2` and is checked by
+ *  `NothingMovesYouGrantsTheEndOnApplierDeathFlagOnARealRavager`.
+ *
+ *  THIS SAID THE SECOND CLAUSE "IS NOT BUILT" AND ASSERTED ONE ROW. Both were
+ *  true when written and both stopped being true in the change that built it;
+ *  the whole-suite run is what said so, with 'Expected ... to be 1, but it was
+ *  2'. A positional Effects[0] would have gone on passing silently against
+ *  whichever row the table happened to return first. */
 bool FCataclysmPassiveNothingMovesYouOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
@@ -9586,17 +9597,33 @@ bool FCataclysmPassiveNothingMovesYouOnARealCharacterTest::RunTest(const FString
 	const FName Node(TEXT("Ravager_keystone_a_kB"));
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
-	if (!TestEqual(TEXT("Nothing Moves You grants one stat"), Effects.Num(), 1))
+	if (!TestEqual(TEXT("Nothing Moves You grants two stats, one per clause"),
+				   Effects.Num(), 2))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is crowd control resistance"), Effects[0]->Stat,
-			  FString(UCataclysmSkillEffects::CrowdControlResistanceStat));
+
+	// BY STAT NAME AND NOT BY POSITION. The table's order is not something this
+	// test may rely on, and taking Effects[0] would silently check whichever
+	// clause came back first.
+	const FCataclysmPassiveEffectRow* Halving = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row && Row->Stat ==
+				FString(UCataclysmSkillEffects::CrowdControlResistanceStat))
+		{
+			Halving = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("one of them is crowd control resistance"), Halving))
+	{
+		return false;
+	}
 	TestEqual(TEXT("stated as a flat amount, because the stat has no base"),
-			  Effects[0]->ValueKind, FString(TEXT("flat")));
+			  Halving->ValueKind, FString(TEXT("flat")));
 	TestEqual(TEXT("of fifty, which is what 'half as long' means"),
-			  Effects[0]->ValuePerPoint, 50.0f);
-	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  Halving->ValuePerPoint, 50.0f);
+	TestEqual(TEXT("and carrying no condition"), Halving->Condition,
 			  FString());
 
 	const FGameplayAttribute Resistance =
