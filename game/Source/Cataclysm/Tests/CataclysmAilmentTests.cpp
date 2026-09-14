@@ -158,6 +158,48 @@ namespace CataclysmAilmentTest
 			return AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
 		}
 
+		/** What this ailment's magnitude stat currently reads, or -1 for an
+		 *  ailment that has no such stat. */
+		float MagnitudeOf(const FCataclysmAilmentKind& Kind) const
+		{
+			return Kind.MagnitudeAttribute
+				? AbilitySystem->GetNumericAttribute(Kind.MagnitudeAttribute())
+				: -1.0f;
+		}
+
+		/**
+		 * Resolve this character's stats the way a real player's are resolved,
+		 * instead of writing an attribute by hand.
+		 *
+		 * WHY ANY TEST HERE NEEDS THIS. Every other helper on this fixture calls
+		 * `SetNumericAttributeBase`, which writes an attribute directly. That is
+		 * the fallback route and it hides a whole class of fault:
+		 * `UCataclysmPlayerClassStats::ApplyTo` resolves every stat
+		 * `StatToAttribute` names and writes the result over whatever the
+		 * attribute set's constructor stated. A stat with no class line and no
+		 * entry in `EngineSuppliedBases` resolves to zero, and no test that
+		 * writes the attribute by hand can see it.
+		 *
+		 * `StartingClassName` AND NOT `UCataclysmClassStats::DefaultClassName`.
+		 * The second is the shared line a class inherits from and carries no
+		 * defensive layer; the first is the class a player actually plays as.
+		 * Issue #806. `DefaultLevel` rather than a typed number, because it is a
+		 * placeholder the console can change.
+		 */
+		bool ResolveFromTheClassTable() const
+		{
+			const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+			if (!Table)
+			{
+				return false;
+			}
+			UCataclysmPlayerClassStats::ApplyTo(
+				AbilitySystem, Table,
+				UCataclysmPlayerClassStats::StartingClassName,
+				UCataclysmPlayerClassStats::DefaultLevel);
+			return true;
+		}
+
 		bool Carries(const TCHAR* TagName) const
 		{
 			const FGameplayTag Tag = TagNamed(TagName);
@@ -944,6 +986,89 @@ CATACLYSM_AILMENT_TEST(FCataclysmCrippleMagnitudeStatReachesTheEnemyTest,
 			  FromPlain, Row.Strength, 0.01f);
 	TestEqual(TEXT("and one with 150% magnitude applies half again as much"),
 			  FromInvested, Row.Strength * 1.5f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_AILMENT_TEST(FCataclysmResolvedCrippleMagnitudeTest,
+	"Cataclysm.Ailments.ACharacterResolvedFromTheClassTableAppliesAnOrdinaryCripple")
+{
+	using namespace CataclysmAilmentTest;
+
+	// THIS TEST EXISTS BECAUSE THE TWO ABOVE IT WOULD BOTH PASS WHILE THE
+	// FEATURE WAS BROKEN FOR EVERY PLAYER. `cripple_magnitude` has no line in
+	// `game/Data/ClassStats.csv`, so `UCataclysmClassStats::BaseFor` answers
+	// zero for it; `UCataclysmPlayerClassStats::ApplyTo` then writes that zero
+	// over the 100 the attribute set's constructor states, and `Application`
+	// multiplies the magnitude by zero. Every Cripple a player applied would
+	// land at a strength of nothing -- worse than the stat not existing, which
+	// would at least have left the curse at its row's figure. The repair is an
+	// entry in `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+	//
+	// WHY THE EXISTING BASE TEST IS NOT ENOUGH ON ITS OWN.
+	// `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter` walks the
+	// entries that ARE in that map. Delete the magnitude entry and it walks two
+	// fewer and passes, so it cannot see an entry go missing -- which is exactly
+	// how this defect would come back. This test asks for the behaviour instead.
+	//
+	// IT SETS NO MAGNITUDE STAT. Every other test in this file writes attributes
+	// by hand, which is the fallback route. This one takes the resolved route
+	// and asserts the ordinary, unmodified outcome: a Cripple at the figure its
+	// own row states.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FCataclysmAilmentKind* Cripple = KindOf(TEXT("Cripple"));
+	if (!TestNotNull(TEXT("Cripple is an ailment"), Cripple))
+	{
+		return false;
+	}
+
+	const FScopedFighter Attacker(World);
+	if (!TestTrue(TEXT("the class stats table loaded"),
+				  Attacker.ResolveFromTheClassTable()))
+	{
+		return false;
+	}
+
+	// THE BASE ARRIVED. Checked before the blow so a failure says which half
+	// broke: a wrong figure here means the base never reached the character, and
+	// a wrong strength below means it reached it and something later lost it.
+	if (!TestEqual(
+			TEXT("a resolved character holds the normal magnitude, not zero. A "
+				 "zero here means the EngineSuppliedBases entry is missing"),
+			Attacker.MagnitudeOf(*Cripple), UCataclysmAilments::NormalMagnitude,
+			0.01f))
+	{
+		return false;
+	}
+
+	// AFTER RESOLVING AND NOT BEFORE. `ApplyTo` writes every stat the map names,
+	// so a chance set first would be overwritten with the class table's zero.
+	Attacker.ArmFor(1'000.0f);
+	Attacker.SetChance(*Cripple, UCataclysmAilments::ChanceCap);
+
+	const CataclysmTestWorld::FScopedAilmentRoll Roll(0.0f);
+
+	const FScopedFighter Defender(World);
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+
+	if (!TestTrue(TEXT("the target carries the Cripple"),
+				  Defender.Carries(Cripple->TagName)))
+	{
+		return false;
+	}
+
+	const FCataclysmStatusEffectNumbers Row =
+		UCataclysmSkillEffects::StatusEffectNumbers(Cripple->StatusRow,
+												   Cripple->Ailment);
+
+	TestEqual(TEXT("and it lands at the figure its own row states"),
+			  Defender.StatedOn(Cripple->TagName), Row.Strength, 0.01f);
 
 	return true;
 }

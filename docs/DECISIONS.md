@@ -137,13 +137,25 @@ third ailment given a magnitude stat gets its base without anyone remembering to
 add it. That is deliberate: the step that was missed here was a human one, and the
 loop removes it rather than documenting it.
 
-**A test cannot catch this from the attacker's side.** Every ailment test builds
-its fighters with `SetNumericAttributeBase`, which writes the attribute directly
-and never goes through `ApplyTo` — the comment beside `stagger_duration` says the
-same of the enemy-side tests. What holds this side is
-`Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`, which spawns a
-character and reads the value back off its attribute, and it covers these two
-without being edited because it walks the map.
+**A test that writes the attribute by hand cannot catch this.** Every other
+ailment test builds its fighters with `SetNumericAttributeBase`, which never goes
+through `ApplyTo` — the comment beside `stagger_duration` says the same of the
+enemy-side tests.
+
+**And the test that walks the supplied bases cannot catch it either**, which is
+the part worth stating because it is the one a reader would assume covers it.
+`Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter` spawns a
+character and reads each value back off its attribute, and it covers these two
+without being edited — but it walks **the entries that are present**. Remove
+them and it walks two fewer and passes. It can prove an entry works; it cannot
+prove an entry exists.
+
+**So the guard is a behaviour test:**
+`Cataclysm.Ailments.ACharacterResolvedFromTheClassTableAppliesAnOrdinaryCripple`
+resolves a character's stats through `ApplyTo`, checks the magnitude reads 100
+rather than zero, then lands a real blow and checks the Cripple arrives at the
+figure its own row states. It sets no magnitude stat at all. The stagger work of
+issue #45 reached the same conclusion and its test is the pattern this copies.
 
 ---
 
