@@ -339,7 +339,7 @@ Positive_After_being_hit_by_a_melee_attack_you_gain_10_2,After being hit by a me
 Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc,Archon's Aegis (2-Piece Bonus): Your block chance is increased by 25%,Set,5.0,Stat.Defense.Block,False
 Positive_Archon_s_Aegis_6_Piece_Bonus_When_you_block_a,"Archon's Aegis (6-Piece Bonus): When you block an attack, you become immune to all damage for 3 seconds. (10s cd)",Set,5.0,Stat.Defense.Block,False
 Positive_Archon_s_Aegis_10_Piece_Bonus_When_your_healt,"Archon's Aegis (10-Piece Bonus): When your health falls below 10%, you are instantly healed to 100% of your maximum health. (10 minute cd)",Set,5.0,Stat.Defense.Life,False
-Positive_Tyrant_s_Chains_2_Piece_Bonus_Your_pets_and_m,Tyrant's Chains (2-Piece Bonus): Your pets and minions deal 50% more damage,Set,6.0,Type.Minion,False
+Positive_Tyrant_s_Chains_2_Piece_Bonus_Your_pets_and_m,Tyrant's Chains (2-Piece Bonus): Your pets and minions deal 50% increased damage,Set,6.0,Type.Minion,False
 Positive_Tyrant_s_Chains_6_Piece_Bonus_When_a_pet_or_m,"Tyrant's Chains (6-Piece Bonus): When a pet or minion dies, it explodes, dealing 50% of its maximum health as Death damage to all nearby enemies. Additionally, a new, powerful Tyrant's Minion is summoned to fight for you for a short duration",Set,6.0,"Type.Minion, Element.Death",False
 Positive_Tyrant_s_Chains_10_Piece_Bonus_Your_Tyrant_s,Tyrant's Chains (10-Piece Bonus): Your Tyrant's Minion now casts your ultimate ability every 3 seconds,Set,6.0,"Type.Minion, Slot.Ultimate",False
 Positive_Chronomancer_s_Time_Lock_2_Piece_Bonus_All_de,Chronomancer's Time-Lock (2-Piece Bonus): All debuffs you apply to enemies now last 50% longer,Set,7.0,"Type.Debuff, Keyword.CC",False

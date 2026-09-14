@@ -173,6 +173,140 @@ because one rule per change.
 
 ---
 
+## 2026-09-14 — Judgements made under the owner's delegation: minion rows are increases, a healing ceiling states its complement, and one reword is held because it would orphan saved items
+
+**Affects:** the Enchantments and Enchantment Effects sheets of
+`docs/All_Things_Cataclysm.xlsx` and `game/Data/EnchantmentEffects.csv` and
+`game/Data/EnchantmentsPositive.csv` generated from them;
+`game/Content/Data/DT_EnchantmentEffects.uasset` and
+`game/Data/datatable_asset_sources.json`; the counts in `docs/README.md`,
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and
+`tools/tests/test_enchantment_effects_match_the_row_text.py`. Issues
+[#1792](https://github.com/sdubois777/Cataclysm/issues/1792),
+[#1793](https://github.com/sdubois777/Cataclysm/issues/1793) and
+[#1799](https://github.com/sdubois777/Cataclysm/issues/1799).
+
+**These are judgements made by the coordinating session under the project
+owner's delegation of 2026-09-14, not owner decisions.** The owner reviews them
+in a batch. This entry is written by the session that carried them out, and the
+authoritative statement of each ruling is the issue comment it came from.
+
+### Minion rows are `increased`, and two sentences were to be reworded to allow it
+
+A minion applies its summoner's `minion_health` and `minion_damage` through
+`UCataclysmAbilitySystemComponent::IncreasesForStat`
+(`CataclysmMinion.cpp:163-178`, read at `:477` and `:615`), which returns
+`SumOfIncreases` alone. **A `more` row and a `flat` row on those two stats are
+computed and then thrown away.** Only `increased` reaches a minion at all.
+
+But `test_an_increased_row_is_worded_as_an_increase` refuses an `increased` row
+whose sentence says neither increased nor reduced, and two of the three sentences
+were worded as multipliers. The ruling on #1792 took the second of two ways —
+reword the sentences to fit the design, rather than change the reader to fit the
+sentences — on the design's own words. In `docs/Cataclysm_GDD_v2.md`, the
+paragraph led by **Scaling from an attribute rather than from weapon damage is
+what makes minion affixes safe.**:
+
+> no ordinary affix in this game is a multiplier, so an attribute's contribution
+> and an affix's contribution add rather than multiply
+
+and the paragraph whose lead sentence is the step that carries it to an
+enchantment:
+
+> An enchantment takes an affix's slot rather than adding one.
+
+**Both are cited by their lead sentence rather than by line number**, because
+this document is edited directly and grows, so a line number rots without
+anything noticing. `test_no_file_cites_the_design_document_by_line_number`
+caught an earlier draft of this entry doing exactly that.
+
+**Both are quoted rather than paraphrased, deliberately.** An earlier
+summary of the first said "minion contributions add rather than multiply", which
+is wider than the sentence: it speaks of an attribute's contribution and an
+affix's, and an enchantment is neither. The second line is what closes that gap.
+
+### A healing ceiling states its complement, and the check learns the relationship
+
+`UCataclysmRegeneration::TopUp` computes `Ceiling *= (100 - Reduction) / 100`
+(`CataclysmRegeneration.cpp:130`), so "You cannot heal above 60% of your maximum
+HP" is a row carrying 40. The sentence says 60 and the row must say 40.
+
+The ruling on #1793 moved neither. A player reads a ceiling more easily than a
+reduction, and the stat stays a reduction for the reason
+`CataclysmVitalAttributeSet.h:183-189` gives: a stat holding the ceiling itself
+would need 0 to mean "no cap", which reads as "cannot be healed at all", and two
+such sources would sum in the flat bucket to 100 and thereby **remove** the cap.
+
+So `COMPLEMENT_STATS` is now the third named exemption in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`, beside
+`FLAG_STATS` and `JUDGED_NUMBERS`: stats whose row carries 100 minus a number
+the sentence states. It was added empty, with an assertion saying so, and filled
+in the same change as the two rows that use it — so the exemption and its users
+have never existed apart.
+
+### ONE OF THE TWO REWORDS IS HELD, AND THE REASON IS ALREADY IN THIS FILE
+
+**An enchantment's row name is built from the first 48 characters of its
+sentence** (`row_name(kind, text[:48])`, `tools/generate_datatables.py:867`), and
+that row name is what a dropped item stores: `FCataclysmRolledEnchantment`
+carries the `SaveGame` specifier. The entry of 2026-09-11 at lines 1812-1821 of
+this file says the consequence outright — a renamed row orphans every saved item
+carrying it.
+
+Measured for the two rewords the ruling asked for:
+
+```
+"Tyrant's Chains (2-Piece Bonus): ... 50% more damage"
+  -> "... 50% increased damage"
+  name unchanged: the changed word sits at about character 63, past the cap
+  WRITTEN
+
+"Your minions have 20%-50% less hp"  ->  "...20%-50% reduced HP"
+  Negative_Your_minions_have_20_50_less_hp
+    -> Negative_Your_minions_have_20_50_reduced_HP
+  the whole sentence is 33 characters, so any change to its words moves the name
+  HELD, issue #1799, which needs the owner
+```
+
+**Appending a clause does not rescue this one.** That trick works on a sentence
+already longer than the cap; this one is shorter than it, so appended or
+replaced, the change lands inside the 48 characters.
+
+Nothing in the repository names the old row name except the generated
+`game/Data/EnchantmentsNegative.csv` and its DataTable asset, both of which
+regenerate. **The whole cost is to saved games**, which is the owner's knowledge
+rather than a measurement, and is why #1799 carries it to them.
+
+### What was written: four rows over four enchantments
+
+| The enchantment's own words | Stat, bucket, value |
+| :-- | :-- |
+| Minion maximum health is reduced by 50% | `minion_health` increased -50 |
+| Tyrant's Chains (2-Piece Bonus): Your pets and minions deal 50% **increased** damage | `minion_damage` increased 50 |
+| You cannot heal above 60% of your maximum HP | `healing_ceiling_reduction` flat 40 |
+| You cannot be healed above 75% of your maximum HP | `healing_ceiling_reduction` flat 25 |
+
+Tyrant's Chains (set 6) lands whole: the first two rows are its first bonus and
+its drawback, and a set is written whole or not at all.
+
+### The counts were measured off the regenerated file, not incremented
+
+```
+game/Data/EnchantmentEffects.csv rows                      144 -> 148
+the EnchantmentEffects pin in CataclysmDataTableTests.cpp  144 -> 148
+AUTHORED_ROWS                                              144 -> 148
+AUTHORED_ENCHANTMENTS                                      121 -> 125
+SETS_THAT_WORK                  [5,8,9,11,12,16,17] -> [5,6,8,9,11,12,16,17]
+docs/README.md sheet table                                 144 -> 148
+STATED_RANGES                                              390 -> 390, unmoved
+```
+
+`STATED_RANGES` was measured before and after rather than assumed: the reworded
+sentence states no range either way, so neither it nor the automation test that
+pins the same number changes.
+
+---
+
 ## 2026-09-13 — Mortal Decay saps health faster the deeper the floor is, "progress" is the floor number rather than the walk, and a kill the player made halves it for five seconds
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
