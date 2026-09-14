@@ -410,6 +410,71 @@ ailments at all would be judged against an empty container and grant nothing,
 silently.** That switch is the fifth site this change touches and the one with no
 compiler error to catch it.
 
+### AND THE STAT DOMINION GRANTS IS A BONUS OF ZERO, NOT A THRESHOLD OF FIFTY
+
+`Ritualist_keystone_a_kA` Dominion is the node: *"A blow that leaves a target
+below 65% health can take it, rather than below half."* The stat is
+`possession_threshold_bonus`, it starts at **zero**, and it is **added** to the
+figure the Subjugate skill's own row states.
+
+**THE SHAPE THIS WAS FIRST RULED AS HAD A DUPLICATE IN IT.** The first ruling was
+a stat named `possession_threshold_percent` holding the threshold itself, with an
+engine-supplied base of 50 and a keystone row of flat 15 so it read 65. That is
+arithmetically correct and it states the number 50 twice:
+
+```
+game/Data/WeaponSkills.csv, Demonic_Staff_Ultimate (Subjugate)
+    ShapeParams: ... FervourReserve=30; HealthThresholdPercent=50
+```
+
+That row is the only place the threshold appears today, it is read once into
+`Params.HealthThresholdPercent`, and it is compared at exactly one place in
+`UCataclysmSummonSkill::Possess`. **A stat holding 50 as its own base would win
+silently:** re-tune the row to 40 and the threshold would stay at 50, with
+nothing failing and no test to notice. This project has been bitten by a second
+statement of one number before, which is why the shape was changed before
+anything was built.
+
+| | the shape first ruled | the shape built |
+| :-- | :-- | :-- |
+| what the stat means | the threshold | percentage points added to it |
+| base | 50, engine-supplied | 0, and none is supplied |
+| the keystone's row | flat 15 | flat 15, unchanged |
+| with the keystone | 65 | 65 |
+| without it | 50 | 50 |
+| if the row is re-tuned to 40 | **stays 50, silently** | follows to 40 |
+
+**FLAT AND NOT "SET", so a second source adds rather than replacing.** Nothing
+else grants this today; a second keystone or an enchantment arriving later is a
+decision somebody makes rather than a collision.
+
+**ZERO IS ALSO WHAT DECIDES THE ROW'S KIND.** An increase against a base of zero
+grants nothing, so a row moving this stat takes `flat` and never `increased` —
+the same rule the eleven ailment chances follow, and the opposite of the two
+ailment magnitude stats whose base is 100.
+
+**AND NO ENGINE-SUPPLIED BASE, WHICH IS THE ONE PLACE THIS DIFFERS FROM THOSE
+TWO.** They needed one because their neutral value is 100 and
+`UCataclysmPlayerClassStats::ApplyTo` would otherwise write a resolved zero over
+it, destroying the effect. This stat's neutral value **is** zero, so there is
+nothing for a base to supply and an entry would be a third statement of a number
+that already lives on the row.
+
+**THE THRESHOLD IS NOT CAPPED.** One keystone taken once reads 65; a ceiling
+invented now would be a number the design states nowhere. This is recorded so
+that a second source arriving is a decision rather than a surprise.
+
+### The diagnostic beneath the comparison was corrected with it
+
+The log line that explains a refused possession reported
+`Params.HealthThresholdPercent` — the row's own figure — while the comparison
+used the same value. **The two parted company the moment the bonus existed**, so
+a character with Dominion would have been refused against 65 and told the reason
+was 50. It now prints the combined threshold and both halves.
+
+A diagnostic naming a number the code did not use is worse than no diagnostic,
+because it is read as the reason for the refusal.
+
 ## AND A FIFTH NAME, `can_cripple_or_weaken`, WHICH IS ABOUT THE ATTACKER AND SO DOES NOT REOPEN THE RULE ABOVE
 
 `Ravager_basic_c_c0` Spreading Hurt is the node: *"+4% increased Area of Effect
