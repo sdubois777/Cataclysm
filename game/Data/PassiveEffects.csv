@@ -248,3 +248,7 @@ Ritualist_basic_c_a2#1,Ritualist_basic_c_a2,spell_damage,increased,2.0,,energy_s
 Ravager_basic_c_b2#1,Ravager_basic_c_b2,damage_reduction,increased,2.0,,opponent_carries_weaken,0.0,,0.0,0,-1.0
 Ravager_basic_c_a1#1,Ravager_basic_c_a1,cripple_magnitude,increased,3.0,,,0.0,,0.0,0,-1.0
 Ravager_basic_c_b1#1,Ravager_basic_c_b1,weaken_magnitude,increased,3.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_a_kA#1,Ritualist_keystone_a_kA,possession_threshold_bonus,flat,15.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_c_c0#1,Ravager_basic_c_c0,area_of_effect,increased,4.0,,can_cripple_or_weaken,0.0,,0.0,0,-1.0
+Ritualist_keystone_a_kC#1,Ritualist_keystone_a_kC,thrall_reserve_reduction,flat,5.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_b_kA#1,Ritualist_keystone_b_kA,imp_cap_bonus,flat,2.0,,,0.0,,0.0,0,-1.0

@@ -8667,4 +8667,492 @@ bool FCataclysmFinalPactPerMinionTest::RunTest(const FString&)
 
 	return true;
 }
+
+// ---------------------------------------------------------------------------
+// The four rows that make four nodes do something. Issue #1718.
+//
+// EVERY STAT AND CONDITION THESE FOUR NAME WAS BUILT BEFORE THE ROWS EXISTED,
+// and until the rows landed all four nodes granted nothing at all. These tests
+// are what say a row reaches a real character: the workbook, through
+// `game/Data/PassiveEffects.csv`, the generated asset,
+// `UCataclysmPlayerClassStats::StatToAttribute` and
+// `UCataclysmPassiveTree::AccumulateInto`.
+//
+// THREE READ AN ATTRIBUTE AND THE FOURTH MUST NOT, which is the one thing to
+// get right here. Dominion, Crowned and The Swarm are unconditioned flat rows,
+// so they are folded into an attribute. Spreading Hurt carries
+// `can_cripple_or_weaken`, and a CONDITIONAL ROW IS NEVER FOLDED INTO AN
+// ATTRIBUTE -- it would be stale the moment the character's state moved -- so
+// that one asks `UCataclysmAbilitySystemComponent::StatForSkill`. Reading the
+// attribute there would read the base for ever and report a dead node working.
+//
+// THE FIRST TESTS IN THIS FILE TO SPAWN A REAL RITUALIST AND A REAL RAVAGER.
+// Every earlier one is a Masochist because that tree was built first; nothing
+// prevented the others and these are the changes that needed them.
+//
+// EACH ONE READS ZERO BEFORE SPENDING AND ZERO AGAIN AFTER GIVING THE POINTS
+// BACK. The first says the node rather than a base somewhere is the source; the
+// second would catch a build that granted the figure once and never recomputed
+// it, which is what a respec finds.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFourRowTest
+{
+	/** Everything the four tests below need out of a freshly spawned player. */
+	struct FRealCharacter
+	{
+		ACataclysmPlayerCharacter* Character = nullptr;
+		ACataclysmPlayerState* State = nullptr;
+		UCataclysmEquipmentComponent* Equipment = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+		const UDataTable* EffectTable = nullptr;
+
+		bool IsComplete() const
+		{
+			return Character && State && Equipment && AbilitySystem
+				&& EffectTable;
+		}
+	};
+
+	FRealCharacter Spawn(UWorld* World)
+	{
+		using namespace CataclysmPassiveTest;
+
+		FRealCharacter Made;
+		Made.Character = SpawnPossessedPlayer(World);
+		if (!Made.Character)
+		{
+			return Made;
+		}
+		Made.State = Made.Character->GetPlayerState<ACataclysmPlayerState>();
+		Made.Equipment = Made.Character->GetEquipment();
+		Made.AbilitySystem = Made.State
+			? Made.State->GetCataclysmAbilitySystemComponent() : nullptr;
+		Made.EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+		return Made;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDominionOnARealCharacterTest,
+	"Cataclysm.Passives.DominionRaisesARealRitualistsPossessionThreshold",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kA` Dominion on a real character. Issue #1718.
+ *
+ * "A blow that leaves a target below 65% health can take it, rather than below
+ * half."
+ *
+ * THE ROW HOLDS 15 AND NOT 65, AND THAT IS THE WHOLE SHAPE. Subjugate's own row
+ * states `HealthThresholdPercent=50` and is the only place that figure is
+ * written; this stat is ADDED to it. A stat holding 65 outright would state the
+ * skill's number a second time and win, so re-tuning the skill row would
+ * silently do nothing.
+ */
+bool FCataclysmPassiveDominionOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_keystone_a_kA"));
+
+	// WHAT THE ROW IS AUTHORED AS, CHECKED BEFORE ANYTHING IS SPENT. The stat
+	// starts at zero, so an `increased` row would multiply nothing and grant
+	// nothing, and the assertion below would read the same zero it started from
+	// without saying why.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Dominion grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the bonus to the possession threshold"),
+			  Effects[0]->Stat, FString(TEXT("possession_threshold_bonus")));
+	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of fifteen"), Effects[0]->ValuePerPoint, 15.0f);
+	TestEqual(TEXT("and carrying no condition, which is what lets the "
+				   "possession read the attribute directly"),
+			  Effects[0]->Condition, FString());
+
+	const FGameplayAttribute Bonus =
+		Combat::GetPossessionThresholdBonusAttribute();
+
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ritualist gets no bonus to the threshold"),
+			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	TestEqual(TEXT("taking Dominion is worth fifteen points of threshold"),
+			  Player.AbilitySystem->GetNumericAttribute(Bonus), 15.0f, 0.001f);
+
+	// AND FIFTEEN ON TOP OF SUBJUGATE'S OWN FIFTY IS THE SIXTY-FIVE THE NODE
+	// PROMISES. The fifty is written here rather than read from the skill row
+	// because this test has no skill; `test_every_value_appears_in_the_nodes_own_description`
+	// in tools/tests/ is what ties the workbook value to the skill's own figure,
+	// and it fails if either moves.
+	TestEqual(TEXT("which with Subjugate's own 50 is the 65% the node states"),
+			  50.0f + Player.AbilitySystem->GetNumericAttribute(Bonus),
+			  65.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back takes it away again"),
+			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCrownedOnARealCharacterTest,
+	"Cataclysm.Passives.CrownedLowersARealRitualistsThrallReserve",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kC` Crowned on a real character. Issue #1718.
+ *
+ * "Each thrall reserves 25 Fervour rather than 30."
+ *
+ * THE ROW HOLDS A POSITIVE 5 AND THE READ SITE SUBTRACTS IT. It is not a bonus
+ * of -5: `UCataclysmCombatAttributeSet::PreAttributeChange` floors every
+ * attribute in that set at zero, so a negative would be stored as zero and the
+ * keystone would do nothing at all. The stat names the SIZE of the reduction,
+ * which is how the project's other five `_reduction` stats are already spelled.
+ */
+bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_keystone_a_kC"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Crowned grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the reduction to what a thrall reserves"),
+			  Effects[0]->Stat, FString(TEXT("thrall_reserve_reduction")));
+	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+
+	// POSITIVE, AND THE SIGN IS THE ASSERTION. A row authored -5 would be
+	// stored as zero by the attribute set's floor and this test would read zero
+	// with the point spent, so checking the sign here says WHY rather than
+	// leaving the reading below unexplained.
+	TestEqual(TEXT("of five, positive, because the attribute cannot hold a "
+				   "negative"),
+			  Effects[0]->ValuePerPoint, 5.0f);
+	TestTrue(TEXT("and it is above zero rather than a negative bonus"),
+			 Effects[0]->ValuePerPoint > 0.0f);
+	TestEqual(TEXT("and carrying no condition"),
+			  Effects[0]->Condition, FString());
+
+	const FGameplayAttribute Reduction =
+		Combat::GetThrallReserveReductionAttribute();
+
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ritualist takes nothing off the reserve"),
+			  Player.AbilitySystem->GetNumericAttribute(Reduction), 0.0f,
+			  0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	TestEqual(TEXT("taking Crowned takes five Fervour off what a thrall "
+				   "reserves"),
+			  Player.AbilitySystem->GetNumericAttribute(Reduction), 5.0f,
+			  0.001f);
+
+	// AND FIVE OFF SUBJUGATE'S OWN THIRTY IS THE TWENTY-FIVE THE NODE PROMISES.
+	TestEqual(TEXT("which against Subjugate's own 30 is the 25 the node states"),
+			  30.0f - Player.AbilitySystem->GetNumericAttribute(Reduction),
+			  25.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back puts the reserve back"),
+			  Player.AbilitySystem->GetNumericAttribute(Reduction), 0.0f,
+			  0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSwarmOnARealCharacterTest,
+	"Cataclysm.Passives.TheSwarmRaisesARealRitualistsImpCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kA` The Swarm on a real character. Issue #1718.
+ *
+ * "You may have 5 imps active rather than 3."
+ *
+ * THE ROW HOLDS 2, THE DIFFERENCE FROM THE THREE SUMMON IMP'S OWN ROW STATES.
+ * Sixteen of the seventeen summoning and deploying skills state NO cap, and
+ * every read site treats a cap of zero as no limit at all, so a stat holding
+ * the cap itself would hand all sixteen a cap of two.
+ */
+bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_keystone_b_kA"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("The Swarm grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the bonus to how many imps may be active"),
+			  Effects[0]->Stat, FString(TEXT("imp_cap_bonus")));
+	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of two"), Effects[0]->ValuePerPoint, 2.0f);
+	TestEqual(TEXT("and carrying no condition"),
+			  Effects[0]->Condition, FString());
+
+	const FGameplayAttribute Bonus = Combat::GetImpCapBonusAttribute();
+
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ritualist gets no extra imps"),
+			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	TestEqual(TEXT("taking The Swarm is worth two more imps"),
+			  Player.AbilitySystem->GetNumericAttribute(Bonus), 2.0f, 0.001f);
+
+	// AND TWO ON TOP OF SUMMON IMP'S OWN THREE IS THE FIVE THE NODE PROMISES.
+	TestEqual(TEXT("which with Summon Imp's own 3 is the 5 the node states"),
+			  3.0f + Player.AbilitySystem->GetNumericAttribute(Bonus), 5.0f,
+			  0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back puts the cap back"),
+			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSpreadingHurtOnARealCharacterTest,
+	"Cataclysm.Passives.SpreadingHurtWidensARealRavagersAreaOnlyWhenItCanCrippleOrWeaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_c_c0` Spreading Hurt on a real character. Issue #1718.
+ *
+ * "+4% increased Area of Effect per point for attacks that Cripple or Weaken."
+ * Eight points, so 32% at most.
+ *
+ * THIS ONE CANNOT BE READ OFF AN ATTRIBUTE AND THE OTHER THREE CAN. Its row
+ * carries `can_cripple_or_weaken`, and a conditional row is never folded into a
+ * gameplay attribute -- it would be stale the moment the character's state
+ * moved. So the attribute still reads the plain base with eight points spent,
+ * and `StatForSkill` is what answers. A test written the other way would read
+ * the base for ever and call a dead node working; issue #1038 is that failure.
+ *
+ * THE CONDITION IS ABOUT THE ATTACKER AND NOT THE TARGET, which is why it can
+ * work on this row at all. An area of effect is decided when the skill goes off,
+ * before anything has been hit, so a condition asking what the target carries
+ * would be false every time here.
+ *
+ * A HUNDRED IS THE RAVAGER'S BASE AND IT COMES FROM THE SHARED CLASS LINE.
+ * `area_of_effect` is stated only for the Ritualist, at 110, and every other
+ * class inherits the `Default` line's 100. Without a base an `increased` row
+ * would multiply zero and grant nothing, which is checked below before anything
+ * is spent.
+ */
+bool FCataclysmPassiveSpreadingHurtOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_basic_c_c0"));
+	const FName Stat(TEXT("area_of_effect"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Spreading Hurt grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is area of effect"), Effects[0]->Stat,
+			  FString(TEXT("area_of_effect")));
+
+	// `increased` AND NOT `flat`, WHICH IS THE OPPOSITE OF THE THREE ABOVE.
+	// Area of effect has a base of 100, so a flat row would add four percentage
+	// points to a hundred instead of four per cent of it.
+	TestEqual(TEXT("stated as an increase, because the stat has a base of 100"),
+			  Effects[0]->ValueKind, FString(TEXT("increased")));
+	TestEqual(TEXT("of four a point"), Effects[0]->ValuePerPoint, 4.0f);
+	TestEqual(TEXT("and it is conditioned on being able to Cripple or Weaken"),
+			  Effects[0]->Condition, FString(TEXT("can_cripple_or_weaken")));
+
+	const FGameplayAttribute Area = Combat::GetAreaOfEffectAttribute();
+
+	// THE BASE, BEFORE ANYTHING IS SPENT. If this were zero the increase below
+	// would multiply nothing and the node would be dead however the row is
+	// written.
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ravager stands at the shared base of 100"),
+			  Player.AbilitySystem->GetNumericAttribute(Area), 100.0f, 0.001f);
+
+	// THE NODE'S OWN MAXIMUM, so 32% is what a player who committed to it gets.
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	// THE ATTRIBUTE DOES NOT MOVE, AND THAT IS THE POINT RATHER THAN A MISS.
+	// A conditional row is never folded into an attribute, so anything reading
+	// this one gets the plain base whatever the character has spent.
+	TestEqual(TEXT("eight points do not move the attribute, because a "
+				   "conditional row is never folded into one"),
+			  Player.AbilitySystem->GetNumericAttribute(Area), 100.0f, 0.001f);
+
+	// WITH NO CHANCE TO CRIPPLE OR WEAKEN, THE CONDITION IS FALSE AND THE ROW
+	// GRANTS NOTHING. A Ravager that has bought neither ailment is the ordinary
+	// case, and it is what says the condition is doing something.
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetCrippleChanceAttribute(), 0.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetWeakenChanceAttribute(), 0.0f);
+	TestEqual(TEXT("with no chance to Cripple or Weaken the row grants "
+				   "nothing"),
+			  Player.AbilitySystem->StatForSkill(Stat, FGameplayTagContainer(),
+												 100.0f),
+			  100.0f, 0.001f);
+
+	// AND WITH ONE, THE EIGHT POINTS ARE WORTH 32%.
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetCrippleChanceAttribute(), 25.0f);
+	TestEqual(TEXT("a chance to Cripple makes eight points worth 32%"),
+			  Player.AbilitySystem->StatForSkill(Stat, FGameplayTagContainer(),
+												 100.0f),
+			  132.0f, 0.001f);
+
+	// WEAKEN ALONE DOES IT TOO, because the condition asks whether the
+	// character can apply EITHER.
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetCrippleChanceAttribute(), 0.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetWeakenChanceAttribute(), 25.0f);
+	TestEqual(TEXT("and a chance to Weaken alone does the same"),
+			  Player.AbilitySystem->StatForSkill(Stat, FGameplayTagContainer(),
+												 100.0f),
+			  132.0f, 0.001f);
+
+	// AND GIVING THE POINTS BACK TAKES THE INCREASE WITH THEM, with the chance
+	// left in place so the reading changes for the points and nothing else.
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Combat::GetWeakenChanceAttribute(), 25.0f);
+	TestEqual(TEXT("and giving the points back takes the increase away"),
+			  Player.AbilitySystem->StatForSkill(Stat, FGameplayTagContainer(),
+												 100.0f),
+			  100.0f, 0.001f);
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
