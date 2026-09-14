@@ -143,3 +143,7 @@ Positive_Your_special_ability_deals_20_40_increased_dam#2,Positive_Your_special_
 Positive_While_stationary_your_aura_radius_is_doubled#1,Positive_While_stationary_your_aura_radius_is_doubled,area_of_effect,more,100.0,100.0,Slot.Aura,while_stationary,0.0,,0.0
 Positive_Summoned_minions_have_30_50_increased_HP#1,Positive_Summoned_minions_have_30_50_increased_HP,minion_health,increased,30.0,50.0,,,0.0,,0.0
 Positive_Plague_Doctor_2_Piece_Bonus_Your_DoT_effects#1,Positive_Plague_Doctor_2_Piece_Bonus_Your_DoT_effects,dot_damage,more,25.0,25.0,,,0.0,,0.0
+Negative_Minion_maximum_health_is_reduced_by_50#1,Negative_Minion_maximum_health_is_reduced_by_50,minion_health,increased,-50.0,-50.0,,,0.0,,0.0
+Positive_Tyrant_s_Chains_2_Piece_Bonus_Your_pets_and_m#1,Positive_Tyrant_s_Chains_2_Piece_Bonus_Your_pets_and_m,minion_damage,increased,50.0,50.0,,,0.0,,0.0
+Negative_You_cannot_heal_above_60_of_your_maximum_HP#1,Negative_You_cannot_heal_above_60_of_your_maximum_HP,healing_ceiling_reduction,flat,40.0,40.0,,,0.0,,0.0
+Negative_You_cannot_be_healed_above_75_of_your_maximum_H#1,Negative_You_cannot_be_healed_above_75_of_your_maximum_H,healing_ceiling_reduction,flat,25.0,25.0,,,0.0,,0.0

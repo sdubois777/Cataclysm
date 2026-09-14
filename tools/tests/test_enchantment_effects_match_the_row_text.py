@@ -139,7 +139,11 @@ FLAG_STATS = {"skill_locked"}
 #: "You cannot be healed above 75% of your maximum HP" -- are authored in the
 #: design workbook, and a name added here before them would be an exemption with
 #: nothing to excuse.
-COMPLEMENT_STATS: set[str] = set()
+#:
+#: FILLED ON 2026-09-14, with the two rows. "You cannot heal above 60% of your
+#: maximum HP" is `healing_ceiling_reduction` flat 40 and "You cannot be healed
+#: above 75%" is flat 25, and each sentence states the complement of its row.
+COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction"}
 
 #: Enchantments whose sentence states no number, so the number was chosen under
 #: the project owner's delegation of 2026-09-11 and recorded as a labelled
@@ -250,8 +254,23 @@ JUDGED_NUMBERS = {
 #: own sentence never says, and
 #: `test_a_single_value_appears_in_its_words_outside_any_range` is right to
 #: refuse it. Issue #1793.
-AUTHORED_ROWS = 144
-AUTHORED_ENCHANTMENTS = 121
+#: AND 148 OVER 125 SINCE THE ROWS THE RULINGS OF 2026-09-14 UNBLOCKED, issues
+#: #1792 and #1793. FOUR ENCHANTMENTS AND FOUR ROWS, one apiece.
+#:
+#: TWO ARE MINION ROWS AND BOTH ARE `increased`, WHICH IS NOT A STYLE CHOICE. A
+#: minion reads its summoner's `minion_health` and `minion_damage` through
+#: `IncreasesForStat`, which returns the increases alone, so a `more` row and a
+#: `flat` row on those two stats are computed and then discarded. Set 6 lands
+#: whole on them: its drawback and its first bonus.
+#:
+#: A FIFTH ROW WAS RULED AND IS NOT HERE. "Your minions have 20%-50% less hp"
+#: needed its sentence reworded to reach the `increased` bucket, and the whole
+#: sentence is 33 characters, so the reword moves the row name a dropped item
+#: stores and orphans every saved item carrying it. Issue #1799 carries that to
+#: the project owner. The sibling reword, Tyrant's Chains, was safe because its
+#: changed word sits past the 48-character cap, and it is written.
+AUTHORED_ROWS = 148
+AUTHORED_ENCHANTMENTS = 125
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
@@ -271,7 +290,11 @@ AUTHORED_ENCHANTMENTS = 121
 #: its 2-piece bonus is one `dot_damage` row and its drawback two rows on the
 #: two direct damage stats. Its 6-piece and 10-piece rows still wait, and a set
 #: counts as working here once any of its rows is written.
-SETS_THAT_WORK = [5, 8, 9, 11, 12, 16, 17]
+#:
+#: EIGHT OF FOURTEEN SINCE 2026-09-14. Tyrant's Chains (6) needed one ruling and
+#: no new mechanism: its first bonus and its drawback are both minion rows in
+#: the `increased` bucket.
+SETS_THAT_WORK = [5, 6, 8, 9, 11, 12, 16, 17]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -407,9 +430,10 @@ def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
 
 
 def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
-    """Seven of the fourteen sets have a row written: Archon's Aegis (5), Mana
-    Weaver (8), Brute's Heart (9), Demon King's Regalia (11), Plague Doctor
-    (12), Divine Retribution (16) and Warlord's Will (17). The other seven wait
+    """Eight of the fourteen sets have a row written: Archon's Aegis (5),
+    Tyrant's Chains (6), Mana Weaver (8), Brute's Heart (9), Demon King's
+    Regalia (11), Plague Doctor (12), Divine Retribution (16) and Warlord's
+    Will (17). The other six wait
     for what their rows need, which `docs/DECISIONS.md` lists set by set. This
     moves only when somebody means it to.
 
@@ -554,11 +578,11 @@ def test_the_complement_list_holds_what_it_is_measured_to_hold():
     `CataclysmPassiveTreeTests.cpp`. This says what the list holds today, so
     filling it is a deliberate edit here rather than a silent one.
 
-    IT IS EMPTY BECAUSE ITS ROWS ARE NOT WRITTEN YET. `healing_ceiling_reduction`
-    goes in when "You cannot heal above 60% of your maximum HP" and "You cannot
-    be healed above 75% of your maximum HP" get their rows, which needs the
-    design workbook. Issue #1793."""
-    assert COMPLEMENT_STATS == set(), (
+    IT HELD NOTHING UNTIL 2026-09-14, and this assertion is what made that
+    honest rather than vacuous. `healing_ceiling_reduction` went in with the two
+    rows that need it, in one commit, so the exemption and its users have never
+    existed apart. Issue #1793."""
+    assert COMPLEMENT_STATS == {"healing_ceiling_reduction"}, (
         f"COMPLEMENT_STATS holds {sorted(COMPLEMENT_STATS)}. If that is "
         f"deliberate, change this test and check that every name in it has a "
         f"row in game/Data/EnchantmentEffects.csv.")
