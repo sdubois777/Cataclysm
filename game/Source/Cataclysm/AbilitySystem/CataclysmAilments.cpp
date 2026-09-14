@@ -57,49 +57,65 @@ namespace
 		{TEXT("Bleed"), TEXT("bleed_chance"),
 		 TEXT("Cataclysm.AilmentChance.Bleed"),
 		 TEXT("DoT_Bleed"), TEXT("Keyword.DoT.Bleed"),
-		 &Combat::GetBleedChanceAttribute, EShape::DamageOverTime},
+		 &Combat::GetBleedChanceAttribute, nullptr, nullptr, EShape::DamageOverTime},
 		{TEXT("Poison"), TEXT("poison_chance"),
 		 TEXT("Cataclysm.AilmentChance.Poison"),
 		 TEXT("DoT_Poison"), TEXT("Keyword.DoT.Poison"),
-		 &Combat::GetPoisonChanceAttribute, EShape::DamageOverTime},
+		 &Combat::GetPoisonChanceAttribute, nullptr, nullptr, EShape::DamageOverTime},
 		{TEXT("Disease"), TEXT("disease_chance"),
 		 TEXT("Cataclysm.AilmentChance.Disease"),
 		 TEXT("DoT_Disease"), TEXT("Keyword.DoT.Disease"),
-		 &Combat::GetDiseaseChanceAttribute, EShape::DamageOverTime},
+		 &Combat::GetDiseaseChanceAttribute, nullptr, nullptr, EShape::DamageOverTime},
 		{TEXT("Void Splinter"), TEXT("void_splinter_chance"),
 		 TEXT("Cataclysm.AilmentChance.VoidSplinter"),
 		 TEXT("DoT_Void_Splinter"), TEXT("Keyword.DoT.VoidSplinter"),
-		 &Combat::GetVoidSplinterChanceAttribute, EShape::ShareOfCurrentHealth},
+		 &Combat::GetVoidSplinterChanceAttribute, nullptr, nullptr, EShape::ShareOfCurrentHealth},
 		{TEXT("Necrosis"), TEXT("necrosis_chance"),
 		 TEXT("Cataclysm.AilmentChance.Necrosis"),
 		 TEXT("DoT_Necrosis"), TEXT("Keyword.DoT.Necrosis"),
-		 &Combat::GetNecrosisChanceAttribute, EShape::DamageOverTime},
+		 &Combat::GetNecrosisChanceAttribute, nullptr, nullptr, EShape::DamageOverTime},
 		{TEXT("Burn"), TEXT("burn_chance"),
 		 TEXT("Cataclysm.AilmentChance.Burn"),
 		 TEXT("DoT_Burn"), TEXT("Keyword.DoT.Burn"),
-		 &Combat::GetBurnChanceAttribute, EShape::DamageOverTime},
+		 &Combat::GetBurnChanceAttribute, nullptr, nullptr, EShape::DamageOverTime},
 		{TEXT("Madness"), TEXT("madness_chance"),
 		 TEXT("Cataclysm.AilmentChance.Madness"),
 		 TEXT("Debuff_Madness"), TEXT("Status.Debuff.Madness"),
-		 &Combat::GetMadnessChanceAttribute, EShape::LongerWithMagnitude},
+		 &Combat::GetMadnessChanceAttribute, nullptr, nullptr, EShape::LongerWithMagnitude},
 		{TEXT("Cripple"), TEXT("cripple_chance"),
 		 TEXT("Cataclysm.AilmentChance.Cripple"),
 		 TEXT("Debuff_Cripple"), TEXT("Status.Debuff.Cripple"),
 		 &Combat::GetCrippleChanceAttribute,
+		 TEXT("cripple_magnitude"),
+		 &Combat::GetCrippleMagnitudeAttribute,
 		 EShape::StrongerThenLongerWithMagnitude},
 		{TEXT("Weaken"), TEXT("weaken_chance"),
 		 TEXT("Cataclysm.AilmentChance.Weaken"),
 		 TEXT("Debuff_Weaken"), TEXT("Status.Debuff.Weaken"),
-		 &Combat::GetWeakenChanceAttribute, EShape::StrongerThenLongerOnAStat},
+		 &Combat::GetWeakenChanceAttribute,
+		 TEXT("weaken_magnitude"),
+		 &Combat::GetWeakenMagnitudeAttribute, EShape::StrongerThenLongerOnAStat},
 		{TEXT("Shred"), TEXT("shred_chance"),
 		 TEXT("Cataclysm.AilmentChance.Shred"),
 		 TEXT("Debuff_Shred"), TEXT("Status.Debuff.Shred"),
-		 &Combat::GetShredChanceAttribute, EShape::StrongerWithMagnitude},
+		 &Combat::GetShredChanceAttribute, nullptr, nullptr, EShape::StrongerWithMagnitude},
 		{TEXT("Stun"), TEXT("stun_chance"),
 		 TEXT("Cataclysm.AilmentChance.Stun"),
 		 TEXT("Debuff_Stun"), TEXT("State.Stunned"),
-		 &Combat::GetStunChanceAttribute, EShape::Stun},
+		 &Combat::GetStunChanceAttribute, nullptr, nullptr, EShape::Stun},
 	};
+
+	/**
+	 * The name an ailment's magnitude stat travels under on a damage effect.
+	 *
+	 * DERIVED FROM THE CHANCE'S OWN NAME rather than a twelfth field on the
+	 * kind, so the two cannot drift apart and a new ailment gaining a magnitude
+	 * stat needs nothing here. Issue #1767.
+	 */
+	FString MagnitudeDataNameFor(const FCataclysmAilmentKind& Kind)
+	{
+		return FString(Kind.DataName) + TEXT(".Magnitude");
+	}
 
 	/** The roll one chance is compared with: pinned, or drawn. */
 	float AilmentRoll()
@@ -128,11 +144,28 @@ const FCataclysmAilmentKind* UCataclysmAilments::KindNamed(const FString& Ailmen
 }
 
 void UCataclysmAilments::Application(float TotalChance, float& OutChance,
-									 float& OutMagnitude)
+									 float& OutMagnitude, float MagnitudePercent)
 {
 	const float Total = FMath::Max(TotalChance, 0.0f);
 	OutChance = FMath::Min(Total, ChanceCap);
 	OutMagnitude = FMath::Max(1.0f, Total / ChanceCap);
+
+	// AND THE STAT SCALES WHATEVER THAT PRODUCED. Issue #1767. A hundred means
+	// unchanged, which is why it is the default and why the two attributes
+	// behind it start there -- the same shape `UCataclysmDebuffs::DurationOn`
+	// uses, dividing by `NormalDuration` of 100.
+	//
+	// AFTER THE FLOOR OF ONE AND NOT BEFORE. The floor exists because a chance
+	// at or below the cap is a normal application rather than a diminished one,
+	// and a character investing in magnitude should scale a normal application
+	// too. Multiplying first and flooring after would throw that investment
+	// away for every character below 100% chance, which is most of them.
+	//
+	// NEGATIVE IS REFUSED RATHER THAN CLAMPED TO ONE. Nothing reduces these
+	// stats today and a row that did would be stating a smaller ailment, which
+	// is a legitimate future rule; below zero is not, because it would invert
+	// the effect.
+	OutMagnitude *= FMath::Max(0.0f, MagnitudePercent) / NormalMagnitude;
 }
 
 TMap<FName, float> UCataclysmAilments::ChancesFor(
@@ -169,6 +202,30 @@ TMap<FName, float> UCataclysmAilments::ChancesFor(
 		if (Chance > 0.0f)
 		{
 			Chances.Add(FName(Kind.DataName), Chance);
+
+			// AND THE MAGNITUDE STAT, FOR THE TWO AILMENTS THAT HAVE ONE. Issue
+			// #1767. Resolved here rather than where the roll is made, for the
+			// reason the chance above is: this is the only place holding the
+			// skill's full tags, so a row scoped to melee counts only for a
+			// melee skill. It travels on the same effect under its own name.
+			//
+			// ONLY WHEN THE CHANCE LANDED. A magnitude with no chance to scale
+			// is nothing, and stamping it anyway would put a number on every
+			// blow that nothing reads.
+			if (Kind.MagnitudeStat && Kind.MagnitudeAttribute)
+			{
+				const FGameplayAttribute Scaling = Kind.MagnitudeAttribute();
+				if (Attacker->HasAttributeSetForAttribute(Scaling))
+				{
+					const float Held = Attacker->GetNumericAttribute(Scaling);
+					Chances.Add(FName(MagnitudeDataNameFor(Kind)),
+						Cataclysm
+							? Cataclysm->StatForSkill(FName(Kind.MagnitudeStat),
+													  SkillTags, Held,
+													  SkillHealthCostPercent)
+							: Held);
+				}
+			}
 		}
 	}
 	return Chances;
@@ -239,7 +296,18 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 
 		float Chance = 0.0f;
 		float Magnitude = 1.0f;
-		Application(Total, Chance, Magnitude);
+
+		// THE MAGNITUDE STAT, IF THIS AILMENT HAS ONE AND THE BLOW CARRIED IT.
+		// Issue #1767. `NormalMagnitude` when nothing stamped one, which is
+		// every ailment but Cripple and Weaken and every attacker with no
+		// investment -- so the arithmetic below is unchanged for them.
+		const float MagnitudePercent = Kind.MagnitudeStat
+			? Spec.GetSetByCallerMagnitude(FName(MagnitudeDataNameFor(Kind)),
+				/*WarnIfNotFound=*/false,
+				/*DefaultIfNotFound=*/NormalMagnitude)
+			: NormalMagnitude;
+
+		Application(Total, Chance, Magnitude, MagnitudePercent);
 		// THE SKILL WHOSE BLOW ROLLED IT goes on the ailment too, so that
 		// every tick of it names the skill. Issue #41, slice 4.
 		if (AilmentRoll() < Chance

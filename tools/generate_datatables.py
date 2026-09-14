@@ -4440,6 +4440,23 @@ ENGINE_SUPPLIED_BASES = {
     "stagger_duration":
         "UCataclysmSkillEffects::NormalStaggerDuration, put on the character by "
         "UCataclysmPlayerClassStats::EngineSuppliedBases",
+
+    # AND HOW LARGE THE CRIPPLE AND WEAKEN THIS CHARACTER APPLIES ARE, at 100 for
+    # normal. Issue #1767. The Ravager's Dragging Weight reads "+3% increased
+    # magnitude of Cripple you apply per point" and its Sapped says the same of
+    # Weaken; both are `increased` rows, so without a base under them the stat
+    # resolves to zero and every Cripple and Weaken a player applies lands at
+    # magnitude zero -- worse than the stat not existing at all.
+    #
+    # THE C++ SIDE DERIVES THESE FROM THE AILMENT TABLE rather than naming them,
+    # because the names already live on the kind rows as `MagnitudeStat`. They
+    # are named here because this dictionary is keyed by stat name and has to be.
+    "cripple_magnitude":
+        "UCataclysmAilments::NormalMagnitude, put on the character by "
+        "UCataclysmPlayerClassStats::EngineSuppliedBases",
+    "weaken_magnitude":
+        "UCataclysmAilments::NormalMagnitude, put on the character by "
+        "UCataclysmPlayerClassStats::EngineSuppliedBases",
 }
 
 

@@ -476,6 +476,28 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("shred_chance"), TEXT("the Chance to shred affix, as a flat modifier")},
 		{TEXT("stun_chance"), TEXT("the Chance to stun affix, as a flat modifier")},
 
+		// Issue #1767. How LARGE the Cripple and the Weaken this character
+		// applies are, where the eleven above are how OFTEN they land. No class
+		// line names either and no affix grants either; two Ravager passive
+		// nodes are their only sources.
+		//
+		// A HUNDRED RATHER THAN ZERO FOR A CHARACTER WITH NEITHER NODE, unlike
+		// every chance above. These multiply a magnitude instead of adding to a
+		// chance, so the neutral value is one times, and it arrives from
+		// `UCataclysmPlayerClassStats::EngineSuppliedBases` rather than from a
+		// class line. `Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`
+		// is what holds that promise.
+		// THE TWO ROWS ARE NOT AUTHORED YET, and this says so rather than
+		// describing a source that does not exist. The base arrives regardless,
+		// so the stat is 100 and not zero for every character today; what is
+		// missing is anything that raises it. Issue #1767 carries the rows.
+		{TEXT("cripple_magnitude"),
+		 TEXT("a base of 100 from EngineSuppliedBases, to be raised by the "
+			  "Ravager's Dragging Weight node once that row is authored")},
+		{TEXT("weaken_magnitude"),
+		 TEXT("a base of 100 from EngineSuppliedBases, to be raised by the "
+			  "Ravager's Sapped node once that row is authored")},
+
 		// Issue #1039. Whether damage over time deals this character nothing at
 		// all. Zero for every class, and the Masochist's Vessel Unbroken
 		// capstone option is its only source. A FLAG rather than a reduction,
@@ -702,9 +724,14 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 	// class table and the map; nothing read this list, so an entry whose stat
 	// had been removed from `StatToAttribute` -- or renamed -- became
 	// unreachable and stayed here stating where a stat that no longer exists
-	// gets its value. There are 72 entries and most are several lines of
+	// gets its value. There are 90 entries and most are several lines of
 	// explanation, so a stale one costs a reader real time and no test run
 	// mentions it.
+	//
+	// NINETY COUNTED ON 2026-09-13, when this line said 72. Counted rather than
+	// incremented, for the reason the paragraph below gives: an increment
+	// carries a wrong figure forward, and this one had drifted by sixteen in
+	// four days. The two added that day were the Cripple and Weaken magnitudes.
 	//
 	// THAT FIGURE SAID 52 UNTIL 2026-09-09 AND WAS COUNTED RATHER THAN GUESSED
 	// WHEN IT WAS CORRECTED. It had drifted by eighteen before issue #1518
