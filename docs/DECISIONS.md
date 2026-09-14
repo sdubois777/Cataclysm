@@ -72,6 +72,20 @@ put the lock back.
 new dungeon's cadence starts from nothing, and a full cadence in it still brings a silence,
 so the first assertion is a clock that restarted rather than a rule that stopped working.
 
+**That test walks out of the dungeon twice, and the second walk-out is there because the
+first one could not fail.** A guard proof deleted the line that clears the cadence counter
+on leaving, and every one of the forty tests still passed. The reason is general enough to
+be worth writing down: **a rule that resets its own clock when it fires is invisible to a
+test that leaves immediately after it fires.** The first walk-out happened one beat after a
+silence began, when the counter had just been set to nothing by the silence itself, so
+keeping the counter and clearing it differed by a single beat — a quarter of a second —
+against an assertion a full second short of due. The second walk-out happens with the
+counter at eighty-nine of its ninety seconds and no silence running, where keeping it means
+the next dungeon is due almost immediately. **The same question is open for the other five lines in
+that block**, which is issue
+[#1812](https://github.com/sdubois777/Cataclysm/issues/1812); only the Edict of Silence's
+line has been measured.
+
 **`ASilenceSurvivesTheStairsAndEndsAtItsOriginalTime` is what makes the survival a measured
 behaviour rather than a comment.** It spends two thirds of a silence before taking the
 stairs, which is the only way the two possibilities can be told apart: a silence that was
@@ -128,8 +142,8 @@ Nothing in `game/Source/Cataclysm/Interface` reads the lock. The refusal returns
 engine's own checks **on purpose**, so the player is not told the wrong reason — but the
 right one was never put in its place. That was tolerable while the two enchantments were
 the only sources, each one slot under a condition the player set off themselves. **It is
-not tolerable for fifteen seconds of total silence on the heaviest-weighted row in the
-table**, where a player pressing every key and getting no response will read it as the game
+not tolerable for fifteen seconds of total silence on a row in the table's heaviest weight
+band**, where a player pressing every key and getting no response will read it as the game
 having stopped working.
 
 That is issue [#1810](https://github.com/sdubois777/Cataclysm/issues/1810), filed and

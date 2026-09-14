@@ -110,8 +110,11 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one that grabs a player who lingers too close. Issues #1786, #41. */
 	const FName GraspingTentacles(TEXT("Void_Grasping_Tentacles"));
 
-	/** And the one that silences every skill on a clock. Issues #1786 and #41. */
-	const FName EdictOfSilence(TEXT("Celestial_Edict_of_Silence"));
+	// THE EDICT OF SILENCE'S KEY IS NOT DECLARED HERE, AND THAT IS WORTH A LINE.
+	// It has been at the top of this namespace since long before it had a rule,
+	// because several tests used it as an example of a row that does NOTHING.
+	// Declaring a second one here was a compile error -- which is the good
+	// outcome; the bad one is below.
 
 	/**
 	 * Beat the dungeon game mode this many times WITHOUT moving the world clock.
@@ -766,8 +769,24 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 	const FName UnstableDimensions(FCataclysmDungeonFloorRules::UnstableDimensionsKey);
 	const FName NotARow(TEXT("Not_A_Row"));
 
+	// THE UNBUILT CONTROL WAS THE EDICT OF SILENCE UNTIL THAT ROW WAS BUILT, and
+	// this assertion would have started failing rather than quietly passing --
+	// which is what a control is for. Issue #1786 built the last of the four rows
+	// that had no rule, so a row chosen for being unbuilt has to be chosen again.
+	//
+	// CHAOS ECHO CHAMBER FOR A STATED REASON RATHER THAN FOR HAPPENING TO BE
+	// UNBUILT, which is the argument `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack`
+	// already makes where it uses the same row: it is blocked by a standing owner
+	// rule, not by missing code. Its row asks for "a ghostly copy of that ability
+	// ... it can also hit you", and
+	// `tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side`
+	// records the rule that refuses: "A creature does not burn itself or its own
+	// side." A control blocked by a rule outlasts one waiting for a session.
+	const FName BlockedByARule(TEXT("Chaos_Echo_Chamber"));
+
 	const TArray<FCataclysmFloorModifierLine> Lines =
-		Layout::LinesFor({Starvation, EdictOfSilence, UnstableDimensions, NotARow}, Table);
+		Layout::LinesFor({Starvation, BlockedByARule, UnstableDimensions, NotARow},
+						 Table);
 	if (!TestEqual(TEXT("one line per modifier"), Lines.Num(), 4))
 	{
 		return false;
@@ -779,7 +798,7 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 			 Lines[0].Description.Contains(TEXT("reduced by 1%")));
 
 	TestTrue(TEXT("an unbuilt one says it does nothing"),
-			 Layout::NameLineFor(Lines[1]).StartsWith(TEXT("Edict of Silence"))
+			 Layout::NameLineFor(Lines[1]).StartsWith(TEXT("Echo Chamber"))
 				 && Layout::NameLineFor(Lines[1]).Contains(TEXT("not built yet")));
 	TestTrue(TEXT("a partly built one says so"),
 			 Layout::NameLineFor(Lines[2]).Contains(TEXT("partly built")));
@@ -3929,6 +3948,28 @@ bool FCataclysmEdictLeavingTest::RunTest(const FString& Parameters)
 	// AND THE CLOCK WENT WITH IT. Entering a new dungeon and beating for less
 	// than a whole cadence must bring no silence; if the clock had survived, the
 	// beats already spent would carry over and one would arrive early.
+	//
+	// THE SECOND WALK-OUT IS MID-CADENCE, AND THAT IS THE WHOLE POINT. The walk-out
+	// above happens one beat after a silence began, and a silence sets the cadence
+	// counter to nothing as it starts -- so keeping the counter and clearing it
+	// differ there by a single beat, a quarter of a second, which no assertion four
+	// beats short of due can tell apart. Guard proof B broke the line that clears
+	// the counter and this test did not notice. It walks out with the counter nearly
+	// full instead, so keeping it means the next dungeon is due almost at once.
+	Mode->DungeonModifiers = {EdictOfSilence};
+	Mode->FloorNumber = 1;
+	Mode->BuildFloor();
+	Beat(Mode, BeatsFor(Effects::EdictOfSilenceEverySeconds) - 4);
+	if (!TestNull(TEXT("four beats short of due, no silence yet"),
+				  DungeonRuleOn(Player.AbilitySystem, Locked)))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers.Reset();
+	Mode->FloorBrief = FCataclysmFloorBrief();
+	Mode->ApplyFloorRulesToPlayer();
+
 	Mode->DungeonModifiers = {EdictOfSilence};
 	Mode->FloorNumber = 1;
 	Mode->BuildFloor();

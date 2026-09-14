@@ -2667,31 +2667,6 @@ void ACataclysmDungeonGameMode::NoteDeathForWastingSickness(
 		{
 			WastingSicknessStacks = 0;
 			WastingSicknessStacksApplied = 0;
-
-			// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues
-			// #1786 and #41. The list because
-			// `UCataclysmFloorContents::ClearTheFloor` has already destroyed
-			// those actors and a stale list would count them against the cap and
-			// stop the tentacles entirely; the clock so the first of a floor does
-			// not arrive on its first beat carrying the last floor's wait; the
-			// grab because a player who took the stairs is not still held by a
-			// tentacle they left behind; and the applied figure because the call
-			// above has already taken the reduction off the character, so leaving
-			// it would make the next beat believe it was still applied.
-			GraspingTentacles.Empty();
-			GraspingTentaclesSecondsSinceLast = 0.0f;
-			GraspedUntilSeconds = -1.0f;
-			GraspMovementLessApplied = 0.0f;
-
-			// AND THE EDICT OF SILENCE FORGETS ONLY WHAT WAS APPLIED. Issues
-			// #1786 and #41. ITS CLOCK AND ITS SILENCE DELIBERATELY SURVIVE THE
-			// STAIRS, which makes it the only rule in this function that keeps a
-			// clock across a floor. The row says the silence sweeps the DUNGEON,
-			// and a player descending every eighty seconds would otherwise never
-			// meet one. The applied figure still goes, because the call above has
-			// already taken the lock off the character and the next beat has to
-			// put it back while the silence is still running.
-			EdictOfSilenceLockApplied = 0.0f;
 			ApplyChangingFloorEffects(
 				Player,
 				Cast<UCataclysmAbilitySystemComponent>(
@@ -2988,6 +2963,41 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// puts it back. Zeroing the count here would make the stairs a cure
 		// the row does not offer.
 		WastingSicknessStacksApplied = 0;
+
+		// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues #1786
+		// and #41. The list because `UCataclysmFloorContents::ClearTheFloor` has
+		// already destroyed those actors and a stale list would count them
+		// against the cap and stop the tentacles entirely; the clock so the first
+		// of a floor does not arrive on its first beat carrying the last floor's
+		// wait; the grab because a player who took the stairs is not still held
+		// by a tentacle they left behind; and the applied figure because the call
+		// above has already taken the reduction off the character, so leaving it
+		// would make the next beat believe it was still applied.
+		//
+		// THESE FOUR LINES WERE IN `NoteDeathForWastingSickness` UNTIL NOW, AND
+		// THAT WAS SHIPPED. The change that built Grasping Tentacles anchored
+		// them on `WastingSicknessStacksApplied = 0;`, which appears twice --
+		// once here and once in that death handler -- and attached them to the
+		// wrong one. Every test of that rule still passed, because none of them
+		// changed floor while a grab was running. What it cost in play: a grab
+		// survived the stairs, the cadence carried across floors, and the applied
+		// figure stayed set while the floor change had already taken the slow off
+		// the character. Found by the Edict of Silence's stairs test, which fails
+		// outright when a rule's applied figure is not cleared here.
+		GraspingTentacles.Empty();
+		GraspingTentaclesSecondsSinceLast = 0.0f;
+		GraspedUntilSeconds = -1.0f;
+		GraspMovementLessApplied = 0.0f;
+
+		// AND THE EDICT OF SILENCE FORGETS ONLY WHAT WAS APPLIED. Issues #1786
+		// and #41. ITS CLOCK AND ITS SILENCE DELIBERATELY SURVIVE THE STAIRS,
+		// which makes it the only rule in this function that keeps a clock across
+		// a floor. The row says the silence sweeps the DUNGEON, and a player
+		// descending every eighty seconds would otherwise never meet one. The
+		// applied figure still goes, because the call above has already taken the
+		// lock off the character and the next beat has to put it back while the
+		// silence is still running.
+		EdictOfSilenceLockApplied = 0.0f;
 
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is
