@@ -1385,6 +1385,44 @@ private:
 	void NoteDeathForHellfire(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Brand of the Aggressor's stack, on a blow the PLAYER landed on a creature.
+	 * Issues #1820 and #41.
+	 *
+	 * THE OPPOSITE WAY ROUND FROM `NoteHitForWastingSickness`, AND THAT IS THE
+	 * WHOLE DIFFERENCE BETWEEN THEM. That rule's row is about blows landing on
+	 * the player, so it tests `Notice.Target`; this rule's row says "Hitting an
+	 * enemy applies a stack ... to you", so it tests `Notice.Attacker` and
+	 * requires the target to be a creature.
+	 *
+	 * A LANDED BLOW AND NOT AN ATTEMPT, for the reason that rule gives:
+	 * `FCataclysmHitNotice::Landed` is what reached the target after every
+	 * mitigation step and is zero for a blow that was evaded or wholly stopped.
+	 *
+	 * THE NOVA REACHES THE PLAYER AND THEIR ALLIES AND NOT THE CREATURES. The row
+	 * says "to you and nearby allies". `UCataclysmTargeting::FindAlliesInSphere`
+	 * answers the allies and **excludes the actor it is asked on behalf of** --
+	 * its shared gather step drops `Actor == Instigator` -- so the player is
+	 * damaged by a separate call. Leaving that out would build a rule that erupts
+	 * and never touches the player, which is the row's main promise.
+	 *
+	 * THE PLAYER IS THE INSTIGATOR OF THEIR OWN NOVA, because the row says "you
+	 * erupt". Unlike the two rules above it, whose source had died, there is a
+	 * living actor with an ability system to name.
+	 *
+	 * NOTHING TELLS THE PLAYER THE COUNT, WHICH IS WHAT WASTING SICKNESS DOES AND
+	 * IS WORTH SAYING OUT LOUD. Measured 2026-09-14: outside the dungeon rule
+	 * files, nothing in `game/Source` reads a floor rule's stack count. The floor
+	 * panel names the row and prints its description word for word, so a player
+	 * can read that twenty blows erupt; it does not say how many they have.
+	 *
+	 * THE TWO ROWS ARE NOT ALIKE IN HOW MUCH THAT COSTS. Wasting Sickness's
+	 * stacks lower maximum health and mana, so its count is visible in the bar
+	 * even though the number is not. This one changes nothing at all until the
+	 * twentieth blow. Recorded on #1820 rather than fixed here.
+	 */
+	void NoteHitForBrandOfTheAggressor(const struct FCataclysmHitNotice& Notice);
+
+	/**
 	 * Mortal Decay's slowing, on a creature the player reaped. Issues #1786
 	 * and #41.
 	 *
@@ -1465,11 +1503,36 @@ private:
 	 * "for the duration of the dungeon" ends there.
 	 *
 	 * A COUNT AND NOT A TIME, unlike Mortal Decay's stamp above, because this row
-	 * asks for stacks: the player is told how many they have and each one is
-	 * worth the same share.
+	 * asks for stacks: each one is worth the same share.
+	 *
+	 * THIS SAID "the player is told how many they have" AND NOTHING TELLS THEM.
+	 * Measured 2026-09-14 while building `Demonic_Brand_of_the_Aggressor`, which
+	 * keeps a count of its own: outside `Dungeon/`, nothing in `game/Source`
+	 * reads either count. What the player sees is the CONSEQUENCE -- these stacks
+	 * lower maximum health and mana, so the bar shrinks -- and the floor panel's
+	 * line for the row, which carries the row's description word for word. The
+	 * number itself is shown nowhere. Corrected by the change that noticed it.
 	 */
 	int32 WastingSicknessStacks = 0;
 	int32 WastingSicknessStacksApplied = 0;
+
+	/**
+	 * How many of the player's landed blows have branded them on this floor.
+	 * Issues #1820 and #41.
+	 *
+	 * NO PAIRED "APPLIED" FIELD, UNLIKE THE COUNT ABOVE. Wasting Sickness's
+	 * stacks are a standing reduction that the beat has to keep on the character,
+	 * so it must remember what it last wrote. A brand does nothing at all until
+	 * the twentieth, and then it deals one blow and is gone, so there is no
+	 * standing state to reconcile.
+	 *
+	 * IT GOES WITH THE FLOOR, AND THAT IS A JUDGEMENT RATHER THAN THE ROW'S
+	 * WORDS. The row says nothing about floors. Every other count on this beat
+	 * that the data does not rule on is cleared by `ApplyFloorRulesToPlayer`, and
+	 * carrying a part-built nova across a loading screen would fire it on a floor
+	 * the player had not yet hit anything on.
+	 */
+	int32 BrandStacks = 0;
 
 	/**
 	 * One Grasping Tentacle on this floor, and when it may grab again.

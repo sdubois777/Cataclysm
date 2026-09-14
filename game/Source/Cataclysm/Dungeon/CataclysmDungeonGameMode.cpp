@@ -2906,9 +2906,18 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 {
 	// ONE ANNOUNCEMENT, EVERY RULE THAT WANTS IT, EACH TESTING FOR ITS OWN ROW.
 	// Issues #1786 and #41. Shaped like `OnSomethingDied` above rather than
-	// holding this one rule's logic behind an early return on its key, because
-	// two further rows of `game/Data/DungeonModifiers.csv` describe a blow.
+	// holding one rule's logic behind an early return on its key.
+	//
+	// THIS SAID "two further rows ... describe a blow" AND NAMED A COUNT RATHER
+	// THAN THE ROWS. Reading the table on 2026-09-14 while building the second
+	// listener, the rows that want this announcement are
+	// `Celestial_Holy_Repercussions`, `Demonic_Brand_of_the_Aggressor` and
+	// `Pestilence_Contagious_Touch` -- three, not two. Naming them instead of
+	// counting them is what stops the line going stale again, and it is what
+	// `CataclysmDungeonModifierEffects.cpp` already does where it says "Count the
+	// arms rather than reading a number here."
 	NoteHitForWastingSickness(Notice);
+	NoteHitForBrandOfTheAggressor(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
@@ -3067,6 +3076,105 @@ void ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace(
 	NihilsEmbraceRewardUntilSeconds =
 		World->GetTimeSeconds()
 		+ UCataclysmDungeonModifierEffects::NihilsEmbraceRewardSeconds;
+}
+
+void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
+	const FCataclysmHitNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::BrandOfTheAggressorKey)))
+	{
+		return;
+	}
+
+	// A BLOW THAT ACTUALLY LANDED, the same guard `NoteHitForWastingSickness`
+	// makes and for the same reason: `Landed` is what reached the target after
+	// every mitigation step, so an evaded or wholly stopped blow is not a hit and
+	// does not brand.
+	if (Notice.Landed <= 0.0f)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Player)
+	{
+		return;
+	}
+
+	// THE PLAYER MUST HAVE STRUCK, AND STRUCK A CREATURE. The row is "Hitting an
+	// enemy applies a stack ... to you", so this reads `Attacker` where Wasting
+	// Sickness reads `Target`. Without the creature check a blow the player
+	// landed on anything else -- a hazard, a destructible -- would brand them.
+	if (Notice.Attacker != Player
+		|| !Cast<ACataclysmEnemyCharacter>(Notice.Target))
+	{
+		return;
+	}
+
+	// ASKED BEFORE THE COUNT IS RAISED, because raising it clears the count on
+	// the blow that erupts and a cleared count cannot answer this. The two reads
+	// are separated by taking the old value first.
+	const int32 Before = BrandStacks;
+	BrandStacks = Effects::BrandStacksAfterHit(Before, /*bBrands=*/true);
+	if (!Effects::BrandErupts(Before))
+	{
+		return;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent());
+	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	const float Damage = Effects::BrandNovaDamage(AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+	if (Damage <= 0.0f)
+	{
+		return;
+	}
+
+	// AN AREA BLOW, NOT A LASTING FIRE. `bIsArea` says it cannot be evaded, which
+	// is what "you erupt" describes; leaving `bIsDamageOverTime` false lets an
+	// energy shield absorb it as it absorbs any other blow. The same two choices
+	// `StepArtilleryStrike` and `NoteDeathForHellfire` make.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+
+	// THE PLAYER FIRST AND SEPARATELY, because the ally search below excludes the
+	// actor it is asked on behalf of -- its shared gather step drops
+	// `Actor == Instigator`. The row says the nova reaches "you and nearby
+	// allies"; a rule that only used the search would erupt and never touch the
+	// player at all.
+	UCataclysmSkillEffects::ApplyDirectDamage(Player, Player, Damage, Delivery);
+
+	// AND THEN WHOEVER IS ON THE PLAYER'S SIDE INSIDE IT. This is the one rule
+	// here that asks for ALLIES: `Demonic_Hellfire` catches everyone because its
+	// row names nobody, and this row names its two sides.
+	//
+	// IT ANSWERS AN EMPTY LIST TODAY AND THAT IS NOT A FAULT. The player's only
+	// possible allies are minions, which are a placeholder under issue #340, so
+	// in a dungeon as it stands the nova reaches the player alone. The call is
+	// here because the row asks for it and because the day a minion exists this
+	// rule should already be right.
+	const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+		World, Player, Player->GetActorLocation(), Effects::BrandNovaRadiusCm);
+	for (AActor* Ally : Allies)
+	{
+		if (!UCataclysmTargeting::AbilitySystemOf(Ally))
+		{
+			continue;
+		}
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Player, Ally, Damage, Delivery);
+	}
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForWitheredGround(
@@ -3441,6 +3549,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// above has already taken the reduction off the character.
 		DeathsEmbraceSecondsOnFloor = 0.0f;
 		DeathsEmbraceStacksApplied = 0;
+
+		// AND A PART-BUILT BRAND GOES WITH THE FLOOR. The row does not ask for
+		// this, unlike Death's Embrace above; the code wants it, because a count
+		// carried across a loading screen would erupt on a floor the player had
+		// not yet hit anything on. No applied figure to clear beside it: a brand
+		// puts nothing standing on the character.
+		BrandStacks = 0;
 
 		// AND INFERNAL RAIN FORGETS BOTH ITS CLOCK AND ITS PATCHES. The clock so
 		// the first patch of a floor does not arrive on its first beat carrying

@@ -618,6 +618,36 @@ public:
 	static const TCHAR* HellfireKey;
 
 	/**
+	 * Brand of the Aggressor: "Hitting an enemy applies a stack of 'Brand' to
+	 * you. At 20 stacks, you erupt in a fire nova that deals 20% of your max HP
+	 * to you and nearby allies." Issues #1820 and #41.
+	 *
+	 * THE ROW STATES BOTH OF ITS NUMBERS, so this rule judges neither. Twenty
+	 * stacks and twenty percent of maximum health are read off the sentence.
+	 *
+	 * THAT IS NOT UNIQUE AND THE FIRST DRAFT OF THIS COMMENT SAID IT WAS.
+	 * Measured across the seventeen rows built before this one:
+	 * `Famine_Starvation` states two ("reduced by 1%. Up to 60%") and
+	 * `Celestial_Edict_of_Silence` states two ("Every 90 seconds ... for 15
+	 * seconds"). What IS true is narrower and worth the line: the only figure
+	 * this rule decides is the nova's radius, which is one fewer than
+	 * `Demonic_Hellfire` below it and one fewer than `Pestilence_Spore_Clouds`,
+	 * each of which had to answer a "chance" the table left open.
+	 *
+	 * IT IS THE PLAYER'S OWN BLOW THAT BRANDS, WHICH IS THE OPPOSITE WAY ROUND
+	 * FROM `Famine_Wasting_Sickness`. That row counts stacks when a blow lands ON
+	 * the player and its listener tests `Notice.Target`; this row counts them
+	 * when the player's blow lands on a creature, so its listener tests
+	 * `Notice.Attacker`. Everything else about the two counts is the same shape.
+	 *
+	 * THE NOVA REACHES THE PLAYER AND THEIR ALLIES AND NOT THE CREATURES, which
+	 * is the row's own wording -- "to you and nearby allies" -- and the opposite
+	 * of `Demonic_Hellfire` above, whose row names nobody and therefore catches
+	 * everyone.
+	 */
+	static const TCHAR* BrandOfTheAggressorKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -1348,6 +1378,56 @@ public:
 	 */
 	static constexpr float HellfireExplosionHits = 1.0f;
 
+	/**
+	 * How many of the player's landed blows brand before the nova.
+	 *
+	 * THE ROW'S OWN FIGURE: "At 20 stacks, you erupt". Nothing is derived here
+	 * and nothing is judged.
+	 */
+	static constexpr int32 BrandStacksToErupt = 20;
+
+	/**
+	 * What share of the player's maximum health the nova deals.
+	 *
+	 * THE ROW'S OWN FIGURE: "deals 20% of your max HP".
+	 *
+	 * DEALT AND NOT TAKEN, AND THE DIFFERENCE IS NOT PEDANTRY. The nova is
+	 * delivered as an ordinary area blow, the same way `War_Artillery_Strike`
+	 * delivers its own, so armour and resistances take their cut on the way in
+	 * and what reaches health is less than the figure stated. The row says what
+	 * is dealt. `ACataclysmDungeonGameMode` cannot promise what arrives without
+	 * bypassing every defence the player has earned, which no other rule does.
+	 */
+	static constexpr float BrandNovaMaxHealthPercent = 20.0f;
+
+	/**
+	 * How far the nova reaches.
+	 *
+	 * THE ONE FIGURE THE ROW DOES NOT STATE, and it is declared as
+	 * `InfernalRainRadiusCm` rather than as a number for the reason
+	 * `HellfireRadiusCm` above gives: 300 is this project's settled answer for a
+	 * thing at a point on the floor.
+	 *
+	 * NOT `ArtilleryStrikeRadiusCm`, WHICH IS 600, because that figure belongs to
+	 * a circle its own row calls "a massive red circle" and this row says nothing
+	 * about size.
+	 */
+	static constexpr float BrandNovaRadiusCm = InfernalRainRadiusCm;
+
+	static_assert(
+		BrandStacksToErupt > 1,
+		"A nova at one stack is a nova on every blow, and the row's word 'stacks' "
+		"describes nothing.");
+
+	static_assert(
+		BrandNovaMaxHealthPercent > 0.0f && BrandNovaMaxHealthPercent < 100.0f,
+		"At zero the nova deals nothing and the row is unbuilt; at a hundred it "
+		"kills a player at full health outright, which the row does not say.");
+
+	static_assert(
+		BrandNovaRadiusCm > 0.0f,
+		"A nova that reaches nowhere reaches nobody, the player included.");
+
 	static_assert(
 		HellfireChancePercentOnDeath > 0.0f
 			&& HellfireChancePercentOnDeath < 100.0f,
@@ -1925,6 +2005,33 @@ public:
 	 * at or below zero anyway; answering zero here says so where it can be read.
 	 */
 	static float HellfireDamage(float CreatureAttackDamage);
+
+	/**
+	 * The brand count after a blow, given what it was and whether the blow
+	 * branded.
+	 *
+	 * IT RETURNS TO ZERO ON THE STACK THAT ERUPTS rather than sitting at the
+	 * threshold. "At 20 stacks, you erupt" describes something that happens once
+	 * per twenty; left at twenty, every later blow would erupt again.
+	 *
+	 * THE SHAPE `WastingSicknessStacksAfterHit` ALREADY HAS -- a pure function of
+	 * the old count and one boolean -- so the arithmetic can be tested without a
+	 * world, which is what makes the boundary at twenty checkable at all.
+	 */
+	static int32 BrandStacksAfterHit(int32 Stacks, bool bBrands);
+
+	/** Whether a count that has just been raised is the one that erupts. */
+	static bool BrandErupts(int32 StacksBeforeThisBlow);
+
+	/**
+	 * What the nova deals, given the player's maximum health.
+	 *
+	 * ANSWERS ZERO FOR A PLAYER WHOSE MAXIMUM HEALTH IS UNKNOWN, which is the
+	 * guard `ArtilleryStrikeDamage` above makes and for the same reason: a blow
+	 * that deals nothing still announces itself and would read in a log as a nova
+	 * that landed for nothing.
+	 */
+	static float BrandNovaDamage(float MaximumHealth);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
