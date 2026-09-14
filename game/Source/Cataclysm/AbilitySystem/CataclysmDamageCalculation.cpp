@@ -567,7 +567,17 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	{
 		const float Roll = BlockRoll >= 0.0f ? BlockRoll
 											 : FMath::FRandRange(0.0f, 100.0f);
-		if (Roll < Combat->GetBlockChance())
+		// ASKED FOR, WITH THE BLOW, the same as evasion above and armour below.
+		// Issue #947. One authored enchantment needs it -- "You cannot evade or
+		// block melee attacks" -- and that row needs BOTH this and the evasion
+		// step, which is why the two are separate commits for one sentence.
+		//
+		// THE SHARE A BLOCK REMOVES IS NOT TOUCHED HERE. `BlockDamageReduction`
+		// is a compile-time constant and stays one; "You block for 65%-75% of
+		// damage instead of the normal 50%" is a different change and is not
+		// part of this branch.
+		if (Roll < DefenderStat(Defender, TEXT("block_chance"),
+								Combat->GetBlockChance(), BlowOf(Hit)))
 		{
 			Result.bBlocked = true;
 			Damage *= 1.0f - BlockDamageReduction / 100.0f;
