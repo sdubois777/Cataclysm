@@ -1223,4 +1223,111 @@ bool FCataclysmMovementSuppressionStatNameIsKnown::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAnActionCannotSetOffAnotherAction,
+	"Cataclysm.Player.OneWornActionCannotSetOffAnother",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAnActionCannotSetOffAnotherAction::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// TWO WORN ROWS THAT FEED EACH OTHER. Issue #1815.
+	//
+	// ONE FILLS THE CLASS RESOURCE WHEN IT EMPTIES AND THE OTHER EMPTIES IT WHEN
+	// IT FILLS. Filling it crosses the full threshold, which stamps a window,
+	// which is where actions fire from -- so without a limit the two would run
+	// each other for ever.
+	//
+	// THE BREAK THIS IS FOR is raising the limit from one to two, not removing
+	// it. Removing it would recurse until the run died, and a run that dies
+	// reports no failures at all, so it would prove nothing. At two, the second
+	// row fires exactly once and the pool ends empty instead of full, which is
+	// a plain failure of the assertion below.
+	//
+	// A REAL PLAYER CHARACTER, because the handler that stamps these two windows
+	// is bound by the pawn. Without it nothing would set off anything and this
+	// test would pass with no limit in place at all.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Held =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourFromDamageAttribute(), 1.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(),
+		1.0f);
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(Held, 100.0f);
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction FillOnEmpty;
+	FillOnEmpty.Event = FName(TEXT("resource_empty"));
+	FillOnEmpty.Pool = FName(TEXT("class_resource"));
+	FillOnEmpty.Percent = 100.0f;
+	FillOnEmpty.bOfMaximum = true;
+
+	FCataclysmPoolAction EmptyOnFull;
+	EmptyOnFull.Event = FName(TEXT("resource_full"));
+	EmptyOnFull.Pool = FName(TEXT("class_resource"));
+	EmptyOnFull.Percent = -100.0f;
+	EmptyOnFull.bOfMaximum = false;
+
+	AbilitySystem->SetPoolActions({FillOnEmpty, EmptyOnFull});
+
+	// THE POOL IS FULL AND NOTHING HAS FIRED YET. Without this the assertion at
+	// the end would pass for a character whose pool was simply never touched.
+	if (!TestEqual(TEXT("the pool starts full"),
+				   AbilitySystem->GetNumericAttribute(Held), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// AND SPENDING IT TO ZERO SETS THE PAIR OFF, through the path play uses.
+	UCataclysmFervour::RemoveForHealing(AbilitySystem, /*HealthRestored=*/500.0f,
+										FGameplayTagContainer());
+
+	// THE FIRST ROW RAN AND THE SECOND DID NOT. Emptying the pool fired the row
+	// that fills it; filling it crossed the full threshold and stamped that
+	// window, which is what the row that empties it hangs on -- and that row was
+	// refused because the first one had not finished.
+	TestEqual(TEXT("the pool was filled by the first row and left alone by the second"),
+			  AbilitySystem->GetNumericAttribute(Held), 100.0f, 0.01f);
+
+	// AND THE WINDOW ITSELF STILL OPENED. The limit refuses the ACTION, not the
+	// stamp: a row asking "within N seconds of the resource filling" must still
+	// work while another row is running.
+	TestEqual(TEXT("and the full window opened all the same"),
+			  AbilitySystem->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
