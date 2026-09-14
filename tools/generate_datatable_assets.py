@@ -29,8 +29,8 @@ WHAT THIS SCRIPT CANNOT DO, the same limitation tools/generate_input_assets.py
 has. There is no --check mode, because a .uasset carries generated identifiers
 that differ between runs, so two runs over unchanged input do not produce
 identical bytes. The guarantee comes instead from the automation test
-Cataclysm.Data.EveryGeneratedTableHasAnAsset, which loads every asset and
-compares its contents against the CSV it came from.
+Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt, which loads every
+asset and compares its contents against the CSV it came from.
 
 IT ONLY REBUILDS WHAT MOVED, as of issue #444. A table whose CSV hashes to what
 the record says it was built from, and whose asset is present, is left alone.
