@@ -3517,13 +3517,15 @@ CONDITIONS = {
     # than a node that means it.
     "enemies_in_reach_at_least": (1.0, 20.0, "a number of enemies"),
 
-    # THE THREE PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER, and the
-    # first that read one at all. Issue #1515.
+    # THE FOUR PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER, and the
+    # first that read one at all. Issues #1515 and #1642.
     #
     #   "against Crippled enemies"                     target_carries_cripple
     #   "against enemies that are both Crippled
     #    and Weakened"                    target_carries_cripple_and_weaken
     #   "against enemies you have Weakened"          opponent_carries_weaken
+    #   "enemies carrying a void splinter take
+    #    increased damage from you"        target_carries_void_splinter
     #
     # NONE TAKES A VALUE, because each names its ailment. A predicate asking
     # "carrying at least N debuffs" would compare a number and is a different
@@ -3546,9 +3548,34 @@ CONDITIONS = {
     # fourth and a fifth the right answer is a column naming the ailment on the
     # row instead, and `docs/DECISIONS.md` records that so whoever adds the
     # sixth reads it first.
+    #
+    # THE FOURTH WAS REACHED ON 2026-09-14 AND THE REVISIT HAPPENED, which is
+    # what that rule asks for rather than a silent extension.
+    # `docs/DECISIONS.md` carries it: one row asks, the parameterised column's
+    # cost now falls on `FCataclysmEnchantmentEffectRow` rather than the passive
+    # row struct the original analysis priced, and `ConditionValue` is a float
+    # that cannot carry an ailment's identity. THREE NAMES WERE ASKED FOR AND
+    # ONE WAS ADDED: the rows that looked like they needed a bleeding and a
+    # poisoned target move a number on the ENEMY rather than on the attacker,
+    # so they need an enemy-side modifier and not a predicate here.
     "target_carries_cripple": None,
     "target_carries_cripple_and_weaken": None,
     "opponent_carries_weaken": None,
+    "target_carries_void_splinter": None,
+
+    # AND ONE THAT NAMES THE SAME TWO AILMENTS FROM THE OTHER END. Issue #1718.
+    # `Ravager_basic_c_c0` Spreading Hurt: "+4% increased Area of Effect per
+    # point for attacks that Cripple or Weaken."
+    #
+    # NOT A TARGET-STATE PREDICATE, THOUGH IT SITS BESIDE THEM. An area of
+    # effect shapes an attack BEFORE it lands, so whether a blow applied a
+    # Cripple is not knowable when the bonus is worked out. What is knowable is
+    # whether this character's attacks are ones that cripple or weaken, which is
+    # whether either chance is above zero.
+    #
+    # IT TAKES NO VALUE for the same reason the four above do: it names its
+    # ailments rather than comparing a number.
+    "can_cripple_or_weaken": None,
 
     # "against enemies below 35% health" is `target_health_below` with 35, and
     # "against enemies below half health" is the same name with 50. Issue #1515.

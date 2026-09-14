@@ -226,6 +226,12 @@ FGameplayTag UCataclysmDebuffs::WeakenTag()
 		FName(TEXT("Status.Debuff.Weaken")), /*ErrorIfNotFound=*/false);
 }
 
+FGameplayTag UCataclysmDebuffs::VoidSplinterTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.VoidSplinter")), /*ErrorIfNotFound=*/false);
+}
+
 bool UCataclysmDebuffs::IsBleeding(const UAbilitySystemComponent* AbilitySystem)
 {
 	const FGameplayTag Bleed = BleedTag();

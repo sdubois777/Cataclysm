@@ -247,6 +247,18 @@ public:
 	static FGameplayTag WeakenTag();
 
 	/**
+	 * `Keyword.DoT.VoidSplinter`, or an invalid tag if the vocabulary has lost
+	 * it. Requested the same way as the three above.
+	 *
+	 * UNDER THE DAMAGE OVER TIME BRANCH AND NOT UNDER `Status.Debuff`, unlike
+	 * Cripple and Weaken, because a void splinter deals damage over time rather
+	 * than changing a number on the character. `DebuffRootNames` names
+	 * `Keyword.DoT` as a root, so it still reaches `TagsOn` and a condition can
+	 * read it there. `BleedTag` above is the same shape for the same reason.
+	 */
+	static FGameplayTag VoidSplinterTag();
+
+	/**
 	 * Whether this character is Bleeding, which Thirst for Pain asks.
 	 *
 	 * A CHILD OF THE DAMAGE OVER TIME BRANCH, so a character that is Bleeding is
