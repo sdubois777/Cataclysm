@@ -517,9 +517,22 @@ bool FCataclysmWeakenTakesAShareOfDamage::RunTest(const FString&)
 			return false;
 		}
 
+		// THE TEST HAS TO GIVE THE CREATURE ITS DAMAGE. Only a game mode calls
+		// `SetAttackDamage`, so a creature spawned straight into a test world has
+		// a starting attack damage of zero and `ApplyStartingAttributes` writes
+		// the attribute only when that figure is above zero. **The first version
+		// of this test read the attribute without setting it and measured 0.00.**
+		//
+		// COMFORTABLY ABOVE THE ROW'S CAP, and read from the row so it stays that
+		// way if the sheet moves. A figure below the cap would let a subtracted
+		// reduction reach zero and make the sections below indistinguishable from
+		// one that worked.
+		Imp->SetAttackDamage(Row.StrengthCap * 2.0f);
+
 		// THE STATE THIS TEST BUILDS IS ASSERTED BEFORE THE BEHAVIOUR IS. A
 		// creature with no attack damage would give a ratio of zero over zero,
-		// and every assertion below would be measuring nothing.
+		// and every assertion below would be measuring nothing. **This assertion
+		// is not decoration: it is what caught the missing line above.**
 		const float Before = DamageOf(Imp);
 		if (!TestTrue(FString::Printf(
 				TEXT("the Imp deals damage to begin with, got %.2f"), Before),
@@ -548,11 +561,19 @@ bool FCataclysmWeakenTakesAShareOfDamage::RunTest(const FString&)
 			return false;
 		}
 
-		// ONE BELOW THE ROW'S STRENGTH AND ONE WELL ABOVE IT, which is what makes
-		// the two cases distinguishable: a subtraction of 20 would take all of
-		// the first creature's damage and a fifth of the second's.
+		// ONE BELOW THE ROW'S STRENGTH AND ONE WELL ABOVE ITS CAP, which is what
+		// makes the two cases distinguishable: subtracting the figure takes ALL
+		// of the first creature's damage and a small part of the second's, where
+		// a share takes the same part from both.
+		//
+		// AND NEITHER IS 100. A subtracted reduction is `Strength / Current`,
+		// which equals the intended `Strength / 100` exactly when the stat is
+		// 100 -- so a creature with 100 attack damage is the one value where a
+		// subtraction passes a share's assertion. An earlier version of this
+		// section set the stronger creature to `Row.Strength * 5`, which is
+		// precisely 100, and put one of the two assertions on that coincidence.
 		Weak->SetAttackDamage(Row.Strength * 0.5f);
-		Strong->SetAttackDamage(Row.Strength * 5.0f);
+		Strong->SetAttackDamage(Row.StrengthCap * 2.0f);
 
 		const float WeakBefore = DamageOf(Weak);
 		const float StrongBefore = DamageOf(Strong);
@@ -588,7 +609,14 @@ bool FCataclysmWeakenTakesAShareOfDamage::RunTest(const FString&)
 			return false;
 		}
 
+		Imp->SetAttackDamage(Row.StrengthCap * 2.0f);
 		const float Before = DamageOf(Imp);
+		if (!TestTrue(FString::Printf(
+				TEXT("the Imp deals damage to begin with, got %.2f"), Before),
+			Before > 0.0f))
+		{
+			return false;
+		}
 
 		// HALFWAY TO THE CAP, so the figure is scaled and still under it. Taken
 		// from the row rather than typed, so it stays halfway if the sheet moves.
@@ -611,7 +639,14 @@ bool FCataclysmWeakenTakesAShareOfDamage::RunTest(const FString&)
 			return false;
 		}
 
+		Imp->SetAttackDamage(Row.StrengthCap * 2.0f);
 		const float Before = DamageOf(Imp);
+		if (!TestTrue(FString::Printf(
+				TEXT("the Imp deals damage to begin with, got %.2f"), Before),
+			Before > 0.0f))
+		{
+			return false;
+		}
 
 		// TWICE THE SCALE THAT REACHES THE CAP. The reduction stops at the cap and
 		// the leftover doubles the duration.
