@@ -113,6 +113,83 @@ honest reading.
 
 ---
 
+## 2026-09-14 — A bonus that depends on the class resource now reaches the character, and the same binding cannot serve a bonus that depends on a clock
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp` (the
+player pawn, which owns the movement component and decides what speed to give it), and
+`game/Source/Cataclysm/Tests/CataclysmPlayerMovementTests.cpp`. Issue
+[#1825](https://github.com/sdubois777/Cataclysm/issues/1825). **Applied.**
+
+### What was wrong
+
+`Positive_When_your_class_resource_is_full_your_movement` — "When your class resource is
+full your movement speed is increased by 15%-30%" — was authored, imported, validated,
+tested, and did not move the character.
+
+**The stat pipeline was never at fault.** It resolved the modifier correctly the whole time.
+What failed was the delivery of a correct answer to the thing that moves the character: the
+movement component is told a speed and keeps it, and `RefreshMovementSpeed` was re-told by
+only three things — the movement-speed attribute's own change delegate, `HealthChanged()`,
+and initialisation. A class-resource change was none of them.
+
+Its own sibling is the proof. `game/Data/EnchantmentEffects.csv` carries the same enchantment
+family with the same `class_resource_at_maximum` condition on `crit_chance`, and **that one
+always worked**, because critical chance is asked for at the moment of a blow. Only a stat
+that is delivered once and kept can lose to this.
+
+### The decision: bind the two attributes, not build a second notify chain
+
+Issue #959 met this exact problem for health and answered it with the `RefreshMovementSpeed()`
+call inside `HealthChanged()`. `class_resource_at_maximum` arrived nineteen days later and
+inherited nothing.
+
+**Copying health would have been the wrong shape.** Health has no attribute delegate at all:
+`UCataclysmVitalAttributeSet` calls `NotifyHealthChanged` from each of its own write sites and
+that ends at the pawn. Reproducing that for the class resource would mean a new notify method,
+finding every site that writes the pool, and calling it from each — more code and more places
+to forget one.
+
+**The class resource is a gameplay attribute, and the pawn already watches one.** The binding
+for movement speed sits a few lines above, `Remove` before `Add` because
+`InitAbilityActorInfo` is safe to run twice. Two more of the same shape is the whole change.
+
+**BOTH ATTRIBUTES, NOT ONLY WHAT THE CHARACTER HOLDS.** `ClassResourceAtMaximum` compares the
+held value against the maximum, so the condition also turns true when the **maximum falls** to
+meet a held value that never moved. That is not hypothetical — the Crowned thrall lowers a
+summoner's Fervour reserve. Binding only the pool would have passed every obvious test and
+failed on that case in play.
+
+### Why one test, and why it is the only shape that can fail
+
+The sibling test for the health condition calls `Character->HealthChanged()` **by hand**,
+because a test world never runs the notify chain. It therefore proves the pawn responds *when
+told*, and **would keep passing with every binding deleted.**
+
+A gameplay attribute's change delegate does fire in a test world when the attribute is
+written, and an existing test depends on exactly that, with its own comment saying so. So the
+new test writes the attribute and reads the movement component **with no call in between**,
+and fails when nothing is listening — which is the defect.
+
+It also asserts the maximum case, which the held value alone cannot show: a binding on the
+pool only would satisfy every other assertion in the test and fail the last one.
+
+### The five rows on #1821 are a different mechanism, and no binding will serve them
+
+**A delegate can only watch a gameplay attribute.** `seconds_after_charge_skill`,
+`seconds_after_basic_attack` and `seconds_after_block` are timestamps compared against elapsed
+world time. Nothing writes an attribute when such a window opens, and — the part that decides
+it — **nothing writes anything at all when one shuts.** It stops being true as time passes.
+There is no event to bind to. The same holds for `while_moving`, `while_stationary`,
+`stationary_for_seconds` and `not_attacked_for_seconds`.
+
+Those need **a refresh scheduled for the moment the window expires**, which is knowable when
+the clock is stamped: the stamp is the world time and the row carries the window's length.
+That is a different mechanism and is not built here.
+[#1821](https://github.com/sdubois777/Cataclysm/issues/1821) carries it and the five rows, and
+now carries this reasoning so the next person does not try the delegate first.
+
+---
+
 ## 2026-09-14 — A dungeon hazard belongs to no side, the Artillery Strike's warning is derived from the player's own walk speed, and no production code had ever set the hit-everyone flag
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp`
