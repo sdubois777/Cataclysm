@@ -156,6 +156,36 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float RecoveryLessPercent = 0.0f;
 
+	/**
+	 * How much less maximum health and maximum mana the stacks of Wasting
+	 * Sickness take. Issues #1786 and #41.
+	 *
+	 * TWO FIELDS RATHER THAN THE PER-FLOOR PAIR ABOVE, AND THAT IS THE WHOLE
+	 * POINT OF THEM. Starvation writes `MaxHealthLessPercent` and Dehydration
+	 * writes `MaxManaLessPercent`, once per floor, inside `PlayerEffectsFor`.
+	 * This rule's reduction is driven by stacks and is written on the beat with
+	 * plain assignment ON TOP of what that function produced, so sharing either
+	 * field would silently erase the other rule's share on a floor carrying
+	 * both, and only on such a floor. Issue #1765 describes that fault and
+	 * Withered Ground's `RecoveryLessPercent` took a new field for the same
+	 * reason.
+	 *
+	 * SEPARATE FIELDS ALSO COMPOSE THE WAY THIS GAME COMPOSES. `StatModifiersFor`
+	 * turns each into its own Less multiplier, and
+	 * `UCataclysmStatPipeline` multiplies each source on its own rather than
+	 * summing them first. So Starvation at 10% and Wasting Sickness at 15% leave
+	 * a character with 0.9 x 0.85 of their maximum, not 0.75 of it.
+	 *
+	 * NAMED FOR THEIR SOURCE WHERE EVERY OTHER FIELD HERE IS NAMED FOR ITS
+	 * EFFECT, because two fields that take a share of the same stat cannot both
+	 * be called after the stat.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float SicknessMaxHealthLessPercent = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float SicknessMaxManaLessPercent = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
@@ -164,7 +194,9 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& ResistanceMorePercent <= 0.0f
 			&& HealingReceivedLessPercent <= 0.0f
 			&& MovementSpeedLessPercent <= 0.0f
-			&& RecoveryLessPercent <= 0.0f;
+			&& RecoveryLessPercent <= 0.0f
+			&& SicknessMaxHealthLessPercent <= 0.0f
+			&& SicknessMaxManaLessPercent <= 0.0f;
 	}
 };
 
@@ -204,6 +236,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * | `War_Forced_March` | "You take stacking damage if you stand still for >3s. It forces a ""run and gun"" playstyle." | after 3 seconds without moving, one stack a second, each costing 1% of maximum health a second, up to 5 stacks, every stack cleared by moving |
  * | `Void_The_Nihil_s_Embrace` | "As you move, your resistances are slowly and permanently reduced. To cleanse the effect, you must defeat a high tier enemy. The boss's defeat will restore all of your resistances and grant a temporary buff." | 1% off every resistance for each 10 metres walked, down to 10% off; defeating a Boss or Cataclysm Boss gives every point back and grants 10% more for 20 seconds |
  * | `Death_Death_s_Embrace` | "Players periodically gain stacks of a debuff called ""Embrace of Death,"" which reduces healing received. Stacks reset when entering a new floor." | one stack every 10 seconds spent on the floor, each taking 10 percentage points off every amount of health restored, up to 5 stacks; the stairs clear them |
+ * | `Famine_Wasting_Sickness` | "Enemies have a chance to inflict a stacking debuff that reduces your max HP and max mana. This debuff is permanent for the duration of the dungeon and can only be removed by defeating a floor boss." | each landed enemy blow has a 10% chance to add a stack, up to 5, and each stack takes 3% off maximum health and maximum mana; a boss's death on the floor clears them, and so does the player's own death |
  * | `Death_Mortal_Decay` | "The Death cataclysm introduces an affliction of mortal decay, gradually sapping the player's life force as they progress through the dungeon. To counter this, the player must give death his due souls by reaping enemies to temporarily slow the effect of the affliction." | health drains by 0.1% of the maximum a second for each floor of depth, up to 1% a second; a creature the player kills halves that for 5 seconds |
  *
  * `docs/DECISIONS.md` carries the judgements these needed. FOUR ARE THE FIRST
@@ -224,6 +257,12 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * is one a second, and it lives in the shape of `ForcedMarchStacksAfter` -- one
  * stack plus one for each whole second past the threshold -- rather than in a
  * constant of its own.
+ *
+ * THREE MORE ARE WASTING SICKNESS'S, dated 2026-09-13, and its row states no
+ * number either: the chance a landed blow inflicts a stack, what one stack takes
+ * off both maximums, and the most stacks. That entry also records why stacks are
+ * allowed at all for a debuff an enemy puts on the player, and which of the two
+ * readings of "a floor boss" was taken. Issue #1786.
  *
  * FOUR MORE ARE MORTAL DECAY'S, dated 2026-09-13, and its row states no number
  * either: how much faster the decay runs per floor of depth, the fastest it
@@ -301,6 +340,34 @@ public:
 	 * appears in neither `StatModifiersFor` nor `Describe`.
 	 */
 	static const TCHAR* MortalDecayKey;
+
+	/**
+	 * Wasting Sickness: "Enemies have a chance to inflict a stacking debuff that
+	 * reduces your max HP and max mana. This debuff is permanent for the
+	 * duration of the dungeon and can only be removed by defeating a floor
+	 * boss." Issues #1786 and #41.
+	 *
+	 * THE FIRST RULE IN THIS FILE THAT READS A BLOW LANDING ON THE PLAYER.
+	 * `UCataclysmCombatEvents::OnHit` has announced every blow since issue
+	 * #41's slice 4 and nothing outside the tests listened to it; this row is
+	 * its first production listener. The announcement was not built here.
+	 *
+	 * IT HAS TWO REMOVAL ROUTES AND THE ROW STATES ONE. The row names the floor
+	 * boss. `docs/DECISIONS.md` of 2026-09-10 adds the other: the project owner
+	 * ruled that anything lasting only for a dungeon ends at the player's death,
+	 * "since in the real game that dungeon would resolve on death and you
+	 * wouldn't respawn in it", and named this row as one of the five it covers --
+	 * under its old name, `Famine_Withering_Touch`, which the dungeon side
+	 * stopped using on 2026-09-13.
+	 *
+	 * "A FLOOR BOSS" IS ANY BOSS ON THE FLOOR AND NOT THE ONE AT THE EXIT, which
+	 * is a judgement. The row's article is indefinite, the same line The Nihil's
+	 * Embrace's cleanse already draws, and nothing in the game marks the creature
+	 * placed at a floor's exit as that floor's boss: `FCataclysmFloorBrief::
+	 * bBossAtTheExit` is a fact about the FLOOR, and the Gatekeeper placed there
+	 * by `FCataclysmFloorPopulation` carries no mark saying so.
+	 */
+	static const TCHAR* WastingSicknessKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -742,6 +809,70 @@ public:
 	 * Infernal Rain, Singularity Wells and Death's Embrace each say of their own
 	 * figures. `docs/DECISIONS.md` carries the sources.
 	 */
+	/**
+	 * Wasting Sickness: the chance one landed blow inflicts a stack, what a stack
+	 * takes off both maximums, and the most stacks it reaches.
+	 *
+	 * ALL THREE ARE JUDGEMENTS. The row states no number and no percentage.
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if it ever
+	 * states one.
+	 *
+	 * THREE PER CENT A STACK COMES FROM THE FAMILY THIS ROW IS ACTUALLY IN.
+	 * World of Warcraft's Necrotic affix has enemy melee attacks apply a stacking
+	 * debuff at 3% a stack, and a sibling affix of the same shape uses 2%. That
+	 * is the shipped figure for "enemy hits stack a debuff on you", and it is
+	 * where this comes from.
+	 *
+	 * AND NOT FROM THE GAMES THAT TAKE A QUARTER OF A HEALTH BAR, which are the
+	 * closer match for the WORDING and the wrong match for the SIZE. Vermintide
+	 * 2's Grimoire curse takes 30% of every party member's maximum health for the
+	 * mission, and Darktide's corruption about 25% for one grimoire and 50% for
+	 * two -- mission-scoped maximum-health reductions, exactly this row's "for
+	 * the duration of the dungeon". **In both, the player CHOOSES to take it in
+	 * exchange for reward.** This one is inflicted by being hit, so those settle
+	 * that the shape is shipped and settle nothing about the magnitude.
+	 *
+	 * FIVE STACKS IS THE HOUSE CAP, matching Forced March and Death's Embrace, so
+	 * a player reads the three alike. Fifteen per cent at worst against
+	 * Starvation's 60% suits a row of weight 15 against that row's 20.
+	 *
+	 * THE CAP IS LOAD-BEARING HERE AND DECORATIVE IN THE OTHER TWO, because of
+	 * how rarely the row's own cure appears. Only the Elite dungeon sub-type ends
+	 * every floor with a boss; on other sub-types a player can meet no boss for
+	 * many floors, and the debuff really does last the dungeon. Forced March's
+	 * stacks clear by moving and Death's Embrace's by the stairs.
+	 *
+	 * TEN PER CENT A BLOW SITS BELOW THIS PROJECT'S OWN RANGE FOR AN ON-HIT
+	 * DEBUFF CHANCE. `game/Data/EnchantmentsPositive.csv` carries "Strike skills
+	 * have a 15%-30% chance to apply a random debuff on hit". Below it because
+	 * that one is a reward the player built for and this is a penalty they did
+	 * not choose, and because this one does not expire on its own.
+	 *
+	 * A LANDED BLOW AND NOT AN ATTEMPT, which is what makes the chance mean what
+	 * it says: `FCataclysmHitNotice::Landed` is zero for a blow that was evaded
+	 * or wholly mitigated, and such a blow inflicts nothing.
+	 *
+	 * EXPECT ALL THREE TO NEED TUNING AGAINST REAL PLAY, which every other rule
+	 * in this file says of its own figures.
+	 */
+	static constexpr float WastingSicknessChancePercentPerHit = 10.0f;
+	static constexpr float WastingSicknessPercentPerStack = 3.0f;
+	static constexpr int32 WastingSicknessMostStacks = 5;
+
+	static_assert(
+		WastingSicknessChancePercentPerHit > 0.0f
+			&& WastingSicknessChancePercentPerHit < 100.0f,
+		"Wasting Sickness no longer inflicts its debuff on a CHANCE. At 100 every "
+		"landed blow inflicts a stack, which the row does not ask for -- it says "
+		"'Enemies have a chance to inflict' -- and at 0 the row does nothing.");
+
+	static_assert(
+		WastingSicknessPercentPerStack
+				* static_cast<float>(WastingSicknessMostStacks) < 100.0f,
+		"Wasting Sickness at its cap now takes a character's entire maximum "
+		"health and mana. The row describes a debuff to fight through and cure "
+		"at a boss, not one that removes the character.");
+
 	static constexpr float MortalDecayPercentPerSecondPerFloor = 0.1f;
 	static constexpr float MortalDecayMostPercentPerSecond = 1.0f;
 	static constexpr float MortalDecaySlowPercent = 50.0f;
@@ -951,6 +1082,33 @@ public:
 	 */
 	static float MortalDecayPercentPerSecond(int32 FloorNumber,
 											 bool bSlowedByAKill);
+
+	/**
+	 * What that many stacks of Wasting Sickness take off each of the player's two
+	 * maximums, in percent. Issues #1786 and #41.
+	 *
+	 * ONE FIGURE FOR BOTH MAXIMUMS, because the row states one: "reduces your max
+	 * HP and max mana". `StatModifiersFor` turns it into two Less multipliers.
+	 *
+	 * CLAMPED HERE AS WELL AS WHERE STACKS ARE COUNTED, because this is public
+	 * and a caller holding a count from somewhere else must not be able to ask
+	 * for more than the cap. Death's Embrace's pair makes the same argument.
+	 */
+	static float WastingSicknessMaximumsLessPercent(int32 Stacks);
+
+	/**
+	 * How many stacks of Wasting Sickness a player carries after a blow lands,
+	 * given what they carried and whether the chance came up.
+	 *
+	 * A PURE FUNCTION OF THE TWO, so the rule can be checked by passing numbers
+	 * in and the caller keeps the random draw. That is what lets a test assert
+	 * the cap and the refusal without making a roll come up.
+	 *
+	 * @param Stacks    what the player carried before the blow. Below nothing
+	 *                  counts as nothing
+	 * @param bInflicts whether this blow's chance came up
+	 */
+	static int32 WastingSicknessStacksAfterHit(int32 Stacks, bool bInflicts);
 
 	/**
 	 * What the modifiers in force on a floor do to the player.

@@ -10,8 +10,9 @@ The Nihil's Embrace a point of every resistance for each stretch walked,
 Death's Embrace a share of every amount of healing for each stretch of time the
 player stays on the floor, the Field Medic heals other enemies and does not
 attack, Unstable Dimensions draws another modifier onto the floor, Infernal
-Rain drops patches of burning ground, and Mortal Decay saps health faster the
-deeper the floor is until the player reaps something.
+Rain drops patches of burning ground, Mortal Decay saps health faster the
+deeper the floor is until the player reaps something, and Wasting Sickness
+stacks a reduction to both of the player's maximums when an enemy's blow lands.
 
 THAT LIST IS NOT A COUNT, AND IT USED TO BE ONE. This paragraph said "five of the
 117 rows" and named five; three rules had been added since without it moving, so
@@ -511,3 +512,94 @@ def test_mortal_decays_constants_still_describe_a_gradual_decay_a_kill_slows():
         "affliction outright, which the row does not ask for -- it says "
         "'temporarily slow the effect' -- and at 0 the row's second sentence "
         "does nothing.")
+
+
+def test_wasting_sickness_states_no_number_of_its_own():
+    """All three of its constants are judgements: its row states no number.
+
+    IF THE ROW EVER STATES ONE, this fails, so the C++ constants are checked
+    against it and `docs/DECISIONS.md` stops calling them judgements.
+    """
+    words = flat(rows()["Famine_Wasting_Sickness"]["Description"])
+
+    assert "%" not in words, words
+    assert not [c for c in words if c.isdigit()], (
+        "The Wasting Sickness row now states a number. Check "
+        "WastingSicknessChancePercentPerHit, WastingSicknessPercentPerStack and "
+        "WastingSicknessMostStacks against it and update docs/DECISIONS.md.")
+
+
+def test_wasting_sickness_says_chance_stacking_both_maximums_and_its_two_cures():
+    """Five wordings the rule rests on, two of them load-bearing.
+
+    "A CHANCE" IS WHY A BLOW ROLLS. The rule compares a roll against
+    `WastingSicknessChancePercentPerHit` rather than inflicting a stack on every
+    blow, and a static assertion keeps that chance between 0 and 100.
+
+    "STACKING" IS WHY THERE IS A COUNT AT ALL. This project's one-stack rule is
+    about effects the PLAYER applies to enemies; a debuff enemies stack on the
+    player sits outside it, which issue #913 records.
+
+    "MAX HP AND MAX MANA" IS ONE FIGURE FOR TWO STATS, so the rule holds one
+    per-stack share and `StatModifiersFor` writes two Less multipliers.
+
+    "PERMANENT FOR THE DURATION OF THE DUNGEON" IS WHY THE STAIRS DO NOT CURE IT.
+    `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer` puts the APPLIED figure
+    back to nothing on a floor change and deliberately leaves the stack count
+    alone. If the row stops saying this, that is wrong.
+
+    "A FLOOR BOSS" IS THE ROW'S OWN CURE, and the reading that any boss on the
+    floor satisfies it is a judgement recorded in `docs/DECISIONS.md`. The row's
+    other cure -- the player's own death -- is NOT in the row: it comes from the
+    owner's ruling of 2026-09-10, so nothing here can check it.
+    """
+    words = flat(rows()["Famine_Wasting_Sickness"]["Description"]).lower()
+
+    assert "chance to inflict" in words, words
+    assert "stacking debuff" in words, words
+    assert "max hp and max mana" in words, words
+    assert "permanent for the duration of the dungeon" in words, words
+    assert "floor boss" in words, words
+
+
+def test_wasting_sickness_names_no_rung_of_the_rarity_ladder():
+    """Which creature counts as "a floor boss" stays a judgement while this holds.
+
+    The rule takes any creature the game already calls a boss, which is the same
+    line The Nihil's Embrace's cleanse draws. IF THE ROW EVER NAMES A RUNG, that
+    stops being a judgement and the reading has to be checked against the row.
+    """
+    words = flat(rows()["Famine_Wasting_Sickness"]["Description"]).lower()
+
+    named = [rung for rung in ("common", "elite", "legendary", "herald",
+                               "cataclysm boss")
+             if rung in words]
+    assert not named, (
+        f"The Wasting Sickness row now names {named}. Which creature satisfies "
+        "'a floor boss' is no longer a judgement; check it against the row and "
+        "update docs/DECISIONS.md.")
+
+
+def test_wasting_sicknesses_constants_still_describe_a_chance_and_a_survivable_cap():
+    """The two relationships the rule's shape depends on, checked where CI looks.
+
+    WHY THIS DUPLICATES TWO `static_assert`s, for the reason the Mortal Decay
+    pair above gives: both are compile-time, only a C++ build can fire them, and
+    the build job is not a required check on a pull request. The fast suite is.
+    """
+    chance = constant("WastingSicknessChancePercentPerHit")
+    per_stack = constant("WastingSicknessPercentPerStack")
+
+    most = re.search(r"\bWastingSicknessMostStacks\s*=\s*([0-9]+)\s*;",
+                     EFFECTS_HEADER.read_text(encoding="utf-8"))
+    assert most, "WastingSicknessMostStacks is not declared in the effects header"
+    stacks = int(most.group(1))
+
+    assert 0.0 < chance < 100.0, (
+        f"Wasting Sickness inflicts its debuff at {chance}%. At 100 every landed "
+        "blow inflicts a stack, which the row does not ask for -- it says "
+        "'Enemies have a chance to inflict' -- and at 0 the row does nothing.")
+    assert per_stack * stacks < 100.0, (
+        f"Wasting Sickness at its cap takes {per_stack * stacks}% of both "
+        "maximums. The row describes a debuff to fight through and cure at a "
+        "boss, not one that removes the character.")

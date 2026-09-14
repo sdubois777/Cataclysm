@@ -2,6 +2,177 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — Wasting Sickness stacks on a blow that lands, takes its own two fields rather than Starvation's, and has two cures where the row states one
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
+`.cpp`, `CataclysmDungeonGameMode.h` and `.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDeathTests.cpp` (a comment),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` (a comment),
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1786](https://github.com/sdubois777/Cataclysm/issues/1786) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Famine_Wasting_Sickness`, weight 15.0, in `game/Data/DungeonModifiers.csv`: "Enemies
+have a chance to inflict a stacking debuff that reduces your max HP and max mana. This
+debuff is permanent for the duration of the dungeon and can only be removed by defeating
+a floor boss."
+
+**It was called `Famine_Withering_Touch` until 2026-09-13**, when the dungeon side was
+renamed because an enemy modifier of that name describes a different effect. Entries in
+this file written before then use the old name. `game/Data/EnemyModifiers.csv` line 40
+still holds `Famine_Withering_Touch`, so that name now points only at the enemy table.
+
+It states no number and no percentage, so all three figures are judgements.
+
+### The listener already existed; only the listening is new
+
+`UCataclysmCombatEvents::OnHit` has announced every blow since issue #41's slice 4, with
+`FCataclysmHitNotice` carrying the attacker, the target, what landed and the mitigation
+flags. **Every binding to it in `game/Source` was in a test.** This row is its first
+production listener, bound in `ACataclysmDungeonGameMode::StartPlay` beside the death one
+already there. The announcement was not built for this row and is not part of this change.
+
+`ACataclysmDungeonGameMode::OnSomethingWasHit` dispatches and does nothing itself, the
+shape `OnSomethingDied` already uses, because two further rows of the table describe a
+blow — `Pestilence_Contagious_Touch` and `Demonic_Brand_of_the_Aggressor`.
+
+**A landed blow and not an attempt.** `FCataclysmHitNotice::Landed` is what reached the
+target after every mitigation step and is zero for a blow that was evaded or wholly
+stopped, so such a blow inflicts nothing. That is what keeps the row's "chance" a chance
+per blow that hurts rather than a chance per swing.
+
+### TWO CURES, AND THE ROW STATES ONE
+
+| Cure | Where it comes from |
+| :-- | :-- |
+| defeating a floor boss | the row's own words |
+| the player's own death | the owner's ruling of 2026-09-10, recorded in this file |
+
+That ruling — "Anything that lasts only for the dungeon ends at death, however it is
+worded" — names five rows and this is one of them, listed under its old name. The owner's
+reason: "in the real game that dungeon would resolve on death and you wouldn't respawn in
+it".
+
+**The death cure applies immediately rather than on the next beat, and that is the one
+place in this rule where the difference is observable.**
+`ACataclysmPlayerCharacter::Revive` refills the vitals and the refill READS the maximums,
+so a beat that had not yet run would refill the player to the lowered maximum and then
+lift it, leaving them standing up short of full. That file's own comment already names
+this row as the reason its clearing runs before its refill.
+
+### "A floor boss" is any boss on the floor — a judgement, with the reading it was chosen over
+
+| Reading | What it would mean | Why not |
+| :-- | :-- | :-- |
+| **A. any creature the game calls a boss** — `ACataclysmEnemyCharacter::IsBoss()`, rarity step 4 or above | **taken** | — |
+| B. specifically the creature at the floor's exit | more literal | **nothing in the game marks it.** `FCataclysmFloorPopulation` places a Gatekeeper at the exit when `FCataclysmFloorBrief::bBossAtTheExit` is set, and the spawned actor carries no mark saying it is that floor's boss. There is no floor-boss concept anywhere in `game/Source`. B needs identity built first |
+
+**The row's article is indefinite** — "a floor boss", not "the floor's boss" — and A is the
+same line The Nihil's Embrace's cleanse already draws, so two rows read alike.
+
+**One consequence of A is worth knowing before tuning it.** Only the Elite dungeon
+sub-type ends every floor with a boss. On other sub-types a player can meet no boss for
+many floors, so the debuff really does last the dungeon there. **That is what makes the
+stack cap load-bearing here** where Forced March's and Death's Embrace's caps are not:
+their stacks clear by moving and by the stairs.
+
+### Its own two fields, not the two Starvation and Dehydration already write
+
+`FCataclysmPlayerFloorEffects` gains `SicknessMaxHealthLessPercent` and
+`SicknessMaxManaLessPercent`.
+
+**Sharing `MaxHealthLessPercent` and `MaxManaLessPercent` would silently erase the other
+rule's share on a floor carrying both, and only on such a floor.** Those two are filled
+per floor by `PlayerEffectsFor`; this rule's reduction is written on the beat with plain
+assignment on top of what that function produced. Issue
+[#1765](https://github.com/sdubois777/Cataclysm/issues/1765) describes exactly that fault,
+and Withered Ground's `RecoveryLessPercent` took a new field for the same reason.
+
+**Two fields also compose the way this game composes.** Each becomes its own Less
+multiplier, and `UCataclysmStatPipeline` multiplies each source on its own — its comment
+says they are "NOT summed first". Starvation at 10% with Wasting Sickness at 15% leaves
+0.9 × 0.85 of the maximum rather than 0.75 of it.
+
+**They are named for their source where every other field there is named for its effect**,
+because two fields taking a share of the same stat cannot both be called after the stat.
+
+### Stacks are allowed here, and that is not a breach of the one-stack rule
+
+This project's one-stack rule governs effects **the player applies to enemies**. A debuff
+enemies stack on the player sits outside it, which issue
+[#913](https://github.com/sdubois777/Cataclysm/issues/913) records as consistent with the
+design. The row asks for a "stacking debuff" outright.
+
+### Three judgements
+
+| Constant | Value |
+| :-- | --: |
+| `WastingSicknessChancePercentPerHit` | 10 |
+| `WastingSicknessPercentPerStack` | 3 |
+| `WastingSicknessMostStacks` | 5 |
+
+**Three per cent a stack comes from the family this row is actually in.** World of
+Warcraft's Necrotic affix has enemy melee attacks apply a stacking debuff at **3% a
+stack**, and a sibling affix of the same shape uses 2%. That is the shipped figure for
+"enemy hits stack a debuff on you".
+
+**And not from the games that take a quarter of a health bar, which match the WORDING and
+not the SIZE.** Vermintide 2's Grimoire curse takes **30%** of every party member's maximum
+health for the mission; Warhammer 40,000: Darktide's corruption takes about **25%** for one
+grimoire and **50%** for two. Both are mission-scoped maximum-health reductions, which is
+exactly this row's "for the duration of the dungeon" — **but in both the player CHOOSES to
+take it in exchange for reward.** This one is inflicted by being hit. So they settle that
+the shape is shipped and settle nothing about the magnitude.
+
+**Ten per cent a blow sits below this project's own range for an on-hit debuff chance.**
+`game/Data/EnchantmentsPositive.csv` carries "Strike skills have a 15%-30% chance to apply
+a random debuff on hit". Below it because that one is a reward the player built for, this
+is a penalty they did not choose, and this one does not expire on its own.
+
+**Five stacks is the house cap**, matching Forced March and Death's Embrace, so a player
+reads the three alike. Fifteen per cent at worst against Starvation's 60% suits a row of
+weight 15 against that row's 20.
+
+Two static assertions hold the shape — the chance strictly between 0 and 100, and the cap
+times the per-stack share under 100 — and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` mirrors both, because the C++
+build job is not a required check on a pull request and the fast suite is.
+
+**Expect all three to need tuning against real play**, which every other rule in that file
+says of its own figures.
+
+### The chance roll is pinnable, so a test can assert what a blow did
+
+`Cataclysm.WastingSicknessRoll` follows `Cataclysm.AilmentRoll` exactly, and for the reason
+that variable gives: a test asserting that a blow did or did not inflict a stack would
+otherwise pass some of the time and fail the rest. −1 rolls normally, 0 inflicts on every
+landed blow, 100 inflicts on none.
+
+### Two comments elsewhere that this change falsifies
+
+Both are reworded here rather than left, because a change must not ship a statement that
+contradicts the rule it establishes. The old wording is quoted inside each correction.
+
+- **`game/Source/Cataclysm/Tests/CataclysmDeathTests.cpp`** built a synthetic maximum-lowering
+  effect under the comment "A STAND-IN FOR WITHERING TOUCH, WHICH IS NOT BUILT". The name
+  is the pre-rename one and the row is built now. **The synthetic effect stays**: that test
+  is about what a death clears, and a hand-made timed effect is still the right instrument
+  for it.
+- **`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`** said above
+  `ClearWhatDeathEnds` that "NOTHING THAT LASTS ONLY FOR A DUNGEON IS CLEARED HERE, BECAUSE
+  NONE OF IT IS BUILT". That stopped being true when slice 2 built The Nihil's Embrace, and
+  this row is the second.
+
+**The Nihil's Embrace is not fixed here.** Its permanent resistance loss survives a death,
+which the same ruling forbids; that is issue
+[#1795](https://github.com/sdubois777/Cataclysm/issues/1795), filed rather than fixed,
+because one rule per change.
+
+---
+
 ## 2026-09-14 — Judgements made under the owner's delegation: minion rows are increases, a healing ceiling states its complement, and one reword is held because it would orphan saved items
 
 **Affects:** the Enchantments and Enchantment Effects sheets of
@@ -32,16 +203,24 @@ But `test_an_increased_row_is_worded_as_an_increase` refuses an `increased` row
 whose sentence says neither increased nor reduced, and two of the three sentences
 were worded as multipliers. The ruling on #1792 took the second of two ways —
 reword the sentences to fit the design, rather than change the reader to fit the
-sentences — on the design's own words. `docs/Cataclysm_GDD_v2.md` line 2324:
+sentences — on the design's own words. In `docs/Cataclysm_GDD_v2.md`, the
+paragraph led by **Scaling from an attribute rather than from weapon damage is
+what makes minion affixes safe.**:
 
 > no ordinary affix in this game is a multiplier, so an attribute's contribution
 > and an affix's contribution add rather than multiply
 
-and line 2710, which is the step that carries it to an enchantment:
+and the paragraph whose lead sentence is the step that carries it to an
+enchantment:
 
 > An enchantment takes an affix's slot rather than adding one.
 
-**Both lines are quoted rather than paraphrased, deliberately.** An earlier
+**Both are cited by their lead sentence rather than by line number**, because
+this document is edited directly and grows, so a line number rots without
+anything noticing. `test_no_file_cites_the_design_document_by_line_number`
+caught an earlier draft of this entry doing exactly that.
+
+**Both are quoted rather than paraphrased, deliberately.** An earlier
 summary of the first said "minion contributions add rather than multiply", which
 is wider than the sentence: it speaks of an attribute's contribution and an
 affix's, and an enchantment is neither. The second line is what closes that gap.

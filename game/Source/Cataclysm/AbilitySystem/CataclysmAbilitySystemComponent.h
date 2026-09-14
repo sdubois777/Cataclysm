@@ -1082,11 +1082,31 @@ public:
 	 *                         `UCataclysmSkillEffects::MarkDead`, and its burning
 	 *                         ground stays
 	 *
-	 * NOTHING THAT LASTS ONLY FOR A DUNGEON IS CLEARED HERE, BECAUSE NONE OF IT IS
-	 * BUILT. The ruling ends five such effects at death -- Blood Price, Withering
-	 * Touch, Nihil's Embrace and two 10-piece set bonuses -- and all five exist
-	 * only as rows in `game/Data/`. One built as a timed effect is cleared here
-	 * with no change; one built any other way has to be added.
+	 * NOTHING THAT LASTS ONLY FOR A DUNGEON IS CLEARED HERE, AND THE REASON HAS
+	 * CHANGED. This said "BECAUSE NONE OF IT IS BUILT ... all five exist only as
+	 * rows in `game/Data/`", which was true when it was written and is not now.
+	 * The ruling of 2026-09-10 ends five such effects at a death -- Blood Price,
+	 * Wasting Sickness, The Nihil's Embrace and two 10-piece set bonuses -- and
+	 * two of the five have since been built.
+	 *
+	 * NEITHER IS BUILT AS A TIMED EFFECT, WHICH IS WHY NEITHER IS CLEARED HERE.
+	 * The rule this function states still holds: one built as a timed effect is
+	 * cleared here with no change, and one built any other way has to be added.
+	 * Both of these are the second kind. Their reductions are recorded stat
+	 * modifiers held by `ACataclysmDungeonGameMode` and written through
+	 * `SetDungeonStatModifiers`, which this function does not touch.
+	 *
+	 * WASTING SICKNESS ADDED ITS OWN CLEARING AND THE NIHIL'S EMBRACE HAS NONE.
+	 * `ACataclysmDungeonGameMode::NoteDeathForWastingSickness` clears that row's
+	 * stacks on the player's death, at once rather than on the next beat, because
+	 * `ACataclysmPlayerCharacter::Revive` refills the vitals by reading the
+	 * maximums. The Nihil's Embrace does not, so its permanent resistance loss
+	 * survives a death today, which that ruling forbids. That is issue #1795.
+	 *
+	 * THE ROW NAMED "WITHERING TOUCH" HERE UNTIL 2026-09-13 IS NOW WASTING
+	 * SICKNESS, on the dungeon side only. `game/Data/EnemyModifiers.csv` still
+	 * holds an enemy modifier called Withering Touch, describing a different
+	 * effect, so the old name now points at the wrong table.
 	 *
 	 * `ACataclysmPlayerCharacter::Revive` IS THE ONE CALLER, and it calls this
 	 * before it refills the vitals, so an effect that lowered a maximum is gone

@@ -101,6 +101,12 @@ namespace CataclysmDungeonModifierEffectsTest
 	const FName MortalDecay(TEXT("Death_Mortal_Decay"));
 
 	/**
+	 * And the one an enemy's blow stacks onto the player, which the stairs do not
+	 * cure. Issues #1786 and #41.
+	 */
+	const FName WastingSickness(TEXT("Famine_Wasting_Sickness"));
+
+	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
 	 * of a real one: a player state holding the ability system component, a
 	 * controller, and a possessed pawn.
@@ -235,6 +241,48 @@ namespace CataclysmDungeonModifierEffectsTest
 
 		IConsoleVariable* Variable = nullptr;
 	};
+
+	/**
+	 * A creature placed clear of whatever is already standing there, able to land
+	 * a blow that actually hurts. Issues #1786 and #41.
+	 *
+	 * THE ATTACK DAMAGE IS THE WHOLE REASON THIS EXISTS, and leaving it out cost
+	 * a build cycle: `UCataclysmCombatAttributeSet` starts `AttackDamage` at 0 --
+	 * its own comment says it is "supplied by the equipped weapon" -- and a
+	 * creature spawned bare has no weapon. `UCataclysmSkillEffects::ApplyHit`
+	 * scales its percentage by `WeaponDamageOf` the source, so every blow such a
+	 * creature lands deals nothing, whatever percentage is asked for. Two tests
+	 * here failed on "the creature's blow landed on the player" for exactly that.
+	 *
+	 * A HUNDRED, WHICH IS THE FIGURE THE REST OF THE PROJECT'S TESTS USE.
+	 * `FScopedFighter` in `CataclysmSkillTemplateTests.cpp` sets the same
+	 * attribute the same way.
+	 *
+	 * SPAWNED WITH COLLISION HANDLING SET, because creatures carry a capsule and
+	 * the default handling refuses a spawn whose place is blocked -- which
+	 * answers null and reports as "no creature spawned", naming the symptom
+	 * rather than the cause. The cleanse test above records losing time to it.
+	 */
+	ACataclysmEnemyCharacter* SpawnCreatureThatCanHit(UWorld* World, float AlongX)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Enemy = World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(),
+			FVector(AlongX, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+		if (!Enemy)
+		{
+			return nullptr;
+		}
+
+		if (UAbilitySystemComponent* System = Enemy->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		}
+		return Enemy;
+	}
 
 	/** The one dungeon-rule modifier on a stat in a character's stored inputs. */
 	const FCataclysmStatModifier* DungeonRuleOn(
@@ -2814,6 +2862,461 @@ bool FCataclysmMortalDecayReapTest::RunTest(const FString& Parameters)
 	CataclysmTestWorld::RunClock(World, Effects::MortalDecaySlowSeconds + 1.0f);
 	TestEqual(TEXT("and one window's wait ends it, so two kills did not stack"),
 			  SappedOnOneBeat(), AtFullRate, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWastingStacksTest,
+	"Cataclysm.DungeonModifierEffects.WastingSicknessStacksOnABlowAndStopsAtItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWastingStacksTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE STACK RULE ON ITS OWN, WITH NUMBERS TYPED IN. Issues #1786 and #41. The
+	// caller keeps the random draw, which is what lets this check the cap and the
+	// refusal without making a roll come up.
+
+	// A BLOW THAT DID NOT INFLICT CHANGES NOTHING.
+	TestEqual(TEXT("no stacks and no infliction stays at none"),
+			  Effects::WastingSicknessStacksAfterHit(0, false), 0);
+	TestEqual(TEXT("two stacks and no infliction stays at two"),
+			  Effects::WastingSicknessStacksAfterHit(2, false), 2);
+
+	// AND ONE THAT DID ADDS EXACTLY ONE.
+	TestEqual(TEXT("the first infliction gives one stack"),
+			  Effects::WastingSicknessStacksAfterHit(0, true), 1);
+	TestEqual(TEXT("and the next gives two"),
+			  Effects::WastingSicknessStacksAfterHit(1, true), 2);
+
+	// THE CAP IS REACHED AND NOT PASSED. The floor below it has to be under the
+	// cap, or this would pass for a rule that returned the cap for every input.
+	TestEqual(TEXT("one below the cap still rises to the cap"),
+			  Effects::WastingSicknessStacksAfterHit(
+				  Effects::WastingSicknessMostStacks - 1, true),
+			  Effects::WastingSicknessMostStacks);
+	TestEqual(TEXT("and at the cap another blow adds nothing"),
+			  Effects::WastingSicknessStacksAfterHit(
+				  Effects::WastingSicknessMostStacks, true),
+			  Effects::WastingSicknessMostStacks);
+	TestTrue(TEXT("and one below the cap really is below it"),
+			 Effects::WastingSicknessStacksAfterHit(
+				 Effects::WastingSicknessMostStacks - 2, true)
+				 < Effects::WastingSicknessMostStacks);
+
+	// A COUNT BELOW NOTHING IS NOTHING.
+	TestEqual(TEXT("a negative count with no infliction reads as none"),
+			  Effects::WastingSicknessStacksAfterHit(-3, false), 0);
+	TestEqual(TEXT("and with one, as one"),
+			  Effects::WastingSicknessStacksAfterHit(-3, true), 1);
+
+	// WHAT THE STACKS TAKE, WHICH IS ONE FIGURE FOR BOTH MAXIMUMS.
+	TestEqual(TEXT("no stacks take nothing"),
+			  Effects::WastingSicknessMaximumsLessPercent(0), 0.0f, 0.0001f);
+	TestEqual(TEXT("one stack takes the row's per-stack share"),
+			  Effects::WastingSicknessMaximumsLessPercent(1),
+			  Effects::WastingSicknessPercentPerStack, 0.0001f);
+	TestEqual(TEXT("three stacks take three times it"),
+			  Effects::WastingSicknessMaximumsLessPercent(3),
+			  3.0f * Effects::WastingSicknessPercentPerStack, 0.0001f);
+
+	// AND A COUNT FROM SOMEWHERE ELSE CANNOT ASK FOR MORE THAN THE CAP.
+	TestEqual(TEXT("a count past the cap is clamped to it"),
+			  Effects::WastingSicknessMaximumsLessPercent(
+				  Effects::WastingSicknessMostStacks + 4),
+			  Effects::WastingSicknessMostStacks
+				  * Effects::WastingSicknessPercentPerStack, 0.0001f);
+	TestEqual(TEXT("and a negative count takes nothing"),
+			  Effects::WastingSicknessMaximumsLessPercent(-2), 0.0f, 0.0001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWastingBlowTest,
+	"Cataclysm.DungeonModifierEffects.AnEnemysBlowStacksWastingSicknessOntoBothMaximums",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWastingBlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE GAME MODE'S OWN StartPlay BINDS THE BLOW HANDLER, and a test world never
+	// calls it, so the binding is made the way StartPlay makes it -- the same
+	// requirement the boss cleanse test above records for the death handler.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the combat announcer exists"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// THE ROLL IS PINNED SO THE CHANCE CANNOT DECIDE WHETHER THIS TEST PASSES.
+	// Zero beats any chance above zero, so every landed blow inflicts a stack.
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	// A FLOOR CARRYING THIS ROW AND STARVATION TOGETHER, which is the case the
+	// two separate fields exist for: both rules take a share of maximum health,
+	// from different sources, and neither may erase the other. Issue #1765.
+	Mode->DungeonModifiers = {WastingSickness, Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Wasting Sickness"),
+			 Mode->FloorBrief.Modifiers.Contains(WastingSickness));
+	TestTrue(TEXT("and Starvation"),
+			 Mode->FloorBrief.Modifiers.Contains(Starvation));
+
+	// A CREATURE TO BE STRUCK BY, WITH DAMAGE TO STRIKE WITH. See
+	// `SpawnCreatureThatCanHit`: a creature spawned bare lands blows worth
+	// nothing, and this test failed on exactly that before the attack damage was
+	// set.
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("a creature that can hit spawned"), Enemy))
+	{
+		return false;
+	}
+
+	// NOTHING ON THE PLAYER BEFORE A BLOW LANDS, asserted so the reading after it
+	// cannot be something that was already there.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestEqual(TEXT("no stacks are applied before any blow"),
+			  Effects::WastingSicknessMaximumsLessPercent(0), 0.0f, 0.0001f);
+
+	// THE CREATURE STRIKES THE PLAYER. A real blow, so the announcement travels
+	// the path the game uses.
+	const float Landed =
+		UCataclysmSkillEffects::ApplyHit(Enemy, Player.Character, 50.0f);
+	if (!TestTrue(TEXT("the creature's blow landed on the player"), Landed > 0.0f))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and the player survived it"),
+			  UCataclysmSkillEffects::IsDead(Player.Character));
+
+	// THE BEAT PUTS IT ON THE CHARACTER, within a quarter of a second.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	// TWO DUNGEON-RULE MODIFIERS ON MAXIMUM HEALTH, WHICH IS THE WHOLE POINT OF
+	// THE SEPARATE FIELDS. One is Starvation's per-floor share and one is this
+	// row's stack. `DungeonRuleOn` returns the FIRST it finds, so the count is
+	// read from the stored inputs directly.
+	const FCataclysmStatInputs* HealthInputs =
+		Player.AbilitySystem->GetStatInputs(FName(TEXT("max_health")));
+	if (!TestNotNull(TEXT("maximum health has stored inputs"), HealthInputs))
+	{
+		return false;
+	}
+	int32 DungeonRules = 0;
+	for (const FCataclysmStatModifier& Modifier : HealthInputs->Modifiers)
+	{
+		if (Modifier.Source == ECataclysmModifierSource::DungeonRule)
+		{
+			++DungeonRules;
+			TestTrue(TEXT("and each dungeon rule on it takes rather than gives"),
+					 Modifier.Value < 0.0f);
+		}
+	}
+	TestEqual(TEXT("maximum health carries BOTH dungeon rules, not one"),
+			  DungeonRules, 2);
+
+	// AND MAXIMUM MANA CARRIES THIS ROW'S, which is what says the row's "max HP
+	// and max mana" reached both. Dehydration is not on this floor, so there is
+	// exactly one.
+	const FCataclysmStatModifier* OnMana =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("max_mana"));
+	if (TestNotNull(TEXT("maximum mana carries a dungeon rule too"), OnMana))
+	{
+		TestTrue(TEXT("and it takes rather than gives"), OnMana->Value < 0.0f);
+		TestEqual(TEXT("by one stack's share"), OnMana->Value,
+				  -Effects::WastingSicknessPercentPerStack, 0.01f);
+	}
+
+	// A BLOW THE PLAYER DEALS INFLICTS NOTHING, which is what says the rule reads
+	// who was STRUCK. The roll is still pinned to always inflict, so a rule that
+	// did not check the target would stack here.
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy, 1.0f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* StillOneStack =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("max_mana"));
+	if (TestNotNull(TEXT("maximum mana still carries the rule"), StillOneStack))
+	{
+		TestEqual(TEXT("and the player's own blow added no stack"),
+				  StillOneStack->Value,
+				  -Effects::WastingSicknessPercentPerStack, 0.01f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWastingCureTest,
+	"Cataclysm.DungeonModifierEffects.ABossCuresWastingSicknessAndTheStairsDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWastingCureTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	// THIS ROW ALONE, so every dungeon-rule modifier read below is this rule's.
+	Mode->DungeonModifiers = {WastingSickness};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+	// TAKE TWO BLOWS, SO THE CURE HAS SOMETHING TO REMOVE AND THE SECOND SAYS THE
+	// STACKS ACCUMULATE IN PLAY RATHER THAN ONLY IN THE PURE RULE.
+	//
+	// A SMALL SHARE OF THE CREATURE'S DAMAGE, DELIBERATELY. The player must
+	// SURVIVE both blows: their own death is this rule's other cure, so a test
+	// that killed them would clear the stacks it is about to check and pass for
+	// the wrong reason.
+	const auto StruckOnce = [&](float Where) -> bool
+	{
+		ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, Where);
+		if (!Enemy)
+		{
+			return false;
+		}
+		const float Landed =
+			UCataclysmSkillEffects::ApplyHit(Enemy, Player.Character, 20.0f);
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		return Landed > 0.0f;
+	};
+
+	if (!TestTrue(TEXT("a first blow landed"), StruckOnce(700.0f))
+		|| !TestTrue(TEXT("a second blow landed"), StruckOnce(1100.0f)))
+	{
+		return false;
+	}
+	if (!TestFalse(TEXT("and the player survived both, so nothing else cured it"),
+				   UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+
+	const FCataclysmStatModifier* AfterTwo =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("max_health"));
+	if (!TestNotNull(TEXT("two blows put the rule on maximum health"), AfterTwo))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and two stacks are worth twice one"), AfterTwo->Value,
+			  -2.0f * Effects::WastingSicknessPercentPerStack, 0.01f);
+
+	// THE STAIRS DO NOT CURE IT, WHICH IS THE ROW'S "PERMANENT FOR THE DURATION OF
+	// THE DUNGEON". Changing floor replaces the player's dungeon modifiers
+	// wholesale, so this is also what says the beat puts the reduction back.
+	Mode->FloorNumber = 2;
+	Mode->BuildFloor();
+	Mode->ApplyFloorRulesToPlayer();
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* OnTheNextFloor =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("max_health"));
+	if (TestNotNull(TEXT("the debuff survives the stairs"), OnTheNextFloor))
+	{
+		TestEqual(TEXT("with both stacks still on it"), OnTheNextFloor->Value,
+				  -2.0f * Effects::WastingSicknessPercentPerStack, 0.01f);
+	}
+
+	// A COMMON CREATURE'S DEATH CURES NOTHING. The row asks for a floor boss.
+	ACataclysmEnemyCharacter* Common = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(1600.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a common creature spawned"), Common))
+	{
+		return false;
+	}
+	Common->SetRarityStep(0);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Common, 100000.0f);
+	TestTrue(TEXT("the common creature died"),
+			 UCataclysmSkillEffects::IsDead(Common));
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* StillThere =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("max_health"));
+	if (TestNotNull(TEXT("a Common's death left the debuff alone"), StillThere))
+	{
+		TestEqual(TEXT("unchanged"), StillThere->Value,
+				  -2.0f * Effects::WastingSicknessPercentPerStack, 0.01f);
+	}
+
+	// AND A BOSS'S DEATH CURES IT OUTRIGHT.
+	ACataclysmEnemyCharacter* Boss = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(2200.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a boss spawned"), Boss))
+	{
+		return false;
+	}
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	TestTrue(TEXT("and it really is a boss"), Boss->IsBoss());
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Boss, 100000.0f);
+	TestTrue(TEXT("the boss died"), UCataclysmSkillEffects::IsDead(Boss));
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	TestNull(TEXT("a boss's death takes the debuff off entirely"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWastingDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlayersOwnDeathClearsWastingSicknessAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWastingDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE CURE THE ROW DOES NOT STATE. "can only be removed by defeating a floor
+	// boss" is the row's own sentence; this one comes from the project owner's
+	// ruling of 2026-09-10, which ends anything lasting only for a dungeon at the
+	// player's death and names this row as one of the five it covers.
+	//
+	// AND IT IS CHECKED WITHOUT TICKING THE BEAT AFTERWARDS, WHICH IS THE POINT.
+	// `ACataclysmPlayerCharacter::Revive` refills the vitals by READING the
+	// maximums, so a cure that waited for the next beat would leave a reviving
+	// player refilled to the lowered maximum and then lifted, standing up short
+	// of full. The assertion below therefore runs with no beat in between: if the
+	// rule left this to the beat, the modifier would still be on the character.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {WastingSickness};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// ONE BLOW, SO THERE IS SOMETHING FOR THE DEATH TO CLEAR.
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("a creature that can hit spawned"), Enemy))
+	{
+		return false;
+	}
+	const float Landed =
+		UCataclysmSkillEffects::ApplyHit(Enemy, Player.Character, 20.0f);
+	if (!TestTrue(TEXT("its blow landed on the player"), Landed > 0.0f))
+	{
+		return false;
+	}
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	// THE DEBUFF IS ON THE CHARACTER, ASSERTED BEFORE THE DEATH. Without this the
+	// assertion after it passes for a player who never had a stack at all, which
+	// is the reading it is least able to tell from the one it is testing.
+	const FCataclysmStatModifier* BeforeDying =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("max_health"));
+	if (!TestNotNull(TEXT("the blow put the debuff on maximum health"), BeforeDying))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth one stack"), BeforeDying->Value,
+			  -Effects::WastingSicknessPercentPerStack, 0.01f);
+
+	// NOW KILL THE PLAYER. Health is written directly rather than through a blow,
+	// because what this checks is the death and not what dealt it.
+	UCataclysmSkillEffects::ReduceHealthDirectly(
+		Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("the player died"),
+				  UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+
+	// AND IT IS ALREADY GONE, WITH NO BEAT RUN SINCE. This is the assertion that
+	// fails if the cure is left to `StepWastingSickness` instead of being applied
+	// inside the death listener.
+	TestNull(TEXT("the player's death took the debuff off at once, before any beat"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
+	TestNull(TEXT("and off maximum mana too"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_mana")));
+
+	// AND A BEAT AFTERWARDS DOES NOT PUT IT BACK, which says the count was
+	// cleared rather than only the applied figure.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("and the next beat does not put it back"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
 
 	return true;
 }

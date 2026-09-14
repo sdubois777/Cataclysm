@@ -1413,11 +1413,26 @@ CATACLYSM_TEST(FCataclysmRespawnFillsToTheWholeMaximumTest,
 			UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
 		const float WholeMaximum = CataclysmDeathTest::AttributeOf(Player, MaxHealth);
 
-		// A STAND-IN FOR WITHERING TOUCH, WHICH IS NOT BUILT. That dungeon
-		// modifier's row describes a debuff that "reduces your max HP and max
-		// mana", and the ruling ends it at death with everything else limited to
-		// a dungeon. No effect that is built lowers a maximum, so this one is made
-		// here: a timed effect taking two fifths off maximum health.
+		// A STAND-IN FOR A DUNGEON MODIFIER'S DEBUFF, AND THE ROW IT STOOD IN
+		// FOR IS BUILT NOW. This comment read "A STAND-IN FOR WITHERING TOUCH,
+		// WHICH IS NOT BUILT ... No effect that is built lowers a maximum",
+		// and both halves of that have since stopped being true. The dungeon
+		// row was renamed to Wasting Sickness on 2026-09-13, because an enemy
+		// modifier of the name Withering Touch describes a different effect,
+		// and issue #1786 built it: an enemy's blow now has a chance to stack a
+		// reduction to maximum health and maximum mana that lasts the dungeon.
+		//
+		// THE HAND-MADE EFFECT STAYS, AND THAT IS THE DECISION RATHER THAN AN
+		// OVERSIGHT. This test is about what a death CLEARS, and the thing it
+		// needs is a timed gameplay effect lowering a maximum -- which is the
+		// case `ClearWhatDeathEnds` handles with no code of its own. Wasting
+		// Sickness is not built that way: its reduction is recorded stat
+		// modifiers held by the dungeon game mode, cleared by that rule's own
+		// listener on the player's death. Reaching for it here would test that
+		// rule's clearing rather than this function's, and the two are
+		// different mechanisms.
+		//
+		// So: a timed effect taking two fifths off maximum health, made here.
 		UObject* Outer = GetTransientPackage();
 		UGameplayEffect* Lowering = NewObject<UGameplayEffect>(
 			Outer, MakeUniqueObjectName(Outer, UGameplayEffect::StaticClass(),
