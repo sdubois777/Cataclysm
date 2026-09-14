@@ -2,6 +2,129 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — Unstoppable needs no new stat, only a read that asks the pipeline, and its third clause belongs with Relentless rather than here
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and
+`.cpp` (the one place a crowd control effect is scaled by the target's
+resistance), and `game/Source/Cataclysm/Tests/CataclysmUnstoppableTests.cpp`.
+Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+`Ravager_keystone_spine_004` Unstoppable reads "You cannot be stunned, slowed or
+knocked back while an enemy is within 4 metres of you."
+
+### The node needs no new stat, and the survey that said it did was wrong
+
+An earlier survey of the 41 unbuilt Ravager and Ritualist nodes sorted this one
+into a family of five needing "a flag that forbids something happening to this
+character". **It is not a flag.** `crowd_control_resistance` already exists,
+already scales both a stun's seconds and a shove's centimetres, and already
+refuses the effect outright at 100 —
+`UCataclysmSkillEffects::AfterCrowdControlResistance` returns
+`Amount * (1.0f - Resisted / 100.0f)` and zero at 100 or above. So the node is a
+**conditioned grant of a stat that exists**, at 100, and nothing more.
+
+`Nothing Moves You`'s first clause, "Crowd control effects on you last half as
+long", is the same shape at 50 and needs no code at all.
+
+### The one thing in the way was the third instance of a defect this project has fixed twice
+
+The resistance was read straight off the gameplay attribute. **A conditioned row
+is never folded into an attribute**, so a row granting resistance "while an enemy
+is within 4 metres" would have reached nothing and reported the base for ever.
+The same defect was fixed for evasion in
+[#947](https://github.com/sdubois777/Cataclysm/issues/947) and for the
+regeneration rates in
+[#1038](https://github.com/sdubois777/Cataclysm/issues/1038), and the repair is
+the same: ask `StatForSkill`, passing the attribute as the fallback.
+
+**The fallback is what keeps every existing caller unchanged.** `StatForSkill`
+answers the fallback when the stat line holds no entry for the stat, which is the
+case for every creature in the game and for a player before its first refresh.
+A creature with a written attribute — the enemy modifier Unyielding, an affix on
+seven gear slots, two class lines, a helmet implicit — goes on meaning exactly
+what it meant.
+
+### WHEN it is asked matters as much as how, and here it is asked at the right moment
+
+A stat asked once and cached cannot carry a condition that turns true later: the
+condition changes and the kept answer does not. This node's condition changes as
+bodies move, so that question had to be answered before the change was worth
+making.
+
+**Both callers ask at the moment the effect lands and neither keeps the answer.**
+`ApplyStun` asks as the stun is applied, before the designed-stun exemption and
+before the five-second re-stun rule; the shared displacement body that a
+knockback, a pull, a drag and a launch all use asks as the shove is resolved,
+before the diminishing-returns share is taken. Nothing writes the result
+anywhere.
+
+That is the difference between this stat and `movement_speed`, which asks the
+pipeline correctly, writes the answer into the movement component, and is
+re-asked only by four callers none of which is a clock. (Counted today:
+`OnMovementSpeedChanged`, `OnClassResourceChanged`, `HealthChanged` and
+`InitAbilityActorInfo`. It was three until the class-resource binding landed on
+2026-09-14, so the number is worth re-counting rather than quoting.)
+
+### The third clause is deferred to the Relentless change, and my first reading of it was wrong
+
+**A slow already reaches the player today, and an earlier draft of this entry
+said it did not.** That claim was measured on `game/Data/StatusEffects.csv`,
+where 54 rows carry only `Buff`, `Debuff` or `DoT` and none names a slow, and
+then stated about the whole game. It is the wrong size for its measurement: a
+slow does not have to be a status effect.
+
+**Two BUILT dungeon rules slow the player right now**, both by writing a
+`movement_speed` reduction through `DungeonModifierEffectsAddLess` in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`:
+
+| rule | field | issues |
+| :-- | :-- | :-- |
+| Singularity Wells | `MovementSpeedLessPercent` | [#1605](https://github.com/sdubois777/Cataclysm/issues/1605), [#41](https://github.com/sdubois777/Cataclysm/issues/41) |
+| Grasping Tentacles | `GraspMovementLessPercent` | [#1786](https://github.com/sdubois777/Cataclysm/issues/1786), [#41](https://github.com/sdubois777/Cataclysm/issues/41) |
+
+Three more rows will when they are built: `Famine_Starvation_Curse` ("slower
+movement"), `Pestilence_Fungal_Overgrowth` ("a 50% slow") and
+`Void_Singularity_Wells`' own text.
+
+**So the clause is buildable, and it belongs with `Relentless`** rather than
+here. Relentless ignores a movement reduction at the point where the player's
+speed is resolved; Unstoppable's third clause is the same thing with this node's
+condition on it, and building it twice in two places would be the mistake.
+
+**AND IT CANNOT SIMPLY COPY THE OTHER TWO CLAUSES, which is the part to carry
+forward.** A stun and a shove ask for the resistance at the moment they land.
+`movement_speed` does not: the answer is written into the movement component and
+kept, and `ACataclysmPlayerCharacter::RefreshMovementSpeed` is re-asked by only
+four callers -- `OnMovementSpeedChanged`, `OnClassResourceChanged`,
+`HealthChanged` and `InitAbilityActorInfo`. **None of them is a clock.**
+
+That is enough for the condition to be read *as a reduction lands*, because
+writing the attribute fires the first of those. It is **not** enough for the
+condition changing on its own: a player already slowed when an enemy walks into
+reach keeps the slow until some other event refreshes it, and the slow does not
+come back when that enemy leaves. Whoever builds it must say so in the code
+rather than leave a reader to find it.
+
+### One spelling for the stat name, held by a test
+
+The name appears in the code, in `UCataclysmPlayerClassStats::StatToAttribute`
+and in the `Stat` column of the rows. A disagreement of one character would grant
+the row and never read it, with nothing anywhere saying so: the pipeline would
+answer the fallback, the node would do nothing, and every test that writes the
+attribute directly would still pass.
+`Cataclysm.Unstoppable.TheStatNameIsTheOneTheMapKnows` asserts the constant is a
+key in that map and names the crowd control resistance attribute.
+
+### A defect looked for and not found
+
+`ApplyKnockback`'s comment says a shove "crowd control resistance took to nothing
+returned above", and its own body has no resistance check — which reads like a
+comment describing an intention nobody built, a shape this project has had
+before. **It is not one.** The check is in the shared displacement function it
+calls, added 2026-09-05. The comment is accurate and the code is correct.
+
+---
+
 ## 2026-09-14 — "Empower" is the buff the game already has, a crater's life is half the cadence that leaves it, and a comment naming one granter of that buff was wrong by three
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

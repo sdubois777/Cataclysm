@@ -291,6 +291,8 @@ const TCHAR* UCataclysmSkillEffects::StaggerHealthCeilingStat =
 	TEXT("stagger_health_ceiling_reduction");
 const TCHAR* UCataclysmSkillEffects::KnockdownSecondsStat =
 	TEXT("knockdown_seconds");
+const TCHAR* UCataclysmSkillEffects::CrowdControlResistanceStat =
+	TEXT("crowd_control_resistance");
 
 const TCHAR* UCataclysmSkillEffects::BurnRowName = TEXT("DoT_Burn");
 const TCHAR* UCataclysmSkillEffects::BleedRowName = TEXT("DoT_Bleed");
@@ -2523,10 +2525,35 @@ float UCataclysmSkillEffects::AfterCrowdControlResistance(const AActor* Target,
 		return Amount;
 	}
 
+	// ASKED THROUGH THE STAT PIPELINE RATHER THAN READ OFF THE ATTRIBUTE, so a
+	// CONDITIONED row can reach it. Issue #1515. `Ravager_keystone_spine_004`
+	// Unstoppable grants this stat only "while an enemy is within 4 metres of
+	// you", and a conditioned row is never folded into a gameplay attribute --
+	// so reading the attribute would report the base for ever and the node would
+	// do nothing. Same defect, same repair, as evasion in #947 and the
+	// regeneration rates in #1038.
+	//
+	// THE ATTRIBUTE IS THE FALLBACK, so nothing changes for a target the
+	// pipeline knows nothing about. `StatForSkill` answers the fallback when the
+	// stat line holds no entry, which is every creature in the game and a player
+	// before its first refresh. Every existing caller gets what it got before.
+	//
+	// NO TAGS, because this is a property of the character being controlled
+	// rather than of the skill doing the controlling. A row conditioned on the
+	// incoming effect would need the tags of the thing applying it, which this
+	// function is not given and deliberately does not take.
+	float Stat = Combat->GetCrowdControlResistance();
+	if (const UCataclysmAbilitySystemComponent* Asking =
+			Cast<UCataclysmAbilitySystemComponent>(Defender))
+	{
+		Stat = Asking->StatForSkill(FName(CrowdControlResistanceStat),
+									FGameplayTagContainer(), Stat);
+	}
+
 	// FLOORED AT ZERO AND NOT CAPPED ABOVE, which is the decision recorded in
 	// the header. A negative value would lengthen a stun rather than shorten
 	// one, and nothing in the design says a stat below zero does that.
-	const float Resisted = FMath::Max(0.0f, Combat->GetCrowdControlResistance());
+	const float Resisted = FMath::Max(0.0f, Stat);
 	if (Resisted >= 100.0f)
 	{
 		return 0.0f;
