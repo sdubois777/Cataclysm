@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -108,6 +109,38 @@ namespace CataclysmDungeonModifierEffectsTest
 
 	/** And the one that grabs a player who lingers too close. Issues #1786, #41. */
 	const FName GraspingTentacles(TEXT("Void_Grasping_Tentacles"));
+
+	// THE EDICT OF SILENCE'S KEY IS NOT DECLARED HERE, AND THAT IS WORTH A LINE.
+	// It has been at the top of this namespace since long before it had a rule,
+	// because several tests used it as an example of a row that does NOTHING.
+	// Declaring a second one here was a compile error -- which is the good
+	// outcome; the bad one is below.
+
+	/**
+	 * Beat the dungeon game mode this many times WITHOUT moving the world clock.
+	 * Issues #1786 and #41.
+	 *
+	 * THE TWO CLOCKS ARE SEPARATE AND THAT IS WHAT MAKES THIS USEFUL. The Edict's
+	 * cadence is counted in beats, the way Death's Embrace counts its time on a
+	 * floor, so a silence can be brought on by beating alone; the silence's own
+	 * end is a world-time stamp, so it can only be reached by moving the clock.
+	 * Driving them apart is how a test can say WHICH of the two a behaviour
+	 * depends on.
+	 */
+	void Beat(ACataclysmDungeonGameMode* Mode, int32 Times)
+	{
+		for (int32 Index = 0; Index < Times; ++Index)
+		{
+			Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		}
+	}
+
+	/** How many beats a stretch of seconds takes, rounded up. */
+	int32 BeatsFor(float Seconds)
+	{
+		return FMath::CeilToInt(
+			Seconds / ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
 
 	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
@@ -736,8 +769,24 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 	const FName UnstableDimensions(FCataclysmDungeonFloorRules::UnstableDimensionsKey);
 	const FName NotARow(TEXT("Not_A_Row"));
 
+	// THE UNBUILT CONTROL WAS THE EDICT OF SILENCE UNTIL THAT ROW WAS BUILT, and
+	// this assertion would have started failing rather than quietly passing --
+	// which is what a control is for. Issue #1786 built the last of the four rows
+	// that had no rule, so a row chosen for being unbuilt has to be chosen again.
+	//
+	// CHAOS ECHO CHAMBER FOR A STATED REASON RATHER THAN FOR HAPPENING TO BE
+	// UNBUILT, which is the argument `TheFieldMedicRowIsBuiltNowThatItDoesNotAttack`
+	// already makes where it uses the same row: it is blocked by a standing owner
+	// rule, not by missing code. Its row asks for "a ghostly copy of that ability
+	// ... it can also hit you", and
+	// `tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side`
+	// records the rule that refuses: "A creature does not burn itself or its own
+	// side." A control blocked by a rule outlasts one waiting for a session.
+	const FName BlockedByARule(TEXT("Chaos_Echo_Chamber"));
+
 	const TArray<FCataclysmFloorModifierLine> Lines =
-		Layout::LinesFor({Starvation, EdictOfSilence, UnstableDimensions, NotARow}, Table);
+		Layout::LinesFor({Starvation, BlockedByARule, UnstableDimensions, NotARow},
+						 Table);
 	if (!TestEqual(TEXT("one line per modifier"), Lines.Num(), 4))
 	{
 		return false;
@@ -749,7 +798,7 @@ bool FCataclysmModifierEffectsPanelTest::RunTest(const FString& Parameters)
 			 Lines[0].Description.Contains(TEXT("reduced by 1%")));
 
 	TestTrue(TEXT("an unbuilt one says it does nothing"),
-			 Layout::NameLineFor(Lines[1]).StartsWith(TEXT("Edict of Silence"))
+			 Layout::NameLineFor(Lines[1]).StartsWith(TEXT("Echo Chamber"))
 				 && Layout::NameLineFor(Lines[1]).Contains(TEXT("not built yet")));
 	TestTrue(TEXT("a partly built one says so"),
 			 Layout::NameLineFor(Lines[2]).Contains(TEXT("partly built")));
@@ -3619,6 +3668,477 @@ bool FCataclysmTentacleCooldownTest::RunTest(const FString& Parameters)
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	TestNotNull(TEXT("past its cooldown the same tentacle grabs again"),
 				DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTentacleStairsTest,
+	"Cataclysm.DungeonModifierEffects.AGrabDoesNotSurviveTheStairs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTentacleStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE EVIDENCE FOR FOUR LINES THAT SHIPPED IN THE WRONG FUNCTION. Issue
+	// #1811. `GraspingTentacles.Empty()`, the cadence, the grab's expiry and the
+	// applied figure were reset inside `NoteDeathForWastingSickness`, which runs
+	// when the PLAYER DIES, rather than inside `ApplyFloorRulesToPlayer`, which
+	// runs when the FLOOR CHANGES. Every test of that rule passed, because none
+	// of them changed floor while a grab was running.
+	//
+	// THE OBVIOUS TEST FOR THIS CANNOT FAIL, AND SAYING SO IS THE POINT.
+	// "Assert the grab and the applied figure are gone on the new floor" is true
+	// either way: the floor change rebuilds the player's dungeon modifiers
+	// through `ApplyFloorRulesTo`, which never reads the applied figure, so the
+	// slow comes off whatever the reset block did. The beat that follows leaves
+	// it off too -- with the stale state the beat sees `bGrabbed` true and the
+	// applied figure already matching, so it changes nothing. Both assertions
+	// are still made below, because they are the behaviour the rule promises,
+	// but NEITHER of them is what makes this test evidence.
+	//
+	// WHAT DISCRIMINATES IS A NEW GRAB ON THE NEW FLOOR. `StepGraspingTentacles`
+	// opens with `bGrabbed = GraspedUntilSeconds > Now` and searches for a
+	// tentacle only when that is false. A stale expiry carried down the stairs
+	// therefore makes the player UNGRABBABLE on the new floor for the rest of the
+	// old grab's length, silently. That is the assertion at the end.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE ROLL IS PINNED SO THE CHANCE CANNOT DECIDE WHETHER THIS TEST PASSES.
+	FScopedConsoleString Roll(TEXT("Cataclysm.GraspingTentaclesRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const TCHAR* const Movement = TEXT("movement_speed");
+
+	Mode->DungeonModifiers = {GraspingTentacles};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// GET GRABBED ON THE FIRST FLOOR. Same route as
+	// `ATentacleGrabsAPlayerWhoLingersAndLetsGoOnItsOwn`: wait out the cadence,
+	// then walk onto what appeared.
+	const int32 BeatsForCadence = FMath::CeilToInt(
+		Effects::GraspingTentaclesSecondsBetween
+		/ ACataclysmDungeonGameMode::SecondsBetweenWaveChecks) + 1;
+	for (int32 Beat = 0; Beat < BeatsForCadence; ++Beat)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	ACataclysmGroundZone* Reached = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		Reached = *It;
+		break;
+	}
+	if (!TestNotNull(TEXT("a tentacle to stand on"), Reached))
+	{
+		return false;
+	}
+	Player.Character->SetActorLocation(Reached->GetActorLocation());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	if (!TestNotNull(TEXT("standing on a tentacle is grabbed"),
+					 DungeonRuleOn(Player.AbilitySystem, Movement)))
+	{
+		return false;
+	}
+
+	// THE GRAB HAS TIME LEFT, ASSERTED RATHER THAN ASSUMED. The world clock has
+	// not been moved since the grab began, so every remaining assertion happens
+	// inside the grab's own length. Without this the test could be measuring a
+	// grab that had already ended by itself, which proves nothing about the
+	// stairs.
+	if (!TestTrue(TEXT("the grab is still running, so the stairs are taken mid-grab"),
+				  Effects::GraspingTentaclesGrabSeconds > 0.0f))
+	{
+		return false;
+	}
+
+	// TAKE THE STAIRS.
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is floor 2"), Mode->FloorBrief.FloorNumber, 2);
+
+	// THE TWO ASSERTIONS THE RULE PROMISES, BOTH TRUE EITHER WAY. Kept because
+	// they are what a reader expects to see and their absence would be odd, not
+	// because they carry the proof.
+	TestNull(TEXT("the slow is off the player on the new floor"),
+			 DungeonRuleOn(Player.AbilitySystem, Movement));
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("and the next beat does not put it back"),
+			 DungeonRuleOn(Player.AbilitySystem, Movement));
+
+	// THE ASSERTION THAT CARRIES THE PROOF. Wait out the cadence on the new
+	// floor, walk onto what appears, and be grabbed. With the expiry carried
+	// down the stairs the beat still believes the player is held, never looks for
+	// a tentacle, and this reads null.
+	for (int32 Beat = 0; Beat < BeatsForCadence; ++Beat)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	ACataclysmGroundZone* OnTheNewFloor = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		OnTheNewFloor = *It;
+		break;
+	}
+	if (!TestNotNull(TEXT("a tentacle on the new floor to stand on"), OnTheNewFloor))
+	{
+		return false;
+	}
+	Player.Character->SetActorLocation(OnTheNewFloor->GetActorLocation());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* Held = DungeonRuleOn(Player.AbilitySystem, Movement);
+	if (!TestNotNull(
+			TEXT("a tentacle on the new floor can grab, so no grab was carried down"),
+			Held))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the new grab takes the figure the constant states"),
+			  Held->Value,
+			  -Effects::GraspingTentaclesGrabMovementLessPercent, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictRulesTest,
+	"Cataclysm.DungeonModifierEffects.TheEdictIsDueOnItsCadenceAndTheLockIsAllOrNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictRulesTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE TWO RULES ON THEIR OWN, WITH NUMBERS TYPED IN. Issues #1786 and #41.
+
+	TestFalse(TEXT("a fresh clock brings no silence"),
+			  Effects::EdictOfSilenceIsDue(0.0f));
+	TestFalse(TEXT("and a negative wait brings none either"),
+			  Effects::EdictOfSilenceIsDue(-5.0f));
+	TestFalse(TEXT("just short of the cadence brings none"),
+			  Effects::EdictOfSilenceIsDue(
+				  Effects::EdictOfSilenceEverySeconds - 0.01f));
+	TestTrue(TEXT("at the cadence exactly, one is due"),
+			 Effects::EdictOfSilenceIsDue(Effects::EdictOfSilenceEverySeconds));
+	TestTrue(TEXT("and past it as well"),
+			 Effects::EdictOfSilenceIsDue(
+				 Effects::EdictOfSilenceEverySeconds * 3.0f));
+
+	// THE LOCK IS ALL OR NOTHING. Everything that reads the stat asks only
+	// whether it is above zero, so there is no magnitude here to get wrong.
+	TestEqual(TEXT("no silence locks nothing"),
+			  Effects::SkillsLockedWhile(false), 0.0f, 0.0001f);
+	TestEqual(TEXT("a silence locks at the value the constant states"),
+			  Effects::SkillsLockedWhile(true),
+			  Effects::EdictOfSilenceLockValue, 0.0001f);
+	TestTrue(TEXT("and that value is above zero, which is all any reader asks"),
+			 Effects::SkillsLockedWhile(true) > 0.0f);
+
+	// THE ROW'S TWO FIGURES LEAVE A QUIET PART, which is what makes this a cycle
+	// rather than a permanent silence. A static assertion requires it too.
+	TestTrue(TEXT("the silence is shorter than the gap between silences"),
+			 Effects::EdictOfSilenceLastsSeconds
+				 < Effects::EdictOfSilenceEverySeconds);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictBeatTest,
+	"Cataclysm.DungeonModifierEffects.AFloorCarryingTheEdictLocksSkillsThenLetsThemBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictBeatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT THIS DOES NOT TEST, SAID SO NOBODY LOOKS FOR IT HERE: that a locked
+	// skill is actually refused and that a basic attack still works. Both are
+	// already covered, by `Cataclysm.Skills.ALockedSkillIsRefusedAndAnUnlockedOneIsNot`
+	// and `Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill`. This row adds
+	// no enforcement of its own -- it sets the stat those tests already act on --
+	// so duplicating them here would test the same code twice under a new name.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {EdictOfSilence};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries the Edict of Silence"),
+			 Mode->FloorBrief.Modifiers.Contains(EdictOfSilence));
+
+	const TCHAR* const Locked = UCataclysmSkillSlots::LockedStat;
+
+	// NOTHING IS LOCKED BEFORE THE FIRST SILENCE IS DUE, asserted so the reading
+	// after it cannot be something that was already there.
+	Beat(Mode, BeatsFor(Effects::EdictOfSilenceEverySeconds) - 2);
+	TestNull(TEXT("no silence before the cadence has passed"),
+			 DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	// AND THE CADENCE BRINGS ONE. The world clock is deliberately NOT moved: the
+	// cadence is counted in beats, so beating alone must be enough to bring it.
+	Beat(Mode, 3);
+	const FCataclysmStatModifier* Silenced =
+		DungeonRuleOn(Player.AbilitySystem, Locked);
+	if (!TestNotNull(TEXT("the cadence brings a silence"), Silenced))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the lock is above zero, which is all any reader asks"),
+			 Silenced->Value > 0.0f);
+	TestEqual(TEXT("at the value the constant states"), Silenced->Value,
+			  Effects::EdictOfSilenceLockValue, 0.0001f);
+
+	// AND IT PASSES ON ITS OWN. The silence's END is a world-time stamp, so only
+	// moving the clock can reach it -- beating alone leaves it running, which is
+	// what the two assertions here say in order.
+	Beat(Mode, 4);
+	TestNotNull(TEXT("beating alone does not end it"),
+				DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	CataclysmTestWorld::RunClock(World, Effects::EdictOfSilenceLastsSeconds + 1.0f);
+	Beat(Mode, 1);
+	TestNull(TEXT("past its length the silence lifts"),
+			 DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictStairsTest,
+	"Cataclysm.DungeonModifierEffects.ASilenceSurvivesTheStairsAndEndsAtItsOriginalTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ONE PLACE THE TWO READINGS OF "SWEEPS THE DUNGEON" DIFFER IN PLAY.
+	// Issues #1786 and #41. Every other rule here forgets its clock when the
+	// floor changes; this one does not, because a player descending every eighty
+	// seconds would otherwise never be silenced at all.
+	//
+	// THE CLOCK IS MOVED BEFORE THE FLOOR CHANGES, AND THAT IS THE WHOLE DESIGN
+	// OF THIS TEST. A silence that was RESTARTED by the floor change and one that
+	// was CARRIED give the same answer at every moment unless real time has
+	// passed in between: carried ends at its original stamp, restarted ends a
+	// further stretch later. Ten seconds of a fifteen second silence are spent
+	// before the stairs, so the two part company six seconds afterwards.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const TCHAR* const Locked = UCataclysmSkillSlots::LockedStat;
+
+	Mode->DungeonModifiers = {EdictOfSilence};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// BRING A SILENCE ON, by beating past the cadence with the clock still.
+	Beat(Mode, BeatsFor(Effects::EdictOfSilenceEverySeconds) + 1);
+	if (!TestNotNull(TEXT("a silence is running"),
+					 DungeonRuleOn(Player.AbilitySystem, Locked)))
+	{
+		return false;
+	}
+
+	// SPEND MOST OF IT, so a restart would be visible afterwards. The remaining
+	// stretch has to be shorter than the silence's whole length or the two
+	// readings could not be told apart at all.
+	const float Spent = Effects::EdictOfSilenceLastsSeconds * 2.0f / 3.0f;
+	if (!TestTrue(TEXT("the spent part is less than the whole silence"),
+				  Spent < Effects::EdictOfSilenceLastsSeconds))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, Spent);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("and it is still running when the player reaches the stairs"),
+				DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	// TAKE THE STAIRS. `GoToFloor` is the call play makes, and it applies the new
+	// floor's rules -- which replaces the player's dungeon modifiers wholesale and
+	// so takes the lock off the character. The stack the rule keeps is untouched.
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is floor 2"), Mode->FloorBrief.FloorNumber, 2);
+	TestTrue(TEXT("which also carries the Edict"),
+			 Mode->FloorBrief.Modifiers.Contains(EdictOfSilence));
+
+	// THE NEXT BEAT PUTS IT BACK. This is what says the silence survived rather
+	// than merely not having been noticed: the applied figure was cleared by the
+	// floor change and the beat restores it from the stamp.
+	Beat(Mode, 1);
+	TestNotNull(TEXT("the silence is back on the player on the new floor"),
+				DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	// AND IT ENDS AT ITS ORIGINAL TIME, NOT A RESTARTED ONE. Past the original
+	// stamp and short of where a restart would have put it.
+	const float Remaining = Effects::EdictOfSilenceLastsSeconds - Spent;
+	CataclysmTestWorld::RunClock(World, Remaining + 1.0f);
+	Beat(Mode, 1);
+	TestNull(TEXT("the silence ends at its original time, so the stairs did not restart it"),
+			 DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictLeavingTest,
+	"Cataclysm.DungeonModifierEffects.LeavingTheDungeonEndsTheSilenceAndItsClock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEdictLeavingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHERE "SWEEPS THE DUNGEON" ENDS. Issues #1786 and #41. The clock survives
+	// the stairs and must NOT survive the dungeon, or a player who walked out
+	// mid-silence and came back would be silenced by a sweep that began in
+	// another dungeon.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const TCHAR* const Locked = UCataclysmSkillSlots::LockedStat;
+
+	Mode->DungeonModifiers = {EdictOfSilence};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::EdictOfSilenceEverySeconds) + 1);
+	if (!TestNotNull(TEXT("a silence is running"),
+					 DungeonRuleOn(Player.AbilitySystem, Locked)))
+	{
+		return false;
+	}
+
+	// LEAVE THE DUNGEON. A brief carrying no modifiers at all is what the player
+	// being out of the dungeon looks like to this code, and it is the branch that
+	// forgets this rule's clock.
+	Mode->DungeonModifiers.Reset();
+	Mode->FloorBrief = FCataclysmFloorBrief();
+	Mode->ApplyFloorRulesToPlayer();
+
+	TestNull(TEXT("leaving the dungeon takes the silence off at once"),
+			 DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	// AND THE CLOCK WENT WITH IT. Entering a new dungeon and beating for less
+	// than a whole cadence must bring no silence; if the clock had survived, the
+	// beats already spent would carry over and one would arrive early.
+	//
+	// THE SECOND WALK-OUT IS MID-CADENCE, AND THAT IS THE WHOLE POINT. The walk-out
+	// above happens one beat after a silence began, and a silence sets the cadence
+	// counter to nothing as it starts -- so keeping the counter and clearing it
+	// differ there by a single beat, a quarter of a second, which no assertion four
+	// beats short of due can tell apart. Guard proof B broke the line that clears
+	// the counter and this test did not notice. It walks out with the counter nearly
+	// full instead, so keeping it means the next dungeon is due almost at once.
+	Mode->DungeonModifiers = {EdictOfSilence};
+	Mode->FloorNumber = 1;
+	Mode->BuildFloor();
+	Beat(Mode, BeatsFor(Effects::EdictOfSilenceEverySeconds) - 4);
+	if (!TestNull(TEXT("four beats short of due, no silence yet"),
+				  DungeonRuleOn(Player.AbilitySystem, Locked)))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers.Reset();
+	Mode->FloorBrief = FCataclysmFloorBrief();
+	Mode->ApplyFloorRulesToPlayer();
+
+	Mode->DungeonModifiers = {EdictOfSilence};
+	Mode->FloorNumber = 1;
+	Mode->BuildFloor();
+	Beat(Mode, BeatsFor(Effects::EdictOfSilenceEverySeconds) - 4);
+	TestNull(TEXT("and the new dungeon's clock starts from nothing"),
+			 DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	// AND A FULL CADENCE IN THE NEW DUNGEON STILL BRINGS ONE, so the assertion
+	// above is a clock that restarted rather than a rule that stopped working.
+	Beat(Mode, 8);
+	TestNotNull(TEXT("a full cadence in the new dungeon brings a silence"),
+				DungeonRuleOn(Player.AbilitySystem, Locked));
 
 	return true;
 }

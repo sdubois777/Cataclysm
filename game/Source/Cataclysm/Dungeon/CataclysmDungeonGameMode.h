@@ -1132,6 +1132,27 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Edict of Silence: bring the silence when it is due, and lift it when it has
+	 * run. Issues #1786 and #41.
+	 *
+	 * A CADENCE AND AN EXPIRY STAMP, WHICH ARE BOTH SHAPES THIS FILE ALREADY
+	 * USES. Three rules count a cadence to place something and three hold a
+	 * world-time stamp that expires; this is the first to do both, and issue
+	 * #1786 flagged the row for needing a cycle "no existing rule has" on that
+	 * basis. The halves existed; only their combination is new.
+	 *
+	 * THE CLOCK IS COUNTED IN BEATS AND THE SILENCE IS HELD IN WORLD TIME, which
+	 * is deliberate and not an inconsistency. Death's Embrace's field records the
+	 * reason for counting beats: a subtraction from world time would count a
+	 * paused game, and that difference is exactly what a player would call
+	 * unfair. The silence itself is a stamp because the beat only has to ask
+	 * whether it has passed.
+	 */
+	void StepEdictOfSilence(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Put every floor effect on the player, the beat-driven ones included.
 	 * Issue #41, slice 5.
 	 *
@@ -1378,6 +1399,34 @@ private:
 	 * the duration of the dungeon", and this one describes being held by a
 	 * particular tentacle in a particular place.
 	 */
+	/**
+	 * Edict of Silence: how long since the last silence began, when the one
+	 * running ends, and what the last beat put on the player. Issues #1786
+	 * and #41.
+	 *
+	 * THE CADENCE SURVIVES THE STAIRS, AND IT IS THE ONLY CLOCK IN THIS FILE
+	 * THAT DOES. Every other rule forgets its clock when the floor changes,
+	 * because every other rule describes something happening on a floor. This
+	 * row says the silence sweeps THE DUNGEON, and a player who took the stairs
+	 * every eighty seconds would otherwise never be silenced at all -- the one
+	 * place the two readings of that sentence differ in play. Ruled on
+	 * 2026-09-14 and recorded in `docs/DECISIONS.md`.
+	 *
+	 * SO DOES THE SILENCE ITSELF, for the same reason: walking downstairs in the
+	 * middle of one does not end it.
+	 *
+	 * THE APPLIED FIGURE DOES NOT SURVIVE, like every other rule's. Changing
+	 * floor replaces the player's dungeon modifiers wholesale, which takes the
+	 * lock off the character; forgetting the figure is what makes the next beat
+	 * put it back while the silence is still running.
+	 *
+	 * ALL THREE GO BACK TO NOTHING WHEN THE PLAYER LEAVES THE DUNGEON, which is
+	 * where "sweeps the dungeon" ends.
+	 */
+	float EdictOfSilenceSecondsSinceLast = 0.0f;
+	float EdictOfSilencedUntilSeconds = -1.0f;
+	float EdictOfSilenceLockApplied = 0.0f;
+
 	TArray<FCataclysmGraspingTentacle> GraspingTentacles;
 	float GraspingTentaclesSecondsSinceLast = 0.0f;
 	float GraspedUntilSeconds = -1.0f;

@@ -13,8 +13,9 @@ attack, Unstable Dimensions draws another modifier onto the floor, Infernal
 Rain drops patches of burning ground, Mortal Decay saps health faster the
 deeper the floor is until the player reaps something, and Wasting Sickness
 stacks a reduction to both of the player's maximums when an enemy's blow lands,
-and Grasping Tentacles grabs a player who lingers within one's reach and lets go
-again.
+Grasping Tentacles grabs a player who lingers within one's reach and lets go
+again, and the Edict of Silence locks every skill but the basic attack for
+fifteen seconds in every ninety.
 
 THAT LIST IS NOT A COUNT, AND IT USED TO BE ONE. This paragraph said "five of the
 117 rows" and named five; three rules had been added since without it moving, so
@@ -705,3 +706,81 @@ def test_grasping_tentacles_constants_keep_the_shape_the_ruling_asked_for():
         "no longer land clear of the player -- it would grab the moment it "
         "appeared, and 'careful of getting too close' would describe nothing the "
         "player chose.")
+
+
+def test_the_edict_of_silence_still_states_its_own_two_numbers():
+    """The only row of the four built in this pass whose figures came with it.
+
+    BOTH ARE THE ROW'S: "Every 90 seconds ... for 15 seconds". So neither is a
+    judgement, and this is what fails if the row and the rule drift apart -- the
+    case where the game silences on one schedule and the floor panel tells the
+    player another.
+    """
+    words = flat(rows()["Celestial_Edict_of_Silence"]["Description"])
+    every = constant("EdictOfSilenceEverySeconds")
+    lasts = constant("EdictOfSilenceLastsSeconds")
+
+    assert f"Every {every:g} seconds" in words, words
+    assert f"for {lasts:g} seconds" in words, words
+
+
+def test_the_edict_of_silence_states_no_third_number():
+    """Its row gives two figures and the rule uses exactly those two.
+
+    THE LOCK VALUE IS NOT A THIRD FIGURE. Everything that reads the skill-lock
+    stat asks only whether it is above zero, so one is how "above zero" is
+    written rather than a size anybody chose. IF THE ROW EVER STATES A THIRD
+    NUMBER -- a radius, a share, a count -- this fails, and whatever it names has
+    to be checked against the rule.
+    """
+    words = flat(rows()["Celestial_Edict_of_Silence"]["Description"])
+
+    assert "%" not in words, words
+    assert [c for c in words if c.isdigit()] == ["9", "0", "1", "5"], (
+        "The Edict of Silence row now states a number besides its 90 and 15. "
+        "Check it against EdictOfSilenceEverySeconds, EdictOfSilenceLastsSeconds "
+        "and EdictOfSilenceLockValue, and update docs/DECISIONS.md.")
+
+
+def test_the_edict_of_silence_says_all_skills_and_spares_basic_attacks():
+    """Two wordings the rule rests on, and both are load-bearing.
+
+    "PREVENTING ALL SKILL USAGE" IS WHY THE LOCK IS UNSCOPED. The stat is read
+    through `StatForSkill` with the skill's own tags, so a value carrying
+    `RequiredTags` reaches only skills that match -- which is what the two
+    enchantment rows in `game/Data/EnchantmentEffects.csv` do, each to one slot.
+    This row's modifier carries no tags at all.
+
+    "ONLY BASIC ATTACKS FUNCTION" IS ALREADY BUILT AND NEEDED NO CODE HERE.
+    `UCataclysmSkillTemplate::CanActivateAbility` skips the lock check for that
+    slot unconditionally, and `Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill`
+    is the test that holds it. If the row stops saying this, that exemption
+    becomes a thing this rule relies on for no stated reason.
+    """
+    words = flat(rows()["Celestial_Edict_of_Silence"]["Description"]).lower()
+
+    assert "preventing all skill usage" in words, words
+    assert "only basic attacks function" in words, words
+
+
+def test_the_edict_of_silence_says_it_sweeps_the_dungeon_not_the_floor():
+    """The word the clock-across-the-stairs ruling rests on.
+
+    THE ROW SAYS "SWEEPS THE DUNGEON". Every other rule in that file describes
+    something happening on a floor, and every other rule forgets its clock when
+    the floor changes. This one keeps its clock across the stairs because the
+    sentence names the dungeon, which is the one place the two readings of it
+    differ in play: a player descending faster than the cadence would otherwise
+    never be silenced.
+
+    THIS IS A REMINDER AND NOT A GUARD, and says so. It fails if the row stops
+    saying "dungeon", which is the moment to re-read that ruling in
+    `docs/DECISIONS.md`. It cannot notice the game gaining floors that stay
+    alive, which is the other thing that would retire the reading.
+    """
+    words = flat(rows()["Celestial_Edict_of_Silence"]["Description"]).lower()
+
+    assert "sweeps the dungeon" in words, (
+        "The Edict of Silence row no longer says its silence sweeps the dungeon. "
+        "Its clock is kept across the stairs on the strength of that word; "
+        "re-read the ruling in docs/DECISIONS.md.")

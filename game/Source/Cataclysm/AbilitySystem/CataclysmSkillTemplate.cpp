@@ -398,23 +398,44 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// having stopped working rather than as a cost" -- and the health-cost path
 	// returns early on it.
 	//
-	// IT COSTS NOTHING TODAY AND IS NOT DEAD CODE. Slice 3a's only source is
+	// NO ROW CARRIES `Slot.Basic`, WHICH IS WHY THE EXEMPTION ABOVE COSTS
+	// NOTHING RATHER THAN HIDING ANYTHING. This said "Slice 3a's only source is
 	// scoped to `Slot.Ultimate` and no row carries `Slot.Basic`, so nothing
-	// reaches this yet. It is here for slice 3b, and a test asserts it rather
-	// than leaving it to be discovered.
+	// reaches this yet ... It is here for slice 3b", and the second half stopped
+	// being true. The `Slot.Basic` half is still true and is the part that
+	// matters here.
 	//
 	// A FALLBACK OF ZERO MEANS AN UNKNOWN CHARACTER IS NOT LOCKED. A creature's
 	// ability system is never given a character stat line and a player's has
 	// none before its first refresh; refusing those would take every skill away
 	// from them.
 	//
-	// NOTHING TURNS THIS ON YET, AND THAT IS DELIBERATE RATHER THAN UNFINISHED.
-	// The enchantment effect row that would set the stat has to be authored in
-	// the design workbook, which another branch held when this was written, and
-	// git cannot merge a binary file. Issue #1628 carries that row, the
-	// `RequiredTags=Slot.Ultimate` scoping it needs, and the three engine-side
-	// steps that come with it. A reader finding a lock that nothing locks should
-	// read #1628 rather than assume this was abandoned.
+	// THREE THINGS TURN THIS ON. This said "NOTHING TURNS THIS ON YET, AND THAT
+	// IS DELIBERATE RATHER THAN UNFINISHED ... Issue #1628 carries that row, the
+	// `RequiredTags=Slot.Ultimate` scoping it needs", which was true when it was
+	// written, was already false when issue #1764 recorded it, and is now false
+	// three times over. #1628 is closed. What exists on this branch:
+	//
+	//   game/Data/EnchantmentEffects.csv   `Slot.Movement`, under the condition
+	//                                      `stationary_for_seconds` 2.0
+	//   game/Data/EnchantmentEffects.csv   `Slot.Ultimate`, under the condition
+	//                                      `health_at_or_above` 50.0
+	//   the dungeon modifier               `Celestial_Edict_of_Silence`, UNSCOPED,
+	//                                      for 15 seconds every 90
+	//
+	// THE THIRD IS THE ONE THAT MAKES THIS BRANCH MATTER, AND IT IS UNLIKE THE
+	// OTHER TWO. Both enchantments lock ONE slot under a condition the player
+	// controls; the dungeon modifier locks EVERY slot but this one, on a clock,
+	// with nothing the player can do about it. That is why the exemption above is
+	// unconditional rather than a courtesy: the row's own words are "Only basic
+	// attacks function during this period".
+	//
+	// A PLAYER IS STILL TOLD NOTHING WHEN A SKILL REFUSES HERE, which is issue
+	// #1810 and is deliberately not fixed on this branch. It was tolerable while
+	// the two enchantments were the only sources -- one slot, a condition the
+	// player set off themselves -- and it is not tolerable for fifteen seconds of
+	// total silence. The refusal returns before `Super::` precisely so the player
+	// is not told the wrong reason; nothing yet gives them the right one.
 	if (Slot != ECataclysmAbilitySlot::BasicAttack)
 	{
 		if (const UCataclysmAbilitySystemComponent* Cataclysm =

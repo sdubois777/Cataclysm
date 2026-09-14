@@ -836,7 +836,8 @@ public:
 	 * unreachable by any route rather than merely unused.
 	 *
 	 * ZERO FOR EVERY CLASS, like the flag above it. Its sources are an
-	 * enchantment scoped to the Ultimate slot and, later, the dungeon modifier
+	 * enchantment scoped to the Movement slot, one scoped to the Ultimate slot,
+	 * and the dungeon modifier
 	 * Edict of Silence unscoped. No class line may name it: a class whose every
 	 * member could not use their skills is not a class.
 	 *

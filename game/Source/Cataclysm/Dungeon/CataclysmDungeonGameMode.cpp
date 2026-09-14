@@ -2020,9 +2020,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// Singularity Wells has. Issues #1786 and #41.
 	const bool bGraspingTentacles = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::GraspingTentaclesKey));
+	// AND THE EDICT OF SILENCE, WHICH PLACES NOTHING AND MOVES ONE STAT ON A
+	// CLOCK. Issues #1786 and #41.
+	const bool bEdictOfSilence = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::EdictOfSilenceKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
-		&& !bWastingSickness && !bGraspingTentacles)
+		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence)
 	{
 		return;
 	}
@@ -2111,6 +2115,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	{
 		StepGraspingTentacles(Player, AbilitySystem);
 	}
+
+	// AND THE EDICT OF SILENCE, WHOSE POSITION HERE IS FREE. Issues #1786 and
+	// #41. It spawns nothing and shares no field with any rule above it, so
+	// nothing it does can be undone by them and nothing they do can be undone by
+	// it.
+	if (bEdictOfSilence)
+	{
+		StepEdictOfSilence(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepForcedMarch(
@@ -2146,6 +2159,47 @@ void ACataclysmDungeonGameMode::StepForcedMarch(
 	// resistance, no critical strike and no ailment touch it. The player is its
 	// own instigator because nothing else dealt it.
 	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Amount);
+}
+
+void ACataclysmDungeonGameMode::StepEdictOfSilence(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const UWorld* World = GetWorld();
+	if (!World || !Player || !AbilitySystem)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+
+	// THE CLOCK ADVANCES WHETHER OR NOT A SILENCE IS RUNNING, so "every 90
+	// seconds" is a cycle of ninety with fifteen of it silent rather than fifteen
+	// separated by ninety. The header's constants carry that reading.
+	EdictOfSilenceSecondsSinceLast += SecondsBetweenWaveChecks;
+
+	// A SILENCE ALREADY RUNNING IS NOT RESTARTED. The cadence cannot come due
+	// inside one while the silence is shorter than the gap, which a static
+	// assertion requires -- but asking first means a change to either figure
+	// shortens the cycle rather than silently making it permanent.
+	if (EdictOfSilencedUntilSeconds <= Now
+		&& Effects::EdictOfSilenceIsDue(EdictOfSilenceSecondsSinceLast))
+	{
+		EdictOfSilencedUntilSeconds = Now + Effects::EdictOfSilenceLastsSeconds;
+		EdictOfSilenceSecondsSinceLast = 0.0f;
+	}
+
+	// ONLY WHEN SOMETHING CHANGED, which is the guard every beat-driven rule here
+	// keeps: the apply rewrites the character's whole standing stat line, and
+	// this changes twice in ninety seconds rather than four times a second.
+	const float Wanted =
+		Effects::SkillsLockedWhile(EdictOfSilencedUntilSeconds > Now);
+	if (!FMath::IsNearlyEqual(Wanted, EdictOfSilenceLockApplied))
+	{
+		EdictOfSilenceLockApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepGraspingTentacles(
@@ -2500,6 +2554,11 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// whichever wrote second erased the first. Issue #1765.
 	Effects.GraspMovementLessPercent = GraspMovementLessApplied;
 
+	// AND WHETHER THE EDICT OF SILENCE HAS THE PLAYER'S SKILLS LOCKED. Issues
+	// #1786 and #41. Read unconditionally like the rest: a floor without that row
+	// never sets it, and nothing is what the effects already hold.
+	Effects.SkillsLockedValue = EdictOfSilenceLockApplied;
+
 	UCataclysmDungeonModifierEffects::ApplyToCharacter(Effects, AbilitySystem,
 													  Player->GetEquipment());
 }
@@ -2608,21 +2667,6 @@ void ACataclysmDungeonGameMode::NoteDeathForWastingSickness(
 		{
 			WastingSicknessStacks = 0;
 			WastingSicknessStacksApplied = 0;
-
-			// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues
-			// #1786 and #41. The list because
-			// `UCataclysmFloorContents::ClearTheFloor` has already destroyed
-			// those actors and a stale list would count them against the cap and
-			// stop the tentacles entirely; the clock so the first of a floor does
-			// not arrive on its first beat carrying the last floor's wait; the
-			// grab because a player who took the stairs is not still held by a
-			// tentacle they left behind; and the applied figure because the call
-			// above has already taken the reduction off the character, so leaving
-			// it would make the next beat believe it was still applied.
-			GraspingTentacles.Empty();
-			GraspingTentaclesSecondsSinceLast = 0.0f;
-			GraspedUntilSeconds = -1.0f;
-			GraspMovementLessApplied = 0.0f;
 			ApplyChangingFloorEffects(
 				Player,
 				Cast<UCataclysmAbilitySystemComponent>(
@@ -2920,6 +2964,41 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// the row does not offer.
 		WastingSicknessStacksApplied = 0;
 
+		// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues #1786
+		// and #41. The list because `UCataclysmFloorContents::ClearTheFloor` has
+		// already destroyed those actors and a stale list would count them
+		// against the cap and stop the tentacles entirely; the clock so the first
+		// of a floor does not arrive on its first beat carrying the last floor's
+		// wait; the grab because a player who took the stairs is not still held
+		// by a tentacle they left behind; and the applied figure because the call
+		// above has already taken the reduction off the character, so leaving it
+		// would make the next beat believe it was still applied.
+		//
+		// THESE FOUR LINES WERE IN `NoteDeathForWastingSickness` UNTIL NOW, AND
+		// THAT WAS SHIPPED. The change that built Grasping Tentacles anchored
+		// them on `WastingSicknessStacksApplied = 0;`, which appears twice --
+		// once here and once in that death handler -- and attached them to the
+		// wrong one. Every test of that rule still passed, because none of them
+		// changed floor while a grab was running. What it cost in play: a grab
+		// survived the stairs, the cadence carried across floors, and the applied
+		// figure stayed set while the floor change had already taken the slow off
+		// the character. Found by the Edict of Silence's stairs test, which fails
+		// outright when a rule's applied figure is not cleared here.
+		GraspingTentacles.Empty();
+		GraspingTentaclesSecondsSinceLast = 0.0f;
+		GraspedUntilSeconds = -1.0f;
+		GraspMovementLessApplied = 0.0f;
+
+		// AND THE EDICT OF SILENCE FORGETS ONLY WHAT WAS APPLIED. Issues #1786
+		// and #41. ITS CLOCK AND ITS SILENCE DELIBERATELY SURVIVE THE STAIRS,
+		// which makes it the only rule in this function that keeps a clock across
+		// a floor. The row says the silence sweeps the DUNGEON, and a player
+		// descending every eighty seconds would otherwise never meet one. The
+		// applied figure still goes, because the call above has already taken the
+		// lock off the character and the next beat has to put it back while the
+		// silence is still running.
+		EdictOfSilenceLockApplied = 0.0f;
+
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is
 		// permanent within a dungeon rather than across a run.
@@ -2936,6 +3015,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			// AND WASTING SICKNESS'S STACKS GO WITH IT, which is where "for the
 			// duration of the dungeon" ends. Issues #1786 and #41.
 			WastingSicknessStacks = 0;
+
+			// AND LEAVING THE DUNGEON IS WHERE THE EDICT OF SILENCE'S CLOCK
+			// FINALLY STOPS. Issues #1786 and #41. This is the branch that runs
+			// when the brief carries no modifiers at all, which is the player
+			// out of the dungeon -- and "sweeps the dungeon" ends there.
+			EdictOfSilenceSecondsSinceLast = 0.0f;
+			EdictOfSilencedUntilSeconds = -1.0f;
 
 			// AND MORTAL DECAY'S KILL WINDOW GOES WITH IT. Issues #1786 and
 			// #41. Not on a new floor, the way the fields above this branch
