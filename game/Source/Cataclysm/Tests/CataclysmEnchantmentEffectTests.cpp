@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -56,6 +57,13 @@ namespace CataclysmEnchantmentEffectTest
 	const TCHAR* BenefitWithNoEffect =
 		TEXT("Positive_Ultimate_has_1_3_additional_charges");
 	const TCHAR* DrawbackWithNoEffect = TEXT("Negative_Can_t_use_a_basic_attack");
+
+	/**
+	 * The benefit that gives a charge skill a knockdown. Its row states one to
+	 * two seconds and scopes itself with `RequiredTags=Keyword.Charge`.
+	 */
+	const TCHAR* ChargeKnockdownBenefit =
+		TEXT("Positive_Charge_skills_knock_down_enemies_they_hit_for_1");
 	const TCHAR* SetMarker =
 		TEXT("Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc");
 	const TCHAR* SetDrawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10");
@@ -1491,6 +1499,164 @@ bool FCataclysmRangedCloseRangeDrawbackTest::RunTest(const FString&)
 	TestEqual(TEXT("and the increases sum is untouched"),
 			  ASC->AttackDamageIncreasesForSkill(Ranged, -1.0f, -1.0f, 3.0f),
 			  0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentChargeKnockdownTest,
+	"Cataclysm.Enchantments.AWornChargeKnockdownReachesOnlyChargeSkills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentChargeKnockdownTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE HALF THE FIVE KNOCKDOWN TESTS DO NOT COVER, and it is the half this
+	// row adds. `Cataclysm.Skills.ACharge*` in CataclysmSkillTemplateTests.cpp
+	// gives the character its knockdown by calling `SetStatInputs` directly --
+	// its own helper says so and says why. That writes the map `StatForSkill`
+	// reads, so those five never run `ApplyTo`, never consult
+	// `StatToAttribute()`, and would all pass with no enchantment row in the
+	// game at all. They prove a recorded knockdown scopes to charges; this
+	// proves wearing the enchantment is a way to record one.
+	//
+	// THAT DISTINCTION IS THIS PROJECT'S OWN, NOT MINE.
+	// `AWornLockReachesOnlyTheSlotAndTheStateItNames` above was written for
+	// exactly this reason about the skill lock, and issue #1659 is what a scoped
+	// row shipping without this half costs.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn a character in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE TAGS COME OFF REAL SKILL ROWS RATHER THAN BEING TYPED HERE, for the
+	// reason the lock test above gives: a row scoped to a keyword no skill
+	// carries is scoped to the empty set, and typing the keyword here would make
+	// this test agree with itself instead of with `game/Data/WeaponSkills.csv`.
+	const UDataTable* Skills =
+		LoadCsv<FCataclysmWeaponSkillRow>(TEXT("WeaponSkills.csv"));
+	if (!TestNotNull(TEXT("the weapon skill table reads"), Skills))
+	{
+		return false;
+	}
+
+	const FGameplayTag ChargeTag =
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Keyword.Charge")));
+	if (!TestTrue(TEXT("Keyword.Charge is a registered tag"), ChargeTag.IsValid()))
+	{
+		return false;
+	}
+
+	FGameplayTagContainer ChargeSkillTags;
+	FGameplayTagContainer PlainSkillTags;
+	int32 ChargeRows = 0;
+	for (const TPair<FName, uint8*>& Row : Skills->GetRowMap())
+	{
+		const auto* Skill =
+			reinterpret_cast<const FCataclysmWeaponSkillRow*>(Row.Value);
+		if (!Skill)
+		{
+			continue;
+		}
+
+		FGameplayTagContainer Held;
+		TArray<FString> Names;
+		Skill->Tags.ParseIntoArray(Names, TEXT(","), /*InCullEmpty=*/true);
+		for (FString& Name : Names)
+		{
+			Name.TrimStartAndEndInline();
+			const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(
+				FName(*Name), /*ErrorIfNotFound=*/false);
+			if (Tag.IsValid())
+			{
+				Held.AddTag(Tag);
+			}
+		}
+
+		if (Held.HasTag(ChargeTag))
+		{
+			++ChargeRows;
+			if (ChargeSkillTags.IsEmpty())
+			{
+				ChargeSkillTags = Held;
+			}
+		}
+		else if (PlainSkillTags.IsEmpty() && !Held.IsEmpty())
+		{
+			PlainSkillTags = Held;
+		}
+	}
+
+	// WITHOUT THESE THE READS BELOW ASK ABOUT EMPTY CONTAINERS, and a modifier
+	// requiring a tag refuses an empty one -- so every figure would be zero and
+	// the test would pass having measured nothing.
+	if (!TestTrue(FString::Printf(
+			TEXT("the data holds charge skills carrying Keyword.Charge: %d"),
+			ChargeRows), ChargeRows > 0))
+	{
+		return false;
+	}
+	if (!TestFalse(TEXT("and a skill without the keyword to compare against"),
+				   PlainSkillTags.IsEmpty()))
+	{
+		return false;
+	}
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FName Stat = FName(UCataclysmSkillEffects::KnockdownSecondsStat);
+
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(
+		TEXT("a character wearing nothing knocks nothing down with a charge"),
+		ASC->StatForSkill(Stat, ChargeSkillTags, 0.0f), 0.0f, 0.001f);
+
+	// THE BENEFIT, PAIRED WITH A DRAWBACK THAT HAS NO EFFECT ROW, so the
+	// knockdown is the only thing this item changes.
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), ChargeKnockdownBenefit, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	// AT THE TOP OF THE RANGE, BECAUSE THE ROLL DEFAULTS TO ITS HIGHEST.
+	// `FCataclysmRolledEnchantment::PositiveRoll` is `1.0f`
+	// (`CataclysmItem.h:138`) and `Carrying` does not set it, so this item rolled
+	// the high end. `UCataclysmItemValues::EnchantmentValue` says a roll of
+	// exactly 1 is held in the last share, "which is where the default of 1 is
+	// meant to land". The row states 1 to 2 seconds, so that is two seconds.
+	//
+	// THE FIRST VERSION OF THIS LINE ASSERTED ONE SECOND, on a comment of mine
+	// that said the roll defaults to zero. It does not. The run answered 2.0 and
+	// the test was wrong rather than the code -- which is what the restored half
+	// of a guard proof is for.
+	//
+	// ASSERTING THE NUMBER RATHER THAN "MORE THAN NOTHING" IS STILL THE POINT.
+	// A row whose two ends were written the wrong way round would answer 1.0
+	// here, and no count anywhere would show it.
+	TestEqual(TEXT("the worn benefit gives a charge skill its stated high roll"),
+			  ASC->StatForSkill(Stat, ChargeSkillTags, 0.0f), 2.0f, 0.001f);
+
+	// AND NOTHING ELSE. `Keyword.Charge` is the only thing scoping this row, and
+	// a skill without it is what says the scoping works.
+	TestEqual(TEXT("and leaves a skill without the keyword alone"),
+			  ASC->StatForSkill(Stat, PlainSkillTags, 0.0f), 0.0f, 0.001f);
+
+	// THE CHARACTER SHEET SHOWS NOTHING EITHER, which is the same reading with no
+	// skill in hand. A scoped modifier must not apply to a bare stat.
+	TestEqual(TEXT("and shows nothing with no skill in hand"),
+			  ASC->StatForSkill(Stat, FGameplayTagContainer(), 0.0f), 0.0f, 0.001f);
+
+	// AND TAKING THE HELM OFF TAKES IT AWAY, which says the knockdown came from
+	// the item rather than from anything else about the character.
+	Wearer.Equipment->Unequip(Slot, Removed);
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(TEXT("and taking the helm off leaves the charge skill alone"),
+			  ASC->StatForSkill(Stat, ChargeSkillTags, 0.0f), 0.0f, 0.001f);
 
 	return true;
 }
