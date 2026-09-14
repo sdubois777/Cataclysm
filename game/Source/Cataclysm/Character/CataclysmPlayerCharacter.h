@@ -16,6 +16,7 @@ class UCataclysmInventoryComponent;
 class UCataclysmWeaponSlotsComponent;
 class USpringArmComponent;
 struct FOnAttributeChangeData;
+struct FCataclysmDeathNotice;
 
 /**
  * The player pawn. Its ability system component lives on the player state, so
@@ -148,6 +149,44 @@ public:
 	 * it, with nothing anywhere saying so.
 	 */
 	static const TCHAR* MovementSpeedReductionSuppressedStat;
+
+	/**
+	 * The stat name saying a crowd control effect on this character ends when
+	 * the enemy that applied it dies. Issue #1515.
+	 *
+	 * HERE FOR THE SAME REASON AS THE ONE ABOVE: this project keeps a
+	 * stat-name constant on the class that READS it, and
+	 * `EndCrowdControlAppliedBy` below is its only reader.
+	 */
+	static const TCHAR* CrowdControlEndsWhenItsApplierDiesStat;
+
+	/**
+	 * A character died somewhere. If this character killed it and holds Nothing
+	 * Moves You, every crowd control effect that dead character applied to this
+	 * one ends now. Issue #1515.
+	 *
+	 * A STUN IS WHAT THAT REACHES TODAY. Crowd control in this game is a stun
+	 * and displacement; displacement is instantaneous and has nothing to end.
+	 *
+	 * THE RE-STUN WINDOW IS LEFT ALONE. `ApplyStun` also applies a StunImmune
+	 * tag for five seconds, which is this character's PROTECTION rather than
+	 * something done to it. Ending that would leave them re-stunnable sooner,
+	 * which is the opposite of what the node promises.
+	 */
+	void OnSomethingDied(const FCataclysmDeathNotice& Notice);
+
+	/**
+	 * End every crowd control effect on this character that the named actor
+	 * applied. Issue #1515.
+	 *
+	 * PUBLIC SO A TEST CAN DRIVE IT WITHOUT A DEATH, which is the same reason
+	 * `ApplyMovementSpeed` and `ApplyChosenClassStats` above are public. The
+	 * game reaches it only through `OnSomethingDied`.
+	 *
+	 * IT DOES NOT CHECK THE FLAG. The caller does, so a test can exercise the
+	 * removal and the gate separately rather than only together.
+	 */
+	void EndCrowdControlAppliedBy(const AActor* Applier);
 
 	/**
 	 * The character's health moved, so a bonus that depends on it may have come

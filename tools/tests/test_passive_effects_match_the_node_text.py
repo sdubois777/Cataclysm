@@ -511,7 +511,7 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: does nothing at all. The stat names the SIZE of the reduction and the one
 #: read site subtracts it, which is how `healing_ceiling_reduction` and the
 #: other four `_reduction` stats in this project are already spelled.
-AUTHORED_ROWS = 262
+AUTHORED_ROWS = 263
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -2029,6 +2029,14 @@ VALUE_IN_WORDS = {
     # when its applier dies, is not this row and is not built yet.
     ("Ravager_keystone_a_kB", "crowd_control_resistance"):
         ("last half as long", 50.0),
+
+    # AND THE SAME NODE'S SECOND CLAUSE, WHICH IS A FLAG. Issue #1515. This
+    # is the first node in this list with TWO entries, because its one
+    # sentence carries two rules and they are two stats. The phrase here is
+    # the second clause and the one above is the first, so a reword that drops
+    # either still fails for that one alone.
+    ("Ravager_keystone_a_kB", "crowd_control_ends_when_its_applier_dies"):
+        ("ends entirely when you kill the enemy that applied it", 1.0),
 
     ("Ravager_keystone_d_kA", "movement_speed_reduction_suppressed"):
         ("cannot be reduced by any effect", 1.0),

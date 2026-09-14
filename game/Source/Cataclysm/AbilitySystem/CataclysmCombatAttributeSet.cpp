@@ -124,6 +124,7 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitArmorPenetrationSuppressed(0.0f);
 	InitMeleeEvasionSuppressed(0.0f);
 	InitMovementSpeedReductionSuppressed(0.0f);
+	InitCrowdControlEndsWhenItsApplierDies(0.0f);
 
 	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
 	// SAYS OTHERWISE. Issue #1039. The Masochist's Vessel Unbroken is its only
@@ -251,6 +252,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MovementSpeedReductionSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrowdControlEndsWhenItsApplierDies);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
@@ -437,6 +439,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetArmorPenetrationSuppressedAttribute(),
 		GetMeleeEvasionSuppressedAttribute(),
 		GetMovementSpeedReductionSuppressedAttribute(),
+		GetCrowdControlEndsWhenItsApplierDiesAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
@@ -505,6 +508,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ManaRegenRestoresShield)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MovementSpeedReductionSuppressed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrowdControlEndsWhenItsApplierDies)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)

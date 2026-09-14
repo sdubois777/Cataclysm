@@ -47,6 +47,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 // For an enemy with no defences, to land a real character's attack on.
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
@@ -9555,8 +9556,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveNothingMovesYouOnARealCharacte
 
 /** `Ravager_keystone_a_kB` Nothing Moves You, first clause: "Crowd control
  *  effects on you last half as long." Fifty is that half, by the arithmetic
- *  `AfterCrowdControlResistance` already uses. Its second clause, about an
- *  effect ending when its applier dies, is not this row and is not built. */
+ *  `AfterCrowdControlResistance` already uses.
+ *
+ *  THE NODE HAS TWO ROWS NOW, one per clause, so this looks its row up BY
+ *  STAT NAME rather than taking the first. The second clause -- a stun ending
+ *  when the character kills the enemy that applied it -- is
+ *  `Ravager_keystone_a_kB#2` and is checked by
+ *  `NothingMovesYouGrantsTheEndOnApplierDeathFlagOnARealRavager`.
+ *
+ *  THIS SAID THE SECOND CLAUSE "IS NOT BUILT" AND ASSERTED ONE ROW. Both were
+ *  true when written and both stopped being true in the change that built it;
+ *  the whole-suite run is what said so, with 'Expected ... to be 1, but it was
+ *  2'. A positional Effects[0] would have gone on passing silently against
+ *  whichever row the table happened to return first. */
 bool FCataclysmPassiveNothingMovesYouOnARealCharacterTest::RunTest(const FString&)
 {
 	using namespace CataclysmPassiveTest;
@@ -9585,17 +9597,33 @@ bool FCataclysmPassiveNothingMovesYouOnARealCharacterTest::RunTest(const FString
 	const FName Node(TEXT("Ravager_keystone_a_kB"));
 	const TArray<const FCataclysmPassiveEffectRow*> Effects =
 		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
-	if (!TestEqual(TEXT("Nothing Moves You grants one stat"), Effects.Num(), 1))
+	if (!TestEqual(TEXT("Nothing Moves You grants two stats, one per clause"),
+				   Effects.Num(), 2))
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is crowd control resistance"), Effects[0]->Stat,
-			  FString(UCataclysmSkillEffects::CrowdControlResistanceStat));
+
+	// BY STAT NAME AND NOT BY POSITION. The table's order is not something this
+	// test may rely on, and taking Effects[0] would silently check whichever
+	// clause came back first.
+	const FCataclysmPassiveEffectRow* Halving = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row && Row->Stat ==
+				FString(UCataclysmSkillEffects::CrowdControlResistanceStat))
+		{
+			Halving = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("one of them is crowd control resistance"), Halving))
+	{
+		return false;
+	}
 	TestEqual(TEXT("stated as a flat amount, because the stat has no base"),
-			  Effects[0]->ValueKind, FString(TEXT("flat")));
+			  Halving->ValueKind, FString(TEXT("flat")));
 	TestEqual(TEXT("of fifty, which is what 'half as long' means"),
-			  Effects[0]->ValuePerPoint, 50.0f);
-	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  Halving->ValuePerPoint, 50.0f);
+	TestEqual(TEXT("and carrying no condition"), Halving->Condition,
 			  FString());
 
 	const FGameplayAttribute Resistance =
@@ -9838,6 +9866,343 @@ bool FCataclysmPassiveUnstoppableOnARealCharacterTest::RunTest(const FString&)
 	TestEqual(TEXT("which refuses a three second stun outright"),
 			  UCataclysmSkillEffects::AfterCrowdControlResistance(
 				  Player.Character, 3.0f), 0.0f, 0.01f);
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// NOTHING MOVES YOU'S SECOND CLAUSE. Issue #1515.
+//
+// "Crowd control effects on you last half as long, AND ONE ENDS ENTIRELY WHEN
+// YOU KILL THE ENEMY THAT APPLIED IT." The first clause is a separate row
+// granting fifty crowd control resistance and is tested elsewhere; these four
+// are the second.
+//
+// A STUN IS WHAT "CROWD CONTROL" REACHES TODAY, and that was ruled rather than
+// assumed: crowd control in this game is a stun and displacement, displacement
+// is instantaneous and has nothing to end, and the first clause's own mechanism
+// draws the same line.
+//
+// THE DEATH IS A REAL ONE. The player lands a real blow with `ApplyHit`, which
+// is what records the victim's last blow, and `NoteDeath` then names the player
+// as the killer from that record. Nothing here writes a death notice by hand,
+// so a build where killer attribution broke would fail these rather than pass
+// them.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmApplierDeathTest
+{
+	using namespace CataclysmFourRowTest;
+
+	/** The node, and the stun it is asked to end. */
+	const TCHAR* const Node = TEXT("Ravager_keystone_a_kB");
+
+	/** A stun long enough that it would plainly still be running. */
+	constexpr float TenSeconds = 10.0f;
+
+	/** One whole swing, as a share of the attacker's weapon damage. */
+	constexpr float FullSwing = 100.0f;
+
+	/** A hostile body that can stun and can be killed. */
+	static ACataclysmEnemyCharacter* SpawnEnemy(UWorld* World,
+											    const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where,
+														FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(
+				UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetRarityStep(0);
+			Made->SetHealth(1'000'000.0f);
+			Made->SetAttackDamage(0.0f);
+		}
+		return Made;
+	}
+
+	/** Spend the node's point, or take it back again. */
+	static void Hold(FRealCharacter& Player, bool bHeld)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (bHeld)
+		{
+			Allocation.Add(FName(Node), 1);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	/**
+	 * The player kills this enemy, the way play kills one.
+	 *
+	 * A REAL BLOW FIRST, because that is what records the victim's last blow,
+	 * and the death notice reads the killer out of that record rather than
+	 * being told. Then the death is announced.
+	 */
+	static void KilledByThePlayer(FRealCharacter& Player,
+								  ACataclysmEnemyCharacter* Enemy)
+	{
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy, FullSwing,
+										 FGameplayTagContainer());
+		UCataclysmCombatEvents::NoteDeath(Enemy);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEndOnApplierDeathFlagTest,
+	"Cataclysm.Passives.NothingMovesYouGrantsTheEndOnApplierDeathFlagOnARealRavager",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The row reaches a real character, read out of the built ASSET.
+ *
+ * NOTHING MOVES YOU NOW HAS TWO ROWS, one per clause, and this asserts both are
+ * there rather than only the one it is about. A build that dropped the first
+ * would leave the node half working with this test still green.
+ */
+bool FCataclysmPassiveEndOnApplierDeathFlagTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmApplierDeathTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, FName(Node));
+	if (!TestEqual(TEXT("Nothing Moves You grants TWO stats, one per clause"),
+				   Effects.Num(), 2))
+	{
+		return false;
+	}
+	TSet<FString> Stats;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		Stats.Add(Row->Stat);
+		TestEqual(TEXT("each stated flat"), Row->ValueKind,
+				  FString(TEXT("flat")));
+		TestEqual(TEXT("and carrying no condition"), Row->Condition, FString());
+	}
+	TestTrue(TEXT("one is the resistance that halves an effect's length"),
+			 Stats.Contains(
+				 FString(UCataclysmSkillEffects::CrowdControlResistanceStat)));
+	TestTrue(TEXT("and one ends an effect when its applier dies"),
+			 Stats.Contains(FString(
+				 ACataclysmPlayerCharacter::
+					 CrowdControlEndsWhenItsApplierDiesStat)));
+
+	const FGameplayAttribute Flag =
+		Combat::GetCrowdControlEndsWhenItsApplierDiesAttribute();
+	Hold(Player, false);
+	TestEqual(TEXT("an unspent Ravager's stuns outlive whoever applied them"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+
+	Hold(Player, true);
+	TestEqual(TEXT("taking Nothing Moves You turns the flag on"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 1.0f, 0.001f);
+
+	Hold(Player, false);
+	TestEqual(TEXT("and giving the point back turns it off"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEndsAStunOnItsAppliersDeathTest,
+	"Cataclysm.Passives.NothingMovesYouEndsAStunWhenYouKillTheEnemyThatAppliedIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The clause itself, end to end through a real death.
+ *
+ * THE STUN IS ASSERTED RUNNING FIRST. Without that opening reading this test
+ * would pass against a build where the stun never landed at all, which is the
+ * failure it is least able to notice otherwise.
+ */
+bool FCataclysmPassiveEndsAStunOnItsAppliersDeathTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmApplierDeathTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	Hold(Player, true);
+
+	ACataclysmEnemyCharacter* Stunner =
+		SpawnEnemy(World, FVector(300.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("an enemy to do the stunning"), Stunner))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyStun(Stunner, Player.Character, TenSeconds,
+									  /*DamageDealt=*/0.0f,
+									  /*bStunIsDesigned=*/true);
+	if (!TestTrue(TEXT("the enemy's stun landed, which every reading below is "
+					   "about"),
+				  UCataclysmSkillEffects::IsStunned(Player.Character)))
+	{
+		return false;
+	}
+
+	KilledByThePlayer(Player, Stunner);
+
+	TestFalse(TEXT("killing the enemy that applied it ends the stun outright"),
+			  UCataclysmSkillEffects::IsStunned(Player.Character));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveAStunSurvivesAnotherKillTest,
+	"Cataclysm.Passives.AStunSurvivesWhenYouKillSomeOtherEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The applier and not just anybody, which is the whole rule.
+ *
+ * WITHOUT THIS THE CHANGE LOOKS CORRECT WHILE ENDING STUNS FROM ENEMIES THE
+ * PLAYER NEVER TOUCHED. The test above passes just as well against a build that
+ * removed every stun on any kill; only this one separates them.
+ */
+bool FCataclysmPassiveAStunSurvivesAnotherKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmApplierDeathTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	Hold(Player, true);
+
+	ACataclysmEnemyCharacter* Stunner =
+		SpawnEnemy(World, FVector(300.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Bystander =
+		SpawnEnemy(World, FVector(0.0f, 300.0f, 0.0f));
+	if (!TestNotNull(TEXT("an enemy to do the stunning"), Stunner)
+		|| !TestNotNull(TEXT("and another to kill instead"), Bystander))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyStun(Stunner, Player.Character, TenSeconds,
+									  /*DamageDealt=*/0.0f,
+									  /*bStunIsDesigned=*/true);
+	if (!TestTrue(TEXT("the stun landed"),
+				  UCataclysmSkillEffects::IsStunned(Player.Character)))
+	{
+		return false;
+	}
+
+	// THE ONE KILLED IS NOT THE ONE THAT STUNNED.
+	KilledByThePlayer(Player, Bystander);
+
+	TestTrue(TEXT("killing some other enemy leaves the stun running"),
+			 UCataclysmSkillEffects::IsStunned(Player.Character));
+
+	// AND KILLING THE RIGHT ONE STILL ENDS IT, so this test cannot pass because
+	// the rule never fires at all.
+	KilledByThePlayer(Player, Stunner);
+	TestFalse(TEXT("and killing the one that did stun ends it"),
+			  UCataclysmSkillEffects::IsStunned(Player.Character));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveNoNodeNoEndingTest,
+	"Cataclysm.Passives.WithoutNothingMovesYouAKillEndsNoStun",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The node and not a rule everybody has.
+ *
+ * Being stunned until the stun runs out is what happens to every character in
+ * the game. A test that only checked the half WITH the node would pass against
+ * a build where killing anything ended every stun for everyone.
+ */
+bool FCataclysmPassiveNoNodeNoEndingTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmApplierDeathTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+
+	// NO POINT SPENT.
+	Hold(Player, false);
+
+	ACataclysmEnemyCharacter* Stunner =
+		SpawnEnemy(World, FVector(300.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("an enemy to do the stunning"), Stunner))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyStun(Stunner, Player.Character, TenSeconds,
+									  /*DamageDealt=*/0.0f,
+									  /*bStunIsDesigned=*/true);
+	if (!TestTrue(TEXT("the stun landed"),
+				  UCataclysmSkillEffects::IsStunned(Player.Character)))
+	{
+		return false;
+	}
+
+	KilledByThePlayer(Player, Stunner);
+
+	TestTrue(TEXT("without the node the stun outlives the enemy that applied "
+				  "it, as it does for every character"),
+			 UCataclysmSkillEffects::IsStunned(Player.Character));
 	return true;
 }
 

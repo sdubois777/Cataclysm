@@ -838,6 +838,18 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// their row's condition, so one entry here serves both.
 			{ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat,
 			 Combat::GetMovementSpeedReductionSuppressedAttribute()},
+			// AND THE SECOND CLAUSE OF NOTHING MOVES YOU. Issue #1515.
+			// `Ravager_keystone_a_kB#2` grants it: a stun ends outright when the
+			// character kills the enemy that applied it. A flag, like the five
+			// above -- zero or above zero, and nothing in between means anything.
+			//
+			// WITHOUT THIS ENTRY THE ROW WOULD BE DROPPED IN SILENCE. `ApplyTo`
+			// loops over THIS MAP rather than over the modifiers, so a node
+			// granting a stat missing from it applies nothing, reports nothing,
+			// and leaves the character exactly as if the node had never been
+			// bought. That is what `attack_speed` did for some time, issue #120.
+			{ACataclysmPlayerCharacter::CrowdControlEndsWhenItsApplierDiesStat,
+			 Combat::GetCrowdControlEndsWhenItsApplierDiesAttribute()},
 		};
 	}();
 
