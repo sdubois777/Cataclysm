@@ -1591,6 +1591,11 @@ namespace CataclysmPassiveConditionTest
 			// nothing either. `docs/DECISIONS.md` records why a fourth name was
 			// taken rather than the parameterised column the rule points at.
 			|| Name == TEXT("target_carries_void_splinter")
+			// AND ONE NAMING THE SAME TWO AILMENTS FROM THE ATTACKER'S END.
+			// Issue #1718, Spreading Hurt. It asks whether this character can
+			// apply either at all rather than what the target carries, and it
+			// compares no number for the same reason: it names its ailments.
+			|| Name == TEXT("can_cripple_or_weaken")
 			|| Name == TEXT("target_carries_cripple")
 			|| Name == TEXT("target_carries_cripple_and_weaken")
 			|| Name == TEXT("opponent_carries_weaken")

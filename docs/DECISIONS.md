@@ -410,6 +410,47 @@ ailments at all would be judged against an empty container and grant nothing,
 silently.** That switch is the fifth site this change touches and the one with no
 compiler error to catch it.
 
+## AND A FIFTH NAME, `can_cripple_or_weaken`, WHICH IS ABOUT THE ATTACKER AND SO DOES NOT REOPEN THE RULE ABOVE
+
+`Ravager_basic_c_c0` Spreading Hurt is the node: *"+4% increased Area of Effect
+per point for attacks that Cripple or Weaken."* Issue
+[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+**The node's own wording rules out the obvious reading.** An area of effect is
+used to SHAPE an attack before it lands, so "an attack that applied a Cripple" is
+not knowable at the moment the bonus is worked out. Two readings survive:
+
+| Reading | Verdict |
+| :-- | :-- |
+| skills whose own row applies Cripple or Weaken | **impossible today.** No `Keyword.*Cripple*` or `Keyword.*Weaken*` tag exists anywhere in `game/Data/*.csv`, so there is nothing to scope by |
+| any attack by a character who can apply either | **taken.** It is knowable, and the node's place on the tree supports it |
+
+**The tree is what settles it.** Spreading Hurt sits directly below the two nodes
+granting the chance to apply those ailments, so a Ravager reaches it through them.
+The condition is a statement about a build that has invested in crippling, and it
+is false for one that has not — which is what the node is for.
+
+**It does not reopen the count above.** The rule that bounds the target-state
+names is about naming an ailment ON THE TARGET, and this reads two stats on the
+character carrying the row. It is the fifth name mentioning these ailments and the
+first asking about the attacker's own capability, so the column the rule points at
+would not hold it either.
+
+**The reading is taken off the attributes rather than resolved again, and that is
+a stated limit.** The fact is built while the pipeline is being set up, so asking
+the pipeline for the two chances there would re-enter it. The attribute holds the
+chance worked out with no skill in hand, so a chance carried only by a row scoped
+to a required tag is not in it. Every authored chance row today is unscoped, so
+the reading is complete for the rows that exist; a future scoped row would narrow
+this condition rather than break it, and that is recorded here so the person who
+writes one knows.
+
+**False covers both "no chance" and "nothing to read", and that is right here
+where it would be wrong for a threshold.** A character with no combat attribute
+set cannot apply either ailment any more than one whose chances are both zero, so
+there is no pair to tell apart — unlike the health readings, where a percentage of
+zero is a corpse and an unknown one is the character sheet.
+
 ---
 
 ## 2026-09-13 — Mortal Decay saps health faster the deeper the floor is, "progress" is the floor number rather than the walk, and a kill the player made halves it for five seconds

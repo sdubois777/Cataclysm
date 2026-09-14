@@ -94,6 +94,7 @@ namespace
 												ECataclysmStatCondition::TargetCarriesCrippleAndWeaken },
 		{ TEXT("target_carries_void_splinter"),
 												ECataclysmStatCondition::TargetCarriesVoidSplinter },
+		{ TEXT("can_cripple_or_weaken"),        ECataclysmStatCondition::CanCrippleOrWeaken },
 		{ TEXT("opponent_carries_weaken"),      ECataclysmStatCondition::OpponentCarriesWeaken },
 		{ TEXT("target_health_below"),          ECataclysmStatCondition::TargetHealthBelowPercent },
 		{ TEXT("energy_shield_at_maximum"),     ECataclysmStatCondition::EnergyShieldAtMaximum },
@@ -192,6 +193,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesCripple:
 	case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
 	case ECataclysmStatCondition::TargetCarriesVoidSplinter:
+	case ECataclysmStatCondition::CanCrippleOrWeaken:
 	case ECataclysmStatCondition::OpponentCarriesWeaken:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
 		// nothing for a number to be compared against. Each of the fourteen says
@@ -557,6 +559,24 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// poisoned, or burning, or ...".
 		return State.TargetDebuffs.HasTagExact(
 			UCataclysmDebuffs::VoidSplinterTag());
+
+	case ECataclysmStatCondition::CanCrippleOrWeaken:
+		// THIS CHARACTER'S OWN CHANCES, NOT THE TARGET'S STATE. Issue #1718.
+		// Spreading Hurt widens attacks that cripple or weaken, and an area of
+		// effect shapes an attack before it lands, so the only knowable reading
+		// is whether this character's attacks are ones that do.
+		//
+		// THE READING IS TAKEN IN `CurrentConditions` AND NOT HERE, the same as
+		// every other fact about the character. The pipeline is handed facts and
+		// judges them; it has no attribute set to ask.
+		//
+		// FALSE COVERS BOTH "NO CHANCE" AND "NOTHING TO READ", which is right
+		// here and would be wrong for a threshold. A character with no combat
+		// attribute set cannot apply either ailment any more than one with two
+		// zeroes can, so there is no pair to tell apart -- unlike the health
+		// readings above, where a percentage of zero is a corpse and an unknown
+		// one is the character sheet.
+		return State.bCanCrippleOrWeaken;
 
 	case ECataclysmStatCondition::TargetHealthBelowPercent:
 		// STRICTLY BELOW, so a target sitting exactly on the threshold is not

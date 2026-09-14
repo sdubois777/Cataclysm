@@ -3563,6 +3563,20 @@ CONDITIONS = {
     "opponent_carries_weaken": None,
     "target_carries_void_splinter": None,
 
+    # AND ONE THAT NAMES THE SAME TWO AILMENTS FROM THE OTHER END. Issue #1718.
+    # `Ravager_basic_c_c0` Spreading Hurt: "+4% increased Area of Effect per
+    # point for attacks that Cripple or Weaken."
+    #
+    # NOT A TARGET-STATE PREDICATE, THOUGH IT SITS BESIDE THEM. An area of
+    # effect shapes an attack BEFORE it lands, so whether a blow applied a
+    # Cripple is not knowable when the bonus is worked out. What is knowable is
+    # whether this character's attacks are ones that cripple or weaken, which is
+    # whether either chance is above zero.
+    #
+    # IT TAKES NO VALUE for the same reason the four above do: it names its
+    # ailments rather than comparing a number.
+    "can_cripple_or_weaken": None,
+
     # "against enemies below 35% health" is `target_health_below` with 35, and
     # "against enemies below half health" is the same name with 50. Issue #1515.
     #

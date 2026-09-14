@@ -702,6 +702,37 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Target Carries Void Splinter"),
 
 	/**
+	 * THIS character's attacks can apply Cripple or Weaken. Issue #1718.
+	 *
+	 * `Ravager_basic_c_c0` Spreading Hurt is the node: "+4% increased Area of
+	 * Effect per point for attacks that Cripple or Weaken."
+	 *
+	 * ABOUT THE ATTACKER, NOT THE TARGET, unlike the four names above it. It is
+	 * grouped with them because it names the same two ailments, and it is read
+	 * from a different place for the reason the node's own wording forces: an
+	 * area of effect shapes an attack BEFORE it lands, so "an attack that
+	 * applied a Cripple" is not knowable when the bonus is worked out. The
+	 * question that is knowable is whether this character's attacks are ones
+	 * that cripple or weaken, and `cripple_chance` and `weaken_chance` say so.
+	 *
+	 * THE NODE SITS DIRECTLY BELOW THE CHANCE NODES ON THE TREE, which is what
+	 * makes this reading the designed one rather than a convenient one. A
+	 * Ravager reaches Spreading Hurt through `Hamstring` and `Take the Edge
+	 * Off`, so the condition is a statement about a build that has invested in
+	 * those, and it is false for one that has not.
+	 *
+	 * EITHER CHANCE, NOT BOTH, because the node says "Cripple or Weaken". The
+	 * conjunction that pays only on both is a different question and
+	 * `TargetCarriesCrippleAndWeaken` above is what asks it.
+	 *
+	 * ZERO IS NOT A CHANCE. A character with neither chance gets nothing, which
+	 * is the ordinary answer for every class but an invested Ravager and for
+	 * every enemy in the game.
+	 */
+	CanCrippleOrWeaken
+		UMETA(DisplayName = "Can Cripple Or Weaken"),
+
+	/**
 	 * Whoever threw the blow is carrying Weaken. Issue #1515.
 	 *
 	 * THE MIRROR OF `TargetCarriesCripple` ABOVE, READING A DIFFERENT FIELD, and
@@ -1327,6 +1358,36 @@ struct CATACLYSM_API FCataclysmStatConditions
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 DebuffsCarried = 0;
+
+	/**
+	 * Whether this character's attacks can apply Cripple or Weaken at all, which
+	 * is to say whether either chance is above zero. Issue #1718.
+	 *
+	 * `Ravager_basic_c_c0` Spreading Hurt is the node: "+4% increased Area of
+	 * Effect per point for attacks that Cripple or Weaken."
+	 *
+	 * A FACT ABOUT THE ATTACKER AND NOT ABOUT THE BLOW, which is what the node's
+	 * wording forces. An area of effect is used to SHAPE an attack before it
+	 * lands, so "attacks that applied one" cannot be known when this is read.
+	 * What can be known is whether this character's attacks are ones that
+	 * cripple or weaken, and the two chance stats are what say so.
+	 *
+	 * FALSE IS THE ONLY "NOTHING" THIS NEEDS, the argument `bIsBleeding` above
+	 * makes. A character with no combat attribute set and one whose chances are
+	 * both zero are alike here: neither can apply either ailment, and a bonus
+	 * for attacks that do is correctly worth nothing to both.
+	 *
+	 * READ OFF THE ATTRIBUTES RATHER THAN RESOLVED AGAIN, and that is a real
+	 * limit worth stating. This is built while the pipeline is being run, so
+	 * asking the pipeline for the two chances here would re-enter it. The
+	 * attribute holds the chance worked out with no skill in hand, so a chance
+	 * that exists only on a row scoped by a required tag is not in it. Every
+	 * authored chance row today is unscoped -- the four Ravager nodes granting
+	 * one carry no required tags -- so the reading is complete for the rows that
+	 * exist, and a future scoped row would narrow it rather than break it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bCanCrippleOrWeaken = false;
 
 	/**
 	 * How many minions the character is commanding right now. Issue #1518.
