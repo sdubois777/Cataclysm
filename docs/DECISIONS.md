@@ -2,6 +2,336 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — Mortal Decay saps health faster the deeper the floor is, "progress" is the floor number rather than the walk, and a kill the player made halves it for five seconds
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
+`.cpp`, `CataclysmDungeonGameMode.h` and `.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1786](https://github.com/sdubois777/Cataclysm/issues/1786) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Death_Mortal_Decay`, weight 15.0, in `game/Data/DungeonModifiers.csv`: "The Death
+cataclysm introduces an affliction of mortal decay, gradually sapping the player's life
+force as they progress through the dungeon. To counter this, the player must give death
+his due souls by reaping enemies to temporarily slow the effect of the affliction."
+
+It states no number and no percentage, so every figure below is a judgement.
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if the row ever states
+one, at which point whichever figure it names stops being a judgement.
+
+### "As they progress through the dungeon" is the FLOOR NUMBER — a reading, not a judgement
+
+This is a reading of a rule already written down rather than a new decision. `CLAUDE.md`:
+
+> **Depth and reward are the same axis. Depth and time are not, once a player has
+> invested in separating them.** A dungeon made shallower is made poorer; a dungeon made
+> quicker to walk is not. Resolve timers scale with depth and never with the walk time,
+> for that reason. `FCataclysmDungeon::Floors` is the depth and
+> `FCataclysmDungeon::WalkDays` is the walk cost, and they are separate fields on
+> purpose.
+
+Two measures of progress exist and both were available: `FCataclysmFloorBrief::FloorNumber`,
+and the distance a character has walked, which `UCataclysmAbilitySystemComponent::
+MetresWalkedTotal` keeps and The Nihil's Embrace already reads.
+
+**A decay keyed to the walk would invert what the row is for.** City upgrades and the
+empire upgrade tree exist to lower the days a dungeon takes to walk while its floor count
+stays where it is. A player who had bought that would take less decay at the same depth —
+the investment that is meant to buy speed would quietly buy safety from an affliction as
+well. Keying it to the floor number means an invested player runs a fifty floor dungeon in
+fewer days and still meets floor fifty's decay, which is the same thing depth already does
+to every other reward and danger in the game.
+
+### The rule
+
+| What | How |
+| :-- | :-- |
+| the rate | `MortalDecayPercentPerSecondPerFloor` × the floor number, capped at `MortalDecayMostPercentPerSecond` |
+| a kill | sets a world-time stamp `MortalDecaySlowSeconds` ahead; while it runs the capped rate is multiplied by `1 − MortalDecaySlowPercent / 100` |
+| the loss | `UCataclysmSkillEffects::ReduceHealthDirectly`, a beat's share at a time, on the game mode's quarter-second beat |
+
+**The cap is taken before the kill slow, and that ordering is load-bearing.** The two
+orders agree at every depth up to floor 10 and disagree past it. Slowing the uncapped rate
+and capping afterwards would leave every floor from 20 down at the ceiling whether the
+player reaped or not — 0.1 × 20 halved is exactly 1.0 — so the row's second sentence would
+do nothing at precisely the depths where it most needs to.
+
+**It takes health rather than moving a stat**, which makes it the second rule of Forced
+March's shape and means it needs no field on `FCataclysmPlayerFloorEffects`, no clause in
+`Describe`, and no entry in `StatModifiersFor`.
+
+### Four judgements, and where each comes from
+
+| Constant | Value | Where it came from |
+| :-- | --: | :-- |
+| `MortalDecayPercentPerSecondPerFloor` | 0.1 | a judgement, sized against what a floor lasts |
+| `MortalDecayMostPercentPerSecond` | 1.0 | a judgement, the bottom of this game's own per-second band |
+| `MortalDecaySlowPercent` | 50 | a judgement; "slow" is not "stop" |
+| `MortalDecaySlowSeconds` | 5 | a judgement; the genre settles the shape of the window and not its length |
+
+**A share of maximum health per second is both the house unit and the genre's.** Forced
+March's comment gives the house reason — a share "means the same thing at every character
+level". Path of Exile's Delve prices its own depth-scaled drain the same way: standing in
+the Darkness costs **2% of Life and Energy Shield per second per stack**, stacks arrive
+every 0.25 seconds, and a player's Darkness Resistance and light radius fall automatically
+the deeper they delve. So a life drain that worsens with depth is a shape a shipped game in
+this genre already runs, and it is priced in exactly these units.
+
+**One per cent a second at worst is the bottom of this game's band rather than the middle,
+and the reason is that this one cannot be escaped by moving.** The three per-second costs
+already built are Forced March at 5% a second at five stacks, an Infernal Rain patch at 2%,
+and a Singularity Well at 1% — and every one of them stops when the player moves, out of
+the patch, out of the well, or off the spot. Mortal Decay has nowhere to stand: no position
+on the floor is free of it, and killing is the only lever the row gives. **Delve's 2% is
+therefore not evidence for a larger figure here**, because Delve's darkness is cleared by
+one step back into the light. A static assertion holds the ceiling at or below the
+Singularity Well's figure, so the argument cannot be lost quietly.
+
+**A tenth of a per cent a floor puts the ceiling at floor 10.** Measured against the fifty
+seconds Death's Embrace's own comment calls "about one floor's fighting": floor 1 costs
+about 5% of a health bar over a floor and floor 10 and deeper costs about half of one, for
+a player who never kills anything. Five per cent is the "gradually" the row asks for; half
+a bar is the reason to reap.
+
+**Half, because "slow" is not "stop".** The row says "temporarily slow the effect of the
+affliction", so a kill must not buy immunity. Half is the plain reading of the word and is
+large enough that reaping is obviously worth doing. A static assertion fails at 0 and at
+100, and `tools/tests/` mirrors it because the C++ build job is not a required check.
+
+**Five seconds a kill, so fighting holds it and walking does not.** A player working
+through a pack kills every few seconds and keeps the slow up; one crossing an empty floor
+loses it. That is what makes "give death his due souls" something the player keeps doing
+rather than did once.
+
+**The genre settles the shape of that window and not its length.** Path of Exile's Breach
+is the published case of killing buying time: a Breach stays open **a minimum of 30 seconds
+and a maximum of 60**, and how fast its monsters die is what moves it between the two. So a
+*bounded* window is what a shipped game grants for killing. This one is bounded by expiring
+rather than by a ceiling, and a second kill replaces the window rather than extending it,
+so no amount of killing buys more than five seconds at a time. **The five seconds
+themselves are mine** — nothing found publishes a per-kill figure.
+
+**Expect all four to need tuning against real play**, which Forced March, Infernal Rain,
+Singularity Wells and Death's Embrace each say of their own figures.
+
+### Sources
+
+| Source | What it settled |
+| :-- | :-- |
+| poe-vault.com, Delve guide | Darkness costs 2% of Life and Energy Shield per second per stack, stacks every 0.25 seconds, is cleared by re-entering light, and worsens with depth through falling Darkness Resistance |
+| Path of Exile wiki summaries of Breach, via web search | a Breach stays open 30 seconds minimum and 60 maximum, moved between the two by how quickly its monsters are killed |
+| this project | Forced March 5% a second at five stacks, Infernal Rain 2%, Singularity Wells 1%; Death's Embrace's "fifty seconds is about one floor's fighting"; The Nihil's Embrace's world-time reward stamp |
+
+`www.poewiki.net` and `pathofexile.fandom.com` could not be read — bot protection and
+HTTP 402 — so the Delve figures are quoted from a guide site and the Breach figures from
+search-result summaries rather than from the primary wiki. A guide's wording can be a
+paraphrase.
+
+### Only the player's own kills count, unlike Withered Ground's listener
+
+Both rules listen to the same death notice. Withered Ground places a patch on **every**
+creature death, because its row says "Enemies leave patches of Barren Earth on death" and
+names no killer. This row says "the player must give death his due souls by **reaping**
+enemies", which names who does the killing, so `ACataclysmDungeonGameMode::
+NoteDeathForMortalDecay` requires `FCataclysmDeathNotice::Killer` to be the player's pawn.
+A creature killed by a patch of burning ground, or by another creature, buys nothing.
+
+**A minion's kill counts and that needed no code.** `FCataclysmDeathNotice::Killer` is
+credited to the *summoner* for a minion's blow, which that struct's own comment records, so
+a Ritualist reaping through its imps is reaping.
+
+**One reading is worth knowing before somebody reports it as a bug.** The notice names the
+last blow *on record*, so a creature the player struck and failed to kill, which then died
+to something else, still names the player as its killer and does open the window.
+`FCataclysmDeathNotice::SecondsSinceLastBlow` is how a listener could tell those apart, and
+this rule deliberately does not use it: the row states no time limit on what counts as
+reaping, and inventing one would be a fifth judgement for no reason the row gives.
+
+### No count of kills is kept, because nothing needs one
+
+The row asks for the affliction to be *slowed temporarily*, not for souls to be tallied, so
+a world-time stamp pushed forward by each kill is the whole state — the shape
+`NihilsEmbraceRewardUntilSeconds` already uses. Nothing in `game/Source` counts kills at
+all, and this row did not make it necessary.
+
+**The stamp is not reset when the floor changes, unlike every beat-driven field on the game
+mode.** Those hold something applied to the character, which changing floor takes off; this
+holds only a time. A player who kills and takes the stairs at once carries the rest of a
+five second window down with them, which is what "temporarily" already means. Leaving the
+dungeon does reset it, beside The Nihil's Embrace's, so the field's lifetime is the
+dungeon's.
+
+### Three present-tense counts of a growing list were removed rather than corrected
+
+Issue [#1786](https://github.com/sdubois777/Cataclysm/issues/1786) named two and a third
+was found in the same files while adding this rule. All three counted a list that grows,
+and all three were wrong before anybody read them:
+
+| Where | Said | Was |
+| :-- | :-- | :-- |
+| `CataclysmDungeonModifierEffects.cpp`, `BuiltStateOf` | "SEVEN ARE BUILT" | eight with this row; it had said SIX before Withered Ground |
+| `CataclysmDungeonModifierEffects.cpp`, `KeysWithARule` | "EIGHT, AND TWO WERE MISSING" | the list held ten |
+| `CataclysmDungeonModifierEffects.h`, the class comment | "WHAT IS BUILT HERE, AND IT IS FIVE" | three rules had landed since without moving it |
+
+**Corrected forward, each would be right for one commit.** So the number is gone and the
+boundary is named instead, which is the form `FCataclysmPlayerFloorEffects`'s own comment
+adopted for the same reason in issue #1760.
+
+**The second of the three sat directly above a warning that counts like it go stale, and
+went stale anyway, by two.** A warning attached to a number does not maintain the number.
+What holds `KeysWithARule` honest is the pair of automation tests walking it in each
+direction — `EveryRuleNamesARowOfTheTable` and `EveryRowWithSomethingBuiltIsInTheRuleList` —
+and not a word in a comment.
+
+Two further counts were found in `ACataclysmDungeonGameMode::StepFloorRulesThatChange`'s
+doc comment and removed the same way: it opened "One beat of the **two** dungeon modifiers
+that change while the player plays" and went on to say "ALL **THREE** RULES ACT ON THE
+PLAYER ALONE ... it is **three** tests", while the function tested six rows and two of them
+placed actors.
+
+---
+
+## 2026-09-13 — Fifteen of the survey's thirty-three enchantments were writable, and the seventeen that were not each had a reason in the code
+
+**Affects:** the Enchantment Effects sheet of `docs/All_Things_Cataclysm.xlsx`
+and `game/Data/EnchantmentEffects.csv` generated from it;
+`game/Content/Data/DT_EnchantmentEffects.uasset` and
+`game/Data/datatable_asset_sources.json`; the row counts in `docs/README.md`,
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and
+`tools/tests/test_enchantment_effects_match_the_row_text.py`; four new tests in
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`. Issue
+[#45](https://github.com/sdubois777/Cataclysm/issues/45), from the survey on
+[#1642](https://github.com/sdubois777/Cataclysm/issues/1642).
+
+### What was written
+
+Twenty-one rows over fifteen enchantments. `game/Data/EnchantmentEffects.csv`
+goes from 123 rows over 106 enchantments to 144 over 121. Six of the fifteen say
+"your damage", which is one `attack_damage` row and one `spell_damage` row each;
+the other nine are one row apiece.
+
+Plague Doctor (set 12) is the seventh of the fourteen named sets to have a row.
+Its 2-piece bonus is one `dot_damage` row and its drawback is the two direct
+damage rows, and a set is written whole or not at all.
+
+### The survey offered thirty-three and seventeen could not be written
+
+One of the thirty-three, the charge knockdown, had already landed in
+[#1779](https://github.com/sdubois777/Cataclysm/pull/1779). Each of the
+remaining drops has a reason in the code rather than a judgement, and each is
+filed.
+
+**Eleven were proposed as a `more` multiplier at -100.**
+`UCataclysmStatPipeline::LessMultiplierFloor` is -99 and `Accumulate` clamps to
+it, so `armor, more, -100` for "You have no armor" leaves the wearer a hundredth
+of their armour and logs a warning, rather than leaving them none. A sentence
+stating a total removal is a rule and not a magnitude, and this project already
+writes such a rule as a flag stat holding 1 — seven passive nodes do. Each of
+the eleven needs its own flag stat and the C++ that reads it, which is a
+mechanism. Issue
+[#1791](https://github.com/sdubois777/Cataclysm/issues/1791).
+
+**Two minion rows are refused by two correct rules meeting.** A minion reads its
+summoner's `minion_health` and `minion_damage` through
+`UCataclysmAbilitySystemComponent::IncreasesForStat`, which returns the
+increases alone, so only the `increased` bucket reaches a minion at all. But
+"20%-50% less hp" and "50% more damage" are worded as multipliers, and
+`test_an_increased_row_is_worded_as_an_increase` refuses an `increased` row
+whose sentence says neither increased nor reduced. Issue
+[#1792](https://github.com/sdubois777/Cataclysm/issues/1792). Two further rows
+fell with those two because a set is written whole or not at all: set 6's
+drawback, and set 13's first bonus.
+
+**Two state a number their row cannot carry.** `healing_ceiling_reduction` is
+the number taken off 100, so "you cannot heal above 60%" needs a 40 that its own
+sentence never says, and
+`test_a_single_value_appears_in_its_words_outside_any_range` is right to refuse
+it. The check was not widened. Issue
+[#1793](https://github.com/sdubois777/Cataclysm/issues/1793).
+
+### Two claims in the survey were wrong in the other direction, and both let a row through
+
+- It said "armor is read as an attribute, not through the conditional
+  pipeline". `CataclysmDamageCalculation.cpp:619` asks `DefenderStat` for armor
+  with the blow in hand; `GetArmor()` there is the fallback argument, not the
+  answer. So "While stationary for more than 3 seconds, your armor is doubled"
+  is writable.
+- It said `dot_damage` "is read off the gameplay attribute". Not since issue
+  #947: `CataclysmSkillEffects.cpp:1529` asks for it through
+  `AsMultiplierForSkill`. So Plague Doctor's 2-piece bonus is writable, and with
+  it the whole of set 12.
+
+### Two facts about scope, recorded rather than acted on
+
+"While stationary, your aura radius is doubled" is correct and today reaches
+**one** skill. `Slot.Aura` is on 8 of the 403 rows of
+`game/Data/WeaponSkills.csv`, only two are named, and only `Demonic_All_Aura`
+has a Shape. This is the same shape of problem as issue #1769, which is about
+`Type.Ranged` being on one row.
+
+"Summoned minions have 30%-50% increased HP" is read **once, at the summoning**
+(`CataclysmMinion.cpp:477`), so an item equipped after the minions are out
+changes nothing until they are resummoned. That is the deferred ruling of
+2026-09-13 recorded in that file, not a fault in the row.
+
+### What the rows say
+
+| The enchantment's own words | Stat, bucket, value | Scope |
+| :-- | :-- | :-- |
+| Healing effects are reduced by 50%-75% | `healing_received_reduction` flat 50 to 75 | |
+| You deal 25%-40% less damage to enemies below 50% HP | `attack_damage` and `spell_damage` more -25 to -40 | `target_health_below` 50 |
+| Healing effects on you are reduced by 30%-50% | `healing_received_reduction` flat 30 to 50 | |
+| Projectiles deal 10-30% less damage | `attack_damage` and `spell_damage` more -10 to -30 | `Type.Projectile` |
+| While moving you take 15%-25% increased damage | `damage_taken` increased 15 to 25 | `while_moving` |
+| Your direct damage is reduced by 25% | `attack_damage` and `spell_damage` increased -25 | |
+| Reflect 20%-50% of damage taken back to attackers | `retaliation` flat 20 to 50 | |
+| While moving, your damage is increased by 15%-30% | `attack_damage` and `spell_damage` increased 15 to 30 | `while_moving` |
+| While stationary, your damage is increased by 20%-40% | `attack_damage` and `spell_damage` increased 20 to 40 | `while_stationary` |
+| While stationary for more than 3 seconds, your armor is doubled | `armor` more 100 | `stationary_for_seconds` 3 |
+| Reflect 20%-40% of damage taken back at attackers as retaliation damage | `retaliation` flat 20 to 40 | |
+| Your special ability deals 20%-40% increased damage while you are moving | `attack_damage` and `spell_damage` increased 20 to 40 | `Slot.Special` and `while_moving` |
+| While stationary, your aura radius is doubled | `area_of_effect` more 100 | `Slot.Aura` and `while_stationary` |
+| Summoned minions have 30%-50% increased HP | `minion_health` increased 30 to 50 | |
+| Plague Doctor (2-Piece Bonus): Your DoT effects deal 25% more damage | `dot_damage` more 25 | |
+
+**Two enchantments reflect damage and they are not a duplicate.** "Reflect
+20%-50% of damage taken back to attackers" and "Reflect 20%-40% of damage taken
+back at attackers as retaliation damage" are separate rows of
+`game/Data/EnchantmentsPositive.csv`, lines 50 and 113, with different ranges.
+Both were written, each with its own.
+
+### Why `retaliation` and `healing_received_reduction` are `flat` and not `increased`
+
+Both have a base of zero, so an increase would multiply nothing.
+`retaliation` is already a share of the blow taken —
+`UCataclysmRetaliation::AmountFor` divides by 100 — so a flat 20 reflects 20 per
+cent. `healing_received_reduction` is likewise a number of percentage points
+subtracted.
+
+### The counts were measured and not incremented
+
+Read off the regenerated `game/Data/EnchantmentEffects.csv`:
+
+```
+game/Data/EnchantmentEffects.csv rows                       123 -> 144
+the EnchantmentEffects pin in CataclysmDataTableTests.cpp   123 -> 144
+AUTHORED_ROWS                                               123 -> 144
+AUTHORED_ENCHANTMENTS                                       106 -> 121
+SETS_THAT_WORK                        [5,8,9,11,16,17] -> [5,8,9,11,12,16,17]
+docs/README.md sheet table                                  123 -> 144
+```
+
+`SETS_THAT_WORK` is a sixth hand-maintained figure that the structural search
+`git grep -n "^AUTHORED_[A-Z_]* =" -- tools/tests` does not find. The docstring
+of `test_the_sets_that_work_are_the_ones_counted_here` was also corrected: it
+said "Four of the fourteen sets" and named four while the list beside it already
+held six.
+
+---
+
 ## 2026-09-13 — Cripple and Weaken get a stat for how large they are applied, its neutral value is 100 rather than 1, and it multiplies what chance overflow produced rather than replacing it
 
 **Affects:**

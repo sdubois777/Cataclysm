@@ -193,8 +193,37 @@ JUDGED_NUMBERS = {
 #: stat, same `flat` 1, a slot tag in place of a slot tag and a condition in place
 #: of a condition. The only fields that differ are `Slot.Ultimate` for
 #: `Slot.Movement` and `health_at_or_above` 50 for `stationary_for_seconds` 2.
-AUTHORED_ROWS = 123
-AUTHORED_ENCHANTMENTS = 106
+#: AND 144 OVER 121 SINCE THE ROWS THAT ISSUE #1642'S SURVEY FOUND WRITABLE,
+#: issue #45. FIFTEEN ENCHANTMENTS AND TWENTY-ONE ROWS: six of the fifteen say
+#: "your damage", which is one `attack_damage` row and one `spell_damage` row
+#: each, and the other nine are one row apiece.
+#:
+#: THE SURVEY OFFERED THIRTY-THREE AND SEVENTEEN OF THEM COULD NOT BE WRITTEN.
+#: Eleven were proposed as `more` at -100 to mean "you have no armour", "cannot
+#: block", "can't regen your hp" and the like.
+#: `UCataclysmStatPipeline::LessMultiplierFloor` is -99 and `Accumulate` clamps
+#: to it, so such a row leaves the wearer a hundredth of the stat rather than
+#: none of it. A sentence stating a total removal is a rule and not a
+#: magnitude, which this project already writes as a flag stat of 1 --
+#: `FLAG_STATS` above, and the seven nodes at
+#: `test_passive_effects_match_the_node_text.py`. Each of the eleven needs its
+#: own flag stat and the C++ that reads it. Issue #1791.
+#:
+#: TWO MORE WERE REFUSED BY THE TWO CHECKS MEETING. A minion row is read
+#: through `IncreasesForStat`, which returns the increases alone, so only the
+#: `increased` bucket reaches a minion at all; but "20%-50% less hp" and "50%
+#: more damage" are worded as multipliers, and
+#: `test_an_increased_row_is_worded_as_an_increase` refuses an `increased` row
+#: whose sentence says neither increased nor reduced. Issue #1792. Two further
+#: rows fell with them because a set is written whole or not at all.
+#:
+#: AND TWO STATE A NUMBER THEIR ROW CANNOT CARRY. `healing_ceiling_reduction`
+#: is the number taken off 100, so "you cannot heal above 60%" is a 40 that its
+#: own sentence never says, and
+#: `test_a_single_value_appears_in_its_words_outside_any_range` is right to
+#: refuse it. Issue #1793.
+AUTHORED_ROWS = 144
+AUTHORED_ENCHANTMENTS = 121
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
@@ -209,7 +238,12 @@ AUTHORED_ENCHANTMENTS = 106
 #: which is why that reading is a condition on a row rather than a value added
 #: in code. Their drawbacks needed nothing new and are written with them,
 #: because a set is written whole or not at all.
-SETS_THAT_WORK = [5, 8, 9, 11, 16, 17]
+#:
+#: SEVEN OF FOURTEEN SINCE 2026-09-13. Plague Doctor (12) needed nothing new:
+#: its 2-piece bonus is one `dot_damage` row and its drawback two rows on the
+#: two direct damage stats. Its 6-piece and 10-piece rows still wait, and a set
+#: counts as working here once any of its rows is written.
+SETS_THAT_WORK = [5, 8, 9, 11, 12, 16, 17]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -314,10 +348,15 @@ def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
 
 
 def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
-    """Four of the fourteen sets have their rows written: Archon's Aegis (5),
-    Mana Weaver (8), Divine Retribution (16) and Warlord's Will (17). The other
-    ten wait for what their rows need, which `docs/DECISIONS.md` lists set by
-    set. This moves only when somebody means it to."""
+    """Seven of the fourteen sets have a row written: Archon's Aegis (5), Mana
+    Weaver (8), Brute's Heart (9), Demon King's Regalia (11), Plague Doctor
+    (12), Divine Retribution (16) and Warlord's Will (17). The other seven wait
+    for what their rows need, which `docs/DECISIONS.md` lists set by set. This
+    moves only when somebody means it to.
+
+    THIS SENTENCE SAID "FOUR" AND NAMED FOUR WHILE THE LIST BELOW HELD SIX.
+    The count above it was kept current and this one was not, so read the
+    constant rather than this paragraph if they ever disagree again."""
     written = {row["Enchantment"] for row in effects}
     bonuses, drawbacks = set_rows(enchantments)
     working = sorted(
