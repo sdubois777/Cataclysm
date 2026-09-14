@@ -7,6 +7,9 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the two damage-taken stat names and their base of 100. Issue #1026.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the name of the stat Dominion grants, shared with the comparison that
+// reads it rather than spelled a second time here. Issue #1718.
+#include "AbilitySystem/CataclysmCommand.h"
 // For the base of The Breaking Point's conversion window. Issue #1025.
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the per-cast Fervour stat name. Issue #1051.
@@ -796,6 +799,10 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// read through this map like every other modifier.
 			{TEXT("cripple_magnitude"), Combat::GetCrippleMagnitudeAttribute()},
 			{TEXT("weaken_magnitude"), Combat::GetWeakenMagnitudeAttribute()},
+			// AND THE PERCENTAGE POINTS ADDED TO THE HEALTH THRESHOLD A BLOW
+			// MUST LEAVE A TARGET UNDER TO TAKE IT AS A THRALL. Issue #1718.
+			{UCataclysmCommand::PossessionThresholdBonusStat,
+			 Combat::GetPossessionThresholdBonusAttribute()},
 		};
 	}();
 

@@ -544,6 +544,31 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, WeakenMagnitude)
 
 	/**
+	 * Percentage points added to the health threshold below which a blow can
+	 * take an enemy as a thrall. Issue #1718.
+	 *
+	 * `Ritualist_keystone_a_kA` Dominion is the node: "A blow that leaves a
+	 * target below 65% health can take it, rather than below half."
+	 *
+	 * A BONUS AND NOT THE THRESHOLD ITSELF, WHICH IS THE WHOLE DESIGN OF IT. The
+	 * Subjugate skill's own row states `HealthThresholdPercent=50` and is the
+	 * only place that number appears. A stat holding 50 as its own base would
+	 * state it a second time and win silently: re-tune the row to 40 and the
+	 * threshold would stay at 50 with nothing failing. This starts at zero and
+	 * is ADDED to whatever the row says, so a re-tune follows through.
+	 *
+	 * ZERO IS THE ORDINARY VALUE, which means a row moving it takes `flat` and
+	 * never `increased`: an increase against a base of zero grants nothing.
+	 * Dominion's row is flat 15, so a keystone taken once reads 65.
+	 *
+	 * FLAT RATHER THAN A ROW THAT SETS THE FIGURE, so a second source adds to
+	 * the first rather than replacing it. Nothing else grants this today.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_PossessionThresholdBonus)
+	FGameplayAttributeData PossessionThresholdBonus;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
+
+	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
 	 * A HUNDRED IS NORMAL, so 120 is a fifth more and 75 is a quarter less. It is
@@ -950,6 +975,7 @@ protected:
 	UFUNCTION() void OnRep_StunChance(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_CrippleMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_WeakenMagnitude(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_PossessionThresholdBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);

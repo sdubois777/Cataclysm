@@ -19,6 +19,12 @@
 #include "EngineUtils.h"
 #include "GameplayTagsManager.h"
 
+// WHAT DOMINION GRANTS. Issue #1718: "A blow that leaves a target below 65%
+// health can take it, rather than below half." The 50 it is added to is on the
+// Subjugate skill's own row and is not restated here.
+const TCHAR* UCataclysmCommand::PossessionThresholdBonusStat =
+	TEXT("possession_threshold_bonus");
+
 namespace
 {
 	/** Whether this creature follows that commander, either way it can. */

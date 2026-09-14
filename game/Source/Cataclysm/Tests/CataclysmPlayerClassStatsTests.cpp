@@ -498,6 +498,19 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("a base of 100 from EngineSuppliedBases, to be raised by the "
 			  "Ravager's Sapped node once that row is authored")},
 
+		// Issue #1718. Percentage points ADDED to the health threshold a blow
+		// must leave a target under for Subjugate to take it as a thrall.
+		//
+		// NO ENGINE-SUPPLIED BASE, UNLIKE THE TWO ABOVE, and that is the design
+		// rather than an omission. The Subjugate skill's own row states the
+		// threshold as 50 and is the only place it appears; a base here would
+		// state it a second time and win silently, so a re-tune of the row would
+		// do nothing. Zero is the right starting value for a bonus, which also
+		// means a row moving it takes `flat` and never `increased`.
+		{TEXT("possession_threshold_bonus"),
+		 TEXT("the Ritualist's Dominion keystone, as a flat modifier, added to "
+			  "the threshold the Subjugate skill row states")},
+
 		// Issue #1039. Whether damage over time deals this character nothing at
 		// all. Zero for every class, and the Masochist's Vessel Unbroken
 		// capstone option is its only source. A FLAG rather than a reduction,

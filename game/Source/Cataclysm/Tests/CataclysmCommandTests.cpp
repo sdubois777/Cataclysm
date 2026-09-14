@@ -372,6 +372,108 @@ bool FCataclysmSubjugateTakesTheWeakTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDominionRaisesTheThresholdTest,
+	"Cataclysm.Command.DominionTakesAnEnemyTheOrdinaryThresholdWouldRefuse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kA` Dominion: "A blow that leaves a target below 65%
+ * health can take it, rather than below half." Issue #1718.
+ *
+ * ONE CREATURE LEFT BETWEEN THE TWO THRESHOLDS, WHICH IS THE ONLY BAND THAT
+ * PROVES ANYTHING. Below 50% both casters take it and above 65% neither does,
+ * so a test at either end would pass against a build that ignored the stat
+ * entirely.
+ *
+ * THE BAND IS ASSERTED AND NOT ASSUMED. The caster deals 300 against a creature
+ * of 1000, so starting at 900 leaves 600 -- but that arithmetic is this test's
+ * belief about the skill's damage, not a fact it controls. The control below
+ * reads the health back and fails loudly if the blow did not land where this
+ * test needs it, rather than passing for a reason that has nothing to do with
+ * the threshold.
+ *
+ * THE STAT IS WRITTEN ONTO THE ATTRIBUTE RATHER THAN RESOLVED FROM A PASSIVE
+ * ROW, because what is under test is the comparison reading it. That the row
+ * reaches the attribute is `Cataclysm.PlayerStats.EveryClassStatDrivesAnAttribute`
+ * and the passive tree's own tests.
+ */
+bool FCataclysmDominionRaisesTheThresholdTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE SHIPPED THRESHOLD, WRITTEN HERE FOR THE REASON THE TEST ABOVE GIVES:
+	// this row supplies a radius the real one does not, so that a headless run
+	// can find its target at all.
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Radius=15; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	constexpr float StartingHealth = 900.0f;
+	constexpr float OrdinaryThreshold = 500.0f;   // half of a creature's 1000
+	constexpr float DominionThreshold = 650.0f;   // 65% of the same
+
+	// --- THE CONTROL: NO BONUS, SO THE ORDINARY THRESHOLD REFUSES -----------
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	FScopedCreature Hurt(World, FVector(3 * M, 0, 0));
+	Hurt.SetHealthTo(StartingHealth);
+
+	UCataclysmSummonSkill* PlainTry = GrantSkill<UCataclysmSummonSkill>(
+		Plain, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!PlainTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the plain caster."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Plain, PlainTry));
+
+	// THE STATE THIS TEST BUILT, READ BACK BEFORE ANY VERDICT IS DRAWN FROM IT.
+	const float LeftAt = Hurt.Health();
+	if (!TestTrue(*FString::Printf(
+			TEXT("the blow left the creature between the two thresholds, at "
+				 "%.0f of 1000, which is what this test needs"), LeftAt),
+			LeftAt > OrdinaryThreshold && LeftAt < DominionThreshold))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a caster without Dominion does not take it"),
+			  PlainTry->bTookIt);
+	TestEqual(TEXT("so it commands nothing"),
+			  UCataclysmCommand::ThingsCommandedBy(Plain.Actor).Num(), 0);
+
+	// --- AND WITH THE BONUS, THE SAME BLOW TAKES IT -------------------------
+	//
+	// A SEPARATE CASTER AND CREATURE, because a skill commits its cooldown when
+	// it fires and the first creature has already been hit.
+	FScopedCaster Dominant(World, FVector(0, 30 * M, 0));
+	FScopedCreature AlsoHurt(World, FVector(3 * M, 30 * M, 0));
+	AlsoHurt.SetHealthTo(StartingHealth);
+
+	Dominant.Set(
+		UCataclysmCombatAttributeSet::GetPossessionThresholdBonusAttribute(),
+		15.0f);
+
+	UCataclysmSummonSkill* DominantTry = GrantSkill<UCataclysmSummonSkill>(
+		Dominant, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!DominantTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the caster with Dominion."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Dominant, DominantTry));
+	TestTrue(TEXT("and a caster with Dominion takes the same creature"),
+			 DominantTry->bTookIt);
+	TestEqual(TEXT("so it commands one thrall"),
+			  UCataclysmCommand::ThingsCommandedBy(Dominant.Actor).Num(), 1);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateRefusesABossTest,
 	"Cataclysm.Command.ABossCannotBeTaken",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
