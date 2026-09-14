@@ -3176,6 +3176,22 @@ void ACataclysmDungeonGameMode::NoteDeathForSporeClouds(
 	// and magnitude one asks for that designed figure and no more. A number
 	// written here would be a second place to change it and a chance for the two
 	// to disagree.
+	//
+	// AND THE ROW'S FIGURES ARRIVE UNCHANGED, WHICH IS NOT OBVIOUS AND IS LOAD
+	// BEARING. `Apply` hands `ApplyDamageOverTime` a true `bScalesWithInstigator`,
+	// which multiplies the amount, the duration and the tick rate by the
+	// instigator's three damage-over-time stats. `ACataclysmFloorHazardSource`'s
+	// constructor makes a bare ability system component and adds NO attribute
+	// set, so `AsMultiplierForSkill` takes its `HasAttributeSetForAttribute`
+	// branch and answers 1 for all three.
+	//
+	// THAT IS THE ANSWER THIS RULE WANTS RATHER THAN AN ACCIDENT IT SURVIVES: a
+	// floor is not a character and has no business making an ailment stronger.
+	// If the hazard source is ever given a combat attribute set, those stats
+	// start at zero and a zero multiplier makes the poison deal nothing --
+	// `ApplyDamageOverTime` refuses an amount at or below zero -- so this rule
+	// would stop working silently. `SporesFromADeathNearThePlayerPoisonThem`
+	// reads health and is what notices.
 	const FCataclysmAilmentKind* Poison =
 		UCataclysmAilments::KindNamed(TEXT("Poison"));
 	if (!Poison)
