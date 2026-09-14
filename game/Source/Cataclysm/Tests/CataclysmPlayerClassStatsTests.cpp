@@ -1303,8 +1303,14 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 		FGameplayAttribute Attribute;
 	};
 	const FCase Cases[] = {
+		// ONE ENTRY PER STAT MOVED FROM A PLAIN ATTRIBUTE READ TO AN ASK, added
+		// as each is wired. Issue #947.
 		{TEXT("crit_multiplier"),
 		 UCataclysmCombatAttributeSet::GetCritMultiplierAttribute()},
+		{TEXT("penetration"),
+		 UCataclysmCombatAttributeSet::GetPenetrationAttribute()},
+		{TEXT("armor_penetration"),
+		 UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute()},
 
 		// THE ONE ALREADY WIRED, AS A POSITIVE CONTROL ON THE CONTROL. Critical
 		// strike chance was moved to an ask under issue #959 and nothing has
@@ -1339,8 +1345,12 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 
 	// WITHOUT THIS THE LOOP ABOVE PASSES HAVING CHECKED NOTHING, which is the
 	// fault it exists to rule out in the first place.
-	TestEqual(TEXT("both stats were checked"),
-			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 2);
+	//
+	// THE NUMBER RISES AS EACH STAT IS WIRED, and it is written out rather than
+	// left to `UE_ARRAY_COUNT` alone so that emptying the list is a failure
+	// rather than a silent pass. Counted from the list above, not incremented.
+	TestEqual(TEXT("every stat listed was checked"),
+			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 4);
 	return true;
 }
 

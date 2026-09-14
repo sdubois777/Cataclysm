@@ -461,8 +461,39 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					// the critical strike exclusion for.
 					if (bCanPenetrate)
 					{
-						Hit.ResistancePenetration = Offence->GetPenetration();
-						Hit.ArmorPenetration = Offence->GetArmorPenetration();
+						// BOTH ARE ASKED FOR RATHER THAN READ, for the reason the
+						// critical strike chance below gives. Issue #947 lists
+						// them among the stats a skill uses that still read the
+						// attribute. That attribute is worked out with no skill
+						// in hand, so a modifier requiring a tag is missing from
+						// it, and two authored enchantments -- "Spells ignore
+						// 15%-30% of enemy resistances" and "Your DoTs ignore
+						// 20%-40% of enemy resistances" -- cannot be written
+						// while that is true.
+						//
+						// ITS OWN CAST RATHER THAN A HOISTED ONE. The critical
+						// strike block below makes the same cast for itself, and
+						// keeping each block self-contained is what lets a stat
+						// be moved to an ask one commit at a time.
+						//
+						// THE FALLBACK IS THE ATTRIBUTE, so a character with no
+						// such modifier is unchanged, and an enemy -- which is
+						// never given a character stat line -- takes the same
+						// path it always did.
+						const UCataclysmAbilitySystemComponent* AskingToPenetrate =
+							Cast<const UCataclysmAbilitySystemComponent>(Attacker);
+
+						Hit.ResistancePenetration = AskingToPenetrate
+							? AskingToPenetrate->StatForSkill(
+								  FName(TEXT("penetration")), AssetTags,
+								  Offence->GetPenetration())
+							: Offence->GetPenetration();
+
+						Hit.ArmorPenetration = AskingToPenetrate
+							? AskingToPenetrate->StatForSkill(
+								  FName(TEXT("armor_penetration")), AssetTags,
+								  Offence->GetArmorPenetration())
+							: Offence->GetArmorPenetration();
 					}
 
 					// AND THE CRITICAL STRIKE, read here for that same reason.
