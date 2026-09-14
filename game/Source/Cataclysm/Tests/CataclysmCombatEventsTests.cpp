@@ -1804,4 +1804,111 @@ bool FCataclysmCombatEventsCost::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillWindowsDoNotCross,
+	"Cataclysm.CombatEvents.AChargeSkillAndABasicAttackEachOpenOnlyTheirOwnWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillWindowsDoNotCross::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	// THE DISCRIMINATOR TEST FOR THE TWO SKILL WINDOWS. Issue #1826. One is
+	// selected by a tag on the skill and the other by the ability slot, and
+	// this is what says each selects only its own. A stamp that fired for
+	// every skill use would pass any single positive assertion here and fail
+	// the negative one beside it.
+	//
+	// EACH CASE GETS A FRESH CASTER, because the clocks live on the caster and
+	// a second use by the same actor could not tell "stamped by this skill"
+	// from "still stamped by the last one".
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	struct FCase
+	{
+		const TCHAR* Name;
+		const TCHAR* Tags;
+		ECataclysmAbilitySlot Slot;
+		bool bOpensChargeWindow;
+		bool bOpensBasicAttackWindow;
+	};
+
+	// THE SECOND CASE CARRIES NO CHARGE TAG AND THE FIRST IS NOT IN THE BASIC
+	// SLOT, so neither case can satisfy the other's rule by accident.
+	const FCase Cases[] = {
+		{TEXT("Furnace Charge"),
+		 TEXT("Item.Weapon.Sword, Element.Demonic, Type.Strike, Keyword.Charge"),
+		 ECataclysmAbilitySlot::Special,
+		 /*bOpensChargeWindow=*/true, /*bOpensBasicAttackWindow=*/false},
+
+		{TEXT("Rending Cut"),
+		 TEXT("Item.Weapon.Sword, Element.Demonic, Type.Strike"),
+		 ECataclysmAbilitySlot::BasicAttack,
+		 /*bOpensChargeWindow=*/false, /*bOpensBasicAttackWindow=*/true},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FArmedActor Caster = MakeArmed(World);
+		FGameplayAbilitySpecHandle Handle;
+		UCataclysmStrikeSkill* Skill = GrantNamedSkill<UCataclysmStrikeSkill>(
+			Caster, Case.Slot, Case.Name, Case.Tags,
+			TEXT("Radius=2.4; Angle=120; MaxTargets=1"), Handle);
+		if (!TestNotNull(FString::Printf(TEXT("%s was granted"), Case.Name), Skill))
+		{
+			continue;
+		}
+
+		// NEITHER WINDOW IS OPEN BEFORE THE SKILL IS USED. Without this the
+		// checks below would pass just as well for clocks open from birth.
+		if (!TestEqual(FString::Printf(
+					TEXT("%s's caster has no charge window yet"), Case.Name),
+				Caster.AbilitySystem->SecondsSinceChargeSkillUsed(), -1.0f, 0.001f)
+			|| !TestEqual(FString::Printf(
+					TEXT("%s's caster has no basic-attack window yet"), Case.Name),
+				Caster.AbilitySystem->SecondsSinceBasicAttackUsed(), -1.0f, 0.001f))
+		{
+			continue;
+		}
+
+		if (!TestTrue(FString::Printf(TEXT("%s started"), Case.Name),
+					  Caster.AbilitySystem->TryActivateAbility(
+						  Handle, /*bAllowRemoteActivation=*/false)))
+		{
+			continue;
+		}
+
+		const float Charge = Caster.AbilitySystem->SecondsSinceChargeSkillUsed();
+		const float Basic = Caster.AbilitySystem->SecondsSinceBasicAttackUsed();
+
+		TestEqual(FString::Printf(TEXT("%s and the charge window"), Case.Name),
+				  Charge, Case.bOpensChargeWindow ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the basic-attack window"), Case.Name),
+				  Basic, Case.bOpensBasicAttackWindow ? 0.0f : -1.0f, 0.001f);
+
+		// AND THE STATE THE PIPELINE IS HANDED CARRIES BOTH READINGS, which is
+		// the join between these timestamps and the rows that read them.
+		const FCataclysmStatConditions State =
+			Caster.AbilitySystem->CurrentConditions();
+		TestEqual(FString::Printf(
+					  TEXT("%s: the pipeline is told the charge reading"), Case.Name),
+				  State.SecondsSinceChargeSkill, Charge, 0.001f);
+		TestEqual(FString::Printf(
+					  TEXT("%s: the pipeline is told the basic-attack reading"),
+					  Case.Name),
+				  State.SecondsSinceBasicAttack, Basic, 0.001f);
+
+		// AND NEITHER SKILL BLOCKED ANYTHING, so the third window this change
+		// adds stays shut. A stamp wired to the wrong event would show here.
+		TestEqual(FString::Printf(TEXT("%s opened no block window"), Case.Name),
+				  Caster.AbilitySystem->SecondsSinceBlocked(), -1.0f, 0.001f);
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

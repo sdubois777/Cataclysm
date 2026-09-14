@@ -1445,4 +1445,292 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmDamageTakenBuildsAStackTest,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// The event windows an enchantment opens. Issue #1826.
+//
+// FOUR TESTS AND FOUR DIFFERENT BREAKS. The first two are one collision test
+// written as a pair: each is the positive case for its own clock and the
+// negative case for the other's, because the cheapest wrong implementation --
+// stamp every clock on every hit -- passes either one of them alone.
+// --------------------------------------------------------------------------
+
+namespace CataclysmConditionalDamageTest
+{
+	/** Twenty points of increase, held only inside a window a block opened. */
+	FCataclysmStatModifier AfterABlock(float WindowSeconds)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::GearAffix;
+		Modifier.Value = 20.0f;
+		Modifier.Condition = ECataclysmStatCondition::WithinSecondsOfBlock;
+		Modifier.ConditionValue = WindowSeconds;
+		return Modifier;
+	}
+
+	/** The same size of increase, held always, as a control. */
+	FCataclysmStatModifier AlwaysHeld()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::GearAffix;
+		Modifier.Value = 20.0f;
+		return Modifier;
+	}
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmBlockOpensAWindowTest,
+	"Cataclysm.ConditionalDamage.ABlockedBlowOpensTheBlockWindowAndNotTheForeignOne")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+
+	// EVERY BLOW IS BLOCKED. A block removes half a hit rather than preventing
+	// it, so the defender still loses health and the hit still resolves.
+	Defender.Combat->SetBlockChance(100.0f);
+
+	// AND THE ATTACKER SHARES THE DEFENDER'S TYPE, which is what makes this the
+	// negative half of the collision test. A Demonic blow on a Demonic
+	// character opens no foreign-damage window, so anything that stamps that
+	// clock here is stamping clocks it was not asked to.
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a Demonic attacker"), Attacker))
+	{
+		return false;
+	}
+
+	// NOTHING HAS HAPPENED YET, asserted before the hit. Without this the check
+	// afterwards would pass just as well if the window were open from birth.
+	TestEqual(TEXT("a character that has blocked nothing has no window"),
+		Defender.AbilitySystem->SecondsSinceBlocked(), -1.0f, 0.001f);
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a blocked blow opens the block window, now"),
+		Defender.AbilitySystem->SecondsSinceBlocked(), 0.0f, 0.001f);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES IT, which is the join
+	// between this timestamp and the bonus that reads it.
+	TestEqual(TEXT("and the state handed to the pipeline says the same"),
+		Defender.AbilitySystem->CurrentConditions().SecondsSinceBlock,
+		0.0f, 0.001f);
+
+	// AND IT OPENED NOTHING ELSE. Half of the collision test.
+	TestEqual(TEXT("and a blow of the character's own type opens no "
+				   "foreign-damage window"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmUnblockedOpensNoBlockWindowTest,
+	"Cataclysm.ConditionalDamage.AnUnblockedBlowOpensTheForeignWindowAndNotTheBlockOne")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE OTHER HALF OF THE COLLISION TEST, and the two together are what say
+	// the two clocks ask different questions. This one takes a blow that is
+	// NOT blocked and IS of a foreign type: the exact mirror of the test above.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+
+	// MakeReachable already sets block chance to zero; saying so here is what
+	// keeps this test honest if that helper ever changes.
+	Defender.Combat->SetBlockChance(0.0f);
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+	if (!TestNotNull(TEXT("a War attacker"), Attacker))
+	{
+		return false;
+	}
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("an unblocked blow opens no block window"),
+		Defender.AbilitySystem->SecondsSinceBlocked(), -1.0f, 0.001f);
+	TestEqual(TEXT("and the state handed to the pipeline says the same"),
+		Defender.AbilitySystem->CurrentConditions().SecondsSinceBlock,
+		-1.0f, 0.001f);
+
+	// AND THE NEIGHBOURING WINDOW DID OPEN, which is the positive control. A
+	// change that simply stopped stamping anything would pass the assertions
+	// above and fail this one.
+	TestEqual(TEXT("and a foreign blow still opens the foreign window"),
+		Defender.AbilitySystem->SecondsSinceForeignDamageTaken(), 0.0f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmBlockWindowShutsTest,
+	"Cataclysm.ConditionalDamage.TheBlockWindowShutsOnceItsSecondsHavePassed")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	GiveOwnDamageType(Defender, TEXT("Demonic"));
+	Defender.Combat->SetBlockChance(100.0f);
+
+	// A THOUSAND FLAT AND TWENTY POINTS OF INCREASE INSIDE A THREE SECOND
+	// WINDOW, so the stat reads 1000 with the window shut and 1200 with it
+	// open. The two answers are far apart enough that no tolerance question
+	// arises, and neither is a round number the other could reach by accident.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1000.0f));
+	Inputs.Modifiers.Add(AfterABlock(3.0f));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Defender.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	const FName Stat(TEXT("attack_damage"));
+	const FGameplayTagContainer NoSkill;
+
+	TestEqual(TEXT("with nothing blocked the increase is refused"),
+		Defender.AbilitySystem->StatForSkill(Stat, NoSkill, 0.0f),
+		1000.0f, 0.01f);
+
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a Demonic attacker"), Attacker))
+	{
+		return false;
+	}
+
+	const float Before = Defender.Vitals->GetHealth();
+	UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+									 /*DamagePercent=*/100.0f);
+	if (!TestTrue(TEXT("the hit reached the defender"),
+				  Defender.Vitals->GetHealth() < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the instant it is blocked the increase applies"),
+		Defender.AbilitySystem->StatForSkill(Stat, NoSkill, 0.0f),
+		1200.0f, 0.01f);
+
+	// THE LAST INSTANT OF THE WINDOW IS INSIDE IT, which is the boundary every
+	// other predicate in this pipeline draws the same way.
+	World->TimeSeconds += 3.0f;
+	TestEqual(TEXT("and exactly three seconds later it still applies"),
+		Defender.AbilitySystem->StatForSkill(Stat, NoSkill, 0.0f),
+		1200.0f, 0.01f);
+
+	// AND PAST IT THE WINDOW IS SHUT, with nothing else having happened.
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("and half a second past the window it is refused again"),
+		Defender.AbilitySystem->StatForSkill(Stat, NoSkill, 0.0f),
+		1000.0f, 0.01f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmUnopenedWindowRefusesTest,
+	"Cataclysm.ConditionalDamage.AWindowNeverOpenedRefusesWhileAnUnconditionedRowApplies")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE GUARD ON THE OTHER SIDE OF THE WINDOW. A clock that has never been
+	// stamped reads -1, and -1 must mean "never" rather than "always". Getting
+	// that backwards would grant every event-window row to every character from
+	// birth, which is silent and in the player's favour.
+	//
+	// AND THE UNCONDITIONED MODIFIER BESIDE IT IS THE REGRESSION GUARD, because
+	// most of the 152 enchantment effect rows carry no condition at all. A
+	// change that made an unstamped clock refuse everything would pass the
+	// first assertion and fail the second.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+
+	if (!TestEqual(TEXT("nothing has been blocked"),
+				   Defender.AbilitySystem->SecondsSinceBlocked(), -1.0f, 0.001f))
+	{
+		return false;
+	}
+
+	FCataclysmStatInputs Conditioned;
+	Conditioned.Base = 0.0f;
+	Conditioned.Modifiers.Add(FlatFromGear(1000.0f));
+	Conditioned.Modifiers.Add(AfterABlock(3.0f));
+
+	FCataclysmStatInputs Unconditioned;
+	Unconditioned.Base = 0.0f;
+	Unconditioned.Modifiers.Add(FlatFromGear(1000.0f));
+	Unconditioned.Modifiers.Add(AlwaysHeld());
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Conditioned);
+	Stats.Add(FName(TEXT("spell_damage")), Unconditioned);
+	Defender.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	const FGameplayTagContainer NoSkill;
+
+	TestEqual(TEXT("a window never opened refuses its modifier"),
+		Defender.AbilitySystem->StatForSkill(
+			FName(TEXT("attack_damage")), NoSkill, 0.0f),
+		1000.0f, 0.01f);
+
+	TestEqual(TEXT("and a row carrying no condition applies regardless"),
+		Defender.AbilitySystem->StatForSkill(
+			FName(TEXT("spell_damage")), NoSkill, 0.0f),
+		1200.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -126,6 +126,109 @@ circle so that a rule which never fired at all would fail it rather than satisfy
 
 ---
 
+## 2026-09-14 — A trigger is a clock: three enchantment rows open a window on an event, and every movement-speed row that wanted one was dropped
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the
+list of conditions a stat modifier can carry, and the code that answers them),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the
+per-character timestamps), `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`
+and `CataclysmVitalAttributeSet.cpp` (the two places the timestamps are written),
+`tools/generate_datatables.py`, `docs/All_Things_Cataclysm.xlsx` and
+`game/Data/EnchantmentEffects.csv`. Issue
+[#1826](https://github.com/sdubois777/Cataclysm/issues/1826). **Applied.**
+
+### What was wrong
+
+94 authored enchantments hang an effect on a moment — after you block, after you use a charge
+skill, on a kill. None could be written. A row could say what is true **now** and could not
+say what had happened **recently**.
+
+The plan approved for this was a new `Trigger` column on the enchantment effect row, a
+vocabulary of trigger names in the generator, and a subscriber binding the combat broadcasts.
+**That plan was abandoned before any of it was built, because the mechanism already existed.**
+
+### The decision: a trigger is a condition, not a new concept
+
+`WithinSecondsOfHealthCost` and `WithinSecondsOfForeignDamage` already do exactly what a
+trigger needs to do. Each is one timestamp and four small pieces: a stamp called at the
+event's own site, a reader returning elapsed seconds or -1, a line copying it into condition
+state, and a case comparing it against the row's existing `ConditionValue`.
+
+So "the effect is active for N seconds after the event" needs **no new row field, no new
+column, and no new action concept.** The window's length is the value the row already
+carries. Three names were added and nothing else:
+
+| Name | What it asks | Value | Unknown reading |
+| :-- | :-- | :-- | :-- |
+| `seconds_after_charge_skill` | did the wearer use a skill tagged `Keyword.Charge` within N seconds | a number of seconds, 0 to 60 | refuses |
+| `seconds_after_basic_attack` | did the wearer use its basic attack within N seconds | a number of seconds, 0 to 60 | refuses |
+| `seconds_after_block` | did the wearer block a blow within N seconds | a number of seconds, 0 to 60 | refuses |
+
+**All three refuse an unknown reading**, which is the rule for a bonus: a reading that is
+neither known nor ever must not make a row stronger than its own sentence. A character that
+has never blocked and a character with no world to ask both answer no, and they do not have
+to be told apart.
+
+**One name per event rather than one parameterised timer.** This follows the rule the two
+existing windows state: a general timer would have to carry which event it means, and the row
+has nowhere to put that, because its one value is already the window's length. **A condition
+name is added only when a sentence asks for it**, and these three arrived together because
+three authored enchantment sentences ask for them.
+
+**A tag decides one and the ability slot decides another, and that is not arbitrary.** Six
+weapon skills carry `Keyword.Charge`. The basic attack is not a row of
+`game/Data/WeaponSkills.csv` at all — `UCataclysmWeaponSkills::BasicAttackFor` builds it from
+the weapon base — so it carries no authored tag and the slot is the only thing naming it. A
+search of that sheet for `Slot.Basic` finds nothing, and that is correct authoring rather
+than a gap.
+
+**Blocking is a separate question from taking foreign damage, and the two are separate
+branches.** `seconds_after_foreign_damage` asks about the Cataclysm type and ignores whether
+the blow was blocked; `seconds_after_block` asks whether it was blocked and ignores the type.
+A blocked hit of a foreign type opens both, an unblocked foreign one opens only the first,
+and a blocked hit of the character's own type opens only the second. The block window is also
+**not** gated on damage getting through: the sentence says "blocking an attack" and says
+nothing about what survived.
+
+### The basic-attack window re-opens itself, and that is the intended reading
+
+Each swing stamps the clock afresh, so at any swing rate faster than one per four seconds the
+bonus is continuous while the character keeps attacking, and it lapses once the character
+stops. **The bonus never compounds** — the row grants what it says once, however often the
+window is re-opened. This is the ordinary ramp the genre uses, and it is recorded here
+because the alternative reading, "once per swing and not stacking with itself", would be a
+different row.
+
+### Every movement-speed row that wanted a window was dropped
+
+Five authored enchantments open a window on `movement_speed`. **None was written, and the
+cause is not in this change.**
+
+`movement_speed` is not read on demand. The movement component is told a number once and
+keeps it, and it is re-told only by `ACataclysmPlayerCharacter::RefreshMovementSpeed`, which
+is called from an attribute-change delegate, from `HealthChanged()`, and at init. **None of
+those is a clock.** A row reading "for 3 seconds after X" would open its window and the
+character's speed would not change until the player happened to take damage, or never.
+
+The shipped `health_below` movement-speed row works precisely because its condition changes
+at the moment health changes, and a health change is one of the three things that calls the
+refresh. A condition and its refresh must share a cause.
+
+This is recorded as a constraint rather than a defect in this change:
+[#1821](https://github.com/sdubois777/Cataclysm/issues/1821) carries the five rows and the
+design question. [#1825](https://github.com/sdubois777/Cataclysm/issues/1825) is the one
+already-shipped row that loses to the same fault.
+
+### What was proved rather than asserted
+
+Every condition here grants a stat that is **pulled at the moment it matters**: attack speed
+is read fresh on every swing, and the damage stats are read at every blow. That was checked
+before the rows were written, not after. The corroboration is that all 19 shipped rows using
+a time-based condition are on pull-evaluated stats and not one is on `movement_speed` — the
+existing table already respected a constraint nobody had written down.
+
+---
+
 ## 2026-09-14 — A locked skill says so on its own box, the words above the bar wait for every skill rather than any, and the bar was reading the class default object
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` (the data and

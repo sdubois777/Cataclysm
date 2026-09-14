@@ -167,8 +167,21 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// NOT MUTUALLY EXCLUSIVE, AND NOT WRITTEN AS IF THEY WERE. Nothing stops
 		// a future basic attack carrying the charge tag, and if one ever does it
 		// should open both windows rather than whichever test came first.
-		if (SkillTags.HasTag(FGameplayTag::RequestGameplayTag(
-				FName(TEXT("Keyword.Charge")))))
+		// ErrorIfNotFound IS FALSE, the refusal `UCataclysmFervour::LeechTag`
+		// makes and for its stated reason: a test may run before the tag table
+		// is loaded, and an empty tag matches nothing, which is the right
+		// answer there. With the default, an automation test would log an
+		// error on every skill use.
+		//
+		// ASKED AFRESH RATHER THAN KEPT IN A STATIC, which is the same choice
+		// that precedent makes. A static would be filled by the first call, so
+		// one call before the tag table loaded would leave it holding an
+		// invalid tag for the life of the process and the window would never
+		// open again.
+		const FGameplayTag ChargeTag = FGameplayTag::RequestGameplayTag(
+			TEXT("Keyword.Charge"), /*ErrorIfNotFound=*/false);
+
+		if (ChargeTag.IsValid() && SkillTags.HasTag(ChargeTag))
 		{
 			Cataclysm->NoteChargeSkillUsed();
 		}

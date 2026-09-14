@@ -269,8 +269,8 @@ JUDGED_NUMBERS = {
 #: stores and orphans every saved item carrying it. Issue #1799 carries that to
 #: the project owner. The sibling reword, Tyrant's Chains, was safe because its
 #: changed word sits past the 48-character cap, and it is written.
-AUTHORED_ROWS = 148
-AUTHORED_ENCHANTMENTS = 125
+AUTHORED_ROWS = 152
+AUTHORED_ENCHANTMENTS = 128
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's

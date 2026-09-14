@@ -68,6 +68,19 @@ namespace CataclysmEnchantmentEffectTest
 		TEXT("Positive_Charge_skills_knock_down_enemies_they_hit_for_1");
 	const TCHAR* SetMarker =
 		TEXT("Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc");
+
+	/**
+	 * The three benefits whose effect is a stat change inside a window an event
+	 * opens. Issue #1826. Each names a different event, and the third is worth
+	 * two rows because "increased damage" is authored as attack and spell.
+	 */
+	const TCHAR* ChargeWindowBenefit =
+		TEXT("Positive_After_using_a_charge_skill_gain_20_40_increase");
+	const TCHAR* BasicAttackWindowBenefit =
+		TEXT("Positive_Gain_5_10_attack_speed_on_basic_attack_for_4_s");
+	const TCHAR* BlockWindowBenefit =
+		TEXT("Positive_Blocking_an_attack_grants_10_20_increased_dama");
+
 	const TCHAR* SetDrawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10");
 
 	/**
@@ -2075,6 +2088,104 @@ bool FCataclysmReflectBenefitTest::RunTest(const FString&)
 	// figure on its own cannot show.
 	TestEqual(TEXT("and half of a blow of 60 is 30"),
 			  UCataclysmRetaliation::AmountFor(ASC, 60.0f), 30.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnchantmentEventWindowRowsTest,
+	"Cataclysm.Enchantments.AWindowRowCarriesItsOwnEventAndItsOwnSecondsAndNoTag",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEnchantmentEventWindowRowsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	FTables Tables;
+	if (!LoadAll(*this, Tables))
+	{
+		return false;
+	}
+
+	// THE THREE SENTENCES THAT ASKED FOR THESE CONDITIONS, each checked against
+	// the row the workbook now holds for it. Issue #1826.
+	//
+	// THE REQUIRED TAGS MUST BE EMPTY, AND THAT IS AN ASSERTION RATHER THAN AN
+	// OMISSION. Attack speed is asked for in CataclysmBasicAttack.cpp with an
+	// empty tag container -- its own comment says a modifier scoped to a tag
+	// does not reach it -- so a required tag written on either attack-speed row
+	// would leave the row validating, passing every other check here, and
+	// granting nothing in play.
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		const TCHAR* Stat;
+		ECataclysmStatCondition Condition;
+		float WindowSeconds;
+		float Low;
+		float High;
+	};
+
+	const FCase Cases[] = {
+		{ChargeWindowBenefit, TEXT("attack_speed"),
+		 ECataclysmStatCondition::WithinSecondsOfChargeSkill, 4.0f, 20.0f, 40.0f},
+		{BasicAttackWindowBenefit, TEXT("attack_speed"),
+		 ECataclysmStatCondition::WithinSecondsOfBasicAttack, 4.0f, 5.0f, 10.0f},
+		// TWO STATS FOR ONE SENTENCE, which is how every other "increased
+		// damage" enchantment in the table is written.
+		{BlockWindowBenefit, TEXT("attack_damage"),
+		 ECataclysmStatCondition::WithinSecondsOfBlock, 3.0f, 10.0f, 20.0f},
+		{BlockWindowBenefit, TEXT("spell_damage"),
+		 ECataclysmStatCondition::WithinSecondsOfBlock, 3.0f, 10.0f, 20.0f},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		int32 Added = 0;
+		const FTotals Totals = Gather(
+			Tables,
+			{Carrying(TEXT("Head_Helm"), Case.Enchantment, DrawbackWithNoEffect)},
+			Added);
+
+		const TArray<FCataclysmStatModifier>* Modifiers =
+			Totals.Find(FName(Case.Stat));
+		if (!TestNotNull(FString::Printf(TEXT("%s granted %s"), Case.Enchantment,
+										 Case.Stat),
+						 Modifiers)
+			|| !TestEqual(FString::Printf(TEXT("%s granted exactly one %s"),
+										  Case.Enchantment, Case.Stat),
+						  Modifiers->Num(), 1))
+		{
+			continue;
+		}
+
+		const FCataclysmStatModifier& Modifier = (*Modifiers)[0];
+
+		TestEqual(FString::Printf(TEXT("%s: %s is an increase"),
+								  Case.Enchantment, Case.Stat),
+				  static_cast<int32>(Modifier.Bucket),
+				  static_cast<int32>(ECataclysmStatBucket::Increased));
+		TestEqual(FString::Printf(TEXT("%s: %s names its own event"),
+								  Case.Enchantment, Case.Stat),
+				  static_cast<int32>(Modifier.Condition),
+				  static_cast<int32>(Case.Condition));
+		TestEqual(FString::Printf(TEXT("%s: %s states its own window"),
+								  Case.Enchantment, Case.Stat),
+				  Modifier.ConditionValue, Case.WindowSeconds);
+
+		// THE ROLLED VALUE SITS INSIDE THE SENTENCE'S OWN RANGE. The roll is
+		// what it is, so the assertion is the bracket rather than a number.
+		TestTrue(FString::Printf(
+					 TEXT("%s: %s rolls between %g and %g, and rolled %g"),
+					 Case.Enchantment, Case.Stat, Case.Low, Case.High,
+					 Modifier.Value),
+				 Modifier.Value >= Case.Low && Modifier.Value <= Case.High);
+
+		TestTrue(FString::Printf(
+					 TEXT("%s: %s is scoped to no tag, so it reaches a read "
+						  "that asks with none"),
+					 Case.Enchantment, Case.Stat),
+				 Modifier.RequiredTags.IsEmpty());
+	}
 
 	return true;
 }
