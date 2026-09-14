@@ -1941,8 +1941,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// Issue #41.
 	const bool bWitheredGround = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::WitheredGroundKey));
+	// AND MORTAL DECAY, WHICH TAKES HEALTH RATHER THAN MOVING A STAT OR PLACING
+	// ANYTHING. Issues #1786 and #41. Forced March is the only other rule here
+	// of that shape.
+	const bool bMortalDecay = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::MortalDecayKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
-		&& !bSingularityWells && !bWitheredGround)
+		&& !bSingularityWells && !bWitheredGround && !bMortalDecay)
 	{
 		return;
 	}
@@ -2006,6 +2011,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	{
 		StepWitheredGround(Player, AbilitySystem);
 	}
+
+	// AND MORTAL DECAY, WHICH ASKS FOR NO STAT REFRESH AT ALL. Issues #1786 and
+	// #41. It takes health directly, so its position in this order is free the
+	// way Withered Ground's is: it neither reads nor writes any field the rules
+	// above share, and nothing it does can be undone by the applier they call.
+	if (bMortalDecay)
+	{
+		StepMortalDecay(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepForcedMarch(
@@ -2040,6 +2054,57 @@ void ACataclysmDungeonGameMode::StepForcedMarch(
 	// than from an attacker, so no evasion roll, no block, no armour, no
 	// resistance, no critical strike and no ailment touch it. The player is its
 	// own instigator because nothing else dealt it.
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Amount);
+}
+
+void ACataclysmDungeonGameMode::StepMortalDecay(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	// A WORLD-TIME STAMP AND NOT A COUNTDOWN, so a beat that does not run costs
+	// the player nothing and a beat that runs late does not owe them anything.
+	//
+	// A NULL WORLD IS UNREACHABLE HERE AND THE FALLBACK IS STILL WRITTEN OUT.
+	// `StepFloorRulesThatChange` finds the player THROUGH the world, so a beat
+	// that got this far has one. What the fallback would do if that ever stopped
+	// being true is worth stating rather than assuming, because it is not
+	// uniformly safe in either direction: comparing the stamp against a `Now` of
+	// zero answers "slowed" for any window ever opened and "not slowed"
+	// otherwise, so it would be milder than the truth for a player who had
+	// killed and harsher for one who had not. If this ever becomes reachable,
+	// decide which reading the row wants rather than keeping this one.
+	const UWorld* World = GetWorld();
+	const float Now = World ? World->GetTimeSeconds() : 0.0f;
+	const bool bSlowed = MortalDecaySlowedUntilSeconds > Now;
+
+	// THE FLOOR'S DEPTH, WHICH IS WHAT THE ROW'S "AS THEY PROGRESS THROUGH THE
+	// DUNGEON" MEANS. `UCataclysmDungeonModifierEffects::MortalDecayKey` carries
+	// the standing rule that settles it against the walk.
+	//
+	// THE BRIEF'S NUMBER AND NOT THIS OBJECT'S `FloorNumber`, which is the
+	// reading `ApplyChangingFloorEffects` already takes: the brief belongs to
+	// the floor being stood on.
+	const float Rate = UCataclysmDungeonModifierEffects::MortalDecayPercentPerSecond(
+		FloorBrief.FloorNumber, bSlowed);
+	if (Rate <= 0.0f)
+	{
+		return;
+	}
+
+	// A SHARE OF MAXIMUM HEALTH, FOR THIS BEAT'S LENGTH. The rate is per second
+	// and this runs four times a second, so each beat takes a quarter of it --
+	// the same arithmetic `StepForcedMarch` does above, for the same reason.
+	const float Maximum = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Amount = Maximum * Rate / 100.0f * SecondsBetweenWaveChecks;
+	if (Amount <= 0.0f)
+	{
+		return;
+	}
+
+	// NOT A HIT. The affliction comes from the floor rather than from an
+	// attacker, so nothing in the mitigation order touches it and the player is
+	// its own instigator because nothing else dealt it.
 	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Amount);
 }
 
@@ -2161,6 +2226,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	// listener from being added without rewriting the first.
 	NoteDeathForNihilsEmbrace(Notice);
 	NoteDeathForWitheredGround(Notice);
+	NoteDeathForMortalDecay(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace(
@@ -2268,6 +2334,47 @@ void ACataclysmDungeonGameMode::NoteDeathForWitheredGround(
 	}
 
 	WitheredGroundPatches.Add(Patch);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForMortalDecay(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::MortalDecayKey)))
+	{
+		return;
+	}
+
+	// THE VICTIM MUST BE A CREATURE. The row says "reaping enemies", and this
+	// notice is sent for every death on the floor, the player's included.
+	if (!Cast<ACataclysmEnemyCharacter>(Notice.Victim))
+	{
+		return;
+	}
+
+	// AND THE PLAYER MUST HAVE BEEN THE ONE TO REAP IT, WHICH IS WHERE THIS
+	// DIFFERS FROM THE TWO LISTENERS ABOVE. "the player must give death his due
+	// souls by reaping enemies" names who does the killing, so a creature that
+	// dies to a patch of burning ground, to another creature, or to anything
+	// else on the floor buys nothing.
+	//
+	// THE SAME ROUTE TO THE PLAYER THE BEAT TAKES, so the two cannot disagree
+	// about whose floor this is.
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (!World || !Player || Notice.Killer != Player)
+	{
+		return;
+	}
+
+	// PUSHED FORWARD RATHER THAN ADDED TO. A kill sets the window to its own
+	// length from now, so killing steadily holds the slow and one kill never
+	// buys more than the row's few seconds however many creatures fall at once.
+	MortalDecaySlowedUntilSeconds =
+		World->GetTimeSeconds() + Effects::MortalDecaySlowSeconds;
 }
 
 void ACataclysmDungeonGameMode::StepWitheredGround(
@@ -2390,6 +2497,15 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 				MetresWalkedAtLastCleanse = Cataclysm->MetresWalkedTotal();
 			}
 			NihilsEmbraceRewardUntilSeconds = -1.0f;
+
+			// AND MORTAL DECAY'S KILL WINDOW GOES WITH IT. Issues #1786 and
+			// #41. Not on a new floor, the way the fields above this branch
+			// are: those hold something applied to the character and this
+			// holds only a time, so carrying the rest of a few seconds down a
+			// staircase is what "temporarily" already means. Leaving the
+			// dungeon is different -- the field's lifetime should be the
+			// dungeon's, so a window bought in one is not open in the next.
+			MortalDecaySlowedUntilSeconds = -1.0f;
 		}
 	}
 
