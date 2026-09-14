@@ -464,7 +464,21 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: a different pool, and the six health predicates read health. The condition and
 #: the row land together, which is what `target_health_below` did two changes
 #: ago rather than a choice made here.
-AUTHORED_ROWS = 246
+#:
+#: AND TO 247 ON 2026-09-14. ONE row, for `Wearing Them Down`
+#: (`Ravager_basic_c_b2`): "+2% increased Damage Reduction per point against
+#: enemies you have Weakened". Issue #1515, under the project owner's ruling on
+#: issue #1748 that the node grants increased damage reduction rather than less
+#: damage taken.
+#:
+#: IT NEEDED NO NEW PREDICATE AND ONE ARGUMENT. `opponent_carries_weaken`
+#: already existed, wired at both ends and used by no row -- but the damage
+#: reduction lookup in `UCataclysmDamageCalculation::Resolve` was the one
+#: defender-side lookup of seven that did not pass the blow record, so a row
+#: landing on it found an empty container and granted nothing. The row and that
+#: argument land together, which is the same shape as the condition and the row
+#: landing together in the entry above.
+AUTHORED_ROWS = 247
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -752,7 +766,15 @@ AUTHORED_ROWS = 246
 #: arrived at. The counts were read out of `game/Data/PassiveEffects.csv` and
 #: `game/Data/PassiveNodes.csv` together, by matching each node's name against
 #: the set of nodes holding a row.
-AUTHORED_NODES = 178
+#:
+#: AND TO 179 ON 2026-09-14. One node, `Wearing Them Down`
+#: (`Ravager_basic_c_b2`), which had no row. Issue #1515.
+#:
+#: MEASURED RATHER THAN ADDED, and this time the Ravager is the one that moves:
+#: it is 47 of its 74, and the Ritualist is 54 of its 74 and DID NOT MOVE. Read
+#: out of `game/Data/PassiveEffects.csv` and `game/Data/PassiveNodes.csv`
+#: together, by matching each node's name against the set of nodes holding a row.
+AUTHORED_NODES = 179
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:

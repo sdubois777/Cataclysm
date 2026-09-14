@@ -632,17 +632,39 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// bounding it, so at 100 a character was exactly immune.
 	if (Combat)
 	{
-		// NO BLOW HERE, AND NOTHING AUTHORED ASKS FOR ONE. Both enchantment rows
-		// granting damage reduction condition on the character's own state --
-		// "When your class resource is full, gain 10%-20% damage reduction for 3
-		// seconds", and a set bonus scaling it per active instance of leech --
-		// and the character's own state is read whatever is passed here. If a row
-		// is ever authored that conditions damage reduction on the kind of hit
-		// arriving, pass `BlowOf(Hit)` and it works; nothing else is needed.
+		// THE BLOW IS PASSED, AND UNTIL NOW IT WAS NOT. This comment used to read
+		// "NO BLOW HERE, AND NOTHING AUTHORED ASKS FOR ONE", and said that if a
+		// row were ever authored conditioning damage reduction on the hit
+		// arriving, "pass `BlowOf(Hit)` and it works; nothing else is needed".
+		// That row is the Ravager's Wearing Them Down -- "+2% increased Damage
+		// Reduction per point against enemies you have Weakened" -- and this is
+		// that one argument. Issue #1748, which the project owner ruled on
+		// 2026-09-14: the row grants increased damage reduction rather than less
+		// damage taken.
+		//
+		// THE FAILURE WITHOUT IT IS SILENT, WHICH IS WHY THE ROW IS GUARD-PROVED.
+		// `opponent_carries_weaken` is answered from `Blow.OpponentDebuffs`, so a
+		// row carrying it against a lookup passed no blow finds an empty
+		// container and refuses -- the row validates, the generator writes it,
+		// every count agrees, and the node grants nothing in play.
+		//
+		// FOUR OF THE SEVEN DEFENDER-SIDE LOOKUPS ALREADY PASSED ONE -- evasion,
+		// block chance, armour and damage taken -- and this change makes it five.
+		//
+		// TWO STILL PASS NONE, AND THAT IS A WARNING RATHER THAN A NOTE.
+		// `debuff_damage_suppressed` and `damage_over_time_taken` receive no blow
+		// record, so a row conditioned on the arriving hit that lands on either is
+		// dropped in silence, exactly as this one was. Pass `BlowOf(Hit)` there
+		// too when such a row is authored; nothing else is needed.
+		//
+		// THIS COMMENT SAID "SIX OF THE SEVEN" AND THEN NAMED FOUR, and called
+		// this the only lookup a conditioned row could be dropped by. Both were
+		// false. The count was measured correctly and then transcribed wrongly,
+		// which is why the figure is now written beside the names it counts.
 		Damage *= 1.0f
 			- EffectiveDamageReduction(
 				  DefenderStat(Defender, TEXT("damage_reduction"),
-							   Combat->GetDamageReduction()))
+							   Combat->GetDamageReduction(), BlowOf(Hit)))
 				  / 100.0f;
 
 		// AND THE MULTIPLICATIVE BUCKET, WHICH THAT CAP DOES NOT REACH. Twelve
