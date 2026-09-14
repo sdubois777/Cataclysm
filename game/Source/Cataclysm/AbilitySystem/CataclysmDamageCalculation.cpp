@@ -512,7 +512,17 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	{
 		const float Roll = EvasionRoll >= 0.0f ? EvasionRoll
 											   : FMath::FRandRange(0.0f, 100.0f);
-		if (Roll < Combat->GetEvasion())
+		// ASKED FOR, WITH THE BLOW, for the reason the armour step above gives.
+		// Issue #947. Evasion was the last defensive stat still read straight
+		// off the attribute, so a modifier carrying a condition was dropped in
+		// silence -- both one about the character, "While moving, your evasion
+		// chance is increased by 10%-20%", and one about the hit, "Cannot evade
+		// melee attacks".
+		//
+		// THE ROLL IS STILL THE CALLER'S. Only the number it is compared against
+		// changes, so every test that pins a roll is unaffected.
+		if (Roll < DefenderStat(Defender, TEXT("evasion"), Combat->GetEvasion(),
+								BlowOf(Hit)))
 		{
 			Result.bEvaded = true;
 			return Result;

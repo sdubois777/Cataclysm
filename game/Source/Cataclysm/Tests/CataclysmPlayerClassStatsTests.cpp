@@ -1311,6 +1311,8 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 		 UCataclysmCombatAttributeSet::GetPenetrationAttribute()},
 		{TEXT("armor_penetration"),
 		 UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute()},
+		{TEXT("armor"), UCataclysmCombatAttributeSet::GetArmorAttribute()},
+		{TEXT("evasion"), UCataclysmCombatAttributeSet::GetEvasionAttribute()},
 
 		// THE ONE ALREADY WIRED, AS A POSITIVE CONTROL ON THE CONTROL. Critical
 		// strike chance was moved to an ask under issue #959 and nothing has
@@ -1350,7 +1352,7 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 	// left to `UE_ARRAY_COUNT` alone so that emptying the list is a failure
 	// rather than a silent pass. Counted from the list above, not incremented.
 	TestEqual(TEXT("every stat listed was checked"),
-			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 4);
+			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 6);
 	return true;
 }
 
