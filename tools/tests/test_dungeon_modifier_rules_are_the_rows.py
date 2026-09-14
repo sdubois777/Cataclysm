@@ -921,4 +921,100 @@ def test_hallowed_groundfall_craters_do_not_outlast_the_gap_between_them():
         "check it still ends before the next bombardment. The rule carries no cap "
         "on craters because it never needed one. docs/DECISIONS.md has the "
         "derivation.")
+def test_spore_clouds_row_still_states_a_chance_and_no_figure_for_it():
+    """The gap the rule's chance fills, held open.
 
+    THE ROW SAYS "a chance" AND GIVES NO PERCENTAGE, which is why
+    `SporeCloudsChancePercentOnDeath` is a judgement rather than a reading. Eight
+    of the 117 rows are written that way and this is one of them.
+
+    IF THE ROW EVER STATES A FIGURE, THE RULE MUST USE THAT ONE. A row saying
+    "a 25% chance" beside a rule using ten is the exact drift this whole file
+    exists to catch, and nothing else would notice it: the C++ tests build the
+    chance from the constant, so they would agree with themselves either way.
+    """
+    words = flat(rows()["Pestilence_Spore_Clouds"]["Description"])
+
+    assert "a chance" in words.lower(), words
+    assert "%" not in words, (
+        "Pestilence_Spore_Clouds now states a percentage. The rule's chance was "
+        "a judgement made because the row gave none -- see "
+        "SporeCloudsChancePercentOnDeath in CataclysmDungeonModifierEffects.h. "
+        "Use the row's figure instead. " + words)
+
+
+def test_spore_clouds_row_still_names_the_trigger_the_rule_listens_for():
+    """A death, and an enemy's death.
+
+    THE RULE IS BOUND TO `OnSomethingDied` AND REFUSES EVERY VICTIM THAT IS NOT A
+    CREATURE. Both of those read this sentence. A row that moved its trigger to a
+    hit, or to the player's death, would leave the rule listening to the wrong
+    announcement and nothing in C++ would say so.
+    """
+    words = flat(rows()["Pestilence_Spore_Clouds"]["Description"]).lower()
+
+    assert "enemies" in words, words
+    assert "on death" in words, words
+
+
+def test_spore_clouds_row_still_names_poison_and_the_player():
+    """Which ailment, and on whom.
+
+    THE RULE APPLIES `DoT_Poison` AND NOTHING ELSE, and it applies it to the
+    player rather than to whatever is nearby. Both come from this sentence. The
+    C++ test `SporesFromADeathNearThePlayerPoisonThem` asserts the player carries
+    Poison and not Burn; if the row stopped naming poison, that assertion would be
+    holding the rule to a word the design no longer uses.
+    """
+    words = flat(rows()["Pestilence_Spore_Clouds"]["Description"]).lower()
+
+    assert "poison" in words, words
+    assert "the player" in words, words
+
+
+def test_spore_clouds_chance_is_still_the_figure_the_table_uses_for_a_death():
+    """The row the rule's ten was derived from.
+
+    `Death_Vengful_Wraiths` IS THE ONLY ROW STATING A FIGURE FOR A CHANCE FIRED BY
+    ANY ENEMY'S DEATH, measured across all 117 on 2026-09-14, and it says ten. That
+    is the whole derivation for `SporeCloudsChancePercentOnDeath`, which its own
+    comment records.
+
+    IF THAT ROW'S FIGURE MOVES, THE DERIVATION IS GONE and the rule's ten is a
+    number somebody once chose. This fails then, which is the point: it holds an
+    argument rather than a value.
+    """
+    anchor = flat(rows()["Death_Vengful_Wraiths"]["Description"])
+    chance = constant("SporeCloudsChancePercentOnDeath")
+
+    assert f"{chance:g}% chance" in anchor.lower(), (
+        "Death_Vengful_Wraiths no longer states a "
+        f"{chance:g}% chance. Spore Clouds' chance was derived from it as the "
+        "figure this table already uses for a chance on a death -- see "
+        "SporeCloudsChancePercentOnDeath in CataclysmDungeonModifierEffects.h and "
+        "docs/DECISIONS.md. Re-derive it. " + anchor)
+
+
+def test_spore_clouds_reach_is_still_declared_as_the_other_deaths_radius():
+    """The derivation, not the number.
+
+    SPORES RELEASED AT A CORPSE AND A PATCH LEFT AT A CORPSE ASK ONE QUESTION --
+    how far does a thing left by a death reach -- and this project answered it
+    once, for `Famine_Withered_Ground`. The reach is declared as that constant
+    rather than as 300, so a later change to one carries the other.
+
+    REPLACING IT WITH A LITERAL WOULD BREAK THAT LINK SILENTLY, which is what this
+    notices. It is the same shape as
+    `test_hallowed_groundfall_craters_do_not_outlast_the_gap_between_them` above.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    declared = re.search(
+        r"SporeCloudsReachCm\s*=\s*WitheredGroundPatchRadiusCm\s*;", text)
+
+    assert declared, (
+        "Spore Clouds' reach is no longer declared as WitheredGroundPatchRadiusCm. "
+        "It was copied from that rule as a conclusion, because a patch left by a "
+        "death and spores released by one are the same question and the project "
+        "has answered it. If the reach is now a figure of its own, say why in "
+        "docs/DECISIONS.md and give it its own derivation.")

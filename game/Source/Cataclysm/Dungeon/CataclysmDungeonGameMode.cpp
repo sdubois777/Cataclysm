@@ -3,6 +3,7 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -541,6 +542,26 @@ static TAutoConsoleVariable<float> CVarGraspingTentaclesRoll(
 	TEXT("100. -1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the roll Spore Clouds releases on, so a test can assert what a death did.
+ * Issues #1820 and #41.
+ *
+ * THE SAME SHAPE AS THE TWO ABOVE. -1 rolls normally, 0 releases spores on every
+ * creature's death, 100 releases on none -- the comparison is strictly less than
+ * and the chance is below 100.
+ *
+ * A SEPARATE VARIABLE RATHER THAN SHARING EITHER OF THEM, for the reason
+ * `Cataclysm.GraspingTentaclesRoll` gives: a floor can carry more than one of
+ * these rows, and a test of one must be able to pin its own chance without
+ * deciding another's.
+ */
+static TAutoConsoleVariable<float> CVarSporeCloudsRoll(
+	TEXT("Cataclysm.SporeCloudsRoll"),
+	-1.0f,
+	TEXT("Pin the roll Spore Clouds compares its release chance with, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -554,6 +575,13 @@ namespace
 	float DungeonGameModeGraspingTentaclesRoll()
 	{
 		const float Pinned = CVarGraspingTentaclesRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll Spore Clouds' release chance is compared with: pinned, or drawn. */
+	float DungeonGameModeSporeCloudsRoll()
+	{
+		const float Pinned = CVarSporeCloudsRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 }
@@ -2844,6 +2872,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForWitheredGround(Notice);
 	NoteDeathForMortalDecay(Notice);
 	NoteDeathForWastingSickness(Notice);
+	NoteDeathForSporeClouds(Notice);
 }
 
 void ACataclysmDungeonGameMode::OnSomethingWasHit(
@@ -3073,6 +3102,88 @@ void ACataclysmDungeonGameMode::NoteDeathForWitheredGround(
 	}
 
 	WitheredGroundPatches.Add(Patch);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForSporeClouds(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::SporeCloudsKey)))
+	{
+		return;
+	}
+
+	// THE VICTIM MUST BE A CREATURE. The row says "Enemies have a chance", and
+	// this notice is sent for every death on the floor including the player's.
+	// The same guard `NoteDeathForWitheredGround` above makes, for the same
+	// reason: a rule written for enemies must not fire on the player's death.
+	if (!Cast<ACataclysmEnemyCharacter>(Notice.Victim))
+	{
+		return;
+	}
+
+	// THE ROLL COMES BEFORE EVERYTHING THAT FOLLOWS, and the header says why:
+	// the chance decides whether spores are released, not whether they land on
+	// anybody. A death far from the player still spends its roll.
+	if (!Effects::SporeCloudsRelease(DungeonGameModeSporeCloudsRoll()))
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// THE SAME ROUTE `ApplyFloorRulesToPlayer` TAKES to the player's character,
+	// so the two cannot disagree about whose floor rules these are.
+	APlayerController* Controller = World->GetFirstPlayerController();
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Player)
+	{
+		return;
+	}
+
+	// WHERE THE CREATURE DIED, WHICH THE NOTICE CARRIES, MEASURED FLAT. The
+	// reach is a distance across the floor, and a player standing a step above
+	// or below a corpse is no further from it. That is the reading
+	// `UCataclysmTargeting::IsInLine` already makes, by zeroing Z on both
+	// vectors before it measures anything.
+	FVector Apart = Player->GetActorLocation() - Notice.Location;
+	Apart.Z = 0.0f;
+	if (!Effects::SporeCloudsReach(Apart.Size()))
+	{
+		return;
+	}
+
+	// WHOSE NAME THE POISON IS DEALT IN. `ApplyDamageOverTime` refuses outright
+	// unless the instigator resolves to an ability system component, and the
+	// creature that released the spores is dead -- which is the whole reason
+	// `ACataclysmFloorHazardSource` exists. Naming the corpse here is the fault
+	// that made three of Artillery Strike's tests fail before it was found.
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	// THE AILMENT'S OWN ROW SAYS WHAT IT DOES, AND NOTHING HERE STATES A FIGURE.
+	// `UCataclysmAilments::Apply` reads `DoT_Poison` out of
+	// `game/Data/StatusEffects.csv` -- 20 damage a second for 8 seconds today --
+	// and magnitude one asks for that designed figure and no more. A number
+	// written here would be a second place to change it and a chance for the two
+	// to disagree.
+	const FCataclysmAilmentKind* Poison =
+		UCataclysmAilments::KindNamed(TEXT("Poison"));
+	if (!Poison)
+	{
+		return;
+	}
+
+	UCataclysmAilments::Apply(Source, Player, *Poison, /*Magnitude=*/1.0f);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForMortalDecay(

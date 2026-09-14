@@ -1322,6 +1322,37 @@ private:
 	void NoteDeathForWitheredGround(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Spore Clouds' poison, on a creature dying near the player. Issues #1820
+	 * and #41.
+	 *
+	 * THE ROLL IS DRAWN BEFORE THE PLAYER IS LOOKED FOR, because the row's own
+	 * sentence puts it there: "Enemies have a chance to RELEASE SPORES on death
+	 * that poison the player." Releasing is what the chance decides; reaching
+	 * the player is a separate fact about where they were standing. Drawing it
+	 * first also means a death rolls the same number of times wherever the
+	 * player is, which is the reason `NoteHitForWastingSickness` gives for
+	 * rolling even when its stack is already at the cap.
+	 *
+	 * THE POISON IS OWNED BY THE FLOOR AND NOT BY THE CREATURE THAT DIED, for
+	 * exactly the reason `NoteDeathForWitheredGround` above gives: every apply
+	 * route refuses unless the instigator resolves to an ability system
+	 * component, and a corpse cannot be that.
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime` also reads the instigator's
+	 * three damage-over-time stats, so whose name this is dealt in is not
+	 * decoration.
+	 *
+	 * NOTHING HERE STATES A DAMAGE OR A DURATION. `UCataclysmAilments::Apply`
+	 * applies Poison as `game/Data/StatusEffects.csv` says, at magnitude one,
+	 * which is that row's designed figure and no more. A number copied into this
+	 * file would be a second place to change it.
+	 *
+	 * NO STATE AND NO PER-FLOOR RESET. Each death is decided on its own, so
+	 * unlike every other rule on this beat there is nothing to carry between
+	 * floors and nothing for `ApplyFloorRulesToPlayer` to clear.
+	 */
+	void NoteDeathForSporeClouds(const struct FCataclysmDeathNotice& Notice);
+
+	/**
 	 * Mortal Decay's slowing, on a creature the player reaped. Issues #1786
 	 * and #41.
 	 *

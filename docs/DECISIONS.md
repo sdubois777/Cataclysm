@@ -2,6 +2,121 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A dungeon rule can state no figure for what it applies, ten is the chance this table already uses for a death, and the poison it applies had never been applied by anything
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules), `CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat and
+its death listeners), `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Pestilence_Spore_Clouds`: "Enemies have a chance to release spores on death that poison the
+player." It states a trigger, an ailment and a target, and no figure of any kind.
+
+### The rule states no damage and no duration, and that is the decision
+
+`UCataclysmAilments::Apply` applies `DoT_Poison` as `game/Data/StatusEffects.csv` says — 20
+damage a second for 8 seconds today, one stack — at magnitude one, which is that row's designed
+figure and no more. **No number for the poison appears anywhere in the rule.** A figure copied
+into `CataclysmDungeonGameMode.cpp` would be a second place to change it and a chance for the
+two to disagree, which is the fault every pin in
+`test_dungeon_modifier_rules_are_the_rows.py` exists to catch.
+
+**This is the first thing in the game that applies Poison.** Measured 2026-09-14: outside
+`game/Source/Cataclysm/Tests/`, the only mention of `DoT_Poison` in the module is the line in
+`CataclysmAilments.cpp` naming it and its keyword tag. So there was no applier to copy, and no
+reason to write one.
+
+### "A player-applied effect" describes who usually applies it, not who may
+
+`DoT_Poison`'s row opens with that sentence. **`DoT_Burn`'s row opens with the same sentence and
+then names two enemy modifiers that apply it to the player** — Infernal Brand and Hellfire Aura
+— and both are real code in `CataclysmEnemyModifiers.cpp`, where line 492 calls `ApplyBurn` with
+an enemy as the instigator. A sibling row already reads that way, so this one may.
+
+**`DoT_Poison`'s row also names "the Toxic Trail enemy modifier" and nothing in `game/Source`
+implements it.** That sentence is therefore not evidence of anything and is not cited as such.
+That gap is [#1832](https://github.com/sdubois777/Cataclysm/issues/1832), which surveys status
+descriptions naming sources that do not exist.
+
+### Ten percent, derived from the table rather than chosen
+
+**The row says "a chance" and gives no figure, and it is not alone.** Measured 2026-09-14:
+**eight of the 117 rows** of `game/Data/DungeonModifiers.csv` say "a chance" with no percentage
+beside it — `Celestial_Holy_Repercussions`, `Chaos_Volatile_Evolution`, `Death_Dead_Rising`,
+`Demonic_Hellfire`, `Famine_Wasting_Sickness`, `Pestilence_Spore_Clouds`,
+`Pestilence_The_Infested_Hoard` and `Void_Void_Parasite`.
+
+**One of those eight is already built**, and the project answered the same gap with ten:
+`WastingSicknessChancePercentPerHit`, which is the only other chance comparison in the built
+rules.
+
+**Ten is also what this table uses for this exact trigger.** `Death_Vengful_Wraiths` — "Enemies
+have a 10% chance of turning into wraiths when killed" — is the only row stating a figure for a
+chance fired by **any** enemy's death, which is the shape this row has.
+`Pestilence_Epidemic` states 25% but conditions it on the dead enemy being diseased, so it
+answers a narrower question.
+
+**The stated chances across the whole table are 5, 10, 25, 30 and 50**, in `Chaos_Wild_Magic`,
+`Death_Vengful_Wraiths`, `Chaos_Unstable_Portal`, `Pestilence_Epidemic` and `War_Royal_Guard`.
+Ten is inside that vocabulary rather than a new number.
+`test_spore_clouds_chance_is_still_the_figure_the_table_uses_for_a_death` holds the anchor row's
+figure, so if `Death_Vengful_Wraiths` ever moves, this derivation fails rather than quietly
+becoming a number somebody once picked.
+
+### The reach is copied as a conclusion, not derived again
+
+300 cm, declared as `WitheredGroundPatchRadiusCm` rather than as a figure. **Spores released at
+a corpse and a patch left at a corpse are one question** — how far does a thing left by a death
+reach — and `Famine_Withered_Ground` answered it. Two answers to one question is what this
+avoids, and
+`test_spore_clouds_reach_is_still_declared_as_the_other_deaths_radius` fails if the declaration
+is replaced with a literal.
+
+### The roll is drawn before the player is looked for
+
+The row's own sentence puts it there: "Enemies have a chance to **release spores** on death that
+poison the player." Releasing is what the chance decides; reaching the player is a separate fact
+about where they were standing. **A death far from the player still spends its roll**, which is
+the reason `NoteHitForWastingSickness` gives for rolling even when its stack is already at the
+cap: a test that pins the roll must not change how many rolls happen.
+
+**Below and not at or below.** A roll is drawn from 0 up to 100, so "below 10" is one chance in
+ten and "at or below" would be a hair more. The reach compares the other way — at or within,
+because a distance exactly equal to the reach is inside it, which is the reading
+`UCataclysmTargeting::IsInLine` already makes with `<=` against the half width squared. The two
+comparisons differ because one is a random draw and the other is a place.
+
+### The poison is dealt in the floor's name and not the corpse's
+
+`UCataclysmSkillEffects::ApplyDamageOverTime` refuses outright unless the instigator resolves to
+an ability system component, and the creature that released the spores is dead. That is what
+`ACataclysmFloorHazardSource` exists for, and it is the same conclusion
+`NoteDeathForWitheredGround` reached. **Naming the corpse is the fault that made three of the
+Artillery Strike's tests fail** before it was found, recorded here so the next death rule does
+not find it a third time.
+
+### This rule keeps no state, which is the first on this beat that does not
+
+Each death is decided on its own, so there is nothing to carry between floors and nothing for
+`ApplyFloorRulesToPlayer` to clear. Every other rule on this beat needed a per-floor reset.
+
+### What is not covered, said plainly
+
+**No break fails the near-death test alone.** Its own assertions — the control floor, the
+absence of Burn, the health lost — all rest on the poison landing, and anything that stops the
+poison landing stops the other two tests' closing assertions as well. So two of the four guard
+proofs trip the same three tests and prove different things: one that a poison is applied at
+all, the other that it is the ailment the row names.
+
+**That `UCataclysmAilments::Apply` applies a row's designed figures is not asserted here.**
+`CataclysmEnemyCommanderTests.cpp` drives it directly at several magnitudes and holds that.
+
+---
+
 ## 2026-09-14 — Unstoppable needs no new stat, only a read that asks the pipeline, and its third clause belongs with Relentless rather than here
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and

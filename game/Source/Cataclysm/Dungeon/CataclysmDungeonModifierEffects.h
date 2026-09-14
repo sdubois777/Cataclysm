@@ -557,6 +557,41 @@ public:
 	static const TCHAR* HallowedGroundfallKey;
 
 	/**
+	 * Spore Clouds: "Enemies have a chance to release spores on death that
+	 * poison the player." Issues #1820 and #41.
+	 *
+	 * THIS RULE STATES NO FIGURE FOR THE POISON AND THAT IS THE POINT. It applies
+	 * `DoT_Poison` from `game/Data/StatusEffects.csv`, whose own row says 20
+	 * damage a second for 8 seconds, one stack -- read through
+	 * `UCataclysmSkillEffects::NumbersForEffectTag` rather than copied here, so
+	 * the rule and the data cannot drift apart.
+	 *
+	 * THIS IS THE FIRST THING IN THE GAME THAT APPLIES POISON. Measured
+	 * 2026-09-14: outside `game/Source/Cataclysm/Tests/`, the only mention of
+	 * `DoT_Poison` in the module is the line in `CataclysmAilments.cpp` that
+	 * names it and its keyword tag. So this rule has no applier to copy, and
+	 * `NumbersForEffectTag` is how it reads the row instead.
+	 *
+	 * THE POISON ROW CALLS ITSELF "A player-applied effect" AND THAT DESCRIBES
+	 * WHO USUALLY APPLIES IT RATHER THAN WHO MAY. `DoT_Burn`'s row opens with the
+	 * same sentence and then names two enemy modifiers that apply it to the
+	 * player -- Infernal Brand and Hellfire Aura -- and both of those are real
+	 * code in `CataclysmEnemyModifiers.cpp`, where line 492 calls `ApplyBurn`
+	 * with an enemy as the instigator. A sibling row already reads that way, so
+	 * this one may.
+	 *
+	 * THE POISON ROW ALSO NAMES "the Toxic Trail enemy modifier" AND NOTHING IN
+	 * `game/Source` IMPLEMENTS IT, so that sentence is not evidence of anything
+	 * and is not cited as such here. That gap is issue #1832's subject, not this
+	 * rule's.
+	 *
+	 * A SECOND, PESTILENCE-FLAVOURED POISON WOULD BE TWO NAMES FOR ONE EFFECT,
+	 * which is the argument `UCataclysmEnemyModifiers` already makes about the
+	 * Commander buff.
+	 */
+	static const TCHAR* SporeCloudsKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -1197,6 +1232,53 @@ public:
 	static constexpr float HallowedGroundfallSecondsBetween = 30.0f;
 
 	/**
+	 * How often a death releases spores, as a percentage.
+	 *
+	 * A JUDGEMENT, DERIVED FROM THE TABLE ITSELF. The row says "a chance" and
+	 * gives no figure, and it is not alone: measured 2026-09-14, EIGHT of the 117
+	 * rows in `game/Data/DungeonModifiers.csv` say "a chance" with no percentage
+	 * beside it. One of those eight is `Famine_Wasting_Sickness`, which is built,
+	 * and the project answered that same gap with ten -- see
+	 * `WastingSicknessChancePercentPerHit` below, which is the only other chance
+	 * comparison in the built rules.
+	 *
+	 * TEN IS ALSO WHAT THE TABLE USES FOR THIS EXACT TRIGGER.
+	 * `Death_Vengful_Wraiths` -- "Enemies have a 10% chance of turning into
+	 * wraiths when killed" -- is the only row that states a figure for a chance
+	 * fired by ANY enemy's death, which is the shape this row has.
+	 * `Pestilence_Epidemic` states 25% but conditions it on the dead enemy being
+	 * diseased, so it answers a narrower question.
+	 *
+	 * THE STATED CHANCES ACROSS THE WHOLE TABLE ARE 5, 10, 25, 30 AND 50, in
+	 * `Chaos_Wild_Magic`, `Death_Vengful_Wraiths`, `Chaos_Unstable_Portal`,
+	 * `Pestilence_Epidemic` and `War_Royal_Guard`. Ten is inside that vocabulary
+	 * rather than a new number.
+	 */
+	static constexpr float SporeCloudsChancePercentOnDeath = 10.0f;
+
+	/**
+	 * How far from the corpse the spores reach.
+	 *
+	 * THE SAME FIGURE `WitheredGroundPatchRadiusCm` USES, and copied as a
+	 * conclusion rather than derived again: spores released at a corpse and a
+	 * patch left at a corpse are one question -- how far does a thing left by a
+	 * death reach -- and the project has already answered it once. Two answers to
+	 * one question is what this avoids.
+	 */
+	static constexpr float SporeCloudsReachCm = WitheredGroundPatchRadiusCm;
+
+	static_assert(
+		SporeCloudsChancePercentOnDeath > 0.0f
+			&& SporeCloudsChancePercentOnDeath < 100.0f,
+		"Spore Clouds is a CHANCE on death. At zero it never happens and the row "
+		"is unbuilt; at a hundred it happens every time and the row's own word "
+		"'chance' describes nothing.");
+
+	static_assert(
+		SporeCloudsReachCm > 0.0f,
+		"Spores that reach nowhere poison nobody.");
+
+	/**
 	 * How many craters one bombardment leaves.
 	 *
 	 * A JUDGEMENT, DERIVED FROM AN EXISTING BOUND RATHER THAN CHOSEN. The row
@@ -1711,6 +1793,20 @@ public:
 	 * one lays no crater rather than one that burns for nothing.
 	 */
 	static float HallowedGroundfallBurnPerSecond(float MaximumHealth);
+
+	/**
+	 * Whether a death releases spores, given the roll it drew.
+	 *
+	 * BELOW AND NOT AT OR BELOW: a roll is drawn from 0 up to 100, so "below 10"
+	 * is one chance in ten and "at or below" would be a hair more. The one other
+	 * chance comparison in the built rules makes the same one --
+	 * `ACataclysmDungeonGameMode::NoteHitForWastingSickness` writes
+	 * `DungeonGameModeWastingSicknessRoll() < WastingSicknessChancePercentPerHit`.
+	 */
+	static bool SporeCloudsRelease(float Roll);
+
+	/** Whether spores released this far from a target reach it. */
+	static bool SporeCloudsReach(float DistanceCm);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -26,6 +27,7 @@
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagsManager.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
@@ -311,6 +313,28 @@ namespace CataclysmDungeonModifierEffectsTest
 	FGameplayTag EmpoweredTag()
 	{
 		return UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+	}
+
+	/** And the row whose spores a death releases. Issues #1820 and #41. */
+	const FName SporeClouds(
+		UCataclysmDungeonModifierEffects::SporeCloudsKey);
+
+	/**
+	 * The tag an ailment grants, asked for the way the rule asks for it.
+	 *
+	 * THROUGH `UCataclysmAilments` RATHER THAN `StatusTagFor`, WHICH WOULD ANSWER
+	 * A DIFFERENT TAG. The ailments table names Poison's tag `Keyword.DoT.Poison`
+	 * and that is what `UCataclysmAilments::Apply` requests; `StatusTagFor` walks
+	 * the Debuff, Buff and DoT branches of `Status.` and would answer
+	 * `Status.DoT.Poison`, which nothing grants. A test asking the wrong one
+	 * would report every one of these rules broken.
+	 */
+	FGameplayTag AilmentTag(const TCHAR* Ailment)
+	{
+		const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(Ailment);
+		return Kind ? UGameplayTagsManager::Get().RequestGameplayTag(
+						  FName(Kind->TagName), /*ErrorIfNotFound=*/false)
+					: FGameplayTag();
 	}
 
 	/** How many ground zones are on the floor now. */
@@ -4895,6 +4919,559 @@ bool FCataclysmGroundfallEmpowermentEndsTest::RunTest(const FString& Parameters)
 
 	TestFalse(TEXT("and it has lost it a second after walking out"),
 			  UCataclysmSkillEffects::HasTag(Creature, Empowered));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Spore_Clouds: "Enemies have a chance to release spores on death
+// that poison the player." Issues #1820 and #41.
+//
+// WHAT THESE THREE COVER AND WHAT THEY DO NOT. They cover the rule's own four
+// decisions -- the floor carries the row, the victim is a creature, the roll
+// released, the player was near enough -- and that what lands is Poison rather
+// than some other ailment. They do NOT cover `UCataclysmAilments::Apply` itself;
+// that it applies a row's designed figures is asserted in
+// `CataclysmEnemyCommanderTests.cpp`, which drives it directly at several
+// magnitudes.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSporeCloudsNearTest,
+	"Cataclysm.DungeonModifierEffects.SporesFromADeathNearThePlayerPoisonThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSporeCloudsNearTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE GAME MODE'S OWN StartPlay BINDS THE DEATH HANDLER, and a test world
+	// never calls it. `CataclysmWitheredGroundTest` above records a whole run
+	// lost to leaving this out: every other assertion passed and the one death
+	// reached nothing.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// THE ROLL IS PINNED SO THE CHANCE CANNOT DECIDE WHETHER THIS TEST PASSES.
+	// Zero beats any chance above zero, so every creature's death releases.
+	FScopedConsoleString Roll(TEXT("Cataclysm.SporeCloudsRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Poison = AilmentTag(TEXT("Poison"));
+	const FGameplayTag Burn = AilmentTag(TEXT("Burn"));
+	if (!TestTrue(TEXT("the game defines the ailment this row names"),
+				  Poison.IsValid())
+		|| !TestTrue(TEXT("and the one it does not name, to tell them apart"),
+					 Burn.IsValid()))
+	{
+		return false;
+	}
+
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where)
+		-> ACataclysmEnemyCharacter*
+	{
+		// THE COLLISION OVERRIDE IS THE CORRECTION ANOTHER TEST IN THIS FILE
+		// RECORDS: creatures carry a capsule and the default handling refuses a
+		// blocked spawn, which reads as "no creature spawned".
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(), Where,
+				FRotator::ZeroRotator, Spawn);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return nullptr;
+		}
+
+		// IT HAS HEALTH TO LOSE. `MarkDead` refuses a second time, so a creature
+		// already at zero announces no death and nothing downstream runs.
+		UAbilitySystemComponent* Theirs = Creature->GetAbilitySystemComponent();
+		if (!TestNotNull(TEXT("the creature has an ability system"), Theirs))
+		{
+			return nullptr;
+		}
+		const float Health =
+			Theirs->GetNumericAttribute(Vital::GetHealthAttribute());
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature has health to lose: %.1f"), Health),
+					  Health > 0.0f))
+		{
+			return nullptr;
+		}
+
+		// WHERE IT ACTUALLY STANDS, READ BEFORE THE BLOW. The spawn above may be
+		// moved by the engine when the asked-for spot is blocked, so the point
+		// passed in is a request and not a fact.
+		StoodAt = Creature->GetActorLocation();
+
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		if (!TestTrue(TEXT("the blow killed the creature"),
+					  UCataclysmSkillEffects::IsDead(Creature)))
+		{
+			return nullptr;
+		}
+		return Creature;
+	};
+
+	const FVector Standing = Player.Character->GetActorLocation();
+	const FVector Near =
+		Standing + FVector(Effects::SporeCloudsReachCm * 0.5f, 0.0f, 0.0f);
+
+	// A FLOOR WITHOUT THE ROW FIRST. This is the control: the same death, in the
+	// same place, on a floor that does not carry Spore Clouds. Without it every
+	// assertion below would also pass for a rule that poisoned on every floor.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the plain floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestNotNull(TEXT("a creature to kill on the plain floor"),
+					 KillACreatureAt(Near)))
+	{
+		return false;
+	}
+	if (!TestFalse(TEXT("a death on a floor without Spore Clouds poisons nobody"),
+				   UCataclysmSkillEffects::HasTag(Player.Character, Poison)))
+	{
+		return false;
+	}
+
+	// NOW THE FLOOR THAT CARRIES IT, AND THIS ROW ALONE, so every reading below
+	// is this rule's and no other row is taking health at the same time.
+	Mode->DungeonModifiers = {SporeClouds};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the infested floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the floor carries Spore Clouds"),
+				  Mode->FloorBrief.Modifiers.Contains(SporeClouds)))
+	{
+		return false;
+	}
+
+	// THE STATE THIS TEST IS BUILT ON, ASSERTED BEFORE THE BEHAVIOUR IS. An
+	// unpoisoned player is what makes the assertion after the death mean
+	// something; a player already carrying poison would pass it either way.
+	if (!TestFalse(TEXT("the player is not poisoned before anything dies"),
+				   UCataclysmSkillEffects::HasTag(Player.Character, Poison)))
+	{
+		return false;
+	}
+
+	const float Before =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	if (!TestTrue(FString::Printf(TEXT("the player has health to lose: %.1f"),
+								  Before),
+				  Before > 0.0f))
+	{
+		return false;
+	}
+
+	if (!TestNotNull(TEXT("a creature to kill near the player"),
+					 KillACreatureAt(Near)))
+	{
+		return false;
+	}
+
+	// HOW FAR THE DEATH ACTUALLY WAS, ASSERTED RATHER THAN ASSUMED. The spawn
+	// may have been moved, so "near" is a request until it is measured.
+	const float Apart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the creature died inside the reach: %.1f of %.1f"),
+					  Apart, Effects::SporeCloudsReachCm),
+				  Apart <= Effects::SporeCloudsReachCm))
+	{
+		return false;
+	}
+
+	// THE HAZARD SOURCE FIRST. The rule asks for it after the reach test and
+	// before it poisons anybody, so its presence says the death got that far and
+	// its absence says the rule stopped earlier. Without this line a missing
+	// poison tag would mean either.
+	TestNotNull(TEXT("the death reached the rule, which made a hazard source"),
+				ACataclysmFloorHazardSource::Existing(World));
+
+	TestTrue(TEXT("a death inside the reach poisons the player"),
+			 UCataclysmSkillEffects::HasTag(Player.Character, Poison));
+
+	// AND IT IS POISON AND NOT SOME OTHER AILMENT, which is the row's own word.
+	// Burn is the ailment two other rules already apply to the player, so it is
+	// the one a wrong answer would most likely be.
+	TestFalse(TEXT("and it is poison rather than burn"),
+			  UCataclysmSkillEffects::HasTag(Player.Character, Burn));
+
+	// AND IT COSTS HEALTH, WHICH IS WHAT "poison the player" PROMISES. The row
+	// states 20 a second and the player regenerates 1, so a couple of seconds
+	// cannot be a draw. At least 10 is asked for so a tick falling on the edge
+	// of a step cannot decide the result.
+	CataclysmTestWorld::RunClock(World, 2.5f);
+	const float After =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	const float Lost = Before - After;
+	AddInfo(FString::Printf(
+		TEXT("health %.1f -> %.1f, so the poison took %.1f in 2.5 seconds"),
+		Before, After, Lost));
+	TestTrue(FString::Printf(TEXT("the poison takes health: %.1f"), Lost),
+			 Lost >= 10.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSporeCloudsFarTest,
+	"Cataclysm.DungeonModifierEffects.SporesDoNotReachAPlayerStandingFarFromTheDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSporeCloudsFarTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// PINNED TO ALWAYS RELEASE, so whatever this test measures is the reach and
+	// never the chance. A far death that poisoned nobody because its roll failed
+	// would look exactly like the behaviour being asserted.
+	FScopedConsoleString Roll(TEXT("Cataclysm.SporeCloudsRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Poison = AilmentTag(TEXT("Poison"));
+	if (!TestTrue(TEXT("the game defines the ailment this row names"),
+				  Poison.IsValid()))
+	{
+		return false;
+	}
+
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where)
+		-> ACataclysmEnemyCharacter*
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(), Where,
+				FRotator::ZeroRotator, Spawn);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return nullptr;
+		}
+		UAbilitySystemComponent* Theirs = Creature->GetAbilitySystemComponent();
+		if (!TestNotNull(TEXT("the creature has an ability system"), Theirs))
+		{
+			return nullptr;
+		}
+		const float Health =
+			Theirs->GetNumericAttribute(Vital::GetHealthAttribute());
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature has health to lose: %.1f"), Health),
+					  Health > 0.0f))
+		{
+			return nullptr;
+		}
+		StoodAt = Creature->GetActorLocation();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		if (!TestTrue(TEXT("the blow killed the creature"),
+					  UCataclysmSkillEffects::IsDead(Creature)))
+		{
+			return nullptr;
+		}
+		return Creature;
+	};
+
+	Mode->DungeonModifiers = {SporeClouds};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the infested floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the floor carries Spore Clouds"),
+				  Mode->FloorBrief.Modifiers.Contains(SporeClouds)))
+	{
+		return false;
+	}
+
+	const FVector Standing = Player.Character->GetActorLocation();
+
+	// THE FAR DEATH FIRST, ON A PLAYER NOT YET POISONED. Taken the other way
+	// round it could not be read at all: poison applied by the near death would
+	// still be running when the far one happened.
+	if (!TestFalse(TEXT("the player is not poisoned before anything dies"),
+				   UCataclysmSkillEffects::HasTag(Player.Character, Poison)))
+	{
+		return false;
+	}
+
+	const FVector Far =
+		Standing + FVector(Effects::SporeCloudsReachCm * 3.0f, 0.0f, 0.0f);
+	if (!TestNotNull(TEXT("a creature to kill far from the player"),
+					 KillACreatureAt(Far)))
+	{
+		return false;
+	}
+
+	// HOW FAR IT ACTUALLY DIED, ASSERTED BEFORE THE BEHAVIOUR. "Far" is a
+	// request until it is measured, and a creature the engine moved to within
+	// the reach would make the assertion below a lie in the other direction.
+	const float FarApart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the creature died outside the reach: %.1f of %.1f"),
+					  FarApart, Effects::SporeCloudsReachCm),
+				  FarApart > Effects::SporeCloudsReachCm))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a death outside the reach leaves the player unpoisoned"),
+			  UCataclysmSkillEffects::HasTag(Player.Character, Poison));
+
+	// AND NOW A NEAR ONE, WHICH IS WHAT MAKES THE LINE ABOVE WORTH ANYTHING. A
+	// rule that poisoned nobody at all would satisfy that assertion; it cannot
+	// satisfy this one too.
+	const FVector Near =
+		Standing + FVector(Effects::SporeCloudsReachCm * 0.5f, 0.0f, 0.0f);
+	if (!TestNotNull(TEXT("a creature to kill near the player"),
+					 KillACreatureAt(Near)))
+	{
+		return false;
+	}
+	const float NearApart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the second creature died inside the reach: %.1f of %.1f"),
+					  NearApart, Effects::SporeCloudsReachCm),
+				  NearApart <= Effects::SporeCloudsReachCm))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("while a death inside it does poison them"),
+			 UCataclysmSkillEffects::HasTag(Player.Character, Poison));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSporeCloudsRollTest,
+	"Cataclysm.DungeonModifierEffects.NotEveryDeathReleasesSpores",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSporeCloudsRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE ARITHMETIC FIRST, WHICH NEEDS NO WORLD. A roll at the chance itself
+	// must not release, or one death in ten would be a hair more than one in ten.
+	TestTrue(TEXT("a roll below the chance releases"),
+			 Effects::SporeCloudsRelease(
+				 Effects::SporeCloudsChancePercentOnDeath - 0.01f));
+	TestFalse(TEXT("a roll at the chance does not"),
+			  Effects::SporeCloudsRelease(
+				  Effects::SporeCloudsChancePercentOnDeath));
+	TestFalse(TEXT("and nor does one above it"),
+			  Effects::SporeCloudsRelease(
+				  Effects::SporeCloudsChancePercentOnDeath + 0.01f));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// PINNED TO NEVER RELEASE. A hundred is above the chance and the comparison
+	// is strictly less than, so no creature's death releases anything.
+	FScopedConsoleString Roll(TEXT("Cataclysm.SporeCloudsRoll"), TEXT("100"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Poison = AilmentTag(TEXT("Poison"));
+	if (!TestTrue(TEXT("the game defines the ailment this row names"),
+				  Poison.IsValid()))
+	{
+		return false;
+	}
+
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where)
+		-> ACataclysmEnemyCharacter*
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(), Where,
+				FRotator::ZeroRotator, Spawn);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return nullptr;
+		}
+		UAbilitySystemComponent* Theirs = Creature->GetAbilitySystemComponent();
+		if (!TestNotNull(TEXT("the creature has an ability system"), Theirs))
+		{
+			return nullptr;
+		}
+		const float Health =
+			Theirs->GetNumericAttribute(Vital::GetHealthAttribute());
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature has health to lose: %.1f"), Health),
+					  Health > 0.0f))
+		{
+			return nullptr;
+		}
+		StoodAt = Creature->GetActorLocation();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		if (!TestTrue(TEXT("the blow killed the creature"),
+					  UCataclysmSkillEffects::IsDead(Creature)))
+		{
+			return nullptr;
+		}
+		return Creature;
+	};
+
+	Mode->DungeonModifiers = {SporeClouds};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the infested floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the floor carries Spore Clouds"),
+				  Mode->FloorBrief.Modifiers.Contains(SporeClouds)))
+	{
+		return false;
+	}
+
+	const FVector Standing = Player.Character->GetActorLocation();
+	const FVector Near =
+		Standing + FVector(Effects::SporeCloudsReachCm * 0.5f, 0.0f, 0.0f);
+
+	if (!TestFalse(TEXT("the player is not poisoned before anything dies"),
+				   UCataclysmSkillEffects::HasTag(Player.Character, Poison)))
+	{
+		return false;
+	}
+
+	if (!TestNotNull(TEXT("a creature to kill while the roll fails"),
+					 KillACreatureAt(Near)))
+	{
+		return false;
+	}
+
+	// THE DEATH WAS WELL INSIDE THE REACH, ASSERTED, so what follows is the roll
+	// and not the distance. This is the whole point of the test: the only reason
+	// this death must poison nobody is that its roll did not release.
+	const float Apart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the creature died inside the reach: %.1f of %.1f"),
+					  Apart, Effects::SporeCloudsReachCm),
+				  Apart <= Effects::SporeCloudsReachCm))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a death whose roll fails poisons nobody, however close"),
+			  UCataclysmSkillEffects::HasTag(Player.Character, Poison));
+
+	// AND THE SAME DEATH WITH A ROLL THAT RELEASES. Without this the assertion
+	// above would be satisfied by a rule that never poisoned anybody, and by a
+	// pinned variable that was never read.
+	Roll.Set(TEXT("0"));
+	if (!TestNotNull(TEXT("a second creature to kill once the roll releases"),
+					 KillACreatureAt(Near)))
+	{
+		return false;
+	}
+	const FString Second = FString::Printf(
+		TEXT("the second creature died inside the reach too: %.1f of %.1f"),
+		FVector::Dist2D(StoodAt, Standing), Effects::SporeCloudsReachCm);
+	if (!TestTrue(Second,
+				  FVector::Dist2D(StoodAt, Standing)
+					  <= Effects::SporeCloudsReachCm))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("while a death whose roll releases does poison them"),
+			 UCataclysmSkillEffects::HasTag(Player.Character, Poison));
 
 	return true;
 }
