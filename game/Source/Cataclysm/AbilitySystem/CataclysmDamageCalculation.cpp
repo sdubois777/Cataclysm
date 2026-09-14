@@ -56,9 +56,18 @@ namespace
 	 * is being hit rather than swinging. An empty container is the honest reading
 	 * and it is what the character sheet passes for the same stat.
 	 *
-	 * A BLOW, FOR THE ONE STEP THAT ASKS ABOUT THE HIT. Issue #666. The damage
-	 * taken step passes the hit's facts, so "you take 20% less damage from
-	 * spells" can ask about this hit. Every other step passes nothing.
+	 * A BLOW, FOR THE STEPS THAT ASK ABOUT THE HIT. Issue #666, then #947. The
+	 * damage taken step passes the hit's facts, so "you take 20% less damage
+	 * from spells" can ask about this hit; the armour step passes them too,
+	 * since "your armor is doubled against melee attacks" asks the same kind of
+	 * question.
+	 *
+	 * THIS SAID "THE ONE STEP" AND "EVERY OTHER STEP PASSES NOTHING" UNTIL THE
+	 * ARMOUR STEP BECAME THE SECOND. A count written into a comment beside the
+	 * thing it counts goes stale the moment a caller is added, and a reader who
+	 * trusts it concludes the mechanism is narrower than it is. The remaining
+	 * steps -- evasion, block, resistance -- still pass nothing, and each is its
+	 * own decision rather than an omission.
 	 */
 	float DefenderStat(const UAbilitySystemComponent* Defender,
 					   const TCHAR* Stat, float FromAttribute,
@@ -566,8 +575,25 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		const float FromWeapon = Hit.bIsPiercing ? PiercingArmorIgnored : 0.0f;
 		const float Ignored =
 			FMath::Clamp(Hit.ArmorPenetration + FromWeapon, 0.0f, 100.0f);
+		// THE BLOW IS PASSED NOW, WHICH IS THE WHOLE OF THIS CHANGE. Issue #947.
+		// `DefenderStat` already asked for this stat through the pipeline, so a
+		// modifier conditioned on the DEFENDER's own state -- the Masochist's
+		// Battle-Scarred, scaled per debuff carried -- already reached it. What
+		// it passed was an empty blow, so a modifier conditioned on the INCOMING
+		// HIT was judged against a record in which nothing is true, and refused
+		// every time.
+		//
+		// TWO AUTHORED ENCHANTMENTS NEED IT, and both are about the hit rather
+		// than the character: "Armor is halved against ranged attacks" and "Your
+		// armor is doubled against melee attacks".
+		//
+		// THE DAMAGE TAKEN STEP ALREADY DOES THIS, at step 8 below, and
+		// `DefenderStat`'s own header said why only that one did: "A BLOW, FOR
+		// THE ONE STEP THAT ASKS ABOUT THE HIT... Every other step passes
+		// nothing." That sentence is now out of date by one step, and its
+		// comment is corrected in this change rather than left to mislead.
 		const float Armor =
-			DefenderStat(Defender, TEXT("armor"), Combat->GetArmor())
+			DefenderStat(Defender, TEXT("armor"), Combat->GetArmor(), BlowOf(Hit))
 			* (1.0f - Ignored / 100.0f);
 		Damage *= 1.0f - ArmorReduction(Armor, Tier) / 100.0f;
 	}
