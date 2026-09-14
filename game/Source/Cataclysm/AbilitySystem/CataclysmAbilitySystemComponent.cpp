@@ -601,6 +601,19 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	{
 		// FLOORED AT ZERO. Nothing states negative life leech, and a negative
 		// reading would make a bonus counting it worth a negative amount.
+		//
+		// AND THIS ONE STAYS A PLAIN ATTRIBUTE READ, DELIBERATELY, WHILE THE
+		// THREE IN `UCataclysmLeech` BECAME ASKS UNDER ISSUE #947. Asking the
+		// pipeline for `life_leech` here would be circular: this value is an
+		// INPUT to the pipeline -- it is what `PerPercentOfLifeLeech` scales a
+		// modifier by -- so resolving it through the pipeline would mean
+		// evaluating the stat in order to build the state the evaluation needs.
+		//
+		// THE CONSEQUENCE IS REAL AND IS THE RIGHT ONE: a conditioned life leech
+		// row changes what the character leeches and does NOT change what a
+		// bonus scaled per point of life leech is worth. Glutton reads the
+		// investment a character has made, not the figure it happens to have
+		// while standing in the right place.
 		State.LifeLeechPercent = FMath::Max(0.0f, ForLeech->GetLifeLeech());
 	}
 

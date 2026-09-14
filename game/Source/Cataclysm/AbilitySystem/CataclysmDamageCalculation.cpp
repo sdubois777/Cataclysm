@@ -56,9 +56,21 @@ namespace
 	 * is being hit rather than swinging. An empty container is the honest reading
 	 * and it is what the character sheet passes for the same stat.
 	 *
-	 * A BLOW, FOR THE ONE STEP THAT ASKS ABOUT THE HIT. Issue #666. The damage
-	 * taken step passes the hit's facts, so "you take 20% less damage from
-	 * spells" can ask about this hit. Every other step passes nothing.
+	 * A BLOW, FOR A STEP WHOSE MODIFIERS MAY ASK ABOUT THE HIT. Issue #666, then
+	 * #947. Pass `BlowOf(Hit)` wherever a row conditioned on the arriving hit
+	 * ought to reach the stat -- "you take 20% less damage from spells", "your
+	 * armor is doubled against melee attacks". Pass nothing where such a row
+	 * would be meaningless, or where none is authored, and say which at that
+	 * call site.
+	 *
+	 * THIS NAMES NO CALLERS AND COUNTS NONE, DELIBERATELY. It twice listed which
+	 * steps passed a blow and which passed nothing, and a later commit falsified
+	 * the list both times -- the second time four minutes after the correction,
+	 * written by the same author who had just made it. A reader who trusts a
+	 * stale list concludes the mechanism is narrower than it is, which is the
+	 * harm worth avoiding; the list is the part that goes stale, so there is no
+	 * list. Each call site carries its own reason instead, where adding a caller
+	 * cannot make somebody else's sentence false.
 	 */
 	float DefenderStat(const UAbilitySystemComponent* Defender,
 					   const TCHAR* Stat, float FromAttribute,
@@ -503,7 +515,17 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	{
 		const float Roll = EvasionRoll >= 0.0f ? EvasionRoll
 											   : FMath::FRandRange(0.0f, 100.0f);
-		if (Roll < Combat->GetEvasion())
+		// ASKED FOR, WITH THE BLOW, for the reason the armour step above gives.
+		// Issue #947. Evasion was the last defensive stat still read straight
+		// off the attribute, so a modifier carrying a condition was dropped in
+		// silence -- both one about the character, "While moving, your evasion
+		// chance is increased by 10%-20%", and one about the hit, "Cannot evade
+		// melee attacks".
+		//
+		// THE ROLL IS STILL THE CALLER'S. Only the number it is compared against
+		// changes, so every test that pins a roll is unaffected.
+		if (Roll < DefenderStat(Defender, TEXT("evasion"), Combat->GetEvasion(),
+								BlowOf(Hit)))
 		{
 			Result.bEvaded = true;
 			return Result;
@@ -548,7 +570,17 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	{
 		const float Roll = BlockRoll >= 0.0f ? BlockRoll
 											 : FMath::FRandRange(0.0f, 100.0f);
-		if (Roll < Combat->GetBlockChance())
+		// ASKED FOR, WITH THE BLOW, the same as evasion above and armour below.
+		// Issue #947. One authored enchantment needs it -- "You cannot evade or
+		// block melee attacks" -- and that row needs BOTH this and the evasion
+		// step, which is why the two are separate commits for one sentence.
+		//
+		// THE SHARE A BLOCK REMOVES IS NOT TOUCHED HERE. `BlockDamageReduction`
+		// is a compile-time constant and stays one; "You block for 65%-75% of
+		// damage instead of the normal 50%" is a different change and is not
+		// part of this branch.
+		if (Roll < DefenderStat(Defender, TEXT("block_chance"),
+								Combat->GetBlockChance(), BlowOf(Hit)))
 		{
 			Result.bBlocked = true;
 			Damage *= 1.0f - BlockDamageReduction / 100.0f;
@@ -566,8 +598,25 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		const float FromWeapon = Hit.bIsPiercing ? PiercingArmorIgnored : 0.0f;
 		const float Ignored =
 			FMath::Clamp(Hit.ArmorPenetration + FromWeapon, 0.0f, 100.0f);
+		// THE BLOW IS PASSED NOW, WHICH IS THE WHOLE OF THIS CHANGE. Issue #947.
+		// `DefenderStat` already asked for this stat through the pipeline, so a
+		// modifier conditioned on the DEFENDER's own state -- the Masochist's
+		// Battle-Scarred, scaled per debuff carried -- already reached it. What
+		// it passed was an empty blow, so a modifier conditioned on the INCOMING
+		// HIT was judged against a record in which nothing is true, and refused
+		// every time.
+		//
+		// TWO AUTHORED ENCHANTMENTS NEED IT, and both are about the hit rather
+		// than the character: "Armor is halved against ranged attacks" and "Your
+		// armor is doubled against melee attacks".
+		//
+		// THE DAMAGE TAKEN STEP ALREADY DOES THIS, at step 8 below, and
+		// `DefenderStat`'s own header said why only that one did: "A BLOW, FOR
+		// THE ONE STEP THAT ASKS ABOUT THE HIT... Every other step passes
+		// nothing." That sentence is now out of date by one step, and its
+		// comment is corrected in this change rather than left to mislead.
 		const float Armor =
-			DefenderStat(Defender, TEXT("armor"), Combat->GetArmor())
+			DefenderStat(Defender, TEXT("armor"), Combat->GetArmor(), BlowOf(Hit))
 			* (1.0f - Ignored / 100.0f);
 		Damage *= 1.0f - ArmorReduction(Armor, Tier) / 100.0f;
 	}
@@ -583,6 +632,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// bounding it, so at 100 a character was exactly immune.
 	if (Combat)
 	{
+		// NO BLOW HERE, AND NOTHING AUTHORED ASKS FOR ONE. Both enchantment rows
+		// granting damage reduction condition on the character's own state --
+		// "When your class resource is full, gain 10%-20% damage reduction for 3
+		// seconds", and a set bonus scaling it per active instance of leech --
+		// and the character's own state is read whatever is passed here. If a row
+		// is ever authored that conditions damage reduction on the kind of hit
+		// arriving, pass `BlowOf(Hit)` and it works; nothing else is needed.
 		Damage *= 1.0f
 			- EffectiveDamageReduction(
 				  DefenderStat(Defender, TEXT("damage_reduction"),
@@ -649,6 +705,12 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 
 		if (Hit.bIsDamageOverTime)
 		{
+			// NEITHER STAT IN THIS BRANCH TAKES A BLOW, BECAUSE A TICK IS NOT A
+			// HIT. `BlowOf` above says so and carries the project owner's words for
+			// it: those facts are "used only for hits from that source". Every one
+			// of them answers no here, so passing a blow would invite a row that
+			// could never be true rather than enabling one.
+			//
 			// AND ONE CHARACTER IN THE GAME TAKES NONE OF IT AT ALL. Issue
 			// #1039. The Masochist's Vessel Unbroken capstone option reads
 			// "Debuffs on you deal no damage at all", which cannot be written as

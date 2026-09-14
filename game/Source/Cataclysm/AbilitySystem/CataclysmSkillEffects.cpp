@@ -1497,8 +1497,26 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 		return Numbers;
 	}
 
-	const float FrequencyScale = AsMultiplier(
-		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute());
+	// ALL THREE ARE ASKED FOR RATHER THAN READ. Issue #947. The attribute is
+	// worked out with every condition refused, so "While moving, your DoTs deal
+	// 20%-40% increased damage" was dropped in silence.
+	//
+	// AN EMPTY TAG CONTAINER, BECAUSE THE ROW CARRIES A CONDITION AND NOT A TAG.
+	// `AsMultiplierForSkill` evaluates the character's own state whatever the
+	// tags are, so a condition works with none passed. A future row scoped to a
+	// skill would need the tags threaded in from this function's callers, which
+	// this does not do and does not pretend to.
+	//
+	// TWO OF THE THREE UNBLOCK NO ROW AND ARE CHANGED FOR CONSISTENCY. Only
+	// `dot_damage` is asked for by an authored enchantment. Leaving duration and
+	// frequency reading the attribute in a function whose third line asks would
+	// leave the next reader to work out whether the difference was deliberate.
+	// Because no row exercises those two, the unchanged-behaviour control in
+	// CataclysmPlayerClassStatsTests.cpp is the only thing standing behind them,
+	// and it lists all three.
+	const float FrequencyScale = AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(),
+		FName(TEXT("dot_frequency")), FGameplayTagContainer());
 
 	// A FREQUENCY OF ZERO WOULD BE A DIVISION BY ZERO, and is refused rather
 	// than clamped to something invented. Nothing in the game can produce one:
@@ -1508,10 +1526,12 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 		return Numbers;
 	}
 
-	Numbers.DamagePerTick = DamagePerTick * AsMultiplier(
-		Source, UCataclysmCombatAttributeSet::GetDotDamageAttribute());
-	Numbers.DurationSeconds = DurationSeconds * AsMultiplier(
-		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute());
+	Numbers.DamagePerTick = DamagePerTick * AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetDotDamageAttribute(),
+		FName(TEXT("dot_damage")), FGameplayTagContainer());
+	Numbers.DurationSeconds = DurationSeconds * AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
+		FName(TEXT("dot_duration")), FGameplayTagContainer());
 
 	// FREQUENCY DIVIDES THE GAP BETWEEN TICKS. More of it is a shorter gap and
 	// so more ticks in the same time, which is what "More ticks in the same
@@ -1739,15 +1759,23 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	// and frequency and duration still apply. `DamageOverTimeNumbers` would
 	// multiply the share by the damage stat, so the two kept here are read the
 	// way it reads them.
-	const float FrequencyScale = AsMultiplier(
-		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute());
+	//
+	// AND THEY ARE ASKED FOR HERE TOO, so the sentence above stays true. Issue
+	// #947 moved the three stats in `DamageOverTimeNumbers` from a plain
+	// attribute read to an ask; leaving these two reading the attribute would
+	// have made "read the way it reads them" false, and a reader checking that
+	// claim would have found the two functions disagreeing with no reason given.
+	const float FrequencyScale = AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(),
+		FName(TEXT("dot_frequency")), FGameplayTagContainer());
 	if (FrequencyScale <= 0.0f)
 	{
 		return false;
 	}
 	const float SecondsPerTick = BaseSecondsPerTick / FrequencyScale;
-	const float Duration = DurationSeconds * AsMultiplier(
-		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute());
+	const float Duration = DurationSeconds * AsMultiplierForSkill(
+		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
+		FName(TEXT("dot_duration")), FGameplayTagContainer());
 
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, as for every
 	// other lasting effect. Issue #1033. A duration taken to nothing applies

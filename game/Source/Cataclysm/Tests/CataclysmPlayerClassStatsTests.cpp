@@ -1236,4 +1236,233 @@ CATACLYSM_TEST(FCataclysmApplyingRefusesNothing,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Moving a stat from "read off the attribute" to "asked for through the
+// pipeline" must not change what a character without such a row already had.
+// Issue #947.
+//
+// WHY THIS CONTROL EXISTS AND WHAT IT CAN CATCH. `StatForSkill` does not return
+// the attribute when a stat has inputs recorded -- it recomputes the stat from
+// its base through the whole modifier list in one pipeline pass. So the claim
+// "nothing without a scoped row is changed" is a real claim about two
+// arithmetics agreeing, not a tautology, and it can fail: `ApplyTo` and the
+// pipeline have to sum the same increases over the same base. The header of
+// `StatForSkill` gives the case that makes the difference visible -- a base of
+// 100 carrying an unscoped +50% and a scoped +50% is 200 through one pass and
+// 225 through two.
+//
+// AND WHY IT IS WRITTEN ON A CHARACTER THAT HAS RUN `ApplyTo`. A character with
+// no recorded inputs takes `StatForSkill`'s fallback and answers whatever it was
+// handed, so the same assertions would pass with the pipeline entirely broken.
+// The sentinel below is what refuses that: if the answer IS the fallback, the
+// control measured nothing and says so instead of passing.
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
+	"Cataclysm.PlayerStats.AskingForAStatAnswersItsAttributeWhenNoRowIsScoped")
+{
+	using namespace CataclysmPlayerClassStatsTest;
+
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_ClassStats does not exist."));
+		return false;
+	}
+
+	UWorld* World = MakeWorld();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	struct FCase
+	{
+		const TCHAR* Stat;
+		FGameplayAttribute Attribute;
+	};
+	const FCase Cases[] = {
+		// ONE ENTRY PER STAT MOVED FROM A PLAIN ATTRIBUTE READ TO AN ASK, added
+		// as each is wired. Issue #947.
+		{TEXT("crit_multiplier"),
+		 UCataclysmCombatAttributeSet::GetCritMultiplierAttribute()},
+		{TEXT("penetration"),
+		 UCataclysmCombatAttributeSet::GetPenetrationAttribute()},
+		{TEXT("armor_penetration"),
+		 UCataclysmCombatAttributeSet::GetArmorPenetrationAttribute()},
+		{TEXT("armor"), UCataclysmCombatAttributeSet::GetArmorAttribute()},
+		{TEXT("evasion"), UCataclysmCombatAttributeSet::GetEvasionAttribute()},
+		{TEXT("block_chance"),
+		 UCataclysmCombatAttributeSet::GetBlockChanceAttribute()},
+
+		// ALL THREE, THOUGH ONLY dot_damage IS ASKED FOR BY A ROW. The other two
+		// were changed for consistency inside one function, so no row-level test
+		// exercises them and this control is the only thing behind them.
+		{TEXT("dot_damage"),
+		 UCataclysmCombatAttributeSet::GetDotDamageAttribute()},
+		{TEXT("dot_duration"),
+		 UCataclysmCombatAttributeSet::GetDotDurationAttribute()},
+		{TEXT("dot_frequency"),
+		 UCataclysmCombatAttributeSet::GetDotFrequencyAttribute()},
+
+		// ALL THREE LEECH STATS, THOUGH ONLY life_leech IS ASKED FOR BY A ROW,
+		// for the same reason the three above are all here.
+		{TEXT("life_leech"),
+		 UCataclysmVitalAttributeSet::GetLifeLeechAttribute()},
+		{TEXT("mana_leech"),
+		 UCataclysmVitalAttributeSet::GetManaLeechAttribute()},
+		{TEXT("energy_shield_leech"),
+		 UCataclysmVitalAttributeSet::GetEnergyShieldLeechAttribute()},
+
+		// THE TWO HEALTH COST STATS, which are two separate read sites and not
+		// one -- a share of MAXIMUM health and a share of CURRENT health.
+		{TEXT("added_health_cost"),
+		 UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute()},
+		{TEXT("added_health_cost_of_current"),
+		 UCataclysmClassResourceAttributeSet::GetAddedHealthCostOfCurrentAttribute()},
+
+		// THE ONE ALREADY WIRED, AS A POSITIVE CONTROL ON THE CONTROL. Critical
+		// strike chance was moved to an ask under issue #959 and nothing has
+		// complained since, so if this row ever fails the fault is in this test
+		// or in the pipeline rather than in the change being made beside it.
+		{TEXT("crit_chance"),
+		 UCataclysmCombatAttributeSet::GetCritChanceAttribute()},
+	};
+
+	const FScopedCharacter Character(World);
+
+	// BUILT TWICE ON PURPOSE: ONCE BARE, THEN AGAIN CARRYING A MODIFIER.
+	// `ApplyTo` replaces the recorded stat line every time it runs, so the first
+	// pass leaves a character with nothing on it and the second leaves the one
+	// the comparison at the end is made against.
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName,
+		UCataclysmPlayerClassStats::DefaultLevel);
+
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<UCataclysmAbilitySystemComponent>(Character.AbilitySystem);
+	if (!TestNotNull(TEXT("the character's ability system is this project's"),
+					 Asking))
+	{
+		return false;
+	}
+
+	// A VALUE NO STAT CAN HOLD, SO THE FALLBACK IS RECOGNISABLE. `StatForSkill`
+	// returns what it is handed when a stat has no recorded inputs. Handing it a
+	// number the pipeline cannot produce turns "this stat was never recorded"
+	// from a silent pass into a named failure.
+	//
+	// IT IS THE REASON THIS TEST'S OWN FAULT WAS FOUND RATHER THAN LIVED WITH.
+	// Nine stats were reaching the fallback and the sentinel named every one of
+	// them. Without it they would have compared the fallback against the
+	// attribute and the test would have reported fifteen stats checked.
+	constexpr float Sentinel = -98'765.0f;
+
+	// THE FIRST OF TWO CLAIMS: A BARE CHARACTER RECORDS NOTHING FOR SOME OF
+	// THESE STATS. `UCataclysmPlayerClassStats::ApplyTo` records a stat's inputs
+	// only when the character carries at least one modifier for it, and says so
+	// at the line that does it: "ONLY A STAT THAT HAS MODIFIERS IS RECORDED.
+	// With none the pipeline returns the base, which is exactly what the
+	// attribute below ends up holding."
+	//
+	// IT IS HERE TO STOP THE SETUP BELOW BEING DELETED AS POINTLESS. On
+	// 2026-09-13 this test ran for the first time and failed on nine of its
+	// fifteen stats, because the character was bare and nine were never
+	// recorded: it was checking six and stepping over nine while reporting
+	// itself as covering fifteen. Giving each stat a modifier is what fixes
+	// that, and without this assertion nothing tells the next reader that the
+	// setup is load-bearing rather than clutter.
+	//
+	// A COUNT AND THE NAMES, NOT A FIXED NINE. Which stats a bare character
+	// happens to carry modifiers for is not this test's business and will
+	// change. That SOME are unrecorded is the property being pinned. If it ever
+	// reaches zero the setup below has genuinely become unnecessary, and that is
+	// worth a failure rather than silence.
+	TArray<FString> Unrecorded;
+	for (const FCase& Case : Cases)
+	{
+		if (FMath::IsNearlyEqual(
+				Asking->StatForSkill(FName(Case.Stat), FGameplayTagContainer(),
+									 Sentinel),
+				Sentinel))
+		{
+			Unrecorded.Add(Case.Stat);
+		}
+	}
+	TestTrue(
+		*FString::Printf(
+			TEXT("a bare character records nothing for at least one of the %d "
+				 "stats, so giving each a modifier below is what makes this "
+				 "test check them at all; it recorded nothing for %d: %s"),
+			static_cast<int32>(UE_ARRAY_COUNT(Cases)), Unrecorded.Num(),
+			*FString::Join(Unrecorded, TEXT(", "))),
+		Unrecorded.Num() > 0);
+
+	// NOW ONE MODIFIER PER STAT, SO EVERY ONE IS RECORDED AND EVERY ONE IS
+	// ACTUALLY COMPARED BY THE LOOP BELOW.
+	//
+	// FLAT, AND SMALL ON PURPOSE. Flat because several of these stats have no
+	// base, and an increase multiplies nothing by a percentage. Small because
+	// several are percentages with a cap, and a large figure would test whether
+	// a clamp binds rather than whether the two arithmetics agree.
+	//
+	// UNSCOPED, WHICH IS THE WHOLE POINT. The claim is that a character with no
+	// row scoped to a skill gets the same answer from the pipeline as from the
+	// attribute. A modifier carrying a required tag would be a different test,
+	// and the scoped case is covered by the per-stat tests instead.
+	FCataclysmStatModifier Carried;
+	Carried.Bucket = ECataclysmStatBucket::Flat;
+	Carried.Source = ECataclysmModifierSource::GearAffix;
+	Carried.Value = 3.0f;
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers;
+	for (const FCase& Case : Cases)
+	{
+		Modifiers.Add(FName(Case.Stat), {Carried});
+	}
+
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName,
+		UCataclysmPlayerClassStats::DefaultLevel, &Modifiers);
+
+	// THE SECOND CLAIM, AND THE ONE THIS BRANCH RESTS ON: with every stat
+	// recorded, asking the pipeline answers exactly what the attribute holds.
+
+	for (const FCase& Case : Cases)
+	{
+		const float FromAttribute = Character.Read(Case.Attribute);
+		const float Asked = Asking->StatForSkill(
+			FName(Case.Stat), FGameplayTagContainer(), Sentinel);
+
+		if (!TestNotEqual(
+				*FString::Printf(
+					TEXT("%s has recorded inputs, so this is not the fallback"),
+					Case.Stat),
+				Asked, Sentinel))
+		{
+			continue;
+		}
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s asked for through the pipeline answers exactly what "
+					 "its attribute holds, for a character with no scoped row"),
+				Case.Stat),
+			Asked, FromAttribute, 0.001f);
+	}
+
+	// WITHOUT THIS THE LOOP ABOVE PASSES HAVING CHECKED NOTHING, which is the
+	// fault it exists to rule out in the first place.
+	//
+	// THE NUMBER RISES AS EACH STAT IS WIRED, and it is written out rather than
+	// left to `UE_ARRAY_COUNT` alone so that emptying the list is a failure
+	// rather than a silent pass. Counted from the list above, not incremented.
+	TestEqual(TEXT("every stat listed was checked"),
+			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 15);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

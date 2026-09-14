@@ -72,10 +72,40 @@ void UCataclysmLeech::NoteHit(UAbilitySystemComponent* Attacker,
 		float Percent;
 	};
 
+	// ALL THREE ARE ASKED FOR RATHER THAN READ. Issue #947. The attribute is
+	// worked out with every condition refused, so two authored enchantments
+	// were dropped in silence: "While below 50% HP your leech is doubled" and
+	// "While moving, your leech is increased by 20%-40%".
+	//
+	// AN EMPTY TAG CONTAINER, BECAUSE BOTH ROWS CARRY A CONDITION AND NOT A TAG,
+	// and `StatForSkill` evaluates the character's own state whatever the tags
+	// are. Scoping leech to a skill is a different problem and a harder one:
+	// `NoteHit` is handed a damage figure and does not know which skill caused
+	// the hit. Issue #947 names that as the one real obstacle in its list, and
+	// nothing here removes it.
+	//
+	// TWO OF THE THREE UNBLOCK NO ROW AND ARE CHANGED FOR CONSISTENCY, which is
+	// the same judgement the coordinating session ruled for the three damage
+	// over time stats: three stats read the same way in one array, and leaving
+	// two of them reading the attribute would leave the next reader to work out
+	// whether the difference was deliberate.
+	//
+	// NO NULL CHECK ON `Cataclysm` HERE, BECAUSE THERE CANNOT BE ONE. The
+	// function returned above if the cast failed. A ternary here would read as
+	// though the pointer might be null and would be dead code saying so.
+	const auto Asked = [Cataclysm](const TCHAR* Stat, float FromAttribute)
+	{
+		return Cataclysm->StatForSkill(FName(Stat), FGameplayTagContainer(),
+									   FromAttribute);
+	};
+
 	const FSource Sources[] = {
-		{ECataclysmLeechPool::Health, Vitals->GetLifeLeech()},
-		{ECataclysmLeechPool::Mana, Vitals->GetManaLeech()},
-		{ECataclysmLeechPool::EnergyShield, Vitals->GetEnergyShieldLeech()},
+		{ECataclysmLeechPool::Health,
+		 Asked(TEXT("life_leech"), Vitals->GetLifeLeech())},
+		{ECataclysmLeechPool::Mana,
+		 Asked(TEXT("mana_leech"), Vitals->GetManaLeech())},
+		{ECataclysmLeechPool::EnergyShield,
+		 Asked(TEXT("energy_shield_leech"), Vitals->GetEnergyShieldLeech())},
 	};
 
 	for (const FSource& Source : Sources)
@@ -123,8 +153,18 @@ void UCataclysmLeech::NoteRetaliation(UAbilitySystemComponent* Retaliator,
 	//
 	// FLOORED AT ZERO for the reason `NoteHit` floors it: nothing states
 	// negative life leech, and a negative figure would take health away.
-	const float Amount =
-		AmountFrom(DamageDealt, FMath::Max(0.0f, Vitals->GetLifeLeech()));
+	//
+	// AND ASKED FOR RATHER THAN READ, FOR THE SENTENCE ABOVE TO STAY TRUE.
+	// Issue #947. `NoteHit` now asks the pipeline for this stat, so a character
+	// carrying "While below 50% HP your leech is doubled" would otherwise leech
+	// the doubled figure from its attacks and the plain one from its
+	// retaliation. That is a behavioural disagreement, not only a comment going
+	// stale, and it is exactly what "the two paths have to agree" forbids.
+	const float Amount = AmountFrom(
+		DamageDealt,
+		FMath::Max(0.0f, Cataclysm->StatForSkill(
+							 FName(TEXT("life_leech")), FGameplayTagContainer(),
+							 Vitals->GetLifeLeech())));
 	if (Amount <= 0.0f)
 	{
 		return;

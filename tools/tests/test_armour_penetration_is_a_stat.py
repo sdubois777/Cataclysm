@@ -120,17 +120,40 @@ def test_a_hit_reads_it_off_the_attacker() -> None:
     `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` is the only place in
     the running game that resolves an incoming hit."""
     text = source(VITAL_SOURCE)
-    assert re.search(r"Hit\.ArmorPenetration\s*=\s*Offence->GetArmorPenetration\(\)",
-                     text), (
-        "PostGameplayEffectExecute in CataclysmVitalAttributeSet.cpp does not "
-        "read the attacker's armour penetration onto the hit. Without that line "
-        "the attribute exists and reaches nothing, which is the state issue "
-        "#520 describes with the attribute missing entirely.")
 
-    assert re.search(r"Hit\.ResistancePenetration\s*=\s*Offence->GetPenetration\(\)",
-                     text), (
-        "the resistance penetration is no longer read onto the hit either. The "
-        "two are separate stats and both have to arrive.")
+    def assignment(field: str) -> str:
+        """The whole statement that sets `Hit.<field>`, up to its semicolon.
+
+        THE STATEMENT RATHER THAN ONE LINE OF IT, because since issue #947 both
+        are asked for through the stat pipeline and the assignment spans four
+        lines. Matching a single line asserted the shape of the code rather than
+        what it does, and it failed the moment the shape changed while the
+        behaviour did not.
+        """
+        found = re.search(rf"Hit\.{field}\s*=(.*?);", text, re.DOTALL)
+        assert found, (
+            f"PostGameplayEffectExecute in CataclysmVitalAttributeSet.cpp no "
+            f"longer sets Hit.{field} at all, so the attribute exists and "
+            f"reaches nothing -- the state issue #520 describes with the "
+            f"attribute missing entirely.")
+        return found.group(1)
+
+    # BOTH HALVES OF EACH, AND EACH CAN FAIL ON ITS OWN. The attribute must
+    # still be what a character without a scoped modifier gets, and the ask is
+    # what lets a scoped one arrive at all; dropping either is a silent loss.
+    for field, attribute in (("ArmorPenetration", "GetArmorPenetration()"),
+                             ("ResistancePenetration", "GetPenetration()")):
+        statement = assignment(field)
+
+        assert attribute in statement, (
+            f"Hit.{field} no longer falls back to the attacker's "
+            f"{attribute}. A character with no scoped modifier would get "
+            f"nothing rather than what its gear supplies.")
+
+        assert "StatForSkill" in statement, (
+            f"Hit.{field} reads the attribute directly again rather than "
+            f"asking through the stat pipeline, so a modifier scoped to a "
+            f"skill tag is dropped in silence. Issue #947.")
 
 
 # --------------------------------------------------------------------------

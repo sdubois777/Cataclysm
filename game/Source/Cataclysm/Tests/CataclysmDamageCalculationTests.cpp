@@ -1174,6 +1174,74 @@ CATACLYSM_TEST(FCataclysmResistancePenaltyReachesAHitTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmArmorFollowsTheIncomingBlowTest,
+	"Cataclysm.Damage.ArmorCanBeConditionedOnWhatKindOfBlowIsArriving")
+{
+	// THE TWO AUTHORED ENCHANTMENTS THIS IS FOR: "Armor is halved against ranged
+	// attacks" and "Your armor is doubled against melee attacks", surveyed on
+	// #1642. Neither could be written before this change.
+	//
+	// WHAT WAS MISSING WAS NOT THE ASK. `DefenderStat` already resolved armour
+	// through the stat pipeline, so a modifier conditioned on the DEFENDER's own
+	// state already reached it. What it passed was an EMPTY blow, so a modifier
+	// conditioned on the arriving hit was judged against a record in which
+	// nothing is true, and refused every time. Issue #947.
+	//
+	// WHY A DIFFERENCE IN DAMAGE RATHER THAN A READING OF THE STAT. The armour
+	// figure is a local inside `Resolve` and nothing returns it, so the only
+	// place the change is visible is what a hit comes out as.
+	UWorld* World = CataclysmDamageTest::MakeWorld();
+	{
+		const CataclysmDamageTest::FScopedDefender D(World);
+
+		// 800 IS THE CURVE'S OWN CONSTANT, so a character holding exactly that
+		// much armour takes half a hit at tier one, and one holding twice it
+		// takes two thirds off. Both figures come out of
+		// `UCataclysmDamageCalculation::ArmorReduction` rather than being chosen
+		// to be round.
+		constexpr float Base = UCataclysmDamageCalculation::ArmorConstantPerTier;
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = Base;
+
+		FCataclysmStatModifier AgainstMelee;
+		AgainstMelee.Bucket = ECataclysmStatBucket::Flat;
+		AgainstMelee.Source = ECataclysmModifierSource::Enchantment;
+		AgainstMelee.Value = Base;
+		AgainstMelee.Condition = ECataclysmStatCondition::HitIsMeleeAttack;
+		Inputs.Modifiers.Add(AgainstMelee);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("armor")), Inputs);
+		D.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+		FCataclysmIncomingHit Spell;
+		Spell.Damage = 1'000.0f;
+		Spell.bIsSpell = true;
+		const FCataclysmDamageResult NotMelee = D.Resolve(Spell);
+
+		FCataclysmIncomingHit Melee = Spell;
+		Melee.bIsSpell = false;
+		Melee.bIsMelee = true;
+		const FCataclysmDamageResult FromMelee = D.Resolve(Melee);
+
+		// BOTH ASSERTED AS NUMBERS, NOT ONLY AS AN INEQUALITY. 800 of armour at
+		// tier one removes half, so a blow that is not melee lands for 500. A
+		// ratio alone would be satisfied by both figures being wrong in the same
+		// proportion, and an inequality would be satisfied by the condition
+		// holding for every blow rather than only for melee.
+		TestEqual(TEXT("a blow that is not melee meets the base armour alone"),
+				  NotMelee.DealtToHealth, 500.0f, 1.0f);
+
+		// 1,600 of armour removes two thirds, so the same blow arriving as melee
+		// lands for a third of itself.
+		TestEqual(TEXT("and a melee blow meets twice it, so it lands for a third"),
+				  FromMelee.DealtToHealth, 1'000.0f / 3.0f, 1.0f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif // WITH_AUTOMATION_TESTS
