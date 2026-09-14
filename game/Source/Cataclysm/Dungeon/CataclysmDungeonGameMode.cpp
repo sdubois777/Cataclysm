@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -2027,10 +2028,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FName(UCataclysmDungeonModifierEffects::EdictOfSilenceKey));
 	const bool bArtilleryStrike = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ArtilleryStrikeKey));
+	const bool bHallowedGroundfall = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::HallowedGroundfallKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
-		&& !bArtilleryStrike)
+		&& !bArtilleryStrike && !bHallowedGroundfall)
 	{
 		return;
 	}
@@ -2136,6 +2139,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bArtilleryStrike)
 	{
 		StepArtilleryStrike(Player, AbilitySystem);
+	}
+
+	// AND HALLOWED GROUNDFALL, WHICH SPAWNS ACTORS, so it is late for the reason
+	// the four above it are. Issues #1820 and #41.
+	if (bHallowedGroundfall)
+	{
+		StepHallowedGroundfall(Player, AbilitySystem);
 	}
 }
 
@@ -2345,6 +2355,121 @@ void ACataclysmDungeonGameMode::StepArtilleryStrike(
 	ArtilleryStrikeCircle = Circle;
 	ArtilleryStrikeWarningSoFar = 0.0f;
 	ArtilleryStrikeSecondsSinceLast = 0.0f;
+}
+
+void ACataclysmDungeonGameMode::StepHallowedGroundfall(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// WHAT IS STILL BURNING, ASKED RATHER THAN REMEMBERED. A crater is destroyed
+	// with the rest of the floor's contents and expires on its own clock, so a
+	// weak pointer going invalid IS its crater being gone.
+	HallowedGroundfallCratersBurning.RemoveAll(
+		[](const TWeakObjectPtr<ACataclysmGroundZone>& Crater)
+		{
+			return !Crater.IsValid();
+		});
+
+	// THE EMPOWERMENT FIRST, BECAUSE IT IS ABOUT THE CRATERS THAT ARE ALREADY
+	// THERE. Doing it after the bombardment would empower whatever happened to be
+	// standing where a crater had just that instant appeared, which is not what
+	// the row describes and would give a creature the buff a beat early.
+	//
+	// RE-APPLIED EVERY BEAT AND NOT ONCE, which is the Abyssal Aura's shape and
+	// its stated reason: the effect is a single stack, so a second application
+	// refreshes the one already there rather than adding another. A creature that
+	// stays keeps it; one that walks out loses it when its second runs out.
+	if (!HallowedGroundfallCratersBurning.IsEmpty())
+	{
+		const FGameplayTag Empowered =
+			UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+		if (Empowered.IsValid())
+		{
+			for (const TWeakObjectPtr<ACataclysmGroundZone>& Crater :
+					HallowedGroundfallCratersBurning)
+			{
+				const FVector Where = Crater->GetActorLocation();
+
+				// THE PLAYER'S ENEMIES, WHICH IS EVERY CREATURE AND NEVER THE
+				// PLAYER. Asking this way is what keeps the row's two halves
+				// apart without naming anybody: the crater burns the hazard
+				// source's enemies, which is the player, and this empowers the
+				// player's enemies, which is everything else.
+				const TArray<AActor*> Standing =
+					UCataclysmTargeting::FindEnemiesInLine(
+						World, Player, Where, Where,
+						Effects::HallowedGroundfallCraterRadiusCm);
+
+				for (AActor* Creature : Standing)
+				{
+					UCataclysmSkillEffects::ApplyTagForDuration(
+						Creature, Creature, Empowered,
+						Effects::HallowedGroundfallEmpowerSeconds);
+				}
+			}
+		}
+	}
+
+	HallowedGroundfallSecondsSinceLast += SecondsBetweenWaveChecks;
+	if (!Effects::HallowedGroundfallIsDue(HallowedGroundfallSecondsSinceLast))
+	{
+		return;
+	}
+
+	const float PerSecond = Effects::HallowedGroundfallBurnPerSecond(
+		AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+	if (PerSecond <= 0.0f)
+	{
+		return;
+	}
+
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	const FVector Centre = Player->GetActorLocation();
+	for (int32 Which = 0; Which < Effects::HallowedGroundfallCraters; ++Which)
+	{
+		// AWAY FROM THE PLAYER, for the reason Infernal Rain gives: ground that
+		// only ever appears underfoot is not ground to walk out of.
+		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const float Away = FMath::FRandRange(
+			Effects::HallowedGroundfallCraterRadiusCm + 1.0f,
+			Effects::HallowedGroundfallFallsWithinCm);
+		const FVector Where(Centre.X + Away * FMath::Cos(Angle),
+							Centre.Y + Away * FMath::Sin(Angle),
+							Centre.Z);
+
+		// A REAL DAMAGE, UNLIKE THE ARTILLERY STRIKE'S CIRCLE. That rule's circle
+		// is a warning and hurts nobody; these craters burn from the moment they
+		// land, which is what "leaving consecrated craters that burn players"
+		// says. The zone does that itself and needs nothing from the beat.
+		ACataclysmGroundZone* Crater = ACataclysmGroundZone::Spawn(
+			Source, Where, Effects::HallowedGroundfallCraterRadiusCm,
+			Effects::HallowedGroundfallCraterSeconds, PerSecond);
+		if (Crater)
+		{
+			HallowedGroundfallCratersBurning.Add(Crater);
+		}
+	}
+
+	// THE CLOCK IS RESET WHETHER OR NOT EVERY CRATER APPEARED, which differs from
+	// Infernal Rain deliberately. That rule places ONE thing and leaves its clock
+	// alone on a failure so the next beat tries again; a bombardment that managed
+	// two craters out of three has happened, and re-running it on the next beat
+	// would drop three more a quarter of a second later.
+	HallowedGroundfallSecondsSinceLast = 0.0f;
 }
 
 void ACataclysmDungeonGameMode::StepGraspingTentacles(
@@ -3159,6 +3284,20 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		ArtilleryStrikeCircle = nullptr;
 		ArtilleryStrikeWarningSoFar = 0.0f;
 		ArtilleryStrikeSecondsSinceLast = 0.0f;
+
+		// AND HALLOWED GROUNDFALL FORGETS ITS CRATERS AND ITS CLOCK. Issues
+		// #1820 and #41. The list because
+		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed those
+		// actors and a stale list would have the beat empowering creatures
+		// standing where craters used to be; the clock so the first bombardment
+		// of a floor does not arrive on its first beat carrying the last floor's
+		// wait.
+		//
+		// NOTHING ELSE TO FORGET. The empowerment is a status effect on a
+		// creature with its own one-second life, not a figure this rule holds,
+		// and the creatures it was on were destroyed with the floor.
+		HallowedGroundfallCratersBurning.Empty();
+		HallowedGroundfallSecondsSinceLast = 0.0f;
 
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is

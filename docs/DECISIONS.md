@@ -2,6 +2,117 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — "Empower" is the buff the game already has, a crater's life is half the cadence that leaves it, and a comment naming one granter of that buff was wrong by three
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules), `CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and
+`game/Source/Cataclysm/Tests/CataclysmEnemyCommanderTests.cpp` (one comment each),
+`CataclysmDungeonModifierEffectsTests.cpp` and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Celestial_Hallowed_Groundfall`, weight 10.0: "Angelic artillery bombards random areas every 30
+seconds, leaving consecrated craters that burn players and empower enemies."
+
+**Both halves were already built and neither needed inventing.** The craters are burning
+ground, which `Demonic_Infernal_Rain` places. The empowerment is `Status.Buff.Commander`, which
+`ACataclysmEnemyCharacter` already reads as twenty percent more movement and attack speed.
+
+### "Empower enemies" is the buff the game has, not a new one
+
+The row names no stat, so nothing here chooses one. `UCataclysmEnemyModifiers` makes the same
+argument where it rallies allies: **"THE COMMANDER BUFF, WHICH ALREADY EXISTS AND ALREADY SAYS
+THIS ... A second buff meaning the same thing would be two names for one effect."**
+
+**Its size is not a judgement at all.** `CommanderIncreasePercent` is 20, and its own comment
+records that `game/Data/StatusEffects.csv` and the Buffs sheet of the design workbook both
+state it.
+
+**Reconnaissance ruled out the alternative before it was proposed.** A creature's damage,
+health and resistances cannot be raised by anything in the game: the path that moves a
+creature's stat clamps its magnitude non-negative and turns a proportion into a multiplier of
+`1 - Size/100`, which can never exceed one. Raising a creature's stat is
+[its own piece of work](https://github.com/sdubois777/Cataclysm/issues/1820), not something a
+dungeon row carries in.
+
+### The two halves are split by side, and nothing is excluded by name
+
+| half | who it reaches | how |
+| :-- | :-- | :-- |
+| the crater burns | the player | the zone's own sweep finds **the floor hazard's** enemies |
+| the beat empowers | every creature | the beat asks for **the player's** enemies |
+
+**Those two sets cannot overlap**, which is why no code here names anybody to keep the row's
+two halves apart. `ACraterDoesNotEmpowerThePlayer` is the test that fails if that ever stops
+being true, and it keeps a creature in the same crater so that a rule empowering nobody at all
+would fail it rather than satisfy it.
+
+### The numbers, derived from the row's own cadence
+
+| figure | value | where it came from |
+| :-- | --: | :-- |
+| seconds between bombardments | 30 | **the row's own** |
+| craters per bombardment | 3 | **derived from an existing bound** |
+| crater life | 15 s | **derived: half the cadence** |
+| crater radius | 300 cm | a judgement |
+| burn rate | 2% of maximum health per second | **copied as a conclusion** |
+| empowerment duration | 1.0 s | **derived from the beat** |
+| empowerment size | 20% | the design's, in two places |
+
+**Three craters** is `InfernalRainMostPatches`, the most burning ground this game already
+permits on a floor at once. A bombardment that leaves that many never puts more on the floor
+than a rule already shipped allows.
+
+**Fifteen seconds is half the stated cadence**, so the floor alternates between dangerous and
+clear — which is what a bombardment every thirty seconds describes. `InfernalRainPatchSeconds`
+is 10, but that rule drops a patch every five seconds and *its* floor is never clear. **The
+header declares the life as the cadence divided by two rather than as a figure**, and
+`test_hallowed_groundfall_craters_do_not_outlast_the_gap_between_them` holds that declaration,
+so replacing it with a literal fails rather than silently breaking the link.
+
+**The burn rate is copied rather than derived, deliberately.** These *are* burning ground, and
+`InfernalRainPercentPerSecond` is the intensity this project has already settled for it. What
+differs between the two rules is when the ground burns, not how hot it is.
+
+**The consequence, said rather than hidden:** fifteen seconds at two percent is **thirty
+percent** of maximum health for standing in one crater for its whole life, against Infernal
+Rain's twenty. That is a judgement. It is defensible because this hazard is rare and avoidable
+where Infernal Rain's is constant.
+
+**One second of empowerment is derived from the beat**, not from taste: the rule steps four
+times a second and re-applies on every beat a creature is standing in a crater, so one second
+is four beats of margin. A creature inside never flickers out; one that walks out loses it
+promptly. **The status row states no duration at all** — `Buff_Commander` carries
+`DurationSeconds` of zero, so every caller supplies its own. Re-applying on a clock is the
+Abyssal Aura's shape and its stated reason: a second application refreshes the one already
+there rather than adding another.
+
+### This rule asks for no cap on craters, and that is arithmetic
+
+`Demonic_Infernal_Rain` and `Void_Grasping_Tentacles` both place **one** thing on a short clock
+and need a cap to stop a floor filling up. This places a fixed number on a long one, and a
+crater is gone before the next bombardment arrives. A static assertion and a Python test both
+hold that relationship, so if a crater ever outlasts the gap the rule needs a cap and something
+fails first.
+
+### A comment named one granter of that buff and there were three
+
+`CataclysmEnemyCharacter.h` read: **"GRANTED BY THE SUCCUBUS'S AURA and by nothing else
+today."** Counted: the Succubus's aura, `UCataclysmEnemyModifiers::RallyAlliesOnDeath`, and
+`UCataclysmEnemyModifiers::TimedStep`. **It was already wrong before this rule became the
+fourth.** The opening prose of `CataclysmEnemyCommanderTests.cpp` carried the same claim; no
+test asserted it, so nothing failed. Both are corrected here, each quoting what it replaces.
+
+**The sentence beside it stays**, and it is why this rule uses the tag: Commander remains the
+only thing in the game that makes a creature better, so "empower enemies" has exactly one
+honest reading.
+
+---
+
 ## 2026-09-14 — A dungeon hazard belongs to no side, the Artillery Strike's warning is derived from the player's own walk speed, and no production code had ever set the hit-everyone flag
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp`

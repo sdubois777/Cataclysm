@@ -1180,6 +1180,30 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Drop a bombardment when it is due, and empower whatever is standing in a
+	 * crater.
+	 *
+	 * TWO HALVES ON DIFFERENT CLOCKS. The craters arrive every thirty seconds and
+	 * burn on their own, because an `ACataclysmGroundZone` needs nothing from the
+	 * beat once it is placed. The empowerment is re-applied EVERY beat to every
+	 * creature standing in one, because a status effect has a duration and a
+	 * creature that walks out must lose it.
+	 *
+	 * THE CRATER BURNS THE PLAYER AND NEVER A CREATURE. The zone's own sweep asks
+	 * for its source's enemies, and its source is the floor's hazard actor, whose
+	 * enemy is the player. Nothing here sets a flag; the default is already what
+	 * the row asks for.
+	 *
+	 * AND THE BEAT EMPOWERS CREATURES AND NEVER THE PLAYER, by asking the
+	 * opposite question: `FindEnemiesInLine` with the PLAYER as the origin finds
+	 * what the player is fighting. The two searches cannot overlap, which is why
+	 * no rule here has to exclude anybody by name.
+	 */
+	void StepHallowedGroundfall(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Put every floor effect on the player, the beat-driven ones included.
 	 * Issue #41, slice 5.
 	 *
@@ -1471,6 +1495,26 @@ private:
 	 * is not a warning about this one, and `ClearTheFloor` has already destroyed
 	 * it, so keeping the count would land a shell nobody was warned about.
 	 */
+	/**
+	 * The craters burning now, and how long since the last bombardment.
+	 *
+	 * WEAK POINTERS, because `UCataclysmFloorContents::ClearTheFloor` destroys
+	 * every zone when the floor changes; a pointer going invalid IS its crater
+	 * being gone, which is the reading every other rule here makes of its own
+	 * list.
+	 *
+	 * THE LIST IS KEPT EVEN THOUGH THE ZONES BURN WITHOUT IT, because the beat
+	 * has to ask WHERE the craters are in order to empower what is standing in
+	 * them. Infernal Rain keeps its patches for the cap; this keeps its craters
+	 * for their positions.
+	 */
+	// NAMED FOR WHAT IT HOLDS AND NOT FOR THE CONSTANT BESIDE IT.
+	// `UCataclysmDungeonModifierEffects::HallowedGroundfallCraters` is how many
+	// a bombardment leaves; this is which ones are burning. Two names one
+	// letter apart in the same function would be a trap for the next reader.
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> HallowedGroundfallCratersBurning;
+	float HallowedGroundfallSecondsSinceLast = 0.0f;
+
 	TWeakObjectPtr<class ACataclysmGroundZone> ArtilleryStrikeCircle;
 	float ArtilleryStrikeWarningSoFar = 0.0f;
 	float ArtilleryStrikeSecondsSinceLast = 0.0f;

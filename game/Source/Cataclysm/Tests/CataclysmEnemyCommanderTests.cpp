@@ -23,11 +23,18 @@
 /**
  * Tests for Commander, the only effect in the game that makes a creature better.
  *
- * WHERE IT COMES FROM. The Succubus's aura Dominion grants it to every allied
- * creature within 8 metres, and nothing else grants it today. Its own tests, in
- * CataclysmSuccubusTests.cpp, check that the right creatures are given the tag
- * and that they lose it again. **These check what holding the tag DOES**, which
- * belongs to every creature rather than to the one that grants it.
+ * WHERE IT COMES FROM: FOUR THINGS, AND THIS SAID ONE. It read "The Succubus's
+ * aura Dominion grants it to every allied creature within 8 metres, and nothing
+ * else grants it today", and that was already wrong. Counted on 2026-09-14:
+ * the Succubus's aura, `UCataclysmEnemyModifiers::RallyAlliesOnDeath`,
+ * `UCataclysmEnemyModifiers::TimedStep`, and the dungeon rule
+ * `Celestial_Hallowed_Groundfall` for every creature standing in one of its
+ * craters.
+ *
+ * WHICH CHANGES NOTHING ABOUT THIS FILE, and that is the point worth keeping:
+ * **these check what holding the tag DOES**, which belongs to every creature
+ * rather than to whatever granted it. Each granter's own tests check that the
+ * right creatures are given the tag and that they lose it again.
  *
  * WHAT A CREATURE HOLDING IT GAINS: 20% more movement speed and 20% more attack
  * speed, and nothing else. The project owner set those two on 2026-08-20; the

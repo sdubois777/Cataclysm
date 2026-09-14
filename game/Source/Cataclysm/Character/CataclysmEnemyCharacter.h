@@ -673,10 +673,24 @@ public:
 	// ----------------------------------------------------------------------
 	// Commander, the only thing in the game that makes a creature better
 	//
-	// GRANTED BY THE SUCCUBUS'S AURA and by nothing else today.
-	// `ACataclysmSuccubusCharacter::PulseDominion` puts the `Status.Buff.Commander`
-	// tag on every ally within 8 metres and takes it off again when they leave
-	// or when it dies. This is what the tag DOES.
+	// GRANTED BY FOUR THINGS, AND THIS COMMENT USED TO SAY ONE. It read "GRANTED
+	// BY THE SUCCUBUS'S AURA and by nothing else today", and that was already
+	// wrong when it was written. Counted on 2026-09-14:
+	//
+	//   ACataclysmSuccubusCharacter::PulseDominion   every ally within 8 metres
+	//   UCataclysmEnemyModifiers::RallyAlliesOnDeath Horde Leader's rally
+	//   UCataclysmEnemyModifiers::TimedStep          the buff a sacrifice grants
+	//   the dungeon rule Celestial_Hallowed_Groundfall, every creature standing
+	//                                                in one of its craters
+	//
+	// THE SENTENCE ABOVE THIS ONE IS STILL TRUE and is why the dungeon rule uses
+	// this tag rather than inventing a buff: Commander remains the only thing in
+	// the game that makes a creature better, so "empower enemies" has exactly one
+	// honest reading.
+	//
+	// The Succubus takes the tag off again when an ally leaves its aura or when
+	// it dies. The other three grant it for a stated time and let it expire.
+	// This is what the tag DOES.
 	// ----------------------------------------------------------------------
 
 	/**
