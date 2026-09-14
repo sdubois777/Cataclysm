@@ -96,23 +96,51 @@ jobs:
       # else non-zero is git failing to answer, and the step then builds:
       # a reading it cannot take must not skip a compile.
       #
-      # No third-party action does this; the two lines of cmd are the whole
+      # THE SAFE-DIRECTORY VARIABLES ARE NOT OPTIONAL. The runner service runs
+      # as NT AUTHORITY\SYSTEM but its work directory is owned by NT
+      # AUTHORITY\NETWORK SERVICE, and git refuses to run in a directory owned
+      # by another account ("detected dubious ownership", exit 128) before it
+      # reads any argument. actions/checkout survives this by adding a
+      # safe.directory entry for its own steps and removing it afterwards.
+      # The three GIT_CONFIG_* variables give this one step the same
+      # exemption through git's command-scope configuration, which is one of
+      # the scopes safe.directory is honoured from; nothing is written to the
+      # runner's global configuration. The first run of this step (2026-09-14,
+      # run 34909261143) failed exactly this way.
+      #
+      # `exit /b 0` at the end is also deliberate. cmd's `echo` does not reset
+      # the error level, so without it the step's exit code is whatever git
+      # last returned, and a git refusal that correctly chose "build" still
+      # failed the step. Only the output decides what happens next.
+      #
+      # No third-party action does this; the few lines of cmd are the whole
       # mechanism, and the output is read by the `if:` on the steps below.
       # ------------------------------------------------------------------
       - name: Decide whether the build is needed
         id: scope
         if: github.event_name == 'pull_request'
         shell: cmd
+        env:
+          BASE: ${{ github.base_ref }}
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: safe.directory
+          GIT_CONFIG_VALUE_0: "*"
         run: |
-          git fetch --no-tags origin ${{ github.base_ref }}
-          git diff --name-only --exit-code origin/${{ github.base_ref }}...HEAD -- game/ .github/workflows/unreal.yml
+          git fetch --no-tags origin +refs/heads/%BASE%:refs/remotes/origin/%BASE%
           if errorlevel 1 (
             echo build=true>>%GITHUB_OUTPUT%
-            echo Something under game/ or this workflow changed against ${{ github.base_ref }}: building.
+            echo Could not fetch %BASE% to compare against: building.
+            exit /b 0
+          )
+          git diff --name-only --exit-code origin/%BASE%...HEAD -- game/ .github/workflows/unreal.yml
+          if errorlevel 1 (
+            echo build=true>>%GITHUB_OUTPUT%
+            echo Something under game/ or this workflow changed against %BASE%, or git could not answer: building.
           ) else (
             echo build=false>>%GITHUB_OUTPUT%
-            echo Nothing under game/ or .github/workflows/unreal.yml changed against ${{ github.base_ref }}: no build needed, ending green.
+            echo Nothing under game/ or .github/workflows/unreal.yml changed against %BASE%: no build needed, ending green.
           )
+          exit /b 0
 
       # ------------------------------------------------------------------
       # WHY THIS CALLS Build.bat RATHER THAN tools/unreal_build.py.
