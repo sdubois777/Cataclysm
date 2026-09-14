@@ -23,6 +23,10 @@ const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
 	TEXT("debuff_damage_suppressed");
 const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
 	TEXT("shield_absorbs_damage_over_time");
+const TCHAR* UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat =
+	TEXT("armor_penetration_suppressed");
+const TCHAR* UCataclysmDamageCalculation::MeleeEvasionSuppressedStat =
+	TEXT("melee_evasion_suppressed");
 
 namespace
 {
@@ -598,8 +602,32 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// the armour step sees. Issue #639 gave the sub-type half somewhere to
 		// arrive from; issue #520 gave the gear half an attribute to come from.
 		const float FromWeapon = Hit.bIsPiercing ? PiercingArmorIgnored : 0.0f;
-		const float Ignored =
-			FMath::Clamp(Hit.ArmorPenetration + FromWeapon, 0.0f, 100.0f);
+
+		// UNLESS THIS CHARACTER BOUGHT THE KEYSTONE THAT FORBIDS IT. Issue
+		// #1515. `Ravager_keystone_spine_001` Ironhide: "Your Armor cannot be
+		// ignored: armor penetration and piercing weapons remove none of it."
+		//
+		// READ ON THE DEFENDER, which is the opposite of the stat it cancels.
+		// Penetration belongs to whoever is swinging; this belongs to whoever is
+		// being hit, and the node protects the armour of the character that
+		// bought it.
+		//
+		// HERE, AFTER BOTH HALVES ARE SUMMED, so one read covers both things the
+		// row names. The stat and the piercing weapon reach this sum by
+		// different routes -- one is an attribute on the attacker, the other is
+		// the weapon's sub-type read off the effect causer -- and a flag placed
+		// on either alone would leave half the sentence false.
+		//
+		// ZERO FOR EVERY CHARACTER THAT HAS NOT BOUGHT IT, so the clamp below is
+		// unchanged for all of them.
+		const bool bArmorCannotBeIgnored =
+			DefenderStat(Defender, ArmorPenetrationSuppressedStat,
+						 Combat->GetArmorPenetrationSuppressed(), BlowOf(Hit))
+				> 0.0f;
+
+		const float Ignored = bArmorCannotBeIgnored
+			? 0.0f
+			: FMath::Clamp(Hit.ArmorPenetration + FromWeapon, 0.0f, 100.0f);
 		// THE BLOW IS PASSED NOW, WHICH IS THE WHOLE OF THIS CHANGE. Issue #947.
 		// `DefenderStat` already asked for this stat through the pipeline, so a
 		// modifier conditioned on the DEFENDER's own state -- the Masochist's

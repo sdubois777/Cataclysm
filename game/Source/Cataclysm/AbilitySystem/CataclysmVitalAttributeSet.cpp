@@ -421,6 +421,58 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				AssetTags.HasTag(UCataclysmDamageCalculation::RangedTag());
 			Hit.bIsSpell = UCataclysmSkillEffects::IsSpell(AssetTags);
 
+			// AND WHETHER THE ATTACKER'S OWN KEYSTONE SAYS THIS BLOW CANNOT BE
+			// DODGED. Issue #1515. `Ravager_keystone_spine_002` Every Swing Lands:
+			// "Your melee attacks cannot be evaded."
+			//
+			// IT SETS THE FLAG THE EVASION STEP ALREADY HONOURS rather than adding
+			// a second read there. Evasion is rolled on the DEFENDER, so the only
+			// way an attacker can refuse it is to say so on the blow it sends, and
+			// `bCannotBeEvaded` exists for exactly that.
+			//
+			// THE PERFECT AIM ENEMY MODIFIER IS THE OTHER SETTER, further down this
+			// function, and the two are not two names for one thing: that one is a
+			// rule on a creature, read off its modifier rows, and applies to every
+			// attack it makes. This one is a stat on a player, read through the
+			// pipeline, and applies only to melee. Either may set the flag and
+			// neither reads the other.
+			//
+			// MELEE ONLY, WHICH IS THE ROW'S OWN LIMIT. A ranged attack or a spell
+			// from the same character is still evadable.
+			//
+			// AND IT DOES NOT REACH A MINION'S BLOW. A minion's damage is dealt in
+			// its summoner's name, so the attacker read here IS the player; what
+			// keeps this off it is that a minion's blow carries no melee tag, being
+			// delivered with an empty tag container. The design's rule is that "a
+			// minion reaches its summoner through exactly three channels, and
+			// nothing else crosses", and `MinionDelivery` already blocks four other
+			// things by name. This one is blocked by the melee gate instead, which
+			// is a property of how minion damage is delivered rather than a stated
+			// rule -- so a test asserts it directly rather than trusting it.
+			if (Hit.bIsMelee)
+			{
+				if (const UCataclysmAbilitySystemComponent* Swinging =
+						Cast<UCataclysmAbilitySystemComponent>(
+							Data.EffectSpec.GetContext()
+								.GetInstigatorAbilitySystemComponent()))
+				{
+					const FGameplayAttribute Suppressed =
+						UCataclysmCombatAttributeSet::GetMeleeEvasionSuppressedAttribute();
+
+					// THE ATTRIBUTE-SET CHECK IS NOT OPTIONAL. Reading an attribute
+					// whose set the component does not hold raises an engine ensure
+					// rather than answering zero.
+					if (Swinging->HasAttributeSetForAttribute(Suppressed))
+					{
+						Hit.bCannotBeEvaded = Hit.bCannotBeEvaded
+							|| Swinging->StatForSkill(
+								   FName(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat),
+								   AssetTags,
+								   Swinging->GetNumericAttribute(Suppressed)) > 0.0f;
+					}
+				}
+			}
+
 			// WHETHER THIS BLOW MAY IGNORE ANY OF THE DEFENDER'S ARMOUR OR
 			// RESISTANCE. Read up here rather than beside the first thing that
 			// needs it, because two separate places below do: the attacker's two

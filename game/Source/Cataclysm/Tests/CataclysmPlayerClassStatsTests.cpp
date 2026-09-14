@@ -542,6 +542,21 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Ritualist's The Long Game keystone, as a flat flag, read where "
 			  "the regeneration step adds a second source to the shield")},
 
+		// Issue #1515. Two Ravager keystones that forbid a defence working, and
+		// both are flags for the same reason as the three above: each node states
+		// a RULE rather than a magnitude.
+		//
+		// THEY SIT ON OPPOSITE SIDES OF A BLOW, which is worth saying because
+		// every other flag in this list is read on the character holding it. The
+		// first protects the holder's own armour; the second is held by an
+		// attacker and refuses the DEFENDER's evasion.
+		{TEXT("armor_penetration_suppressed"),
+		 TEXT("the Ravager's Ironhide keystone, as a flat flag read on the "
+			  "defender where an attacker's penetration would be applied")},
+		{TEXT("melee_evasion_suppressed"),
+		 TEXT("the Ravager's Every Swing Lands keystone, as a flat flag read on "
+			  "the attacker where a blow is assembled")},
+
 		// Issue #1039. Whether damage over time deals this character nothing at
 		// all. Zero for every class, and the Masochist's Vessel Unbroken
 		// capstone option is its only source. A FLAG rather than a reduction,
