@@ -348,6 +348,18 @@ private:
 	static constexpr float SkillBarNameGapPx = 4.0f;
 	static constexpr float SkillBarNameScale = 1.0f;
 
+	/**
+	 * Clear space above the boxes for the words saying every skill is locked,
+	 * and how much larger than a skill's name they are drawn. Issue #1810.
+	 *
+	 * BIGGER THAN THE NAMES UNDER THE BOXES, because this is read by a player who
+	 * is not looking at the bar. It is the only line of text this display draws
+	 * that is about the player's own state rather than about a thing in the
+	 * world.
+	 */
+	static constexpr float SkillBarLockedNoticeGapPx = 22.0f;
+	static constexpr float SkillBarLockedNoticeScale = 1.4f;
+
 public:
 	/**
 	 * What every piece of text this draws is scaled by, on top of its own size.

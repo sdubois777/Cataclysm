@@ -4,9 +4,117 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "CataclysmTestWorld.h"
+#include "Components/SphereComponent.h"
+#include "Engine/World.h"
+#include "Misc/ScopeExit.h"
 #include "Interface/CataclysmHUD.h"
 #include "Interface/CataclysmSkillBar.h"
+
+namespace CataclysmSkillBarTest
+{
+	/**
+	 * An actor the bar can be read from: an ability system and two granted
+	 * skills, and nothing else.
+	 *
+	 * SMALLER THAN THE FIGHTER THE OTHER TEST FILES KEEP, on purpose. Thirteen
+	 * files carry their own `FScopedFighter`, each built for what that file
+	 * measures. The bar asks a character three things -- which ability is in
+	 * which slot, what it costs, and whether a lock refuses it -- so this one
+	 * carries the two attribute sets those need and stops there.
+	 *
+	 * NO PLAYER CONTROLLER, which is why every box's key text is empty here.
+	 * `UCataclysmSkillBar::Read` handles that already and says so; these tests
+	 * are about the lock, and `EveryKeyTheGameBindsFitsInABox` above covers keys.
+	 */
+	struct FBarCharacter
+	{
+		explicit FBarCharacter(UWorld* World)
+		{
+			Actor = World->SpawnActor<AActor>(FVector::ZeroVector,
+											  FRotator::ZeroRotator);
+			check(Actor);
+
+			USphereComponent* Sphere = NewObject<USphereComponent>(Actor);
+			Sphere->InitSphereRadius(34.0f);
+			Actor->SetRootComponent(Sphere);
+			Sphere->RegisterComponent();
+
+			// AN ATTRIBUTE SET NEEDS AN OWNER WITH A REGISTERED COMPONENT, or
+			// writing to it crashes the whole run rather than failing a test.
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmVitalAttributeSet>(Actor));
+			AbilitySystem->AddAttributeSetSubobject(
+				NewObject<UCataclysmCombatAttributeSet>(Actor));
+		}
+
+		AActor* Actor = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	};
+
+	/** Put a skill in a slot, carrying the slot tag a designed row would carry. */
+	template <typename T>
+	T* Grant(FBarCharacter& Who, ECataclysmAbilitySlot Slot, const FString& Params,
+			 const FString& TagCell)
+	{
+		const FGameplayAbilitySpecHandle Handle =
+			Who.AbilitySystem->GiveAbilityInSlot(T::StaticClass(), Slot,
+												 /*Level=*/100, Who.Actor);
+		FGameplayAbilitySpec* Spec =
+			Handle.IsValid() ? Who.AbilitySystem->FindAbilitySpecFromHandle(Handle)
+							 : nullptr;
+		T* Instance = Spec ? Cast<T>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Instance)
+		{
+			Instance->SkillName = TEXT("Test Skill");
+			Instance->Params = UCataclysmSkillShapes::ParseParams(Params);
+
+			// READ THE TAG CELL THE WAY THE REAL PATH READS IT, so a test cannot
+			// pass with a tag a designed row could not produce.
+			Instance->SkillTags = UCataclysmSkillShapes::TagsFromCell(TagCell);
+		}
+		return Instance;
+	}
+
+	/** Lock skills, optionally only those carrying one tag. */
+	void LockSkills(FBarCharacter& Who, const FGameplayTag& OnlyThisSlot)
+	{
+		FCataclysmStatModifier Lock;
+		Lock.Bucket = ECataclysmStatBucket::Flat;
+		Lock.Source = ECataclysmModifierSource::Enchantment;
+		Lock.Value = 1.0f;
+		if (OnlyThisSlot.IsValid())
+		{
+			Lock.RequiredTags.AddTag(OnlyThisSlot);
+		}
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(Lock);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmSkillSlots::LockedStat), Inputs);
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** The box for one slot, or null when the bar drew none. */
+	const FCataclysmSkillBarSlot* BoxFor(const TArray<FCataclysmSkillBarSlot>& Bar,
+										 ECataclysmAbilitySlot Slot)
+	{
+		return Bar.FindByPredicate(
+			[Slot](const FCataclysmSkillBarSlot& Box) { return Box.Slot == Slot; });
+	}
+}
 
 /**
  * Tests for the player's skill bar, issue #49.
@@ -414,6 +522,408 @@ bool FCataclysmSkillBarNoPlayerTest::RunTest(const FString& Parameters)
 	// is what lets the drawing code ask without checking first.
 	TestEqual(TEXT("no player means no boxes"),
 			  UCataclysmSkillBar::Read(nullptr).Num(), 0);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A skill a lock is refusing. Issue #1810
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarUnscopedLockTest,
+	"Cataclysm.SkillBar.AnUnscopedLockMarksEverySkillOnTheBar",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarUnscopedLockTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillBarTest;
+
+	// WHAT A SILENCED PLAYER SAW BEFORE THIS: nothing. Issue #1810. The refusal
+	// in `UCataclysmSkillTemplate::CanActivateAbility` returns before the
+	// engine's own checks so the player is not told the wrong reason, and no
+	// reason was ever put in its place. This is the reason.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FBarCharacter Who(World);
+	const bool bGranted =
+		Grant<UCataclysmMovementSkill>(Who, ECataclysmAbilitySlot::Movement,
+									   TEXT("Mode=Blink; Range=9; Radius=2"),
+									   TEXT("Slot.Movement")) != nullptr
+		&& Grant<UCataclysmStrikeSkill>(Who, ECataclysmAbilitySlot::Heavy,
+										TEXT("Radius=4; Angle=360"),
+										TEXT("Slot.Heavy")) != nullptr;
+	if (!TestTrue(TEXT("two skills were granted"), bGranted))
+	{
+		return false;
+	}
+
+	// THE CONTROL FIRST, so what follows is evidence of the lock rather than of
+	// a bar that marks everything.
+	{
+		const TArray<FCataclysmSkillBarSlot> Before = UCataclysmSkillBar::Read(Who.Actor);
+		const FCataclysmSkillBarSlot* Step = BoxFor(Before, ECataclysmAbilitySlot::Movement);
+		const FCataclysmSkillBarSlot* Swing = BoxFor(Before, ECataclysmAbilitySlot::Heavy);
+		if (!TestNotNull(TEXT("the bar drew a box for the movement skill"), Step)
+			|| !TestNotNull(TEXT("and one for the heavy skill"), Swing))
+		{
+			return false;
+		}
+		if (!TestTrue(TEXT("both boxes hold a skill"), Step->bFilled && Swing->bFilled))
+		{
+			return false;
+		}
+		TestFalse(TEXT("neither is marked locked before anything locks them"),
+				  Step->bLocked || Swing->bLocked);
+	}
+
+	// THE LOCK, CARRYING NO TAGS, which is what "preventing all skill usage"
+	// means and what the dungeon rule `Celestial_Edict_of_Silence` applies.
+	LockSkills(Who, FGameplayTag());
+
+	const TArray<FCataclysmSkillBarSlot> After = UCataclysmSkillBar::Read(Who.Actor);
+
+	int32 Holding = 0;
+	int32 Marked = 0;
+	for (const FCataclysmSkillBarSlot& Box : After)
+	{
+		if (!Box.bFilled)
+		{
+			continue;
+		}
+		++Holding;
+		Marked += Box.bLocked ? 1 : 0;
+	}
+
+	// COUNTED RATHER THAN SPOT-CHECKED, so this says how many boxes it looked at
+	// as well as what it found. An empty box holds no skill and is not counted
+	// either way; only two of the six slots were granted anything.
+	TestEqual(TEXT("the bar drew two boxes holding a skill"), Holding, 2);
+	TestEqual(TEXT("and an unscoped lock marks every one of them"), Marked, Holding);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarScopedLockTest,
+	"Cataclysm.SkillBar.ALockScopedToOneSlotMarksOnlyThatBox",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarScopedLockTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillBarTest;
+
+	// THIS IS THE TEST THE WHOLE DESIGN RESTS ON, and the test above cannot do
+	// its job. Issue #1810. The lock is read through
+	// `UCataclysmAbilitySystemComponent::StatForSkill`, which scopes each
+	// modifier by the tags it is handed, so one stat serves both an enchantment
+	// that locks a single slot and a dungeon rule that locks everything.
+	//
+	// THE OBVIOUS MISTAKE IS TO READ IT ONCE FOR THE WHOLE BAR, the way mana is
+	// read once above -- and an UNSCOPED lock answers the same either way, so the
+	// test above would pass with that mistake in place. A scoped lock is the only
+	// arrangement where the two implementations differ.
+	//
+	// `game/Data/EnchantmentEffects.csv` holds two rows that do exactly this, so
+	// it is not a hypothetical shape: one is scoped to `Slot.Movement` and one to
+	// `Slot.Ultimate`.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FBarCharacter Who(World);
+	const bool bGranted =
+		Grant<UCataclysmMovementSkill>(Who, ECataclysmAbilitySlot::Movement,
+									   TEXT("Mode=Blink; Range=9; Radius=2"),
+									   TEXT("Slot.Movement")) != nullptr
+		&& Grant<UCataclysmStrikeSkill>(Who, ECataclysmAbilitySlot::Heavy,
+										TEXT("Radius=4; Angle=360"),
+										TEXT("Slot.Heavy")) != nullptr;
+	if (!TestTrue(TEXT("two skills were granted"), bGranted))
+	{
+		return false;
+	}
+
+	LockSkills(Who, CataclysmAbilitySlots::Tag(ECataclysmAbilitySlot::Movement));
+
+	const TArray<FCataclysmSkillBarSlot> Bar = UCataclysmSkillBar::Read(Who.Actor);
+	const FCataclysmSkillBarSlot* Step = BoxFor(Bar, ECataclysmAbilitySlot::Movement);
+	const FCataclysmSkillBarSlot* Swing = BoxFor(Bar, ECataclysmAbilitySlot::Heavy);
+	if (!TestNotNull(TEXT("the bar drew a box for the movement skill"), Step)
+		|| !TestNotNull(TEXT("and one for the heavy skill"), Swing))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("both boxes hold a skill, so both could have been marked"),
+				  Step->bFilled && Swing->bFilled))
+	{
+		return false;
+	}
+
+	// BOTH ASSERTIONS OR NEITHER. Either one alone passes for an implementation
+	// that ignores the scoping entirely -- marking everything, or marking
+	// nothing -- which is the argument
+	// `Cataclysm.Skills.ALockScopedToOneSlotLeavesTheOtherSlotsAlone` already
+	// makes where it holds the same property at the refusal.
+	TestTrue(TEXT("a lock scoped to the movement slot marks the movement box"),
+			 Step->bLocked);
+	TestFalse(TEXT("and leaves the box in another slot alone"), Swing->bLocked);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarLockedTintTest,
+	"Cataclysm.SkillBar.ALockedAndUnaffordableBoxShowsLockedRatherThanUnaffordable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarLockedTintTest::RunTest(const FString& Parameters)
+{
+	// A LOCKED SKILL IS REFUSED AT EVERY MANA LEVEL, so the lock is the fact that
+	// decides whether the box can be used and the other order would tell a
+	// silenced player to go and find mana. The same kind of argument `TintFor`
+	// already makes for showing unpayable before the wait.
+	FCataclysmSkillBarSlot Both;
+	Both.bFilled = true;
+	Both.bLocked = true;
+	Both.bAffordable = false;
+
+	FCataclysmSkillBarSlot Broke;
+	Broke.bFilled = true;
+	Broke.bLocked = false;
+	Broke.bAffordable = false;
+
+	FCataclysmSkillBarSlot Locked;
+	Locked.bFilled = true;
+	Locked.bLocked = true;
+	Locked.bAffordable = true;
+
+	FCataclysmSkillBarSlot Ready;
+	Ready.bFilled = true;
+
+	// THE WINDOW HAS TO EXIST BEFORE THE ASSERTION MEANS ANYTHING. If the locked
+	// and unpayable colours were ever given the same value, the assertion below
+	// would pass whichever order `TintFor` checked them in, and this test would
+	// go on passing while saying nothing. Asserted first for that reason.
+	if (!TestFalse(TEXT("the locked and unpayable colours differ, so an order exists"),
+				   UCataclysmSkillBar::TintFor(Locked)
+					   .Equals(UCataclysmSkillBar::TintFor(Broke), 0.001f)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("and the box under test really is both locked and unpayable"),
+				  Both.bLocked && !Both.bAffordable))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("a box that is both shows the locked colour"),
+			 UCataclysmSkillBar::TintFor(Both)
+				 .Equals(UCataclysmSkillBar::TintFor(Locked), 0.001f));
+
+	// AND IT IS ITS OWN STATE, not a shade of one that already existed.
+	TestFalse(TEXT("a locked box looks different from a ready one"),
+			  UCataclysmSkillBar::TintFor(Locked)
+				  .Equals(UCataclysmSkillBar::TintFor(Ready), 0.001f));
+
+	// EVERY BOX IS STILL DRAWN, for the reason the affordability test gives: a
+	// colour with no opacity is a box nobody can see, which reads as the bar
+	// losing a slot.
+	TestTrue(TEXT("a locked box is still visible"),
+			 UCataclysmSkillBar::TintFor(Locked).A > 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarNoLockTest,
+	"Cataclysm.SkillBar.NoBoxIsMarkedWhenNothingIsLocked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarNoLockTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillBarTest;
+
+	// THE CONTROL FOR THE WHOLE FEATURE. A bar that marked every box locked would
+	// pass both tests above and would grey out every skill of every character who
+	// has no lock on them at all, which is the fault issue #653 was reported as
+	// and which `bAffordable`'s own comment was written to prevent repeating.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FBarCharacter Who(World);
+	if (!TestNotNull(TEXT("a skill was granted"),
+					 Grant<UCataclysmStrikeSkill>(Who, ECataclysmAbilitySlot::Heavy,
+												  TEXT("Radius=4; Angle=360"),
+												  TEXT("Slot.Heavy"))))
+	{
+		return false;
+	}
+
+	const TArray<FCataclysmSkillBarSlot> Bar = UCataclysmSkillBar::Read(Who.Actor);
+
+	int32 Holding = 0;
+	int32 Marked = 0;
+	for (const FCataclysmSkillBarSlot& Box : Bar)
+	{
+		Holding += Box.bFilled ? 1 : 0;
+		Marked += Box.bLocked ? 1 : 0;
+	}
+
+	TestEqual(TEXT("the bar drew one box holding a skill"), Holding, 1);
+	TestEqual(TEXT("and no box of any kind is marked locked"), Marked, 0);
+
+	// AND NOTHING IS SAID IN WORDS EITHER, which is the other half: a character
+	// nothing has locked must not be told their skills are locked.
+	TestFalse(TEXT("and the words are not shown"),
+			  UCataclysmSkillBar::EverySkillIsLocked(Bar));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarLockedWordTest,
+	"Cataclysm.SkillBar.TheWordIsShownOnlyWhileEveryDrawnSlotIsLocked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarLockedWordTest::RunTest(const FString& Parameters)
+{
+	// SOME LOCKED IS NOT THE SAME AS ALL LOCKED, and the difference is the whole
+	// reason this function exists. Issue #1810. A single-slot enchantment lock is
+	// the bar's business and a line of text across the screen for one greyed box
+	// would be noise; fifteen seconds with every skill refused is the case a
+	// player reads as the game having stopped working.
+	auto Slot = [](bool bFilled, bool bLocked)
+	{
+		FCataclysmSkillBarSlot Box;
+		Box.bFilled = bFilled;
+		Box.bLocked = bLocked;
+		return Box;
+	};
+
+	TArray<FCataclysmSkillBarSlot> AllLocked;
+	TArray<FCataclysmSkillBarSlot> OneLocked;
+	TArray<FCataclysmSkillBarSlot> NoneLocked;
+	for (int32 Index = 0; Index < 6; ++Index)
+	{
+		AllLocked.Add(Slot(true, true));
+		OneLocked.Add(Slot(true, Index == 0));
+		NoneLocked.Add(Slot(true, false));
+	}
+
+	TestTrue(TEXT("six skills, all locked, says so"),
+			 UCataclysmSkillBar::EverySkillIsLocked(AllLocked));
+	TestFalse(TEXT("six skills with one locked says nothing"),
+			  UCataclysmSkillBar::EverySkillIsLocked(OneLocked));
+	TestFalse(TEXT("and six skills with none locked says nothing"),
+			  UCataclysmSkillBar::EverySkillIsLocked(NoneLocked));
+
+	// FIVE LOCKED OUT OF SIX IS STILL NOT ALL OF THEM. The case above has one
+	// locked; this one has one NOT locked, which is the boundary the word turns
+	// on and the case an "any locked" reading and an "all locked" reading agree
+	// about least.
+	TArray<FCataclysmSkillBarSlot> AllButOne = AllLocked;
+	AllButOne[5] = Slot(true, false);
+	TestFalse(TEXT("five of six locked still says nothing"),
+			  UCataclysmSkillBar::EverySkillIsLocked(AllButOne));
+
+	// AN EMPTY BOX HOLDS NO SKILL, so it is neither locked nor unlocked. A
+	// character with a slot spare must not be silenced from saying anything, and
+	// a character with no skills at all is unarmed rather than silenced.
+	TArray<FCataclysmSkillBarSlot> LockedAndEmpty;
+	LockedAndEmpty.Add(Slot(true, true));
+	LockedAndEmpty.Add(Slot(false, false));
+	TestTrue(TEXT("an empty box beside a locked one does not stop the words"),
+			 UCataclysmSkillBar::EverySkillIsLocked(LockedAndEmpty));
+
+	TArray<FCataclysmSkillBarSlot> Empty;
+	Empty.Add(Slot(false, false));
+	TestFalse(TEXT("a bar holding no skills at all says nothing"),
+			  UCataclysmSkillBar::EverySkillIsLocked(Empty));
+	TestFalse(TEXT("and neither does an empty bar"),
+			  UCataclysmSkillBar::EverySkillIsLocked(TArray<FCataclysmSkillBarSlot>()));
+
+	// AND THE WORDS MUST NOT SAY THE PLAYER CANNOT ACT, because that is false:
+	// `UCataclysmSkillTemplate::CanActivateAbility` exempts the basic attack
+	// unconditionally and `Celestial_Edict_of_Silence`'s row says "Only basic
+	// attacks function during this period". The bar draws no box for that slot,
+	// so this line is the only place the player is told.
+	const FString Notice = UCataclysmSkillBar::LockedNotice();
+	TestFalse(TEXT("the words are not empty"), Notice.IsEmpty());
+	TestTrue(TEXT("and they say the basic attack still works"),
+			 Notice.Contains(TEXT("BASIC ATTACK")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarGrantedNameTest,
+	"Cataclysm.SkillBar.ABoxShowsTheNameOfTheSkillTheWeaponGranted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSkillBarGrantedNameTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillBarTest;
+
+	// THIS IS A DEFECT THE LOCK WORK FOUND, NOT PART OF THE LOCK. Issue #1810.
+	// `CataclysmSkillBarAbilityIn` returned `Spec.Ability`, which is the CLASS
+	// DEFAULT OBJECT. Everything that tells one granted skill from another is
+	// stamped on the INSTANCE by `UCataclysmWeaponSlotsComponent`, so
+	// `DisplayedName()` answered empty and `Read` fell through to
+	// `NameForEmptySlot` -- every box on the bar showed its slot's generic name
+	// instead of the skill the weapon granted, for as long as that helper has
+	// existed.
+	//
+	// NOTHING NOTICED BECAUSE NOTHING CALLED `Read` WITH A CHARACTER. The only
+	// call in this file before the lock tests was `Read(nullptr)`. This test
+	// exists so the fallback written to stop an empty box cannot go back to
+	// covering a real name.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FBarCharacter Who(World);
+	UCataclysmStrikeSkill* Granted =
+		Grant<UCataclysmStrikeSkill>(Who, ECataclysmAbilitySlot::Heavy,
+									 TEXT("Radius=4; Angle=360"), TEXT("Slot.Heavy"));
+	if (!TestNotNull(TEXT("a skill was granted"), Granted))
+	{
+		return false;
+	}
+
+	// A NAME THAT COULD NOT COME FROM ANYWHERE ELSE, so a box carrying it proves
+	// the instance was read. The slot's own fallback is the string this is being
+	// told apart from, and it is asserted below rather than assumed.
+	Granted->SkillName = TEXT("Riven Arc");
+
+	const TArray<FCataclysmSkillBarSlot> Bar = UCataclysmSkillBar::Read(Who.Actor);
+	const FCataclysmSkillBarSlot* Box = BoxFor(Bar, ECataclysmAbilitySlot::Heavy);
+	if (!TestNotNull(TEXT("the bar drew a box for the granted skill"), Box))
+	{
+		return false;
+	}
+
+	const FString Fallback =
+		UCataclysmSkillBar::NameForEmptySlot(ECataclysmAbilitySlot::Heavy);
+	if (!TestFalse(TEXT("the granted name and the slot's fallback differ, so an "
+						"answer exists"),
+				   Granted->SkillName.Equals(Fallback)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the box shows the granted skill's own name"),
+			  Box->Name, FString(TEXT("Riven Arc")));
+	TestNotEqual(TEXT("and not the slot's generic name"), Box->Name, Fallback);
 
 	return true;
 }

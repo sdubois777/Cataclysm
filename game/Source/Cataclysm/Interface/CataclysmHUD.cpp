@@ -334,6 +334,31 @@ void ACataclysmHUD::DrawSkillBar()
 							SkillBarNameScale);
 		}
 	}
+
+	// AND IN WORDS WHEN EVERY ONE OF THEM IS LOCKED. Issue #1810. Six boxes
+	// changing colour is a signal to a player looking at the bar, and the
+	// complaint this answers is from one who is not: a key pressed, nothing
+	// happening, and no reason given reads as the game having stopped working.
+	//
+	// NO NEW SURFACE, WHICH WAS THE CONDITION THIS WAS BUILT UNDER. It is another
+	// caller of `DrawTextCentred`, the same helper the rarity names and the
+	// cooldown figures already use. There is no notice or banner system in this
+	// module and this change does not start one.
+	//
+	// ABOVE THE BAR AND CENTRED ON IT, so it sits where the boxes it explains
+	// are and not over the middle of the fight.
+	if (UCataclysmSkillBar::EverySkillIsLocked(Slots))
+	{
+		const FVector2D First = UCataclysmSkillBar::BoxOriginFor(
+			0, Slots.Num(), Canvas->SizeX, Canvas->SizeY);
+
+		DrawTextCentred(UCataclysmSkillBar::LockedNotice(),
+						UCataclysmCombatOverlay::ColourFromHex(
+							UCataclysmSkillBar::LockedNoticeInkHex),
+						Canvas->SizeX * 0.5f,
+						First.Y - SkillBarLockedNoticeGapPx,
+						SkillBarLockedNoticeScale);
+	}
 }
 
 void ACataclysmHUD::DrawPlayerVitals()
