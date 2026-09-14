@@ -2,6 +2,342 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A fourth condition naming an ailment on the target is taken rather than the column the rule points at, and two of the three asked for are refused
+
+**Affects:**
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmTargetAilmentTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`,
+`tools/generate_datatables.py`. Issues
+[#1642](https://github.com/sdubois777/Cataclysm/issues/1642) and
+[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+The condition added is `target_carries_void_splinter`. It compares no number.
+
+### THE RULE THIS ENTRY IS ANSWERING, WHICH THIS PROJECT WROTE FOR EXACTLY THIS MOMENT
+
+The 2026-09-13 entry below that added the first three of these conditions ends
+with a bound on itself:
+
+> **Add a name when a node's own sentence names the ailment. Never
+> speculatively. At a fourth and a fifth, the right answer is a column naming the
+> ailment on the row, and this decision should be revisited rather than
+> extended.**
+
+Three names existed. A fourth was asked for, so the revisit is this entry rather
+than a silent extension. `CataclysmStatPipeline.h` and `generate_datatables.py`
+both carry the rule in a comment, and both now point here.
+
+### THREE NAMES WERE ASKED FOR AND ONE IS TAKEN
+
+The request was `target_carries_bleed`, `target_carries_poison` and
+`target_carries_void_splinter`, for three enchantment rows. Measured against the
+data, only one row asks for a condition of this shape:
+
+| Row, after the #1642 rewording | Whose number moves | Needs |
+| :-- | :-- | :-- |
+| Bleeding enemies take 20-40% increased damage **from all sources** | the enemy's damage taken | an enemy-side modifier |
+| Poisoned enemies are **slowed** by 30-50% | the enemy's movement speed | an enemy-side modifier |
+| Enemies carrying a void splinter take 9-15% increased damage **from you** | the attacker's damage | **this condition** |
+
+**Two of the three would have been speculative**, which the rule forbids in as
+many words. A condition on this character's own lookup can only change a number
+on this character; the first two change one on the enemy whoever is attacking, so
+they belong with the rows that need a modifier carried by the ailment itself.
+
+A sweep of both enchantment files and all 441 passive nodes found no other
+sentence naming an ailment on a target, except two Bulwark nodes that want a
+count of bleed stacks — a **scale**, not a condition, and a different tree.
+
+### WHY THE COLUMN IS STILL NOT TAKEN, AND THE REASON IS NOT THE ONE FIRST WRITTEN
+
+The original analysis rejected the parameterised column on cost: a field on
+`FCataclysmPassiveEffectRow`, so a CSV column, a workbook column insertion, and
+the inline fixtures in `CataclysmPassiveTreeTests.cpp` break.
+
+**That costing no longer describes this case.** The row that asks is an
+enchantment row, in `FCataclysmEnchantmentEffectRow`, a different struct with its
+own file and its own fixtures. So the cost the rule anticipated is not the cost
+this change would pay, and the analysis had to be redone rather than cited.
+
+Three reasons the column is still declined, in order of weight:
+
+1. **One row asks.** A column is generality, and the rule's own objection to
+   speculative names applies to a speculative schema at least as strongly.
+2. **`ConditionValue` cannot serve as the parameter.** It is a `float`. Holding
+   an ailment's index in it would put "the fourth ailment" into a data row as a
+   number, and the first reordering of `UCataclysmAilments::Kinds` would silently
+   repoint every such row.
+3. **The column would be a second vocabulary.** A row could then name an ailment
+   the conditions do not, and the two lists would need holding together by
+   another test.
+
+**The rule is not weakened by this entry.** A fifth name should not be added
+without the column being built; that is the next revisit, and it now has a
+costing for the enchantment struct as well as the passive one.
+
+### WHAT THE CONDITION READS, AND WHAT IT ANSWERS WHEN IT CANNOT READ IT
+
+`State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::VoidSplinterTag())`, filled
+on the attacker's own lookups by `UCataclysmDebuffs::TagsOnActor`.
+
+**Its tag hangs off a different branch from the three names above it.** Cripple
+and Weaken are `Status.Debuff.*`; a void splinter is `Keyword.DoT.VoidSplinter`,
+because it deals damage over time rather than changing a number.
+`UCataclysmDebuffs::DebuffRootNames` names `Keyword.DoT` as a root, so the tag
+reaches the same container and needs no new plumbing.
+
+**`HasTagExact` and not `HasTag`, and here the loose form would be actively
+wrong.** Six other ailments hang off `Keyword.DoT`, so asking inexactly would
+make this condition mean "bleeding, or poisoned, or burning, or any damage over
+time at all".
+
+**An unknown reading refuses.** An empty container means no target in hand, a
+target carrying nothing, or no modifier in this lookup asking about an ailment;
+all three withhold the bonus rather than granting it, which is the direction every
+blow predicate in this pipeline takes.
+
+**A condition missing from the switch in
+`UCataclysmAbilitySystemComponent` that decides whether to collect the target's
+ailments at all would be judged against an empty container and grant nothing,
+silently.** That switch is the fifth site this change touches and the one with no
+compiler error to catch it.
+
+### AND THE STAT DOMINION GRANTS IS A BONUS OF ZERO, NOT A THRESHOLD OF FIFTY
+
+`Ritualist_keystone_a_kA` Dominion is the node: *"A blow that leaves a target
+below 65% health can take it, rather than below half."* The stat is
+`possession_threshold_bonus`, it starts at **zero**, and it is **added** to the
+figure the Subjugate skill's own row states.
+
+**THE SHAPE THIS WAS FIRST RULED AS HAD A DUPLICATE IN IT.** The first ruling was
+a stat named `possession_threshold_percent` holding the threshold itself, with an
+engine-supplied base of 50 and a keystone row of flat 15 so it read 65. That is
+arithmetically correct and it states the number 50 twice:
+
+```
+game/Data/WeaponSkills.csv, Demonic_Staff_Ultimate (Subjugate)
+    ShapeParams: ... FervourReserve=30; HealthThresholdPercent=50
+```
+
+That row is the only place the threshold appears today, it is read once into
+`Params.HealthThresholdPercent`, and it is compared at exactly one place in
+`UCataclysmSummonSkill::Possess`. **A stat holding 50 as its own base would win
+silently:** re-tune the row to 40 and the threshold would stay at 50, with
+nothing failing and no test to notice. This project has been bitten by a second
+statement of one number before, which is why the shape was changed before
+anything was built.
+
+| | the shape first ruled | the shape built |
+| :-- | :-- | :-- |
+| what the stat means | the threshold | percentage points added to it |
+| base | 50, engine-supplied | 0, and none is supplied |
+| the keystone's row | flat 15 | flat 15, unchanged |
+| with the keystone | 65 | 65 |
+| without it | 50 | 50 |
+| if the row is re-tuned to 40 | **stays 50, silently** | follows to 40 |
+
+**FLAT AND NOT "SET", so a second source adds rather than replacing.** Nothing
+else grants this today; a second keystone or an enchantment arriving later is a
+decision somebody makes rather than a collision.
+
+**ZERO IS ALSO WHAT DECIDES THE ROW'S KIND.** An increase against a base of zero
+grants nothing, so a row moving this stat takes `flat` and never `increased` —
+the same rule the eleven ailment chances follow, and the opposite of the two
+ailment magnitude stats whose base is 100.
+
+**AND NO ENGINE-SUPPLIED BASE, WHICH IS THE ONE PLACE THIS DIFFERS FROM THOSE
+TWO.** They needed one because their neutral value is 100 and
+`UCataclysmPlayerClassStats::ApplyTo` would otherwise write a resolved zero over
+it, destroying the effect. This stat's neutral value **is** zero, so there is
+nothing for a base to supply and an entry would be a third statement of a number
+that already lives on the row.
+
+**THE THRESHOLD IS NOT CAPPED.** One keystone taken once reads 65; a ceiling
+invented now would be a number the design states nowhere. This is recorded so
+that a second source arriving is a decision rather than a surprise.
+
+### The diagnostic beneath the comparison was corrected with it
+
+The log line that explains a refused possession reported
+`Params.HealthThresholdPercent` — the row's own figure — while the comparison
+used the same value. **The two parted company the moment the bonus existed**, so
+a character with Dominion would have been refused against 65 and told the reason
+was 50. It now prints the combined threshold and both halves.
+
+A diagnostic naming a number the code did not use is worse than no diagnostic,
+because it is read as the reason for the refusal.
+
+## AND A FIFTH NAME, `can_cripple_or_weaken`, WHICH IS ABOUT THE ATTACKER AND SO DOES NOT REOPEN THE RULE ABOVE
+
+`Ravager_basic_c_c0` Spreading Hurt is the node: *"+4% increased Area of Effect
+per point for attacks that Cripple or Weaken."* Issue
+[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+**The node's own wording rules out the obvious reading.** An area of effect is
+used to SHAPE an attack before it lands, so "an attack that applied a Cripple" is
+not knowable at the moment the bonus is worked out. Two readings survive:
+
+| Reading | Verdict |
+| :-- | :-- |
+| skills whose own row applies Cripple or Weaken | **impossible today.** No `Keyword.*Cripple*` or `Keyword.*Weaken*` tag exists anywhere in `game/Data/*.csv`, so there is nothing to scope by |
+| any attack by a character who can apply either | **taken.** It is knowable, and the node's place on the tree supports it |
+
+**The tree is what settles it.** Spreading Hurt sits directly below the two nodes
+granting the chance to apply those ailments, so a Ravager reaches it through them.
+The condition is a statement about a build that has invested in crippling, and it
+is false for one that has not — which is what the node is for.
+
+**It does not reopen the count above.** The rule that bounds the target-state
+names is about naming an ailment ON THE TARGET, and this reads two stats on the
+character carrying the row. It is the fifth name mentioning these ailments and the
+first asking about the attacker's own capability, so the column the rule points at
+would not hold it either.
+
+**The reading is taken off the attributes rather than resolved again, and that is
+a stated limit.** The fact is built while the pipeline is being set up, so asking
+the pipeline for the two chances there would re-enter it. The attribute holds the
+chance worked out with no skill in hand, so a chance carried only by a row scoped
+to a required tag is not in it. Every authored chance row today is unscoped, so
+the reading is complete for the rows that exist; a future scoped row would narrow
+this condition rather than break it, and that is recorded here so the person who
+writes one knows.
+
+**False covers both "no chance" and "nothing to read", and that is right here
+where it would be wrong for a threshold.** A character with no combat attribute
+set cannot apply either ailment any more than one whose chances are both zero, so
+there is no pair to tell apart — unlike the health readings, where a percentage of
+zero is a corpse and an unknown one is the character sheet.
+
+---
+
+## 2026-09-14 — A skill is ranged if its effect lands at a distance the caster does not close, and twenty-five weapon skills gain the tag that says so
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx` and
+`game/Data/WeaponSkills.csv` generated from it, and
+`game/Content/Data/DT_WeaponSkills.uasset`. No enchantment row changes. Issue
+[#1769](https://github.com/sdubois777/Cataclysm/issues/1769).
+
+**This is a judgement by the coordinating session under the project owner's
+delegation of 2026-09-14, not an owner decision.** This entry is written by the
+session that carried it out.
+
+### What was wrong
+
+Two enchantments say "Ranged skills …" and scope their four effect rows to
+`Type.Ranged`. **One weapon skill in 403 carried that tag**, and that one also
+carried `Type.Projectile`, so the four rows reached a single Ultimate. One of
+the two enchantments is a drawback, so a player was charged a cost they could
+almost never feel.
+
+### The tag vocabulary already said which tag is the wider one
+
+`game/Config/Tags/CataclysmTags.ini`:
+
+```
+Type.Projectile   "Skills that fire a traveling entity"
+Type.Ranged       "Any ranged skill regardless of delivery method"
+```
+
+So `Type.Ranged` was **declared** as the wider tag and **applied** as the
+narrower one. `UCataclysmSkillEffects::IsRanged` already compensates in code —
+it accepts either tag, with the comment "EITHER TAG, BECAUSE A PROJECTILE IS
+RANGED" — but the data cannot. `UCataclysmStatPipeline::ModifierApplies` loops
+over every tag a row requires and returns false on the first one a skill does
+not hold, so **a row cannot say "projectile or ranged"**. That constraint is what
+made this a choice rather than a typo.
+
+**The design document does not define a ranged skill.** It was searched; the only
+use of the word is incidental, inside a paragraph about retaliation. So there is
+no design sentence to cite here, and none is invented.
+
+### The ruling: re-tag the skills, do not re-scope the rows
+
+Three readings were put up. Re-scoping the four rows to `Type.Projectile` would
+have reached the same 21 skills for one edit, but it would have quietly redefined
+the player-facing sentence: "Ranged skills" would come to mean "skills that fire
+a travelling entity", excluding Suppressing Fire, which is a volley of crossbow
+bolts fired at an area.
+
+**So the tag moves to the skills instead, and every row changed is changed for a
+reason already written in this repository** — twenty rows carry
+`Type.Projectile`, and the engine's own comment says every projectile is ranged.
+
+### The test, for the rows where that reason does not settle it
+
+**A skill is ranged if its own row's effect lands on a target or an area at a
+distance the caster does not close by using the skill.**
+
+Applied to the thirteen rows that belong to a ranged weapon and carried neither
+tag:
+
+| Skill | Verdict | The sentence it rests on |
+| :-- | :-- | :-- |
+| Suppressing Fire | ranged | "Fire a rapid volley of bolts at a target area" |
+| Subjugate | ranged | "Drive your will into an enemy up to 15 meters away for 300% weapon damage" |
+| Hex of Cinders | ranged | "Lay a hex on an enemy up to 12 meters away" |
+| Whisper of Madness | ranged | "Put a whisper in an enemy's ear", Range 15 |
+| Quarry | ranged | "Mark an enemy as your quarry", Range 15 |
+| Anathema | not ranged | "Damn everything within 12 meters at once", and the row carries `Type.AOE.PointBlank` |
+| Recoil Dash | not ranged | "Fire a bolt point-blank into the ground" |
+| Foul Wake | not ranged | "Slip backward 8 meters and leave your curse behind you" |
+| Grapple | not ranged | fires a bolt, but to pull the caster to it |
+| Vesselstep | not ranged | moves the caster |
+| Fortify | not ranged | "Brace your crossbow and dig in", no target at all |
+| Summon Imp | not ranged | the imp fights; the skill reaches nobody |
+| Bolt Trap | out of scope | a trap, and the owner ruled on 2026-09-11 that traps come later |
+
+**ANATHEMA IS THE ONE SOMEBODY WILL RE-LITIGATE, SO THE REASON IS WRITTEN HERE
+RATHER THAN LEFT TO BE RE-DERIVED.** It deals 350% weapon damage from a wand at
+twelve metres of radius, and it is still not a ranged skill: *a nova cast from a
+wand is not a ranged skill, and the vocabulary's "regardless of delivery method"
+is about how a ranged effect travels, not about whether it is ranged.* The area
+is centred where the caster already stands.
+
+### Two things measured rather than assumed
+
+**No test pins a census of how many rows carry a Type tag.** The only pin naming
+this sheet is the row count, 403, in `CataclysmDataTableTests.cpp`, and adding a
+tag does not move it. The tests that mention `Type.Ranged` and `Type.Projectile`
+build made-up tag strings rather than counting the real file.
+
+**Every effect row naming either tag, before and after:**
+
+```
+row                                                        required          before  after
+Positive_Ranged_skills_deal_20_40_increased_damage#1       Type.Ranged            1     21
+Positive_Ranged_skills_deal_20_40_increased_damage#2       Type.Ranged            1     21
+Negative_Ranged_skills_deal_15_30_less_damage_at_close#1   Type.Ranged            1     21
+Negative_Ranged_skills_deal_15_30_less_damage_at_close#2   Type.Ranged            1     21
+Negative_Projectiles_deal_10_30_less_damage#1              Type.Projectile       21     21
+Negative_Projectiles_deal_10_30_less_damage#2              Type.Projectile       21     21
+```
+
+Adding a tag cannot remove a match, so the two projectile rows were expected to
+stay at 21; that is the expectation measured rather than asserted. No passive
+tree row names either tag.
+
+**Four of the five judged skills deal no damage** — Hex of Cinders, Whisper of
+Madness, Quarry and Suppressing Fire all state a Damage Percent of -1. They are
+tagged so the vocabulary's own sentence is true, and they are inert for these two
+enchantments, which modify attack and spell damage. Subjugate is not inert: it
+deals 300% weapon damage before the possession.
+
+### One note on how the edit was made, because the trap is quiet
+
+The Weapon Skills sheet has **no Name column**: a row's name is built from its
+Weapon Type, Damage Type and Slot. The script that made this edit reconstructs
+each name by calling the generator's own `row_name`, rather than joining the
+three cells itself. One weapon type is written "2H Crossbow" with a space, so a
+hand-written matcher assuming "2HCrossbow" would have missed five rows and
+changed twenty — with every check still passing, because twenty rows really
+would have changed. The script also refuses outright if any judged row is not
+found.
+
+---
+
 ## 2026-09-14 — Wasting Sickness stacks on a blow that lands, takes its own two fields rather than Starvation's, and has two cures where the row states one
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
@@ -304,217 +640,6 @@ STATED_RANGES                                              390 -> 390, unmoved
 `STATED_RANGES` was measured before and after rather than assumed: the reworded
 sentence states no range either way, so neither it nor the automation test that
 pins the same number changes.
-
----
-
-## 2026-09-14 — A fourth condition naming an ailment on the target is taken rather than the column the rule points at, and two of the three asked for are refused
-
-**Affects:**
-`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`,
-`game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`,
-`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`,
-`game/Source/Cataclysm/Tests/CataclysmTargetAilmentTests.cpp`,
-`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`,
-`tools/generate_datatables.py`. Issues
-[#1642](https://github.com/sdubois777/Cataclysm/issues/1642) and
-[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
-
-The condition added is `target_carries_void_splinter`. It compares no number.
-
-### THE RULE THIS ENTRY IS ANSWERING, WHICH THIS PROJECT WROTE FOR EXACTLY THIS MOMENT
-
-The 2026-09-13 entry below that added the first three of these conditions ends
-with a bound on itself:
-
-> **Add a name when a node's own sentence names the ailment. Never
-> speculatively. At a fourth and a fifth, the right answer is a column naming the
-> ailment on the row, and this decision should be revisited rather than
-> extended.**
-
-Three names existed. A fourth was asked for, so the revisit is this entry rather
-than a silent extension. `CataclysmStatPipeline.h` and `generate_datatables.py`
-both carry the rule in a comment, and both now point here.
-
-### THREE NAMES WERE ASKED FOR AND ONE IS TAKEN
-
-The request was `target_carries_bleed`, `target_carries_poison` and
-`target_carries_void_splinter`, for three enchantment rows. Measured against the
-data, only one row asks for a condition of this shape:
-
-| Row, after the #1642 rewording | Whose number moves | Needs |
-| :-- | :-- | :-- |
-| Bleeding enemies take 20-40% increased damage **from all sources** | the enemy's damage taken | an enemy-side modifier |
-| Poisoned enemies are **slowed** by 30-50% | the enemy's movement speed | an enemy-side modifier |
-| Enemies carrying a void splinter take 9-15% increased damage **from you** | the attacker's damage | **this condition** |
-
-**Two of the three would have been speculative**, which the rule forbids in as
-many words. A condition on this character's own lookup can only change a number
-on this character; the first two change one on the enemy whoever is attacking, so
-they belong with the rows that need a modifier carried by the ailment itself.
-
-A sweep of both enchantment files and all 441 passive nodes found no other
-sentence naming an ailment on a target, except two Bulwark nodes that want a
-count of bleed stacks — a **scale**, not a condition, and a different tree.
-
-### WHY THE COLUMN IS STILL NOT TAKEN, AND THE REASON IS NOT THE ONE FIRST WRITTEN
-
-The original analysis rejected the parameterised column on cost: a field on
-`FCataclysmPassiveEffectRow`, so a CSV column, a workbook column insertion, and
-the inline fixtures in `CataclysmPassiveTreeTests.cpp` break.
-
-**That costing no longer describes this case.** The row that asks is an
-enchantment row, in `FCataclysmEnchantmentEffectRow`, a different struct with its
-own file and its own fixtures. So the cost the rule anticipated is not the cost
-this change would pay, and the analysis had to be redone rather than cited.
-
-Three reasons the column is still declined, in order of weight:
-
-1. **One row asks.** A column is generality, and the rule's own objection to
-   speculative names applies to a speculative schema at least as strongly.
-2. **`ConditionValue` cannot serve as the parameter.** It is a `float`. Holding
-   an ailment's index in it would put "the fourth ailment" into a data row as a
-   number, and the first reordering of `UCataclysmAilments::Kinds` would silently
-   repoint every such row.
-3. **The column would be a second vocabulary.** A row could then name an ailment
-   the conditions do not, and the two lists would need holding together by
-   another test.
-
-**The rule is not weakened by this entry.** A fifth name should not be added
-without the column being built; that is the next revisit, and it now has a
-costing for the enchantment struct as well as the passive one.
-
-### WHAT THE CONDITION READS, AND WHAT IT ANSWERS WHEN IT CANNOT READ IT
-
-`State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::VoidSplinterTag())`, filled
-on the attacker's own lookups by `UCataclysmDebuffs::TagsOnActor`.
-
-**Its tag hangs off a different branch from the three names above it.** Cripple
-and Weaken are `Status.Debuff.*`; a void splinter is `Keyword.DoT.VoidSplinter`,
-because it deals damage over time rather than changing a number.
-`UCataclysmDebuffs::DebuffRootNames` names `Keyword.DoT` as a root, so the tag
-reaches the same container and needs no new plumbing.
-
-**`HasTagExact` and not `HasTag`, and here the loose form would be actively
-wrong.** Six other ailments hang off `Keyword.DoT`, so asking inexactly would
-make this condition mean "bleeding, or poisoned, or burning, or any damage over
-time at all".
-
-**An unknown reading refuses.** An empty container means no target in hand, a
-target carrying nothing, or no modifier in this lookup asking about an ailment;
-all three withhold the bonus rather than granting it, which is the direction every
-blow predicate in this pipeline takes.
-
-**A condition missing from the switch in
-`UCataclysmAbilitySystemComponent` that decides whether to collect the target's
-ailments at all would be judged against an empty container and grant nothing,
-silently.** That switch is the fifth site this change touches and the one with no
-compiler error to catch it.
-
-### AND THE STAT DOMINION GRANTS IS A BONUS OF ZERO, NOT A THRESHOLD OF FIFTY
-
-`Ritualist_keystone_a_kA` Dominion is the node: *"A blow that leaves a target
-below 65% health can take it, rather than below half."* The stat is
-`possession_threshold_bonus`, it starts at **zero**, and it is **added** to the
-figure the Subjugate skill's own row states.
-
-**THE SHAPE THIS WAS FIRST RULED AS HAD A DUPLICATE IN IT.** The first ruling was
-a stat named `possession_threshold_percent` holding the threshold itself, with an
-engine-supplied base of 50 and a keystone row of flat 15 so it read 65. That is
-arithmetically correct and it states the number 50 twice:
-
-```
-game/Data/WeaponSkills.csv, Demonic_Staff_Ultimate (Subjugate)
-    ShapeParams: ... FervourReserve=30; HealthThresholdPercent=50
-```
-
-That row is the only place the threshold appears today, it is read once into
-`Params.HealthThresholdPercent`, and it is compared at exactly one place in
-`UCataclysmSummonSkill::Possess`. **A stat holding 50 as its own base would win
-silently:** re-tune the row to 40 and the threshold would stay at 50, with
-nothing failing and no test to notice. This project has been bitten by a second
-statement of one number before, which is why the shape was changed before
-anything was built.
-
-| | the shape first ruled | the shape built |
-| :-- | :-- | :-- |
-| what the stat means | the threshold | percentage points added to it |
-| base | 50, engine-supplied | 0, and none is supplied |
-| the keystone's row | flat 15 | flat 15, unchanged |
-| with the keystone | 65 | 65 |
-| without it | 50 | 50 |
-| if the row is re-tuned to 40 | **stays 50, silently** | follows to 40 |
-
-**FLAT AND NOT "SET", so a second source adds rather than replacing.** Nothing
-else grants this today; a second keystone or an enchantment arriving later is a
-decision somebody makes rather than a collision.
-
-**ZERO IS ALSO WHAT DECIDES THE ROW'S KIND.** An increase against a base of zero
-grants nothing, so a row moving this stat takes `flat` and never `increased` —
-the same rule the eleven ailment chances follow, and the opposite of the two
-ailment magnitude stats whose base is 100.
-
-**AND NO ENGINE-SUPPLIED BASE, WHICH IS THE ONE PLACE THIS DIFFERS FROM THOSE
-TWO.** They needed one because their neutral value is 100 and
-`UCataclysmPlayerClassStats::ApplyTo` would otherwise write a resolved zero over
-it, destroying the effect. This stat's neutral value **is** zero, so there is
-nothing for a base to supply and an entry would be a third statement of a number
-that already lives on the row.
-
-**THE THRESHOLD IS NOT CAPPED.** One keystone taken once reads 65; a ceiling
-invented now would be a number the design states nowhere. This is recorded so
-that a second source arriving is a decision rather than a surprise.
-
-### The diagnostic beneath the comparison was corrected with it
-
-The log line that explains a refused possession reported
-`Params.HealthThresholdPercent` — the row's own figure — while the comparison
-used the same value. **The two parted company the moment the bonus existed**, so
-a character with Dominion would have been refused against 65 and told the reason
-was 50. It now prints the combined threshold and both halves.
-
-A diagnostic naming a number the code did not use is worse than no diagnostic,
-because it is read as the reason for the refusal.
-
-## AND A FIFTH NAME, `can_cripple_or_weaken`, WHICH IS ABOUT THE ATTACKER AND SO DOES NOT REOPEN THE RULE ABOVE
-
-`Ravager_basic_c_c0` Spreading Hurt is the node: *"+4% increased Area of Effect
-per point for attacks that Cripple or Weaken."* Issue
-[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
-
-**The node's own wording rules out the obvious reading.** An area of effect is
-used to SHAPE an attack before it lands, so "an attack that applied a Cripple" is
-not knowable at the moment the bonus is worked out. Two readings survive:
-
-| Reading | Verdict |
-| :-- | :-- |
-| skills whose own row applies Cripple or Weaken | **impossible today.** No `Keyword.*Cripple*` or `Keyword.*Weaken*` tag exists anywhere in `game/Data/*.csv`, so there is nothing to scope by |
-| any attack by a character who can apply either | **taken.** It is knowable, and the node's place on the tree supports it |
-
-**The tree is what settles it.** Spreading Hurt sits directly below the two nodes
-granting the chance to apply those ailments, so a Ravager reaches it through them.
-The condition is a statement about a build that has invested in crippling, and it
-is false for one that has not — which is what the node is for.
-
-**It does not reopen the count above.** The rule that bounds the target-state
-names is about naming an ailment ON THE TARGET, and this reads two stats on the
-character carrying the row. It is the fifth name mentioning these ailments and the
-first asking about the attacker's own capability, so the column the rule points at
-would not hold it either.
-
-**The reading is taken off the attributes rather than resolved again, and that is
-a stated limit.** The fact is built while the pipeline is being set up, so asking
-the pipeline for the two chances there would re-enter it. The attribute holds the
-chance worked out with no skill in hand, so a chance carried only by a row scoped
-to a required tag is not in it. Every authored chance row today is unscoped, so
-the reading is complete for the rows that exist; a future scoped row would narrow
-this condition rather than break it, and that is recorded here so the person who
-writes one knows.
-
-**False covers both "no chance" and "nothing to read", and that is right here
-where it would be wrong for a threshold.** A character with no combat attribute
-set cannot apply either ailment any more than one whose chances are both zero, so
-there is no pair to tell apart — unlike the health readings, where a percentage of
-zero is a corpse and an unknown one is the character sheet.
 
 ---
 
