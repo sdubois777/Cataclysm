@@ -1109,6 +1109,29 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Grasping Tentacles: place them, decide whether one grabs, and hold or
+	 * release the player. Issues #1786 and #41.
+	 *
+	 * THREE JOBS ON ONE BEAT, AND THE ORDER MATTERS, which is the lesson
+	 * `StepSingularityWells` records. It resolves the grab the player is ALREADY
+	 * under before looking for a new one, and looks for a new one before placing
+	 * another tentacle. Placing first would let a tentacle appear and grab on the
+	 * same beat, which is not "careful of getting too close" -- the player had no
+	 * chance to be careful of something that was not there.
+	 *
+	 * A GRAB IS A WORLD-TIME STAMP AND SO IS EACH TENTACLE'S COOLDOWN, so nothing
+	 * has to be counted down and a beat that does not run costs the player
+	 * nothing.
+	 *
+	 * ONE ROLL PER TENTACLE THAT COVERS THE PLAYER, not one roll for the floor.
+	 * Standing where two reaches overlap is twice as dangerous, which is what
+	 * "getting too close" should mean when you are close to two of them.
+	 */
+	void StepGraspingTentacles(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Put every floor effect on the player, the beat-driven ones included.
 	 * Issue #41, slice 5.
 	 *
@@ -1312,6 +1335,53 @@ private:
 	 */
 	int32 WastingSicknessStacks = 0;
 	int32 WastingSicknessStacksApplied = 0;
+
+	/**
+	 * One Grasping Tentacle on this floor, and when it may grab again.
+	 * Issues #1786 and #41.
+	 *
+	 * PLAIN DATA AND NOT A `UPROPERTY`, for the reason `WaveStillToArrive` gives:
+	 * Unreal's header tool refuses a `UPROPERTY` of an unreflected struct, and a
+	 * weak pointer plus a float needs no reflection.
+	 *
+	 * THE COOLDOWN IS PER TENTACLE AND NOT PER FLOOR, which is what makes walking
+	 * away from one worth doing. A floor-wide cooldown would mean a player held
+	 * by one tentacle is safe from all of them, and standing among several would
+	 * be no worse than standing by one.
+	 */
+	struct FCataclysmGraspingTentacle
+	{
+		TWeakObjectPtr<class ACataclysmGroundZone> Zone;
+
+		/** World time before which this one will not grab. Negative is ready. */
+		float MayGrabAgainAtSeconds = -1.0f;
+	};
+
+	/**
+	 * The tentacles on this floor, when the grab now holding ends, and what the
+	 * last beat put on the player. Issues #1786 and #41.
+	 *
+	 * THEY LAST THE FLOOR, so this list only ever shrinks by something destroying
+	 * a tentacle -- which `UCataclysmFloorContents::ClearTheFloor` does when the
+	 * player leaves. A weak pointer going invalid IS that, so nothing has to be
+	 * told.
+	 *
+	 * ALL FOUR GO BACK TO NOTHING ON A NEW FLOOR. The list because those actors
+	 * are already gone; the clock so the first tentacle of a floor does not
+	 * arrive on its first beat carrying the last floor's wait; the grab because a
+	 * player who takes the stairs is not still held by a tentacle they left
+	 * behind; and the applied figure because changing floor has already taken the
+	 * reduction off the character.
+	 *
+	 * THE GRAB IS FORGOTTEN ON A NEW FLOOR AND WASTING SICKNESS'S STACKS ARE NOT,
+	 * and the difference is the rows: that one says its debuff is "permanent for
+	 * the duration of the dungeon", and this one describes being held by a
+	 * particular tentacle in a particular place.
+	 */
+	TArray<FCataclysmGraspingTentacle> GraspingTentacles;
+	float GraspingTentaclesSecondsSinceLast = 0.0f;
+	float GraspedUntilSeconds = -1.0f;
+	float GraspMovementLessApplied = 0.0f;
 
 	/**
 	 * What the last beat put on the player, so a beat that changes nothing asks

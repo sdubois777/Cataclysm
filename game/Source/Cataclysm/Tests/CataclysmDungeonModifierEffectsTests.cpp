@@ -106,6 +106,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	const FName WastingSickness(TEXT("Famine_Wasting_Sickness"));
 
+	/** And the one that grabs a player who lingers too close. Issues #1786, #41. */
+	const FName GraspingTentacles(TEXT("Void_Grasping_Tentacles"));
+
 	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
 	 * of a real one: a player state holding the ability system component, a
@@ -3317,6 +3320,277 @@ bool FCataclysmWastingDeathTest::RunTest(const FString& Parameters)
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	TestNull(TEXT("and the next beat does not put it back"),
 			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTentacleRulesTest,
+	"Cataclysm.DungeonModifierEffects.ATentacleIsDueOnItsCadenceAndAGrabIsAllOrNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTentacleRulesTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE TWO RULES ON THEIR OWN, WITH NUMBERS TYPED IN. Issues #1786 and #41.
+
+	// THE CAP IS ASKED BEFORE THE CLOCK, so a floor already carrying its limit
+	// answers no however long it has waited.
+	TestFalse(TEXT("at the cap nothing is due, however long the wait"),
+			  Effects::GraspingTentacleIsDue(
+				  Effects::GraspingTentaclesSecondsBetween * 10.0f,
+				  Effects::GraspingTentaclesMostOnAFloor));
+	TestFalse(TEXT("and past the cap as well"),
+			  Effects::GraspingTentacleIsDue(
+				  1000.0f, Effects::GraspingTentaclesMostOnAFloor + 3));
+
+	// UNDER THE CAP, THE CLOCK DECIDES.
+	TestFalse(TEXT("an empty floor with no wait is not due"),
+			  Effects::GraspingTentacleIsDue(0.0f, 0));
+	TestFalse(TEXT("and just short of the cadence is not due"),
+			  Effects::GraspingTentacleIsDue(
+				  Effects::GraspingTentaclesSecondsBetween - 0.01f, 0));
+	TestTrue(TEXT("at the cadence exactly, one is due"),
+			 Effects::GraspingTentacleIsDue(
+				 Effects::GraspingTentaclesSecondsBetween, 0));
+	TestTrue(TEXT("and one below the cap is still due"),
+			 Effects::GraspingTentacleIsDue(
+				 Effects::GraspingTentaclesSecondsBetween,
+				 Effects::GraspingTentaclesMostOnAFloor - 1));
+
+	// A GRAB IS ALL OR NOTHING. The row describes being grabbed, not being
+	// grabbed harder, so there is no magnitude here to get wrong.
+	TestEqual(TEXT("no grab takes nothing"),
+			  Effects::GraspMovementLessPercentWhile(false), 0.0f, 0.0001f);
+	TestEqual(TEXT("a grab takes the figure the constant states"),
+			  Effects::GraspMovementLessPercentWhile(true),
+			  Effects::GraspingTentaclesGrabMovementLessPercent, 0.0001f);
+
+	// AND THAT FIGURE IS INSIDE WHAT THE PIPELINE WILL TAKE, which is the whole
+	// reason this rule needs no new state: a Less is floored at -99, so 99 is the
+	// strongest reduction that still means what it says.
+	TestTrue(TEXT("the grab is a reduction and not a stop"),
+			 Effects::GraspingTentaclesGrabMovementLessPercent < 100.0f);
+	TestTrue(TEXT("and it is not clamped by the pipeline"),
+			 Effects::GraspingTentaclesGrabMovementLessPercent
+				 <= -UCataclysmStatPipeline::LessMultiplierFloor);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTentacleGrabTest,
+	"Cataclysm.DungeonModifierEffects.ATentacleGrabsAPlayerWhoLingersAndLetsGoOnItsOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTentacleGrabTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE ROLL IS PINNED SO THE CHANCE CANNOT DECIDE WHETHER THIS TEST PASSES.
+	// Zero beats any chance above zero, so every beat inside a reach grabs.
+	FScopedConsoleString Roll(TEXT("Cataclysm.GraspingTentaclesRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {GraspingTentacles};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Grasping Tentacles"),
+			 Mode->FloorBrief.Modifiers.Contains(GraspingTentacles));
+
+	// NOTHING HOLDS THE PLAYER BEFORE A TENTACLE EXISTS, asserted so the reading
+	// after cannot be something that was already there.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("no grab before any tentacle is placed"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+
+	// A TENTACLE ARRIVES ONCE THE CADENCE HAS PASSED. The beat counts its own
+	// clock, so the world clock is moved and the beat driven the same number of
+	// times a real second would.
+	const int32 BeatsForCadence = FMath::CeilToInt(
+		Effects::GraspingTentaclesSecondsBetween
+		/ ACataclysmDungeonGameMode::SecondsBetweenWaveChecks) + 1;
+	for (int32 Beat = 0; Beat < BeatsForCadence; ++Beat)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	int32 Placed = 0;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		++Placed;
+	}
+	if (!TestTrue(TEXT("a tentacle was placed"), Placed > 0))
+	{
+		return false;
+	}
+
+	// THE PLAYER IS STILL UNGRABBED, BECAUSE IT WAS PLACED CLEAR OF THEM. This is
+	// the assertion that fails if a tentacle can appear on top of the player and
+	// grab on the same beat, which "careful of getting too close" rules out.
+	TestNull(TEXT("a tentacle that has just appeared has not grabbed"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+
+	// NOW STAND ON ONE. Moving the player to the tentacle is what a player
+	// walking too close does, and the roll is pinned to grab.
+	ACataclysmGroundZone* Reached = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		Reached = *It;
+		break;
+	}
+	if (!TestNotNull(TEXT("a tentacle to stand on"), Reached))
+	{
+		return false;
+	}
+	Player.Character->SetActorLocation(Reached->GetActorLocation());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* Held =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed"));
+	if (!TestNotNull(TEXT("standing on a tentacle is grabbed"), Held))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the grab takes the figure the constant states"),
+			  Held->Value,
+			  -Effects::GraspingTentaclesGrabMovementLessPercent, 0.01f);
+
+	// IT LETS GO ON ITS OWN, WHICH IS THE WHOLE READING. The player does not move
+	// away: the clock passes the grab's length and the hold ends anyway. That is
+	// what makes this a grab rather than the slow Singularity Wells applies while
+	// a player stands in a well.
+	CataclysmTestWorld::RunClock(World, Effects::GraspingTentaclesGrabSeconds + 0.5f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	TestNull(TEXT("the grab ends on its own, without the player moving away"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTentacleCooldownTest,
+	"Cataclysm.DungeonModifierEffects.AReleasedTentacleWaitsBeforeItGrabsAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTentacleCooldownTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE COOLDOWN IS WHAT MAKES THIS REPEATED GRABS RATHER THAN A PERMANENT
+	// HOLD, and it is the part of the ruling that would be easiest to lose. A
+	// player who never moves must be free for most of the time, not held for all
+	// of it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.GraspingTentaclesRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {GraspingTentacles};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// ONE TENTACLE, AND THE PLAYER STANDING ON IT. The cap is not reached, so
+	// more would arrive on their cadence; the clock below stays well inside one
+	// cadence so this test is about one tentacle's cooldown and not about a
+	// second tentacle grabbing.
+	const int32 BeatsForCadence = FMath::CeilToInt(
+		Effects::GraspingTentaclesSecondsBetween
+		/ ACataclysmDungeonGameMode::SecondsBetweenWaveChecks) + 1;
+	for (int32 Beat = 0; Beat < BeatsForCadence; ++Beat)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	ACataclysmGroundZone* Tentacle = nullptr;
+	int32 Placed = 0;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		Tentacle = *It;
+		++Placed;
+	}
+	if (!TestNotNull(TEXT("a tentacle was placed"), Tentacle))
+	{
+		return false;
+	}
+	TestEqual(TEXT("exactly one, so this measures one tentacle's cooldown"),
+			  Placed, 1);
+
+	Player.Character->SetActorLocation(Tentacle->GetActorLocation());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	if (!TestNotNull(TEXT("it grabbed"),
+					 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed"))))
+	{
+		return false;
+	}
+
+	// PAST THE GRAB, THE PLAYER IS FREE THOUGH THEY NEVER MOVED.
+	CataclysmTestWorld::RunClock(World, Effects::GraspingTentaclesGrabSeconds + 0.25f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("the grab released"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+
+	// AND IT DOES NOT TAKE HOLD AGAIN AT ONCE, THOUGH THE ROLL STILL SAYS GRAB
+	// AND THE PLAYER IS STILL STANDING ON IT. This is the assertion the cooldown
+	// exists for; without it the next beat would grab again and the player would
+	// never be free.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("and the same tentacle does not grab again at once"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+
+	// PAST THE COOLDOWN IT GRABS ONCE MORE, which is what says the wait is a wait
+	// and not a tentacle that has stopped working.
+	CataclysmTestWorld::RunClock(World,
+								 Effects::GraspingTentaclesGrabCooldownSeconds + 0.5f);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNotNull(TEXT("past its cooldown the same tentacle grabs again"),
+				DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
 
 	return true;
 }
