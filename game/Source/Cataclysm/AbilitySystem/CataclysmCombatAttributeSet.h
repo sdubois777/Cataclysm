@@ -758,6 +758,80 @@ public:
 	FGameplayAttributeData SkillLocked;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, SkillLocked)
 
+	/**
+	 * "You have no armor". Read where armour is consulted for mitigation, at
+	 * `UCataclysmDamageCalculation::Resolve`, and when it holds the wearer's
+	 * armour counts as zero there. It does NOT skip the mitigation step: the
+	 * sentence says the character has no armour, not that armour stops working.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ArmorSuppressed)
+	FGameplayAttributeData ArmorSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ArmorSuppressed)
+
+	/**
+	 * "Cannot block". Read where the block roll is made, and when it holds the
+	 * wearer's block chance counts as zero, so the roll cannot succeed.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_BlockSuppressed)
+	FGameplayAttributeData BlockSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, BlockSuppressed)
+
+	/**
+	 * "You have no resistances." Read inside `ResistanceFor`, and when it holds
+	 * the character's OWN resistance counts as zero -- the eight typed
+	 * attributes and the generic one alike -- BEFORE the difficulty tier's
+	 * penalty and before the attacker's penetration, both of which are done TO
+	 * a resistance rather than being the character's own and so still apply.
+	 * The existing clamp to the floor and cap still runs last.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ResistanceSuppressed)
+	FGameplayAttributeData ResistanceSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ResistanceSuppressed)
+
+	/**
+	 * "You deal no retaliation damage". Read where the reflected share is asked
+	 * for, which already returns nothing when that share is not positive.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_RetaliationSuppressed)
+	FGameplayAttributeData RetaliationSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, RetaliationSuppressed)
+
 	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_NovaDamageOfMissingHealth)
 	FGameplayAttributeData NovaDamageOfMissingHealth;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, NovaDamageOfMissingHealth)
@@ -922,6 +996,10 @@ protected:
 	UFUNCTION() void OnRep_DebuffDurationTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffsDoNotExpire(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_SkillLocked(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ArmorSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_BlockSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ResistanceSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_RetaliationSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_NovaDamageOfMissingHealth(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_AuraDebuffDuration(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffSpreadChance(const FGameplayAttributeData& OldValue);

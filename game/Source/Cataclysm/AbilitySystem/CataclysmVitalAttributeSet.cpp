@@ -104,6 +104,13 @@ UCataclysmVitalAttributeSet::UCataclysmVitalAttributeSet()
 	InitManaLeech(0.0f);
 	InitEnergyShieldLeech(0.0f);
 	InitHealingCeilingReduction(0.0f);
+	InitManaPoolRemoved(0.0f);
+	InitHealthRegenSuppressed(0.0f);
+	InitManaRegenSuppressed(0.0f);
+	InitEnergyShieldRegenSuppressed(0.0f);
+	InitManaRecoverySuppressed(0.0f);
+	InitLifeLeechSuppressed(0.0f);
+	InitManaLeechSuppressed(0.0f);
 	InitHealingReceivedReduction(0.0f);
 	InitDamage(0.0f);
 }
@@ -126,6 +133,13 @@ void UCataclysmVitalAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaLeech);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, EnergyShieldLeech);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, HealingCeilingReduction);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaPoolRemoved);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, HealthRegenSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaRegenSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, EnergyShieldRegenSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaRecoverySuppressed);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, LifeLeechSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, ManaLeechSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmVitalAttributeSet, HealingReceivedReduction);
 	// Damage is a meta attribute. It is never replicated.
 }
@@ -1502,6 +1516,13 @@ TArray<FGameplayAttribute> UCataclysmVitalAttributeSet::GetAllAttributes()
 		GetEnergyShieldRegenAttribute(), GetLifeLeechAttribute(),
 		GetManaLeechAttribute(), GetEnergyShieldLeechAttribute(),
 		GetHealingCeilingReductionAttribute(),
+		GetManaPoolRemovedAttribute(),
+		GetHealthRegenSuppressedAttribute(),
+		GetManaRegenSuppressedAttribute(),
+		GetEnergyShieldRegenSuppressedAttribute(),
+		GetManaRecoverySuppressedAttribute(),
+		GetLifeLeechSuppressedAttribute(),
+		GetManaLeechSuppressedAttribute(),
 		GetHealingReceivedReductionAttribute(),
 		GetDamageAttribute(),
 	};
@@ -1520,4 +1541,11 @@ CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, LifeLeech)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaLeech)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, EnergyShieldLeech)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, HealingCeilingReduction)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaPoolRemoved)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, HealthRegenSuppressed)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaRegenSuppressed)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, EnergyShieldRegenSuppressed)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaRecoverySuppressed)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, LifeLeechSuppressed)
+CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, ManaLeechSuppressed)
 CATACLYSM_ON_REP(UCataclysmVitalAttributeSet, HealingReceivedReduction)

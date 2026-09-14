@@ -204,6 +204,134 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, HealingCeilingReduction)
 
 	/**
+	 * "Your maximum mana is reduced to zero". NOT read at a consumer: read in
+	 * `UCataclysmPlayerClassStats::ApplyTo`, which writes MaxMana and Mana to
+	 * zero directly. A modifier cannot reach zero -- the pipeline floors a Less
+	 * multiplier at -99 -- which is the same reason the Masochist's Water to
+	 * Blood writes them directly, and this is that pass without the conversion
+	 * into health.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ManaPoolRemoved)
+	FGameplayAttributeData ManaPoolRemoved;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, ManaPoolRemoved)
+
+	/**
+	 * "Can't regen your hp". Read at the health regeneration tick.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_HealthRegenSuppressed)
+	FGameplayAttributeData HealthRegenSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, HealthRegenSuppressed)
+
+	/**
+	 * "You no longer regenerate mana". Read at the mana regeneration tick and
+	 * NOWHERE ELSE, which is what separates it from `ManaRecoverySuppressed`
+	 * below: a wearer of this keeps mana on hit and mana leech.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ManaRegenSuppressed)
+	FGameplayAttributeData ManaRegenSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, ManaRegenSuppressed)
+
+	/**
+	 * "You have no health/mana/es regen", which is three rows on one
+	 * enchantment and this is the third. Read at the shield regeneration tick.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_EnergyShieldRegenSuppressed)
+	FGameplayAttributeData EnergyShieldRegenSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, EnergyShieldRegenSuppressed)
+
+	/**
+	 * "You cannot regenerate mana through any means". WIDER THAN
+	 * `ManaRegenSuppressed`, and deliberately a second stat rather than a
+	 * reuse: the sentence says "any means", and three routes put mana back --
+	 * the regeneration tick, mana on hit, and mana leech -- so it is read at
+	 * all three. Overlapping "Can't leech mana" is not a conflict; a wider
+	 * drawback containing a narrower one is ordinary.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ManaRecoverySuppressed)
+	FGameplayAttributeData ManaRecoverySuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, ManaRecoverySuppressed)
+
+	/**
+	 * "You have no health leech". TWO READ SITES, which is the part that is easy
+	 * to miss: the leech consumer, and the scale input that a bonus per point of
+	 * life leech reads off the attribute. A bonus scaled per point of a stat the
+	 * character does not have is a bonus on nothing.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_LifeLeechSuppressed)
+	FGameplayAttributeData LifeLeechSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, LifeLeechSuppressed)
+
+	/**
+	 * "Can't leech mana". Read at the leech consumer.
+	 *
+	 * A FLAG, NOT A MAGNITUDE. Above zero means the rule holds. It is 1 in the data
+	 * and nothing reads its size. `UCataclysmStatPipeline::LessMultiplierFloor` is
+	 * -99, so a "less" multiplier cannot take a stat to zero and a sentence saying
+	 * a thing is GONE cannot be written as one; that is why these exist at all.
+	 * Issue #1791.
+	 *
+	 * ZERO FOR EVERY CLASS, and no class line may name it. Its only source is an
+	 * enchantment.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ManaLeechSuppressed)
+	FGameplayAttributeData ManaLeechSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, ManaLeechSuppressed)
+
+	/**
 	 * How many percentage points to take off the health that healing restores.
 	 * Issue #41, slice 5.
 	 *
@@ -286,5 +414,12 @@ protected:
 	UFUNCTION() void OnRep_ManaLeech(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_EnergyShieldLeech(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealingCeilingReduction(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ManaPoolRemoved(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealthRegenSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ManaRegenSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_EnergyShieldRegenSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ManaRecoverySuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_LifeLeechSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ManaLeechSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealingReceivedReduction(const FGameplayAttributeData& OldValue);
 };
