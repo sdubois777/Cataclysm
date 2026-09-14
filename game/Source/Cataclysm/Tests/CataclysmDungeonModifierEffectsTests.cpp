@@ -2630,11 +2630,12 @@ bool FCataclysmMortalDecayBeatTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("the other floor does not carry Mortal Decay"),
 			  Mode->FloorBrief.Modifiers.Contains(MortalDecay));
 
-	// THE BASELINE IS TAKEN AFTER A BEAT HAS RUN ON THE NEW FLOOR. Changing the
-	// floor applies its rules, Starvation lowers maximum health, and the stat
-	// refresh that follows moves the health attribute -- so a baseline read on
-	// the line after `BuildFloor` would capture a number still settling. The
-	// Forced March test above records the same correction.
+	// TWO BEATS, AND THE READING IS TAKEN BETWEEN THEM. `BuildFloor` writes the
+	// floor's brief and never touches the player -- `ApplyFloorRulesToPlayer` is
+	// called by `GoToFloor` and not by it, which was checked rather than assumed
+	// -- so nothing here is settling and the first beat is not a settling beat.
+	// It is here so the assertion covers two CONSECUTIVE beats on the new floor
+	// rather than the first one, which is the stronger claim and costs a line.
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	const float Elsewhere = Player.Read(Vital::GetHealthAttribute());
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
@@ -2772,6 +2773,46 @@ bool FCataclysmMortalDecayReapTest::RunTest(const FString& Parameters)
 	}
 
 	TestEqual(TEXT("a death the player did not cause leaves the rate alone"),
+			  SappedOnOneBeat(), AtFullRate, 0.01f);
+
+	// AND TWO KILLS BUY ONE WINDOW, NOT TWO. `NoteDeathForMortalDecay` sets the
+	// stamp to its own length FROM NOW rather than adding to what is there, so a
+	// player who fells a pack does not bank minutes of slowed decay from one
+	// fight. Nothing checked that until this arm: the two spellings differ only
+	// past the first window's end, which every assertion above is inside.
+	//
+	// BOTH KILLED BEFORE THE CLOCK MOVES, so the two windows would be exactly
+	// stacked if they stacked at all -- one length against two is the widest gap
+	// the wait below can be asked to tell apart.
+	ACataclysmEnemyCharacter* First = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(1800.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	ACataclysmEnemyCharacter* Second = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(2400.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a first creature for the pair spawned"), First)
+		|| !TestNotNull(TEXT("a second creature for the pair spawned"), Second))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, First, 100000.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Second, 100000.0f);
+	if (!TestTrue(TEXT("both of the pair died"),
+				  UCataclysmSkillEffects::IsDead(First)
+					  && UCataclysmSkillEffects::IsDead(Second)))
+	{
+		return false;
+	}
+
+	// THE WINDOW IS OPEN, ASSERTED BEFORE THE WAIT. Without this the assertion
+	// after the wait passes for a pair of kills that opened no window at all,
+	// which is the reading it is least able to tell from the one it is testing.
+	const float WhileThePairsWindowRuns = SappedOnOneBeat();
+	TestTrue(TEXT("the pair opened a window"),
+			 WhileThePairsWindowRuns < AtFullRate);
+
+	CataclysmTestWorld::RunClock(World, Effects::MortalDecaySlowSeconds + 1.0f);
+	TestEqual(TEXT("and one window's wait ends it, so two kills did not stack"),
 			  SappedOnOneBeat(), AtFullRate, 0.01f);
 
 	return true;
