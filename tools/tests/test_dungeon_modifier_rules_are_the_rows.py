@@ -856,3 +856,69 @@ def test_the_artillery_strike_warning_is_longer_than_the_walk_out():
         f"{speed}cm/s takes {walk_out}s, so the warning is no longer twice the "
         "walk-out. Re-derive it; docs/DECISIONS.md carries the derivation.")
 
+
+def test_hallowed_groundfall_still_states_its_own_cadence():
+    """The one number this row gives.
+
+    THE CRATERS' SIZE, LIFE AND NUMBER ARE ALL JUDGEMENTS, derived from this
+    cadence or from an existing bound and recorded in docs/DECISIONS.md. Thirty
+    seconds is not: the row says it, so it is the figure a reader can check the
+    code against without reading a design argument.
+    """
+    words = flat(rows()["Celestial_Hallowed_Groundfall"]["Description"])
+    every = constant("HallowedGroundfallSecondsBetween")
+
+    assert f"every {every:g} seconds" in words.lower(), words
+
+
+def test_hallowed_groundfall_row_still_splits_its_two_halves_by_side():
+    """The sentence the whole design of this rule rests on.
+
+    "BURN PLAYERS AND EMPOWER ENEMIES" IS WHY THE RULE ASKS TWO DIFFERENT
+    QUESTIONS. The crater's own sweep finds the floor hazard's enemies, which is
+    the player; the beat asks for the PLAYER's enemies, which is every creature.
+    Nothing in the rule excludes anybody by name, because those two sets cannot
+    overlap -- and that is only correct while the row keeps saying the burning
+    and the empowering fall on opposite sides.
+
+    IF THIS SENTENCE EVER CHANGES, `ACraterDoesNotEmpowerThePlayer` is asserting
+    something the data no longer asks for.
+    """
+    words = flat(rows()["Celestial_Hallowed_Groundfall"]["Description"]).lower()
+
+    assert "burn players" in words, words
+    assert "empower enemies" in words, words
+
+
+def test_hallowed_groundfall_craters_do_not_outlast_the_gap_between_them():
+    """The relationship that makes a cap on craters unnecessary.
+
+    THE RULE ASKS FOR NO ALIVE COUNT, unlike Infernal Rain and Grasping
+    Tentacles, which both place ONE thing on a short clock and need a cap to stop
+    a floor filling up. This one places a fixed number on a long clock: the
+    craters are gone before the next bombardment arrives, so the floor can never
+    carry more than one bombardment's worth.
+
+    THAT IS ARITHMETIC AND NOT A PROMISE, so it is held here as well as by a
+    static assertion in the header. If a crater ever outlasts the gap, the rule
+    needs a cap and this fails first.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    # THE DERIVATION IS WHAT IS HELD, NOT A NUMBER. The crater's life is declared
+    # as half the cadence rather than as a figure, so that a later change to the
+    # cadence carries the crater with it. Replacing it with a literal would break
+    # that link silently, which is what this notices.
+    declared = re.search(
+        r"HallowedGroundfallCraterSeconds\s*=\s*"
+        r"HallowedGroundfallSecondsBetween\s*/\s*2\.0f\s*;",
+        text)
+
+    assert declared, (
+        "The crater's life is no longer declared as half the cadence. It was "
+        "derived from the row's own 'every 30 seconds' so the floor alternates "
+        "dangerous and clear; if it is now a figure of its own, re-derive it and "
+        "check it still ends before the next bombardment. The rule carries no cap "
+        "on craters because it never needed one. docs/DECISIONS.md has the "
+        "derivation.")
+

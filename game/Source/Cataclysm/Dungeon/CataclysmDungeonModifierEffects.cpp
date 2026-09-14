@@ -30,6 +30,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::EdictOfSilenceKey =
 	TEXT("Celestial_Edict_of_Silence");
 const TCHAR* UCataclysmDungeonModifierEffects::ArtilleryStrikeKey =
 	TEXT("War_Artillery_Strike");
+const TCHAR* UCataclysmDungeonModifierEffects::HallowedGroundfallKey =
+	TEXT("Celestial_Hallowed_Groundfall");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -177,7 +179,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(WastingSicknessKey)
 		|| RowKey == FName(GraspingTentaclesKey)
 		|| RowKey == FName(EdictOfSilenceKey)
-		|| RowKey == FName(ArtilleryStrikeKey))
+		|| RowKey == FName(ArtilleryStrikeKey)
+		|| RowKey == FName(HallowedGroundfallKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -323,6 +326,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GraspingTentaclesKey),
 		FName(EdictOfSilenceKey),
 		FName(ArtilleryStrikeKey),
+		FName(HallowedGroundfallKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -899,4 +903,31 @@ float UCataclysmDungeonModifierEffects::ArtilleryStrikeDamage(float MaximumHealt
 	}
 
 	return MaximumHealth * ArtilleryStrikeMaxHealthPercent / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::HallowedGroundfallIsDue(float SecondsSinceLast)
+{
+	// NO CAP ON CRATERS, AND THAT IS ARITHMETIC RATHER THAN AN OVERSIGHT. A
+	// bombardment leaves its craters every thirty seconds and each burns for
+	// fifteen, so the last are gone before the next arrive and the floor can
+	// never carry more than one bombardment's worth. The static assertion that
+	// a crater outlasts neither the gap nor the empowerment is what keeps that
+	// true if either figure moves.
+	//
+	// NO ALIVE COUNT IS ASKED FOR EITHER, which is the difference from
+	// `InfernalRainPatchIsDue` and `GraspingTentacleIsDue`. Both of those place
+	// ONE thing on a short clock and need a cap to stop a floor filling up. This
+	// places a fixed number on a long one.
+	return SecondsSinceLast >= HallowedGroundfallSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::HallowedGroundfallBurnPerSecond(
+	float MaximumHealth)
+{
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * HallowedGroundfallPercentPerSecond / 100.0f;
 }

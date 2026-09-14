@@ -531,6 +531,32 @@ public:
 	static const TCHAR* ArtilleryStrikeKey;
 
 	/**
+	 * Hallowed Groundfall: "Angelic artillery bombards random areas every 30
+	 * seconds, leaving consecrated craters that burn players and empower
+	 * enemies." Issues #1820 and #41.
+	 *
+	 * TWO THINGS IN ONE ROW AND BOTH ARE BUILT. The craters are burning ground,
+	 * which `Demonic_Infernal_Rain` already places; the empowerment is
+	 * `Status.Buff.Commander`, which `ACataclysmEnemyCharacter` already reads as
+	 * twenty percent more movement and attack speed. NOTHING NEW WAS INVENTED
+	 * FOR EITHER HALF.
+	 *
+	 * "EMPOWER" IS READ AS THE BUFF THE GAME ALREADY HAS, which is the same
+	 * argument `UCataclysmEnemyModifiers` makes where it rallies allies: "THE
+	 * COMMANDER BUFF, WHICH ALREADY EXISTS AND ALREADY SAYS THIS ... A second
+	 * buff meaning the same thing would be two names for one effect." The row
+	 * names no stat, so nothing here chooses one.
+	 *
+	 * THE CRATER BURNS THE PLAYER AND THE BEAT EMPOWERS THE CREATURES, which is
+	 * two different questions asked of two different sides. The zone's own sweep
+	 * finds the hazard source's enemies, which is the player; the beat asks for
+	 * the PLAYER's enemies, which is everything else. That is why neither half
+	 * needs a flag and why a creature is never burned by a crater it is standing
+	 * in.
+	 */
+	static const TCHAR* HallowedGroundfallKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -1165,6 +1191,110 @@ public:
 	 */
 	static constexpr float ArtilleryStrikeLandsWithinCm = 1200.0f;
 
+	/**
+	 * How often the artillery comes. THE ROW'S OWN NUMBER: "every 30 seconds".
+	 */
+	static constexpr float HallowedGroundfallSecondsBetween = 30.0f;
+
+	/**
+	 * How many craters one bombardment leaves.
+	 *
+	 * A JUDGEMENT, DERIVED FROM AN EXISTING BOUND RATHER THAN CHOSEN. The row
+	 * says "areas", plural, and gives no count. `InfernalRainMostPatches` is the
+	 * most burning ground this game already allows on a floor at once, so a
+	 * bombardment that leaves that many never puts more on the floor than a rule
+	 * already shipped permits.
+	 */
+	static constexpr int32 HallowedGroundfallCraters = InfernalRainMostPatches;
+
+	/**
+	 * How long a crater burns.
+	 *
+	 * A JUDGEMENT, DERIVED FROM THE ROW'S OWN CADENCE: half of it. The row says
+	 * the artillery comes every thirty seconds, and a crater lasting half that
+	 * makes the floor alternate between dangerous and clear, which is what a
+	 * bombardment describes.
+	 *
+	 * NEAREST EXISTING FIGURE, AND WHY IT IS NOT COPIED:
+	 * `InfernalRainPatchSeconds` is 10, but that rule drops a patch every five
+	 * seconds, so ITS floor is never clear. This one's is, for half of every
+	 * cycle. The difference is the point of the row rather than an accident.
+	 */
+	static constexpr float HallowedGroundfallCraterSeconds =
+		HallowedGroundfallSecondsBetween / 2.0f;
+
+	/**
+	 * How wide a crater is.
+	 *
+	 * A JUDGEMENT. The row says "craters" with no size word, where
+	 * `War_Artillery_Strike` says "massive" and takes 600. This is
+	 * `InfernalRainRadiusCm`, so three craters cover the same ground as the three
+	 * patches the game already permits.
+	 */
+	static constexpr float HallowedGroundfallCraterRadiusCm = InfernalRainRadiusCm;
+
+	/**
+	 * What standing in a crater costs per second, as a share of maximum health.
+	 *
+	 * COPIED AS A CONCLUSION RATHER THAN DERIVED, and that is deliberate. These
+	 * ARE burning ground, and `InfernalRainPercentPerSecond` is the intensity
+	 * this project has already settled for it. What differs between the two rules
+	 * is WHEN the ground burns, not how hot it is.
+	 *
+	 * THE CONSEQUENCE, SAID RATHER THAN HIDDEN: fifteen seconds at two percent is
+	 * thirty percent of maximum health for standing in one crater for its whole
+	 * life, against Infernal Rain's twenty. That is a judgement. It is defensible
+	 * because this hazard is rare and avoidable where Infernal Rain's is
+	 * constant, and `docs/DECISIONS.md` records it beside both figures.
+	 */
+	static constexpr float HallowedGroundfallPercentPerSecond =
+		InfernalRainPercentPerSecond;
+
+	/**
+	 * How long the empowerment lasts once it is granted.
+	 *
+	 * A JUDGEMENT, DERIVED FROM THE BEAT AND NOT FROM TASTE. The rule steps four
+	 * times a second, and this is re-applied on every beat a creature is standing
+	 * in a crater, so one second is four beats of margin: a creature inside never
+	 * flickers out, and one that walks out loses it promptly.
+	 *
+	 * THE STATUS ROW STATES NO DURATION. `Buff_Commander` in
+	 * `game/Data/StatusEffects.csv` carries `DurationSeconds` of zero, so every
+	 * caller supplies its own -- `UCataclysmEnemyModifiers` passes eight seconds
+	 * for the buff a sacrifice grants. Re-applying on a clock is the Abyssal
+	 * Aura's shape, which says why in terms: a second application refreshes the
+	 * one already there rather than adding another.
+	 */
+	static constexpr float HallowedGroundfallEmpowerSeconds = 1.0f;
+
+	/**
+	 * How far from the player a crater can fall. The same figure Infernal Rain
+	 * uses, and for its reason: ground that only ever appears underfoot is not
+	 * ground to walk out of.
+	 */
+	static constexpr float HallowedGroundfallFallsWithinCm = InfernalRainFallsWithinCm;
+
+	static_assert(
+		HallowedGroundfallCraterSeconds < HallowedGroundfallSecondsBetween,
+		"A crater now outlasts the gap between bombardments, so the floor would "
+		"never be clear and the row's 'every 30 seconds' would describe nothing "
+		"the player could feel.");
+
+	static_assert(
+		HallowedGroundfallEmpowerSeconds < HallowedGroundfallCraterSeconds,
+		"The empowerment now outlasts the crater that grants it, so a creature "
+		"would keep it after the ground it was standing on had gone.");
+
+	static_assert(
+		HallowedGroundfallCraters > 1,
+		"The row says the artillery bombards AREAS, plural. One crater is not a "
+		"bombardment.");
+
+	static_assert(
+		HallowedGroundfallFallsWithinCm > HallowedGroundfallCraterRadiusCm,
+		"A crater can no longer fall anywhere the player is not already standing, "
+		"so there would be nothing to walk out of.");
+
 	static_assert(
 		ArtilleryStrikeWarningSeconds < ArtilleryStrikeSecondsBetween,
 		"A strike now takes longer to land than the gap between strikes, so the "
@@ -1566,6 +1696,21 @@ public:
 	 * that still counts as a hit.
 	 */
 	static float ArtilleryStrikeDamage(float MaximumHealth);
+
+	/** Whether a bombardment is due this beat. */
+	static bool HallowedGroundfallIsDue(float SecondsSinceLast);
+
+	/**
+	 * What a crater takes per second from something with this much maximum
+	 * health.
+	 *
+	 * A SHARE AND NOT A FIGURE, for the reason `InfernalRainDamagePerSecond`
+	 * gives where it does the same: ground the floor lays has no weapon and no
+	 * level, so a flat number would be trivial at one depth and lethal at
+	 * another. ANSWERS ZERO FOR AN UNKNOWN MAXIMUM, so a caller that cannot read
+	 * one lays no crater rather than one that burns for nothing.
+	 */
+	static float HallowedGroundfallBurnPerSecond(float MaximumHealth);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

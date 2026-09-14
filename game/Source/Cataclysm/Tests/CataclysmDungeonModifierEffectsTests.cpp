@@ -303,6 +303,37 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one that calls in artillery on a clock. Issues #1820 and #41. */
 	const FName ArtilleryStrike(UCataclysmDungeonModifierEffects::ArtilleryStrikeKey);
 
+	/** And the one that bombards and empowers. Issues #1820 and #41. */
+	const FName HallowedGroundfall(
+		UCataclysmDungeonModifierEffects::HallowedGroundfallKey);
+
+	/** The buff a crater grants, or an invalid tag if the game defines none. */
+	FGameplayTag EmpoweredTag()
+	{
+		return UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+	}
+
+	/** How many ground zones are on the floor now. */
+	int32 ZonesOnTheFloor(UWorld* World)
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			++Count;
+		}
+		return Count;
+	}
+
+	/** Any ground zone on the floor, or null when there are none. */
+	ACataclysmGroundZone* AnyZone(UWorld* World)
+	{
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			return *It;
+		}
+		return nullptr;
+	}
+
 	/**
 	 * A creature with health worth taking, put where it is wanted.
 	 *
@@ -4491,6 +4522,379 @@ bool FCataclysmArtilleryWhereTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("and the player who walked out was not hit"),
 			  Player.Read(Vital::GetHealthAttribute()), Full, 0.01f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Hallowed Groundfall. Issues #1820 and #41
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundfallCadenceTest,
+	"Cataclysm.DungeonModifierEffects.ABombardmentDropsItsCratersOnTheCadence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundfallCadenceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ONE NUMBER THE ROW GIVES -- "every 30 seconds" -- AND THE ONE IT DOES
+	// NOT. How many craters a bombardment leaves is a judgement, derived from
+	// `InfernalRainMostPatches` so that a floor never carries more burning ground
+	// than a rule already shipped permits. Both are held here.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {HallowedGroundfall};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("the floor starts with no craters on it"),
+				   ZonesOnTheFloor(World), 0))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::HallowedGroundfallSecondsBetween) - 4);
+	TestEqual(TEXT("and none has fallen four beats short of the cadence"),
+			  ZonesOnTheFloor(World), 0);
+
+	Beat(Mode, 8);
+	TestEqual(TEXT("a bombardment leaves the number the constant states"),
+			  ZonesOnTheFloor(World), Effects::HallowedGroundfallCraters);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundfallBurnTest,
+	"Cataclysm.DungeonModifierEffects.ACraterBurnsThePlayerStandingInIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundfallBurnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// HALF THE ROW: "craters that burn players". The other half is the next three
+	// tests.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {HallowedGroundfall};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::HallowedGroundfallSecondsBetween) + 1);
+	ACataclysmGroundZone* Crater = AnyZone(World);
+	if (!TestNotNull(TEXT("a crater was left"), Crater))
+	{
+		return false;
+	}
+
+	const float Full = Player.Read(Vital::GetHealthAttribute());
+	Player.Character->SetActorLocation(Crater->GetActorLocation());
+
+	// THE CRATER BURNS ON ITS OWN CLOCK, not on the rule's beat, so the world
+	// clock is what has to move. A zone sweeps once a second.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	Beat(Mode, 1);
+
+	// A RANGE AND NOT A FIGURE, for the reason the Artillery Strike's test gives:
+	// what the constant states is what the ground DEALS, and the player's own
+	// armour and resistances take their cut before it reaches health. Both ends
+	// are real -- a crater that burned nobody fails the bottom, and one burning
+	// faster than it states fails the top.
+	const float Lost = Full - Player.Read(Vital::GetHealthAttribute());
+	const float StatedForTwoSeconds = Effects::HallowedGroundfallBurnPerSecond(
+		Player.Read(Vital::GetMaxHealthAttribute())) * 2.0f;
+
+	TestTrue(TEXT("standing in a crater costs health"), Lost > 0.0f);
+	TestTrue(TEXT("and never more than the share the constant states"),
+			 Lost <= StatedForTwoSeconds + 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundfallEmpowerTest,
+	"Cataclysm.DungeonModifierEffects.ACraterEmpowersACreatureStandingInIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundfallEmpowerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE OTHER HALF OF THE ROW: "empower enemies". Built as the buff the game
+	// already has rather than a new one, which is the argument
+	// `UCataclysmEnemyModifiers` makes where it rallies allies.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const FGameplayTag Empowered = EmpoweredTag();
+	if (!TestTrue(TEXT("the game defines the buff this rule grants"),
+				  Empowered.IsValid()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {HallowedGroundfall};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::HallowedGroundfallSecondsBetween) + 1);
+	ACataclysmGroundZone* Crater = AnyZone(World);
+	if (!TestNotNull(TEXT("a crater was left"), Crater))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature =
+		SpawnCreatureWithHealth(World, Crater->GetActorLocation(), 1000.0f);
+	if (!TestNotNull(TEXT("a creature was put in the crater"), Creature))
+	{
+		return false;
+	}
+
+	// NOT EMPOWERED BEFORE A BEAT LOOKS AT IT, so what follows is this rule and
+	// not something the creature was spawned holding.
+	if (!TestFalse(TEXT("it holds nothing before any beat"),
+				   UCataclysmSkillEffects::HasTag(Creature, Empowered)))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	TestTrue(TEXT("a creature standing in a crater is empowered"),
+			 UCataclysmSkillEffects::HasTag(Creature, Empowered));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundfallSparesPlayerTest,
+	"Cataclysm.DungeonModifierEffects.ACraterDoesNotEmpowerThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundfallSparesPlayerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW SPLITS ITS TWO HALVES BY SIDE: craters "burn players and empower
+	// enemies". A player standing in one takes the burn and must not take the
+	// buff, and nothing in the rule names anybody to arrange that -- the crater
+	// asks for the hazard source's enemies and the beat asks for the player's,
+	// and those two sets cannot overlap. THIS IS THE TEST THAT FAILS IF THAT EVER
+	// STOPS BEING TRUE.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const FGameplayTag Empowered = EmpoweredTag();
+	if (!TestTrue(TEXT("the game defines the buff this rule grants"),
+				  Empowered.IsValid()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {HallowedGroundfall};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::HallowedGroundfallSecondsBetween) + 1);
+	ACataclysmGroundZone* Crater = AnyZone(World);
+	if (!TestNotNull(TEXT("a crater was left"), Crater))
+	{
+		return false;
+	}
+
+	// A CREATURE STANDS IN IT TOO, WHICH IS WHAT STOPS THIS PASSING VACUOUSLY. A
+	// rule that empowered nobody at all would satisfy the assertion about the
+	// player without the rule working at all.
+	ACataclysmEnemyCharacter* Creature =
+		SpawnCreatureWithHealth(World, Crater->GetActorLocation(), 1000.0f);
+	Player.Character->SetActorLocation(Crater->GetActorLocation());
+	if (!TestNotNull(TEXT("a creature stands in the same crater"), Creature))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+
+	if (!TestTrue(TEXT("the crater empowered the creature, so the rule ran"),
+				  UCataclysmSkillEffects::HasTag(Creature, Empowered)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and the player standing in the same crater is not empowered"),
+			  UCataclysmSkillEffects::HasTag(Player.Character, Empowered));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundfallEmpowermentEndsTest,
+	"Cataclysm.DungeonModifierEffects.TheEmpowermentEndsSoonAfterTheCreatureLeaves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundfallEmpowermentEndsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE EMPOWERMENT IS A PROPERTY OF STANDING IN A CRATER, NOT A REWARD FOR
+	// TOUCHING ONE. It is re-applied on every beat and lasts a second, which is
+	// the Abyssal Aura's shape: a creature that stays keeps it, one that walks
+	// out loses it when that second runs out.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const FGameplayTag Empowered = EmpoweredTag();
+	if (!TestTrue(TEXT("the game defines the buff this rule grants"),
+				  Empowered.IsValid()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {HallowedGroundfall};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::HallowedGroundfallSecondsBetween) + 1);
+	ACataclysmGroundZone* Crater = AnyZone(World);
+	if (!TestNotNull(TEXT("a crater was left"), Crater))
+	{
+		return false;
+	}
+
+	const FVector Where = Crater->GetActorLocation();
+	ACataclysmEnemyCharacter* Creature =
+		SpawnCreatureWithHealth(World, Where, 1000.0f);
+	if (!TestNotNull(TEXT("a creature was put in the crater"), Creature))
+	{
+		return false;
+	}
+
+	// IT HAS TO HAVE THE BUFF BEFORE LOSING IT MEANS ANYTHING. Without this the
+	// test would pass for a rule that never empowered anybody.
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("the creature is empowered while it stands in the crater"),
+				  UCataclysmSkillEffects::HasTag(Creature, Empowered)))
+	{
+		return false;
+	}
+
+	// AND WALKING OUT ENDS IT, once its second has run. The world clock is what
+	// expires a status effect, so it is the clock that moves here and not only
+	// the beat.
+	//
+	// FAR ENOUGH TO BE OUTSIDE EVERY CRATER AND NOT JUST THIS ONE. A bombardment
+	// leaves three, all within `HallowedGroundfallFallsWithinCm` of the player,
+	// so stepping a few radii from the crater it was standing in can put a
+	// creature straight into another. Going beyond that whole spread plus a
+	// radius is the only distance that means "out" rather than "somewhere else".
+	const FVector Away = Player.Character->GetActorLocation()
+		+ FVector(Effects::HallowedGroundfallFallsWithinCm
+					  + Effects::HallowedGroundfallCraterRadiusCm * 2.0f,
+				  0.0f, 0.0f);
+	Creature->SetActorLocation(Away);
+
+	// ASSERTED RATHER THAN ASSUMED, because "it kept the buff" and "it walked
+	// into another crater" look identical from the outside and only one of them
+	// is a fault in the rule.
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (!TestFalse(TEXT("the creature is outside every crater on the floor"),
+					   It->Covers(Away)))
+		{
+			return false;
+		}
+	}
+
+	CataclysmTestWorld::RunClock(World, Effects::HallowedGroundfallEmpowerSeconds + 0.5f);
+	Beat(Mode, 1);
+
+	TestFalse(TEXT("and it has lost it a second after walking out"),
+			  UCataclysmSkillEffects::HasTag(Creature, Empowered));
 
 	return true;
 }
