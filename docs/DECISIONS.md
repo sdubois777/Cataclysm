@@ -45,6 +45,8 @@ shield sustain while under fire.
 **The fractions are the design's, not invented here.** "At half its usual rate"
 and "at half its rate" are the rows' own words, and Warded states no number.
 
+---
+
 ## 2026-09-14 — Two stats adjust a figure a skill's own row states, and the rules that stop them reaching skills their nodes never name
 
 **Affects:**
@@ -215,6 +217,8 @@ So there is no behaviour to assert, and a test would be asserting its own
 arithmetic. It is recorded here instead. **If something later reads an imp's
 reserve, this paragraph is the warning that it was inert when the stat was
 built.**
+
+---
 
 ## 2026-09-14 — "Grabbed" is an event with an end, not a place the player is standing, and the grab is 99% of movement speed rather than a new rooted state
 
