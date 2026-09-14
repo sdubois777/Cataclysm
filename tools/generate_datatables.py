@@ -1019,6 +1019,28 @@ STATUS_EFFECT_OPERATIONS = ("", "points", "proportion")
 #: which is what the C++ has always done.
 STAT_OF_SOURCE_ELEMENT = "resistance_of_source_element"
 
+#: Names in that column that the game resolves but no character sheet shows.
+#:
+#: THE CHECK BELOW IS NARROWER THAN WHAT THE GAME CAN RESOLVE, deliberately.
+#: `UCataclysmPlayerClassStats::StatToAttribute` held 80 names when this was
+#: written and only 42 of them are among the 46 character sheet stats; the rest
+#: are ailment chances, attributes and derived figures. Validating against the
+#: sheet keeps a designer from writing anything the sheet does not show, which
+#: is right for almost every row.
+#:
+#: `attack_damage` IS THE EXCEPTION AND IT IS A REAL ATTRIBUTE. A player's blow
+#: is priced off the weapon rather than a sheet stat, so nothing puts it on the
+#: character sheet -- but an enemy writes it
+#: (`CataclysmEnemyCharacter.cpp:1266`) and every blow an enemy strikes reads it
+#: through `UCataclysmSkillEffects::WeaponDamageOf`. Weaken moves it. Issue
+#: #1256.
+#:
+#: ADD TO THIS ONLY WITH THE SAME EVIDENCE: the name is in the C++ map, and
+#: something reads the attribute. A name that resolves but that nothing reads is
+#: an effect that quietly moves nothing, which is the fault this column exists
+#: to prevent.
+ATTRIBUTES_THAT_ARE_NOT_SHEET_STATS = frozenset({"attack_damage"})
+
 
 def sheet_stats():
     """The 46 character sheet stat names, from the model that defines them.
@@ -1053,13 +1075,18 @@ def status_effect_stats(cell, index: int, sheet: str, known) -> str:
     for name in names:
         if name == STAT_OF_SOURCE_ELEMENT:
             continue
+        if name in ATTRIBUTES_THAT_ARE_NOT_SHEET_STATS:
+            continue
         if name not in known:
+            allowed = ", ".join(
+                repr(one) for one in sorted(ATTRIBUTES_THAT_ARE_NOT_SHEET_STATS))
             raise DataError(
                 f"{sheet} row {index}: {name!r} in column I is not a stat this "
                 f"game has. Use one of the 46 character sheet stats, spelled as "
                 f"sim/cataclysm_sim/character.py spells them, or "
                 f"{STAT_OF_SOURCE_ELEMENT!r} for an effect whose stat depends on "
-                f"whoever applied it.")
+                f"whoever applied it, or one of the attributes no sheet shows: "
+                f"{allowed}.")
 
     return ", ".join(names)
 
