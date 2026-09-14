@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -299,6 +300,66 @@ namespace CataclysmDungeonModifierEffectsTest
 	 * answers null and reports as "no creature spawned", naming the symptom
 	 * rather than the cause. The cleanse test above records losing time to it.
 	 */
+	/** And the one that calls in artillery on a clock. Issues #1820 and #41. */
+	const FName ArtilleryStrike(UCataclysmDungeonModifierEffects::ArtilleryStrikeKey);
+
+	/**
+	 * A creature with health worth taking, put where it is wanted.
+	 *
+	 * ITS MAXIMUM HEALTH IS SET AND NOT ASSUMED. `ArtilleryStrikeDamage` answers
+	 * nothing for a target whose maximum is zero, so a creature left at its
+	 * defaults would be skipped and a test of "the strike hits creatures too"
+	 * would pass without the strike ever reaching one.
+	 */
+	ACataclysmEnemyCharacter* SpawnCreatureWithHealth(UWorld* World,
+													 const FVector& Where,
+													 float Health)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Enemy = World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(), Where, FRotator::ZeroRotator,
+			Spawn);
+		if (!Enemy)
+		{
+			return nullptr;
+		}
+		if (UAbilitySystemComponent* System = Enemy->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Health);
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		}
+		Enemy->SetActorLocation(Where);
+		return Enemy;
+	}
+
+	/** The only circle on the floor, or null if there is not exactly one. */
+	ACataclysmGroundZone* TheOnlyCircle(UWorld* World)
+	{
+		ACataclysmGroundZone* Found = nullptr;
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			Found = *It;
+			++Count;
+		}
+		return Count == 1 ? Found : nullptr;
+	}
+
+	/** How much health something has now, or a negative number if it cannot say. */
+	float HealthOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System
+			? System->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetHealthAttribute())
+			: -1.0f;
+	}
+
 	ACataclysmEnemyCharacter* SpawnCreatureThatCanHit(UWorld* World, float AlongX)
 	{
 		FActorSpawnParameters Spawn;
@@ -4139,6 +4200,297 @@ bool FCataclysmEdictLeavingTest::RunTest(const FString& Parameters)
 	Beat(Mode, 8);
 	TestNotNull(TEXT("a full cadence in the new dungeon brings a silence"),
 				DungeonRuleOn(Player.AbilitySystem, Locked));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Artillery Strike. Issues #1820 and #41
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArtilleryCadenceTest,
+	"Cataclysm.DungeonModifierEffects.AStrikeIsDueOnItsCadenceAndTheCircleAppearsFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmArtilleryCadenceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ONE NUMBER THE ROW GIVES: "Every 30 seconds". Everything else about
+	// this rule is a judgement recorded in docs/DECISIONS.md; this is the part
+	// the data states, so it is the part a test can hold the code to.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {ArtilleryStrike};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// NOTHING ON THE FLOOR BEFORE ANY BEAT, so a circle found later is one this
+	// rule placed and not something the floor was built with.
+	if (!TestNull(TEXT("the floor starts with no circle on it"), TheOnlyCircle(World)))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::ArtilleryStrikeSecondsBetween) - 4);
+	TestNull(TEXT("and none has appeared four beats short of the cadence"),
+			 TheOnlyCircle(World));
+
+	Beat(Mode, 8);
+	ACataclysmGroundZone* Circle = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("a circle appears once the cadence has passed"), Circle))
+	{
+		return false;
+	}
+
+	// AND IT IS THE SIZE THE CONSTANT STATES, so the thing the player is warned
+	// about is the thing the shell will cover.
+	TestEqual(TEXT("and it is as wide as the constant says"),
+			  Circle->RadiusCm, Effects::ArtilleryStrikeRadiusCm, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArtilleryWarningTest,
+	"Cataclysm.DungeonModifierEffects.TheCircleHurtsNobodyUntilItLands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmArtilleryWarningTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// A WARNING THAT ALREADY HURTS IS NOT A WARNING. The whole reason this rule
+	// places a circle before it does anything is that the player can leave, and
+	// that is worth nothing if standing in it costs health from the first beat.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {ArtilleryStrike};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::ArtilleryStrikeSecondsBetween) + 1);
+	ACataclysmGroundZone* Circle = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("a circle was placed"), Circle))
+	{
+		return false;
+	}
+
+	// THE WINDOW HAS TO EXIST BEFORE THE ASSERTION MEANS ANYTHING. If the
+	// warning were ever shortened to a single beat there would be no moment at
+	// which the circle is present and has not landed, and everything below would
+	// pass while checking nothing.
+	if (!TestTrue(TEXT("the warning lasts more than one beat, so a window exists"),
+				  Effects::ArtilleryStrikeWarningSeconds
+					  > ACataclysmDungeonGameMode::SecondsBetweenWaveChecks))
+	{
+		return false;
+	}
+
+	Player.Character->SetActorLocation(Circle->GetActorLocation());
+	const float Full = Player.Read(Vital::GetHealthAttribute());
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("standing in the circle costs nothing while it is a warning"),
+			  Player.Read(Vital::GetHealthAttribute()), Full, 0.01f);
+
+	// AND THEN IT LANDS. What the constant states is what the shell DEALS, not
+	// what reaches health: `ApplyDirectDamage` puts it through the defender's own
+	// armour and resistances, which is correct and is tested where those live.
+	// Measured here: 510 maximum health, a stated share of 127.5, and 109.9
+	// reaching health.
+	//
+	// SO THE ASSERTION IS A RANGE, AND BOTH ENDS ARE REAL. A shell that dealt
+	// nothing fails the bottom; one that dealt more than it states fails the top,
+	// because mitigation can only ever take away. Asserting the bare figure would
+	// have been asserting that the player has no armour, which is not what this
+	// rule is about.
+	Beat(Mode, BeatsFor(Effects::ArtilleryStrikeWarningSeconds) + 1);
+	const float Stated = Effects::ArtilleryStrikeDamage(
+		Player.Read(Vital::GetMaxHealthAttribute()));
+	const float Lost = Full - Player.Read(Vital::GetHealthAttribute());
+
+	TestTrue(TEXT("and then the shell takes health off the player"), Lost > 0.0f);
+	TestTrue(TEXT("and never more than the share the constant states"),
+			 Lost <= Stated + 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArtilleryHitsEveryoneTest,
+	"Cataclysm.DungeonModifierEffects.AStrikeHitsCreaturesStandingInItAsWellAsThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmArtilleryHitsEveryoneTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW'S OWN SENTENCE, AND THE ONLY CLAUSE THAT NEEDED ANYTHING UNUSUAL:
+	// "Enemies and players can be hit, creating a strategic element of using the
+	// enemy's own weapons against them." Almost every hazard in this game
+	// belongs to somebody and spares their own side; this one belongs to the
+	// floor and spares nobody.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {ArtilleryStrike};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::ArtilleryStrikeSecondsBetween) + 1);
+	ACataclysmGroundZone* Circle = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("a circle was placed"), Circle))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature =
+		SpawnCreatureWithHealth(World, Circle->GetActorLocation(), 1000.0f);
+	if (!TestNotNull(TEXT("a creature was put in the circle"), Creature))
+	{
+		return false;
+	}
+	const float Before = HealthOf(Creature);
+	if (!TestTrue(TEXT("and it has health worth taking"), Before > 0.0f))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::ArtilleryStrikeWarningSeconds) + 1);
+
+	TestTrue(TEXT("the shell takes health off the creature standing in it"),
+			 HealthOf(Creature) < Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArtilleryWhereTest,
+	"Cataclysm.DungeonModifierEffects.AStrikeLandsWhereTheCircleIsRatherThanWhereThePlayerWent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmArtilleryWhereTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// WALKING OUT HAS TO WORK, or the warning is decoration. This is the
+	// assertion that fails if the shell is ever aimed at the player rather than
+	// at the place the circle was drawn -- which would be invisible to every
+	// other test here, because all of them keep their target still.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {ArtilleryStrike};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::ArtilleryStrikeSecondsBetween) + 1);
+	ACataclysmGroundZone* Circle = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("a circle was placed"), Circle))
+	{
+		return false;
+	}
+
+	// A CREATURE STAYS IN IT, WHICH IS WHAT STOPS THIS TEST PASSING VACUOUSLY.
+	// Without it, a rule that never fired at all would satisfy every assertion
+	// below: the player would be unhurt because nothing happened rather than
+	// because they left.
+	const FVector Where = Circle->GetActorLocation();
+	ACataclysmEnemyCharacter* Stayed = SpawnCreatureWithHealth(World, Where, 1000.0f);
+	if (!TestNotNull(TEXT("a creature stayed in the circle"), Stayed))
+	{
+		return false;
+	}
+	const float CreatureBefore = HealthOf(Stayed);
+
+	// THE PLAYER STANDS IN IT FIRST AND THEN LEAVES, which is the only order that
+	// tells "aimed at the circle" and "aimed at the player" apart.
+	Player.Character->SetActorLocation(Where);
+	const float Full = Player.Read(Vital::GetHealthAttribute());
+	Beat(Mode, 1);
+
+	Player.Character->SetActorLocation(
+		Where + FVector(Effects::ArtilleryStrikeRadiusCm * 4.0f, 0.0f, 0.0f));
+
+	Beat(Mode, BeatsFor(Effects::ArtilleryStrikeWarningSeconds) + 1);
+
+	if (!TestTrue(TEXT("the shell landed, which the creature left in it shows"),
+				  HealthOf(Stayed) < CreatureBefore))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the player who walked out was not hit"),
+			  Player.Read(Vital::GetHealthAttribute()), Full, 0.01f);
 
 	return true;
 }

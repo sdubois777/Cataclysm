@@ -66,11 +66,19 @@ def flat(text: str) -> str:
     return " ".join(text.split())
 
 
-def constant(name: str) -> float:
-    """A `static constexpr float` from the effects header, by name."""
-    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+def constant(name: str, header: str = "") -> float:
+    """A `static constexpr float` by name, from the effects header by default.
+
+    THE HEADER IS A PARAMETER BECAUSE ONE RULE IS DERIVED FROM A FIGURE THAT IS
+    NOT ITS OWN. The Artillery Strike's warning is twice the time it takes to
+    walk out of its circle, and the walk speed belongs to the player character,
+    not to this table. Reading it from where it is defined is what stops the two
+    drifting apart; writing it down here would be a copy that goes stale.
+    """
+    where = REPO_ROOT / header if header else EFFECTS_HEADER
+    text = where.read_text(encoding="utf-8")
     found = re.search(rf"\b{re.escape(name)}\s*=\s*([0-9]+(?:\.[0-9]+)?)f\s*;", text)
-    assert found, f"{name} is not declared in {EFFECTS_HEADER.name}"
+    assert found, f"{name} is not declared in {where.name}"
     return float(found.group(1))
 
 
@@ -784,3 +792,67 @@ def test_the_edict_of_silence_says_it_sweeps_the_dungeon_not_the_floor():
         "The Edict of Silence row no longer says its silence sweeps the dungeon. "
         "Its clock is kept across the stairs on the strength of that word; "
         "re-read the ruling in docs/DECISIONS.md.")
+
+
+def test_the_artillery_strike_still_states_its_own_cadence():
+    """The one number this row gives, held against the constant that uses it.
+
+    EVERYTHING ELSE ABOUT THIS RULE IS A JUDGEMENT -- the warning, the radius and
+    the damage are all recorded as such in docs/DECISIONS.md, because the row
+    gives none of them. Thirty seconds is the exception, so it is the one figure
+    a reader can check the code against without reading a design argument.
+    """
+    words = flat(rows()["War_Artillery_Strike"]["Description"])
+    every = constant("ArtilleryStrikeSecondsBetween")
+
+    assert f"Every {every:g} seconds" in words, words
+
+
+def test_the_artillery_strike_row_still_says_it_hits_both_sides():
+    """The sentence the everyone-search rests on.
+
+    "ENEMIES AND PLAYERS CAN BE HIT" IS WHY THIS RULE ASKS
+    `UCataclysmTargeting::FindEveryoneInLine` RATHER THAN `FindEnemiesInLine`.
+    Almost every hazard in the game belongs to whoever made it and spares their
+    own side; this one belongs to the floor and spares nobody, and the row is the
+    whole authority for that.
+
+    IT IS ALSO WHY A STANDING RULE WAS RULED NOT TO APPLY.
+    `tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side`
+    records "A creature does not burn itself or its own side"; the coordinating
+    session ruled on 2026-09-14 that a dungeon hazard belongs to no side, so that
+    rule is not engaged. If this sentence ever leaves the row, that ruling has
+    nothing left to stand on.
+    """
+    words = flat(rows()["War_Artillery_Strike"]["Description"]).lower()
+
+    assert "enemies and players can be hit" in words, (
+        "The Artillery Strike row no longer says enemies and players can both be "
+        "hit. The rule asks for everyone standing in the circle on the strength "
+        "of that sentence; re-read the ruling in docs/DECISIONS.md.")
+
+
+def test_the_artillery_strike_warning_is_longer_than_the_walk_out():
+    """The derivation behind the one number that was not simply chosen.
+
+    THE WARNING IS NOT A TASTE. It is twice the time it takes to walk out of the
+    circle from its centre at the player's base speed, which is what makes it
+    survivable when `Void_Singularity_Wells` is applying its 40% slow on the same
+    floor. This holds the three constants in that relationship, so a later change
+    to the radius or the warning fails here rather than quietly making the
+    warning too short to use.
+
+    THE WALK SPEED IS READ FROM THE PLAYER RATHER THAN WRITTEN DOWN HERE, so this
+    cannot drift from the figure the game actually moves at.
+    """
+    warning = constant("ArtilleryStrikeWarningSeconds")
+    radius = constant("ArtilleryStrikeRadiusCm")
+    speed = constant("DefaultWalkSpeedCmPerSecond",
+                     "game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h")
+
+    walk_out = radius / speed
+    assert warning >= walk_out * 2.0, (
+        f"The warning is {warning}s and walking out of a {radius}cm circle at "
+        f"{speed}cm/s takes {walk_out}s, so the warning is no longer twice the "
+        "walk-out. Re-derive it; docs/DECISIONS.md carries the derivation.")
+

@@ -509,6 +509,28 @@ public:
 	static const TCHAR* EdictOfSilenceKey;
 
 	/**
+	 * Artillery Strike: "Every 30 seconds, a massive red circle appears on the
+	 * ground. A powerful artillery strike will land in that circle, dealing
+	 * massive damage to everything inside. Enemies and players can be hit,
+	 * creating a strategic element of using the enemy's own weapons against
+	 * them." Issues #1820 and #41.
+	 *
+	 * THE ROW STATES ONE NUMBER AND THIS RULE CHOOSES THREE. Thirty seconds is
+	 * the row's. The warning, the radius and the damage are not in it; each is
+	 * recorded as a judgement in `docs/DECISIONS.md` with what it was derived
+	 * from.
+	 *
+	 * "ENEMIES AND PLAYERS CAN BE HIT" IS THE ONLY CLAUSE THAT NEEDED ANYTHING
+	 * UNUSUAL, and what it needed already existed:
+	 * `UCataclysmTargeting::FindEveryoneInLine` finds whatever is standing in a
+	 * place rather than only the other side. `ACataclysmGroundZone` chooses
+	 * between that and `FindEnemiesInLine` on its own `bBurnsEveryone`, and this
+	 * rule asks the same question directly, because the circle it places deals
+	 * no damage of its own and a flag on a harmless zone would decide nothing.
+	 */
+	static const TCHAR* ArtilleryStrikeKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -1084,6 +1106,91 @@ public:
 	static constexpr float EdictOfSilenceLastsSeconds = 15.0f;
 	static constexpr float EdictOfSilenceLockValue = 1.0f;
 
+	/**
+	 * How often a strike is called in. THE ROW'S OWN NUMBER: "Every 30 seconds".
+	 */
+	static constexpr float ArtilleryStrikeSecondsBetween = 30.0f;
+
+	/**
+	 * How long the circle sits on the ground before the shell lands.
+	 *
+	 * A JUDGEMENT, AND DERIVED RATHER THAN PICKED. The row says a circle appears
+	 * and a strike "will land", which is a delay, and gives no length for it.
+	 * `ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond` is 400, so walking
+	 * out of a 600 cm circle from its centre takes 1.5 seconds at base speed.
+	 * Three seconds is twice that, and still clears the 40% slow
+	 * `Void_Singularity_Wells` can be applying on the same floor, where the walk
+	 * out takes 2.5 seconds.
+	 *
+	 * IF EITHER FIGURE MOVES, THIS ONE HAS TO BE RE-DERIVED. A larger radius or a
+	 * slower player makes three seconds too short, which is why the static
+	 * assertion below ties it to the radius and the walk speed rather than
+	 * leaving it as a number somebody once liked.
+	 */
+	static constexpr float ArtilleryStrikeWarningSeconds = 3.0f;
+
+	/**
+	 * How wide the circle is.
+	 *
+	 * A JUDGEMENT. "Massive" is not a number. `InfernalRainRadiusCm` is 300 and
+	 * that row says only "patches", so this being twice it is what "massive"
+	 * buys.
+	 */
+	static constexpr float ArtilleryStrikeRadiusCm = 600.0f;
+
+	/**
+	 * What the shell takes off whatever it lands on, once, as a share of
+	 * maximum health.
+	 *
+	 * A JUDGEMENT, AND THE ONE WITH THE LEAST BEHIND IT. No source read for this
+	 * change gives a telegraphed ground attack's damage as a share of maximum
+	 * health, so this is not derived from anything. What it is measured against:
+	 * `InfernalRainPercentPerSecond` is 2 for `InfernalRainPatchSeconds` of 10,
+	 * so standing in fire for its whole life costs 20% -- and a player can step
+	 * out at any moment. This lands once and cannot be partly taken, so being
+	 * slightly worse than the whole of the other is the intent.
+	 *
+	 * AND THIS ROW IS WEIGHT 5.0, THE LIGHTEST BAND IN THE TABLE, shared with 24
+	 * other rows. A lightest-band row that hurt more than the heavy ones would be
+	 * wrong however good the number looked on its own.
+	 */
+	static constexpr float ArtilleryStrikeMaxHealthPercent = 25.0f;
+
+	/**
+	 * How far from the player a strike can be called in.
+	 *
+	 * THE SAME FIGURE INFERNAL RAIN USES, and for its reason: a hazard that only
+	 * ever appears on top of the player is not a thing to walk out of. Copied as
+	 * a conclusion rather than as a number -- see `InfernalRainFallsWithinCm`.
+	 */
+	static constexpr float ArtilleryStrikeLandsWithinCm = 1200.0f;
+
+	static_assert(
+		ArtilleryStrikeWarningSeconds < ArtilleryStrikeSecondsBetween,
+		"A strike now takes longer to land than the gap between strikes, so the "
+		"next would be called in before the last had landed. The rule keeps one "
+		"circle at a time and would stall.");
+
+	static_assert(
+		ArtilleryStrikeWarningSeconds * 400.0f
+			>= ArtilleryStrikeRadiusCm * 2.0f,
+		"The warning is no longer twice the time it takes to walk out of the "
+		"circle at the player's base speed of 400 cm per second. Either the "
+		"radius grew or the warning shrank; re-derive the warning, and check it "
+		"against the 40% slow Singularity Wells can be applying at the same "
+		"time. docs/DECISIONS.md carries the derivation.");
+
+	static_assert(
+		ArtilleryStrikeMaxHealthPercent < 100.0f,
+		"A strike now takes a player from full health to nothing in one hit, "
+		"which is not what a lightest-weight-band row should do.");
+
+	static_assert(
+		ArtilleryStrikeLandsWithinCm > ArtilleryStrikeRadiusCm,
+		"A strike can no longer be called in anywhere the player is not already "
+		"standing, so the circle would always cover them and there would be "
+		"nothing to walk out of.");
+
 	static_assert(
 		EdictOfSilenceLastsSeconds < EdictOfSilenceEverySeconds,
 		"The Edict of Silence now lasts at least as long as the gap between "
@@ -1429,6 +1536,36 @@ public:
 	 * prevents more of it at depth or after a while.
 	 */
 	static float SkillsLockedWhile(bool bSilenced);
+
+	/**
+	 * Whether to call in a strike this beat.
+	 *
+	 * ONE CIRCLE AT A TIME, ASKED BEFORE THE CLOCK, which is the shape
+	 * `GraspingTentacleIsDue` uses and for the same reason: while one is in the
+	 * air no arithmetic is done and the caller keeps counting, so the beat it
+	 * lands on can place the next without waiting a further cadence.
+	 *
+	 * @param SecondsSinceLast  how long since the last circle was placed
+	 * @param bOneInTheAir      whether a circle is on the ground now
+	 */
+	static bool ArtilleryStrikeIsDue(float SecondsSinceLast, bool bOneInTheAir);
+
+	/** Whether the circle placed this long ago has been landed on yet. */
+	static bool ArtilleryStrikeHasLanded(float SecondsSinceItAppeared);
+
+	/**
+	 * What one strike takes off something with this much maximum health.
+	 *
+	 * A SHARE AND NOT A FIGURE, for the reason `InfernalRainDamagePerSecond`
+	 * gives where it does the same: a hazard the floor applies has no weapon and
+	 * no level, so a flat number would be trivial at one depth and lethal at
+	 * another.
+	 *
+	 * ANSWERS ZERO FOR A TARGET WHOSE MAXIMUM HEALTH IS UNKNOWN, so a caller
+	 * that cannot read one does nothing rather than applying a damage of zero
+	 * that still counts as a hit.
+	 */
+	static float ArtilleryStrikeDamage(float MaximumHealth);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -2024,9 +2025,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// CLOCK. Issues #1786 and #41.
 	const bool bEdictOfSilence = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::EdictOfSilenceKey));
+	const bool bArtilleryStrike = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::ArtilleryStrikeKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
-		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence)
+		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
+		&& !bArtilleryStrike)
 	{
 		return;
 	}
@@ -2124,6 +2128,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	{
 		StepEdictOfSilence(Player, AbilitySystem);
 	}
+
+	// AND THE ARTILLERY STRIKE, WHICH SPAWNS AN ACTOR, so it is late for the
+	// reason the three above it are: a floor carrying both kinds does its stat
+	// work in one pass before anything else happens on the beat. Issues #1820
+	// and #41.
+	if (bArtilleryStrike)
+	{
+		StepArtilleryStrike(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepForcedMarch(
@@ -2200,6 +2213,138 @@ void ACataclysmDungeonGameMode::StepEdictOfSilence(
 		EdictOfSilenceLockApplied = Wanted;
 		ApplyChangingFloorEffects(Player, AbilitySystem);
 	}
+}
+
+void ACataclysmDungeonGameMode::StepArtilleryStrike(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// A CIRCLE ON THE GROUND IS COUNTED DOWN AND NOTHING ELSE HAPPENS. The
+	// cadence is not advanced while one is in the air, so the thirty seconds
+	// between strikes is thirty seconds between LANDINGS plus the warning, not
+	// thirty seconds between circles appearing. Either reading is defensible and
+	// the row does not say; this one is recorded in docs/DECISIONS.md.
+	if (ACataclysmGroundZone* Circle = ArtilleryStrikeCircle.Get())
+	{
+		ArtilleryStrikeWarningSoFar += SecondsBetweenWaveChecks;
+		if (!Effects::ArtilleryStrikeHasLanded(ArtilleryStrikeWarningSoFar))
+		{
+			return;
+		}
+
+		// WHAT IS STANDING IN IT AT THE MOMENT IT LANDS, asked of the same
+		// search `ACataclysmGroundZone` uses for a zone that burns everyone --
+		// `FindEveryoneInLine` with the start and the end in one place, which is
+		// how every point-shaped zone in this file is already spawned. Asking
+		// the same question the circle would ask is what stops the drawn circle
+		// and the hit list disagreeing.
+		//
+		// EVERYONE AND NOT THE OTHER SIDE, which is the row's own sentence.
+		// THE FLOOR'S HAZARD SOURCE IS WHAT DEALS IT, NOT THE CIRCLE, and that is
+		// not a preference. `UCataclysmSkillEffects::ApplyDirectDamage` returns
+		// false when the INSTIGATOR has no ability system, and a ground zone has
+		// none -- naming the circle made every strike land for nothing. The zone
+		// itself names the same source actor when it deals its own damage, so
+		// this is the shape that already works rather than a new one.
+		AActor* Firing = ACataclysmFloorHazardSource::ForFloor(World);
+		if (!Firing)
+		{
+			return;
+		}
+
+		const FVector Where = Circle->GetActorLocation();
+		const TArray<AActor*> Inside = UCataclysmTargeting::FindEveryoneInLine(
+			World, Firing, Where, Where, Effects::ArtilleryStrikeRadiusCm);
+
+		// AN AREA HIT BUT NOT A DAMAGE-OVER-TIME ONE, and the second half is a
+		// judgement this rule makes differently from the zone beside it.
+		// `ACataclysmGroundZone` marks its own sweeps as both, because a patch
+		// of fire catches whoever stands in it and keeps burning. A shell is one
+		// blow: it cannot be evaded, which is what `bIsArea` says, and an energy
+		// shield should absorb it exactly as it absorbs any other blow, which is
+		// what leaving `bIsDamageOverTime` false says.
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+
+		for (AActor* Target : Inside)
+		{
+			const UAbilitySystemComponent* Abilities =
+				UCataclysmTargeting::AbilitySystemOf(Target);
+			if (!Abilities)
+			{
+				continue;
+			}
+
+			const float Damage = Effects::ArtilleryStrikeDamage(
+				Abilities->GetNumericAttribute(
+					UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+			if (Damage <= 0.0f)
+			{
+				continue;
+			}
+
+			// THE CIRCLE IS WHAT DEALT IT, which is the same actor the zone
+			// would have named had it dealt the damage itself. WHATEVER THAT
+			// MEANS FOR KILL CREDIT AND DROPS IS LEFT EXACTLY AS IT IS for every
+			// other floor hazard; this rule adds no rule about it.
+			UCataclysmSkillEffects::ApplyDirectDamage(Firing, Target, Damage,
+													  Delivery);
+		}
+
+		Circle->Destroy();
+		ArtilleryStrikeCircle = nullptr;
+		ArtilleryStrikeWarningSoFar = 0.0f;
+		return;
+	}
+
+	ArtilleryStrikeSecondsSinceLast += SecondsBetweenWaveChecks;
+	if (!Effects::ArtilleryStrikeIsDue(ArtilleryStrikeSecondsSinceLast,
+									   /*bOneInTheAir=*/false))
+	{
+		return;
+	}
+
+	// AWAY FROM THE PLAYER, for the reason Infernal Rain gives: a hazard that
+	// only ever appears on top of somebody is not a thing to walk out of, and
+	// the warning this rule spends three seconds on would buy nothing.
+	const FVector Centre = Player->GetActorLocation();
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const float Away = FMath::FRandRange(0.0f, Effects::ArtilleryStrikeLandsWithinCm);
+	const FVector Where(Centre.X + Away * FMath::Cos(Angle),
+						Centre.Y + Away * FMath::Sin(Angle),
+						Centre.Z);
+
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	// A DAMAGE OF ZERO, WHICH IS THE WHOLE POINT OF THE CIRCLE. It marks a place
+	// and hurts nobody; the shell above is what hurts. `Void_Grasping_Tentacles`
+	// spawns a zone the same way and for the same reason -- it only has to be
+	// somewhere, and the rule reads where it is on the beat.
+	ACataclysmGroundZone* Circle = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Where, Where, Effects::ArtilleryStrikeRadiusCm, 0.0f);
+	if (!Circle)
+	{
+		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, the choice Infernal Rain
+		// records: the next beat tries again rather than waiting another full
+		// cadence for a circle that never appeared.
+		return;
+	}
+
+	ArtilleryStrikeCircle = Circle;
+	ArtilleryStrikeWarningSoFar = 0.0f;
+	ArtilleryStrikeSecondsSinceLast = 0.0f;
 }
 
 void ACataclysmDungeonGameMode::StepGraspingTentacles(
@@ -2998,6 +3143,22 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// lock off the character and the next beat has to put it back while the
 		// silence is still running.
 		EdictOfSilenceLockApplied = 0.0f;
+
+		// AND THE ARTILLERY STRIKE FORGETS THE CIRCLE, THE WARNING AND THE
+		// CLOCK. Issues #1820 and #41. The circle because
+		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed it and
+		// a stale pointer would stop the rule placing another; the warning
+		// because a shell must not land on a floor where nobody saw the circle
+		// that announced it; the clock so the first strike of a floor does not
+		// arrive on its first beat carrying the last floor's wait.
+		//
+		// THIS RULE KEEPS NOTHING ACROSS THE STAIRS, unlike the Edict of Silence
+		// directly above. Its row says nothing about the dungeon, only about a
+		// repeating thirty seconds, so there is no sentence here asking a clock
+		// to survive a floor.
+		ArtilleryStrikeCircle = nullptr;
+		ArtilleryStrikeWarningSoFar = 0.0f;
+		ArtilleryStrikeSecondsSinceLast = 0.0f;
 
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is
