@@ -317,6 +317,88 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Within Seconds Of A Block"),
 
 	/**
+	 * The character used a skill carrying `Type.Summon` within the last
+	 * `ConditionValue` seconds. Issue #1815.
+	 *
+	 * `Type.Summon` AND NOT `Keyword.Summon`, which is the ruling #1824
+	 * records. Five weapon skills carry the keyword and only two of them
+	 * create a creature: Quarry, Compel and Vesselstep command creatures that
+	 * already exist. "Summoning a minion" is the two, so the narrower tag is
+	 * the right one and the wider one would fire on three skills that summon
+	 * nothing.
+	 *
+	 * A TAG, LIKE THE CHARGE WINDOW AND UNLIKE THE BASIC-ATTACK ONE, and
+	 * stamped in the same place.
+	 */
+	WithinSecondsOfSummon
+		UMETA(DisplayName = "Within Seconds Of A Summon"),
+
+	/**
+	 * The character evaded a blow within the last `ConditionValue` seconds.
+	 * Issue #1815. "When you dodge an attack gain 15%-30% increased damage for
+	 * 3 seconds" is the row.
+	 *
+	 * THE THIRD QUESTION ASKED OF ONE RESOLVED BLOW, beside
+	 * `WithinSecondsOfBlock` and `WithinSecondsOfForeignDamage`, and the three
+	 * are deliberately independent. A blow is evaded or it is not; blocked or
+	 * not; of a foreign Cataclysm type or not. **An evaded blow deals nothing,
+	 * so it opens this window and NOT the foreign-damage one**, which is gated
+	 * on health or shield actually losing something. That is the case which
+	 * separates them.
+	 */
+	WithinSecondsOfEvade
+		UMETA(DisplayName = "Within Seconds Of An Evade"),
+
+	/**
+	 * The character was hit within the last `ConditionValue` seconds, whatever
+	 * became of the blow. Issue #1815. "Taking a hit reduces your damage by
+	 * 5%-10% for 3 seconds" is the row.
+	 *
+	 * THIS ONE DELIBERATELY OVERLAPS ITS NEIGHBOURS, and it is the only window
+	 * here that does. A blocked hit is still a hit and opens both; an evaded
+	 * hit is still a hit and opens both; a hit of a foreign type opens this and
+	 * the foreign-damage window. So "opens on its own event and nothing else"
+	 * is false of it, and a test written to that rule would assert something
+	 * untrue. The three-way table in the tests is what states it instead.
+	 *
+	 * ANY BLOW THAT REACHED THE CHARACTER, INCLUDING ONE THAT DEALT NOTHING.
+	 * The sentence says "taking a hit" and says nothing about damage, so this
+	 * is stamped beside the block window rather than inside the branch that
+	 * asks what got through.
+	 */
+	WithinSecondsOfHitTaken
+		UMETA(DisplayName = "Within Seconds Of A Hit Taken"),
+
+	/**
+	 * The character's class resource BECAME full within the last
+	 * `ConditionValue` seconds. Issue #1815.
+	 *
+	 * AN EVENT, AND `ClassResourceAtMaximum` IS THE STATE. The two read the
+	 * same pool and answer different questions: that one holds for as long as
+	 * the bar is full, this one opens at the moment it fills and then ages
+	 * while the bar sits there. A row saying "when your class resource is
+	 * full, gain X for 3 seconds" wants this; a row saying "while your class
+	 * resource is full" wants that.
+	 *
+	 * THE STAMP APPLIES `ClassResourceAtMaximum`'S OWN RULE, including its
+	 * refusal of a maximum of zero. If it did not, a character with no pool
+	 * at all would open this window and the two would disagree about the same
+	 * bar.
+	 */
+	WithinSecondsOfClassResourceFull
+		UMETA(DisplayName = "Within Seconds Of The Class Resource Filling"),
+
+	/**
+	 * The character's class resource REACHED zero within the last
+	 * `ConditionValue` seconds. Issue #1815.
+	 *
+	 * A CROSSING, AS ABOVE, and only ever the pool: a maximum of zero is a
+	 * character with no class resource rather than one that has spent it.
+	 */
+	WithinSecondsOfClassResourceEmpty
+		UMETA(DisplayName = "Within Seconds Of The Class Resource Emptying"),
+
+	/**
 	 * The skill dealing this blow cost more than `ConditionValue` percent of
 	 * the character's maximum health. Issue #983.
 	 *
@@ -1319,6 +1401,41 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceBlock = -1.0f;
+
+	/**
+	 * Seconds since the character last used a skill carrying `Type.Summon`.
+	 * Issue #1815. Negative means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceSummon = -1.0f;
+
+	/**
+	 * Seconds since the character last evaded a blow. Issue #1815. Negative
+	 * means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceEvade = -1.0f;
+
+	/**
+	 * Seconds since the character was last hit, whatever became of the blow.
+	 * Issue #1815. Negative means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceHitTaken = -1.0f;
+
+	/**
+	 * Seconds since the character's class resource became full. Issue #1815.
+	 * Negative means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceClassResourceFull = -1.0f;
+
+	/**
+	 * Seconds since the character's class resource reached zero. Issue #1815.
+	 * Negative means neither known nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceClassResourceEmpty = -1.0f;
 
 	/**
 	 * How much of the class resource the character is holding. Issue #980.

@@ -1911,4 +1911,90 @@ bool FCataclysmSkillWindowsDoNotCross::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSummonOpensOnlyItsOwnWindow,
+	"Cataclysm.CombatEvents.ASummonSkillOpensOnlyItsOwnWindowAndACommandSkillOpensNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSummonOpensOnlyItsOwnWindow::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	// THE DISCRIMINATOR TEST FOR THE SUMMON WINDOW. Issue #1815.
+	//
+	// THE SECOND CASE IS THE POINT. `Type.Summon` and `Keyword.Summon` are
+	// different tags with different meanings: five weapon skills carry the
+	// keyword and only two create a creature. Quarry, Compel and Vesselstep
+	// carry the keyword and command creatures that already exist. Issue #1824
+	// records the distinction; this is what holds the code to it. A stamp
+	// written against the wider tag passes the first case and fails the second.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	struct FCase
+	{
+		const TCHAR* Name;
+		const TCHAR* Tags;
+		bool bOpensSummonWindow;
+	};
+
+	const FCase Cases[] = {
+		{TEXT("Summon Imp"),
+		 TEXT("Item.Weapon.Staff, Element.Demonic, Type.Spell, Type.Minion, "
+			  "Type.Summon, Keyword.Summon"),
+		 /*bOpensSummonWindow=*/true},
+
+		{TEXT("Vesselstep"),
+		 TEXT("Item.Weapon.Staff, Element.Demonic, Type.Spell, Keyword.Summon"),
+		 /*bOpensSummonWindow=*/false},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FArmedActor Caster = MakeArmed(World);
+		FGameplayAbilitySpecHandle Handle;
+		UCataclysmStrikeSkill* Skill = GrantNamedSkill<UCataclysmStrikeSkill>(
+			Caster, ECataclysmAbilitySlot::Special, Case.Name, Case.Tags,
+			TEXT("Radius=2.4; Angle=120; MaxTargets=1"), Handle);
+		if (!TestNotNull(FString::Printf(TEXT("%s was granted"), Case.Name), Skill))
+		{
+			continue;
+		}
+
+		if (!TestEqual(FString::Printf(
+					TEXT("%s's caster has no summon window yet"), Case.Name),
+				Caster.AbilitySystem->SecondsSinceSummonUsed(), -1.0f, 0.001f))
+		{
+			continue;
+		}
+
+		if (!TestTrue(FString::Printf(TEXT("%s started"), Case.Name),
+					  Caster.AbilitySystem->TryActivateAbility(
+						  Handle, /*bAllowRemoteActivation=*/false)))
+		{
+			continue;
+		}
+
+		TestEqual(FString::Printf(TEXT("%s and the summon window"), Case.Name),
+				  Caster.AbilitySystem->SecondsSinceSummonUsed(),
+				  Case.bOpensSummonWindow ? 0.0f : -1.0f, 0.001f);
+
+		// AND NEITHER SKILL IS A CHARGE SKILL OR A BASIC ATTACK, so the two
+		// windows this change did not touch stay shut. A stamp wired to the
+		// wrong tag or the wrong slot would show here.
+		TestEqual(FString::Printf(TEXT("%s opened no charge window"), Case.Name),
+				  Caster.AbilitySystem->SecondsSinceChargeSkillUsed(), -1.0f,
+				  0.001f);
+		TestEqual(FString::Printf(TEXT("%s opened no basic-attack window"),
+								  Case.Name),
+				  Caster.AbilitySystem->SecondsSinceBasicAttackUsed(), -1.0f,
+				  0.001f);
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
