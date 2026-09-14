@@ -108,6 +108,20 @@ namespace CataclysmCommanderTest
 			From, Target, CrippleTag(), Seconds);
 	}
 
+	static FGameplayTag WeakenTag()
+	{
+		return UCataclysmSkillShapes::StatusTagFor(TEXT("Weaken"));
+	}
+
+	/** What a creature's blow is worth right now, read the way every blow reads
+	 *  it: `ApplyHit` asks `WeaponDamageOf` for the live aggregated value, so a
+	 *  modifier on `attack_damage` is included without anything recomputing. */
+	static float DamageOf(const AActor* Creature)
+	{
+		return UCataclysmSkillEffects::WeaponDamageOf(
+			UCataclysmTargeting::AbilitySystemOf(Creature));
+	}
+
 	static FGameplayTag FeastingTag()
 	{
 		return UCataclysmSkillShapes::StatusTagFor(TEXT("Feasting"));
@@ -416,6 +430,238 @@ bool FCataclysmCrippleScalesToItsCapThenLasts::RunTest(const FString&)
 
 		TestEqual(TEXT("but the weaker one does not lift the stronger reduction"),
 			Imp->CrippleMultiplier(), Strong, 0.001f);
+	}
+
+	return true;
+}
+
+/**
+ * Weaken takes the row's share off the damage an enemy deals, and magnitude
+ * raises that share to the cap and then extends the duration. Issue #1256.
+ *
+ * WHAT WAS BROKEN. Weaken's row promises "reduces the affected enemy's damage by
+ * 20% for 5 seconds" and nothing applied it. Its ailment shape was
+ * `AtItsRowsFigures`, which passes the row's duration and no strength at all, so
+ * a chance above 100% changed nothing: not the reduction, not the duration.
+ *
+ * IT SITS BESIDE THE CRIPPLE TEST BECAUSE IT IS THE SAME RULE WITH A DIFFERENT
+ * DESTINATION. Both curses state a proportion and both divide their magnitude at
+ * a cap. Cripple carries its figure on the tag because no enemy attribute is read
+ * for speed; Weaken moves `attack_damage`, which every blow reads live.
+ *
+ * THE RATIO IS ASSERTED AND NOT THE DIFFERENCE, for two reasons. An enemy's
+ * attack damage is `StartingAttackDamage * DamageScale`, so the absolute figure
+ * depends on scaling this test does not set and should not assume. And the ratio
+ * is the thing the row promises: "by 20%" is a share, whatever the number is.
+ *
+ * THE SECTION THAT MATTERS MOST IS THE SECOND. Two creatures with different
+ * damage lose the SAME SHARE. Subtracting the figure -- which is what the shared
+ * path did before this change, and what issue #1256 originally proposed --
+ * reduces a stat by `min(Strength, Current) / Current`, which is the intended
+ * share only when the stat is exactly 100. The eight designed attack damage
+ * figures run from 9 to 42, so it would take an Imp at 9 to zero and a
+ * Gatekeeper at 42 down by 48%.
+ *
+ * THAT IS WHY THE TWO CREATURES ARE SET EITHER SIDE OF THE ROW'S OWN STRENGTH.
+ * One below it and one well above it separate the two cases: a subtraction
+ * empties the first and takes a fifth of the second, and a share takes the same
+ * fifth from both. A single creature that happened to hit hard enough would pass
+ * every other assertion in this test under a subtraction.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWeakenTakesAShareOfDamage,
+	"Cataclysm.Enemy.WeakenTakesTheRowsShareOffTheDamageAnEnemyDeals",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWeakenTakesAShareOfDamage::RunTest(const FString&)
+{
+	using namespace CataclysmCommanderTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { TearDown(World); };
+
+	const FCataclysmAilmentKind* Kind = UCataclysmAilments::KindNamed(TEXT("Weaken"));
+	if (!TestNotNull(TEXT("Weaken is an ailment kind"), Kind))
+	{
+		return false;
+	}
+
+	const FCataclysmStatusEffectNumbers Row =
+		UCataclysmSkillEffects::NumbersForEffectTag(WeakenTag());
+
+	// THE ROW HAS TO STATE BOTH OR THIS TEST MEASURES NOTHING. A strength of zero
+	// would make every reduction zero and a cap of zero would mean no cap, and
+	// either way the assertions below would pass over an unscaled curse.
+	if (!TestTrue(FString::Printf(
+			TEXT("the Weaken row states a strength and a larger cap, got %.1f and %.1f"),
+			Row.Strength, Row.StrengthCap),
+		Row.Strength > 0.0f && Row.StrengthCap > Row.Strength))
+	{
+		return false;
+	}
+
+	const float CapScale = Row.StrengthCap / Row.Strength;
+
+	// --- MAGNITUDE ONE TAKES THE ROW'S OWN SHARE ---------------------------
+
+	{
+		ACataclysmImpCharacter* Imp = Spawn<ACataclysmImpCharacter>(World, FVector::ZeroVector);
+		ACataclysmImpCharacter* Curser =
+			Spawn<ACataclysmImpCharacter>(World, FVector(500.0f, 0.0f, 0.0f));
+		if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("a curser"), Curser))
+		{
+			return false;
+		}
+
+		// THE TEST HAS TO GIVE THE CREATURE ITS DAMAGE. Only a game mode calls
+		// `SetAttackDamage`, so a creature spawned straight into a test world has
+		// a starting attack damage of zero and `ApplyStartingAttributes` writes
+		// the attribute only when that figure is above zero. **The first version
+		// of this test read the attribute without setting it and measured 0.00.**
+		//
+		// COMFORTABLY ABOVE THE ROW'S CAP, and read from the row so it stays that
+		// way if the sheet moves. A figure below the cap would let a subtracted
+		// reduction reach zero and make the sections below indistinguishable from
+		// one that worked.
+		Imp->SetAttackDamage(Row.StrengthCap * 2.0f);
+
+		// THE STATE THIS TEST BUILDS IS ASSERTED BEFORE THE BEHAVIOUR IS. A
+		// creature with no attack damage would give a ratio of zero over zero,
+		// and every assertion below would be measuring nothing. **This assertion
+		// is not decoration: it is what caught the missing line above.**
+		const float Before = DamageOf(Imp);
+		if (!TestTrue(FString::Printf(
+				TEXT("the Imp deals damage to begin with, got %.2f"), Before),
+			Before > 0.0f))
+		{
+			return false;
+		}
+
+		TestTrue(TEXT("Weaken applies at magnitude one"),
+			UCataclysmAilments::Apply(Curser, Imp, *Kind, 1.0f));
+
+		TestEqual(TEXT("and the damage is the row's share off what it was"),
+			DamageOf(Imp) / Before, 1.0f - Row.Strength / 100.0f, 0.001f);
+	}
+
+	// --- THE SAME SHARE OFF TWO DIFFERENT CREATURES ------------------------
+
+	{
+		ACataclysmImpCharacter* Weak = Spawn<ACataclysmImpCharacter>(World, FVector(100.0f, 0.0f, 0.0f));
+		ACataclysmImpCharacter* Strong = Spawn<ACataclysmImpCharacter>(World, FVector(200.0f, 0.0f, 0.0f));
+		ACataclysmImpCharacter* Curser =
+			Spawn<ACataclysmImpCharacter>(World, FVector(600.0f, 0.0f, 0.0f));
+		if (!TestNotNull(TEXT("a weak Imp"), Weak) || !TestNotNull(TEXT("a strong Imp"), Strong)
+			|| !TestNotNull(TEXT("a curser"), Curser))
+		{
+			return false;
+		}
+
+		// ONE BELOW THE ROW'S STRENGTH AND ONE WELL ABOVE ITS CAP, which is what
+		// makes the two cases distinguishable: subtracting the figure takes ALL
+		// of the first creature's damage and a small part of the second's, where
+		// a share takes the same part from both.
+		//
+		// AND NEITHER IS 100. A subtracted reduction is `Strength / Current`,
+		// which equals the intended `Strength / 100` exactly when the stat is
+		// 100 -- so a creature with 100 attack damage is the one value where a
+		// subtraction passes a share's assertion. An earlier version of this
+		// section set the stronger creature to `Row.Strength * 5`, which is
+		// precisely 100, and put one of the two assertions on that coincidence.
+		Weak->SetAttackDamage(Row.Strength * 0.5f);
+		Strong->SetAttackDamage(Row.StrengthCap * 2.0f);
+
+		const float WeakBefore = DamageOf(Weak);
+		const float StrongBefore = DamageOf(Strong);
+		if (!TestTrue(FString::Printf(
+				TEXT("the two creatures deal different damage, got %.2f and %.2f"),
+				WeakBefore, StrongBefore),
+			WeakBefore > 0.0f && StrongBefore > WeakBefore))
+		{
+			return false;
+		}
+
+		TestTrue(TEXT("Weaken applies to the weaker creature"),
+			UCataclysmAilments::Apply(Curser, Weak, *Kind, 1.0f));
+		TestTrue(TEXT("and to the stronger one"),
+			UCataclysmAilments::Apply(Curser, Strong, *Kind, 1.0f));
+
+		const float Share = 1.0f - Row.Strength / 100.0f;
+
+		TestEqual(TEXT("the weaker creature keeps the row's share of its damage"),
+			DamageOf(Weak) / WeakBefore, Share, 0.001f);
+		TestEqual(TEXT("and so does the stronger one, which a subtraction would not"),
+			DamageOf(Strong) / StrongBefore, Share, 0.001f);
+	}
+
+	// --- BELOW THE CAP, THE SHARE SCALES -----------------------------------
+
+	{
+		ACataclysmImpCharacter* Imp = Spawn<ACataclysmImpCharacter>(World, FVector(300.0f, 0.0f, 0.0f));
+		ACataclysmImpCharacter* Curser =
+			Spawn<ACataclysmImpCharacter>(World, FVector(700.0f, 0.0f, 0.0f));
+		if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("a curser"), Curser))
+		{
+			return false;
+		}
+
+		Imp->SetAttackDamage(Row.StrengthCap * 2.0f);
+		const float Before = DamageOf(Imp);
+		if (!TestTrue(FString::Printf(
+				TEXT("the Imp deals damage to begin with, got %.2f"), Before),
+			Before > 0.0f))
+		{
+			return false;
+		}
+
+		// HALFWAY TO THE CAP, so the figure is scaled and still under it. Taken
+		// from the row rather than typed, so it stays halfway if the sheet moves.
+		const float Half = 1.0f + (CapScale - 1.0f) * 0.5f;
+		TestTrue(TEXT("Weaken applies below the cap"),
+			UCataclysmAilments::Apply(Curser, Imp, *Kind, Half));
+
+		TestEqual(TEXT("below the cap the share is the row's figure times the magnitude"),
+			DamageOf(Imp) / Before, 1.0f - Row.Strength * Half / 100.0f, 0.001f);
+	}
+
+	// --- AT AND ABOVE THE CAP, THE SHARE STOPS AND THE DURATION GROWS ------
+
+	{
+		ACataclysmImpCharacter* Imp = Spawn<ACataclysmImpCharacter>(World, FVector(400.0f, 0.0f, 0.0f));
+		ACataclysmImpCharacter* Curser =
+			Spawn<ACataclysmImpCharacter>(World, FVector(800.0f, 0.0f, 0.0f));
+		if (!TestNotNull(TEXT("an Imp"), Imp) || !TestNotNull(TEXT("a curser"), Curser))
+		{
+			return false;
+		}
+
+		Imp->SetAttackDamage(Row.StrengthCap * 2.0f);
+		const float Before = DamageOf(Imp);
+		if (!TestTrue(FString::Printf(
+				TEXT("the Imp deals damage to begin with, got %.2f"), Before),
+			Before > 0.0f))
+		{
+			return false;
+		}
+
+		// TWICE THE SCALE THAT REACHES THE CAP. The reduction stops at the cap and
+		// the leftover doubles the duration.
+		TestTrue(TEXT("Weaken applies above the cap"),
+			UCataclysmAilments::Apply(Curser, Imp, *Kind, CapScale * 2.0f));
+
+		TestEqual(TEXT("above the cap the share stops at the cap and no further"),
+			DamageOf(Imp) / Before, 1.0f - Row.StrengthCap / 100.0f, 0.001f);
+
+		// AND THE SURPLUS WENT SOMEWHERE, WHICH IS THE HALF A REDUCTION CANNOT
+		// SHOW. The curse is still on the creature after its own designed duration
+		// has passed, which it would not be if the leftover had been discarded.
+		CataclysmTestWorld::RunClock(World, Row.DurationSeconds * 1.5f);
+		TestTrue(TEXT("and the curse outlives the row's own duration"),
+			UCataclysmSkillEffects::HasTag(Imp, WeakenTag()));
 	}
 
 	return true;

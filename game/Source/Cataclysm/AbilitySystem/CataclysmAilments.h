@@ -36,16 +36,25 @@ enum class ECataclysmAilmentShape : uint8
 	/** Madness, whose row says "Magnitude extends the duration". */
 	LongerWithMagnitude,
 
-	/** Weaken, at the row's own figures. Its row says magnitude raises the
-	 *  reduction to 80% and then extends the duration, and neither half is
-	 *  built, so a chance past 100% applies it no harder yet. Issue #1256.
+	/**
+	 * Weaken: the same division as Cripple below -- the reduction up to the
+	 * row's cap and the surplus into the duration -- applied to the stat the
+	 * row names rather than carried on the tag. Issue #1256.
 	 *
-	 *  CRIPPLE LEFT THIS CASE AND WEAKEN HAS NOT YET, which is the whole of why
-	 *  the two are separate changes. Cripple's reduction is applied by
-	 *  `ACataclysmEnemyCharacter::CrippleMultiplier` today, so there is a
-	 *  behaviour to reproduce exactly before scaling it. Weaken's is applied by
-	 *  NOTHING, so there is nothing to check a result against. */
-	AtItsRowsFigures,
+	 * WHY IT IS A SEPARATE CASE FROM CRIPPLE'S. The arithmetic is identical and
+	 * shared, in `CapThenExtend` below. What differs is where the figure goes,
+	 * and that is not a detail: Cripple's reduction has no attribute to move,
+	 * because an enemy's walk speed is `DesignedWalkSpeedCmPerSecond *
+	 * SpeedMultiplier()` and its attack interval divides by the same, while
+	 * Weaken's does -- `WeaponDamageOf` reads `attack_damage` live on every
+	 * blow.
+	 *
+	 * THE CASE THIS REPLACED WAS `AtItsRowsFigures`, which passed the row's
+	 * duration and no strength at all, so a chance above 100% changed nothing
+	 * about Weaken: not its reduction, not its duration. Weaken was the only
+	 * ailment using it, so the case went with it.
+	 */
+	StrongerThenLongerOnAStat,
 
 	/**
 	 * Cripple: the row's strength times the magnitude up to the row's cap, and

@@ -59,18 +59,68 @@ def test_the_column_exists(rows):
 
 
 def test_every_name_in_it_is_a_stat_the_game_has(rows):
-    """A name the game does not know is an effect that moves nothing."""
-    allowed = set(ALL_STATS) | {generate_datatables.STAT_OF_SOURCE_ELEMENT}
+    """A name the game does not know is an effect that moves nothing.
+
+    THREE KINDS OF NAME ARE ALLOWED and they are allowed for different reasons:
+
+      * one of the 46 character sheet stats, which is almost every case;
+      * `resistance_of_source_element`, which is not a stat at all but a rule --
+        cut whichever resistance matches whoever applied the effect;
+      * an attribute the game resolves that no character sheet shows. Weaken
+        moves `attack_damage`, which is priced off the weapon for a player and
+        so appears on no sheet, but which every blow an enemy strikes reads.
+
+    THE SET COMES FROM THE GENERATOR RATHER THAN BEING LISTED AGAIN HERE. A
+    second copy would let the two drift, and then this test would either refuse a
+    name the generator writes or accept one it refuses -- and either way it would
+    be testing itself rather than the data.
+    """
+    allowed = (set(ALL_STATS)
+               | {generate_datatables.STAT_OF_SOURCE_ELEMENT}
+               | set(generate_datatables.ATTRIBUTES_THAT_ARE_NOT_SHEET_STATS))
 
     for row in rows:
         for name in [part.strip() for part in row["MovesStat"].split(",")
                      if part.strip()]:
             assert name in allowed, (
                 "{} names {!r} in its MovesStat column, and that is not one of "
-                "the 46 character sheet stats nor {!r}. An effect naming a stat "
-                "the game does not have moves nothing and says nothing about "
+                "the 46 character sheet stats, nor {!r}, nor one of the "
+                "attributes no sheet shows. An effect naming a stat the game "
+                "does not have moves nothing and says nothing about "
                 "it.".format(row["Name"], name,
                              generate_datatables.STAT_OF_SOURCE_ELEMENT))
+
+
+def test_the_attributes_that_are_not_sheet_stats_are_each_justified(rows):
+    """That set is a hole in the check above, so it is held to two conditions.
+
+    An entry has to be resolvable by the game AND actually used, or it is a way
+    to write a name that moves nothing -- which is the one fault this column
+    exists to prevent.
+
+    RESOLVABLE is checked against the C++ name-to-attribute map rather than
+    asserted: `UCataclysmPlayerClassStats::StatToAttribute` is what
+    `CataclysmStatsMovedByEffect` looks the name up in, so a name absent from it
+    reaches the game and silently moves nothing.
+    """
+    source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+              / "CataclysmPlayerClassStats.cpp").read_text(encoding="utf-8")
+
+    used = {name.strip()
+            for row in rows
+            for name in row["MovesStat"].split(",")
+            if name.strip()}
+
+    for name in generate_datatables.ATTRIBUTES_THAT_ARE_NOT_SHEET_STATS:
+        assert '{TEXT("%s")' % name in source, (
+            f"{name!r} is allowed past the stat check but is not in "
+            f"UCataclysmPlayerClassStats::StatToAttribute, so an effect naming "
+            f"it would resolve to nothing")
+        assert name in used, (
+            f"{name!r} is allowed past the stat check and no row uses it. Every "
+            f"entry widens what a designer may write, so an unused one is a "
+            f"hole with nothing behind it: remove it, or the row that needed it "
+            f"has gone")
 
 
 def test_a_misspelled_stat_stops_the_generator():

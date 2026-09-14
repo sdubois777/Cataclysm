@@ -378,9 +378,8 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	 *
 	 * EMPTY IS THE ORDINARY ANSWER, and it means one of two things: the effect
 	 * moves no stat at all, or its own code applies it. Cripple is the second
-	 * case: an enemy's speed reads its tag (issue #1152). Weaken is meant to be,
-	 * and no code reduces an enemy's damage for it yet. Moving either onto this
-	 * column is separate work.
+	 * case: an enemy's speed reads its tag (issue #1152), because no enemy
+	 * attribute is read for speed at all.
 	 *
 	 * EVERY NAME IS CHECKED WHEN THE TABLE IS GENERATED, so a misspelling stops
 	 * `tools/generate_datatables.py` with the sheet and row rather than reaching
@@ -388,6 +387,44 @@ struct FCataclysmStatusEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
 	FString MovesStat;
+
+	/**
+	 * What `Strength` is measured in, for the stats `MovesStat` names.
+	 *
+	 * `points`, or empty, means subtract that many points from the stat. That is
+	 * every row that named a stat before Weaken: Shred takes 10 off a resistance
+	 * and Abyssal Aura takes 25 off two of them.
+	 *
+	 * `proportion` means the strength is a share of the stat in per cent, so
+	 * Weaken's 20 leaves the enemy four fifths of its damage.
+	 *
+	 * WHY A SEPARATE COLUMN RATHER THAN READING THE DESCRIPTION. Shred and
+	 * Abyssal Aura both say "%" in their descriptions and both subtract points,
+	 * because a resistance is measured in per cent already. The description
+	 * cannot tell the two apart and neither can a reader who has not been told.
+	 *
+	 * WHY NOT INFER IT FROM `StrengthCap`. Cripple, Weaken and Necrosis all carry
+	 * one and Necrosis's strength is not moving any stat at all, so the cap
+	 * answers a different question and using it here would be true today by
+	 * coincidence.
+	 *
+	 * A PROPORTION IS NOT CLAMPED TO THE STAT'S OWN VALUE, which is the whole
+	 * reason the two cannot share one path. Subtracting points stops at zero, so
+	 * `ApplyNamedEffect` clamps the figure to what the target holds, and
+	 * subtracting a clamped figure reduces the stat by
+	 * `min(Strength, Current) / Current`. **That equals the intended
+	 * `Strength / 100` only when the stat happens to be exactly 100.**
+	 *
+	 * NO ENEMY'S ATTACK DAMAGE IS ANYWHERE NEAR 100. The eight designed figures
+	 * run from 9 to 42, so Weaken's 20 would take an Imp at 9 and a Hellhound at
+	 * 19 to ZERO damage, and a Gatekeeper at 42 down by 48%. It would be
+	 * strongest against the weakest creature, and at the 80 cap it would take
+	 * every one of them to zero -- which the design forbids in as many words:
+	 * "an enemy that deals no damage is harmless, which is a stun by another
+	 * name".
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Status Effect")
+	FString MovesStatBy;
 };
 
 /**
