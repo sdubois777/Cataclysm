@@ -186,6 +186,23 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float SicknessMaxManaLessPercent = 0.0f;
 
+	/**
+	 * How much slower a grabbed character moves, in percent. Grasping Tentacles.
+	 * Issues #1786 and #41.
+	 *
+	 * NOT `MovementSpeedLessPercent`, THOUGH IT MOVES THE SAME STAT, and the
+	 * reason is the one `SicknessMaxHealthLessPercent` above gives. Singularity
+	 * Wells writes that field, both rows are Void, and a floor can carry both --
+	 * at which point a shared field means whichever rule wrote second erases the
+	 * first. Issue #1765 names that fault; two fields become two Less
+	 * multipliers, which is how every other pair in this game composes.
+	 *
+	 * ON AND OFF AS A GRAB TAKES HOLD AND RELEASES, so it is worked out on the
+	 * beat rather than once a floor.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float GraspMovementLessPercent = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
@@ -196,7 +213,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& MovementSpeedLessPercent <= 0.0f
 			&& RecoveryLessPercent <= 0.0f
 			&& SicknessMaxHealthLessPercent <= 0.0f
-			&& SicknessMaxManaLessPercent <= 0.0f;
+			&& SicknessMaxManaLessPercent <= 0.0f
+			&& GraspMovementLessPercent <= 0.0f;
 	}
 };
 
@@ -236,6 +254,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * | `War_Forced_March` | "You take stacking damage if you stand still for >3s. It forces a ""run and gun"" playstyle." | after 3 seconds without moving, one stack a second, each costing 1% of maximum health a second, up to 5 stacks, every stack cleared by moving |
  * | `Void_The_Nihil_s_Embrace` | "As you move, your resistances are slowly and permanently reduced. To cleanse the effect, you must defeat a high tier enemy. The boss's defeat will restore all of your resistances and grant a temporary buff." | 1% off every resistance for each 10 metres walked, down to 10% off; defeating a Boss or Cataclysm Boss gives every point back and grants 10% more for 20 seconds |
  * | `Death_Death_s_Embrace` | "Players periodically gain stacks of a debuff called ""Embrace of Death,"" which reduces healing received. Stacks reset when entering a new floor." | one stack every 10 seconds spent on the floor, each taking 10 percentage points off every amount of health restored, up to 5 stacks; the stairs clear them |
+ * | `Void_Grasping_Tentacles` | "Void tentacles appear all over the dungeon. The player will have to be careful of getting too close or they might be grabbed, restricting their movement." | a tentacle appears near the player every 8 seconds, up to 5 on the floor; each beat spent within 3 metres of one has a 5% chance to be grabbed, and a grab takes 99% of the character's speed for 1.5 seconds before releasing that tentacle for 5 |
  * | `Famine_Wasting_Sickness` | "Enemies have a chance to inflict a stacking debuff that reduces your max HP and max mana. This debuff is permanent for the duration of the dungeon and can only be removed by defeating a floor boss." | each landed enemy blow has a 10% chance to add a stack, up to 5, and each stack takes 3% off maximum health and maximum mana; a boss's death on the floor clears them, and so does the player's own death |
  * | `Death_Mortal_Decay` | "The Death cataclysm introduces an affliction of mortal decay, gradually sapping the player's life force as they progress through the dungeon. To counter this, the player must give death his due souls by reaping enemies to temporarily slow the effect of the affliction." | health drains by 0.1% of the maximum a second for each floor of depth, up to 1% a second; a creature the player kills halves that for 5 seconds |
  *
@@ -257,6 +276,14 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * is one a second, and it lives in the shape of `ForcedMarchStacksAfter` -- one
  * stack plus one for each whole second past the threshold -- rather than in a
  * constant of its own.
+ *
+ * FIVE MORE ARE GRASPING TENTACLES', dated 2026-09-14, and its row states no
+ * number either: how many a floor carries, the chance a beat inside a reach is
+ * grabbed, how long a grab holds, how long before the same tentacle may grab
+ * again, and how much speed a grab takes. Three further figures it uses are
+ * BORROWED rather than chosen -- the reach, the appearance distance and the
+ * cadence -- and that entry says which is which. It also records the two
+ * readings of "grabbed" and why a third shape was built instead. Issue #1786.
  *
  * THREE MORE ARE WASTING SICKNESS'S, dated 2026-09-13, and its row states no
  * number either: the chance a landed blow inflicts a stack, what one stack takes
@@ -368,6 +395,43 @@ public:
 	 * by `FCataclysmFloorPopulation` carries no mark saying so.
 	 */
 	static const TCHAR* WastingSicknessKey;
+
+	/**
+	 * Grasping Tentacles: "Void tentacles appear all over the dungeon. The player
+	 * will have to be careful of getting too close or they might be grabbed,
+	 * restricting their movement." Issues #1786 and #41.
+	 *
+	 * A GRAB IS AN EVENT AND NOT A PLACE THE PLAYER IS STANDING, which is the
+	 * ruling this rule was built to. "Grabbed" has two plain readings and neither
+	 * is clean: rooted in place fits the word and nothing in the game implements
+	 * a root, while slowed-while-inside-a-reach is entirely buildable and would
+	 * make this row a near-duplicate of `Void_Singularity_Wells`, whose own row
+	 * already says "slowing movement by 40%". So a grab takes hold on a chance,
+	 * lasts a few seconds, RELEASES, and that tentacle cannot grab again for a
+	 * while. The coordinating session ruled on 2026-09-14; `docs/DECISIONS.md`
+	 * carries both readings.
+	 *
+	 * NINETY-NINE PER CENT AND NOT A NEW STATE. `UCataclysmStatPipeline::
+	 * LessMultiplierFloor` is -99, so the strongest single reduction the pipeline
+	 * allows takes a 4.0 metre-a-second character to 0.04 -- held in place, while
+	 * still able to attack. That difference is exactly what separates "restricting
+	 * their movement" from `Debuff_Stun`, which stops the target acting at all.
+	 *
+	 * AND DELIBERATELY NOT THE STATUS EFFECT PATH. `UCataclysmSkillEffects::
+	 * ApplyNamedEffect` SUBTRACTS a flat value clamped against the attribute's own
+	 * value, so a magnitude against a speed of 4.0 leaves a character standing
+	 * still with nothing to lift it. `FCataclysmPlayerFloorEffects::
+	 * MovementSpeedLessPercent` records that for Singularity Wells, and it is why
+	 * `Debuff_Cripple` is the wrong instrument here as well.
+	 *
+	 * THE SPAWN NEEDED NO NEW CODE, AND ISSUE #1786 SAYS OTHERWISE. That issue
+	 * reports this row as needing one new function because `ACataclysmTerrain`
+	 * has no floor-lasting spawn. True of that class -- its kinds are None, Pit
+	 * and Wall -- and beside the point: `ACataclysmGroundZone::SpawnForTheFloor`
+	 * does exactly this and already has two production users, Singularity Wells
+	 * and Withered Ground.
+	 */
+	static const TCHAR* GraspingTentaclesKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -855,6 +919,107 @@ public:
 	 * EXPECT ALL THREE TO NEED TUNING AGAINST REAL PLAY, which every other rule
 	 * in this file says of its own figures.
 	 */
+	/**
+	 * Grasping Tentacles: how wide a tentacle's reach is, how far from the player
+	 * one appears, how many a floor carries, how often another appears, the
+	 * chance a beat inside a reach is grabbed, how long a grab holds, how long
+	 * before that tentacle may grab again, and how much speed a grab takes.
+	 *
+	 * THE ROW STATES NO NUMBER AT ALL, so none of these is read off it.
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if it ever
+	 * states one.
+	 *
+	 * THREE ARE BORROWED FROM THIS PROJECT RATHER THAN CHOSEN. The reach is the
+	 * house figure for a patch of ground a character stands in -- the Gatekeeper's
+	 * Soulfall ground, Infernal Rain, a Singularity Well and Withered Ground all
+	 * use 300, and a fifth number would make this one differently sized for no
+	 * reason the row gives. The appearance distance is Infernal Rain's twelve
+	 * metres, for the reason that comment states. The cadence is Singularity
+	 * Wells' eight seconds, which is itself the bottom of the only published
+	 * range found: Diablo IV states cadences for the affixes that act rather than
+	 * persist, and publishes no radius, reach or duration for any of them.
+	 *
+	 * "ALL OVER THE DUNGEON" IS READ AS "NEAR THE PLAYER, REPEATEDLY", WHICH IS A
+	 * JUDGEMENT AND NOT A NEW ONE. Nothing the beat can reach knows the shape of
+	 * the floor: the game mode does not keep the floor plan after building, and
+	 * the player's position is the only thing it can locate four times a second.
+	 * Infernal Rain reads "in combat zones" the same way and `docs/DECISIONS.md`
+	 * records that as a judgement. So a tentacle appears near the player on a
+	 * cadence, and a player who walks the floor meets them all over it.
+	 *
+	 * FIVE AT ONCE, WHICH IS MORE THAN THE THREE SINGULARITY WELLS ALLOWS AND
+	 * DELIBERATELY SO. That row is weight 15 and each of its wells damages,
+	 * slows and is meant to pull; this row is weight 5 and a tentacle does
+	 * nothing at all until it grabs. More of a milder thing is what "all over"
+	 * asks for.
+	 *
+	 * A TWENTIETH OF A BEAT IS THE CHANCE, AND WHAT SIZES IT IS CROSSING RATHER
+	 * THAN STANDING. The beat is a quarter second, so walking through a three
+	 * metre reach at 4 metres a second is about six beats and a one-in-four
+	 * chance of being caught, while lingering four seconds is about even. That is
+	 * "have to be careful of getting too close" -- a risk when you stay, rarely a
+	 * toll when you pass.
+	 *
+	 * A SECOND AND A HALF IS THIS PROJECT'S OWN FIGURE AND NOT AN INVENTED ONE.
+	 * `game/Data/StatusEffects.csv` says of a stun that "designed skills run 0.75
+	 * to 1.5 seconds". A grab is gentler than a stun, because the character can
+	 * still act, so it sits at the top of that band rather than beyond it.
+	 *
+	 * FIVE SECONDS BEFORE THE SAME TENTACLE MAY GRAB AGAIN, AND THE SHAPE IS THE
+	 * GENRE'S EVEN THOUGH THE FIGURE IS MINE. Crowd control in this genre is
+	 * governed by diminishing returns precisely so that repeated application
+	 * cannot hold a player indefinitely -- Diablo III makes a target progressively
+	 * resistant to repeated control, and one published system halves a root's
+	 * duration on a second application within fifteen seconds, quarters it on the
+	 * third, then grants immunity. **No published root DURATION was found for
+	 * Path of Exile or Diablo IV**; the searches returned design commentary. So
+	 * the shape is borrowed and the number is not.
+	 *
+	 * WHAT THE COOLDOWN BUYS, IN ARITHMETIC: a character standing on one tentacle
+	 * is held 1.5 seconds in every 6.5, about 23 per cent of the time, and is free
+	 * the rest. At weight 5 -- the lightest band in the table, shared with Forced
+	 * March and Withered Ground -- that is the intended weight of it.
+	 *
+	 * EXPECT THESE TO NEED TUNING AGAINST REAL PLAY, which every other rule in
+	 * this file says of its own figures.
+	 */
+	static constexpr float GraspingTentaclesReachCm = 300.0f;
+	static constexpr float GraspingTentaclesAppearWithinCm = 1200.0f;
+	static constexpr int32 GraspingTentaclesMostOnAFloor = 5;
+	static constexpr float GraspingTentaclesSecondsBetween = 8.0f;
+	static constexpr float GraspingTentaclesGrabChancePercentPerBeat = 5.0f;
+	static constexpr float GraspingTentaclesGrabSeconds = 1.5f;
+	static constexpr float GraspingTentaclesGrabCooldownSeconds = 5.0f;
+	static constexpr float GraspingTentaclesGrabMovementLessPercent = 99.0f;
+
+	static_assert(
+		GraspingTentaclesGrabMovementLessPercent
+			<= -UCataclysmStatPipeline::LessMultiplierFloor,
+		"A grab now asks for more speed than the stat pipeline will take. It "
+		"floors a single Less at -99 and counts the clamp, so a larger figure "
+		"would be silently reduced to 99 and this constant would stop saying "
+		"what happens.");
+
+	static_assert(
+		GraspingTentaclesGrabMovementLessPercent < 100.0f,
+		"A grab now stops the character dead rather than restricting their "
+		"movement. The row says 'restricting their movement', and a character "
+		"that cannot move at all is a stun -- which this rule deliberately is "
+		"not, because a grabbed character can still act.");
+
+	static_assert(
+		GraspingTentaclesGrabCooldownSeconds > GraspingTentaclesGrabSeconds,
+		"One tentacle can now grab again before its last grab has ended, so a "
+		"player standing in a reach is held without a break. The cooldown being "
+		"longer than the grab is what makes this repeated grabs rather than a "
+		"permanent hold, which is the whole reading this rule was built to.");
+
+	static_assert(
+		GraspingTentaclesAppearWithinCm > GraspingTentaclesReachCm,
+		"A tentacle can no longer appear clear of the player. It must be able "
+		"to land outside its own reach, or it grabs the moment it appears and "
+		"'careful of getting too close' describes nothing the player chose.");
+
 	static constexpr float WastingSicknessChancePercentPerHit = 10.0f;
 	static constexpr float WastingSicknessPercentPerStack = 3.0f;
 	static constexpr int32 WastingSicknessMostStacks = 5;
@@ -1109,6 +1274,30 @@ public:
 	 * @param bInflicts whether this blow's chance came up
 	 */
 	static int32 WastingSicknessStacksAfterHit(int32 Stacks, bool bInflicts);
+
+	/**
+	 * Whether a floor carrying Grasping Tentacles should put another one down.
+	 * Issues #1786 and #41.
+	 *
+	 * THE CAP IS ASKED BEFORE THE CLOCK, the shape `SingularityWellIsDue` uses
+	 * and for its reason: a floor already carrying its limit does no arithmetic
+	 * and does not swallow the clock, so the beat one is destroyed on places the
+	 * next at once.
+	 *
+	 * @param SecondsSinceLast  how long since one was last placed
+	 * @param Alive             how many are on the floor now
+	 */
+	static bool GraspingTentacleIsDue(float SecondsSinceLast, int32 Alive);
+
+	/**
+	 * What a grab takes off the character's speed, in percent, or nothing when
+	 * no grab is holding. Issues #1786 and #41.
+	 *
+	 * A FUNCTION OF WHETHER A GRAB IS RUNNING AND NOTHING ELSE, so the rule can
+	 * be checked by passing a bool rather than by building a world. Every grab is
+	 * worth the same: the row describes being grabbed, not being grabbed harder.
+	 */
+	static float GraspMovementLessPercentWhile(bool bGrabbed);
 
 	/**
 	 * What the modifiers in force on a floor do to the player.
