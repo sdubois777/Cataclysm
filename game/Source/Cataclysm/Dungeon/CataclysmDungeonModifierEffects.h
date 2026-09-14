@@ -1613,13 +1613,22 @@ public:
 		"Every mushroom is now the same kind, and the row's word 'either' "
 		"describes nothing.");
 
+	// A MUSHROOM THAT REACHES NOWHERE CAN BE STOOD ON BY NOBODY, so this row is
+	// unbuilt at zero however right everything else is.
+	//
+	// AND NOT `== WitheredGroundPatchRadiusCm`, WHICH IS WHAT THIS ASSERTION
+	// SAID FIRST. The constant is DECLARED as that one three lines above, so
+	// comparing the two is A == A: an assertion no edit to this file could ever
+	// make fail, which is worse than none because it reads like a guard. The
+	// derivation is held instead by
+	// `test_fungal_overgrowth_mushroom_radius_is_still_a_derivation` in
+	// `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, which reads the
+	// declaration as text and fails when it becomes a number -- the same way
+	// Hellfire's and Brand of the Aggressor's derived radii are held, and each
+	// of those asserts only that it is positive.
 	static_assert(
-		FungalOvergrowthMushroomRadiusCm == WitheredGroundPatchRadiusCm,
-		"A mushroom is no longer the size of the other pieces of ground a "
-		"player stands on. That was the whole argument for the figure -- no row "
-		"states a radius, so they agree rather than each inventing one. If this "
-		"row's mushroom should differ, say why beside the constant and delete "
-		"this assertion rather than loosening it.");
+		FungalOvergrowthMushroomRadiusCm > 0.0f,
+		"A mushroom that reaches nowhere is a mushroom nobody can stand on.");
 
 	static_assert(
 		HellfireChancePercentOnDeath > 0.0f
