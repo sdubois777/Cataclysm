@@ -985,10 +985,30 @@ STATUS_EFFECT_NUMBERS: tuple[tuple[int, str], ...] = (
 #: misspelled basis would silently read as one of the others and a number cannot
 #: be misspelled". A misspelling now stops the generator and names the row.
 #:
-#: EMPTY IS THE ORDINARY ANSWER. Most effects move no stat, and two that do --
-#: Cripple and Weaken -- are deliberately left empty because their own code
-#: applies them today. Moving those onto this column is separate work.
+#: EMPTY IS THE ORDINARY ANSWER. Most effects move no stat, and one that does --
+#: Cripple -- is deliberately left empty because no enemy attribute is read for
+#: speed at all, so its own code applies it from the tag instead. Issue #1152.
+#:
+#: THIS NAMED WEAKEN AS A SECOND SUCH EFFECT until issue #1256 moved it onto the
+#: column. Weaken's reduction does have a reader: `WeaponDamageOf` reads
+#: `attack_damage` live on every blow an enemy strikes.
 STATUS_EFFECT_STAT_COLUMN = 8
+
+#: Column J: what an effect's Strength is measured in, for the stats column I
+#: names.
+#:
+#: WHY A COLUMN AND NOT A READING OF THE DESCRIPTION. Shred says it reduces a
+#: resistance "by 10" and Abyssal Aura says "by 25%", and both subtract that many
+#: points, because a resistance is measured in per cent already. Weaken says "by
+#: 20%" and means one fifth of the number. Nothing in the wording separates the
+#: two cases.
+#:
+#: EMPTY MEANS POINTS, so every row written before this column existed keeps the
+#: behaviour it had.
+STATUS_EFFECT_OPERATION_COLUMN = 9
+
+#: What column J may say. Anything else stops the generator and names the row.
+STATUS_EFFECT_OPERATIONS = ("", "points", "proportion")
 
 #: The one value in that column that is not a stat name.
 #:
@@ -1042,6 +1062,38 @@ def status_effect_stats(cell, index: int, sheet: str, known) -> str:
                 f"whoever applied it.")
 
     return ", ".join(names)
+
+
+def status_effect_operation(cell, index: int, sheet: str, stats: str) -> str:
+    """Column J, checked against the two operations the game can apply.
+
+    Returns the cleaned value, lowercased, or "" for an empty cell. Raises
+    naming the row for anything else, for the same reason column I does: a
+    designer writing "percent" should find out at once rather than ship an
+    effect that silently subtracts points.
+
+    IT REFUSES A VALUE ON A ROW THAT NAMES NO STAT, because that row has nothing
+    to apply an operation to. Writing one there means the stat column was meant
+    to be filled and was not, and reading it as harmless would hide that.
+    """
+    text = clean(cell).strip().lower()
+    if not text:
+        return ""
+
+    if text not in STATUS_EFFECT_OPERATIONS:
+        allowed = ", ".join(repr(one) for one in STATUS_EFFECT_OPERATIONS if one)
+        raise DataError(
+            f"{sheet} row {index}: {text!r} in column J is not an operation this "
+            f"game can apply. Use {allowed}, or leave it empty, which means "
+            f"points.")
+
+    if not stats:
+        raise DataError(
+            f"{sheet} row {index}: column J says {text!r} but column I names no "
+            f"stat, so there is nothing for it to apply to. Name the stat, or "
+            f"clear column J.")
+
+    return text
 
 
 def status_effects(book) -> list[dict]:
@@ -1125,6 +1177,16 @@ def status_effects(book) -> list[dict]:
                          if len(raw) > STATUS_EFFECT_STAT_COLUMN else None)
             row["MovesStat"] = status_effect_stats(stat_cell, index, sheet,
                                                    known)
+
+            # COLUMN J, AND IT IS CHECKED AGAINST COLUMN I rather than on its
+            # own, so an operation written beside an empty stat column stops the
+            # generator instead of reaching the game as a no-op.
+            operation_cell = (raw[STATUS_EFFECT_OPERATION_COLUMN]
+                              if len(raw) > STATUS_EFFECT_OPERATION_COLUMN
+                              else None)
+            row["MovesStatBy"] = status_effect_operation(
+                operation_cell, index, sheet, row["MovesStat"])
+
             out.append(row)
     return unique(out, "Status Effects")
 

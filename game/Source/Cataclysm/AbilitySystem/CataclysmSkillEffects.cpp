@@ -2963,6 +2963,13 @@ namespace
 	const TCHAR* StatOfSourceElement = TEXT("resistance_of_source_element");
 
 	/**
+	 * The `MovesStatBy` value that makes a strength a share of the stat rather
+	 * than a number of points off it. Empty and `points` both mean points, so
+	 * every row written before this column existed keeps its behaviour.
+	 */
+	const TCHAR* StrengthIsAProportion = TEXT("proportion");
+
+	/**
 	 * Which attributes a named status effect moves, for a hit of this type.
 	 *
 	 * READ OUT OF THE DATA SINCE ISSUE #1144, and it used to be one effect's
@@ -2975,10 +2982,16 @@ namespace
 	 * A LIST, BECAUSE AN EFFECT MAY MOVE MORE THAN ONE. Abyssal Aura cuts both
 	 * Demonic and War resistance, which no single-attribute answer could say.
 	 *
-	 * TWO EFFECTS WITH A STRENGTH ARE DELIBERATELY NOT IN THE COLUMN. Cripple's
-	 * slow is applied by its own code: an enemy's speed reads its tag (issue
-	 * #1152). Weaken's damage reduction is applied by nothing yet, and building
-	 * it is separate work.
+	 * ONE EFFECT WITH A STRENGTH IS DELIBERATELY NOT IN THE COLUMN. Cripple's
+	 * slow is applied by its own code, because an enemy's speed reads its tag
+	 * (issue #1152) and no enemy attribute is read for speed at all.
+	 *
+	 * THIS SAID "TWO EFFECTS" AND NAMED WEAKEN AS THE SECOND, which stopped
+	 * being true when Weaken moved onto the column. It also counted wrong while
+	 * it was true: five rows of `game/Data/StatusEffects.csv` carry a strength
+	 * and no stat name -- Cripple, Weaken, Quarry, Feasting and Necrosis -- and
+	 * only Cripple is an effect this path would otherwise handle. Counting the
+	 * rows this function could reach is the count that means anything here.
 	 *
 	 * THIS SAID MOVING CRIPPLE HERE "WOULD APPLY IT TWICE" AND THAT WAS WRONG.
 	 * Measured for issue #1256: it would apply it ZERO times, for two reasons
@@ -2998,9 +3011,14 @@ namespace
 	 */
 	TArray<FGameplayAttribute> CataclysmStatsMovedByEffect(
 		const UDataTable* StatusEffectTable, const FGameplayTag& EffectTag,
-		FName DamageType)
+		FName DamageType, bool& bOutByProportion)
 	{
 		TArray<FGameplayAttribute> Moved;
+
+		// POINTS UNTIL THE ROW SAYS OTHERWISE, so every path that returns early
+		// below leaves the caller with the behaviour that existed before this
+		// column did. A row the table does not hold cannot be a proportion.
+		bOutByProportion = false;
 
 		const FName Row =
 			UCataclysmSkillEffects::StatusEffectRowForTag(EffectTag);
@@ -3020,6 +3038,9 @@ namespace
 		{
 			return Moved;
 		}
+
+		bOutByProportion = Found->MovesStatBy.TrimStartAndEnd().Equals(
+			StrengthIsAProportion, ESearchCase::IgnoreCase);
 
 		TArray<FString> Names;
 		Found->MovesStat.ParseIntoArray(Names, TEXT(","), /*CullEmpty=*/true);
@@ -3085,8 +3106,9 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 		return false;
 	}
 
+	bool bByProportion = false;
 	const TArray<FGameplayAttribute> Stats = CataclysmStatsMovedByEffect(
-		LoadStatusEffectTable(), EffectTag, DamageType);
+		LoadStatusEffectTable(), EffectTag, DamageType, bByProportion);
 	if (Stats.IsEmpty())
 	{
 		// THE TAG IS THE WHOLE EFFECT, which is true of most debuffs. Madness is
@@ -3159,25 +3181,52 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 	// the same Shred landed again.
 	RemoveEffectsGranting(Target, EffectTag);
 
-	// IT CANNOT TAKE A RESISTANCE PAST ZERO, which the Shred row states outright.
-	// The other half of that sentence -- the excess lengthening the effect
-	// instead of being discarded -- is not built, and #1144 carries it.
-	//
-	// THE MOST ANY ONE OF THEM HAS, so an effect naming two stats is not held
-	// back to the smaller of them. Each modifier is clamped again below against
-	// the stat it moves, so a target with 40 Demonic and 0 War resistance loses
-	// 25 Demonic and nothing else rather than losing nothing at all.
-	float Most = 0.0f;
-	for (const FGameplayAttribute& Stat : Held)
+	if (bByProportion)
 	{
-		Most = FMath::Max(Most, Defender->GetNumericAttribute(Stat));
+		// A SHARE IS BOUNDED BY ITSELF AND NOT BY THE STAT. Clamping it the way
+		// the points path does below, and then subtracting it, reduces the stat
+		// by `min(Size, Current) / Current` -- which is the intended
+		// `Size / 100` ONLY when the stat is exactly 100.
+		//
+		// THE EIGHT DESIGNED ATTACK DAMAGE FIGURES RUN FROM 9 TO 42, so a
+		// subtracted Weaken of 20 takes an Imp at 9 and a Hellhound at 19 to
+		// zero, a Corrupted Sentinel at 22 down by 91%, and a Gatekeeper at 42
+		// down by 48%. It is STRONGEST against the weakest creature, it exceeds
+		// its own 80 cap on every one of them, and at that cap it takes all of
+		// them to zero -- which the design forbids in as many words: "an enemy
+		// that deals no damage is harmless, which is a stun by another name".
+		//
+		// A HUNDRED IS THE CEILING, so the multiplier lands at zero rather than
+		// below it. The design caps Weaken at 80 for a stated reason -- "an
+		// enemy that deals no damage is harmless, which is a stun by another
+		// name" -- and this clamp is not that cap. It is the guard that stops a
+		// row stating 120 from making an enemy heal what it hits.
+		Size = FMath::Clamp(Size, 0.0f, 100.0f);
 	}
+	else
+	{
+		// IT CANNOT TAKE A RESISTANCE PAST ZERO, which the Shred row states
+		// outright. The other half of that sentence -- the excess lengthening
+		// the effect instead of being discarded -- is not built, and #1144
+		// carries it.
+		//
+		// THE MOST ANY ONE OF THEM HAS, so an effect naming two stats is not
+		// held back to the smaller of them. Each modifier is clamped again below
+		// against the stat it moves, so a target with 40 Demonic and 0 War
+		// resistance loses 25 Demonic and nothing else rather than losing
+		// nothing at all.
+		float Most = 0.0f;
+		for (const FGameplayAttribute& Stat : Held)
+		{
+			Most = FMath::Max(Most, Defender->GetNumericAttribute(Stat));
+		}
 
-	// NOTHING LEFT TO TAKE STILL APPLIES THE EFFECT, with no modifier on it.
-	// The tag goes on because carrying the curse is what a second skill asking
-	// "is it shredded?" reads. The statement goes on because the next
-	// application is compared with what this one stated, whatever it took.
-	Size = FMath::Clamp(Size, 0.0f, Most);
+		// NOTHING LEFT TO TAKE STILL APPLIES THE EFFECT, with no modifier on it.
+		// The tag goes on because carrying the curse is what a second skill
+		// asking "is it shredded?" reads. The statement goes on because the next
+		// application is compared with what this one stated, whatever it took.
+		Size = FMath::Clamp(Size, 0.0f, Most);
+	}
 
 	const float OnTarget = UCataclysmDebuffs::DurationOn(Defender, DurationSeconds);
 	if (OnTarget <= 0.0f)
@@ -3202,6 +3251,46 @@ bool UCataclysmSkillEffects::ApplyNamedEffect(
 	TArray<FString> Cut;
 	for (const FGameplayAttribute& Stat : Held)
 	{
+		if (bByProportion)
+		{
+			// NOTHING TO TAKE STILL APPLIES THE EFFECT, with no modifier, for
+			// the reason given where the points path says the same.
+			if (Size <= 0.0f)
+			{
+				continue;
+			}
+
+			// A "MORE" MULTIPLIER, NOT AN INCREASE, and the two are different
+			// operations in the engine as well as in the design. Read out of
+			// `GameplayEffectAggregator.cpp`, an attribute resolves as
+			// `((Base + Additive) * MultiplyAdditive / DivideAdditive *
+			// MultiplyCompound) + AddFinal`; `MultiplyAdditive` sums each
+			// modifier's distance from 1 and `MultiplyCompound` multiplies them.
+			// `docs/Cataclysm_GDD_v2.md` states the same shape for the character
+			// sheet and calls the second kind a "more" multiplier.
+			//
+			// SUMMED, TWO 80% REDUCTIONS WOULD REACH A NEGATIVE MULTIPLIER:
+			// 1 + (-0.8) + (-0.8) is -0.6. `WeaponDamageOf` returns the
+			// aggregate with no clamp, so that would arrive at the damage
+			// calculation as an enemy whose blows heal. Compounded, 0.2 x 0.2 is
+			// 0.04 -- it approaches nothing and never crosses it.
+			//
+			// NOTHING ELSE MODIFIES AN ENEMY'S ATTACK DAMAGE TODAY, so no
+			// current test can tell the two operations apart. This is chosen for
+			// the second modifier, which does not exist yet, and
+			// `docs/DECISIONS.md` records it as a judgement rather than a
+			// reading.
+			const int32 Index = Effect->Modifiers.Num();
+			Effect->Modifiers.SetNum(Index + 1);
+			FGameplayModifierInfo& Modifier = Effect->Modifiers[Index];
+			Modifier.Attribute = Stat;
+			Modifier.ModifierOp = EGameplayModOp::MultiplyCompound;
+			Modifier.ModifierMagnitude = FScalableFloat(1.0f - Size / 100.0f);
+
+			Cut.Add(FString::Printf(TEXT("%s by %.0f%%"), *Stat.GetName(), Size));
+			continue;
+		}
+
 		// CLAMPED AGAIN PER STAT, so no single one is taken past zero. A target
 		// with 40 Demonic and 0 War resistance loses 25 Demonic and nothing off
 		// the War it does not have.

@@ -464,11 +464,26 @@ struct CATACLYSM_API FCataclysmStatusEffectNumbers
 	 * How large the effect is, in whatever unit its own description states.
 	 *
 	 * Shred's 10 is resistance, Cripple's 30 is a percentage slow, Weaken's 20 is
-	 * a percentage damage reduction. **What the number is OF is not in the data**
-	 * -- there is no column saying so -- which is issue #1144.
+	 * a percentage damage reduction.
 	 *
-	 * ZERO IS THE ORDINARY CASE. Twenty-three of the twenty-seven debuff rows
-	 * state none, because they are a tag and a duration and nothing more.
+	 * WHAT THE NUMBER IS OF IS IN THE DATA, in two columns. `MovesStat` names the
+	 * stat and `MovesStatBy` says whether the strength is points off it or a
+	 * share of it. This said "there is no column saying so -- which is issue
+	 * #1144" after that issue had been closed by adding the first of them.
+	 *
+	 * CRIPPLE IS THE ONE ROW WITH A STRENGTH THAT NAMES NO STAT, because no enemy
+	 * attribute is read for speed at all, so its own code reads the figure off
+	 * the tag. Issue #1152.
+	 *
+	 * ZERO IS THE ORDINARY CASE. Twenty-three of the twenty-eight debuff rows
+	 * state none, because they are a tag and a duration and nothing more. **This
+	 * said twenty-seven**; measured on 2026-09-13 the sheet holds 28 debuffs, 18
+	 * buffs and 8 damage over time rows.
+	 *
+	 * SEVEN OTHER COMMENTS STILL SAY TWENTY-SEVEN and are issue #1780, which
+	 * also carries the check that would have caught it. They are left alone on
+	 * purpose: correcting some and not others leaves two comments disagreeing,
+	 * and a reader comparing them cannot tell which is current.
 	 *
 	 * IT IS NOT COVERED BY `bUsable` BELOW, deliberately. That flag asks whether
 	 * this row can be applied as damage over time, and Shred is not damage: it

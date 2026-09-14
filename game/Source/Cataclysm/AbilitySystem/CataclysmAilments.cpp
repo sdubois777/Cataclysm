@@ -90,7 +90,7 @@ namespace
 		{TEXT("Weaken"), TEXT("weaken_chance"),
 		 TEXT("Cataclysm.AilmentChance.Weaken"),
 		 TEXT("Debuff_Weaken"), TEXT("Status.Debuff.Weaken"),
-		 &Combat::GetWeakenChanceAttribute, EShape::AtItsRowsFigures},
+		 &Combat::GetWeakenChanceAttribute, EShape::StrongerThenLongerOnAStat},
 		{TEXT("Shred"), TEXT("shred_chance"),
 		 TEXT("Cataclysm.AilmentChance.Shred"),
 		 TEXT("Debuff_Shred"), TEXT("Status.Debuff.Shred"),
@@ -252,6 +252,72 @@ int32 UCataclysmAilments::RollOnLandedBlow(const FGameplayEffectSpec& Spec,
 	return Applied;
 }
 
+namespace
+{
+	/** What a capped effect's magnitude buys: a bigger figure, then a longer one. */
+	struct FCapThenExtend
+	{
+		/** The strength to apply, never above the row's cap. */
+		float Strength = 0.0f;
+
+		/** What to multiply the row's duration by. 1 until the cap is reached. */
+		float Longer = 1.0f;
+	};
+
+	/**
+	 * The design's rule for an effect whose strength has a cap: the magnitude
+	 * raises the strength until it reaches that cap, and the surplus extends the
+	 * duration instead.
+	 *
+	 * `docs/Cataclysm_GDD_v2.md` states it generally -- "A strength with a cap,
+	 * such as a slow: the strength up to that cap, then the duration instead" --
+	 * and again for each effect that has one, Cripple "to a cap of 80%, then the
+	 * duration" and Weaken the same.
+	 *
+	 * THE DIVISION AT THE CAP IS A JUDGEMENT THE DOCUMENT DOES NOT MAKE. It
+	 * fixes that surplus becomes duration and not how much. The multiplier is
+	 * split rather than a rate applied, so that the whole of it is spent and the
+	 * two sides meet: `Scale / CapScale` is exactly 1 at the cap, which leaves
+	 * the duration at the row's own figure there. `docs/DECISIONS.md` carries
+	 * the reasoning and the alternative it was chosen over.
+	 *
+	 * IT NEEDS NO CONSTANT NOBODY HAS, which is the argument that decided it. A
+	 * rate in seconds per surplus point would be a number the design states
+	 * nowhere, and the project owner declined to invent one.
+	 *
+	 * ONE COPY FOR TWO EFFECTS. Cripple carries its figure on the tag and Weaken
+	 * moves an attribute, so they end in different calls -- but the rule that
+	 * decides the two numbers is one rule, and the design states it once.
+	 *
+	 * A ROW WITH NO CAP TAKES THE WHOLE MULTIPLIER INTO STRENGTH, which is the
+	 * honest reading of an empty column rather than a special case: the
+	 * generator's own comment says an empty cap means no NUMERIC cap.
+	 */
+	FCapThenExtend CapThenExtend(const FCataclysmStatusEffectNumbers& Row,
+								 float Scale)
+	{
+		FCapThenExtend Out;
+
+		Out.Strength = Row.StrengthCap > 0.0f
+			? FMath::Min(Row.Strength * Scale, Row.StrengthCap)
+			: Row.Strength * Scale;
+
+		// HOW MUCH OF THE MULTIPLIER REACHED THE CAP, and the rest extends the
+		// duration. Guarded on a strength of zero because that would divide by
+		// nothing; such a row has no reduction to raise, so all of the
+		// multiplier is surplus and the duration takes it.
+		const float CapScale = (Row.StrengthCap > 0.0f && Row.Strength > 0.0f)
+			? Row.StrengthCap / Row.Strength
+			: 0.0f;
+
+		Out.Longer = (CapScale > 0.0f && Scale > CapScale)
+			? Scale / CapScale
+			: 1.0f;
+
+		return Out;
+	}
+}
+
 bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 							   const FCataclysmAilmentKind& Kind, float Magnitude,
 							   const UGameplayAbility* Skill)
@@ -302,9 +368,21 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 		return UCataclysmSkillEffects::ApplyNamedEffect(Instigator, Target, Tag,
 			Row.DurationSeconds * Scale);
 
-	case EShape::AtItsRowsFigures:
+	case EShape::StrongerThenLongerOnAStat:
+	{
+		// THE STAT AND THE OPERATION BOTH COME FROM THE ROW. Weaken's row names
+		// `attack_damage` and says its strength is a proportion of it, so
+		// `ApplyNamedEffect` puts a "more" multiplier of `1 - Strength/100` on
+		// the attribute that every blow reads. Nothing here needs to know which
+		// stat that is.
+		//
+		// NO DAMAGE TYPE, for the same reason Shred's call passes none: the
+		// damage type exists to resolve `resistance_of_source_element`, and a
+		// row naming an ordinary stat does not use it.
+		const FCapThenExtend Split = CapThenExtend(Row, Scale);
 		return UCataclysmSkillEffects::ApplyNamedEffect(Instigator, Target, Tag,
-			Row.DurationSeconds);
+			Row.DurationSeconds * Split.Longer, Split.Strength, NAME_None);
+	}
 
 	case EShape::StrongerThenLongerWithMagnitude:
 	{
@@ -312,35 +390,21 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 		// slow in per cent -- 30 means 30% slower -- so `StrengthCap` of 80
 		// means an 80% slow. `CrippleMultiplier` turns whichever figure it
 		// receives into `1 - figure/100`.
-		//
-		// A ROW WITH NO CAP TAKES THE WHOLE MULTIPLIER INTO STRENGTH, which is
-		// the honest reading of an empty column rather than a special case:
-		// the generator's own comment says an empty cap means no NUMERIC cap.
-		const float Capped = Row.StrengthCap > 0.0f
-			? FMath::Min(Row.Strength * Scale, Row.StrengthCap)
-			: Row.Strength * Scale;
+		const FCapThenExtend Split = CapThenExtend(Row, Scale);
 
-		// HOW MUCH OF THE MULTIPLIER REACHED THE CAP, and the rest extends the
-		// duration. Guarded on a strength of zero because that would divide by
-		// nothing; such a row has no reduction to raise, so all of the
-		// multiplier is surplus and the duration takes it.
-		const float CapScale = (Row.StrengthCap > 0.0f && Row.Strength > 0.0f)
-			? Row.StrengthCap / Row.Strength
-			: 0.0f;
-
-		const float Longer = (CapScale > 0.0f && Scale > CapScale)
-			? Scale / CapScale
-			: 1.0f;
-
-		// THE TAG CARRIES THE FIGURE, because this reduction is a PERCENTAGE and
-		// `ApplyNamedEffect` subtracts an absolute amount from an attribute --
-		// right for Shred taking 10 off a resistance, wrong here. No enemy
-		// attribute is read for speed in any case: an enemy's walk speed is
+		// THE TAG CARRIES THE FIGURE, because no enemy attribute is read for
+		// speed at all: an enemy's walk speed is
 		// `DesignedWalkSpeedCmPerSecond * SpeedMultiplier()` and its attack
 		// interval divides by the same, neither of which reads one. Issue #1256
 		// records the measurement.
+		//
+		// WEAKEN IS THE OTHER HALF OF THAT SENTENCE AND GOES THE OTHER WAY. Its
+		// reduction is a proportion too, and it does have an attribute to move,
+		// so it uses `StrongerThenLongerOnAStat` above and the same
+		// `CapThenExtend` rule. Which of the two an effect wants is decided by
+		// whether a reader exists, not by the shape of its number.
 		return UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target,
-			Tag, Row.DurationSeconds * Longer, Capped);
+			Tag, Row.DurationSeconds * Split.Longer, Split.Strength);
 	}
 
 	case EShape::ShareOfCurrentHealth:
