@@ -2285,7 +2285,11 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	}
 
 	const TArray<FCataclysmItem> Worn = {
-		Carrying(TEXT("Head_Helm"), ShieldBenefit, nullptr)};
+		// A REAL DRAWBACK NAME RATHER THAN NOTHING. Every other call in this file
+		// passes one, `Carrying` does `FName(Negative)` with whatever it is given,
+		// and this one has no effect row, so it adds nothing and cannot be what
+		// makes the assertions below pass.
+		Carrying(TEXT("Head_Helm"), ShieldBenefit, DrawbackWithNoEffect)};
 
 	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
 	TArray<FCataclysmPoolAction> Actions;
