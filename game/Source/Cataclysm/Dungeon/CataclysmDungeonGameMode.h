@@ -959,16 +959,24 @@ private:
 	float SinceWaveCheckSeconds = 0.0f;
 
 	/**
-	 * One beat of the two dungeon modifiers that change while the player plays.
+	 * One beat of every dungeon modifier that changes while the player plays.
 	 * Issue #41, slice 2.
 	 *
 	 * ON THE WAVE CHECK'S BEAT RATHER THAN A TIMER OF ITS OWN, for the reason that
 	 * check gives: a quarter of a second is faster than a player notices, and a
 	 * timer per rule is one more thing to cancel.
 	 *
-	 * ALL THREE RULES ACT ON THE PLAYER ALONE, so this does not grow with a Horde's
-	 * crowd: it is three tests of the floor's modifier list on a floor carrying
-	 * none of them.
+	 * NOTHING HERE GROWS WITH A HORDE'S CROWD. Every rule below acts on the
+	 * player, or on ground placed near the player, and none walks the floor's
+	 * creatures. On a floor carrying none of these rows the cost is one test of
+	 * a short array per rule and nothing else.
+	 *
+	 * SAID THAT WAY RATHER THAN AS A COUNT, AND BOTH COUNTS THAT WERE HERE WENT
+	 * WRONG. This comment opened "One beat of the TWO dungeon modifiers" and
+	 * went on to say "ALL THREE RULES ACT ON THE PLAYER ALONE ... three tests",
+	 * while the function below tested six rows and two of them placed actors.
+	 * Issue #1786. Read the tests in the function; do not write their number
+	 * here again.
 	 */
 	void StepFloorRulesThatChange();
 
@@ -1059,6 +1067,27 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Mortal Decay: take the floor's share of the player's health this beat.
+	 * Issues #1786 and #41.
+	 *
+	 * THE SAME SHAPE AS `StepForcedMarch` AND NOT THE SHAPE OF THE FOUR RULES
+	 * BETWEEN THEM. It writes no field on this object and calls no applier: the
+	 * row saps health outright, so `UCataclysmSkillEffects::ReduceHealthDirectly`
+	 * is the whole of it and `FCataclysmPlayerFloorEffects` never hears about it.
+	 *
+	 * HOW FAST IT SAPS IS THE FLOOR NUMBER AND WHETHER A KILL'S WINDOW IS STILL
+	 * RUNNING, and both are read here rather than stored: the depth is on the
+	 * floor's brief and the window is a world-time stamp, so nothing has to be
+	 * put back when either changes.
+	 *
+	 * NOT A HIT, for the reason Forced March gives: the damage comes from the
+	 * floor rather than from an attacker, so no evasion roll, no block, no
+	 * armour, no resistance, no critical strike and no ailment touch it.
+	 */
+	void StepMortalDecay(class ACataclysmPlayerCharacter* Player,
+						 class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Put every floor effect on the player, the beat-driven ones included.
 	 * Issue #41, slice 5.
 	 *
@@ -1117,6 +1146,32 @@ private:
 	void NoteDeathForWitheredGround(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Mortal Decay's slowing, on a creature the player reaped. Issues #1786
+	 * and #41.
+	 *
+	 * THE PLAYER MUST HAVE DONE THE KILLING, WHICH IS THE ROW'S OWN WORDS AND
+	 * THE ONE PLACE THIS DIFFERS FROM WITHERED GROUND'S LISTENER. That row says
+	 * "Enemies leave patches of Barren Earth on death" and takes every death;
+	 * this one says "the player must give death his due souls by reaping
+	 * enemies", so a creature killed by a patch of burning ground, by another
+	 * creature, or by anything else buys the player nothing.
+	 *
+	 * A MINION'S KILL COUNTS, AND THAT NEEDS NO CODE HERE. `FCataclysmDeathNotice
+	 * ::Killer` is credited to the SUMMONER for a minion's blow -- its own
+	 * comment says so -- so a Ritualist reaping through its imps is reaping.
+	 *
+	 * NO COUNT OF KILLS IS KEPT, AND NOTHING NEEDS ONE. The row asks for the
+	 * affliction to be slowed temporarily rather than for souls to be tallied,
+	 * so a world-time stamp pushed forward by each kill is the whole state.
+	 * `NihilsEmbraceRewardUntilSeconds` is the same shape for the same reason.
+	 *
+	 * A SECOND KILL REPLACES THE WINDOW RATHER THAN EXTENDING IT, so a player
+	 * killing steadily stays slowed and one kill never buys more than its own
+	 * few seconds.
+	 */
+	void NoteDeathForMortalDecay(const struct FCataclysmDeathNotice& Notice);
+
+	/**
 	 * How far the player had walked when The Nihil's Embrace was last cleansed.
 	 * Issue #41, slice 2.
 	 *
@@ -1135,6 +1190,25 @@ private:
 	 * no reward running. Issue #41, slice 2.
 	 */
 	float NihilsEmbraceRewardUntilSeconds = -1.0f;
+
+	/**
+	 * World time until which Mortal Decay is slowed by a kill, or negative for
+	 * a decay running at its full rate. Issues #1786 and #41.
+	 *
+	 * THE SAME SHAPE AS THE FIELD ABOVE, AND FOR THE SAME REASON: the rule needs
+	 * to know whether a window is open, not how many kills opened it, so there
+	 * is nothing to count and nothing to decrement.
+	 *
+	 * IT IS NOT PUT BACK WHEN THE FLOOR CHANGES, UNLIKE EVERY BEAT-DRIVEN FIELD
+	 * BELOW. Those hold something applied to the character, which changing floor
+	 * takes off; this holds nothing but a time. A player who kills and takes the
+	 * stairs at once carries the rest of that window onto the next floor, which
+	 * is a few seconds and is what "temporarily" already means.
+	 *
+	 * LEAVING THE DUNGEON DOES PUT IT BACK, beside The Nihil's Embrace's, so the
+	 * field's lifetime is the dungeon's rather than the session's.
+	 */
+	float MortalDecaySlowedUntilSeconds = -1.0f;
 
 	/**
 	 * What the last beat put on the player, so a beat that changes nothing asks

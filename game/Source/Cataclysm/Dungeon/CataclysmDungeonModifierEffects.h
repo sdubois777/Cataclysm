@@ -179,16 +179,21 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * Dimensions changed a floor at all, and it did so by drawing another modifier
  * that did nothing either. Issue #1558 records the score half of that.
  *
- * WHAT IS BUILT HERE, AND IT IS FIVE. The first two change the player's own
- * maximums floor by floor, which is the cheapest shape a modifier comes in: no
- * new actor, no new creature, no art. The two that issue #41's slice 2 added
- * are the first that change while the player plays rather than once a floor,
- * and both read the movement state `UCataclysmMovement` keeps. The fifth,
- * slice 5's Death's Embrace, is the first to change what a player's healing is
- * worth rather than what their bars hold.
+ * WHAT IS BUILT HERE. The two per-floor rules change the player's own maximums
+ * floor by floor, which is the cheapest shape a modifier comes in: no new
+ * actor, no new creature, no art. The two that issue #41's slice 2 added are
+ * the first that change while the player plays rather than once a floor, and
+ * both read the movement state `UCataclysmMovement` keeps. Slice 5's Death's
+ * Embrace is the first to change what a player's healing is worth rather than
+ * what their bars hold.
  *
- * THE FIFTH IS ALSO THE FIRST TO USE THE FLAT BUCKET. The other four take a
- * share of a stat with a real base, so a Less multiplier says what they mean;
+ * NAMED RATHER THAN COUNTED, AND THE COUNT IS EXACTLY WHAT WENT WRONG. This
+ * heading read "AND IT IS FIVE" from the commit that made it five until the one
+ * that added Mortal Decay, and three rules landed in between without moving it.
+ * Read the table's rows; do not write their number here again. Issue #1786.
+ *
+ * DEATH'S EMBRACE IS THE ONE THAT USES THE FLAT BUCKET. A rule taking a share
+ * of a stat with a real base can say what it means with a Less multiplier;
  * `healing_received_reduction` is zero for every class, and a multiplier on zero
  * is zero however large it is.
  *
@@ -199,6 +204,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * | `War_Forced_March` | "You take stacking damage if you stand still for >3s. It forces a ""run and gun"" playstyle." | after 3 seconds without moving, one stack a second, each costing 1% of maximum health a second, up to 5 stacks, every stack cleared by moving |
  * | `Void_The_Nihil_s_Embrace` | "As you move, your resistances are slowly and permanently reduced. To cleanse the effect, you must defeat a high tier enemy. The boss's defeat will restore all of your resistances and grant a temporary buff." | 1% off every resistance for each 10 metres walked, down to 10% off; defeating a Boss or Cataclysm Boss gives every point back and grants 10% more for 20 seconds |
  * | `Death_Death_s_Embrace` | "Players periodically gain stacks of a debuff called ""Embrace of Death,"" which reduces healing received. Stacks reset when entering a new floor." | one stack every 10 seconds spent on the floor, each taking 10 percentage points off every amount of health restored, up to 5 stacks; the stairs clear them |
+ * | `Death_Mortal_Decay` | "The Death cataclysm introduces an affliction of mortal decay, gradually sapping the player's life force as they progress through the dungeon. To counter this, the player must give death his due souls by reaping enemies to temporarily slow the effect of the affliction." | health drains by 0.1% of the maximum a second for each floor of depth, up to 1% a second; a creature the player kills halves that for 5 seconds |
  *
  * `docs/DECISIONS.md` carries the judgements these needed. FOUR ARE THE FIRST
  * TWO RULES', dated 2026-09-11: that a floor's share is taken as a Less
@@ -218,6 +224,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * is one a second, and it lives in the shape of `ForcedMarchStacksAfter` -- one
  * stack plus one for each whole second past the threshold -- rather than in a
  * constant of its own.
+ *
+ * FOUR MORE ARE MORTAL DECAY'S, dated 2026-09-13, and its row states no number
+ * either: how much faster the decay runs per floor of depth, the fastest it
+ * runs, how much a kill takes off it, and how long that lasts. Issue #1786.
  *
  * THREE MORE ARE SLICE 5'S, dated 2026-09-12, and Death's Embrace's row states
  * no number either: what one stack takes off healing, the most stacks it
@@ -268,6 +278,29 @@ public:
 	static const TCHAR* NihilsEmbraceKey;
 	static const TCHAR* DeathsEmbraceKey;
 	static const TCHAR* FieldMedicKey;
+
+	/**
+	 * Mortal Decay: "The Death cataclysm introduces an affliction of mortal
+	 * decay, gradually sapping the player's life force as they progress through
+	 * the dungeon. To counter this, the player must give death his due souls by
+	 * reaping enemies to temporarily slow the effect of the affliction."
+	 * Issues #1786 and #41.
+	 *
+	 * "AS THEY PROGRESS THROUGH THE DUNGEON" IS THE FLOOR NUMBER AND NOT THE
+	 * WALK, AND THAT IS A READING OF A STANDING RULE RATHER THAN A NEW
+	 * JUDGEMENT. `CLAUDE.md`: "Depth and reward are the same axis. Depth and
+	 * time are not, once a player has invested in separating them ... Resolve
+	 * timers scale with depth and never with the walk time, for that reason."
+	 * `FCataclysmDungeon::Floors` is the depth and `FCataclysmDungeon::WalkDays`
+	 * is the walk cost. A decay keyed to the distance walked would let a player
+	 * who had bought faster walking take less of it at the same depth, which
+	 * inverts what the row is for.
+	 *
+	 * THE SECOND RULE HERE THAT TAKES HEALTH RATHER THAN MOVING A STAT, after
+	 * Forced March. So it needs no field on `FCataclysmPlayerFloorEffects` and
+	 * appears in neither `StatModifiersFor` nor `Describe`.
+	 */
+	static const TCHAR* MortalDecayKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -654,6 +687,89 @@ public:
 	static constexpr float DeathsEmbraceSecondsPerStack = 10.0f;
 
 	/**
+	 * Mortal Decay: how much faster the decay runs for each floor of depth, the
+	 * fastest it ever runs, how much a kill takes off it, and for how long.
+	 *
+	 * ALL FOUR ARE JUDGEMENTS. The row states no number and no percentage at
+	 * all. `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if it
+	 * ever states one, at which point whichever of these it names stops being a
+	 * judgement.
+	 *
+	 * A SHARE OF MAXIMUM HEALTH PER SECOND, WHICH IS BOTH THE HOUSE UNIT AND THE
+	 * GENRE'S. Forced March's comment above gives the house reason: a share
+	 * "means the same thing at every character level". Path of Exile's Delve
+	 * prices its own depth-scaled drain the same way -- standing in the Darkness
+	 * costs 2% of Life and Energy Shield per second per stack, and a player's
+	 * Darkness Resistance falls automatically the deeper they delve. So a life
+	 * drain that worsens with depth is a shape a shipped game in this genre
+	 * already runs, and it is priced in exactly these units.
+	 *
+	 * ONE PER CENT A SECOND AT WORST, WHICH IS THE BOTTOM OF THIS GAME'S OWN
+	 * BAND RATHER THAN THE MIDDLE OF IT. Forced March reaches 5% a second at
+	 * five stacks, a patch of Infernal Rain costs 2% a second, and a Singularity
+	 * Well costs 1%. **Every one of those three stops when the player moves** --
+	 * out of the patch, out of the well, or off the spot Forced March punishes.
+	 * This one has nowhere to stand: no position on the floor is free of it, and
+	 * the only lever the row gives the player is killing. So its ceiling sits at
+	 * the bottom of the band, and Delve's 2% is NOT evidence for a larger
+	 * figure, because Delve's darkness is cleared by one step back into light.
+	 *
+	 * A TENTH OF A PER CENT A FLOOR, SO THE CEILING ARRIVES AT FLOOR 10. Against
+	 * the fifty seconds Death's Embrace's comment calls "about one floor's
+	 * fighting", floor 1 costs about 5% of a health bar and floor 10 and deeper
+	 * costs about half of one, for a player who never kills anything. Five per
+	 * cent is the "gradually" the row asks for; half a bar is the reason to
+	 * reap.
+	 *
+	 * HALF, BECAUSE "SLOW" IS NOT "STOP". The row says "temporarily slow the
+	 * effect of the affliction", so a kill must not buy immunity. Half is the
+	 * plain reading of the word and is large enough that reaping is clearly
+	 * worth doing.
+	 *
+	 * FIVE SECONDS A KILL, SO FIGHTING HOLDS IT AND WALKING DOES NOT. A player
+	 * working through a pack kills every few seconds and keeps the slow up; one
+	 * crossing an empty floor loses it. That is what makes "give death his due
+	 * souls" something the player keeps doing rather than did once.
+	 *
+	 * THE GENRE SETTLES THE SHAPE OF THAT WINDOW AND NOT ITS LENGTH. Path of
+	 * Exile's Breach is the published case of killing buying time: a Breach
+	 * stays open a minimum of 30 seconds and a maximum of 60, and how fast its
+	 * monsters die is what moves it between the two. So a BOUNDED window is what
+	 * a shipped game grants for killing, and this one is bounded by expiring
+	 * rather than by a ceiling. The five seconds themselves are mine.
+	 *
+	 * EXPECT ALL FOUR TO NEED TUNING AGAINST REAL PLAY, which Forced March,
+	 * Infernal Rain, Singularity Wells and Death's Embrace each say of their own
+	 * figures. `docs/DECISIONS.md` carries the sources.
+	 */
+	static constexpr float MortalDecayPercentPerSecondPerFloor = 0.1f;
+	static constexpr float MortalDecayMostPercentPerSecond = 1.0f;
+	static constexpr float MortalDecaySlowPercent = 50.0f;
+	static constexpr float MortalDecaySlowSeconds = 5.0f;
+
+	static_assert(
+		MortalDecaySlowPercent > 0.0f && MortalDecaySlowPercent < 100.0f,
+		"Mortal Decay's reward for a kill no longer slows the affliction. At 100 "
+		"a kill stops it outright, which the row does not ask for -- it says "
+		"'temporarily slow the effect' -- and at 0 the row's second sentence "
+		"does nothing at all.");
+
+	static_assert(
+		MortalDecayMostPercentPerSecond <= SingularityWellsPercentPerSecond,
+		"Mortal Decay now costs more per second than standing inside a "
+		"Singularity Well. That was the whole argument for its ceiling: every "
+		"other per-second cost in this file can be stopped by moving and this "
+		"one cannot, so it sits at the bottom of the band. If it should cost "
+		"more, say why beside the constant and delete this assertion rather "
+		"than loosening it.");
+
+	static_assert(
+		MortalDecayPercentPerSecondPerFloor < MortalDecayMostPercentPerSecond,
+		"Mortal Decay now reaches its ceiling on the first floor, so the row's "
+		"'gradually ... as they progress through the dungeon' describes nothing "
+		"a player could observe: every floor would sap at the same rate.");
+
+	/**
 	 * How much of what this row says has been built.
 	 *
 	 * NOT BUILT FOR EVERY KEY THIS FILE DOES NOT NAME, a key that is not a row
@@ -811,6 +927,30 @@ public:
 	 * points. Issue #41, slice 5.
 	 */
 	static float DeathsEmbraceHealingLessPercent(int32 Stacks);
+
+	/**
+	 * How fast Mortal Decay saps a player on this floor, as a share of their
+	 * maximum health per second. Issues #1786 and #41.
+	 *
+	 * THE FLOOR NUMBER AND NOT THE WALK. See `MortalDecayKey` for the standing
+	 * rule that settles which of the two "as they progress through the dungeon"
+	 * means.
+	 *
+	 * FLOOR 1 ALREADY COUNTS, because this shares `ShareTakenOnFloor` with the
+	 * two per-floor rules rather than repeating their arithmetic, and that
+	 * function is where the judgement lives.
+	 *
+	 * THE CAP IS TAKEN FIRST AND THE KILL SLOW SECOND. The other order would let
+	 * the cap swallow the slow on any floor deep enough for the uncapped rate to
+	 * exceed twice the ceiling, so from floor 20 down reaping would change
+	 * nothing -- which is where the row most needs it to.
+	 *
+	 * @param FloorNumber     counted from 1. Zero or below saps nothing
+	 * @param bSlowedByAKill  whether a kill's window is still running
+	 * @return the share of maximum health lost each second, in percent
+	 */
+	static float MortalDecayPercentPerSecond(int32 FloorNumber,
+											 bool bSlowedByAKill);
 
 	/**
 	 * What the modifiers in force on a floor do to the player.
