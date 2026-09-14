@@ -888,6 +888,103 @@ CATACLYSM_TEST(FCataclysmNoCritTagExistsTest,
 	return true;
 }
 
+CATACLYSM_TEST(FCataclysmCritMultiplierFollowsASkillTagTest,
+	"Cataclysm.Crit.ACriticalStrikeMultiplierScopedToATagReachesOnlyThatSkill")
+{
+	using namespace CataclysmCritTest;
+
+	// THE ROW THIS IS FOR: "Spell critical strikes deal 50%-100% increased
+	// damage", one of the enchantments surveyed on #1642. It cannot be written
+	// while the multiplier is read off the gameplay attribute, because that
+	// attribute is worked out with no skill in hand and a modifier requiring a
+	// tag is missing from it.
+	//
+	// WHY IT HAS TO BE A REAL HIT, which is the reason the health-conditioned
+	// chance test above gives for itself. The multiplier is read inside
+	// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. Every test in
+	// CataclysmStatPipelineTests.cpp would go on passing with the attribute read
+	// put back, and a spell build would simply never gain the bonus.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		FScopedCombatant Attacker(World);
+		FScopedCombatant Defender(World);
+
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1'000.0f);
+
+		// ALWAYS CRITS, SO THE ONLY THING THAT VARIES IS THE MULTIPLIER. The
+		// chance is out of the question entirely and any difference between the
+		// two hits is the multiplier's doing.
+		Attacker.SetCritical(/*Chance=*/100.0f, /*Multiplier=*/150.0f);
+		const FScopedCritRoll AlwaysCrits(0.0f);
+
+		// THE TAG IS READ OUT OF THE VOCABULARY RATHER THAN TYPED AS A STRING
+		// HERE. A modifier requiring a tag nothing registers is a modifier
+		// scoped to the empty set, and it would read as a change that does not
+		// work rather than as a test that asked the wrong question.
+		const FGameplayTag SpellTag = UCataclysmSkillEffects::SpellTag();
+		if (!TestTrue(TEXT("Type.Spell is a registered tag"), SpellTag.IsValid()))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		FGameplayTagContainer SpellTags;
+		SpellTags.AddTag(SpellTag);
+
+		// THE STAT'S INPUTS AS `ApplyTo` WOULD LEAVE THEM. A base of 150, which
+		// is what the attribute holds, and 150 more that only a spell may have.
+		// So a spell doubles what any other skill gets and the ratio is exactly
+		// two.
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 150.0f;
+
+		FCataclysmStatModifier SpellOnly;
+		SpellOnly.Bucket = ECataclysmStatBucket::Flat;
+		SpellOnly.Source = ECataclysmModifierSource::Enchantment;
+		SpellOnly.Value = 150.0f;
+		SpellOnly.RequiredTags.AddTag(SpellTag);
+		Inputs.Modifiers.Add(SpellOnly);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("crit_multiplier")), Inputs);
+		Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer());
+		const float Unscoped = Defender.TakeDamageReading();
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 SpellTags);
+		const float Spell = Defender.TakeDamageReading();
+
+		if (!TestTrue(FString::Printf(TEXT("both hits landed (%.0f, %.0f)"),
+									  Unscoped, Spell),
+					  Unscoped > 0.0f && Spell > 0.0f))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+
+		// THE UNSCOPED HIT IS ASSERTED AS A NUMBER AND NOT ONLY AS THE SMALLER
+		// OF THE TWO. 1,000 of attack damage at a multiplier of 150 is 1,500, so
+		// this says the scoped modifier did not leak into a skill that does not
+		// carry the tag -- a ratio alone would be satisfied by both hits being
+		// wrong in the same proportion.
+		TestEqual(TEXT("a skill without the tag takes the base multiplier only"),
+				  Unscoped, 1'500.0f, 1.0f);
+
+		TestEqual(TEXT("and a spell takes the scoped one as well, so its "
+					   "critical strike is twice as large"),
+				  Spell / Unscoped, 2.0f, 0.01f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif  // WITH_AUTOMATION_TESTS

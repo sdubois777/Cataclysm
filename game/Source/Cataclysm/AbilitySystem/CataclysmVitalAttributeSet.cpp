@@ -554,7 +554,32 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Hit.CritChance = FMath::Min(
 							Stated >= 0.0f ? Stated : OwnCritChance,
 							Offence->GetMaxCritChance());
-						Hit.CritMultiplier = Offence->GetCritMultiplier();
+
+						// THE MULTIPLIER IS ASKED FOR TOO, AND FOR THE SAME
+						// REASON THE CHANCE IS. Issue #947 lists it among the
+						// stats a skill uses that still read the attribute; the
+						// chance four lines above was the first of that list to
+						// be wired and this is the second. The attribute is
+						// worked out with no skill in hand, so a modifier
+						// requiring a tag or a state is missing from it, and a
+						// row saying "Spell critical strikes deal 50%-100%
+						// increased damage" would be dropped in silence.
+						//
+						// THE SAME `Asking` AND THE SAME `AssetTags`, so the two
+						// halves of one critical strike are read on identical
+						// terms. A tag that scopes the chance and not the
+						// multiplier would be the worse outcome of the two.
+						//
+						// FALLS BACK TO THE ATTRIBUTE, which is what a character
+						// with no such modifier has always had. `StatForSkill`
+						// answers the fallback when nothing was recorded for the
+						// stat -- every enemy is in that case, because an enemy
+						// is never given a character stat line.
+						Hit.CritMultiplier = Asking
+							? Asking->StatForSkill(FName(TEXT("crit_multiplier")),
+												   AssetTags,
+												   Offence->GetCritMultiplier())
+							: Offence->GetCritMultiplier();
 					}
 				}
 			}

@@ -1236,4 +1236,112 @@ CATACLYSM_TEST(FCataclysmApplyingRefusesNothing,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Moving a stat from "read off the attribute" to "asked for through the
+// pipeline" must not change what a character without such a row already had.
+// Issue #947.
+//
+// WHY THIS CONTROL EXISTS AND WHAT IT CAN CATCH. `StatForSkill` does not return
+// the attribute when a stat has inputs recorded -- it recomputes the stat from
+// its base through the whole modifier list in one pipeline pass. So the claim
+// "nothing without a scoped row is changed" is a real claim about two
+// arithmetics agreeing, not a tautology, and it can fail: `ApplyTo` and the
+// pipeline have to sum the same increases over the same base. The header of
+// `StatForSkill` gives the case that makes the difference visible -- a base of
+// 100 carrying an unscoped +50% and a scoped +50% is 200 through one pass and
+// 225 through two.
+//
+// AND WHY IT IS WRITTEN ON A CHARACTER THAT HAS RUN `ApplyTo`. A character with
+// no recorded inputs takes `StatForSkill`'s fallback and answers whatever it was
+// handed, so the same assertions would pass with the pipeline entirely broken.
+// The sentinel below is what refuses that: if the answer IS the fallback, the
+// control measured nothing and says so instead of passing.
+// --------------------------------------------------------------------------
+
+CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
+	"Cataclysm.PlayerStats.AskingForAStatAnswersItsAttributeWhenNoRowIsScoped")
+{
+	using namespace CataclysmPlayerClassStatsTest;
+
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_ClassStats does not exist."));
+		return false;
+	}
+
+	UWorld* World = MakeWorld();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedCharacter Character(World);
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName,
+		UCataclysmPlayerClassStats::DefaultLevel);
+
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<UCataclysmAbilitySystemComponent>(Character.AbilitySystem);
+	if (!TestNotNull(TEXT("the character's ability system is this project's"),
+					 Asking))
+	{
+		return false;
+	}
+
+	// A VALUE NO STAT CAN HOLD, SO THE FALLBACK IS RECOGNISABLE. `StatForSkill`
+	// returns what it is handed when a stat has no recorded inputs. Handing it a
+	// number the pipeline cannot produce turns "this stat was never recorded"
+	// from a silent pass into a named failure.
+	constexpr float Sentinel = -98'765.0f;
+
+	struct FCase
+	{
+		const TCHAR* Stat;
+		FGameplayAttribute Attribute;
+	};
+	const FCase Cases[] = {
+		{TEXT("crit_multiplier"),
+		 UCataclysmCombatAttributeSet::GetCritMultiplierAttribute()},
+
+		// THE ONE ALREADY WIRED, AS A POSITIVE CONTROL ON THE CONTROL. Critical
+		// strike chance was moved to an ask under issue #959 and nothing has
+		// complained since, so if this row ever fails the fault is in this test
+		// or in the pipeline rather than in the change being made beside it.
+		{TEXT("crit_chance"),
+		 UCataclysmCombatAttributeSet::GetCritChanceAttribute()},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		const float FromAttribute = Character.Read(Case.Attribute);
+		const float Asked = Asking->StatForSkill(
+			FName(Case.Stat), FGameplayTagContainer(), Sentinel);
+
+		if (!TestNotEqual(
+				*FString::Printf(
+					TEXT("%s has recorded inputs, so this is not the fallback"),
+					Case.Stat),
+				Asked, Sentinel))
+		{
+			continue;
+		}
+
+		TestEqual(
+			*FString::Printf(
+				TEXT("%s asked for through the pipeline answers exactly what "
+					 "its attribute holds, for a character with no scoped row"),
+				Case.Stat),
+			Asked, FromAttribute, 0.001f);
+	}
+
+	// WITHOUT THIS THE LOOP ABOVE PASSES HAVING CHECKED NOTHING, which is the
+	// fault it exists to rule out in the first place.
+	TestEqual(TEXT("both stats were checked"),
+			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 2);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
