@@ -1133,6 +1133,56 @@ public:
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceForeignDamageTaken() const;
 
+	/**
+	 * Record that this character has just used a skill carrying
+	 * `Keyword.Charge`. Issue #1826.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::CommitAndBegin` AND NOWHERE ELSE,
+	 * which is where every one of the eight skill shapes and the basic attack
+	 * pass through, and where the skill's own tags are in hand. Whether the
+	 * tag is present is decided there, for the same reason the foreign-damage
+	 * stamp decides its own question at its call site.
+	 *
+	 * AFTER THE COST AND THE COOLDOWN HAVE BEEN PAID, because that is where
+	 * the caller sits. A press the cost refused opens no window, which is what
+	 * "after using a charge skill" means.
+	 */
+	void NoteChargeSkillUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceChargeSkillUsed() const;
+
+	/**
+	 * Record that this character has just used its basic attack. Issue #1826.
+	 *
+	 * CALLED FROM THE SAME PLACE AS THE STAMP ABOVE, and the slot rather than
+	 * a tag is what decides: the basic attack is built from the weapon base by
+	 * `UCataclysmWeaponSkills::BasicAttackFor` rather than authored as a row,
+	 * so it carries no designed tag to read.
+	 */
+	void NoteBasicAttackUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceBasicAttackUsed() const;
+
+	/**
+	 * Record that this character has just blocked a blow. Issue #1826.
+	 *
+	 * CALLED FROM THE SAME BRANCH OF
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` AS THE
+	 * FOREIGN-DAMAGE STAMP, which is where a resolved hit's outcome is in hand.
+	 *
+	 * A BLOCK THAT LEFT NOTHING TO TAKE STILL COUNTS, which is the one way
+	 * this differs from its neighbour. The foreign-damage stamp is reached only
+	 * when the hit removed health or energy shield; a block that reduced the
+	 * blow to nothing opens this window and not that one, because the row says
+	 * "blocking an attack" and says nothing about what got through.
+	 */
+	void NoteBlocked();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceBlocked() const;
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -1321,6 +1371,28 @@ protected:
 	 * worth a few seconds and the next hit rebuilds it.
 	 */
 	float LastForeignDamageAtSeconds = -1.0f;
+
+	/**
+	 * When this character last used a skill carrying `Keyword.Charge`, in world
+	 * seconds. Issue #1826.
+	 *
+	 * NEGATIVE MEANS NEVER, told apart from world time zero for the reason the
+	 * timestamps above it are. Not replicated and not saved: it is worth a few
+	 * seconds and the next use rebuilds it.
+	 */
+	float LastChargeSkillAtSeconds = -1.0f;
+
+	/**
+	 * When this character last used its basic attack, in world seconds.
+	 * Issue #1826. Negative means never, as above.
+	 */
+	float LastBasicAttackAtSeconds = -1.0f;
+
+	/**
+	 * When this character last blocked a blow, in world seconds. Issue #1826.
+	 * Negative means never, as above.
+	 */
+	float LastBlockAtSeconds = -1.0f;
 
 	/**
 	 * When this character last moved, in world seconds. Issue #41, slice 2.

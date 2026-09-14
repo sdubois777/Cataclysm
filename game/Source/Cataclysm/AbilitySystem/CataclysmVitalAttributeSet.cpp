@@ -1041,6 +1041,36 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// AND A BLOW THIS CHARACTER BLOCKED OPENS A WINDOW AN ENCHANTMENT
+			// CAN READ. Issue #1826. "Blocking an attack grants 10%-20%
+			// increased damage for 3 seconds" is the row.
+			//
+			// A SEPARATE BRANCH FROM THE WINDOW ABOVE, AND NOT NESTED IN IT,
+			// because the two ask different questions and the answers come
+			// apart in both directions. That one wants a Cataclysm type the
+			// character does not share, whatever became of the blow; this one
+			// wants a block, whatever type it was. A blocked hit of a foreign
+			// type opens both, an unblocked foreign one opens only that, and a
+			// blocked hit of the character's own type opens only this.
+			//
+			// WHAT WAS BLOCKED, NOT WHAT GOT THROUGH, which is the one place
+			// this differs from its neighbour. That branch is gated on health
+			// or shield actually losing something; this is not, because the
+			// sentence says "blocking an attack" and says nothing about what
+			// survived. A block that stopped the blow completely still opens
+			// the window, and this line is reachable for such a blow: the
+			// comment on the energy shield's refill wait above records that an
+			// evaded blow reaches here too.
+			if (Outcome.bBlocked)
+			{
+				if (UCataclysmAbilitySystemComponent* Cataclysm =
+						Cast<UCataclysmAbilitySystemComponent>(
+							GetOwningAbilitySystemComponent()))
+				{
+					Cataclysm->NoteBlocked();
+				}
+			}
+
 			// AND ANY HIT THAT REACHED THE CHARACTER BUILDS A STACK. Issue
 			// #1003. Blood Offering: "Taking damage grants a stack of Bloodlust
 			// for 5 seconds, up to 5 stacks."

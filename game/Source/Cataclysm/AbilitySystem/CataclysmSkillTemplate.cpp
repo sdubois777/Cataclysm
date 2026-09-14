@@ -149,6 +149,34 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	{
 		LastMetresMovedBeforeUse = Cataclysm->MetresMovedSinceOwnAttack();
 		Cataclysm->NoteOwnAttack();
+
+		// AND THE TWO WINDOWS A SKILL USE OPENS FOR AN ENCHANTMENT. Issue
+		// #1826. "After using a charge skill gain 20%-40% increased attack
+		// speed for 4 seconds" and "Gain 5%-10% attack speed on basic attack
+		// for 4 seconds" are the rows.
+		//
+		// IN THIS BLOCK BECAUSE THE COMPONENT IS ALREADY IN HAND, and past the
+		// commit above, so a press the cost or the cooldown refused opens
+		// neither window. That is what "after using" means.
+		//
+		// A TAG FOR ONE AND THE SLOT FOR THE OTHER, and the difference is not
+		// arbitrary. Six weapon skills carry `Keyword.Charge`; the basic attack
+		// is not an authored row at all, so it has no designed tag and the slot
+		// is the only thing that names it.
+		//
+		// NOT MUTUALLY EXCLUSIVE, AND NOT WRITTEN AS IF THEY WERE. Nothing stops
+		// a future basic attack carrying the charge tag, and if one ever does it
+		// should open both windows rather than whichever test came first.
+		if (SkillTags.HasTag(FGameplayTag::RequestGameplayTag(
+				FName(TEXT("Keyword.Charge")))))
+		{
+			Cataclysm->NoteChargeSkillUsed();
+		}
+
+		if (Slot == ECataclysmAbilitySlot::BasicAttack)
+		{
+			Cataclysm->NoteBasicAttackUsed();
+		}
 	}
 	else
 	{

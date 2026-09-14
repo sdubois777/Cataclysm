@@ -3297,6 +3297,37 @@ CONDITIONS = {
     # same bound as the window above; a different event opens it.
     "seconds_after_foreign_damage": (0.0, 60.0, "a number of seconds"),
 
+    # "After using a charge skill gain 20%-40% increased attack speed for 4
+    # seconds" is `seconds_after_charge_skill` with 4. Issue #1826.
+    #
+    # THE FIRST THREE WINDOWS AN ENCHANTMENT OPENS rather than a passive node,
+    # and they arrive together because three authored enchantment sentences ask
+    # for them. Same units and same bound as the two windows above; a different
+    # event opens each.
+    #
+    # ONE NAME PER EVENT, which is the rule the enumeration states: a general
+    # timer would have to carry which event it means, and the row has nowhere
+    # to put that, because the value is already the window's length.
+    "seconds_after_charge_skill": (0.0, 60.0, "a number of seconds"),
+
+    # "Gain 5%-10% attack speed on basic attack for 4 seconds" is
+    # `seconds_after_basic_attack` with 4. Issue #1826.
+    #
+    # THE BASIC ATTACK IS NOT A ROW OF WeaponSkills.csv, so there is no authored
+    # tag naming it and the engine reads the ability slot instead. A search of
+    # that sheet for `Slot.Basic` finds nothing and that is correct authoring,
+    # not a gap.
+    "seconds_after_basic_attack": (0.0, 60.0, "a number of seconds"),
+
+    # "Blocking an attack grants 10%-20% increased damage for 3 seconds" is
+    # `seconds_after_block` with 3. Issue #1826.
+    #
+    # NOT THE SAME QUESTION AS `seconds_after_foreign_damage`, though both open
+    # on a blow the character took. That one asks about the Cataclysm type and
+    # ignores whether it was blocked; this asks whether it was blocked and
+    # ignores the type.
+    "seconds_after_block": (0.0, 60.0, "a number of seconds"),
+
     # "a skill whose health cost is above 10% of your maximum health" is
     # `skill_health_cost_above` with 10. Issue #983.
     #
