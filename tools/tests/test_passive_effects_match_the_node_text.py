@@ -56,6 +56,7 @@ NODES_CSV = DATA / "PassiveNodes.csv"
 CLASS_STATS_CSV = DATA / "ClassStats.csv"
 ATTRIBUTES_CSV = DATA / "Attributes.csv"
 ITEM_BASES_CSV = DATA / "ItemBases.csv"
+WEAPON_SKILLS_CSV = DATA / "WeaponSkills.csv"
 WORKBOOK = REPO_ROOT / "docs" / "All_Things_Cataclysm.xlsx"
 
 # WHICH STATS GEAR SUPPLIES IS THE GENERATOR'S RULE, imported rather than written
@@ -490,7 +491,27 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: against zero grants nothing. `cripple_magnitude` starts at 100, supplied by
 #: `UCataclysmPlayerClassStats::EngineSuppliedBases`, so a `flat` row would add
 #: three percentage points to a hundred instead of three per cent of it.
-AUTHORED_ROWS = 249
+#: AND TO 253 ON 2026-09-14. Four rows, and they are the rows that make four
+#: nodes actually do something in play: the Ritualist's `Dominion`
+#: (`Ritualist_keystone_a_kA`), `Crowned` (`Ritualist_keystone_a_kC`) and
+#: `The Swarm` (`Ritualist_keystone_b_kA`), and the Ravager's `Spreading Hurt`
+#: (`Ravager_basic_c_c0`). Issue #1718. Every stat and condition they name was
+#: built in an earlier change; until these rows existed, all four nodes granted
+#: nothing.
+#:
+#: THREE ARE `flat` AND ONE IS `increased`, for the reason the entry above
+#: gives. `possession_threshold_bonus`, `thrall_reserve_reduction` and
+#: `imp_cap_bonus` all start at zero, so an increase against them would grant
+#: nothing; `area_of_effect` starts at 100, so a flat row would add four
+#: percentage points instead of four per cent.
+#:
+#: `Crowned` IS A POSITIVE 5 AND NOT A NEGATIVE 5, and that is not a style
+#: choice. `UCataclysmCombatAttributeSet::PreAttributeChange` floors every
+#: attribute in that set at zero, so a bonus of -5 is stored as 0 and the node
+#: does nothing at all. The stat names the SIZE of the reduction and the one
+#: read site subtracts it, which is how `healing_ceiling_reduction` and the
+#: other four `_reduction` stats in this project are already spelled.
+AUTHORED_ROWS = 253
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -793,7 +814,15 @@ AUTHORED_ROWS = 249
 #: again the only tree that moves: 49 of its 74, where the Masochist is 74 of
 #: 74, the Ritualist 54 of 74, the Bulwark 3, the Saboteur 1 and the Berserker
 #: none.
-AUTHORED_NODES = 181
+#: AND TO 185 ON 2026-09-14. Four nodes, none of which held a row before: the
+#: Ritualist's `Dominion` (`Ritualist_keystone_a_kA`), `Crowned`
+#: (`Ritualist_keystone_a_kC`) and `The Swarm` (`Ritualist_keystone_b_kA`), and
+#: the Ravager's `Spreading Hurt` (`Ravager_basic_c_c0`). Issue #1718.
+#:
+#: MEASURED PER TREE RATHER THAN ADDED TO THE FIGURE ABOVE, and two trees move
+#: this time: the Ritualist is 57 of its 74 and the Ravager 50 of its 74. The
+#: Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the Berserker none.
+AUTHORED_NODES = 185
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -904,6 +933,34 @@ def effects() -> list[dict]:
 @pytest.fixture(scope="module")
 def nodes() -> dict[str, dict]:
     return {row["Name"]: row for row in rows_of(NODES_CSV)}
+
+
+@pytest.fixture(scope="module")
+def skill_shape_params() -> dict[str, dict[str, float]]:
+    """Each skill's `ShapeParams`, parsed, keyed by the skill's own name.
+
+    READ SO THAT `VALUE_IS_A_DIFFERENCE` BELOW CANNOT GO STALE. Three nodes
+    adjust a figure a skill's row states, and their workbook value is the
+    DIFFERENCE between that figure and the one the node's sentence states. If
+    the base were written out here as a constant, re-tuning the skill row would
+    leave the node's arithmetic silently wrong and nothing would say so.
+    """
+    parsed: dict[str, dict[str, float]] = {}
+    for row in rows_of(WEAPON_SKILLS_CSV):
+        values: dict[str, float] = {}
+        for part in row["ShapeParams"].split(";"):
+            if "=" not in part:
+                continue
+            key, _, raw = part.partition("=")
+            try:
+                values[key.strip()] = float(raw.strip())
+            except ValueError:
+                # `Minions=Imp:1` and other non-numeric parameters. Nothing
+                # here asks about one, and refusing would make this fixture
+                # fail on rows it has no opinion about.
+                continue
+        parsed[row["SkillName"]] = values
+    return parsed
 
 
 @pytest.fixture(scope="module")
@@ -1203,6 +1260,17 @@ CONDITION_WORDS = {
     # either other sentence, which is the condition that map exists for.
     "target_carries_cripple": ("against crippled enemies", None),
     "target_carries_cripple_and_weaken": ("both crippled and weakened", None),
+
+    # AND THE ONE THAT ASKS ABOUT THE ATTACKER RATHER THAN THE TARGET. Spreading
+    # Hurt reads "+4% increased Area of Effect per point for attacks that Cripple
+    # or Weaken", which is a question about what this character's blows CAN do,
+    # not about what the thing in front of it is already carrying. The two above
+    # read the target's debuffs; this one reads the attacker's own chances.
+    #
+    # WHICH IS WHY IT WORKS ON A ROW THE OTHERS WOULD NOT REACH. An area of
+    # effect is decided when the skill goes off, before anything has been hit,
+    # so a condition about the target would be false every time for this node.
+    "can_cripple_or_weaken": ("cripple or weaken", None),
 
     # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
     # REDUCTION, and which stat that row should use is with the project owner
@@ -1928,7 +1996,40 @@ VALUE_IN_WORDS = {
 }
 
 
-def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
+#: Rows whose value is the DIFFERENCE between the figure the node states and the
+#: figure a skill's own row already states.
+#:
+#: A THIRD SHAPE, AND NOT AN EXEMPTION. The two above are about a value the
+#: sentence gives in words. These three give it in digits -- but the digit in the
+#: sentence is the RESULT, not the change. Dominion says "below 65% health" while
+#: Subjugate's row says `HealthThresholdPercent=50`, so the workbook holds 15.
+#: Crowned says "reserves 25 Fervour" against `FervourReserve=30`, so it holds 5.
+#: The Swarm says "5 imps" against `MaxActive=3`, so it holds 2.
+#:
+#: THE STAT IS A BONUS ON A DESIGNED FIGURE PRECISELY SO THE ROW STAYS THE ONLY
+#: PLACE THAT FIGURE IS WRITTEN. A stat holding 65, 25 or 5 outright would state
+#: the skill's number a second time and win, so re-tuning the skill row would
+#: silently do nothing. `docs/DECISIONS.md` carries the argument.
+#:
+#: SO THIS CHECKS MORE THAN THE ORDINARY BRANCH DOES, RATHER THAN LESS. It reads
+#: the skill's own row out of `game/Data/WeaponSkills.csv` and requires the
+#: workbook's value to equal the gap between the two figures. Re-tune the skill,
+#: reword the node, or change the workbook alone, and it fails.
+#:
+#: KEYED BY NODE AND STAT, naming the skill, the parameter in its `ShapeParams`,
+#: and the figure the node's own sentence states.
+VALUE_IS_A_DIFFERENCE = {
+    ("Ritualist_keystone_a_kA", "possession_threshold_bonus"):
+        ("Subjugate", "HealthThresholdPercent", 65.0),
+    ("Ritualist_keystone_a_kC", "thrall_reserve_reduction"):
+        ("Subjugate", "FervourReserve", 25.0),
+    ("Ritualist_keystone_b_kA", "imp_cap_bonus"):
+        ("Summon Imp", "MaxActive", 5.0),
+}
+
+
+def test_every_value_appears_in_the_nodes_own_description(
+        effects, nodes, skill_shape_params):
     """The number in the workbook is the number the design document states.
 
     THE ONE CHECK THAT TIES THE TWO FILES TOGETHER. Everything else here is
@@ -1956,6 +2057,39 @@ def test_every_value_appears_in_the_nodes_own_description(effects, nodes):
             assert value == pytest.approx(means), (
                 f"{row['Node']}: {phrase!r} means {means:g} of {row['Stat']} "
                 f"and the workbook grants {value:g}."
+            )
+            continue
+
+        # A VALUE THAT IS A DIFFERENCE IS CHECKED AGAINST BOTH FIGURES, the
+        # node's sentence and the skill row it adjusts. See
+        # `VALUE_IS_A_DIFFERENCE` for why three rows are written that way.
+        gap = VALUE_IS_A_DIFFERENCE.get((row["Node"], row["Stat"]))
+        if gap is not None:
+            skill_name, parameter, states = gap
+            params = skill_shape_params.get(skill_name)
+            assert params is not None, (
+                f"{row['Node']}: {row['Stat']} is a difference from "
+                f"{skill_name}'s {parameter}, and no skill is called "
+                f"{skill_name!r}. Either the skill was renamed or this entry "
+                "is stale."
+            )
+            assert parameter in params, (
+                f"{row['Node']}: {row['Stat']} is a difference from "
+                f"{skill_name}'s {parameter}, and that skill's ShapeParams "
+                f"does not state one. Either the row dropped the parameter or "
+                "this entry is stale."
+            )
+            base = params[parameter]
+            assert f"{states:g}" in described, (
+                f"{row['Node']}: {row['Stat']} is the gap up to {states:g}, "
+                f"and the node says:\n    {described}\n"
+                "Either the node was reworded or this entry is stale."
+            )
+            assert value == pytest.approx(abs(states - base)), (
+                f"{row['Node']}: the node states {states:g} and "
+                f"{skill_name}'s {parameter} is {base:g}, so {row['Stat']} "
+                f"should be {abs(states - base):g} and the workbook grants "
+                f"{value:g}."
             )
             continue
 

@@ -416,7 +416,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// INCREASES, which the engine applies to the minion's own figure from
 	// `game/Data/MinionTypes.csv`. A flat row would land in a bucket nothing
 	// reads.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        249)
+	// AND 253 SINCE 2026-09-14, for the four rows that make four nodes do
+	// something in play: the Ritualist's Dominion, Crowned and The Swarm, and
+	// the Ravager's Spreading Hurt. Issue #1718. Every stat and condition they
+	// name was built earlier; until these rows existed all four granted nothing.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        253)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
