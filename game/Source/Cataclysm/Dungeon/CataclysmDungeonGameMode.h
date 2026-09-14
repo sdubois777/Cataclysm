@@ -1088,6 +1088,27 @@ private:
 						 class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Wasting Sickness: put whatever stacks the player has onto their maximums.
+	 * Issues #1786 and #41.
+	 *
+	 * IT DECIDES NOTHING AND ROLLS NOTHING. The stacks change on events -- a blow
+	 * landing, a boss dying, the player dying -- and this only notices that the
+	 * count has moved away from what was last applied, which is the shape every
+	 * other beat-driven rule here uses.
+	 *
+	 * THE BEAT IS WHAT PUTS THE REDUCTION BACK AFTER A FLOOR CHANGE, and that is
+	 * why this rule needs a beat step at all despite being event-driven.
+	 * `ApplyFloorRulesToPlayer` replaces the player's whole set of dungeon
+	 * modifiers when a floor changes, which takes this reduction off them; the
+	 * stacks themselves survive, because the row says the debuff is "permanent
+	 * for the duration of the dungeon". Without this the player would walk down a
+	 * staircase and be cured.
+	 */
+	void StepWastingSickness(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Put every floor effect on the player, the beat-driven ones included.
 	 * Issue #41, slice 5.
 	 *
@@ -1122,6 +1143,66 @@ private:
 	 * a second.
 	 */
 	void OnSomethingDied(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * A blow landing anywhere on the floor, for whichever rules the floor
+	 * carries. Issues #1786 and #41.
+	 *
+	 * THE FIRST PRODUCTION LISTENER ON `UCataclysmCombatEvents::OnHit`.
+	 * That announcement has existed since issue #41's slice 4 and every binding
+	 * to it was in a test until this one. The announcement is not new; the
+	 * listening is.
+	 *
+	 * IT DISPATCHES AND DOES NOTHING ITSELF, deliberately shaped like
+	 * `OnSomethingDied` above rather than holding one rule's logic behind an
+	 * early return on that rule's key. That shape is what stopped a second death
+	 * listener from being added without rewriting the first, and there are two
+	 * more rows that will want a blow.
+	 */
+	void OnSomethingWasHit(const struct FCataclysmHitNotice& Notice);
+
+	/**
+	 * Wasting Sickness's stack, on a blow that landed on the player.
+	 * Issues #1786 and #41.
+	 *
+	 * A LANDED BLOW AND NOT AN ATTEMPT. `FCataclysmHitNotice::Landed` is what
+	 * reached the target after every mitigation step and is zero for a blow that
+	 * was evaded or wholly stopped, so such a blow inflicts nothing and the row's
+	 * chance keeps meaning what it says.
+	 *
+	 * THE PLAYER MUST BE THE ONE STRUCK. The announcement is made for every blow
+	 * on the floor, the player's own blows on creatures included, and this row
+	 * says "Enemies have a chance to inflict" -- so the notice's target has to be
+	 * the player's own pawn.
+	 *
+	 * IT ONLY RECORDS. The stack count moves here and the beat applies it, within
+	 * a quarter of a second, which is what both death listeners already do.
+	 */
+	void NoteHitForWastingSickness(const struct FCataclysmHitNotice& Notice);
+
+	/**
+	 * Wasting Sickness's two cures, on a death. Issues #1786 and #41.
+	 *
+	 * TWO ROUTES, AND THE ROW STATES ONE OF THEM. "can only be removed by
+	 * defeating a floor boss" is the row's. The other is the project owner's
+	 * ruling of 2026-09-10, recorded in `docs/DECISIONS.md`: anything that lasts
+	 * only for a dungeon ends at the player's death, "since in the real game that
+	 * dungeon would resolve on death and you wouldn't respawn in it". This row is
+	 * named there as one of the five that ruling covers.
+	 *
+	 * "A FLOOR BOSS" IS ANY BOSS ON THE FLOOR, which is a judgement recorded with
+	 * the rest. `UCataclysmDungeonModifierEffects::WastingSicknessKey` carries
+	 * the reasoning and the reading it was chosen over.
+	 *
+	 * THE PLAYER'S OWN DEATH APPLIES AT ONCE RATHER THAN WAITING FOR THE BEAT,
+	 * and that is the one place in this file where the difference is observable.
+	 * `ACataclysmPlayerCharacter::Revive` refills the vitals, and the refill
+	 * READS the maximums; a beat that had not yet run would leave the player
+	 * refilled to the lowered figure and then lifted, standing up short of full.
+	 * That file's own comment names this row as the reason its clearing runs
+	 * before its refill.
+	 */
+	void NoteDeathForWastingSickness(const struct FCataclysmDeathNotice& Notice);
 
 	/**
 	 * The Nihil's Embrace's cleanse, on a boss's defeat. Issue #41, slice 2.
@@ -1209,6 +1290,28 @@ private:
 	 * field's lifetime is the dungeon's rather than the session's.
 	 */
 	float MortalDecaySlowedUntilSeconds = -1.0f;
+
+	/**
+	 * Wasting Sickness: the stacks the player carries, and what the last apply
+	 * put on them. Issues #1786 and #41.
+	 *
+	 * THE COUNT SURVIVES A FLOOR AND THE APPLIED FIGURE DOES NOT, which is the
+	 * whole difference between this rule and Death's Embrace. The row says the
+	 * debuff is "permanent for the duration of the dungeon", so the stairs take
+	 * nothing away; but changing floor replaces the player's dungeon modifiers
+	 * wholesale, so what was applied is gone from the character and the applied
+	 * figure has to go back to nothing or the beat will believe the reduction is
+	 * still there and never put it back.
+	 *
+	 * BOTH GO BACK TO NOTHING WHEN THE PLAYER LEAVES THE DUNGEON, because
+	 * "for the duration of the dungeon" ends there.
+	 *
+	 * A COUNT AND NOT A TIME, unlike Mortal Decay's stamp above, because this row
+	 * asks for stacks: the player is told how many they have and each one is
+	 * worth the same share.
+	 */
+	int32 WastingSicknessStacks = 0;
+	int32 WastingSicknessStacksApplied = 0;
 
 	/**
 	 * What the last beat put on the player, so a beat that changes nothing asks

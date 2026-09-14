@@ -21,6 +21,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::FieldMedicKey =
 	TEXT("War_Field_Medic");
 const TCHAR* UCataclysmDungeonModifierEffects::MortalDecayKey =
 	TEXT("Death_Mortal_Decay");
+const TCHAR* UCataclysmDungeonModifierEffects::WastingSicknessKey =
+	TEXT("Famine_Wasting_Sickness");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -164,7 +166,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	if (RowKey == FName(StarvationKey) || RowKey == FName(DehydrationKey)
 		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey)
 		|| RowKey == FName(DeathsEmbraceKey) || RowKey == FName(FieldMedicKey)
-		|| RowKey == FName(WitheredGroundKey) || RowKey == FName(MortalDecayKey))
+		|| RowKey == FName(WitheredGroundKey) || RowKey == FName(MortalDecayKey)
+		|| RowKey == FName(WastingSicknessKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -306,6 +309,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(SingularityWellsKey),
 		FName(WitheredGroundKey),
 		FName(MortalDecayKey),
+		FName(WastingSicknessKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -398,6 +402,30 @@ float UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
 		* DeathsEmbracePercentPerStack;
 }
 
+int32 UCataclysmDungeonModifierEffects::WastingSicknessStacksAfterHit(
+	int32 Stacks, bool bInflicts)
+{
+	// A COUNT BELOW NOTHING IS NOTHING, which is the reading every other counting
+	// rule in this file takes of a figure it cannot have been given honestly.
+	const int32 Held = FMath::Max(0, Stacks);
+	if (!bInflicts)
+	{
+		return FMath::Min(Held, WastingSicknessMostStacks);
+	}
+
+	// THE CAP IS APPLIED TO THE RESULT AND NOT CHECKED BEFORE THE ADD, so a
+	// caller that somehow holds more than the cap is brought back to it rather
+	// than being allowed to keep what it has.
+	return FMath::Min(Held + 1, WastingSicknessMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::WastingSicknessMaximumsLessPercent(
+	int32 Stacks)
+{
+	return FMath::Clamp(Stacks, 0, WastingSicknessMostStacks)
+		* WastingSicknessPercentPerStack;
+}
+
 float UCataclysmDungeonModifierEffects::MortalDecayPercentPerSecond(
 	int32 FloorNumber, bool bSlowedByAKill)
 {
@@ -461,6 +489,24 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  Effects.MaxEnergyShieldLessPercent);
 	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxManaStat,
 								  Effects.MaxManaLessPercent);
+
+	// AND WASTING SICKNESS, ON THE SAME TWO STATS AS STARVATION AND DEHYDRATION
+	// AND FROM ITS OWN TWO FIELDS. Issues #1786 and #41.
+	//
+	// TWO MORE MULTIPLIERS RATHER THAN LARGER VERSIONS OF THE TWO ABOVE, WHICH IS
+	// WHAT THE SEPARATE FIELDS BUY. `DungeonModifierEffectsAddMultiplier` appends
+	// to the same stat's list, so a floor carrying Starvation and Wasting
+	// Sickness gives `max_health` two entries, and `UCataclysmStatPipeline`
+	// multiplies each source on its own -- its own comment says they are "NOT
+	// summed first". Ten per cent and fifteen per cent leave 0.9 x 0.85 of the
+	// maximum rather than 0.75 of it.
+	//
+	// NOTHING AT ALL FOR A PLAYER CARRYING NO STACKS, because the helper refuses
+	// a share of zero, so a floor without this row adds no entry.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat,
+								  Effects.SicknessMaxHealthLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxManaStat,
+								  Effects.SicknessMaxManaLessPercent);
 
 	// AND THE NIHIL'S EMBRACE, ON ALL EIGHT RESISTANCES. Issue #41, slice 2. The
 	// row says "your resistances", and this game holds one resistance per
@@ -655,6 +701,29 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("health and mana recovery %.0f%% less"),
 									Effects.RecoveryLessPercent));
+	}
+
+	// AND WASTING SICKNESS, AS ONE CLAUSE FOR ITS TWO FIELDS. Issues #1786 and
+	// #41. The row states one figure for both maximums, so saying it twice would
+	// tell a player two things where the row told them one.
+	//
+	// SAID SEPARATELY FROM STARVATION'S AND DEHYDRATION'S CLAUSES ABOVE, THOUGH
+	// IT MOVES THE SAME TWO STATS. A player on a floor carrying both is under two
+	// rules with two different cures -- one ends with the floor and one ends with
+	// a boss -- so one combined figure would hide which of them to act on.
+	//
+	// THE TWO FIELDS CANNOT DISAGREE, so the first is printed. They are written
+	// from one stack count through one function; if a later change gives them
+	// separate sources this clause has to be split, and
+	// `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`
+	// is what fails if either field stops being named here at all.
+	if (Effects.SicknessMaxHealthLessPercent > 0.0f
+		|| Effects.SicknessMaxManaLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("maximum health and mana %.0f%% less from wasting sickness"),
+			FMath::Max(Effects.SicknessMaxHealthLessPercent,
+					   Effects.SicknessMaxManaLessPercent)));
 	}
 	return FString::Join(Clauses, TEXT(", "));
 }
