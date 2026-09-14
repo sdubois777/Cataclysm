@@ -1326,6 +1326,15 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 		{TEXT("dot_frequency"),
 		 UCataclysmCombatAttributeSet::GetDotFrequencyAttribute()},
 
+		// ALL THREE LEECH STATS, THOUGH ONLY life_leech IS ASKED FOR BY A ROW,
+		// for the same reason the three above are all here.
+		{TEXT("life_leech"),
+		 UCataclysmVitalAttributeSet::GetLifeLeechAttribute()},
+		{TEXT("mana_leech"),
+		 UCataclysmVitalAttributeSet::GetManaLeechAttribute()},
+		{TEXT("energy_shield_leech"),
+		 UCataclysmVitalAttributeSet::GetEnergyShieldLeechAttribute()},
+
 		// THE ONE ALREADY WIRED, AS A POSITIVE CONTROL ON THE CONTROL. Critical
 		// strike chance was moved to an ask under issue #959 and nothing has
 		// complained since, so if this row ever fails the fault is in this test
@@ -1364,7 +1373,7 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 	// left to `UE_ARRAY_COUNT` alone so that emptying the list is a failure
 	// rather than a silent pass. Counted from the list above, not incremented.
 	TestEqual(TEXT("every stat listed was checked"),
-			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 10);
+			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 13);
 	return true;
 }
 
