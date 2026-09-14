@@ -4,6 +4,9 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the class resource a scaling bonus counts points of. Issue #980.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For the two ailment chances a condition asks whether this character has at
+// all, which is what Spreading Hurt widens. Issue #1718.
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the minions a scaling bonus counts. Issue #1518.
 #include "AbilitySystem/CataclysmCommand.h"
 // For the debuffs a conditional or scaling bonus asks about. Issue #962.
@@ -652,6 +655,31 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.bIsBleeding = UCataclysmDebuffs::IsBleeding(this);
 	State.DebuffsCarried = UCataclysmDebuffs::CountOn(this);
 
+	// AND WHETHER THIS CHARACTER'S ATTACKS CAN CRIPPLE OR WEAKEN AT ALL. Issue
+	// #1718. Spreading Hurt asks it: "+4% increased Area of Effect per point for
+	// attacks that Cripple or Weaken."
+	//
+	// A FACT ABOUT THE ATTACKER, WHICH THE NODE'S OWN WORDING FORCES. An area of
+	// effect shapes an attack before it lands, so whether a blow applied a
+	// Cripple cannot be known when the bonus is worked out. Whether this
+	// character's attacks are ones that cripple is knowable, and the two chance
+	// stats are what say so.
+	//
+	// READ OFF THE ATTRIBUTES AND NOT THROUGH `StatForSkill`, because this runs
+	// while the pipeline is being set up and asking the pipeline here would
+	// re-enter it. The cost is that a chance carried only by a row scoped to a
+	// required tag is not in the attribute; every authored chance row today is
+	// unscoped, so the reading is complete for the rows that exist.
+	//
+	// NO COMBAT ATTRIBUTE SET LEAVES IT FALSE, which is the same answer as two
+	// zeroes and is the right one: neither character can apply either ailment.
+	if (const UCataclysmCombatAttributeSet* Combat =
+			GetSet<UCataclysmCombatAttributeSet>())
+	{
+		State.bCanCrippleOrWeaken = Combat->GetCrippleChance() > 0.0f
+			|| Combat->GetWeakenChance() > 0.0f;
+	}
+
 	// AND HOW MANY MINIONS THE CHARACTER IS COMMANDING. Issue #1518. The
 	// Ritualist's generator grows with it: "1 per second for each minion you
 	// have".
@@ -805,6 +833,12 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		{
 		case ECataclysmStatCondition::TargetCarriesCripple:
 		case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
+		// AND THE VOID SPLINTER, WHICH MUST BE LISTED HERE OR IT READS NOTHING.
+		// Issue #1642. `TargetDebuffs` is filled only when some modifier in this
+		// lookup asks about an ailment, so a condition missing from this switch
+		// is judged against an empty container, answers false every time, and
+		// the row grants nothing with no error anywhere.
+		case ECataclysmStatCondition::TargetCarriesVoidSplinter:
 			bWantsAilments = true;
 			break;
 		case ECataclysmStatCondition::TargetHealthBelowPercent:

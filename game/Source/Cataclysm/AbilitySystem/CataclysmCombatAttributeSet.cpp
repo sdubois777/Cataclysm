@@ -96,6 +96,11 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitCrippleMagnitude(100.0f);
 	InitWeakenMagnitude(100.0f);
 
+	// ZERO, BECAUSE IT IS A BONUS AND NOT THE FIGURE. Issue #1718. The
+	// Subjugate row states the threshold it is added to, so this starting at
+	// anything else would state that number a second time.
+	InitPossessionThresholdBonus(0.0f);
+
 	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
 	// SAYS OTHERWISE. Issue #1039. The Masochist's Vessel Unbroken is its only
 	// source, and zero is the ordinary case.
@@ -213,6 +218,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, StunChance);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrippleMagnitude);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, WeakenMagnitude);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PossessionThresholdBonus);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
@@ -386,6 +392,10 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetStunChanceAttribute(),
 		// HOW LARGE, WHERE THE ELEVEN ABOVE ARE HOW OFTEN. Issue #1767.
 		GetCrippleMagnitudeAttribute(), GetWeakenMagnitudeAttribute(),
+		// AND THE HEALTH THRESHOLD A BLOW MUST LEAVE A TARGET UNDER TO TAKE
+		// IT AS A THRALL, in percentage points added to the skill row's own
+		// figure. Issue #1718.
+		GetPossessionThresholdBonusAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
@@ -445,6 +455,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShredChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StunChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrippleMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenMagnitude)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)

@@ -3180,17 +3180,65 @@ bool UCataclysmSummonSkill::Possess()
 	const float MaxHealth = AbilitySystem->GetNumericAttribute(
 		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
 
+	// AND WHAT THIS CHARACTER'S OWN PASSIVES ADD TO THAT THRESHOLD. Issue #1718.
+	// `Ritualist_keystone_a_kA` Dominion is the node: "A blow that leaves a
+	// target below 65% health can take it, rather than below half."
+	//
+	// ADDED TO THE ROW'S FIGURE RATHER THAN REPLACING IT, which is the whole
+	// reason the stat is a bonus starting at zero. The row above states 50 and is
+	// the only place that number appears; a stat holding 50 of its own would
+	// state it twice and win, so re-tuning the row would silently do nothing.
+	//
+	// READ WITH THIS SKILL'S OWN TAGS, so a future row scoped to a keyword counts
+	// only for the skills it names. This is the same shape
+	// `UCataclysmAilments::ChancesFor` uses for its eleven chances: ask the
+	// component, pass the attribute's value as the fallback, and let
+	// `StatForSkill` answer with that whenever nothing was recorded -- which is
+	// the right answer for an enemy and for a character before its first refresh.
+	//
+	// THE THRESHOLD IS NOT CAPPED HERE. Nothing else grants this stat and one
+	// keystone taken once reads 65; a ceiling invented now would be a number the
+	// design states nowhere. `docs/DECISIONS.md` records that, so a second source
+	// arriving is a decision somebody makes rather than a surprise.
+	float ThresholdBonus = 0.0f;
+	if (const UCataclysmAbilitySystemComponent* Mine =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Self)))
+	{
+		const FGameplayAttribute Stat =
+			UCataclysmCombatAttributeSet::GetPossessionThresholdBonusAttribute();
+
+		// THE CHECK IS NOT OPTIONAL. Reading an attribute whose set the component
+		// does not hold raises an engine ensure rather than answering zero, and a
+		// test may build a component without the combat set.
+		if (Mine->HasAttributeSetForAttribute(Stat))
+		{
+			ThresholdBonus = Mine->StatForSkill(
+				FName(UCataclysmCommand::PossessionThresholdBonusStat),
+				SkillTags, Mine->GetNumericAttribute(Stat));
+		}
+	}
+
+	const float ThresholdPercent = Params.HealthThresholdPercent + ThresholdBonus;
+
 	if (MaxHealth <= 0.0f
-		|| Health > MaxHealth * Params.HealthThresholdPercent / 100.0f)
+		|| Health > MaxHealth * ThresholdPercent / 100.0f)
 	{
 		// IT SURVIVED TOO WELL. The row makes this the ordinary outcome against
 		// anything healthy, which is what stops Subjugate being a button that
 		// takes whatever it is pointed at.
+		//
+		// THE COMBINED THRESHOLD AND NOT THE ROW'S OWN FIGURE. This line reported
+		// `Params.HealthThresholdPercent` while the comparison above used it too,
+		// and the two parted company when the passive bonus was added. A
+		// diagnostic naming a number the code did not use is worse than none,
+		// because it is read as the reason for the refusal.
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("'%s' left '%s' at %.0f of %.0f health, above the %.0f%% it "
-				 "must be under to be taken."),
-			*SkillName, *Target->GetName(), Health, MaxHealth,
-			Params.HealthThresholdPercent);
+				 "must be under to be taken (%.0f%% from the row and %.0f%% from "
+				 "this character)."),
+			*SkillName, *Target->GetName(), Health, MaxHealth, ThresholdPercent,
+			Params.HealthThresholdPercent, ThresholdBonus);
 		return false;
 	}
 

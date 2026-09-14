@@ -315,7 +315,16 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// once it has. A character can raise either without the other. Past a chance
 	// of 100% the surplus raises the magnitude as well, and that is the one
 	// place the two meet.
-	constexpr int32 OffSheetCombatStats = 34;
+	//
+	// THIRTY-FIVE SINCE THE HEALTH THRESHOLD A BLOW MUST LEAVE A TARGET
+	// UNDER TO TAKE IT AS A THRALL, issue #1718. It meets the rule for the
+	// twenty-first time -- no affix grants it, nothing scales it, no class
+	// differs on it, and one Ritualist keystone is its only source.
+	//
+	// A BONUS OF ZERO RATHER THAN A BASE OF A HUNDRED, unlike the two
+	// magnitudes above. It is added to the figure the Subjugate skill row
+	// states, so it has no neutral value of its own to put on a sheet.
+	constexpr int32 OffSheetCombatStats = 35;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

@@ -190,6 +190,25 @@ public:
 										float PerThrall);
 
 	/**
+	 * The stat holding percentage points ADDED to the health threshold a blow
+	 * must leave a target under for it to be taken. Issue #1718.
+	 *
+	 * `Ritualist_keystone_a_kA` Dominion is the only source: "A blow that leaves
+	 * a target below 65% health can take it, rather than below half."
+	 *
+	 * HERE RATHER THAN WHERE IT IS READ, so the name is written once. It is
+	 * needed by the comparison in `UCataclysmSummonSkill::Possess` and by
+	 * `UCataclysmPlayerClassStats::StatToAttribute`, and a second spelling is how
+	 * a renamed stat leaves a keystone granting nothing while every test passes.
+	 *
+	 * A BONUS AND NOT THE THRESHOLD. The Subjugate skill's row states the
+	 * threshold itself, as `HealthThresholdPercent`, and is the only place that
+	 * number appears; this is added to it so a re-tune of the row follows
+	 * through.
+	 */
+	static const TCHAR* PossessionThresholdBonusStat;
+
+	/**
 	 * Take an enemy permanently into this character's command.
 	 *
 	 * THE STAFF'S SUBJUGATE: "if the blow leaves it below half health you take it
