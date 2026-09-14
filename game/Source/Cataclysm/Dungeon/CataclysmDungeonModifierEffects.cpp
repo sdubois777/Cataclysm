@@ -32,6 +32,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::ArtilleryStrikeKey =
 	TEXT("War_Artillery_Strike");
 const TCHAR* UCataclysmDungeonModifierEffects::HallowedGroundfallKey =
 	TEXT("Celestial_Hallowed_Groundfall");
+const TCHAR* UCataclysmDungeonModifierEffects::SporeCloudsKey =
+	TEXT("Pestilence_Spore_Clouds");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -180,7 +182,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GraspingTentaclesKey)
 		|| RowKey == FName(EdictOfSilenceKey)
 		|| RowKey == FName(ArtilleryStrikeKey)
-		|| RowKey == FName(HallowedGroundfallKey))
+		|| RowKey == FName(HallowedGroundfallKey)
+		|| RowKey == FName(SporeCloudsKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -327,6 +330,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(EdictOfSilenceKey),
 		FName(ArtilleryStrikeKey),
 		FName(HallowedGroundfallKey),
+		FName(SporeCloudsKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -930,4 +934,19 @@ float UCataclysmDungeonModifierEffects::HallowedGroundfallBurnPerSecond(
 	}
 
 	return MaximumHealth * HallowedGroundfallPercentPerSecond / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::SporeCloudsRelease(float Roll)
+{
+	return Roll < SporeCloudsChancePercentOnDeath;
+}
+
+bool UCataclysmDungeonModifierEffects::SporeCloudsReach(float DistanceCm)
+{
+	// AT OR WITHIN, UNLIKE THE CHANCE ABOVE. A distance exactly equal to the
+	// reach is inside it, which is the reading every sweep in the game already
+	// makes: `ACataclysmGroundZone::Covers` asks `UCataclysmTargeting::IsInLine`,
+	// and that compares `<=` against the half width squared. The two comparisons
+	// differ because one is a random draw and the other is a place.
+	return DistanceCm >= 0.0f && DistanceCm <= SporeCloudsReachCm;
 }
