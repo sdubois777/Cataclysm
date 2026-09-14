@@ -1682,9 +1682,9 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmUnopenedWindowRefusesTest,
 	// birth, which is silent and in the player's favour.
 	//
 	// AND THE UNCONDITIONED MODIFIER BESIDE IT IS THE REGRESSION GUARD, because
-	// most of the 152 enchantment effect rows carry no condition at all. A
-	// change that made an unstamped clock refuse everything would pass the
-	// first assertion and fail the second.
+	// most enchantment effect rows carry no condition at all -- 93 of 161,
+	// measured 2026-09-14. A change that made an unstamped clock refuse
+	// everything would pass the first assertion and fail the second.
 	CataclysmTestWorld::SilenceCriticalStrikes();
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -1733,7 +1733,7 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmUnopenedWindowRefusesTest,
 	return true;
 }
 
-CATACLYSM_CONDITIONAL_TEST(FCataclysmOneBlowOpensThreeWindowsByTableTest,
+CATACLYSM_CONDITIONAL_TEST(FCataclysmOneBlowOpensExactlyTheRightWindowsByTableTest,
 	"Cataclysm.ConditionalDamage.OneBlowOpensExactlyTheWindowsItShouldAndNoOthers")
 {
 	using namespace CataclysmConditionalDamageTest;
