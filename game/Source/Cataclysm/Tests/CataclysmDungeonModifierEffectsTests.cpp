@@ -7251,8 +7251,9 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 	//
 	// THE AUTOMATION RUN PASSES `-nullrhi` AND NIAGARA MAKES NO COMPONENT, so the
 	// only observable is what `UCataclysmGroundEffect::PlayFor` was asked for.
-	// `LastDamageType` was added beside the four values already kept for that
-	// reason.
+	// `LastDamageTypeAsked` was added beside the four values already kept for
+	// that reason, and named after the two `UCataclysmCastEffect` and
+	// `UCataclysmImpactEffect` have carried since issue #803.
 	//
 	// A PLAIN ZONE IS CHECKED HERE TOO, AND THAT IS THE CONTROL. Every zone in
 	// the game was drawn in its owner's colour before this change; if threading a
@@ -7314,6 +7315,12 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 	}
 
 	// THE HELPING KIND FIRST.
+	//
+	// CLEARED BEFORE THE ACT, WHICH `CataclysmEffectColourTests.cpp` DOES WITH
+	// THE SIBLING OF THIS VALUE. It is a static that outlives every test, so
+	// without this a death that left no mushroom at all could still read the
+	// right colour from whatever ran before.
+	UCataclysmGroundEffect::LastDamageTypeAsked = NAME_None;
 	{
 		FScopedConsoleString Roll(TEXT("Cataclysm.FungalOvergrowthRoll"),
 								  TEXT("0"));
@@ -7328,14 +7335,17 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	const FName HelpingAskedFor = UCataclysmGroundEffect::LastDamageType;
+	const FName HelpingAskedFor = UCataclysmGroundEffect::LastDamageTypeAsked;
 	TestEqual(TEXT("the helping mushroom carries the colour the rule chose"),
 			  Helping->DrawnAsType,
 			  FName(Effects::FungalOvergrowthBoostDrawnAs));
 	TestEqual(TEXT("and that is what it asked to be drawn in"), HelpingAskedFor,
 			  FName(Effects::FungalOvergrowthBoostDrawnAs));
 
-	// THEN THE HURTING KIND.
+	// THEN THE HURTING KIND, CLEARED THE SAME WAY -- and here it matters more,
+	// because the value left behind is the one the assertion just below would be
+	// wrong to accept.
+	UCataclysmGroundEffect::LastDamageTypeAsked = NAME_None;
 	{
 		FScopedConsoleString Roll(TEXT("Cataclysm.FungalOvergrowthRoll"),
 								  TEXT("99"));
@@ -7352,7 +7362,7 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("the second mushroom is a different actor"),
 			 Hurting != Helping);
-	const FName HurtingAskedFor = UCataclysmGroundEffect::LastDamageType;
+	const FName HurtingAskedFor = UCataclysmGroundEffect::LastDamageTypeAsked;
 	TestEqual(TEXT("the hurting mushroom carries the other colour"),
 			  Hurting->DrawnAsType,
 			  FName(Effects::FungalOvergrowthSlowDrawnAs));
@@ -7388,6 +7398,7 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Source->DamageType = FName(TEXT("Pestilence"));
+	UCataclysmGroundEffect::LastDamageTypeAsked = NAME_None;
 	ACataclysmGroundZone* Plain = ACataclysmGroundZone::SpawnForTheFloor(
 		Source, FVector(4000.0f, 0.0f, 0.0f), FVector(4000.0f, 0.0f, 0.0f),
 		Effects::FungalOvergrowthMushroomRadiusCm, 0.0f);
@@ -7397,7 +7408,8 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("it carries no colour of its own"), Plain->DrawnAsType.IsNone());
 	TestEqual(TEXT("so it is drawn in its owner's, exactly as before"),
-			  UCataclysmGroundEffect::LastDamageType, FName(TEXT("Pestilence")));
+			  UCataclysmGroundEffect::LastDamageTypeAsked,
+			  FName(TEXT("Pestilence")));
 	TestEqual(TEXT("which is what it answers when asked"),
 			  Plain->TypeItIsDrawnAs(), FName(TEXT("Pestilence")));
 

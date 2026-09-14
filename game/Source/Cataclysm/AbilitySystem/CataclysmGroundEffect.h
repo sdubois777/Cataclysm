@@ -150,8 +150,18 @@ public:
 	 * this existed a patch's colour was the one thing `PlayFor` is told that no
 	 * test could read back, so a rule drawing two kinds of patch in one colour
 	 * would pass every test there was.
+	 *
+	 * NAMED AFTER THE TWO THAT ALREADY EXIST RATHER THAN AFTER THE FOUR BESIDE
+	 * IT. `UCataclysmCastEffect` and `UCataclysmImpactEffect` have each carried a
+	 * `LastDamageTypeAsked` since issue #803 and its comment gives this same
+	 * reason in the same words. One idea under two names would mean a reader
+	 * grepping for either found two of the three places.
+	 *
+	 * SET IT BACK TO NAME_None BEFORE THE ACT YOU MEAN TO MEASURE.
+	 * `CataclysmEffectColourTests.cpp` does that with its sibling, and without it
+	 * a test reads whatever ran before it and can pass having measured nothing.
 	 */
-	static FName LastDamageType;
+	static FName LastDamageTypeAsked;
 
 	/**
 	 * Draws a zone.
