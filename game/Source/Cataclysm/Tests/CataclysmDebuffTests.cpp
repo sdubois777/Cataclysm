@@ -571,7 +571,7 @@ CATACLYSM_DEBUFF_TEST(FCataclysmDebuffNoAbilitySystemTest,
 	TestTrue(TEXT("being stunned is another"),
 		Roots.HasTagExact(UCataclysmSkillEffects::StunnedTag()));
 
-	// AND EVERY NAMED CURSE, AS ONE BRANCH. The twenty-seven effects from the
+	// AND EVERY NAMED CURSE, AS ONE BRANCH. The twenty-eight effects from the
 	// Debuffs sheet are `Status.Debuff.*` since issue #1145, so this one entry
 	// takes all of them and cannot take a buff.
 	const FGameplayTag NamedCurses = UGameplayTagsManager::Get()

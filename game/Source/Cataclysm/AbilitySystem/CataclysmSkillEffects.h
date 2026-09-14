@@ -480,10 +480,18 @@ struct CATACLYSM_API FCataclysmStatusEffectNumbers
 	 * said twenty-seven**; measured on 2026-09-13 the sheet holds 28 debuffs, 18
 	 * buffs and 8 damage over time rows.
 	 *
-	 * SEVEN OTHER COMMENTS STILL SAY TWENTY-SEVEN and are issue #1780, which
-	 * also carries the check that would have caught it. They are left alone on
-	 * purpose: correcting some and not others leaves two comments disagreeing,
-	 * and a reader comparing them cannot tell which is current.
+	 * EIGHT OTHER COMMENTS SAY TWENTY-SEVEN AND ARE CORRECT, not stale. The
+	 * sheet held that many until 2026-09-05, and they describe the past in as
+	 * many words -- "until that issue that branch held", "used to be", "were
+	 * counted by nothing". Correcting them would make a dated record report a
+	 * number it never saw.
+	 *
+	 * THIS COMMENT ASKED FOR THAT SWEEP AND WAS WRONG. It named issue #1780,
+	 * which is closed as a false premise; the closing note carries the date
+	 * boundary. The test is tense: "come from" and "are" claim the present and
+	 * can go wrong, while "until" and "used to be" describe a moment and stay
+	 * true. No check can read that, which is why #1780's proposed one would have
+	 * flagged the eight correct records.
 	 *
 	 * IT IS NOT COVERED BY `bUsable` BELOW, deliberately. That flag asks whether
 	 * this row can be applied as damage over time, and Shred is not damage: it
