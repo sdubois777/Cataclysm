@@ -3166,6 +3166,18 @@ void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
 	// enemy applies a stack ... to you", so this reads `Attacker` where Wasting
 	// Sickness reads `Target`. Without the creature check a blow the player
 	// landed on anything else -- a hazard, a destructible -- would brand them.
+	//
+	// AND IT STOPS THIS RULE FEEDING ITSELF, WHICH IS THE BIGGER HALF AND WAS NOT
+	// IN THIS COMMENT UNTIL A GUARD PROOF SHOWED IT. The nova below is dealt BY
+	// the player TO the player, so it is announced as a blow like any other. With
+	// this guard gone it brands: every eruption adds one to the count it just
+	// cleared, and the next eruption arrives a blow early, for ever.
+	//
+	// MEASURED 2026-09-14 rather than reasoned about. Breaking this guard was
+	// predicted to fail one test and failed two -- the second being
+	// `TwentyLandedBlowsBrandThePlayerAndTheTwentiethErupts`, which lands nineteen
+	// blows after an eruption and asserts they take nothing. The prediction was
+	// traced from what the TESTS land and missed what the RULE lands in reply.
 	if (Notice.Attacker != Player
 		|| !Cast<ACataclysmEnemyCharacter>(Notice.Target))
 	{
