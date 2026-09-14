@@ -252,3 +252,12 @@ Ritualist_keystone_a_kA#1,Ritualist_keystone_a_kA,possession_threshold_bonus,fla
 Ravager_basic_c_c0#1,Ravager_basic_c_c0,area_of_effect,increased,4.0,,can_cripple_or_weaken,0.0,,0.0,0,-1.0
 Ritualist_keystone_a_kC#1,Ritualist_keystone_a_kC,thrall_reserve_reduction,flat,5.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_b_kA#1,Ritualist_keystone_b_kA,imp_cap_bonus,flat,2.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_c_kA#1,Ritualist_keystone_c_kA,shield_absorbs_damage_over_time,flat,1.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_c_kB#1,Ritualist_keystone_c_kB,shield_recharges_while_damaged,flat,1.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_d_kA#1,Ritualist_keystone_d_kA,mana_regen_restores_shield,flat,1.0,,,0.0,,0.0,0,-1.0
+Ravager_keystone_spine_001#1,Ravager_keystone_spine_001,armor_penetration_suppressed,flat,1.0,,,0.0,,0.0,0,-1.0
+Ravager_keystone_spine_002#1,Ravager_keystone_spine_002,melee_evasion_suppressed,flat,1.0,,,0.0,,0.0,0,-1.0
+Ravager_keystone_spine_003#1,Ravager_keystone_spine_003,crowd_control_resistance,flat,100.0,,enemies_in_reach_at_least,1.0,,0.0,0,4.0
+Ravager_keystone_spine_003#2,Ravager_keystone_spine_003,movement_speed_reduction_suppressed,flat,1.0,,enemies_in_reach_at_least,1.0,,0.0,0,4.0
+Ravager_keystone_a_kB#1,Ravager_keystone_a_kB,crowd_control_resistance,flat,50.0,,,0.0,,0.0,0,-1.0
+Ravager_keystone_d_kA#1,Ravager_keystone_d_kA,movement_speed_reduction_suppressed,flat,1.0,,,0.0,,0.0,0,-1.0

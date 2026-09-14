@@ -2,6 +2,108 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — Nine rows make eight keystones do what they say, and a keystone states its value in words rather than digits
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet),
+`game/Data/PassiveEffects.csv` regenerated from it, and the four counts pinned to
+its size. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+Every stat these rows grant already exists and is already read. Eight keystones
+were written, tested and merged over the past day with nothing in the data
+granting them, so each did nothing in play. These rows are the last step.
+
+| node | stat | value |
+| :-- | :-- | :-- |
+| `Ritualist_keystone_c_kA` Warded | `shield_absorbs_damage_over_time` | flat 1 |
+| `Ritualist_keystone_c_kB` Ablative | `shield_recharges_while_damaged` | flat 1 |
+| `Ritualist_keystone_d_kA` The Long Game | `mana_regen_restores_shield` | flat 1 |
+| `Ravager_keystone_spine_001` Ironhide | `armor_penetration_suppressed` | flat 1 |
+| `Ravager_keystone_spine_002` Every Swing Lands | `melee_evasion_suppressed` | flat 1 |
+| `Ravager_keystone_spine_003` Unstoppable | `crowd_control_resistance` | flat 100, while an enemy is within 4 metres |
+| `Ravager_keystone_spine_003` Unstoppable | `movement_speed_reduction_suppressed` | flat 1, same condition |
+| `Ravager_keystone_a_kB` Nothing Moves You | `crowd_control_resistance` | flat 50 |
+| `Ravager_keystone_d_kA` Relentless | `movement_speed_reduction_suppressed` | flat 1 |
+
+### NINE ROWS COVER EIGHT NODES, and the two counts pinned to them move by different amounts
+
+`Unstoppable` takes two rows because its one sentence forbids three different
+things through two different stats: the stun and the shove are an amount that
+crowd control resistance already scales, and the slow is a separate flag read
+where movement speed resolves.
+
+    rows  253 -> 262   (+9)
+    nodes 185 -> 193   (+8)
+
+**Moving both by the same number is the obvious mistake here**, and it is
+recorded rather than left to be discovered: `AUTHORED_ROWS` and `AUTHORED_NODES`
+in `tools/tests/test_passive_effects_match_the_node_text.py` count different
+things.
+
+### `flat` ON EVERY ROW, AND THAT IS NOT A HABIT
+
+Each of these stats is zero for every character until a node grants it, so an
+`increased` row would multiply nothing and grant nothing.
+**`crowd_control_resistance` IS AN EXCEPTION AND I FIRST WROTE THAT IT WAS
+NOT.** game/Data/ClassStats.csv grants a Ravager 5 plus 0.15 a level and a
+Masochist 10 plus 0.2, so a real Ravager carries 7.85 before a point is
+spent. `flat` is still right, and for a better reason than the one I gave:
+the node promises fifty POINTS more, and `increased` against 7.85 would
+grant under four. Two tests were written against a base of zero and failed
+at 7.85; both now read what the class line gives and measure from there.
+
+### A KEYSTONE STATES ITS VALUE IN WORDS, AND ALL NINE NEEDED THE EXEMPTION
+
+`test_every_value_appears_in_the_nodes_own_description` requires a row's value to
+appear in its node's sentence. **All nine rows failed it, and the test was
+right to complain.** A keystone says what becomes true rather than by how much,
+so there is no digit for the check to find: Ironhide says "cannot be ignored",
+not "1".
+
+The test already carries the answer — `VALUE_IN_WORDS`, keyed by node and stat,
+naming **the words that state the value AND the value those words mean**. That
+still checks something: a node reworded so the clause disappears fails, and a
+workbook value changed away from what the words mean fails.
+
+Each entry names the clause carrying the rule rather than the whole sentence.
+Ironhide's goes on to mention armour penetration and piercing weapons; the rule
+is "cannot be ignored", and that is what a reword would have to keep.
+
+**Two of the nine are not flags and their words still state a value.**
+`Unstoppable` grants 100, because "cannot" is what a hundred means for a stat
+that scales an amount; `Nothing Moves You` grants 50, because the resistance
+already computes `Amount x (1 - Resisted / 100)` and fifty of that is "half as
+long".
+
+### THE SECOND CLAUSE OF `Nothing Moves You` IS UNBUILT, BUILDABLE, AND NOT A MECHANISM GAP
+
+Its full text is "Crowd control effects on you last half as long, **and one ends
+entirely when you kill the enemy that applied it**." The row above builds the
+first clause. The second is not built and it is not blocked.
+
+**An earlier survey of mine said a running debuff records no applier, citing
+`CataclysmDebuffs.h`. That was wrong**, and it travelled into a planned issue
+before anyone opened the function that applies a debuff. That header declares no
+debuff struct at all; it is a function library. All three pieces exist:
+
+| piece | where |
+| :-- | :-- |
+| the applier, recorded on the effect | `ApplyStating` in `CataclysmSkillEffects.cpp` calls `Context.AddInstigator(Instigator, Instigator)` |
+| reading an active effect back | done in four files outside tests, through `FActiveGameplayEffectHandle` |
+| a death signal carrying the dying actor | `FCataclysmOnDeath` in `CataclysmCombatEvents.h` |
+
+So what is missing is the wiring: nothing listens for a death and removes
+debuffs whose instigator was the dead actor. **That is the change that follows
+this one**, gated on a new flag so it is the node's rule and not a global one.
+
+**The gate has to be a new flag rather than this node's own stat, and that is
+measured rather than argued.** `crowd_control_resistance` is granted by ten data
+rows today — one affix across seven gear slots, two class lines, one
+enchantment, one helmet implicit and five existing passive nodes — plus the
+Generic enemy modifier Unyielding in code. Reusing it would hand the clause to
+two whole classes and a pile of enemies.
+
+---
+
 ## 2026-09-14 — An explosion's size is read off the creature that exploded, a blow and an ailment are what keep two chance-on-death rows apart, and a sentence claiming to be the only one of its kind was corrected by the change that made it false
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

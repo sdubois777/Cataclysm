@@ -47,6 +47,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 // For an enemy with no defences, to land a real character's attack on.
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Interface/CataclysmPassiveTreeLayout.h"
@@ -9155,4 +9156,689 @@ bool FCataclysmPassiveSpreadingHurtOnARealCharacterTest::RunTest(const FString&)
 
 	return true;
 }
+
+// ---------------------------------------------------------------------------
+// THE EIGHT KEYSTONES OF 2026-09-14, ONE TEST EACH. Issue #1515.
+//
+// WHY THESE EXIST WHEN THE ROW COUNTS ARE ALREADY PINNED. A pinned count says
+// the file has nine more rows than it did. It does not say a node grants the
+// stat, and it cannot: the pins read the CSV, while the game reads the
+// DataTable ASSET built from it. Every test below reads the ASSET, through
+// `UCataclysmPassiveTree::EffectsFor`, and then spends a point and reads what
+// the character actually has.
+//
+// SO ALL EIGHT FAIL BEFORE THE ASSET IS REBUILT, and that is the evidence this
+// change rests on rather than a guard proof. A data row cannot be broken through
+// `prove_cpp_guard`, which refuses a file it does not compile and is right to.
+// What can be shown is the pair: eight failing against the old asset, eight
+// passing against the new one, with nothing else changed.
+//
+// SEVEN NODES MOVE AN ATTRIBUTE AND ONE DOES NOT. Unstoppable's two rows carry
+// a condition, and a conditioned row is never folded into a gameplay attribute,
+// so its test reads through `StatForSkill` and puts a body next to the player
+// rather than stating a count.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmKeystoneRowTest
+{
+	using namespace CataclysmFourRowTest;
+
+	/** Centimetres in a metre, so a case can place a body in metres. */
+	constexpr float M = 100.0f;
+
+	/** A hostile body, for the one node that counts who is standing near. */
+	static ACataclysmEnemyCharacter* SpawnHostile(UWorld* World,
+												  const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where,
+														FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(
+				UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(1'000'000.0f);
+			Made->SetAttackDamage(0.0f);
+		}
+		return Made;
+	}
+}
+
+// --- the three energy-shield keystones -------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWardedOnARealCharacterTest,
+	"Cataclysm.Passives.WardedLetsARealRitualistsShieldTakeDamageOverTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_keystone_c_kA` Warded: "Your Energy Shield absorbs damage over
+ *  time as well as hits." A flag, so the row holds 1. */
+bool FCataclysmPassiveWardedOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_keystone_c_kA"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Warded grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is whether the shield absorbs damage over time"),
+			  Effects[0]->Stat,
+			  FString(UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat));
+	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one, because a flag is on or off"),
+			  Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  FString());
+
+	const FGameplayAttribute Flag =
+		Combat::GetShieldAbsorbsDamageOverTimeAttribute();
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ritualist's shield stops hits only"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("taking Warded turns the flag on"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 1.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back turns it off"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveAblativeOnARealCharacterTest,
+	"Cataclysm.Passives.AblativeRechargesARealRitualistsShieldWhileDamaged",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_keystone_c_kB` Ablative: "Your Energy Shield recharges while you
+ *  are taking damage, at half its usual rate." The half is in the code; the row
+ *  is the flag that turns the rule on. */
+bool FCataclysmPassiveAblativeOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_keystone_c_kB"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Ablative grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is whether the shield recharges while damaged"),
+			  Effects[0]->Stat,
+			  FString(UCataclysmRegeneration::ShieldRechargesWhileDamagedStat));
+	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  FString());
+
+	const FGameplayAttribute Flag =
+		Combat::GetShieldRechargesWhileDamagedAttribute();
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ritualist's shield waits out the delay"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("taking Ablative turns the flag on"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 1.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back turns it off"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveLongGameOnARealCharacterTest,
+	"Cataclysm.Passives.TheLongGameFeedsARealRitualistsShieldFromMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_keystone_d_kA` The Long Game: "Your Mana Regeneration also
+ *  restores your Energy Shield, at half its rate." */
+bool FCataclysmPassiveLongGameOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_keystone_d_kA"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("The Long Game grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is whether mana regeneration feeds the shield"),
+			  Effects[0]->Stat,
+			  FString(UCataclysmRegeneration::ManaRegenRestoresShieldStat));
+	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  FString());
+
+	const FGameplayAttribute Flag = Combat::GetManaRegenRestoresShieldAttribute();
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ritualist's mana regeneration feeds mana"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("taking The Long Game turns the flag on"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 1.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back turns it off"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+	return true;
+}
+
+// --- the two Ravager keystones that forbid a defence -----------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveIronhideOnARealCharacterTest,
+	"Cataclysm.Passives.IronhideKeepsARealRavagersArmourFromBeingIgnored",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_keystone_spine_001` Ironhide: "Your Armor cannot be ignored." */
+bool FCataclysmPassiveIronhideOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_spine_001"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Ironhide grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is whether armour penetration is refused"),
+			  Effects[0]->Stat,
+			  FString(UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat));
+	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  FString());
+
+	const FGameplayAttribute Flag =
+		Combat::GetArmorPenetrationSuppressedAttribute();
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ravager's armour can be ignored like anyone's"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("taking Ironhide turns the flag on"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 1.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back turns it off"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEverySwingOnARealCharacterTest,
+	"Cataclysm.Passives.EverySwingLandsStopsARealRavagersMeleeBeingEvaded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_keystone_spine_002` Every Swing Lands, first clause: "Your melee
+ *  attacks cannot be evaded." The arc is not built and this says nothing of it. */
+bool FCataclysmPassiveEverySwingOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_spine_002"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Every Swing Lands grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is whether melee evasion is refused"),
+			  Effects[0]->Stat,
+			  FString(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat));
+	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  FString());
+
+	const FGameplayAttribute Flag = Combat::GetMeleeEvasionSuppressedAttribute();
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ravager's melee can be evaded like anyone's"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("taking Every Swing Lands turns the flag on"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 1.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back turns it off"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+	return true;
+}
+
+// --- the three that move a crowd control or movement stat ------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveNothingMovesYouOnARealCharacterTest,
+	"Cataclysm.Passives.NothingMovesYouHalvesCrowdControlOnARealRavager",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_keystone_a_kB` Nothing Moves You, first clause: "Crowd control
+ *  effects on you last half as long." Fifty is that half, by the arithmetic
+ *  `AfterCrowdControlResistance` already uses. Its second clause, about an
+ *  effect ending when its applier dies, is not this row and is not built. */
+bool FCataclysmPassiveNothingMovesYouOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_a_kB"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Nothing Moves You grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is crowd control resistance"), Effects[0]->Stat,
+			  FString(UCataclysmSkillEffects::CrowdControlResistanceStat));
+	TestEqual(TEXT("stated as a flat amount, because the stat has no base"),
+			  Effects[0]->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of fifty, which is what 'half as long' means"),
+			  Effects[0]->ValuePerPoint, 50.0f);
+	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  FString());
+
+	const FGameplayAttribute Resistance =
+		Combat::GetCrowdControlResistanceAttribute();
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	const float Before =
+		Player.AbilitySystem->GetNumericAttribute(Resistance);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("taking Nothing Moves You adds fifty resistance"),
+			  Player.AbilitySystem->GetNumericAttribute(Resistance),
+			  Before + 50.0f, 0.001f);
+
+	// AND FIFTY IS HALF **OF WHAT IS LEFT**, THROUGH THE FUNCTION THAT SCALES
+	// THE EFFECT rather than by arithmetic repeated here.
+	//
+	// THE CLASS LINE ALREADY GRANTS SOME AND THE FIRST VERSION OF THIS TEST
+	// ASSUMED IT DID NOT. game/Data/ClassStats.csv gives a Ravager
+	// crowd_control_resistance 5 plus 0.15 a level, so a real one carries
+	// 7.85 before a point is spent and a three second stun is already 2.76.
+	// The node's promise is fifty MORE, so the reading has to be worked from
+	// what the character had rather than from zero.
+	if (!TestTrue(TEXT("a Ravager carries some resistance from its class line, "
+					   "which is why nothing below is written as an absolute"),
+				  Before > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("which shortens a three second stun by fifty points more "
+				   "than the class line alone"),
+			  UCataclysmSkillEffects::AfterCrowdControlResistance(
+				  Player.Character, 3.0f),
+			  3.0f * (1.0f - (Before + 50.0f) / 100.0f), 0.01f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back leaves only what the class line "
+				   "grants"),
+			  UCataclysmSkillEffects::AfterCrowdControlResistance(
+				  Player.Character, 3.0f),
+			  3.0f * (1.0f - Before / 100.0f), 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRelentlessOnARealCharacterTest,
+	"Cataclysm.Passives.RelentlessStopsARealRavagersSpeedBeingReduced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_keystone_d_kA` Relentless: "Your Movement Speed cannot be reduced
+ *  by any effect." */
+bool FCataclysmPassiveRelentlessOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_d_kA"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Relentless grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is whether a speed reduction is refused"),
+			  Effects[0]->Stat,
+			  FString(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat));
+	TestEqual(TEXT("stated as a flat flag"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("and carrying no condition, unlike Unstoppable's"),
+			  Effects[0]->Condition, FString());
+
+	const FGameplayAttribute Flag =
+		Combat::GetMovementSpeedReductionSuppressedAttribute();
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Ravager can be slowed like anyone"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("taking Relentless turns the flag on"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 1.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and giving the point back turns it off"),
+			  Player.AbilitySystem->GetNumericAttribute(Flag), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnstoppableOnARealCharacterTest,
+	"Cataclysm.Passives.UnstoppableGrantsARealRavagerBothStatsOnlyWhileCrowded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_spine_003` Unstoppable, and it is the only one of the eight
+ * with TWO rows: "You cannot be stunned, slowed or knocked back while an enemy
+ * is within 4 metres of you."
+ *
+ * THE ATTRIBUTES DO NOT MOVE AND THAT IS THE POINT RATHER THAN A MISS. Both rows
+ * carry a condition, and a conditioned row is never folded into a gameplay
+ * attribute, so this reads through `StatForSkill` instead.
+ *
+ * A BODY IS SPAWNED RATHER THAN A COUNT STATED. Nothing here tells the pipeline
+ * how many enemies are near; a hostile character is placed and the game
+ * measures. A test that supplies the missing step proves nothing.
+ */
+bool FCataclysmPassiveUnstoppableOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_spine_003"));
+	const FName Resistance(UCataclysmSkillEffects::CrowdControlResistanceStat);
+	const FName SpeedFlag(
+		ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat);
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Unstoppable grants TWO stats, one sentence apiece"),
+				   Effects.Num(), 2))
+	{
+		return false;
+	}
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		TestEqual(TEXT("each row is conditioned on an enemy being in reach"),
+				  Row->Condition, FString(TEXT("enemies_in_reach_at_least")));
+		TestEqual(TEXT("asking for one enemy"), Row->ConditionValue, 1.0f);
+		TestEqual(TEXT("within four metres"), Row->ReachMetres, 4.0f);
+		TestEqual(TEXT("and stated flat"), Row->ValueKind,
+				  FString(TEXT("flat")));
+	}
+
+	// WHAT THE CHARACTER CARRIES BEFORE A POINT IS SPENT, READ RATHER THAN
+	// ASSUMED TO BE ZERO. The first version of this test assumed zero and
+	// failed at 7.85: game/Data/ClassStats.csv grants a Ravager
+	// crowd_control_resistance 5 plus 0.15 a level. Every reading below is a
+	// difference from this, so the test survives that line being retuned.
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	const float Carried = Player.AbilitySystem->GetNumericAttribute(
+		Combat::GetCrowdControlResistanceAttribute());
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	// NEITHER ATTRIBUTE MOVES, because a conditioned row is never folded in.
+	TestEqual(TEXT("the crowd control resistance attribute does not move"),
+			  Player.AbilitySystem->GetNumericAttribute(
+				  Combat::GetCrowdControlResistanceAttribute()),
+			  Carried, 0.001f);
+	TestEqual(TEXT("and neither does the movement flag"),
+			  Player.AbilitySystem->GetNumericAttribute(
+				  Combat::GetMovementSpeedReductionSuppressedAttribute()),
+			  0.0f, 0.001f);
+
+	// ALONE, THE CONDITION IS FALSE AND BOTH ROWS GRANT NOTHING, so each stat
+	// answers the fallback it was given -- which for the resistance is what the
+	// class line already put on the attribute, exactly as the real read site
+	// passes it.
+	TestEqual(TEXT("alone, the resistance is what the class line grants"),
+			  Player.AbilitySystem->StatForSkill(Resistance,
+												 FGameplayTagContainer(), Carried),
+			  Carried, 0.001f);
+	TestEqual(TEXT("alone, the movement flag is the fallback"),
+			  Player.AbilitySystem->StatForSkill(SpeedFlag,
+												 FGameplayTagContainer(), 0.0f),
+			  0.0f, 0.001f);
+
+	// TEN METRES AWAY IS NOT WITHIN FOUR, and this reading is the control.
+	SpawnHostile(World, Player.Character->GetActorLocation()
+						+ FVector(10.0f * M, 0.0f, 0.0f));
+	TestEqual(TEXT("a body ten metres away does not satisfy the condition"),
+			  Player.AbilitySystem->StatForSkill(Resistance,
+												 FGameplayTagContainer(), Carried),
+			  Carried, 0.001f);
+
+	// AND TWO METRES AWAY, ON A DIFFERENT AXIS so a spawn refused for
+	// overlapping cannot quietly move a body somewhere else.
+	SpawnHostile(World, Player.Character->GetActorLocation()
+						+ FVector(0.0f, 2.0f * M, 0.0f));
+	TestEqual(TEXT("one within four metres adds the whole hundred to it"),
+			  Player.AbilitySystem->StatForSkill(Resistance,
+												 FGameplayTagContainer(), Carried),
+			  Carried + 100.0f, 0.001f);
+	TestEqual(TEXT("and turns the movement flag on"),
+			  Player.AbilitySystem->StatForSkill(SpeedFlag,
+												 FGameplayTagContainer(), 0.0f),
+			  1.0f, 0.001f);
+
+	// AND A HUNDRED IS IMMUNITY, read through the function that scales it.
+	TestEqual(TEXT("which refuses a three second stun outright"),
+			  UCataclysmSkillEffects::AfterCrowdControlResistance(
+				  Player.Character, 3.0f), 0.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
