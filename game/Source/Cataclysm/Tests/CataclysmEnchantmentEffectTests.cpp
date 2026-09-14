@@ -2203,7 +2203,7 @@ bool FCataclysmEnchantmentEventWindowRowsTest::RunTest(const FString& Parameters
 // NO DATA ROW USES THIS YET, so every test below writes its own. The rows
 // arrive in a later change, after the design workbook is free.
 
-namespace CataclysmPoolActionTest
+namespace CataclysmEnchantmentEffectTest
 {
 	/** An effect table built from a CSV string, for a row the real data has not got. */
 	UDataTable* EffectTableFrom(const FString& Contents)
@@ -2218,8 +2218,8 @@ namespace CataclysmPoolActionTest
 	}
 
 	/** One action, as the equipment refresh would hand it over. */
-	FCataclysmPoolAction Action(const TCHAR* Event, const TCHAR* Pool,
-							   float Percent, bool bOfMaximum = true)
+	FCataclysmPoolAction PoolAction(const TCHAR* Event, const TCHAR* Pool,
+								   float Percent, bool bOfMaximum = true)
 	{
 		FCataclysmPoolAction Out;
 		Out.Event = FName(Event);
@@ -2254,7 +2254,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 {
-	using namespace CataclysmPoolActionTest;
+	using namespace CataclysmEnchantmentEffectTest;
 
 	// THE BREAK THIS IS FOR: dropping the action branch in
 	// `AccumulateEnchantmentsInto`, which would send an action row to the stat
@@ -2326,7 +2326,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCataclysmAnActionFiresOnItsOwnEventOnly::RunTest(const FString&)
 {
-	using namespace CataclysmPoolActionTest;
+	using namespace CataclysmEnchantmentEffectTest;
 
 	// TWO BREAKS, AND NEITHER CATCHES THE OTHER. Deleting the dispatch line
 	// inside `NoteBlocked` fails the first half; firing every action whatever
@@ -2343,7 +2343,7 @@ bool FCataclysmAnActionFiresOnItsOwnEventOnly::RunTest(const FString&)
 	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
 	GivePools(ASC, /*Health=*/100.0f, /*MaxHealth=*/500.0f);
 
-	ASC.SetPoolActions({Action(TEXT("block"), TEXT("health"), 10.0f)});
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f)});
 
 	const FGameplayAttribute Health =
 		UCataclysmVitalAttributeSet::GetHealthAttribute();
@@ -2373,7 +2373,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCataclysmARestoreAddsAndADrainTakes::RunTest(const FString&)
 {
-	using namespace CataclysmPoolActionTest;
+	using namespace CataclysmEnchantmentEffectTest;
 
 	// THE BREAK THIS IS FOR: losing the sign, by taking the absolute value or by
 	// sending every action down the restoring path. A drain would then heal, and
@@ -2392,7 +2392,7 @@ bool FCataclysmARestoreAddsAndADrainTakes::RunTest(const FString&)
 	const FGameplayAttribute Health =
 		UCataclysmVitalAttributeSet::GetHealthAttribute();
 
-	ASC.SetPoolActions({Action(TEXT("block"), TEXT("health"), -10.0f)});
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), -10.0f)});
 	ASC.NoteBlocked();
 	if (!TestEqual(TEXT("a negative percentage takes health away"),
 				   ASC.GetNumericAttribute(Health), 250.0f, 0.01f))
@@ -2400,7 +2400,7 @@ bool FCataclysmARestoreAddsAndADrainTakes::RunTest(const FString&)
 		return false;
 	}
 
-	ASC.SetPoolActions({Action(TEXT("block"), TEXT("health"), 10.0f)});
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f)});
 	ASC.NoteBlocked();
 	TestEqual(TEXT("and a positive one gives it back"),
 			  ASC.GetNumericAttribute(Health), 300.0f, 0.01f);
@@ -2414,7 +2414,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCataclysmAFractionOfHeldIsNotAFractionOfTheMaximum::RunTest(const FString&)
 {
-	using namespace CataclysmPoolActionTest;
+	using namespace CataclysmEnchantmentEffectTest;
 
 	// THE BREAK THIS IS FOR: ignoring `bOfMaximum` and always reading the
 	// maximum. On a character at full health the two answers are the same, so
@@ -2439,14 +2439,14 @@ bool FCataclysmAFractionOfHeldIsNotAFractionOfTheMaximum::RunTest(const FString&
 		return false;
 	}
 
-	ASC.SetPoolActions({Action(TEXT("block"), TEXT("health"), 10.0f,
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f,
 							   /*bOfMaximum=*/false)});
 	ASC.NoteBlocked();
 	TestEqual(TEXT("a tenth of what is held is twenty"),
 			  ASC.GetNumericAttribute(Health), 220.0f, 0.01f);
 
 	GivePools(ASC, /*Health=*/200.0f, /*MaxHealth=*/500.0f);
-	ASC.SetPoolActions({Action(TEXT("block"), TEXT("health"), 10.0f,
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f,
 							   /*bOfMaximum=*/true)});
 	ASC.NoteBlocked();
 	TestEqual(TEXT("and a tenth of the maximum is fifty"),
@@ -2461,7 +2461,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCataclysmADrainCannotKill::RunTest(const FString&)
 {
-	using namespace CataclysmPoolActionTest;
+	using namespace CataclysmEnchantmentEffectTest;
 
 	// THE BREAK THIS IS FOR: removing the floor, so a drain of the maximum on a
 	// nearly dead character takes it to zero. The project owner's delegate ruled
@@ -2483,7 +2483,7 @@ bool FCataclysmADrainCannotKill::RunTest(const FString&)
 	// far more than is left, so a floor that is missing shows as zero rather
 	// than as a number close to the right one.
 	GivePools(ASC, /*Health=*/10.0f, /*MaxHealth=*/500.0f);
-	ASC.SetPoolActions({Action(TEXT("block"), TEXT("health"), -20.0f)});
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), -20.0f)});
 	ASC.NoteBlocked();
 	TestEqual(TEXT("the drain stops at one health"),
 			  ASC.GetNumericAttribute(Health), 1.0f, 0.01f);
@@ -2497,7 +2497,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCataclysmARestoreOfHealthIsHealing::RunTest(const FString&)
 {
-	using namespace CataclysmPoolActionTest;
+	using namespace CataclysmEnchantmentEffectTest;
 
 	// THE BREAK THIS IS FOR: restoring health by writing the attribute instead of
 	// going through `UCataclysmRegeneration::TopUp`. The health would still
@@ -2532,7 +2532,7 @@ bool FCataclysmARestoreOfHealthIsHealing::RunTest(const FString&)
 		return false;
 	}
 
-	ASC.SetPoolActions({Action(TEXT("block"), TEXT("health"), 20.0f)});
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 20.0f)});
 	ASC.NoteBlocked();
 
 	if (!TestEqual(TEXT("the health arrived"), ASC.GetNumericAttribute(Health),
@@ -2552,7 +2552,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FCataclysmARefreshReplacesTheActions::RunTest(const FString&)
 {
-	using namespace CataclysmPoolActionTest;
+	using namespace CataclysmEnchantmentEffectTest;
 
 	// THE BREAK THIS IS FOR: deleting the hand-over inside
 	// `UCataclysmEquipmentComponent::RefreshAttributes`. A character would then
@@ -2568,7 +2568,7 @@ bool FCataclysmARefreshReplacesTheActions::RunTest(const FString&)
 	FWearer Wearer(World);
 	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
 
-	ASC.SetPoolActions({Action(TEXT("block"), TEXT("health"), 10.0f)});
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f)});
 	if (!TestEqual(TEXT("the character holds one action to begin with"),
 				   ASC.GetPoolActions().Num(), 1))
 	{
