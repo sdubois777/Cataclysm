@@ -523,6 +523,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 
 	State.SecondsSinceHealthCost = SecondsSinceHealthCostPaid();
 	State.SecondsSinceForeignDamage = SecondsSinceForeignDamageTaken();
+	State.SecondsSinceChargeSkill = SecondsSinceChargeSkillUsed();
+	State.SecondsSinceBasicAttack = SecondsSinceBasicAttackUsed();
+	State.SecondsSinceBlock = SecondsSinceBlocked();
 
 	// AND HOW MUCH OF THE CLASS RESOURCE IS IN HAND. Issue #980. The Masochist's
 	// Reciprocity keystone grows with it: "Your Retaliation damage is increased
@@ -1466,6 +1469,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// "would only let a character keep a window it did not earn".
 	LastHealthCostAtSeconds = -1.0f;
 	LastForeignDamageAtSeconds = -1.0f;
+	LastChargeSkillAtSeconds = -1.0f;
+	LastBasicAttackAtSeconds = -1.0f;
+	LastBlockAtSeconds = -1.0f;
 	DamageToBleedingUntilSeconds = -1.0f;
 	DisplacementCount = 0;
 	LastDisplacedAtSeconds = -1.0f;
@@ -1542,6 +1548,69 @@ float UCataclysmAbilitySystemComponent::SecondsSinceForeignDamageTaken() const
 	// would read as "never" and shut a window that had just opened.
 	return FMath::Max(
 		0.0f, World->GetTimeSeconds() - LastForeignDamageAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteChargeSkillUsed()
+{
+	// NO WORLD MEANS NO CLOCK, the same reasoning as the two stamps above.
+	if (const UWorld* World = GetWorld())
+	{
+		LastChargeSkillAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceChargeSkillUsed() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastChargeSkillAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	// Clamped at zero for the reason the two readings above are: a test that
+	// sets world time by hand can move it backwards, and a negative answer
+	// would read as "never" and shut a window that had just opened.
+	return FMath::Max(
+		0.0f, World->GetTimeSeconds() - LastChargeSkillAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteBasicAttackUsed()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastBasicAttackAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceBasicAttackUsed() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastBasicAttackAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(
+		0.0f, World->GetTimeSeconds() - LastBasicAttackAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteBlocked()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastBlockAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceBlocked() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastBlockAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastBlockAtSeconds);
 }
 
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)

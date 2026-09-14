@@ -72,6 +72,9 @@ namespace
 		{ TEXT("health_at_or_above"),           ECataclysmStatCondition::HealthAtOrAbovePercent },
 		{ TEXT("seconds_after_health_cost"),    ECataclysmStatCondition::WithinSecondsOfHealthCost },
 		{ TEXT("seconds_after_foreign_damage"), ECataclysmStatCondition::WithinSecondsOfForeignDamage },
+		{ TEXT("seconds_after_charge_skill"),   ECataclysmStatCondition::WithinSecondsOfChargeSkill },
+		{ TEXT("seconds_after_basic_attack"),   ECataclysmStatCondition::WithinSecondsOfBasicAttack },
+		{ TEXT("seconds_after_block"),          ECataclysmStatCondition::WithinSecondsOfBlock },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -366,6 +369,23 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// Issue #975.
 		return State.SecondsSinceForeignDamage >= 0.0f
 			&& State.SecondsSinceForeignDamage <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfChargeSkill:
+		// THE SAME TWO RULES AS THE TWO WINDOWS ABOVE: a negative reading means
+		// never or not known, and the window includes its last instant.
+		// Issue #1826.
+		return State.SecondsSinceChargeSkill >= 0.0f
+			&& State.SecondsSinceChargeSkill <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfBasicAttack:
+		// The same two rules again. Issue #1826.
+		return State.SecondsSinceBasicAttack >= 0.0f
+			&& State.SecondsSinceBasicAttack <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfBlock:
+		// The same two rules again. Issue #1826.
+		return State.SecondsSinceBlock >= 0.0f
+			&& State.SecondsSinceBlock <= Value;
 
 	case ECataclysmStatCondition::SkillHealthCostAbovePercent:
 		// STRICTLY ABOVE, WHICH IS THE OPPOSITE BOUNDARY FROM EVERY OTHER

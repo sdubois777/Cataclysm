@@ -252,6 +252,71 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Within Seconds Of Foreign Damage"),
 
 	/**
+	 * The character used a skill carrying `Keyword.Charge` within the last
+	 * `ConditionValue` seconds. Issue #1826.
+	 *
+	 * THE FIRST WINDOW AN ENCHANTMENT OPENS RATHER THAN A PASSIVE NODE, and
+	 * the first of three added together for that reason. "After using a charge
+	 * skill gain 20%-40% increased attack speed for 4 seconds" is the row.
+	 *
+	 * ONE ENUMERATOR PER EVENT, which is the rule the two windows above state
+	 * and the reason these are three names and not one parameterised one. A
+	 * general timer would have to carry which event it means, and the row has
+	 * nowhere to put that: `ConditionValue` is already the window's length.
+	 *
+	 * THE SKILL'S OWN TAGS DECIDE, NOT THE SLOT. Six weapon skills carry
+	 * `Keyword.Charge` and all six happen to sit in the movement slot today,
+	 * so slot and tag agree by coincidence and would stop agreeing the moment
+	 * a charge skill is authored anywhere else. The sentence says "a charge
+	 * skill", so the tag is what is read.
+	 */
+	WithinSecondsOfChargeSkill
+		UMETA(DisplayName = "Within Seconds Of A Charge Skill"),
+
+	/**
+	 * The character used its basic attack within the last `ConditionValue`
+	 * seconds. Issue #1826. "Gain 5%-10% attack speed on basic attack for 4
+	 * seconds" is the row.
+	 *
+	 * THE SLOT DECIDES, NOT A TAG, and it is the one window here that reads
+	 * the slot. The basic attack is not a row of `game/Data/WeaponSkills.csv`
+	 * at all -- `UCataclysmWeaponSkills::BasicAttackFor` builds it from the
+	 * weapon base and sets `ECataclysmAbilitySlot::BasicAttack` on it -- so
+	 * there is no authored tag to read and the slot is the only thing that
+	 * identifies it.
+	 *
+	 * IT RE-OPENS ITS OWN WINDOW, WHICH IS THE INTENDED READING. Each swing
+	 * stamps the clock afresh, so at any swing rate faster than one per
+	 * `ConditionValue` seconds the bonus is continuous while the character
+	 * keeps attacking, and it lapses once the character stops. The bonus never
+	 * compounds: the row grants what it says once, however often the window is
+	 * re-opened. `docs/DECISIONS.md` carries the ruling.
+	 */
+	WithinSecondsOfBasicAttack
+		UMETA(DisplayName = "Within Seconds Of A Basic Attack"),
+
+	/**
+	 * The character blocked a blow within the last `ConditionValue` seconds.
+	 * Issue #1826. "Blocking an attack grants 10%-20% increased damage for 3
+	 * seconds" is the row.
+	 *
+	 * A BLOW IT TOOK, NOT ONE IT DEALT, which is the same side as
+	 * `WithinSecondsOfForeignDamage` and a different question. That one opens
+	 * on damage of a Cataclysm type the character does not share, whatever
+	 * became of it; this one opens on a block, whatever type it was. A blocked
+	 * hit of a foreign type opens both, an unblocked one of a foreign type
+	 * opens only that one, and a blocked hit of the character's own type opens
+	 * only this one. The three cases are why both exist.
+	 *
+	 * A BLOCK THAT REDUCED THE BLOW TO NOTHING STILL COUNTS. The sentence says
+	 * "blocking an attack" and says nothing about what got through, so the
+	 * stamp sits on the block decision rather than on the damage that survived
+	 * it.
+	 */
+	WithinSecondsOfBlock
+		UMETA(DisplayName = "Within Seconds Of A Block"),
+
+	/**
 	 * The skill dealing this blow cost more than `ConditionValue` percent of
 	 * the character's maximum health. Issue #983.
 	 *
@@ -1228,6 +1293,32 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceForeignDamage = -1.0f;
+
+	/**
+	 * Seconds since the character last used a skill carrying `Keyword.Charge`.
+	 * Issue #1826.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, the same convention as the two
+	 * readings above and for the same reason: both answer no.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceChargeSkill = -1.0f;
+
+	/**
+	 * Seconds since the character last used its basic attack. Issue #1826.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceBasicAttack = -1.0f;
+
+	/**
+	 * Seconds since the character last blocked a blow. Issue #1826.
+	 *
+	 * NEGATIVE MEANS NEITHER KNOWN NOR EVER, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceBlock = -1.0f;
 
 	/**
 	 * How much of the class resource the character is holding. Issue #980.

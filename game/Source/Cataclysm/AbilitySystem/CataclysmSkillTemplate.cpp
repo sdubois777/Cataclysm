@@ -149,6 +149,47 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	{
 		LastMetresMovedBeforeUse = Cataclysm->MetresMovedSinceOwnAttack();
 		Cataclysm->NoteOwnAttack();
+
+		// AND THE TWO WINDOWS A SKILL USE OPENS FOR AN ENCHANTMENT. Issue
+		// #1826. "After using a charge skill gain 20%-40% increased attack
+		// speed for 4 seconds" and "Gain 5%-10% attack speed on basic attack
+		// for 4 seconds" are the rows.
+		//
+		// IN THIS BLOCK BECAUSE THE COMPONENT IS ALREADY IN HAND, and past the
+		// commit above, so a press the cost or the cooldown refused opens
+		// neither window. That is what "after using" means.
+		//
+		// A TAG FOR ONE AND THE SLOT FOR THE OTHER, and the difference is not
+		// arbitrary. Six weapon skills carry `Keyword.Charge`; the basic attack
+		// is not an authored row at all, so it has no designed tag and the slot
+		// is the only thing that names it.
+		//
+		// NOT MUTUALLY EXCLUSIVE, AND NOT WRITTEN AS IF THEY WERE. Nothing stops
+		// a future basic attack carrying the charge tag, and if one ever does it
+		// should open both windows rather than whichever test came first.
+		// ErrorIfNotFound IS FALSE, the refusal `UCataclysmFervour::LeechTag`
+		// makes and for its stated reason: a test may run before the tag table
+		// is loaded, and an empty tag matches nothing, which is the right
+		// answer there. With the default, an automation test would log an
+		// error on every skill use.
+		//
+		// ASKED AFRESH RATHER THAN KEPT IN A STATIC, which is the same choice
+		// that precedent makes. A static would be filled by the first call, so
+		// one call before the tag table loaded would leave it holding an
+		// invalid tag for the life of the process and the window would never
+		// open again.
+		const FGameplayTag ChargeTag = FGameplayTag::RequestGameplayTag(
+			TEXT("Keyword.Charge"), /*ErrorIfNotFound=*/false);
+
+		if (ChargeTag.IsValid() && SkillTags.HasTag(ChargeTag))
+		{
+			Cataclysm->NoteChargeSkillUsed();
+		}
+
+		if (Slot == ECataclysmAbilitySlot::BasicAttack)
+		{
+			Cataclysm->NoteBasicAttackUsed();
+		}
 	}
 	else
 	{
