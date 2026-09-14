@@ -1423,6 +1423,49 @@ private:
 	void NoteHitForBrandOfTheAggressor(const struct FCataclysmHitNotice& Notice);
 
 	/**
+	 * Put the floor panel's lines back on the screen, carrying whatever the
+	 * stateful rules are counting now. Issues #1820 and #41.
+	 *
+	 * CALLED WHEN A COUNT MOVES AND NOT ONLY WHEN A FLOOR BEGINS, which is the
+	 * whole reason it exists as a function. Until 2026-09-14 the panel was drawn
+	 * once, at the end of `ApplyFloorRulesToPlayer`, so a count put on it would
+	 * always have read as the value the player had before they did anything --
+	 * which is nothing.
+	 *
+	 * FROM WHERE THE COUNT CHANGES RATHER THAN FROM THE BEAT. The two counts move
+	 * on a blow, four times a second is not when they move, and a panel redrawn
+	 * on a clock would be doing work on every floor whether or not anything
+	 * counts. `NoteHitForWastingSickness` and `NoteHitForBrandOfTheAggressor`
+	 * each call this immediately after raising their own.
+	 *
+	 * IT ASKS THE ROWS WHETHER THEY ARE ON THE FLOOR, so a floor carrying neither
+	 * hands the panel an empty map and every line reads exactly as it did before
+	 * any of this existed.
+	 */
+	void RefreshFloorModifierPanel();
+
+public:
+	/**
+	 * What each stateful rule on this floor is counting right now, by row key.
+	 * Issues #1820 and #41.
+	 *
+	 * PUBLIC, AND SEPARATE FROM THE DRAW, BECAUSE THAT IS THE ONLY WAY A TEST CAN
+	 * SEE IT. `UCataclysmFloorModifierPanelLayout`'s own header records the rule
+	 * this follows: the automation tests run with `-nullrhi`, a widget built in a
+	 * headless test has no children to read, so what the panel says is decided
+	 * where a test can read it. The panel itself needs a widget class loaded from
+	 * an asset that a test world does not have, so `RefreshFloorModifierPanel`
+	 * returns early there and proves nothing. This function is the part worth
+	 * asserting on.
+	 *
+	 * ONLY THE ROWS THE FLOOR CARRIES. A count for a row not in force would be a
+	 * number with nothing behind it, and there is no line to put it on.
+	 */
+	TMap<FName, FString> LiveCountsForTheFloor() const;
+
+private:
+
+	/**
 	 * Mortal Decay's slowing, on a creature the player reaped. Issues #1786
 	 * and #41.
 	 *

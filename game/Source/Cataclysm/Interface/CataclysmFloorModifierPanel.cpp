@@ -18,12 +18,14 @@ void UCataclysmFloorModifierPanel::NativeConstruct()
 	Redraw();
 }
 
-void UCataclysmFloorModifierPanel::SetFloorModifiers(const TArray<FName>& RowKeys,
-													 int32 InFloorNumber)
+void UCataclysmFloorModifierPanel::SetFloorModifiers(
+	const TArray<FName>& RowKeys, int32 InFloorNumber,
+	const TMap<FName, FString>& LiveCounts)
 {
 	FloorNumber = FMath::Max(1, InFloorNumber);
 	Lines = UCataclysmFloorModifierPanelLayout::LinesFor(
-		RowKeys, UCataclysmDungeonModifierTable::LoadDungeonModifierTable());
+		RowKeys, UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+		LiveCounts);
 	Redraw();
 }
 

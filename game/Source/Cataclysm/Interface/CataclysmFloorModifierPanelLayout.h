@@ -46,6 +46,33 @@ struct CATACLYSM_API FCataclysmFloorModifierLine
 	/** Whether the key names a row of the dungeon modifier table. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	bool bIsARow = false;
+
+	/**
+	 * What this row is counting right now, e.g. "3 of 20", or empty for a row
+	 * that counts nothing.
+	 *
+	 * WHY A ROW NEEDS THIS AT ALL. Two dungeon rules keep a count that decides
+	 * what happens to the player -- `Famine_Wasting_Sickness` and
+	 * `Demonic_Brand_of_the_Aggressor` -- and until this field neither count was
+	 * shown anywhere. Measured 2026-09-14: outside
+	 * `game/Source/Cataclysm/Dungeon/`, nothing in `game/Source` read either one.
+	 *
+	 * THE SECOND OF THOSE IS WHY IT COULD NOT WAIT. Wasting Sickness's stacks
+	 * lower maximum health and mana, so a player sees the bar shrink even without
+	 * a number. Brand of the Aggressor changes nothing at all for nineteen blows
+	 * and then takes a fifth of maximum health, so with no count there is nothing
+	 * to read and nothing to react to.
+	 *
+	 * A STRING RATHER THAN A NUMBER, because what is worth showing differs by
+	 * row and the rule that keeps the count is the only thing that knows. The
+	 * layout prints what it is handed and decides nothing.
+	 *
+	 * EMPTY FOR EVERY OTHER ROW, which is most of them, and `NameLineFor` adds
+	 * nothing when it is empty -- so a row that counts nothing reads exactly as
+	 * it did before this field existed.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	FString LiveCount;
 };
 
 /**
@@ -74,9 +101,14 @@ public:
 	 * @param RowKeys              `FCataclysmFloorBrief::Modifiers`
 	 * @param DungeonModifierTable where names and descriptions come from. Null
 	 *                             gives lines holding only the keys
+	 * @param LiveCounts           what each row is counting now, by row key.
+	 *                             Defaulted empty, so every caller that has no
+	 *                             counts to give is unchanged and every line
+	 *                             reads as it did before this parameter existed
 	 */
 	static TArray<FCataclysmFloorModifierLine> LinesFor(
-		const TArray<FName>& RowKeys, const UDataTable* DungeonModifierTable);
+		const TArray<FName>& RowKeys, const UDataTable* DungeonModifierTable,
+		const TMap<FName, FString>& LiveCounts = TMap<FName, FString>());
 
 	/** The panel's heading, e.g. "Floor 5: 2 dungeon modifiers". */
 	static FString HeadingFor(int32 FloorNumber, int32 ModifierCount);
@@ -87,6 +119,10 @@ public:
 	 *
 	 * NOTHING AFTER A BUILT ONE'S NAME, so the mark stands out on the ones that
 	 * need it rather than being on every line.
+	 *
+	 * EXCEPT A LIVE COUNT, WHICH IS APPENDED WHEN THE LINE CARRIES ONE, e.g.
+	 * "Brand of the Aggressor (3 of 20)". A row that counts nothing is unchanged,
+	 * which is what keeps every existing assertion about this text true.
 	 */
 	static FString NameLineFor(const FCataclysmFloorModifierLine& Line);
 };

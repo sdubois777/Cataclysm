@@ -43,8 +43,9 @@ ACataclysmPlayerController::ACataclysmPlayerController()
 	DefaultMouseCursor = EMouseCursor::Default;
 }
 
-void ACataclysmPlayerController::ShowFloorModifiers(const TArray<FName>& RowKeys,
-													 int32 FloorNumber)
+void ACataclysmPlayerController::ShowFloorModifiers(
+	const TArray<FName>& RowKeys, int32 FloorNumber,
+	const TMap<FName, FString>& LiveCounts)
 {
 	// NOTHING ON THE FLOOR, NOTHING ON THE SCREEN. Every floor walked in the
 	// sandbox carries no modifiers, and a panel reading "0 dungeon modifiers" on
@@ -93,7 +94,7 @@ void ACataclysmPlayerController::ShowFloorModifiers(const TArray<FName>& RowKeys
 		}
 	}
 
-	FloorModifierPanel->SetFloorModifiers(RowKeys, FloorNumber);
+	FloorModifierPanel->SetFloorModifiers(RowKeys, FloorNumber, LiveCounts);
 	if (!FloorModifierPanel->IsInViewport())
 	{
 		FloorModifierPanel->AddToViewport();

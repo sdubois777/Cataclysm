@@ -2,6 +2,77 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A stateful floor rule shows what it is counting, the count has to be redrawn where it moves, and the wiring that carries it is still not covered
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmFloorModifierPanelLayout.h` and `.cpp`
+(what the floor panel says, decided as data), `CataclysmFloorModifierPanel.h` and `.cpp` (the
+panel widget), `game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (which
+hands the panel its lines), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and
+`.cpp` (the beat and its blow listeners), and
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### What was missing
+
+Two dungeon rules keep a count that decides what happens to the player:
+`Famine_Wasting_Sickness` and `Demonic_Brand_of_the_Aggressor`. **Measured 2026-09-14: outside
+`game/Source/Cataclysm/Dungeon/`, nothing in `game/Source` read either one.** The floor panel
+named each row and printed its description word for word, so a player could read that twenty
+blows erupt; it never said how many they had.
+
+**The second rule is why it could not wait.** Wasting Sickness's stacks lower maximum health and
+mana, so a player sees the bar shrink even without a number. Brand of the Aggressor changes
+nothing at all for nineteen blows and then takes a fifth of maximum health.
+
+### Once at floor entry is not a live count
+
+The panel was drawn from exactly one place — the end of `ApplyFloorRulesToPlayer` — so a count
+put on it would always have read as the value the player had before they did anything, which is
+nothing. **Making it live is the change, not an addition to it.**
+
+`ACataclysmDungeonGameMode::RefreshFloorModifierPanel` is now called from three places: that one,
+and from each blow listener immediately after it raises its own count. **From where the count
+moves rather than from the beat**: the counts move on a blow, and a panel redrawn four times a
+second would be doing work on every floor whether or not anything counts.
+
+### The count is a string the rule supplies, and the layout decides nothing
+
+`FCataclysmFloorModifierLine` gained one field and `LinesFor` one defaulted parameter, so every
+caller with no counts to give is unchanged and every line reads as it did. What is worth showing
+differs by row and only the rule keeping the count knows it.
+
+**A smaller route was ruled out for a stated reason.** Formatting the count inside the widget
+would have touched three files instead of six, but `CataclysmFloorModifierPanelLayout.h`'s own
+header records why it exists: the automation tests run with `-nullrhi`, a widget built in a
+headless test has no children to read, so what the panel says is decided where a test can see
+it. **Text decided in the widget cannot be tested here at all.**
+
+### "N of M" for both rows, which is a deviation with a reason
+
+A plain count was what was asked for on Wasting Sickness. Both rows print "N of M" because
+**Wasting Sickness has an M**: `WastingSicknessMostStacks` is 5, its row says the debuff stacks,
+and a player reading "2" cannot tell a fifth from nearly all of it.
+
+### One thing is still not covered, and it is the wiring
+
+**The refresh CALL is not tested.** Every test reads
+`ACataclysmDungeonGameMode::LiveCountsForTheFloor`, which is the figure the panel is handed and
+not the handing, so **deleting the refresh call from a listener would leave all three tests
+passing**. A break for it was planned, traced, found to prove nothing, and replaced.
+
+`RefreshFloorModifierPanel` needs an `ACataclysmPlayerController` and these tests possess a plain
+`APlayerController` — a gap `CataclysmDungeonModifierEffectsTests.cpp`'s own header already
+recorded before this change, now one line larger.
+
+**The widget cannot close it either, and that was checked rather than assumed.**
+`game/Content/Interface/WBP_FloorModifiers.uasset` is in git, but `CreateWidget` wants a game
+instance and `CataclysmTestWorld::MakeWorldThatHasBegunPlay` builds a world that has none — its
+own header says so. A test that tried would fail for a reason having nothing to do with these
+rules.
+
+---
+
 ## 2026-09-14 — A row that states its own figures leaves one judgement, a rule and a comment can disagree about what the player is shown, and a count in prose went stale the way counts do
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

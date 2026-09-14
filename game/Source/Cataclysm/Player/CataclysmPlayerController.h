@@ -68,10 +68,18 @@ public:
 	 * a menu. The panel never takes a click, so it cannot get in the way of
 	 * click-to-move.
 	 *
+	 * CALLED AGAIN WHENEVER A COUNT MOVES, since 2026-09-14, and not only when a
+	 * floor begins. A count shown once at floor entry is always the count the
+	 * player had before they did anything, which is nothing.
+	 *
 	 * @param RowKeys     `FCataclysmFloorBrief::Modifiers`. Empty hides the panel
 	 * @param FloorNumber counted from 1
+	 * @param LiveCounts  what each row is counting now, by row key. Defaulted
+	 *                    empty; see `FCataclysmFloorModifierLine::LiveCount`
 	 */
-	void ShowFloorModifiers(const TArray<FName>& RowKeys, int32 FloorNumber);
+	void ShowFloorModifiers(const TArray<FName>& RowKeys, int32 FloorNumber,
+							const TMap<FName, FString>& LiveCounts =
+								TMap<FName, FString>());
 
 	/**
 	 * Put the game into the one input mode it plays in.
