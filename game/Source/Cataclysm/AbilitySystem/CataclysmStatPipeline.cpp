@@ -92,6 +92,8 @@ namespace
 		{ TEXT("target_carries_cripple"),       ECataclysmStatCondition::TargetCarriesCripple },
 		{ TEXT("target_carries_cripple_and_weaken"),
 												ECataclysmStatCondition::TargetCarriesCrippleAndWeaken },
+		{ TEXT("target_carries_void_splinter"),
+												ECataclysmStatCondition::TargetCarriesVoidSplinter },
 		{ TEXT("opponent_carries_weaken"),      ECataclysmStatCondition::OpponentCarriesWeaken },
 		{ TEXT("target_health_below"),          ECataclysmStatCondition::TargetHealthBelowPercent },
 		{ TEXT("energy_shield_at_maximum"),     ECataclysmStatCondition::EnergyShieldAtMaximum },
@@ -189,6 +191,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::WhileStationary:
 	case ECataclysmStatCondition::TargetCarriesCripple:
 	case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
+	case ECataclysmStatCondition::TargetCarriesVoidSplinter:
 	case ECataclysmStatCondition::OpponentCarriesWeaken:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
 		// nothing for a number to be compared against. Each of the fourteen says
@@ -538,6 +541,22 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// pays on both and not otherwise, and a modifier carries one condition.
 		return State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::CrippleTag())
 			&& State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::WeakenTag());
+
+	case ECataclysmStatCondition::TargetCarriesVoidSplinter:
+		// THE SAME WALK AS CRIPPLE ABOVE, READING A TAG ON A DIFFERENT BRANCH.
+		// Issue #1642. A void splinter is `Keyword.DoT.VoidSplinter` rather than
+		// `Status.Debuff.*`, because it deals damage over time; `DebuffRootNames`
+		// names `Keyword.DoT` as a root, so `TagsOn` collects it and this reads
+		// it exactly as the three conditions above read theirs.
+		//
+		// `HasTagExact` AND NOT `HasTag`, for the reason given above: the walk
+		// stores one entry per effect, and asking inexactly would answer yes to
+		// `Keyword.DoT` itself and pay on any damage over time at all. That is
+		// not a hypothetical here -- six other ailments hang off the same
+		// parent, so the loose form would make this condition mean "bleeding, or
+		// poisoned, or burning, or ...".
+		return State.TargetDebuffs.HasTagExact(
+			UCataclysmDebuffs::VoidSplinterTag());
 
 	case ECataclysmStatCondition::TargetHealthBelowPercent:
 		// STRICTLY BELOW, so a target sitting exactly on the threshold is not

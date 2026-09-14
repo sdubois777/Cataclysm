@@ -307,6 +307,111 @@ pins the same number changes.
 
 ---
 
+## 2026-09-14 — A fourth condition naming an ailment on the target is taken rather than the column the rule points at, and two of the three asked for are refused
+
+**Affects:**
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmTargetAilmentTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`,
+`tools/generate_datatables.py`. Issues
+[#1642](https://github.com/sdubois777/Cataclysm/issues/1642) and
+[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+The condition added is `target_carries_void_splinter`. It compares no number.
+
+### THE RULE THIS ENTRY IS ANSWERING, WHICH THIS PROJECT WROTE FOR EXACTLY THIS MOMENT
+
+The 2026-09-13 entry below that added the first three of these conditions ends
+with a bound on itself:
+
+> **Add a name when a node's own sentence names the ailment. Never
+> speculatively. At a fourth and a fifth, the right answer is a column naming the
+> ailment on the row, and this decision should be revisited rather than
+> extended.**
+
+Three names existed. A fourth was asked for, so the revisit is this entry rather
+than a silent extension. `CataclysmStatPipeline.h` and `generate_datatables.py`
+both carry the rule in a comment, and both now point here.
+
+### THREE NAMES WERE ASKED FOR AND ONE IS TAKEN
+
+The request was `target_carries_bleed`, `target_carries_poison` and
+`target_carries_void_splinter`, for three enchantment rows. Measured against the
+data, only one row asks for a condition of this shape:
+
+| Row, after the #1642 rewording | Whose number moves | Needs |
+| :-- | :-- | :-- |
+| Bleeding enemies take 20-40% increased damage **from all sources** | the enemy's damage taken | an enemy-side modifier |
+| Poisoned enemies are **slowed** by 30-50% | the enemy's movement speed | an enemy-side modifier |
+| Enemies carrying a void splinter take 9-15% increased damage **from you** | the attacker's damage | **this condition** |
+
+**Two of the three would have been speculative**, which the rule forbids in as
+many words. A condition on this character's own lookup can only change a number
+on this character; the first two change one on the enemy whoever is attacking, so
+they belong with the rows that need a modifier carried by the ailment itself.
+
+A sweep of both enchantment files and all 441 passive nodes found no other
+sentence naming an ailment on a target, except two Bulwark nodes that want a
+count of bleed stacks — a **scale**, not a condition, and a different tree.
+
+### WHY THE COLUMN IS STILL NOT TAKEN, AND THE REASON IS NOT THE ONE FIRST WRITTEN
+
+The original analysis rejected the parameterised column on cost: a field on
+`FCataclysmPassiveEffectRow`, so a CSV column, a workbook column insertion, and
+the inline fixtures in `CataclysmPassiveTreeTests.cpp` break.
+
+**That costing no longer describes this case.** The row that asks is an
+enchantment row, in `FCataclysmEnchantmentEffectRow`, a different struct with its
+own file and its own fixtures. So the cost the rule anticipated is not the cost
+this change would pay, and the analysis had to be redone rather than cited.
+
+Three reasons the column is still declined, in order of weight:
+
+1. **One row asks.** A column is generality, and the rule's own objection to
+   speculative names applies to a speculative schema at least as strongly.
+2. **`ConditionValue` cannot serve as the parameter.** It is a `float`. Holding
+   an ailment's index in it would put "the fourth ailment" into a data row as a
+   number, and the first reordering of `UCataclysmAilments::Kinds` would silently
+   repoint every such row.
+3. **The column would be a second vocabulary.** A row could then name an ailment
+   the conditions do not, and the two lists would need holding together by
+   another test.
+
+**The rule is not weakened by this entry.** A fifth name should not be added
+without the column being built; that is the next revisit, and it now has a
+costing for the enchantment struct as well as the passive one.
+
+### WHAT THE CONDITION READS, AND WHAT IT ANSWERS WHEN IT CANNOT READ IT
+
+`State.TargetDebuffs.HasTagExact(UCataclysmDebuffs::VoidSplinterTag())`, filled
+on the attacker's own lookups by `UCataclysmDebuffs::TagsOnActor`.
+
+**Its tag hangs off a different branch from the three names above it.** Cripple
+and Weaken are `Status.Debuff.*`; a void splinter is `Keyword.DoT.VoidSplinter`,
+because it deals damage over time rather than changing a number.
+`UCataclysmDebuffs::DebuffRootNames` names `Keyword.DoT` as a root, so the tag
+reaches the same container and needs no new plumbing.
+
+**`HasTagExact` and not `HasTag`, and here the loose form would be actively
+wrong.** Six other ailments hang off `Keyword.DoT`, so asking inexactly would
+make this condition mean "bleeding, or poisoned, or burning, or any damage over
+time at all".
+
+**An unknown reading refuses.** An empty container means no target in hand, a
+target carrying nothing, or no modifier in this lookup asking about an ailment;
+all three withhold the bonus rather than granting it, which is the direction every
+blow predicate in this pipeline takes.
+
+**A condition missing from the switch in
+`UCataclysmAbilitySystemComponent` that decides whether to collect the target's
+ailments at all would be judged against an empty container and grant nothing,
+silently.** That switch is the fifth site this change touches and the one with no
+compiler error to catch it.
+
+---
+
 ## 2026-09-13 — Mortal Decay saps health faster the deeper the floor is, "progress" is the floor number rather than the walk, and a kill the player made halves it for five seconds
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and

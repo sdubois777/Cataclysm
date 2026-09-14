@@ -5,6 +5,10 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the ailment table and its own `Apply`, which the void splinter test uses
+// instead of this file's `ApplyAilment` helper. The helper asks for a
+// `Status.DoT.*` tag and the ailment grants a `Keyword.DoT.*` one. Issue #1642.
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
@@ -993,6 +997,114 @@ bool FCataclysmWeakenedAttackerDamageReductionTest::RunTest(const FString&)
 	// the same line; only the attacker differs.
 	TestEqual(TEXT("and a plain attacker's blow is not cut at all"),
 		FromPlainOnGuarded / FromPlainOnPlainTarget, 1.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTargetVoidSplinterTest,
+	"Cataclysm.TargetAilment.ATargetCarryingAVoidSplinterTakesMoreAndACleanOneTakesNormalDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The enchantment "Enemies carrying a void splinter take increased damage from
+ * you", from a real void splinter to what reached health. Issue #1642.
+ *
+ * TWO TARGETS AND ONE ATTACKER, as the Cripple test above does and for the same
+ * reason: one larger blow would pass against a build that raised every hit.
+ *
+ * THE VOID SPLINTER IS APPLIED THROUGH `UCataclysmAilments::Apply` AND NOT
+ * THROUGH THIS FILE'S `ApplyAilment` HELPER, which is the one thing to get right
+ * here. That helper asks `UCataclysmSkillShapes::StatusTagFor`, which builds
+ * `Status.DoT.VoidSplinter` from the DoTs sheet. **That is a real tag and it is
+ * the wrong one.** The ailment table grants `Keyword.DoT.VoidSplinter`, and only
+ * `Keyword.DoT` is named in `UCataclysmDebuffs::DebuffRootNames`, so a splinter
+ * applied the helper's way would be carried by the target and collected by
+ * nothing -- and this test would fail while the game was correct.
+ *
+ * The two agree for Cripple, whose table entry and status tag are both
+ * `Status.Debuff.Cripple`, which is why the helper has been enough until now.
+ */
+bool FCataclysmTargetVoidSplinterTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetAilmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FAilmentArmedActor Attacker = MakeAilmentArmed(World);
+	ACataclysmEnemyCharacter* Splintered =
+		SpawnAilmentCreatureAt(World, FVector(2.0f * AilmentM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Clean =
+		SpawnAilmentCreatureAt(World, FVector(0.0f, 2.0f * AilmentM, 0.0f));
+	if (!TestNotNull(TEXT("an attacker"), Attacker.Actor)
+		|| !TestNotNull(TEXT("a target to splinter"), Splintered)
+		|| !TestNotNull(TEXT("a target to leave alone"), Clean))
+	{
+		return false;
+	}
+
+	// THE ENCHANTMENT'S OWN RANGE AT ITS TOP -- 15% -- WITH AN UNCONDITIONAL 30%
+	// BESIDE IT so the bucket is measurable, exactly as the Cripple test does.
+	// An increase gives 1.45/1.30 and a multiplier would give 1.15.
+	GiveAilmentAttackLine(Attacker.AbilitySystem,
+						  ECataclysmStatCondition::TargetCarriesVoidSplinter,
+						  /*ConditionalIncrease=*/15.0f,
+						  /*UnconditionalIncrease=*/30.0f);
+
+	const FCataclysmAilmentKind* Splinter =
+		UCataclysmAilments::KindNamed(TEXT("Void Splinter"));
+	if (!TestNotNull(TEXT("Void Splinter is an ailment"), Splinter))
+	{
+		return false;
+	}
+
+	const FGameplayTag Tag = UCataclysmDebuffs::VoidSplinterTag();
+	if (!TestTrue(TEXT("the void splinter tag exists in the vocabulary"),
+				  Tag.IsValid()))
+	{
+		return false;
+	}
+
+	// THE STATE THIS TEST BUILDS IS ASSERTED BEFORE THE BEHAVIOUR IS. A splinter
+	// that never landed, or that landed on the wrong target, would make the two
+	// alike and every assertion below pass for the wrong reason.
+	if (!TestTrue(TEXT("the void splinter was applied"),
+				  UCataclysmAilments::Apply(Attacker.Actor, Splintered,
+											*Splinter, /*Magnitude=*/1.0f))
+		|| !TestTrue(TEXT("and the target carries it where a debuff walk finds it"),
+					 CarriesAilment(Splintered, Tag))
+		|| !TestFalse(TEXT("and the other one does not"),
+					  CarriesAilment(Clean, Tag)))
+	{
+		return false;
+	}
+
+	const auto Strike = [&](ACataclysmEnemyCharacter* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target, 100.0f,
+										 AilmentMelee(), AilmentNoCritical(),
+										 &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	const float OnSplintered = Strike(Splintered);
+	const float OnClean = Strike(Clean);
+	if (!TestTrue(TEXT("both blows landed"),
+				  OnSplintered > 0.0f && OnClean > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(*FString::Printf(
+				  TEXT("A SPLINTERED TARGET TAKES 1.45/1.30 OF WHAT A CLEAN ONE "
+					   "DOES: %.2f against %.2f"),
+				  OnSplintered, OnClean),
+			  OnSplintered / OnClean, 1.45f / 1.30f, 0.01f);
 
 	return true;
 }

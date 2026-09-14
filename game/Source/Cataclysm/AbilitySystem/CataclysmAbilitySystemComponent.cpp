@@ -805,6 +805,12 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		{
 		case ECataclysmStatCondition::TargetCarriesCripple:
 		case ECataclysmStatCondition::TargetCarriesCrippleAndWeaken:
+		// AND THE VOID SPLINTER, WHICH MUST BE LISTED HERE OR IT READS NOTHING.
+		// Issue #1642. `TargetDebuffs` is filled only when some modifier in this
+		// lookup asks about an ailment, so a condition missing from this switch
+		// is judged against an empty container, answers false every time, and
+		// the row grants nothing with no error anywhere.
+		case ECataclysmStatCondition::TargetCarriesVoidSplinter:
 			bWantsAilments = true;
 			break;
 		case ECataclysmStatCondition::TargetHealthBelowPercent:

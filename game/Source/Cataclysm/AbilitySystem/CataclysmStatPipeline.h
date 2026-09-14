@@ -670,6 +670,38 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Target Carries Cripple And Weaken"),
 
 	/**
+	 * The character being HIT is carrying a void splinter. Issue #1642.
+	 *
+	 * The enchantment "Enemies carrying a void splinter take 9%-15% increased
+	 * damage from you" is what asks. It is the FOURTH name of this shape, and
+	 * the rule above says a fourth is where the decision is revisited rather
+	 * than extended. It was: `docs/DECISIONS.md` records the revisit, and the
+	 * short reason is that one row asks, the parameterised column's cost now
+	 * falls on a different row struct than the analysis assumed, and
+	 * `ConditionValue` is a float that cannot carry an ailment's identity.
+	 *
+	 * THREE NAMES WERE ASKED FOR AND ONE WAS BUILT. The other two, for bleeding
+	 * and poisoned targets, were dropped because the two rows that looked like
+	 * they needed them turned out to move a number on the ENEMY -- "take
+	 * increased damage from all sources", "are slowed" -- rather than on the
+	 * attacker, so they need an enemy-side modifier and not a condition on this
+	 * character's lookup. Adding them anyway would have been the speculative
+	 * addition the rule forbids.
+	 *
+	 * UNDER `Keyword.DoT` AND NOT `Status.Debuff`, which is the one difference
+	 * from the three names above it. A void splinter deals damage over time, so
+	 * its tag hangs off the damage over time branch; `DebuffRootNames` names
+	 * that branch as a root, so it reaches `TargetDebuffs` exactly as Cripple
+	 * does. `UCataclysmDebuffs::VoidSplinterTag` is where the string is written,
+	 * once.
+	 *
+	 * A CHARACTER SHEET WITH NO TARGET GETS NOTHING, the refusal every blow
+	 * predicate makes, for the reason `TargetCarriesCripple` gives above.
+	 */
+	TargetCarriesVoidSplinter
+		UMETA(DisplayName = "Target Carries Void Splinter"),
+
+	/**
 	 * Whoever threw the blow is carrying Weaken. Issue #1515.
 	 *
 	 * THE MIRROR OF `TargetCarriesCripple` ABOVE, READING A DIFFERENT FIELD, and
