@@ -81,6 +81,26 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	bool bAffordable = true;
+
+	/**
+	 * Whether a lock is refusing this skill right now.
+	 *
+	 * THE SECOND REASON A BOX CANNOT BE USED, and it is the one the player had no
+	 * way of learning. Issue #1810. `UCataclysmSkillTemplate::CanActivateAbility`
+	 * refuses every slot but the basic attack while `UCataclysmSkillSlots::
+	 * LockedStat` is above zero, and returns before the engine's own checks on
+	 * purpose so the player is not told the wrong reason. Nothing put the right
+	 * one in its place, so the outcome was a key that did nothing.
+	 *
+	 * READ PER BOX AND NOT ONCE FOR THE BAR, which is the difference between this
+	 * and `bAffordable` above. Mana is one number for the character, so every box
+	 * asks the same question; a lock is scoped by the asking skill's own tags, so
+	 * an enchantment that locks only the Movement slot and a dungeon rule that
+	 * locks everything have to look different. `UCataclysmSkillBar::Read` passes
+	 * each skill's `SkillTags`, the same container the refusal passes.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	bool bLocked = false;
 };
 
 /**
@@ -203,6 +223,52 @@ public:
 	static bool CanAfford(float ManaCost, float Mana);
 
 	/**
+	 * Whether a skill that answered this lock value is refused.
+	 *
+	 * ABOVE ZERO, WHICH IS THE WHOLE TEST, and it is deliberately the same
+	 * comparison `UCataclysmSkillTemplate::CanActivateAbility` makes rather than
+	 * a second opinion about it. A bar that decided this differently from the
+	 * refusal would tell the player something the game does not do.
+	 */
+	static bool IsLocked(float LockValue);
+
+	/**
+	 * Whether to say in words that every skill is locked.
+	 *
+	 * ONLY WHEN EVERY BOX HOLDING A SKILL IS LOCKED, never when some are. Issue
+	 * #1810. A single-slot lock is the bar's business: `game/Data/
+	 * EnchantmentEffects.csv` holds two rows that lock one slot under a condition
+	 * the player sets off themselves, and a line of text across the screen for
+	 * one greyed box would be noise. The case this exists for is the dungeon rule
+	 * `Celestial_Edict_of_Silence`, which locks every slot for fifteen seconds on
+	 * a clock the player does not control, and which reads as the game having
+	 * stopped working rather than as a rule doing what its row says.
+	 *
+	 * AN EMPTY BOX IS NOT A LOCKED ONE AND IS NOT COUNTED EITHER. It holds no
+	 * skill, so there is nothing to refuse; counting it as unlocked would silence
+	 * this for any character with a slot spare, and counting it as locked would
+	 * say every skill is locked to a character who has none. So the question is
+	 * asked of the boxes that hold a skill, and answered false when there are
+	 * none.
+	 */
+	static bool EverySkillIsLocked(const TArray<FCataclysmSkillBarSlot>& Slots);
+
+	/**
+	 * The words shown while that is true.
+	 *
+	 * IT MUST NOT SAY THE PLAYER CANNOT ACT, because that is false and the design
+	 * says so. `UCataclysmSkillTemplate::CanActivateAbility` exempts the basic
+	 * attack slot unconditionally, and `Celestial_Edict_of_Silence`'s row is
+	 * "Only basic attacks function during this period". A player told they can do
+	 * nothing would stop trying the one thing that still works.
+	 *
+	 * AND IT SAYS NO DURATION. The lock is a stat value, not a time:
+	 * `UCataclysmAbilitySystemComponent::StatForSkill` answers how much, not how
+	 * long, so a countdown here would be invented rather than read.
+	 */
+	static FString LockedNotice();
+
+	/**
 	 * A key written short enough to fit in a box.
 	 *
 	 * `FKey` CARRIES TWO NAMES AND THIS TAKES THE SHORT ONE. The long name is
@@ -257,6 +323,12 @@ public:
 
 	/** A box holding a skill the character cannot pay for. */
 	static const TCHAR* UnaffordableHex;
+
+	/** A box holding a skill a lock is refusing. */
+	static const TCHAR* LockedHex;
+
+	/** The words saying every skill is locked. Read against a dark box. */
+	static const TCHAR* LockedNoticeInkHex;
 
 	/** A box with nothing granted into it. */
 	static const TCHAR* EmptyHex;

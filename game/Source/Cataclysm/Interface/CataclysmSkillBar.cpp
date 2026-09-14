@@ -4,7 +4,9 @@
 
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "GameFramework/Pawn.h"
 #include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmCombatOverlay.h"
@@ -13,6 +15,15 @@
 const TCHAR* UCataclysmSkillBar::ReadyHex = TEXT("2A2E38FF");
 const TCHAR* UCataclysmSkillBar::CoolingHex = TEXT("0A0C10C8");
 const TCHAR* UCataclysmSkillBar::UnaffordableHex = TEXT("3A1F22FF");
+
+// A LOCKED BOX IS DARKER AND COLDER THAN AN UNPAYABLE ONE, and it has to differ
+// from every other state here or the bar would have two states drawn the same.
+// `ALockedBoxLooksDifferentFromEveryOtherState` is what holds that.
+const TCHAR* UCataclysmSkillBar::LockedHex = TEXT("1B2430FF");
+
+// THE WORDS ARE NOT WHITE, so they are not read as another skill name. A pale
+// blue against the dark boxes below them.
+const TCHAR* UCataclysmSkillBar::LockedNoticeInkHex = TEXT("9FC4E8FF");
 const TCHAR* UCataclysmSkillBar::EmptyHex = TEXT("16181EFF");
 const TCHAR* UCataclysmSkillBar::BoxEdgeHex = TEXT("0A0B0EFF");
 
@@ -189,11 +200,60 @@ FString UCataclysmSkillBar::ShortNameFor(const FString& Name)
 	return Name.Left(MostNameCharacters - 1) + TEXT(".");
 }
 
+bool UCataclysmSkillBar::IsLocked(float LockValue)
+{
+	return LockValue > 0.0f;
+}
+
+bool UCataclysmSkillBar::EverySkillIsLocked(const TArray<FCataclysmSkillBarSlot>& Slots)
+{
+	int32 Holding = 0;
+	for (const FCataclysmSkillBarSlot& Slot : Slots)
+	{
+		if (!Slot.bFilled)
+		{
+			continue;
+		}
+		++Holding;
+		if (!Slot.bLocked)
+		{
+			return false;
+		}
+	}
+
+	// A CHARACTER WITH NO SKILLS AT ALL IS NOT SILENCED, they are unarmed. Saying
+	// every skill is locked to somebody who has none would be true and useless,
+	// and it would put the words on screen for the frames after a pawn appears
+	// and before its weapon grants anything -- which is the fault issue #653 was
+	// reported as, arriving from a new direction.
+	return Holding > 0;
+}
+
+FString UCataclysmSkillBar::LockedNotice()
+{
+	// BASIC ATTACKS ARE NAMED BECAUSE THEY STILL WORK. The bar draws no box for
+	// that slot -- `SlotsShown` leaves it out, because it has no key and no
+	// cooldown -- so the one thing a silenced player can still do is the one
+	// thing nothing on the bar shows. Saying it here is the only place it gets
+	// said.
+	return TEXT("SKILLS LOCKED -- BASIC ATTACKS STILL WORK");
+}
+
 FLinearColor UCataclysmSkillBar::TintFor(const FCataclysmSkillBarSlot& Slot)
 {
 	if (!Slot.bFilled)
 	{
 		return UCataclysmCombatOverlay::ColourFromHex(EmptyHex);
+	}
+
+	// LOCKED IS SHOWN BEFORE UNPAYABLE, and the order matters for the same kind
+	// of reason the next one gives. A locked skill is refused at every mana
+	// level, so the lock is the fact that decides whether the box can be used;
+	// paying for it would change nothing. The reverse order would tell a silenced
+	// player to go and find mana.
+	if (Slot.bLocked)
+	{
+		return UCataclysmCombatOverlay::ColourFromHex(LockedHex);
 	}
 
 	// UNAFFORDABLE IS SHOWN BEFORE THE WAIT, and the order matters. A skill that
@@ -271,6 +331,33 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 		// appears, and greying out every skill for those frames would look like
 		// the fault issue #653 was reported as.
 		Box.bAffordable = !bHasMana || CanAfford(Box.ManaCost, Mana);
+
+		// THE LOCK IS ASKED PER BOX, WITH THIS SKILL'S OWN TAGS. Issue #1810.
+		// Unlike mana above, this is not one answer for the character:
+		// `StatForSkill` scopes each modifier by the tags it is given, which is
+		// what lets one stat serve both an enchantment that locks the Movement
+		// slot and a dungeon rule that locks everything. Asking once with an
+		// empty container would draw those two the same, and the first is what
+		// the two rows in `game/Data/EnchantmentEffects.csv` do today.
+		//
+		// THE SAME CALL THE REFUSAL MAKES, deliberately.
+		// `UCataclysmSkillTemplate::CanActivateAbility` asks
+		// `StatForSkill(LockedStat, SkillTags, 0.0f) > 0.0f`; a bar that decided
+		// it some other way would eventually disagree with the game.
+		//
+		// A FALLBACK OF ZERO MEANS AN UNKNOWN CHARACTER IS NOT LOCKED, matching
+		// that refusal's own fallback and for its reason: a player's ability
+		// system has no stat line before its first refresh, and greying out every
+		// box for those frames would look like the fault this change is fixing.
+		if (const UCataclysmSkillTemplate* Skill = Cast<UCataclysmSkillTemplate>(Ability))
+		{
+			if (const UCataclysmAbilitySystemComponent* Cataclysm =
+					Cast<const UCataclysmAbilitySystemComponent>(Abilities))
+			{
+				Box.bLocked = IsLocked(Cataclysm->StatForSkill(
+					FName(UCataclysmSkillSlots::LockedStat), Skill->SkillTags, 0.0f));
+			}
+		}
 
 		const FGameplayTag CooldownTag = UCataclysmSkillSlots::CooldownTag(Slot);
 		if (Abilities && CooldownTag.IsValid())
