@@ -1078,6 +1078,17 @@ void ACataclysmEnemyCharacter::SetHealth(float NewMaxHealth)
 	ApplyStartingAttributes();
 }
 
+void ACataclysmEnemyCharacter::SetIsAnIllusion(bool bNowAnIllusion)
+{
+	if (bIsAnIllusion == bNowAnIllusion)
+	{
+		return;
+	}
+
+	bIsAnIllusion = bNowAnIllusion;
+	ApplyStartingAttributes();
+}
+
 void ACataclysmEnemyCharacter::SetAttackDamage(float NewAttackDamage)
 {
 	if (NewAttackDamage < 0.0f)
@@ -1257,13 +1268,35 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 			UCataclysmVitalAttributeSet::GetHealthAttribute(), ScaledHealth);
 	}
 
+	// AN ILLUSION DEALS NOTHING, AND IT IS DECIDED HERE SO THAT EVERY RECOMPUTE
+	// HONOURS IT. Issues #1820 and #41. Six public setters re-run this function
+	// and each would otherwise put the creature's designed damage back; see
+	// `bIsAnIllusion` in the header for why the flag is on the creature rather
+	// than a zero written once after the floor is populated.
+	//
+	// THE DESIGNED FIGURE IS LEFT WHERE IT IS RATHER THAN OVERWRITTEN, so a
+	// creature that stops being an illusion goes back to dealing exactly what its
+	// kind deals, with nothing to restore.
 	const FGameplayAttribute Damage =
 		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
-	if (StartingAttackDamage > 0.0f
+
+	// `>= 0.0f` AND NOT `> 0.0f`, WHICH IS A DEFECT FIX AND NOT PART OF THE
+	// ILLUSION. Issues #1820 and #41. Until now, asking for zero through
+	// `SetAttackDamage` recorded the zero and skipped this write, so the
+	// attribute kept whatever it held: a creature already given its designed
+	// damage went on dealing it in full, and the declaration of
+	// `StartingAttackDamage` said the opposite. Nothing reported it.
+	//
+	// THE ILLUSION DOES NOT DEPEND ON THIS, said plainly because it would be easy
+	// to read the two changes as one. The branch above answers zero for an
+	// illusion whatever this guard says. This is fixed here because the rule is
+	// what uncovered it and because a public setter documented as working should
+	// work.
+	if (StartingAttackDamage >= 0.0f
 		&& AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
 	{
 		AbilitySystemComponent->SetNumericAttributeBase(
-			Damage, StartingAttackDamage * DamageScale);
+			Damage, bIsAnIllusion ? 0.0f : StartingAttackDamage * DamageScale);
 	}
 
 	// --- the rest of the designed stat block. Issue #372 ---

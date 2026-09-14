@@ -416,6 +416,25 @@ public:
 	 */
 	void ApplyStartingAttributes();
 
+	/**
+	 * Makes this creature an illusion, or stops it being one.
+	 *
+	 * SAFE BEFORE OR AFTER `BeginPlay`, like `SetAttackDamage` and for the same
+	 * reason: it recomputes through `ApplyStartingAttributes`, which refuses to
+	 * write an attribute whose set is not registered yet and is called again once
+	 * it is.
+	 *
+	 * THE DAMAGE IS THE ONLY THING IT CHANGES. See `bIsAnIllusion`.
+	 *
+	 * NO ACCESS SPECIFIER ADDED AROUND THIS, DELIBERATELY. The section in force
+	 * here is the `public:` opened at the top of the class, which
+	 * `ApplyStartingAttributes` above is already in; a `public:` and a closing
+	 * `private:` would have made every member declared after this point private,
+	 * which compiles for a while and then fails somewhere unrelated.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetIsAnIllusion(bool bNowAnIllusion);
+
 	//~ Dying. Issue #522.
 
 	/**
@@ -1179,9 +1198,61 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float StartingMaxHealth = 0.0f;
 
-	/** What SetAttackDamage was last asked for. Zero means it deals nothing. */
+	/**
+	 * What SetAttackDamage was last asked for. Zero means it deals nothing.
+	 *
+	 * THAT SECOND SENTENCE WAS FALSE UNTIL ISSUES #1820 AND #41. `ApplyStartingAttributes`
+	 * guarded its write with `StartingAttackDamage > 0.0f`, so asking for zero
+	 * recorded the zero and SKIPPED THE WRITE -- the attribute kept whatever it
+	 * held, and a creature already given its designed damage went on dealing it
+	 * in full with nothing reporting anything. The guard is now `>= 0.0f` and the
+	 * sentence is true.
+	 *
+	 * FIVE TESTS ALREADY ASKED FOR ZERO through this setter and got what they
+	 * wanted by accident, because their creatures had never been given damage, so
+	 * the attribute was already zero and the call changed nothing either way.
+	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float StartingAttackDamage = 0.0f;
+
+	/**
+	 * Whether this creature is an illusion, which deals nothing however it
+	 * attacks. `Chaos_Illusory_Enemies`. Issues #1820 and #41.
+	 *
+	 * THE ROW: "Some enemies are illusions. They look and act like real enemies
+	 * but do no damage." So an illusion is an ordinary creature in every respect
+	 * this class already models -- it has health, it takes blows, it dies, its
+	 * death is announced, it is drawn and animated like any other -- and one
+	 * number about it is zero.
+	 *
+	 * IT IS HONOURED INSIDE `ApplyStartingAttributes` RATHER THAN WRITTEN ONCE BY
+	 * WHOEVER MAKES THE ILLUSION, and that is the whole reason it is a field on
+	 * the creature instead of a call at floor population. That function is the
+	 * one place a creature's designed numbers are decided, and SIX PUBLIC SETTERS
+	 * re-run it -- `SetHealth`, `SetAttackDamage`, `SetArmour`, `SetRarityStep`,
+	 * `SetEnergyShieldFraction` and `DrawModifiersForRarity` -- each recomputing
+	 * the attack damage from `StartingAttackDamage` and the rarity's damage scale.
+	 * A zero written once is undone by any of them.
+	 *
+	 * TODAY NOTHING CALLS ONE AFTER A FLOOR IS POPULATED, measured 2026-09-14
+	 * across `game/Source` outside the tests: the only caller of any of the six
+	 * from outside this class is `ACataclysmDungeonGameMode::ApplyDesignedStats`,
+	 * which is the population pass itself. **So writing the zero after that pass
+	 * would also work today.** It was not done that way because that argument is
+	 * a proof about the ABSENCE of a call, and it expires the first time anything
+	 * raises a creature's armour mid-floor, promotes it, or re-draws its
+	 * modifiers. This form cannot expire: the recompute honours the flag.
+	 *
+	 * IT DOES NOT MAKE THE CREATURE HARMLESS IN EVERY SENSE, and the row does not
+	 * ask it to. Two things still reach the player from an illusion, both
+	 * measured: the Abyssal Warden's aura strips two resistances through a status
+	 * effect that deals no damage, and a status effect carrying a
+	 * `FlatDamagePerTick` would not scale with attack damage at all. No creature
+	 * applies one of those today -- the only status effect any creature applies
+	 * is that resistance strip -- so the row's "do no damage" holds as written.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsAnIllusion = false;
 
 	/**
 	 * What SetArmour was last asked for. Zero means no armour.
