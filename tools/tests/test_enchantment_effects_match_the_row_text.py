@@ -193,8 +193,8 @@ JUDGED_NUMBERS = {
 #: stat, same `flat` 1, a slot tag in place of a slot tag and a condition in place
 #: of a condition. The only fields that differ are `Slot.Ultimate` for
 #: `Slot.Movement` and `health_at_or_above` 50 for `stationary_for_seconds` 2.
-AUTHORED_ROWS = 110
-AUTHORED_ENCHANTMENTS = 93
+AUTHORED_ROWS = 123
+AUTHORED_ENCHANTMENTS = 106
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
