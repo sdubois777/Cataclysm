@@ -2526,7 +2526,7 @@ float UCataclysmSkillEffects::AfterCrowdControlResistance(const AActor* Target,
 	}
 
 	// ASKED THROUGH THE STAT PIPELINE RATHER THAN READ OFF THE ATTRIBUTE, so a
-	// CONDITIONED row can reach it. Issue #1515. `Ravager_keystone_spine_004`
+	// CONDITIONED row can reach it. Issue #1515. `Ravager_keystone_spine_003`
 	// Unstoppable grants this stat only "while an enemy is within 4 metres of
 	// you", and a conditioned row is never folded into a gameplay attribute --
 	// so reading the attribute would report the base for ever and the node would

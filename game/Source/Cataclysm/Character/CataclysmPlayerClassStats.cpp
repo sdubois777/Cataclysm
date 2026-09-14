@@ -50,6 +50,9 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmClassStats.h"
+// For the stat name saying nothing may lower a character's movement speed,
+// which lives on the class that reads it. Issue #1515.
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Items/CataclysmItem.h"
 #include "Engine/DataTable.h"
 #include "HAL/IConsoleManager.h"
@@ -828,6 +831,13 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			 Combat::GetArmorPenetrationSuppressedAttribute()},
 			{UCataclysmDamageCalculation::MeleeEvasionSuppressedStat,
 			 Combat::GetMeleeEvasionSuppressedAttribute()},
+			// AND THE ONE STAT THAT SERVES TWO MORE OF THEM. Issue #1515.
+			// `Ravager_keystone_d_kA` Relentless grants it always;
+			// `Ravager_keystone_spine_003` Unstoppable grants the same stat
+			// while an enemy is within four metres. The two differ only in
+			// their row's condition, so one entry here serves both.
+			{ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat,
+			 Combat::GetMovementSpeedReductionSuppressedAttribute()},
 		};
 	}();
 

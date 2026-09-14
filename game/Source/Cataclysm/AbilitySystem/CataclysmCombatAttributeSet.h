@@ -729,6 +729,34 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed)
 
 	/**
+	 * Above zero, nothing may lower this character's movement speed. Issue
+	 * #1515.
+	 *
+	 * TWO NODES GRANT IT AND THEY DIFFER ONLY IN THEIR ROW'S CONDITION.
+	 * `Ravager_keystone_d_kA` Relentless grants it always: "Your Movement Speed
+	 * cannot be reduced by any effect." `Ravager_keystone_spine_003`
+	 * Unstoppable grants the same stat while an enemy is within four metres,
+	 * which is the third clause of "You cannot be stunned, slowed or knocked
+	 * back while an enemy is within 4 metres of you."
+	 *
+	 * IT DROPS THE REDUCING MODIFIERS RATHER THAN FLOORING THE ANSWER, and the
+	 * difference is not academic. A character with a node worth +20% standing
+	 * in a Singularity Well worth -40% resolves to +20%, not to the base speed
+	 * a floor would give: flooring would take away the increase they earned
+	 * along with the reduction they are supposed to ignore.
+	 *
+	 * READ THROUGH THE STAT PIPELINE AND NEVER OFF THIS ATTRIBUTE, because
+	 * Unstoppable's row carries a condition and a conditioned row is never
+	 * folded into a gameplay attribute. Reading the attribute would report the
+	 * base for ever and that clause would silently do nothing -- the defect
+	 * fixed for evasion in #947, the regeneration rates in #1038 and crowd
+	 * control resistance in #1515.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_MovementSpeedReductionSuppressed)
+	FGameplayAttributeData MovementSpeedReductionSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MovementSpeedReductionSuppressed)
+
+	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
 	 * A HUNDRED IS NORMAL, so 120 is a fifth more and 75 is a quarter less. It is
@@ -1144,6 +1172,7 @@ protected:
 	UFUNCTION() void OnRep_ManaRegenRestoresShield(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ArmorPenetrationSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MeleeEvasionSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_MovementSpeedReductionSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);
