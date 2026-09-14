@@ -43,8 +43,13 @@ things.
 
 Each of these stats is zero for every character until a node grants it, so an
 `increased` row would multiply nothing and grant nothing.
-`crowd_control_resistance` is the one that looks like an exception and is not:
-it is zero on every class line too.
+**`crowd_control_resistance` IS AN EXCEPTION AND I FIRST WROTE THAT IT WAS
+NOT.** game/Data/ClassStats.csv grants a Ravager 5 plus 0.15 a level and a
+Masochist 10 plus 0.2, so a real Ravager carries 7.85 before a point is
+spent. `flat` is still right, and for a better reason than the one I gave:
+the node promises fifty POINTS more, and `increased` against 7.85 would
+grant under four. Two tests were written against a base of zero and failed
+at 7.85; both now read what the class line gives and measure from there.
 
 ### A KEYSTONE STATES ITS VALUE IN WORDS, AND ALL NINE NEEDED THE EXEMPTION
 

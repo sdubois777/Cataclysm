@@ -9612,19 +9612,35 @@ bool FCataclysmPassiveNothingMovesYouOnARealCharacterTest::RunTest(const FString
 			  Player.AbilitySystem->GetNumericAttribute(Resistance),
 			  Before + 50.0f, 0.001f);
 
-	// AND FIFTY IS HALF, THROUGH THE FUNCTION THAT SCALES THE EFFECT rather
-	// than by arithmetic repeated here. A three second stun is the node's own
-	// sentence read back.
-	TestEqual(TEXT("which turns a three second stun into a second and a half"),
+	// AND FIFTY IS HALF **OF WHAT IS LEFT**, THROUGH THE FUNCTION THAT SCALES
+	// THE EFFECT rather than by arithmetic repeated here.
+	//
+	// THE CLASS LINE ALREADY GRANTS SOME AND THE FIRST VERSION OF THIS TEST
+	// ASSUMED IT DID NOT. game/Data/ClassStats.csv gives a Ravager
+	// crowd_control_resistance 5 plus 0.15 a level, so a real one carries
+	// 7.85 before a point is spent and a three second stun is already 2.76.
+	// The node's promise is fifty MORE, so the reading has to be worked from
+	// what the character had rather than from zero.
+	if (!TestTrue(TEXT("a Ravager carries some resistance from its class line, "
+					   "which is why nothing below is written as an absolute"),
+				  Before > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("which shortens a three second stun by fifty points more "
+				   "than the class line alone"),
 			  UCataclysmSkillEffects::AfterCrowdControlResistance(
-				  Player.Character, 3.0f), 1.5f, 0.01f);
+				  Player.Character, 3.0f),
+			  3.0f * (1.0f - (Before + 50.0f) / 100.0f), 0.01f);
 
 	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
 									   TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("and giving the point back puts the stun back"),
+	TestEqual(TEXT("and giving the point back leaves only what the class line "
+				   "grants"),
 			  UCataclysmSkillEffects::AfterCrowdControlResistance(
-				  Player.Character, 3.0f), 3.0f, 0.01f);
+				  Player.Character, 3.0f),
+			  3.0f * (1.0f - Before / 100.0f), 0.01f);
 	return true;
 }
 
@@ -9760,6 +9776,15 @@ bool FCataclysmPassiveUnstoppableOnARealCharacterTest::RunTest(const FString&)
 				  FString(TEXT("flat")));
 	}
 
+	// WHAT THE CHARACTER CARRIES BEFORE A POINT IS SPENT, READ RATHER THAN
+	// ASSUMED TO BE ZERO. The first version of this test assumed zero and
+	// failed at 7.85: game/Data/ClassStats.csv grants a Ravager
+	// crowd_control_resistance 5 plus 0.15 a level. Every reading below is a
+	// difference from this, so the test survives that line being retuned.
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	const float Carried = Player.AbilitySystem->GetNumericAttribute(
+		Combat::GetCrowdControlResistanceAttribute());
+
 	FCataclysmPassiveAllocation Allocation;
 	Allocation.Add(Node, 1);
 	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
@@ -9769,17 +9794,20 @@ bool FCataclysmPassiveUnstoppableOnARealCharacterTest::RunTest(const FString&)
 	TestEqual(TEXT("the crowd control resistance attribute does not move"),
 			  Player.AbilitySystem->GetNumericAttribute(
 				  Combat::GetCrowdControlResistanceAttribute()),
-			  0.0f, 0.001f);
+			  Carried, 0.001f);
 	TestEqual(TEXT("and neither does the movement flag"),
 			  Player.AbilitySystem->GetNumericAttribute(
 				  Combat::GetMovementSpeedReductionSuppressedAttribute()),
 			  0.0f, 0.001f);
 
-	// ALONE, THE CONDITION IS FALSE AND BOTH ROWS GRANT NOTHING.
-	TestEqual(TEXT("alone, the resistance is the fallback"),
+	// ALONE, THE CONDITION IS FALSE AND BOTH ROWS GRANT NOTHING, so each stat
+	// answers the fallback it was given -- which for the resistance is what the
+	// class line already put on the attribute, exactly as the real read site
+	// passes it.
+	TestEqual(TEXT("alone, the resistance is what the class line grants"),
 			  Player.AbilitySystem->StatForSkill(Resistance,
-												 FGameplayTagContainer(), 0.0f),
-			  0.0f, 0.001f);
+												 FGameplayTagContainer(), Carried),
+			  Carried, 0.001f);
 	TestEqual(TEXT("alone, the movement flag is the fallback"),
 			  Player.AbilitySystem->StatForSkill(SpeedFlag,
 												 FGameplayTagContainer(), 0.0f),
@@ -9790,17 +9818,17 @@ bool FCataclysmPassiveUnstoppableOnARealCharacterTest::RunTest(const FString&)
 						+ FVector(10.0f * M, 0.0f, 0.0f));
 	TestEqual(TEXT("a body ten metres away does not satisfy the condition"),
 			  Player.AbilitySystem->StatForSkill(Resistance,
-												 FGameplayTagContainer(), 0.0f),
-			  0.0f, 0.001f);
+												 FGameplayTagContainer(), Carried),
+			  Carried, 0.001f);
 
 	// AND TWO METRES AWAY, ON A DIFFERENT AXIS so a spawn refused for
 	// overlapping cannot quietly move a body somewhere else.
 	SpawnHostile(World, Player.Character->GetActorLocation()
 						+ FVector(0.0f, 2.0f * M, 0.0f));
-	TestEqual(TEXT("one within four metres grants the whole hundred"),
+	TestEqual(TEXT("one within four metres adds the whole hundred to it"),
 			  Player.AbilitySystem->StatForSkill(Resistance,
-												 FGameplayTagContainer(), 0.0f),
-			  100.0f, 0.001f);
+												 FGameplayTagContainer(), Carried),
+			  Carried + 100.0f, 0.001f);
 	TestEqual(TEXT("and turns the movement flag on"),
 			  Player.AbilitySystem->StatForSkill(SpeedFlag,
 												 FGameplayTagContainer(), 0.0f),
