@@ -2,6 +2,97 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A crowd control effect ends when the enemy that applied it dies, and "crowd control" here means a stun
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`
+and `.cpp` (one new attribute),
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp` (the
+death subscription and the removal), `docs/All_Things_Cataclysm.xlsx` and
+`game/Data/PassiveEffects.csv` (one row), and the tests. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+`Ravager_keystone_a_kB` Nothing Moves You reads "Crowd control effects on you
+last half as long, **and one ends entirely when you kill the enemy that applied
+it**." The first clause shipped as a row granting fifty crowd control
+resistance. This is the second, and the node now has two rows.
+
+### I SAID THIS WAS A MECHANISM GAP AND IT WAS NOT
+
+An earlier survey of mine recorded that a running debuff records no applier,
+citing `CataclysmDebuffs.h`, and that claim travelled into a planned issue
+before anybody opened the function that applies one. **It is wrong.** That
+header declares no debuff struct at all — it is a function library. All three
+pieces existed:
+
+| piece | where |
+| :-- | :-- |
+| the applier, recorded on the effect | `ApplyStating` in `CataclysmSkillEffects.cpp` calls `Context.AddInstigator(Instigator, Instigator)` |
+| reading an active effect back | four files outside tests already walk `GetActiveEffects` and read the context |
+| a death carrying the dying actor and its killer | `FCataclysmDeathNotice` in `CataclysmCombatEvents.h` |
+
+Only the wiring was missing. **The lesson is the shape rather than the
+instance:** a grep of one header became a fact, and the fact became a plan,
+without anyone reading the code that would have refuted it.
+
+### "CROWD CONTROL" MEANS A STUN, AND THAT IS A RULING RATHER THAN A READING
+
+There is no crowd-control grouping in the data: `StatusEffects.csv`'s
+`EffectKind` is only `Buff`, `Debuff` or `DoT`. What the node's FIRST clause
+scales is stuns and displacement, through
+`UCataclysmSkillEffects::AfterCrowdControlResistance` — and displacement is
+instantaneous, so it has nothing to end. **A stun is the only crowd control
+effect in this game with a duration.**
+
+So the second clause ends a stun applied by the enemy you kill, and nothing
+else. Ending every `Debuff`-kind effect as well would be a wider node than the
+sentence describes and was not ruled.
+
+### THE NAME WAS CHANGED BECAUSE THE FIRST ONE OVERCLAIMED
+
+It was going to be `debuffs_end_when_their_applier_dies`. A Debuff-kind status
+effect is not what this ends, so the name promised something the code does not
+do. It is `crowd_control_ends_when_its_applier_dies`, which is true today and
+stays true if displacement ever gains a duration.
+
+### THE RE-STUN WINDOW IS LEFT ALONE, DELIBERATELY
+
+`ApplyStun` applies two things: the stun, and a `StunImmune` tag for five
+seconds that stops the character being stunned again. The first is done TO the
+character; the second is its PROTECTION. Removing the second would leave the
+player re-stunnable sooner than before — the opposite of what the node promises
+— so only effects carrying the stun tag are ended.
+
+### A NEW FLAG RATHER THAN THE NODE'S OWN STAT, AND THAT IS MEASURED
+
+The obvious gate is "does this character have crowd control resistance", since
+the node's other row grants it. **It is unsafe, by count.** Ten data rows grant
+`crowd_control_resistance` today — one affix across seven gear slots, two class
+lines, one enchantment, one helmet implicit and five passive nodes — plus the
+Generic enemy modifier Unyielding in code. Reusing it would hand this clause to
+two whole classes, anyone wearing one affix, and a pile of enemies.
+
+### THE ROW COUNT MOVES AND THE NODE COUNT DOES NOT
+
+    rows  262 -> 263
+    nodes 193 -> 193
+
+Nothing Moves You already had a row, so it is not a new node.
+`AUTHORED_NODES` is deliberately untouched. The same pair moved the other way
+round for the nine rows before this, where nine rows covered eight nodes.
+
+### THE ROW AND ITS READER SHIP TOGETHER, ON PURPOSE
+
+Authoring the row before the code that reads it would have left the stat absent
+from `UCataclysmPlayerClassStats::StatToAttribute`, the row resolving to
+nothing, and the node LOOKING built while doing nothing. That is the defect this
+project has met four times — evasion
+([#947](https://github.com/sdubois777/Cataclysm/issues/947)), the regeneration
+rates ([#1038](https://github.com/sdubois777/Cataclysm/issues/1038)), crowd
+control resistance and Unstoppable's conditioned row. Shipping them in one
+change makes it impossible rather than unlikely.
+
+---
+
 ## 2026-09-14 — A stateful floor rule shows what it is counting, the count has to be redrawn where it moves, and the wiring that carries it is still not covered
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmFloorModifierPanelLayout.h` and `.cpp`

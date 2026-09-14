@@ -261,3 +261,4 @@ Ravager_keystone_spine_003#1,Ravager_keystone_spine_003,crowd_control_resistance
 Ravager_keystone_spine_003#2,Ravager_keystone_spine_003,movement_speed_reduction_suppressed,flat,1.0,,enemies_in_reach_at_least,1.0,,0.0,0,4.0
 Ravager_keystone_a_kB#1,Ravager_keystone_a_kB,crowd_control_resistance,flat,50.0,,,0.0,,0.0,0,-1.0
 Ravager_keystone_d_kA#1,Ravager_keystone_d_kA,movement_speed_reduction_suppressed,flat,1.0,,,0.0,,0.0,0,-1.0
+Ravager_keystone_a_kB#2,Ravager_keystone_a_kB,crowd_control_ends_when_its_applier_dies,flat,1.0,,,0.0,,0.0,0,-1.0

@@ -757,6 +757,32 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MovementSpeedReductionSuppressed)
 
 	/**
+	 * Above zero, a crowd control effect on this character ends when the
+	 * enemy that applied it dies. Issue #1515.
+	 *
+	 * ONE NODE GRANTS IT. `Ravager_keystone_a_kB` Nothing Moves You: "Crowd
+	 * control effects on you last half as long, and one ends entirely when you
+	 * kill the enemy that applied it." Its first clause is a separate row
+	 * granting fifty crowd control resistance; this is the second.
+	 *
+	 * NAMED FOR CROWD CONTROL RATHER THAN DEBUFFS, AND THAT IS A CORRECTION.
+	 * It was going to be `debuffs_end_when_their_applier_dies`, which
+	 * overclaims: a Debuff-kind status effect is not what this ends. Crowd
+	 * control in this game is a stun and displacement, displacement is
+	 * instantaneous and has nothing to end, so a STUN is what it reaches
+	 * today -- and the name still holds if displacement ever gains a duration.
+	 *
+	 * IT DOES NOT TOUCH THE RE-STUN WINDOW. `ApplyStun` also applies a
+	 * StunImmune tag for five seconds. That is the target's PROTECTION rather
+	 * than a crowd control effect on them, and removing it would leave the
+	 * character re-stunnable sooner than before -- the opposite of what the
+	 * node promises.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_CrowdControlEndsWhenItsApplierDies)
+	FGameplayAttributeData CrowdControlEndsWhenItsApplierDies;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, CrowdControlEndsWhenItsApplierDies)
+
+	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
 	 * A HUNDRED IS NORMAL, so 120 is a fifth more and 75 is a quarter less. It is
@@ -1173,6 +1199,7 @@ protected:
 	UFUNCTION() void OnRep_ArmorPenetrationSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MeleeEvasionSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MovementSpeedReductionSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_CrowdControlEndsWhenItsApplierDies(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);

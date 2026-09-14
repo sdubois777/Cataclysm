@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 // For the Cataclysm.ShowDebuffs console command. Issue #962.
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For the Cataclysm.ShowFervour console command. Issue #954.
@@ -38,6 +39,8 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Animation/AnimInstance.h"
+// For reading an active effect back to find who applied it. Issue #1515.
+#include "GameplayEffect.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequence.h"
 #include "Camera/CameraComponent.h"
@@ -78,6 +81,8 @@ namespace
 
 const TCHAR* ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat =
 	TEXT("movement_speed_reduction_suppressed");
+const TCHAR* ACataclysmPlayerCharacter::CrowdControlEndsWhenItsApplierDiesStat =
+	TEXT("crowd_control_ends_when_its_applier_dies");
 
 const TCHAR* ACataclysmPlayerCharacter::BodyMeshPath =
 	TEXT("/Game/Characters/Mannequins/Meshes/"
@@ -850,6 +855,75 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	if (bPoolMoved && HeldBefore > 0.0f && HeldNow <= 0.0f)
 	{
 		Cataclysm->NoteClassResourceEmptied();
+	}
+}
+
+void ACataclysmPlayerCharacter::OnSomethingDied(
+	const FCataclysmDeathNotice& Notice)
+{
+	// THIS CHARACTER HAS TO BE THE KILLER. The node says "when YOU kill the
+	// enemy that applied it", so a creature dying to anything else changes
+	// nothing here.
+	if (Notice.Killer != this || !Notice.Victim)
+	{
+		return;
+	}
+
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!Cataclysm)
+	{
+		return;
+	}
+
+	// ASKED THROUGH THE STAT PIPELINE WITH THE ATTRIBUTE AS THE FALLBACK, the
+	// way every flag in this project is read. This row carries no condition
+	// today, so the attribute would answer correctly -- but a read off the
+	// attribute is what has failed four times here when a row later gained one,
+	// and the fallback makes the pipeline read cost nothing.
+	const float Ends = Cataclysm->StatForSkill(
+		FName(CrowdControlEndsWhenItsApplierDiesStat), FGameplayTagContainer(),
+		Cataclysm->GetNumericAttribute(
+			UCataclysmCombatAttributeSet::
+				GetCrowdControlEndsWhenItsApplierDiesAttribute()));
+	if (Ends <= 0.0f)
+	{
+		return;
+	}
+
+	EndCrowdControlAppliedBy(Notice.Victim);
+}
+
+void ACataclysmPlayerCharacter::EndCrowdControlAppliedBy(const AActor* Applier)
+{
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!Cataclysm || !Applier)
+	{
+		return;
+	}
+
+	// THE STUN TAG AND NOT THE IMMUNITY TAG. `ApplyStun` applies both: the
+	// stun, which is done TO this character, and a StunImmune tag which
+	// protects it from being stunned again for five seconds. Ending the second
+	// would leave the character re-stunnable sooner than before, which is the
+	// opposite of what the node promises.
+	FGameplayTagContainer Wanted;
+	Wanted.AddTag(UCataclysmSkillEffects::StunnedTag());
+
+	// THE INSTIGATOR IS COMPARED AND THAT IS THE WHOLE RULE. Without it this
+	// would end every stun on the character, including ones applied by enemies
+	// still alive and never touched -- a far larger node than the sentence.
+	for (const FActiveGameplayEffectHandle& Handle :
+		 Cataclysm->GetActiveEffects(
+			 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Wanted)))
+	{
+		const FActiveGameplayEffect* Effect =
+			Cataclysm->GetActiveGameplayEffect(Handle);
+		if (Effect && Effect->Spec.GetContext().GetInstigator() == Applier)
+		{
+			Cataclysm->RemoveActiveGameplayEffect(Handle);
+		}
 	}
 }
 
@@ -1756,6 +1830,20 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	ResourceMaximumChanged.Remove(MaxClassResourceChangedHandle);
 	MaxClassResourceChangedHandle = ResourceMaximumChanged.AddUObject(
 		this, &ACataclysmPlayerCharacter::OnClassResourceChanged);
+
+	// AND A DEATH ANYWHERE REACHES NOTHING MOVES YOU. Issue #1515. Bound here
+	// with the attribute delegates because it is the same kind of thing: an
+	// event this character has to notice, which no attribute write announces.
+	//
+	// NOT UNBOUND, AND THAT IS SAFE, for the reason the dungeon game mode gives
+	// where it binds the same announcement: the subsystem belongs to the world,
+	// so it cannot outlive this character, and a binding to a destroyed object
+	// is skipped rather than called.
+	if (UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(GetWorld()))
+	{
+		Events->OnDeath.AddUObject(
+			this, &ACataclysmPlayerCharacter::OnSomethingDied);
+	}
 
 	// BOUND FIRST, THEN READ. A change arriving between the two would otherwise
 	// be missed. The read answers zero rather than failing when the component
