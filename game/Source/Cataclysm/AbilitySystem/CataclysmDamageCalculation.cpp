@@ -56,18 +56,21 @@ namespace
 	 * is being hit rather than swinging. An empty container is the honest reading
 	 * and it is what the character sheet passes for the same stat.
 	 *
-	 * A BLOW, FOR THE STEPS THAT ASK ABOUT THE HIT. Issue #666, then #947. The
-	 * damage taken step passes the hit's facts, so "you take 20% less damage
-	 * from spells" can ask about this hit; the armour step passes them too,
-	 * since "your armor is doubled against melee attacks" asks the same kind of
-	 * question.
+	 * A BLOW, FOR A STEP WHOSE MODIFIERS MAY ASK ABOUT THE HIT. Issue #666, then
+	 * #947. Pass `BlowOf(Hit)` wherever a row conditioned on the arriving hit
+	 * ought to reach the stat -- "you take 20% less damage from spells", "your
+	 * armor is doubled against melee attacks". Pass nothing where such a row
+	 * would be meaningless, or where none is authored, and say which at that
+	 * call site.
 	 *
-	 * THIS SAID "THE ONE STEP" AND "EVERY OTHER STEP PASSES NOTHING" UNTIL THE
-	 * ARMOUR STEP BECAME THE SECOND. A count written into a comment beside the
-	 * thing it counts goes stale the moment a caller is added, and a reader who
-	 * trusts it concludes the mechanism is narrower than it is. The remaining
-	 * steps -- evasion, block, resistance -- still pass nothing, and each is its
-	 * own decision rather than an omission.
+	 * THIS NAMES NO CALLERS AND COUNTS NONE, DELIBERATELY. It twice listed which
+	 * steps passed a blow and which passed nothing, and a later commit falsified
+	 * the list both times -- the second time four minutes after the correction,
+	 * written by the same author who had just made it. A reader who trusts a
+	 * stale list concludes the mechanism is narrower than it is, which is the
+	 * harm worth avoiding; the list is the part that goes stale, so there is no
+	 * list. Each call site carries its own reason instead, where adding a caller
+	 * cannot make somebody else's sentence false.
 	 */
 	float DefenderStat(const UAbilitySystemComponent* Defender,
 					   const TCHAR* Stat, float FromAttribute,
@@ -629,6 +632,13 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// bounding it, so at 100 a character was exactly immune.
 	if (Combat)
 	{
+		// NO BLOW HERE, AND NOTHING AUTHORED ASKS FOR ONE. Both enchantment rows
+		// granting damage reduction condition on the character's own state --
+		// "When your class resource is full, gain 10%-20% damage reduction for 3
+		// seconds", and a set bonus scaling it per active instance of leech --
+		// and the character's own state is read whatever is passed here. If a row
+		// is ever authored that conditions damage reduction on the kind of hit
+		// arriving, pass `BlowOf(Hit)` and it works; nothing else is needed.
 		Damage *= 1.0f
 			- EffectiveDamageReduction(
 				  DefenderStat(Defender, TEXT("damage_reduction"),
@@ -695,6 +705,12 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 
 		if (Hit.bIsDamageOverTime)
 		{
+			// NEITHER STAT IN THIS BRANCH TAKES A BLOW, BECAUSE A TICK IS NOT A
+			// HIT. `BlowOf` above says so and carries the project owner's words for
+			// it: those facts are "used only for hits from that source". Every one
+			// of them answers no here, so passing a blow would invite a row that
+			// could never be true rather than enabling one.
+			//
 			// AND ONE CHARACTER IN THE GAME TAKES NONE OF IT AT ALL. Issue
 			// #1039. The Masochist's Vessel Unbroken capstone option reads
 			// "Debuffs on you deal no damage at all", which cannot be written as
