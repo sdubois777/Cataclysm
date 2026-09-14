@@ -37,6 +37,158 @@
 
 namespace
 {
+	/**
+	 * What one of this character's passive stats reads, for use against a figure
+	 * the skill's own row states. Issue #1718.
+	 *
+	 * TWO KEYSTONES ADJUST A FIGURE THIS WAY -- Crowned lowers what a thrall
+	 * reserves and The Swarm raises how many imps may live -- and the shape is
+	 * the one `possession_threshold_bonus` established: the stat starts at zero
+	 * and is applied to whatever the row says, so re-tuning the row follows
+	 * through. A stat holding the figure itself would state the same number
+	 * twice and win silently.
+	 *
+	 * THE VALUE IS ALWAYS ZERO OR ABOVE, AND THE CALLER DECIDES THE DIRECTION.
+	 * Every attribute in the combat set is floored at zero -- see
+	 * `ThrallReserveFor` below for the measurement -- so a stat that lowers a
+	 * figure names the size of the reduction and is subtracted by its caller.
+	 * This function is deliberately not called `...BonusFor`: one of its two
+	 * callers subtracts what it returns.
+	 *
+	 * READ WITH THE SKILL'S OWN TAGS, so a future row scoped to a keyword counts
+	 * only for the skills it names. `StatForSkill` falls back to the attribute
+	 * when nothing was recorded, which is the right answer for an enemy and for
+	 * a character before its first stat refresh.
+	 *
+	 * THE ATTRIBUTE-SET CHECK IS NOT OPTIONAL. Reading an attribute whose set
+	 * the component does not hold raises an engine ensure rather than answering
+	 * zero, and a test may build a component without the combat set.
+	 */
+	float PassiveStatFor(const AActor* Self, const TCHAR* StatName,
+						  const FGameplayAttribute& Stat,
+						  const FGameplayTagContainer& SkillTags)
+	{
+		const UCataclysmAbilitySystemComponent* Mine =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Self));
+		if (!Mine || !Mine->HasAttributeSetForAttribute(Stat))
+		{
+			return 0.0f;
+		}
+		return Mine->StatForSkill(FName(StatName), SkillTags,
+								  Mine->GetNumericAttribute(Stat));
+	}
+
+	/**
+	 * What one thrall reserves for this character, in Fervour. Issue #1718.
+	 *
+	 * `Ritualist_keystone_a_kC` Crowned is the node: "Each thrall reserves 25
+	 * Fervour rather than 30."
+	 *
+	 * THE BONUS REACHES ONLY A SKILL THAT TAKES A THRALL, WHICH IS WHAT THE
+	 * NODE'S OWN SENTENCE SAYS. Five skills state a reserve -- Subjugate at 30,
+	 * Summon Imp at 10, and three deployables at 5 -- so a bonus applied to the
+	 * figure rather than to the subject would make an imp cheaper and a
+	 * deployable free. A thrall is identified from the row's own parameters, by
+	 * `Possess`, and never from the skill's name.
+	 *
+	 * AND ONLY WHERE THE ROW STATES A RESERVE ABOVE ZERO. A stat that adjusts a
+	 * designed figure must not bring the figure into existence: zero means "this
+	 * skill reserves nothing", and adding to it would invent a claim the design
+	 * never made.
+	 *
+	 * A POSITIVE NUMBER THAT IS SUBTRACTED, AND IT HAS TO BE. Measured
+	 * 2026-09-14: `UCataclysmCombatAttributeSet::PreAttributeChange` ends with
+	 * `NewValue = FMath::Max(NewValue, 0.0f)`, so every attribute in that set
+	 * that is not named in one of the clauses above it is floored at zero. This
+	 * stat was first written as a bonus holding -5, and the floor stored it as
+	 * 0: the reserve stayed at 30 and the keystone did nothing. The stat
+	 * therefore names the size of the reduction rather than a signed adjustment.
+	 * `CataclysmFervourTests.cpp:379` is the existing proof that a direct write
+	 * below zero is held at zero.
+	 *
+	 * FLOORED ABOVE ZERO, AND THAT IS NOT TIDINESS. `HasRoomForAnotherThrall`
+	 * reads a reserve of zero or less as "capped by nothing" and returns true
+	 * for every thrall, so a reduction reaching the whole reserve would remove
+	 * the army limit rather than lower it. One keystone cannot: it takes 5 off
+	 * 30. A second source of the same stat could.
+	 */
+	float ThrallReserveFor(const AActor* Self,
+						   const FCataclysmSkillShapeParams& Params,
+						   const FGameplayTagContainer& SkillTags)
+	{
+		if (!Params.bPossess || Params.FervourReserve <= 0.0f)
+		{
+			return Params.FervourReserve;
+		}
+
+		const float Reduction = PassiveStatFor(
+			Self, UCataclysmCommand::ThrallReserveReductionStat,
+			UCataclysmCombatAttributeSet::GetThrallReserveReductionAttribute(),
+			SkillTags);
+
+		return FMath::Max(UCataclysmCommand::SmallestThrallReserve,
+						  Params.FervourReserve - Reduction);
+	}
+
+	/**
+	 * How many minions of this skill's kind may be alive at once. Issue #1718.
+	 *
+	 * `Ritualist_keystone_b_kA` The Swarm is the node: "You may have 5 imps
+	 * active rather than 3."
+	 *
+	 * THE BONUS REACHES ONLY A SKILL THAT SUMMONS IMPS. Of seventeen summoning
+	 * and deploying skills, exactly one states a cap; the other sixteen leave it
+	 * at zero, which every read site takes to mean "no cap at all". A bonus
+	 * applied to the figure rather than to the subject would give all sixteen a
+	 * cap -- turrets, ballistas, traps, and thralls, which would cap a Ritualist
+	 * army at two and fight Crowned on the same character.
+	 *
+	 * THE KIND IS READ FROM THE ROW'S OWN `Minions` PARAMETER, which names a row
+	 * of the Minion Types sheet -- `Minions=Imp:1` -- and never from the skill's
+	 * name string.
+	 *
+	 * AND ONLY WHERE THE ROW STATES A CAP ABOVE ZERO, for the reason the reserve
+	 * above gives: the `> 0` at every read site is how a skill says it has none,
+	 * and a stat must not turn that into a limit.
+	 */
+	int32 ImpCapFor(const AActor* Self,
+					const FCataclysmSkillShapeParams& Params,
+					const FGameplayTagContainer& SkillTags)
+	{
+		if (Params.MaxActive <= 0)
+		{
+			return Params.MaxActive;
+		}
+
+		bool bSummonsImps = false;
+		for (const FCataclysmMinionSpawn& Spawn : Params.Minions)
+		{
+			if (Spawn.Type.Equals(UCataclysmCommand::ImpMinionType,
+								  ESearchCase::IgnoreCase))
+			{
+				bSummonsImps = true;
+				break;
+			}
+		}
+		if (!bSummonsImps)
+		{
+			return Params.MaxActive;
+		}
+
+		const float Bonus = PassiveStatFor(
+			Self, UCataclysmCommand::ImpCapBonusStat,
+			UCataclysmCombatAttributeSet::GetImpCapBonusAttribute(), SkillTags);
+
+		// AT LEAST ONE. Nothing can currently take this below the row's figure:
+		// the combat attribute set floors every one of its attributes at zero --
+		// `ThrallReserveFor` above carries the measurement -- so this stat is
+		// zero or positive and the sum only ever rises. The floor is kept anyway,
+		// because a cap of zero is read as NO CAP at all by every read site, so
+		// if a future source ever does subtract here, the failure it would cause
+		// is an unlimited army rather than a smaller one.
+		return FMath::Max(1, Params.MaxActive + FMath::RoundToInt(Bonus));
+	}
 }
 
 // ==========================================================================
@@ -3009,7 +3161,8 @@ ACataclysmMinion* UCataclysmDeployableSkill::DeployOne(const FString& InTypeName
 	// oldest to make room and says so in its description; none of the three
 	// deployable skills says anything of the kind, so reaching the cap here
 	// simply means nothing more goes down.
-	if (Params.MaxActive > 0 && LivingDeployedCount() >= Params.MaxActive)
+	const int32 DeployCap = ImpCapFor(Avatar(), Params, SkillTags);
+	if (DeployCap > 0 && LivingDeployedCount() >= DeployCap)
 	{
 		return nullptr;
 	}
@@ -3246,13 +3399,15 @@ bool UCataclysmSummonSkill::Possess()
 	// your army is only as large as your pool." Asked before the taking rather
 	// than after, so a refusal leaves the creature exactly as the blow left it
 	// rather than taking it and giving it back.
-	if (!UCataclysmCommand::HasRoomForAnotherThrall(Self, Params.FervourReserve))
+	if (!UCataclysmCommand::HasRoomForAnotherThrall(
+			Self, ThrallReserveFor(Self, Params, SkillTags)))
 	{
 		bRefusedForRoom = true;
 		UE_LOG(LogCataclysm, Verbose,
 			TEXT("'%s' has no room for another thrall at %.0f reserved each, so "
 				 "'%s' was left where it was."),
-			*SkillName, Params.FervourReserve, *Target->GetName());
+			*SkillName, ThrallReserveFor(Self, Params, SkillTags),
+			*Target->GetName());
 		return false;
 	}
 
@@ -3272,7 +3427,8 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 	// exceeds it even for an instant. Summon Imp: "up to 3 imps may be active at
 	// once. Summoning a fourth destroys the oldest, which explodes for damage in
 	// a 3 meter radius."
-	if (Params.MaxActive > 0 && LivingMinionCount() >= Params.MaxActive)
+	const int32 SummonCap = ImpCapFor(Avatar(), Params, SkillTags);
+	if (SummonCap > 0 && LivingMinionCount() >= SummonCap)
 	{
 		ACataclysmMinion* Oldest = Minions[0];
 		Minions.RemoveAt(0);
@@ -3396,7 +3552,8 @@ void UCataclysmSummonSkill::SpawnTick()
 	// "Spawns a lesser imp every 2 seconds to a maximum of 5." The maximum is a
 	// total for this rift rather than a rolling cap, so once it has made five it
 	// stops rather than replacing them.
-	if (Params.MaxActive > 0 && Minions.Num() >= Params.MaxActive)
+	const int32 TickCap = ImpCapFor(Avatar(), Params, SkillTags);
+	if (TickCap > 0 && Minions.Num() >= TickCap)
 	{
 		if (UWorld* World = GetWorld())
 		{

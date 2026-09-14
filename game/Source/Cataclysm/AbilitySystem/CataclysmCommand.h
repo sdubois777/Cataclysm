@@ -209,6 +209,55 @@ public:
 	static const TCHAR* PossessionThresholdBonusStat;
 
 	/**
+	 * The stat holding Fervour points TAKEN OFF what one thrall reserves. Issue
+	 * #1718.
+	 *
+	 * `Ritualist_keystone_a_kC` Crowned is the only source: "Each thrall
+	 * reserves 25 Fervour rather than 30." Its row is flat **5**, a positive
+	 * number that is subtracted.
+	 *
+	 * POSITIVE, AND THAT IS FORCED RATHER THAN CHOSEN. This stat was first
+	 * written as a bonus of -5 and did nothing:
+	 * `UCataclysmCombatAttributeSet::PreAttributeChange` floors every attribute
+	 * in that set at zero, so -5 was stored as 0. `docs/DECISIONS.md` carries
+	 * the measurement and the rule it produced -- a stat that lowers a figure
+	 * names the size of the reduction.
+	 *
+	 * A REDUCTION AND NOT THE RESERVE ITSELF. The Subjugate skill's row states
+	 * 30 and four other skills state a reserve of their own, so a stat holding
+	 * the figure would state one of them twice and reach the other four.
+	 */
+	static const TCHAR* ThrallReserveReductionStat;
+
+	/**
+	 * The least a thrall may reserve however much is taken off it.
+	 *
+	 * `HasRoomForAnotherThrall` reads a reserve of zero or less as "capped by
+	 * nothing" and returns true for every thrall, so a reduction reaching zero
+	 * would remove the army limit rather than lower it. One keystone cannot
+	 * reach zero from 30; a second source of the same stat could.
+	 */
+	static constexpr float SmallestThrallReserve = 1.0f;
+
+	/**
+	 * The stat holding how many more minions of its kind a summon may keep
+	 * alive. Issue #1718.
+	 *
+	 * `Ritualist_keystone_b_kA` The Swarm is the only source: "You may have 5
+	 * imps active rather than 3." Its row is flat 2.
+	 *
+	 * IT REACHES ONLY A SKILL THAT SUMMONS IMPS, which the row says by naming
+	 * the minion type. Sixteen of the seventeen summoning and deploying skills
+	 * state no cap at all, and a bonus applied to the figure rather than to the
+	 * subject would give every one of them a limit they were never designed to
+	 * have.
+	 */
+	static const TCHAR* ImpCapBonusStat;
+
+	/** The row of the Minion Types sheet an imp is, as a skill row names it. */
+	static const TCHAR* ImpMinionType;
+
+	/**
 	 * Take an enemy permanently into this character's command.
 	 *
 	 * THE STAFF'S SUBJUGATE: "if the blow leaves it below half health you take it

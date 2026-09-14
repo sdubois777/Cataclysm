@@ -2,6 +2,245 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — The three energy-shield keystones are three different mechanisms, and The Long Game works outside the recharge delay
+
+**None of these three nodes is built yet, and no stat for any of them exists.**
+This entry records the measurement and the rulings so they are not re-argued when
+the code is written. Issue
+[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+They were scheduled as "three keystones, one flag-stat shape". Measured, only one
+of the three is a flag stat.
+
+| node | row text | where it acts | shape |
+| :-- | :-- | :-- | :-- |
+| `Ritualist_keystone_c_kA` Warded | "Your Energy Shield absorbs damage over time as well as hits." | `CataclysmDamageCalculation.cpp`, the line setting `bShieldApplies` | a flag, one bool |
+| `Ritualist_keystone_c_kB` Ablative | "Your Energy Shield recharges while you are taking damage, at half its usual rate." | `CataclysmRegeneration.cpp`, the refill gate | a flag **and a rate** |
+| `Ritualist_keystone_d_kA` The Long Game | "Your Mana Regeneration also restores your Energy Shield, at half its rate." | `CataclysmRegeneration.cpp`, the shield top-up | a flag **and a term read from another stat** |
+
+**Warded is a single site, and that was swept rather than assumed.** Every place
+in the module branching on `bIsDamageOverTime` was listed; exactly one concerns
+the energy shield. The others are critical strike, retaliation, the stun roll,
+contagion, evasion, ailment chance and the damage overlay's scale.
+
+**Ablative must not be written as a shorter recharge delay.** A shorter delay
+recharges at the FULL rate sooner. The row says the rate is halved, which only
+means anything while the shield is recharging during the window it is normally
+stopped in. So it supplies a half rate where the gate currently gives zero, and
+the gate's own behaviour is unchanged for everyone without the node.
+
+### THE LONG GAME WORKS OUTSIDE THE THREE-SECOND RECHARGE DELAY
+
+The row does not say whether the shield gain it grants waits the delay the shield
+normally waits. **Ruled: outside it.** Mana regeneration is itself ungated, and
+the row makes mana regeneration the thing that acts.
+
+The argument is checkable rather than a preference: **inside the delay, the node
+only adds rate at moments when the shield is already recharging, which is
+"increased Energy Shield Regeneration" — and that is `Ritualist_basic_spine_008`
+Warded Mind, a BASIC node in the same tree. A keystone that duplicates a basic
+node beside it is not a keystone.** Outside the delay it is a different defence:
+shield sustain while under fire.
+
+**The fractions are the design's, not invented here.** "At half its usual rate"
+and "at half its rate" are the rows' own words, and Warded states no number.
+
+---
+
+## 2026-09-14 — Two stats adjust a figure a skill's own row states, and the rules that stop them reaching skills their nodes never name
+
+**Affects:**
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmAttributeSetTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmPlayerClassStatsTests.cpp`. Issue
+[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+The stats are `thrall_reserve_reduction` and `imp_cap_bonus`. Both start at zero
+and are applied to a figure the skill's own row states, which is the shape
+`possession_threshold_bonus` established.
+
+### A COMBAT ATTRIBUTE CANNOT HOLD A NEGATIVE NUMBER, SO A STAT THAT LOWERS A FIGURE NAMES THE SIZE OF THE REDUCTION
+
+The reserve stat was first written as a **bonus** holding `-5`, matching the
+`possession_threshold_bonus` shape exactly. **It did nothing, and the run that
+proved it is the reason this section exists.**
+
+`UCataclysmCombatAttributeSet::PreAttributeChange` ends:
+
+```cpp
+NewValue = FMath::Max(NewValue, 0.0f);
+```
+
+Every attribute in that set that is not named in one of the clauses above that
+line is floored at zero. So `-5` was stored as `0`, the reserve stayed at 30, and
+a pool of 25 refused the thrall. The failure was silent in every other respect:
+the skill activated, committed its cost, found its target, and refused.
+
+`CataclysmFervourTests.cpp:379` is the existing, passing proof that a direct
+write below zero is held at zero, on a different set with the same rule.
+
+**So the rule is: a stat that lowers a designed figure is authored as a positive
+quantity of the thing it removes, and subtracted by its reader.** Not as a signed
+adjustment. This is why the stat is named `thrall_reserve_reduction` rather than
+`thrall_reserve_bonus`, and the keystone grants `5`, not `-5`.
+
+**The alternative was to exempt the attribute from the floor**, by naming it in
+`PreAttributeChange` alongside crit chance and the others. That was rejected: the
+floor is there because a negative reading of most of these stats is meaningless
+data, and carving an exception per stat makes the exception list the real rule.
+Expressing the reduction positively keeps one rule for the whole set.
+
+`imp_cap_bonus` is unaffected -- it raises a figure, so its value is positive
+already -- and `possession_threshold_bonus` likewise.
+
+### THE SHAPE WAS ALREADY ESTABLISHED FIVE TIMES OVER, AND THE REAL FAULT WAS NOT LOOKING FOR IT
+
+**This section first claimed the reducing case was new. That was wrong.** The
+project already had five stats named for the size of a reduction:
+
+```
+cooldown_reduction            healing_ceiling_reduction
+damage_reduction              healing_received_reduction
+stagger_health_ceiling_reduction
+```
+
+`HealingCeilingReduction` in `CataclysmVitalAttributeSet.h` carries the same
+reasoning in its own comment, and `CataclysmCombatAttributeSet.cpp` line 281
+already cites it as the precedent for `StaggerHealthCeilingReduction`. **So the
+answer was written down, in the file next to the one I was editing, before I
+started.** A stat ending in `_reduction` is the project's existing word for this.
+
+**What went wrong was copying one precedent without checking it covered the
+case.** `possession_threshold_bonus` RAISES a threshold, so its sign never
+mattered; I copied its shape to a node that LOWERS a figure and carried the
+signed-adjustment assumption across with it. The check that would have caught it
+is one search for how the project already spells "reduces".
+
+**The general statement to carry forward: in this project a negative stat value
+is clamped away at some point on almost every path, so a figure that must go
+down is authored as a positive reduction from the start.** The entry below on
+ailment duration records a second instance of the same clamp -- "a negative stat
+applies nothing rather than reversing the effect", inside `DurationOn` -- which
+had been read as a fact about ailments rather than a property of the codebase.
+
+### THE SHAPE WAS ASSUMED TO TRANSFER AND IT DOES NOT
+
+`Ritualist_keystone_a_kC` Crowned — *"Each thrall reserves 25 Fervour rather than
+30"* — and `Ritualist_keystone_b_kA` The Swarm — *"You may have 5 imps active
+rather than 3"* — were assigned as the same shape as Dominion. Measured, they are
+not:
+
+| | Dominion | Crowned | The Swarm |
+| :-- | :-- | :-- | :-- |
+| the figure | `HealthThresholdPercent=50` | `FervourReserve=30` | `MaxActive=3` |
+| read sites | 1 | 1 | **3** |
+| skills stating it | **1** | **5** | **1 of 17** |
+
+**Dominion's figure belongs to one skill, so a bonus on the figure was safe.
+Neither of these does.**
+
+### RULE ONE: A STAT THAT ADJUSTS A DESIGNED FIGURE MUST NOT BRING THE FIGURE INTO EXISTENCE
+
+Every one of the three cap read sites is guarded the same way:
+
+```cpp
+if (Params.MaxActive > 0 && LivingMinionCount() >= Params.MaxActive)
+```
+
+**`> 0` is how a skill says it has no cap.** Of seventeen summoning and deploying
+skills, exactly one states a cap; sixteen state none. A bonus added to the figure
+would give all sixteen a cap — turrets, ballistas, traps — **and would cap thralls
+at two, fighting Crowned on the same character.**
+
+So the bonus applies only where the row already states the figure above zero. The
+`> 0` guards are kept exactly as they were.
+
+### RULE TWO: THE SUBJECT IS READ FROM THE ROW'S OWN PARAMETERS, NEVER FROM THE SKILL'S NAME
+
+Five skills state a reserve — Subjugate 30, Summon Imp 10, and three deployables
+5 — so a bonus on the figure would make an imp cheaper and a deployable free.
+
+```
+a thrall   a summon whose row carries `Possess=1`     -> Params.bPossess
+an imp     a summon whose row names the minion type   -> Params.Minions, `Minions=Imp:1`,
+           which is a row of the Minion Types sheet
+```
+
+**A name string would be the wrong key.** Skill names are display text; the
+parameters are the design's own statement of what the skill does.
+
+### A REDUCTION IS FLOORED ABOVE ZERO, AND THAT IS NOT TIDINESS
+
+Read at the one site that consumes a reserve:
+
+```cpp
+// CataclysmCommand.cpp, HasRoomForAnotherThrall
+if (PerThrall <= 0.0f)
+{
+    // A row claiming nothing per thrall is capped by nothing.
+    return true;
+}
+```
+
+**A reserve of zero means no army limit at all.** A reduction reaching zero would
+remove the cap rather than lower it, which is the opposite of what a keystone
+lowering a cost should do. One keystone cannot reach zero from 30; a second source
+of the same stat could, so the floor is in the helper rather than left to
+arithmetic. The imp cap is floored at one for the same reason: zero there means
+"no cap" at every read site.
+
+### NEITHER NEEDS AN ENGINE-SUPPLIED BASE, AND THE REASON IS WORTH STATING
+
+The two ailment magnitude stats needed one because their neutral value is 100 and
+a resolved zero would have destroyed the effect. These two have a neutral value of
+**zero**, so nothing has to supply it.
+
+**And the row supplies the stat by itself.** `test_every_stat_is_one_the_game_supplies`
+accepts a stat that a `flat` row in the effects file grants, so a zero-base bonus
+authored `flat` — which it must be, since an increase against zero grants nothing
+— is its own supplier. Checked by simulating the three rows before they were
+written.
+
+### WHAT CANNOT BE TESTED, SAID HERE RATHER THAN LEFT OUT
+
+A test was asked for showing that Crowned leaves an imp's reserve unchanged.
+**Nothing reads an imp's reserve.** After this change `FervourReserve` is read in
+exactly one place — the helper that computes a thrall's — and that helper returns
+the row's figure untouched unless the row carries `Possess`. The Summon Imp row
+states a reserve of 10 and no code consumes it.
+
+So there is no behaviour to assert, and a test would be asserting its own
+arithmetic. It is recorded here instead. **If something later reads an imp's
+reserve, this paragraph is the warning that it was inert when the stat was
+built.**
+
+### A TEST PREFIX IS CHOSEN BY WHICH TESTS CAN REACH THE CHANGED CODE, NOT BY WHERE THE CHANGE ADDS TESTS
+
+**This was recorded as a rule before this change was written, and this change
+broke it anyway**, so it is restated here with the case that caught it.
+
+The prefix used for the first run and for both guard proofs was
+`Cataclysm.Command.+Cataclysm.Attributes.+Cataclysm.PlayerStats.`, chosen because
+that is where the new tests live. The two helpers this change adds sit inside the
+summon skill's code path, and **212 tests in two other files drive summon skills
+with rows stating `MaxActive=` and `FervourReserve=`**:
+`CataclysmSkillShapeTests.cpp` (10 in `Cataclysm.SkillShape.`) and
+`CataclysmSkillTemplateTests.cpp` (198 in `Cataclysm.Skills.`, 3 in
+`Cataclysm.Effects.`, 1 in `Cataclysm.Data.`). None of them ran.
+
+**It was found by reconciling two counts that disagreed, not by any check.** One
+session counted 17 and another 12 for the same thing; both were right, because one
+counted test-name literals in the FILE `CataclysmCommandTests.cpp` (12 in the
+`Cataclysm.Command.` group plus 5 in `Cataclysm.Fervour.`) and the other counted
+names in the group. **Label a count with what it counts, and reconcile two that
+disagree rather than picking one.**
+
+---
+
 ## 2026-09-14 — "Grabbed" is an event with an end, not a place the player is standing, and the grab is 99% of movement speed rather than a new rooted state
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and

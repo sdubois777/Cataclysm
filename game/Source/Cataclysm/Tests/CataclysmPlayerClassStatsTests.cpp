@@ -511,6 +511,17 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Ritualist's Dominion keystone, as a flat modifier, added to "
 			  "the threshold the Subjugate skill row states")},
 
+		// Issue #1718. The same shape twice more: a bonus of zero added to a
+		// figure a skill's own row states, reaching only the subject its node
+		// names. Neither has an engine-supplied base, for the reason the entry
+		// above gives.
+		{TEXT("thrall_reserve_reduction"),
+		 TEXT("the Ritualist's Crowned keystone, as a flat modifier, taken off "
+			  "the reserve the Subjugate skill row states")},
+		{TEXT("imp_cap_bonus"),
+		 TEXT("the Ritualist's The Swarm keystone, as a flat modifier, added to "
+			  "the cap the Summon Imp skill row states")},
+
 		// Issue #1039. Whether damage over time deals this character nothing at
 		// all. Zero for every class, and the Masochist's Vessel Unbroken
 		// capstone option is its only source. A FLAG rather than a reduction,

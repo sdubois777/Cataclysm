@@ -101,6 +101,14 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// anything else would state that number a second time.
 	InitPossessionThresholdBonus(0.0f);
 
+	// ZERO FOR BOTH, FOR THE SAME REASON. Issue #1718. Each is added to a
+	// figure a skill's own row states -- what a thrall reserves, how many imps
+	// may live -- so a starting value of anything else would state that number
+	// a second time. Zero also decides that a row moving either takes `flat`:
+	// an increase against zero grants nothing.
+	InitThrallReserveReduction(0.0f);
+	InitImpCapBonus(0.0f);
+
 	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
 	// SAYS OTHERWISE. Issue #1039. The Masochist's Vessel Unbroken is its only
 	// source, and zero is the ordinary case.
@@ -219,6 +227,8 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrippleMagnitude);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, WeakenMagnitude);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PossessionThresholdBonus);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ThrallReserveReduction);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ImpCapBonus);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
@@ -396,6 +406,9 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		// IT AS A THRALL, in percentage points added to the skill row's own
 		// figure. Issue #1718.
 		GetPossessionThresholdBonusAttribute(),
+		// AND WHAT ONE THRALL RESERVES, AND HOW MANY IMPS MAY LIVE, both
+		// added to a figure the skill's own row states. Issue #1718.
+		GetThrallReserveReductionAttribute(), GetImpCapBonusAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
@@ -456,6 +469,8 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StunChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrippleMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ThrallReserveReduction)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ImpCapBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)
