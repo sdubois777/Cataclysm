@@ -7274,7 +7274,18 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	// THE BINDING IS ASSERTED HERE TOO, AND NOT ONLY IN THE TWO TESTS ABOVE. If
+	// `StartPlay` failed to bind the death handler, every assertion below would
+	// fail at "it left a mushroom", which names the mushroom rather than the
+	// binding. The Withered Ground test records what that costs: a whole build
+	// spent finding that the rule was right and the test was one line short.
 	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
 
 	const auto KillACreatureAt =
 		[this, World, &Player](const FVector& Where) -> bool
