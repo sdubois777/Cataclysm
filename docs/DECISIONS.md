@@ -86,10 +86,28 @@ Authoring the row before the code that reads it would have left the stat absent
 from `UCataclysmPlayerClassStats::StatToAttribute`, the row resolving to
 nothing, and the node LOOKING built while doing nothing. That is the defect this
 project has met four times — evasion
-([#947](https://github.com/sdubois777/Cataclysm/issues/947)), the regeneration
+([#1784](https://github.com/sdubois777/Cataclysm/pull/1784)), the regeneration
 rates ([#1038](https://github.com/sdubois777/Cataclysm/issues/1038)), crowd
 control resistance and Unstoppable's conditioned row. Shipping them in one
 change makes it impossible rather than unlikely.
+
+**THE EVASION CITATION IS #1784 AND NOT #947, AND FIVE MERGED COMMENTS HAVE
+IT WRONG.** #947 is the open parent issue listing 21 stats scoped by TAG, and
+its table does not name evasion at all; the evasion defect was about a
+modifier carrying a CONDITION. The change that moved evasion to the stat
+pipeline is [#1784](https://github.com/sdubois777/Cataclysm/pull/1784), whose
+commit message ends "Part of #947" -- which is how the citation drifted to
+the parent, and why it is misleading rather than false.
+
+I wrote all five, in #1836 and #1839, and I first wrote this paragraph saying
+THREE because I listed the places I remembered instead of searching for them.
+A sweep of every mention of 947 in all 811 source, documentation and script
+files found five wrong and two that are CORRECT and must be left alone -- the
+two in `CataclysmDamageCalculation.cpp`, the file the evasion change was made
+in, which cite #947 as the issue the work sits under. A blanket replacement
+would damage those and 31 unrelated mentions. The five are corrected under
+[#1846](https://github.com/sdubois777/Cataclysm/issues/1846) rather than by
+taking three C++ source files into this change for a comment.
 
 ---
 
