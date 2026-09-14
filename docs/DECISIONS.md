@@ -2,6 +2,134 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A locked skill says so on its own box, the words above the bar wait for every skill rather than any, and the bar was reading the class default object
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` (the data and
+decisions behind the row of skill boxes along the bottom of the screen),
+`game/Source/Cataclysm/Interface/CataclysmHUD.h` and `.cpp` (the code that draws it), and
+`game/Source/Cataclysm/Tests/CataclysmSkillBarTests.cpp`. Issues
+[#1810](https://github.com/sdubois777/Cataclysm/issues/1810) and
+[#1817](https://github.com/sdubois777/Cataclysm/issues/1817). **Applied.**
+
+### What was wrong
+
+`UCataclysmSkillTemplate::CanActivateAbility` refuses every skill outside the basic-attack
+slot while the stat `skill_locked` is above zero, and **returns before the engine's own
+checks on purpose**, so a locked player is not told their skill is on cooldown. The right
+reason was never put in its place, so the outcome was a key that did nothing.
+
+That was tolerable while the only two sources were enchantment rows locking one slot under a
+condition the player sets off themselves. The dungeon rule `Celestial_Edict_of_Silence` makes
+it fifteen seconds with every skill refused, on a clock the player does not control.
+
+### The decision: the box says it, and words say it only when every skill is gone
+
+| Reader | What it answers |
+| :-- | :-- |
+| the colour of each box | **which** skill is refused |
+| the words above the bar | **why** nothing is happening |
+
+Both were built as new callers of things that already existed, which was the condition the
+work was approved under. A box already carried `bAffordable`, added after issue #653 was
+reported as "sometimes all of my abilities just become disabled" — an empty mana pool with
+nothing on screen saying so. **A lock is the second reason a box cannot be used, so it is a
+second field beside that one rather than a new surface.** The words use
+`DrawTextCentred`, the same helper the rarity names and cooldown figures already use. There
+is no notice or banner system in `game/Source/Cataclysm/Interface` and this change does not
+start one.
+
+**Locked is shown ahead of unpayable**, because a locked skill is refused at every mana
+level, so the lock is what decides whether the box can be used. The reverse order would tell
+a silenced player to go and find mana. That is the same kind of argument the existing order
+already makes for showing unpayable ahead of the cooldown sweep.
+
+**The words wait for every box that holds a skill, and answer no when there are none.** A
+single-slot lock is the bar's business and a line of text across the screen for one greyed
+box would be noise. An empty box holds nothing to refuse: counting it as unlocked would
+silence the words for any character with a slot spare, and counting it as locked would tell a
+character with no skills that their skills are locked.
+
+**The words name the basic attack, and that is not decoration.** The bar draws six of the
+seven slots and leaves the basic attack out deliberately, because it has no key and no
+cooldown — so the one thing a silenced player can still do is the one thing the bar does not
+draw. `CanActivateAbility` exempts that slot unconditionally and the row says "Only basic
+attacks function during this period". Words that said the player could not act would be
+false.
+
+**No countdown.** The lock is a stat value, not a time: `StatForSkill` answers how much, not
+how long, so a timer would be invented rather than read.
+
+### The genre check, and what it could not settle
+
+Diablo IV marks a control-impairing effect **on the character**, not on the action bar. Icy
+Veins' Stun page: "A player or enemy who is stunned will have a small circle spinning above
+their head" — no timer, and no action-bar change described. Icy Veins on Blizzard's cooldown
+manager treats the action bar as the authority for whether a skill can be used at all.
+
+**So the genre uses two channels answering two different questions, which is the structure
+adopted here.** What it does not settle is which to build first, and that was a judgement.
+
+**Stated limits.** The Path of Exile and Last Epoch wikis could not be reached; a note in the
+project records them as blocked and says a mechanic from those games has to be quoted from a
+guide site instead. The Diablo IV crowd-control overview names the effects that stop skill
+use — Stun, Daze, Freeze — **without describing any on-screen indicator at all**; only the
+per-effect pages carry one, and only for some effects. No marker on the character was built
+here: that is Diablo IV's channel, nothing like it exists in this project, and it would be
+new construction.
+
+### The defect this found, which was older than the work
+
+`UCataclysmSkillBar`'s helper for finding the ability in a slot returned `Spec.Ability`,
+**the class default object**. Everything that tells one granted skill from another is stamped
+on the granted **instance** by `UCataclysmWeaponSlotsComponent`. So `DisplayedName()`
+answered empty, the fallback written to stop an empty box covered it, and **every box on the
+skill bar showed its slot's generic name instead of the skill the weapon had granted**. Issue
+[#1817](https://github.com/sdubois777/Cataclysm/issues/1817).
+
+**The two halves cannot be separated.** The tags a per-slot lock is scoped by exist only on
+the instance, so there is no version of the lock feature that works without that line, and
+the same line is what makes names appear.
+
+**The trap was already known and written down, in another file.**
+`CataclysmBasicAttack.cpp` hit it earlier and records it: "THE PRIMARY INSTANCE, NOT
+Spec->Ability, AND THE DIFFERENCE IS THE WHOLE FUNCTION." **A rule written in one file does
+not reach the next person working in another.** Swept for the same mistake: five other reads
+of `Spec.Ability` exist and every one is a null check or a class comparison. The skill bar
+was the only remaining site.
+
+### Three things about tests that this change and the one before it paid for
+
+**A rule that resets its own state when it fires is invisible to a test that acts
+immediately after it fires.** That is what made a test written for the Edict of Silence's
+leaving-the-dungeon reset unable to fail: it walked out one beat after the rule fired, when
+the counter it was checking had just been set to nothing by the rule itself. Issue
+[#1812](https://github.com/sdubois777/Cataclysm/issues/1812) is where the same question is
+asked of the other rules.
+
+**A guard can be real and unreachable, and a break cannot prove it.** The Edict of Silence
+refuses to restart a silence that is already running. That refusal is correct and nothing can
+reach it today: the cadence counter is reset to zero when a silence begins, and the gap
+between silences is longer than a silence lasts, so the cadence can never come due inside
+one. Breaking it changes nothing any test could observe. **It is recorded rather than
+proved**, which is the honest outcome — the alternative is four builds ending in "not
+proved" and a reader concluding the guard is worthless.
+
+**A control at the start of a test notices as much as an assertion at the end.** A prediction
+made here named two tests for one break and the break failed three. The third read the bar
+before applying anything and asserted nothing was marked yet — a control written to catch the
+opposite fault, which is exactly why it caught a break predicted around. The proof still
+proved; the prediction was wrong, and it was only visible because the script asserted the
+failures matched the prediction rather than only that the proof passed.
+
+### What is not covered, said plainly
+
+That the boxes and the words are legible and land where the numbers say.
+`ACataclysmHUD::DrawHUD` never runs under test — the automation command passes `-nullrhi`, so
+there is no canvas — which is why every decision lives in `UCataclysmSkillBar` and is checked
+there. A person has to look at the drawing.
+
+---
+
 ## 2026-09-14 — "Sweeps the dungeon" is built as the floor being stood on, that reading has a stated expiry, and the Edict of Silence's clock is the only one that survives the stairs
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
