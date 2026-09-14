@@ -482,6 +482,33 @@ it.** So it is asserted by a test rather than trusted, and the warning is writte
 at the set site: if a minion's blow is ever given a melee tag, the exclusion
 stops working and that test is what says so.
 
+### A DISTINCTNESS TEST MUST ASSERT THAT EACH FLAG WORKS, NOT ONLY THAT THE OTHER DEFENCE IS UNTOUCHED
+
+**The first version of the test here made only half its claim, and a guard proof
+found it.** Each half asserted that the defence a keystone does NOT forbid still
+worked — that evasion still evaded, that penetration still penetrated — and never
+that the keystone itself did anything.
+
+Breaking Ironhide outright failed the Ironhide test and **left the distinctness
+test passing**, because the half holding Ironhide was only checking that the blow
+was still evaded, which a broken Ironhide does not change. Working the same
+reading through the other two breaks: none of the three would have tripped it.
+
+**So a test of that shape must say both things per half: this flag works, AND the
+other defence is untouched.** With only the second it cannot tell "two separate
+rules" from "two rules that both do nothing" — which is the exact fault it exists
+to catch.
+
+**The two claims often cannot share one blow**, which is why each half here sends
+two. While a defender is evading everything there is no damage to measure, so the
+armour claim needs a blow that lands; and a blow that lands says nothing about
+evasion.
+
+**The proof stopping on a narrower result than predicted is the rule working.**
+It was registered to stop if a break tripped a different set than predicted, and
+it did, and what it exposed was not a bad prediction but a test that could not
+fail.
+
 ---
 
 ## 2026-09-14 — A locked skill says so on its own box, the words above the bar wait for every skill rather than any, and the bar was reading the class default object

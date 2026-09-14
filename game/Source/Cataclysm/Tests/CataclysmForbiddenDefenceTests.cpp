@@ -420,12 +420,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForbiddenDefencesAreDistinctTest,
  *
  * AND THE RISK IS REAL HERE RATHER THAN THEORETICAL. Both stats are named
  * `..._suppressed`, both are read during one blow, and their accessors differ by
- * a few characters. The energy-shield keystones had the same shape and a guard
- * proof on exactly this leak was the only one that the single tests could not
- * catch.
+ * a few characters.
  *
- * THE TWO SIT ON OPPOSITE SIDES, so each is given to the character that should
- * NOT benefit, and the defence it does not forbid is checked still working.
+ * EACH HALF MAKES TWO CLAIMS, AND THE FIRST VERSION OF THIS TEST MADE ONLY ONE.
+ * It asserted that the defence a keystone does NOT forbid still worked, and
+ * never that the keystone itself did anything. A guard proof found it: breaking
+ * Ironhide outright failed the Ironhide test and left this one passing, because
+ * the half holding Ironhide was only checking that the blow was still evaded --
+ * which a broken Ironhide does not change.
+ *
+ * SO A TEST OF THIS SHAPE HAS TO SAY BOTH THINGS PER HALF: this flag works, AND
+ * the other defence is untouched. With only the second it cannot tell "two
+ * separate rules" from "two rules that both do nothing", which is the exact
+ * fault it exists to catch.
  */
 bool FCataclysmForbiddenDefencesAreDistinctTest::RunTest(const FString&)
 {
@@ -438,39 +445,78 @@ bool FCataclysmForbiddenDefencesAreDistinctTest::RunTest(const FString&)
 	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	// --- IRONHIDE ALONE DOES NOT STOP EVASION WORKING --------------------
-	{
-		const FScopedFighter Attacker(World);
-		const FScopedFighter Defender(World);
-
-		Defender.Write(Combat::GetEvasionAttribute(), AlwaysEvades);
-		Defender.Write(Combat::GetArmorPenetrationSuppressedAttribute(), 1.0f);
-
-		Effects::ApplyHit(Attacker.Actor, Defender.Actor, FullSwing, MeleeTags());
-		TestEqual(TEXT("Ironhide alone leaves the defender's evasion working"),
-				  Defender.HealthLost(), 0.0f, 0.01f);
-	}
-
-	// --- EVERY SWING LANDS ALONE DOES NOT PROTECT ARMOUR ------------------
+	// --- IRONHIDE ALONE: IT WORKS, AND EVASION IS UNTOUCHED ---------------
+	//
+	// TWO BLOWS, BECAUSE THE TWO CLAIMS CANNOT SHARE ONE. While the defender is
+	// evading everything there is no damage to measure, so the armour claim
+	// needs a blow that lands; and a blow that lands says nothing about evasion.
+	// The evasion is turned off between them and nothing else changes.
 	{
 		const FScopedFighter Attacker(World);
 		const FScopedFighter Defender(World);
 		const FScopedFighter Plain(World);
 
 		Defender.Write(Combat::GetArmorAttribute(), SomeArmour);
+		Defender.Write(Combat::GetArmorPenetrationSuppressedAttribute(), 1.0f);
+		Attacker.Write(Combat::GetArmorPenetrationAttribute(), HalfIgnored);
+
+		// THE DEFENCE THIS KEYSTONE DOES NOT FORBID IS UNTOUCHED.
+		Defender.Write(Combat::GetEvasionAttribute(), AlwaysEvades);
+		Effects::ApplyHit(Attacker.Actor, Defender.Actor, FullSwing, MeleeTags());
+		TestEqual(TEXT("Ironhide alone leaves the defender's evasion working"),
+				  Defender.HealthLost(), 0.0f, 0.01f);
+
+		// AND THE KEYSTONE ITSELF WORKS, which the half above cannot say and
+		// without which this test cannot tell two separate rules from two rules
+		// that both do nothing.
+		Defender.Write(Combat::GetEvasionAttribute(), 0.0f);
+		Defender.Heal();
+		Effects::ApplyHit(Attacker.Actor, Defender.Actor, FullSwing, MeleeTags());
+		const float AgainstIronhide = Defender.HealthLost();
+
+		Defender.Heal();
+		Effects::ApplyHit(Plain.Actor, Defender.Actor, FullSwing, MeleeTags());
+		const float FromAnAttackerWithNone = Defender.HealthLost();
+
+		TestEqual(TEXT("and Ironhide itself is working, so an attacker with "
+					   "penetration does exactly what one with none does"),
+				  AgainstIronhide, FromAnAttackerWithNone, 0.01f);
+	}
+
+	// --- EVERY SWING LANDS ALONE: IT WORKS, AND ARMOUR IS UNTOUCHED -------
+	//
+	// THE DEFENDER EVADES EVERYTHING HERE, which is what makes the first claim
+	// a claim at all: a blow landing on a defender with no evasion would say
+	// nothing about the keystone. BOTH attackers hold it, so both blows land
+	// and the difference between them is penetration and nothing else.
+	{
+		const FScopedFighter Attacker(World);
+		const FScopedFighter NoPenetration(World);
+		const FScopedFighter Defender(World);
+
+		Defender.Write(Combat::GetArmorAttribute(), SomeArmour);
+		Defender.Write(Combat::GetEvasionAttribute(), AlwaysEvades);
+
 		Attacker.Write(Combat::GetArmorPenetrationAttribute(), HalfIgnored);
 		Attacker.Write(Combat::GetMeleeEvasionSuppressedAttribute(), 1.0f);
+		NoPenetration.Write(Combat::GetMeleeEvasionSuppressedAttribute(), 1.0f);
 
 		Effects::ApplyHit(Attacker.Actor, Defender.Actor, FullSwing, MeleeTags());
 		const float WithPenetration = Defender.HealthLost();
 
+		// THE KEYSTONE ITSELF WORKS: a defender at full evasion took damage.
+		TestTrue(TEXT("Every Swing Lands itself is working, so a blow lands on a "
+					  "defender that evades everything"),
+				 WithPenetration > 0.0f);
+
 		Defender.Heal();
-		Effects::ApplyHit(Plain.Actor, Defender.Actor, FullSwing, MeleeTags());
+		Effects::ApplyHit(NoPenetration.Actor, Defender.Actor, FullSwing,
+						  MeleeTags());
 		const float WithoutPenetration = Defender.HealthLost();
 
-		TestTrue(TEXT("Every Swing Lands alone leaves the attacker's armour "
-					  "penetration working, so it still does more than an "
-					  "attacker with none"),
+		// AND THE DEFENCE IT DOES NOT FORBID IS UNTOUCHED.
+		TestTrue(TEXT("and it leaves the attacker's armour penetration working, "
+					  "so it still does more than an attacker with none"),
 				 WithPenetration > WithoutPenetration);
 	}
 
