@@ -384,6 +384,8 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetMadnessChanceAttribute(), GetCrippleChanceAttribute(),
 		GetWeakenChanceAttribute(), GetShredChanceAttribute(),
 		GetStunChanceAttribute(),
+		// HOW LARGE, WHERE THE ELEVEN ABOVE ARE HOW OFTEN. Issue #1767.
+		GetCrippleMagnitudeAttribute(), GetWeakenMagnitudeAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
