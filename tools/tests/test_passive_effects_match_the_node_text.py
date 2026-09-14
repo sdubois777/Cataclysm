@@ -511,7 +511,7 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: does nothing at all. The stat names the SIZE of the reduction and the one
 #: read site subtracts it, which is how `healing_ceiling_reduction` and the
 #: other four `_reduction` stats in this project are already spelled.
-AUTHORED_ROWS = 253
+AUTHORED_ROWS = 262
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -822,7 +822,7 @@ AUTHORED_ROWS = 253
 #: MEASURED PER TREE RATHER THAN ADDED TO THE FIGURE ABOVE, and two trees move
 #: this time: the Ritualist is 57 of its 74 and the Ravager 50 of its 74. The
 #: Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the Berserker none.
-AUTHORED_NODES = 185
+AUTHORED_NODES = 193
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1993,6 +1993,45 @@ VALUE_IN_WORDS = {
     # are RULES, and a rule has no number to state. A halving is a MAGNITUDE, and
     # a magnitude can always be written as one. Exempt a rule; reword a
     # magnitude.
+    # THE NINE KEYSTONE ROWS OF 2026-09-14, ISSUE #1515. Every one of them
+    # states its value in words because every one of them is a THRESHOLD rather
+    # than an amount: a flag that is on, an immunity, or a half. A keystone
+    # sentence says what becomes true, not by how much, so there is no digit in
+    # it for the ordinary check to find.
+    #
+    # THE PHRASE IS THE CLAUSE THAT CARRIES THE RULE, not the whole sentence.
+    # Ironhide's sentence goes on to name armour penetration and piercing
+    # weapons; the rule is "cannot be ignored" and that is what a reword would
+    # have to keep for the row to still be right.
+    ("Ritualist_keystone_c_kA", "shield_absorbs_damage_over_time"):
+        ("absorbs damage over time as well as hits", 1.0),
+    ("Ritualist_keystone_c_kB", "shield_recharges_while_damaged"):
+        ("recharges while you are taking damage", 1.0),
+    ("Ritualist_keystone_d_kA", "mana_regen_restores_shield"):
+        ("also restores your energy shield", 1.0),
+    ("Ravager_keystone_spine_001", "armor_penetration_suppressed"):
+        ("cannot be ignored", 1.0),
+    ("Ravager_keystone_spine_002", "melee_evasion_suppressed"):
+        ("cannot be evaded", 1.0),
+
+    # UNSTOPPABLE IS ONE SENTENCE AND TWO ROWS, so it appears twice with two
+    # different phrases from it. The stun and the shove are one stat at a
+    # hundred, which is what "cannot" means for a stat that scales an amount;
+    # the slow is a separate flag because movement speed is not crowd control
+    # resistance and is resolved somewhere else entirely.
+    ("Ravager_keystone_spine_003", "crowd_control_resistance"):
+        ("cannot be stunned", 100.0),
+    ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
+        ("slowed", 1.0),
+
+    # FIFTY IS "HALF", by the arithmetic the resistance already uses:
+    # Amount x (1 - Resisted / 100). Its second clause, about an effect ending
+    # when its applier dies, is not this row and is not built yet.
+    ("Ravager_keystone_a_kB", "crowd_control_resistance"):
+        ("last half as long", 50.0),
+
+    ("Ravager_keystone_d_kA", "movement_speed_reduction_suppressed"):
+        ("cannot be reduced by any effect", 1.0),
 }
 
 
