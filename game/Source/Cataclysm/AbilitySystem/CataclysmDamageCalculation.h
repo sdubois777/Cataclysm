@@ -429,6 +429,38 @@ public:
 	static const TCHAR* ShieldAbsorbsDamageOverTimeStat;
 
 	/**
+	 * The stat saying no attacker ignores any of this character's armour.
+	 * Issue #1515.
+	 *
+	 * `Ravager_keystone_spine_001` Ironhide is the only source: "Your Armor
+	 * cannot be ignored: armor penetration and piercing weapons remove none of
+	 * it." Its row is a flag.
+	 *
+	 * READ ON THE DEFENDER, because the node protects the armour of whoever
+	 * bought it. It is applied where the attacker's penetration and the weapon's
+	 * share are summed, so both halves of the row's sentence are covered by one
+	 * read rather than two.
+	 */
+	static const TCHAR* ArmorPenetrationSuppressedStat;
+
+	/**
+	 * The stat saying this character's melee attacks cannot be evaded. Issue
+	 * #1515.
+	 *
+	 * `Ravager_keystone_spine_002` Every Swing Lands is the only source: "Your
+	 * melee attacks cannot be evaded, and your melee arc is a full circle rather
+	 * than a cone." Only the first clause is built; the arc is deferred.
+	 *
+	 * READ ON THE ATTACKER, AND NOT AT THE EVASION STEP. Evasion is rolled on
+	 * the defender, so an attacker can only refuse it on the blow it sends. This
+	 * stat is read where the blow is assembled, in
+	 * `UCataclysmVitalAttributeSet`, and sets `bCannotBeEvaded` below -- which
+	 * the evasion step already honours and has since the Perfect Aim enemy
+	 * modifier was built.
+	 */
+	static const TCHAR* MeleeEvasionSuppressedStat;
+
+	/**
 	 * What either of those two reads when nothing has changed it.
 	 *
 	 * A HUNDRED IS THE IDENTITY FOR A MULTIPLIER, so a character with no node

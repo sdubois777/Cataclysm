@@ -671,6 +671,63 @@ public:
 	FGameplayAttributeData ManaRegenRestoresShield;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ManaRegenRestoresShield)
 
+	// -----------------------------------------------------------------------
+	// Two Ravager keystones that forbid a defence working against this
+	// character. Issue #1515.
+	//
+	// BOTH ARE HELD BY THE ATTACKER AND ACT ON THE DEFENDER, which is the
+	// opposite of every other flag in this set. `debuff_damage_suppressed`,
+	// `fervour_loss_suppressed` and `health_cost_suppressed` all stop something
+	// happening to the character holding them. These two stop the character in
+	// FRONT of the holder using a defence. The `_suppressed` spelling is kept
+	// because it is the project's word for a flag that forbids, but the reading
+	// is stated at each one below and again at each read site.
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Whether this character's attacks ignore none of the target's armour,
+	 * whatever armour penetration it holds. Issue #1515.
+	 *
+	 * `Ravager_keystone_spine_001` Ironhide is the node: "Your Armor cannot be
+	 * ignored: armor penetration and piercing weapons remove none of it."
+	 *
+	 * HELD BY THE DEFENDER, UNLIKE ITS TWIN BELOW. The node protects the armour
+	 * of whoever bought it, so it is read where the attacker's penetration is
+	 * about to be applied to this character's armour.
+	 *
+	 * IT COVERS THE WEAPON'S SHARE AS WELL AS THE STAT, because the row names
+	 * both: a piercing weapon ignores a further share of armour by a different
+	 * route, and a flag that stopped only the stat would leave the sentence
+	 * false against half the weapons in the game.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ArmorPenetrationSuppressed)
+	FGameplayAttributeData ArmorPenetrationSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed)
+
+	/**
+	 * Whether this character's melee attacks can be evaded at all. Issue #1515.
+	 *
+	 * `Ravager_keystone_spine_002` Every Swing Lands is the node: "Your melee
+	 * attacks cannot be evaded, and your melee arc is a full circle rather than
+	 * a cone." ONLY THE FIRST CLAUSE IS BUILT HERE; the arc belongs with the
+	 * other nodes that change an attack's shape and is recorded as deferred.
+	 *
+	 * HELD BY THE ATTACKER. Evasion is rolled on the defender, so the only way
+	 * an attacker can refuse it is to say so on the blow it sends -- which is
+	 * what `FCataclysmIncomingHit::bCannotBeEvaded` already exists for.
+	 *
+	 * IT DOES NOT REACH A MINION'S BLOW, and that is the design's rule rather
+	 * than an oversight: "A minion reaches its summoner through exactly three
+	 * channels, and nothing else crosses." A minion's damage is dealt in its
+	 * summoner's name, so the attacker read at the site is the player; what
+	 * keeps this off it is that a minion's blow carries no melee tag. That is a
+	 * property of how minion damage is delivered today rather than a stated
+	 * rule, so a test asserts it directly.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Offence", ReplicatedUsing = OnRep_MeleeEvasionSuppressed)
+	FGameplayAttributeData MeleeEvasionSuppressed;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed)
+
 	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
@@ -1085,6 +1142,8 @@ protected:
 	UFUNCTION() void OnRep_ShieldAbsorbsDamageOverTime(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargesWhileDamaged(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaRegenRestoresShield(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ArmorPenetrationSuppressed(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_MeleeEvasionSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);

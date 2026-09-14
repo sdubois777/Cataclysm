@@ -345,7 +345,14 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// zero and nothing in between means anything, so there is no neutral value
 	// to put on a sheet: the sheet would have to print "no" for every
 	// character in the game but one.
-	constexpr int32 OffSheetCombatStats = 40;
+	// AND FORTY-TWO SINCE THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE,
+	// issue #1515. The twenty-seventh and twenty-eighth times the rule is met:
+	// no affix grants either, nothing scales either, no class differs on either,
+	// and one keystone each is their only source.
+	//
+	// BOTH ARE FLAGS, like the three above. The sheet would have to print "no"
+	// for every character in the game but one, which is not a figure.
+	constexpr int32 OffSheetCombatStats = 42;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

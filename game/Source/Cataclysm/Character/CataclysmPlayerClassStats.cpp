@@ -821,6 +821,13 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			 Combat::GetShieldRechargesWhileDamagedAttribute()},
 			{UCataclysmRegeneration::ManaRegenRestoresShieldStat,
 			 Combat::GetManaRegenRestoresShieldAttribute()},
+			// AND THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE. Issue #1515.
+			// Both are flags. One is read on the DEFENDER, protecting its own
+			// armour; the other on the ATTACKER, refusing the defender's evasion.
+			{UCataclysmDamageCalculation::ArmorPenetrationSuppressedStat,
+			 Combat::GetArmorPenetrationSuppressedAttribute()},
+			{UCataclysmDamageCalculation::MeleeEvasionSuppressedStat,
+			 Combat::GetMeleeEvasionSuppressedAttribute()},
 		};
 	}();
 

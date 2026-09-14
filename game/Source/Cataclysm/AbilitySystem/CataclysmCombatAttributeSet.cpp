@@ -117,6 +117,13 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitShieldRechargesWhileDamaged(0.0f);
 	InitManaRegenRestoresShield(0.0f);
 
+	// AND THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE. Issue #1515. Both
+	// zero, so armour penetration works and melee can be evaded for every
+	// character that has not bought the node -- which is the rule everywhere
+	// else in the game.
+	InitArmorPenetrationSuppressed(0.0f);
+	InitMeleeEvasionSuppressed(0.0f);
+
 	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
 	// SAYS OTHERWISE. Issue #1039. The Masochist's Vessel Unbroken is its only
 	// source, and zero is the ordinary case.
@@ -240,6 +247,8 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ManaRegenRestoresShield);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
@@ -423,6 +432,8 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetShieldAbsorbsDamageOverTimeAttribute(),
 		GetShieldRechargesWhileDamagedAttribute(),
 		GetManaRegenRestoresShieldAttribute(),
+		GetArmorPenetrationSuppressedAttribute(),
+		GetMeleeEvasionSuppressedAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
@@ -488,6 +499,8 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ImpCapBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ManaRegenRestoresShield)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)

@@ -190,6 +190,100 @@ now carries this reasoning so the next person does not try the delegate first.
 
 ---
 
+## 2026-09-14 — Two keystones forbid a defence, they sit on opposite sides of one blow, and a summoner's does not reach its minions
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`
+and `.cpp`, `CataclysmDamageCalculation.h` and `.cpp`,
+`CataclysmVitalAttributeSet.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, and the tests.
+Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+The two nodes are `Ravager_keystone_spine_001` Ironhide, "Your Armor cannot be
+ignored: armor penetration and piercing weapons remove none of it", and
+`Ravager_keystone_spine_002` Every Swing Lands, "Your melee attacks cannot be
+evaded, and your melee arc is a full circle rather than a cone".
+
+### THE TWO FLAGS SIT ON OPPOSITE SIDES OF ONE BLOW, WHICH IS NEW HERE
+
+Every flag of this kind the project had before — `debuff_damage_suppressed`,
+`fervour_loss_suppressed`, `health_cost_suppressed`, and the three energy-shield
+flags — **stops something happening to the character holding it**.
+
+`armor_penetration_suppressed` is read on the DEFENDER and protects its own
+armour. `melee_evasion_suppressed` is read on the ATTACKER and refuses the
+DEFENDER's evasion. The `_suppressed` spelling is kept because it is this
+project's word for a flag that forbids, but the reading is stated at both
+definitions and at both read sites, because the name does not carry it.
+
+### EVERY SWING LANDS SETS A FLAG THAT ALREADY EXISTED, RATHER THAN ADDING A SECOND READ
+
+`FCataclysmIncomingHit::bCannotBeEvaded` was built for the Perfect Aim enemy
+modifier, and the evasion step already honours it. Its own comment states the
+reason it must live on the blow: **evasion is rolled on the defender, so the only
+place an attacker can refuse it is on the blow it sends.**
+
+So this node sets that flag where the blow is assembled and the damage
+calculation is not touched at all. **The two setters are not two names for one
+thing**: the enemy modifier is a rule on a creature, read off its modifier rows,
+covering every attack it makes; this is a stat on a player, read through the
+pipeline, covering melee only. Either may set the flag and neither reads the
+other.
+
+### ONLY THE FIRST CLAUSE IS BUILT, AND THE SECOND IS NAMED AS DEFERRED
+
+"Your melee arc is a full circle rather than a cone" needs the work that lets a
+passive change an attack's shape, which nothing does yet. Nothing here asserts
+anything about the arc.
+
+### A SUMMONER'S KEYSTONE DOES NOT REACH ITS MINIONS, AND THAT IS CHECKED RATHER THAN ASSUMED
+
+A minion's damage is dealt in its summoner's NAME, so the attacker whose
+attributes are read when the blow is assembled **is the player**. The design's
+rule is quoted on `Keyword.NoPenetration`: "A minion reaches its summoner through
+exactly three channels, and nothing else crosses."
+
+The project already blocks four things from crossing, by name: `MinionDelivery`
+in `CataclysmMinion.cpp` sets `bCannotCriticallyStrike`, `bCannotPenetrate`,
+`bCarriesNoWeaponSubType` and `bCannotLeech`.
+
+**A fifth was not added, because the melee gate already excludes a minion's
+blow**: both delivery calls in that file pass an empty tag container, so the blow
+is not melee and the flag is never read for it.
+
+**That is true today by how minion damage is delivered, not by anything stating
+it.** So it is asserted by a test rather than trusted, and the warning is written
+at the set site: if a minion's blow is ever given a melee tag, the exclusion
+stops working and that test is what says so.
+
+### A DISTINCTNESS TEST MUST ASSERT THAT EACH FLAG WORKS, NOT ONLY THAT THE OTHER DEFENCE IS UNTOUCHED
+
+**The first version of the test here made only half its claim, and a guard proof
+found it.** Each half asserted that the defence a keystone does NOT forbid still
+worked — that evasion still evaded, that penetration still penetrated — and never
+that the keystone itself did anything.
+
+Breaking Ironhide outright failed the Ironhide test and **left the distinctness
+test passing**, because the half holding Ironhide was only checking that the blow
+was still evaded, which a broken Ironhide does not change. Working the same
+reading through the other two breaks: none of the three would have tripped it.
+
+**So a test of that shape must say both things per half: this flag works, AND the
+other defence is untouched.** With only the second it cannot tell "two separate
+rules" from "two rules that both do nothing" — which is the exact fault it exists
+to catch.
+
+**The two claims often cannot share one blow**, which is why each half here sends
+two. While a defender is evading everything there is no damage to measure, so the
+armour claim needs a blow that lands; and a blow that lands says nothing about
+evasion.
+
+**The proof stopping on a narrower result than predicted is the rule working.**
+It was registered to stop if a break tripped a different set than predicted, and
+it did, and what it exposed was not a bad prediction but a test that could not
+fail.
+
+---
+
 ## 2026-09-14 — A dungeon hazard belongs to no side, the Artillery Strike's warning is derived from the player's own walk speed, and no production code had ever set the hit-everyone flag
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp`
