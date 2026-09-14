@@ -34,6 +34,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::HallowedGroundfallKey =
 	TEXT("Celestial_Hallowed_Groundfall");
 const TCHAR* UCataclysmDungeonModifierEffects::SporeCloudsKey =
 	TEXT("Pestilence_Spore_Clouds");
+const TCHAR* UCataclysmDungeonModifierEffects::HellfireKey =
+	TEXT("Demonic_Hellfire");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -183,7 +185,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(EdictOfSilenceKey)
 		|| RowKey == FName(ArtilleryStrikeKey)
 		|| RowKey == FName(HallowedGroundfallKey)
-		|| RowKey == FName(SporeCloudsKey))
+		|| RowKey == FName(SporeCloudsKey)
+		|| RowKey == FName(HellfireKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -331,6 +334,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(ArtilleryStrikeKey),
 		FName(HallowedGroundfallKey),
 		FName(SporeCloudsKey),
+		FName(HellfireKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -949,4 +953,19 @@ bool UCataclysmDungeonModifierEffects::SporeCloudsReach(float DistanceCm)
 	// and that compares `<=` against the half width squared. The two comparisons
 	// differ because one is a random draw and the other is a place.
 	return DistanceCm >= 0.0f && DistanceCm <= SporeCloudsReachCm;
+}
+
+bool UCataclysmDungeonModifierEffects::HellfireExplodes(float Roll)
+{
+	return Roll < HellfireChancePercentOnDeath;
+}
+
+float UCataclysmDungeonModifierEffects::HellfireDamage(float CreatureAttackDamage)
+{
+	if (CreatureAttackDamage <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return CreatureAttackDamage * HellfireExplosionHits;
 }

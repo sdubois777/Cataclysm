@@ -319,6 +319,34 @@ namespace CataclysmDungeonModifierEffectsTest
 	const FName SporeClouds(
 		UCataclysmDungeonModifierEffects::SporeCloudsKey);
 
+	/** And the row whose deaths explode. Issues #1820 and #41. */
+	const FName Hellfire(UCataclysmDungeonModifierEffects::HellfireKey);
+
+	/**
+	 * A creature that can be killed where it is put and hits for a stated amount.
+	 *
+	 * THE ATTACK DAMAGE IS READ BACK RATHER THAN ASSUMED. `SetAttackDamage` stores
+	 * the figure and `ApplyStartingAttributes` writes it into the attribute
+	 * multiplied by the creature's own damage scale, so what the attribute holds
+	 * is not always what was asked for. Hellfire reads the attribute, so a test of
+	 * Hellfire must read the attribute too.
+	 *
+	 * ANSWERS ZERO WHEN ANYTHING FAILED, so a caller can assert on it.
+	 */
+	float GiveCreatureAttackDamage(ACataclysmEnemyCharacter* Creature, float Asked)
+	{
+		if (!Creature)
+		{
+			return 0.0f;
+		}
+		Creature->SetAttackDamage(Asked);
+		const UAbilitySystemComponent* Theirs =
+			Creature->GetAbilitySystemComponent();
+		return Theirs ? Theirs->GetNumericAttribute(
+							UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+					  : 0.0f;
+	}
+
 	/**
 	 * The tag an ailment grants, asked for the way the rule asks for it.
 	 *
@@ -5472,6 +5500,561 @@ bool FCataclysmSporeCloudsRollTest::RunTest(const FString& Parameters)
 
 	TestTrue(TEXT("while a death whose roll releases does poison them"),
 			 UCataclysmSkillEffects::HasTag(Player.Character, Poison));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Hellfire: "Enemies have a chance to explode in hellfire when killed."
+// Issues #1820 and #41.
+//
+// WHAT THESE THREE COVER. That the floor must carry the row, that the victim's
+// death is what fires it, that the roll decides, that the reach is what the rule
+// states, that the explosion catches creatures as well as the player, and that
+// its size is the DYING CREATURE'S OWN attack damage rather than a figure.
+//
+// THE LAST OF THOSE IS WHY THE FIRST TEST KILLS TWO CREATURES OF DIFFERENT
+// ATTACK DAMAGE. A test using one creature would pass for a rule that wrote a
+// constant, which is the fault most worth catching here.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHellfireNearTest,
+	"Cataclysm.DungeonModifierEffects.AKilledEnemyExplodesOnWhoeverIsStandingNearIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHellfireNearTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// PINNED SO EVERY DEATH EXPLODES, and the chance decides nothing here.
+	FScopedConsoleString Roll(TEXT("Cataclysm.HellfireRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	// A CREATURE THAT HITS FOR A STATED AMOUNT, KILLED WHERE IT IS PUT. Its
+	// attack damage is what the explosion is worth, so it is read back and
+	// returned rather than assumed.
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where, float AttackDamage)
+		-> float
+	{
+		ACataclysmEnemyCharacter* Creature =
+			SpawnCreatureWithHealth(World, Where, 500.0f);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return 0.0f;
+		}
+		const float Hits = GiveCreatureAttackDamage(Creature, AttackDamage);
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature hits for something: asked %.1f, "
+							   "its attribute holds %.1f"),
+						  AttackDamage, Hits),
+					  Hits > 0.0f))
+		{
+			return 0.0f;
+		}
+		StoodAt = Creature->GetActorLocation();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		if (!TestTrue(TEXT("the blow killed the creature"),
+					  UCataclysmSkillEffects::IsDead(Creature)))
+		{
+			return 0.0f;
+		}
+		return Hits;
+	};
+
+	const FVector Standing = Player.Character->GetActorLocation();
+	const FVector Near =
+		Standing + FVector(Effects::HellfireRadiusCm * 0.5f, 0.0f, 0.0f);
+
+	// A FLOOR WITHOUT THE ROW FIRST. Without this control every assertion below
+	// would also pass for a rule that exploded on every floor.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the plain floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	const float BeforeControl =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	if (!TestTrue(FString::Printf(TEXT("the player has health to lose: %.1f"),
+								  BeforeControl),
+				  BeforeControl > 0.0f))
+	{
+		return false;
+	}
+	if (KillACreatureAt(Near, 20.0f) <= 0.0f)
+	{
+		return false;
+	}
+	const float AfterControl =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	if (!TestEqual(
+			TEXT("a death on a floor without Hellfire takes no health at all"),
+			AfterControl, BeforeControl, 0.01f))
+	{
+		return false;
+	}
+
+	// NOW THE FLOOR THAT CARRIES IT, AND THIS ROW ALONE, so nothing else on the
+	// beat is taking health while this is measured.
+	Mode->DungeonModifiers = {Hellfire};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the demonic floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the floor carries Hellfire"),
+				  Mode->FloorBrief.Modifiers.Contains(Hellfire)))
+	{
+		return false;
+	}
+
+	const float Before =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	if (KillACreatureAt(Near, 20.0f) <= 0.0f)
+	{
+		return false;
+	}
+
+	// HOW FAR THE DEATH ACTUALLY WAS, ASSERTED RATHER THAN ASSUMED. The spawn may
+	// be moved by the engine when the asked-for spot is blocked.
+	const float Apart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the creature died inside the reach: %.1f of %.1f"),
+					  Apart, Effects::HellfireRadiusCm),
+				  Apart <= Effects::HellfireRadiusCm))
+	{
+		return false;
+	}
+
+	const float After =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	AddInfo(FString::Printf(
+		TEXT("player health %.1f -> %.1f when a creature died beside them"),
+		Before, After));
+	TestTrue(FString::Printf(
+				 TEXT("a death inside the reach takes health: %.1f"),
+				 Before - After),
+			 Before - After > 0.0f);
+
+	// THE SIZE IS THE DYING CREATURE'S OWN ATTACK DAMAGE, WHICH ONE CREATURE
+	// CANNOT SHOW. Two explosions, far from the player and far from each other,
+	// each beside a creature with plenty of health to lose. A rule that wrote a
+	// constant would take the same amount from both.
+	//
+	// AND THIS IS ALSO WHERE THE RULING THAT IT CATCHES EVERYONE IS ASSERTED:
+	// the things measured here are creatures, not the player.
+	const float Apart2 = Effects::HellfireRadiusCm * 20.0f;
+	const FVector SpotOne = Standing + FVector(Apart2, 0.0f, 0.0f);
+	const FVector SpotTwo = Standing + FVector(Apart2 * 2.0f, 0.0f, 0.0f);
+
+	ACataclysmEnemyCharacter* WatcherOne =
+		SpawnCreatureWithHealth(World, SpotOne, 100000.0f);
+	ACataclysmEnemyCharacter* WatcherTwo =
+		SpawnCreatureWithHealth(World, SpotTwo, 100000.0f);
+	if (!TestNotNull(TEXT("a creature stands at the first spot"), WatcherOne)
+		|| !TestNotNull(TEXT("and one at the second"), WatcherTwo))
+	{
+		return false;
+	}
+
+	// THE TWO SPOTS CANNOT REACH EACH OTHER, ASSERTED, or one explosion would be
+	// measured twice and the comparison below would mean nothing.
+	const float BetweenSpots = FVector::Dist2D(WatcherOne->GetActorLocation(),
+											   WatcherTwo->GetActorLocation());
+	if (!TestTrue(FString::Printf(
+					  TEXT("the two spots are outside one explosion: %.1f of %.1f"),
+					  BetweenSpots, Effects::HellfireRadiusCm),
+				  BetweenSpots > Effects::HellfireRadiusCm * 2.0f))
+	{
+		return false;
+	}
+
+	const float WatcherOneBefore = HealthOf(WatcherOne);
+	const float WatcherTwoBefore = HealthOf(WatcherTwo);
+
+	const float SmallHits = KillACreatureAt(WatcherOne->GetActorLocation(), 20.0f);
+	const float BigHits = KillACreatureAt(WatcherTwo->GetActorLocation(), 60.0f);
+	if (SmallHits <= 0.0f || BigHits <= 0.0f)
+	{
+		return false;
+	}
+	if (!TestTrue(FString::Printf(
+					  TEXT("the second creature hits harder than the first: "
+						   "%.1f against %.1f"),
+					  BigHits, SmallHits),
+				  BigHits > SmallHits))
+	{
+		return false;
+	}
+
+	const float SmallTook = WatcherOneBefore - HealthOf(WatcherOne);
+	const float BigTook = WatcherTwoBefore - HealthOf(WatcherTwo);
+	AddInfo(FString::Printf(
+		TEXT("a creature hitting for %.1f exploded for %.1f; one hitting for "
+			 "%.1f exploded for %.1f"),
+		SmallHits, SmallTook, BigHits, BigTook));
+
+	if (!TestTrue(FString::Printf(
+					  TEXT("the smaller explosion took something: %.1f"),
+					  SmallTook),
+				  SmallTook > 0.0f))
+	{
+		return false;
+	}
+
+	// TWICE, NOT THREE TIMES, ALTHOUGH THE ATTACK DAMAGE IS THREE TIMES. What
+	// reaches health is what survives armour and resistances, which do not have
+	// to be a flat proportion, so the assertion is the direction and a clear
+	// margin rather than an exact ratio.
+	TestTrue(FString::Printf(
+				 TEXT("the creature that hits three times harder explodes for "
+					  "more than twice as much: %.1f against %.1f"),
+				 BigTook, SmallTook),
+			 BigTook > SmallTook * 2.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHellfireFarTest,
+	"Cataclysm.DungeonModifierEffects.TheExplosionDoesNotReachSomeoneStandingAwayFromTheCorpse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHellfireFarTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// PINNED TO ALWAYS EXPLODE, so what this measures is the reach and never the
+	// chance. A far death that took nothing because its roll failed would look
+	// exactly like the behaviour being asserted.
+	FScopedConsoleString Roll(TEXT("Cataclysm.HellfireRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where) -> bool
+	{
+		ACataclysmEnemyCharacter* Creature =
+			SpawnCreatureWithHealth(World, Where, 500.0f);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return false;
+		}
+		const float Hits = GiveCreatureAttackDamage(Creature, 20.0f);
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature hits for something: %.1f"), Hits),
+					  Hits > 0.0f))
+		{
+			return false;
+		}
+		StoodAt = Creature->GetActorLocation();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		return TestTrue(TEXT("the blow killed the creature"),
+						UCataclysmSkillEffects::IsDead(Creature));
+	};
+
+	Mode->DungeonModifiers = {Hellfire};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the demonic floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the floor carries Hellfire"),
+				  Mode->FloorBrief.Modifiers.Contains(Hellfire)))
+	{
+		return false;
+	}
+
+	const FVector Standing = Player.Character->GetActorLocation();
+
+	// THE FAR DEATH FIRST, while the player is still whole, because health taken
+	// by the near death below cannot be given back for a second reading.
+	const float Before =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	if (!TestTrue(FString::Printf(TEXT("the player has health to lose: %.1f"),
+								  Before),
+				  Before > 0.0f))
+	{
+		return false;
+	}
+
+	if (!KillACreatureAt(Standing + FVector(Effects::HellfireRadiusCm * 3.0f,
+											0.0f, 0.0f)))
+	{
+		return false;
+	}
+
+	const float FarApart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the creature died outside the reach: %.1f of %.1f"),
+					  FarApart, Effects::HellfireRadiusCm),
+				  FarApart > Effects::HellfireRadiusCm))
+	{
+		return false;
+	}
+
+	const float AfterFar =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	if (!TestEqual(
+			TEXT("a death outside the reach takes no health from the player"),
+			AfterFar, Before, 0.01f))
+	{
+		return false;
+	}
+
+	// AND NOW A NEAR ONE, WHICH IS WHAT MAKES THE LINE ABOVE WORTH ANYTHING. A
+	// rule that exploded on nobody would satisfy that assertion; it cannot
+	// satisfy this one too.
+	if (!KillACreatureAt(Standing + FVector(Effects::HellfireRadiusCm * 0.5f,
+											0.0f, 0.0f)))
+	{
+		return false;
+	}
+
+	const float NearApart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the second creature died inside the reach: %.1f of %.1f"),
+					  NearApart, Effects::HellfireRadiusCm),
+				  NearApart <= Effects::HellfireRadiusCm))
+	{
+		return false;
+	}
+
+	const float AfterNear =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	AddInfo(FString::Printf(
+		TEXT("player health %.1f, unchanged at %.1f after the far death, %.1f "
+			 "after the near one"),
+		Before, AfterFar, AfterNear));
+	TestTrue(FString::Printf(TEXT("while a death inside it does take health: %.1f"),
+							 AfterFar - AfterNear),
+			 AfterFar - AfterNear > 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHellfireRollTest,
+	"Cataclysm.DungeonModifierEffects.NotEveryDeathExplodes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHellfireRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE ARITHMETIC FIRST, WHICH NEEDS NO WORLD. A roll at the chance itself
+	// must not explode, or one death in ten would be a hair more than one in ten.
+	TestTrue(TEXT("a roll below the chance explodes"),
+			 Effects::HellfireExplodes(
+				 Effects::HellfireChancePercentOnDeath - 0.01f));
+	TestFalse(TEXT("a roll at the chance does not"),
+			  Effects::HellfireExplodes(Effects::HellfireChancePercentOnDeath));
+	TestFalse(TEXT("and nor does one above it"),
+			  Effects::HellfireExplodes(
+				  Effects::HellfireChancePercentOnDeath + 0.01f));
+
+	// AND THE DAMAGE ANSWERS NOTHING FOR A CREATURE THAT DEALS NOTHING, which is
+	// every creature the game mode never gave a damage to.
+	TestEqual(TEXT("a creature that hits for nothing explodes for nothing"),
+			  Effects::HellfireDamage(0.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("and so does one asked about with a negative"),
+			  Effects::HellfireDamage(-5.0f), 0.0f, 0.01f);
+	TestTrue(TEXT("while one that hits explodes for something"),
+			 Effects::HellfireDamage(10.0f) > 0.0f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// PINNED TO NEVER EXPLODE. A hundred is above the chance and the comparison
+	// is strictly less than.
+	FScopedConsoleString Roll(TEXT("Cataclysm.HellfireRoll"), TEXT("100"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where) -> bool
+	{
+		ACataclysmEnemyCharacter* Creature =
+			SpawnCreatureWithHealth(World, Where, 500.0f);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return false;
+		}
+		const float Hits = GiveCreatureAttackDamage(Creature, 20.0f);
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature hits for something: %.1f"), Hits),
+					  Hits > 0.0f))
+		{
+			return false;
+		}
+		StoodAt = Creature->GetActorLocation();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		return TestTrue(TEXT("the blow killed the creature"),
+						UCataclysmSkillEffects::IsDead(Creature));
+	};
+
+	Mode->DungeonModifiers = {Hellfire};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the demonic floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the floor carries Hellfire"),
+				  Mode->FloorBrief.Modifiers.Contains(Hellfire)))
+	{
+		return false;
+	}
+
+	const FVector Standing = Player.Character->GetActorLocation();
+	const FVector Near =
+		Standing + FVector(Effects::HellfireRadiusCm * 0.5f, 0.0f, 0.0f);
+
+	const float Before =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	if (!TestTrue(FString::Printf(TEXT("the player has health to lose: %.1f"),
+								  Before),
+				  Before > 0.0f))
+	{
+		return false;
+	}
+
+	if (!KillACreatureAt(Near))
+	{
+		return false;
+	}
+
+	// THE DEATH WAS WELL INSIDE THE REACH, ASSERTED, so the only reason it can
+	// have taken nothing is that its roll did not explode.
+	const float Apart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the creature died inside the reach: %.1f of %.1f"),
+					  Apart, Effects::HellfireRadiusCm),
+				  Apart <= Effects::HellfireRadiusCm))
+	{
+		return false;
+	}
+
+	const float AfterRefused =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	if (!TestEqual(
+			TEXT("a death whose roll fails takes nothing, however close"),
+			AfterRefused, Before, 0.01f))
+	{
+		return false;
+	}
+
+	// AND THE SAME DEATH WITH A ROLL THAT EXPLODES. Without this the assertion
+	// above would be satisfied by a rule that exploded on nobody, and by a pinned
+	// variable that was never read.
+	Roll.Set(TEXT("0"));
+	if (!KillACreatureAt(Near))
+	{
+		return false;
+	}
+	const float SecondApart = FVector::Dist2D(StoodAt, Standing);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the second creature died inside the reach too: "
+						   "%.1f of %.1f"),
+					  SecondApart, Effects::HellfireRadiusCm),
+				  SecondApart <= Effects::HellfireRadiusCm))
+	{
+		return false;
+	}
+
+	const float AfterExploded =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	AddInfo(FString::Printf(
+		TEXT("player health %.1f, unchanged at %.1f while the roll refused, "
+			 "%.1f once it explodes"),
+		Before, AfterRefused, AfterExploded));
+	TestTrue(FString::Printf(
+				 TEXT("while a death whose roll explodes does take health: %.1f"),
+				 AfterRefused - AfterExploded),
+			 AfterRefused - AfterExploded > 0.0f);
 
 	return true;
 }

@@ -592,6 +592,32 @@ public:
 	static const TCHAR* SporeCloudsKey;
 
 	/**
+	 * Hellfire: "Enemies have a chance to explode in hellfire when killed."
+	 * Issues #1820 and #41.
+	 *
+	 * THIS RULE STATES NO DAMAGE FIGURE, AND THAT IS COPIED FROM AN EXPLOSION THE
+	 * GAME ALREADY HAS. `UCataclysmEnemyModifiers::InfernalBrand` explodes a
+	 * creature and works out the damage as that creature's own `AttackDamage`
+	 * attribute times a count of hits, under the comment "Read off the creature
+	 * rather than written here, so a Herald's brand is a Herald's brand". The same
+	 * reading here means a deeper floor's creatures explode harder with no scaling
+	 * code, because the game mode already gives each creature kind its damage when
+	 * it spawns them.
+	 *
+	 * A CREATURE WITH NO ATTACK DAMAGE EXPLODES FOR NOTHING, and that is correct
+	 * rather than a fault. `ACataclysmEnemyCharacter::StartingAttackDamage` is 0
+	 * by default -- its own comment says "Zero means it deals nothing" -- and
+	 * Infernal Brand guards the same case with an early return.
+	 *
+	 * IT IS A BLOW AND NOT AN AILMENT, WHICH IS WHAT SEPARATES IT FROM
+	 * `Pestilence_Spore_Clouds`. That row names an ailment -- "spores ... that
+	 * poison the player" -- and applies `DoT_Poison`; this row names an explosion
+	 * and says nothing about a lasting effect. Reading this one as an ailment too
+	 * would make the two rows the same rule under two names.
+	 */
+	static const TCHAR* HellfireKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -1239,8 +1265,13 @@ public:
 	 * rows in `game/Data/DungeonModifiers.csv` say "a chance" with no percentage
 	 * beside it. One of those eight is `Famine_Wasting_Sickness`, which is built,
 	 * and the project answered that same gap with ten -- see
-	 * `WastingSicknessChancePercentPerHit` below, which is the only other chance
-	 * comparison in the built rules.
+	 * `WastingSicknessChancePercentPerHit` below.
+	 *
+	 * THIS PARAGRAPH SAID `WastingSicknessChancePercentPerHit` WAS "the only other
+	 * chance comparison in the built rules" AND `Demonic_Hellfire` MADE THAT
+	 * FALSE. There are three now: Wasting Sickness on a blow, this row on a death,
+	 * and Hellfire on a death. The sentence was true when written and was
+	 * corrected by the change that stopped it being true.
 	 *
 	 * TEN IS ALSO WHAT THE TABLE USES FOR THIS EXACT TRIGGER.
 	 * `Death_Vengful_Wraiths` -- "Enemies have a 10% chance of turning into
@@ -1266,6 +1297,72 @@ public:
 	 * one question is what this avoids.
 	 */
 	static constexpr float SporeCloudsReachCm = WitheredGroundPatchRadiusCm;
+
+	/**
+	 * How often a death explodes, as a percentage.
+	 *
+	 * THE SAME GAP AND THE SAME ANCHOR AS `SporeCloudsChancePercentOnDeath` above,
+	 * and the anchor is about the data rather than about this file, so building a
+	 * second rule on it does not weaken it: `Death_Vengful_Wraiths` -- "Enemies
+	 * have a 10% chance of turning into wraiths when killed" -- is the only row of
+	 * `game/Data/DungeonModifiers.csv` that states a figure for a chance fired by
+	 * ANY enemy's death, which is the shape this row has too.
+	 *
+	 * BOTH ROWS SAY "a chance" AND NEITHER GIVES A FIGURE. Eight of the 117 rows
+	 * are written that way, measured 2026-09-14.
+	 */
+	static constexpr float HellfireChancePercentOnDeath = 10.0f;
+
+	/**
+	 * How far the explosion reaches.
+	 *
+	 * DECLARED AS `InfernalRainRadiusCm` AND NOT AS A FIGURE. 300 is this
+	 * project's settled answer for a thing at a point on the floor: Infernal
+	 * Rain's patch, Singularity Wells, Withered Ground's patch, Grasping
+	 * Tentacles' reach, the Gatekeeper's Soulfall ground and Spore Clouds' reach
+	 * are all that number.
+	 *
+	 * NOT `ArtilleryStrikeRadiusCm`, WHICH IS 600. That figure belongs to a circle
+	 * its own row calls "a massive red circle"; this row says nothing about size,
+	 * so taking the larger number would be inventing one.
+	 */
+	static constexpr float HellfireRadiusCm = InfernalRainRadiusCm;
+
+	/**
+	 * How many of the dying creature's own blows the explosion is worth.
+	 *
+	 * A JUDGEMENT, AND THE ONLY ONE IN THIS RULE. The row states no magnitude.
+	 *
+	 * ONE, NOT `UCataclysmEnemyModifiers::InfernalBrandExplosionHits`, WHICH IS 5.
+	 * That five has a reason -- the brand banks one hit's worth per stack and
+	 * explodes when five have built up -- and the reason does not transfer to a
+	 * death that banks nothing. What is copied from Infernal Brand is the shape,
+	 * reading the damage off the creature; the count is derived again here.
+	 *
+	 * WHY ONE. This fires at the moment the player kills something, when they are
+	 * usually standing next to it, and there is no warning to react to.
+	 * `War_Artillery_Strike` takes a quarter of maximum health but announces
+	 * itself three seconds early and can be walked out of; an unavoidable blow
+	 * cannot be priced like an avoidable one. The smallest honest reading of a
+	 * creature exploding is that it lands one more of its own blows as it dies.
+	 */
+	static constexpr float HellfireExplosionHits = 1.0f;
+
+	static_assert(
+		HellfireChancePercentOnDeath > 0.0f
+			&& HellfireChancePercentOnDeath < 100.0f,
+		"Hellfire is a CHANCE on death. At zero it never happens and the row is "
+		"unbuilt; at a hundred every kill explodes and the row's own word "
+		"'chance' describes nothing.");
+
+	static_assert(
+		HellfireRadiusCm > 0.0f,
+		"An explosion that reaches nowhere hits nobody.");
+
+	static_assert(
+		HellfireExplosionHits > 0.0f,
+		"An explosion worth no blows deals nothing, which is the row unbuilt "
+		"rather than the row tuned low.");
 
 	static_assert(
 		SporeCloudsChancePercentOnDeath > 0.0f
@@ -1798,15 +1895,36 @@ public:
 	 * Whether a death releases spores, given the roll it drew.
 	 *
 	 * BELOW AND NOT AT OR BELOW: a roll is drawn from 0 up to 100, so "below 10"
-	 * is one chance in ten and "at or below" would be a hair more. The one other
+	 * is one chance in ten and "at or below" would be a hair more. Every other
 	 * chance comparison in the built rules makes the same one --
 	 * `ACataclysmDungeonGameMode::NoteHitForWastingSickness` writes
-	 * `DungeonGameModeWastingSicknessRoll() < WastingSicknessChancePercentPerHit`.
+	 * `DungeonGameModeWastingSicknessRoll() < WastingSicknessChancePercentPerHit`,
+	 * and `HellfireExplodes` below compares the same way.
+	 *
+	 * THIS SAID "The one other chance comparison" UNTIL `Demonic_Hellfire` MADE IT
+	 * THREE. Corrected by the change that stopped it being true rather than left
+	 * to be found.
 	 */
 	static bool SporeCloudsRelease(float Roll);
 
 	/** Whether spores released this far from a target reach it. */
 	static bool SporeCloudsReach(float DistanceCm);
+
+	/**
+	 * Whether a death explodes, given the roll it drew.
+	 *
+	 * BELOW AND NOT AT OR BELOW, for the reason `SporeCloudsRelease` above gives.
+	 */
+	static bool HellfireExplodes(float Roll);
+
+	/**
+	 * What the explosion deals, given the dying creature's own attack damage.
+	 *
+	 * ANSWERS ZERO FOR A CREATURE THAT DEALS NOTHING, rather than a negative or a
+	 * tiny positive. `UCataclysmSkillEffects::ApplyDirectDamage` refuses an amount
+	 * at or below zero anyway; answering zero here says so where it can be read.
+	 */
+	static float HellfireDamage(float CreatureAttackDamage);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

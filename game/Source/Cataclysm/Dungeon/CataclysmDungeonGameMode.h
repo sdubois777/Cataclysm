@@ -1353,6 +1353,38 @@ private:
 	void NoteDeathForSporeClouds(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Hellfire's explosion, on a creature the player killed. Issues #1820 and
+	 * #41.
+	 *
+	 * THE DYING CREATURE'S OWN ATTACK DAMAGE DECIDES THE SIZE, read off it while
+	 * the notice is being dispatched and before anything is applied.
+	 * `UCataclysmEnemyModifiers::InfernalBrand` works the same way and says why:
+	 * a figure written into the rule would make every creature explode alike.
+	 *
+	 * THE BLOW IS DEALT IN THE FLOOR HAZARD SOURCE'S NAME AND NOT THE CORPSE'S,
+	 * for the reason `NoteDeathForSporeClouds` above gives: an apply route refuses
+	 * an instigator with no ability system, and that fault made three of the
+	 * Artillery Strike's tests fail.
+	 *
+	 * IT REACHES EVERYONE INSIDE IT, WHICH IS A RULING AND NOT A DEFAULT. The row
+	 * does not say who an exploding enemy hits. `docs/DECISIONS.md` records that a
+	 * dungeon hazard belongs to no side, and `StepArtilleryStrike` asks
+	 * `FindEveryoneInLine` for the same reason, so a creature standing beside the
+	 * one that exploded is caught too. A chain of exploding creatures is the
+	 * intended reading rather than an accident.
+	 *
+	 * THE CHAIN ENDS BY ITSELF AND NEEDS NO GUARD. A creature killed by an
+	 * explosion announces its own death and may explode in turn, but
+	 * `UCataclysmSkillEffects::MarkDead` refuses a second time for the same
+	 * creature, so nothing can explode twice and the depth is bounded by how many
+	 * creatures are alive.
+	 *
+	 * NO STATE AND NO PER-FLOOR RESET, like Spore Clouds and unlike every other
+	 * rule on this beat.
+	 */
+	void NoteDeathForHellfire(const struct FCataclysmDeathNotice& Notice);
+
+	/**
 	 * Mortal Decay's slowing, on a creature the player reaped. Issues #1786
 	 * and #41.
 	 *

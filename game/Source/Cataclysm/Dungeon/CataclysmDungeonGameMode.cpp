@@ -4,6 +4,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -562,6 +563,23 @@ static TAutoConsoleVariable<float> CVarSporeCloudsRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the roll Hellfire explodes on, so a test can assert what a death did.
+ * Issues #1820 and #41.
+ *
+ * ITS OWN VARIABLE AND NOT SPORE CLOUDS', for the reason given beside
+ * `Cataclysm.GraspingTentaclesRoll`: a floor can carry more than one of these
+ * rows, and a test of one must be able to pin its own chance without deciding
+ * another's. Both rows are a chance on a death, so sharing one variable would
+ * make either test unable to describe a floor carrying both.
+ */
+static TAutoConsoleVariable<float> CVarHellfireRoll(
+	TEXT("Cataclysm.HellfireRoll"),
+	-1.0f,
+	TEXT("Pin the roll Hellfire compares its explosion chance with, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -582,6 +600,13 @@ namespace
 	float DungeonGameModeSporeCloudsRoll()
 	{
 		const float Pinned = CVarSporeCloudsRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll Hellfire's explosion chance is compared with: pinned, or drawn. */
+	float DungeonGameModeHellfireRoll()
+	{
+		const float Pinned = CVarHellfireRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 }
@@ -2873,6 +2898,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForMortalDecay(Notice);
 	NoteDeathForWastingSickness(Notice);
 	NoteDeathForSporeClouds(Notice);
+	NoteDeathForHellfire(Notice);
 }
 
 void ACataclysmDungeonGameMode::OnSomethingWasHit(
@@ -3200,6 +3226,103 @@ void ACataclysmDungeonGameMode::NoteDeathForSporeClouds(
 	}
 
 	UCataclysmAilments::Apply(Source, Player, *Poison, /*Magnitude=*/1.0f);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForHellfire(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::HellfireKey)))
+	{
+		return;
+	}
+
+	// THE VICTIM MUST BE A CREATURE, and this rule needs the creature itself
+	// rather than only the fact, because its attack damage is what the explosion
+	// is worth. The row says "Enemies have a chance", and this notice is sent for
+	// every death on the floor including the player's.
+	const ACataclysmEnemyCharacter* Exploding =
+		Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Exploding)
+	{
+		return;
+	}
+
+	// THE ROLL COMES BEFORE ANYTHING IS READ OR PLACED, so a death spends the
+	// same one roll wherever it happens and whatever it was worth. The reason
+	// `NoteDeathForSporeClouds` above gives.
+	if (!Effects::HellfireExplodes(DungeonGameModeHellfireRoll()))
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// WHAT THE CREATURE HIT FOR, READ OFF THE CREATURE AND NOT WRITTEN HERE. This
+	// is the whole of the rule's magnitude: `UCataclysmEnemyModifiers` explodes a
+	// branded creature the same way and its comment says why -- "so a Herald's
+	// brand is a Herald's brand". A creature the game mode never gave a damage to
+	// answers zero, which `HellfireDamage` turns into zero and the check below
+	// stops. `ACataclysmEnemyCharacter::StartingAttackDamage` says as much: "Zero
+	// means it deals nothing."
+	//
+	// READ NOW, WHILE THE NOTICE IS BEING DISPATCHED. The creature is dead and
+	// the actor is still valid at this point, which is what lets this ask; a
+	// pointer kept past this function would not be safe to read.
+	const UAbilitySystemComponent* Theirs =
+		UCataclysmTargeting::AbilitySystemOf(Exploding);
+	if (!Theirs)
+	{
+		return;
+	}
+
+	const float Damage = Effects::HellfireDamage(Theirs->GetNumericAttribute(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute()));
+	if (Damage <= 0.0f)
+	{
+		return;
+	}
+
+	// WHOSE NAME THE BLOW IS DEALT IN. `ApplyDirectDamage` refuses an instigator
+	// with no ability system and the creature that exploded is dead, so the floor
+	// carries it -- the same conclusion `StepArtilleryStrike` reached after
+	// naming the circle made every strike land for nothing.
+	AActor* Firing = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Firing)
+	{
+		return;
+	}
+
+	// EVERYONE STANDING IN IT, WHICH IS A RULING RECORDED IN `docs/DECISIONS.md`
+	// AND NOT A DEFAULT: a dungeon hazard belongs to no side. The row does not
+	// say who an exploding enemy catches, and a creature beside the one that
+	// exploded is caught too. `StepArtilleryStrike` asks the same question the
+	// same way, with the start and the end in one place, which is a circle.
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEveryoneInLine(
+		World, Firing, Notice.Location, Notice.Location, Effects::HellfireRadiusCm);
+
+	// ONE BLOW AND NOT A LASTING FIRE, which is what separates this row from
+	// `Pestilence_Spore_Clouds` beside it. `bIsArea` says it cannot be evaded;
+	// leaving `bIsDamageOverTime` false says an energy shield absorbs it as it
+	// absorbs any other blow. `StepArtilleryStrike` makes the same two choices
+	// for the same reason.
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+
+	for (AActor* Target : Caught)
+	{
+		if (!UCataclysmTargeting::AbilitySystemOf(Target))
+		{
+			continue;
+		}
+
+		UCataclysmSkillEffects::ApplyDirectDamage(Firing, Target, Damage, Delivery);
+	}
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForMortalDecay(
