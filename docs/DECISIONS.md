@@ -2,6 +2,155 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — A status effect's strength says whether it is points off a stat or a share of it, and Weaken's share is a compounding multiplier
+
+**Affects:** `game/Data/StatusEffects.csv` and the Debuffs sheet of
+`docs/All_Things_Cataclysm.xlsx`,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp`,
+`CataclysmAilments.h` and `.cpp`, `tools/generate_datatables.py`. Issue
+[#1256](https://github.com/sdubois777/Cataclysm/issues/1256).
+
+### What was broken
+
+Weaken's row says *"reduces the affected enemy's damage by 20% for 5 seconds.
+Magnitude raises the reduction to a cap of 80%, then extends the duration
+instead."* **Nothing applied any of it.** Weaken's effect shape passed the row's
+duration and no strength at all, so a chance above 100% changed nothing: not the
+reduction, not the duration.
+
+### THE AXIS IS NOT "PERCENTAGE OR ABSOLUTE". IT IS "POINTS OFF A STAT, OR A SHARE OF IT"
+
+This was framed as percentage against absolute first, and that framing cannot
+separate the rows:
+
+| Row | Strength | What its description says | What it means |
+| :-- | :-- | :-- | :-- |
+| Shred | 10 | "by 10" | **points** off a resistance |
+| Abyssal Aura | 25 | "by 25%" | **points** off two resistances |
+| Weaken | 20 | "by 20%" | **a share** of the number |
+
+Shred and Abyssal Aura both take points, and one of them writes a per cent sign,
+because a resistance is measured in per cent already. **So the description cannot
+be read to tell the two apart, and neither can a reader who has not been told.**
+The `MovesStatBy` column says which. Empty or `points` is every row written
+before it existed.
+
+### WHY A SHARE CANNOT GO THROUGH THE POINTS PATH
+
+Not because the arithmetic is merely inexact. The shared path clamps the figure
+to the stat's own value and then subtracts it, so the reduction is
+`min(Strength, Current) / Current` — **which equals the intended `Strength / 100`
+only when the stat is exactly 100.**
+
+The eight designed enemy attack damage figures run from 9 to 42, so subtracting
+Weaken's 20 would take an Imp at 9 and a Hellhound at 19 to **zero damage**, a
+Corrupted Sentinel at 22 down by 91%, and a Gatekeeper at 42 down by 48%. It
+would be **strongest against the weakest creature**, and at its 80 cap it would
+take every creature in the game to zero — which the design forbids in the
+sentence that explains why the cap exists: *"an enemy that deals no damage is
+harmless, which is a stun by another name"*.
+
+**This was written the other way round first** — as a Weaken that was weakest
+against the weakest enemy and never reached its cap — by reading the clamped
+figure as the resulting percentage. The direction was corrected before it was
+recorded, and the corrected reading is a stronger argument than the wrong one
+was.
+
+### THE JUDGEMENT: A "MORE" MULTIPLIER RATHER THAN AN INCREASE
+
+The engine resolves an attribute as
+`((Base + Additive) * MultiplyAdditive / DivideAdditive * MultiplyCompound) + AddFinal`.
+`MultiplyAdditive` sums each modifier's distance from 1; `MultiplyCompound`
+multiplies them. That is the same division `docs/Cataclysm_GDD_v2.md:1338` states
+for the character sheet, where the second kind is a "more" multiplier.
+
+**Weaken is a "more" multiplier, and the deciding reason is that the other bucket
+can go below zero.** Two 80% reductions summed give `1 + (-0.8) + (-0.8) = -0.6`,
+and `WeaponDamageOf` returns the aggregate with no clamp, so a negative attack
+damage would reach the damage calculation as an enemy whose blows heal.
+Compounded, `0.2 x 0.2 = 0.04` approaches nothing and never crosses it.
+
+**This is a judgement and is labelled as one.** Nothing else modifies an enemy's
+attack damage today, so with one Weaken on a target the two operations give an
+identical result and **no test can tell them apart**. It is chosen for the second
+modifier, which does not exist yet, and nothing will catch it later if it is
+wrong.
+
+### TWO CONSEQUENCES THAT WILL LOOK LIKE BUGS AND ARE NOT
+
+Both follow from rules the code already states, for reasons written at the call
+sites. They are recorded here so the answer exists before somebody files them.
+
+**A Weaken landing while a shot is already in the air does reduce that shot.** A
+projectile carries a damage percent and prices it at impact —
+`CataclysmProjectile.cpp:610` calls `ApplyHit` when it lands. The code is
+deliberate about what it carries from firing time and what it does not: the
+critical chance and the skill's health cost are carried, because *"asking the
+character at impact would credit this blow with whatever was last paid"*, and
+damage is pointedly not on that list.
+
+**A burning patch laid while Weaken was active stays weakened after Weaken ends.**
+A ground effect prices its damage once, when it is laid.
+`CataclysmHellhoundCharacter.cpp` gives the reason: *"a patch outlives the ability
+that left it, so reading the creature's damage on every tick would make a lane
+keep paying for a buff that has since expired"*.
+
+**The rule is symmetric and that is what makes it right.** The patch is frozen at
+laying time whether the modifier helps the creature or harms it. Freezing only
+the helpful direction would be a new decision, and nobody has made one.
+
+### THE SCOPE, WHICH IS A READING OF THE DESIGN AND NOT A GAP
+
+Weaken reduces attack damage and does not touch damage over time. Two
+independent statements in `docs/Cataclysm_GDD_v2.md`:
+
+> **Cripple, Weaken, Shred and Madness have one affix each** ... The six damage
+> over time effects have three affixes ... The four weakening effects have one,
+> and that is the design rather than a gap. — `:1948`
+
+and Efficacy is the damage-over-time axis where Ferocity is the direct-hit one,
+`:2269` and `:3056`, so damage over time has an attribute of its own.
+
+Every route an enemy deals damage by was enumerated: **fourteen call sites, and
+thirteen of the thirteen in scope are covered by one modifier on the attribute.**
+Eleven read it live at the moment of the blow, two read it when a patch is laid.
+The fourteenth is the Hellfire Aura burn, which comes from a damage-over-time row
+and scales with damage-over-time stats. **It is outside Weaken by the division
+the design draws itself, so it is not a gap and is not listed as one.**
+
+### THE NAME CHECK WAS NARROWER THAN WHAT THE GAME RESOLVES
+
+`attack_damage` is not one of the 46 character sheet stats, so
+`tools/generate_datatables.py` refused it. That check is narrow on purpose — the
+C++ name-to-attribute map held 80 names and only 42 are sheet stats — and being
+narrow is right for almost every row.
+
+`attack_damage` is the honest exception: a player's blow is priced off the weapon
+so no sheet shows it, but an enemy writes it and every enemy blow reads it. The
+generator now accepts a named set of attributes no sheet shows, holding that one
+name. **Because that set is a hole in a check whose whole purpose is catching
+misspellings, every entry is held to two conditions by a test**: it must appear
+in the C++ map, or an effect naming it resolves to nothing, and some row must use
+it, or it widens what a designer may write with nothing behind it.
+
+### Cripple is deliberately not changed
+
+Cripple's reduction is a share too, and it keeps reading its figure off its tag,
+because **no enemy attribute is read for speed at all** — an enemy's walk speed is
+`DesignedWalkSpeedCmPerSecond * SpeedMultiplier()` and its attack interval divides
+by the same. Which of the two routes an effect wants is decided by whether a
+reader exists, not by the shape of its number. The entry below carries that
+measurement.
+
+**A correction to that entry:** it treats more of the scaling rule as a judgement
+than it is. `docs/Cataclysm_GDD_v2.md:1956` states the cap scales outright —
+*"Cripple reaches its 80% cap at 267% and Weaken at 400%"* — which is
+`StrengthCap / Strength` for both. The design fixes the point at which the
+surplus divides. Only **how** it divides was a judgement.
+
+---
+
 ## 2026-09-13 — A capped curse divides its magnitude at the cap rather than applying a rate, and Cripple is not moved onto the shared effect path
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and
