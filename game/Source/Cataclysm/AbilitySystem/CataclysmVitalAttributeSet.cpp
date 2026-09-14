@@ -1123,6 +1123,39 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// AND TWO MORE WINDOWS ON THE SAME RESOLVED BLOW. Issue #1815.
+			// "When you dodge an attack gain 15%-30% increased damage for 3
+			// seconds" and "Taking a hit reduces your damage by 5%-10% for 3
+			// seconds" are the rows.
+			//
+			// THREE SEPARATE BRANCHES ON ONE BLOW, NOT A CHAIN, because the
+			// three questions come apart in every direction. A blow is evaded
+			// or not, blocked or not, and a hit either way. The evade and the
+			// block are exclusive of each other in practice -- an evaded blow
+			// was never blocked -- but nothing here relies on that, so a future
+			// rule that makes both true at once does not need this code changed.
+			//
+			// AND `NoteHitTaken` DELIBERATELY OVERLAPS BOTH. Every blow that
+			// reaches this point was a hit, whatever became of it, so it fires
+			// for blocked blows, evaded ones, and blows that dealt nothing.
+			// That is what its row says and it is the one window here that is
+			// not exclusive.
+			//
+			// NEITHER IS GATED ON DAMAGE GETTING THROUGH, for the reason the
+			// block stamp above is not: an evaded blow deals nothing by
+			// definition, so gating it would mean it never fired at all.
+			if (UCataclysmAbilitySystemComponent* Cataclysm =
+					Cast<UCataclysmAbilitySystemComponent>(
+						GetOwningAbilitySystemComponent()))
+			{
+				if (Outcome.bEvaded)
+				{
+					Cataclysm->NoteEvaded();
+				}
+
+				Cataclysm->NoteHitTaken();
+			}
+
 			// AND ANY HIT THAT REACHED THE CHARACTER BUILDS A STACK. Issue
 			// #1003. Blood Offering: "Taking damage grants a stack of Bloodlust
 			// for 5 seconds, up to 5 stacks."

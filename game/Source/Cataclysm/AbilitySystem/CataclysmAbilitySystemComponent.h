@@ -1183,6 +1183,52 @@ public:
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceBlocked() const;
 
+	/**
+	 * Record that this character has just used a skill carrying `Type.Summon`.
+	 * Issue #1815.
+	 *
+	 * CALLED FROM `UCataclysmSkillTemplate::CommitAndBegin`, beside the
+	 * charge-skill stamp and for the same reasons: it is where every skill
+	 * shape passes and where the skill's own tags are in hand, and it is past
+	 * the commit, so a press the cost refused records nothing.
+	 *
+	 * `Type.Summon` RATHER THAN `Keyword.Summon`, which is the ruling issue
+	 * #1824 records: three of the five skills carrying the keyword command
+	 * creatures that already exist rather than creating one.
+	 */
+	void NoteSummonUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceSummonUsed() const;
+
+	/**
+	 * Record that this character has just evaded a blow. Issue #1815.
+	 *
+	 * CALLED FROM THE SAME BRANCH AS THE BLOCK STAMP, which is where a
+	 * resolved hit's outcome is in hand.
+	 *
+	 * AN EVADED BLOW DEALS NOTHING, so this is one of the two windows that
+	 * open on a blow the foreign-damage window cannot see: that one is reached
+	 * only when health or energy shield actually lost something.
+	 */
+	void NoteEvaded();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceEvaded() const;
+
+	/**
+	 * Record that this character has just been hit, whatever became of the
+	 * blow. Issue #1815.
+	 *
+	 * THE ONE WINDOW HERE THAT DELIBERATELY OVERLAPS ITS NEIGHBOURS. A blocked
+	 * hit is still a hit; an evaded hit is still a hit. So this opens together
+	 * with those and must not be described, or tested, as exclusive.
+	 */
+	void NoteHitTaken();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceHitTaken() const;
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -1393,6 +1439,24 @@ protected:
 	 * Negative means never, as above.
 	 */
 	float LastBlockAtSeconds = -1.0f;
+
+	/**
+	 * When this character last used a skill carrying `Type.Summon`, in world
+	 * seconds. Issue #1815. Negative means never, as above.
+	 */
+	float LastSummonAtSeconds = -1.0f;
+
+	/**
+	 * When this character last evaded a blow, in world seconds. Issue #1815.
+	 * Negative means never, as above.
+	 */
+	float LastEvadeAtSeconds = -1.0f;
+
+	/**
+	 * When this character was last hit, in world seconds. Issue #1815.
+	 * Negative means never, as above.
+	 */
+	float LastHitTakenAtSeconds = -1.0f;
 
 	/**
 	 * When this character last moved, in world seconds. Issue #41, slice 2.

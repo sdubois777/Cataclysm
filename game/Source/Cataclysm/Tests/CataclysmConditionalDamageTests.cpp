@@ -1733,4 +1733,123 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmUnopenedWindowRefusesTest,
 	return true;
 }
 
+CATACLYSM_CONDITIONAL_TEST(FCataclysmOneBlowOpensThreeWindowsByTableTest,
+	"Cataclysm.ConditionalDamage.OneBlowOpensExactlyTheWindowsItShouldAndNoOthers")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// THE COLLISION TEST FOR EVERY WINDOW A RESOLVED BLOW CAN OPEN, written as
+	// a table rather than as a rule. Issue #1815.
+	//
+	// WHY A TABLE. The first three event windows are each opened by one thing
+	// and nothing else, so each could be stated as "opens on its own event and
+	// not on a neighbour's". `seconds_after_hit_taken` breaks that: a blocked
+	// blow is still a hit and an evaded blow is still a hit, so it opens
+	// TOGETHER with its neighbours rather than instead of them. A test written
+	// to the old rule would assert something untrue about it, so the shape of
+	// the assertion has to change with the thing it asserts.
+	//
+	// AND THE FOREIGN-DAMAGE WINDOW IS IN THE TABLE THOUGH THIS CHANGE DOES NOT
+	// TOUCH IT, because it is the one that comes apart from the others most
+	// sharply: it is reached only when health or energy shield actually lost
+	// something, so an evaded blow -- which deals nothing by definition --
+	// opens every other window on this list and not that one. Leaving it out
+	// would leave the most interesting column unwritten.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	struct FCase
+	{
+		const TCHAR* What;
+		float Evasion;
+		float BlockChance;
+		const TCHAR* AttackerType;
+		bool bBlockWindow;
+		bool bDodgeWindow;
+		bool bHitTakenWindow;
+		bool bForeignWindow;
+	};
+
+	// A FRESH DEFENDER PER ROW, because the clocks live on the character and a
+	// second blow against the same one could not tell "opened by this blow"
+	// from "still open from the last".
+	const FCase Cases[] = {
+		{TEXT("an evaded blow"), /*Evasion=*/100.0f, /*Block=*/0.0f, TEXT("War"),
+		 /*block=*/false, /*dodge=*/true, /*hit=*/true, /*foreign=*/false},
+
+		{TEXT("a blocked blow of a foreign type"), 0.0f, 100.0f, TEXT("War"),
+		 true, false, true, true},
+
+		{TEXT("a plain blow of a foreign type"), 0.0f, 0.0f, TEXT("War"),
+		 false, false, true, true},
+
+		{TEXT("a plain blow of the character's own type"), 0.0f, 0.0f, TEXT("Demonic"),
+		 false, false, true, false},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FCaster Defender(World);
+		MakeReachable(Defender);
+		GiveOwnDamageType(Defender, TEXT("Demonic"));
+		Defender.Combat->SetEvasion(Case.Evasion);
+		Defender.Combat->SetBlockChance(Case.BlockChance);
+
+		ACataclysmEnemyCharacter* Attacker =
+			SpawnAttacker(World, Case.AttackerType);
+		if (!TestNotNull(FString::Printf(TEXT("%s: an attacker"), Case.What),
+						 Attacker))
+		{
+			continue;
+		}
+
+		// NOTHING IS OPEN BEFORE THE BLOW. Without this every "false" below
+		// would pass for a character whose clocks were never touched at all.
+		if (!TestEqual(FString::Printf(TEXT("%s: no window open yet"), Case.What),
+					   Defender.AbilitySystem->SecondsSinceHitTaken(), -1.0f,
+					   0.001f))
+		{
+			continue;
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+										 /*DamagePercent=*/100.0f);
+
+		const float Block = Defender.AbilitySystem->SecondsSinceBlocked();
+		const float Dodge = Defender.AbilitySystem->SecondsSinceEvaded();
+		const float Hit = Defender.AbilitySystem->SecondsSinceHitTaken();
+		const float Foreign =
+			Defender.AbilitySystem->SecondsSinceForeignDamageTaken();
+
+		TestEqual(FString::Printf(TEXT("%s and the block window"), Case.What),
+				  Block, Case.bBlockWindow ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the dodge window"), Case.What),
+				  Dodge, Case.bDodgeWindow ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the hit-taken window"), Case.What),
+				  Hit, Case.bHitTakenWindow ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the foreign-damage window"),
+								  Case.What),
+				  Foreign, Case.bForeignWindow ? 0.0f : -1.0f, 0.001f);
+
+		// AND THE STATE THE PIPELINE IS HANDED AGREES WITH THE READERS, which
+		// is the join between a timestamp and the row that reads it.
+		const FCataclysmStatConditions State =
+			Defender.AbilitySystem->CurrentConditions();
+		TestEqual(FString::Printf(TEXT("%s: the pipeline is told the dodge "
+									   "reading"), Case.What),
+				  State.SecondsSinceEvade, Dodge, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: the pipeline is told the hit-taken "
+									   "reading"), Case.What),
+				  State.SecondsSinceHitTaken, Hit, 0.001f);
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

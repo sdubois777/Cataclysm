@@ -190,6 +190,22 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		{
 			Cataclysm->NoteBasicAttackUsed();
 		}
+
+		// AND A SKILL THAT CREATES A CREATURE. Issue #1815. "Summoning a minion
+		// grants you 5%-10% increased damage for 5 seconds" is the row.
+		//
+		// `Type.Summon` AND NOT `Keyword.Summon`, which is the ruling #1824
+		// records. Five weapon skills carry the keyword; only Summon Imp and
+		// Subjugate create a creature. Quarry, Compel and Vesselstep command
+		// creatures that already exist, and a window opening on those would
+		// grant the bonus for summoning nothing.
+		const FGameplayTag SummonTag = FGameplayTag::RequestGameplayTag(
+			TEXT("Type.Summon"), /*ErrorIfNotFound=*/false);
+
+		if (SummonTag.IsValid() && SkillTags.HasTag(SummonTag))
+		{
+			Cataclysm->NoteSummonUsed();
+		}
 	}
 	else
 	{

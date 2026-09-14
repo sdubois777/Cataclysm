@@ -240,6 +240,72 @@ calls, added 2026-09-05. The comment is accurate and the code is correct.
 
 ---
 
+## 2026-09-14 — Three more event windows, one of which deliberately overlaps its neighbours, and the reason a dodge opens a window that taking damage does not
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the
+list of conditions a stat modifier can carry, and the code that answers them),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the
+per-character timestamps), `CataclysmSkillTemplate.cpp` and `CataclysmVitalAttributeSet.cpp`
+(where they are written), and `tools/generate_datatables.py`. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The three names
+
+Each is the shape the first three event windows established: a timestamp stamped at the
+event's own site, a reader answering elapsed seconds or -1, a line copying it into condition
+state, and a case comparing it against the row's own `ConditionValue`.
+
+| Name | What it asks | Value | Unknown reading |
+| :-- | :-- | :-- | :-- |
+| `seconds_after_summon` | did the wearer use a skill tagged `Type.Summon` within N seconds | seconds, 0 to 60 | refuses |
+| `seconds_after_dodge` | did the wearer evade a blow within N seconds | seconds, 0 to 60 | refuses |
+| `seconds_after_hit_taken` | was the wearer hit within N seconds, whatever became of it | seconds, 0 to 60 | refuses |
+
+All three refuse an unknown reading, which is the rule for a bonus and the same answer the
+first three give.
+
+### `Type.Summon` and not `Keyword.Summon`
+
+Five weapon skills carry `Keyword.Summon` and only two of them create a creature. Quarry,
+Compel and Vesselstep command creatures that already exist. "Summoning a minion" is the two,
+so the narrower tag is the right one; the wider one would grant the bonus for summoning
+nothing. That reading is recorded in
+[#1824](https://github.com/sdubois777/Cataclysm/issues/1824), which exists because the
+distinction is real, consistent, and written down nowhere else.
+
+### The row says "dodge" and the engine calls it an evade
+
+`seconds_after_dodge` reads `Outcome.bEvaded`. **The condition name follows the sentence and
+the enumerator follows the code**, which is the convention every other name here already
+uses. Renaming either to match the other would make one of them disagree with its own source.
+
+### One of the three is not exclusive, and that is the decision worth recording
+
+The first three event windows are each opened by one thing and nothing else.
+`seconds_after_hit_taken` is opened by **every** blow that reaches the character, so a
+blocked blow opens it and the block window, and an evaded blow opens it and the dodge window.
+
+**So "opens on its own event and nothing else" is false of it**, and a test written to that
+rule would assert something untrue. The tests state it as a table of three blows against
+three windows instead.
+
+### An evaded blow opens a window that taking damage cannot
+
+`seconds_after_foreign_damage` is reached only when health or energy shield actually lost
+something. **An evaded blow deals nothing by definition**, so gating the new windows the same
+way would mean `seconds_after_dodge` never fired at all. Both new stamps sit beside the block
+stamp, outside that branch, for the reason the block stamp is there: the sentences say
+"dodge an attack" and "taking a hit" and say nothing about what got through.
+
+### Three branches on one blow rather than a chain
+
+The three questions come apart in every direction: a blow is evaded or not, blocked or not,
+and a hit either way. The evade and the block are exclusive of each other in practice, since
+an evaded blow was never blocked, but **nothing in the code relies on that**, so a future rule
+making both true at once needs none of it changed.
+
+---
+
 ## 2026-09-14 — "Empower" is the buff the game already has, a crater's life is half the cadence that leaves it, and a comment naming one granter of that buff was wrong by three
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

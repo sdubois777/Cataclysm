@@ -526,6 +526,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceChargeSkill = SecondsSinceChargeSkillUsed();
 	State.SecondsSinceBasicAttack = SecondsSinceBasicAttackUsed();
 	State.SecondsSinceBlock = SecondsSinceBlocked();
+	State.SecondsSinceSummon = SecondsSinceSummonUsed();
+	State.SecondsSinceEvade = SecondsSinceEvaded();
+	State.SecondsSinceHitTaken = SecondsSinceHitTaken();
 
 	// AND HOW MUCH OF THE CLASS RESOURCE IS IN HAND. Issue #980. The Masochist's
 	// Reciprocity keystone grows with it: "Your Retaliation damage is increased
@@ -1472,6 +1475,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	LastChargeSkillAtSeconds = -1.0f;
 	LastBasicAttackAtSeconds = -1.0f;
 	LastBlockAtSeconds = -1.0f;
+	LastSummonAtSeconds = -1.0f;
+	LastEvadeAtSeconds = -1.0f;
+	LastHitTakenAtSeconds = -1.0f;
 	DamageToBleedingUntilSeconds = -1.0f;
 	DisplacementCount = 0;
 	LastDisplacedAtSeconds = -1.0f;
@@ -1611,6 +1617,63 @@ float UCataclysmAbilitySystemComponent::SecondsSinceBlocked() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastBlockAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteSummonUsed()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastSummonAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceSummonUsed() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastSummonAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastSummonAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteEvaded()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastEvadeAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceEvaded() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastEvadeAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastEvadeAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteHitTaken()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastHitTakenAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceHitTaken() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastHitTakenAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastHitTakenAtSeconds);
 }
 
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)

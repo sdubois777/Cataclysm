@@ -75,6 +75,9 @@ namespace
 		{ TEXT("seconds_after_charge_skill"),   ECataclysmStatCondition::WithinSecondsOfChargeSkill },
 		{ TEXT("seconds_after_basic_attack"),   ECataclysmStatCondition::WithinSecondsOfBasicAttack },
 		{ TEXT("seconds_after_block"),          ECataclysmStatCondition::WithinSecondsOfBlock },
+		{ TEXT("seconds_after_summon"),         ECataclysmStatCondition::WithinSecondsOfSummon },
+		{ TEXT("seconds_after_dodge"),          ECataclysmStatCondition::WithinSecondsOfEvade },
+		{ TEXT("seconds_after_hit_taken"),      ECataclysmStatCondition::WithinSecondsOfHitTaken },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -386,6 +389,21 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// The same two rules again. Issue #1826.
 		return State.SecondsSinceBlock >= 0.0f
 			&& State.SecondsSinceBlock <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfSummon:
+		// The same two rules again. Issue #1815.
+		return State.SecondsSinceSummon >= 0.0f
+			&& State.SecondsSinceSummon <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfEvade:
+		// The same two rules again. Issue #1815.
+		return State.SecondsSinceEvade >= 0.0f
+			&& State.SecondsSinceEvade <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfHitTaken:
+		// The same two rules again. Issue #1815.
+		return State.SecondsSinceHitTaken >= 0.0f
+			&& State.SecondsSinceHitTaken <= Value;
 
 	case ECataclysmStatCondition::SkillHealthCostAbovePercent:
 		// STRICTLY ABOVE, WHICH IS THE OPPOSITE BOUNDARY FROM EVERY OTHER
