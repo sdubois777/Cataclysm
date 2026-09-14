@@ -3584,10 +3584,38 @@ bool FCataclysmTentacleCooldownTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("and the same tentacle does not grab again at once"),
 			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
 
+	// THE WAIT IS MEASURED FROM WHEN THE GRAB ENDED, NOT FROM WHEN IT BEGAN, AND
+	// THIS IS THE ONLY PLACE THE TWO CAN BE TOLD APART. Counting from the start
+	// makes the tentacle ready at the cooldown; counting from the end makes it
+	// ready at the grab plus the cooldown. Every assertion above and below falls
+	// outside that window and answers the same either way -- which is what this
+	// test did at first, so the wrong version would have passed it.
+	//
+	// THE WINDOW ONLY EXISTS WHILE THE COOLDOWN IS LONGER THAN THE GRAB, which a
+	// static assertion in the header also requires. Asserted here so that a
+	// future change to either figure fails loudly rather than quietly emptying
+	// this check.
+	if (!TestTrue(TEXT("the cooldown is longer than the grab, so a window exists"),
+				  Effects::GraspingTentaclesGrabCooldownSeconds
+					  > Effects::GraspingTentaclesGrabSeconds))
+	{
+		return false;
+	}
+
+	// The clock already stands at the grab plus a quarter second. This brings it
+	// past the cooldown counted from the grab's START and short of the cooldown
+	// counted from its END.
+	CataclysmTestWorld::RunClock(World,
+								 Effects::GraspingTentaclesGrabCooldownSeconds
+									 - Effects::GraspingTentaclesGrabSeconds);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("still waiting: the cooldown runs from the grab's end, not its start"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+
 	// PAST THE COOLDOWN IT GRABS ONCE MORE, which is what says the wait is a wait
 	// and not a tentacle that has stopped working.
 	CataclysmTestWorld::RunClock(World,
-								 Effects::GraspingTentaclesGrabCooldownSeconds + 0.5f);
+								 Effects::GraspingTentaclesGrabSeconds + 0.5f);
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	TestNotNull(TEXT("past its cooldown the same tentacle grabs again"),
 				DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
