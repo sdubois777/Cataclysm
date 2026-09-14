@@ -649,14 +649,46 @@ bool FCataclysmClassResourceWindowsOpenOnCrossings::RunTest(const FString&)
 		AbilitySystem->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
 
 	// SITTING AT FULL DOES NOT RE-STAMP, WHICH IS THE ASSERTION THE WHOLE
-	// CROSSING RULE EXISTS FOR. Time is advanced, then a further gain arrives
-	// at a pool already at its maximum. A stamp written on every change would
-	// put the reading back to zero here; a crossing leaves it aged.
+	// CROSSING RULE EXISTS FOR. Time is advanced, and the pool is then
+	// disturbed twice without ever ceasing to be full.
+	//
+	// THE FIRST DISTURBANCE PROVES NOTHING AND IS KEPT FOR WHAT IT DOCUMENTS.
+	// `UCataclysmFervour::Move` returns early when the change it would write is
+	// nearly zero, so a gain at a pool already at its maximum writes no
+	// attribute and never reaches the handler at all. Measured by guard proof on
+	// 2026-09-14: with the crossing test neutralised, this assertion still
+	// passed, which is why the step below had to be written.
 	World->TimeSeconds += 2.0f;
 	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/100.0f,
 									  FGameplayTagContainer());
-	TestEqual(TEXT("a gain at maximum does not re-open the window"),
+	TestEqual(TEXT("a gain at maximum is refused and opens nothing"),
 		AbilitySystem->SecondsSinceClassResourceFull(), 2.0f, 0.01f);
+
+	// THE SECOND DISTURBANCE IS THE ONE THAT SEPARATES THEM: the MAXIMUM falls
+	// onto a pool that does not move. That does reach the handler, which is bound
+	// to the maximum attribute as well as to the pool, and the character is full
+	// before it and full after it. A stamp written on every change puts the
+	// reading back to zero here; a crossing leaves it aged.
+	//
+	// AND IT IS A REAL CASE rather than one invented for the test: the Crowned
+	// thrall lowers a summoner's Fervour reserve.
+	AbilitySystem->SetNumericAttributeBase(Maximum, 80.0f);
+	if (!TestEqual(TEXT("the maximum has fallen to eighty"),
+				   AbilitySystem->GetNumericAttribute(Maximum), 80.0f, 0.01f))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("and the pool is still at or above it, so still full"),
+				  AbilitySystem->GetNumericAttribute(Held) >= 80.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a maximum falling onto a full pool does not re-open it"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 2.0f, 0.01f);
+
+	// AND PUT BACK, so the steps below start from the hundred they were written
+	// against.
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
 
 	// SPENDING TO ZERO OPENS THE OTHER ONE.
 	UCataclysmFervour::RemoveForHealing(AbilitySystem, /*HealthRestored=*/500.0f,
@@ -688,6 +720,39 @@ bool FCataclysmClassResourceWindowsOpenOnCrossings::RunTest(const FString&)
 		State.SecondsSinceClassResourceFull, 0.0f, 0.001f);
 	TestEqual(TEXT("and the empty reading"),
 		State.SecondsSinceClassResourceEmpty, 5.0f, 0.01f);
+
+	// AND A RESPAWN AT AN ALREADY-EMPTY POOL OPENS NEITHER WINDOW. A write that
+	// starts at zero and ends at zero is the only shape that separates "the pool
+	// REACHED zero" from "the pool IS at zero", and it is not reachable through
+	// `UCataclysmFervour`, which refuses to write a change of nothing.
+	//
+	// IT IS THE ROUTE A RESPAWN TAKES, in that order.
+	// `ACataclysmPlayerCharacter::Revive` calls `ClearWhatDeathEnds` first, which
+	// forgets every window, and then writes the pool to zero directly. A
+	// character that died with an empty pool is written zero over zero, and
+	// `FActiveGameplayEffectsContainer::InternalUpdateNumericalAttribute`
+	// broadcasts with no equality test in it, so that write does reach the
+	// handler.
+	//
+	// WITHOUT THE "WAS IT ABOVE ZERO BEFORE" TEST, such a character would stand
+	// up with the window that says it has just emptied its class resource open,
+	// which is the thing the forgetting exists to prevent.
+	UCataclysmFervour::RemoveForHealing(AbilitySystem, /*HealthRestored=*/500.0f,
+										FGameplayTagContainer());
+	if (!TestEqual(TEXT("the pool is empty again"),
+				   AbilitySystem->GetNumericAttribute(Held), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	AbilitySystem->ClearWhatDeathEnds();
+	if (!TestEqual(TEXT("a respawn has forgotten the window that emptying opened"),
+				   AbilitySystem->SecondsSinceClassResourceEmptied(), -1.0f, 0.001f))
+	{
+		return false;
+	}
+	AbilitySystem->SetNumericAttributeBase(Held, 0.0f);
+	TestEqual(TEXT("and writing zero over zero does not open the empty window"),
+		AbilitySystem->SecondsSinceClassResourceEmptied(), -1.0f, 0.001f);
 
 	return true;
 }
