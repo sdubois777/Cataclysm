@@ -38,6 +38,17 @@ const TCHAR* UCataclysmDungeonModifierEffects::HellfireKey =
 	TEXT("Demonic_Hellfire");
 const TCHAR* UCataclysmDungeonModifierEffects::BrandOfTheAggressorKey =
 	TEXT("Demonic_Brand_of_the_Aggressor");
+const TCHAR* UCataclysmDungeonModifierEffects::FungalOvergrowthKey =
+	TEXT("Pestilence_Fungal_Overgrowth");
+
+// THE COLOURS EACH KIND OF MUSHROOM IS DRAWN IN, which are row keys of
+// `game/Data/ElementVisuals.csv` and not damage types this rule deals. The
+// header says at length why the pair is these two and why neither name reaches
+// anything but the drawing.
+const TCHAR* UCataclysmDungeonModifierEffects::FungalOvergrowthBoostDrawnAs =
+	TEXT("Celestial");
+const TCHAR* UCataclysmDungeonModifierEffects::FungalOvergrowthSlowDrawnAs =
+	TEXT("Void");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -189,7 +200,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(HallowedGroundfallKey)
 		|| RowKey == FName(SporeCloudsKey)
 		|| RowKey == FName(HellfireKey)
-		|| RowKey == FName(BrandOfTheAggressorKey))
+		|| RowKey == FName(BrandOfTheAggressorKey)
+		|| RowKey == FName(FungalOvergrowthKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -339,6 +351,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(SporeCloudsKey),
 		FName(HellfireKey),
 		FName(BrandOfTheAggressorKey),
+		FName(FungalOvergrowthKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -680,6 +693,27 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  DungeonModifierEffectsMovementSpeedStat,
 								  Effects.GraspMovementLessPercent);
 
+	// AND FUNGAL OVERGROWTH, ON THE SAME STAT AGAIN AND FROM ITS OWN TWO FIELDS.
+	// Issues #1820 and #41. Three rows now move `movement_speed` and each holds
+	// its own field, for the reason the paragraph above gives.
+	//
+	// ONE OF THEM IS A `More` AND NOT A `Less`, WHICH MAKES THIS THE FIRST
+	// DUNGEON RULE TO RAISE THE SPEED A PLAYER WALKS AT. The helper is signed
+	// and `DungeonModifierEffectsAddLess` is a wrapper that negates, so raising
+	// a stat needs no new machinery -- `ResistanceMorePercent` has called the
+	// signed helper directly since issue #41's second slice and this copies it.
+	//
+	// THE TWO COMPOSE RATHER THAN CANCEL, which is the pipeline's doing and not
+	// this rule's. A player standing where both kinds overlap gets 1.5 x 0.5,
+	// which is three quarters of their speed; adding the fields first would give
+	// them all of it, and neither figure in the row says the two undo each other.
+	DungeonModifierEffectsAddMultiplier(Modifiers,
+										DungeonModifierEffectsMovementSpeedStat,
+										Effects.MushroomSpeedMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsMovementSpeedStat,
+								  Effects.MushroomSpeedLessPercent);
+
 	// AND WITHERED GROUND, WHICH IS ONE FIELD AND FOUR STATS. The row states
 	// one figure for all of them: "your Health and Mana recovery (regen/leech)
 	// is reduced by 80%".
@@ -851,6 +885,27 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 		Clauses.Add(TEXT("held by a tentacle"));
 	}
 
+	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN WHICHEVER DIRECTION. Issues
+	// #1820 and #41. Said separately from the two slows above, though all three
+	// move the same stat, because a floor can carry all three rows and their
+	// cures differ: a well is walked out of, a grab ends on its own, and a
+	// mushroom is stepped off.
+	//
+	// TWO CLAUSES AND NOT ONE, because a player standing where both kinds
+	// overlap is under both and one clause would have to print a figure neither
+	// mushroom has.
+	if (Effects.MushroomSpeedMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% more"),
+									Effects.MushroomSpeedMorePercent));
+	}
+	if (Effects.MushroomSpeedLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from a "
+										 "mushroom"),
+									Effects.MushroomSpeedLessPercent));
+	}
+
 	// AND THE EDICT OF SILENCE, SAID AS WHAT THE PLAYER CAN STILL DO. Issues
 	// #1786 and #41. "skills silenced, basic attacks only" answers the question a
 	// silenced player is actually asking, which is what to press; "skill_locked
@@ -996,6 +1051,11 @@ bool UCataclysmDungeonModifierEffects::BrandErupts(int32 StacksBeforeThisBlow)
 	// and asks in either order only if the two read the same field, which is the
 	// bug this signature prevents.
 	return StacksBeforeThisBlow + 1 >= BrandStacksToErupt;
+}
+
+bool UCataclysmDungeonModifierEffects::FungalOvergrowthBoosts(float Roll)
+{
+	return Roll < FungalOvergrowthBoostChancePercent;
 }
 
 float UCataclysmDungeonModifierEffects::BrandNovaDamage(float MaximumHealth)

@@ -1137,6 +1137,182 @@ def test_hellfire_damage_is_read_off_the_creature_and_not_written_down():
         "is read off the creature rather than written down -- see HellfireKey in "
         "CataclysmDungeonModifierEffects.h and InfernalBrandExplosionHits in "
         "CataclysmEnemyModifiers.h. A constant makes every creature explode alike.")
+def test_fungal_overgrowth_row_still_states_both_of_its_shares():
+    """Both of this rule's figures are READ OFF THE ROW rather than judged.
+
+    "grants either a 50% speed boost or a 50% slow". Two shares, both stated, so
+    the rule decides neither. This is what holds each reading to the thing read.
+
+    THE TWO ARE CHECKED SEPARATELY THOUGH THEY ARE THE SAME NUMBER TODAY. A row
+    that moved one of them would leave the other correct, and a single check
+    written against one constant would pass while the rule under-read the row by
+    half.
+
+    NOTHING IN C++ WOULD NOTICE EITHER MOVING. The automation tests build every
+    expectation from these constants, so they agree with themselves at any value.
+    """
+    words = flat(rows()["Pestilence_Fungal_Overgrowth"]["Description"])
+    boost = constant("FungalOvergrowthSpeedMorePercent")
+    slow = constant("FungalOvergrowthSpeedLessPercent")
+
+    assert f"{boost:g}% speed boost" in words, (
+        f"The row no longer says '{boost:g}% speed boost'. "
+        "FungalOvergrowthSpeedMorePercent in CataclysmDungeonModifierEffects.h "
+        "is read off this sentence, so move it to whatever the row now says. "
+        + words)
+    assert f"{slow:g}% slow" in words, (
+        f"The row no longer says '{slow:g}% slow'. "
+        "FungalOvergrowthSpeedLessPercent in CataclysmDungeonModifierEffects.h "
+        "is read off this sentence. " + words)
+
+
+def test_fungal_overgrowth_row_still_names_its_trigger_and_what_the_player_does():
+    """The two events the rule is wired to, held as the row's own words.
+
+    "Killing enemies creates mushrooms" is why a listener sits on the death
+    announcement rather than on a clock -- the shape Withered Ground has.
+    "Stepping on them" is why the quarter-second beat asks `Covers` rather than
+    the rule applying anything when a mushroom is placed.
+
+    A ROW THAT MOVED EITHER WOULD LEAVE THE RULE WIRED TO THE WRONG THING while
+    every figure above still matched.
+    """
+    words = flat(rows()["Pestilence_Fungal_Overgrowth"]["Description"]).lower()
+
+    assert "killing enemies" in words, (
+        "Pestilence_Fungal_Overgrowth no longer says its mushrooms come from "
+        "killing enemies. NoteDeathForFungalOvergrowth in "
+        "CataclysmDungeonGameMode.h listens to the death announcement because of "
+        "this sentence. " + words)
+    assert "stepping on them" in words, (
+        "Pestilence_Fungal_Overgrowth no longer says the player steps on them. "
+        "StepFungalOvergrowth asks each mushroom whether it covers the player, "
+        "on the beat, because of this sentence. " + words)
+
+
+def test_fungal_overgrowth_row_states_no_chance_that_a_mushroom_appears():
+    """Every kill leaves one, and this is what says the row asks for that.
+
+    `Pestilence_Spore_Clouds` and `Demonic_Hellfire` both say "chance" and both
+    therefore roll for whether anything happens at all.
+    `FungalOvergrowthBoostChancePercent` is NOT that kind of figure: it decides
+    which of two kinds a mushroom is, and never whether there is one.
+
+    IF THIS ROW EVER SAYS "CHANCE", the rule is under-building it -- there would
+    be a second roll to make -- and this fails before anybody reads the code.
+    """
+    words = flat(rows()["Pestilence_Fungal_Overgrowth"]["Description"]).lower()
+
+    assert "chance" not in words, (
+        "Pestilence_Fungal_Overgrowth now states a chance. "
+        "NoteDeathForFungalOvergrowth leaves a mushroom on EVERY creature death "
+        "and rolls only for which kind, because this row stated no chance -- the "
+        "way Famine_Withered_Ground states none. A chance here needs a second "
+        "roll and a constant of its own. " + words)
+
+
+def test_fungal_overgrowths_split_radius_and_colours_are_judgements_not_the_rows():
+    """The four things this rule decides, held as things the row does NOT say.
+
+    The row states two shares and nothing else: no odds between the two kinds, no
+    size, no lifetime, no appearance. Each of those is answered beside its
+    constant in `CataclysmDungeonModifierEffects.h` and recorded in
+    `docs/DECISIONS.md`.
+
+    THE DAY THE ROW STATES ONE, THE JUDGEMENT STOPS BEING A JUDGEMENT and the
+    constant has to be read off the row instead. That is what this notices.
+    `test_dehydrations_cap_is_still_a_judgement_and_not_the_rows` above is the
+    same shape.
+    """
+    words = flat(rows()["Pestilence_Fungal_Overgrowth"]["Description"]).lower()
+
+    for unsaid in ("cm", "metre", "meter", "radius", "second", "colour", "color"):
+        assert unsaid not in words, (
+            f"Pestilence_Fungal_Overgrowth now says '{unsaid}'. Its mushroom's "
+            "size, lifetime and colours are judgements recorded beside the "
+            "constants in CataclysmDungeonModifierEffects.h. If the row now "
+            "states one, read it off the row and say so there. " + words)
+
+    # THE SPLIT, SEPARATELY, because "50" appears twice in this row already and a
+    # search for the bare number would match the shares the rule DOES read off it.
+    assert "half" not in words and "even" not in words, (
+        "Pestilence_Fungal_Overgrowth now describes the odds between its two "
+        "kinds. FungalOvergrowthBoostChancePercent is an even split because the "
+        "row named two outcomes and no odds. " + words)
+
+
+def test_fungal_overgrowth_mushroom_radius_is_still_a_derivation():
+    """The size, held as a derivation rather than as a number.
+
+    300 IS THIS PROJECT'S SETTLED ANSWER for a piece of ground a player stands
+    on -- Withered Ground's patch, a Singularity Well, Infernal Rain's patch and
+    the Gatekeeper's Soulfall all use it -- so a mushroom is declared as
+    `WitheredGroundPatchRadiusCm` and a later change to one carries the other.
+    Same shape as `test_hellfire_reach_is_still_declared_as_the_other_deaths_
+    radius` above.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    declared = re.search(
+        r"FungalOvergrowthMushroomRadiusCm\s*=\s*WitheredGroundPatchRadiusCm\s*;",
+        text)
+
+    assert declared, (
+        "A mushroom's radius is no longer declared as WitheredGroundPatchRadiusCm. "
+        "It was copied as a conclusion because 300 is what this project uses for "
+        "a piece of ground a player stands on. If it is now a figure of its own, "
+        "say why in docs/DECISIONS.md and give it its own derivation.")
+
+
+def test_the_two_kinds_of_mushroom_are_drawn_in_two_real_and_different_colours():
+    """The colours name rows that exist, and they are not the same row.
+
+    WHY BOTH HALVES MATTER. `UCataclysmElementVisuals::ColoursFor` answers false
+    for a name it cannot find and leaves the drawing system's authored white, so
+    a colour naming no row of `game/Data/ElementVisuals.csv` makes that kind of
+    mushroom look like every untyped zone in the game -- and two colours that are
+    the same name make the two kinds indistinguishable, which is the whole reason
+    a zone may carry a colour at all.
+
+    NEITHER FAILURE IS AN ERROR ANYWHERE. Nothing logs a missing row and nothing
+    compares the two constants, so both faults ship looking like working code.
+    """
+    source = EFFECTS_SOURCE.read_text(encoding="utf-8")
+    visuals = REPO_ROOT / "game" / "Data" / "ElementVisuals.csv"
+
+    names = {}
+    for which in ("FungalOvergrowthBoostDrawnAs", "FungalOvergrowthSlowDrawnAs"):
+        found = re.search(rf'{which}\s*=\s*TEXT\("([^"]+)"\)\s*;', source)
+        assert found, (
+            f"{which} is no longer defined as a TEXT literal in "
+            f"{EFFECTS_SOURCE.name}. It names a row of {visuals.name} and this "
+            "check reads it from there.")
+        names[which] = found.group(1)
+
+    with visuals.open(newline="", encoding="utf-8") as handle:
+        rows_available = {row["Name"] for row in csv.DictReader(handle)}
+
+    assert len(rows_available) > 1, (
+        f"{visuals.name} parsed to {len(rows_available)} row(s), which is too few "
+        "to be the real file, so the assertions below would pass having compared "
+        "nothing.")
+
+    for which, name in names.items():
+        assert name in rows_available, (
+            f"{which} is {name!r}, which is not a row of {visuals.name}. "
+            "UCataclysmElementVisuals::ColoursFor answers false for a name it "
+            "cannot find and leaves the authored white, so that kind of mushroom "
+            f"would look like every untyped zone. Rows: {sorted(rows_available)}")
+
+    boost = names["FungalOvergrowthBoostDrawnAs"]
+    slow = names["FungalOvergrowthSlowDrawnAs"]
+    assert boost != slow, (
+        f"Both kinds of mushroom are drawn as {boost!r}. The two colours exist so "
+        "a player can tell a mushroom that helps from one that hurts; the same "
+        "name for both makes ACataclysmGroundZone::DrawnAsType pointless for this "
+        "rule.")
+
+
 def test_brand_of_the_aggressor_row_still_states_the_count_the_rule_uses():
     """The first dungeon rule whose count is READ OFF THE ROW rather than judged.
 

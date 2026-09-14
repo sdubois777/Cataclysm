@@ -113,6 +113,8 @@ public:
 	 *                          row does one thing to the player and another to
 	 *                          creatures in the same patch, which four of the
 	 *                          eight rows do.
+	 * @param InDrawnAsType  which element's colours to draw it in, or NAME_None
+	 *                       to draw it in its owner's. See `DrawnAsType`.
 	 * @return the patch, or null if the width is not positive
 	 */
 	static ACataclysmGroundZone* SpawnForTheFloor(AActor* Owner,
@@ -120,7 +122,8 @@ public:
 												  const FVector& End,
 												  float HalfWidthCm,
 												  float DamagePerTick,
-												  bool bAffectsEveryone = false);
+												  bool bAffectsEveryone = false,
+												  FName InDrawnAsType = NAME_None);
 
 	/**
 	 * Whether it burns whatever is standing in it, including its own owner.
@@ -312,6 +315,53 @@ public:
 	/** The caster's damage type, deciding which resistance a Shred reduces. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	FName AppliedEffectDamageType;
+
+	/**
+	 * Which element's colours this patch is drawn in, or NAME_None for its
+	 * owner's. Issues #1820 and #41.
+	 *
+	 * BEFORE THIS, A PATCH'S APPEARANCE WAS ITS OWNER'S AND NOTHING ELSE.
+	 * `BeginPlay` and `Redraw` both passed
+	 * `UCataclysmSkillEffects::DamageTypeOf(GetOwner())` straight into
+	 * `UCataclysmGroundEffect::PlayFor`, so every patch one owner leaves was the
+	 * same colour as every other. That is right for a creature's zones and for a
+	 * floor rule that places one kind of hazard, and it cannot express a rule
+	 * that places two kinds a player is meant to tell apart.
+	 *
+	 * IT IS ONLY THE APPEARANCE AND NOT THE DAMAGE, which matters because the
+	 * value is a damage type name. Nothing reads this to decide what a hit is
+	 * met by: `ACataclysmGroundZone::Sweep` passes its OWNER as the damage
+	 * source, and `UCataclysmSkillEffects::DamageTypeOf` asks that owner. So a
+	 * patch drawn in one element's colours still deals its owner's element, and
+	 * a patch that deals nothing -- `DamagePerTick` of zero and no curse, which
+	 * `Sweep` returns early on -- never asks about an element at all.
+	 *
+	 * ONE FLOOR HAS ONE HAZARD SOURCE AND ITS TYPE IS LAST-WRITER-WINS, which is
+	 * the other half of why this is per zone. `ACataclysmFloorHazardSource::
+	 * ForFloor` answers the same actor for every rule on the floor, and three
+	 * rules assign `Source->DamageType` from their own row just before spawning,
+	 * so a patch's owner-derived colour can be changed afterwards by a later rule
+	 * placing something else. A value held on the patch cannot be.
+	 *
+	 * NAME_None RATHER THAN A FLAG, so the unset state and "draw it untyped" are
+	 * the same request. `UCataclysmElementVisuals::ColoursFor` answers false for
+	 * NAME_None and leaves the system's authored white, and
+	 * `UCataclysmSkillEffects::DamageTypeOf` answers NAME_None for a player, so a
+	 * player's zone already drew white before this existed and still does.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	FName DrawnAsType;
+
+	/**
+	 * Which element's colours this patch is actually drawn in.
+	 *
+	 * ONE FUNCTION FOR THE TWO PLACES THAT DRAW. `BeginPlay` draws once and
+	 * `Redraw` draws again every few seconds for a floor-lasting patch; the two
+	 * deciding separately is how a patch could change colour partway through its
+	 * life without anything reporting it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ground Zone")
+	FName TypeItIsDrawnAs() const;
 
 	/**
 	 * What the owner's health regeneration is multiplied by while it stands in

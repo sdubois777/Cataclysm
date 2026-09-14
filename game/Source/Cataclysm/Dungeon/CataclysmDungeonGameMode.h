@@ -1067,6 +1067,29 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Fungal Overgrowth: whether the player is standing on a mushroom right now,
+	 * and which kind. Issues #1820 and #41.
+	 *
+	 * IT ONLY READS, like `StepWitheredGround` above it, and for the reason that
+	 * function gives: the beat a player walks OFF a mushroom is a beat on which
+	 * nothing was placed, so the reading cannot sit inside the placing branch.
+	 *
+	 * IT ASKS TWICE AND SETS TWO FIELDS, which is the whole difference. A player
+	 * can stand where a helping and a hurting mushroom overlap -- mushrooms are
+	 * placed wherever creatures die, which on a floor with a choke point is
+	 * repeatedly the same few metres -- and both then apply. Neither figure is
+	 * changed by the other being present.
+	 *
+	 * STANDING ON TWO MUSHROOMS OF ONE KIND IS THE SAME AS STANDING ON ONE, for
+	 * the reason `StepWitheredGround` gives: the row states one figure per kind
+	 * and says nothing about overlapping, and stacking a 50% slow twice would
+	 * reach the pipeline's floor almost at once.
+	 */
+	void StepFungalOvergrowth(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -1320,6 +1343,38 @@ private:
 	 * as one of the two reasons it was written.
 	 */
 	void NoteDeathForWitheredGround(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Fungal Overgrowth: leave a mushroom where a creature died, of one kind or
+	 * the other. Issues #1820 and #41.
+	 *
+	 * THE SAME SHAPE AS `NoteDeathForWitheredGround` ABOVE, which is the rule
+	 * this one was written from: a creature dies, a piece of ground lasting the
+	 * floor is left where it fell, and the beat asks whether the player is
+	 * standing on one. It differs in placing one of TWO kinds and in remembering
+	 * them in two lists.
+	 *
+	 * EVERY CREATURE DEATH LEAVES ONE. The roll here decides the KIND and never
+	 * whether there is a mushroom -- "Killing enemies creates mushrooms" states
+	 * no chance, the way Withered Ground's row states none. That is the whole
+	 * difference from `NoteDeathForSporeClouds` and `NoteDeathForHellfire`,
+	 * whose rows both say "chance" and whose rolls can therefore come to
+	 * nothing.
+	 *
+	 * NOTHING IS DEALT AND NOTHING IS APPLIED, so unlike the two rules named
+	 * above this one needs no instigator that could refuse. The hazard source is
+	 * asked for anyway, for the reason `NoteDeathForWitheredGround` gives: a
+	 * patch with no owner is a different kind of object from every other floor
+	 * hazard, and a later change giving a mushroom something to apply would have
+	 * to rebuild the ownership first.
+	 *
+	 * IT DOES NOT SET `ACataclysmFloorHazardSource::DamageType`, WHICH THREE
+	 * OTHER RULES DO. That field decides which resistance a hazard's damage is
+	 * met by, and a mushroom deals no damage at all; its appearance comes from
+	 * `ACataclysmGroundZone::DrawnAsType`, which is set per mushroom and cannot
+	 * be changed afterwards by another rule placing something else.
+	 */
+	void NoteDeathForFungalOvergrowth(const struct FCataclysmDeathNotice& Notice);
 
 	/**
 	 * Spore Clouds' poison, on a creature dying near the player. Issues #1820
@@ -1810,6 +1865,29 @@ private:
 	 */
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> WitheredGroundPatches;
 	float WitheredGroundRecoveryLessApplied = 0.0f;
+
+	/**
+	 * Fungal Overgrowth's mushrooms on this floor, kept apart by kind, and what
+	 * each kind is doing to the player right now. Issues #1820 and #41.
+	 *
+	 * TWO LISTS AND NOT ONE LIST OF PAIRS, because the beat asks a separate
+	 * question of each -- is the player on a helping one, is the player on a
+	 * hurting one -- and both answers can be yes at once.
+	 *
+	 * NO CLOCK AND NO CAP, which is Withered Ground's shape and for its reasons:
+	 * a mushroom is placed by a death rather than by a cadence, so there is
+	 * nothing to advance, and the row states no limit, so a cap would make
+	 * "killing enemies creates mushrooms" stop being true at whichever kill hit
+	 * it.
+	 *
+	 * THE MUSHROOMS LAST THE FLOOR, so these lists only ever shrink by something
+	 * destroying one -- which `UCataclysmFloorContents::ClearTheFloor` does when
+	 * the player leaves. A weak pointer going invalid IS that.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;
+	float FungalOvergrowthSpeedMoreApplied = 0.0f;
+	float FungalOvergrowthSpeedLessApplied = 0.0f;
 
 	/**
 	 * The arriving wave's creatures that are not on the floor yet, in the order

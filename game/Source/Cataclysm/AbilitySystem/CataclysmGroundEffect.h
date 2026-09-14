@@ -141,6 +141,19 @@ public:
 	static float LastDuration;
 
 	/**
+	 * Which element's colours the last drawing was asked for. Issues #1820 and
+	 * #41.
+	 *
+	 * THE FIFTH OF THESE AND ADDED FOR THE SAME REASON AS THE OTHER FOUR. The
+	 * automation command passes `-nullrhi`, so no Niagara component is ever made
+	 * and nothing about a drawing is observable except what was asked for. Until
+	 * this existed a patch's colour was the one thing `PlayFor` is told that no
+	 * test could read back, so a rule drawing two kinds of patch in one colour
+	 * would pass every test there was.
+	 */
+	static FName LastDamageType;
+
+	/**
 	 * Draws a zone.
 	 *
 	 * @param WorldContextObject anything with a world. The zone itself, normally.

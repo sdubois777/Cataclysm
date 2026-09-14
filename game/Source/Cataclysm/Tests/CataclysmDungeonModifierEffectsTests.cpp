@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmElementVisuals.h"
+#include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -95,8 +97,14 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one that changes both: it places actors AND moves a stat. */
 	const FName SingularityWells(TEXT("Void_Singularity_Wells"));
 
-	/** And the one whose patches are placed by a death rather than a clock. */
+	/** And the first one whose patches are placed by a death rather than a clock. */
 	const FName WitheredGround(TEXT("Famine_Withered_Ground"));
+
+	/**
+	 * And the second such row, which leaves one of two kinds of mushroom and is
+	 * the only built row that can help the player. Issues #1820 and #41.
+	 */
+	const FName FungalOvergrowth(TEXT("Pestilence_Fungal_Overgrowth"));
 
 	/**
 	 * And the one that saps health faster the deeper the floor is, which a kill
@@ -6783,6 +6791,615 @@ bool FCataclysmFloorPanelCountIsLiveTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("and a new floor counts nothing again"), CountNow(),
 			  Expected(0));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFungalBoostTest,
+	"Cataclysm.DungeonModifierEffects.AMushroomLeftByADeathSpeedsUpThePlayerStandingOnIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFungalBoostTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	// THE HALF OF THE ROW THAT HELPS, DRIVEN THE WAY THE GAME DRIVES IT. Issues
+	// #1820 and #41. The other kind is the test below this one.
+	//
+	// IT NEVER REFRESHES THE ATTRIBUTES ITSELF, for the reason the Withered
+	// Ground test above gives: `ApplyToCharacter` is the only thing that writes
+	// the attribute this reads, so a test that refreshed it would pass with the
+	// rule's own apply deleted.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE GAME MODE'S OWN StartPlay BINDS THE DEATH HANDLER, and a test world
+	// never calls it. Leaving this out is what the first run of the Withered
+	// Ground test above did, and every assertion before the death still passed.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// EVERY MUSHROOM IS THE KIND THAT HELPS while this is pinned, because the
+	// rule compares the roll with `FungalOvergrowthBoostChancePercent` and takes
+	// the helping kind when it is BELOW. Pinned before the floor is built so no
+	// death can fall outside it.
+	FScopedConsoleString Roll(TEXT("Cataclysm.FungalOvergrowthRoll"), TEXT("0"));
+
+	const auto Beat = [Mode]()
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	};
+	const auto CountMushrooms = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				++Count;
+			}
+		}
+		return Count;
+	};
+
+	// THE SAME CREATURE HELPER THE WITHERED GROUND TEST USES, AND FOR ITS
+	// REASONS. It asserts each step rather than only the outcome, because "no
+	// mushroom appeared" cannot tell a creature that spawned with no health from
+	// a blow that did not kill from a death notice that never arrived.
+	FVector StoodAt = FVector::ZeroVector;
+	const auto KillACreatureAt =
+		[this, World, &Player, &StoodAt](const FVector& Where)
+		-> ACataclysmEnemyCharacter*
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(), Where,
+				FRotator::ZeroRotator, Spawn);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return nullptr;
+		}
+		UAbilitySystemComponent* Theirs = Creature->GetAbilitySystemComponent();
+		if (!TestNotNull(TEXT("the creature has an ability system"), Theirs))
+		{
+			return nullptr;
+		}
+		const float Health = Theirs->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+		if (!TestTrue(FString::Printf(
+						  TEXT("the creature has health to lose: %.1f"), Health),
+					  Health > 0.0f))
+		{
+			return nullptr;
+		}
+		// WHERE IT ACTUALLY STANDS, READ BEFORE THE BLOW. The spawn may move it,
+		// and after the blow this would be a dead actor's location.
+		StoodAt = Creature->GetActorLocation();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		if (!TestTrue(TEXT("the blow killed the creature"),
+					  UCataclysmSkillEffects::IsDead(Creature)))
+		{
+			return nullptr;
+		}
+		return Creature;
+	};
+
+	// A FLOOR WITHOUT THE ROW FIRST, so the negative case needs nothing unpicked.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestNotNull(TEXT("a creature to kill on the plain floor"),
+					 KillACreatureAt(FVector(900.0f, 0.0f, 0.0f))))
+	{
+		return false;
+	}
+	Beat();
+	TestEqual(TEXT("a death on a floor without Fungal Overgrowth leaves nothing"),
+			  CountMushrooms(), 0);
+
+	// NOW THE FLOOR THAT CARRIES IT.
+	Mode->DungeonModifiers = {FungalOvergrowth};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the fungal floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Fungal Overgrowth"),
+			 Mode->FloorBrief.Modifiers.Contains(FungalOvergrowth));
+
+	const float FullSpeed = Player.Read(Combat::GetMovementSpeedAttribute());
+	if (!TestTrue(TEXT("the player has a walking speed to change"),
+				  FullSpeed > 0.0f))
+	{
+		return false;
+	}
+
+	// NO CLOCK PLACES ONE. This row waits for a death, so a floor where nothing
+	// dies stays clear however long it runs.
+	for (int32 Index = 0; Index < 40; ++Index)
+	{
+		Beat();
+	}
+	TestEqual(TEXT("ten seconds of beats with nothing dying leaves nothing"),
+			  CountMushrooms(), 0);
+
+	// A DEATH, WELL AWAY FROM THE PLAYER so the mushroom is somewhere to walk to
+	// rather than somewhere they already stand.
+	if (!TestNotNull(TEXT("a creature to kill on the fungal floor"),
+					 KillACreatureAt(FVector(1500.0f, 0.0f, 0.0f))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its death leaves exactly one mushroom"), CountMushrooms(), 1);
+
+	ACataclysmGroundZone* Mushroom = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			Mushroom = *It;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("the mushroom is readable"), Mushroom))
+	{
+		return false;
+	}
+
+	// WHAT THE MUSHROOM IS: where the creature died, the house width, lasting the
+	// floor, and harming nobody.
+	TestTrue(FString::Printf(
+				 TEXT("the mushroom is where the creature stood: %s against %s"),
+				 *Mushroom->GetActorLocation().ToCompactString(),
+				 *StoodAt.ToCompactString()),
+			 Mushroom->GetActorLocation().Equals(StoodAt, 1.0));
+	TestEqual(TEXT("and as wide as the figure says"), Mushroom->RadiusCm,
+			  Effects::FungalOvergrowthMushroomRadiusCm, 0.01f);
+	TestTrue(TEXT("and lasts the floor rather than expiring"),
+			 Mushroom->bLastsTheFloor);
+	TestEqual(TEXT("and harms nobody, which the row does not ask for"),
+			  Mushroom->DamagePerTick, 0.0f, 0.01f);
+
+	// THE PLAYER IS OUTSIDE IT, ASSERTED BEFORE THE BEHAVIOUR IS. A test that
+	// only checked "standing on one is faster" would pass whether or not the
+	// boost was scoped to the mushroom at all, because the fault moves both
+	// readings.
+	const FVector Outside = Player.Character->GetActorLocation();
+	TestTrue(FString::Printf(
+				 TEXT("the player stands %.0f cm from a mushroom of radius %.0f"),
+				 FVector::Dist(Outside, Mushroom->GetActorLocation()),
+				 Effects::FungalOvergrowthMushroomRadiusCm),
+			 !Mushroom->Covers(Outside));
+	Beat();
+	TestEqual(TEXT("so a mushroom they are not on changes no speed"),
+			  Player.Read(Combat::GetMovementSpeedAttribute()), FullSpeed, 0.01f);
+
+	// NOW STAND ON IT.
+	Player.Character->SetActorLocation(Mushroom->GetActorLocation());
+	TestTrue(TEXT("the player is now on the mushroom"),
+			 Mushroom->Covers(Player.Character->GetActorLocation()));
+
+	Beat();
+	const float Boosted = Player.Read(Combat::GetMovementSpeedAttribute());
+	TestTrue(FString::Printf(
+				 TEXT("standing on it speeds the player up: %.2f from %.2f"),
+				 Boosted, FullSpeed),
+			 Boosted > FullSpeed);
+
+	// AND BY THE SHARE THE ROW STATES. The pipeline multiplies by
+	// (1 + Value / 100), so a More of 50 is times 1.5.
+	const float Share = 1.0f + Effects::FungalOvergrowthSpeedMorePercent / 100.0f;
+	TestEqual(FString::Printf(TEXT("and by the row's own %.0f%%"),
+							  Effects::FungalOvergrowthSpeedMorePercent),
+			  Boosted, FullSpeed * Share, 0.05f);
+
+	// AND WALKING OFF PUTS IT BACK. This is the half that fails if the rule only
+	// sets its fields on beats where something died: the beat a player steps off
+	// a mushroom is a beat on which nothing was placed.
+	Player.Character->SetActorLocation(
+		Mushroom->GetActorLocation()
+		+ FVector(Effects::FungalOvergrowthMushroomRadiusCm * 5.0f, 0.0f, 0.0f));
+	TestFalse(TEXT("the player is off every mushroom again"),
+			  Mushroom->Covers(Player.Character->GetActorLocation()));
+	Beat();
+	TestEqual(TEXT("walking off puts the speed back"),
+			  Player.Read(Combat::GetMovementSpeedAttribute()), FullSpeed, 0.01f);
+
+	// A SECOND DEATH LEAVES A SECOND MUSHROOM, WHICH IS THE ROW'S OWN SENTENCE.
+	// "Killing enemies creates mushrooms" states the trigger and no limit, so a
+	// cap would make it stop being true at whichever kill hit it. This is what
+	// fails if somebody adds one.
+	if (!TestNotNull(TEXT("a second creature to kill"),
+					 KillACreatureAt(FVector(-1500.0f, 0.0f, 0.0f))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a second death leaves a second mushroom, uncapped"),
+			  CountMushrooms(), 2);
+
+	// AND THE STAIRS CLEAR BOTH THE MUSHROOMS AND THE BOOST. Through `GoToFloor`
+	// and not `BuildFloor`: the per-floor reset lives in
+	// `ApplyFloorRulesToPlayer`, which `GoToFloor` calls and `BuildFloor` does
+	// not. This file records that trap in three other places.
+	Player.Character->SetActorLocation(Mushroom->GetActorLocation());
+	Beat();
+	TestTrue(TEXT("the player is boosted again before taking the stairs"),
+			 Player.Read(Combat::GetMovementSpeedAttribute()) > FullSpeed);
+	if (!TestTrue(TEXT("the player reached the next floor"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Beat();
+	TestEqual(TEXT("and a new floor takes the boost away with the mushrooms"),
+			  Player.Read(Combat::GetMovementSpeedAttribute()), FullSpeed, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFungalSlowTest,
+	"Cataclysm.DungeonModifierEffects.TheOtherKindOfMushroomSlowsThePlayerAndTheTwoCompose",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFungalSlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	// THE HALF OF THE ROW THAT HURTS, AND WHAT HAPPENS WHERE THE TWO OVERLAP.
+	// Issues #1820 and #41.
+	//
+	// THE OVERLAP IS THE PART NO OTHER TEST COVERS AND IT IS NOT A CORNER CASE.
+	// Mushrooms are placed wherever creatures die, which on a floor with a choke
+	// point is repeatedly the same few metres, so a player standing on one of
+	// each is ordinary. The two rules for it are that each keeps its own field
+	// and that the pipeline multiplies rather than adds.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto Beat = [Mode]()
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	};
+
+	const auto KillACreatureAt =
+		[this, World, &Player](const FVector& Where) -> bool
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(), Where,
+				FRotator::ZeroRotator, Spawn);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		return TestTrue(TEXT("the blow killed the creature"),
+						UCataclysmSkillEffects::IsDead(Creature));
+	};
+
+	const auto NewestMushroom = [World]() -> ACataclysmGroundZone*
+	{
+		ACataclysmGroundZone* Newest = nullptr;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Newest = *It;
+			}
+		}
+		return Newest;
+	};
+
+	Mode->DungeonModifiers = {FungalOvergrowth};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the fungal floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const float FullSpeed = Player.Read(Combat::GetMovementSpeedAttribute());
+	if (!TestTrue(TEXT("the player has a walking speed to lose"), FullSpeed > 0.0f))
+	{
+		return false;
+	}
+
+	// A ROLL AT THE CHANCE ITSELF IS THE HURTING KIND, because the comparison is
+	// strictly BELOW. That boundary is what this pin tests as well as the slow:
+	// a rule written with `<=` would leave the helping kind here and this test
+	// would read a speed that went up.
+	const FString AtTheBoundary =
+		FString::Printf(TEXT("%f"), Effects::FungalOvergrowthBoostChancePercent);
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.FungalOvergrowthRoll"),
+								  *AtTheBoundary);
+		if (!TestTrue(TEXT("a creature died away from the player"),
+					  KillACreatureAt(FVector(1500.0f, 0.0f, 0.0f))))
+		{
+			return false;
+		}
+	}
+
+	ACataclysmGroundZone* Slowing = NewestMushroom();
+	if (!TestNotNull(TEXT("the death left a mushroom"), Slowing))
+	{
+		return false;
+	}
+
+	Player.Character->SetActorLocation(Slowing->GetActorLocation());
+	TestTrue(TEXT("the player stands on it"),
+			 Slowing->Covers(Player.Character->GetActorLocation()));
+	Beat();
+	const float Slowed = Player.Read(Combat::GetMovementSpeedAttribute());
+	TestTrue(FString::Printf(
+				 TEXT("a roll of exactly the chance leaves the kind that slows: ")
+				 TEXT("%.2f from %.2f"), Slowed, FullSpeed),
+			 Slowed < FullSpeed);
+	const float LessShare =
+		1.0f - Effects::FungalOvergrowthSpeedLessPercent / 100.0f;
+	TestEqual(FString::Printf(TEXT("and by the row's own %.0f%%"),
+							  Effects::FungalOvergrowthSpeedLessPercent),
+			  Slowed, FullSpeed * LessShare, 0.05f);
+
+	// NOW A HELPING ONE ON THE SAME SPOT, so the player stands on both. The
+	// creature is killed where the player is standing, which is where the
+	// slowing mushroom already is.
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.FungalOvergrowthRoll"),
+								  TEXT("0"));
+		if (!TestTrue(TEXT("a second creature died on the same spot"),
+					  KillACreatureAt(Slowing->GetActorLocation())))
+		{
+			return false;
+		}
+	}
+
+	ACataclysmGroundZone* Helping = NewestMushroom();
+	if (!TestNotNull(TEXT("the second death left a mushroom"), Helping))
+	{
+		return false;
+	}
+	// THE TWO ARE DIFFERENT ACTORS, ASSERTED BEFORE THE ARITHMETIC. Without this
+	// the figure below could be reached by one mushroom being read twice.
+	TestTrue(TEXT("the second mushroom is a different actor from the first"),
+			 Helping != Slowing);
+	TestTrue(TEXT("the player stands on the first"),
+			 Slowing->Covers(Player.Character->GetActorLocation()));
+	TestTrue(TEXT("and on the second"),
+			 Helping->Covers(Player.Character->GetActorLocation()));
+
+	// BOTH APPLY AND THEY MULTIPLY. 1.5 x 0.5 is three quarters, which is the
+	// figure that separates this implementation from the two wrong ones: sharing
+	// one field would give whichever wrote second alone, and adding the shares
+	// before applying them would give the player all their speed back.
+	Beat();
+	const float Both = Player.Read(Combat::GetMovementSpeedAttribute());
+	const float MoreShare =
+		1.0f + Effects::FungalOvergrowthSpeedMorePercent / 100.0f;
+	TestEqual(FString::Printf(
+				  TEXT("standing on one of each gives %.2f x %.2f of the speed"),
+				  MoreShare, LessShare),
+			  Both, FullSpeed * MoreShare * LessShare, 0.05f);
+	TestTrue(FString::Printf(
+				 TEXT("which is not simply back to normal: %.2f against %.2f"),
+				 Both, FullSpeed),
+			 Both < FullSpeed);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFungalColourTest,
+	"Cataclysm.DungeonModifierEffects.TheTwoKindsOfMushroomAreDrawnInDifferentColours",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT A PATCH IS DRAWN AS, WHICH NOTHING COULD READ BACK UNTIL THIS ROW WAS
+	// BUILT. Issues #1820 and #41.
+	//
+	// THE AUTOMATION RUN PASSES `-nullrhi` AND NIAGARA MAKES NO COMPONENT, so the
+	// only observable is what `UCataclysmGroundEffect::PlayFor` was asked for.
+	// `LastDamageType` was added beside the four values already kept for that
+	// reason.
+	//
+	// A PLAIN ZONE IS CHECKED HERE TOO, AND THAT IS THE CONTROL. Every zone in
+	// the game was drawn in its owner's colour before this change; if threading a
+	// colour had broken that, this is what says so.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	const auto KillACreatureAt =
+		[this, World, &Player](const FVector& Where) -> bool
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(), Where,
+				FRotator::ZeroRotator, Spawn);
+		if (!TestNotNull(TEXT("a creature spawned"), Creature))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		return TestTrue(TEXT("the blow killed the creature"),
+						UCataclysmSkillEffects::IsDead(Creature));
+	};
+	const auto NewestMushroom = [World]() -> ACataclysmGroundZone*
+	{
+		ACataclysmGroundZone* Newest = nullptr;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Newest = *It;
+			}
+		}
+		return Newest;
+	};
+
+	Mode->DungeonModifiers = {FungalOvergrowth};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the fungal floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// THE HELPING KIND FIRST.
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.FungalOvergrowthRoll"),
+								  TEXT("0"));
+		if (!TestTrue(TEXT("a creature died"),
+					  KillACreatureAt(FVector(1500.0f, 0.0f, 0.0f))))
+		{
+			return false;
+		}
+	}
+	ACataclysmGroundZone* Helping = NewestMushroom();
+	if (!TestNotNull(TEXT("it left a mushroom"), Helping))
+	{
+		return false;
+	}
+	const FName HelpingAskedFor = UCataclysmGroundEffect::LastDamageType;
+	TestEqual(TEXT("the helping mushroom carries the colour the rule chose"),
+			  Helping->DrawnAsType,
+			  FName(Effects::FungalOvergrowthBoostDrawnAs));
+	TestEqual(TEXT("and that is what it asked to be drawn in"), HelpingAskedFor,
+			  FName(Effects::FungalOvergrowthBoostDrawnAs));
+
+	// THEN THE HURTING KIND.
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.FungalOvergrowthRoll"),
+								  TEXT("99"));
+		if (!TestTrue(TEXT("a second creature died"),
+					  KillACreatureAt(FVector(-1500.0f, 0.0f, 0.0f))))
+		{
+			return false;
+		}
+	}
+	ACataclysmGroundZone* Hurting = NewestMushroom();
+	if (!TestNotNull(TEXT("it left a second mushroom"), Hurting))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the second mushroom is a different actor"),
+			 Hurting != Helping);
+	const FName HurtingAskedFor = UCataclysmGroundEffect::LastDamageType;
+	TestEqual(TEXT("the hurting mushroom carries the other colour"),
+			  Hurting->DrawnAsType,
+			  FName(Effects::FungalOvergrowthSlowDrawnAs));
+	TestEqual(TEXT("and that is what it asked to be drawn in"), HurtingAskedFor,
+			  FName(Effects::FungalOvergrowthSlowDrawnAs));
+
+	// THE WHOLE POINT, SAID AS ITS OWN ASSERTION. The two above could both pass
+	// with one constant, if somebody set both to the same name.
+	TestTrue(FString::Printf(
+				 TEXT("the two kinds are drawn differently: %s against %s"),
+				 *HelpingAskedFor.ToString(), *HurtingAskedFor.ToString()),
+			 HelpingAskedFor != HurtingAskedFor);
+
+	// AND BOTH NAME A ROW THAT EXISTS. A colour naming no row is drawn in the
+	// system's authored white, which is what an untyped zone gets -- so the two
+	// kinds would look alike again and every assertion above would still pass.
+	FLinearColor Primary;
+	FLinearColor Secondary;
+	TestTrue(TEXT("the helping colour names a real row of ElementVisuals"),
+			 UCataclysmElementVisuals::ColoursFor(HelpingAskedFor, Primary,
+												  Secondary));
+	TestTrue(TEXT("and so does the hurting one"),
+			 UCataclysmElementVisuals::ColoursFor(HurtingAskedFor, Primary,
+												  Secondary));
+
+	// THE CONTROL: A PATCH THAT ASKS FOR NO COLOUR STILL TAKES ITS OWNER'S.
+	// Withered Ground places one the same way and passes nothing, so this is what
+	// fails if the defaulted argument stopped falling back.
+	ACataclysmFloorHazardSource* Source =
+		ACataclysmFloorHazardSource::Existing(World);
+	if (!TestNotNull(TEXT("the floor has a hazard source"), Source))
+	{
+		return false;
+	}
+	Source->DamageType = FName(TEXT("Pestilence"));
+	ACataclysmGroundZone* Plain = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, FVector(4000.0f, 0.0f, 0.0f), FVector(4000.0f, 0.0f, 0.0f),
+		Effects::FungalOvergrowthMushroomRadiusCm, 0.0f);
+	if (!TestNotNull(TEXT("a patch asking for no colour was placed"), Plain))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it carries no colour of its own"), Plain->DrawnAsType.IsNone());
+	TestEqual(TEXT("so it is drawn in its owner's, exactly as before"),
+			  UCataclysmGroundEffect::LastDamageType, FName(TEXT("Pestilence")));
+	TestEqual(TEXT("which is what it answers when asked"),
+			  Plain->TypeItIsDrawnAs(), FName(TEXT("Pestilence")));
 
 	return true;
 }
