@@ -573,6 +573,20 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 			  "Unstoppable keystone, as a flat flag read where the player's "
 			  "movement speed resolves")},
 
+		// Issue #1515. Whether a stun on this character ends outright when the
+		// character kills the enemy that applied it. Zero for every class, and
+		// the second clause of the Ravager's Nothing Moves You is its only
+		// source.
+		//
+		// A STAT OF ITS OWN RATHER THAN THE NODE'S OTHER ONE, and that is
+		// measured rather than preferred. The obvious gate is crowd control
+		// resistance, which the node's FIRST clause grants -- but ten data rows
+		// grant that stat, including two class lines, so reusing it would hand
+		// this clause to two whole classes and anyone wearing one affix.
+		{TEXT("crowd_control_ends_when_its_applier_dies"),
+		 TEXT("the applier-death clause of the Ravager's Nothing Moves You "
+			  "keystone, as a flat flag read when a death is announced")},
+
 		// Issue #1039. Whether damage over time deals this character nothing at
 		// all. Zero for every class, and the Masochist's Vessel Unbroken
 		// capstone option is its only source. A FLAG rather than a reduction,

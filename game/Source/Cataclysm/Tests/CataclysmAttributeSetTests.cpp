@@ -364,7 +364,20 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// share one stat rather than needing one each.
 	//
 	// A FLAG, like the four above, and off the sheet for the same reason.
-	constexpr int32 OffSheetCombatStats = 43;
+	// AND FORTY-FOUR SINCE A STUN ENDS WHEN ITS APPLIER DIES, issue #1515.
+	// The thirtieth time the rule is met: no affix grants it, nothing scales
+	// it, no class differs on it, and the applier-death clause of
+	// `Ravager_keystone_a_kB` Nothing Moves You is its only source.
+	//
+	// A FLAG AGAIN, and off the sheet for the same reason as the five above.
+	//
+	// RAISING THIS IS WHAT KEEPS THE SHEET COUNT WHERE IT IS. The sheet total
+	// is derived by subtracting this number, so a new attribute nobody
+	// declares off the sheet is counted as ON it and BOTH assertions fail.
+	// That is exactly what happened here: the attribute was added and this
+	// constant was not raised, so the combat count read 72 against an
+	// expected 28 + 43 = 71 until this line changed.
+	constexpr int32 OffSheetCombatStats = 44;
 
 	/**
 	 * How far healing may take the character, and how much of each amount
