@@ -6686,8 +6686,19 @@ bool FCataclysmFloorPanelCountIsLiveTest::RunTest(const FString& Parameters)
 
 	const auto CountNow = [Mode]()
 	{
-		const FString* Found =
-			Mode->LiveCountsForTheFloor().Find(BrandOfTheAggressor);
+		// THE MAP IS COPIED INTO A LOCAL BEFORE ANYTHING POINTS INTO IT, AND THAT
+		// IS NOT STYLE. `LiveCountsForTheFloor` answers a `TMap` BY VALUE, so the
+		// first draft of this lambda called `.Find` on the temporary and returned
+		// `*Found` -- a read of the temporary AFTER it had been destroyed at the
+		// end of that full expression.
+		//
+		// IT DID NOT CRASH, WHICH IS WHY IT IS WORTH A COMMENT. The whole-suite
+		// run on 2026-09-14 reported: Expected 'a fresh floor counts nothing' to
+		// be "0 of 20", but it was "<garbage>". Freed memory that still parses as
+		// a string is the failure mode, and the test read as a wrong ANSWER
+		// rather than as a fault in the test.
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Found = Counting.Find(BrandOfTheAggressor);
 		return Found ? *Found : FString();
 	};
 	const auto Expected = [](int32 Stacks)
@@ -6745,8 +6756,28 @@ bool FCataclysmFloorPanelCountIsLiveTest::RunTest(const FString& Parameters)
 
 	// AND A NEW FLOOR PUTS IT BACK, which is the per-floor reset seen from the
 	// outside for the first time: until this change nothing could read it.
-	Mode->FloorNumber = 2;
-	if (!TestNotNull(TEXT("the next floor was built"), Mode->BuildFloor()))
+	//
+	// `GoToFloor` AND NOT `BuildFloor`, AND THE DIFFERENCE IS THE WHOLE POINT OF
+	// THIS ASSERTION. The reset lives in `ApplyFloorRulesToPlayer`, which is
+	// called by `StartPlay`, `LeaveEmpireDungeon` and `GoToFloor` and NOT by
+	// `BuildFloor` -- whose own comment says it is deliberately callable on its
+	// own. Setting `FloorNumber` and building is how every other test in this
+	// file arranges a floor, and for a FIRST floor that is enough because every
+	// count starts at nothing.
+	//
+	// IT IS NOT ENOUGH FOR A FLOOR CHANGE, AND THIS FILE ALREADY SAID SO. The
+	// Death's Embrace reset above carries the same finding in the same words --
+	// "THROUGH `GoToFloor` AND NOT `BuildFloor`, AND THE FIRST VERSION OF THIS
+	// TEST GOT IT WRONG" -- and four tests here already change floor that way.
+	// The first draft of this one built floor two, read "3 of 20" where it wanted
+	// "0 of 20", and cost a build: the rule was right and the test had not
+	// changed floor at all.
+	//
+	// A FIRST DRAFT OF THIS COMMENT CLAIMED TO BE THE FIRST HERE TO CHANGE FLOOR,
+	// WHICH WAS FALSE. It came from a search truncated with `head`, which can
+	// show presence and never absence. Both mistakes in one place: the trap this
+	// file already documents, and a count read off a truncated list.
+	if (!TestTrue(TEXT("the player reached the next floor"), Mode->GoToFloor(2)))
 	{
 		return false;
 	}
