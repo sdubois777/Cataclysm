@@ -2692,7 +2692,7 @@ was 50. It now prints the combined threshold and both halves.
 A diagnostic naming a number the code did not use is worse than no diagnostic,
 because it is read as the reason for the refusal.
 
-## AND A FIFTH NAME, `can_cripple_or_weaken`, WHICH IS ABOUT THE ATTACKER AND SO DOES NOT REOPEN THE RULE ABOVE
+### AND A FIFTH NAME, `can_cripple_or_weaken`, WHICH IS ABOUT THE ATTACKER AND SO DOES NOT REOPEN THE RULE ABOVE
 
 `Ravager_basic_c_c0` Spreading Hurt is the node: *"+4% increased Area of Effect
 per point for attacks that Cripple or Weaken."* Issue
@@ -41090,7 +41090,7 @@ distance, then half, then a quarter. The count resets after 5 seconds with no
 displacement applied to that target. No damage threshold, no immunity flag, no
 boss exemption.
 
-## What the genre does, and why the two shipped answers differ
+### What the genre does, and why the two shipped answers differ
 
 | Game | How it limits repeated knockback |
 |---|---|
@@ -41104,7 +41104,7 @@ a flat 40% per application with immunity at 65%. Those compose: knockback is
 excluded from the *duration-based* accumulation that everything else feeds, and
 has its own per-application escalation with its own lower threshold.
 
-## Why this design took Path of Exile 2's axis and Diablo IV's escalation
+### Why this design took Path of Exile 2's axis and Diablo IV's escalation
 
 **Immunity works in Diablo IV because knockback there comes from skills that can
 be repeated quickly. Here it cannot.** All nine displacing skills are in the
@@ -41132,7 +41132,7 @@ the reason does not carry across. Making a boss unpushable would also make the
 two charge skills pass through it with no effect, which is the visible-failure
 problem again.
 
-## What argues against it
+### What argues against it
 
 **It is not what the only game that solved this problem did.** Diablo IV chose a
 hard threshold and this chose a soft curve, and the reason given — that the slot
@@ -41146,7 +41146,7 @@ happens.
 centimetres, which is not a problem in play but is not a clean stop either. A
 threshold gives an exact answer to "can this be repeated" and a curve does not.
 
-## What this does not change
+### What this does not change
 
 Outright immunity to displacement still exists as a skill effect. Living Pyre,
 Unstoppable Force and Forge Stance state that their user cannot be knocked back,
@@ -41184,7 +41184,7 @@ full. Issue #260.
 > there when I was originally brainstorming before I built the PassiveTreeCreator
 > app.
 
-## What the question was
+### What the question was
 
 The empire passive tree is described twice. `docs/Empire_Development_Tree_Final.json`
 is the node graph the passive tree editor reads and writes.
@@ -41197,7 +41197,7 @@ tree was rebuilt or lost in the rebuild.** The distinction mattered because two 
 the three were load-bearing: one was a whole tier's namesake and one was the only
 thing in the design granting inventory slots.
 
-## The answer, and why it settles all three at once
+### The answer, and why it settles all three at once
 
 The prose predates the tool. It is a brainstorm written before the passive tree
 editor existed, so it was never a description of a built tree that could lose
@@ -41211,7 +41211,7 @@ both from 2026-08-02 or later, and it arrived from Google Drive already in its
 current state. There is no earlier version of the graph in which the three nodes
 could have existed and then been deleted.
 
-## What the three were, recorded here because the prose no longer holds them
+### What the three were, recorded here because the prose no longer holds them
 
 | Name | Where in the prose | What it did |
 |---|---|---|
@@ -41233,7 +41233,7 @@ have been built. The parenthetical is gone; the tier is still The Adaptive
 Bulwark. Nothing else names it — the graph's on-canvas tier labels read plainly
 "TIER 1" through "TIER 4".
 
-## What this leaves open
+### What this leaves open
 
 **Dropping Weightless Spoils leaves nothing in the design granting inventory
 slots, which is issue #308.** Searching the graph for the word finds no node, and
@@ -41255,7 +41255,7 @@ resistance both have other sources in the tree.
 and the answer was option 1, the widest one: one stash and one auction house per
 lethality mode, not one per account.
 
-## What was wrong
+### What was wrong
 
 The empire upgrade tree was partitioned by lethality mode on 2026-08-05, for the
 reason the project owner gave on issue #277:
@@ -41270,7 +41270,7 @@ auction house, and **a geared handoff is a larger head start than any number of
 empire upgrade points.** A rule that seals the small channel and leaves the large
 one open is harder to explain than sealing both or sealing neither.
 
-## What the genre does
+### What the genre does
 
 Every game surveyed partitions its stash on the same axis as its
 meta-progression. None partitions the two on different axes.
@@ -41298,7 +41298,7 @@ monetisation section already rules out selling it, under "Buying the game buys
 all of it" in `docs/Cataclysm_GDD_v2.md`: "no stash or storage fees of any
 kind".
 
-## What argues against it
+### What argues against it
 
 **Three markets instead of one, in a game that will not have a deep market
 anyway.** Auction house liquidity falls with population and this splits the
@@ -41320,7 +41320,7 @@ exists, no player has a stash, and the partition is being written before any
 storage code. Had this been decided after launch it would have needed a migration
 rule for items already in a shared stash, and that rule has no good answer.
 
-## The rule as written
+### The rule as written
 
 Anything the account shares between characters is held once per lethality mode,
 never once for the account. Anything a character holds by itself needs no rule at
@@ -41330,7 +41330,7 @@ changes, so a character stays in one partition for its whole life.
 Solo Self-Found is unaffected. It already has no auction house and no shared
 stash, so there is nothing for the partition to divide.
 
-## What this deliberately does not settle
+### What this deliberately does not settle
 
 | Issue | Question |
 |---|---|
@@ -41495,28 +41495,28 @@ to slows in the first place.
 owns the tree; issue #277 settled what the sharing is scoped to. Both halves are
 now written; see "What the sharing is scoped to" below.
 
-## The question
+### The question
 
 `docs/Cataclysm_GDD_v2.md` said twice that empire upgrade points "persist through
 all runs — including failed ones", and never said anything about characters. So
 it was unstated whether a new character starts the primary meta-progression
 system over.
 
-## The answer, 2026-08-05
+### The answer, 2026-08-05
 
 The project owner: **"account wide, unless solo self found."**
 
 Every character on the account shares one empire upgrade tree. A Solo Self-Found
 character has its own, shared with nothing.
 
-## Why the exception follows from what the flag already means
+### Why the exception follows from what the flag already means
 
 A Solo Self-Found character has no auction house and no shared stash. Inheriting a
 mature account's empire tree would be a larger handout than either of those, and
 would be the one shared resource the flag did not close off. The flag means
 starting the whole game from nothing, so the empire tree has to be included.
 
-## Why account-wide for everyone else
+### Why account-wide for everyone else
 
 The design document calls the tree "empire-wide" and "the primary meta-progression
 system", and the pitch it is written against — no run is wasted, each attempt is
@@ -41532,7 +41532,7 @@ character.
 The cost is that a new character on a mature account skips the early difficulty.
 That is real, and it is what the second half of the answer was aimed at.
 
-## What the sharing is scoped to
+### What the sharing is scoped to
 
 The rest of the answer was: **"And it should only apply to the same difficulty
 tier so you can't run up your empire tree in normal and then switch to the hardest
@@ -41554,7 +41554,7 @@ upgrade tree, Hardcore characters share a second, Heretic characters share a
 third, and each Solo Self-Found character has its own on top of that. Three shared
 trees per account plus one per Solo Self-Found character.
 
-## Why the points are scoped and not only the tree
+### Why the points are scoped and not only the tree
 
 The most natural way to build "three trees" is one account-wide balance of empire
 upgrade points with three separate allocations of it. **That would not do what was
@@ -41569,7 +41569,7 @@ This also settles where a point goes in co-op without needing a co-op rule. It
 goes to the lethality mode of the character that earned it. Whether a party may
 mix lethality modes at all is a different question and belongs to #31.
 
-## Why the lethality mode and not the difficulty tier
+### Why the lethality mode and not the difficulty tier
 
 **No shipped game in the genre partitions meta-progression by a numeric difficulty
 step.** The pattern is unanimous across six games, and in every case the numeric
@@ -41611,7 +41611,7 @@ lethality mode at creation, in either direction and including on death, so no
 character ever changes partition and the boundary needs no enforcement beyond
 that.
 
-## What argues against it, recorded because it is real
+### What argues against it, recorded because it is real
 
 Mode partitioning is the genre norm and no clear counter-example was found. The
 arguments against it are about the cost it imposes, not about whether anyone else
@@ -41655,7 +41655,7 @@ None of this changes the decision. It is recorded so that if the re-grind cost
 turns out to be the problem those studios found it to be, the response is already
 known: reduce the cost of re-earning rather than remove the partition.
 
-## What this deliberately does not settle
+### What this deliberately does not settle
 
 Five questions surfaced while writing the rule. Each is its own issue.
 
@@ -41676,7 +41676,7 @@ empty tree is in exactly the position of any first character on any account. Wha
 the empty tree costs is the empire layer's run-time and resolve-timer levers, not
 survivability.
 
-## What was checked in the repository rather than looked up
+### What was checked in the repository rather than looked up
 
 - `docs/Empire_Development_Tree_Final.json`, parsed on 2026-08-05: 159 nodes and
   1,248 allocatable points, being 110 basic nodes worth 1,199, 41 keystones worth
@@ -41712,7 +41712,7 @@ here as such.
 
 **Affects** `docs/Cataclysm_GDD_v2.md`. Applied. Issue #255.
 
-## The question
+### The question
 
 `docs/Cataclysm_GDD_v2.md` defined difficulty as two independent choices — one
 lethality mode of Standard, Hardcore or Heretic, plus an optional Solo Self-Found
@@ -41721,12 +41721,12 @@ later. Three sub-questions were open: are they set only at character creation,
 does a Hardcore death take the mode off, and can Solo Self-Found be switched off
 part-way.
 
-## The answer, 2026-08-05
+### The answer, 2026-08-05
 
 The project owner chose option 1 of the three the issue offered: **"they're
 locked in."** Both choices are set at character creation and never change.
 
-## Why the genre does not settle this one
+### Why the genre does not settle this one
 
 The two games this two-axis shape was taken from both resolve it with
 permadeath, which this game does not have.
@@ -41743,7 +41743,7 @@ take a run that is still going and change its rules part-way through, on one
 unlucky moment. That is a larger intervention than the games it would have been
 borrowed from make, not a smaller one.
 
-## What the alternatives cost
+### What the alternatives cost
 
 **Freely switchable downward** makes the Solo Self-Found flag mean nothing: play
 self-found until it is inconvenient, then switch the auction house on.
@@ -41754,14 +41754,14 @@ self-found until it is inconvenient, then switch the auction house on.
 whole life of the character, which is what makes a Hardcore Solo Self-Found
 character worth anything to have.
 
-## What it costs the player
+### What it costs the player
 
 A player who wants to try a harder mode makes a new character. That is cheaper
 than it first looks, because of the answer to issue #273: empire upgrade points
 are account-wide except under Solo Self-Found, so rerolling costs a character's
 levels and gear but not the empire meta-progression.
 
-## Where it is enforced
+### Where it is enforced
 
 `tools/tests/test_difficulty_modes.py` asserts that the section states the rule
 and names all three of its consequences. No code enforces it yet, because no code
@@ -41776,13 +41776,13 @@ of "Self-Found", "SSF" or "lethality" outside the design document and its tests.
 **Affects** `docs/Cataclysm_GDD_v2.md` and `sim/cataclysm_sim/damage.py`. Applied.
 Issue #216. The fourth question that issue asked is deferred and carried by #270.
 
-## The requirement
+### The requirement
 
 Stated by the project owner: crowd control must not become tedious the way it is
 in many games in the genre, where the smallest hit can stun and a player can be
 stun-locked until they die.
 
-## The answer, 2026-08-05, point by point against the four questions
+### The answer, 2026-08-05, point by point against the four questions
 
 **1. Which crowd control effects exist.** "Cripple is the only CC affix we have
 right now. But I'm pretty sure enemy modifiers have wording like stun and such."
@@ -41797,7 +41797,7 @@ second stun immunity window."
 **4. What offensive affixes exist.** "Unknown/not full implemented yet."
 Deferred.
 
-## The check the owner asked for, and what it found
+### The check the owner asked for, and what it found
 
 The owner asked whether enemy modifiers already use stun wording.
 **`game/Data/EnemyModifiers.csv` contains no stun wording at all.** The nearest
@@ -41821,7 +41821,7 @@ declared in `game/Config/Tags/CataclysmTags.ini` as "Crowd Control
 So the owner's point 1 was right about affixes and the expectation about enemy
 modifiers was not borne out.
 
-## The three rules
+### The three rules
 
 | Rule | What it stops |
 |---|---|
@@ -41844,7 +41844,7 @@ threshold that made them fail against a healthy target would leave them doing
 nothing they were written to do. Such a skill does not ignore boss immunity and
 does not ignore the immunity window.
 
-## Where the numbers come from
+### Where the numbers come from
 
 **The 10% threshold is the middle of what the genre ships**, and the three games
 surveyed do not agree with each other:
@@ -41871,7 +41871,7 @@ for 4 seconds after. Last Epoch counts a boss as having 50% more health for the
 stun calculation. Diablo IV routes crowd control into a separate stagger meter
 that must be filled before any of it applies.
 
-## A consequence worth stating
+### A consequence worth stating
 
 **Four shipped player skills lose their stun against a boss.** Shield Bash,
 Shockwave Leap, Lunge and Whip Swing still deal their damage and still move the
@@ -41879,7 +41879,7 @@ player, and their stun does nothing in a boss fight. That follows directly from
 the owner's answer to point 3 and is not a defect, but it is a change in what
 those four skills are worth in the fight they matter most in.
 
-## A slow is not a stun
+### A slow is not a stun
 
 Cripple reduces an enemy's movement and attack speed by 30% and leaves it able to
 act. The design document already said its reduction caps below total because a
@@ -41887,7 +41887,7 @@ full stop would be a stun by another name, and the same reasoning applies to
 Weaken. The anti-stun-lock rule names stun only. Whether knockback and slow carry
 the same threshold and window is open and is carried by #270.
 
-## What was built
+### What was built
 
 `sim/cataclysm_sim/damage.py`, the model of one hit's resolution, gained
 `STUN_DAMAGE_THRESHOLD`, `STUN_IMMUNITY_SECONDS`, `can_be_stunned`,
@@ -41901,7 +41901,7 @@ eventually implements cannot disagree about the figure, and
 `sim/tests/test_anti_stun_lock.py` says this plainly rather than leaving it to be
 assumed.
 
-## Evidence
+### Evidence
 
 ```
 1315 passed in 10.23s
@@ -41924,7 +41924,7 @@ Sources:
 option A." Option A on the issue was to write the intent into the design document
 rather than change any figure.
 
-## What was measured
+### What was measured
 
 The Cataclysm boss dungeon is the final dungeon of a run and dying in it ends the
 run — `Engine._resolve_dungeon` in `sim/cataclysm_sim/engine.py` sets `lost` and
@@ -41956,7 +41956,7 @@ with tier 5 measurably a breather compared with the tiers either side of it. Tha
 change was made for a different reason — tier width not climbing monotonically —
 and this is a second, unlooked-for consequence of it worth recording.
 
-## Why it is built this way, and why it is not a defect
+### Why it is built this way, and why it is not a defect
 
 Overwhelm has no hard gate: an enemy above the player's Power Score strips
 mitigation in proportion to the gap rather than refusing entry. A Cataclysm Boss
@@ -41970,7 +41970,7 @@ precisely so that the same relative shortfall costs the same at every tier, and 
 figure that lands within four percentage points across eight tiers is that claim
 holding.
 
-## The two alternatives, and why neither was taken
+### The two alternatives, and why neither was taken
 
 **Lower the Cataclysm Boss score so a maxed player can out-score it.** The death
 chance at the ceiling would fall to zero and the fight would stop mattering.
@@ -41980,7 +41980,7 @@ chance at the ceiling would fall to zero and the fight would stop mattering.
 without changing the shape, and was not needed: nothing said the current figure
 was wrong, only that nothing said it was right.
 
-## What was missing, and what now fills it
+### What was missing, and what now fills it
 
 Nothing stated the intent, so there was no way to tell whether 20% was the
 target, twice the target, or half of it. `docs/Cataclysm_GDD_v2.md` now has a
@@ -41996,7 +41996,7 @@ drift apart. That failure mode is not hypothetical: issue #6 was three analysis
 scripts whose printed conclusions went stale when the anchors changed, and issue
 #253 was a second copy of those anchors that nothing was checking.
 
-## Evidence
+### Evidence
 
 ```
 1287 passed in 10.15s
@@ -42017,7 +42017,7 @@ Issue #225.
 > number that isn't true, they'll keep digging and complaining. Round to the
 > nearest whole number.
 
-## The question
+### The question
 
 Each of the eight primary attributes has exactly one affix and it is a
 percentage increase, decided when gear was allowed to grant attributes on
@@ -42025,7 +42025,7 @@ percentage increase, decided when gear was allowed to grant attributes on
 33 Spirit wearing a top-tier +12% Spirit affix reaches **36.96**, and nothing
 said whether that was 36, 37 or 36.96.
 
-## The answer, and the part of it that matters most
+### The answer, and the part of it that matters most
 
 Round to the nearest whole number. A half rounds up: 36.5 becomes 37.
 
@@ -42040,7 +42040,7 @@ The issue's own written recommendation was the opposite — keep the fraction in
 the maths and round only for display — and it was **overruled**. Recorded so the
 recommendation is not re-proposed as though it had never been considered.
 
-## Two alternatives, and why each was rejected
+### Two alternatives, and why each was rejected
 
 **Flooring.** Never grants more than was earned, and it was rejected because it
 takes +12% of 4 Spirit from 4.48 back to 4, so an affix on a lightly invested
@@ -42052,7 +42052,7 @@ than as a trade-off.
 **Keeping the fraction.** Loses nothing numerically, and it is the one
 arrangement in which the screen and the maths can disagree.
 
-## Round half up, not round half to even
+### Round half up, not round half to even
 
 Python's built-in `round` rounds a half to the nearest even number, so it gives
 4 for 4.5 and 36 for 36.5. A player reads "nearest whole number" as 4.5 becoming
@@ -42062,7 +42062,7 @@ rather than delegated to a language default.
 holds the three cases where the two differ, so the reason for a separate
 function cannot quietly stop being true.
 
-## What had to be built before the rule had anywhere to live
+### What had to be built before the rule had anywhere to live
 
 **The simulation could not represent an attribute affix at all.**
 `sim/cataclysm_sim/character.py` validated `Gear.increased` against the
@@ -42088,7 +42088,7 @@ clamped an attribute at zero and now rounds as well, through a named
 `RoundedPoints` function so a test can check the rule without building an
 ability system component.
 
-## Evidence
+### Evidence
 
 ```
 1281 passed in 10.11s
@@ -42109,7 +42109,7 @@ generated tables in `game/Data/`, `sim/cataclysm_sim/character.py`,
 `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`. Applied.
 Issues #205 and #258.
 
-## What was missing
+### What was missing
 
 Ten affixes applied an ailment. **One** affix touched damage over time at all,
 and it changed only how often the effect ticked. Nothing anywhere made a damage
@@ -42130,7 +42130,7 @@ one, so it has 45 stats rather than 43:
 Each has one affix, a suffix rolling on gloves, necklaces, relics, rings and
 weapons, worth **52% at T7**.
 
-## Why the three had to be priced in one change
+### Why the three had to be priced in one change
 
 They multiply each other, which the design document already stated: a character
 with 48% on each deals 324% of base, not 148%. So setting any one of them against
@@ -42140,7 +42140,7 @@ would multiply damage over time by 8.5 × 8.5 × 8.5 instead of 8.5.
 That is why issue #258 was labelled `blocked` on #205 rather than being a
 one-line edit, and it is why both are closed by the same change.
 
-## Where 52% comes from
+### Where 52% comes from
 
 Solved, not chosen. Six affix slots spent on Increased Damage multiply a
 direct-hit build's damage by 8.5, and six slots is the build every other damage
@@ -42156,7 +42156,7 @@ compound. `dot_lever_top_value()` computes the solve and
 `sim/tests/test_dot_levers.py` checks the shipped constant against it, so the
 value follows Increased Damage if that ever moves.
 
-## What the one affix that already existed was wrong about
+### What the one affix that already existed was wrong about
 
 "Increased damage over time frequency" was **12%**, set to match increased armour
 and increased maximum health. That was priced under the assumption that ticking
@@ -42165,7 +42165,7 @@ that a damage over time effect deals a **fixed amount per tick**, which makes ti
 rate a damage multiplier, so 12% was about a tenth of what it should be. It is now
 52% with the other two.
 
-## The Efficacy attribute was deliberately left alone, and this is the measurement
+### The Efficacy attribute was deliberately left alone, and this is the measurement
 
 Issue #258 listed `game/Data/Attributes.csv` as carrying a second wrong value:
 Efficacy grants 1% increased damage over time frequency per point, set under the
@@ -42187,7 +42187,7 @@ compounds within itself that way.
 `test_efficacy_drives_one_lever_and_only_one` checks that no attribute drives more
 than one of the three.
 
-## One set of levers, not one set per ailment
+### One set of levers, not one set per ailment
 
 Six of the ten ailment affixes apply a damage over time effect — bleed, poison,
 disease, void splinter, necrosis and burn — and every Demonic skill applies burn
@@ -42196,7 +42196,7 @@ archetype, against the eight the whole damage-against-a-target's-type family
 costs. It also matches the stat that already existed: there has only ever been one
 damage over time frequency, shared by everything.
 
-## What this does not settle, and it is a real risk
+### What this does not settle, and it is a real risk
 
 **The equal-value pricing holds at six affix slots and nowhere else, and it cannot
 hold anywhere else.** An additive bracket and a product of three brackets cross
@@ -42215,7 +42215,7 @@ theoretical. The compounding itself is deliberate and the design document says s
 The **size** of the gap at heavy investment has not been played and is filed as
 issue #264 with four alternative ways to close it.
 
-## Evidence
+### Evidence
 
 ```
 1254 passed in 10.18s
@@ -42248,7 +42248,7 @@ one. Applied. Issue #7.
 player Power Score model, and make sure the change reaches everywhere player and
 dungeon scores are calculated.
 
-## What was wrong
+### What was wrong
 
 Tier width is the previous tier's maximum subtracted from this tier's, and it
 multiplies **every** weighted term in the Enemy Score formula: dungeon type,
@@ -42266,7 +42266,7 @@ Two consequences, measured on 2026-08-05 and not previously recorded:
 A tier 6 Boss stood out less against its own trash than a tier 5 Boss did, and
 tier 5 was measurably a breather compared with the tiers either side of it.
 
-## Why these values, and the correction to what was first proposed
+### Why these values, and the correction to what was first proposed
 
 The new anchors come from `sim/cataclysm_sim/player_power.py`, the model that
 scores a reference character whose level, gear rarity, gear upgrade level, gem
@@ -42290,7 +42290,7 @@ socket count being whole numbers where the continuous curve asks for 12.5 and
 
 It also moves six anchors instead of seven.
 
-## What the widths are now
+### What the widths are now
 
 | tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 |---|---|---|---|---|---|---|---|---|
@@ -42300,7 +42300,7 @@ It also moves six anchors instead of seven.
 Every tier is wider than the one below it, and the step ranges from 1.09 to 1.29
 times against the previous 0.83 to 1.61.
 
-## Every place the change had to reach
+### Every place the change had to reach
 
 | File | What it holds |
 |---|---|
@@ -42326,7 +42326,7 @@ enemies carry no per-rarity Penetration stat. The argument is unchanged: Overwhe
 still exceeds the retired per-rarity figure at Common and still sits below it at
 Herald and Cataclysm Boss.
 
-## What was not done
+### What was not done
 
 `sim/experiments.py`, the tuning sweep, has **not** been re-run. It is about
 25,000 simulated campaigns and roughly eighteen minutes, and there is no saved
