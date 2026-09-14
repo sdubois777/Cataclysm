@@ -9,7 +9,7 @@ Decisions made outside the Google Drive documents, newest first.
 resistance), and `game/Source/Cataclysm/Tests/CataclysmUnstoppableTests.cpp`.
 Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
 
-`Ravager_keystone_spine_004` Unstoppable reads "You cannot be stunned, slowed or
+`Ravager_keystone_spine_003` Unstoppable reads "You cannot be stunned, slowed or
 knocked back while an enemy is within 4 metres of you."
 
 ### The node needs no new stat, and the survey that said it did was wrong
