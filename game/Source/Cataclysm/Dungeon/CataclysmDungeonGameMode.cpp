@@ -501,6 +501,35 @@ ACataclysmDungeonGameMode::ACataclysmDungeonGameMode()
 	PrimaryActorTick.bStartWithTickEnabled = true;
 }
 
+/**
+ * Pins Wasting Sickness's chance roll so a test can assert what a blow did.
+ * Issues #1786 and #41.
+ *
+ * THE SAME SHAPE AS `Cataclysm.AilmentRoll`, and for the reason that variable
+ * gives: a test asserting that a blow did or did not inflict a stack would
+ * otherwise pass some of the time and fail the rest.
+ *
+ * -1, THE DEFAULT, ROLLS NORMALLY. 0 inflicts a stack on every landed blow,
+ * because any chance above zero beats it. 100 inflicts none, because the
+ * comparison is strictly less than and the chance is below 100.
+ */
+static TAutoConsoleVariable<float> CVarWastingSicknessRoll(
+	TEXT("Cataclysm.WastingSicknessRoll"),
+	-1.0f,
+	TEXT("Pin the roll Wasting Sickness compares its chance with, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
+namespace
+{
+	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
+	float DungeonGameModeWastingSicknessRoll()
+	{
+		const float Pinned = CVarWastingSicknessRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+}
+
 void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -585,6 +614,16 @@ void ACataclysmDungeonGameMode::StartPlay()
 	{
 		Events->OnDeath.AddUObject(
 			this, &ACataclysmDungeonGameMode::OnSomethingDied);
+
+		// AND A BLOW LANDING ANYWHERE ON THE FLOOR REACHES WASTING SICKNESS.
+		// Issues #1786 and #41. Bound here for the same three reasons the death
+		// binding gives: a blow is an event, the subsystem cannot outlive this
+		// game mode, and a binding to a destroyed object is skipped.
+		//
+		// THIS IS THE FIRST PRODUCTION LISTENER ON THAT ANNOUNCEMENT. It has been
+		// broadcast on every blow since slice 4 and only tests listened.
+		Events->OnHit.AddUObject(
+			this, &ACataclysmDungeonGameMode::OnSomethingWasHit);
 	}
 }
 
@@ -1946,8 +1985,14 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// of that shape.
 	const bool bMortalDecay = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::MortalDecayKey));
+	// AND WASTING SICKNESS, WHOSE BEAT DECIDES NOTHING. Issues #1786 and #41. Its
+	// stacks move on events; this beat only puts them back on the player after a
+	// floor change took them off.
+	const bool bWastingSickness = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::WastingSicknessKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
-		&& !bSingularityWells && !bWitheredGround && !bMortalDecay)
+		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
+		&& !bWastingSickness)
 	{
 		return;
 	}
@@ -2020,6 +2065,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	{
 		StepMortalDecay(Player, AbilitySystem);
 	}
+
+	// AND WASTING SICKNESS LAST, WHICH IS FREE WHERE NOTHING HAS CHANGED. Issues
+	// #1786 and #41. It compares two integers and returns on almost every beat.
+	if (bWastingSickness)
+	{
+		StepWastingSickness(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepForcedMarch(
@@ -2055,6 +2107,29 @@ void ACataclysmDungeonGameMode::StepForcedMarch(
 	// resistance, no critical strike and no ailment touch it. The player is its
 	// own instigator because nothing else dealt it.
 	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Amount);
+}
+
+void ACataclysmDungeonGameMode::StepWastingSickness(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	// ONLY WHEN THE COUNT HAS MOVED AWAY FROM WHAT IS ON THE CHARACTER, which is
+	// the guard every beat-driven rule here keeps: the apply rewrites the whole
+	// standing stat line, and this count changes on a blow rather than four times
+	// a second.
+	//
+	// IT FIRES AFTER A FLOOR CHANGE AS WELL AS AFTER A BLOW, and that is not a
+	// side effect. `ApplyFloorRulesToPlayer` puts the applied figure back to
+	// nothing because the apply it makes has already taken the reduction off the
+	// character; the stacks themselves survive, so the two differ and this puts
+	// the reduction back.
+	if (WastingSicknessStacks == WastingSicknessStacksApplied)
+	{
+		return;
+	}
+
+	WastingSicknessStacksApplied = WastingSicknessStacks;
+	ApplyChangingFloorEffects(Player, AbilitySystem);
 }
 
 void ACataclysmDungeonGameMode::StepMortalDecay(
@@ -2213,6 +2288,22 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// that depends on which other modifier the floor rolled. Issue #1765.
 	Effects.RecoveryLessPercent = WitheredGroundRecoveryLessApplied;
 
+	// AND WHAT WASTING SICKNESS'S STACKS TAKE OFF BOTH MAXIMUMS. Issues #1786
+	// and #41. Read unconditionally like the rest: a floor without that row
+	// carries no stacks, and nothing is what the effects already hold.
+	//
+	// ITS OWN TWO FIELDS AND NOT STARVATION'S AND DEHYDRATION'S, which is what
+	// makes this assignment safe where the note above says plain assignment is
+	// only safe while no per-floor rule writes the field. `PlayerEffectsFor`
+	// writes `MaxHealthLessPercent` and `MaxManaLessPercent`; these two are
+	// untouched by it, so the two rules compose instead of erasing each other.
+	// Issue #1765.
+	const float SicknessLess =
+		UCataclysmDungeonModifierEffects::WastingSicknessMaximumsLessPercent(
+			WastingSicknessStacksApplied);
+	Effects.SicknessMaxHealthLessPercent = SicknessLess;
+	Effects.SicknessMaxManaLessPercent = SicknessLess;
+
 	UCataclysmDungeonModifierEffects::ApplyToCharacter(Effects, AbilitySystem,
 													  Player->GetEquipment());
 }
@@ -2227,6 +2318,129 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForNihilsEmbrace(Notice);
 	NoteDeathForWitheredGround(Notice);
 	NoteDeathForMortalDecay(Notice);
+	NoteDeathForWastingSickness(Notice);
+}
+
+void ACataclysmDungeonGameMode::OnSomethingWasHit(
+	const FCataclysmHitNotice& Notice)
+{
+	// ONE ANNOUNCEMENT, EVERY RULE THAT WANTS IT, EACH TESTING FOR ITS OWN ROW.
+	// Issues #1786 and #41. Shaped like `OnSomethingDied` above rather than
+	// holding this one rule's logic behind an early return on its key, because
+	// two further rows of `game/Data/DungeonModifiers.csv` describe a blow.
+	NoteHitForWastingSickness(Notice);
+}
+
+void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
+	const FCataclysmHitNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::WastingSicknessKey)))
+	{
+		return;
+	}
+
+	// A BLOW THAT ACTUALLY LANDED. `Landed` is what reached the target after
+	// every mitigation step, so an evaded or wholly stopped blow is not a chance
+	// to inflict anything -- which is what keeps the row's chance meaning what it
+	// says rather than being a chance per swing.
+	if (Notice.Landed <= 0.0f)
+	{
+		return;
+	}
+
+	// AND IT MUST HAVE LANDED ON THE PLAYER. This is announced for every blow on
+	// the floor, the player's own included, and the row says "Enemies have a
+	// chance to inflict".
+	//
+	// THE SAME ROUTE TO THE PLAYER THE BEAT TAKES, so the two cannot disagree
+	// about whose floor this is.
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (!Player || Notice.Target != Player)
+	{
+		return;
+	}
+
+	// ALREADY AT THE CAP COSTS A ROLL AND NOTHING ELSE, and the roll is still
+	// drawn so that pinning it in a test cannot change how many rolls happen.
+	const bool bInflicts =
+		DungeonGameModeWastingSicknessRoll() < Effects::WastingSicknessChancePercentPerHit;
+
+	// THE COUNT IS THE WHOLE STATE AND THE BEAT APPLIES IT, within a quarter of a
+	// second, which is what both death listeners already do.
+	WastingSicknessStacks =
+		Effects::WastingSicknessStacksAfterHit(WastingSicknessStacks, bInflicts);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForWastingSickness(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::WastingSicknessKey)))
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player = Controller
+		? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn())
+		: nullptr;
+	if (!Player)
+	{
+		return;
+	}
+
+	// THE PLAYER'S OWN DEATH CLEARS IT, AND CLEARS IT NOW. The project owner's
+	// ruling of 2026-09-10 ends anything that lasts only for a dungeon at a
+	// death, and this row is one of the five it names.
+	//
+	// APPLIED HERE RATHER THAN LEFT TO THE BEAT, which is the one place in this
+	// file where waiting a quarter of a second would be observable.
+	// `ACataclysmPlayerCharacter::Revive` refills the vitals and the refill READS
+	// the maximums, so a beat that had not yet run would refill the player to the
+	// lowered maximum and then lift it, leaving them standing up short of full.
+	if (Notice.Victim == Player)
+	{
+		if (WastingSicknessStacks != 0 || WastingSicknessStacksApplied != 0)
+		{
+			WastingSicknessStacks = 0;
+		WastingSicknessStacksApplied = 0;
+			ApplyChangingFloorEffects(
+				Player,
+				Cast<UCataclysmAbilitySystemComponent>(
+					Player->GetAbilitySystemComponent()));
+		}
+		return;
+	}
+
+	// AND A BOSS'S DEATH CLEARS IT, WHICH IS THE ROW'S OWN CURE: "can only be
+	// removed by defeating a floor boss".
+	//
+	// THE VICTIM'S OWN RARITY, NOT THE NOTICE'S BOSS FACT, for the reason The
+	// Nihil's Embrace's cleanse gives above: that fact says whether a boss DEALT
+	// the last blow, and this asks about who died.
+	//
+	// ANY BOSS ON THE FLOOR RATHER THAN THE ONE AT THE EXIT, a judgement recorded
+	// in `docs/DECISIONS.md`. Nothing marks the creature placed at a floor's exit
+	// as that floor's boss, and the row's article is indefinite.
+	const ACataclysmEnemyCharacter* Died =
+		Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Died || !Died->IsBoss())
+	{
+		return;
+	}
+
+	// LEFT TO THE BEAT, UNLIKE THE DEATH ABOVE. Nothing reads the player's
+	// maximums in the moment a creature dies, so a quarter of a second is not
+	// observable and the shared applier is reached the ordinary way.
+	WastingSicknessStacks = 0;
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace(
@@ -2485,6 +2699,16 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		WitheredGroundPatches.Empty();
 		WitheredGroundRecoveryLessApplied = 0.0f;
 
+		// AND WASTING SICKNESS FORGETS WHAT WAS APPLIED AND KEEPS ITS
+		// STACKS. Issues #1786 and #41. This is the only rule here whose
+		// count survives the stairs, because its row says the debuff is
+		// "permanent for the duration of the dungeon" -- so only the applied
+		// figure goes, because the call above has already taken the
+		// reduction off the character. The next beat sees the two differ and
+		// puts it back. Zeroing the count here would make the stairs a cure
+		// the row does not offer.
+		WastingSicknessStacksApplied = 0;
+
 		// AND LEAVING THE DUNGEON FORGETS THE WALK ITSELF. The brief carries no
 		// modifiers once the player has left, and the row's reduction is
 		// permanent within a dungeon rather than across a run.
@@ -2497,6 +2721,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 				MetresWalkedAtLastCleanse = Cataclysm->MetresWalkedTotal();
 			}
 			NihilsEmbraceRewardUntilSeconds = -1.0f;
+
+			// AND WASTING SICKNESS'S STACKS GO WITH IT, which is where "for the
+			// duration of the dungeon" ends. Issues #1786 and #41.
+			WastingSicknessStacks = 0;
 
 			// AND MORTAL DECAY'S KILL WINDOW GOES WITH IT. Issues #1786 and
 			// #41. Not on a new floor, the way the fields above this branch
