@@ -544,9 +544,27 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 			AddError(TEXT("Could not grant Summon Imp."));
 			return -1;
 		}
+
+		// THE SLOT'S COOLDOWN IS TURNED OFF, AND WITHOUT THIS THE TEST MEASURES
+		// NOTHING. A cap is only visible across several casts, and the cooldown
+		// is not the row's -- `GetBaseCooldown` reads the ULTIMATE SLOT's own
+		// number from the generated table, so a row stating no cooldown still
+		// gets one. Measured 2026-09-14: five casts committed once and left one
+		// imp, and this test read that as a cap of one.
+		// `CataclysmSkillNumbersTests.cpp:135` is the existing use of this field.
+		Skill->CooldownOverride = 0.0f;
+
 		for (int32 Cast = 0; Cast < Casts; ++Cast)
 		{
-			Activate(Caster, Skill);
+			// EVERY CAST IS ASSERTED RATHER THAN ATTEMPTED. A refused activation
+			// leaves a smaller number of minions alive, which is indistinguishable
+			// from a smaller cap -- which is exactly what this test is reading.
+			if (!TestTrue(*FString::Printf(
+					TEXT("cast %d of %d fires"), Cast + 1, Casts),
+					Activate(Caster, Skill)))
+			{
+				return -1;
+			}
 		}
 		return UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num();
 	};
@@ -641,6 +659,16 @@ bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 	TestTrue(TEXT("it activates"), Activate(Plain, PlainTry));
 	TestFalse(TEXT("a caster whose pool is 25 cannot hold a thrall reserving 30"),
 			  PlainTry->bTookIt);
+
+	// AND REFUSED FOR THE REASON THIS TEST IS ABOUT, WHICH `bTookIt` ALONE DOES
+	// NOT SAY. Its own header lists four causes for a false `bTookIt` -- nothing
+	// in range among them -- so a control asserting only that it took nothing
+	// would pass just as well if the skill never found the creature at all. This
+	// flag is set by the pool check and by nothing else.
+	TestTrue(TEXT("and refused because the pool had no room, not for some other "
+				  "reason"),
+			 PlainTry->bRefusedForRoom);
+
 	TestEqual(TEXT("so it commands nothing"),
 			  UCataclysmCommand::ThingsCommandedBy(Plain.Actor).Num(), 0);
 
@@ -650,8 +678,14 @@ bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 	FScopedCreature AlsoHurt(World, FVector(3 * M, 30 * M, 0));
 	AlsoHurt.SetHealthTo(HealthUnderTheThreshold);
 	Crowned.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 0.0f);
-	Crowned.Set(UCataclysmCombatAttributeSet::GetThrallReserveBonusAttribute(),
-				-5.0f);
+	// FIVE, POSITIVE, BECAUSE THE STAT NAMES THE SIZE OF THE REDUCTION. It was
+	// first written as a bonus of -5 and this test failed: every attribute in
+	// the combat set is floored at zero by
+	// `UCataclysmCombatAttributeSet::PreAttributeChange`, so -5 was stored as 0,
+	// the reserve stayed at 30 and the keystone did nothing. A negative value
+	// cannot be held here at all.
+	Crowned.Set(UCataclysmCombatAttributeSet::GetThrallReserveReductionAttribute(),
+				5.0f);
 
 	UCataclysmSummonSkill* CrownedTry = GrantSkill<UCataclysmSummonSkill>(
 		Crowned, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));

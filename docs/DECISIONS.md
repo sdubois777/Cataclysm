@@ -2,6 +2,49 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — The three energy-shield keystones are three different mechanisms, and The Long Game works outside the recharge delay
+
+**None of these three nodes is built yet, and no stat for any of them exists.**
+This entry records the measurement and the rulings so they are not re-argued when
+the code is written. Issue
+[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+They were scheduled as "three keystones, one flag-stat shape". Measured, only one
+of the three is a flag stat.
+
+| node | row text | where it acts | shape |
+| :-- | :-- | :-- | :-- |
+| `Ritualist_keystone_c_kA` Warded | "Your Energy Shield absorbs damage over time as well as hits." | `CataclysmDamageCalculation.cpp`, the line setting `bShieldApplies` | a flag, one bool |
+| `Ritualist_keystone_c_kB` Ablative | "Your Energy Shield recharges while you are taking damage, at half its usual rate." | `CataclysmRegeneration.cpp`, the refill gate | a flag **and a rate** |
+| `Ritualist_keystone_d_kA` The Long Game | "Your Mana Regeneration also restores your Energy Shield, at half its rate." | `CataclysmRegeneration.cpp`, the shield top-up | a flag **and a term read from another stat** |
+
+**Warded is a single site, and that was swept rather than assumed.** Every place
+in the module branching on `bIsDamageOverTime` was listed; exactly one concerns
+the energy shield. The others are critical strike, retaliation, the stun roll,
+contagion, evasion, ailment chance and the damage overlay's scale.
+
+**Ablative must not be written as a shorter recharge delay.** A shorter delay
+recharges at the FULL rate sooner. The row says the rate is halved, which only
+means anything while the shield is recharging during the window it is normally
+stopped in. So it supplies a half rate where the gate currently gives zero, and
+the gate's own behaviour is unchanged for everyone without the node.
+
+### THE LONG GAME WORKS OUTSIDE THE THREE-SECOND RECHARGE DELAY
+
+The row does not say whether the shield gain it grants waits the delay the shield
+normally waits. **Ruled: outside it.** Mana regeneration is itself ungated, and
+the row makes mana regeneration the thing that acts.
+
+The argument is checkable rather than a preference: **inside the delay, the node
+only adds rate at moments when the shield is already recharging, which is
+"increased Energy Shield Regeneration" — and that is `Ritualist_basic_spine_008`
+Warded Mind, a BASIC node in the same tree. A keystone that duplicates a basic
+node beside it is not a keystone.** Outside the delay it is a different defence:
+shield sustain while under fire.
+
+**The fractions are the design's, not invented here.** "At half its usual rate"
+and "at half its rate" are the rows' own words, and Warded states no number.
+
 ## 2026-09-14 — Two stats adjust a figure a skill's own row states, and the rules that stop them reaching skills their nodes never name
 
 **Affects:**
@@ -14,9 +57,73 @@ Decisions made outside the Google Drive documents, newest first.
 `game/Source/Cataclysm/Tests/CataclysmPlayerClassStatsTests.cpp`. Issue
 [#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
 
-The stats are `thrall_reserve_bonus` and `imp_cap_bonus`. Both start at zero and
-are added to a figure the skill's own row states, which is the shape
+The stats are `thrall_reserve_reduction` and `imp_cap_bonus`. Both start at zero
+and are applied to a figure the skill's own row states, which is the shape
 `possession_threshold_bonus` established.
+
+### A COMBAT ATTRIBUTE CANNOT HOLD A NEGATIVE NUMBER, SO A STAT THAT LOWERS A FIGURE NAMES THE SIZE OF THE REDUCTION
+
+The reserve stat was first written as a **bonus** holding `-5`, matching the
+`possession_threshold_bonus` shape exactly. **It did nothing, and the run that
+proved it is the reason this section exists.**
+
+`UCataclysmCombatAttributeSet::PreAttributeChange` ends:
+
+```cpp
+NewValue = FMath::Max(NewValue, 0.0f);
+```
+
+Every attribute in that set that is not named in one of the clauses above that
+line is floored at zero. So `-5` was stored as `0`, the reserve stayed at 30, and
+a pool of 25 refused the thrall. The failure was silent in every other respect:
+the skill activated, committed its cost, found its target, and refused.
+
+`CataclysmFervourTests.cpp:379` is the existing, passing proof that a direct
+write below zero is held at zero, on a different set with the same rule.
+
+**So the rule is: a stat that lowers a designed figure is authored as a positive
+quantity of the thing it removes, and subtracted by its reader.** Not as a signed
+adjustment. This is why the stat is named `thrall_reserve_reduction` rather than
+`thrall_reserve_bonus`, and the keystone grants `5`, not `-5`.
+
+**The alternative was to exempt the attribute from the floor**, by naming it in
+`PreAttributeChange` alongside crit chance and the others. That was rejected: the
+floor is there because a negative reading of most of these stats is meaningless
+data, and carving an exception per stat makes the exception list the real rule.
+Expressing the reduction positively keeps one rule for the whole set.
+
+`imp_cap_bonus` is unaffected -- it raises a figure, so its value is positive
+already -- and `possession_threshold_bonus` likewise.
+
+### THE SHAPE WAS ALREADY ESTABLISHED FIVE TIMES OVER, AND THE REAL FAULT WAS NOT LOOKING FOR IT
+
+**This section first claimed the reducing case was new. That was wrong.** The
+project already had five stats named for the size of a reduction:
+
+```
+cooldown_reduction            healing_ceiling_reduction
+damage_reduction              healing_received_reduction
+stagger_health_ceiling_reduction
+```
+
+`HealingCeilingReduction` in `CataclysmVitalAttributeSet.h` carries the same
+reasoning in its own comment, and `CataclysmCombatAttributeSet.cpp` line 281
+already cites it as the precedent for `StaggerHealthCeilingReduction`. **So the
+answer was written down, in the file next to the one I was editing, before I
+started.** A stat ending in `_reduction` is the project's existing word for this.
+
+**What went wrong was copying one precedent without checking it covered the
+case.** `possession_threshold_bonus` RAISES a threshold, so its sign never
+mattered; I copied its shape to a node that LOWERS a figure and carried the
+signed-adjustment assumption across with it. The check that would have caught it
+is one search for how the project already spells "reduces".
+
+**The general statement to carry forward: in this project a negative stat value
+is clamped away at some point on almost every path, so a figure that must go
+down is authored as a positive reduction from the start.** The entry below on
+ailment duration records a second instance of the same clamp -- "a negative stat
+applies nothing rather than reversing the effect", inside `DurationOn` -- which
+had been read as a fact about ailments rather than a property of the codebase.
 
 ### THE SHAPE WAS ASSUMED TO TRANSFER AND IT DOES NOT
 

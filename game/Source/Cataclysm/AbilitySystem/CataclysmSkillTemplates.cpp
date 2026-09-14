@@ -38,15 +38,22 @@
 namespace
 {
 	/**
-	 * What one of this character's passive stats adds to a figure a skill's own
-	 * row states. Issue #1718.
+	 * What one of this character's passive stats reads, for use against a figure
+	 * the skill's own row states. Issue #1718.
 	 *
 	 * TWO KEYSTONES ADJUST A FIGURE THIS WAY -- Crowned lowers what a thrall
 	 * reserves and The Swarm raises how many imps may live -- and the shape is
 	 * the one `possession_threshold_bonus` established: the stat starts at zero
-	 * and is ADDED to whatever the row says, so re-tuning the row follows
+	 * and is applied to whatever the row says, so re-tuning the row follows
 	 * through. A stat holding the figure itself would state the same number
 	 * twice and win silently.
+	 *
+	 * THE VALUE IS ALWAYS ZERO OR ABOVE, AND THE CALLER DECIDES THE DIRECTION.
+	 * Every attribute in the combat set is floored at zero -- see
+	 * `ThrallReserveFor` below for the measurement -- so a stat that lowers a
+	 * figure names the size of the reduction and is subtracted by its caller.
+	 * This function is deliberately not called `...BonusFor`: one of its two
+	 * callers subtracts what it returns.
 	 *
 	 * READ WITH THE SKILL'S OWN TAGS, so a future row scoped to a keyword counts
 	 * only for the skills it names. `StatForSkill` falls back to the attribute
@@ -57,7 +64,7 @@ namespace
 	 * the component does not hold raises an engine ensure rather than answering
 	 * zero, and a test may build a component without the combat set.
 	 */
-	float PassiveBonusFor(const AActor* Self, const TCHAR* StatName,
+	float PassiveStatFor(const AActor* Self, const TCHAR* StatName,
 						  const FGameplayAttribute& Stat,
 						  const FGameplayTagContainer& SkillTags)
 	{
@@ -90,11 +97,21 @@ namespace
 	 * skill reserves nothing", and adding to it would invent a claim the design
 	 * never made.
 	 *
+	 * A POSITIVE NUMBER THAT IS SUBTRACTED, AND IT HAS TO BE. Measured
+	 * 2026-09-14: `UCataclysmCombatAttributeSet::PreAttributeChange` ends with
+	 * `NewValue = FMath::Max(NewValue, 0.0f)`, so every attribute in that set
+	 * that is not named in one of the clauses above it is floored at zero. This
+	 * stat was first written as a bonus holding -5, and the floor stored it as
+	 * 0: the reserve stayed at 30 and the keystone did nothing. The stat
+	 * therefore names the size of the reduction rather than a signed adjustment.
+	 * `CataclysmFervourTests.cpp:379` is the existing proof that a direct write
+	 * below zero is held at zero.
+	 *
 	 * FLOORED ABOVE ZERO, AND THAT IS NOT TIDINESS. `HasRoomForAnotherThrall`
 	 * reads a reserve of zero or less as "capped by nothing" and returns true
-	 * for every thrall, so a reduction reaching zero would remove the army limit
-	 * rather than lower it. One keystone cannot reach zero from 30; a second
-	 * source of the same stat could.
+	 * for every thrall, so a reduction reaching the whole reserve would remove
+	 * the army limit rather than lower it. One keystone cannot: it takes 5 off
+	 * 30. A second source of the same stat could.
 	 */
 	float ThrallReserveFor(const AActor* Self,
 						   const FCataclysmSkillShapeParams& Params,
@@ -105,13 +122,13 @@ namespace
 			return Params.FervourReserve;
 		}
 
-		const float Bonus = PassiveBonusFor(
-			Self, UCataclysmCommand::ThrallReserveBonusStat,
-			UCataclysmCombatAttributeSet::GetThrallReserveBonusAttribute(),
+		const float Reduction = PassiveStatFor(
+			Self, UCataclysmCommand::ThrallReserveReductionStat,
+			UCataclysmCombatAttributeSet::GetThrallReserveReductionAttribute(),
 			SkillTags);
 
 		return FMath::Max(UCataclysmCommand::SmallestThrallReserve,
-						  Params.FervourReserve + Bonus);
+						  Params.FervourReserve - Reduction);
 	}
 
 	/**
@@ -159,13 +176,17 @@ namespace
 			return Params.MaxActive;
 		}
 
-		const float Bonus = PassiveBonusFor(
+		const float Bonus = PassiveStatFor(
 			Self, UCataclysmCommand::ImpCapBonusStat,
 			UCataclysmCombatAttributeSet::GetImpCapBonusAttribute(), SkillTags);
 
-		// AT LEAST ONE, so a negative bonus lowers the cap without taking it to
-		// zero, which every read site would read as no cap at all rather than as
-		// a cap of nothing.
+		// AT LEAST ONE. Nothing can currently take this below the row's figure:
+		// the combat attribute set floors every one of its attributes at zero --
+		// `ThrallReserveFor` above carries the measurement -- so this stat is
+		// zero or positive and the sum only ever rises. The floor is kept anyway,
+		// because a cap of zero is read as NO CAP at all by every read site, so
+		// if a future source ever does subtract here, the failure it would cause
+		// is an unlimited army rather than a smaller one.
 		return FMath::Max(1, Params.MaxActive + FMath::RoundToInt(Bonus));
 	}
 }

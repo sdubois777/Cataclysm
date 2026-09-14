@@ -29,8 +29,8 @@ const TCHAR* UCataclysmCommand::PossessionThresholdBonusStat =
 // than 30." The 30 it is subtracted from is on the Subjugate skill's own row and
 // is not restated here, and four other skills state a reserve of their own that
 // this must not reach.
-const TCHAR* UCataclysmCommand::ThrallReserveBonusStat =
-	TEXT("thrall_reserve_bonus");
+const TCHAR* UCataclysmCommand::ThrallReserveReductionStat =
+	TEXT("thrall_reserve_reduction");
 
 // AND WHAT THE SWARM GRANTS. Issue #1718: "You may have 5 imps active rather
 // than 3." The 3 is on the Summon Imp row.

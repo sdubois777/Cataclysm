@@ -209,17 +209,25 @@ public:
 	static const TCHAR* PossessionThresholdBonusStat;
 
 	/**
-	 * The stat holding Fervour points ADDED to what one thrall reserves. Issue
+	 * The stat holding Fervour points TAKEN OFF what one thrall reserves. Issue
 	 * #1718.
 	 *
 	 * `Ritualist_keystone_a_kC` Crowned is the only source: "Each thrall
-	 * reserves 25 Fervour rather than 30." Its row is flat -5.
+	 * reserves 25 Fervour rather than 30." Its row is flat **5**, a positive
+	 * number that is subtracted.
 	 *
-	 * A BONUS AND NOT THE RESERVE. The Subjugate skill's row states 30 and four
-	 * other skills state a reserve of their own, so a stat holding the figure
-	 * would state one of them twice and reach the other four.
+	 * POSITIVE, AND THAT IS FORCED RATHER THAN CHOSEN. This stat was first
+	 * written as a bonus of -5 and did nothing:
+	 * `UCataclysmCombatAttributeSet::PreAttributeChange` floors every attribute
+	 * in that set at zero, so -5 was stored as 0. `docs/DECISIONS.md` carries
+	 * the measurement and the rule it produced -- a stat that lowers a figure
+	 * names the size of the reduction.
+	 *
+	 * A REDUCTION AND NOT THE RESERVE ITSELF. The Subjugate skill's row states
+	 * 30 and four other skills state a reserve of their own, so a stat holding
+	 * the figure would state one of them twice and reach the other four.
 	 */
-	static const TCHAR* ThrallReserveBonusStat;
+	static const TCHAR* ThrallReserveReductionStat;
 
 	/**
 	 * The least a thrall may reserve however much is taken off it.

@@ -579,9 +579,9 @@ public:
 	 * reserve; the read site identifies a thrall from the row's own
 	 * `Possess` parameter so an imp and three deployables are left alone.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_ThrallReserveBonus)
-	FGameplayAttributeData ThrallReserveBonus;
-	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ThrallReserveBonus)
+	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_ThrallReserveReduction)
+	FGameplayAttributeData ThrallReserveReduction;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ThrallReserveReduction)
 
 	/**
 	 * How many more minions of its own kind a summon may keep alive. Issue
@@ -1007,7 +1007,7 @@ protected:
 	UFUNCTION() void OnRep_CrippleMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_WeakenMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_PossessionThresholdBonus(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_ThrallReserveBonus(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ThrallReserveReduction(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ImpCapBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);

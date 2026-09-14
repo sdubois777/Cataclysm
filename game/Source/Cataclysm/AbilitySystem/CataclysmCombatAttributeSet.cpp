@@ -106,7 +106,7 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// may live -- so a starting value of anything else would state that number
 	// a second time. Zero also decides that a row moving either takes `flat`:
 	// an increase against zero grants nothing.
-	InitThrallReserveBonus(0.0f);
+	InitThrallReserveReduction(0.0f);
 	InitImpCapBonus(0.0f);
 
 	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
@@ -227,7 +227,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, CrippleMagnitude);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, WeakenMagnitude);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PossessionThresholdBonus);
-	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ThrallReserveBonus);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ThrallReserveReduction);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ImpCapBonus);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
@@ -408,7 +408,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetPossessionThresholdBonusAttribute(),
 		// AND WHAT ONE THRALL RESERVES, AND HOW MANY IMPS MAY LIVE, both
 		// added to a figure the skill's own row states. Issue #1718.
-		GetThrallReserveBonusAttribute(), GetImpCapBonusAttribute(),
+		GetThrallReserveReductionAttribute(), GetImpCapBonusAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
@@ -469,7 +469,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, StunChance)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, CrippleMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
-CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ThrallReserveBonus)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ThrallReserveReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ImpCapBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)

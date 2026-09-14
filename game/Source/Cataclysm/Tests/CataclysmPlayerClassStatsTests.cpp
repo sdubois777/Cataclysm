@@ -515,7 +515,7 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// figure a skill's own row states, reaching only the subject its node
 		// names. Neither has an engine-supplied base, for the reason the entry
 		// above gives.
-		{TEXT("thrall_reserve_bonus"),
+		{TEXT("thrall_reserve_reduction"),
 		 TEXT("the Ritualist's Crowned keystone, as a flat modifier, taken off "
 			  "the reserve the Subjugate skill row states")},
 		{TEXT("imp_cap_bonus"),
