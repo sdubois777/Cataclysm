@@ -312,9 +312,26 @@ void ACataclysmGroundZone::Sweep()
 	// segment of no length that way, so a round zone and a long one cannot drift
 	// apart in behaviour.
 	// WHICH SEARCH DEPENDS ON WHOSE FIRE IT IS. Almost every zone belongs to
-	// whoever cast it and burns the other side. The Hellhound's lane burns
-	// whatever is standing in it, the Hellhound included, which is the one
-	// thing in the design that asks for it.
+	// whoever cast it and burns the other side.
+	//
+	// NO PRODUCTION CODE SETS THIS FLAG, AND THIS COMMENT USED TO SAY OTHERWISE.
+	// It read: "The Hellhound's lane burns whatever is standing in it, the
+	// Hellhound included, which is the one thing in the design that asks for
+	// it." The lane passes `/*bBurnsEveryone=*/false`. Checked one by one on
+	// 2026-09-14: the player's skill ground, the Gatekeeper's, the Hellhound's
+	// lane, Infernal Rain, Singularity Wells, Grasping Tentacles and Withered
+	// Ground all take the default or pass false outright. The only place it is
+	// set true is `CataclysmHellhoundTests.cpp`, which writes it on a lane to
+	// exercise this branch.
+	//
+	// SO THE BRANCH IS REAL AND UNUSED, which is a different thing from dead:
+	// the test above proves it works, and the first thing in the design to ask
+	// for it is the dungeon rule `War_Artillery_Strike`, whose row says "Enemies
+	// and players can be hit". THAT RULE DOES NOT SET THIS FLAG EITHER. The
+	// circle it places deals no damage, so a flag on it would decide nothing;
+	// the rule asks `FindEveryoneInLine` directly when the shell lands. Whether
+	// the Hellhound's own lane should burn its own side is a question about the
+	// Hellhound and is not answered here.
 	const TArray<AActor*> Inside = bBurnsEveryone
 		? UCataclysmTargeting::FindEveryoneInLine(
 			GetWorld(), Source, GetActorLocation(), FarEnd, RadiusCm)

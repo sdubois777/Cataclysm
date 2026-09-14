@@ -2,6 +2,125 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A dungeon hazard belongs to no side, the Artillery Strike's warning is derived from the player's own walk speed, and no production code had ever set the hit-everyone flag
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp`
+(the library of dungeon rules), `CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second
+beat that drives them), `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.cpp` (the
+floor hazard actor, one comment),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`War_Artillery_Strike`, weight 5.0 — the lightest band in the table, shared with 24 other
+rows:
+
+> Every 30 seconds, a massive red circle appears on the ground. A powerful artillery strike
+> will land in that circle, dealing massive damage to everything inside. Enemies and players
+> can be hit, creating a strategic element of using the enemy's own weapons against them.
+
+**It is the first of the 42 rows whose mechanism already existed**, chosen from issue #1820's
+survey by the test of fewest judgements: it states its own cadence, needs no mechanism the
+game does not have, and its one unusual clause turned out to be already built.
+
+### A dungeon hazard belongs to no side
+
+`tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side` records a
+standing owner rule: **"A creature does not burn itself or its own side."** This row asks for
+a hazard that hits everything.
+
+**Ruled not engaged, by the coordinating session on 2026-09-14.** That rule is about a
+creature and the side it belongs to. A shell called in by the floor belongs to nobody, and
+the row states hitting both sides as the point of the modifier rather than as a side effect.
+
+**This is a reading with a stated expiry.** If the owner ever rules that dungeon hazards take
+the player's side, this rule changes and the row's second sentence becomes unbuilt.
+
+### The hit-everyone flag was never set by anything, and a comment said otherwise
+
+`ACataclysmGroundZone` already chooses between finding everyone in a place and finding only
+the other side, on its own `bBurnsEveryone`. Its comment read:
+
+> The Hellhound's lane burns whatever is standing in it, the Hellhound included, which is the
+> one thing in the design that asks for it.
+
+**The lane passes `/*bBurnsEveryone=*/false`.** Checked one by one: the player's skill ground,
+the Gatekeeper's, the Hellhound's lane, Infernal Rain, Singularity Wells, Grasping Tentacles
+and Withered Ground all take the default or pass false outright. The only place it is set
+true is a Hellhound test, which writes it on a lane to exercise the branch.
+
+So the branch is **real and unused**, which is different from dead — the test proves it works.
+The comment is corrected to say exactly that.
+
+**And this rule does not set it either.** The circle it places deals no damage, so a flag on a
+harmless circle would decide nothing. The rule asks `UCataclysmTargeting::FindEveryoneInLine`
+directly at the moment the shell lands — the same search the flag selects, asked at the call
+site instead of inside the zone. Asking the same question the circle would ask is what keeps
+the drawn circle and the list of things hit from disagreeing.
+
+**Whether the Hellhound's own lane should burn its own side is a question about the
+Hellhound**, and is deliberately not answered here.
+
+### Three numbers the row does not give
+
+| figure | value | where it came from |
+| :-- | --: | :-- |
+| seconds between strikes | 30 | **the row's own** |
+| warning before it lands | 3.0 s | **derived, see below** |
+| circle radius | 600 cm | a judgement |
+| damage | 25% of maximum health, once | **a judgement, and the weakest** |
+
+**The warning is derived and not chosen.** `ACataclysmPlayerCharacter::DefaultWalkSpeedCmPerSecond`
+is 400, so walking out of a 600 cm circle from its centre takes 1.5 seconds at base speed.
+Three seconds is twice that, and still clears the 40% slow `Void_Singularity_Wells` can be
+applying on the same floor, where the walk out takes 2.5 seconds. **A static assertion ties
+the three constants together**, and
+`test_the_artillery_strike_warning_is_longer_than_the_walk_out` reads the walk speed from the
+player character rather than copying it, so the derivation cannot quietly go stale.
+
+**The genre figure was a check and not the source.** Icy Veins' Diablo IV page for the Beast
+of the Deep says its magma eruptions take "about three or four seconds to charge". That was
+not adopted: a boss telegraph is watched for, and this arrives every thirty seconds while the
+player is fighting something else. It says only that three seconds is not eccentric.
+
+**The radius is a judgement.** `InfernalRainRadiusCm` is 300 and that row says only "patches";
+this row says "massive", and twice is what that buys.
+
+**The damage is the weakest of the four and is marked as such.** No source read for this change
+gives a telegraphed ground attack's damage as a share of maximum health, so it is not derived
+from anything. What it is measured against: Infernal Rain is 2% per second for 10 seconds, so
+20% for its whole life, escapable at any moment. This lands once and cannot be partly taken.
+**And this row is in the lightest weight band**, so a figure that hurt more than the heavy
+rows would be wrong however well it read on its own.
+
+### Two smaller readings, recorded because the row does not settle them
+
+**Thirty seconds is between landings, not between circles.** The cadence is not counted while
+a circle is on the ground, so the gap is thirty seconds plus the warning. The other reading —
+a circle every thirty seconds regardless — is equally defensible and the row does not choose.
+
+**The shell is an area hit but not damage over time.** `ACataclysmGroundZone` marks its own
+sweeps as both, because a patch of fire catches whoever stands in it and keeps burning. A
+shell is one blow: it cannot be evaded, which is what the area flag says, and an energy shield
+should absorb it exactly as it absorbs any other blow, which is what leaving the
+damage-over-time flag false says. **Whatever the existing hazard does about kill credit and
+drops is left exactly as it is**; this rule adds no rule about it.
+
+### What the four tests are for
+
+`AStrikeIsDueOnItsCadenceAndTheCircleAppearsFirst` holds the one number the row states.
+`TheCircleHurtsNobodyUntilItLands` holds the thing the whole design rests on — a warning that
+already hurts is not a warning. `AStrikeHitsCreaturesStandingInItAsWellAsThePlayer` holds the
+row's own second sentence. `AStrikeLandsWhereTheCircleIsRatherThanWhereThePlayerWent` is the
+only one that moves its target, and it is the only one that can see a shell aimed at the
+player instead of at the place the circle was drawn; **it keeps a creature standing in the
+circle so that a rule which never fired at all would fail it rather than satisfy it.**
+
+---
+
 ## 2026-09-14 — A locked skill says so on its own box, the words above the bar wait for every skill rather than any, and the bar was reading the class default object
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` (the data and

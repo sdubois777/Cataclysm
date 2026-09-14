@@ -1153,6 +1153,33 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Call in an artillery strike, and land the one already called.
+	 *
+	 * TWO THINGS IN ONE BEAT STEP, AND THEY NEVER BOTH HAPPEN. While a circle is
+	 * on the ground the step only counts the warning down; when the warning is
+	 * out it lands the shell and destroys the circle, and the cadence is free to
+	 * place the next on a later beat. The rule's own `ArtilleryStrikeIsDue`
+	 * refuses while one is in the air, so the order inside this function is not
+	 * what keeps them apart.
+	 *
+	 * THE CIRCLE DEALS NO DAMAGE OF ITS OWN. It is an `ACataclysmGroundZone`
+	 * placed with a damage of zero, which is what `Void_Grasping_Tentacles`
+	 * already does for a tentacle that only has to be somewhere. The shell is
+	 * this function asking `UCataclysmTargeting::FindEveryoneInLine` what is
+	 * standing in the circle at the moment it lands, so what the player was
+	 * warned about and what is hit cannot disagree.
+	 *
+	 * EVERYONE, NOT THE OTHER SIDE, which is the row's own sentence: "Enemies
+	 * and players can be hit". The ground zone makes the same choice on its
+	 * `bBurnsEveryone`, and no production code sets that flag; this rule asks
+	 * the everyone-search directly because a flag on a harmless circle would
+	 * decide nothing.
+	 */
+	void StepArtilleryStrike(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Put every floor effect on the player, the beat-driven ones included.
 	 * Issue #41, slice 5.
 	 *
@@ -1426,6 +1453,27 @@ private:
 	float EdictOfSilenceSecondsSinceLast = 0.0f;
 	float EdictOfSilencedUntilSeconds = -1.0f;
 	float EdictOfSilenceLockApplied = 0.0f;
+
+	/**
+	 * The circle on the ground, and how long it has been there.
+	 *
+	 * A WEAK POINTER, because `UCataclysmFloorContents::ClearTheFloor` destroys
+	 * every zone when the floor changes and a raw pointer would outlive it. The
+	 * pointer going invalid IS the circle being gone, which is the same reading
+	 * `GraspingTentacles` makes of its own list.
+	 *
+	 * THE WARNING IS COUNTED IN BEATS RATHER THAN STAMPED IN WORLD TIME, which
+	 * is the choice Death's Embrace records: a subtraction from world time would
+	 * count a paused game against the player, and three seconds of warning is
+	 * exactly the kind of figure where that would be felt.
+	 *
+	 * BOTH GO BACK TO NOTHING ON A NEW FLOOR. A circle drawn on the last floor
+	 * is not a warning about this one, and `ClearTheFloor` has already destroyed
+	 * it, so keeping the count would land a shell nobody was warned about.
+	 */
+	TWeakObjectPtr<class ACataclysmGroundZone> ArtilleryStrikeCircle;
+	float ArtilleryStrikeWarningSoFar = 0.0f;
+	float ArtilleryStrikeSecondsSinceLast = 0.0f;
 
 	TArray<FCataclysmGraspingTentacle> GraspingTentacles;
 	float GraspingTentaclesSecondsSinceLast = 0.0f;

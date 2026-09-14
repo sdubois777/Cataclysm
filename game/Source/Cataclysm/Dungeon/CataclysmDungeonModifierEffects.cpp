@@ -28,6 +28,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::GraspingTentaclesKey =
 	TEXT("Void_Grasping_Tentacles");
 const TCHAR* UCataclysmDungeonModifierEffects::EdictOfSilenceKey =
 	TEXT("Celestial_Edict_of_Silence");
+const TCHAR* UCataclysmDungeonModifierEffects::ArtilleryStrikeKey =
+	TEXT("War_Artillery_Strike");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -174,7 +176,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(WitheredGroundKey) || RowKey == FName(MortalDecayKey)
 		|| RowKey == FName(WastingSicknessKey)
 		|| RowKey == FName(GraspingTentaclesKey)
-		|| RowKey == FName(EdictOfSilenceKey))
+		|| RowKey == FName(EdictOfSilenceKey)
+		|| RowKey == FName(ArtilleryStrikeKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -319,6 +322,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(WastingSicknessKey),
 		FName(GraspingTentaclesKey),
 		FName(EdictOfSilenceKey),
+		FName(ArtilleryStrikeKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -854,4 +858,45 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 					   Effects.SicknessMaxManaLessPercent)));
 	}
 	return FString::Join(Clauses, TEXT(", "));
+}
+
+bool UCataclysmDungeonModifierEffects::ArtilleryStrikeIsDue(
+	float SecondsSinceLast, bool bOneInTheAir)
+{
+	// ONE AT A TIME, ASKED BEFORE THE CLOCK. The shape `GraspingTentacleIsDue`
+	// uses, for its reason: while a circle is on the ground no arithmetic is
+	// done and the caller goes on counting, so the beat it lands on can place
+	// the next rather than waiting a further thirty seconds.
+	//
+	// ONE AT A TIME IS NOT A NUMBER SOMEBODY CHOSE. The row says "a massive red
+	// circle", singular, and a second circle drawn while the first is still on
+	// the ground would make the warning ambiguous -- the player could not tell
+	// which one was about to land.
+	if (bOneInTheAir)
+	{
+		return false;
+	}
+
+	return SecondsSinceLast >= ArtilleryStrikeSecondsBetween;
+}
+
+bool UCataclysmDungeonModifierEffects::ArtilleryStrikeHasLanded(
+	float SecondsSinceItAppeared)
+{
+	return SecondsSinceItAppeared >= ArtilleryStrikeWarningSeconds;
+}
+
+float UCataclysmDungeonModifierEffects::ArtilleryStrikeDamage(float MaximumHealth)
+{
+	// NOTHING FROM A TARGET WHOSE MAXIMUM HEALTH IS UNKNOWN. A creature whose
+	// attributes have not been set yet answers zero, and a strike that dealt
+	// zero damage would still count as a hit -- it would announce itself, feed
+	// anything listening for a blow, and read in a log as a strike that landed
+	// for nothing. The caller checks this and skips instead.
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * ArtilleryStrikeMaxHealthPercent / 100.0f;
 }
