@@ -376,6 +376,34 @@ public:
 	}
 
 	/**
+	 * What the worn items DO when an event happens, as opposed to what they
+	 * change. Issue #1815.
+	 *
+	 * WRITTEN WHOLESALE, for the reason `SetStatInputs` is: a row that came off
+	 * with the gear must stop firing rather than go on firing.
+	 */
+	void SetPoolActions(TArray<FCataclysmPoolAction>&& Actions)
+	{
+		PoolActions = MoveTemp(Actions);
+	}
+
+	/** What this character would do on an event. For a test or a character sheet. */
+	const TArray<FCataclysmPoolAction>& GetPoolActions() const
+	{
+		return PoolActions;
+	}
+
+	/**
+	 * Fire every worn action hung on this event, now.
+	 *
+	 * CALLED BY EACH `NoteX()` RATHER THAN BY A SUBSCRIBER OF ITS OWN, because
+	 * every event a row can name is already one of those, called at the event's
+	 * own site, on the right character, at the moment it happens. An action needs
+	 * no plumbing that a clock did not already need.
+	 */
+	void ActOnEvent(FName Event);
+
+	/**
 	 * What the dungeon floor this character is standing on does to its stat
 	 * line. Issue #41.
 	 *
@@ -1373,6 +1401,33 @@ protected:
 	 * replicated attribute. A hit is resolved on the authority.
 	 */
 	TMap<FName, FCataclysmStatInputs> StatInputs;
+
+	/** What the worn items do when an event happens. See `SetPoolActions`. */
+	TArray<FCataclysmPoolAction> PoolActions;
+
+	/**
+	 * How deep inside `ActOnEvent` this character currently is, which is never
+	 * more than one.
+	 *
+	 * AN ACTION CAN CAUSE THE EVENT THAT FIRES IT. A pool write raises an
+	 * attribute change, an attribute change can stamp a clock, and a clock stamp
+	 * fires actions -- so two rows could feed each other. Today the chain happens
+	 * to stop because `UCataclysmFervour::Move` refuses to write a change of
+	 * nothing, and a rule that holds only because of an early return in another
+	 * class is a rule nothing states. This states it.
+	 */
+	int32 PoolActionDepth = 0;
+
+	/** Move one pool, by the rules the project owner's delegate ruled on 2026-09-14. */
+	void ApplyPoolAction(const FCataclysmPoolAction& Action);
+
+	/**
+	 * The two attributes a pool name means: what is held, and the most that can
+	 * be held. False for a name this build has none for, which is the one place
+	 * that can be reported rather than granting nothing in silence.
+	 */
+	static bool PoolAttributesFor(FName Pool, FGameplayAttribute& Held,
+								  FGameplayAttribute& Maximum);
 
 	/**
 	 * What the dungeon floor being stood on adds to the stat line. Issue #41.

@@ -417,7 +417,9 @@ void UCataclysmEquipmentComponent::UnequipEverything()
 // What it is all for
 // ---------------------------------------------------------------------------
 
-TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmEquipmentComponent::GatherModifiers() const
+TMap<FName, TArray<FCataclysmStatModifier>>
+UCataclysmEquipmentComponent::GatherModifiers(
+	TArray<FCataclysmPoolAction>* Actions) const
 {
 	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
 
@@ -448,7 +450,7 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmEquipmentComponent::Gather
 	UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 		Totals, Slots, UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
 		UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
-		UCataclysmDropRoll::LoadNegativeEnchantmentTable());
+		UCataclysmDropRoll::LoadNegativeEnchantmentTable(), Actions);
 
 	return Totals;
 }
@@ -553,7 +555,21 @@ int32 UCataclysmEquipmentComponent::RefreshAttributes(
 	// the worn items grant and what the spent passive points grant are the
 	// same three buckets applied to the same character, so they belong in
 	// one map rather than in two that a caller has to merge.
-	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers = GatherModifiers();
+	// AND WHAT THE WORN ITEMS DO WHEN AN EVENT HAPPENS, gathered on the same
+	// walk and handed to the same component. Issue #1815. Refreshed here rather
+	// than read at the moment of an event, for the reason the stat line is: a
+	// character that swapped a helmet must act on what it is wearing now, and
+	// nothing should walk a DataTable on every block.
+	TArray<FCataclysmPoolAction> Actions;
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		GatherModifiers(&Actions);
+	if (UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		// WHOLESALE, NOT MERGED, for the reason `SetStatInputs` is: a row that
+		// came off with the gear must stop firing rather than keep firing.
+		Cataclysm->SetPoolActions(MoveTemp(Actions));
+	}
 	TMap<FName, float> Bases = StatBasesFromWeapons();
 
 	// AND THE EIGHT ATTRIBUTES, FOR THE SAME REASON THE OTHER CALLER DOES IT.

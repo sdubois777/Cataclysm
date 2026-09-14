@@ -675,14 +675,26 @@ public:
 	 * ALL THREE TABLES ARE NEEDED. Without the two enchantment tables a set row
 	 * cannot be told from any other, so a missing one grants nothing at all.
 	 *
-	 * @return how many modifiers were added
+	 * @param Actions where rows that MOVE A POOL go, or null to skip them. A row
+	 *                naming an action is not a stat modifier and cannot be one,
+	 *                so it leaves by this door instead of through `Totals`. It
+	 *                rides this same walk because the rules about which roll
+	 *                applies -- a benefit once at the higher roll, a drawback per
+	 *                piece at its own -- are the same for both kinds of row and
+	 *                must not be written twice.
+	 *
+	 * @return how many modifiers were added. ACTIONS ARE NOT COUNTED IN IT: the
+	 *         figure has meant modifiers since issue #45 and a caller reading it
+	 *         as "did anything apply" would be told something different from
+	 *         what it was told before.
 	 */
 	static int32 AccumulateEnchantmentsInto(
 		TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
 		const TArray<FCataclysmItem>& Worn,
 		const UDataTable* EffectTable,
 		const UDataTable* PositiveTable,
-		const UDataTable* NegativeTable);
+		const UDataTable* NegativeTable,
+		TArray<FCataclysmPoolAction>* Actions = nullptr);
 
 	/**
 	 * What a weapon of this TYPE supplies as attack damage.

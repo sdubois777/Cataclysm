@@ -4095,6 +4095,101 @@ def passive_effects(book) -> list[dict]:
     return out
 
 
+#: The pools an effect row may move, and nothing else is a pool.
+#:
+#: EACH NAMES TWO ATTRIBUTES ON THE GAME SIDE -- what is held and the most
+#: that can be held -- and `UCataclysmItemModifiers::PoolActionFor` is what
+#: turns a name here into that pair. A name this set does not hold would be a
+#: row the game reads, finds no pair for, and silently grants nothing.
+POOL_ACTIONS = (
+    "health",
+    "mana",
+    "energy_shield",
+    "class_resource",
+)
+
+#: What a percentage on an action row is a percentage OF.
+#:
+#: "Restore 5% of your maximum HP" and "drain 3% of your current HP" are both
+#: authored, and they are different amounts on a hurt character. `maximum` is
+#: the default because most sentences say maximum or say nothing at all.
+FRACTION_BASES = (
+    "maximum",
+    "current",
+)
+
+#: The events an action may hang on, DERIVED FROM THE CLOCK CONDITIONS rather
+#: than written out again.
+#:
+#: Every clock is named `seconds_after_<event>` and asks "within N seconds of
+#: X". An action names `<event>` and happens AT X. The two questions share one
+#: list of events on purpose, so a clock added later cannot be missing here and
+#: the two cannot drift apart. Issue #1833 argued for one vocabulary serving
+#: both.
+ACTION_EVENT_PREFIX = "seconds_after_"
+
+
+def action_events() -> set[str]:
+    """Every event name an action row may use."""
+    return {name[len(ACTION_EVENT_PREFIX):] for name in CONDITIONS
+            if name.startswith(ACTION_EVENT_PREFIX)}
+
+def _check_pool_action(index: int, who: str, action: str, event: str,
+                       fraction_of: str, kind: str, raw,
+                       headers: dict[str, int]) -> None:
+    """Everything an action row must say, and everything it must not.
+
+    REFUSED RATHER THAN IGNORED, in every case. A row that validates and then
+    grants nothing is the failure this table keeps producing, and it is silent:
+    the sheet has a number in it, the generator writes it, the game reads a
+    name it has no case for, and nothing anywhere says so.
+
+    A CONDITION AND A SCALE ARE REFUSED ON AN ACTION ROW FOR NOW. Neither is
+    judged at the moment an action fires -- the pipeline asks them when a stat
+    is read, which is not when a pool moves -- so a row carrying one would have
+    it quietly dropped. The enchantments that want one ("killing an enemy while
+    below 30% HP...") arrive with the events that do not exist yet.
+    """
+    if action not in POOL_ACTIONS:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
+            f"which is not one the game has. Known: "
+            f"{', '.join(POOL_ACTIONS)}.")
+
+    known = action_events()
+    if not event:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} moves a pool and names no "
+            f"event to move it on. An action happens AT something. Known: "
+            f"{', '.join(sorted(known))}.")
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} moves a pool on the event "
+            f"{event!r}, which the game does not record. Known: "
+            f"{', '.join(sorted(known))}.")
+
+    if fraction_of and fraction_of not in FRACTION_BASES:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} takes its percentage of "
+            f"{fraction_of!r}. It is of {' or '.join(FRACTION_BASES)}, and an "
+            f"empty column means maximum.")
+
+    if kind:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} moves a pool and also has "
+            f"the value kind {kind!r}. The three buckets multiply a stat and an "
+            f"action has no stat, so the column must be empty on an action row.")
+
+    for column in ("Condition", "Scale"):
+        written = clean(_cell(raw, headers, column))
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} moves a pool and carries "
+                f"the {column.lower()} {written!r}. Neither is judged at the "
+                f"moment an action fires, so it would be dropped without "
+                f"anything saying so. Those rows wait for the events that "
+                f"carry them.")
+
 def _condition_and_scale(raw, headers: dict[str, int], sheet: str, index: int,
                          who: str) -> tuple[str, float, str, float]:
     """A row's condition, its value, its scale and its step, checked.
@@ -4246,12 +4341,30 @@ def enchantment_effects(book) -> list[dict]:
                 f"is read again before its numbers are trusted.")
 
         stat = clean(_cell(raw, headers, "Stat"))
-        if not stat:
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} names no stat")
-
+        action = clean(_cell(raw, headers, "Action")).lower()
+        action_event = clean(_cell(raw, headers, "Action Event")).lower()
+        fraction_of = clean(_cell(raw, headers, "Fraction Of")).lower()
         kind = clean(_cell(raw, headers, "Value Kind")).lower()
-        if kind not in ("flat", "increased", "more"):
+
+        # A ROW CHANGES A STAT OR MOVES A POOL, NEVER BOTH AND NEVER NEITHER.
+        # Both would be two effects wearing one roll, and the hover text shows
+        # one number; neither is a row that validates and grants nothing.
+        if stat and action:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} names both the stat "
+                f"{stat!r} and the pool action {action!r}. A row does one or "
+                f"the other: a stat row changes a number the pipeline reads, "
+                f"an action row moves a pool when an event happens.")
+        if not stat and not action:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} names no stat and no "
+                f"pool action. Known pools: {', '.join(POOL_ACTIONS)}.")
+
+        if action:
+            _check_pool_action(index, name, action, action_event, fraction_of,
+                               kind, raw, headers)
+            fraction_of = fraction_of or FRACTION_BASES[0]
+        elif kind not in ("flat", "increased", "more"):
             raise DataError(
                 f"Enchantment Effects row {index}: {name} has value kind "
                 f"{kind!r}, which is not flat, increased or more")
@@ -4306,6 +4419,9 @@ def enchantment_effects(book) -> list[dict]:
             "ConditionValue": condition_value,
             "Scale": scale,
             "ScaleStep": scale_step,
+            "Action": action,
+            "ActionEvent": action_event,
+            "FractionOf": fraction_of,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
@@ -4313,8 +4429,12 @@ def enchantment_effects(book) -> list[dict]:
     # rule and its reasons are the ones `passive_effects` states for a node.
     pairs: dict[tuple, int] = {}
     for row in out:
+        # THE ACTION COLUMNS ARE PART OF THE KEY, so one enchantment may both
+        # restore health and generate a resource on the same event without the
+        # two reading as one row written twice.
         key = (row["Enchantment"], row["Stat"], row["Condition"],
-               row["ConditionValue"], row["Scale"], row["ScaleStep"])
+               row["ConditionValue"], row["Scale"], row["ScaleStep"],
+               row["Action"], row["ActionEvent"], row["FractionOf"])
         pairs[key] = pairs.get(key, 0) + 1
     twice = sorted(key for key, count in pairs.items() if count > 1)
     if twice:

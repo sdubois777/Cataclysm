@@ -1639,10 +1639,14 @@ class TestEnchantmentEffects:
          "Stat.Defense.Block", None,
          "Your attack speed is reduced by 20%-35%", "Generic", 3,
          "Stat.Offense.Speed"],
+        ["Blocking an attack restores 3%-6% of your maximum HP", "Generic", 3,
+         "Stat.Defense.Block", None,
+         "You take 5%-10% more damage", "Generic", 3,
+         "Stat.Defense.Life"],
     ]
     HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
               "Value High", "Required Tags", "Condition", "Condition Value",
-              "Scale", "Scale Step"]
+              "Scale", "Scale Step", "Action", "Action Event", "Fraction Of"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -1667,7 +1671,125 @@ class TestEnchantmentEffects:
             "Stat": "max_energy_shield", "ValueKind": "more",
             "ValueLow": 100.0, "ValueHigh": 100.0, "RequiredTags": "",
             "Condition": "", "ConditionValue": 0.0, "Scale": "",
-            "ScaleStep": 0.0}]
+            "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
+            "FractionOf": ""}]
+
+    # AN ACTION ROW MOVES A POOL WHEN AN EVENT HAPPENS, rather than changing a
+    # stat. Issue #1815. Every refusal below is tested because a refusal that
+    # does not fire leaves a row that validates, writes, loads and grants
+    # nothing, with nothing anywhere saying so.
+
+    ACTION_ENCHANTMENT = "Positive_Blocking_an_attack_restores_3_6_of_your_maximu"
+    ACTION_WORDS = "Blocking an attack restores 3%-6% of your maximum HP"
+
+    def action_row(self, changes=None):
+        """A row restoring health on a block, with the stat columns empty."""
+        values = {
+            "Enchantment": self.ACTION_ENCHANTMENT,
+            "Effect": self.ACTION_WORDS,
+            "Stat": None, "Value Kind": None,
+            "Value Low": 3, "Value High": 6,
+            "Action": "health", "Action Event": "block",
+            "Fraction Of": "maximum",
+        }
+        values.update(changes or {})
+        return self.row(values)
+
+    def test_an_action_row_carries_its_pool_event_and_base(self, tmp_path):
+        out = gen.enchantment_effects(
+            self.book(tmp_path, [self.action_row()]))
+
+        assert out[0]["Action"] == "health"
+        assert out[0]["ActionEvent"] == "block"
+        assert out[0]["FractionOf"] == "maximum"
+        assert out[0]["Stat"] == ""
+        assert out[0]["ValueLow"] == 3.0 and out[0]["ValueHigh"] == 6.0
+
+    def test_an_empty_base_means_the_maximum(self, tmp_path):
+        # MOST SENTENCES SAY MAXIMUM OR SAY NOTHING, so the empty column is the
+        # common case and must not be left blank in the written row -- the game
+        # would have no name to match and would grant nothing.
+        out = gen.enchantment_effects(
+            self.book(tmp_path, [self.action_row({"Fraction Of": ""})]))
+
+        assert out[0]["FractionOf"] == "maximum"
+
+    def test_a_row_naming_a_stat_and_an_action_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="does one or the other"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Stat": "max_health", "Value Kind": "increased"})]))
+
+    def test_a_row_naming_neither_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no stat and no"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action": ""})]))
+
+    def test_a_pool_the_game_does_not_have_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="which is not one the game has"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action": "stamina"})]))
+
+    def test_an_action_with_no_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no event"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action Event": ""})]))
+
+    def test_an_event_the_game_does_not_record_is_refused(self, tmp_path):
+        # THE EVENT LIST IS THE CLOCK CONDITIONS' OWN, so a critical strike is
+        # refused today for the same reason no row can ask about one: nothing
+        # records it.
+        with pytest.raises(gen.DataError, match="which the game does not record"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action Event": "critical_strike"})]))
+
+    def test_a_base_that_is_neither_maximum_nor_current_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="takes its percentage of"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Fraction Of": "missing"})]))
+
+    def test_an_action_row_carrying_a_value_kind_is_refused(self, tmp_path):
+        # THE THREE BUCKETS MULTIPLY A STAT and an action has no stat, so a
+        # bucket here would be read by nothing.
+        with pytest.raises(gen.DataError, match="must be empty on an action row"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Value Kind": "more"})]))
+
+    def test_an_action_row_carrying_a_condition_is_refused(self, tmp_path):
+        # NOT JUDGED AT THE MOMENT AN ACTION FIRES, so it would be dropped in
+        # silence. The rows that want one arrive with the events that carry
+        # them.
+        with pytest.raises(gen.DataError, match="would be dropped without"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Condition": "below_half_health"})]))
+
+    def test_an_action_row_carrying_a_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would be dropped without"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Scale": "momentum_stacks", "Scale Step": 1})]))
+
+    def test_the_event_vocabulary_is_the_clock_conditions_own(self):
+        # DERIVED, NOT REPEATED. If these two ever stop agreeing, a clock added
+        # later would be missing from the actions and nothing else would say so.
+        assert gen.action_events() == {
+            name[len("seconds_after_"):] for name in gen.CONDITIONS
+            if name.startswith("seconds_after_")}
+        assert gen.action_events(), "no event names were derived at all"
+
+    def test_two_actions_on_one_enchantment_both_survive(self, tmp_path):
+        # THE ACTION COLUMNS ARE PART OF THE DUPLICATE KEY. Without them these
+        # two would read as one row written twice, because both have an empty
+        # stat, condition and scale.
+        out = gen.enchantment_effects(self.book(tmp_path, [
+            self.action_row(),
+            self.action_row({"Action": "class_resource"}),
+        ]))
+
+        assert [r["Action"] for r in out] == ["health", "class_resource"]
+
+    def test_two_action_rows_that_are_the_same_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="the same stat twice"):
+            gen.enchantment_effects(self.book(tmp_path, [
+                self.action_row(), self.action_row()]))
 
     def test_two_stats_on_one_enchantment_both_survive(self, tmp_path):
         out = gen.enchantment_effects(self.book(tmp_path, [
