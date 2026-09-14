@@ -109,3 +109,16 @@ Negative_Ranged_skills_deal_15_30_less_damage_at_close#2,Negative_Ranged_skills_
 Positive_When_your_class_resource_is_full_your_movement#1,Positive_When_your_class_resource_is_full_your_movement,movement_speed,increased,15.0,30.0,,class_resource_at_maximum,0.0,,0.0
 Negative_Your_ultimate_ability_cannot_be_used_unless_you#1,Negative_Your_ultimate_ability_cannot_be_used_unless_you,skill_locked,flat,1.0,1.0,Slot.Ultimate,health_at_or_above,50.0,,0.0
 Positive_Charge_skills_knock_down_enemies_they_hit_for_1#1,Positive_Charge_skills_knock_down_enemies_they_hit_for_1,knockdown_seconds,flat,1.0,2.0,Keyword.Charge,,0.0,,0.0
+Positive_Spell_critical_strikes_deal_50_100_increased_d#1,Positive_Spell_critical_strikes_deal_50_100_increased_d,crit_multiplier,increased,50.0,100.0,Type.Spell,,0.0,,0.0
+Positive_Spells_ignore_15_30_of_enemy_resistances#1,Positive_Spells_ignore_15_30_of_enemy_resistances,penetration,flat,15.0,30.0,Type.Spell,,0.0,,0.0
+Positive_Your_DoTs_ignore_20_40_of_enemy_resistances#1,Positive_Your_DoTs_ignore_20_40_of_enemy_resistances,penetration,flat,20.0,40.0,Keyword.DoT,,0.0,,0.0
+Negative_Armor_is_halved_against_ranged_attacks#1,Negative_Armor_is_halved_against_ranged_attacks,armor,more,-50.0,-50.0,,hit_is_ranged_attack,0.0,,0.0
+Positive_Your_armor_is_doubled_against_melee_attacks#1,Positive_Your_armor_is_doubled_against_melee_attacks,armor,more,100.0,100.0,,hit_is_melee_attack,0.0,,0.0
+Positive_While_moving_your_evasion_chance_is_increased_b#1,Positive_While_moving_your_evasion_chance_is_increased_b,evasion,increased,10.0,20.0,,while_moving,0.0,,0.0
+Positive_While_moving_your_DoTs_deal_20_40_increased_d#1,Positive_While_moving_your_DoTs_deal_20_40_increased_d,dot_damage,increased,20.0,40.0,,while_moving,0.0,,0.0
+Positive_While_below_50_HP_your_leech_is_doubled#1,Positive_While_below_50_HP_your_leech_is_doubled,life_leech,more,100.0,100.0,,health_below,50.0,,0.0
+Positive_While_moving_your_leech_is_increased_by_20_40#1,Positive_While_moving_your_leech_is_increased_by_20_40,life_leech,increased,20.0,40.0,,while_moving,0.0,,0.0
+Negative_Using_your_ultimate_ability_drains_20_40_of_yo#1,Negative_Using_your_ultimate_ability_drains_20_40_of_yo,added_health_cost,flat,20.0,40.0,Slot.Ultimate,,0.0,,0.0
+Negative_Melee_skills_cost_5_10_of_your_maximum_HP_to_u#1,Negative_Melee_skills_cost_5_10_of_your_maximum_HP_to_u,added_health_cost,flat,5.0,10.0,Type.Melee,,0.0,,0.0
+Negative_Summoned_minions_cost_10_20_of_your_maximum_HP#1,Negative_Summoned_minions_cost_10_20_of_your_maximum_HP,added_health_cost,flat,10.0,20.0,Keyword.Summon,,0.0,,0.0
+Negative_Strike_skills_cost_5_10_of_your_current_HP_to#1,Negative_Strike_skills_cost_5_10_of_your_current_HP_to,added_health_cost_of_current,flat,5.0,10.0,Type.Strike,,0.0,,0.0

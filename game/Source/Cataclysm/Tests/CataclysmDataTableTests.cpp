@@ -475,7 +475,7 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// The sentence states NO DURATION, which is what makes
 	// `class_resource_at_maximum` the honest reading; its neighbour saying "for
 	// 3 seconds" is deliberately still unwritten.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    110)
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    123)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
