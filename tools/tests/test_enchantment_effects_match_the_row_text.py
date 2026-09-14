@@ -74,13 +74,24 @@ MULTIPLIER = re.compile(
     re.IGNORECASE)
 
 #: A sentence worded as an increase, which is the `increased` bucket.
+#: THE VERB IN ALL THREE TENSES, not only the past participle. 13 enchantment
+#: sentences say "reduces" and 9 say "reduce" against 31 that say "reduced", and
+#: until 2026-09-14 not one of the first two had an effect row -- so this pattern
+#: accepted the meaning and refused two of its tenses, and nothing could notice.
+#: `Negative_Taking_a_hit_reduces_your_damage_by_5_10_for_3` is the row that
+#: exposed it. THIS WIDENS THE TENSE AND NOT THE MEANING: a sentence admitted by
+#: one form is admitted by the others for exactly the same reason, so the check
+#: is no weaker than it was.
 INCREASE = re.compile(
-    r"\b(increase|increased|reduced|faster|slower|longer|larger|gain|lose)\b",
+    r"\b(increase|increased|reduce|reduces|reduced|faster|slower|longer"
+    r"|larger|gain|lose)\b",
     re.IGNORECASE)
 
 #: A sentence that takes something away, which is where a negative value goes.
-TAKING = re.compile(r"\b(less|reduced|lose|slower|shorter|halved|slowed)\b",
-                    re.IGNORECASE)
+#: The same three tenses, for the same reason as above.
+TAKING = re.compile(
+    r"\b(less|reduce|reduces|reduced|lose|slower|shorter|halved|slowed)\b",
+    re.IGNORECASE)
 
 #: WORDS ADDED ON 2026-09-11 FOR THE RANGED ROWS, a labelled judgement recorded
 #: in docs/DECISIONS.md. "Gain 20%-50% movespeed" and "Lose 5%-15% attack speed"
@@ -269,8 +280,8 @@ JUDGED_NUMBERS = {
 #: stores and orphans every saved item carrying it. Issue #1799 carries that to
 #: the project owner. The sibling reword, Tyrant's Chains, was safe because its
 #: changed word sits past the 48-character cap, and it is written.
-AUTHORED_ROWS = 152
-AUTHORED_ENCHANTMENTS = 128
+AUTHORED_ROWS = 161
+AUTHORED_ENCHANTMENTS = 133
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's

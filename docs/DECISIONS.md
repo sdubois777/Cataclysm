@@ -304,6 +304,49 @@ and a hit either way. The evade and the block are exclusive of each other in pra
 an evaded blow was never blocked, but **nothing in the code relies on that**, so a future rule
 making both true at once needs none of it changed.
 
+### And two more, opened by a threshold crossing rather than by an action
+
+`seconds_after_resource_full` and `seconds_after_resource_empty` were added in the same
+change and are a different shape from the other three, because **what opens them is not
+something the character does.**
+
+| Name | What it asks | Value | Unknown reading |
+| :-- | :-- | :-- | :-- |
+| `seconds_after_resource_full` | did the class resource BECOME full within N seconds | seconds, 0 to 60 | refuses |
+| `seconds_after_resource_empty` | did the class resource REACH zero within N seconds | seconds, 0 to 60 | refuses |
+
+**AN EVENT IS NOT A STATE, AND THE PIPELINE NOW HAS BOTH FOR THE SAME POOL.**
+`class_resource_at_maximum` holds for as long as the bar is full.
+`seconds_after_resource_full` opens at the moment it fills and then ages while the bar sits
+there. A row saying "when your class resource is full, gain X **for 3 seconds**" wants the
+second; a row saying "while your class resource is full" wants the first. The stated duration
+is what tells them apart.
+
+**So the stamp is written on a CROSSING, not on a change.** `FOnAttributeChangeData` carries
+both the old and the new value, so a crossing is a comparison rather than something that has
+to be remembered. A stamp on every change would re-open the window on every point gained at
+maximum and it would never age at all — which no assertion about the window merely being open
+can tell apart, so the test advances time and then gains at maximum.
+
+**BOTH ATTRIBUTES DECIDE FULLNESS AND ONLY ONE OF THEM MOVES**, so the other is read at its
+current value and `Data.Attribute` says which. **A maximum falling to meet a static pool is a
+real case**, not a hypothetical: the Crowned thrall lowers a summoner's Fervour reserve.
+
+**THE STAMP APPLIES `ClassResourceAtMaximum`'S OWN RULE RATHER THAN A SECOND OPINION ON IT**,
+including its refusal of a maximum of zero. Without that the window and the condition would
+disagree about the same bar: the window would open, the condition would refuse it, the row
+would do nothing, and nothing would say why. Every enemy and every character built without a
+class resource sits at zero of zero, so this is the ordinary case rather than an edge.
+
+**EMPTY IS ONLY EVER THE POOL.** "Hits zero" is about what the character holds; a maximum of
+zero is a character with no pool at all, which is the thing the rule above already refuses.
+
+**They are stamped from the pawn rather than from the attribute set**, which is where the
+other five event windows are stamped, and that is deliberate. The class-resource attribute
+set's `PostGameplayEffectExecute` runs only for executed gameplay effects, and
+`UCataclysmFervour::Move` writes with `ApplyModToAttribute`, so the attribute set never sees
+the pool's real movement. The attribute-change delegate does, and
+[#1835](https://github.com/sdubois777/Cataclysm/pull/1835) is the test that shows it.
 ---
 
 ## 2026-09-14 — "Empower" is the buff the game already has, a crater's life is half the cadence that leaves it, and a comment naming one granter of that buff was wrong by three

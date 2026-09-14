@@ -3354,6 +3354,24 @@ CONDITIONS = {
     # Cataclysm type and is reached only when something actually got through.
     "seconds_after_hit_taken": (0.0, 60.0, "a number of seconds"),
 
+    # "When your class resource is full, gain 10%-20% damage reduction for 3
+    # seconds" is `seconds_after_resource_full` with 3. Issue #1815.
+    #
+    # AN EVENT, AND `class_resource_at_maximum` IS THE STATE. The two read the
+    # same pool and answer different questions: that one holds for as long as
+    # the bar is full, this one opens at the moment it fills and then ages while
+    # the bar sits there. A row whose sentence states a duration wants this one;
+    # without the duration it wants the other.
+    "seconds_after_resource_full": (0.0, 60.0, "a number of seconds"),
+
+    # "When your class resource hits zero, gain 20%-40% increased damage for 5
+    # seconds" is `seconds_after_resource_empty` with 5. Issue #1815.
+    #
+    # THE POOL REACHING ZERO, NOT A MAXIMUM OF ZERO. A maximum of zero is a
+    # character with no class resource at all, which is a different thing and is
+    # why the full condition refuses it.
+    "seconds_after_resource_empty": (0.0, 60.0, "a number of seconds"),
+
     # "a skill whose health cost is above 10% of your maximum health" is
     # `skill_health_cost_above` with 10. Issue #983.
     #

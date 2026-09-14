@@ -78,6 +78,8 @@ namespace
 		{ TEXT("seconds_after_summon"),         ECataclysmStatCondition::WithinSecondsOfSummon },
 		{ TEXT("seconds_after_dodge"),          ECataclysmStatCondition::WithinSecondsOfEvade },
 		{ TEXT("seconds_after_hit_taken"),      ECataclysmStatCondition::WithinSecondsOfHitTaken },
+		{ TEXT("seconds_after_resource_full"),  ECataclysmStatCondition::WithinSecondsOfClassResourceFull },
+		{ TEXT("seconds_after_resource_empty"), ECataclysmStatCondition::WithinSecondsOfClassResourceEmpty },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -404,6 +406,16 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// The same two rules again. Issue #1815.
 		return State.SecondsSinceHitTaken >= 0.0f
 			&& State.SecondsSinceHitTaken <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfClassResourceFull:
+		// The same two rules again. Issue #1815.
+		return State.SecondsSinceClassResourceFull >= 0.0f
+			&& State.SecondsSinceClassResourceFull <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfClassResourceEmpty:
+		// The same two rules again. Issue #1815.
+		return State.SecondsSinceClassResourceEmpty >= 0.0f
+			&& State.SecondsSinceClassResourceEmpty <= Value;
 
 	case ECataclysmStatCondition::SkillHealthCostAbovePercent:
 		// STRICTLY ABOVE, WHICH IS THE OPPOSITE BOUNDARY FROM EVERY OTHER

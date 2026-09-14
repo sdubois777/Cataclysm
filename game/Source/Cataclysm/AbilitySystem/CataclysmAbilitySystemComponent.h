@@ -1229,6 +1229,33 @@ public:
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;
 
+	/**
+	 * Record that this character's class resource has just BECOME full.
+	 * Issue #1815.
+	 *
+	 * CALLED ON A CROSSING, NOT ON A STATE, from
+	 * `ACataclysmPlayerCharacter::OnClassResourceChanged`. A pool sitting at
+	 * its maximum must not re-stamp, or the window never ages.
+	 *
+	 * AND THE MAXIMUM FALLING TO MEET A STATIC POOL COUNTS, because
+	 * `ClassResourceAtMaximum` compares the two readings rather than watching
+	 * one of them.
+	 */
+	void NoteClassResourceFull();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceClassResourceFull() const;
+
+	/**
+	 * Record that this character's class resource has just REACHED zero.
+	 * Issue #1815. A crossing, as above, and only ever the pool: a maximum of
+	 * zero is a character with no pool rather than an empty one.
+	 */
+	void NoteClassResourceEmptied();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceClassResourceEmptied() const;
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -1457,6 +1484,18 @@ protected:
 	 * Negative means never, as above.
 	 */
 	float LastHitTakenAtSeconds = -1.0f;
+
+	/**
+	 * When this character's class resource last became full, in world
+	 * seconds. Issue #1815. Negative means never, as above.
+	 */
+	float LastClassResourceFullAtSeconds = -1.0f;
+
+	/**
+	 * When this character's class resource last reached zero, in world
+	 * seconds. Issue #1815. Negative means never, as above.
+	 */
+	float LastClassResourceEmptyAtSeconds = -1.0f;
 
 	/**
 	 * When this character last moved, in world seconds. Issue #41, slice 2.

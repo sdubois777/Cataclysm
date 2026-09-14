@@ -776,14 +776,77 @@ void ACataclysmPlayerCharacter::OnMovementSpeedChanged(const FOnAttributeChangeD
 
 void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeData& Data)
 {
-	// THE SAME ANSWER AS ABOVE AND FOR THE SAME REASON. Issue #1825. What
-	// changed is not read: the speed is asked for again, so that a bonus
-	// conditioned on the pool -- which is never folded into the speed attribute
-	// -- reaches the movement component.
+	// THE SAME ANSWER AS ABOVE AND FOR THE SAME REASON. Issue #1825. The speed
+	// is asked for again, so that a bonus conditioned on the pool -- which is
+	// never folded into the speed attribute -- reaches the movement component.
 	//
-	// ONE HANDLER FOR BOTH THE POOL AND ITS MAXIMUM, because neither says
-	// anything this needs beyond "ask again".
+	// ONE HANDLER FOR BOTH THE POOL AND ITS MAXIMUM, because for the refresh
+	// neither says anything beyond "ask again".
 	RefreshMovementSpeed();
+
+	// AND THE TWO WINDOWS A THRESHOLD CROSSING OPENS. Issue #1815. "When your
+	// class resource hits zero, gain 20%-40% increased damage for 5 seconds"
+	// and "When your class resource is full, gain 10%-20% damage reduction for
+	// 3 seconds" are the rows.
+	//
+	// WHAT CHANGED IS READ HERE, WHICH THE REFRESH ABOVE DOES NOT NEED. These
+	// are EVENTS, not states: "when your class resource is full" opens a window
+	// at the moment the pool becomes full, and the window then ages while the
+	// pool sits there. A stamp written on every change would re-open it on
+	// every point gained at maximum, and the window would never age at all.
+	// `Data` carries both the old and the new value, so a crossing is a
+	// comparison rather than something that has to be remembered.
+	//
+	// THE OTHER ATTRIBUTE IS READ AT ITS CURRENT VALUE, because fullness
+	// depends on both and only one of them moved. Which one is `Data.Attribute`.
+	// THE MAXIMUM FALLING TO MEET A STATIC POOL IS A REAL CASE, not a
+	// hypothetical: the Crowned thrall lowers a summoner's Fervour reserve.
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!Cataclysm)
+	{
+		return;
+	}
+
+	using FResource = UCataclysmClassResourceAttributeSet;
+	const bool bPoolMoved = Data.Attribute == FResource::GetClassResourceAttribute();
+
+	const float HeldBefore = bPoolMoved
+		? Data.OldValue
+		: Cataclysm->GetNumericAttribute(FResource::GetClassResourceAttribute());
+	const float HeldNow = bPoolMoved
+		? Data.NewValue
+		: Cataclysm->GetNumericAttribute(FResource::GetClassResourceAttribute());
+	const float MaximumBefore = bPoolMoved
+		? Cataclysm->GetNumericAttribute(FResource::GetMaxClassResourceAttribute())
+		: Data.OldValue;
+	const float MaximumNow = bPoolMoved
+		? Cataclysm->GetNumericAttribute(FResource::GetMaxClassResourceAttribute())
+		: Data.NewValue;
+
+	// `ClassResourceAtMaximum`'S OWN RULE, NOT A SECOND OPINION ON IT. That
+	// predicate requires the maximum to be above zero, so a character with no
+	// pool at all is not "at maximum" however its two readings compare. If the
+	// stamp did not apply the same rule the window and the condition would
+	// disagree, and every character with no class resource would be handed a
+	// bonus written for a full one.
+	const auto IsFull = [](float Held, float Maximum)
+	{
+		return Maximum > 0.0f && Held >= Maximum;
+	};
+
+	if (!IsFull(HeldBefore, MaximumBefore) && IsFull(HeldNow, MaximumNow))
+	{
+		Cataclysm->NoteClassResourceFull();
+	}
+
+	// EMPTY IS ONLY EVER THE POOL, NOT THE MAXIMUM. "Hits zero" is about what
+	// the character holds; a maximum of zero is a character with no pool, which
+	// is a different thing and is already the reason `IsFull` refuses above.
+	if (bPoolMoved && HeldBefore > 0.0f && HeldNow <= 0.0f)
+	{
+		Cataclysm->NoteClassResourceEmptied();
+	}
 }
 
 void ACataclysmPlayerCharacter::RefreshMovementSpeed()

@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 // For the health a bonus can be made to depend on. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -552,6 +553,207 @@ bool FCataclysmPlayerSpeedFollowsTheRealResourcePath::RunTest(const FString&)
 
 	TestEqual(TEXT("and the character returns to its plain speed"),
 		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmClassResourceWindowsOpenOnCrossings,
+	"Cataclysm.Player.TheClassResourceWindowsOpenOnACrossingAndNotWhileThePoolSitsThere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmClassResourceWindowsOpenOnCrossings::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE TWO WINDOWS A THRESHOLD CROSSING OPENS. Issue #1815.
+	//
+	// AN EVENT IS NOT A STATE, AND THAT IS THE WHOLE TEST.
+	// `class_resource_at_maximum` holds for as long as the bar is full.
+	// `seconds_after_resource_full` opens at the moment it fills and then AGES
+	// while the bar sits there. A stamp written on every change rather than on
+	// a crossing would re-open the window on every point gained at maximum, and
+	// it would never age at all -- which no assertion about the window merely
+	// being open could tell apart.
+	//
+	// DRIVEN THROUGH `UCataclysmFervour`, the path play uses, for the reason the
+	// test above it gives: a delegate firing for `SetNumericAttributeBase` says
+	// nothing about `ApplyModToAttribute`.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Held =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourFromDamageAttribute(), 1.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(), 1.0f);
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(Held, 0.0f);
+
+	// THE PAWN IS WHAT CARRIES THE BINDING, so the windows cannot open without
+	// one even though the clocks live on the ability system component.
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	TestEqual(TEXT("an empty pool has opened no full window"),
+		AbilitySystem->SecondsSinceClassResourceFull(), -1.0f, 0.001f);
+	TestEqual(TEXT("and starting empty is not the pool REACHING zero"),
+		AbilitySystem->SecondsSinceClassResourceEmptied(), -1.0f, 0.001f);
+
+	// HALF FULL IS NOT FULL.
+	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/250.0f,
+									  FGameplayTagContainer());
+	if (!TestEqual(TEXT("the pool holds fifty"),
+				   AbilitySystem->GetNumericAttribute(Held), 50.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a half-full pool opens no window"),
+		AbilitySystem->SecondsSinceClassResourceFull(), -1.0f, 0.001f);
+
+	// AND FILLING IT OPENS ONE.
+	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/250.0f,
+									  FGameplayTagContainer());
+	if (!TestEqual(TEXT("the pool is now at its maximum"),
+				   AbilitySystem->GetNumericAttribute(Held), 100.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("filling the pool opens the full window, now"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+
+	// SITTING AT FULL DOES NOT RE-STAMP, WHICH IS THE ASSERTION THE WHOLE
+	// CROSSING RULE EXISTS FOR. Time is advanced, then a further gain arrives
+	// at a pool already at its maximum. A stamp written on every change would
+	// put the reading back to zero here; a crossing leaves it aged.
+	World->TimeSeconds += 2.0f;
+	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/100.0f,
+									  FGameplayTagContainer());
+	TestEqual(TEXT("a gain at maximum does not re-open the window"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 2.0f, 0.01f);
+
+	// SPENDING TO ZERO OPENS THE OTHER ONE.
+	UCataclysmFervour::RemoveForHealing(AbilitySystem, /*HealthRestored=*/500.0f,
+										FGameplayTagContainer());
+	if (!TestEqual(TEXT("the pool is empty"),
+				   AbilitySystem->GetNumericAttribute(Held), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("reaching zero opens the empty window, now"),
+		AbilitySystem->SecondsSinceClassResourceEmptied(), 0.0f, 0.001f);
+
+	// AND THE FULL WINDOW IS LEFT ALONE BY IT, still ageing from its own
+	// crossing rather than being cleared or re-stamped by an unrelated one.
+	TestEqual(TEXT("and the full window keeps ageing rather than being cleared"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 2.0f, 0.01f);
+
+	// AND REFILLING STAMPS AGAIN, so the crossing rule has not simply stopped
+	// the window ever opening a second time.
+	World->TimeSeconds += 5.0f;
+	UCataclysmFervour::GainFromDamage(AbilitySystem, /*HealthLost=*/500.0f,
+									  FGameplayTagContainer());
+	TestEqual(TEXT("refilling from empty opens the full window again"),
+		AbilitySystem->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+
+	// AND THE STATE THE PIPELINE IS HANDED CARRIES BOTH.
+	const FCataclysmStatConditions State = AbilitySystem->CurrentConditions();
+	TestEqual(TEXT("the pipeline is told the full reading"),
+		State.SecondsSinceClassResourceFull, 0.0f, 0.001f);
+	TestEqual(TEXT("and the empty reading"),
+		State.SecondsSinceClassResourceEmpty, 5.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAPoolThatCannotHoldAnythingIsNotFull,
+	"Cataclysm.Player.APoolWithAMaximumOfZeroOpensNoFullWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAPoolThatCannotHoldAnythingIsNotFull::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE STAMP MUST APPLY `ClassResourceAtMaximum`'S OWN RULE, NOT A SECOND
+	// OPINION ON IT. Issue #1815. That predicate refuses a maximum of zero, and
+	// says why: every enemy and every character built without a class resource
+	// sits at zero of zero, and each would otherwise satisfy a bonus written for
+	// a full bar.
+	//
+	// IF THE STAMP DID NOT AGREE, the window and the condition would disagree
+	// about the same pool: the window would open and the condition would refuse
+	// it, so the row would do nothing and nothing would say why.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Held =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	// A BAR THAT CANNOT HOLD ANYTHING. Held and maximum are both zero, so a
+	// stamp comparing only the two readings would call it full.
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(Held, 0.0f);
+	AbilitySystem->SetNumericAttributeBase(Maximum, 0.0f);
+
+	TestEqual(TEXT("a maximum of zero opens no full window"),
+		AbilitySystem->SecondsSinceClassResourceFull(), -1.0f, 0.001f);
+
+	// AND THE CONDITION AGREES, which is the point: the two read the same pool
+	// and must answer alike about it.
+	TestFalse(TEXT("and the condition refuses it too"),
+		UCataclysmStatPipeline::ConditionHolds(
+			ECataclysmStatCondition::ClassResourceAtMaximum,
+			/*Value=*/0.0f, AbilitySystem->CurrentConditions()));
 
 	return true;
 }

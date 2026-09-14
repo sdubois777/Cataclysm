@@ -529,6 +529,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceSummon = SecondsSinceSummonUsed();
 	State.SecondsSinceEvade = SecondsSinceEvaded();
 	State.SecondsSinceHitTaken = SecondsSinceHitTaken();
+	State.SecondsSinceClassResourceFull = SecondsSinceClassResourceFull();
+	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
 
 	// AND HOW MUCH OF THE CLASS RESOURCE IS IN HAND. Issue #980. The Masochist's
 	// Reciprocity keystone grows with it: "Your Retaliation damage is increased
@@ -1478,6 +1480,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	LastSummonAtSeconds = -1.0f;
 	LastEvadeAtSeconds = -1.0f;
 	LastHitTakenAtSeconds = -1.0f;
+	LastClassResourceFullAtSeconds = -1.0f;
+	LastClassResourceEmptyAtSeconds = -1.0f;
 	DamageToBleedingUntilSeconds = -1.0f;
 	DisplacementCount = 0;
 	LastDisplacedAtSeconds = -1.0f;
@@ -1674,6 +1678,46 @@ float UCataclysmAbilitySystemComponent::SecondsSinceHitTaken() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastHitTakenAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteClassResourceFull()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastClassResourceFullAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceClassResourceFull() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastClassResourceFullAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(
+		0.0f, World->GetTimeSeconds() - LastClassResourceFullAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteClassResourceEmptied()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastClassResourceEmptyAtSeconds = World->GetTimeSeconds();
+	}
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceClassResourceEmptied() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastClassResourceEmptyAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(
+		0.0f, World->GetTimeSeconds() - LastClassResourceEmptyAtSeconds);
 }
 
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)
