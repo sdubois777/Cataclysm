@@ -9,8 +9,9 @@ Forced March a share of maximum health a second from a player standing still,
 The Nihil's Embrace a point of every resistance for each stretch walked,
 Death's Embrace a share of every amount of healing for each stretch of time the
 player stays on the floor, the Field Medic heals other enemies and does not
-attack, Unstable Dimensions draws another modifier onto the floor, and Infernal
-Rain drops patches of burning ground.
+attack, Unstable Dimensions draws another modifier onto the floor, Infernal
+Rain drops patches of burning ground, and Mortal Decay saps health faster the
+deeper the floor is until the player reaps something.
 
 THAT LIST IS NOT A COUNT, AND IT USED TO BE ONE. This paragraph said "five of the
 117 rows" and named five; three rules had been added since without it moving, so
@@ -429,3 +430,84 @@ def test_deaths_embrace_says_it_stacks_cuts_healing_and_resets_on_a_floor():
         "healing through healing_received_reduction, and a row naming a rate "
         "wants a Less multiplier on health_regen instead; check the rule "
         "against the row and update docs/DECISIONS.md.")
+
+
+def test_mortal_decay_states_no_number_of_its_own():
+    """All four of its constants are judgements: its row states no number.
+
+    IF THE ROW EVER STATES ONE, this fails, so the C++ constants are checked
+    against it and `docs/DECISIONS.md` stops calling them judgements.
+    """
+    words = flat(rows()["Death_Mortal_Decay"]["Description"])
+
+    assert "%" not in words, words
+    assert not [c for c in words if c.isdigit()], (
+        "The Mortal Decay row now states a number. Check "
+        "MortalDecayPercentPerSecondPerFloor, MortalDecayMostPercentPerSecond, "
+        "MortalDecaySlowPercent and MortalDecaySlowSeconds against it and "
+        "update docs/DECISIONS.md.")
+
+
+def test_mortal_decay_says_it_grows_with_progress_and_that_reaping_slows_it():
+    """Three wordings the rule rests on, and the one that is load-bearing.
+
+    "AS THEY PROGRESS THROUGH THE DUNGEON" IS THE FLOOR NUMBER, which is a
+    reading of a standing rule in `CLAUDE.md` rather than a judgement: depth and
+    reward are the same axis and depth and time are not, so a rule keyed to the
+    walk would take less from a player who had bought faster walking at the same
+    depth. `ACataclysmDungeonGameMode::StepMortalDecay` reads
+    `FCataclysmFloorBrief::FloorNumber` for that reason. If the row stops saying
+    this, that reading is wrong.
+
+    "REAPING ENEMIES" NAMES WHO DOES THE KILLING, which is the one place this
+    listener differs from Withered Ground's: that row says "Enemies leave
+    patches ... on death" and takes every death, and this one requires the
+    player to have dealt the killing blow.
+
+    "TEMPORARILY SLOW" IS WHY A KILL CANNOT BUY IMMUNITY. The slow is a share
+    below 100, and `MortalDecaySlowPercent` carries a static assertion saying so.
+    """
+    words = flat(rows()["Death_Mortal_Decay"]["Description"]).lower()
+
+    assert "as they progress through the dungeon" in words, words
+    assert "reaping enemies" in words, words
+    assert "temporarily slow" in words, words
+
+    walk = [word for word in ("walk", "walking", "metres", "meters", "distance",
+                              "seconds", "minute")
+            if word in words]
+    assert not walk, (
+        f"The Mortal Decay row now names {walk}. Its rate is keyed to the floor "
+        "number, which was a reading of CLAUDE.md's depth-versus-time rule and "
+        "not a judgement; re-read it against the row and update "
+        "docs/DECISIONS.md.")
+
+
+def test_mortal_decays_constants_still_describe_a_gradual_decay_a_kill_slows():
+    """The two relationships the rule's shape depends on, checked where CI looks.
+
+    WHY THIS DUPLICATES TWO `static_assert`s. Both live in
+    `CataclysmDungeonModifierEffects.h` and both are compile-time, so the only
+    thing that can fire them is a C++ build — and the build job is not a required
+    check on a pull request. The fast suite is. So a change to these four
+    constants that breaks the rule's shape would merge on a green tick with the
+    assertion never evaluated; this is what stops that.
+
+    IT DOES NOT DUPLICATE THE THIRD. The assertion tying the ceiling to
+    `SingularityWellsPercentPerSecond` is about how this row compares to another
+    rule's, which is an argument rather than a shape, and it is stated beside the
+    constant where somebody changing it will read it.
+    """
+    per_floor = constant("MortalDecayPercentPerSecondPerFloor")
+    most = constant("MortalDecayMostPercentPerSecond")
+    slow = constant("MortalDecaySlowPercent")
+
+    assert per_floor < most, (
+        f"Mortal Decay reaches its ceiling on floor 1 ({per_floor} a floor "
+        f"against a ceiling of {most}), so 'gradually ... as they progress "
+        "through the dungeon' would describe nothing a player could observe.")
+    assert 0.0 < slow < 100.0, (
+        f"Mortal Decay's kill reward is {slow}%. At 100 a kill stops the "
+        "affliction outright, which the row does not ask for -- it says "
+        "'temporarily slow the effect' -- and at 0 the row's second sentence "
+        "does nothing.")

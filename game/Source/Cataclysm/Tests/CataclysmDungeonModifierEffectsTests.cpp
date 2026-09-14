@@ -95,6 +95,12 @@ namespace CataclysmDungeonModifierEffectsTest
 	const FName WitheredGround(TEXT("Famine_Withered_Ground"));
 
 	/**
+	 * And the one that saps health faster the deeper the floor is, which a kill
+	 * slows. Issues #1786 and #41.
+	 */
+	const FName MortalDecay(TEXT("Death_Mortal_Decay"));
+
+	/**
 	 * A player the dungeon game mode's beat can find, and the creature-free parts
 	 * of a real one: a player state holding the ability system component, a
 	 * controller, and a possessed pawn.
@@ -2453,6 +2459,361 @@ bool FCataclysmWitheredGroundTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("a second death leaves a second patch, uncapped"),
 			  CountPatches(), 2);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMortalDecayRateTest,
+	"Cataclysm.DungeonModifierEffects.MortalDecaySapsFasterWithDepthAndStopsAtItsCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMortalDecayRateTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE RULE ON ITS OWN, WITH NUMBERS TYPED IN. Issues #1786 and #41. No world,
+	// no floor and no player, which is what lets this check floor 150 as cheaply
+	// as floor 1.
+
+	// NO FLOOR TO READ SAPS NOTHING. Zero and below are "no floor", the same
+	// answer `ShareTakenOnFloor` gives the two per-floor rules.
+	TestEqual(TEXT("floor 0 saps nothing"),
+			  Effects::MortalDecayPercentPerSecond(0, false), 0.0f, 0.0001f);
+	TestEqual(TEXT("a negative floor saps nothing"),
+			  Effects::MortalDecayPercentPerSecond(-5, false), 0.0f, 0.0001f);
+
+	// FLOOR 1 ALREADY COUNTS, which is the judgement `ShareTakenOnFloor` carries
+	// and the reason this rule borrows it rather than repeating the multiply.
+	TestEqual(TEXT("floor 1 saps one floor's worth"),
+			  Effects::MortalDecayPercentPerSecond(1, false),
+			  Effects::MortalDecayPercentPerSecondPerFloor, 0.0001f);
+	TestEqual(TEXT("floor 5 saps five floors' worth"),
+			  Effects::MortalDecayPercentPerSecond(5, false),
+			  5.0f * Effects::MortalDecayPercentPerSecondPerFloor, 0.0001f);
+
+	// THE CEILING IS REACHED, AND IT IS REACHED WHERE THE CONSTANTS SAY. Asserting
+	// the capped value alone would pass for a rule that returned the ceiling at
+	// every depth, so the floor below it is checked as well and has to be under.
+	const int32 CeilingFloor = FMath::RoundToInt(
+		Effects::MortalDecayMostPercentPerSecond
+		/ Effects::MortalDecayPercentPerSecondPerFloor);
+	TestEqual(TEXT("the ceiling arrives at the floor the constants put it on"),
+			  Effects::MortalDecayPercentPerSecond(CeilingFloor, false),
+			  Effects::MortalDecayMostPercentPerSecond, 0.0001f);
+	TestTrue(TEXT("and one floor higher is still below it"),
+			 Effects::MortalDecayPercentPerSecond(CeilingFloor - 1, false)
+				 < Effects::MortalDecayMostPercentPerSecond);
+	TestEqual(TEXT("and a very deep floor is held at the ceiling"),
+			  Effects::MortalDecayPercentPerSecond(150, false),
+			  Effects::MortalDecayMostPercentPerSecond, 0.0001f);
+
+	// A KILL SLOWS IT RATHER THAN STOPPING IT. The row says "temporarily slow the
+	// effect of the affliction", so the slowed rate has to be smaller than the
+	// full one and larger than nothing.
+	const float FullOnFive = Effects::MortalDecayPercentPerSecond(5, false);
+	const float SlowedOnFive = Effects::MortalDecayPercentPerSecond(5, true);
+	TestTrue(TEXT("a kill slows the decay"), SlowedOnFive < FullOnFive);
+	TestTrue(TEXT("and does not stop it"), SlowedOnFive > 0.0f);
+	TestEqual(TEXT("by the share the constant states"), SlowedOnFive,
+			  FullOnFive * (1.0f - Effects::MortalDecaySlowPercent / 100.0f),
+			  0.0001f);
+
+	// THE CAP IS TAKEN BEFORE THE SLOW, AND THIS IS THE ASSERTION THAT SAYS SO.
+	// The two orders agree at every depth up to the ceiling floor -- both give
+	// the uncapped rate halved -- and disagree past it, so the depth checked here
+	// is deliberately well beyond it rather than at a round number near it.
+	// Slowing first and capping second would leave this floor at the ceiling,
+	// which is the whole rate, so reaping would buy the player nothing.
+	const int32 DeepFloor = CeilingFloor * 3;
+	TestEqual(TEXT("deep down, the full rate is the ceiling"),
+			  Effects::MortalDecayPercentPerSecond(DeepFloor, false),
+			  Effects::MortalDecayMostPercentPerSecond, 0.0001f);
+	TestEqual(TEXT("and a kill still halves it that deep"),
+			  Effects::MortalDecayPercentPerSecond(DeepFloor, true),
+			  Effects::MortalDecayMostPercentPerSecond
+				  * (1.0f - Effects::MortalDecaySlowPercent / 100.0f),
+			  0.0001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMortalDecayBeatTest,
+	"Cataclysm.DungeonModifierEffects.AFloorCarryingMortalDecaySapsThePlayersHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMortalDecayBeatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// A FLOOR DEEP ENOUGH TO BE AT THE CEILING, so the expected loss is a figure
+	// this test can state without restating the depth arithmetic the rate test
+	// above already checks.
+	const int32 CeilingFloor = FMath::RoundToInt(
+		Effects::MortalDecayMostPercentPerSecond
+		/ Effects::MortalDecayPercentPerSecondPerFloor);
+	Mode->DungeonModifiers = {MortalDecay};
+	Mode->FloorNumber = CeilingFloor;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Mortal Decay"),
+			 Mode->FloorBrief.Modifiers.Contains(MortalDecay));
+
+	// THE DEPTH THE TEST MEANT TO BUILD, ASSERTED RATHER THAN ASSUMED. Every
+	// figure below is worked out from it, so a floor number that did not arrive
+	// would make them all agree with a rule doing the wrong thing.
+	TestEqual(TEXT("and it is the floor this test asked for"),
+			  Mode->FloorBrief.FloorNumber, CeilingFloor);
+
+	const float Maximum = Player.Read(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the player has some maximum health"), Maximum > 0.0f))
+	{
+		return false;
+	}
+
+	// ONE BEAT, MEASURED WITH THE WORLD CLOCK STANDING STILL. `Mode->Tick` does
+	// not move `World->TimeSeconds`, so no timer fires between the two reads and
+	// the regeneration a character's BeginPlay starts cannot pollute the figure.
+	// `CataclysmTestWorld::RunClock` would, which is why it is not used here.
+	const float Before = Player.Read(Vital::GetHealthAttribute());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const float After = Player.Read(Vital::GetHealthAttribute());
+
+	const float Expected = Maximum
+		* Effects::MortalDecayPercentPerSecond(CeilingFloor, false) / 100.0f
+		* ACataclysmDungeonGameMode::SecondsBetweenWaveChecks;
+	TestTrue(TEXT("the beat sapped some health"), After < Before);
+	TestEqual(TEXT("and it sapped a beat's share of the floor's rate"),
+			  Before - After, Expected, 0.01f);
+
+	// A SHALLOWER FLOOR SAPS LESS, WHICH IS THE ROW'S "AS THEY PROGRESS THROUGH
+	// THE DUNGEON". Floor 1 against the ceiling floor, both read off the same
+	// player on the same beat.
+	Mode->DungeonModifiers = {MortalDecay};
+	Mode->FloorNumber = 1;
+	Mode->BuildFloor();
+	TestEqual(TEXT("the shallow floor is floor 1"), Mode->FloorBrief.FloorNumber, 1);
+
+	const float ShallowBefore = Player.Read(Vital::GetHealthAttribute());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const float ShallowAfter = Player.Read(Vital::GetHealthAttribute());
+	TestTrue(TEXT("floor 1 saps something"), ShallowAfter < ShallowBefore);
+	TestTrue(TEXT("and less than the deep floor did"),
+			 ShallowBefore - ShallowAfter < Before - After);
+
+	// AND A FLOOR WITHOUT THE ROW SAPS NOTHING, which is what says the beat reads
+	// the floor's modifier list rather than draining everybody. Starvation is the
+	// other row so the floor is not simply empty.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = CeilingFloor;
+	Mode->BuildFloor();
+	TestFalse(TEXT("the other floor does not carry Mortal Decay"),
+			  Mode->FloorBrief.Modifiers.Contains(MortalDecay));
+
+	// TWO BEATS, AND THE READING IS TAKEN BETWEEN THEM. `BuildFloor` writes the
+	// floor's brief and never touches the player -- `ApplyFloorRulesToPlayer` is
+	// called by `GoToFloor` and not by it, which was checked rather than assumed
+	// -- so nothing here is settling and the first beat is not a settling beat.
+	// It is here so the assertion covers two CONSECUTIVE beats on the new floor
+	// rather than the first one, which is the stronger claim and costs a line.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const float Elsewhere = Player.Read(Vital::GetHealthAttribute());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestEqual(TEXT("a floor without Mortal Decay saps nothing"),
+			  Player.Read(Vital::GetHealthAttribute()), Elsewhere, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMortalDecayReapTest,
+	"Cataclysm.DungeonModifierEffects.ReapingAnEnemySlowsMortalDecayAndOtherDeathsDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMortalDecayReapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE GAME MODE'S OWN StartPlay BINDS THE DEATH HANDLER, and a test world
+	// never calls it, so the binding is made the way StartPlay makes it. The boss
+	// cleanse test above records the same requirement.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the death announcer exists"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const int32 CeilingFloor = FMath::RoundToInt(
+		Effects::MortalDecayMostPercentPerSecond
+		/ Effects::MortalDecayPercentPerSecondPerFloor);
+	Mode->DungeonModifiers = {MortalDecay};
+	Mode->FloorNumber = CeilingFloor;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the floor carries Mortal Decay"),
+			 Mode->FloorBrief.Modifiers.Contains(MortalDecay));
+	TestEqual(TEXT("and it is the floor this test asked for"),
+			  Mode->FloorBrief.FloorNumber, CeilingFloor);
+
+	// WHAT ONE BEAT COSTS, MEASURED THE SAME WAY EVERY TIME. The world clock does
+	// not move inside this, so nothing regenerates between the two reads and the
+	// only thing that can move the health attribute is the rule.
+	const auto SappedOnOneBeat = [&Player, Mode]() -> float
+	{
+		const float Before = Player.Read(Vital::GetHealthAttribute());
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		return Before - Player.Read(Vital::GetHealthAttribute());
+	};
+
+	const float AtFullRate = SappedOnOneBeat();
+	if (!TestTrue(TEXT("the decay saps something to begin with"), AtFullRate > 0.0f))
+	{
+		return false;
+	}
+
+	// A CREATURE THE PLAYER KILLS SLOWS IT. Killed with a real blow so the
+	// announcement travels the path the game uses, through
+	// `UCataclysmSkillEffects::MarkDead`, and so the last blow on record names
+	// the player as the killer -- which is what this rule asks about.
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Reaped = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(600.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a creature to reap spawned"), Reaped))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Reaped, 100000.0f);
+	if (!TestTrue(TEXT("the player's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Reaped)))
+	{
+		return false;
+	}
+
+	const float AfterReaping = SappedOnOneBeat();
+	TestTrue(TEXT("reaping slows the decay"), AfterReaping < AtFullRate);
+	TestTrue(TEXT("and does not stop it"), AfterReaping > 0.0f);
+	TestEqual(TEXT("by the share the constant states"), AfterReaping,
+			  AtFullRate * (1.0f - Effects::MortalDecaySlowPercent / 100.0f),
+			  0.01f);
+
+	// THE SLOW IS TEMPORARY, WHICH IS THE ROW'S OWN WORD. Past the window the
+	// rate is back where it was. The world clock moves here, which may regenerate
+	// the player, so the measurement starts from a reading taken afterwards.
+	CataclysmTestWorld::RunClock(World, Effects::MortalDecaySlowSeconds + 1.0f);
+	const float WindowGone = SappedOnOneBeat();
+	TestEqual(TEXT("past the window the decay is back at its full rate"),
+			  WindowGone, AtFullRate, 0.01f);
+
+	// AND A DEATH THE PLAYER DID NOT CAUSE BUYS NOTHING. The row says "the player
+	// must give death his due souls by reaping enemies", so a creature that dies
+	// to something else is not a soul the player gave.
+	//
+	// A CREATURE THE PLAYER HAS NEVER STRUCK, WHICH IS WHAT MAKES THIS A CONTROL.
+	// The death notice names the last blow ON RECORD, so a creature the player
+	// had hit and failed to kill would still name them as its killer; this one
+	// has no blow on record at all, and `ReduceHealthDirectly` writes the health
+	// attribute rather than dealing a blow, so it does not put one there.
+	ACataclysmEnemyCharacter* Bystander =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(), FVector(1200.0f, 0.0f, 0.0f),
+			FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a bystanding creature spawned"), Bystander))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ReduceHealthDirectly(Bystander, Bystander, 100000.0f);
+	if (!TestTrue(TEXT("the bystander died without the player"),
+				  UCataclysmSkillEffects::IsDead(Bystander)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a death the player did not cause leaves the rate alone"),
+			  SappedOnOneBeat(), AtFullRate, 0.01f);
+
+	// AND TWO KILLS BUY ONE WINDOW, NOT TWO. `NoteDeathForMortalDecay` sets the
+	// stamp to its own length FROM NOW rather than adding to what is there, so a
+	// player who fells a pack does not bank minutes of slowed decay from one
+	// fight. Nothing checked that until this arm: the two spellings differ only
+	// past the first window's end, which every assertion above is inside.
+	//
+	// BOTH KILLED BEFORE THE CLOCK MOVES, so the two windows would be exactly
+	// stacked if they stacked at all -- one length against two is the widest gap
+	// the wait below can be asked to tell apart.
+	ACataclysmEnemyCharacter* First = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(1800.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	ACataclysmEnemyCharacter* Second = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(2400.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a first creature for the pair spawned"), First)
+		|| !TestNotNull(TEXT("a second creature for the pair spawned"), Second))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, First, 100000.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Second, 100000.0f);
+	if (!TestTrue(TEXT("both of the pair died"),
+				  UCataclysmSkillEffects::IsDead(First)
+					  && UCataclysmSkillEffects::IsDead(Second)))
+	{
+		return false;
+	}
+
+	// THE WINDOW IS OPEN, ASSERTED BEFORE THE WAIT. Without this the assertion
+	// after the wait passes for a pair of kills that opened no window at all,
+	// which is the reading it is least able to tell from the one it is testing.
+	const float WhileThePairsWindowRuns = SappedOnOneBeat();
+	TestTrue(TEXT("the pair opened a window"),
+			 WhileThePairsWindowRuns < AtFullRate);
+
+	CataclysmTestWorld::RunClock(World, Effects::MortalDecaySlowSeconds + 1.0f);
+	TestEqual(TEXT("and one window's wait ends it, so two kills did not stack"),
+			  SappedOnOneBeat(), AtFullRate, 0.01f);
 
 	return true;
 }

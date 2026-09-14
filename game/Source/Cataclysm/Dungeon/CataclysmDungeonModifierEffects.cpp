@@ -19,6 +19,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::NihilsEmbraceKey =
 	TEXT("Void_The_Nihil_s_Embrace");
 const TCHAR* UCataclysmDungeonModifierEffects::FieldMedicKey =
 	TEXT("War_Field_Medic");
+const TCHAR* UCataclysmDungeonModifierEffects::MortalDecayKey =
+	TEXT("Death_Mortal_Decay");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -140,13 +142,19 @@ namespace
 
 ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName RowKey)
 {
-	// SEVEN ARE BUILT. Slice 2 added Forced March and The Nihil's Embrace, slice
-	// 5 Death's Embrace, issue #1648 the Field Medic, and Withered Ground is
-	// the seventh. Each does everything
-	// its row describes -- The Nihil's Embrace including its cleanse on a high
-	// tier enemy's defeat, Death's Embrace including the reset on a new floor,
-	// and the Field Medic including "it does not attack" -- so none is
-	// "partly".
+	// THE ROWS BELOW ARE FULLY BUILT: each does everything its row describes --
+	// The Nihil's Embrace including its cleanse on a high tier enemy's defeat,
+	// Death's Embrace including the reset on a new floor, the Field Medic
+	// including "it does not attack", and Mortal Decay including the slowing a
+	// kill buys -- so none of them is "partly". Count the arms rather than
+	// reading a number here.
+	//
+	// THIS COMMENT USED TO WRITE THE COUNT OUT AND IT WENT STALE TWICE: it said
+	// SIX until Withered Ground made it seven, then SEVEN until Mortal Decay
+	// made it eight. Issue #1786. Correcting the number restores it for exactly
+	// one commit, which is why the number is gone rather than updated -- the
+	// same reasoning the struct comment in the header now carries, and the same
+	// as `FCataclysmPlayerFloorEffects`'s "THE FIELDS BELOW THE FIRST THREE".
 	//
 	// THE FIELD MEDIC WAS `Partly` UNTIL ISSUE #1680, and it was marked so
 	// deliberately: the healing worked and nothing in the game could stop a
@@ -156,7 +164,7 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 	if (RowKey == FName(StarvationKey) || RowKey == FName(DehydrationKey)
 		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey)
 		|| RowKey == FName(DeathsEmbraceKey) || RowKey == FName(FieldMedicKey)
-		|| RowKey == FName(WitheredGroundKey))
+		|| RowKey == FName(WitheredGroundKey) || RowKey == FName(MortalDecayKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -272,7 +280,7 @@ float UCataclysmDungeonModifierEffects::InfernalRainDamagePerSecond(
 
 TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 {
-	// EIGHT, AND TWO WERE MISSING BEFORE ISSUE #1677. This list and
+	// TWO KEYS WERE MISSING FROM HERE BEFORE ISSUE #1677. This list and
 	// `BuiltStateOf` above are two statements of the same fact, and nothing
 	// made them agree: `DeathsEmbraceKey` was returned as Built and was absent
 	// from here. The test that reads these walks THIS list and asks
@@ -281,9 +289,12 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 	// second test walks the table instead, which is the direction that catches
 	// an absence.
 	//
-	// THE COUNT IN THIS COMMENT IS THE KIND OF THING THAT GOES STALE. It is here
-	// because it made the #1677 gap visible to a reader, and the two tests are
-	// what actually hold it. Count the entries rather than trusting the word.
+	// THIS COMMENT USED TO OPEN WITH THE COUNT AND WARN THAT COUNTS GO STALE,
+	// AND IT WENT STALE ANYWAY -- it said EIGHT while the list below held ten.
+	// A warning attached to a number does not maintain the number, so the
+	// number is gone rather than corrected. Issue #1786. What holds this list
+	// honest is the pair of automation tests named above, one walking each
+	// direction, and not a word here.
 	return {
 		FName(StarvationKey),
 		FName(DehydrationKey),
@@ -294,6 +305,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfernalRainKey),
 		FName(SingularityWellsKey),
 		FName(WitheredGroundKey),
+		FName(MortalDecayKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -384,6 +396,30 @@ float UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
 	// things would have to be wrong at once for a player to be unhealable.
 	return FMath::Clamp(Stacks, 0, DeathsEmbraceMostStacks)
 		* DeathsEmbracePercentPerStack;
+}
+
+float UCataclysmDungeonModifierEffects::MortalDecayPercentPerSecond(
+	int32 FloorNumber, bool bSlowedByAKill)
+{
+	// THE DEPTH AND NOT THE WALK, AND THE SHARED PER-FLOOR ARITHMETIC RATHER
+	// THAN A SECOND COPY OF IT. `ShareTakenOnFloor` already answers "N floors at
+	// this rate, capped", refuses a floor of zero or below, and carries the
+	// judgement that floor 1 counts. Repeating the multiply here would be a
+	// second place for those to be decided.
+	const float Rate = ShareTakenOnFloor(MortalDecayPercentPerSecondPerFloor,
+										 MortalDecayMostPercentPerSecond,
+										 FloorNumber);
+	if (!bSlowedByAKill)
+	{
+		return Rate;
+	}
+
+	// THE SLOW IS TAKEN OFF THE CAPPED RATE, WHICH IS THE ONLY ORDER THAT KEEPS
+	// THE ROW'S SECOND SENTENCE TRUE. Slowing the uncapped rate and capping
+	// afterwards would leave any floor past 20 at the ceiling either way -- 0.1
+	// times 20 halved is exactly the cap -- so reaping would buy nothing at
+	// precisely the depths where the row asks it to buy the most.
+	return Rate * (1.0f - MortalDecaySlowPercent / 100.0f);
 }
 
 FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
