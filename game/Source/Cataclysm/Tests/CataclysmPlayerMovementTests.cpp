@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 // For the health a bonus can be made to depend on. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -299,6 +300,121 @@ bool FCataclysmPlayerSpeedFollowsAHealthCondition::RunTest(const FString&)
 
 	TestEqual(TEXT("and back to its plain speed when healed"),
 		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsAFullClassResource,
+	"Cataclysm.Player.MovementSpeedFollowsABonusThatDependsOnTheClassResource",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerSpeedFollowsAFullClassResource::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// "WHEN YOUR CLASS RESOURCE IS FULL YOUR MOVEMENT SPEED IS INCREASED BY
+	// 15%-30%" -- a shipped enchantment row that never reached the character.
+	// Issue #1825.
+	//
+	// NOTHING IS CALLED BY HAND HERE, AND THAT IS THE WHOLE POINT. The sibling
+	// test above drives `HealthChanged()` itself, because health reaches the
+	// pawn through an explicit call chain that a test world never runs; it
+	// therefore proves the pawn responds WHEN TOLD, and would keep passing with
+	// every binding deleted. The class resource is a gameplay attribute, so
+	// writing it fires the change delegate in a test world exactly as in play.
+	// This test writes the attribute and reads the movement component, with no
+	// call in between, so it fails when nothing is listening -- which is the
+	// defect.
+	//
+	// AND IT IS THE ONLY TEST THAT CAN. `UCataclysmStatPipeline` resolves this
+	// modifier correctly with or without the binding, so every pipeline test
+	// passes either way. What was broken was the delivery of a correct answer
+	// to the thing that moves the character.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// A HUNDRED POINT POOL HOLDING FORTY, so the condition is false to begin
+	// with and the first assertion is about a bonus that is genuinely refused
+	// rather than one that is simply absent.
+	const FGameplayAttribute Held =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+	AbilitySystem->SetNumericAttributeBase(Maximum, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(Held, 40.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+
+	FCataclysmStatModifier Conditional;
+	Conditional.Bucket = ECataclysmStatBucket::Increased;
+	Conditional.Source = ECataclysmModifierSource::GearAffix;
+	Conditional.Value = 20.0f;
+	Conditional.Condition = ECataclysmStatCondition::ClassResourceAtMaximum;
+	Inputs.Modifiers.Add(Conditional);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	TestEqual(TEXT("a pool that is not full leaves the speed alone"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// THE POOL FILLS AND NOTHING WRITES THE SPEED ATTRIBUTE.
+	AbilitySystem->SetNumericAttributeBase(Held, 100.0f);
+
+	TestEqual(TEXT("filling the pool speeds the character up by a fifth"),
+		Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
+
+	// AND SPENDING IT TAKES THE BONUS BACK. A bonus that came on and never went
+	// off would be one a player keeps for the rest of a run by filling the bar
+	// once.
+	AbilitySystem->SetNumericAttributeBase(Held, 40.0f);
+
+	TestEqual(TEXT("and spending it returns the character to its plain speed"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// AND THE MAXIMUM COUNTS TOO, WHICH THE HELD VALUE ALONE CANNOT SHOW.
+	// `ClassResourceAtMaximum` compares the two, so a maximum falling to meet a
+	// held value that never moved makes the pool full. Binding only the pool
+	// would pass every assertion above and fail this one. The Crowned thrall
+	// lowering a summoner's Fervour reserve is that case in play.
+	AbilitySystem->SetNumericAttributeBase(Maximum, 40.0f);
+
+	TestEqual(TEXT("and a maximum falling to meet the pool fills it too"),
+		Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
 
 	return true;
 }

@@ -774,6 +774,18 @@ void ACataclysmPlayerCharacter::OnMovementSpeedChanged(const FOnAttributeChangeD
 	RefreshMovementSpeed();
 }
 
+void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeData& Data)
+{
+	// THE SAME ANSWER AS ABOVE AND FOR THE SAME REASON. Issue #1825. What
+	// changed is not read: the speed is asked for again, so that a bonus
+	// conditioned on the pool -- which is never folded into the speed attribute
+	// -- reaches the movement component.
+	//
+	// ONE HANDLER FOR BOTH THE POOL AND ITS MAXIMUM, because neither says
+	// anything this needs beyond "ask again".
+	RefreshMovementSpeed();
+}
+
 void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 {
 	const UAbilitySystemComponent* AbilitySystem = GetAbilitySystemComponent();
@@ -1565,6 +1577,45 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	SpeedChanged.Remove(MovementSpeedChangedHandle);
 	MovementSpeedChangedHandle = SpeedChanged.AddUObject(
 		this, &ACataclysmPlayerCharacter::OnMovementSpeedChanged);
+
+	// AND THE CLASS RESOURCE, BECAUSE A BONUS CAN DEPEND ON IT AND NOTHING
+	// WROTE THE SPEED WHEN IT MOVED. Issue #1825. "When your class resource is
+	// full your movement speed is increased by 15%-30%" is a shipped
+	// enchantment row that never reached the character: a conditional bonus is
+	// deliberately not folded into the attribute, so the delegate above does
+	// not fire, and `HealthChanged` is the only other thing that re-asks.
+	//
+	// THE SAME ANSWER #959 GAVE FOR HEALTH, REACHED A DIFFERENT WAY. Health has
+	// no attribute delegate at all -- `UCataclysmVitalAttributeSet` calls
+	// `NotifyHealthChanged` from each of its own write sites, and that ends at
+	// `HealthChanged` below. The class resource does not need that machinery,
+	// because it IS a gameplay attribute and the pattern directly above already
+	// watches one.
+	//
+	// BOTH ATTRIBUTES, NOT ONLY WHAT THE CHARACTER HOLDS.
+	// `ClassResourceAtMaximum` compares the two readings, so the condition also
+	// turns true when the MAXIMUM falls to meet a held value that never moved.
+	// That is not hypothetical: the Crowned thrall lowers a summoner's Fervour
+	// reserve, which is exactly that shape.
+	//
+	// EVERY TIME-DEPENDENT CONDITION IS STILL UNSERVED BY THIS, and no amount
+	// of binding will serve it. A delegate can only watch an attribute, and a
+	// window a clock opened has none -- nothing writes anything when one shuts,
+	// it simply stops being true. Issue #1821 carries that and the five
+	// enchantment rows waiting on it.
+	FOnGameplayAttributeValueChange& ResourceChanged =
+		ASC->GetGameplayAttributeValueChangeDelegate(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute());
+	ResourceChanged.Remove(ClassResourceChangedHandle);
+	ClassResourceChangedHandle = ResourceChanged.AddUObject(
+		this, &ACataclysmPlayerCharacter::OnClassResourceChanged);
+
+	FOnGameplayAttributeValueChange& ResourceMaximumChanged =
+		ASC->GetGameplayAttributeValueChangeDelegate(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute());
+	ResourceMaximumChanged.Remove(MaxClassResourceChangedHandle);
+	MaxClassResourceChangedHandle = ResourceMaximumChanged.AddUObject(
+		this, &ACataclysmPlayerCharacter::OnClassResourceChanged);
 
 	// BOUND FIRST, THEN READ. A change arriving between the two would otherwise
 	// be missed. The read answers zero rather than failing when the component

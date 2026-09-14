@@ -659,6 +659,17 @@ private:
 	 *  OnRep_PlayerState, and on a listen server both happen. */
 	FDelegateHandle MovementSpeedChangedHandle;
 
+	/** Re-asks for the movement speed when the class resource pool or its
+	 *  maximum moves, so a bonus conditioned on the pool being full reaches the
+	 *  movement component. Issue #1825. Bound in InitAbilityActorInfo. */
+	void OnClassResourceChanged(const FOnAttributeChangeData& Data);
+
+	/** Two handles for one handler, because the condition reads two attributes
+	 *  and each delegate hands back its own. Replaced rather than added for the
+	 *  reason the handle above is. */
+	FDelegateHandle ClassResourceChangedHandle;
+	FDelegateHandle MaxClassResourceChangedHandle;
+
 	/**
 	 * Recomputes the stat line and refills the ability slots after a change
 	 * to what is worn.
