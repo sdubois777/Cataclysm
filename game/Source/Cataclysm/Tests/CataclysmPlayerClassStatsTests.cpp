@@ -1316,6 +1316,16 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 		{TEXT("block_chance"),
 		 UCataclysmCombatAttributeSet::GetBlockChanceAttribute()},
 
+		// ALL THREE, THOUGH ONLY dot_damage IS ASKED FOR BY A ROW. The other two
+		// were changed for consistency inside one function, so no row-level test
+		// exercises them and this control is the only thing behind them.
+		{TEXT("dot_damage"),
+		 UCataclysmCombatAttributeSet::GetDotDamageAttribute()},
+		{TEXT("dot_duration"),
+		 UCataclysmCombatAttributeSet::GetDotDurationAttribute()},
+		{TEXT("dot_frequency"),
+		 UCataclysmCombatAttributeSet::GetDotFrequencyAttribute()},
+
 		// THE ONE ALREADY WIRED, AS A POSITIVE CONTROL ON THE CONTROL. Critical
 		// strike chance was moved to an ask under issue #959 and nothing has
 		// complained since, so if this row ever fails the fault is in this test
@@ -1354,7 +1364,7 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 	// left to `UE_ARRAY_COUNT` alone so that emptying the list is a failure
 	// rather than a silent pass. Counted from the list above, not incremented.
 	TestEqual(TEXT("every stat listed was checked"),
-			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 7);
+			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 10);
 	return true;
 }
 
