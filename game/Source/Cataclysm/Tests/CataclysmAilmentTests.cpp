@@ -805,9 +805,6 @@ CATACLYSM_AILMENT_TEST(FCataclysmAilmentSkillTagsTest,
 	return true;
 }
 
-#undef CATACLYSM_AILMENT_TEST
-
-
 // ---------------------------------------------------------------------------
 // The magnitude stats. Issue #1767.
 // ---------------------------------------------------------------------------
@@ -950,5 +947,7 @@ CATACLYSM_AILMENT_TEST(FCataclysmCrippleMagnitudeStatReachesTheEnemyTest,
 
 	return true;
 }
+
+#undef CATACLYSM_AILMENT_TEST
 
 #endif // WITH_AUTOMATION_TESTS
