@@ -80,6 +80,19 @@ def constant(name: str, header: str = "") -> float:
     found = re.search(rf"\b{re.escape(name)}\s*=\s*([0-9]+(?:\.[0-9]+)?)f\s*;", text)
     assert found, f"{name} is not declared in {where.name}"
     return float(found.group(1))
+def whole_number(name: str, header: str = "") -> int:
+    """A `static constexpr int32` by name, from the effects header by default.
+
+    SEPARATE FROM `constant` ABOVE BECAUSE THE SUFFIX DIFFERS. That one requires
+    the `f` a float literal carries, which is what stops it matching a count by
+    accident; a whole number has none, so it needs its own reader rather than a
+    loosened one.
+    """
+    where = REPO_ROOT / header if header else EFFECTS_HEADER
+    text = where.read_text(encoding="utf-8")
+    found = re.search(rf"\b{re.escape(name)}\s*=\s*(-?[0-9]+)\s*;", text)
+    assert found, f"{name} is not declared as a whole number in {where.name}"
+    return int(found.group(1))
 
 
 def test_the_key_search_finds_keys_in_text_built_to_hold_them():
@@ -1124,3 +1137,91 @@ def test_hellfire_damage_is_read_off_the_creature_and_not_written_down():
         "is read off the creature rather than written down -- see HellfireKey in "
         "CataclysmDungeonModifierEffects.h and InfernalBrandExplosionHits in "
         "CataclysmEnemyModifiers.h. A constant makes every creature explode alike.")
+def test_brand_of_the_aggressor_row_still_states_the_count_the_rule_uses():
+    """The first dungeon rule whose count is READ OFF THE ROW rather than judged.
+
+    `Pestilence_Spore_Clouds` and `Demonic_Hellfire` both had to answer a
+    "chance" their rows left open. This row states its own: "At 20 stacks, you
+    erupt". So the constant is a reading, and this is what holds the reading to
+    the thing read.
+
+    IF THE ROW'S COUNT MOVES, THE RULE'S MUST. Nothing in C++ would notice: the
+    automation tests build every expectation from the constant, so they would
+    agree with themselves at any value.
+    """
+    words = flat(rows()["Demonic_Brand_of_the_Aggressor"]["Description"])
+    stacks = whole_number("BrandStacksToErupt")
+
+    assert f"At {stacks} stacks" in words, (
+        f"The row no longer says 'At {stacks} stacks'. BrandStacksToErupt in "
+        "CataclysmDungeonModifierEffects.h is read off this sentence, so move it "
+        "to whatever the row now says. " + words)
+
+
+def test_brand_of_the_aggressor_row_still_states_the_share_the_nova_deals():
+    """The other figure the row states, held the same way.
+
+    "deals 20% of your max HP". DEALT AND NOT TAKEN: the nova goes through the
+    ordinary area-blow delivery, so armour and resistances take their cut and
+    what reaches health is less. The row says what is dealt and the rule deals it.
+    """
+    words = flat(rows()["Demonic_Brand_of_the_Aggressor"]["Description"])
+    share = constant("BrandNovaMaxHealthPercent")
+
+    assert f"deals {share:g}% of your max HP" in words, (
+        f"The row no longer says 'deals {share:g}% of your max HP'. "
+        "BrandNovaMaxHealthPercent in CataclysmDungeonModifierEffects.h is read "
+        "off this sentence. " + words)
+
+
+def test_brand_of_the_aggressor_row_still_names_the_players_own_blow():
+    """Which direction the rule reads the blow announcement in.
+
+    THE LISTENER TESTS `Notice.Attacker` WHERE WASTING SICKNESS TESTS
+    `Notice.Target`, and the only reason is this sentence: "Hitting an enemy
+    applies a stack ... to you". A row that moved to being hit would leave the
+    rule reading the announcement backwards, and nothing in C++ would say so.
+    """
+    words = flat(rows()["Demonic_Brand_of_the_Aggressor"]["Description"]).lower()
+
+    assert "hitting an enemy" in words, words
+    assert "to you" in words, words
+
+
+def test_brand_of_the_aggressor_row_still_aims_the_nova_at_the_players_side():
+    """Who the nova reaches, which is a different answer from the row beside it.
+
+    "to you and nearby allies". `Demonic_Hellfire` names nobody and therefore
+    catches everyone, through `FindEveryoneInLine`; this row names its two sides,
+    so the rule damages the player and asks `FindAlliesInSphere` for the rest.
+
+    IF THIS ROW EVER NAMES ENEMIES, the rule is asking the wrong search and this
+    fails first.
+    """
+    words = flat(rows()["Demonic_Brand_of_the_Aggressor"]["Description"]).lower()
+
+    assert "to you and nearby allies" in words, words
+    assert "enemies" not in words, (
+        "Demonic_Brand_of_the_Aggressor now names enemies. Its nova asks "
+        "FindAlliesInSphere because the row named only the player's own side -- "
+        "see NoteHitForBrandOfTheAggressor in CataclysmDungeonGameMode.h. " + words)
+
+
+def test_brand_of_the_aggressor_nova_radius_is_still_a_derivation():
+    """The one figure the row does not state, held as a derivation not a number.
+
+    300 IS THIS PROJECT'S SETTLED ANSWER for a thing at a point on the floor, and
+    the nova's radius is declared as `InfernalRainRadiusCm` so a later change to
+    one carries the other. This is the same shape as
+    `test_hellfire_reach_is_still_declared_as_the_floors_own_radius` above.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    declared = re.search(
+        r"BrandNovaRadiusCm\s*=\s*InfernalRainRadiusCm\s*;", text)
+
+    assert declared, (
+        "Brand of the Aggressor's nova radius is no longer declared as "
+        "InfernalRainRadiusCm. It was copied as a conclusion because 300 is what "
+        "this project uses for a thing at a point on the floor. If it is now a "
+        "figure of its own, say why in docs/DECISIONS.md.")

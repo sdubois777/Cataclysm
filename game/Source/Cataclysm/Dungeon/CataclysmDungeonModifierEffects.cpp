@@ -36,6 +36,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::SporeCloudsKey =
 	TEXT("Pestilence_Spore_Clouds");
 const TCHAR* UCataclysmDungeonModifierEffects::HellfireKey =
 	TEXT("Demonic_Hellfire");
+const TCHAR* UCataclysmDungeonModifierEffects::BrandOfTheAggressorKey =
+	TEXT("Demonic_Brand_of_the_Aggressor");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -186,7 +188,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(ArtilleryStrikeKey)
 		|| RowKey == FName(HallowedGroundfallKey)
 		|| RowKey == FName(SporeCloudsKey)
-		|| RowKey == FName(HellfireKey))
+		|| RowKey == FName(HellfireKey)
+		|| RowKey == FName(BrandOfTheAggressorKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -335,6 +338,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(HallowedGroundfallKey),
 		FName(SporeCloudsKey),
 		FName(HellfireKey),
+		FName(BrandOfTheAggressorKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -968,4 +972,38 @@ float UCataclysmDungeonModifierEffects::HellfireDamage(float CreatureAttackDamag
 	}
 
 	return CreatureAttackDamage * HellfireExplosionHits;
+}
+
+int32 UCataclysmDungeonModifierEffects::BrandStacksAfterHit(int32 Stacks,
+														   bool bBrands)
+{
+	if (!bBrands)
+	{
+		return Stacks;
+	}
+
+	const int32 Raised = Stacks + 1;
+
+	// THE COUNT THAT ERUPTS IS THE COUNT THAT CLEARS. See the header: left at the
+	// threshold, every later blow would erupt again.
+	return Raised >= BrandStacksToErupt ? 0 : Raised;
+}
+
+bool UCataclysmDungeonModifierEffects::BrandErupts(int32 StacksBeforeThisBlow)
+{
+	// ASKED OF THE COUNT BEFORE THE BLOW, because the count after it has already
+	// been cleared by the line above and cannot answer this. The caller raises
+	// and asks in either order only if the two read the same field, which is the
+	// bug this signature prevents.
+	return StacksBeforeThisBlow + 1 >= BrandStacksToErupt;
+}
+
+float UCataclysmDungeonModifierEffects::BrandNovaDamage(float MaximumHealth)
+{
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaximumHealth * BrandNovaMaxHealthPercent / 100.0f;
 }

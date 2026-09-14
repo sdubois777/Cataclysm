@@ -322,6 +322,10 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the row whose deaths explode. Issues #1820 and #41. */
 	const FName Hellfire(UCataclysmDungeonModifierEffects::HellfireKey);
 
+	/** And the row that counts the player's own blows. Issues #1820 and #41. */
+	const FName BrandOfTheAggressor(
+		UCataclysmDungeonModifierEffects::BrandOfTheAggressorKey);
+
 	/**
 	 * A creature that can be killed where it is put and hits for a stated amount.
 	 *
@@ -6055,6 +6059,418 @@ bool FCataclysmHellfireRollTest::RunTest(const FString& Parameters)
 				 TEXT("while a death whose roll explodes does take health: %.1f"),
 				 AfterRefused - AfterExploded),
 			 AfterRefused - AfterExploded > 0.0f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Brand_of_the_Aggressor: "Hitting an enemy applies a stack of 'Brand'
+// to you. At 20 stacks, you erupt in a fire nova that deals 20% of your max HP
+// to you and nearby allies." Issues #1820 and #41.
+//
+// WHAT MAKES THESE THREE MEASURABLE AT ALL: the player's own blows never touch
+// the player's health. So reading the player's health across a run of the
+// player's blows isolates the nova exactly, with nothing else moving it.
+//
+// WHAT IS NOT COVERED, SAID HERE RATHER THAN IMPLIED. The listener's guard on
+// `FCataclysmHitNotice::Landed` is covered by its arithmetic --
+// `BrandStacksAfterHit(n, false)` answers n -- and not by a world case, because
+// making a blow land for exactly nothing through the real pipeline is not
+// something these tests can arrange reliably.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBrandCountTest,
+	"Cataclysm.DungeonModifierEffects.TwentyLandedBlowsBrandThePlayerAndTheTwentiethErupts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBrandCountTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE ARITHMETIC FIRST, WHICH NEEDS NO WORLD.
+	TestEqual(TEXT("a blow that does not brand leaves the count alone"),
+			  Effects::BrandStacksAfterHit(7, false), 7);
+	TestEqual(TEXT("a blow that brands raises it by one"),
+			  Effects::BrandStacksAfterHit(7, true), 8);
+	TestEqual(TEXT("and the count that erupts returns to zero"),
+			  Effects::BrandStacksAfterHit(Effects::BrandStacksToErupt - 1, true), 0);
+	TestFalse(TEXT("one blow short does not erupt"),
+			  Effects::BrandErupts(Effects::BrandStacksToErupt - 2));
+	TestTrue(TEXT("the blow that reaches the threshold does"),
+			 Effects::BrandErupts(Effects::BrandStacksToErupt - 1));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces blows"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	// A CREATURE WITH FAR MORE HEALTH THAN FORTY BLOWS CAN TAKE, because it has
+	// to survive every blow this test lands: a creature that died partway would
+	// stop the count and read as the rule failing.
+	ACataclysmEnemyCharacter* Dummy = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(200.0f, 0.0f, 0.0f),
+		10'000'000.0f);
+	if (!TestNotNull(TEXT("a creature to hit"), Dummy))
+	{
+		return false;
+	}
+
+	const auto HitTheCreature = [this, &Player, Dummy]() -> bool
+	{
+		const float Landed =
+			UCataclysmSkillEffects::ApplyHit(Player.Character, Dummy, 50.0f);
+		return Landed > 0.0f;
+	};
+	const auto PlayerHealth = [&Player]()
+	{
+		return Player.AbilitySystem->GetNumericAttribute(
+			Vital::GetHealthAttribute());
+	};
+
+	// A FLOOR WITHOUT THE ROW FIRST. Without this control every assertion below
+	// would also pass for a rule that branded on every floor.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the plain floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	const float BeforeControl = PlayerHealth();
+	for (int32 Blow = 0; Blow < Effects::BrandStacksToErupt; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("control blow %d landed"), Blow + 1),
+					  HitTheCreature()))
+		{
+			return false;
+		}
+	}
+	if (!TestEqual(
+			TEXT("twenty blows on a floor without the row take no health at all"),
+			PlayerHealth(), BeforeControl, 0.01f))
+	{
+		return false;
+	}
+
+	// NOW THE FLOOR THAT CARRIES IT, AND THIS ROW ALONE.
+	Mode->DungeonModifiers = {BrandOfTheAggressor};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the branded floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the floor carries Brand of the Aggressor"),
+				  Mode->FloorBrief.Modifiers.Contains(BrandOfTheAggressor)))
+	{
+		return false;
+	}
+
+	// ONE SHORT OF THE THRESHOLD TAKES NOTHING. This is the assertion that stops
+	// the test passing for a rule that erupts on every blow.
+	const float BeforeFirst = PlayerHealth();
+	for (int32 Blow = 0; Blow < Effects::BrandStacksToErupt - 1; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("blow %d landed"), Blow + 1),
+					  HitTheCreature()))
+		{
+			return false;
+		}
+	}
+	if (!TestEqual(
+			FString::Printf(TEXT("%d blows take nothing"),
+							Effects::BrandStacksToErupt - 1),
+			PlayerHealth(), BeforeFirst, 0.01f))
+	{
+		return false;
+	}
+
+	// AND THE ONE THAT REACHES IT ERUPTS.
+	if (!TestTrue(TEXT("the blow that reaches the threshold landed"),
+				  HitTheCreature()))
+	{
+		return false;
+	}
+	const float AfterFirst = PlayerHealth();
+	AddInfo(FString::Printf(
+		TEXT("player health %.1f -> %.1f on blow %d"),
+		BeforeFirst, AfterFirst, Effects::BrandStacksToErupt));
+	if (!TestTrue(FString::Printf(TEXT("the nova takes health: %.1f"),
+								  BeforeFirst - AfterFirst),
+				  BeforeFirst - AfterFirst > 0.0f))
+	{
+		return false;
+	}
+
+	// AND THE COUNT STARTS AGAIN, WHICH IS THE HALF A SINGLE ERUPTION CANNOT
+	// SHOW. Left sitting at the threshold, every later blow would erupt.
+	for (int32 Blow = 0; Blow < Effects::BrandStacksToErupt - 1; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("second-round blow %d landed"), Blow + 1),
+					  HitTheCreature()))
+		{
+			return false;
+		}
+	}
+	const float AfterNineteenMore = PlayerHealth();
+	if (!TestEqual(
+			TEXT("the blows after an eruption take nothing until the next threshold"),
+			AfterNineteenMore, AfterFirst, 0.01f))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the second threshold blow landed"), HitTheCreature()))
+	{
+		return false;
+	}
+	const float AfterSecond = PlayerHealth();
+	AddInfo(FString::Printf(TEXT("and %.1f -> %.1f on the second eruption"),
+							AfterNineteenMore, AfterSecond));
+	TestTrue(FString::Printf(TEXT("and the count erupts a second time: %.1f"),
+							 AfterNineteenMore - AfterSecond),
+			 AfterNineteenMore - AfterSecond > 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBrandNovaShareTest,
+	"Cataclysm.DungeonModifierEffects.TheEruptionTakesTheShareOfMaximumHealthTheRowStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBrandNovaShareTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE ARITHMETIC FIRST. A player whose maximum is unknown takes nothing,
+	// which is the guard that stops a nova being logged as landing for nothing.
+	TestEqual(TEXT("an unknown maximum gives no nova"),
+			  Effects::BrandNovaDamage(0.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("and nor does a negative one"),
+			  Effects::BrandNovaDamage(-10.0f), 0.0f, 0.01f);
+	TestEqual(TEXT("and the share is the row's own twenty percent"),
+			  Effects::BrandNovaDamage(1000.0f),
+			  1000.0f * Effects::BrandNovaMaxHealthPercent / 100.0f, 0.01f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	ACataclysmEnemyCharacter* Dummy = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(200.0f, 0.0f, 0.0f),
+		10'000'000.0f);
+	if (!TestNotNull(TEXT("a creature to hit"), Dummy))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {BrandOfTheAggressor};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the branded floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const float Maximum =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(FString::Printf(TEXT("the player has a maximum to take a share "
+									   "of: %.1f"), Maximum),
+				  Maximum > 0.0f))
+	{
+		return false;
+	}
+	const float Stated = Effects::BrandNovaDamage(Maximum);
+
+	const float Before = Player.AbilitySystem->GetNumericAttribute(
+		Vital::GetHealthAttribute());
+	for (int32 Blow = 0; Blow < Effects::BrandStacksToErupt; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("blow %d landed"), Blow + 1),
+					  UCataclysmSkillEffects::ApplyHit(
+						  Player.Character, Dummy, 50.0f) > 0.0f))
+		{
+			return false;
+		}
+	}
+	const float Lost = Before - Player.AbilitySystem->GetNumericAttribute(
+		Vital::GetHealthAttribute());
+
+	AddInfo(FString::Printf(
+		TEXT("maximum %.1f, the row's twenty percent is %.1f dealt, and %.1f "
+			 "reached health"),
+		Maximum, Stated, Lost));
+
+	// DEALT AND NOT TAKEN, WHICH IS WHY THIS IS A RANGE. The nova goes through
+	// the ordinary area-blow delivery, so armour and resistances take their cut
+	// on the way in; what reaches health is at most the stated figure and more
+	// than nothing. Asserting equality here would be asserting the player has no
+	// defences. `ACircleBurnsWhoeverIsStandingInIt` needed the same shape.
+	TestTrue(FString::Printf(TEXT("the nova takes health: %.1f"), Lost),
+			 Lost > 0.0f);
+	TestTrue(FString::Printf(
+				 TEXT("and no more than the share the row states: %.1f of %.1f"),
+				 Lost, Stated),
+			 Lost <= Stated + 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBrandWhoseBlowTest,
+	"Cataclysm.DungeonModifierEffects.OnlyThePlayersOwnBlowsOnACreatureBrand",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBrandWhoseBlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	ACataclysmEnemyCharacter* Dummy = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(200.0f, 0.0f, 0.0f),
+		10'000'000.0f);
+	// A SECOND CREATURE, PLACED BY DISTANCE ALONG X, WHICH IS WHAT THIS HELPER
+	// TAKES. It exists because a creature spawned bare lands blows worth nothing:
+	// the helper gives it the attack damage that makes its blow real.
+	ACataclysmEnemyCharacter* Striker = SpawnCreatureThatCanHit(World, -200.0f);
+	if (!TestNotNull(TEXT("a creature to hit"), Dummy)
+		|| !TestNotNull(TEXT("and one that can hit back"), Striker))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {BrandOfTheAggressor};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the branded floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto PlayerHealth = [&Player]()
+	{
+		return Player.AbilitySystem->GetNumericAttribute(
+			Vital::GetHealthAttribute());
+	};
+	const auto HitTheCreature = [this, &Player, Dummy]() -> bool
+	{
+		return UCataclysmSkillEffects::ApplyHit(
+				   Player.Character, Dummy, 50.0f) > 0.0f;
+	};
+
+	// HALF THE THRESHOLD IN CREATURE BLOWS ON THE PLAYER. Half, not the whole
+	// threshold: twenty of them would erupt AND clear under a broken rule, which
+	// looks the same from outside as never branding at all.
+	const int32 Half = Effects::BrandStacksToErupt / 2;
+	for (int32 Blow = 0; Blow < Half; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("the creature's blow %d landed"), Blow + 1),
+					  UCataclysmSkillEffects::ApplyHit(
+						  Striker, Player.Character, 5.0f) > 0.0f))
+		{
+			return false;
+		}
+	}
+	if (!TestFalse(TEXT("the player survived being struck"),
+				   UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+
+	// NOW HALF THE THRESHOLD OF THE PLAYER'S OWN. If the creature's blows had
+	// branded, the count would reach the threshold here and erupt.
+	const float BeforeOwn = PlayerHealth();
+	for (int32 Blow = 0; Blow < Half; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("the player's blow %d landed"), Blow + 1),
+					  HitTheCreature()))
+		{
+			return false;
+		}
+	}
+	if (!TestEqual(
+			TEXT("blows the creature landed on the player do not brand them"),
+			PlayerHealth(), BeforeOwn, 0.01f))
+	{
+		return false;
+	}
+
+	// AND THE REST OF THE PLAYER'S OWN DO ERUPT, which is what makes the line
+	// above worth anything: a rule that branded nobody would satisfy it too.
+	for (int32 Blow = 0; Blow < Effects::BrandStacksToErupt - Half - 1; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("the player's later blow %d landed"),
+									  Blow + 1),
+					  HitTheCreature()))
+		{
+			return false;
+		}
+	}
+	const float BeforeThreshold = PlayerHealth();
+	if (!TestTrue(TEXT("the threshold blow landed"), HitTheCreature()))
+	{
+		return false;
+	}
+	const float AfterThreshold = PlayerHealth();
+	AddInfo(FString::Printf(
+		TEXT("after %d creature blows and %d of the player's own, health %.1f -> "
+			 "%.1f on the threshold blow"),
+		Half, Effects::BrandStacksToErupt, BeforeThreshold, AfterThreshold));
+	TestTrue(FString::Printf(
+				 TEXT("while the player's own reach the threshold and erupt: %.1f"),
+				 BeforeThreshold - AfterThreshold),
+			 BeforeThreshold - AfterThreshold > 0.0f);
 
 	return true;
 }

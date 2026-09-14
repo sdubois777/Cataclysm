@@ -2,6 +2,104 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A row that states its own figures leaves one judgement, a rule and a comment can disagree about what the player is shown, and a count in prose went stale the way counts do
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules), `CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat, its
+blow listeners and the per-floor reset),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Demonic_Brand_of_the_Aggressor`, weight 20.0: "Hitting an enemy applies a stack of 'Brand' to
+you. At 20 stacks, you erupt in a fire nova that deals 20% of your max HP to you and nearby
+allies."
+
+**It states both of its figures**, so the rule judges neither. Twenty stacks and twenty percent
+of maximum health are read off the sentence, and two checks in
+`test_dungeon_modifier_rules_are_the_rows.py` hold each constant against the words it was read
+from — the first dungeon rule here whose numbers can be checked that way at all, because
+`Pestilence_Spore_Clouds` and `Demonic_Hellfire` both had to answer a "chance" their rows left
+open.
+
+**That is not unique and the first draft of the header comment said it was.** Measured across
+the seventeen rows built before this one: `Famine_Starvation` states two ("reduced by 1%. Up to
+60%") and `Celestial_Edict_of_Silence` states two ("Every 90 seconds ... for 15 seconds"). What
+is true is narrower: **the only figure this rule decides is the nova's radius**, one fewer than
+either rule before it.
+
+### Dealt and not taken, which is why the test asserts a range
+
+The nova goes through the ordinary area-blow delivery — `bIsArea` true so it cannot be evaded,
+`bIsDamageOverTime` false so an energy shield absorbs it as it absorbs any blow. **Armour and
+resistances take their cut on the way in, so what reaches health is less than twenty percent.**
+The row says what is *dealt*; the rule deals it. Asserting equality in the test would be
+asserting the player has no defences.
+
+### The nova reaches the player's own side, which is a different answer from the row beside it
+
+`Demonic_Hellfire` names nobody and therefore catches everyone. This row names its two sides —
+"to you and nearby allies" — so the rule asks `UCataclysmTargeting::FindAlliesInSphere`.
+
+**That search excludes the actor it is asked on behalf of.** Its shared gather step drops
+`Actor == Instigator`, so the player is damaged by a separate call. **A rule written without
+that call would erupt and never touch the player**, which is the row's main promise.
+
+**The ally half answers an empty list today and that is not a fault.** The player's only
+possible allies are minions, a placeholder under
+[#340](https://github.com/sdubois777/Cataclysm/issues/340). The call is there because the row
+asks for it.
+
+### The count goes with the floor, and that is a judgement
+
+The row says nothing about floors. `ApplyFloorRulesToPlayer` clears it, because a part-built
+nova carried across a loading screen would fire on a floor the player had not yet hit anything
+on. `Death_Death_s_Embrace` remains the only one of these rules whose reset the data asks for
+rather than the code needing it — checked, not assumed.
+
+**The count returns to zero on the blow that erupts** rather than sitting at the threshold;
+left there, every later blow would erupt again. One automation test lands nineteen more blows
+after an eruption and asserts they take nothing, which is the half a single eruption cannot
+show.
+
+### Nothing tells the player the count, and a comment said otherwise
+
+The project owner's standing preference, relayed through the coordinating session, is that a
+stack count the player cannot see is half a rule — so the question was measured rather than
+assumed.
+
+**Measured 2026-09-14: outside `game/Source/Cataclysm/Dungeon/`, nothing in `game/Source` reads
+a floor rule's stack count.** What a player gets is the floor panel's line for the row, which
+carries the row's description word for word, so they can read that twenty blows erupt. The
+number itself is shown nowhere, for this rule or for `Famine_Wasting_Sickness`.
+
+**`WastingSicknessStacks`'s own comment said "the player is told how many they have".** Nothing
+tells them. It is corrected here, quoting what it replaces.
+
+**The two rows are not alike in what that costs**, and the difference is recorded rather than
+acted on. Wasting Sickness's stacks lower maximum health and mana, so its count is visible in
+the bar even though the number is not. **This one changes nothing at all until the twentieth
+blow.** Building it to match exactly was the instruction; that the match leaves this rule with
+no warning at all is noted on #1820.
+
+### A count in prose, stale the way counts in prose go stale
+
+`OnSomethingWasHit`'s comment read **"because two further rows of
+`game/Data/DungeonModifiers.csv` describe a blow"**. Reading the table, the rows that want that
+announcement are `Celestial_Holy_Repercussions`, `Demonic_Brand_of_the_Aggressor` and
+`Pestilence_Contagious_Touch` — **three, not two**.
+
+**Note what happens if nothing is said: building this rule leaves two, so the sentence becomes
+correct again by accident**, for a different reason than it was written for. It is replaced with
+the row names, which is what `CataclysmDungeonModifierEffects.cpp` already does where it says
+"Count the arms rather than reading a number here."
+
+
+---
+
 ## 2026-09-14 — An enchantment may DO something and not only change a number, a restore of health is healing, and a drain is a cost by rule rather than by path
 
 **Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h` (three columns on the
