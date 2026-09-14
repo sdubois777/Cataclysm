@@ -4,6 +4,7 @@
 // For asking the pipeline what a rate is worth, rather than reading the
 // gameplay attribute it was folded into. Issue #1038.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For emptying Fervour when health comes back. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
 // For a patch of burning ground that heals whoever left it faster while they
@@ -22,6 +23,10 @@ const TCHAR* UCataclysmRegeneration::HealthRegenStat = TEXT("health_regen");
 const TCHAR* UCataclysmRegeneration::ManaRegenStat = TEXT("mana_regen");
 const TCHAR* UCataclysmRegeneration::EnergyShieldRegenStat =
 	TEXT("energy_shield_regen");
+const TCHAR* UCataclysmRegeneration::ShieldRechargesWhileDamagedStat =
+	TEXT("shield_recharges_while_damaged");
+const TCHAR* UCataclysmRegeneration::ManaRegenRestoresShieldStat =
+	TEXT("mana_regen_restores_shield");
 
 void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 								   const FGameplayAttribute& Pool,
@@ -269,25 +274,84 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 			  SecondsInStep),
 		  Regeneration);
 
+	// THE MANA RATE IS KEPT, BECAUSE A KEYSTONE BELOW READS IT. Issue #1515.
+	// The Long Game puts half of it into the energy shield, and asking for it a
+	// second time down there would run the whole stat pipeline twice for one
+	// number.
+	const float ManaRate =
+		RateOf(ManaRegenStat,
+			   UCataclysmVitalAttributeSet::GetManaRegenAttribute());
+
 	TopUp(*AbilitySystem, UCataclysmVitalAttributeSet::GetManaAttribute(),
 		  UCataclysmVitalAttributeSet::GetMaxManaAttribute(),
-		  GainPerStep(
-			  RateOf(ManaRegenStat,
-					 UCataclysmVitalAttributeSet::GetManaRegenAttribute()),
-			  SecondsInStep));
+		  GainPerStep(ManaRate, SecondsInStep));
+
+	// WHETHER THIS CHARACTER HOLDS EITHER OF THE TWO KEYSTONES THAT CHANGE HOW
+	// THE SHIELD RECHARGES. Issue #1515. Both are flags and both read zero for
+	// every character that has not bought the node, so everything below behaves
+	// exactly as it did for all of them.
+	const auto HoldsFlag = [&](const TCHAR* Stat,
+							   const FGameplayAttribute& Attribute) -> bool
+	{
+		// THE ATTRIBUTE-SET CHECK IS NOT OPTIONAL. Reading an attribute whose
+		// set the component does not hold raises an engine ensure rather than
+		// answering zero, and a creature carries no combat set at all.
+		if (!Cataclysm || !Cataclysm->HasAttributeSetForAttribute(Attribute))
+		{
+			return false;
+		}
+		return Cataclysm->StatForSkill(FName(Stat), FGameplayTagContainer(),
+									   AbilitySystem->GetNumericAttribute(
+										   Attribute)) > 0.0f;
+	};
 
 	// THE SHIELD WAITS AND THE OTHER TWO DO NOT. Three seconds since the
 	// character last took damage, restarted by taking damage again inside the
 	// window, and damage over time restarts it as well. All three rules are
 	// stated in the Energy Shield section of docs/Cataclysm_GDD_v2.md.
-	if (ShieldMayRefill(SecondsSinceLastDamage))
-	{
-		TopUp(*AbilitySystem,
-			  UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
-			  UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
-			  GainPerStep(
-				  RateOf(EnergyShieldRegenStat,
-						 UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute()),
-				  SecondsInStep));
-	}
+	//
+	// ABLATIVE SUPPLIES A RATE INSIDE THAT WAIT RATHER THAN SHORTENING IT.
+	// `Ritualist_keystone_c_kB`: "Your Energy Shield recharges while you are
+	// taking damage, at half its usual rate." A shorter wait would recharge at
+	// the FULL rate sooner, which is a different and stronger thing than the row
+	// says. So the wait is untouched, `ShieldMayRefill` still answers the
+	// question it always answered -- five assertions call it directly -- and
+	// this scale decides what the character gets inside the window.
+	//
+	// ZERO IN THE DEFAULT BRANCH IS EXACTLY TODAY'S BEHAVIOUR, so the old `if`
+	// is subsumed rather than removed.
+	const float RechargeScale =
+		ShieldMayRefill(SecondsSinceLastDamage)
+			? 1.0f
+			: (HoldsFlag(ShieldRechargesWhileDamagedStat,
+						 UCataclysmCombatAttributeSet::GetShieldRechargesWhileDamagedAttribute())
+				   ? AblativeRechargeFraction
+				   : 0.0f);
+
+	// AND THE LONG GAME ADDS A SECOND SOURCE, OUTSIDE THE WAIT ENTIRELY.
+	// `Ritualist_keystone_d_kA`: "Your Mana Regeneration also restores your
+	// Energy Shield, at half its rate." Mana regeneration is itself ungated, and
+	// the row makes mana regeneration the thing that acts.
+	//
+	// INSIDE THE WAIT IT WOULD ONLY ADD RATE AT MOMENTS THE SHIELD IS ALREADY
+	// RECHARGING, which is "increased Energy Shield Regeneration" -- and that is
+	// `Ritualist_basic_spine_008` Warded Mind, a BASIC node in the same tree. A
+	// keystone that duplicates a basic node beside it is not a keystone.
+	// `docs/DECISIONS.md` carries that ruling and this sentence.
+	const float FromMana =
+		HoldsFlag(ManaRegenRestoresShieldStat,
+				  UCataclysmCombatAttributeSet::GetManaRegenRestoresShieldAttribute())
+			? ManaRate * ManaRegenToShieldFraction
+			: 0.0f;
+
+	const float ShieldRate =
+		RateOf(EnergyShieldRegenStat,
+			   UCataclysmVitalAttributeSet::GetEnergyShieldRegenAttribute())
+			* RechargeScale
+		+ FromMana;
+
+	TopUp(*AbilitySystem,
+		  UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
+		  UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
+		  GainPerStep(ShieldRate, SecondsInStep));
 }

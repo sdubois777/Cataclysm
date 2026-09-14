@@ -327,10 +327,36 @@ the per-floor log line, so it reaches a log rather than a player mid-fight.
 
 ## 2026-09-14 — The three energy-shield keystones are three different mechanisms, and The Long Game works outside the recharge delay
 
-**None of these three nodes is built yet, and no stat for any of them exists.**
-This entry records the measurement and the rulings so they are not re-argued when
-the code is written. Issue
+**This entry was written before any of the three was built, to record the
+measurement and the rulings so they were not re-argued when the code came.** Its
+first line said none of them was built and no stat existed. **That changed on
+2026-09-14**: all three now have a stat, a read site and tests, under issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515). The rulings below
+are what the code follows, and the sentence at the end about the rows is the one
+part still open. Issue
 [#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+**The three stats, all flags starting at zero:**
+
+| node | stat | where it is read |
+| :-- | :-- | :-- |
+| Warded | `shield_absorbs_damage_over_time` | `CataclysmDamageCalculation.cpp`, the line setting `bShieldApplies` |
+| Ablative | `shield_recharges_while_damaged` | `CataclysmRegeneration.cpp`, as a scale on the recharge |
+| The Long Game | `mana_regen_restores_shield` | `CataclysmRegeneration.cpp`, as a second gain term |
+
+**The two halved rates are constants at their read sites, not stats.**
+`AblativeRechargeFraction` and `ManaRegenToShieldFraction`, both `0.5f`, in
+`CataclysmRegeneration.h`. The design rows state the figures — "at half its
+usual rate", "at half its rate" — and nothing else in the project grants them, so
+a stat would be a second place to write the same number and the two could
+disagree. A flag says whether the rule applies; it does not carry the rule's
+size.
+
+**Ablative leaves `ShieldMayRefill` alone.** That function still answers the
+question it always answered, and five assertions call it directly. The scale sits
+on top: 1.0 when the wait has passed, half when it has not and the character
+holds the node, and zero otherwise — which is exactly the old behaviour for
+everyone else.
 
 They were scheduled as "three keystones, one flag-stat shape". Measured, only one
 of the three is a flag stat.
@@ -367,6 +393,51 @@ shield sustain while under fire.
 
 **The fractions are the design's, not invented here.** "At half its usual rate"
 and "at half its rate" are the rows' own words, and Warded states no number.
+
+### HOW TO COUNT THE PROJECT'S AUTOMATION TESTS BEFORE A RUN, AND WHY THE OBVIOUS WAY IS WRONG
+
+Registering a count before a run is how under-selection is caught: if fewer tests
+perform than were registered, something was filtered out. **The count registered
+for this change was 1720 and 1837 performed**, so the registration caught nothing
+and had to be explained afterwards. The instrument was wrong, in two ways at once.
+
+**Tests do not all live under `game/Source/Cataclysm/Tests/`.** Many are
+registered beside the code they test — `CataclysmAilments.cpp`,
+`CataclysmBruteCharacter.cpp`, `CataclysmClothStress.cpp` and others. A count
+taken in that one directory misses them.
+
+**And counting quoted names over-counts.** A test's name appears in comments and
+in other tests' prose as well as at its registration, so a whole-tree grep for
+quoted names gives 1878 — wrong in the other direction.
+
+**Count registrations by structure, across the whole of `game/Source`:**
+
+```
+  1479   uses of IMPLEMENT_..._AUTOMATION_TEST
++  395   uses of the project's own CATACLYSM_*_TEST wrapper macros
+-   37   wrapper macro DEFINITIONS, whose bodies contain the registration
+         macro they expand to and are not registrations themselves
+------
+  1837   which is exactly what the engine performed
+```
+
+**The eighteen wrappers are** `CATACLYSM_TEST`, `CATACLYSM_AILMENT_TEST`,
+`CATACLYSM_CC_TEST`, `CATACLYSM_CONDITIONAL_TEST`, `CATACLYSM_CONTAGION_TEST`,
+`CATACLYSM_CONVERSION_TEST`, `CATACLYSM_DEBUFF_TEST`, `CATACLYSM_DOT_TEST`,
+`CATACLYSM_HEALTH_WRITE_TEST`, `CATACLYSM_LEECH_TEST`,
+`CATACLYSM_MASOCHIST_TEST`, `CATACLYSM_MELEE_BLEED_TEST`,
+`CATACLYSM_MODIFIER_TEST`, `CATACLYSM_NOVA_TEST`, `CATACLYSM_RELIEF_TEST`,
+`CATACLYSM_RETALIATION_TEST`, `CATACLYSM_SHEET_TEST` and
+`CATACLYSM_VOID_SPLINTER_TEST`. They are defined in 37 files, which is where the
+subtraction comes from.
+
+**The arithmetic is written out so the next session checks its own figure rather
+than trusting this one.** The numbers move with every change; the method does not.
+
+**Nothing is excluded by the run's default `Cataclysm` filter**, which was the
+other candidate explanation and was checked: strings like `"Element.Demonic"` and
+`"Data.SkillCritChance"` that look like test names under another prefix are
+gameplay tags, not registrations.
 
 ---
 

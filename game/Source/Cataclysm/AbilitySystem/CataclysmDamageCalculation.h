@@ -414,6 +414,21 @@ public:
 	static const TCHAR* DebuffDamageSuppressedStat;
 
 	/**
+	 * The stat saying this character's energy shield absorbs damage over time
+	 * as well as hits. Issue #1515.
+	 *
+	 * `Ritualist_keystone_c_kA` Warded is the only source, and its row is a
+	 * flag: above zero or not, with nothing in between meaning anything.
+	 *
+	 * ONE SITE READS IT, the line in `Resolve` deciding whether the shield
+	 * applies to this hit at all. Every place downstream reads
+	 * `FCataclysmDamageOutcome::AbsorbedByShield`, which is zero for a tick
+	 * today only because that line makes it so, so they all follow with no
+	 * change of their own.
+	 */
+	static const TCHAR* ShieldAbsorbsDamageOverTimeStat;
+
+	/**
 	 * What either of those two reads when nothing has changed it.
 	 *
 	 * A HUNDRED IS THE IDENTITY FOR A MULTIPLIER, so a character with no node

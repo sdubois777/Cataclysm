@@ -599,6 +599,78 @@ public:
 	FGameplayAttributeData ImpCapBonus;
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ImpCapBonus)
 
+	// -----------------------------------------------------------------------
+	// The three energy-shield keystones. Issue #1515.
+	//
+	// ALL THREE ARE FLAGS: zero or above zero, with nothing in between meaning
+	// anything. Each node is a rule rather than a magnitude -- "absorbs damage
+	// over time as well as hits", "recharges while you are taking damage",
+	// "also restores your Energy Shield" -- and a rule has no number to scale.
+	// The halved rates two of them state are constants at their read sites,
+	// because the design rows state them and nothing else grants them.
+	//
+	// THEY ARE THREE DIFFERENT MECHANISMS AND NOT ONE SHAPE, which is why they
+	// are three attributes rather than one. Warded changes whether a hit
+	// reaches the shield at all, Ablative changes when the shield may recharge,
+	// and The Long Game adds a second source of recharge. A character may hold
+	// any one without the others.
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Whether this character's energy shield absorbs damage over time. Issue
+	 * #1515.
+	 *
+	 * `Ritualist_keystone_c_kA` Warded is the node: "Your Energy Shield absorbs
+	 * damage over time as well as hits."
+	 *
+	 * ZERO FOR EVERY CHARACTER BUT ONE THAT BOUGHT IT, and zero is the rule the
+	 * design states everywhere else: an energy shield stops hits and not ticks,
+	 * which is what makes it a distinct defence rather than a second health bar.
+	 *
+	 * ONE SITE READS IT. `UCataclysmDamageCalculation::Resolve` decides whether
+	 * the shield applies to a hit, and that is the only place in the module
+	 * where damage over time and the energy shield meet.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ShieldAbsorbsDamageOverTime)
+	FGameplayAttributeData ShieldAbsorbsDamageOverTime;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
+
+	/**
+	 * Whether this character's energy shield recharges before the wait after
+	 * being damaged has run out. Issue #1515.
+	 *
+	 * `Ritualist_keystone_c_kB` Ablative is the node: "Your Energy Shield
+	 * recharges while you are taking damage, at half its usual rate."
+	 *
+	 * IT DOES NOT SHORTEN THE WAIT, AND THE DIFFERENCE IS THE WHOLE NODE. A
+	 * shorter wait would recharge at the FULL rate sooner. The row says the
+	 * rate is halved, which only means anything while the shield is recharging
+	 * during the window it is normally stopped in, so the wait is left exactly
+	 * as it is and a half rate is supplied inside it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ShieldRechargesWhileDamaged)
+	FGameplayAttributeData ShieldRechargesWhileDamaged;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
+
+	/**
+	 * Whether this character's mana regeneration also restores its energy
+	 * shield. Issue #1515.
+	 *
+	 * `Ritualist_keystone_d_kA` The Long Game is the node: "Your Mana
+	 * Regeneration also restores your Energy Shield, at half its rate."
+	 *
+	 * WHAT IT GRANTS RUNS ON MANA REGENERATION'S SCHEDULE AND NOT THE SHIELD'S,
+	 * so it is added outside the wait the shield normally serves. Inside that
+	 * wait it would only add rate at moments the shield is already recharging,
+	 * which is "increased Energy Shield Regeneration" -- and that is
+	 * `Ritualist_basic_spine_008` Warded Mind, a BASIC node in the same tree. A
+	 * keystone that duplicates a basic node beside it is not a keystone.
+	 * `docs/DECISIONS.md` carries that ruling.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ManaRegenRestoresShield)
+	FGameplayAttributeData ManaRegenRestoresShield;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ManaRegenRestoresShield)
+
 	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
@@ -1010,6 +1082,9 @@ protected:
 	UFUNCTION() void OnRep_PossessionThresholdBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ThrallReserveReduction(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ImpCapBonus(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ShieldAbsorbsDamageOverTime(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ShieldRechargesWhileDamaged(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ManaRegenRestoresShield(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);

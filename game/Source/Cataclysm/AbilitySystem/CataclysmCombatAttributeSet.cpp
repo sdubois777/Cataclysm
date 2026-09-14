@@ -109,6 +109,14 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	InitThrallReserveReduction(0.0f);
 	InitImpCapBonus(0.0f);
 
+	// THE THREE ENERGY-SHIELD KEYSTONES, ALL FLAGS AT ZERO. Issue #1515.
+	// Zero is the rule the design states for every character that has not
+	// bought one: a shield stops hits and not ticks, it waits three seconds
+	// after damage before recharging, and mana regeneration feeds mana.
+	InitShieldAbsorbsDamageOverTime(0.0f);
+	InitShieldRechargesWhileDamaged(0.0f);
+	InitManaRegenRestoresShield(0.0f);
+
 	// AND DAMAGE OVER TIME HURTS EVERY CHARACTER UNLESS ONE CAPSTONE OPTION
 	// SAYS OTHERWISE. Issue #1039. The Masochist's Vessel Unbroken is its only
 	// source, and zero is the ordinary case.
@@ -229,6 +237,9 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, PossessionThresholdBonus);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ThrallReserveReduction);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ImpCapBonus);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ManaRegenRestoresShield);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DamageOverTimeTaken);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, DebuffDamageSuppressed);
@@ -409,6 +420,9 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		// AND WHAT ONE THRALL RESERVES, AND HOW MANY IMPS MAY LIVE, both
 		// added to a figure the skill's own row states. Issue #1718.
 		GetThrallReserveReductionAttribute(), GetImpCapBonusAttribute(),
+		GetShieldAbsorbsDamageOverTimeAttribute(),
+		GetShieldRechargesWhileDamagedAttribute(),
+		GetManaRegenRestoresShieldAttribute(),
 		GetDamageTakenAttribute(), GetDamageOverTimeTakenAttribute(),
 		GetDebuffDamageSuppressedAttribute(),
 		GetRetaliationRadiusMetresAttribute(), GetRetaliationLeechesAttribute(),
@@ -471,6 +485,9 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, WeakenMagnitude)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ThrallReserveReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ImpCapBonus)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ManaRegenRestoresShield)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DamageOverTimeTaken)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, DebuffDamageSuppressed)

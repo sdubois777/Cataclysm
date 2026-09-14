@@ -21,6 +21,8 @@ const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTakenStat =
 	TEXT("damage_over_time_taken");
 const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
 	TEXT("debuff_damage_suppressed");
+const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
+	TEXT("shield_absorbs_damage_over_time");
 
 namespace
 {
@@ -768,7 +770,27 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 
 	// 8. Energy shield. It does not absorb damage over time, which is what makes
 	// it a distinct defence rather than a second health bar.
-	const bool bShieldApplies = !Hit.bIsDamageOverTime;
+	//
+	// UNLESS THIS CHARACTER BOUGHT THE KEYSTONE THAT SAYS OTHERWISE. Issue
+	// #1515. `Ritualist_keystone_c_kA` Warded: "Your Energy Shield absorbs
+	// damage over time as well as hits." The stat is a flag and every character
+	// that has not taken the node reads zero, so the sentence above stays true
+	// for all of them.
+	//
+	// THIS IS THE ONLY PLACE IN THE MODULE WHERE DAMAGE OVER TIME AND THE
+	// ENERGY SHIELD MEET, which was swept rather than assumed: thirty-one sites
+	// branch on `bIsDamageOverTime` and the other thirty are critical strike,
+	// retaliation, the stun roll, contagion, evasion, ailment chance, the
+	// overlay's scale and the delivery flags that set the bool. Everything
+	// downstream reads `Result.AbsorbedByShield`, which is zero for a tick today
+	// only because of this line, so all of it follows with no change of its own.
+	//
+	// READ FROM THE DEFENDER, like every other defence in this function. It is
+	// the shield being hit that decides, not the thing swinging.
+	const bool bShieldApplies = !Hit.bIsDamageOverTime
+		|| DefenderStat(Defender, ShieldAbsorbsDamageOverTimeStat,
+						Combat ? Combat->GetShieldAbsorbsDamageOverTime() : 0.0f)
+			> 0.0f;
 	if (bShieldApplies && Vitals->GetEnergyShield() > 0.0f)
 	{
 		const float Magic = Hit.bIsMagic ? 1.0f + SubtypeBonus / 100.0f : 1.0f;
