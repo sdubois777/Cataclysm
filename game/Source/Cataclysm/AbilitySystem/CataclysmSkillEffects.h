@@ -1546,9 +1546,9 @@ public:
 	 * gameplay attribute. A CONDITIONED row is never folded into an attribute,
 	 * so while this read the attribute directly a row granting resistance "while
 	 * an enemy is within 4 metres" reached nothing at all and would have
-	 * reported the base for ever. The same defect was fixed for evasion in issue
-	 * #947 and for the regeneration rates in issue #1038, and the repair is the
-	 * same: ask `StatForSkill`, passing the attribute as the fallback so a
+	 * reported the base for ever. The same defect was fixed for evasion in pull
+	 * request #1784 and for the regeneration rates in issue #1038, and the repair
+	 * is the same: ask `StatForSkill`, passing the attribute as the fallback so a
 	 * character the pipeline knows nothing about -- every creature, and a player
 	 * before its first refresh -- answers exactly what it answered before.
 	 *
