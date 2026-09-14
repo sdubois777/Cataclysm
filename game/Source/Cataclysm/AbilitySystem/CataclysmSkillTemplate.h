@@ -1143,9 +1143,19 @@ protected:
 	 * ability system without the class resource attribute set -- which is every
 	 * enemy, and an enemy using a skill goes through the same function.
 	 * Issue #970.
+	 *
+	 * TAKES THE SKILL'S TAGS BECAUSE THE STAT IS ASKED FOR RATHER THAN READ.
+	 * Issue #947. The attribute is worked out with no skill in hand, so a
+	 * modifier requiring a tag is missing from it and rows such as "Melee skills
+	 * cost 5%-10% of your maximum HP to use" were dropped in silence.
+	 *
+	 * THE PARAMETER IS REQUIRED RATHER THAN DEFAULTED. There is one caller, and
+	 * a default of no tags would let a future one get unscoped behaviour without
+	 * deciding to.
 	 */
 	static float AddedHealthCostPercent(
-		const UAbilitySystemComponent* AbilitySystem);
+		const UAbilitySystemComponent* AbilitySystem,
+		const FGameplayTagContainer& SkillTags);
 
 	/**
 	 * What this character adds to every skill's health cost, as a percentage of
@@ -1159,9 +1169,13 @@ protected:
 	 *
 	 * Zero for a character without that keystone, and zero for any ability
 	 * system with no class resource attribute set, which is every enemy.
+	 *
+	 * TAKES THE SKILL'S TAGS FOR THE REASON THE ONE ABOVE GIVES. "Strike skills
+	 * cost 5%-10% of your current HP to use" is the row that needs it.
 	 */
 	static float AddedHealthCostOfCurrentPercent(
-		const UAbilitySystemComponent* AbilitySystem);
+		const UAbilitySystemComponent* AbilitySystem,
+		const FGameplayTagContainer& SkillTags);
 
 	/**
 	 * The least health a cost taken from CURRENT health may leave behind.

@@ -1335,6 +1335,13 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 		{TEXT("energy_shield_leech"),
 		 UCataclysmVitalAttributeSet::GetEnergyShieldLeechAttribute()},
 
+		// THE TWO HEALTH COST STATS, which are two separate read sites and not
+		// one -- a share of MAXIMUM health and a share of CURRENT health.
+		{TEXT("added_health_cost"),
+		 UCataclysmClassResourceAttributeSet::GetAddedHealthCostAttribute()},
+		{TEXT("added_health_cost_of_current"),
+		 UCataclysmClassResourceAttributeSet::GetAddedHealthCostOfCurrentAttribute()},
+
 		// THE ONE ALREADY WIRED, AS A POSITIVE CONTROL ON THE CONTROL. Critical
 		// strike chance was moved to an ask under issue #959 and nothing has
 		// complained since, so if this row ever fails the fault is in this test
@@ -1373,7 +1380,7 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 	// left to `UE_ARRAY_COUNT` alone so that emptying the list is a failure
 	// rather than a silent pass. Counted from the list above, not incremented.
 	TestEqual(TEXT("every stat listed was checked"),
-			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 13);
+			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 15);
 	return true;
 }
 

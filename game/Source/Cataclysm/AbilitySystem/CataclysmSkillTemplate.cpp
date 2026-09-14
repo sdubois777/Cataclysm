@@ -2426,7 +2426,8 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 }
 
 float UCataclysmSkillTemplate::AddedHealthCostPercent(
-	const UAbilitySystemComponent* AbilitySystem)
+	const UAbilitySystemComponent* AbilitySystem,
+	const FGameplayTagContainer& SkillTags)
 {
 	using Resource = UCataclysmClassResourceAttributeSet;
 	const FGameplayAttribute Added = Resource::GetAddedHealthCostAttribute();
@@ -2439,9 +2440,24 @@ float UCataclysmSkillTemplate::AddedHealthCostPercent(
 		return 0.0f;
 	}
 
+	// ASKED FOR RATHER THAN READ, WITH THE SKILL'S OWN TAGS. Issue #947. The
+	// attribute is worked out with no skill in hand, so a modifier requiring a
+	// tag is missing from it and three authored enchantments were dropped in
+	// silence: "Using your ultimate ability drains 20%-40% of your maximum HP",
+	// "Melee skills cost 5%-10% of your maximum HP to use" and "Summoned minions
+	// cost 10%-20% of your maximum HP to summon".
+	//
 	// The attribute is already floored at zero by the set's PreAttributeChange,
-	// so this guards only against a value written before that ran.
-	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(Added));
+	// so this guards only against a value written before that ran -- and against
+	// a negative the pipeline could produce, which the attribute's clamp never
+	// sees.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const float FromAttribute = AbilitySystem->GetNumericAttribute(Added);
+	return FMath::Max(0.0f, Asking
+		? Asking->StatForSkill(FName(TEXT("added_health_cost")), SkillTags,
+							   FromAttribute)
+		: FromAttribute);
 }
 
 const TCHAR* UCataclysmSkillTemplate::HealthCostSuppressedStat =
@@ -2506,7 +2522,8 @@ bool UCataclysmSkillTemplate::ManaPoolBecomesHealth(
 }
 
 float UCataclysmSkillTemplate::AddedHealthCostOfCurrentPercent(
-	const UAbilitySystemComponent* AbilitySystem)
+	const UAbilitySystemComponent* AbilitySystem,
+	const FGameplayTagContainer& SkillTags)
 {
 	using Resource = UCataclysmClassResourceAttributeSet;
 	const FGameplayAttribute Added =
@@ -2519,7 +2536,17 @@ float UCataclysmSkillTemplate::AddedHealthCostOfCurrentPercent(
 	{
 		return 0.0f;
 	}
-	return FMath::Max(0.0f, AbilitySystem->GetNumericAttribute(Added));
+
+	// AND ASKED FOR WITH THE SKILL'S TAGS, the same as the reader above. Issue
+	// #947. "Strike skills cost 5%-10% of your current HP to use" is the row
+	// that needs it, and it is scoped to Type.Strike.
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const float FromAttribute = AbilitySystem->GetNumericAttribute(Added);
+	return FMath::Max(0.0f, Asking
+		? Asking->StatForSkill(FName(TEXT("added_health_cost_of_current")),
+							   SkillTags, FromAttribute)
+		: FromAttribute);
 }
 
 void UCataclysmSkillTemplate::PayHealthCost()
@@ -2591,7 +2618,7 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	// turn would compound -- the second would be a share of what the first left
 	// -- and the design says "an additional 15%", which is a sum.
 	const float FromCurrentPercent =
-		OwnPercent + AddedHealthCostOfCurrentPercent(AbilitySystem);
+		OwnPercent + AddedHealthCostOfCurrentPercent(AbilitySystem, SkillTags);
 
 	// FLOORED SO IT LEAVES AT LEAST ONE HEALTH BEHIND. The design states it,
 	// and it applies only to this half of the cost. See
@@ -2612,7 +2639,8 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	// written as a share of maximum health.
 	const float Maximum = AbilitySystem->GetNumericAttribute(
 		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
-	const float Added = Maximum * AddedHealthCostPercent(AbilitySystem) / 100.0f;
+	const float Added =
+		Maximum * AddedHealthCostPercent(AbilitySystem, SkillTags) / 100.0f;
 
 	// ADDED, NOT COMPOUNDED. The node says "in addition to any other cost", so
 	// the two are summed rather than one being applied to what the other left.
