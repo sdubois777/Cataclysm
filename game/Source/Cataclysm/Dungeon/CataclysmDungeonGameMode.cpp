@@ -580,6 +580,27 @@ static TAutoConsoleVariable<float> CVarHellfireRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the roll that decides which kind of mushroom a death leaves, so a test
+ * can assert what it left. Issues #1820 and #41.
+ *
+ * IT DECIDES A KIND AND NOT WHETHER ANYTHING HAPPENS, which is what makes it
+ * different from the four variables above it. Each of those can be pinned to a
+ * value at which the rule does nothing at all; this one always leaves a
+ * mushroom, and 0 makes every one of them the kind that helps while 100 makes
+ * every one the kind that hurts.
+ *
+ * ITS OWN VARIABLE, for the reason `Cataclysm.GraspingTentaclesRoll` gives: a
+ * floor can carry more than one of these rows and a test of one must be able to
+ * pin its own roll without deciding another's.
+ */
+static TAutoConsoleVariable<float> CVarFungalOvergrowthRoll(
+	TEXT("Cataclysm.FungalOvergrowthRoll"),
+	-1.0f,
+	TEXT("Pin the roll Fungal Overgrowth picks a mushroom's kind with, 0 to ")
+	TEXT("100. -1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -607,6 +628,13 @@ namespace
 	float DungeonGameModeHellfireRoll()
 	{
 		const float Pinned = CVarHellfireRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll a mushroom's kind is chosen with: pinned, or drawn. */
+	float DungeonGameModeFungalOvergrowthRoll()
+	{
+		const float Pinned = CVarFungalOvergrowthRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 }
@@ -2083,10 +2111,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FName(UCataclysmDungeonModifierEffects::ArtilleryStrikeKey));
 	const bool bHallowedGroundfall = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::HallowedGroundfallKey));
+	// AND FUNGAL OVERGROWTH, WHICH PLACES NOTHING HERE. Its mushrooms are placed
+	// by a death, so this beat only asks whether the player is standing on one --
+	// which is Withered Ground's shape above. Issues #1820 and #41.
+	const bool bFungalOvergrowth = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::FungalOvergrowthKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
-		&& !bArtilleryStrike && !bHallowedGroundfall)
+		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth)
 	{
 		return;
 	}
@@ -2149,6 +2182,14 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bWitheredGround)
 	{
 		StepWitheredGround(Player, AbilitySystem);
+	}
+
+	// AND FUNGAL OVERGROWTH, WHICH ONLY READS, so its position in this order is
+	// free the way Withered Ground's is: it places nothing on the beat and shares
+	// no field with any rule here. Issues #1820 and #41.
+	if (bFungalOvergrowth)
+	{
+		StepFungalOvergrowth(Player, AbilitySystem);
 	}
 
 	// AND MORTAL DECAY, WHICH ASKS FOR NO STAT REFRESH AT ALL. Issues #1786 and
@@ -2877,6 +2918,17 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// whichever wrote second erased the first. Issue #1765.
 	Effects.GraspMovementLessPercent = GraspMovementLessApplied;
 
+	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN BOTH DIRECTIONS. Issues #1820
+	// and #41. Read unconditionally like the rest: a floor without that row
+	// places no mushroom, and nothing is what the effects already hold.
+	//
+	// TWO OF ITS OWN FIELDS AND NOT `MovementSpeedLessPercent`, which Singularity
+	// Wells writes, nor `GraspMovementLessPercent`, which a tentacle writes.
+	// Three rows now move the same stat and each holds its own field, so a floor
+	// carrying all three composes instead of erasing. Issue #1765.
+	Effects.MushroomSpeedMorePercent = FungalOvergrowthSpeedMoreApplied;
+	Effects.MushroomSpeedLessPercent = FungalOvergrowthSpeedLessApplied;
+
 	// AND WHETHER THE EDICT OF SILENCE HAS THE PLAYER'S SKILLS LOCKED. Issues
 	// #1786 and #41. Read unconditionally like the rest: a floor without that row
 	// never sets it, and nothing is what the effects already hold.
@@ -2895,6 +2947,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	// listener from being added without rewriting the first.
 	NoteDeathForNihilsEmbrace(Notice);
 	NoteDeathForWitheredGround(Notice);
+	NoteDeathForFungalOvergrowth(Notice);
 	NoteDeathForMortalDecay(Notice);
 	NoteDeathForWastingSickness(Notice);
 	NoteDeathForSporeClouds(Notice);
@@ -3312,6 +3365,75 @@ void ACataclysmDungeonGameMode::NoteDeathForWitheredGround(
 	WitheredGroundPatches.Add(Patch);
 }
 
+void ACataclysmDungeonGameMode::NoteDeathForFungalOvergrowth(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::FungalOvergrowthKey)))
+	{
+		return;
+	}
+
+	// THE VICTIM MUST BE A CREATURE. The row says "Killing enemies creates
+	// mushrooms", and this notice is sent for every death on the floor including
+	// the player's. The same guard `NoteDeathForWitheredGround` above makes, for
+	// the same reason.
+	if (!Cast<ACataclysmEnemyCharacter>(Notice.Victim))
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	// WHICH KIND, ROLLED ONCE AND USED TWICE -- for the colour it is drawn in and
+	// for the list it is remembered in. Asking twice would let a mushroom be
+	// drawn as one kind and act as the other, which no test of either half alone
+	// would catch.
+	const bool bHelps =
+		Effects::FungalOvergrowthBoosts(DungeonGameModeFungalOvergrowthRoll());
+
+	// WHERE THE CREATURE DIED, WHICH THE NOTICE CARRIES, and start and end at the
+	// same point to make it round. Withered Ground's patch is placed exactly so.
+	//
+	// NO DAMAGE PER TICK. A mushroom is a thing to stand on, and the row gives it
+	// nothing to do to anybody who is not the player.
+	//
+	// AND ITS OWN COLOUR, WHICH IS THE ONLY ARGUMENT HERE NO OTHER FLOOR HAZARD
+	// PASSES. Every zone in the game until now was drawn in its owner's colour,
+	// so the two kinds of mushroom -- which share an owner, because one floor has
+	// one hazard source -- would have been indistinguishable.
+	ACataclysmGroundZone* Mushroom = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Notice.Location, Notice.Location,
+		Effects::FungalOvergrowthMushroomRadiusCm, 0.0f,
+		/*bAffectsEveryone=*/false,
+		FName(bHelps ? Effects::FungalOvergrowthBoostDrawnAs
+					 : Effects::FungalOvergrowthSlowDrawnAs));
+	if (!Mushroom)
+	{
+		return;
+	}
+
+	if (bHelps)
+	{
+		FungalOvergrowthBoostMushrooms.Add(Mushroom);
+	}
+	else
+	{
+		FungalOvergrowthSlowMushrooms.Add(Mushroom);
+	}
+}
+
 void ACataclysmDungeonGameMode::NoteDeathForSporeClouds(
 	const FCataclysmDeathNotice& Notice)
 {
@@ -3595,6 +3717,70 @@ void ACataclysmDungeonGameMode::StepWitheredGround(
 	}
 }
 
+void ACataclysmDungeonGameMode::StepFungalOvergrowth(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!Player || !AbilitySystem)
+	{
+		return;
+	}
+
+	// WHAT IS STILL THERE, ASKED RATHER THAN REMEMBERED, exactly as
+	// `StepWitheredGround` asks it: a mushroom is destroyed with the rest of the
+	// floor's contents, so a weak pointer going invalid IS that.
+	const auto ForgetTheGone =
+		[](TArray<TWeakObjectPtr<ACataclysmGroundZone>>& List)
+		{
+			List.RemoveAll([](const TWeakObjectPtr<ACataclysmGroundZone>& One)
+			{
+				return !One.IsValid();
+			});
+		};
+	ForgetTheGone(FungalOvergrowthBoostMushrooms);
+	ForgetTheGone(FungalOvergrowthSlowMushrooms);
+
+	// EACH MUSHROOM IS ASKED WHETHER IT COVERS THE PLAYER. `Covers` is the same
+	// test a zone's own sweep makes, so what changes a character's speed and what
+	// the mushroom is drawn as cannot disagree about where it is.
+	const FVector Feet = Player->GetActorLocation();
+	const auto StandingOnOneOf =
+		[&Feet](const TArray<TWeakObjectPtr<ACataclysmGroundZone>>& List)
+		{
+			for (const TWeakObjectPtr<ACataclysmGroundZone>& One : List)
+			{
+				if (One.IsValid() && One->Covers(Feet))
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+
+	const float WantedMore = StandingOnOneOf(FungalOvergrowthBoostMushrooms)
+		? Effects::FungalOvergrowthSpeedMorePercent
+		: 0.0f;
+	const float WantedLess = StandingOnOneOf(FungalOvergrowthSlowMushrooms)
+		? Effects::FungalOvergrowthSpeedLessPercent
+		: 0.0f;
+
+	// BOTH ARE COMPARED BEFORE EITHER IS WRITTEN, so a beat that changes only one
+	// of them still asks for the refresh, and a beat that changes neither asks
+	// for nothing. Writing one and testing the other would leave a player who
+	// stepped from a helping mushroom straight onto a hurting one carrying both.
+	if (FMath::IsNearlyEqual(WantedMore, FungalOvergrowthSpeedMoreApplied)
+		&& FMath::IsNearlyEqual(WantedLess, FungalOvergrowthSpeedLessApplied))
+	{
+		return;
+	}
+
+	FungalOvergrowthSpeedMoreApplied = WantedMore;
+	FungalOvergrowthSpeedLessApplied = WantedLess;
+	ApplyChangingFloorEffects(Player, AbilitySystem);
+}
+
 void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 {
 	UWorld* World = GetWorld();
@@ -3662,6 +3848,18 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// believe it was still applied and never put it back.
 		WitheredGroundPatches.Empty();
 		WitheredGroundRecoveryLessApplied = 0.0f;
+
+		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
+		// Issues #1820 and #41. Four lines and no clock, which is the rule above
+		// this one exactly: the lists because
+		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed those
+		// actors; the two figures because the call above has already taken them
+		// off the character, so leaving either here would make the next beat
+		// believe it was still applied and never put it back.
+		FungalOvergrowthBoostMushrooms.Empty();
+		FungalOvergrowthSlowMushrooms.Empty();
+		FungalOvergrowthSpeedMoreApplied = 0.0f;
+		FungalOvergrowthSpeedLessApplied = 0.0f;
 
 		// AND WASTING SICKNESS FORGETS WHAT WAS APPLIED AND KEEPS ITS
 		// STACKS. Issues #1786 and #41. This is the only rule here whose

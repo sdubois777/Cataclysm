@@ -109,7 +109,7 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 
 ACataclysmGroundZone* ACataclysmGroundZone::SpawnForTheFloor(
 	AActor* Owner, const FVector& Start, const FVector& End, float HalfWidthCm,
-	float DamagePerTick, bool bAffectsEveryone)
+	float DamagePerTick, bool bAffectsEveryone, FName InDrawnAsType)
 {
 	// NO DURATION TO REFUSE. The other two spawn functions check it because a
 	// patch with no stated life would burn for nothing; this one has no stated
@@ -144,6 +144,12 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnForTheFloor(
 	Zone->bLastsTheFloor = true;
 	Zone->FarEnd = Zone->GetActorLocation() + (End - Start);
 
+	// BEFORE `FinishSpawning`, LIKE EVERY FIELD ABOVE IT, and the comment on the
+	// deferred spawn says why: `BeginPlay` is where a patch asks to be drawn, and
+	// it runs inside `FinishSpawning`. Set after it, the first drawing would be
+	// the owner's colour and only the first redraw seconds later would be right.
+	Zone->DrawnAsType = InDrawnAsType;
+
 	// AND NO SetLifeSpan AT ALL, WHICH IS THE WHOLE OF "LASTS THE FLOOR".
 	// UCataclysmFloorContents::ClearTheFloor destroys every zone in the world
 	// when the player leaves a floor, so that is what ends this one.
@@ -167,10 +173,17 @@ void ACataclysmGroundZone::BeginPlay()
 	// also means a zone placed in a level by hand draws as well as one a skill
 	// left.
 	//
-	// THE COLOUR COMES FROM THE OWNER AND IS NAME_None FOR A PLAYER, so a zone a
-	// player leaves draws the system's authored white. That is issue #803 and
-	// not a fault here: a zone carries no skill tags of its own to read an
-	// Element.* tag from, unlike UCataclysmStrikeSkill which does.
+	// THE COLOUR COMES FROM THE ZONE IF IT WAS GIVEN ONE AND FROM THE OWNER
+	// OTHERWISE, and it is NAME_None for a player, so a zone a player leaves
+	// draws the system's authored white. That is issue #803 and not a fault
+	// here: a zone carries no skill tags of its own to read an Element.* tag
+	// from, unlike UCataclysmStrikeSkill which does.
+	//
+	// THIS SAID "THE COLOUR COMES FROM THE OWNER" UNTIL `DrawnAsType` EXISTED,
+	// and that was true of every zone in the game for as long as it was written.
+	// `Pestilence_Fungal_Overgrowth` places two kinds of patch that share one
+	// owner and have to be told apart, which is what made a per-zone colour
+	// necessary. Issues #1820 and #41.
 	// A TIMED PATCH IS DRAWN FOR ITS WHOLE LIFE SPAN, EXACTLY AS BEFORE. A
 	// floor-lasting one has no life span, so GetLifeSpan() is zero and passing
 	// it would draw nothing at all -- the patch would sweep, damage and curse
@@ -179,7 +192,7 @@ void ACataclysmGroundZone::BeginPlay()
 
 	Drawings = UCataclysmGroundEffect::PlayFor(
 		this, GetActorLocation(), FarEnd, RadiusCm, DrawSeconds,
-		UCataclysmSkillEffects::DamageTypeOf(GetOwner()));
+		TypeItIsDrawnAs());
 
 	if (UWorld* World = GetWorld())
 	{
@@ -205,6 +218,16 @@ void ACataclysmGroundZone::BeginPlay()
 	}
 }
 
+FName ACataclysmGroundZone::TypeItIsDrawnAs() const
+{
+	// THE OWNER'S UNLESS THE PATCH WAS GIVEN ONE. That is what both call sites
+	// did before `DrawnAsType` existed, so a patch nobody typed is drawn exactly
+	// as it was. See the field for why a patch may want its own.
+	return DrawnAsType.IsNone()
+		? UCataclysmSkillEffects::DamageTypeOf(GetOwner())
+		: DrawnAsType;
+}
+
 void ACataclysmGroundZone::Redraw()
 {
 	// THE ONES THAT HAVE ALREADY FINISHED ARE DROPPED FIRST. A patch lasting a
@@ -218,7 +241,7 @@ void ACataclysmGroundZone::Redraw()
 
 	Drawings.Append(UCataclysmGroundEffect::PlayFor(
 		this, GetActorLocation(), FarEnd, RadiusCm, FloorDrawSeconds,
-		UCataclysmSkillEffects::DamageTypeOf(GetOwner())));
+		TypeItIsDrawnAs()));
 
 	// COUNTED SO A TEST CAN SEE IT. Nothing else about a drawing is observable
 	// under the automation run's -nullrhi, so without this a patch that stopped

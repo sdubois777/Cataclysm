@@ -28,6 +28,7 @@ FVector UCataclysmGroundEffect::LastStart = FVector::ZeroVector;
 FVector UCataclysmGroundEffect::LastFarEnd = FVector::ZeroVector;
 float UCataclysmGroundEffect::LastRadiusCm = 0.0f;
 float UCataclysmGroundEffect::LastDuration = 0.0f;
+FName UCataclysmGroundEffect::LastDamageTypeAsked = NAME_None;
 
 namespace
 {
@@ -105,6 +106,7 @@ TArray<TWeakObjectPtr<UNiagaraComponent>> UCataclysmGroundEffect::PlayFor(
 	LastFarEnd = FarEnd;
 	LastRadiusCm = RadiusCm;
 	LastDuration = Duration;
+	LastDamageTypeAsked = DamageType;
 
 	if (!WorldContextObject)
 	{

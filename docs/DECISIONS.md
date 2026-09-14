@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A dungeon rule that can help the player, and the first ground patch whose colour is its own rather than its owner's
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules: each row's key, its figures and its arithmetic),
+`CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat and the listeners on the death
+announcement), `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (a patch of
+ground a character can stand in), `CataclysmGroundEffect.h` and `.cpp` (what draws one),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for
+these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that
+hold each rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Pestilence_Fungal_Overgrowth` in `game/Data/DungeonModifiers.csv`: "Killing enemies creates
+mushrooms. Stepping on them grants either a 50% speed boost or a 50% slow."
+
+Both of its figures are stated, so the rule reads them rather than judging them. Four things the
+row does not state are judged here and each is named below.
+
+### It is the first built dungeon rule that can help the player, and NOT the first thing to raise a player stat
+
+Eighteen rows of that table were built before this one and every one of them costs the player
+something or costs them nothing. This is the first whose own row offers them something.
+
+**The machinery for raising a stat already existed and a first draft of this entry was going to
+claim otherwise.** `FCataclysmPlayerFloorEffects::ResistanceMorePercent` has raised every
+resistance since issue #41's second slice — The Nihil's Embrace's reward for defeating a high
+tier enemy — by passing a positive value to the same signed helper, with
+`UCataclysmDungeonModifierEffects::Describe` printing "all resistances N% more" beside the "less"
+version for as long. The boost copies that shape exactly and needed no new machinery.
+
+That mistake came from reading part of the effects struct with a line range and generalising from
+three of its twelve fields. The claim reached a plan and a message before it was caught, which is
+why it is recorded here rather than quietly dropped.
+
+### A patch of ground may now carry its own colour, and that is genuinely new
+
+`ACataclysmGroundZone::DrawnAsType` is a name that decides which row of
+`game/Data/ElementVisuals.csv` a patch is drawn from. Empty means the owner's damage type, which
+is what every patch in the game used before this and what every existing caller still gets —
+`SpawnForTheFloor` takes the new value as a defaulted last argument and nothing else passes one.
+
+**Two reasons a per-patch value and not the owner's.** One floor has one
+`ACataclysmFloorHazardSource`, so two kinds of mushroom placed by one rule share an owner and
+could not have differed. And that owner's `DamageType` is last-writer-wins — three rules assign
+it from their own row just before spawning — so a colour taken from the owner can be changed
+afterwards by another rule placing something unrelated.
+
+**It is appearance and never damage.** A mushroom deals nothing, and
+`ACataclysmGroundZone::Sweep` returns early on a patch with no damage and no curse, so nothing
+ever asks a mushroom what element it is. The damage type a hit is met by comes from the zone's
+owner in every case, unchanged.
+
+### Which two colours, measured rather than chosen by eye
+
+Of the 28 pairs of rows in `game/Data/ElementVisuals.csv`, **Celestial and Void are the second
+furthest apart** by plain distance between their primary colours (0.96) and by a
+luminance-weighted one (0.58), and they are the furthest-apart pair that does not use Demonic.
+Measured 2026-09-14 by comparing every pair in that file.
+
+**Demonic is excluded deliberately**, which is why the furthest pair overall — Death and Demonic,
+at 1.19 and 0.61 — was not taken. Demonic red is the colour every `Demonic_Infernal_Rain` patch
+is drawn in, and that is burning ground a player must get off; a mushroom in it would say the
+opposite of what it does, whichever kind it was.
+
+**Neither colour promises anything, and that was checked rather than assumed.**
+`Celestial_Hallowed_Groundfall` leaves craters that burn the player, so gold is not this game's
+colour for safety. The pair is there to differ from each other and for no other reason.
+
+### The four judgements
+
+| What | Answer | Why |
+|---|---|---|
+| The odds between the two kinds | An even split | The row names two outcomes and no odds between them. Any other figure decides something the design left open, in a direction nobody asked for |
+| How wide a mushroom is | 300 cm, declared as `WitheredGroundPatchRadiusCm` | The settled figure for a piece of ground a player stands on: Withered Ground's patch, a Singularity Well, Infernal Rain's patch and the Gatekeeper's Soulfall all use it |
+| How long one lasts | The floor | `SpawnForTheFloor`, as Withered Ground. The row states no duration, and a large number sitting in the data would be a false figure for a reader to believe |
+| What each looks like | Celestial and Void | Above |
+
+**There is no chance that a mushroom appears at all**, and that is a reading of the row rather
+than a judgement. "Killing enemies creates mushrooms" is unconditional, the way Withered Ground's
+"Enemies leave patches of Barren Earth on death" is. `Pestilence_Spore_Clouds` and
+`Demonic_Hellfire` both say "chance" and both roll for whether anything happens; this rule's roll
+only picks a kind. A Python check fails if the row ever states a chance, because that would mean
+a second roll is missing.
+
+### The two effects are separate fields, and they multiply
+
+`MushroomSpeedMorePercent` and `MushroomSpeedLessPercent` are two new fields on
+`FCataclysmPlayerFloorEffects`. Three rows now move `movement_speed` — Singularity Wells, a
+tentacle's grab, and this one — and each holds its own field, because a shared field means
+whichever rule writes second erases the first on a floor carrying both. That is issue
+[#1765](https://github.com/sdubois777/Cataclysm/issues/1765).
+
+**A player standing where a helping and a hurting mushroom overlap keeps three quarters of their
+speed**, not all of it. `UCataclysmStatPipeline` multiplies each source on its own, so 1.5 x 0.5
+rather than a sum that cancels. Mushrooms are placed wherever creatures die, which on a floor
+with a choke point is repeatedly the same few metres, so the overlap is ordinary rather than a
+corner case. Nothing in the row says the two undo each other.
+
+### Three comment corrections, two forced by this change and one that was already wrong
+
+- **`ACataclysmGroundZone::BeginPlay` said "THE COLOUR COMES FROM THE OWNER".** True of every
+  patch in the game until `DrawnAsType` existed. Now conditional, and corrected.
+- **Withered Ground's key said it was "THE ONLY RULE HERE PLACED BY AN EVENT RATHER THAN BY A
+  CLOCK".** It was the first; this row is the second. Corrected to say so.
+- **Singularity Wells' `MovementSpeedLessPercent` said it was "the only field here that can go
+  back to nothing without the floor changing".** **That was already false before this change**
+  and three other fields say so in their own comments: `RecoveryLessPercent` is "ON AND OFF AS
+  THE PLAYER WALKS IN AND OUT OF A PATCH", `GraspMovementLessPercent` is "ON AND OFF AS A GRAB
+  TAKES HOLD AND RELEASES", `SkillsLockedValue` is "ON AND OFF ON A CLOCK". The two new fields
+  make five. Corrected here because this change adds two more counterexamples to it and the file
+  was already open.
+
+---
+
 ## 2026-09-14 — A crowd control effect ends when the enemy that applied it dies, and "crowd control" here means a stun
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`

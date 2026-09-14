@@ -141,6 +141,29 @@ public:
 	static float LastDuration;
 
 	/**
+	 * Which element's colours the last drawing was asked for. Issues #1820 and
+	 * #41.
+	 *
+	 * THE FIFTH OF THESE AND ADDED FOR THE SAME REASON AS THE OTHER FOUR. The
+	 * automation command passes `-nullrhi`, so no Niagara component is ever made
+	 * and nothing about a drawing is observable except what was asked for. Until
+	 * this existed a patch's colour was the one thing `PlayFor` is told that no
+	 * test could read back, so a rule drawing two kinds of patch in one colour
+	 * would pass every test there was.
+	 *
+	 * NAMED AFTER THE TWO THAT ALREADY EXIST RATHER THAN AFTER THE FOUR BESIDE
+	 * IT. `UCataclysmCastEffect` and `UCataclysmImpactEffect` have each carried a
+	 * `LastDamageTypeAsked` since issue #803 and its comment gives this same
+	 * reason in the same words. One idea under two names would mean a reader
+	 * grepping for either found two of the three places.
+	 *
+	 * SET IT BACK TO NAME_None BEFORE THE ACT YOU MEAN TO MEASURE.
+	 * `CataclysmEffectColourTests.cpp` does that with its sibling, and without it
+	 * a test reads whatever ran before it and can pass having measured nothing.
+	 */
+	static FName LastDamageTypeAsked;
+
+	/**
 	 * Draws a zone.
 	 *
 	 * @param WorldContextObject anything with a world. The zone itself, normally.

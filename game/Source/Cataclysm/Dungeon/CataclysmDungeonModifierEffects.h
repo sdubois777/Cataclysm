@@ -111,8 +111,17 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	 * Issues #1605 and #41.
 	 *
 	 * ON AND OFF AS THE PLAYER WALKS IN AND OUT OF A WELL, so it is worked out on
-	 * the beat rather than once a floor, and it is the only field here that can
-	 * go back to nothing without the floor changing.
+	 * the beat rather than once a floor.
+	 *
+	 * IT SAID "AND IT IS THE ONLY FIELD HERE THAT CAN GO BACK TO NOTHING WITHOUT
+	 * THE FLOOR CHANGING", AND THAT WAS ALREADY FALSE BEFORE THE CHANGE THAT
+	 * CORRECTED IT. Three other fields say so in their own comments:
+	 * `RecoveryLessPercent` is "ON AND OFF AS THE PLAYER WALKS IN AND OUT OF A
+	 * PATCH", `GraspMovementLessPercent` is "ON AND OFF AS A GRAB TAKES HOLD AND
+	 * RELEASES", and `SkillsLockedValue` is "ON AND OFF ON A CLOCK". The two
+	 * mushroom fields make five. Corrected while building
+	 * `Pestilence_Fungal_Overgrowth`, which is why it is in that change rather
+	 * than one of its own. Issues #1820 and #41.
 	 *
 	 * A MULTIPLIER ON `movement_speed` AND DELIBERATELY NOT A STATUS EFFECT ROW.
 	 * `UCataclysmSkillEffects::ApplyNamedEffect` resolves what to move from the
@@ -204,6 +213,43 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float GraspMovementLessPercent = 0.0f;
 
 	/**
+	 * How much faster the player moves while standing on a mushroom that helps.
+	 * Fungal Overgrowth. Issues #1820 and #41.
+	 *
+	 * THE ONLY FIELD HERE THAT RAISES A STAT BESIDES `ResistanceMorePercent`,
+	 * and that one is the precedent this copies rather than a thing this beats.
+	 * The Nihil's Embrace has given back more resistance than a character
+	 * started with since issue #41's second slice, through the same helper with
+	 * a positive value, and `Describe` has printed it beside the "less" version
+	 * for as long.
+	 *
+	 * ITS OWN FIELD AND NOT A NEGATIVE `MovementSpeedLessPercent`, which is the
+	 * rule `SicknessMaxHealthLessPercent` and `GraspMovementLessPercent` above
+	 * both follow. A floor can carry a Singularity Well, a tentacle and a
+	 * mushroom at once; a shared field means whichever rule wrote second erased
+	 * the first, which is issue #1765. As separate entries the pipeline
+	 * multiplies each on its own.
+	 *
+	 * ON AND OFF AS THE PLAYER WALKS ON AND OFF A MUSHROOM, like the three
+	 * fields around it that report where the player is STANDING rather than what
+	 * the floor is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float MushroomSpeedMorePercent = 0.0f;
+
+	/**
+	 * How much slower the player moves while standing on a mushroom that hurts.
+	 * Fungal Overgrowth. Issues #1820 and #41.
+	 *
+	 * ITS OWN FIELD FOR THE REASON THE FIELD ABOVE GIVES, and separate from it
+	 * for one more: a player standing where a helping and a hurting mushroom
+	 * overlap is under both, and one field could hold only the sum of two
+	 * figures neither of which the row states.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float MushroomSpeedLessPercent = 0.0f;
+
+	/**
 	 * Whether the player's skills are locked, and by how much. Edict of Silence.
 	 * Issues #1786 and #41.
 	 *
@@ -233,6 +279,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& SicknessMaxHealthLessPercent <= 0.0f
 			&& SicknessMaxManaLessPercent <= 0.0f
 			&& GraspMovementLessPercent <= 0.0f
+			&& MushroomSpeedMorePercent <= 0.0f
+			&& MushroomSpeedLessPercent <= 0.0f
 			&& SkillsLockedValue <= 0.0f;
 	}
 };
@@ -648,6 +696,72 @@ public:
 	static const TCHAR* BrandOfTheAggressorKey;
 
 	/**
+	 * Fungal Overgrowth: "Killing enemies creates mushrooms. Stepping on them
+	 * grants either a 50% speed boost or a 50% slow." Issues #1820 and #41.
+	 *
+	 * BOTH OF ITS FIGURES ARE THE ROW'S, so this rule judges neither share. What
+	 * it does judge is named beside each constant: how wide a mushroom is, how
+	 * often each kind comes up, how long one lasts, and what colour each is
+	 * drawn in.
+	 *
+	 * PLACED BY A DEATH AND READ BY THE BEAT, WHICH IS WITHERED GROUND'S SHAPE
+	 * EXACTLY. That rule leaves a patch where a creature dies and asks on each
+	 * beat whether the player is standing on one. This one does the same and
+	 * differs in two ways: it places one of TWO kinds, and one of the two helps
+	 * the player.
+	 *
+	 * THE FIRST RULE HERE THAT CAN HELP, WHICH IS A STATEMENT ABOUT DUNGEON
+	 * RULES AND NOT ABOUT THE STRUCT. `FCataclysmPlayerFloorEffects::
+	 * ResistanceMorePercent` already raises a player stat for The Nihil's
+	 * Embrace, so the machinery is not new; what is new is a modifier whose own
+	 * row offers the player something. Every other built row costs them
+	 * something or costs them nothing.
+	 *
+	 * THE TWO KINDS LOOK DIFFERENT AND THE ROW DOES NOT SAY WHICH IS WHICH. A
+	 * player meeting their first mushroom on a floor is guessing, and after they
+	 * step on one they know that colour for the rest of the dungeon. That is the
+	 * reading of "either ... or" this rule takes: a gamble that turns into
+	 * knowledge, rather than a coin flip repeated for ever.
+	 */
+	static const TCHAR* FungalOvergrowthKey;
+
+	/**
+	 * Which element's colours each kind of mushroom is drawn in.
+	 *
+	 * A JUDGEMENT. The row says the two kinds exist and says nothing about how
+	 * either looks.
+	 *
+	 * THE PAIR WAS MEASURED RATHER THAN PICKED BY EYE. Of the 28 pairs of rows
+	 * in `game/Data/ElementVisuals.csv`, Celestial and Void are the second
+	 * furthest apart by plain distance between their primary colours (0.96) and
+	 * the second furthest by a luminance-weighted one (0.58), and they are the
+	 * furthest-apart pair that does not use Demonic. Measured 2026-09-14 by
+	 * comparing every pair in that file.
+	 *
+	 * DEMONIC IS EXCLUDED DELIBERATELY, which is why the furthest pair overall
+	 * -- Death and Demonic -- is not this one. Demonic red is the colour every
+	 * `Demonic_Infernal_Rain` patch is drawn in, and that is burning ground a
+	 * player must get off. A mushroom in that colour would tell them the
+	 * opposite of what it does, whichever kind it was.
+	 *
+	 * NEITHER NAME MEANS ANYTHING HERE BEYOND THE COLOUR, and that is worth
+	 * stating because both are damage types. A mushroom deals no damage at all,
+	 * so nothing ever asks what element it is: `ACataclysmGroundZone::Sweep`
+	 * returns early on a zone with no damage and no curse, and the damage type a
+	 * blow is met by comes from the zone's OWNER in any case. See
+	 * `ACataclysmGroundZone::DrawnAsType`.
+	 *
+	 * NEITHER COLOUR PROMISES ANYTHING EITHER, and that was checked rather than
+	 * assumed. `Celestial_Hallowed_Groundfall` leaves craters that burn the
+	 * player, so gold is not the game's colour for safety; both Void rows that
+	 * place a zone slow the player, which happens to agree with the slow
+	 * mushroom but is not a convention anything else relies on. The two colours
+	 * are here to differ from each other.
+	 */
+	static const TCHAR* FungalOvergrowthBoostDrawnAs;
+	static const TCHAR* FungalOvergrowthSlowDrawnAs;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -671,12 +785,16 @@ public:
 	 * standing on it, your Health and Mana recovery (regen/leech) is reduced
 	 * by 80%." Issue #41.
 	 *
-	 * THE ONLY RULE HERE PLACED BY AN EVENT RATHER THAN BY A CLOCK. Infernal
-	 * Rain and Singularity Wells both drop a hazard on a cadence and cap how
-	 * many may exist. This one places a patch every time a creature dies, and
-	 * caps nothing, because the row states the trigger and states no limit:
-	 * a cap would make "enemies leave patches on death" stop being true at
-	 * whichever enemy hit it.
+	 * THE FIRST RULE HERE PLACED BY AN EVENT RATHER THAN BY A CLOCK, AND NO
+	 * LONGER THE ONLY ONE. Infernal Rain and Singularity Wells both drop a
+	 * hazard on a cadence and cap how many may exist. This one places a patch
+	 * every time a creature dies, and caps nothing, because the row states the
+	 * trigger and states no limit: a cap would make "enemies leave patches on
+	 * death" stop being true at whichever enemy hit it.
+	 *
+	 * THIS SAID "THE ONLY RULE" UNTIL `Pestilence_Fungal_Overgrowth` WAS BUILT,
+	 * which places a mushroom on every creature's death and caps nothing either,
+	 * for the reason given here. Issues #1820 and #41.
 	 */
 	static const TCHAR* WitheredGroundKey;
 
@@ -1428,6 +1546,90 @@ public:
 		BrandNovaRadiusCm > 0.0f,
 		"A nova that reaches nowhere reaches nobody, the player included.");
 
+	/**
+	 * What a mushroom does to the player standing on it, in percent, each way.
+	 *
+	 * BOTH ARE THE ROW'S OWN FIGURES: "either a 50% speed boost or a 50% slow".
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` holds each
+	 * constant against the sentence it came from, so the row and these cannot
+	 * drift apart.
+	 *
+	 * THEY ARE NOT THE SAME NUMBER TWICE, WHICH IS WORTH SAYING BECAUSE THEY
+	 * READ AS ONE. A 50% boost multiplies speed by 1.5 and a 50% slow multiplies
+	 * it by 0.5, so the pair is not symmetrical and a player who steps on one of
+	 * each is left at 0.75 of their speed rather than back where they started.
+	 * The row asks for two shares of the same stat and says nothing about
+	 * cancelling, so they compose the way every other pair in this game
+	 * composes.
+	 */
+	static constexpr float FungalOvergrowthSpeedMorePercent = 50.0f;
+	static constexpr float FungalOvergrowthSpeedLessPercent = 50.0f;
+
+	/**
+	 * How often a mushroom is the kind that helps, in percent.
+	 *
+	 * A JUDGEMENT, AND AN EVEN SPLIT IS THE ONLY ONE THE ROW SUPPORTS. "either a
+	 * 50% speed boost or a 50% slow" names two outcomes and no odds between
+	 * them. Any other figure would be this file deciding a thing the design left
+	 * open in a direction nobody asked for.
+	 *
+	 * NOT A CHANCE THAT A MUSHROOM APPEARS AT ALL, which is the figure
+	 * `SporeCloudsChancePercentOnDeath` and `HellfireChancePercentOnDeath` hold
+	 * for their rows. This row states no such chance -- "Killing enemies creates
+	 * mushrooms" is unconditional, the way Withered Ground's "Enemies leave
+	 * patches of Barren Earth on death" is -- so every creature death leaves one
+	 * and this figure only decides which kind.
+	 */
+	static constexpr float FungalOvergrowthBoostChancePercent = 50.0f;
+
+	/**
+	 * How wide a mushroom is.
+	 *
+	 * A JUDGEMENT AND IT IS THE HOUSE FIGURE, declared as another rule's
+	 * constant rather than as a number for the reason `BrandNovaRadiusCm` above
+	 * gives. Withered Ground's patch, a Singularity Well, Infernal Rain's patch
+	 * and the Gatekeeper's Soulfall are all 300 cm, and a mushroom is the same
+	 * thing: a piece of ground a player stands on.
+	 */
+	static constexpr float FungalOvergrowthMushroomRadiusCm =
+		WitheredGroundPatchRadiusCm;
+
+	static_assert(
+		FungalOvergrowthSpeedLessPercent > 0.0f
+			&& FungalOvergrowthSpeedLessPercent < 100.0f,
+		"A mushroom's slow is no longer a fraction of the speed a character "
+		"walks at. At 100 it stops them dead, which the row does not ask for, "
+		"and the pipeline floors a Less at -99 so the figure would stop meaning "
+		"what it says.");
+
+	static_assert(
+		FungalOvergrowthSpeedMorePercent > 0.0f,
+		"A boost of nothing is not a boost, and the row's promise of one is "
+		"then unbuilt.");
+
+	static_assert(
+		FungalOvergrowthBoostChancePercent > 0.0f
+			&& FungalOvergrowthBoostChancePercent < 100.0f,
+		"Every mushroom is now the same kind, and the row's word 'either' "
+		"describes nothing.");
+
+	// A MUSHROOM THAT REACHES NOWHERE CAN BE STOOD ON BY NOBODY, so this row is
+	// unbuilt at zero however right everything else is.
+	//
+	// AND NOT `== WitheredGroundPatchRadiusCm`, WHICH IS WHAT THIS ASSERTION
+	// SAID FIRST. The constant is DECLARED as that one three lines above, so
+	// comparing the two is A == A: an assertion no edit to this file could ever
+	// make fail, which is worse than none because it reads like a guard. The
+	// derivation is held instead by
+	// `test_fungal_overgrowth_mushroom_radius_is_still_a_derivation` in
+	// `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, which reads the
+	// declaration as text and fails when it becomes a number -- the same way
+	// Hellfire's and Brand of the Aggressor's derived radii are held, and each
+	// of those asserts only that it is positive.
+	static_assert(
+		FungalOvergrowthMushroomRadiusCm > 0.0f,
+		"A mushroom that reaches nowhere is a mushroom nobody can stand on.");
+
 	static_assert(
 		HellfireChancePercentOnDeath > 0.0f
 			&& HellfireChancePercentOnDeath < 100.0f,
@@ -2032,6 +2234,18 @@ public:
 	 * that landed for nothing.
 	 */
 	static float BrandNovaDamage(float MaximumHealth);
+
+	/**
+	 * Whether a mushroom just created is the kind that helps.
+	 *
+	 * BELOW AND NOT AT OR BELOW, the same comparison `SporeCloudsRelease` and
+	 * `HellfireExplodes` make, so a roll of exactly the chance falls on the
+	 * other side and a pinned 0 always helps.
+	 *
+	 * IT DECIDES THE KIND AND NEVER WHETHER THERE IS A MUSHROOM. Every creature
+	 * death leaves one; see `FungalOvergrowthBoostChancePercent`.
+	 */
+	static bool FungalOvergrowthBoosts(float Roll);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
