@@ -18,6 +18,11 @@
 // character being hit. Issue #1515. An actor with no ability system is the
 // "cannot be read" case the condition refuses on.
 #include "AbilitySystem/CataclysmTargeting.h"
+// For TopUp, which is how a worn row restores a pool: it clamps to the
+// maximum, and for health it is the healing path, so the nodes that boost
+// healing reach it and the Masochist's rule that healing removes Fervour
+// applies to it. Issue #1815.
+#include "AbilitySystem/CataclysmRegeneration.h"
 // For the health a conditional bonus is judged against. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
@@ -920,6 +925,8 @@ void UCataclysmAbilitySystemComponent::NoteHealthCostPaid()
 	{
 		LastHealthCostAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("health_cost")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceHealthCostPaid() const
@@ -1543,6 +1550,8 @@ void UCataclysmAbilitySystemComponent::NoteForeignDamageTaken()
 	{
 		LastForeignDamageAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("foreign_damage")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceForeignDamageTaken() const
@@ -1567,6 +1576,8 @@ void UCataclysmAbilitySystemComponent::NoteChargeSkillUsed()
 	{
 		LastChargeSkillAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("charge_skill")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceChargeSkillUsed() const
@@ -1590,6 +1601,8 @@ void UCataclysmAbilitySystemComponent::NoteBasicAttackUsed()
 	{
 		LastBasicAttackAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("basic_attack")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceBasicAttackUsed() const
@@ -1610,6 +1623,8 @@ void UCataclysmAbilitySystemComponent::NoteBlocked()
 	{
 		LastBlockAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("block")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceBlocked() const
@@ -1629,6 +1644,8 @@ void UCataclysmAbilitySystemComponent::NoteSummonUsed()
 	{
 		LastSummonAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("summon")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceSummonUsed() const
@@ -1648,6 +1665,8 @@ void UCataclysmAbilitySystemComponent::NoteEvaded()
 	{
 		LastEvadeAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("dodge")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceEvaded() const
@@ -1667,6 +1686,8 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken()
 	{
 		LastHitTakenAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("hit_taken")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceHitTaken() const
@@ -1686,6 +1707,8 @@ void UCataclysmAbilitySystemComponent::NoteClassResourceFull()
 	{
 		LastClassResourceFullAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("resource_full")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceClassResourceFull() const
@@ -1706,6 +1729,8 @@ void UCataclysmAbilitySystemComponent::NoteClassResourceEmptied()
 	{
 		LastClassResourceEmptyAtSeconds = World->GetTimeSeconds();
 	}
+
+	ActOnEvent(FName(TEXT("resource_empty")));
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceClassResourceEmptied() const
@@ -1720,6 +1745,130 @@ float UCataclysmAbilitySystemComponent::SecondsSinceClassResourceEmptied() const
 		0.0f, World->GetTimeSeconds() - LastClassResourceEmptyAtSeconds);
 }
 
+namespace
+{
+	// THE FOUR POOL NAMES, spelled as `POOL_ACTIONS` in
+	// `tools/generate_datatables.py` spells them. The generator refuses any
+	// other, so a name reaching here that is not one of these means the CSV was
+	// hand-edited or the build is older than the data.
+	const FName HealthPoolName(TEXT("health"));
+	const FName ManaPoolName(TEXT("mana"));
+	const FName EnergyShieldPoolName(TEXT("energy_shield"));
+	const FName ClassResourcePoolName(TEXT("class_resource"));
+}
+
+bool UCataclysmAbilitySystemComponent::PoolAttributesFor(
+	FName Pool, FGameplayAttribute& Held, FGameplayAttribute& Maximum)
+{
+	if (Pool == HealthPoolName)
+	{
+		Held = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		Maximum = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		return true;
+	}
+	if (Pool == ManaPoolName)
+	{
+		Held = UCataclysmVitalAttributeSet::GetManaAttribute();
+		Maximum = UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+		return true;
+	}
+	if (Pool == EnergyShieldPoolName)
+	{
+		Held = UCataclysmVitalAttributeSet::GetEnergyShieldAttribute();
+		Maximum = UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute();
+		return true;
+	}
+	if (Pool == ClassResourcePoolName)
+	{
+		Held = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+		Maximum =
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+		return true;
+	}
+	return false;
+}
+
+void UCataclysmAbilitySystemComponent::ActOnEvent(FName Event)
+{
+	// DEPTH ONE, BY CONSTRUCTION. See `PoolActionDepth` for why this is stated
+	// rather than left to hold by accident.
+	if (PoolActionDepth > 0 || PoolActions.IsEmpty())
+	{
+		return;
+	}
+	TGuardValue<int32> Depth(PoolActionDepth, 1);
+
+	// A COPY, because applying one writes an attribute, and an attribute write
+	// can reach the equipment refresh that replaces this very list.
+	const TArray<FCataclysmPoolAction> Firing = PoolActions;
+	for (const FCataclysmPoolAction& Action : Firing)
+	{
+		if (Action.Event == Event)
+		{
+			ApplyPoolAction(Action);
+		}
+	}
+}
+
+void UCataclysmAbilitySystemComponent::ApplyPoolAction(
+	const FCataclysmPoolAction& Action)
+{
+	FGameplayAttribute Held;
+	FGameplayAttribute Maximum;
+	if (!PoolAttributesFor(Action.Pool, Held, Maximum))
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("A worn enchantment moves the pool '%s', which this build has "
+					"no attributes for, so it does nothing. Regenerate "
+					"game/Data/EnchantmentEffects.csv from the workbook."),
+			   *Action.Pool.ToString());
+		return;
+	}
+
+	// OF THE MAXIMUM OR OF WHAT IS HELD, and the two differ on a hurt character.
+	const float Base = Action.bOfMaximum ? GetNumericAttribute(Maximum)
+										 : GetNumericAttribute(Held);
+	const float Amount = Base * Action.Percent / 100.0f;
+	if (FMath::IsNearlyZero(Amount))
+	{
+		return;
+	}
+
+	if (Amount > 0.0f)
+	{
+		// A RESTORE GOES THROUGH `TopUp`, WHICH IS THE HEALING PATH. Ruled
+		// 2026-09-14: a restore of health IS healing, so the nodes that boost
+		// healing reach it and the Masochist's rule that healing removes Fervour
+		// applies to it. Both of those are written about "healing" with no
+		// exception for an item, and `TopUp` is what makes both true.
+		//
+		// NO TAGS. `Keyword.Regeneration` is for a regeneration step and leech
+		// carries none; an item's restore is neither, so it carries nothing and a
+		// node scoped to one source does not reach it while an unscoped one does.
+		UCataclysmRegeneration::TopUp(*this, Held, Maximum, Amount,
+									  FGameplayTagContainer());
+		return;
+	}
+
+	// A DRAIN TAKES THE RULE OF A COST AND NOT THE PATH OF ONE. Ruled
+	// 2026-09-14. It writes the pool and nothing else: no on-damage effect
+	// fires, no Sanguine Momentum stack is granted, and the health-cost clock is
+	// not stamped. Those last two are what
+	// `UCataclysmSkillTemplate::PayHealthCost` does beside moving health, and
+	// they are about paying for a skill rather than about an item taking
+	// something.
+	//
+	// AND IT CANNOT KILL. Health floors at one and every other pool at zero. A
+	// percentage of what is currently held cannot reach zero by itself anyway,
+	// which is why the two bases are not the same question.
+	const float Floor = (Action.Pool == HealthPoolName) ? 1.0f : 0.0f;
+	const float Current = GetNumericAttribute(Held);
+	const float Change = FMath::Max(Floor, Current + Amount) - Current;
+	if (!FMath::IsNearlyZero(Change))
+	{
+		ApplyModToAttribute(Held, EGameplayModOp::Additive, Change);
+	}
+}
 bool UCataclysmAbilitySystemComponent::RemoveStatModifier(int32 Handle)
 {
 	const int32 Index = StatModifierHandles.IndexOfByKey(Handle);

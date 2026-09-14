@@ -2190,4 +2190,397 @@ bool FCataclysmEnchantmentEventWindowRowsTest::RunTest(const FString& Parameters
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// A WORN ROW THAT MOVES A POOL WHEN AN EVENT HAPPENS. Issue #1815.
+//
+// A STAT ROW IS PULLED AND AN ACTION ROW IS PUSHED. The pipeline reads a stat
+// modifier when something asks for the stat; an action happens at the moment
+// its event does and is then over. Seventeen authored enchantments say
+// "restore", "generate" or "drain", and none of them can be written as a
+// modifier.
+//
+// NO DATA ROW USES THIS YET, so every test below writes its own. The rows
+// arrive in a later change, after the design workbook is free.
+
+namespace CataclysmEnchantmentEffectTest
+{
+	/** An effect table built from a CSV string, for a row the real data has not got. */
+	UDataTable* EffectTableFrom(const FString& Contents)
+	{
+		UDataTable* Table = NewObject<UDataTable>();
+		Table->RowStruct = FCataclysmEnchantmentEffectRow::StaticStruct();
+		if (Table->CreateTableFromCSVString(Contents).Num() > 0)
+		{
+			return nullptr;
+		}
+		return Table;
+	}
+
+	/** One action, as the equipment refresh would hand it over. */
+	FCataclysmPoolAction PoolAction(const TCHAR* Event, const TCHAR* Pool,
+								   float Percent, bool bOfMaximum = true)
+	{
+		FCataclysmPoolAction Out;
+		Out.Event = FName(Event);
+		Out.Pool = FName(Pool);
+		Out.Percent = Percent;
+		Out.bOfMaximum = bOfMaximum;
+		return Out;
+	}
+
+	/** A character with the four pools set to known figures. */
+	void GivePools(UCataclysmAbilitySystemComponent& AbilitySystem,
+				   float Health, float MaxHealth, float Resource = 0.0f,
+				   float MaxResource = 0.0f)
+	{
+		AbilitySystem.SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), MaxHealth);
+		AbilitySystem.SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+		AbilitySystem.SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+			MaxResource);
+		AbilitySystem.SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+			Resource);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAnActionRowIsNotAStatModifier,
+	"Cataclysm.Enchantments.AnActionRowBecomesAPoolActionAndNotAStatModifier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: dropping the action branch in
+	// `AccumulateEnchantmentsInto`, which would send an action row to the stat
+	// totals keyed by an empty stat name -- where nothing would ever read it and
+	// nothing would say so.
+	UDataTable* Positive =
+		LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	UDataTable* Negative =
+		LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("the positive enchantments"), Positive)
+		|| !TestNotNull(TEXT("the negative enchantments"), Negative))
+	{
+		return false;
+	}
+
+	// THE ROW NAMES A REAL ENCHANTMENT, because the accumulator asks the real
+	// tables whether that name belongs to a set. Only the effect row is invented.
+	UDataTable* Effects = EffectTableFrom(
+		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
+					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
+					 "Action,ActionEvent,FractionOf\n"))
+		+ FString::Printf(
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum\n"),
+			ShieldBenefit, ShieldBenefit));
+	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
+	{
+		return false;
+	}
+
+	const TArray<FCataclysmItem> Worn = {
+		// A REAL DRAWBACK NAME RATHER THAN NOTHING. Every other call in this file
+		// passes one, `Carrying` does `FName(Negative)` with whatever it is given,
+		// and this one has no effect row, so it adds nothing and cannot be what
+		// makes the assertions below pass.
+		Carrying(TEXT("Head_Helm"), ShieldBenefit, DrawbackWithNoEffect)};
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
+	TArray<FCataclysmPoolAction> Actions;
+	UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+		Totals, Worn, Effects, Positive, Negative, &Actions);
+
+	TestEqual(TEXT("it did not become a stat modifier"), Totals.Num(), 0);
+	if (!TestEqual(TEXT("it became one pool action"), Actions.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("on the event it names"), Actions[0].Event,
+			  FName(TEXT("block")));
+	TestEqual(TEXT("moving the pool it names"), Actions[0].Pool,
+			  FName(TEXT("health")));
+	TestEqual(TEXT("by the percentage it states"), Actions[0].Percent, 4.0f,
+			  0.001f);
+	TestTrue(TEXT("of the maximum"), Actions[0].bOfMaximum);
+
+	// AND A CALLER THAT WANTS NO ACTIONS GETS NONE RATHER THAN A STAT MODIFIER,
+	// which is what the optional parameter has to mean.
+	TMap<FName, TArray<FCataclysmStatModifier>> Ignored;
+	UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+		Ignored, Worn, Effects, Positive, Negative, nullptr);
+	TestEqual(TEXT("and no caller gets it as a stat either way"), Ignored.Num(),
+			  0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAnActionFiresOnItsOwnEventOnly,
+	"Cataclysm.Enchantments.AnActionFiresOnItsOwnEventAndOnNoOther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAnActionFiresOnItsOwnEventOnly::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// TWO BREAKS, AND NEITHER CATCHES THE OTHER. Deleting the dispatch line
+	// inside `NoteBlocked` fails the first half; firing every action whatever
+	// the event fails the second. A version that fires on everything passes any
+	// test that only checks the event it was named for.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	GivePools(ASC, /*Health=*/100.0f, /*MaxHealth=*/500.0f);
+
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f)});
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	// NOTHING HAS HAPPENED YET, so a character that was simply healed at birth
+	// would fail here rather than passing the assertion below by accident.
+	if (!TestEqual(TEXT("health starts where it was put"),
+				   ASC.GetNumericAttribute(Health), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	ASC.NoteEvaded();
+	TestEqual(TEXT("a dodge does not fire a row hung on a block"),
+			  ASC.GetNumericAttribute(Health), 100.0f, 0.01f);
+
+	ASC.NoteBlocked();
+	TestEqual(TEXT("and a block restores a tenth of the maximum"),
+			  ASC.GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmARestoreAddsAndADrainTakes,
+	"Cataclysm.Enchantments.ARestoreAddsToThePoolAndADrainTakesFromIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmARestoreAddsAndADrainTakes::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: losing the sign, by taking the absolute value or by
+	// sending every action down the restoring path. A drain would then heal, and
+	// six of the seventeen authored rows say drain or reduce.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	GivePools(ASC, /*Health=*/300.0f, /*MaxHealth=*/500.0f);
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), -10.0f)});
+	ASC.NoteBlocked();
+	if (!TestEqual(TEXT("a negative percentage takes health away"),
+				   ASC.GetNumericAttribute(Health), 250.0f, 0.01f))
+	{
+		return false;
+	}
+
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f)});
+	ASC.NoteBlocked();
+	TestEqual(TEXT("and a positive one gives it back"),
+			  ASC.GetNumericAttribute(Health), 300.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAFractionOfHeldIsNotAFractionOfTheMaximum,
+	"Cataclysm.Enchantments.AFractionOfWhatIsHeldIsNotAFractionOfTheMaximum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAFractionOfHeldIsNotAFractionOfTheMaximum::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: ignoring `bOfMaximum` and always reading the
+	// maximum. On a character at full health the two answers are the same, so
+	// this one is deliberately hurt -- 200 of 500 -- and the two answers are 20
+	// and 50.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	GivePools(ASC, /*Health=*/200.0f, /*MaxHealth=*/500.0f);
+	if (!TestEqual(TEXT("the character is hurt, so the two differ"),
+				   ASC.GetNumericAttribute(Health), 200.0f, 0.01f))
+	{
+		return false;
+	}
+
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f,
+							   /*bOfMaximum=*/false)});
+	ASC.NoteBlocked();
+	TestEqual(TEXT("a tenth of what is held is twenty"),
+			  ASC.GetNumericAttribute(Health), 220.0f, 0.01f);
+
+	GivePools(ASC, /*Health=*/200.0f, /*MaxHealth=*/500.0f);
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f,
+							   /*bOfMaximum=*/true)});
+	ASC.NoteBlocked();
+	TestEqual(TEXT("and a tenth of the maximum is fifty"),
+			  ASC.GetNumericAttribute(Health), 250.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmADrainCannotKill,
+	"Cataclysm.Enchantments.ADrainLeavesACharacterAliveAtOneHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmADrainCannotKill::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: removing the floor, so a drain of the maximum on a
+	// nearly dead character takes it to zero. The project owner's delegate ruled
+	// on 2026-09-14 that a drain is a cost and not damage, and a cost does not
+	// kill.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	// TEN OF FIVE HUNDRED, AND A DRAIN OF A FIFTH OF THE MAXIMUM. A hundred is
+	// far more than is left, so a floor that is missing shows as zero rather
+	// than as a number close to the right one.
+	GivePools(ASC, /*Health=*/10.0f, /*MaxHealth=*/500.0f);
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), -20.0f)});
+	ASC.NoteBlocked();
+	TestEqual(TEXT("the drain stops at one health"),
+			  ASC.GetNumericAttribute(Health), 1.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmARestoreOfHealthIsHealing,
+	"Cataclysm.Enchantments.ARestoreOfHealthIsHealingAndSoCostsFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmARestoreOfHealthIsHealing::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: restoring health by writing the attribute instead of
+	// going through `UCataclysmRegeneration::TopUp`. The health would still
+	// arrive, so every other test here would pass; what would be lost is that the
+	// restore counts as healing. The project owner's delegate ruled on 2026-09-14
+	// that it does, which means the Masochist's rule that healing removes Fervour
+	// applies to it, and that rule is written about healing with no exception for
+	// an item.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute Resource =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+
+	GivePools(ASC, /*Health=*/200.0f, /*MaxHealth=*/500.0f,
+			  /*Resource=*/100.0f, /*MaxResource=*/100.0f);
+	ASC.SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(),
+		1.0f);
+
+	if (!TestEqual(TEXT("the pool is full before anything heals"),
+				   ASC.GetNumericAttribute(Resource), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 20.0f)});
+	ASC.NoteBlocked();
+
+	if (!TestEqual(TEXT("the health arrived"), ASC.GetNumericAttribute(Health),
+				   300.0f, 0.01f))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and it cost Fervour, so it was healing"),
+			 ASC.GetNumericAttribute(Resource) < 100.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmARefreshReplacesTheActions,
+	"Cataclysm.Enchantments.AnEquipmentRefreshReplacesTheActionsWholesale",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmARefreshReplacesTheActions::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: deleting the hand-over inside
+	// `UCataclysmEquipmentComponent::RefreshAttributes`. A character would then
+	// keep firing rows from gear it has taken off, and nothing else here would
+	// notice, because every other test hands the list over by itself.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+
+	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f)});
+	if (!TestEqual(TEXT("the character holds one action to begin with"),
+				   ASC.GetPoolActions().Num(), 1))
+	{
+		return false;
+	}
+
+	// AND A REFRESH WEARING NOTHING LEAVES NONE. No authored row moves a pool
+	// yet, so the real tables hand back an empty list, which is exactly the case
+	// that proves the list is written rather than added to.
+	Wearer.Equipment->RefreshAttributes(&ASC);
+	TestEqual(TEXT("and a refresh wearing nothing leaves none"),
+			  ASC.GetPoolActions().Num(), 0);
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

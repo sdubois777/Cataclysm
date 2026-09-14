@@ -245,8 +245,13 @@ public:
 	 * StatToAttribute` turns into a gameplay attribute. An empty map is a
 	 * legitimate answer and means the character is wearing nothing that grants
 	 * anything, which is different from an error.
+	 *
+	 * @param Actions where worn rows that MOVE A POOL go, or null to skip them.
+	 *                They cannot travel in the return value: a pool action is
+	 *                not a modifier of any stat and has no stat to be keyed by.
 	 */
-	TMap<FName, TArray<FCataclysmStatModifier>> GatherModifiers() const;
+	TMap<FName, TArray<FCataclysmStatModifier>> GatherModifiers(
+		TArray<FCataclysmPoolAction>* Actions = nullptr) const;
 
 	/**
 	 * Which weapon type the character is holding, for the ability slots.

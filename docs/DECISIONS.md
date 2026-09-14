@@ -2,6 +2,128 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — An enchantment may DO something and not only change a number, a restore of health is healing, and a drain is a cost by rule rather than by path
+
+**Affects:** `game/Source/Cataclysm/Data/CataclysmDataRows.h` (three columns on the
+enchantment effect row), `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`
+(what such a row becomes),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(the list a character holds and the ten places it fires),
+`game/Source/Cataclysm/Items/CataclysmItem.h` and `.cpp` (collecting them off worn
+gear), `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp`
+(handing them over), `tools/generate_datatables.py`,
+`game/Data/EnchantmentEffects.csv`,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmPlayerMovementTests.cpp`. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### What could not be written, and why it is seventeen rows
+
+Every enchantment effect row is a stat modifier, and the pipeline reads a modifier
+when something asks for the stat it names. **Seventeen authored enchantments say
+"restore", "generate" or "drain" a pool when something happens**, and a pool moving
+is not a number being read: it is a thing done at a moment and then over. Eight of
+the seventeen name an event the game already records.
+
+### The decision: a row may act, and the action is one thing only
+
+**A row may move a fraction of a named pool when a named event happens, and nothing
+wider.** A stat row stays a stat row; the generator refuses a row naming both and
+refuses one naming neither.
+
+Three columns say it. `Action` names the pool, `ActionEvent` names the event, and
+`FractionOf` says whether the percentage is of the pool's maximum or of what the
+character currently holds. **Empty means maximum**, because most sentences say
+maximum or say nothing; the two differ on a hurt character and both are authored.
+The value columns already carried the percentage and its sign.
+
+### The finding that made it small: the stamp sites are the action sites
+
+The survey on [#1815](https://github.com/sdubois777/Cataclysm/issues/1815) planned a
+subscriber listening to the combat broadcasts. **None is needed.** Every event a row
+can name is already a `NoteX()` on `UCataclysmAbilitySystemComponent`, called at the
+event's own site, on the right character, at the moment it happens — the same ten
+calls the clock conditions were built on. Each gained one line.
+
+### The event vocabulary is derived from the clock conditions rather than repeated
+
+Every clock is named `seconds_after_<event>`; an action names `<event>`. One list,
+two questions — "within N seconds of X" and "at X". Deriving it means a clock added
+later cannot be missing from the actions and the two cannot drift apart, which is
+the shape [#1833](https://github.com/sdubois777/Cataclysm/issues/1833) argued for
+when it asked whether clocks and stacks should share one vocabulary.
+
+### A restore of health IS healing, and that costs Fervour
+
+It goes through `UCataclysmRegeneration::TopUp`, which is the healing path, so nodes
+that boost healing reach it and the Masochist's rule that healing removes Fervour
+applies to it. **Both of those rules are written about "healing" with no exception
+for an item**, which is the argument.
+
+**The consequence is named here rather than discovered later:** a Masochist wearing
+"blocking an attack restores health" loses Fervour on every block it heals from.
+That is a real interaction and not a side effect nobody meant.
+
+It carries no tags. `Keyword.Regeneration` belongs to a regeneration step and leech
+carries none; an item's restore is neither, so a node scoped to one source does not
+reach it while an unscoped one does.
+
+### A drain takes the RULE of a cost and not the PATH of one
+
+A drain is not damage: no on-damage effect fires, and health floors at one, so it
+cannot kill. A percentage of what is currently held cannot reach zero by itself
+anyway, which is why the two bases are not the same question.
+
+**But "the existing health-cost path" would have done two further things, and
+neither was meant.** `UCataclysmSkillTemplate::PayHealthCost` also calls
+`UCataclysmStacks::NoteHealthCostPaid`, which grants a Sanguine Momentum stack, and
+`NoteHealthCostPaid` on the component, which opens the health-cost window. Taken
+literally, "critical strikes drain 3%-6% of your current HP" would have built combat
+stacks out of critical strikes. **The sentence says the item drains you; it does not
+say you paid for anything.** So the drain writes the pool and does neither.
+
+### Once per event, not once per sequence of blows
+
+A multi-hit attack blocked twice fires a row hung on a block twice, the same way the
+block clock stamps twice.
+
+### An action cannot set off another action, by construction rather than by luck
+
+An action writes a pool, a pool write raises an attribute change, and an attribute
+change can stamp a clock — which is where actions fire from. So two rows could feed
+each other.
+
+**Today the chain stops, and it stops for a reason that has nothing to do with this.**
+`UCataclysmFervour::Move` returns before writing when the change it would write is
+nearly zero. A rule that holds because of an early return in another class is a rule
+nothing states, so it is not relied on: the limit is one, written in code, and the
+test for it is written against the break of raising it to two rather than removing
+it — removing it recurses until the run dies, and a run that dies reports no
+failures at all.
+
+### Refused rather than ignored, in every case
+
+A pool the game does not have, an event it does not record, a base that is neither
+maximum nor current, a value kind on an action row, and a condition or a scale on an
+action row are all refused by the generator. **A row that validates and grants
+nothing is the failure this table keeps producing, and it is silent**: the sheet has
+a number in it, the generator writes it, the game reads a name it has no case for,
+and nothing anywhere says so.
+
+A condition and a scale are refused *for now*. Neither is judged at the moment an
+action fires, because the pipeline asks them when a stat is read, so a row carrying
+one would have it dropped in silence. The enchantments that want one arrive with the
+events that do not exist yet.
+
+### A correction to the plan this was approved from
+
+The plan said this change needed no editor window, because the design workbook was
+not on the critical path. **The workbook was not, and the editor was.** Adding three
+properties to the row struct forces the generated CSV to gain columns of the same
+names, because `tools/tests/test_csv_columns_match_their_row_structs.py` compares the
+two — so the built asset had to be rebuilt after all.
+---
+
 ## 2026-09-14 — Nine rows make eight keystones do what they say, and a keystone states its value in words rather than digits
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet),

@@ -2171,4 +2171,42 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	/** How large one whole step of that state is, in the state's own units. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float ScaleStep = 0.0f;
+
+	/**
+	 * The pool this row MOVES when its event happens, or empty for a row that
+	 * changes a stat instead. `POOL_ACTIONS` in `tools/generate_datatables.py`
+	 * is the list, and `UCataclysmItemModifiers::PoolActionFor` turns a name
+	 * into the two attributes it needs -- what is held and the most that can be.
+	 *
+	 * A ROW DOES ONE OR THE OTHER. A stat row changes a number the pipeline
+	 * reads when something asks for it; an action row moves a pool at the moment
+	 * an event happens and then is over. The generator refuses a row naming
+	 * both, and refuses one naming neither.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString Action;
+
+	/**
+	 * The event that moves the pool, without the `seconds_after_` a condition
+	 * name carries: `block`, `dodge`, `hit_taken` and the rest.
+	 *
+	 * THE SAME EVENTS THE CLOCK CONDITIONS ASK ABOUT, and deliberately so: a
+	 * clock asks "within N seconds of X" and an action happens AT X, which is
+	 * two questions about one list. Every one of them is already a `NoteX()` on
+	 * `UCataclysmAbilitySystemComponent`, called at the event's own site, so an
+	 * action needs no subscription of its own.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString ActionEvent;
+
+	/**
+	 * What the percentage is a percentage OF: `maximum` or `current`. Empty
+	 * means maximum.
+	 *
+	 * BOTH ARE AUTHORED AND THEY DIFFER ON A HURT CHARACTER. "Restore 5% of
+	 * your maximum HP" and "drain 3% of your current HP" are different amounts
+	 * at half health, and the second can never empty the pool by itself.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	FString FractionOf;
 };

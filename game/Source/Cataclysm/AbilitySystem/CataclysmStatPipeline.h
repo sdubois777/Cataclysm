@@ -2022,6 +2022,57 @@ struct CATACLYSM_API FCataclysmStatInputs
 };
 
 /**
+ * What a worn enchantment DOES when an event happens, rather than what it
+ * changes. Issue #1815.
+ *
+ * A STAT MODIFIER IS PULLED AND THIS IS PUSHED, which is the whole difference.
+ * The pipeline reads a modifier when something asks for the stat; an action
+ * happens at the moment its event does and is then over. Seventeen authored
+ * enchantments say "restore", "generate" or "drain", and not one of them can be
+ * written as a modifier.
+ *
+ * THE POOL IS A NAME RATHER THAN THE TWO ATTRIBUTES IT MEANS, so this header
+ * needs to know about no attribute set.
+ * `UCataclysmAbilitySystemComponent::PoolAttributesFor` is the one place that
+ * turns a name into that pair, which makes it the one place a name nobody
+ * implemented can be reported rather than silently granting nothing.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmPoolAction
+{
+	GENERATED_BODY()
+
+	/**
+	 * The event that fires it, as `game/Data/EnchantmentEffects.csv` spells it:
+	 * `block`, `dodge`, `hit_taken` and the rest. These are the clock condition
+	 * names with `seconds_after_` removed, because a clock asks "within N seconds
+	 * of X" and this happens AT X.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName Event;
+
+	/** `health`, `mana`, `energy_shield` or `class_resource`. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName Pool;
+
+	/**
+	 * PERCENTAGE POINTS, SIGNED. Positive restores and negative drains, which is
+	 * the convention the sentence uses and the one `FCataclysmStatModifier::Value`
+	 * already uses.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float Percent = 0.0f;
+
+	/**
+	 * True when the percentage is of the pool's maximum, false when it is of what
+	 * the character currently holds. The two differ on a hurt character and both
+	 * are authored.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOfMaximum = true;
+};
+
+/**
  * What the pipeline decided, step by step, so it can be inspected and shown.
  *
  * The counts at the end exist so a test can prove a rule fired without reading

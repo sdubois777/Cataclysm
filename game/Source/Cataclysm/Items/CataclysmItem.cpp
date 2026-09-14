@@ -946,7 +946,8 @@ namespace
 int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	TMap<FName, TArray<FCataclysmStatModifier>>& Totals,
 	const TArray<FCataclysmItem>& Worn, const UDataTable* EffectTable,
-	const UDataTable* PositiveTable, const UDataTable* NegativeTable)
+	const UDataTable* PositiveTable, const UDataTable* NegativeTable,
+	TArray<FCataclysmPoolAction>* Actions)
 {
 	// ALL THREE TABLES OR NOTHING. The loaders report a missing table loudly, so
 	// it is not reported a second time here.
@@ -980,7 +981,8 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 	}
 
 	int32 Added = 0;
-	auto Grant = [&Totals, &EffectsFor, &Added](FName Enchantment, float Roll)
+	auto Grant = [&Totals, &EffectsFor, &Added, Actions](FName Enchantment,
+													  float Roll)
 	{
 		const TArray<const FCataclysmEnchantmentEffectRow*>* Effects =
 			EffectsFor.Find(Enchantment);
@@ -993,6 +995,32 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 
 		for (const FCataclysmEnchantmentEffectRow* Effect : *Effects)
 		{
+			// A ROW THAT MOVES A POOL LEAVES BY A DIFFERENT DOOR. It is not a stat
+			// modifier and cannot become one: the pipeline reads a modifier when
+			// something asks for a stat, and a pool moves at a moment instead.
+			//
+			// THE GENERATOR REFUSES A ROW NAMING BOTH A STAT AND AN ACTION, so this
+			// test is exclusive rather than a preference between two things that
+			// could both be set.
+			if (!Effect->Action.IsEmpty())
+			{
+				if (Actions)
+				{
+					FCataclysmPoolAction Action;
+					Action.Event = FName(*Effect->ActionEvent);
+					Action.Pool = FName(*Effect->Action);
+					Action.Percent = UCataclysmItemValues::EnchantmentValue(
+						Effect->ValueLow, Effect->ValueHigh, Roll);
+
+					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
+					// when the column is blank and what most sentences mean.
+					Action.bOfMaximum = !Effect->FractionOf.Equals(
+						TEXT("current"), ESearchCase::IgnoreCase);
+					Actions->Add(Action);
+				}
+				continue;
+			}
+
 			FCataclysmStatModifier Modifier;
 			if (!EnchantmentModifierFor(*Effect, Roll, Modifier))
 			{
