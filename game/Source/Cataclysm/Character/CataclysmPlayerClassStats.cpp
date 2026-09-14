@@ -30,6 +30,10 @@
 // For the stat naming how long a lasting effect on the character runs.
 // Issue #1033.
 #include "AbilitySystem/CataclysmDebuffs.h"
+// For the ailment table, which holds the name of each magnitude stat, and for
+// the 100 that is a normal magnitude. The bases below are derived from that
+// table rather than spelled a second time here. Issue #1767.
+#include "AbilitySystem/CataclysmAilments.h"
 // For the two stat names behind a debuff spreading. Issues #1057 and #1058.
 #include "AbilitySystem/CataclysmContagion.h"
 // For the nova stat name. Issue #1050.
@@ -783,6 +787,15 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			{TEXT("weaken_chance"), Combat::GetWeakenChanceAttribute()},
 			{TEXT("shred_chance"), Combat::GetShredChanceAttribute()},
 			{TEXT("stun_chance"), Combat::GetStunChanceAttribute()},
+
+			// HOW LARGE A CRIPPLE OR A WEAKEN THIS CHARACTER APPLIES, in per
+			// cent of the effect's own figure, where 100 is unchanged. Issue
+			// #1767. They are here rather than in `StatsWithNoAttribute`
+			// because they HAVE an attribute and need its base of 100: an
+			// exempt stat is one bespoke code reads by name, and these are
+			// read through this map like every other modifier.
+			{TEXT("cripple_magnitude"), Combat::GetCrippleMagnitudeAttribute()},
+			{TEXT("weaken_magnitude"), Combat::GetWeakenMagnitudeAttribute()},
 		};
 	}();
 
@@ -792,79 +805,116 @@ UCataclysmPlayerClassStats::StatToAttribute()
 const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 {
 	// A PLAIN FILE-SCOPE STATIC WOULD DO, unlike StatToAttribute above, because
-	// these are floats rather than reflected properties. It is written the same
-	// way so the two read alike and neither has to be reasoned about twice.
-	static const TMap<FName, float> Map = {
-		// HOW LONG ONE TURN OF THE BREAKING POINT'S CONVERSION LASTS, before any
-		// points are spent. Issue #1025. The node reads "The conversion lasts 3
-		// seconds, increased by 5% per point", so the 3 is a base and the 5 is
-		// the per-point value on the passive effects sheet. Eight points make it
-		// 4.2 seconds.
-		//
-		// UNTIL THIS EXISTED THE BASE WAS ZERO AND THE NODE DID NOTHING. The
-		// increase multiplied nothing, the attribute was written as zero, and
-		// `UCataclysmAbilitySystemComponent::NoteDamageConversionStarted` refuses
-		// a window of zero, so no turn of the conversion ever began.
-		{FName(UCataclysmDamageConversion::WindowStat),
-		 UCataclysmDamageConversion::BaseWindowSeconds},
+	// these are floats rather than reflected properties. It is built inside a
+	// lambda rather than from a plain braced list because the last group is
+	// derived from another table rather than typed out; everything above that
+	// group still reads as the same list of pairs it always was.
+	static const TMap<FName, float> Map = []
+	{
+		TMap<FName, float> Built = {
+			// HOW LONG ONE TURN OF THE BREAKING POINT'S CONVERSION LASTS, before any
+			// points are spent. Issue #1025. The node reads "The conversion lasts 3
+			// seconds, increased by 5% per point", so the 3 is a base and the 5 is
+			// the per-point value on the passive effects sheet. Eight points make it
+			// 4.2 seconds.
+			//
+			// UNTIL THIS EXISTED THE BASE WAS ZERO AND THE NODE DID NOTHING. The
+			// increase multiplied nothing, the attribute was written as zero, and
+			// `UCataclysmAbilitySystemComponent::NoteDamageConversionStarted` refuses
+			// a window of zero, so no turn of the conversion ever began.
+			{FName(UCataclysmDamageConversion::WindowStat),
+			 UCataclysmDamageConversion::BaseWindowSeconds},
 
-		// AND WHAT SHARE OF A HIT A CHARACTER TAKES, at 100 for normal, plus the
-		// same again for a hit that is damage over time. Issue #1026.
-		//
-		// A HUNDRED BECAUSE IT IS THE IDENTITY FOR A MULTIPLIER. Three Masochist
-		// nodes move these, and every one of them is written as a percentage of
-		// what would otherwise arrive: "reduced by 1% per point", "take 20% more
-		// damage", "take 25% less damage". A base of zero would make an increase
-		// worth nothing and a `more` worth nothing, which is what
-		// `test_every_stat_is_one_the_game_supplies` exists to refuse.
-		//
-		// HERE RATHER THAN ON THE `Default` CLASS LINE, though five stats of
-		// exactly this shape sit there. `Cataclysm.Attributes.CharacterSheetIsComplete`
-		// gives the rule: a stat is off the character sheet when no affix grants
-		// it, nothing scales it, it has no baseline of its own and one passive
-		// node is its only source. The five on that line all fail that rule --
-		// affixes grant them and the Ritualist starts at 110 area of effect --
-		// and these two meet it. `docs/DECISIONS.md` records that promoting them
-		// to a class line is right the day an affix grants one.
-		{FName(UCataclysmDamageCalculation::DamageTakenStat),
-		 UCataclysmDamageCalculation::NormalDamageTaken},
-		{FName(UCataclysmDamageCalculation::DamageOverTimeTakenStat),
-		 UCataclysmDamageCalculation::NormalDamageTaken},
+			// AND WHAT SHARE OF A HIT A CHARACTER TAKES, at 100 for normal, plus the
+			// same again for a hit that is damage over time. Issue #1026.
+			//
+			// A HUNDRED BECAUSE IT IS THE IDENTITY FOR A MULTIPLIER. Three Masochist
+			// nodes move these, and every one of them is written as a percentage of
+			// what would otherwise arrive: "reduced by 1% per point", "take 20% more
+			// damage", "take 25% less damage". A base of zero would make an increase
+			// worth nothing and a `more` worth nothing, which is what
+			// `test_every_stat_is_one_the_game_supplies` exists to refuse.
+			//
+			// HERE RATHER THAN ON THE `Default` CLASS LINE, though five stats of
+			// exactly this shape sit there. `Cataclysm.Attributes.CharacterSheetIsComplete`
+			// gives the rule: a stat is off the character sheet when no affix grants
+			// it, nothing scales it, it has no baseline of its own and one passive
+			// node is its only source. The five on that line all fail that rule --
+			// affixes grant them and the Ritualist starts at 110 area of effect --
+			// and these two meet it. `docs/DECISIONS.md` records that promoting them
+			// to a class line is right the day an affix grants one.
+			{FName(UCataclysmDamageCalculation::DamageTakenStat),
+			 UCataclysmDamageCalculation::NormalDamageTaken},
+			{FName(UCataclysmDamageCalculation::DamageOverTimeTakenStat),
+			 UCataclysmDamageCalculation::NormalDamageTaken},
 
-		// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
-		// for normal. Issue #1033. The THIRD stat of this shape and it meets the
-		// same rule the two above do: no affix grants it, nothing scales it, no
-		// class differs on it, and two passive nodes of one tree are its only
-		// sources.
-		//
-		// A BASE IS LOAD-BEARING HERE IN A WAY IT IS NOT FOR A BONUS. Both rows
-		// that move it are `increased`, so with no base under them the stat
-		// would resolve to zero and every stun and every burn in the game would
-		// end the instant it landed. Issue #1025 records exactly that failure
-		// happening to the conversion window.
-		{FName(UCataclysmDebuffs::DurationStat),
-		 UCataclysmDebuffs::NormalDuration},
+			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
+			// for normal. Issue #1033. The THIRD stat of this shape and it meets the
+			// same rule the two above do: no affix grants it, nothing scales it, no
+			// class differs on it, and two passive nodes of one tree are its only
+			// sources.
+			//
+			// A BASE IS LOAD-BEARING HERE IN A WAY IT IS NOT FOR A BONUS. Both rows
+			// that move it are `increased`, so with no base under them the stat
+			// would resolve to zero and every stun and every burn in the game would
+			// end the instant it landed. Issue #1025 records exactly that failure
+			// happening to the conversion window.
+			{FName(UCataclysmDebuffs::DurationStat),
+			 UCataclysmDebuffs::NormalDuration},
 
-		// AND HOW LONG A STAGGER THIS CHARACTER APPLIES RUNS, at 100 for normal.
-		// Issue #45. The FOURTH stat of this shape, and it meets the same rule:
-		// no affix grants it, nothing scales it, no class differs on it, and one
-		// enchantment is its only source.
+			// AND HOW LONG A STAGGER THIS CHARACTER APPLIES RUNS, at 100 for normal.
+			// Issue #45. The FOURTH stat of this shape, and it meets the same rule:
+			// no affix grants it, nothing scales it, no class differs on it, and one
+			// enchantment is its only source.
+			//
+			// THE ENTRY ABOVE IS ITS MIRROR AND NOT ITS DUPLICATE. That one is how
+			// long a harmful effect put ON this character runs; this one is how long
+			// a stagger this character applies to SOMEONE ELSE runs. Both scale one
+			// stagger's duration, from opposite ends, and they multiply.
+			//
+			// WITHOUT THIS THE STAT IS ZERO FOR EVERY PLAYER AND NO PLAYER STAGGERS
+			// ANYTHING. The attribute set's constructor states 100, and that is not
+			// enough: `ApplyTo` resolves every stat this class's map names, `BaseFor`
+			// answers zero for a stat no class line names, and the resolved zero is
+			// written over the constructor's 100. `ApplyStagger` then scales by
+			// zero and refuses. The enemy-side tests cannot see this, because a
+			// spawned creature's attributes are never put through `ApplyTo`.
+			{FName(UCataclysmSkillEffects::StaggerDurationStat),
+			 UCataclysmSkillEffects::NormalStaggerDuration},
+		};
+
+		// AND HOW LARGE THE CRIPPLE AND WEAKEN THIS CHARACTER APPLIES ARE, at
+		// 100 for normal. Issue #1767. The FIFTH and SIXTH stats of this shape,
+		// meeting the same rule as the four above: no affix grants them, nothing
+		// scales them, no class differs on them, and one passive node each is
+		// their only source.
 		//
-		// THE ENTRY ABOVE IS ITS MIRROR AND NOT ITS DUPLICATE. That one is how
-		// long a harmful effect put ON this character runs; this one is how long
-		// a stagger this character applies to SOMEONE ELSE runs. Both scale one
-		// stagger's duration, from opposite ends, and they multiply.
+		// WITHOUT THIS EVERY PLAYER APPLIES CRIPPLE AND WEAKEN AT ZERO, which is
+		// worse than the stat not existing. `ApplyTo` resolves every stat
+		// `StatToAttribute` names, `BaseFor` answers zero for a stat no class
+		// line names, the resolved zero is written over the 100 the attribute
+		// set's constructor states, and `UCataclysmAilments::Application`
+		// multiplies the magnitude by zero. The entry above this one records the
+		// same failure for `stagger_duration` and the two before it for
+		// `damage_taken`; this is the fourth time that chain has caught someone.
 		//
-		// WITHOUT THIS THE STAT IS ZERO FOR EVERY PLAYER AND NO PLAYER STAGGERS
-		// ANYTHING. The attribute set's constructor states 100, and that is not
-		// enough: `ApplyTo` resolves every stat this class's map names, `BaseFor`
-		// answers zero for a stat no class line names, and the resolved zero is
-		// written over the constructor's 100. `ApplyStagger` then scales by
-		// zero and refuses. The enemy-side tests cannot see this, because a
-		// spawned creature's attributes are never put through `ApplyTo`.
-		{FName(UCataclysmSkillEffects::StaggerDurationStat),
-		 UCataclysmSkillEffects::NormalStaggerDuration},
-	};
+		// DERIVED FROM THE AILMENT TABLE RATHER THAN TYPED OUT, which is what
+		// every include comment at the top of this file asks for. The names
+		// already exist on the kind rows as `MagnitudeStat`, so naming them here
+		// would be a third spelling. It also makes the rule structural: a third
+		// ailment given a magnitude stat gets its base without anyone
+		// remembering to come here, which is the step that was missed.
+		for (const FCataclysmAilmentKind& Kind : UCataclysmAilments::Kinds())
+		{
+			if (Kind.MagnitudeStat)
+			{
+				Built.Add(FName(Kind.MagnitudeStat),
+						  UCataclysmAilments::NormalMagnitude);
+			}
+		}
+
+		return Built;
+	}();
 
 	return Map;
 }

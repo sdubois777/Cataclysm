@@ -478,7 +478,19 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: landing on it found an empty container and granted nothing. The row and that
 #: argument land together, which is the same shape as the condition and the row
 #: landing together in the entry above.
-AUTHORED_ROWS = 247
+#:
+#: AND TO 249 ON 2026-09-14. Two rows, for the Ravager's `Dragging Weight`
+#: (`Ravager_basic_c_a1`) and `Sapped` (`Ravager_basic_c_b1`), which raise how
+#: large a Cripple and a Weaken this character applies. Issue #1767.
+#:
+#: BOTH ARE `increased` ROWS, WHICH IS THE OPPOSITE OF THE TWO NODES DIRECTLY
+#: ABOVE THEM ON THE TREE and the thing to get right here. `Ravager_basic_c_a0`
+#: and `Ravager_basic_c_b0` grant the chance to apply the same two ailments and
+#: are authored `flat`, because `cripple_chance` starts at zero and an increase
+#: against zero grants nothing. `cripple_magnitude` starts at 100, supplied by
+#: `UCataclysmPlayerClassStats::EngineSuppliedBases`, so a `flat` row would add
+#: three percentage points to a hundred instead of three per cent of it.
+AUTHORED_ROWS = 249
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -774,7 +786,14 @@ AUTHORED_ROWS = 247
 #: it is 47 of its 74, and the Ritualist is 54 of its 74 and DID NOT MOVE. Read
 #: out of `game/Data/PassiveEffects.csv` and `game/Data/PassiveNodes.csv`
 #: together, by matching each node's name against the set of nodes holding a row.
-AUTHORED_NODES = 179
+#:
+#: AND TO 181 LATER THE SAME DAY. Two nodes, `Dragging Weight`
+#: (`Ravager_basic_c_a1`) and `Sapped` (`Ravager_basic_c_b1`), neither of which
+#: had a row before. Issue #1767. Measured the same way, and the Ravager is
+#: again the only tree that moves: 49 of its 74, where the Masochist is 74 of
+#: 74, the Ritualist 54 of 74, the Bulwark 3, the Saboteur 1 and the Berserker
+#: none.
+AUTHORED_NODES = 181
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
