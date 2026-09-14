@@ -8,6 +8,7 @@
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmFervour.h"
 // For the health a bonus can be made to depend on. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -415,6 +416,142 @@ bool FCataclysmPlayerSpeedFollowsAFullClassResource::RunTest(const FString&)
 
 	TestEqual(TEXT("and a maximum falling to meet the pool fills it too"),
 		Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsTheRealResourcePath,
+	"Cataclysm.Player.MovementSpeedFollowsTheClassResourceMovedTheWayPlayMovesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlayerSpeedFollowsTheRealResourcePath::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE SAME CLAIM AS THE TEST ABOVE, MADE THROUGH THE PATH PLAY USES.
+	// Issue #1825.
+	//
+	// WHY A SECOND TEST RATHER THAN A SECOND ASSERTION. The test above writes
+	// the pool with `SetNumericAttributeBase`. Nothing in play does: every gain
+	// and every spend goes through `UCataclysmFervour::Move`, which writes with
+	// `ApplyModToAttribute`. Those are different routes into the attribute, and
+	// a change delegate firing for one says nothing about the other. A test
+	// that drives a stat by a route the game never takes is the same fault as
+	// one that calls its own handler by hand -- it passes while the thing it is
+	// named for never happens.
+	//
+	// READING THE ENGINE SAYS THIS SHOULD PASS, AND THE READING IS NOT THE
+	// PROOF. `ApplyModToAttribute` reaches `SetAttributeBaseValue`, whose two
+	// branches -- with an aggregator and without -- both end at
+	// `InternalUpdateNumericalAttribute`, which broadcasts
+	// `AttributeValueChangeDelegates`. That is the delegate
+	// `InitAbilityActorInfo` binds. This test is what holds that true through
+	// an engine upgrade, when nobody will re-read those four functions.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// FIVE HUNDRED HEALTH AND A RATE OF ONE, so a point of Fervour arrives for
+	// every one per cent of maximum health lost: losing all five hundred fills
+	// a hundred-point pool exactly. `UCataclysmFervour::Move` refuses a
+	// character with no generator at all, so the rate is what makes this a
+	// character that can fill its bar.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourFromDamageAttribute(),
+		1.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetFervourLostToHealingAttribute(), 1.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+		100.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+
+	FCataclysmStatModifier Conditional;
+	Conditional.Bucket = ECataclysmStatBucket::Increased;
+	Conditional.Source = ECataclysmModifierSource::GearAffix;
+	Conditional.Value = 20.0f;
+	Conditional.Condition = ECataclysmStatCondition::ClassResourceAtMaximum;
+	Inputs.Modifiers.Add(Conditional);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	TestEqual(TEXT("an empty pool leaves the speed alone"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// THE POOL FILLS THE WAY PLAY FILLS IT. Nothing is called on the character.
+	const float Gained = UCataclysmFervour::GainFromDamage(
+		AbilitySystem, /*HealthLost=*/500.0f, FGameplayTagContainer());
+
+	// ASSERT THE STATE THIS TEST BUILT BEFORE ASSERTING WHAT FOLLOWS FROM IT.
+	// A rate that had stopped generating would leave the pool empty, the speed
+	// unchanged, and the assertion below passing for the wrong reason -- it
+	// would read as "the delegate did not fire" when nothing had happened at
+	// all.
+	if (!TestEqual(TEXT("the real path filled the bar"), Gained, 100.0f, 0.01f)
+		|| !TestEqual(TEXT("and the pool is at its maximum"),
+			AbilitySystem->GetNumericAttribute(
+				UCataclysmClassResourceAttributeSet::GetClassResourceAttribute()),
+			100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a pool filled through ApplyModToAttribute speeds the "
+				   "character up by a fifth"),
+		Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
+
+	// AND SPENDING IT THE SAME WAY TAKES THE BONUS BACK.
+	const float Lost = UCataclysmFervour::RemoveForHealing(
+		AbilitySystem, /*HealthRestored=*/300.0f, FGameplayTagContainer());
+
+	if (!TestEqual(TEXT("the real path drained the bar"), Lost, -60.0f, 0.01f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and the character returns to its plain speed"),
+		Movement->MaxWalkSpeed, Plain, 0.01f);
 
 	return true;
 }
