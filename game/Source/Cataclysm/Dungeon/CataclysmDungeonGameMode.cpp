@@ -2248,9 +2248,21 @@ void ACataclysmDungeonGameMode::StepArtilleryStrike(
 		// and the hit list disagreeing.
 		//
 		// EVERYONE AND NOT THE OTHER SIDE, which is the row's own sentence.
+		// THE FLOOR'S HAZARD SOURCE IS WHAT DEALS IT, NOT THE CIRCLE, and that is
+		// not a preference. `UCataclysmSkillEffects::ApplyDirectDamage` returns
+		// false when the INSTIGATOR has no ability system, and a ground zone has
+		// none -- naming the circle made every strike land for nothing. The zone
+		// itself names the same source actor when it deals its own damage, so
+		// this is the shape that already works rather than a new one.
+		AActor* Firing = ACataclysmFloorHazardSource::ForFloor(World);
+		if (!Firing)
+		{
+			return;
+		}
+
 		const FVector Where = Circle->GetActorLocation();
 		const TArray<AActor*> Inside = UCataclysmTargeting::FindEveryoneInLine(
-			World, Circle, Where, Where, Effects::ArtilleryStrikeRadiusCm);
+			World, Firing, Where, Where, Effects::ArtilleryStrikeRadiusCm);
 
 		// AN AREA HIT BUT NOT A DAMAGE-OVER-TIME ONE, and the second half is a
 		// judgement this rule makes differently from the zone beside it.
@@ -2283,7 +2295,7 @@ void ACataclysmDungeonGameMode::StepArtilleryStrike(
 			// would have named had it dealt the damage itself. WHATEVER THAT
 			// MEANS FOR KILL CREDIT AND DROPS IS LEFT EXACTLY AS IT IS for every
 			// other floor hazard; this rule adds no rule about it.
-			UCataclysmSkillEffects::ApplyDirectDamage(Circle, Target, Damage,
+			UCataclysmSkillEffects::ApplyDirectDamage(Firing, Target, Damage,
 													  Delivery);
 		}
 

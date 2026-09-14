@@ -89,6 +89,11 @@ player is fighting something else. It says only that three seconds is not eccent
 **The radius is a judgement.** `InfernalRainRadiusCm` is 300 and that row says only "patches";
 this row says "massive", and twice is what that buys.
 
+**What the constant states is what the shell DEALS, not what reaches health.** It goes
+through `ApplyDirectDamage`, so the defender's own armour and resistances take their cut
+first. Measured while building it: a player with 510 maximum health, a stated share of
+127.5, and 109.9 reaching health. The test asserts a range for that reason, and says so.
+
 **The damage is the weakest of the four and is marked as such.** No source read for this change
 gives a telegraphed ground attack's damage as a share of maximum health, so it is not derived
 from anything. What it is measured against: Infernal Rain is 2% per second for 10 seconds, so
