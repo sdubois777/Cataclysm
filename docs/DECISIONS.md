@@ -8,8 +8,14 @@ Decisions made outside the Google Drive documents, newest first.
 `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp`,
 `CataclysmAilments.h` and `.cpp`,
 `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmAilmentTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmAttributeSetTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmPlayerClassStatsTests.cpp`,
+`tools/generate_datatables.py`,
 and the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx`. Issue
 [#1767](https://github.com/sdubois777/Cataclysm/issues/1767).
+
+The two stats are `cripple_magnitude` and `weaken_magnitude`.
 
 ### What was missing
 
@@ -101,9 +107,43 @@ on `FCataclysmAilmentKind` are null for the other nine and the code reads the
 normal value when they are.
 
 **A stat name with no attribute behind it resolves to zero, and an `increased`
-row then multiplies zero and grants nothing.** That is why each of the two stats
-needed its own attribute initialised to 100 rather than only an entry in
-`StatToAttribute`.
+row then multiplies zero and grants nothing.** So each of the two stats needed
+its own attribute as well as an entry in `StatToAttribute`.
+
+### AND INITIALISING THE ATTRIBUTE TO 100 IS NOT WHAT SUPPLIES THE BASE
+
+**This entry said it was, and that was wrong.** `UCataclysmPlayerClassStats::
+ApplyTo` resolves every stat `StatToAttribute` names and writes the result to the
+attribute. `UCataclysmClassStats::BaseFor` answers zero for a stat no class line
+names, and the resolved zero is written straight over the 100 the attribute set's
+constructor states. The stat has to be in
+`UCataclysmPlayerClassStats::EngineSuppliedBases` as well, which is the only thing
+that replaces that zero.
+
+**Without it every player would apply Cripple and Weaken at magnitude zero**,
+which is worse than the stat not existing: `Application` multiplies by
+`MagnitudePercent / 100`, so a resolved zero removes the curse entirely rather
+than leaving it at its row's figure.
+
+**This is the fourth stat of this shape to hit it.** `damage_to_bleeding_window`
+(#1025) opened a conversion window of zero for the life of the node;
+`damage_taken` and `damage_over_time_taken` (#1026) and `debuff_duration_taken`
+(#1033) were each caught before shipping; `stagger_duration` (#45) carries the
+warning in the comment directly above these two entries, and that comment is what
+caught this one.
+
+**The two entries are derived from the ailment table rather than typed out**, so a
+third ailment given a magnitude stat gets its base without anyone remembering to
+add it. That is deliberate: the step that was missed here was a human one, and the
+loop removes it rather than documenting it.
+
+**A test cannot catch this from the attacker's side.** Every ailment test builds
+its fighters with `SetNumericAttributeBase`, which writes the attribute directly
+and never goes through `ApplyTo` — the comment beside `stagger_duration` says the
+same of the enemy-side tests. What holds this side is
+`Cataclysm.PlayerStats.EveryEngineSuppliedBaseReachesACharacter`, which spawns a
+character and reads the value back off its attribute, and it covers these two
+without being edited because it walks the map.
 
 ---
 

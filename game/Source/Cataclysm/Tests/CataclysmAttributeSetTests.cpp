@@ -297,7 +297,25 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// differs on it, and one enchantment scoped to charge skills is its only
 	// source. Zero for every character without that row, and a player sees an
 	// enemy fall over rather than reading a number.
-	constexpr int32 OffSheetCombatStats = 32;
+	//
+	// THIRTY-FOUR SINCE HOW LARGE A CRIPPLE AND A WEAKEN THIS CHARACTER APPLIES
+	// ARE, issue #1767. They meet the rule for the nineteenth and twentieth
+	// times -- no affix grants either, nothing scales either, no class differs
+	// on either, and one Ravager passive node each is their only source.
+	//
+	// A BASE OF 100 DOES NOT PUT THEM ON THE SHEET EITHER, for the reason the
+	// paragraph above `stagger_duration` gives: they hold one from
+	// `UCataclysmPlayerClassStats::EngineSuppliedBases`, and the disqualifier in
+	// that rule is a baseline a CLASS LINE states and classes differ on.
+	//
+	// NEITHER IS THE CHANCE TO APPLY THE SAME AILMENT UNDER ANOTHER NAME, which
+	// is the mistake available here and the same shape the two warnings above
+	// give for other pairs. `cripple_chance` is how OFTEN a Cripple lands and is
+	// one of the eleven counted above; `cripple_magnitude` is how LARGE it is
+	// once it has. A character can raise either without the other. Past a chance
+	// of 100% the surplus raises the magnitude as well, and that is the one
+	// place the two meet.
+	constexpr int32 OffSheetCombatStats = 34;
 
 	/**
 	 * How far healing may take the character, and how much of each amount
