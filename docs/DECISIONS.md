@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-13 — Cripple and Weaken get a stat for how large they are applied, its neutral value is 100 rather than 1, and it multiplies what chance overflow produced rather than replacing it
+
+**Affects:**
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp`,
+`CataclysmAilments.h` and `.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+and the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx`. Issue
+[#1767](https://github.com/sdubois777/Cataclysm/issues/1767).
+
+### What was missing
+
+Two Ravager passive nodes state a magnitude they cannot reach.
+`Ravager_basic_c_a1` (*Dragging Weight*) and `Ravager_basic_c_b1` (*Sapped*) raise
+how large the Cripple and Weaken they apply are. **Magnitude had exactly one
+source, and it was not reachable by investment:** `UCataclysmAilments::Application`
+computes `OutMagnitude = FMath::Max(1.0f, Total / ChanceCap)`, so only a chance
+above 100% produces a magnitude above one.
+
+### THE NEUTRAL VALUE IS 100, AND THIS IS A PRECEDENT RATHER THAN A PREFERENCE
+
+Two shapes work arithmetically. The project already uses one of them, in the
+nearest existing stat of the same kind:
+
+```cpp
+// CataclysmCombatAttributeSet.cpp:122
+InitDebuffDurationTaken(100.0f);
+
+// CataclysmDebuffs.h:267
+static constexpr float NormalDuration = 100.0f;
+
+// CataclysmDebuffs.cpp:271, in DurationOn
+return DurationSeconds * FMath::Max(0.0f, Percent) / NormalDuration;
+```
+
+**A base of 100 meaning "100% of the stated figure", rows written as `increased`,
+and the reader dividing by 100.** A character with no investment holds exactly 100
+and is unchanged. The two new stats copy it exactly:
+
+```cpp
+// CataclysmCombatAttributeSet.cpp:96
+InitCrippleMagnitude(100.0f);
+InitWeakenMagnitude(100.0f);
+
+// CataclysmAilments.h:193
+static constexpr float NormalMagnitude = 100.0f;
+
+// CataclysmAilments.cpp:168, in Application
+OutMagnitude *= FMath::Max(0.0f, MagnitudePercent) / NormalMagnitude;
+```
+
+**The alternative, stated so the choice is visible.** A base of 1.0 with the rows
+written as `flat` also works, and `+3% increased magnitude per point` would then
+have to be authored as `0.03`. That makes the data stop matching the sentence it
+implements, and it differs from the one existing stat of this kind for no gain.
+
+**What remains a judgement, and it is small:** whether a new stat should follow
+`debuff_duration_taken` at all rather than being the first of a second
+convention. It follows, because two conventions for one shape is how a reader
+ends up dividing by the wrong number.
+
+**The genre convention is consistent with this and is not what decided it.**
+Path of Exile's `increased` modifiers sum onto a base of 100%, which is the same
+representation; this project already adopted that for the damage pipeline. The
+decision here rests on the internal precedent, which is the stronger evidence
+because it is the number a reader of this codebase will already have in hand.
+
+### THE STAT MULTIPLIES THE MAGNITUDE, AFTER THE FLOOR AND NOT BEFORE IT
+
+Magnitude's other source is chance overflow, and the stat scales whatever that
+produced. The order matters and it is not interchangeable:
+
+| Total chance | Stat | Magnitude applied |
+| :-- | :-- | :-- |
+| 100% | none | 1.0 |
+| 100% | 150 | 1.5 |
+| 50% | 150 | 1.5 |
+| 250% | none | 2.5 |
+| 250% | 200 | 5.0 |
+
+**Multiplying before `FMath::Max(1.0f, ...)` instead of after it would floor the
+investment away for every character at or below the chance cap**, which is most
+characters. That build reads 1.0 for rows 1 to 3 above and looks correct only for
+the two overflow cases, so it would pass a test written from the overflow
+examples alone.
+
+**A negative stat applies nothing rather than reversing the effect**, through the
+same `FMath::Max(0.0f, ...)` that `DurationOn` uses on its own percentage.
+
+### NINE OF THE ELEVEN AILMENTS GET NO MAGNITUDE STAT, AND THAT IS CORRECT AUTHORING
+
+Only Cripple and Weaken carry one, because only those two are asked for by a row.
+A stat added for an ailment nothing scales would be a name in the stat map with
+nothing behind it —
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` exists to refuse
+exactly that for the exempt list, and it is no better unexempted. The two fields
+on `FCataclysmAilmentKind` are null for the other nine and the code reads the
+normal value when they are.
+
+**A stat name with no attribute behind it resolves to zero, and an `increased`
+row then multiplies zero and grants nothing.** That is why each of the two stats
+needed its own attribute initialised to 100 rather than only an entry in
+`StatToAttribute`.
+
+---
+
 ## 2026-09-13 — A status effect's strength says whether it is points off a stat or a share of it, and Weaken's share is a compounding multiplier
 
 **Affects:** `game/Data/StatusEffects.csv` and the Debuffs sheet of
