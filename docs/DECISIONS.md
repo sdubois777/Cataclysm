@@ -218,6 +218,27 @@ arithmetic. It is recorded here instead. **If something later reads an imp's
 reserve, this paragraph is the warning that it was inert when the stat was
 built.**
 
+### A TEST PREFIX IS CHOSEN BY WHICH TESTS CAN REACH THE CHANGED CODE, NOT BY WHERE THE CHANGE ADDS TESTS
+
+**This was recorded as a rule before this change was written, and this change
+broke it anyway**, so it is restated here with the case that caught it.
+
+The prefix used for the first run and for both guard proofs was
+`Cataclysm.Command.+Cataclysm.Attributes.+Cataclysm.PlayerStats.`, chosen because
+that is where the new tests live. The two helpers this change adds sit inside the
+summon skill's code path, and **212 tests in two other files drive summon skills
+with rows stating `MaxActive=` and `FervourReserve=`**:
+`CataclysmSkillShapeTests.cpp` (10 in `Cataclysm.SkillShape.`) and
+`CataclysmSkillTemplateTests.cpp` (198 in `Cataclysm.Skills.`, 3 in
+`Cataclysm.Effects.`, 1 in `Cataclysm.Data.`). None of them ran.
+
+**It was found by reconciling two counts that disagreed, not by any check.** One
+session counted 17 and another 12 for the same thing; both were right, because one
+counted test-name literals in the FILE `CataclysmCommandTests.cpp` (12 in the
+`Cataclysm.Command.` group plus 5 in `Cataclysm.Fervour.`) and the other counted
+names in the group. **Label a count with what it counts, and reconcile two that
+disagree rather than picking one.**
+
 ---
 
 ## 2026-09-14 — "Grabbed" is an event with an end, not a place the player is standing, and the grab is 99% of movement speed rather than a new rooted state
