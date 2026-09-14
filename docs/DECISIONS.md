@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — An explosion's size is read off the creature that exploded, a blow and an ailment are what keep two chance-on-death rows apart, and a sentence claiming to be the only one of its kind was corrected by the change that made it false
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules), `CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat and
+its death listeners), `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Demonic_Hellfire`, weight 10.0: "Enemies have a chance to explode in hellfire when killed."
+A trigger, a shape and no figure of any kind.
+
+### The rule states no damage, because the game already had an explosion that states none
+
+`UCataclysmEnemyModifiers::InfernalBrand` explodes a branded creature and works its damage out
+as that creature's **own `AttackDamage` attribute** times a count of hits, under the comment
+**"Read off the creature rather than written here, so a Herald's brand is a Herald's brand."**
+This rule copies that reading. A deeper floor's creatures then explode harder with no scaling
+code in the rule, because `ACataclysmDungeonGameMode` already gives each creature kind its
+damage when it spawns them — `SetAttackDamage` is called for the Imp, Hellhound, Brute, Abyssal
+Warden and Corrupted Sentinel.
+
+**A creature with no attack damage explodes for nothing, and that is correct rather than a
+fault.** `ACataclysmEnemyCharacter::StartingAttackDamage` is 0 by default and its own comment
+says "Zero means it deals nothing"; Infernal Brand guards the same case the same way.
+
+**The count of hits is the only judgement in this rule, and it is one.**
+`InfernalBrandExplosionHits` is 5, but that five has a reason — the brand banks one hit's worth
+per stack and fires when five have built up — and the reason does not transfer to a death that
+banks nothing. **What is copied is the shape; the count is derived again.** One is the smallest
+honest reading of a creature exploding: it lands one more of its own blows as it dies.
+`War_Artillery_Strike` takes a quarter of maximum health but announces itself three seconds
+early and can be walked out of, and an unavoidable blow cannot be priced like an avoidable one.
+
+### A blow and not an ailment, which is what keeps this row and Spore Clouds apart
+
+`Pestilence_Spore_Clouds` and this row are both a chance on an enemy's death near the player.
+**What separates them is in their own sentences.** That row names an ailment — "spores ... that
+poison the player" — and its rule applies `DoT_Poison`. This row names an explosion and nothing
+lasting, so its rule deals one blow: `bIsArea` true, so it cannot be evaded, and
+`bIsDamageOverTime` left false, so an energy shield absorbs it as it absorbs any other blow.
+
+**Reading this one as an ailment too would have made the two rows the same rule under two
+names**, which is the argument `UCataclysmEnemyModifiers` already makes about the Commander
+buff. `test_hellfire_row_names_an_explosion_and_not_an_ailment` fails if the row ever starts
+naming one.
+
+### It catches everyone, which is a ruling and not a default
+
+The row does not say who an exploding enemy hits. The decision recorded above — a dungeon hazard
+belongs to no side — and `StepArtilleryStrike`'s use of `FindEveryoneInLine` are the precedent,
+so a creature standing beside the one that exploded is caught as well as the player. **A chain
+of exploding creatures is the intended reading.**
+
+**The chain ends by itself and needs no guard.** A creature killed by an explosion announces its
+own death and may explode in turn, but `UCataclysmSkillEffects::MarkDead` refuses a second time
+for the same creature, so nothing explodes twice and the depth is bounded by how many creatures
+are alive.
+
+### The two figures that are copied rather than chosen
+
+| figure | value | where it came from |
+| :-- | --: | :-- |
+| chance on a death | 10% | the table's own figure for this trigger |
+| reach | 300 cm | **declared as `InfernalRainRadiusCm`**, not as a number |
+| size | the creature's own attack damage × 1 | **read off the creature** |
+
+**Ten** is the same gap and the same anchor as Spore Clouds: `Death_Vengful_Wraiths` is the only
+row of `game/Data/DungeonModifiers.csv` stating a figure for a chance fired by **any** enemy's
+death. That anchor is about the data, so a second rule leaning on it does not weaken it.
+
+**300** is this project's settled answer for a thing at a point on the floor — Infernal Rain's
+patch, Singularity Wells, Withered Ground's patch, Grasping Tentacles' reach, the Gatekeeper's
+Soulfall ground and Spore Clouds' reach are all that figure. **Not `ArtilleryStrikeRadiusCm`,
+which is 600**: that belongs to a circle its own row calls "a massive red circle", and this row
+says nothing about size.
+
+### A sentence that claimed to be the only one of its kind, corrected by the change that made it false
+
+The Spore Clouds comments said `WastingSicknessChancePercentPerHit` was **"the only other chance
+comparison in the built rules"**, and said it twice. Hellfire makes three: Wasting Sickness on a
+blow, Spore Clouds on a death, Hellfire on a death. **Both sentences are corrected here, each
+quoting what it replaces**, rather than left for a reader to trip over.
+
+**That is the general rule this records:** copying a precedent falsifies whatever the precedent
+claimed about being unique. Copy the conclusion, re-derive the reasoning, and sweep the
+precedent's own text for claims the copy breaks.
+
+---
+
 ## 2026-09-14 — "Cannot be reduced" drops the reducing modifiers rather than flooring the answer, and one stat serves two keystones
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`

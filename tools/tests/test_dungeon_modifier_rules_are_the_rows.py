@@ -1018,3 +1018,109 @@ def test_spore_clouds_reach_is_still_declared_as_the_other_deaths_radius():
         "death and spores released by one are the same question and the project "
         "has answered it. If the reach is now a figure of its own, say why in "
         "docs/DECISIONS.md and give it its own derivation.")
+def test_hellfire_row_still_states_a_chance_and_no_figure_for_it():
+    """The gap the rule's chance fills, held open.
+
+    THE SAME SHAPE AS `test_spore_clouds_row_still_states_a_chance_and_no_figure_
+    for_it` ABOVE, and both are needed: each row can gain a percentage without the
+    other doing so, and a rule using ten beside a row saying twenty-five is the
+    drift this whole file exists to catch.
+    """
+    words = flat(rows()["Demonic_Hellfire"]["Description"])
+
+    assert "a chance" in words.lower(), words
+    assert "%" not in words, (
+        "Demonic_Hellfire now states a percentage. The rule's chance was a "
+        "judgement made because the row gave none -- see "
+        "HellfireChancePercentOnDeath in CataclysmDungeonModifierEffects.h. Use "
+        "the row's figure instead. " + words)
+
+
+def test_hellfire_row_still_names_the_trigger_the_rule_listens_for():
+    """An enemy, and its death.
+
+    THE RULE IS BOUND TO `OnSomethingDied` AND REFUSES EVERY VICTIM THAT IS NOT A
+    CREATURE. A row that moved its trigger to a hit, or to the player's death,
+    would leave the rule listening to the wrong announcement and nothing in C++
+    would say so.
+    """
+    words = flat(rows()["Demonic_Hellfire"]["Description"]).lower()
+
+    assert "enemies" in words, words
+    assert "killed" in words, words
+
+
+def test_hellfire_row_names_an_explosion_and_not_an_ailment():
+    """What separates this row from the other chance-on-death row beside it.
+
+    `Pestilence_Spore_Clouds` NAMES AN AILMENT -- "spores ... that poison the
+    player" -- AND ITS RULE APPLIES `DoT_Poison`. This row names an explosion and
+    no lasting effect, so its rule deals one blow. Reading this one as an ailment
+    too would make the two rows the same rule under two names, which is the
+    argument `UCataclysmEnemyModifiers` already makes about the Commander buff.
+
+    IF THIS ROW EVER NAMES AN AILMENT, the rule needs rewriting rather than
+    extending, and this fails first.
+    """
+    words = flat(rows()["Demonic_Hellfire"]["Description"]).lower()
+
+    assert "explode" in words, words
+    for ailment in ("poison", "burn", "bleed", "disease", "necrosis"):
+        assert ailment not in words, (
+            f"Demonic_Hellfire now names the ailment {ailment!r}. Its rule deals "
+            "a one-off blow because the row named an explosion and nothing "
+            "lasting -- see HellfireKey in CataclysmDungeonModifierEffects.h. " +
+            words)
+
+
+def test_hellfire_reach_is_still_declared_as_the_floors_own_radius():
+    """The derivation, not the number.
+
+    300 IS THIS PROJECT'S SETTLED ANSWER FOR A THING AT A POINT ON THE FLOOR --
+    Infernal Rain's patch, Singularity Wells, Withered Ground's patch, Grasping
+    Tentacles' reach and Spore Clouds' reach are all that figure. The explosion is
+    declared as `InfernalRainRadiusCm` rather than as 300 so that a later change
+    to one carries the other.
+
+    NOT `ArtilleryStrikeRadiusCm`, WHICH IS 600, because that figure belongs to a
+    circle its own row calls massive and this row says nothing about size.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    declared = re.search(r"HellfireRadiusCm\s*=\s*InfernalRainRadiusCm\s*;", text)
+
+    assert declared, (
+        "Hellfire's radius is no longer declared as InfernalRainRadiusCm. It was "
+        "copied from that rule as a conclusion because 300 is what this project "
+        "uses for a thing at a point on the floor. If it is now a figure of its "
+        "own, say why in docs/DECISIONS.md and give it its own derivation.")
+
+
+def test_hellfire_damage_is_read_off_the_creature_and_not_written_down():
+    """The best property of this rule, held in the source.
+
+    THE EXPLOSION IS WORTH THE DYING CREATURE'S OWN ATTACK DAMAGE, which is what
+    `UCataclysmEnemyModifiers::InfernalBrand` already does and says why: "Read off
+    the creature rather than written here, so a Herald's brand is a Herald's
+    brand." A deeper floor's creatures then explode harder with no scaling code.
+
+    A CONSTANT WOULD PASS EVERY OTHER CHECK IN THIS FILE. The chance, the reach
+    and the trigger would all still hold while every creature exploded alike, so
+    this is the one that notices. The automation test
+    `AKilledEnemyExplodesOnWhoeverIsStandingNearIt` kills two creatures of
+    different attack damage for the same reason.
+    """
+    source = EFFECTS_SOURCE.read_text(encoding="utf-8")
+
+    multiplies = re.search(
+        r"HellfireDamage\s*\(\s*float\s+CreatureAttackDamage\s*\)"
+        r"[\s\S]{0,400}?return\s+CreatureAttackDamage\s*\*\s*"
+        r"HellfireExplosionHits\s*;",
+        source)
+
+    assert multiplies, (
+        "HellfireDamage no longer multiplies the creature's own attack damage by "
+        "HellfireExplosionHits. The whole point of the rule's magnitude is that it "
+        "is read off the creature rather than written down -- see HellfireKey in "
+        "CataclysmDungeonModifierEffects.h and InfernalBrandExplosionHits in "
+        "CataclysmEnemyModifiers.h. A constant makes every creature explode alike.")
