@@ -394,6 +394,51 @@ shield sustain while under fire.
 **The fractions are the design's, not invented here.** "At half its usual rate"
 and "at half its rate" are the rows' own words, and Warded states no number.
 
+### HOW TO COUNT THE PROJECT'S AUTOMATION TESTS BEFORE A RUN, AND WHY THE OBVIOUS WAY IS WRONG
+
+Registering a count before a run is how under-selection is caught: if fewer tests
+perform than were registered, something was filtered out. **The count registered
+for this change was 1720 and 1837 performed**, so the registration caught nothing
+and had to be explained afterwards. The instrument was wrong, in two ways at once.
+
+**Tests do not all live under `game/Source/Cataclysm/Tests/`.** Many are
+registered beside the code they test — `CataclysmAilments.cpp`,
+`CataclysmBruteCharacter.cpp`, `CataclysmClothStress.cpp` and others. A count
+taken in that one directory misses them.
+
+**And counting quoted names over-counts.** A test's name appears in comments and
+in other tests' prose as well as at its registration, so a whole-tree grep for
+quoted names gives 1878 — wrong in the other direction.
+
+**Count registrations by structure, across the whole of `game/Source`:**
+
+```
+  1479   uses of IMPLEMENT_..._AUTOMATION_TEST
++  395   uses of the project's own CATACLYSM_*_TEST wrapper macros
+-   37   wrapper macro DEFINITIONS, whose bodies contain the registration
+         macro they expand to and are not registrations themselves
+------
+  1837   which is exactly what the engine performed
+```
+
+**The eighteen wrappers are** `CATACLYSM_TEST`, `CATACLYSM_AILMENT_TEST`,
+`CATACLYSM_CC_TEST`, `CATACLYSM_CONDITIONAL_TEST`, `CATACLYSM_CONTAGION_TEST`,
+`CATACLYSM_CONVERSION_TEST`, `CATACLYSM_DEBUFF_TEST`, `CATACLYSM_DOT_TEST`,
+`CATACLYSM_HEALTH_WRITE_TEST`, `CATACLYSM_LEECH_TEST`,
+`CATACLYSM_MASOCHIST_TEST`, `CATACLYSM_MELEE_BLEED_TEST`,
+`CATACLYSM_MODIFIER_TEST`, `CATACLYSM_NOVA_TEST`, `CATACLYSM_RELIEF_TEST`,
+`CATACLYSM_RETALIATION_TEST`, `CATACLYSM_SHEET_TEST` and
+`CATACLYSM_VOID_SPLINTER_TEST`. They are defined in 37 files, which is where the
+subtraction comes from.
+
+**The arithmetic is written out so the next session checks its own figure rather
+than trusting this one.** The numbers move with every change; the method does not.
+
+**Nothing is excluded by the run's default `Cataclysm` filter**, which was the
+other candidate explanation and was checked: strings like `"Element.Demonic"` and
+`"Data.SkillCritChance"` that look like test names under another prefix are
+gameplay tags, not registrations.
+
 ---
 
 ## 2026-09-14 — Two stats adjust a figure a skill's own row states, and the rules that stop them reaching skills their nodes never name
