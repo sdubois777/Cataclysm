@@ -2411,7 +2411,7 @@ void ACataclysmDungeonGameMode::NoteDeathForWastingSickness(
 		if (WastingSicknessStacks != 0 || WastingSicknessStacksApplied != 0)
 		{
 			WastingSicknessStacks = 0;
-		WastingSicknessStacksApplied = 0;
+			WastingSicknessStacksApplied = 0;
 			ApplyChangingFloorEffects(
 				Player,
 				Cast<UCataclysmAbilitySystemComponent>(

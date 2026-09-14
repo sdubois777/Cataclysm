@@ -3217,4 +3217,108 @@ bool FCataclysmWastingCureTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWastingDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlayersOwnDeathClearsWastingSicknessAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWastingDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE CURE THE ROW DOES NOT STATE. "can only be removed by defeating a floor
+	// boss" is the row's own sentence; this one comes from the project owner's
+	// ruling of 2026-09-10, which ends anything lasting only for a dungeon at the
+	// player's death and names this row as one of the five it covers.
+	//
+	// AND IT IS CHECKED WITHOUT TICKING THE BEAT AFTERWARDS, WHICH IS THE POINT.
+	// `ACataclysmPlayerCharacter::Revive` refills the vitals by READING the
+	// maximums, so a cure that waited for the next beat would leave a reviving
+	// player refilled to the lowered maximum and then lifted, standing up short
+	// of full. The assertion below therefore runs with no beat in between: if the
+	// rule left this to the beat, the modifier would still be on the character.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {WastingSickness};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// ONE BLOW, SO THERE IS SOMETHING FOR THE DEATH TO CLEAR.
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("a creature that can hit spawned"), Enemy))
+	{
+		return false;
+	}
+	const float Landed =
+		UCataclysmSkillEffects::ApplyHit(Enemy, Player.Character, 20.0f);
+	if (!TestTrue(TEXT("its blow landed on the player"), Landed > 0.0f))
+	{
+		return false;
+	}
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	// THE DEBUFF IS ON THE CHARACTER, ASSERTED BEFORE THE DEATH. Without this the
+	// assertion after it passes for a player who never had a stack at all, which
+	// is the reading it is least able to tell from the one it is testing.
+	const FCataclysmStatModifier* BeforeDying =
+		DungeonRuleOn(Player.AbilitySystem, TEXT("max_health"));
+	if (!TestNotNull(TEXT("the blow put the debuff on maximum health"), BeforeDying))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth one stack"), BeforeDying->Value,
+			  -Effects::WastingSicknessPercentPerStack, 0.01f);
+
+	// NOW KILL THE PLAYER. Health is written directly rather than through a blow,
+	// because what this checks is the death and not what dealt it.
+	UCataclysmSkillEffects::ReduceHealthDirectly(
+		Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("the player died"),
+				  UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+
+	// AND IT IS ALREADY GONE, WITH NO BEAT RUN SINCE. This is the assertion that
+	// fails if the cure is left to `StepWastingSickness` instead of being applied
+	// inside the death listener.
+	TestNull(TEXT("the player's death took the debuff off at once, before any beat"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
+	TestNull(TEXT("and off maximum mana too"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_mana")));
+
+	// AND A BEAT AFTERWARDS DOES NOT PUT IT BACK, which says the count was
+	// cleared rather than only the applied figure.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("and the next beat does not put it back"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
