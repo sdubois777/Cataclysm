@@ -2,6 +2,131 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A skill is ranged if its effect lands at a distance the caster does not close, and twenty-five weapon skills gain the tag that says so
+
+**Affects:** the Weapon Skills sheet of `docs/All_Things_Cataclysm.xlsx` and
+`game/Data/WeaponSkills.csv` generated from it, and
+`game/Content/Data/DT_WeaponSkills.uasset`. No enchantment row changes. Issue
+[#1769](https://github.com/sdubois777/Cataclysm/issues/1769).
+
+**This is a judgement by the coordinating session under the project owner's
+delegation of 2026-09-14, not an owner decision.** This entry is written by the
+session that carried it out.
+
+### What was wrong
+
+Two enchantments say "Ranged skills …" and scope their four effect rows to
+`Type.Ranged`. **One weapon skill in 403 carried that tag**, and that one also
+carried `Type.Projectile`, so the four rows reached a single Ultimate. One of
+the two enchantments is a drawback, so a player was charged a cost they could
+almost never feel.
+
+### The tag vocabulary already said which tag is the wider one
+
+`game/Config/Tags/CataclysmTags.ini`:
+
+```
+Type.Projectile   "Skills that fire a traveling entity"
+Type.Ranged       "Any ranged skill regardless of delivery method"
+```
+
+So `Type.Ranged` was **declared** as the wider tag and **applied** as the
+narrower one. `UCataclysmSkillEffects::IsRanged` already compensates in code —
+it accepts either tag, with the comment "EITHER TAG, BECAUSE A PROJECTILE IS
+RANGED" — but the data cannot. `UCataclysmStatPipeline::ModifierApplies` loops
+over every tag a row requires and returns false on the first one a skill does
+not hold, so **a row cannot say "projectile or ranged"**. That constraint is what
+made this a choice rather than a typo.
+
+**The design document does not define a ranged skill.** It was searched; the only
+use of the word is incidental, inside a paragraph about retaliation. So there is
+no design sentence to cite here, and none is invented.
+
+### The ruling: re-tag the skills, do not re-scope the rows
+
+Three readings were put up. Re-scoping the four rows to `Type.Projectile` would
+have reached the same 21 skills for one edit, but it would have quietly redefined
+the player-facing sentence: "Ranged skills" would come to mean "skills that fire
+a travelling entity", excluding Suppressing Fire, which is a volley of crossbow
+bolts fired at an area.
+
+**So the tag moves to the skills instead, and every row changed is changed for a
+reason already written in this repository** — twenty rows carry
+`Type.Projectile`, and the engine's own comment says every projectile is ranged.
+
+### The test, for the rows where that reason does not settle it
+
+**A skill is ranged if its own row's effect lands on a target or an area at a
+distance the caster does not close by using the skill.**
+
+Applied to the thirteen rows that belong to a ranged weapon and carried neither
+tag:
+
+| Skill | Verdict | The sentence it rests on |
+| :-- | :-- | :-- |
+| Suppressing Fire | ranged | "Fire a rapid volley of bolts at a target area" |
+| Subjugate | ranged | "Drive your will into an enemy up to 15 meters away for 300% weapon damage" |
+| Hex of Cinders | ranged | "Lay a hex on an enemy up to 12 meters away" |
+| Whisper of Madness | ranged | "Put a whisper in an enemy's ear", Range 15 |
+| Quarry | ranged | "Mark an enemy as your quarry", Range 15 |
+| Anathema | not ranged | "Damn everything within 12 meters at once", and the row carries `Type.AOE.PointBlank` |
+| Recoil Dash | not ranged | "Fire a bolt point-blank into the ground" |
+| Foul Wake | not ranged | "Slip backward 8 meters and leave your curse behind you" |
+| Grapple | not ranged | fires a bolt, but to pull the caster to it |
+| Vesselstep | not ranged | moves the caster |
+| Fortify | not ranged | "Brace your crossbow and dig in", no target at all |
+| Summon Imp | not ranged | the imp fights; the skill reaches nobody |
+| Bolt Trap | out of scope | a trap, and the owner ruled on 2026-09-11 that traps come later |
+
+**ANATHEMA IS THE ONE SOMEBODY WILL RE-LITIGATE, SO THE REASON IS WRITTEN HERE
+RATHER THAN LEFT TO BE RE-DERIVED.** It deals 350% weapon damage from a wand at
+twelve metres of radius, and it is still not a ranged skill: *a nova cast from a
+wand is not a ranged skill, and the vocabulary's "regardless of delivery method"
+is about how a ranged effect travels, not about whether it is ranged.* The area
+is centred where the caster already stands.
+
+### Two things measured rather than assumed
+
+**No test pins a census of how many rows carry a Type tag.** The only pin naming
+this sheet is the row count, 403, in `CataclysmDataTableTests.cpp`, and adding a
+tag does not move it. The tests that mention `Type.Ranged` and `Type.Projectile`
+build made-up tag strings rather than counting the real file.
+
+**Every effect row naming either tag, before and after:**
+
+```
+row                                                        required          before  after
+Positive_Ranged_skills_deal_20_40_increased_damage#1       Type.Ranged            1     21
+Positive_Ranged_skills_deal_20_40_increased_damage#2       Type.Ranged            1     21
+Negative_Ranged_skills_deal_15_30_less_damage_at_close#1   Type.Ranged            1     21
+Negative_Ranged_skills_deal_15_30_less_damage_at_close#2   Type.Ranged            1     21
+Negative_Projectiles_deal_10_30_less_damage#1              Type.Projectile       21     21
+Negative_Projectiles_deal_10_30_less_damage#2              Type.Projectile       21     21
+```
+
+Adding a tag cannot remove a match, so the two projectile rows were expected to
+stay at 21; that is the expectation measured rather than asserted. No passive
+tree row names either tag.
+
+**Four of the five judged skills deal no damage** — Hex of Cinders, Whisper of
+Madness, Quarry and Suppressing Fire all state a Damage Percent of -1. They are
+tagged so the vocabulary's own sentence is true, and they are inert for these two
+enchantments, which modify attack and spell damage. Subjugate is not inert: it
+deals 300% weapon damage before the possession.
+
+### One note on how the edit was made, because the trap is quiet
+
+The Weapon Skills sheet has **no Name column**: a row's name is built from its
+Weapon Type, Damage Type and Slot. The script that made this edit reconstructs
+each name by calling the generator's own `row_name`, rather than joining the
+three cells itself. One weapon type is written "2H Crossbow" with a space, so a
+hand-written matcher assuming "2HCrossbow" would have missed five rows and
+changed twenty — with every check still passing, because twenty rows really
+would have changed. The script also refuses outright if any judged row is not
+found.
+
+---
+
 ## 2026-09-14 — Wasting Sickness stacks on a blow that lands, takes its own two fields rather than Starvation's, and has two cures where the row states one
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
