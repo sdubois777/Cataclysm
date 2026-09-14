@@ -810,6 +810,17 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			 Combat::GetThrallReserveReductionAttribute()},
 			{UCataclysmCommand::ImpCapBonusStat,
 			 Combat::GetImpCapBonusAttribute()},
+			// AND THE THREE ENERGY-SHIELD KEYSTONES, WHICH ARE FLAGS. Issue
+			// #1515. Each is zero or above zero and nothing in between means
+			// anything, because each node states a RULE rather than a magnitude.
+			// The halved rates two of them name are constants at their read sites,
+			// since the design rows state them and nothing else grants them.
+			{UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat,
+			 Combat::GetShieldAbsorbsDamageOverTimeAttribute()},
+			{UCataclysmRegeneration::ShieldRechargesWhileDamagedStat,
+			 Combat::GetShieldRechargesWhileDamagedAttribute()},
+			{UCataclysmRegeneration::ManaRegenRestoresShieldStat,
+			 Combat::GetManaRegenRestoresShieldAttribute()},
 		};
 	}();
 

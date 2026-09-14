@@ -334,7 +334,18 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// BOTH ARE BONUSES OF ZERO, like the possession threshold above and unlike
 	// the two ailment magnitudes. Each is added to a figure a skill row states,
 	// so neither has a neutral value of its own to put on a sheet.
-	constexpr int32 OffSheetCombatStats = 37;
+	// AND FORTY SINCE THE THREE ENERGY-SHIELD KEYSTONES, issue #1515. They
+	// meet the rule for the twenty-fourth, twenty-fifth and twenty-sixth
+	// times: no affix grants any of them, nothing scales any of them, no class
+	// differs on any of them, and one Ritualist keystone each is their only
+	// source.
+	//
+	// ALL THREE ARE FLAGS RATHER THAN BONUSES, which is a different reason
+	// from the five above and reaches the same answer. A flag is zero or above
+	// zero and nothing in between means anything, so there is no neutral value
+	// to put on a sheet: the sheet would have to print "no" for every
+	// character in the game but one.
+	constexpr int32 OffSheetCombatStats = 40;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

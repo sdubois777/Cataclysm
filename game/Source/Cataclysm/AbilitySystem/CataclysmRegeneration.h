@@ -98,6 +98,47 @@ public:
 	static const TCHAR* EnergyShieldRegenStat;
 
 	/**
+	 * The stat saying this character's energy shield recharges before the
+	 * wait after being damaged has run out, at a reduced rate. Issue #1515.
+	 *
+	 * `Ritualist_keystone_c_kB` Ablative is the only source, and its row is
+	 * a flag: above zero or not, with nothing in between meaning anything.
+	 * How much the rate is reduced by is `AblativeRechargeFraction` below,
+	 * not this stat.
+	 */
+	static const TCHAR* ShieldRechargesWhileDamagedStat;
+
+	/**
+	 * The stat saying this character's mana regeneration also restores its
+	 * energy shield. Issue #1515.
+	 *
+	 * `Ritualist_keystone_d_kA` The Long Game is the only source, and its
+	 * row is a flag. What share of the mana rate the shield gets is
+	 * `ManaRegenToShieldFraction` below, not this stat.
+	 */
+	static const TCHAR* ManaRegenRestoresShieldStat;
+
+	/**
+	 * What share of its usual rate an energy shield recharges at during the
+	 * wait, for a character holding Ablative.
+	 *
+	 * A CONSTANT AND NOT A STAT, because the design row states the number
+	 * itself -- "at half its usual rate" -- and nothing else in the project
+	 * grants it. A stat would be a second place to write a figure the row
+	 * already fixes, and the two could then disagree.
+	 */
+	static constexpr float AblativeRechargeFraction = 0.5f;
+
+	/**
+	 * What share of its mana regeneration a character holding The Long Game
+	 * also puts into its energy shield.
+	 *
+	 * A CONSTANT AND NOT A STAT, for the same reason as the fraction above:
+	 * the design row says "at half its rate" and nothing else grants it.
+	 */
+	static constexpr float ManaRegenToShieldFraction = 0.5f;
+
+	/**
 	 * How much a pool gains in one step, given its per-second rate.
 	 *
 	 * Zero for a rate of zero or below. A negative regeneration rate is not a

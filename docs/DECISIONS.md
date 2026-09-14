@@ -327,10 +327,36 @@ the per-floor log line, so it reaches a log rather than a player mid-fight.
 
 ## 2026-09-14 — The three energy-shield keystones are three different mechanisms, and The Long Game works outside the recharge delay
 
-**None of these three nodes is built yet, and no stat for any of them exists.**
-This entry records the measurement and the rulings so they are not re-argued when
-the code is written. Issue
+**This entry was written before any of the three was built, to record the
+measurement and the rulings so they were not re-argued when the code came.** Its
+first line said none of them was built and no stat existed. **That changed on
+2026-09-14**: all three now have a stat, a read site and tests, under issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515). The rulings below
+are what the code follows, and the sentence at the end about the rows is the one
+part still open. Issue
 [#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+**The three stats, all flags starting at zero:**
+
+| node | stat | where it is read |
+| :-- | :-- | :-- |
+| Warded | `shield_absorbs_damage_over_time` | `CataclysmDamageCalculation.cpp`, the line setting `bShieldApplies` |
+| Ablative | `shield_recharges_while_damaged` | `CataclysmRegeneration.cpp`, as a scale on the recharge |
+| The Long Game | `mana_regen_restores_shield` | `CataclysmRegeneration.cpp`, as a second gain term |
+
+**The two halved rates are constants at their read sites, not stats.**
+`AblativeRechargeFraction` and `ManaRegenToShieldFraction`, both `0.5f`, in
+`CataclysmRegeneration.h`. The design rows state the figures — "at half its
+usual rate", "at half its rate" — and nothing else in the project grants them, so
+a stat would be a second place to write the same number and the two could
+disagree. A flag says whether the rule applies; it does not carry the rule's
+size.
+
+**Ablative leaves `ShieldMayRefill` alone.** That function still answers the
+question it always answered, and five assertions call it directly. The scale sits
+on top: 1.0 when the wait has passed, half when it has not and the character
+holds the node, and zero otherwise — which is exactly the old behaviour for
+everyone else.
 
 They were scheduled as "three keystones, one flag-stat shape". Measured, only one
 of the three is a flag stat.

@@ -522,6 +522,26 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Ritualist's The Swarm keystone, as a flat modifier, added to "
 			  "the cap the Summon Imp skill row states")},
 
+		// Issue #1515. The three energy-shield keystones, and all three are
+		// FLAGS rather than bonuses: zero or above zero, with nothing in between
+		// meaning anything. Each node states a RULE -- "absorbs damage over time
+		// as well as hits", "recharges while you are taking damage", "also
+		// restores your Energy Shield" -- and a rule has no magnitude to scale,
+		// so a class base would be a number none of them has.
+		//
+		// THE HALVED RATES TWO OF THEM STATE ARE CONSTANTS AT THEIR READ SITES
+		// rather than stats, because the design rows fix them and nothing else
+		// grants them. A stat would be a second place to write the same figure.
+		{TEXT("shield_absorbs_damage_over_time"),
+		 TEXT("the Ritualist's Warded keystone, as a flat flag, read where the "
+			  "damage calculation decides whether the shield applies to a hit")},
+		{TEXT("shield_recharges_while_damaged"),
+		 TEXT("the Ritualist's Ablative keystone, as a flat flag, read where the "
+			  "regeneration step scales the shield's recharge")},
+		{TEXT("mana_regen_restores_shield"),
+		 TEXT("the Ritualist's The Long Game keystone, as a flat flag, read where "
+			  "the regeneration step adds a second source to the shield")},
+
 		// Issue #1039. Whether damage over time deals this character nothing at
 		// all. Zero for every class, and the Masochist's Vessel Unbroken
 		// capstone option is its only source. A FLAG rather than a reduction,
