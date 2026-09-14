@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — "Grabbed" is an event with an end, not a place the player is standing, and the grab is 99% of movement speed rather than a new rooted state
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
+`.cpp`, `CataclysmDungeonGameMode.h` and `.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`. Issues
+[#1786](https://github.com/sdubois777/Cataclysm/issues/1786) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Void_Grasping_Tentacles`, weight 5.0 — the lightest band in the table, shared with
+Forced March and Withered Ground — in `game/Data/DungeonModifiers.csv`: "Void tentacles
+appear all over the dungeon. The player will have to be careful of getting too close or
+they might be grabbed, restricting their movement."
+
+It states no number and no percentage.
+
+### "Grabbed, restricting their movement" had two readings and neither was clean
+
+| Reading | What it would mean | Why it was not taken |
+| :-- | :-- | :-- |
+| **A** | rooted in place for a time | Fits the word. **Nothing in the game implements a root.** The nearest is `Debuff_Stun`, which stops the target acting at all — more than the row says, and far more than weight 5.0 deserves |
+| **B** | slowed while inside a tentacle's reach | Entirely buildable today. **It would make this row a near-duplicate of `Void_Singularity_Wells`**, whose own row reads "Pulsing void orbs pull players and projectiles toward them, dealing void damage and slowing movement by 40%" — same Cataclysm, same placed zone, same continuous slow |
+
+**What exists, measured before choosing:**
+
+| Mechanism | State |
+| :-- | :-- |
+| a floor-lasting zone with a reach | exists — `ACataclysmGroundZone::SpawnForTheFloor`, two production users |
+| a movement slow driven by a zone | exists — Singularity Wells, 40% while inside |
+| `Debuff_Cripple` | 30% movement and attack speed, 4s, cap 80%; its own description says player-applied to enemies |
+| `Debuff_Stun` | a hard stop, "the target cannot act", 0.75–1.5s |
+| **a root — cannot move, can still act** | **does not exist** |
+
+### The decision: a third shape, which is A's meaning built from B's parts
+
+The coordinating session ruled on 2026-09-14:
+
+> A grab is an event: standing within a tentacle's reach has a chance, checked on the
+> beat, to be grabbed; a grab takes nearly all movement speed through the field path for a
+> few seconds and then releases; that tentacle cannot grab again for a cooldown, so
+> staying close means repeated grabs, never a permanent hold.
+
+**It needs no new state.** `UCataclysmStatPipeline::LessMultiplierFloor` is −99, so the
+strongest single reduction the pipeline allows takes a 4.0 metre-a-second character to
+0.04 — held in place, **while still able to attack**. That is exactly what separates
+"restricting their movement" from a stun.
+
+**And deliberately not the status-effect path.** `UCataclysmSkillEffects::ApplyNamedEffect`
+subtracts a flat value clamped against the attribute's own value, so a magnitude against a
+speed of 4.0 leaves a character standing still with nothing to lift it.
+`FCataclysmPlayerFloorEffects::MovementSpeedLessPercent` already records that for
+Singularity Wells, and it is why "just apply Cripple" is wrong here too.
+
+### Its own field, not Singularity Wells'
+
+`FCataclysmPlayerFloorEffects` gains `GraspMovementLessPercent`. Both rows are Void, so a
+floor can carry a well and a tentacle at once; a shared field would mean whichever rule
+wrote second erased the first, which is issue
+[#1765](https://github.com/sdubois777/Cataclysm/issues/1765). As two fields they become two
+Less multipliers, and a player slowed 40% by a well and grabbed at 99% moves at 0.6 × 0.01
+of their speed rather than at some single figure neither rule chose.
+
+### Three figures are borrowed and five are judged
+
+| Constant | Value | Where it came from |
+| :-- | --: | :-- |
+| `GraspingTentaclesReachCm` | 300 | **borrowed.** The house figure for a patch of ground a character stands in — the Gatekeeper's Soulfall ground, Infernal Rain, a Singularity Well and Withered Ground all use it |
+| `GraspingTentaclesAppearWithinCm` | 1200 | **borrowed** from Infernal Rain |
+| `GraspingTentaclesSecondsBetween` | 8 | **borrowed** from Singularity Wells, itself the bottom of the only published range found — Diablo IV states cadences for the affixes that act rather than persist |
+| `GraspingTentaclesMostOnAFloor` | 5 | a judgement |
+| `GraspingTentaclesGrabChancePercentPerBeat` | 5 | a judgement |
+| `GraspingTentaclesGrabSeconds` | 1.5 | a judgement, at the top of this project's own stun band |
+| `GraspingTentaclesGrabCooldownSeconds` | 5 | a judgement |
+| `GraspingTentaclesGrabMovementLessPercent` | 99 | the pipeline's own floor |
+
+**Five at once, which is more than Singularity Wells' three and deliberately so.** That row
+is weight 15 and each well damages, slows and is meant to pull; this is weight 5 and a
+tentacle does nothing at all until it grabs. More of a milder thing is what "all over"
+asks for.
+
+**A twentieth per beat, sized by crossing rather than standing.** The beat is a quarter
+second, so walking through a three metre reach at 4 metres a second is about six beats and
+roughly a one-in-four chance of being caught, while lingering four seconds is about even.
+That is "have to be careful of getting too close" — a risk when you stay, rarely a toll
+when you pass.
+
+**A second and a half is this project's own figure.** `game/Data/StatusEffects.csv` says of
+a stun that "designed skills run 0.75 to 1.5 seconds". A grab is gentler than a stun, so it
+sits at the top of that band rather than beyond it.
+
+**The cooldown's shape is the genre's and its number is mine.** Crowd control in this genre
+is governed by diminishing returns precisely so repeated application cannot hold a player
+indefinitely: Diablo III makes a target progressively resistant to repeated control, and
+one published system halves a root's duration on a second application within fifteen
+seconds, quarters it on the third, then grants immunity. **No published root duration was
+found for Path of Exile or Diablo IV** — those searches returned design commentary, not
+figures — so the shape is borrowed and the length is not. In arithmetic: a character
+standing on one tentacle is held 1.5 seconds in every 6.5, about 23% of the time.
+
+**Expect these to need tuning against real play**, which every other rule in that file says
+of its own figures.
+
+### "All over the dungeon" is read as "near the player, repeatedly"
+
+Nothing the beat can reach knows the shape of the floor: `ACataclysmDungeonGameMode` does
+not keep the floor plan after building, and the player's position is the only thing it can
+locate four times a second. **Infernal Rain reads "in combat zones" the same way**, which
+this file already records as a judgement. So a tentacle appears near the player on a
+cadence, and a player who walks the floor meets them all over it.
+
+### Three ordering decisions inside the beat
+
+- **The grab already in force is resolved before looking for a new one.** A player still
+  held is not rolled for again; rolling would silently extend the hold past the figure the
+  constant states.
+- **A new tentacle is placed last.** Placing first would let one appear and grab on the same
+  beat, which is not "careful of getting too close" — the player had no chance to be careful
+  of something that was not there. The spawn is also pushed one centimetre past the reach,
+  for the reason Singularity Wells records: `UCataclysmTargeting::IsInLine` decides who is
+  inside with `<=`.
+- **The cooldown is per tentacle and starts when the grab ENDS.** A floor-wide cooldown
+  would mean a player held by one tentacle is safe from all of them, and standing among
+  several would be no worse than standing by one.
+
+### A claim in issue #1786 corrected
+
+That issue records, as **reported and not re-measured**, that this row "needs one new
+function" because `ACataclysmTerrain` has no floor-lasting spawn and no `bLastsTheFloor`.
+
+**True of that class** — its kinds are `None`, `Pit` and `Wall`, and it is terrain geometry.
+**And beside the point:** `bLastsTheFloor` is on `ACataclysmGroundZone`,
+`SpawnForTheFloor` sets it, and two dungeon rules already use it — Singularity Wells and
+Withered Ground. `ACataclysmGroundZone::AlsoApply` can even lay a named status effect. **So
+the row needed no new spawn capability**, and the correction is posted on the issue.
+
+### A tentacle deals no damage
+
+The row says "restricting their movement" and names no harm, so the zone is spawned with a
+damage of zero. Since issue #1701 a zone with no damage still sweeps, and this one does not
+even need that: the grab is decided on the beat rather than by the zone finding anybody.
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if the row ever names
+damage.
+
+---
+
 ## 2026-09-14 — A fourth condition naming an ailment on the target is taken rather than the column the rule points at, and two of the three asked for are refused
 
 **Affects:**

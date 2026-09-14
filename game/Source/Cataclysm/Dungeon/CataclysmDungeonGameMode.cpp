@@ -520,12 +520,38 @@ static TAutoConsoleVariable<float> CVarWastingSicknessRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins Grasping Tentacles' grab roll so a test can assert what a beat did.
+ * Issues #1786 and #41.
+ *
+ * THE SAME SHAPE AS `Cataclysm.WastingSicknessRoll` BESIDE IT AND
+ * `Cataclysm.AilmentRoll` BEFORE THAT. -1 rolls normally, 0 grabs on every beat
+ * inside a reach, 100 never grabs.
+ *
+ * A SEPARATE VARIABLE RATHER THAN SHARING WASTING SICKNESS'S, because a test of
+ * one row must be able to pin its own chance without deciding the other's -- and
+ * a floor can carry both.
+ */
+static TAutoConsoleVariable<float> CVarGraspingTentaclesRoll(
+	TEXT("Cataclysm.GraspingTentaclesRoll"),
+	-1.0f,
+	TEXT("Pin the roll Grasping Tentacles compares its grab chance with, 0 to ")
+	TEXT("100. -1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
 	float DungeonGameModeWastingSicknessRoll()
 	{
 		const float Pinned = CVarWastingSicknessRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll a tentacle's grab chance is compared with: pinned, or drawn. */
+	float DungeonGameModeGraspingTentaclesRoll()
+	{
+		const float Pinned = CVarGraspingTentaclesRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 }
@@ -1990,9 +2016,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// floor change took them off.
 	const bool bWastingSickness = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::WastingSicknessKey));
+	// AND GRASPING TENTACLES, WHICH PLACES ACTORS AND MOVES A STAT, the shape
+	// Singularity Wells has. Issues #1786 and #41.
+	const bool bGraspingTentacles = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::GraspingTentaclesKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
-		&& !bWastingSickness)
+		&& !bWastingSickness && !bGraspingTentacles)
 	{
 		return;
 	}
@@ -2072,6 +2102,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	{
 		StepWastingSickness(Player, AbilitySystem);
 	}
+
+	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
+	// Infernal Rain and Singularity Wells are late: a floor carrying both kinds
+	// does its stat work in one pass before anything else happens on the beat.
+	// Issues #1786 and #41.
+	if (bGraspingTentacles)
+	{
+		StepGraspingTentacles(Player, AbilitySystem);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepForcedMarch(
@@ -2107,6 +2146,154 @@ void ACataclysmDungeonGameMode::StepForcedMarch(
 	// resistance, no critical strike and no ailment touch it. The player is its
 	// own instigator because nothing else dealt it.
 	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Amount);
+}
+
+void ACataclysmDungeonGameMode::StepGraspingTentacles(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !Player || !AbilitySystem)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+
+	// WHAT IS STILL THERE, ASKED RATHER THAN REMEMBERED. A tentacle is destroyed
+	// with the rest of the floor's contents, so a weak pointer going invalid IS
+	// that. The cooldown goes with the entry, which is why the two travel
+	// together in one struct rather than in parallel arrays that could slip.
+	GraspingTentacles.RemoveAll(
+		[](const FCataclysmGraspingTentacle& Tentacle)
+		{
+			return !Tentacle.Zone.IsValid();
+		});
+
+	// THE GRAB ALREADY IN FORCE IS RESOLVED FIRST, BEFORE LOOKING FOR A NEW ONE.
+	// A player still held is not rolled for again: the row describes being
+	// grabbed, not being grabbed harder, and rolling would silently extend the
+	// hold past the figure the constant states.
+	bool bGrabbed = GraspedUntilSeconds > Now;
+
+	if (!bGrabbed)
+	{
+		// ONE ROLL PER TENTACLE THAT COVERS THE PLAYER, so standing where two
+		// reaches overlap is twice as dangerous. `Covers` is the same test the
+		// zone's own sweep makes, so what grabs a character and what the tentacle
+		// is drawn as cannot disagree about where it is.
+		const FVector Feet = Player->GetActorLocation();
+		for (FCataclysmGraspingTentacle& Tentacle : GraspingTentacles)
+		{
+			if (!Tentacle.Zone.IsValid() || !Tentacle.Zone->Covers(Feet))
+			{
+				continue;
+			}
+
+			// ITS OWN COOLDOWN, NOT THE FLOOR'S. A player held by one tentacle is
+			// not safe from the others, and one that has just let go cannot take
+			// hold again at once.
+			if (Tentacle.MayGrabAgainAtSeconds > Now)
+			{
+				continue;
+			}
+
+			if (DungeonGameModeGraspingTentaclesRoll()
+				>= Effects::GraspingTentaclesGrabChancePercentPerBeat)
+			{
+				continue;
+			}
+
+			// THE GRAB AND THE COOLDOWN ARE BOTH SET FROM NOW, and the cooldown
+			// starts when the grab ENDS rather than when it begins -- otherwise a
+			// cooldown shorter than the grab would let the same tentacle take
+			// hold again before it had let go. A static assertion keeps the two
+			// figures in that order as well.
+			GraspedUntilSeconds = Now + Effects::GraspingTentaclesGrabSeconds;
+			Tentacle.MayGrabAgainAtSeconds =
+				GraspedUntilSeconds + Effects::GraspingTentaclesGrabCooldownSeconds;
+			bGrabbed = true;
+			break;
+		}
+	}
+
+	// ONLY WHEN SOMETHING CHANGED, which is the guard every beat-driven rule here
+	// keeps: the apply rewrites the character's whole standing stat line, and a
+	// grab begins and ends far less often than four times a second.
+	const float Wanted = Effects::GraspMovementLessPercentWhile(bGrabbed);
+	if (!FMath::IsNearlyEqual(Wanted, GraspMovementLessApplied))
+	{
+		GraspMovementLessApplied = Wanted;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	// AND ONLY THEN IS ANOTHER PLACED. Placing before the roll would let a
+	// tentacle appear and grab on the same beat, which is not "careful of getting
+	// too close": the player had no chance to be careful of something that was
+	// not there.
+	GraspingTentaclesSecondsSinceLast += SecondsBetweenWaveChecks;
+	if (!Effects::GraspingTentacleIsDue(GraspingTentaclesSecondsSinceLast,
+										GraspingTentacles.Num()))
+	{
+		return;
+	}
+
+	// THE TYPE COMES OUT OF THE ROW, the way Infernal Rain and Singularity Wells
+	// read theirs, so a row retyped in the design workbook retypes its tentacles
+	// with no code change. An unreadable table places nothing rather than
+	// guessing at a type.
+	const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+		FName(Effects::GraspingTentaclesKey));
+	if (!Row)
+	{
+		return;
+	}
+
+	// PAST THE REACH RATHER THAN AT IT, for the reason `StepSingularityWells`
+	// gives: `UCataclysmTargeting::IsInLine` decides who is inside with `<=`, so
+	// one centred at exactly its reach covers a player standing still -- and a
+	// tentacle that could grab on the beat it appeared is the case the ordering
+	// above exists to prevent.
+	const FVector Centre = Player->GetActorLocation();
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	const float Away = FMath::FRandRange(Effects::GraspingTentaclesReachCm + 1.0f,
+										 Effects::GraspingTentaclesAppearWithinCm);
+	const FVector Where(Centre.X + Away * FMath::Cos(Angle),
+						Centre.Y + Away * FMath::Sin(Angle),
+						Centre.Z);
+
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+	Source->DamageType = FName(*Row->CataclysmType);
+
+	// NO DAMAGE PER TICK. A tentacle grabs and does not burn: the row says
+	// "restricting their movement" and says nothing about harm. Since issue #1701
+	// a zone with no damage still sweeps, and this one does not even need that --
+	// the grab is decided on the beat above rather than by the zone finding
+	// anybody.
+	//
+	// IT LASTS THE FLOOR, which "appear all over the dungeon" reads as: a feature
+	// of the place rather than something passing through it. The cap is what
+	// keeps that from becoming a floor the player cannot cross.
+	ACataclysmGroundZone* Tentacle = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Where, Where, Effects::GraspingTentaclesReachCm, 0.0f);
+	if (!Tentacle)
+	{
+		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
+		// rather than waiting a whole cadence for one that never existed.
+		return;
+	}
+
+	GraspingTentaclesSecondsSinceLast = 0.0f;
+
+	FCataclysmGraspingTentacle Placed;
+	Placed.Zone = Tentacle;
+	GraspingTentacles.Add(Placed);
 }
 
 void ACataclysmDungeonGameMode::StepWastingSickness(
@@ -2304,6 +2491,15 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	Effects.SicknessMaxHealthLessPercent = SicknessLess;
 	Effects.SicknessMaxManaLessPercent = SicknessLess;
 
+	// AND WHAT A TENTACLE'S GRAB IS TAKING. Issues #1786 and #41. Read
+	// unconditionally like the rest: a floor without that row never grabs, and
+	// nothing is what the effects already hold.
+	//
+	// ITS OWN FIELD AND NOT `MovementSpeedLessPercent`, which Singularity Wells
+	// writes. Both rows are Void and a floor can carry both, so sharing would mean
+	// whichever wrote second erased the first. Issue #1765.
+	Effects.GraspMovementLessPercent = GraspMovementLessApplied;
+
 	UCataclysmDungeonModifierEffects::ApplyToCharacter(Effects, AbilitySystem,
 													  Player->GetEquipment());
 }
@@ -2412,6 +2608,21 @@ void ACataclysmDungeonGameMode::NoteDeathForWastingSickness(
 		{
 			WastingSicknessStacks = 0;
 			WastingSicknessStacksApplied = 0;
+
+			// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues
+			// #1786 and #41. The list because
+			// `UCataclysmFloorContents::ClearTheFloor` has already destroyed
+			// those actors and a stale list would count them against the cap and
+			// stop the tentacles entirely; the clock so the first of a floor does
+			// not arrive on its first beat carrying the last floor's wait; the
+			// grab because a player who took the stairs is not still held by a
+			// tentacle they left behind; and the applied figure because the call
+			// above has already taken the reduction off the character, so leaving
+			// it would make the next beat believe it was still applied.
+			GraspingTentacles.Empty();
+			GraspingTentaclesSecondsSinceLast = 0.0f;
+			GraspedUntilSeconds = -1.0f;
+			GraspMovementLessApplied = 0.0f;
 			ApplyChangingFloorEffects(
 				Player,
 				Cast<UCataclysmAbilitySystemComponent>(

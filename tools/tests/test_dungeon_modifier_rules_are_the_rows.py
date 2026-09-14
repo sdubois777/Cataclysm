@@ -12,7 +12,9 @@ player stays on the floor, the Field Medic heals other enemies and does not
 attack, Unstable Dimensions draws another modifier onto the floor, Infernal
 Rain drops patches of burning ground, Mortal Decay saps health faster the
 deeper the floor is until the player reaps something, and Wasting Sickness
-stacks a reduction to both of the player's maximums when an enemy's blow lands.
+stacks a reduction to both of the player's maximums when an enemy's blow lands,
+and Grasping Tentacles grabs a player who lingers within one's reach and lets go
+again.
 
 THAT LIST IS NOT A COUNT, AND IT USED TO BE ONE. This paragraph said "five of the
 117 rows" and named five; three rules had been added since without it moving, so
@@ -603,3 +605,103 @@ def test_wasting_sicknesses_constants_still_describe_a_chance_and_a_survivable_c
         f"Wasting Sickness at its cap takes {per_stack * stacks}% of both "
         "maximums. The row describes a debuff to fight through and cure at a "
         "boss, not one that removes the character.")
+
+
+def test_grasping_tentacles_states_no_number_of_its_own():
+    """Every figure this rule uses is borrowed or judged: its row states none.
+
+    IF THE ROW EVER STATES ONE, this fails, so the C++ constants are checked
+    against it and `docs/DECISIONS.md` stops calling them judgements.
+    """
+    words = flat(rows()["Void_Grasping_Tentacles"]["Description"])
+
+    assert "%" not in words, words
+    assert not [c for c in words if c.isdigit()], (
+        "The Grasping Tentacles row now states a number. Check "
+        "GraspingTentaclesMostOnAFloor, GraspingTentaclesGrabChancePercentPerBeat, "
+        "GraspingTentaclesGrabSeconds, GraspingTentaclesGrabCooldownSeconds and "
+        "GraspingTentaclesGrabMovementLessPercent against it and update "
+        "docs/DECISIONS.md.")
+
+
+def test_grasping_tentacles_says_grabbed_and_restricts_movement_and_not_more():
+    """The wordings the ruling rests on, and the one that bounds it.
+
+    "GRABBED" IS WHY A GRAB IS AN EVENT WITH AN END rather than a state the
+    player stands in. The rule holds for a fixed time and releases; a tentacle
+    then waits before it can grab again.
+
+    "RESTRICTING THEIR MOVEMENT" IS WHY IT IS NOT A STUN. The rule takes 99% of
+    movement speed through the stat pipeline, which leaves the character able to
+    attack. `Debuff_Stun` stops the target acting entirely, and the row does not
+    ask for that.
+
+    "GETTING TOO CLOSE" IS WHY THERE IS A REACH AND A CHANCE rather than a toll
+    on the whole floor.
+
+    THE ROW NAMES NO DAMAGE, which is why a tentacle deals none. If it ever does,
+    the zone is spawned with a damage of zero and that has to be revisited.
+    """
+    words = flat(rows()["Void_Grasping_Tentacles"]["Description"]).lower()
+
+    assert "grabbed" in words, words
+    assert "restricting their movement" in words, words
+    assert "too close" in words, words
+
+    harm = [word for word in ("damage", "damaging", "health", "kill", "dealing")
+            if word in words]
+    assert not harm, (
+        f"The Grasping Tentacles row now names {harm}. A tentacle is spawned "
+        "with no damage per tick because the row asked for none; check the rule "
+        "against the row and update docs/DECISIONS.md.")
+
+
+def test_grasping_tentacles_is_not_the_singularity_wells_row():
+    """The two Void rows must keep describing different things.
+
+    WHY THIS EXISTS. "Grabbed, restricting their movement" was read as an EVENT
+    -- a hold that ends and a tentacle that then waits -- partly because reading
+    it as a continuous slow while inside a reach would have made this row a
+    near-duplicate of `Void_Singularity_Wells`, whose own row says "slowing
+    movement by 40%". That reasoning is recorded in `docs/DECISIONS.md`.
+
+    THIS IS A REMINDER AND NOT A GUARD, and says so. It fails if the Singularity
+    Wells row stops describing a slow, which is the moment to re-read why this
+    row was built as an event instead.
+    """
+    wells = flat(rows()["Void_Singularity_Wells"]["Description"]).lower()
+
+    assert "slowing movement" in wells, (
+        "The Singularity Wells row no longer describes a slow. Grasping "
+        "Tentacles was built as a timed grab rather than a continuous slow "
+        "partly to avoid duplicating it; re-read that reasoning in "
+        "docs/DECISIONS.md.")
+
+
+def test_grasping_tentacles_constants_keep_the_shape_the_ruling_asked_for():
+    """The three relationships the rule depends on, checked where CI looks.
+
+    WHY THIS DUPLICATES `static_assert`s, for the reason the two rules above give:
+    all of them are compile-time, only a C++ build can fire them, and the build
+    job is not a required check on a pull request. The fast suite is.
+    """
+    grab = constant("GraspingTentaclesGrabSeconds")
+    cooldown = constant("GraspingTentaclesGrabCooldownSeconds")
+    less = constant("GraspingTentaclesGrabMovementLessPercent")
+    reach = constant("GraspingTentaclesReachCm")
+    within = constant("GraspingTentaclesAppearWithinCm")
+
+    assert cooldown > grab, (
+        f"A tentacle may grab again after {cooldown}s while its grab lasts "
+        f"{grab}s, so a player standing in a reach is held without a break. The "
+        "cooldown being longer than the grab is what makes this repeated grabs "
+        "rather than a permanent hold.")
+    assert 0.0 < less < 100.0, (
+        f"A grab takes {less}% of movement speed. At 100 the character cannot "
+        "move at all, which is a stun -- and this rule is deliberately not one, "
+        "because a grabbed character can still act.")
+    assert within > reach, (
+        f"A tentacle appears within {within}cm and reaches {reach}cm, so it can "
+        "no longer land clear of the player -- it would grab the moment it "
+        "appeared, and 'careful of getting too close' would describe nothing the "
+        "player chose.")

@@ -23,6 +23,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::MortalDecayKey =
 	TEXT("Death_Mortal_Decay");
 const TCHAR* UCataclysmDungeonModifierEffects::WastingSicknessKey =
 	TEXT("Famine_Wasting_Sickness");
+const TCHAR* UCataclysmDungeonModifierEffects::GraspingTentaclesKey =
+	TEXT("Void_Grasping_Tentacles");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -167,7 +169,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(ForcedMarchKey) || RowKey == FName(NihilsEmbraceKey)
 		|| RowKey == FName(DeathsEmbraceKey) || RowKey == FName(FieldMedicKey)
 		|| RowKey == FName(WitheredGroundKey) || RowKey == FName(MortalDecayKey)
-		|| RowKey == FName(WastingSicknessKey))
+		|| RowKey == FName(WastingSicknessKey)
+		|| RowKey == FName(GraspingTentaclesKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -310,6 +313,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(WitheredGroundKey),
 		FName(MortalDecayKey),
 		FName(WastingSicknessKey),
+		FName(GraspingTentaclesKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -400,6 +404,31 @@ float UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
 	// things would have to be wrong at once for a player to be unhealable.
 	return FMath::Clamp(Stacks, 0, DeathsEmbraceMostStacks)
 		* DeathsEmbracePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::GraspingTentacleIsDue(
+	float SecondsSinceLast, int32 Alive)
+{
+	// THE CAP FIRST, so a floor already carrying its limit does no arithmetic and
+	// does not swallow the clock: the caller keeps counting, so the beat one is
+	// destroyed on places the next at once rather than waiting a further cadence.
+	if (Alive >= GraspingTentaclesMostOnAFloor)
+	{
+		return false;
+	}
+
+	// AT OR PAST THE CADENCE, NOT PAST IT. The beat is a quarter of a second, so
+	// insisting on strictly past would put every tentacle one beat later than the
+	// figure says for no reason anybody could observe.
+	return SecondsSinceLast >= GraspingTentaclesSecondsBetween;
+}
+
+float UCataclysmDungeonModifierEffects::GraspMovementLessPercentWhile(
+	bool bGrabbed)
+{
+	// EVERY GRAB IS WORTH THE SAME. The row describes being grabbed, not being
+	// grabbed harder, so there is nothing here to scale with.
+	return bGrabbed ? GraspingTentaclesGrabMovementLessPercent : 0.0f;
 }
 
 int32 UCataclysmDungeonModifierEffects::WastingSicknessStacksAfterHit(
@@ -559,6 +588,20 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  DungeonModifierEffectsMovementSpeedStat,
 								  Effects.MovementSpeedLessPercent);
 
+	// AND GRASPING TENTACLES, ON THE SAME STAT AND FROM ITS OWN FIELD. Issues
+	// #1786 and #41.
+	//
+	// A SECOND MULTIPLIER RATHER THAN A LARGER VERSION OF THE ONE ABOVE, WHICH IS
+	// WHY THE FIELD IS SEPARATE. Both rows are Void, so a floor can carry a
+	// Singularity Well and a tentacle at once; sharing the field would mean
+	// whichever rule wrote second erased the first, which is issue #1765. As two
+	// entries the pipeline multiplies each on its own, and a player slowed 40% by
+	// a well and grabbed at 99% moves at 0.6 x 0.01 of their speed rather than at
+	// some single figure neither rule chose.
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsMovementSpeedStat,
+								  Effects.GraspMovementLessPercent);
+
 	// AND WITHERED GROUND, WHICH IS ONE FIELD AND FOUR STATS. The row states
 	// one figure for all of them: "your Health and Mana recovery (regen/leech)
 	// is reduced by 80%".
@@ -717,6 +760,19 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	// separate sources this clause has to be split, and
 	// `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`
 	// is what fails if either field stops being named here at all.
+	// AND A GRAB, SAID AS WHAT IT IS RATHER THAN AS A PERCENTAGE. Issues #1786
+	// and #41. "held by a tentacle" tells a player why they cannot move and that
+	// it will pass; "movement speed 99% less" tells them a number and leaves them
+	// to work out that they are not stunned.
+	//
+	// SAID SEPARATELY FROM THE SLOW ABOVE, THOUGH IT MOVES THE SAME STAT, because
+	// a floor can carry both rows and their cures differ: a well is walked out
+	// of, a grab ends on its own.
+	if (Effects.GraspMovementLessPercent > 0.0f)
+	{
+		Clauses.Add(TEXT("held by a tentacle"));
+	}
+
 	if (Effects.SicknessMaxHealthLessPercent > 0.0f
 		|| Effects.SicknessMaxManaLessPercent > 0.0f)
 	{
