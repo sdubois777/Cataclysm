@@ -3672,6 +3672,163 @@ bool FCataclysmTentacleCooldownTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTentacleStairsTest,
+	"Cataclysm.DungeonModifierEffects.AGrabDoesNotSurviveTheStairs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTentacleStairsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE EVIDENCE FOR FOUR LINES THAT SHIPPED IN THE WRONG FUNCTION. Issue
+	// #1811. `GraspingTentacles.Empty()`, the cadence, the grab's expiry and the
+	// applied figure were reset inside `NoteDeathForWastingSickness`, which runs
+	// when the PLAYER DIES, rather than inside `ApplyFloorRulesToPlayer`, which
+	// runs when the FLOOR CHANGES. Every test of that rule passed, because none
+	// of them changed floor while a grab was running.
+	//
+	// THE OBVIOUS TEST FOR THIS CANNOT FAIL, AND SAYING SO IS THE POINT.
+	// "Assert the grab and the applied figure are gone on the new floor" is true
+	// either way: the floor change rebuilds the player's dungeon modifiers
+	// through `ApplyFloorRulesTo`, which never reads the applied figure, so the
+	// slow comes off whatever the reset block did. The beat that follows leaves
+	// it off too -- with the stale state the beat sees `bGrabbed` true and the
+	// applied figure already matching, so it changes nothing. Both assertions
+	// are still made below, because they are the behaviour the rule promises,
+	// but NEITHER of them is what makes this test evidence.
+	//
+	// WHAT DISCRIMINATES IS A NEW GRAB ON THE NEW FLOOR. `StepGraspingTentacles`
+	// opens with `bGrabbed = GraspedUntilSeconds > Now` and searches for a
+	// tentacle only when that is false. A stale expiry carried down the stairs
+	// therefore makes the player UNGRABBABLE on the new floor for the rest of the
+	// old grab's length, silently. That is the assertion at the end.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE ROLL IS PINNED SO THE CHANCE CANNOT DECIDE WHETHER THIS TEST PASSES.
+	FScopedConsoleString Roll(TEXT("Cataclysm.GraspingTentaclesRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const TCHAR* const Movement = TEXT("movement_speed");
+
+	Mode->DungeonModifiers = {GraspingTentacles};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// GET GRABBED ON THE FIRST FLOOR. Same route as
+	// `ATentacleGrabsAPlayerWhoLingersAndLetsGoOnItsOwn`: wait out the cadence,
+	// then walk onto what appeared.
+	const int32 BeatsForCadence = FMath::CeilToInt(
+		Effects::GraspingTentaclesSecondsBetween
+		/ ACataclysmDungeonGameMode::SecondsBetweenWaveChecks) + 1;
+	for (int32 Beat = 0; Beat < BeatsForCadence; ++Beat)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	ACataclysmGroundZone* Reached = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		Reached = *It;
+		break;
+	}
+	if (!TestNotNull(TEXT("a tentacle to stand on"), Reached))
+	{
+		return false;
+	}
+	Player.Character->SetActorLocation(Reached->GetActorLocation());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	if (!TestNotNull(TEXT("standing on a tentacle is grabbed"),
+					 DungeonRuleOn(Player.AbilitySystem, Movement)))
+	{
+		return false;
+	}
+
+	// THE GRAB HAS TIME LEFT, ASSERTED RATHER THAN ASSUMED. The world clock has
+	// not been moved since the grab began, so every remaining assertion happens
+	// inside the grab's own length. Without this the test could be measuring a
+	// grab that had already ended by itself, which proves nothing about the
+	// stairs.
+	if (!TestTrue(TEXT("the grab is still running, so the stairs are taken mid-grab"),
+				  Effects::GraspingTentaclesGrabSeconds > 0.0f))
+	{
+		return false;
+	}
+
+	// TAKE THE STAIRS.
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is floor 2"), Mode->FloorBrief.FloorNumber, 2);
+
+	// THE TWO ASSERTIONS THE RULE PROMISES, BOTH TRUE EITHER WAY. Kept because
+	// they are what a reader expects to see and their absence would be odd, not
+	// because they carry the proof.
+	TestNull(TEXT("the slow is off the player on the new floor"),
+			 DungeonRuleOn(Player.AbilitySystem, Movement));
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("and the next beat does not put it back"),
+			 DungeonRuleOn(Player.AbilitySystem, Movement));
+
+	// THE ASSERTION THAT CARRIES THE PROOF. Wait out the cadence on the new
+	// floor, walk onto what appears, and be grabbed. With the expiry carried
+	// down the stairs the beat still believes the player is held, never looks for
+	// a tentacle, and this reads null.
+	for (int32 Beat = 0; Beat < BeatsForCadence; ++Beat)
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	}
+
+	ACataclysmGroundZone* OnTheNewFloor = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		OnTheNewFloor = *It;
+		break;
+	}
+	if (!TestNotNull(TEXT("a tentacle on the new floor to stand on"), OnTheNewFloor))
+	{
+		return false;
+	}
+	Player.Character->SetActorLocation(OnTheNewFloor->GetActorLocation());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	const FCataclysmStatModifier* Held = DungeonRuleOn(Player.AbilitySystem, Movement);
+	if (!TestNotNull(
+			TEXT("a tentacle on the new floor can grab, so no grab was carried down"),
+			Held))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the new grab takes the figure the constant states"),
+			  Held->Value,
+			  -Effects::GraspingTentaclesGrabMovementLessPercent, 0.01f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEdictRulesTest,
 	"Cataclysm.DungeonModifierEffects.TheEdictIsDueOnItsCadenceAndTheLockIsAllOrNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

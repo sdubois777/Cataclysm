@@ -92,6 +92,49 @@ stairs, which is the only way the two possibilities can be told apart: a silence
 *restarted* by the floor change and one that was *carried* answer identically at every
 moment unless real time has passed in between.
 
+### A per-floor reset lives in `ApplyFloorRulesToPlayer` and nowhere else
+
+That is the rule this entry adds, and it exists because four lines shipped somewhere else.
+Issue [#1811](https://github.com/sdubois777/Cataclysm/issues/1811).
+
+**What shipped.** Grasping Tentacles was built in
+[#1808](https://github.com/sdubois777/Cataclysm/pull/1808) with its four per-floor reset
+lines — the tentacle list, the cadence, the grab's expiry and the applied movement
+reduction — inside `ACataclysmDungeonGameMode::NoteDeathForWastingSickness`, which runs when
+the **player dies**, instead of inside `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer`,
+which runs when the **floor changes**.
+
+**How it got there.** The edit that placed them was anchored on the text
+`WastingSicknessStacksApplied = 0;`. **That line appears twice in the file**, once in each of
+those two functions, and the anchor matched the second one. Nothing in the change was wrong
+about what the four lines should do; only about where they went.
+
+**Why no test said so.** Every test of that rule passed. None of them changed floor while a
+grab was running, so none of them ever reached the code that was missing. The controls on
+that change counted the four lines present and did not check which function contained them.
+
+**What found it.** The Edict of Silence's own floor-change test,
+`ASilenceSurvivesTheStairsAndEndsAtItsOriginalTime`, which fails outright when a rule's
+applied figure is not cleared in the floor-change handler. A test for one rule found a defect
+in another because both reset lines had been put in the same wrong place.
+
+**What it cost in play.** A grab survived the stairs, the cadence carried across floors, and
+the movement reduction stayed marked as applied after the floor change had already taken it
+off the character.
+
+**The test that now covers the four moved lines is
+`AGrabDoesNotSurviveTheStairs`, and it does not assert what the obvious version would.**
+Asserting that the grab and the applied figure are gone on the new floor passes with the
+lines in either place: the floor change rebuilds the player's modifiers through
+`ApplyFloorRulesTo`, which never reads the applied figure, and the beat that follows sees the
+stale expiry and the stale applied figure agreeing, so it changes nothing. **The assertion
+that discriminates is that a tentacle on the NEW floor can grab.** `StepGraspingTentacles`
+begins with `bGrabbed = GraspedUntilSeconds > Now` and looks for a tentacle only when that is
+false, so an expiry carried down the stairs leaves the player unable to be grabbed at all for
+the rest of the old grab's length.
+
+---
+
 ### Unscoped, which is the whole difference from the two enchantments on the same stat
 
 The lock is read through `StatForSkill` with the skill's own tags, so a value carrying
