@@ -522,7 +522,8 @@ UCataclysmPlayerClassStats::StatToAttribute()
 
 			// AND WHETHER THIS CHARACTER'S SKILLS MAY BE USED AT ALL. Issue
 			// #41, slice 3. Zero for every class; its sources are an
-			// enchantment scoped to the Ultimate slot and the dungeon modifier
+			// enchantment scoped to the Movement slot, one scoped to the
+			// Ultimate slot, and the dungeon modifier
 			// Edict of Silence unscoped.
 			//
 			// THE CONSTANT AND NOT THE SPELLED-OUT NAME, as the entry above

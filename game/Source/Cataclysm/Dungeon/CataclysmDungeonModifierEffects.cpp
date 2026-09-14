@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
 #include "Items/CataclysmItem.h"
 
 const TCHAR* UCataclysmDungeonModifierEffects::StarvationKey = TEXT("Famine_Starvation");
@@ -25,6 +26,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::WastingSicknessKey =
 	TEXT("Famine_Wasting_Sickness");
 const TCHAR* UCataclysmDungeonModifierEffects::GraspingTentaclesKey =
 	TEXT("Void_Grasping_Tentacles");
+const TCHAR* UCataclysmDungeonModifierEffects::EdictOfSilenceKey =
+	TEXT("Celestial_Edict_of_Silence");
 
 const TCHAR* UCataclysmDungeonModifierEffects::SingularityWellsKey =
 	TEXT("Void_Singularity_Wells");
@@ -170,7 +173,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DeathsEmbraceKey) || RowKey == FName(FieldMedicKey)
 		|| RowKey == FName(WitheredGroundKey) || RowKey == FName(MortalDecayKey)
 		|| RowKey == FName(WastingSicknessKey)
-		|| RowKey == FName(GraspingTentaclesKey))
+		|| RowKey == FName(GraspingTentaclesKey)
+		|| RowKey == FName(EdictOfSilenceKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -314,6 +318,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(MortalDecayKey),
 		FName(WastingSicknessKey),
 		FName(GraspingTentaclesKey),
+		FName(EdictOfSilenceKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -404,6 +409,31 @@ float UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
 	// things would have to be wrong at once for a player to be unhealable.
 	return FMath::Clamp(Stacks, 0, DeathsEmbraceMostStacks)
 		* DeathsEmbracePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::EdictOfSilenceIsDue(float SecondsSinceLast)
+{
+	// A NEGATIVE WAIT BRINGS NOTHING, which is the reading every counting rule in
+	// this file takes of a figure it cannot have been given honestly. It also
+	// keeps a caller that has never started its clock from being silenced on its
+	// first beat.
+	if (SecondsSinceLast < 0.0f)
+	{
+		return false;
+	}
+
+	// AT OR PAST, NOT PAST. The beat is a quarter of a second and the cadence is
+	// ninety, so insisting on strictly past would put every silence one beat
+	// later than the row says for no reason anybody could observe.
+	return SecondsSinceLast >= EdictOfSilenceEverySeconds;
+}
+
+float UCataclysmDungeonModifierEffects::SkillsLockedWhile(bool bSilenced)
+{
+	// EVERY SILENCE IS THE SAME. The row describes one that prevents all skill
+	// usage, not one that prevents more of it at depth or after a while, so there
+	// is nothing here to scale with.
+	return bSilenced ? EdictOfSilenceLockValue : 0.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::GraspingTentacleIsDue(
@@ -567,6 +597,34 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddFlat(Modifiers,
 								  DungeonModifierEffectsHealingReceivedStat,
 								  Effects.HealingReceivedLessPercent);
+
+	// AND THE EDICT OF SILENCE, ON THE STAT THAT SAYS WHETHER SKILLS MAY BE USED.
+	// Issues #1786 and #41.
+	//
+	// FLAT AND NOT A MULTIPLIER, for the reason Death's Embrace gives above:
+	// `skill_locked` is zero for every class, and a multiplier on zero is zero
+	// however large it is.
+	//
+	// UNSCOPED, WHICH IS THE WHOLE DIFFERENCE FROM THE TWO ENCHANTMENTS THAT
+	// WRITE THIS STAT. `UCataclysmAbilitySystemComponent::StatForSkill` reads it
+	// with the skill's own tags, so a value carrying `RequiredTags` reaches only
+	// skills that match. A dungeon rule's modifier carries no tags, so it reaches
+	// every skill -- which is what "preventing all skill usage" asks for, and
+	// what the two slot-scoped enchantment rows deliberately do not do.
+	//
+	// AND BASIC ATTACKS NEED NOTHING HERE. `UCataclysmSkillTemplate::
+	// CanActivateAbility` skips the lock check for that slot unconditionally, so
+	// the row's "Only basic attacks function during this period" is already true
+	// of an unscoped lock without this file knowing about the slot at all.
+	//
+	// THE STAT'S CANONICAL NAME RATHER THAN A SIXTH SPELLING IN THIS FILE. The
+	// five stat names above are repeated here as local constants, which the
+	// comment on them defends; this one is taken from
+	// `UCataclysmSkillSlots::LockedStat`, the same constant the code that ENFORCES
+	// the lock reads, so the writer and the reader of this stat cannot drift apart
+	// by a typo.
+	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmSkillSlots::LockedStat,
+								  Effects.SkillsLockedValue);
 
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
@@ -771,6 +829,20 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	if (Effects.GraspMovementLessPercent > 0.0f)
 	{
 		Clauses.Add(TEXT("held by a tentacle"));
+	}
+
+	// AND THE EDICT OF SILENCE, SAID AS WHAT THE PLAYER CAN STILL DO. Issues
+	// #1786 and #41. "skills silenced, basic attacks only" answers the question a
+	// silenced player is actually asking, which is what to press; "skill_locked
+	// 1" would answer a question nobody has.
+	//
+	// THIS SENTENCE IS NOT WHAT FIXES THE SILENCE PROBLEM, and saying so here
+	// stops it being mistaken for the fix. `Describe` has one caller today -- the
+	// per-floor log line -- so this reaches a log rather than a player mid-fight.
+	// Issue #1810 is that nothing in the interface reads the lock at all.
+	if (Effects.SkillsLockedValue > 0.0f)
+	{
+		Clauses.Add(TEXT("skills silenced, basic attacks only"));
 	}
 
 	if (Effects.SicknessMaxHealthLessPercent > 0.0f

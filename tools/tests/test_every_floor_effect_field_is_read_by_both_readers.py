@@ -70,6 +70,22 @@ def body_of(text: str, opening: str) -> str:
     raise AssertionError(f"braces never balanced after {opening!r}")
 
 
+#: Fields of `FCataclysmPlayerFloorEffects` that are deliberately NOT percentages.
+#:
+#: THE STRUCT'S OWN COMMENT SAYS EVERY FIELD IS A PERCENTAGE OF A FINISHED NUMBER, and
+#: that was true of all eleven fields until the Edict of Silence. `SkillsLockedValue` is
+#: the VALUE of the stat `skill_locked`, and everything that reads that stat asks only
+#: whether it is above zero, so one is what "above zero" is written as. A share of
+#: something would mean nothing there.
+#:
+#: THIS LIST EXISTS SO THE GUARD STAYS A GUARD. The assertion below used to say every
+#: field ends in `Percent`, and its own failure message offered to be deleted if an
+#: exception was ever deliberate. Deleting it would have stopped it catching the typo it
+#: was written for -- a field named for a share that `StatModifiersFor` then applies as
+#: the wrong kind of number. Naming the exception keeps both.
+NOT_PERCENTAGES = {"SkillsLockedValue"}
+
+
 @pytest.fixture(scope="module")
 def fields() -> list[str]:
     """Every float field of `FCataclysmPlayerFloorEffects`, in declaration order."""
@@ -90,10 +106,13 @@ def test_the_struct_was_found_and_holds_the_fields(fields: list[str]) -> None:
         f"That is too few to be the real struct, so the parse in {HEADER.name} has "
         "broken rather than the struct having shrunk. Check the declaration style: this "
         "expects one tab, `float `, a name, and ` = `.")
-    assert all(f.endswith("Percent") for f in fields), (
-        f"every field of this struct has been a percentage so far and {fields} is not. "
-        "If that is deliberate the naming assertion here should go; if it is a typo, it "
-        "is the kind `StatModifiersFor` would apply as the wrong kind of number.")
+    odd = [f for f in fields
+           if not f.endswith("Percent") and f not in NOT_PERCENTAGES]
+    assert not odd, (
+        f"{odd} does not end in `Percent` and is not one of the fields recorded here as "
+        "deliberately not a percentage. If it IS deliberate, add it to NOT_PERCENTAGES "
+        "with the reason; if it is a typo, it is the kind `StatModifiersFor` would apply "
+        "as the wrong kind of number.")
 
 
 @pytest.mark.parametrize("function, where", [("bool IsEmpty() const", "the header"),

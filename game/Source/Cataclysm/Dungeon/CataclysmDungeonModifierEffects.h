@@ -203,6 +203,24 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float GraspMovementLessPercent = 0.0f;
 
+	/**
+	 * Whether the player's skills are locked, and by how much. Edict of Silence.
+	 * Issues #1786 and #41.
+	 *
+	 * NOT A PERCENTAGE, WHICH MAKES IT THE ONLY FIELD HERE THAT IS NOT. The
+	 * struct's own comment says every field is a percentage of a finished number;
+	 * this one is the VALUE of `skill_locked`, and everything that reads that
+	 * stat asks only whether it is above zero. One is what above zero is written
+	 * as. Said here rather than left to be discovered, because a reader who
+	 * assumed the pattern would look for a share of something.
+	 *
+	 * ON AND OFF ON A CLOCK, so it is worked out on the beat rather than once a
+	 * floor -- and unlike every other beat-driven field here, its clock is not
+	 * reset by taking the stairs. See `ACataclysmDungeonGameMode`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float SkillsLockedValue = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
@@ -214,7 +232,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& RecoveryLessPercent <= 0.0f
 			&& SicknessMaxHealthLessPercent <= 0.0f
 			&& SicknessMaxManaLessPercent <= 0.0f
-			&& GraspMovementLessPercent <= 0.0f;
+			&& GraspMovementLessPercent <= 0.0f
+			&& SkillsLockedValue <= 0.0f;
 	}
 };
 
@@ -254,6 +273,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * | `War_Forced_March` | "You take stacking damage if you stand still for >3s. It forces a ""run and gun"" playstyle." | after 3 seconds without moving, one stack a second, each costing 1% of maximum health a second, up to 5 stacks, every stack cleared by moving |
  * | `Void_The_Nihil_s_Embrace` | "As you move, your resistances are slowly and permanently reduced. To cleanse the effect, you must defeat a high tier enemy. The boss's defeat will restore all of your resistances and grant a temporary buff." | 1% off every resistance for each 10 metres walked, down to 10% off; defeating a Boss or Cataclysm Boss gives every point back and grants 10% more for 20 seconds |
  * | `Death_Death_s_Embrace` | "Players periodically gain stacks of a debuff called ""Embrace of Death,"" which reduces healing received. Stacks reset when entering a new floor." | one stack every 10 seconds spent on the floor, each taking 10 percentage points off every amount of health restored, up to 5 stacks; the stairs clear them |
+ * | `Celestial_Edict_of_Silence` | "Every 90 seconds, a divine silence sweeps the dungeon for 15 seconds, preventing all skill usage. Only basic attacks function during this period." | every 90 seconds of play on a floor carrying the row, every skill but the basic attack is refused for 15 seconds; the clock carries across the stairs |
  * | `Void_Grasping_Tentacles` | "Void tentacles appear all over the dungeon. The player will have to be careful of getting too close or they might be grabbed, restricting their movement." | a tentacle appears near the player every 8 seconds, up to 5 on the floor; each beat spent within 3 metres of one has a 5% chance to be grabbed, and a grab takes 99% of the character's speed for 1.5 seconds before releasing that tentacle for 5 |
  * | `Famine_Wasting_Sickness` | "Enemies have a chance to inflict a stacking debuff that reduces your max HP and max mana. This debuff is permanent for the duration of the dungeon and can only be removed by defeating a floor boss." | each landed enemy blow has a 10% chance to add a stack, up to 5, and each stack takes 3% off maximum health and maximum mana; a boss's death on the floor clears them, and so does the player's own death |
  * | `Death_Mortal_Decay` | "The Death cataclysm introduces an affliction of mortal decay, gradually sapping the player's life force as they progress through the dungeon. To counter this, the player must give death his due souls by reaping enemies to temporarily slow the effect of the affliction." | health drains by 0.1% of the maximum a second for each floor of depth, up to 1% a second; a creature the player kills halves that for 5 seconds |
@@ -276,6 +296,12 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
  * is one a second, and it lives in the shape of `ForcedMarchStacksAfter` -- one
  * stack plus one for each whole second past the threshold -- rather than in a
  * constant of its own.
+ *
+ * THE EDICT OF SILENCE ADDED NONE, dated 2026-09-14, AND THAT IS THE POINT OF
+ * ITS ENTRY. It is the only row of the four built in this pass to state its own
+ * numbers, so its entry records a reading and two rulings instead: what "sweeps
+ * the dungeon" was taken to mean and why that reading has an expiry, and why its
+ * clock alone survives the stairs. Issue #1786.
  *
  * FIVE MORE ARE GRASPING TENTACLES', dated 2026-09-14, and its row states no
  * number either: how many a floor carries, the chance a beat inside a reach is
@@ -432,6 +458,55 @@ public:
 	 * and Withered Ground.
 	 */
 	static const TCHAR* GraspingTentaclesKey;
+
+	/**
+	 * Edict of Silence: "Every 90 seconds, a divine silence sweeps the dungeon
+	 * for 15 seconds, preventing all skill usage. Only basic attacks function
+	 * during this period." Issues #1786 and #41.
+	 *
+	 * THE ONLY ROW OF THE FOUR BUILT IN THIS PASS THAT STATES ITS OWN NUMBERS.
+	 * Ninety and fifteen are the row's, so neither is a judgement, and
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if the row
+	 * stops saying either.
+	 *
+	 * THE MECHANISM IT NEEDS WAS ALREADY BUILT, AND ISSUE #1786 SAYS OTHERWISE.
+	 * That issue flagged this row rather than scheduling it, for needing "a
+	 * floor-wide timed on and off cycle that no existing rule has". Both halves
+	 * of such a cycle exist and are each used three times in this file: a cadence
+	 * counted on the beat, as Infernal Rain, Singularity Wells and Grasping
+	 * Tentacles do, and a world-time stamp that expires, as The Nihil's Embrace's
+	 * reward, Mortal Decay's slow and a tentacle's grab do. This row is the two
+	 * together.
+	 *
+	 * AND THE LOCK ITSELF NEEDED NOTHING. `UCataclysmSkillTemplate::
+	 * CanActivateAbility` already refuses every skill outside the Basic Attack
+	 * slot while `UCataclysmSkillSlots::LockedStat` is above zero, and it skips
+	 * the check for that slot UNCONDITIONALLY. The row's second sentence -- "Only
+	 * basic attacks function during this period" -- is that exemption, already
+	 * written.
+	 *
+	 * UNSCOPED, WHICH IS WHAT "ALL SKILL USAGE" MEANS AND WHAT SEPARATES THIS
+	 * FROM THE TWO ENCHANTMENTS THAT USE THE SAME STAT. The lock is read through
+	 * `StatForSkill` with the skill's own tags, so a value carrying
+	 * `RequiredTags` reaches only skills that match. The two enchantment rows in
+	 * `game/Data/EnchantmentEffects.csv` are scoped to one slot each, under a
+	 * condition the player controls; this one carries no tags and no condition.
+	 *
+	 * "SWEEPS THE DUNGEON" IS BUILT AS THE FLOOR THE PLAYER STANDS ON, AND THAT
+	 * READING HAS A STATED EXPIRY RATHER THAN BEING A JUDGEMENT THAT STANDS FOR
+	 * EVER. Only one floor exists at a time -- a floor is built on arrival and
+	 * `UCataclysmFloorContents::ClearTheFloor` empties it on leaving -- so "every
+	 * floor at once" and "this floor" are indistinguishable today, and the second
+	 * costs no state nothing can observe. `docs/DECISIONS.md` records that a
+	 * change which keeps floors alive has to revisit it.
+	 *
+	 * THE CLOCK IS THE ONE PLACE THE TWO READINGS DIFFER IN PLAY, AND IT CARRIES
+	 * ACROSS THE STAIRS FOR THAT REASON. Every other beat-driven rule here
+	 * forgets its clock when the floor changes. This one does not: a player who
+	 * descended every eighty seconds would otherwise never be silenced at all,
+	 * and the row says the silence sweeps the dungeon rather than the floor.
+	 */
+	static const TCHAR* EdictOfSilenceKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -983,6 +1058,45 @@ public:
 	 * EXPECT THESE TO NEED TUNING AGAINST REAL PLAY, which every other rule in
 	 * this file says of its own figures.
 	 */
+	/**
+	 * Edict of Silence: how often the silence comes, how long it lasts, and what
+	 * the lock is written as.
+	 *
+	 * THE FIRST TWO ARE THE ROW'S OWN AND NEITHER IS A JUDGEMENT: "Every 90
+	 * seconds, a divine silence sweeps the dungeon for 15 seconds".
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if the row
+	 * stops saying either, which is what keeps them from quietly drifting apart
+	 * from what a player is shown.
+	 *
+	 * THE THIRD IS NOT A FIGURE ANYBODY CHOSE. Everything that reads
+	 * `UCataclysmSkillSlots::LockedStat` asks whether it is above zero, so one is
+	 * simply how "above zero" is written. It is a constant rather than a literal
+	 * so that the rule and its tests cannot disagree about it.
+	 *
+	 * NINETY IS THE GAP BETWEEN SILENCES AND NOT THE GAP BETWEEN THEM ENDING AND
+	 * BEGINNING, which is worth stating because the row can be read either way.
+	 * "Every 90 seconds ... for 15 seconds" reads as a ninety-second cycle with
+	 * fifteen of it silent, not as fifteen seconds of silence separated by ninety
+	 * of quiet, which would be a hundred-and-five-second cycle. The first is the
+	 * ordinary reading of "every N seconds" and is what the beat implements.
+	 */
+	static constexpr float EdictOfSilenceEverySeconds = 90.0f;
+	static constexpr float EdictOfSilenceLastsSeconds = 15.0f;
+	static constexpr float EdictOfSilenceLockValue = 1.0f;
+
+	static_assert(
+		EdictOfSilenceLastsSeconds < EdictOfSilenceEverySeconds,
+		"The Edict of Silence now lasts at least as long as the gap between "
+		"silences, so the player is never able to use a skill. The row describes "
+		"a silence that sweeps and passes, and 'every 90 seconds ... for 15' is "
+		"a cycle with a quiet part.");
+
+	static_assert(
+		EdictOfSilenceLockValue > 0.0f,
+		"The Edict of Silence's lock value is no longer above zero, so nothing "
+		"is locked. Everything that reads the skill-lock stat asks only whether "
+		"it is above zero.");
+
 	static constexpr float GraspingTentaclesReachCm = 300.0f;
 	static constexpr float GraspingTentaclesAppearWithinCm = 1200.0f;
 	static constexpr int32 GraspingTentaclesMostOnAFloor = 5;
@@ -1288,6 +1402,33 @@ public:
 	 * @param Alive             how many are on the floor now
 	 */
 	static bool GraspingTentacleIsDue(float SecondsSinceLast, int32 Alive);
+
+	/**
+	 * Whether the Edict of Silence should begin now. Issues #1786 and #41.
+	 *
+	 * NO CAP TO ASK ABOUT, unlike the two hazard rules whose "is due" functions
+	 * check one first: a silence is a state rather than an actor, so there is
+	 * nothing to count.
+	 *
+	 * AT OR PAST THE CADENCE, NOT PAST IT, for the reason every other cadence
+	 * here gives: the beat is a quarter of a second, so insisting on strictly
+	 * past would put every silence one beat later than the row says for no reason
+	 * anybody could observe.
+	 *
+	 * @param SecondsSinceLast  how long since the last silence BEGAN. A negative
+	 *        wait is "no clock to read" and brings nothing
+	 */
+	static bool EdictOfSilenceIsDue(float SecondsSinceLast);
+
+	/**
+	 * What the skill-lock stat is worth while a silence is running, or nothing
+	 * while it is not. Issues #1786 and #41.
+	 *
+	 * A FUNCTION OF WHETHER IT IS RUNNING AND NOTHING ELSE. Every silence is the
+	 * same: the row describes one that prevents all skill usage, not one that
+	 * prevents more of it at depth or after a while.
+	 */
+	static float SkillsLockedWhile(bool bSilenced);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

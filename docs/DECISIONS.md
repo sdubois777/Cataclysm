@@ -2,6 +2,144 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — "Sweeps the dungeon" is built as the floor being stood on, that reading has a stated expiry, and the Edict of Silence's clock is the only one that survives the stairs
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
+`.cpp`, `CataclysmDungeonGameMode.h` and `.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`,
+`tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py`, and four comments
+in `CataclysmSkillTemplate.cpp`, `CataclysmCombatAttributeSet.h` and
+`CataclysmPlayerClassStats.cpp`. Issues
+[#1786](https://github.com/sdubois777/Cataclysm/issues/1786),
+[#1764](https://github.com/sdubois777/Cataclysm/issues/1764) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Celestial_Edict_of_Silence`, weight 20.0 — the heaviest band — in
+`game/Data/DungeonModifiers.csv`: "Every 90 seconds, a divine silence sweeps the dungeon
+for 15 seconds, preventing all skill usage. Only basic attacks function during this
+period."
+
+**It is the only one of the four rows built in this pass that states its own numbers.**
+Ninety and fifteen are the row's, so neither is a judgement. The lock value of 1 is not a
+third figure: everything that reads the stat asks only whether it is above zero.
+
+### Two things issue #1786 said this row needed, and neither was true
+
+That issue flagged this row rather than scheduling it. Both of its reasons were recorded
+there as reported rather than measured, and both are wrong.
+
+**"A floor-wide timed on and off cycle that no existing rule has."** No single rule has
+one. **Both halves exist and are each used three times in that file**: a cadence counted
+on the beat (Infernal Rain, Singularity Wells, Grasping Tentacles) and a world-time stamp
+that expires (The Nihil's Embrace's reward, Mortal Decay's slow, a tentacle's grab). This
+row is the two together.
+
+**The skill lock needed nothing at all.** `UCataclysmSkillTemplate::CanActivateAbility`
+already refuses every skill outside the Basic Attack slot while the stat is above zero,
+**and skips the check for that slot unconditionally** — which is the row's second sentence,
+already written. `Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill` already holds it,
+so this change adds no enforcement and no test of enforcement.
+
+### "Sweeps the dungeon": a reading with an expiry, not a judgement that stands for ever
+
+| Reading | Status |
+| :-- | :-- |
+| every floor at once | **indistinguishable today** |
+| the floor the player stands on | **built** |
+
+Only one floor exists at a time: a floor is built on arrival and
+`UCataclysmFloorContents::ClearTheFloor` empties it on leaving. So nothing can observe the
+difference, and the second costs no state. **A change that keeps floors alive has to
+revisit this** — which is why it is recorded as a reading with an expiry rather than as a
+judgement.
+
+**One consequence is observable, and it is where the readings part company: the clock.**
+Every other beat-driven rule in that file forgets its clock when the floor changes. This
+one does not. A player descending every eighty seconds would otherwise never be silenced at
+all, and the row says the silence sweeps the dungeon rather than the floor. Ruled by the
+coordinating session on 2026-09-14.
+
+**The silence itself survives too**, for the same reason: walking downstairs in the middle
+of one does not end it. **Only the applied figure is forgotten on a floor change**, because
+changing floor replaces the player's dungeon modifiers wholesale and the next beat has to
+put the lock back.
+
+**Both stop when the player leaves the dungeon**, which is where "sweeps the dungeon" ends.
+`LeavingTheDungeonEndsTheSilenceAndItsClock` holds that, and holds the other half too: a
+new dungeon's cadence starts from nothing, and a full cadence in it still brings a silence,
+so the first assertion is a clock that restarted rather than a rule that stopped working.
+
+**`ASilenceSurvivesTheStairsAndEndsAtItsOriginalTime` is what makes the survival a measured
+behaviour rather than a comment.** It spends two thirds of a silence before taking the
+stairs, which is the only way the two possibilities can be told apart: a silence that was
+*restarted* by the floor change and one that was *carried* answer identically at every
+moment unless real time has passed in between.
+
+### Unscoped, which is the whole difference from the two enchantments on the same stat
+
+The lock is read through `StatForSkill` with the skill's own tags, so a value carrying
+`RequiredTags` reaches only skills that match. `game/Data/EnchantmentEffects.csv` holds two
+rows using this stat, each scoped to one slot under a condition the player controls:
+
+| RequiredTags | Condition |
+| :-- | :-- |
+| `Slot.Movement` | `stationary_for_seconds` 2.0 |
+| `Slot.Ultimate` | `health_at_or_above` 50.0 |
+
+This row's modifier carries no tags and no condition, which is what "preventing all skill
+usage" means. It is applied with the **flat** helper, for the reason Death's Embrace
+records: the stat is zero for every class, and a multiplier on zero is zero.
+
+**The stat is named from `UCataclysmSkillSlots::LockedStat` rather than a sixth local
+spelling in the effects file**, so the code that writes the lock and the code that enforces
+it cannot drift apart by a typo.
+
+### A field that is deliberately not a percentage, and a guard narrowed rather than deleted
+
+`FCataclysmPlayerFloorEffects` gains `SkillsLockedValue`. **Every field of that struct had
+been a percentage of a finished number, and its own comment says so.** This one is the
+value of a stat read as "above zero".
+
+`tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py` asserted that every
+field ends in `Percent`, and its failure message offered to be deleted if an exception was
+ever deliberate. **Deleting it would have removed the guard it was written for** — a field
+named for a share that `StatModifiersFor` then applies as the wrong kind of number. It now
+carries a `NOT_PERCENTAGES` set naming this one field with its reason, and still refuses an
+unnamed non-percentage field.
+
+### The four comments of issue #1764, corrected here because this change falsifies them
+
+Those comments are the only written account of how the skill lock is wired. One said
+"NOTHING TURNS THIS ON YET, AND THAT IS DELIBERATE RATHER THAN UNFINISHED". **That was true
+when written, was already false when #1764 recorded it, and this row makes it false three
+times over.** Each correction quotes the wording it replaces.
+
+**#1764's own two facts were out of date and are corrected on the issue.** It says exactly
+one row uses the stat — there are two, and the second is scoped to the very slot those
+comments name, so they are no longer simply wrong. Two of its four line numbers had also
+drifted onto unrelated text; the comments were located by content instead.
+
+### What a silenced player is told: nothing
+
+Nothing in `game/Source/Cataclysm/Interface` reads the lock. The refusal returns before the
+engine's own checks **on purpose**, so the player is not told the wrong reason — but the
+right one was never put in its place. That was tolerable while the two enchantments were
+the only sources, each one slot under a condition the player set off themselves. **It is
+not tolerable for fifteen seconds of total silence on the heaviest-weighted row in the
+table**, where a player pressing every key and getting no response will read it as the game
+having stopped working.
+
+That is issue [#1810](https://github.com/sdubois777/Cataclysm/issues/1810), filed and
+deliberately **not** fixed here: it is interface work, and the coordinating session ruled
+on 2026-09-14 that it is its own change rather than part of a dungeon rule. The clause this
+row adds to `Describe` is not that fix, and the code says so — `Describe` has one caller,
+the per-floor log line, so it reaches a log rather than a player mid-fight.
+
+---
+
 ## 2026-09-14 — The three energy-shield keystones are three different mechanisms, and The Long Game works outside the recharge delay
 
 **None of these three nodes is built yet, and no stat for any of them exists.**
