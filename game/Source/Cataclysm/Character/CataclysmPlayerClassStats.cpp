@@ -803,6 +803,12 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// MUST LEAVE A TARGET UNDER TO TAKE IT AS A THRALL. Issue #1718.
 			{UCataclysmCommand::PossessionThresholdBonusStat,
 			 Combat::GetPossessionThresholdBonusAttribute()},
+			// AND WHAT ONE THRALL RESERVES, AND HOW MANY IMPS MAY LIVE. Issue
+			// #1718. Both are added to a figure the skill's own row states.
+			{UCataclysmCommand::ThrallReserveBonusStat,
+			 Combat::GetThrallReserveBonusAttribute()},
+			{UCataclysmCommand::ImpCapBonusStat,
+			 Combat::GetImpCapBonusAttribute()},
 		};
 	}();
 

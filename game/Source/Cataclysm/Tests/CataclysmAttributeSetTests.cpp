@@ -324,7 +324,17 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// A BONUS OF ZERO RATHER THAN A BASE OF A HUNDRED, unlike the two
 	// magnitudes above. It is added to the figure the Subjugate skill row
 	// states, so it has no neutral value of its own to put on a sheet.
-	constexpr int32 OffSheetCombatStats = 35;
+	//
+	// THIRTY-SEVEN SINCE WHAT ONE THRALL RESERVES AND HOW MANY IMPS MAY
+	// LIVE, issue #1718. They meet the rule for the twenty-second and
+	// twenty-third times -- no affix grants either, nothing scales either, no
+	// class differs on either, and one Ritualist keystone each is their only
+	// source.
+	//
+	// BOTH ARE BONUSES OF ZERO, like the possession threshold above and unlike
+	// the two ailment magnitudes. Each is added to a figure a skill row states,
+	// so neither has a neutral value of its own to put on a sheet.
+	constexpr int32 OffSheetCombatStats = 37;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

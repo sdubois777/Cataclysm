@@ -569,6 +569,37 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
 
 	/**
+	 * Fervour points added to what ONE THRALL reserves. Issue #1718.
+	 *
+	 * `Ritualist_keystone_a_kC` Crowned is the node: "Each thrall reserves 25
+	 * Fervour rather than 30." Its row is flat -5, because zero is the
+	 * ordinary value and an increase against zero grants nothing.
+	 *
+	 * IT REACHES ONLY A SKILL THAT TAKES A THRALL. Five skills state a
+	 * reserve; the read site identifies a thrall from the row's own
+	 * `Possess` parameter so an imp and three deployables are left alone.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_ThrallReserveBonus)
+	FGameplayAttributeData ThrallReserveBonus;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ThrallReserveBonus)
+
+	/**
+	 * How many more minions of its own kind a summon may keep alive. Issue
+	 * #1718.
+	 *
+	 * `Ritualist_keystone_b_kA` The Swarm is the node: "You may have 5 imps
+	 * active rather than 3." Its row is flat 2.
+	 *
+	 * IT REACHES ONLY A SKILL THAT SUMMONS IMPS, and only one that already
+	 * states a cap. Sixteen of the seventeen summoning and deploying skills
+	 * state none, and a bonus applied to the figure rather than to the subject
+	 * would give every one of them a limit the design never gave them.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_ImpCapBonus)
+	FGameplayAttributeData ImpCapBonus;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ImpCapBonus)
+
+	/**
 	 * What share of an incoming hit this character actually takes, in percent.
 	 *
 	 * A HUNDRED IS NORMAL, so 120 is a fifth more and 75 is a quarter less. It is
@@ -976,6 +1007,8 @@ protected:
 	UFUNCTION() void OnRep_CrippleMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_WeakenMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_PossessionThresholdBonus(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ThrallReserveBonus(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ImpCapBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DamageOverTimeTaken(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_DebuffDamageSuppressed(const FGameplayAttributeData& OldValue);

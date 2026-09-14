@@ -496,6 +496,180 @@ bool FCataclysmDominionRaisesTheThresholdTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesTheImpCapTest,
+	"Cataclysm.Command.TheSwarmKeepsMoreImpsAliveAndLeavesAnUncappedSummonAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kA` The Swarm: "You may have 5 imps active rather than
+ * 3." Issue #1718.
+ *
+ * COUNTED BY WHAT IS ALIVE AFTER MORE CASTS THAN THE CAP ALLOWS. At its cap
+ * `SummonOne` destroys the oldest rather than refusing, so five casts leave
+ * three imps at the ordinary cap and five with the keystone. That is the whole
+ * observable behaviour of a cap.
+ *
+ * AND THE HALF THAT MATTERS MORE: A SUMMON THAT STATES NO CAP MUST STAY
+ * UNCAPPED. Sixteen of the seventeen summoning and deploying skills state none,
+ * and every read site treats a cap of zero as "no limit". A bonus applied to the
+ * figure rather than to the subject would give all sixteen a cap of two -- and
+ * would cap thralls, fighting Crowned on the same character. The second half of
+ * this test is that failure, written down.
+ */
+bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	// THE SHIPPED ROW'S OWN FIGURES. Summon Imp states a cap of three and names
+	// what it summons, which is how the bonus knows this skill is its subject.
+	const TCHAR* const ImpRow =
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1; "
+			 "FervourReserve=10");
+
+	// AND A SUMMON THAT STATES NO CAP, which is the ordinary case.
+	const TCHAR* const UncappedRow =
+		TEXT("Count=1; Duration=20; Radius=3; Minions=Imp:1");
+
+	constexpr int32 Casts = 5;
+
+	const auto SummonRepeatedly = [&](FScopedCaster& Caster, const TCHAR* Row)
+	{
+		UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+			Caster, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Summon Imp"));
+		if (!Skill)
+		{
+			AddError(TEXT("Could not grant Summon Imp."));
+			return -1;
+		}
+		for (int32 Cast = 0; Cast < Casts; ++Cast)
+		{
+			Activate(Caster, Skill);
+		}
+		return UCataclysmCommand::ThingsCommandedBy(Caster.Actor).Num();
+	};
+
+	// --- THE CONTROL: THE ROW'S OWN CAP OF THREE ----------------------------
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	const int32 PlainAlive = SummonRepeatedly(Plain, ImpRow);
+
+	// THE STATE THIS TEST BUILT, ASSERTED BEFORE ANY VERDICT. If the casts did
+	// not summon at all -- a cooldown, a cost, a refusal -- the counts below
+	// would agree for a reason that has nothing to do with the cap.
+	if (!TestEqual(TEXT("five casts leave three imps at the row's own cap"),
+				   PlainAlive, 3))
+	{
+		return false;
+	}
+
+	// --- WITH THE KEYSTONE: FIVE -------------------------------------------
+	FScopedCaster Swarming(World, FVector(0, 30 * M, 0));
+	Swarming.Set(UCataclysmCombatAttributeSet::GetImpCapBonusAttribute(), 2.0f);
+	TestEqual(TEXT("and five with The Swarm"),
+			  SummonRepeatedly(Swarming, ImpRow), 5);
+
+	// --- AND A SUMMON STATING NO CAP IS STILL UNCAPPED ----------------------
+	//
+	// THE HALF A BUILD ADDING THE BONUS TO THE FIGURE WOULD FAIL. It would read
+	// two here rather than five.
+	FScopedCaster Uncapped(World, FVector(0, 60 * M, 0));
+	Uncapped.Set(UCataclysmCombatAttributeSet::GetImpCapBonusAttribute(), 2.0f);
+	TestEqual(TEXT("a summon stating no cap keeps every one it made"),
+			  SummonRepeatedly(Uncapped, UncappedRow), Casts);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrownedLowersTheReserveTest,
+	"Cataclysm.Command.CrownedTakesAThrallThePoolWouldOtherwiseRefuse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kC` Crowned: "Each thrall reserves 25 Fervour rather
+ * than 30." Issue #1718.
+ *
+ * A POOL OF EXACTLY 25, WHICH IS THE ONLY SIZE THAT PROVES ANYTHING.
+ * `HasRoomForAnotherThrall` asks whether `(thralls + 1) x reserve` fits in the
+ * maximum pool. At 25 the ordinary reserve of 30 does not fit and the reduced 25
+ * fits exactly. A larger pool would take the thrall either way and a smaller one
+ * would refuse it either way, so a test at any other size would pass against a
+ * build that ignored the stat.
+ *
+ * THE TARGET IS LEFT WHERE THE THRESHOLD ACCEPTS IT AND THE CASTER DEALS NO
+ * DAMAGE, the same arrangement the Dominion test uses and for the same reason:
+ * what is under test is the reserve, so nothing else may decide the outcome.
+ *
+ * WHAT IS NOT TESTED HERE, AND CANNOT BE. The ruling asked for a test showing an
+ * imp's reserve unchanged. **Nothing reads an imp's reserve.** After this change
+ * `FervourReserve` is read in exactly one place, the helper this test exercises,
+ * and that helper returns the row's own figure untouched unless the row carries
+ * `Possess`. The Summon Imp row states a reserve of 10 and no code consumes it,
+ * so there is no behaviour to assert. That is recorded in `docs/DECISIONS.md`
+ * rather than asserted by a test that would only be testing itself.
+ */
+bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const Row =
+		TEXT("Range=15; MaxTargets=1; Radius=15; Burn=1; Possess=1; "
+			 "FervourReserve=30; HealthThresholdPercent=50");
+
+	constexpr float PoolThatFitsOnlyTheReducedReserve = 25.0f;
+	constexpr float HealthUnderTheThreshold = 400.0f;   // 40% of a creature's 1000
+
+	// --- WITHOUT THE KEYSTONE: 30 DOES NOT FIT IN 25 ------------------------
+	FScopedCaster Plain(World, FVector::ZeroVector,
+						PoolThatFitsOnlyTheReducedReserve);
+	FScopedCreature Hurt(World, FVector(3 * M, 0, 0));
+	Hurt.SetHealthTo(HealthUnderTheThreshold);
+	Plain.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 0.0f);
+
+	UCataclysmSummonSkill* PlainTry = GrantSkill<UCataclysmSummonSkill>(
+		Plain, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!PlainTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the plain caster."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Plain, PlainTry));
+	TestFalse(TEXT("a caster whose pool is 25 cannot hold a thrall reserving 30"),
+			  PlainTry->bTookIt);
+	TestEqual(TEXT("so it commands nothing"),
+			  UCataclysmCommand::ThingsCommandedBy(Plain.Actor).Num(), 0);
+
+	// --- WITH THE KEYSTONE: 25 FITS EXACTLY ---------------------------------
+	FScopedCaster Crowned(World, FVector(0, 30 * M, 0),
+						  PoolThatFitsOnlyTheReducedReserve);
+	FScopedCreature AlsoHurt(World, FVector(3 * M, 30 * M, 0));
+	AlsoHurt.SetHealthTo(HealthUnderTheThreshold);
+	Crowned.Set(UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 0.0f);
+	Crowned.Set(UCataclysmCombatAttributeSet::GetThrallReserveBonusAttribute(),
+				-5.0f);
+
+	UCataclysmSummonSkill* CrownedTry = GrantSkill<UCataclysmSummonSkill>(
+		Crowned, ECataclysmAbilitySlot::Ultimate, Row, TEXT("Subjugate"));
+	if (!CrownedTry)
+	{
+		AddError(TEXT("Could not grant Subjugate to the crowned caster."));
+		return false;
+	}
+
+	TestTrue(TEXT("it activates"), Activate(Crowned, CrownedTry));
+	TestTrue(TEXT("and a caster with Crowned holds the same thrall"),
+			 CrownedTry->bTookIt);
+	TestEqual(TEXT("so it commands one"),
+			  UCataclysmCommand::ThingsCommandedBy(Crowned.Actor).Num(), 1);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSubjugateRefusesABossTest,
 	"Cataclysm.Command.ABossCannotBeTaken",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

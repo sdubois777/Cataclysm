@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — Two stats adjust a figure a skill's own row states, and the rules that stop them reaching skills their nodes never name
+
+**Affects:**
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmAttributeSetTests.cpp`,
+`game/Source/Cataclysm/Tests/CataclysmPlayerClassStatsTests.cpp`. Issue
+[#1718](https://github.com/sdubois777/Cataclysm/issues/1718).
+
+The stats are `thrall_reserve_bonus` and `imp_cap_bonus`. Both start at zero and
+are added to a figure the skill's own row states, which is the shape
+`possession_threshold_bonus` established.
+
+### THE SHAPE WAS ASSUMED TO TRANSFER AND IT DOES NOT
+
+`Ritualist_keystone_a_kC` Crowned — *"Each thrall reserves 25 Fervour rather than
+30"* — and `Ritualist_keystone_b_kA` The Swarm — *"You may have 5 imps active
+rather than 3"* — were assigned as the same shape as Dominion. Measured, they are
+not:
+
+| | Dominion | Crowned | The Swarm |
+| :-- | :-- | :-- | :-- |
+| the figure | `HealthThresholdPercent=50` | `FervourReserve=30` | `MaxActive=3` |
+| read sites | 1 | 1 | **3** |
+| skills stating it | **1** | **5** | **1 of 17** |
+
+**Dominion's figure belongs to one skill, so a bonus on the figure was safe.
+Neither of these does.**
+
+### RULE ONE: A STAT THAT ADJUSTS A DESIGNED FIGURE MUST NOT BRING THE FIGURE INTO EXISTENCE
+
+Every one of the three cap read sites is guarded the same way:
+
+```cpp
+if (Params.MaxActive > 0 && LivingMinionCount() >= Params.MaxActive)
+```
+
+**`> 0` is how a skill says it has no cap.** Of seventeen summoning and deploying
+skills, exactly one states a cap; sixteen state none. A bonus added to the figure
+would give all sixteen a cap — turrets, ballistas, traps — **and would cap thralls
+at two, fighting Crowned on the same character.**
+
+So the bonus applies only where the row already states the figure above zero. The
+`> 0` guards are kept exactly as they were.
+
+### RULE TWO: THE SUBJECT IS READ FROM THE ROW'S OWN PARAMETERS, NEVER FROM THE SKILL'S NAME
+
+Five skills state a reserve — Subjugate 30, Summon Imp 10, and three deployables
+5 — so a bonus on the figure would make an imp cheaper and a deployable free.
+
+```
+a thrall   a summon whose row carries `Possess=1`     -> Params.bPossess
+an imp     a summon whose row names the minion type   -> Params.Minions, `Minions=Imp:1`,
+           which is a row of the Minion Types sheet
+```
+
+**A name string would be the wrong key.** Skill names are display text; the
+parameters are the design's own statement of what the skill does.
+
+### A REDUCTION IS FLOORED ABOVE ZERO, AND THAT IS NOT TIDINESS
+
+Read at the one site that consumes a reserve:
+
+```cpp
+// CataclysmCommand.cpp, HasRoomForAnotherThrall
+if (PerThrall <= 0.0f)
+{
+    // A row claiming nothing per thrall is capped by nothing.
+    return true;
+}
+```
+
+**A reserve of zero means no army limit at all.** A reduction reaching zero would
+remove the cap rather than lower it, which is the opposite of what a keystone
+lowering a cost should do. One keystone cannot reach zero from 30; a second source
+of the same stat could, so the floor is in the helper rather than left to
+arithmetic. The imp cap is floored at one for the same reason: zero there means
+"no cap" at every read site.
+
+### NEITHER NEEDS AN ENGINE-SUPPLIED BASE, AND THE REASON IS WORTH STATING
+
+The two ailment magnitude stats needed one because their neutral value is 100 and
+a resolved zero would have destroyed the effect. These two have a neutral value of
+**zero**, so nothing has to supply it.
+
+**And the row supplies the stat by itself.** `test_every_stat_is_one_the_game_supplies`
+accepts a stat that a `flat` row in the effects file grants, so a zero-base bonus
+authored `flat` — which it must be, since an increase against zero grants nothing
+— is its own supplier. Checked by simulating the three rows before they were
+written.
+
+### WHAT CANNOT BE TESTED, SAID HERE RATHER THAN LEFT OUT
+
+A test was asked for showing that Crowned leaves an imp's reserve unchanged.
+**Nothing reads an imp's reserve.** After this change `FervourReserve` is read in
+exactly one place — the helper that computes a thrall's — and that helper returns
+the row's figure untouched unless the row carries `Possess`. The Summon Imp row
+states a reserve of 10 and no code consumes it.
+
+So there is no behaviour to assert, and a test would be asserting its own
+arithmetic. It is recorded here instead. **If something later reads an imp's
+reserve, this paragraph is the warning that it was inert when the stat was
+built.**
+
 ## 2026-09-14 — "Grabbed" is an event with an end, not a place the player is standing, and the grab is 99% of movement speed rather than a new rooted state
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
