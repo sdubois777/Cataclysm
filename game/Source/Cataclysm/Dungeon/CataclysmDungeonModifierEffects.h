@@ -1126,9 +1126,11 @@ public:
 	 * of Life and Energy Shield"; items sit at "(20-30)% reduced Recovery rate"
 	 * and keystones at "50% less Life Regeneration Rate". Five stacks of ten is
 	 * inside that range and below its top, which suits a row whose danger weight
-	 * is 10 where the heaviest in the set are 15. NOT SIXTY: this is not the
-	 * harshest recovery row in the set, and the two that are -- Necrotic Ground's
-	 * 50% and Withered Ground's 80% -- state their own figures in the data.
+	 * is 10 on a ladder that runs 5, 10, 15, 20 (issue #1790: this said the
+	 * heaviest was 15, and it was 20 when that was written). NOT SIXTY: this is
+	 * not the harshest recovery row in the set, and the two that are -- Necrotic
+	 * Ground's 50% and Withered Ground's 80% -- state their own figures in the
+	 * data.
 	 *
 	 * FIVE STACKS IS THIS PROJECT'S OWN CAP, matching Forced March, so a player
 	 * reads the two alike.
