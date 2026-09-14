@@ -157,12 +157,26 @@ class TestTheCapIsActuallyApplied:
         constant while the real figure went round the cap, which is the exact
         shape of the fault issue #644 found. So the argument is checked too, and
         it has to reach the defender's own attribute.
+
+        AND THE BLOW RECORD IS OPTIONAL IN THE PATTERN SINCE 2026-09-14. That
+        call gained a fourth argument, `BlowOf(Hit)`, so a row conditioned on
+        who struck the character can be answered -- issue #1748, the Ravager's
+        Wearing Them Down. It was the one defender-side lookup of seven not
+        passing one, and a row landing on it granted nothing.
+
+        THE PATTERN IS WIDENED AND NOT LOOSENED. Both halves this check exists
+        for are still required exactly as before: the figure still has to go
+        through `EffectiveDamageReduction`, and it still has to come from
+        `DefenderStat` with the defender's own attribute as the fallback. Only a
+        trailing `, BlowOf(Hit)` is newly allowed, and it is spelled out rather
+        than matched with a wildcard, so a different fourth argument still
+        fails.
         """
         text = read(SOURCE / "AbilitySystem" / "CataclysmDamageCalculation.cpp")
         assert re.search(
             r"Damage \*= 1\.0f\s*- EffectiveDamageReduction\(\s*"
             r"DefenderStat\(Defender, TEXT\(\"damage_reduction\"\),\s*"
-            r"Combat->GetDamageReduction\(\)\)\)", text), (
+            r"Combat->GetDamageReduction\(\)(?:,\s*BlowOf\(Hit\))?\)\)", text), (
             "UCataclysmDamageCalculation::Resolve no longer routes the "
             "defender's flat damage reduction through EffectiveDamageReduction, "
             "so the cap is declared and not applied. The figure has to come "

@@ -819,4 +819,182 @@ bool FCataclysmTargetAilmentOpponentSideTest::RunTest(const FString&)
 	return true;
 }
 
+
+/**
+ * A damage reduction row conditioned on the attacker's Weaken actually pays.
+ *
+ * THE ROW THIS EXISTS FOR is the Ravager's Wearing Them Down: "+2% increased
+ * Damage Reduction per point against enemies you have Weakened". The project
+ * owner ruled on 2026-09-14, issue #1748, that it grants increased damage
+ * reduction rather than less damage taken.
+ *
+ * WHY IT NEEDED A CODE CHANGE FIRST, AND WHY THE FAILURE IS SILENT.
+ * `opponent_carries_weaken` is answered from `Blow.OpponentDebuffs`, which is
+ * filled where the incoming hit is built. Four of the seven defender-side stat
+ * lookups in `UCataclysmDamageCalculation::Resolve` passed `BlowOf(Hit)` and the
+ * damage reduction one did not, which this change makes five. **Two still pass
+ * none** -- `debuff_damage_suppressed` and `damage_over_time_taken` -- so a row
+ * conditioned on the arriving hit landing on either is dropped the same way. A row landing on it found an empty container and
+ * refused, so the row would validate, the generator would write it, every count
+ * would agree, and the node would grant nothing in play. **A test asserting the
+ * row exists would not notice.** This drives a real blow instead.
+ *
+ * THE SECOND HALF IS THE ONE WORTH HAVING. The same line is put on a defender
+ * struck by an attacker carrying NO Weaken, and must grant nothing. Without it a
+ * build that ignored the condition and applied the modifier to everything would
+ * pass the first half.
+ *
+ * FOUR DEFENDERS AND TWO ATTACKERS, because the comparison has to be made within
+ * one attacker. A Weakened attacker deals less damage than a plain one -- Weaken
+ * reduces attack damage since issue #1256 -- so guarded and unguarded are
+ * compared under the same attacker and the two ratios against each other.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWeakenedAttackerDamageReductionTest,
+	"Cataclysm.TargetAilment.DamageReductionConditionedOnTheAttackersWeakenPays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWeakenedAttackerDamageReductionTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetAilmentTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmEnemyCharacter* Weakened =
+		SpawnAilmentCreatureAt(World, FVector(2.0f * AilmentM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Plain =
+		SpawnAilmentCreatureAt(World, FVector(3.0f * AilmentM, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* GuardedA =
+		SpawnAilmentCreatureAt(World, FVector(0.0f, 2.0f * AilmentM, 0.0f));
+	ACataclysmEnemyCharacter* UnguardedA =
+		SpawnAilmentCreatureAt(World, FVector(0.0f, 3.0f * AilmentM, 0.0f));
+	ACataclysmEnemyCharacter* GuardedB =
+		SpawnAilmentCreatureAt(World, FVector(0.0f, -2.0f * AilmentM, 0.0f));
+	ACataclysmEnemyCharacter* UnguardedB =
+		SpawnAilmentCreatureAt(World, FVector(0.0f, -3.0f * AilmentM, 0.0f));
+
+	for (ACataclysmEnemyCharacter* Who :
+		 {Weakened, Plain, GuardedA, UnguardedA, GuardedB, UnguardedB})
+	{
+		if (!TestNotNull(TEXT("every creature spawned"), Who))
+		{
+			return false;
+		}
+	}
+
+	Weakened->SetAttackDamage(100.0f);
+	Plain->SetAttackDamage(100.0f);
+	for (ACataclysmEnemyCharacter* Hit : {GuardedA, UnguardedA, GuardedB, UnguardedB})
+	{
+		Hit->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+	}
+
+	// A DAMAGE REDUCTION LINE WITH A BASE, because an "increased" modifier on a
+	// base of zero multiplies zero and grants nothing -- which would make this
+	// test pass for the wrong reason by measuring no difference either way.
+	const float BaseReduction = 20.0f;
+	const float ConditionalIncrease = 50.0f;
+	//
+	// BOTH DEFENDERS IN EACH PAIR GET THE BASE, AND ONLY ONE GETS THE CONDITION.
+	// The first version of this test gave the line only to the guarded defender,
+	// so the pair differed by the base as well -- a plain attacker then read
+	// 0.80 where it should read 1.00, because the unguarded defender had no
+	// damage reduction at all rather than the same 20% unconditioned.
+	const auto GiveLine = [&](ACataclysmEnemyCharacter* Who, bool bWithCondition)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(Who->GetAbilitySystemComponent());
+		if (!System)
+		{
+			return false;
+		}
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("damage_reduction")));
+		Line.Base = BaseReduction;
+
+		if (bWithCondition)
+		{
+			FCataclysmStatModifier Conditional;
+			Conditional.Bucket = ECataclysmStatBucket::Increased;
+			Conditional.Source = ECataclysmModifierSource::PassiveKeystone;
+			Conditional.Value = ConditionalIncrease;
+			Conditional.Condition = ECataclysmStatCondition::OpponentCarriesWeaken;
+			Line.Modifiers = {Conditional};
+		}
+
+		System->SetStatInputs(MoveTemp(Inputs));
+		return true;
+	};
+
+	if (!TestTrue(TEXT("the first guarded defender's line was recorded"),
+				  GiveLine(GuardedA, /*bWithCondition=*/true))
+		|| !TestTrue(TEXT("and its unguarded partner's base-only line"),
+					 GiveLine(UnguardedA, /*bWithCondition=*/false))
+		|| !TestTrue(TEXT("and the second guarded defender's"),
+					 GiveLine(GuardedB, /*bWithCondition=*/true))
+		|| !TestTrue(TEXT("and its partner's"),
+					 GiveLine(UnguardedB, /*bWithCondition=*/false)))
+	{
+		return false;
+	}
+
+	// THE STATE THIS TEST BUILDS IS ASSERTED BEFORE THE BEHAVIOUR IS. One
+	// attacker must carry the Weaken and the other must not, or both halves
+	// below measure the same thing.
+	const FGameplayTag Weaken = UCataclysmDebuffs::WeakenTag();
+	if (!TestTrue(TEXT("the Weaken was applied to the first attacker"),
+				  ApplyAilment(Weakened, Weakened, TEXT("Weaken")))
+		|| !TestTrue(TEXT("and it carries it"), CarriesAilment(Weakened, Weaken))
+		|| !TestFalse(TEXT("the other attacker carries none"),
+					  CarriesAilment(Plain, Weaken)))
+	{
+		return false;
+	}
+
+	const auto Strike = [](ACataclysmEnemyCharacter* From,
+						   ACataclysmEnemyCharacter* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From, Target, 100.0f, AilmentMelee(),
+										 AilmentNoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	const float FromWeakenedOnGuarded = Strike(Weakened, GuardedA);
+	const float FromWeakenedOnPlainTarget = Strike(Weakened, UnguardedA);
+	const float FromPlainOnGuarded = Strike(Plain, GuardedB);
+	const float FromPlainOnPlainTarget = Strike(Plain, UnguardedB);
+
+	if (!TestTrue(TEXT("all four blows landed"),
+				  FromWeakenedOnGuarded > 0.0f && FromWeakenedOnPlainTarget > 0.0f
+				  && FromPlainOnGuarded > 0.0f && FromPlainOnPlainTarget > 0.0f))
+	{
+		return false;
+	}
+
+	// --- THE ROW PAYS, AGAINST AN ATTACKER CARRYING WEAKEN ------------------
+	//
+	// 20% reduction becomes 30% when the condition holds, so the guarded
+	// defender keeps 0.8 of what the unguarded one takes: 0.70 against 0.80.
+	const float Expected = (1.0f - (BaseReduction * (1.0f + ConditionalIncrease / 100.0f)) / 100.0f)
+		/ (1.0f - BaseReduction / 100.0f);
+
+	TestEqual(TEXT("a Weakened attacker's blow is cut further by the conditioned row"),
+		FromWeakenedOnGuarded / FromWeakenedOnPlainTarget, Expected, 0.01f);
+
+	// --- AND GRANTS NOTHING AGAINST AN ATTACKER CARRYING NONE ---------------
+	//
+	// THE HALF A BUILD IGNORING THE CONDITION WOULD FAIL. Both defenders carry
+	// the same line; only the attacker differs.
+	TestEqual(TEXT("and a plain attacker's blow is not cut at all"),
+		FromPlainOnGuarded / FromPlainOnPlainTarget, 1.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
