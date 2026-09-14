@@ -118,12 +118,36 @@ public:
 	 * be stale the moment health moved -- so a speed read straight off the
 	 * attribute is the speed of a character with no condition on it.
 	 *
-	 * CALLED FROM TWO PLACES AND THEY ARE TWO DIFFERENT EVENTS. The attribute
-	 * changing is one: gear, a level, an attribute point. Health crossing the
-	 * threshold is the other, and nothing writes the attribute when that happens.
-	 * Both go through here, so the two cannot produce different speeds.
+	 * CALLED FROM FOUR PLACES AND THEY ARE ALL EVENTS, NOT A CLOCK. Counted
+	 * 2026-09-14: `OnMovementSpeedChanged` (gear, a level, an attribute point),
+	 * `OnClassResourceChanged`, `HealthChanged`, and `InitAbilityActorInfo`.
+	 * All go through here, so no two of them can produce different speeds.
+	 *
+	 * **THAT NONE OF THEM IS A CLOCK IS A LIMIT ON WHAT A ROW CAN SAY.** A
+	 * condition that turns true on its own -- a timer, a body walking closer --
+	 * does not reach the movement component until one of those four happens
+	 * next. A condition that changes ON one of those events works; one that
+	 * changes between them is read late or not at all. This said "two places"
+	 * until today and the number has moved twice, so count it rather than
+	 * quoting it.
 	 */
 	void RefreshMovementSpeed();
+
+	/**
+	 * The stat name saying nothing may lower this character's movement speed.
+	 *
+	 * HERE RATHER THAN ON THE ATTRIBUTE SET, because this project keeps a
+	 * stat-name constant on the class that READS it: the damage and defence
+	 * names sit on `UCataclysmDamageCalculation`, the minion ones on
+	 * `UCataclysmCommand`, crowd control resistance on `UCataclysmSkillEffects`.
+	 * `RefreshMovementSpeed` is the only reader of this one.
+	 *
+	 * ONE SPELLING, BECAUSE TWO WOULD FAIL SILENTLY. It has to match the key in
+	 * `UCataclysmPlayerClassStats::StatToAttribute` and the `Stat` column of the
+	 * rows; a disagreement of one character would grant the node and never read
+	 * it, with nothing anywhere saying so.
+	 */
+	static const TCHAR* MovementSpeedReductionSuppressedStat;
 
 	/**
 	 * The character's health moved, so a bonus that depends on it may have come

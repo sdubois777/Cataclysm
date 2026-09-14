@@ -557,6 +557,22 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Ravager's Every Swing Lands keystone, as a flat flag read on "
 			  "the attacker where a blow is assembled")},
 
+		// Issue #1515. Whether anything may lower this character's movement
+		// speed. TWO KEYSTONES ARE ITS SOURCE, which no other entry in this
+		// list has: the Ravager's Relentless grants it always and the third
+		// clause of the Ravager's Unstoppable grants it while an enemy is
+		// within four metres. They differ only in their row's condition, so
+		// they share one stat.
+		//
+		// THE CONDITIONED ONE IS WHY IT IS READ THROUGH THE PIPELINE. A
+		// conditioned row is never folded into the attribute, so a read off
+		// the attribute would report zero for ever and the Unstoppable clause
+		// would silently do nothing.
+		{TEXT("movement_speed_reduction_suppressed"),
+		 TEXT("the Ravager's Relentless keystone and the slow clause of its "
+			  "Unstoppable keystone, as a flat flag read where the player's "
+			  "movement speed resolves")},
+
 		// Issue #1039. Whether damage over time deals this character nothing at
 		// all. Zero for every class, and the Masochist's Vessel Unbroken
 		// capstone option is its only source. A FLAG rather than a reduction,

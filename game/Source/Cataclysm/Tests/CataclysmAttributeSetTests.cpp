@@ -352,7 +352,19 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	//
 	// BOTH ARE FLAGS, like the three above. The sheet would have to print "no"
 	// for every character in the game but one, which is not a figure.
-	constexpr int32 OffSheetCombatStats = 42;
+	// AND FORTY-THREE SINCE NOTHING MAY LOWER A CHARACTER'S MOVEMENT SPEED,
+	// issue #1515. The twenty-ninth time the rule is met: no affix grants it,
+	// nothing scales it, no class differs on it.
+	//
+	// TWO KEYSTONES ARE ITS SOURCE RATHER THAN ONE, which is the first time that
+	// has happened here and is worth saying rather than leaving to be counted.
+	// `Ravager_keystone_d_kA` Relentless grants it always and
+	// `Ravager_keystone_spine_003` Unstoppable grants it while an enemy is
+	// within four metres; they differ only in their row's condition, so they
+	// share one stat rather than needing one each.
+	//
+	// A FLAG, like the four above, and off the sheet for the same reason.
+	constexpr int32 OffSheetCombatStats = 43;
 
 	/**
 	 * How far healing may take the character, and how much of each amount

@@ -12,6 +12,10 @@
 #include "AbilitySystem/CataclysmStatPipeline.h"
 // For the health a bonus can be made to depend on. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+// For a hostile body to stand near, which is what the Unstoppable clause
+// counts. Issue #1515.
+#include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -65,6 +69,60 @@ namespace CataclysmPlayerMovementTest
 	 *  the constructor. */
 	constexpr float RavagerMetresPerSecond = 4.6f;
 	constexpr float RitualistMetresPerSecond = 3.5f;
+
+	/** Centimetres in a metre, so a case can place a body in metres. */
+	constexpr float M = 100.0f;
+
+	/** The reach the Unstoppable row names. */
+	constexpr float FourMetres = 4.0f;
+
+	/** A hostile body, for a row that counts who is standing near. */
+	static ACataclysmEnemyCharacter* SpawnHostile(UWorld* World,
+												  const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where,
+														FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(
+				UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetHealth(1'000'000.0f);
+			Made->SetAttackDamage(0.0f);
+		}
+		return Made;
+	}
+
+	/**
+	 * One modifier, with every field stated.
+	 *
+	 * EVERY FIELD, INCLUDING THE ONES A CASE DOES NOT USE, so a reader of a case
+	 * sees the whole row rather than the difference from a default they have to
+	 * go and look up. `CataclysmEnemiesInReachTests.cpp` says the same and for
+	 * the same reason.
+	 */
+	static FCataclysmStatModifier Row(ECataclysmStatBucket Bucket, float Value,
+									  ECataclysmStatCondition Condition,
+									  float ConditionValue, float ReachMetres)
+	{
+		FCataclysmStatModifier Made;
+		Made.Bucket = Bucket;
+		Made.Source = ECataclysmModifierSource::PassiveKeystone;
+		Made.Value = Value;
+		Made.Condition = Condition;
+		Made.ConditionValue = ConditionValue;
+		Made.Scale = ECataclysmStatScale::Fixed;
+		Made.ScaleStep = 0.0f;
+		Made.ReachMetres = ReachMetres;
+		return Made;
+	}
+
+	/** A row that applies always and is worth its value. */
+	static FCataclysmStatModifier Always(ECataclysmStatBucket Bucket, float Value)
+	{
+		return Row(Bucket, Value, ECataclysmStatCondition::Always, 0.0f,
+				   /*ReachMetres=*/-1.0f);
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -819,6 +877,348 @@ bool FCataclysmAPoolThatCannotHoldAnythingIsNotFull::RunTest(const FString&)
 		UCataclysmStatPipeline::ConditionHolds(
 			ECataclysmStatCondition::ClassResourceAtMaximum,
 			/*Value=*/0.0f, AbilitySystem->CurrentConditions()));
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+// Nothing may lower this character's speed. Issue #1515.
+//
+// TWO KEYSTONES, ONE STAT, AND THEY DIFFER ONLY IN THEIR ROW'S CONDITION.
+// `Ravager_keystone_d_kA` Relentless says "Your Movement Speed cannot be
+// reduced by any effect". The third clause of `Ravager_keystone_spine_003`
+// Unstoppable says the same while an enemy is within four metres.
+//
+// WHAT IS BEING SLOWED IS A REAL THING RATHER THAN A TEST INVENTION. Two built
+// dungeon rules lower this stat today -- Singularity Wells and Grasping
+// Tentacles -- and both do it as a "less" multiplier through the same pipeline
+// these rows go through.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedIgnoresAReduction,
+	"Cataclysm.Player.MovementSpeedReductionIsDroppedWhileTheNodeIsHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Relentless, and the control that says the reduction works without it.
+ *
+ * THE READING WITHOUT THE NODE IS HALF THE TEST. Being slowed is the rule for
+ * every character in the game, so a test that only checked the half with the
+ * node would pass against a build where nothing could slow anybody.
+ */
+bool FCataclysmPlayerSpeedIgnoresAReduction::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// HALF SPEED, THE SHAPE A DUNGEON RULE USES. A "less" multiplier reaches the
+	// More bucket as a negative percentage, which is what
+	// DungeonModifierEffectsAddLess writes.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+	Inputs.Modifiers.Add(Always(ECataclysmStatBucket::More, -50.0f));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	// WITHOUT THE NODE THE REDUCTION WORKS, which is every character in the game.
+	if (!TestEqual(TEXT("without the node a half-speed effect halves the speed"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// WITH IT, THE SAME REDUCTION DOES NOTHING.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::
+			GetMovementSpeedReductionSuppressedAttribute(), 1.0f);
+	Character->RefreshMovementSpeed();
+
+	TestEqual(TEXT("with the node the same effect leaves the speed alone"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// AND TAKING IT AWAY PUTS THE REDUCTION BACK, which would catch a build that
+	// dropped the modifier once and left it dropped.
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::
+			GetMovementSpeedReductionSuppressedAttribute(), 0.0f);
+	Character->RefreshMovementSpeed();
+
+	TestEqual(TEXT("and without it again the speed is halved"),
+			  Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedKeepsItsEarnedIncrease,
+	"Cataclysm.Player.MovementSpeedKeepsAnEarnedIncreaseWhileDroppingAReduction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The node drops the reduction and keeps the bonus, which a floor would not.
+ *
+ * WHY THIS IS THE TEST THAT MATTERS. The obvious way to build "cannot be
+ * reduced" is to floor the answer at the character's own speed. That passes the
+ * test above and is WRONG: a character carrying a node worth +20% and standing
+ * in a well worth -40% would be put back to their plain speed, losing the bonus
+ * they earned along with the reduction they are meant to ignore. The row says
+ * the reduction does not apply, not that the increase does not either.
+ *
+ * THE FIGURES ARE CHOSEN SO THE TWO ANSWERS CANNOT COINCIDE. A floor gives
+ * exactly the plain speed; dropping the reduction gives plain x 1.2. They
+ * differ by a fifth, which no tolerance here could hide.
+ */
+bool FCataclysmPlayerSpeedKeepsItsEarnedIncrease::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// A NODE WORTH A FIFTH MORE, AND A HAZARD WORTH TWO FIFTHS LESS.
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = RavagerMetresPerSecond;
+	Inputs.Modifiers.Add(Always(ECataclysmStatBucket::Increased, 20.0f));
+	Inputs.Modifiers.Add(Always(ECataclysmStatBucket::More, -40.0f));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Inputs);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	// BOTH APPLY WITHOUT THE NODE: a fifth more, then two fifths of that taken.
+	if (!TestEqual(TEXT("without the node both the bonus and the reduction apply"),
+				   Movement->MaxWalkSpeed, Plain * 1.2f * 0.6f, 0.01f))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::
+			GetMovementSpeedReductionSuppressedAttribute(), 1.0f);
+	Character->RefreshMovementSpeed();
+
+	// THE BONUS SURVIVES AND THE REDUCTION DOES NOT.
+	TestEqual(TEXT("with the node the earned fifth survives and the reduction "
+				   "is dropped"),
+			  Movement->MaxWalkSpeed, Plain * 1.2f, 0.01f);
+
+	// SAID A SECOND WAY, BECAUSE THIS IS THE CLAIM THE WHOLE TEST EXISTS FOR.
+	TestTrue(TEXT("and the answer is above the plain speed, which a floor at the "
+				  "character's own speed could never be"),
+			 Movement->MaxWalkSpeed > Plain + 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedIgnoresAReductionOnlyWhileCrowded,
+	"Cataclysm.Player.MovementSpeedReductionIsDroppedOnlyWhileAnEnemyIsNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Unstoppable form: the same stat, granted ONLY by a conditioned row.
+ *
+ * NOTHING WRITES THE ATTRIBUTE HERE, DELIBERATELY. A conditioned row is never
+ * folded into a gameplay attribute, so a build that read the flag off the
+ * attribute would find zero, drop nothing, and this clause would silently do
+ * nothing while the two tests above went on passing. This is the only test that
+ * can tell those two builds apart.
+ *
+ * THE BODY IS SPAWNED RATHER THAN THE COUNT STATED. Nothing here tells the
+ * pipeline how many enemies are near or how far away they are; a hostile
+ * character is placed and the game measures. A test that supplies the missing
+ * step proves nothing.
+ */
+bool FCataclysmPlayerSpeedIgnoresAReductionOnlyWhileCrowded::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// THE HAZARD, AND THE FLAG GRANTED ONLY WHILE AN ENEMY IS WITHIN FOUR
+	// METRES. Two stat lines, because the flag is its own stat.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Always(ECataclysmStatBucket::More, -50.0f));
+
+	FCataclysmStatInputs Flag;
+	Flag.Base = 0.0f;
+	Flag.Modifiers.Add(Row(ECataclysmStatBucket::Flat, 1.0f,
+						   ECataclysmStatCondition::EnemiesInReachAtLeast, 1.0f,
+						   FourMetres));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Speed);
+	Stats.Add(FName(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat),
+			  Flag);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	// ALONE, THE ROW GRANTS NOTHING AND THE REDUCTION STANDS.
+	if (!TestEqual(TEXT("alone, the conditioned row grants nothing and the "
+						"reduction still halves the speed"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// TEN METRES AWAY IS NOT WITHIN FOUR, and this reading is the control. A
+	// build that counted every hostile character whatever the distance would
+	// pass a test that only checked "alone" against "crowded".
+	SpawnHostile(World, FVector(10.0f * M, 0.0f, 0.0f));
+	Character->RefreshMovementSpeed();
+
+	if (!TestEqual(TEXT("a body ten metres away is not within four, so the "
+						"reduction still stands"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// AND TWO METRES AWAY, ON A DIFFERENT AXIS so that a spawn refused for
+	// overlapping another body cannot quietly move a character somewhere else.
+	SpawnHostile(World, FVector(0.0f, 2.0f * M, 0.0f));
+	Character->RefreshMovementSpeed();
+
+	TestEqual(TEXT("one within four metres drops the reduction entirely"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmMovementSuppressionStatNameIsKnown,
+	"Cataclysm.Player.TheMovementSuppressionStatNameIsTheOneTheMapKnows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The name this code asks for is the name the data is written against.
+ *
+ * WHY A TEST RATHER THAN CARE. The stat name appears in this constant, in the
+ * key of `UCataclysmPlayerClassStats::StatToAttribute`, and in the `Stat` column
+ * of the rows. A character that disagreed by ONE CHARACTER would be granted
+ * both nodes and read neither, and nothing anywhere would say so: the pipeline
+ * would answer the fallback, both nodes would do nothing, and every test above
+ * that writes the attribute directly would still pass.
+ */
+bool FCataclysmMovementSuppressionStatNameIsKnown::RunTest(const FString&)
+{
+	const FString Name(
+		ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat);
+	const TMap<FString, FGameplayAttribute>& Map =
+		UCataclysmPlayerClassStats::StatToAttribute();
+
+	const FGameplayAttribute* Found = Map.Find(Name);
+	if (!TestNotNull(*FString::Printf(
+			TEXT("the stat name '%s' is a key in the stat-name map"), *Name),
+					 Found))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("and it names the movement-speed-reduction-suppressed "
+				  "attribute"),
+			 *Found == UCataclysmCombatAttributeSet::
+				 GetMovementSpeedReductionSuppressedAttribute());
 
 	return true;
 }

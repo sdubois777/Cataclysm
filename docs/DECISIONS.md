@@ -2,6 +2,120 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — "Cannot be reduced" drops the reducing modifiers rather than flooring the answer, and one stat serves two keystones
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`
+and `.cpp` (one new attribute),
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp` (where
+the player's walk speed resolves),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the stat-name
+map), and the tests. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+Two nodes:
+
+| row | name | text |
+| :-- | :-- | :-- |
+| `Ravager_keystone_d_kA` | Relentless | "Your Movement Speed cannot be reduced by any effect." |
+| `Ravager_keystone_spine_003` | Unstoppable | "You cannot be stunned, slowed or knocked back while an enemy is within 4 metres of you." — its third clause |
+
+### THREE DIFFERENT THINGS IN THIS PROJECT ARE CALLED RELENTLESS
+
+Searching the name finds all three, and only the third is the one above. This is
+written down because a session looking for "is Relentless built?" will find code
+for a different Relentless and conclude the work is done.
+
+| what | where | built? |
+| :-- | :-- | :-- |
+| a Generic **enemy modifier**: "Regenerates health over time" | `game/Data/EnemyModifiers.csv`, `Generic_Relentless`; `UCataclysmEnemyModifiers::RelentlessRow` | yes |
+| a **Berserker** passive node about Fervour in Frenzy | `game/Data/PassiveNodes.csv`, `Berserker_dw_005` | no |
+| the **Ravager keystone** above | `game/Data/PassiveNodes.csv`, `Ravager_keystone_d_kA` | this change |
+
+### ONE STAT SERVES BOTH NODES, because they differ only in a condition
+
+`movement_speed_reduction_suppressed` is granted unconditionally by Relentless
+and conditionally by Unstoppable's third clause. Which of the two a character
+has is entirely a property of the row, not of the code, so there is one
+mechanism rather than two and no second thing to keep in step.
+
+### DROPPING THE REDUCING MODIFIERS IS NOT THE SAME AS FLOORING THE ANSWER
+
+The obvious build of "cannot be reduced" is to floor the final speed at the
+character's own. **It is wrong, and it is wrong in a way that costs the player
+something they earned.**
+
+    a node worth +20%, standing in a Singularity Well worth -40%
+
+    floor the answer at the base   ->  the plain speed       the +20% is lost too
+    drop the reducing modifiers    ->  the plain speed x 1.2  correct
+
+The row says the reduction does not apply. It does not say the increase stops
+applying as well. So the stat is run through the pipeline a second time with
+each bucket clamped to the side that cannot lower it — `Flat` floored at 0,
+`SumOfIncreases` floored at 0, `MoreMultiplier` floored at 1 — and the figure
+rebuilt with the pipeline's own formula.
+
+**A SECOND PIPELINE PASS RATHER THAN ARITHMETIC ON THE FIRST ANSWER.** The
+single number `StatForSkill` returns cannot be taken apart again: a figure below
+the base could be a reduction or simply a small base, and nothing in it says
+which. `UCataclysmStatPipeline::Evaluate` returns the buckets separately, which
+is what makes the question answerable at all.
+
+`Cataclysm.Player.MovementSpeedKeepsAnEarnedIncreaseWhileDroppingAReduction` is
+the test that separates the two builds. The figures are chosen so their answers
+cannot coincide: a floor gives exactly the plain speed, dropping gives plain
+times 1.2.
+
+### THE FLAG IS READ THROUGH THE PIPELINE AND NEVER OFF THE ATTRIBUTE
+
+Unstoppable's row carries a condition, and **a conditioned row is never folded
+into a gameplay attribute**. A read off the attribute would find zero for ever,
+drop nothing, and that clause would silently do nothing while every test that
+granted the flag unconditionally went on passing. This is the fourth time this
+project has met that defect — evasion in
+[#947](https://github.com/sdubois777/Cataclysm/issues/947), the regeneration
+rates in [#1038](https://github.com/sdubois777/Cataclysm/issues/1038), crowd
+control resistance earlier today.
+
+`Cataclysm.Player.MovementSpeedReductionIsDroppedOnlyWhileAnEnemyIsNear` grants
+the flag **only** through a conditioned row, so it is the one test that can tell
+the two builds apart.
+
+### THE CONDITION STATE HAS TO BE BUILT THE WAY `StatForSkill` BUILDS IT
+
+A first version asked `CurrentConditions()` on its own. That knows nothing about
+who is standing nearby, so the Unstoppable row would never have been satisfied
+and the clause would have done nothing — with no test failing, because the tests
+that grant the flag unconditionally never touch that path.
+`WithEnemiesInReach` is what fills those distances in, and it costs nothing when
+no row in the list asks.
+
+### WHAT THIS STILL CANNOT DO, and it is a property of the stat rather than of the change
+
+`RefreshMovementSpeed` is called from four places, counted on 2026-09-14:
+`OnMovementSpeedChanged`, `OnClassResourceChanged`, `HealthChanged` and
+`InitAbilityActorInfo`. **None of them is a clock.**
+
+So the condition is read correctly *as a reduction lands* — writing
+`movement_speed` fires the first of those — and a player already slowed when an
+enemy walks into reach keeps the slow until some other event refreshes it. The
+slow does not come back when that enemy leaves, either. Nothing here can fix
+that without a clock, and adding one is a larger decision than this change.
+
+**That count said "two places" in the header until today and has moved twice.
+Count it rather than quoting it.**
+
+### WHAT IS BEING IGNORED IS REAL RATHER THAN HYPOTHETICAL
+
+Two built dungeon rules lower this stat today, both as a `less` multiplier
+through the same pipeline: Singularity Wells
+([#1605](https://github.com/sdubois777/Cataclysm/issues/1605)) and Grasping
+Tentacles ([#1786](https://github.com/sdubois777/Cataclysm/issues/1786)), both
+under [#41](https://github.com/sdubois777/Cataclysm/issues/41). Three more rows
+will when they are built.
+
+---
+
 ## 2026-09-14 — A dungeon rule can state no figure for what it applies, ten is the chance this table already uses for a death, and the poison it applies had never been applied by anything
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

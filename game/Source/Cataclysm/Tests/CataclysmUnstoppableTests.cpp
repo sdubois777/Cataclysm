@@ -17,7 +17,7 @@
 #include "Tests/CataclysmTestWorld.h"
 
 /**
- * `Ravager_keystone_spine_004` Unstoppable. Issue #1515.
+ * `Ravager_keystone_spine_003` Unstoppable. Issue #1515.
  *
  * "You cannot be stunned, slowed or knocked back while an enemy is within 4
  * metres of you."

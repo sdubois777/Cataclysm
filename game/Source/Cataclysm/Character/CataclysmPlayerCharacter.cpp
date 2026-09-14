@@ -19,6 +19,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the Cataclysm.ShowStacks console command. Issue #1002.
 #include "AbilitySystem/CataclysmStacks.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 // For when the swing this clip is about to play actually connects. Issue #1133.
 #include "AbilitySystem/CataclysmSwingTiming.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -74,6 +75,9 @@ namespace
 	constexpr float CapsuleHalfHeight = 96.0f;
 
 }
+
+const TCHAR* ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat =
+	TEXT("movement_speed_reduction_suppressed");
 
 const TCHAR* ACataclysmPlayerCharacter::BodyMeshPath =
 	TEXT("/Game/Characters/Mannequins/Meshes/"
@@ -870,10 +874,83 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
-	ApplyMovementSpeed(Cataclysm
-		? Cataclysm->StatForSkill(FName(TEXT("movement_speed")),
-								  FGameplayTagContainer(), FromAttribute)
-		: FromAttribute);
+	if (!Cataclysm)
+	{
+		ApplyMovementSpeed(FromAttribute);
+		return;
+	}
+
+	const float Asked = Cataclysm->StatForSkill(FName(TEXT("movement_speed")),
+												FGameplayTagContainer(),
+												FromAttribute);
+
+	// NOTHING MAY LOWER THIS CHARACTER'S SPEED, IF A NODE SAYS SO. Issue #1515.
+	// `Ravager_keystone_d_kA` Relentless says it always; the third clause of
+	// `Ravager_keystone_spine_003` Unstoppable says it while an enemy is within
+	// four metres. One stat serves both, and which of the two a character has is
+	// entirely a property of the row's condition rather than of this code.
+	//
+	// ASKED THROUGH THE PIPELINE AND NOT OFF THE ATTRIBUTE, because
+	// Unstoppable's row carries a condition and a conditioned row is never
+	// folded into a gameplay attribute. Reading the attribute here would report
+	// the base for ever and that clause would do nothing at all.
+	const float Suppressed = Cataclysm->StatForSkill(
+		FName(MovementSpeedReductionSuppressedStat), FGameplayTagContainer(),
+		AbilitySystem->GetNumericAttribute(
+			UCataclysmCombatAttributeSet::
+				GetMovementSpeedReductionSuppressedAttribute()));
+	if (Suppressed <= 0.0f)
+	{
+		ApplyMovementSpeed(Asked);
+		return;
+	}
+
+	// THE REDUCING PARTS ARE DROPPED, THE EARNED ONES KEPT, AND THE DIFFERENCE
+	// IS NOT ACADEMIC. Flooring the answer at the attribute would take away a
+	// node's +20% along with a Singularity Well's -40% and leave the character
+	// at their base speed; the row says the reduction does not apply, not that
+	// the bonus does not either. So the stat is run again with each bucket
+	// clamped to the side that cannot lower it:
+	//
+	//     Flat             floored at 0      a negative addition is a reduction
+	//     SumOfIncreases   floored at 0      a negative increase is a reduction
+	//     MoreMultiplier   floored at 1      a "less" multiplier is below one
+	//
+	// A SECOND PIPELINE PASS RATHER THAN ARITHMETIC ON THE FIRST ANSWER. The
+	// single number `StatForSkill` returns cannot be taken apart again -- a
+	// figure below the base could be a reduction or a small base, and nothing
+	// in it says which. The breakdown says which, so it is what gets asked.
+	const FCataclysmStatInputs* Inputs =
+		Cataclysm->GetStatInputs(FName(TEXT("movement_speed")));
+	if (!Inputs)
+	{
+		// NO STAT LINE MEANS NOTHING TO DROP, so the answer above already is the
+		// speed. That is every character before its first refresh.
+		ApplyMovementSpeed(Asked);
+		return;
+	}
+
+	// THE CONDITION STATE IS BUILT THE WAY `StatForSkill` BUILDS IT, and that is
+	// not a detail. `CurrentConditions()` on its own knows nothing about who is
+	// standing nearby, so Unstoppable's row -- which asks for an enemy within
+	// four metres -- would never be satisfied and the whole clause would do
+	// nothing while every test that grants the stat unconditionally still
+	// passed. `WithEnemiesInReach` is what fills those distances in, and only
+	// when a row in the list actually asks.
+	const FCataclysmStatBreakdown Breakdown = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+		Cataclysm->WithEnemiesInReach(
+			Inputs->Modifiers,
+			UCataclysmAbilitySystemComponent::WithTargetState(
+				Inputs->Modifiers, /*Target=*/nullptr,
+				Cataclysm->CurrentConditions())));
+
+	const float Flat = FMath::Max(Breakdown.Flat, 0.0f);
+	const float Increases = FMath::Max(Breakdown.SumOfIncreases, 0.0f);
+	const float More = FMath::Max(Breakdown.MoreMultiplier, 1.0f);
+
+	ApplyMovementSpeed((Breakdown.Base + Flat) * (1.0f + Increases / 100.0f)
+					   * More);
 }
 
 void ACataclysmPlayerCharacter::HealthChanged()
