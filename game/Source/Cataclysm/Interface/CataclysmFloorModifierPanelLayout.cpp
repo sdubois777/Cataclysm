@@ -6,7 +6,8 @@
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 
 TArray<FCataclysmFloorModifierLine> UCataclysmFloorModifierPanelLayout::LinesFor(
-	const TArray<FName>& RowKeys, const UDataTable* DungeonModifierTable)
+	const TArray<FName>& RowKeys, const UDataTable* DungeonModifierTable,
+	const TMap<FName, FString>& LiveCounts)
 {
 	TArray<FCataclysmFloorModifierLine> Lines;
 	Lines.Reserve(RowKeys.Num());
@@ -22,6 +23,14 @@ TArray<FCataclysmFloorModifierLine> UCataclysmFloorModifierPanelLayout::LinesFor
 		Line.bIsARow = Row != nullptr;
 		Line.Name = Row != nullptr ? Row->ModifierName : Key.ToString();
 		Line.Description = Row != nullptr ? Row->Description : FString();
+
+		// WHAT THIS ROW IS COUNTING, IF ANYTHING IS COUNTING FOR IT. Looked up by
+		// key rather than asked of the row, because the count belongs to the rule
+		// that keeps it and not to the table.
+		if (const FString* Counting = LiveCounts.Find(Key))
+		{
+			Line.LiveCount = *Counting;
+		}
 
 		Lines.Add(MoveTemp(Line));
 	}
@@ -39,22 +48,42 @@ FString UCataclysmFloorModifierPanelLayout::HeadingFor(int32 FloorNumber,
 
 FString UCataclysmFloorModifierPanelLayout::NameLineFor(const FCataclysmFloorModifierLine& Line)
 {
+	FString Named;
+
 	if (!Line.bIsARow)
 	{
-		return FString::Printf(TEXT("%s (not a row of the dungeon modifier table)"),
-							   *Line.Name);
+		Named = FString::Printf(TEXT("%s (not a row of the dungeon modifier table)"),
+								*Line.Name);
 	}
-
-	switch (Line.Built)
+	else
 	{
-	case ECataclysmModifierBuilt::Built:
-		return Line.Name;
+		switch (Line.Built)
+		{
+		case ECataclysmModifierBuilt::Built:
+			Named = Line.Name;
+			break;
 
-	case ECataclysmModifierBuilt::Partly:
-		return FString::Printf(TEXT("%s (partly built)"), *Line.Name);
+		case ECataclysmModifierBuilt::Partly:
+			Named = FString::Printf(TEXT("%s (partly built)"), *Line.Name);
+			break;
 
-	case ECataclysmModifierBuilt::NotBuilt:
-	default:
-		return FString::Printf(TEXT("%s (not built yet: it does nothing)"), *Line.Name);
+		case ECataclysmModifierBuilt::NotBuilt:
+		default:
+			Named = FString::Printf(TEXT("%s (not built yet: it does nothing)"),
+									*Line.Name);
+			break;
+		}
 	}
+
+	// AND WHAT IT IS COUNTING, WHEN IT COUNTS ANYTHING. Appended rather than
+	// woven into the branches above so that a row counting nothing comes out of
+	// this function byte for byte as it did before the count existed -- which is
+	// what keeps the assertions in `CataclysmDungeonModifierEffectsTests.cpp`
+	// true without touching them.
+	if (!Line.LiveCount.IsEmpty())
+	{
+		Named = FString::Printf(TEXT("%s (%s)"), *Named, *Line.LiveCount);
+	}
+
+	return Named;
 }

@@ -2963,6 +2963,12 @@ void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
 	// second, which is what both death listeners already do.
 	WastingSicknessStacks =
 		Effects::WastingSicknessStacksAfterHit(WastingSicknessStacks, bInflicts);
+
+	// AND THE PANEL LEARNS THE NEW COUNT. Unconditionally rather than only when
+	// the roll inflicted something: `WastingSicknessStacksAfterHit` answers the
+	// old count for a blow that did not stack, so a refresh that did nothing is
+	// cheaper to reason about than a branch that decides whether to make one.
+	RefreshFloorModifierPanel();
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForWastingSickness(
@@ -3078,6 +3084,55 @@ void ACataclysmDungeonGameMode::NoteDeathForNihilsEmbrace(
 		+ UCataclysmDungeonModifierEffects::NihilsEmbraceRewardSeconds;
 }
 
+void ACataclysmDungeonGameMode::RefreshFloorModifierPanel()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE SAME ROUTE TO THE CONTROLLER `ApplyFloorRulesToPlayer` TAKES, so the
+	// floor-change draw and the on-a-blow draw cannot reach different panels.
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerController* Cataclysm =
+		Cast<ACataclysmPlayerController>(Controller);
+	if (!Cataclysm)
+	{
+		return;
+	}
+
+	Cataclysm->ShowFloorModifiers(FloorBrief.Modifiers, FloorBrief.FloorNumber,
+								  LiveCountsForTheFloor());
+}
+
+TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// "N of M" FOR BOTH ROWS, WHICH DIFFERS FROM THE PLAIN COUNT ASKED FOR ON THE
+	// SECOND ONE, and the reason is that the second one has an M.
+	// `WastingSicknessMostStacks` is 5 and that row says its debuff stacks, so a
+	// player reading "2" cannot tell whether that is nearly all of it or a fifth
+	// of it. Both rows read alike and neither number is bare.
+	TMap<FName, FString> Counting;
+
+	const FName Brand(Effects::BrandOfTheAggressorKey);
+	if (FloorBrief.Modifiers.Contains(Brand))
+	{
+		Counting.Add(Brand, FString::Printf(TEXT("%d of %d"), BrandStacks,
+											Effects::BrandStacksToErupt));
+	}
+
+	const FName Wasting(Effects::WastingSicknessKey);
+	if (FloorBrief.Modifiers.Contains(Wasting))
+	{
+		Counting.Add(Wasting,
+					 FString::Printf(TEXT("%d of %d"), WastingSicknessStacks,
+									 Effects::WastingSicknessMostStacks));
+	}
+
+	return Counting;
+}
+
 void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
 	const FCataclysmHitNotice& Notice)
 {
@@ -3111,6 +3166,18 @@ void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
 	// enemy applies a stack ... to you", so this reads `Attacker` where Wasting
 	// Sickness reads `Target`. Without the creature check a blow the player
 	// landed on anything else -- a hazard, a destructible -- would brand them.
+	//
+	// AND IT STOPS THIS RULE FEEDING ITSELF, WHICH IS THE BIGGER HALF AND WAS NOT
+	// IN THIS COMMENT UNTIL A GUARD PROOF SHOWED IT. The nova below is dealt BY
+	// the player TO the player, so it is announced as a blow like any other. With
+	// this guard gone it brands: every eruption adds one to the count it just
+	// cleared, and the next eruption arrives a blow early, for ever.
+	//
+	// MEASURED 2026-09-14 rather than reasoned about. Breaking this guard was
+	// predicted to fail one test and failed two -- the second being
+	// `TwentyLandedBlowsBrandThePlayerAndTheTwentiethErupts`, which lands nineteen
+	// blows after an eruption and asserts they take nothing. The prediction was
+	// traced from what the TESTS land and missed what the RULE lands in reply.
 	if (Notice.Attacker != Player
 		|| !Cast<ACataclysmEnemyCharacter>(Notice.Target))
 	{
@@ -3122,6 +3189,13 @@ void ACataclysmDungeonGameMode::NoteHitForBrandOfTheAggressor(
 	// are separated by taking the old value first.
 	const int32 Before = BrandStacks;
 	BrandStacks = Effects::BrandStacksAfterHit(Before, /*bBrands=*/true);
+
+	// THE PANEL LEARNS THE NEW COUNT BEFORE THE RETURN BELOW, AND THAT ORDER IS
+	// THE POINT. Nineteen blows out of twenty leave through that return, and they
+	// are exactly the blows a player has nothing else to read: the rule does
+	// nothing to them and the count is the only sign anything is building.
+	RefreshFloorModifierPanel();
+
 	if (!Effects::BrandErupts(Before))
 	{
 		return;
@@ -3699,10 +3773,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		}
 	}
 
-	if (ACataclysmPlayerController* Cataclysm = Cast<ACataclysmPlayerController>(Controller))
-	{
-		Cataclysm->ShowFloorModifiers(FloorBrief.Modifiers, FloorBrief.FloorNumber);
-	}
+	// THE PANEL, WITH WHATEVER THE STATEFUL ROWS ARE COUNTING. This was the only
+	// place the panel was ever drawn, which is why a count shown on it would have
+	// been frozen at whatever the player had on arriving. It is now one of three.
+	RefreshFloorModifierPanel();
 
 	// ONE LINE PER FLOOR THAT CARRIES ANY, so a playtest log says what the
 	// player was walking through. The six logs read for issue #41's measurement

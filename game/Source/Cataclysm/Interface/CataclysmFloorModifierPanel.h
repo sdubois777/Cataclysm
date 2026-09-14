@@ -44,11 +44,23 @@ public:
 	/**
 	 * Which modifiers to list, and which floor they are on. Redraws.
 	 *
+	 * NO LONGER `BlueprintCallable`, AND THAT IS A REAL CHANGE RATHER THAN A
+	 * TIDY-UP. Unreal's reflection does not accept a default argument of a map
+	 * type, and the count has to be optional so that every caller without one
+	 * stays unchanged. Measured before dropping it: no asset under `game/Content`
+	 * names this function -- 118 content assets are in git, so that is a real
+	 * absence and not an empty search -- and no `BlueprintCallable` function in
+	 * this module takes a map, so there is no precedent to follow either.
+	 * Put it back with a Blueprint-friendly overload if a Blueprint ever needs it.
+	 *
 	 * @param RowKeys     `FCataclysmFloorBrief::Modifiers`
 	 * @param FloorNumber counted from 1
+	 * @param LiveCounts  what each row is counting now, by row key. Defaulted
+	 *                    empty; see `FCataclysmFloorModifierLine::LiveCount`
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
-	void SetFloorModifiers(const TArray<FName>& RowKeys, int32 FloorNumber);
+	void SetFloorModifiers(const TArray<FName>& RowKeys, int32 FloorNumber,
+						   const TMap<FName, FString>& LiveCounts =
+							   TMap<FName, FString>());
 
 	/** What the panel is showing, for a test that cannot read the screen. */
 	const TArray<FCataclysmFloorModifierLine>& ShownLines() const { return Lines; }

@@ -6475,4 +6475,316 @@ bool FCataclysmBrandWhoseBlowTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// The floor panel's live count. Issues #1820 and #41.
+//
+// WHY THIS EXISTS. Two dungeon rules keep a count that decides what happens to
+// the player, and until this change neither count was shown anywhere. Measured
+// 2026-09-14: outside `game/Source/Cataclysm/Dungeon/`, nothing in `game/Source`
+// read either one.
+//
+// WHY THE LIVE HALF IS THE POINT. The panel was drawn once, when a floor began,
+// so a count put on it would always have read as the value the player had before
+// they did anything. `TheCountOnThePanelMovesWithTheBlowAndNotWithTheFloor` is
+// the test a floor-entry-only version fails.
+//
+// WHY THESE ASSERT ON DATA AND NOT ON A WIDGET.
+// `UCataclysmFloorModifierPanelLayout`'s own header gives the rule: the
+// automation tests run with `-nullrhi` and a widget built in a headless test has
+// no children to read. The panel also needs a widget class loaded from an asset
+// a test world does not have, so the draw itself returns early here and would
+// prove nothing.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPanelLiveCountLineTest,
+	"Cataclysm.DungeonModifierEffects.AFloorPanelLineCarriesWhateverItsRuleIsCounting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPanelLiveCountLineTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Layout = UCataclysmFloorModifierPanelLayout;
+
+	const UDataTable* Table =
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable();
+	if (!TestNotNull(TEXT("the dungeon modifier table loaded"), Table))
+	{
+		return false;
+	}
+
+	// WITH NO COUNTS AT ALL, WHICH IS EVERY CALLER THAT HAD NONE TO GIVE BEFORE
+	// THIS PARAMETER EXISTED. Every line must read exactly as it did.
+	const TArray<FCataclysmFloorModifierLine> Plain =
+		Layout::LinesFor({Starvation, BrandOfTheAggressor}, Table);
+	if (!TestEqual(TEXT("one line per modifier"), Plain.Num(), 2))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a row with no count carries none"), Plain[0].LiveCount.IsEmpty());
+	TestTrue(TEXT("and nor does a counting row nobody counted for"),
+			 Plain[1].LiveCount.IsEmpty());
+	TestEqual(TEXT("and the name is untouched"), Layout::NameLineFor(Plain[0]),
+			  FString(TEXT("Starvation")));
+	TestEqual(TEXT("for the counting row too"), Layout::NameLineFor(Plain[1]),
+			  FString(TEXT("Brand of the Aggressor")));
+
+	// AND NOW WITH ONE. Only the row named gets it.
+	TMap<FName, FString> Counting;
+	Counting.Add(BrandOfTheAggressor, TEXT("3 of 20"));
+
+	const TArray<FCataclysmFloorModifierLine> Counted =
+		Layout::LinesFor({Starvation, BrandOfTheAggressor}, Table, Counting);
+	if (!TestEqual(TEXT("still one line per modifier"), Counted.Num(), 2))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the row nobody counted for still carries nothing"),
+			 Counted[0].LiveCount.IsEmpty());
+	TestEqual(TEXT("and its name is still untouched"),
+			  Layout::NameLineFor(Counted[0]), FString(TEXT("Starvation")));
+
+	TestEqual(TEXT("the counting row carries what it was handed"),
+			  Counted[1].LiveCount, FString(TEXT("3 of 20")));
+	TestEqual(TEXT("and its line says so after the name"),
+			  Layout::NameLineFor(Counted[1]),
+			  FString(TEXT("Brand of the Aggressor (3 of 20)")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPanelWhichRowsCountTest,
+	"Cataclysm.DungeonModifierEffects.AFloorReportsACountOnlyForTheCountingRowsItCarries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPanelWhichRowsCountTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	const auto FloorOf = [this, Mode](const TArray<FName>& Rows) -> bool
+	{
+		Mode->DungeonModifiers = Rows;
+		Mode->FloorNumber = 1;
+		return TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()) != false;
+	};
+
+	// A FLOOR CARRYING NEITHER COUNTING ROW REPORTS NOTHING, which is most floors
+	// and is what keeps every other line reading as it always did.
+	if (!FloorOf({Starvation}))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor with no counting row reports no counts"),
+			  Mode->LiveCountsForTheFloor().Num(), 0);
+
+	// ONE EACH, NAMED AND WITH THE SHAPE THE PLAYER READS.
+	if (!FloorOf({BrandOfTheAggressor}))
+	{
+		return false;
+	}
+	TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+	if (!TestEqual(TEXT("a floor carrying Brand reports one count"),
+				   Counting.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it names the threshold, not only the tally"),
+			  *Counting.Find(BrandOfTheAggressor),
+			  FString::Printf(TEXT("0 of %d"), Effects::BrandStacksToErupt));
+
+	if (!FloorOf({WastingSickness}))
+	{
+		return false;
+	}
+	Counting = Mode->LiveCountsForTheFloor();
+	if (!TestEqual(TEXT("a floor carrying Wasting Sickness reports one count"),
+				   Counting.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it names its cap, so a bare number cannot mislead"),
+			  *Counting.Find(WastingSickness),
+			  FString::Printf(TEXT("0 of %d"), Effects::WastingSicknessMostStacks));
+
+	// AND A FLOOR CARRYING BOTH REPORTS BOTH, which is the case a map exists for
+	// rather than a single value.
+	if (!FloorOf({BrandOfTheAggressor, WastingSickness, Starvation}))
+	{
+		return false;
+	}
+	Counting = Mode->LiveCountsForTheFloor();
+	TestEqual(TEXT("a floor carrying both counting rows reports both"),
+			  Counting.Num(), 2);
+	TestTrue(TEXT("and nothing for the row that counts nothing"),
+			 Counting.Find(Starvation) == nullptr);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorPanelCountIsLiveTest,
+	"Cataclysm.DungeonModifierEffects.TheCountOnThePanelMovesWithTheBlowAndNotWithTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorPanelCountIsLiveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces blows"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Dummy = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(200.0f, 0.0f, 0.0f),
+		10'000'000.0f);
+	if (!TestNotNull(TEXT("a creature to hit"), Dummy))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {BrandOfTheAggressor};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the branded floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto CountNow = [Mode]()
+	{
+		// THE MAP IS COPIED INTO A LOCAL BEFORE ANYTHING POINTS INTO IT, AND THAT
+		// IS NOT STYLE. `LiveCountsForTheFloor` answers a `TMap` BY VALUE, so the
+		// first draft of this lambda called `.Find` on the temporary and returned
+		// `*Found` -- a read of the temporary AFTER it had been destroyed at the
+		// end of that full expression.
+		//
+		// IT DID NOT CRASH, WHICH IS WHY IT IS WORTH A COMMENT. The whole-suite
+		// run on 2026-09-14 reported: Expected 'a fresh floor counts nothing' to
+		// be "0 of 20", but it was "<garbage>". Freed memory that still parses as
+		// a string is the failure mode, and the test read as a wrong ANSWER
+		// rather than as a fault in the test.
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Found = Counting.Find(BrandOfTheAggressor);
+		return Found ? *Found : FString();
+	};
+	const auto Expected = [](int32 Stacks)
+	{
+		return FString::Printf(TEXT("%d of %d"), Stacks,
+							   Effects::BrandStacksToErupt);
+	};
+
+	// THE STATE THIS TEST IS BUILT ON, ASSERTED BEFORE THE BEHAVIOUR IS.
+	if (!TestEqual(TEXT("a fresh floor counts nothing"), CountNow(), Expected(0)))
+	{
+		return false;
+	}
+
+	// ONE BLOW, AND NO FLOOR CHANGE ANYWHERE NEAR IT.
+	//
+	// WHAT THIS PROVES AND WHAT IT DOES NOT, BECAUSE THE DIFFERENCE MATTERS. It
+	// proves the FIGURE the panel is handed moves with a blow and is not frozen
+	// at what the player had on arriving. It does NOT prove the panel is handed
+	// it: `RefreshFloorModifierPanel` needs an `ACataclysmPlayerController` and
+	// these tests possess with a plain `APlayerController`, which this file's own
+	// header already records as not covered. Deleting the refresh call from the
+	// listener would leave this test passing. ISSUE #1841 CARRIES THAT GAP, what
+	// closes it, and how to tell when it is closed.
+	//
+	// THE WIDGET CANNOT CLOSE THAT GAP HERE EITHER, and it was checked rather
+	// than assumed: `game/Content/Interface/WBP_FloorModifiers.uasset` is in git,
+	// but `CreateWidget` wants a game instance and
+	// `CataclysmTestWorld::MakeWorldThatHasBegunPlay` builds a world that has
+	// none -- its own header says so. A test that tried would fail for a reason
+	// having nothing to do with this rule.
+	if (!TestTrue(TEXT("the blow landed"),
+				  UCataclysmSkillEffects::ApplyHit(Player.Character, Dummy, 50.0f)
+					  > 0.0f))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("one blow moves the count without a floor change"),
+				   CountNow(), Expected(1)))
+	{
+		return false;
+	}
+
+	// AND IT KEEPS MOVING, so the first reading cannot have been a one-off.
+	for (int32 Blow = 0; Blow < 2; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("a further blow %d landed"), Blow + 1),
+					  UCataclysmSkillEffects::ApplyHit(
+						  Player.Character, Dummy, 50.0f) > 0.0f))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("and three blows read as three"), CountNow(), Expected(3));
+
+	// AND A NEW FLOOR PUTS IT BACK, which is the per-floor reset seen from the
+	// outside for the first time: until this change nothing could read it.
+	//
+	// `GoToFloor` AND NOT `BuildFloor`, AND THE DIFFERENCE IS THE WHOLE POINT OF
+	// THIS ASSERTION. The reset lives in `ApplyFloorRulesToPlayer`, which is
+	// called by `StartPlay`, `LeaveEmpireDungeon` and `GoToFloor` and NOT by
+	// `BuildFloor` -- whose own comment says it is deliberately callable on its
+	// own. Setting `FloorNumber` and building is how every other test in this
+	// file arranges a floor, and for a FIRST floor that is enough because every
+	// count starts at nothing.
+	//
+	// IT IS NOT ENOUGH FOR A FLOOR CHANGE, AND THIS FILE ALREADY SAID SO. The
+	// Death's Embrace reset above carries the same finding in the same words --
+	// "THROUGH `GoToFloor` AND NOT `BuildFloor`, AND THE FIRST VERSION OF THIS
+	// TEST GOT IT WRONG" -- and four tests here already change floor that way.
+	// The first draft of this one built floor two, read "3 of 20" where it wanted
+	// "0 of 20", and cost a build: the rule was right and the test had not
+	// changed floor at all.
+	//
+	// A FIRST DRAFT OF THIS COMMENT CLAIMED TO BE THE FIRST HERE TO CHANGE FLOOR,
+	// WHICH WAS FALSE. It came from a search truncated with `head`, which can
+	// show presence and never absence. Both mistakes in one place: the trap this
+	// file already documents, and a count read off a truncated list.
+	if (!TestTrue(TEXT("the player reached the next floor"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and a new floor counts nothing again"), CountNow(),
+			  Expected(0));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
