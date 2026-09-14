@@ -72,10 +72,27 @@ ENGINE_MACRO = re.compile(
     r"([A-Za-z_]\w*)\s*,\s*\"([^\"]+)\"",
     re.DOTALL)
 
-#: A `#define` whose body calls an engine macro. The project has 35 of these,
-#: each wrapping the flags so a file's tests do not repeat them, and 378 tests
-#: are declared through them. A parser that reads only the engine macro misses
-#: every one of those and reports a clean result.
+#: A `#define` whose body calls an engine macro, each wrapping the flags so a
+#: file's tests do not repeat them. A parser that reads only the engine macro
+#: misses every test declared through one and reports a clean result.
+#:
+#: COUNTED WITH THIS FILE'S OWN `WRAPPER_DEFINITION` PATTERN, IMPORTED RATHER
+#: THAN RETYPED, ON 2026-09-13: 36 definitions in 36 files, and 384 tests
+#: declared through them.
+#:
+#: **THE WORD "IMPORTED" IS LOAD-BEARING.** Two sessions counted this on the same
+#: day and one got 37, by reading the pattern and retyping it into a shell
+#: command where the backslashes were mangled. The same session's next attempt
+#: returned 0, which is obviously wrong and is what exposed the first. Import the
+#: pattern; do not copy it.
+#:
+#: **Written as a dated measurement rather than as "the project has N", which is
+#: what the previous figures said.** They read 35 and 378, were correct when
+#: written, and went stale the same day -- the 36th definition arrived in
+#: `c63f01fb`, hours before anyone noticed.
+#:
+#: SO RE-MEASURE RATHER THAN TRUSTING THESE. The floor below already follows
+#: that convention and it is the one figure here that never went wrong.
 WRAPPER_DEFINITION = re.compile(
     r"^[ \t]*#[ \t]*define[ \t]+([A-Z_][A-Z0-9_]*)[ \t]*\([^)]*\)[^\n]*\\\n"
     r"(?:[^\n]*\\\n)*?[^\n]*IMPLEMENT_\w*AUTOMATION_TEST",
@@ -145,6 +162,12 @@ def test_both_ways_of_declaring_a_test_are_found():
     the 378 it never looked at, because those tests are declared through the
     project's own wrapper macros. A parser that silently covers part of the tree
     gives a confident wrong answer, which is worse than no answer.
+
+    **BOTH FIGURES IN THAT SENTENCE ARE HISTORICAL AND MUST NOT BE UPDATED.**
+    They describe what that one search found, on the day it ran. The tree has
+    1,404 engine-macro registrations now, so the 1,383 beside them dates the
+    pair. Raising the 378 to today's count would make a record of a past search
+    report a number it never saw.
     """
     engine_only = 0
     through_wrappers = 0
@@ -158,7 +181,7 @@ def test_both_ways_of_declaring_a_test_are_found():
         "no test declared with the engine macro directly was found at all.")
     assert through_wrappers > 0, (
         "no test declared through one of the project's own wrapper macros was "
-        "found. There were 378 of them on 2026-09-13, in 35 files, each "
+        "found. There were 384 of them on 2026-09-13, in 36 files, each "
         "wrapping IMPLEMENT_SIMPLE_AUTOMATION_TEST to avoid repeating the "
         "flags. If WRAPPER_DEFINITION no longer recognises them, this file has "
         "the same blind spot that let issue #1666 sit for a month.")
@@ -168,8 +191,12 @@ def test_a_wrapper_definition_is_not_itself_a_registration():
     """The `#define` line names its parameters, not a class.
 
     Without this, `#define CATACLYSM_TEST(TestClass, TestName)` would be read as
-    a test whose class is `TestClass`, and all 35 wrapper definitions would
-    collide with each other -- a failure with nothing wrong behind it.
+    a test whose class is `TestClass`, and every wrapper definition would collide
+    with each of the others -- a failure with nothing wrong behind it.
+
+    NO COUNT HERE ON PURPOSE. This said "all 35", which is a number that has to
+    be maintained to say something the sentence does not need: the collision
+    happens whether there are two definitions or two hundred.
     """
     definition = (
         "#define CATACLYSM_TEST(TestClass, TestName) \\\n"

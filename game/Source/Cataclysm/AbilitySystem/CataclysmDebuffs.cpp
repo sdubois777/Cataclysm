@@ -44,7 +44,7 @@ const TCHAR* const UCataclysmDebuffs::DebuffRootNames[] = {
 	TEXT("State.Stunned"),
 
 	// AND EVERY NAMED CURSE. Issue #1145. Shred, Madness, Cripple, Weaken,
-	// Quarry and the other twenty-two come from the Debuffs sheet of
+	// Quarry and the other twenty-three come from the Debuffs sheet of
 	// `docs/All_Things_Cataclysm.xlsx`, and since that sheet's name became a
 	// segment of the tag they all hang off this one parent.
 	//
