@@ -594,6 +594,15 @@ private:
 	 * Reading the skill's cost at impact would credit the blow with whatever
 	 * the character last paid rather than with what this shot cost.
 	 * Issue #983.
+	 *
+	 * THREADED ON PURPOSE, AND NOT THE SAME VALUE AS THE BLOW CONTEXT'S. Issue
+	 * #1602, ruled 2026-09-14. The cost is passed from the caller that knows it
+	 * down to the lookup that needs it, through eight signatures and two stored
+	 * members, because it exists BEFORE any blow does: a projectile carries it
+	 * from firing to landing, and the structure describing a blow is built only
+	 * when one lands. There is no second copy that can disagree, so this is not
+	 * the duplication issue #1581 was about. Do not merge it onto the blow
+	 * context; the same note sits at each of the three declarations.
 	 */
 	float SkillHealthCostPercent = -1.0f;
 
