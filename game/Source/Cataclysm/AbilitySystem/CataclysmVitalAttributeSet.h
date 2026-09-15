@@ -59,6 +59,15 @@ public:
 	 * CONST BECAUSE THE ENGINE DECLARES IT SO, and it costs nothing: both
 	 * notifications below read this set and change only things outside it, so
 	 * both are const too and no cast is needed.
+	 *
+	 * IT FIRES FOR HEALTH AND NOT FOR MAXIMUM HEALTH, AND THAT IS A RULING.
+	 * A character's share of its pool also moves when its MAXIMUM moves --
+	 * taking off a large item, a passive point on maximum health, Water to
+	 * Blood -- and no threshold re-asks then. Ruled on 2026-09-14 under the
+	 * owner's delegation, issue #1095: a health threshold is about being
+	 * hurt, so it is asked when health moves and not when the ceiling does.
+	 * A character whose maximum fell below a threshold notices at its next
+	 * hit or heal, which is the next time it is hurt or stops being.
 	 */
 	virtual void PostAttributeBaseChange(const FGameplayAttribute& Attribute,
 										 float OldValue, float NewValue) const override;
