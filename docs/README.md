@@ -88,8 +88,12 @@ or if a sheet is added or removed without this table changing.
 read a row count as a count of the things the sheet describes without checking
 which group it is in:
 
-- **Enchantments** holds two tables side by side. Its 380 rows carry 380 positive
-  enchantments in columns A to D and 195 negative ones in columns F to I.
+- **Enchantments** holds two tables side by side: positive enchantments in
+  columns A to D and negative ones in columns F to I. The two columns are not
+  the same length, so the sheet's row count is the longer one and counts
+  neither table; `game/Data/EnchantmentsPositive.csv` and
+  `game/Data/EnchantmentsNegative.csv` hold the two counts, and
+  `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` pins them.
 - **Enemy Modifiers** is a matrix, one column per Cataclysm and each cell holding
   `Name: Description`. Its 11 rows across 8 columns hold 79 modifiers.
 - **Crafting** is three tables stacked: 27 materials, a heading row whose first
