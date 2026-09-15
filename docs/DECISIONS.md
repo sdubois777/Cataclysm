@@ -2,6 +2,46 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A seasonal league resets the empire upgrade tree: the owner's answer of 2026-08-06, written into the design at last
+
+**Affects:** `docs/Cataclysm_GDD_v2.md` (one paragraph under the empire upgrade
+tree's ownership rules) and the 2026-08-05 entry of this file that listed the
+question as open. Issue
+[#287](https://github.com/sdubois777/Cataclysm/issues/287).
+
+The 2026-08-05 entry on the empire tree's ownership left one question open:
+whether a seasonal league is a fourth partition of the tree, beside the three
+lethality modes and the Solo Self-Found flag. The issue put three options to the
+project owner on 2026-08-05 and the owner answered on 2026-08-06, in two words:
+"Option A". Nothing wrote the answer into the design, so the 2026-08-05 entry
+went on saying "still open" for five weeks. This entry writes it in.
+
+### The answer
+
+**A league resets the tree.** A player starts a league with a fresh empire
+upgrade tree in each lethality mode, three per league, plus one private tree per
+Solo Self-Found character made in that league. The league's trees are separate
+from the permanent ones and do not fold into them when the league ends. That is
+the most re-grind of the three options and the cheapest to build: the tree is
+already partitioned by lethality mode, and a league is one more key on the same
+partition.
+
+### Why the owner chose it, as far as the record says
+
+The issue's own survey found that every shipped game in the genre with leagues,
+cycles or realms partitions meta-progression by them first and by lethality mode
+second: Path of Exile, Path of Exile 2, Diablo III and Diablo IV all do; Grim
+Dawn, which has no leagues, does not partition by them. The owner's answer
+follows the genre. No further reasoning was given and none is invented here.
+
+### What this does not settle
+
+The two other options remain as the record of what was considered. Whether a
+league's trees are kept read-only after it ends, deleted, or shown in a history,
+is not decided by "Option A" and is part of issue #58, the league infrastructure.
+
+---
+
 ## 2026-09-14 — Five events that cannot be clocks, because a clock is something done TO a character and these are things it did
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (what a
@@ -42031,7 +42071,7 @@ Five questions surfaced while writing the rule. Each is its own issue.
 |---|---|
 | #285 | The shared stash and the auction house are not partitioned, so gear can still cross the boundary the tree no longer crosses. **Answered 2026-08-05: they are now partitioned the same way. See the entry at the top of this file.** |
 | #286 | A Solo Self-Found character consumed by Worn Residue is the only owner of its tree, so "Empire progress is kept" has no referent. **Answered 2026-08-05: the tree is never destroyed and the next Solo Self-Found character in that mode inherits it. See the entry near the top of this file.** |
-| #287 | Whether a seasonal league is a fourth partition. Every game in the table above that has leagues, cycles or realms partitions by them first; Grim Dawn, which has none, does not. Still open, and now labelled `needs-operator`. |
+| #287 | Whether a seasonal league is a fourth partition. Every game in the table above that has leagues, cycles or realms partitions by them first; Grim Dawn, which has none, does not. **Answered 2026-08-06 by the project owner: option A, a league resets the tree. Recorded in the entry dated 2026-09-14 headed "A seasonal league resets the empire upgrade tree".** |
 | #288 | Whether the empire tree can be respecced, and whether the four tier capstones being inherited already chosen is intended. **Answered 2026-08-05: it can be respecced at a cost in days, and the inheritance is intended. See the entry near the top of this file.** |
 | #289 | Whether Heretic's 25% extra surge dungeons over-compensate for its tree starting empty. |
 
