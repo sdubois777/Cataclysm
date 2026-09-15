@@ -1532,6 +1532,53 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         return openpyxl.load_workbook(workbook_with(
             tmp_path / "reach.xlsx", {"Passive Effects": self.sheet(rows)}))
 
+    # THE FOUR CHECKS THE SHEET SHARES WITH THE ENCHANTMENT SHEETS, on the
+    # passive path. Issue #1593 moved `passive_effects` onto
+    # `_condition_and_scale`; until then no test drove these four refusals
+    # through this function, so the move could have dropped one in silence.
+
+    def test_an_unknown_condition_is_refused_on_a_passive_row(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "while_dancing", 3, None, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="Passive Effects row .*cannot judge"):
+            gen.passive_effects(rows)
+
+    def test_a_value_beside_a_condition_that_compares_nothing_is_refused_on_a_passive_row(
+            self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "while_bleeding", 5, None, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="compares nothing"):
+            gen.passive_effects(rows)
+
+    def test_a_condition_value_outside_its_range_is_refused_on_a_passive_row(
+            self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             "health_at_or_below", 500, None, None, None],
+        ])
+        with pytest.raises(gen.DataError, match="between"):
+            gen.passive_effects(rows)
+
+    def test_an_unknown_scale_is_refused_on_a_passive_row(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "moons_held", 1, None],
+        ])
+        with pytest.raises(gen.DataError, match="Passive Effects row .*cannot judge"):
+            gen.passive_effects(rows)
+
+    def test_a_scale_step_of_nothing_is_refused_on_a_passive_row(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "armor", "increased", 3,
+             None, None, "minions_held", 0, None],
+        ])
+        with pytest.raises(gen.DataError, match="step of nothing"):
+            gen.passive_effects(rows)
+
     def test_a_condition_row_carries_its_radius_to_the_output(self, tmp_path):
         rows = self.book(tmp_path, [
             ["Ravager_basic_spine_003", "attack_damage", "increased", 2,
