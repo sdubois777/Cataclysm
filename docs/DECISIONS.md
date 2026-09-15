@@ -109,7 +109,7 @@ being absorbed in silence.
 | Row | Blocked on |
 | :-- | :-- |
 | `Healing skills also restore 10%-20% of the healed amount as energy shield` | [#1822](https://github.com/sdubois777/Cataclysm/issues/1822) -- `Type.Heal` is on **zero** of the 403 weapon skills |
-| `Each resource or charge consumed restores 1%-3% of your maximum HP` | [#1844](https://github.com/sdubois777/Cataclysm/issues/1844) -- nothing spends the class resource as a cost, and `UCataclysmStacks::Spend` has no caller |
+| `Each resource or charge consumed restores 1%-3% of your maximum HP` | [#1844](https://github.com/sdubois777/Cataclysm/issues/1844) -- nothing spends the class resource as a cost, and `UCataclysmStacks::Spend` is called from no production code -- only from its own test file, nine times |
 
 **Building an event for either would be a mechanism with nothing on the other end
 of it**, which is the trap this work has been avoiding row by row.
