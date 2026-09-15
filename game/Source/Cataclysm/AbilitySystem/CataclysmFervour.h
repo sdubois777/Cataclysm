@@ -42,11 +42,27 @@ class ACataclysmCharacterBase;
  * missing are different rules rather than different numbers, and each needs its
  * own code in its own place.
  *
- * THE RAVAGER'S IS THE LARGEST OF THE FOUR LEFT, and not the same work again.
- * It needs a hook counting what one attack hit and a proximity query, and its
- * row is the only one of the six that states a DECAY -- nothing in the game
- * empties Fervour on a timer, which is also why the Berserker's is unbuilt. The
- * Ritualist's needed none: its row says it keeps the default of not decaying.
+ * THE RAVAGER'S IS PART BUILT, AND THIS PARAGRAPH SAID THE OPPOSITE UNTIL
+ * ISSUE #1515. It read "the largest of the four left" and "nothing in the game
+ * empties Fervour on a timer"; the first stopped being true and the second was
+ * made false by the very change that added `DecayStep` below. A comment that
+ * describes the present tense is wrong the moment the present moves, and this
+ * one described a gap its own file then filled.
+ *
+ * WHAT IS BUILT: the rate from the enemies standing near, and the decay once
+ * nothing is in reach. Both shipped together, because the decay is the rule
+ * that makes the rate worth holding.
+ *
+ * WHAT IS LEFT OF IT: one clause, "1 for each enemy your attacks hit". No count
+ * of how many enemies one blow hit is carried where a blow resolves, and that
+ * count also unlocks `Cleaving Arc` and `Sundering`, so it is its own change.
+ *
+ * AND THE DECAY NOW EXISTS, so "nothing empties Fervour on a timer" is no
+ * longer a reason for anything. The Berserker's generator was refused partly on
+ * that ground and that ground is gone; whatever else it needs should be
+ * re-derived rather than inherited from this sentence.
+ *
+ * The Ritualist's needed no decay: its row keeps the default of not decaying.
  *
  * A SEPARATE CLASS OF STATIC FUNCTIONS, like `UCataclysmDamageCalculation`,
  * `UCataclysmLeech` and `UCataclysmRegeneration`. `FervourFor` below is
