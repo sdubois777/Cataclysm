@@ -827,9 +827,9 @@ than a fault: the shared pool is what makes spreading thinner mean something.
 
 | Class | Identity |
 | :-: | :-: |
-| Bulwark | The defensive anchor. Masters of block, armor, and Resolve. Can absorb punishment and retaliate with stored energy. Excels at being an immovable frontliner. Resource: Resolve. |
-| Berserker | Fury-driven melee aggressor. Builds Fury on crits, fires off devastating Berserking strikes at max Fury. Two sub-identities: 2H/Wrath (heavy hits, AOE, execute) and DW/Frenzy (attack speed, hit volume, chaining). Resource: Fury. |
-| Saboteur | Trap and gadget specialist. Lays proximity mines, deploys turrets and ballistas, and controls space through deployables. Evasion woven throughout the tree as a class-wide survival stat. Pairs with Dagger, Crossbow, and Spear. Resource: Preparation. |
+| Bulwark | The defensive anchor. Masters of block and armor. Can absorb punishment and retaliate with stored Fervour. Excels at being an immovable frontliner. |
+| Berserker | Melee aggressor. Builds Fervour on crits, fires off devastating Berserking strikes at full Fervour. Two sub-identities: 2H/Wrath (heavy hits, AOE, execute) and DW/Frenzy (attack speed, hit volume, chaining). |
+| Saboteur | Trap and gadget specialist. Lays proximity mines, deploys turrets and ballistas, and controls space through deployables. Evasion woven throughout the tree as a class-wide survival stat. Pairs with Dagger, Crossbow, and Spear. |
 
   
 
