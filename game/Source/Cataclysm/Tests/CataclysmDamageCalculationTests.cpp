@@ -56,6 +56,13 @@ namespace CataclysmDamageTest
 
 			// A large health pool so the tests measure the calculation rather
 			// than running into the floor at zero.
+			//
+			// A FLOAT NEAR 1,000,000 STEPS IN UNITS OF 0.0625, so a blow measured as the
+			// difference of two readings of this pool is quantised to that: an expected
+			// figure that is not a multiple of 0.0625 (a -40% blow of 220.5 is 132.3, read
+			// as 132.3125) misses a 0.01 tolerance however correct the engine is. Pick
+			// figures that land on the grid, or use a smaller pool the way
+			// CataclysmMinionGearTests.cpp does. Issue #1728.
 			Vitals->SetMaxHealth(1'000'000.0f);
 			Vitals->SetHealth(1'000'000.0f);
 		}

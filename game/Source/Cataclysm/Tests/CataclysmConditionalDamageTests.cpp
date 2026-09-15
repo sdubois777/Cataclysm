@@ -134,6 +134,13 @@ namespace CataclysmConditionalDamageTest
 
 			// Deep enough that nothing here kills it, so every hit is measured
 			// in full rather than being cut short at zero health.
+			//
+			// A FLOAT NEAR 1,000,000 STEPS IN UNITS OF 0.0625, so a blow measured as the
+			// difference of two readings of this pool is quantised to that: an expected
+			// figure that is not a multiple of 0.0625 (a -40% blow of 220.5 is 132.3, read
+			// as 132.3125) misses a 0.01 tolerance however correct the engine is. Pick
+			// figures that land on the grid, or use a smaller pool the way
+			// CataclysmMinionGearTests.cpp does. Issue #1728.
 			AbilitySystem->SetNumericAttributeBase(
 				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1'000'000.0f);
 			AbilitySystem->SetNumericAttributeBase(
