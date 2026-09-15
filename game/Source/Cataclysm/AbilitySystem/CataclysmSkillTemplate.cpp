@@ -69,10 +69,14 @@ float UCataclysmSkillTemplate::GetDamagePercent() const
 		return DamagePercentOverride;
 	}
 
-	// THE SLOT'S FIGURE WHEN THE SKILL STATES NONE, which every skill in
-	// the game does today. That is what makes this landable before the 112
-	// designed skills have numbers written: nothing behaves differently
-	// until one does.
+	// THE SLOT'S FIGURE WHEN THE SKILL STATES NONE, which is the ordinary case
+	// and not a fault: most rows of `game/Data/WeaponSkills.csv` state no
+	// figure of their own and take their slot's. This said "every skill in the
+	// game" took the fallback, and that stopped being true with issue #1155,
+	// which wrote the figure on the rows whose descriptions state one -- so
+	// the branch above is not dead code; it decides the damage of every skill
+	// that states a percentage, the two hardest Ultimates among them. Issue
+	// #1243.
 	const UDataTable* Table = UCataclysmSkillSlots::LoadGeneratedTable();
 	const FCataclysmSkillSlotNumbers Numbers =
 		UCataclysmSkillSlots::NumbersFor(Table, Slot);
