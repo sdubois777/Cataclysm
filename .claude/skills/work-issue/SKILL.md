@@ -139,9 +139,12 @@ python tools/unreal_lock.py release <a name for your session>
   `python tools/unreal_build.py tests` prints: how many tests were performed,
   and the line after the counts naming any that checked half of what they are
   named for.
-- **Fifteen tests report themselves as skipped in a git worktree, and that is
+- **Some tests report themselves as skipped in a git worktree, and that is
   expected.** The Paragon art is gitignored and exists only in the main
-  checkout.
+  checkout. Do not trust a count written here: this said fifteen while a run
+  reported 36 (issue #1334), and the number grows with every creature added.
+  The line `python tools/unreal_build.py tests` prints after the pass count is
+  the only figure worth quoting.
 
 Testing a widget has one trap of its own. The automation command passes
 `-nullrhi` and runs with no editor, so a test can construct a widget class but
