@@ -4363,6 +4363,18 @@ The capital is the settlement the player walks around between runs, where the
 NPC services in section IX are. Losing the Pillar ends the run and takes the
 capital with it.
 
+**What the capital is, as a space.** One hub level, not a town to explore: a
+walkable interior inside the Pillar holding the services the Capital Services
+table in section IX lists (the Enchanter, the Smith at the Cataclysmic Forge,
+the Jeweler, the Auction House, the Trainer, the Side Quests board and the
+stash), each a short walk from where the player arrives, and overlooking the
+empire so the burning map is visible from inside it. It has no enemies, no
+timer of its own and no procedural layout; every service costs days, as the
+Capital and Crafting section says, and the hub exists to make that cost
+legible rather than to be a place in itself. Ruled 2026-09-14 under the owner's
+delegation, issue #34, which had asked for the capital's layout since the
+document was written.
+
   
 
 **Distance is counted in rings.** Every lane runs orthogonally in lattice space
