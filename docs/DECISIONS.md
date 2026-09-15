@@ -2,6 +2,119 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — Five events that cannot be clocks, because a clock is something done TO a character and these are things it did
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (what a
+pool action carries), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`
+and `.cpp` (firing one, and testing a row against the event),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (the amount a
+health cost took), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and
+`.cpp` (hearing the three announcements),
+`game/Source/Cataclysm/Items/CataclysmItem.cpp` (collecting the new columns),
+`tools/generate_datatables.py`,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmPlayerMovementTests.cpp`. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### Why none of the five could be a clock
+
+[#1843](https://github.com/sdubois777/Cataclysm/pull/1843) let a worn enchantment
+move a pool when an event happens, and found that no subscriber was needed: every
+event a row could name was already a `NoteX()` on the character's own ability
+system component.
+
+**That does not generalise, and the reason is worth stating.** Every clock this
+project has records something done TO the character -- being hit, blocked, evaded,
+charged a cost -- so its timestamp is stamped on whoever the blow landed on. A kill,
+a critical strike, a death nearby, a skill use and a hit DEALT all belong to whoever
+dealt it. There is no site on the character's own component to stamp them at, so
+they arrive from the combat announcements instead.
+
+### `hit_dealt` is not `seconds_after_hit_taken`
+
+The same word at opposite ends of one blow. `seconds_after_hit_taken` is stamped on
+the character that was hit; `hit_dealt` fires on the character that hit. They are
+one character apart in writing and a whole side of the blow apart in meaning, so a
+test pins that both are known, that they differ, and that only one of them is in
+the list of events with no clock.
+
+### Heard on the pawn, by extending a binding that was already there
+
+`ACataclysmPlayerCharacter` already listened for the death announcement, bound for
+the rule that a stun ends when you kill the enemy that applied it. That handler
+gained the kill and the nearby-death events rather than a second binding sitting
+beside the first, and two more bindings hear hits and skill uses.
+
+**BINDING TURNS AN ANNOUNCEMENT ON.** Both raisers return early when nothing is
+listening, so before this nothing built a skill-use notice at all. The hit one is
+already on inside a dungeon, where the game mode listens for its own rules.
+
+### A row may be scoped, and an event with no tags refuses a scoped row
+
+Two authored rows are scoped: "melee kills" and "strike skills ... on hit".
+`Type.Melee` is on 30 of the 403 rows of `game/Data/WeaponSkills.csv` and
+`Type.Strike` on 31, measured 2026-09-14. The tags tested are the causing skill's,
+carried by the announcement, and the rule matching them is the stat pipeline's own,
+including that a required tag matches its children.
+
+**An event that carries no tags cannot satisfy a scoped row.** A row scoped to melee
+must not fire on an event that cannot say whether it was melee, so the absence is a
+refusal rather than a pass.
+
+### A row may be gated, and the condition is judged at the moment
+
+That is the whole difference from a stat row: the pipeline asks a stat row's
+condition when something reads the stat, and a pool moves at a moment instead.
+[#1843](https://github.com/sdubois777/Cataclysm/pull/1843) REFUSED a condition on an
+action row deliberately, while nothing judged one there. This judges it, so
+"killing an enemy while below 30% HP" can be written. A scale stays refused: it
+sizes a stat's modifier and an action has no stat.
+
+### A fraction of the amount the event carried
+
+"Skills that cost HP restore that amount as mana" is a fraction of what the cost
+took rather than of a pool, so the record of a health cost now carries how much was
+paid. **It is the same figure the Fervour gain beside it reads**, so the resource a
+cost grants and the mana a cost restores cannot disagree about what the cost was.
+
+Only events that carry an amount may be named by such a row, and the generator
+refuses the rest: a row asking for the amount of an event that carries none would
+resolve to nothing and say so nowhere.
+
+### What the percentage is of became a choice of three, not two flags
+
+The pool's maximum, what the character currently holds, or the amount the event
+carried. Two flags would have carried an unwritten rule that both must not be true
+at once; a choice of three cannot be in that state.
+
+### "Near you" is 300 cm, copied as a conclusion
+
+The same radius three dungeon rules use for a thing that happens at a point --
+Withered Ground, Singularity Wells and Infernal Rain, which tie their three together
+with a static assertion. **Declared on the character rather than reached for across
+the module**, because an enchantment is not a dungeon rule and a character file
+should not depend on the dungeon rule library to know how far away is near.
+
+### The basic attack is not a skill use
+
+It is the one slot the design calls automatic and free, and a row generating
+resource on it would generate constantly. The slot is on the announcement, so this
+is one comparison rather than a guess about a skill's name.
+
+### Two of the nine rows are not here, and neither is blocked on this mechanism
+
+Each fires on something the game does not do, and each has an issue rather than
+being absorbed in silence.
+
+| Row | Blocked on |
+| :-- | :-- |
+| `Healing skills also restore 10%-20% of the healed amount as energy shield` | [#1822](https://github.com/sdubois777/Cataclysm/issues/1822) -- `Type.Heal` is on **zero** of the 403 weapon skills |
+| `Each resource or charge consumed restores 1%-3% of your maximum HP` | [#1844](https://github.com/sdubois777/Cataclysm/issues/1844) -- nothing spends the class resource as a cost, and `UCataclysmStacks::Spend` has no caller |
+
+**Building an event for either would be a mechanism with nothing on the other end
+of it**, which is the trap this work has been avoiding row by row.
+---
+
 ## 2026-09-14 — A creature can be an illusion, the flag lives where its damage is recomputed rather than being written once, and a public setter that took a zero was dropping it
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the class
