@@ -198,9 +198,11 @@ def _axis(name: str, full: tuple[int, ...], smoke: bool) -> tuple[int, ...]:
 
     WHY THE SMOKE RUN IS NARROWED AT ALL. `sim/tests/test_analysis_scripts.py`
     executes this file, so its default cost is paid by continuous integration on
-    every pull request. The full 24-cell grid is 192 campaigns and thirteen
-    seconds of a suite that runs in about three minutes, and at one campaign a
-    cell it measures nothing -- the run says so itself. The two ends are kept
+    every pull request. The full grid is `grid_cells()` batches -- the worlds
+    times the counts times the intervals times the two blocks, 240 at the full
+    axes -- and at one campaign a cell it measures nothing; the run says so
+    itself. (This said 24 cells and 192 campaigns when there were four worlds;
+    issue #1433.) The two ends are kept
     rather than the middle because they are the extremes the code has to
     survive: the smallest wave at the longest gap, and the largest wave at the
     shortest, which is also the cell where `surge_count_max` had to be lifted.
@@ -215,16 +217,20 @@ def _axis(name: str, full: tuple[int, ...], smoke: bool) -> tuple[int, ...]:
 #: Campaigns per seed block. TWO DISJOINT BLOCKS RUN AT EVERY CELL and both are
 #: printed, so a cell costs twice this.
 #:
-#: THE DEFAULT IS A SMOKE TEST AND THE OUTPUT SAYS SO. The grid is 24 cells in
-#: four worlds, which is 192 batches -- eight times what `analyse_siege_dose.py`
-#: sweeps -- so the same default of 3 would cost a minute of the fast suite.
+#: THE DEFAULT IS A SMOKE TEST AND THE OUTPUT SAYS SO. The grid is the counts
+#: times the intervals in every world of `WORLDS`, times two blocks: `grid_cells()`
+#: prints it, 240 batches at the full axes -- many times what
+#: `analyse_siege_dose.py` sweeps -- so the same default of 3 would cost a
+#: minute of the fast suite.
 #: `sim/tests/test_analysis_scripts.py` runs this file, and none of its checks
 #: depends on the size: they check the day ledger, the arithmetic tables, the
 #: noise-floor identity and the fan-out, not a campaign share.
 #:
 #: Set `CATACLYSM_SURGE_CADENCE_TRIALS=1000` for 2,000 campaigns a cell, which is
-#: the size the figures on issue [#1090] were taken at. That is 192,000 campaigns
-#: and about five core-hours, so raise `CATACLYSM_SURGE_CADENCE_JOBS` with it.
+#: the size the figures on issue [#1090] were taken at. That is 2,000 times
+#: `grid_cells()` campaigns (240,000 at the full axes, 192,000 when there were
+#: four worlds) and several core-hours, so raise `CATACLYSM_SURGE_CADENCE_JOBS`
+#: with it.
 TRIALS = int(os.environ.get("CATACLYSM_SURGE_CADENCE_TRIALS", "1"))
 
 #: Below this many campaigns a block, every share printed is noise and the run
@@ -260,7 +266,8 @@ INTERVALS = _axis("CATACLYSM_SURGE_CADENCE_INTERVALS", (30, 60, 90, 120), SMOKE)
 #: not a figure. The grid itself runs at each world's own tier. Issue #1397.
 ACTIVE = 1
 
-#: `(label, tree, difficulty tier)`. The four worlds every cell is measured in.
+#: `(label, tree, difficulty tier)`. The worlds every cell is measured in; count
+#: the entries rather than trusting a number here (this said four; issue #1433).
 #:
 #: TIER 4 IS THE SECOND TIER AND HERE IS WHY. The tier is the number of active
 #: Cataclysms, so it multiplies the realised surge size: at tier 4 the shipped
@@ -294,7 +301,7 @@ WORLDS = (
 
 #: Restrict the grid to some of `WORLDS`, by comma-separated index, so a long run
 #: can be split across background jobs. `CATACLYSM_SURGE_CADENCE_WORLDS=1,3` runs
-#: the two Explorer worlds. Empty means all four.
+#: two of the Explorer worlds. Empty means all of them.
 _pick = os.environ.get("CATACLYSM_SURGE_CADENCE_WORLDS", "").strip()
 SELECTED_INDICES = (tuple(range(len(WORLDS))) if not _pick
                     else tuple(int(i) for i in _pick.split(",")))

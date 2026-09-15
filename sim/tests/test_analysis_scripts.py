@@ -2671,8 +2671,9 @@ def cadence_run():
     """About 3.4 seconds -- the second most expensive script in this file.
 
     Its default narrows the sweep axes to their two ends for exactly this
-    reason; see `_axis` in the script. The full 24-cell grid is 192 campaigns
-    and thirteen seconds, and at one campaign a cell it measures nothing.
+    reason; see `_axis` in the script. The full grid is `grid_cells()` batches
+    (240 at the full axes; this said 24 cells and 192 campaigns when there were
+    four worlds, issue #1433) and at one campaign a cell it measures nothing.
     """
     return run("analyse_surge_cadence.py")
 
