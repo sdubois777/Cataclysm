@@ -175,6 +175,15 @@ public:
 	 * Both together, because setting the maximum alone leaves an enemy at its
 	 * old current value, and setting the current alone is clamped to the old
 	 * maximum -- so either one on its own quietly does nothing useful.
+	 *
+	 * THE NAME PROMISES LESS THAN IT DOES, AND THE NUMBER IS NOT THE ONE STORED.
+	 * Issue #1668. This writes the MAXIMUM health and lets the current follow
+	 * it, and the figure passed is scaled first: by the rarity's health
+	 * multiplier and by the active dungeon modifiers' maximum-health
+	 * multiplier, in `ApplyStartingAttributes`. `SetHealth(1000.0f)` on a
+	 * Legendary does not leave it with 1000 maximum health, and a test that
+	 * asserts it does is asserting something this never promised. Read the
+	 * attribute back rather than trusting the argument.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetHealth(float NewMaxHealth);
