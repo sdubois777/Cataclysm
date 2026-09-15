@@ -3011,7 +3011,7 @@ Eight affixes, one per damage type: **increased damage against War / Demonic / D
 
   
 
-**What that produces over a campaign.** A run starts with one Cataclysm active and adds one each time a Cataclysm is defeated. The generic affix is worth 125% whatever stands in front of the player; a type-specific one is worth 400% against its own type and nothing against the other seven, so across C active Cataclysms it averages 400/C. The two are equal at C = 3.2. The type-specific affix is the better use of a prefix for the first three Cataclysms of a campaign and the generic one from four onward. That is the same shape the resistance ladder has, and it is where the reason to change equipment between runs comes from.
+**What that produces across runs.** The number of active Cataclysms is the difficulty tier: it is fixed for the length of a run and grows only between runs, when defeating the boss dungeon adds a Cataclysm to the next one (see Ending a Run). The generic affix is worth 125% whatever stands in front of the player; a type-specific one is worth 400% against its own type and nothing against the other seven, so across C active Cataclysms it averages 400/C. The two are equal at C = 3.2. The type-specific affix is the better use of a prefix at tiers one to three and the generic one from tier four onward. That is the same shape the resistance ladder has, and it is where the reason to change equipment between runs comes from.
 
   
 
