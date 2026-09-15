@@ -3279,7 +3279,7 @@ A weapon carries two things no other item has: a physical **sub-type**, and a li
 
   
 
-**Dual wielding is still the primary route to multiclassing that section V describes, and the tier cap is what makes it so.** The raw limits tie — two one-handers reach eight damage types and so does a single two-hander. What separates them is when. A dual wielder holds all eight from tier 4; a two-hander gains one type per tier and does not catch up until tier 8. So dual wielding leads at every tier from 1 to 7, by the widest margin at tier 4, and is only matched at the very end. Every damage type present unlocks that type's three class trees, while the two-hander stays ahead on raw damage throughout.
+**Dual wielding is still the primary route to multiclassing that section V describes, and the tier cap is what makes it so.** The raw limits look tied — two one-handers reach eight damage types and a two-hander's base limit is also eight — but the Damage Types and Skill Availability table above restricts which damage types each weapon type may carry at all, and no two-handed weapon is designed for all eight: the Staff reaches seven, the Greatsword, Spear and Warhammer six, the Greataxe four and the 2H Crossbow three. So a single two-hander never reaches eight, at any tier. A dual wielder holds all eight from tier 4; a two-hander gains one type per tier up to its own ceiling and never catches up. Dual wielding leads at every tier, by the widest margin at tier 4, and is never matched. Every damage type present unlocks that type's three class trees, while the two-hander stays ahead on raw damage throughout. (Corrected 2026-09-14, issue #875: this said a two-hander catches up at tier 8.)
 
   
 
