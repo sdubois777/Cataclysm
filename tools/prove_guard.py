@@ -97,7 +97,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -475,29 +475,6 @@ def break_and_run(edits: Mapping[str, Callable[[str], str]],
         return broken
 
     return dataclasses.replace(broken, restored=run_without_bytecode(command, env))
-
-
-def prove_each(cases: Iterable[tuple[str, Mapping[str, Callable[[str], str]]]],
-               command: Sequence[str],
-               *,
-               restored_half_supplied_by: str | None = None,
-               ) -> list[tuple[str, GuardResult]]:
-    """Run `break_and_run` once per case and collect what each printed.
-
-    For the common shape: several guards, one command, and a report of which
-    case made it fail. Each case is restored before the next one starts, so one
-    case cannot be attributed to another.
-
-    THE OPT-OUT APPLIES TO EVERY CASE OR TO NONE, which is the right shape here:
-    the cases share one command, so whatever supplies a passing half for one
-    supplies it for all of them. Each case still pairs by default, so N cases
-    cost N second runs -- which is the honest cost, and the reason the opt-out
-    exists for proofs that run inside the suite they are proving.
-    """
-    return [(label, break_and_run(
-                edits, command,
-                restored_half_supplied_by=restored_half_supplied_by))
-            for label, edits in cases]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
