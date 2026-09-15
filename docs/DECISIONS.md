@@ -2,6 +2,119 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — A creature can be an illusion, the flag lives where its damage is recomputed rather than being written once, and a public setter that took a zero was dropping it
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the class
+every enemy in the game is), `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
+`.cpp` (the library of dungeon rules: each row's key, its figures and its arithmetic),
+`CataclysmDungeonGameMode.cpp` (which builds and populates a floor),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for
+these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that
+hold each rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Chaos_Illusory_Enemies` in `game/Data/DungeonModifiers.csv`: "Some enemies are illusions. They
+look and act like real enemies but do no damage."
+
+### It is the smallest rule in the file, and that is a fact about the game rather than the row
+
+**Every route by which a creature damages the player takes its figure from one attribute,
+`attack_damage`, on that creature.** Measured 2026-09-14 by reading all 30 damage-apply call sites
+across the 133 non-test source files of `game/Source/Cataclysm`, each with the expression that
+sizes it: the basic attack, the charge, the Brute's stomp, the Abyssal Warden's roar, the
+Gatekeeper's ability, every creature projectile, the Hellhound's burning lane, the Gatekeeper's
+burning ground, and the exploding brand a creature modifier grants. The two burning-ground routes
+were the ones expected to break this and do not — both compute a damage-per-second from the
+creature's own attack damage immediately before creating the patch.
+
+**One term does not multiply by it, found by reading the formula rather than the comment above
+it.** A percent-based blow resolves as `(attack damage × percent + flat) × increases`, where
+`flat` is spell damage whenever the skill carries the spell tag — and the Succubus's projectile
+does. It still comes to nothing, because nothing in `game/Source` gives a creature any spell
+damage. **That is a fact about today and not a law**, so it is written as one and an automation
+test asserts it.
+
+### One in four is a judgement, and the row states nothing
+
+"Some" is the only quantity in the sentence. The rule works by uncertainty, so it fails in both
+directions: at a large share most of what a player meets is harmless and the floor stops being
+dangerous, and at a small one a player finishes a dungeon without meeting an illusion. A quarter
+keeps most enemies real and still puts illusions in front of a player on every floor.
+
+**Deliberately not the 10 that the two rules before this took.** That figure is what
+`game/Data/DungeonModifiers.csv` uses for a *chance fired by an event*, which is what
+`Pestilence_Spore_Clouds` and `Demonic_Hellfire` both needed. This is a share of a floor's
+population, decided once per creature as it is placed, and nothing in the table sets a precedent
+for one.
+
+**Decided per creature rather than as a count per floor.** A count would have to know how many
+creatures a floor holds before placing any of them, and would make the number predictable to a
+player who counted.
+
+### The flag lives on the creature, and that was a choice between two working answers
+
+`ACataclysmEnemyCharacter::ApplyStartingAttributes` is the one place a creature's designed numbers
+are decided, and **six public setters re-run it** — the ones that set health, attack damage,
+armour, rarity and energy shield, and the one that draws a creature's modifiers. Each recomputes
+the attack damage from the creature's designed figure and its rarity's damage scale, so a zero
+written once is undone by any of them.
+
+**The alternative would have worked today and is recorded because it would.** Measured across
+`game/Source` outside the tests, the only caller of any of those six from outside the class is the
+floor population pass itself, so writing the zero after that pass would also have been correct.
+It was not taken because that argument is a proof about the **absence** of a call, and it expires
+the first time anything raises a creature's armour mid-floor, promotes it, or re-draws its
+modifiers. A flag the recompute honours cannot expire. An automation test calls all six setters in
+turn and asserts the creature is still harmless after each.
+
+### Nothing else about an illusion changes, which is the row's own sentence
+
+"They look and act like real enemies" is why an illusion keeps its kind's health and armour, is
+drawn and animated as its kind, chases and attacks as its kind, takes blows, dies, announces its
+death, and is worth what its kind is worth. Only the damage its attacks carry is zero.
+
+**So `Demonic_Hellfire` on an illusion explodes for nothing, and no code knows about both rules.**
+That rule's explosion is the dying creature's own attack damage multiplied by a count, and it
+refuses at zero. A floor carrying both needs nothing written for the combination.
+
+**Two things still reach the player from an illusion and the row permits both.** The Abyssal
+Warden's aura strips two resistances through a status effect that deals no damage, and a status
+effect carrying a flat damage-per-tick would not scale with attack damage at all. No creature
+applies one of the second kind today — that resistance strip is the only status effect any
+creature applies — so "do no damage" holds as written.
+
+### A separate defect the rule uncovered, which the illusion does not depend on
+
+**`SetAttackDamage(0)` did not zero a creature's damage.** `ApplyStartingAttributes` guarded its
+write with `StartingAttackDamage > 0.0f`, so asking for zero recorded the zero and skipped the
+write: the attribute kept whatever it held, and a creature already given its designed damage went
+on dealing it in full with nothing reporting anything. The declaration of `StartingAttackDamage`
+claimed the opposite in its own second sentence — "Zero means it deals nothing" — and that
+sentence is now true.
+
+**The illusion answers zero whatever that guard says**, and the source says so beside it, because
+the two changes would otherwise read as one. The guard is fixed here because building this rule is
+what uncovered it and because a public setter documented as working should work.
+
+**Five existing tests already ask for zero through that setter** — in the tests for carried rocks,
+conditional damage, enemies in reach, minion attack speed and the passive tree. Each was
+expressing the intent "make this deal nothing" through a call that did nothing, and each got what
+it wanted by accident because its creature had never been given damage, so the attribute was
+already zero. With the guard corrected they write zero over zero.
+
+### A check of mine that could not fail, caught before it was proved
+
+One new Python check asserted that `ApplyStartingAttributes` names `bIsAnIllusion`. **A comment
+inside that same function points a reader at the flag**, so the check passed with the line that
+reads it deleted — a check that cannot fail for the thing it was written for. It now requires the
+flag to be *read*, and the guard proof for it deletes the code while leaving the comment, which is
+exactly the state that fooled the first version.
+
+---
+
 ## 2026-09-14 — The Ravager's Fervour fills from the enemies standing near it and drains when contact is lost
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h`

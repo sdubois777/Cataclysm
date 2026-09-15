@@ -66,6 +66,33 @@ def flat(text: str) -> str:
     return " ".join(text.split())
 
 
+def body_of(text: str, opening: str) -> str:
+    """The braced body that follows `opening`, by counting braces.
+
+    A FIFTH COPY OF THIS FUNCTION, AND THAT IS SEEN RATHER THAN CARELESS.
+    `tools/tests/` already holds four -- in the floor-effects reader test, the
+    condition-list test, the screen-press test and the hooks test -- because
+    there is no shared helper module for this suite, and inventing one for a
+    fifth caller is a larger change than the one it would serve. Said here so
+    the next person counting copies knows it was counted.
+
+    A REGEX CANNOT DO THIS. Every function it is pointed at contains nested
+    braces, and a lazy match to the first closing brace silently returns a
+    fragment. A fragment is the dangerous answer: anything after the cut reads
+    as absent.
+    """
+    start = text.index(opening)
+    depth = 0
+    for index in range(text.index("{", start), len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1]
+    raise AssertionError(f"braces never balanced after {opening!r}")
+
+
 def constant(name: str, header: str = "") -> float:
     """A `static constexpr float` by name, from the effects header by default.
 
@@ -1311,6 +1338,134 @@ def test_the_two_kinds_of_mushroom_are_drawn_in_two_real_and_different_colours()
         "a player can tell a mushroom that helps from one that hurts; the same "
         "name for both makes ACataclysmGroundZone::DrawnAsType pointless for this "
         "rule.")
+
+
+def test_illusory_enemies_row_still_states_no_figure_of_its_own():
+    """The share of a floor that is illusions is a JUDGEMENT, and this says so.
+
+    "Some enemies are illusions" is the only quantity the row gives, and "some"
+    is not a number. `IllusoryEnemiesSharePercent` is 25 because this rule works
+    by uncertainty and fails in both directions: too many and the floor stops
+    being dangerous, too few and a player finishes a dungeon without meeting one.
+
+    THE DAY THE ROW STATES A FIGURE, THE JUDGEMENT STOPS BEING ONE and the
+    constant has to be read off the row instead. That is what this notices.
+    `test_dehydrations_cap_is_still_a_judgement_and_not_the_rows` above is the
+    same shape.
+    """
+    words = flat(rows()["Chaos_Illusory_Enemies"]["Description"])
+    share = constant("IllusoryEnemiesSharePercent")
+
+    assert not re.search(r"\d", words), (
+        f"Chaos_Illusory_Enemies now states a number: {words!r}. "
+        f"IllusoryEnemiesSharePercent is {share:g} as a judgement recorded "
+        "beside the constant in CataclysmDungeonModifierEffects.h, because the "
+        "row gave none. If the row now gives one, read it off the row and say "
+        "so there.")
+    assert "some" in words.lower(), (
+        "Chaos_Illusory_Enemies no longer says 'some'. The rule makes a SHARE "
+        "of each floor's creatures illusions because of that word; a row saying "
+        "'all', or naming particular enemies, wants something else entirely. "
+        + words)
+
+
+def test_illusory_enemies_row_still_says_the_illusions_do_no_damage():
+    """The whole mechanism, held to the words it came from.
+
+    "do no damage" is why the rule zeroes one attribute and changes nothing
+    else. A row that instead said an illusion vanishes when hit, or has no
+    health, or grants nothing, would need a different rule entirely.
+    """
+    words = flat(rows()["Chaos_Illusory_Enemies"]["Description"]).lower()
+
+    assert "do no damage" in words, (
+        "Chaos_Illusory_Enemies no longer says its illusions do no damage. That "
+        "sentence is the whole rule: ACataclysmEnemyCharacter::bIsAnIllusion "
+        "zeroes the one attribute every creature damage route reads, and "
+        "nothing else about the creature changes. " + words)
+
+
+def test_illusory_enemies_row_still_says_they_are_otherwise_ordinary():
+    """Why the rule changes NOTHING but the damage, held to the row.
+
+    "They look and act like real enemies" is the reason an illusion keeps its
+    kind's health, its rarity, its modifiers, its death announcement and its
+    rewards. A reader who assumed "illusion" meant "not really there" would
+    change several of those; the row says the opposite, and this is what says so.
+    """
+    words = flat(rows()["Chaos_Illusory_Enemies"]["Description"]).lower()
+
+    assert "look and act like real enemies" in words, (
+        "Chaos_Illusory_Enemies no longer says its illusions look and act like "
+        "real enemies. That sentence is why the rule changes one attribute and "
+        "leaves health, rarity, modifiers, death and rewards alone. " + words)
+
+
+def test_the_illusion_is_honoured_where_a_creatures_damage_is_recomputed():
+    """The design decision, held in the source because nothing else holds it.
+
+    WHY IT MATTERS. Six public setters on `ACataclysmEnemyCharacter` re-run
+    `ApplyStartingAttributes`, and each recomputes attack damage from the
+    creature's designed figure. If the illusion were a zero written once at floor
+    population rather than a flag that function honours, any of the six would put
+    the damage back.
+
+    **A C++ TEST DOES COVER THAT** -- it calls all six and asserts the creature
+    stays harmless. This checks something narrower: that the decision still LIVES
+    in that function. A later change could satisfy the C++ test by writing the
+    zero somewhere that happens to run after every setter today, and would then
+    break silently the first time a seventh caller arrived.
+    """
+    source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+              / "CataclysmEnemyCharacter.cpp").read_text(encoding="utf-8")
+
+    body = body_of(source,
+                   "void ACataclysmEnemyCharacter::ApplyStartingAttributes")
+
+    # THE FLAG BEING *USED*, NOT MERELY NAMED. A comment inside this same
+    # function points a reader at `bIsAnIllusion` in the header, so a check for
+    # the bare name passes even with the line that reads it deleted -- a check
+    # that cannot fail for the thing it was written for. Measured before this
+    # was corrected: 4 mentions in the file, 2 of them code.
+    assert re.search(r"bIsAnIllusion\s*\?", body), (
+        "ApplyStartingAttributes in CataclysmEnemyCharacter.cpp no longer READS "
+        "bIsAnIllusion when it writes the attack damage. That function is the "
+        "one place a creature's designed numbers are decided, and six public "
+        "setters re-run it, so an illusion decided anywhere else is undone by "
+        "whichever of them runs next. The field's own declaration carries the "
+        "argument.")
+
+
+def test_asking_a_creature_for_zero_attack_damage_is_not_guarded_away():
+    """The defect fix, held in the source.
+
+    UNTIL ISSUES #1820 AND #41 the write was guarded with
+    `StartingAttackDamage > 0.0f`, so `SetAttackDamage(0)` recorded the zero and
+    SKIPPED THE WRITE. The attribute kept whatever it held, so a creature already
+    given its designed damage went on dealing it in full with nothing reporting
+    anything -- while the declaration of `StartingAttackDamage` claimed the
+    opposite in its own second sentence.
+
+    THIS IS NOT WHAT MAKES AN ILLUSION HARMLESS, and the source says so beside
+    the guard. It is a separate defect that building the illusion uncovered.
+    """
+    source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+              / "CataclysmEnemyCharacter.cpp").read_text(encoding="utf-8")
+
+    body = body_of(source,
+                   "void ACataclysmEnemyCharacter::ApplyStartingAttributes")
+
+    assert re.search(r"StartingAttackDamage\s*>=\s*0\.0f", body), (
+        "ApplyStartingAttributes no longer guards its attack-damage write with "
+        "`StartingAttackDamage >= 0.0f`. At `> 0.0f` a zero asked for through "
+        "SetAttackDamage is recorded and never written, so a creature keeps the "
+        "damage it already had and the declaration of StartingAttackDamage -- "
+        "'Zero means it deals nothing' -- becomes false again.")
+    assert not re.search(r"StartingAttackDamage\s*>\s*0\.0f", body), (
+        "ApplyStartingAttributes contains a `StartingAttackDamage > 0.0f` "
+        "comparison. If the old guard is back, a zero asked for is silently "
+        "dropped. If it is a second, deliberate comparison, narrow this check "
+        "rather than deleting it.")
 
 
 def test_brand_of_the_aggressor_row_still_states_the_count_the_rule_uses():

@@ -107,6 +107,23 @@ namespace CataclysmDungeonModifierEffectsTest
 	const FName FungalOvergrowth(TEXT("Pestilence_Fungal_Overgrowth"));
 
 	/**
+	 * And the only row that changes a creature as it is placed rather than
+	 * acting on the player, on the floor, or on a beat. Issues #1820 and #41.
+	 */
+	const FName IllusoryEnemies(TEXT("Chaos_Illusory_Enemies"));
+
+	/** What a creature's attacks are worth right now, read off the attribute. */
+	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* Theirs =
+			Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		return Theirs
+			? Theirs->GetNumericAttribute(
+				  UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+			: -1.0f;
+	}
+
+	/**
 	 * And the one that saps health faster the deeper the floor is, which a kill
 	 * slows. Issues #1786 and #41.
 	 */
@@ -7423,6 +7440,429 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 			  FName(TEXT("Pestilence")));
 	TestEqual(TEXT("which is what it answers when asked"),
 			  Plain->TypeItIsDrawnAs(), FName(TEXT("Pestilence")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIllusionPopulationTest,
+	"Cataclysm.DungeonModifierEffects.APopulatedFloorMakesTheRolledShareOfItsCreaturesIllusions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIllusionPopulationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE WIRING, DRIVEN THROUGH THE FUNCTION THAT ACTUALLY PLACES CREATURES.
+	// Issues #1820 and #41.
+	//
+	// THIS IS THE TEST THAT NOTICES IF THE RULE IS NEVER CALLED. The two tests
+	// below it read a creature that this test's own code made an illusion, so
+	// deleting the call in `ACataclysmDungeonGameMode` would leave both of them
+	// passing. The floor-panel change that came before this one shipped exactly
+	// that gap and recorded it as issue #1841; this is what that cost buys.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// EMPTIED BEFORE EACH POPULATION, AND NOT LEFT TO THE GAME MODE TO DO.
+	// `PopulateFloor` clears the last floor's creatures only when
+	// `FloorBrief.bSameArenaAsLastFloor` is false -- it is true for every floor
+	// of an arena dungeon, where a wave is meant to join what is already there.
+	// This test builds three floors in turn and counts the creatures on each, so
+	// a floor that kept the previous floor's creatures would make the second
+	// count include real creatures from the first and fail an assertion about
+	// illusions. The rule would be right and the test would be wrong, and the
+	// failure would say "not every creature it placed is an illusion", which
+	// accuses the rule.
+	//
+	// ASSERTED EMPTY RATHER THAN JUST CLEARED, so that a clear which stops
+	// working is a failure here rather than a confusing count later.
+	const auto StartWithNoCreatures = [this, Mode]()
+	{
+		Mode->ClearFloorEnemies();
+		return TestEqual(TEXT("the floor starts with no creatures on it"),
+						 Mode->FloorEnemies.Num(), 0);
+	};
+
+	// HOW MANY OF THE FLOOR'S CREATURES ARE ILLUSIONS, AND HOW MANY CAN STILL
+	// HURT SOMEBODY. Both are counted, because "none is an illusion" and "none
+	// has any damage" are different facts and a fault could produce either.
+	const auto CountThem = [Mode](int32& OutIllusions, int32& OutArmed)
+	{
+		OutIllusions = 0;
+		OutArmed = 0;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : Mode->FloorEnemies)
+		{
+			if (!IsValid(Creature))
+			{
+				continue;
+			}
+			if (Creature->IsAnIllusion())
+			{
+				++OutIllusions;
+			}
+			if (AttackDamageOf(Creature) > 0.0f)
+			{
+				++OutArmed;
+			}
+		}
+		return Mode->FloorEnemies.Num();
+	};
+
+	// A FLOOR WITHOUT THE ROW FIRST, AND IT IS THE CONTROL FOR EVERYTHING BELOW.
+	// If a populated floor placed no creatures at all, every assertion about
+	// illusions would pass having counted nothing.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the plain floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	StartWithNoCreatures();
+	Mode->PopulateFloor();
+
+	int32 Illusions = 0;
+	int32 Armed = 0;
+	const int32 PlacedPlain = CountThem(Illusions, Armed);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the plain floor placed creatures to count: %d"),
+					  PlacedPlain),
+				  PlacedPlain > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row has no illusions"), Illusions, 0);
+	TestEqual(TEXT("and every creature it placed can hurt somebody"),
+			  Armed, PlacedPlain);
+
+	// NOW THE FLOOR THAT CARRIES IT, WITH EVERY ROLL BELOW THE SHARE.
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.IllusoryEnemiesRoll"),
+								  TEXT("0"));
+		Mode->DungeonModifiers = {IllusoryEnemies};
+		Mode->FloorNumber = 1;
+		if (!TestNotNull(TEXT("the illusory floor was built"), Mode->BuildFloor()))
+		{
+			return false;
+		}
+		StartWithNoCreatures();
+		Mode->PopulateFloor();
+
+		const int32 PlacedAll = CountThem(Illusions, Armed);
+		if (!TestTrue(TEXT("that floor placed creatures too"), PlacedAll > 0))
+		{
+			return false;
+		}
+		TestEqual(TEXT("every creature it placed is an illusion"),
+				  Illusions, PlacedAll);
+		TestEqual(TEXT("and not one of them can hurt anybody"), Armed, 0);
+	}
+
+	// AND A ROLL AT EXACTLY THE SHARE IS NOT AN ILLUSION, because the comparison
+	// is strictly below. That boundary is what separates this rule from one
+	// written with `<=`, and nothing else here would notice the difference.
+	{
+		const FString AtTheBoundary =
+			FString::Printf(TEXT("%f"), Effects::IllusoryEnemiesSharePercent);
+		FScopedConsoleString Roll(TEXT("Cataclysm.IllusoryEnemiesRoll"),
+								  *AtTheBoundary);
+		Mode->DungeonModifiers = {IllusoryEnemies};
+		Mode->FloorNumber = 1;
+		if (!TestNotNull(TEXT("the boundary floor was built"), Mode->BuildFloor()))
+		{
+			return false;
+		}
+		StartWithNoCreatures();
+		Mode->PopulateFloor();
+
+		const int32 PlacedNone = CountThem(Illusions, Armed);
+		if (!TestTrue(TEXT("the boundary floor placed creatures"), PlacedNone > 0))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(
+					  TEXT("a roll of exactly %.0f makes no illusion"),
+					  Effects::IllusoryEnemiesSharePercent),
+				  Illusions, 0);
+		TestEqual(TEXT("so all of them can still hurt somebody"),
+				  Armed, PlacedNone);
+	}
+
+	// THE ARITHMETIC ON ITS OWN, WHICH THE THREE FLOORS ABOVE CANNOT SHOW. A
+	// share the rule read from the wrong constant would still produce "all" and
+	// "none" at rolls of 0 and 25.
+	TestTrue(TEXT("a roll below the share is an illusion"),
+			 Effects::IllusoryEnemiesIsAnIllusion(
+				 Effects::IllusoryEnemiesSharePercent - 0.01f));
+	TestFalse(TEXT("a roll at the share is not"),
+			  Effects::IllusoryEnemiesIsAnIllusion(
+				  Effects::IllusoryEnemiesSharePercent));
+	TestFalse(TEXT("and neither is one above it"),
+			  Effects::IllusoryEnemiesIsAnIllusion(
+				  Effects::IllusoryEnemiesSharePercent + 0.01f));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIllusionHarmlessTest,
+	"Cataclysm.DungeonModifierEffects.AnIllusionsAttackTakesNothingOffThePlayerAndARealOnesDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIllusionHarmlessTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// WHAT THE ROW PROMISES, THROUGH THE ROUTE THE GAME USES.
+	// `ACataclysmEnemyCharacter::AttackTarget` is what an enemy's own behaviour
+	// calls, so this drives the whole damage pipeline rather than asserting on a
+	// number the rule wrote. Issues #1820 and #41.
+	//
+	// THE REAL CREATURE IS THE CONTROL AND IT COMES FIRST. Without it, "the
+	// player lost no health" would also pass for a creature that cannot attack
+	// at all, a player who cannot be hurt, or a test world where nothing
+	// connects.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	if (!TestTrue(TEXT("a possessed player with an ability system"),
+				  Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const auto MakeCreature = [this, World](const FVector& Where)
+		-> ACataclysmEnemyCharacter*
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				ACataclysmEnemyCharacter::StaticClass(), Where,
+				FRotator::ZeroRotator, Spawn);
+		TestNotNull(TEXT("a creature spawned"), Creature);
+		return Creature;
+	};
+
+	// A REAL CREATURE WITH DAMAGE TO DEAL.
+	ACataclysmEnemyCharacter* Real = MakeCreature(FVector(300.0f, 0.0f, 0.0f));
+	if (!Real)
+	{
+		return false;
+	}
+	Real->SetAttackDamage(120.0f);
+	if (!TestTrue(FString::Printf(TEXT("the real creature has damage: %.1f"),
+								  AttackDamageOf(Real)),
+				  AttackDamageOf(Real) > 0.0f))
+	{
+		return false;
+	}
+
+	const float Full = Player.Read(Vital::GetHealthAttribute());
+	if (!TestTrue(TEXT("the player has health to lose"), Full > 0.0f))
+	{
+		return false;
+	}
+
+	Real->AttackTarget(Player.Character);
+	const float AfterReal = Player.Read(Vital::GetHealthAttribute());
+	if (!TestTrue(FString::Printf(
+					  TEXT("a real creature's attack costs the player health: "
+						   "%.1f from %.1f"), AfterReal, Full),
+				  AfterReal < Full))
+	{
+		return false;
+	}
+
+	// NOW AN ILLUSION OF THE SAME KIND, GIVEN THE SAME DAMAGE FIRST. Giving it
+	// damage and then making it an illusion is the order the floor uses, and it
+	// is the order that would fail if the flag only took effect on a creature
+	// that had never been armed.
+	ACataclysmEnemyCharacter* Fake = MakeCreature(FVector(-300.0f, 0.0f, 0.0f));
+	if (!Fake)
+	{
+		return false;
+	}
+	Fake->SetAttackDamage(120.0f);
+	TestTrue(TEXT("the illusion was armed before it was made one"),
+			 AttackDamageOf(Fake) > 0.0f);
+
+	Fake->SetIsAnIllusion(true);
+	TestTrue(TEXT("it says it is an illusion"), Fake->IsAnIllusion());
+	TestEqual(TEXT("and its attacks are worth nothing"),
+			  AttackDamageOf(Fake), 0.0f, 0.01f);
+
+	const float BeforeFake = Player.Read(Vital::GetHealthAttribute());
+	Fake->AttackTarget(Player.Character);
+	TestEqual(TEXT("so its attack takes nothing off the player"),
+			  Player.Read(Vital::GetHealthAttribute()), BeforeFake, 0.01f);
+
+	// AND IT IS STILL A CREATURE IN EVERY OTHER RESPECT, which is the row's own
+	// sentence. It has its kind's health, it takes a blow, and it dies.
+	if (!TestTrue(TEXT("the illusion has health of its own"),
+				  Fake->GetAbilitySystemComponent()->GetNumericAttribute(
+					  Vital::GetHealthAttribute()) > 0.0f))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Fake, 100000.0f);
+	TestTrue(TEXT("and a blow kills it like any other creature"),
+			 UCataclysmSkillEffects::IsDead(Fake));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmIllusionSurvivesRecomputeTest,
+	"Cataclysm.DungeonModifierEffects.AnIllusionStaysHarmlessThroughEverySetterThatRecomputesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmIllusionSurvivesRecomputeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// WHY THE ILLUSION IS A FLAG ON THE CREATURE AND NOT A ZERO WRITTEN ONCE.
+	// Issues #1820 and #41.
+	//
+	// SIX PUBLIC SETTERS RE-RUN `ApplyStartingAttributes`, and each recomputes
+	// the attack damage from the creature's designed figure and its rarity's
+	// damage scale. A zero written once is undone by any of them. This test calls
+	// every one and asserts the illusion is still harmless after each, so the
+	// argument in the header is checked rather than asserted.
+	//
+	// IT IS ALSO THE TEST FOR THE GUARD FIX AT THE END, and that is deliberate
+	// rather than crowding: both are about the one function that decides a
+	// creature's designed numbers.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Creature =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(), FVector(500.0f, 0.0f, 0.0f),
+			FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a creature spawned"), Creature))
+	{
+		return false;
+	}
+
+	Creature->SetAttackDamage(90.0f);
+	if (!TestTrue(TEXT("it is armed to begin with"),
+				  AttackDamageOf(Creature) > 0.0f))
+	{
+		return false;
+	}
+
+	Creature->SetIsAnIllusion(true);
+	if (!TestEqual(TEXT("making it an illusion takes its damage away"),
+				   AttackDamageOf(Creature), 0.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// EVERY SETTER THAT RECOMPUTES, ONE AT A TIME, EACH CHECKED. Named
+	// individually rather than in a loop so a failure says which one put the
+	// damage back.
+	Creature->SetHealth(700.0f);
+	TestEqual(TEXT("setting its health leaves it harmless"),
+			  AttackDamageOf(Creature), 0.0f, 0.01f);
+
+	Creature->SetArmour(40.0f);
+	TestEqual(TEXT("setting its armour leaves it harmless"),
+			  AttackDamageOf(Creature), 0.0f, 0.01f);
+
+	Creature->SetEnergyShieldFraction(0.5f);
+	TestEqual(TEXT("setting its energy shield leaves it harmless"),
+			  AttackDamageOf(Creature), 0.0f, 0.01f);
+
+	Creature->SetRarityStep(2);
+	TestEqual(TEXT("raising its rarity leaves it harmless"),
+			  AttackDamageOf(Creature), 0.0f, 0.01f);
+
+	Creature->DrawModifiersForRarity();
+	TestEqual(TEXT("drawing its modifiers leaves it harmless"),
+			  AttackDamageOf(Creature), 0.0f, 0.01f);
+
+	// AND BEING ARMED AGAIN DOES NOT UNDO IT EITHER, which is the strongest of
+	// the six: this setter's whole job is to write the number the flag suppresses.
+	Creature->SetAttackDamage(250.0f);
+	TestEqual(TEXT("and arming it again leaves it harmless while it is one"),
+			  AttackDamageOf(Creature), 0.0f, 0.01f);
+
+	// IT GOES BACK TO ITS KIND'S DAMAGE WHEN IT STOPS BEING AN ILLUSION, with
+	// nothing restored by hand. The designed figure was never overwritten.
+	//
+	// COMPARED AGAINST A MATCHING CREATURE RATHER THAN AGAINST THE FIGURE THAT
+	// WAS ASKED FOR, and the first version of this assertion got that wrong. It
+	// expected 250, which is what `SetAttackDamage` was handed, and the run
+	// answered 490: `ApplyStartingAttributes` multiplies the asked-for figure by
+	// the rarity's damage scale, and `SetRarityStep(2)` four lines above had
+	// raised it. **The rule was right and the assertion was wrong**, and its
+	// failure printed a number, which reads as the code being at fault.
+	//
+	// A SECOND CREATURE BUILT THE SAME WAY IS THE HONEST COMPARISON. It is given
+	// the same damage and the same rarity and is never made an illusion, so
+	// whatever the scale is, both should read it. That also stops this assertion
+	// going stale the day a rarity step's multiplier is retuned.
+	ACataclysmEnemyCharacter* NeverAnIllusion =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(), FVector(900.0f, 0.0f, 0.0f),
+			FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a creature to compare against spawned"),
+					 NeverAnIllusion))
+	{
+		return false;
+	}
+	NeverAnIllusion->SetAttackDamage(250.0f);
+	NeverAnIllusion->SetRarityStep(2);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the comparison creature is armed: %.1f"),
+					  AttackDamageOf(NeverAnIllusion)),
+				  AttackDamageOf(NeverAnIllusion) > 0.0f))
+	{
+		return false;
+	}
+
+	Creature->SetIsAnIllusion(false);
+	TestEqual(TEXT("and it deals what a matching creature deals once it is not one"),
+			  AttackDamageOf(Creature), AttackDamageOf(NeverAnIllusion), 0.01f);
+
+	// THE GUARD FIX, ON A CREATURE THAT IS NOT AN ILLUSION AT ALL. Issues #1820
+	// and #41. Until now `ApplyStartingAttributes` guarded its write with
+	// `StartingAttackDamage > 0.0f`, so asking for zero recorded the zero and
+	// skipped the write: this creature would still read its scaled designed
+	// damage below rather than zero, and the declaration of
+	// `StartingAttackDamage` said the opposite.
+	TestFalse(TEXT("the creature is not an illusion for this part"),
+			  Creature->IsAnIllusion());
+	Creature->SetAttackDamage(0.0f);
+	TestEqual(TEXT("asking a plain creature for zero damage writes zero"),
+			  AttackDamageOf(Creature), 0.0f, 0.01f);
 
 	return true;
 }
