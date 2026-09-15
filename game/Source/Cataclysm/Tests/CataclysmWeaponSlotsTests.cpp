@@ -30,15 +30,22 @@
  * the acceptance criterion of issue #36: equipping a different weapon type
  * changes every granted ability, with no code naming a skill.
  *
- * WHAT THEY DO NOT COVER. What the abilities DO, because the 61 designed skills
- * carry a name, a description and tags but no numbers, so there is no behaviour
- * to test. Also not the aura's toggle and drain, and not cooldowns on a HUD,
- * neither of which exists.
+ * WHAT THEY DO NOT COVER. What the abilities DO: that is each skill's own
+ * test. This said the 61 designed skills were War and carried no numbers, and
+ * that no aura toggle and no cooldown display existed; the Demonic skills
+ * were designed and built afterwards, the aura's toggle and drain live in
+ * `UCataclysmAuraSkill`, and the skill bar draws cooldowns. Issue #842.
  */
 
 namespace CataclysmWeaponSlotsTest
 {
-	/** The damage type whose skills are designed. All 61 of them are War. */
+	/**
+	 * The damage type these tests equip. War is pinned on purpose: the table
+	 * below lists the weapon types the design says War covers, and the
+	 * assertions read against it. The shipping default is Demonic, which
+	 * `TheSliceShipsDemonic` asserts; Demonic skills are designed too. This said
+	 * "all 61 designed skills are War", which stopped being true. Issue #842.
+	 */
 	const TCHAR* DesignedDamageType = TEXT("War");
 
 	/**
