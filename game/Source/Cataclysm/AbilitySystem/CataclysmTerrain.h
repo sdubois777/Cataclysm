@@ -87,10 +87,14 @@ enum class ECataclysmTerrainKind : uint8
  *
  * WHAT IT DELIBERATELY DOES NOT DO. Break the World and Crater both say a
  * creature inside "must climb to leave", and nothing here makes leaving cost
- * anything. That needs a movement cost this project has no route for -- the only
- * movement speed on a character is `MaxWalkSpeed`, set once per creature class --
- * so a pit knocks down whatever falls in and does not slow anyone climbing out.
- * Issue #1152 carries it.
+ * anything: a pit knocks down whatever falls in and does not slow anyone
+ * climbing out. This said the project had no route for a movement cost, and
+ * that stopped being true (issue #1698): a creature's walk is
+ * `DesignedWalkSpeedCmPerSecond * SpeedMultiplier()` on
+ * `ACataclysmEnemyCharacter`, which Cripple lowers, and the player's
+ * `MovementSpeed` attribute is moved by a status effect row's `MovesStat`.
+ * Both routes exist and nothing here calls either; wiring a climb cost is
+ * a choice not yet made, not a missing mechanism.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmTerrain : public AActor
