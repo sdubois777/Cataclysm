@@ -591,11 +591,21 @@ def parse_build_output(text: str) -> tuple[str | None, tuple[str, ...], bool, in
 def build(target: str = DEFAULT_TARGET,
           platform: str = DEFAULT_PLATFORM,
           configuration: str = DEFAULT_CONFIGURATION,
-          timeout: float = 1800.0) -> BuildOutcome:
+          timeout: float | None = None) -> BuildOutcome:
     """Run `Build.bat` for one target and report what it actually compiled.
 
     The editor must be closed. With it open the build refuses to start, because
     Live Coding holds the binaries.
+
+    NO TIMEOUT, AND THAT IS THE LAW. This defaulted to 1800 seconds until issue
+    #1580. CLAUDE.md says never to put a timeout on an Unreal build: killing
+    the wrapper does not kill the compile workers, which Unreal Build
+    Accelerator runs detached, so they go on holding the build mutex after the
+    command has returned. The build is also started with `-WaitMutex`, so time
+    spent waiting for another session's build counted against the same limit.
+    `tools/tests/test_unreal_build.py` reads this signature and fails if a
+    finite default comes back. A caller that passes a number is choosing to
+    break the rule and must say why.
     """
     if not BUILD_BATCH_FILE.is_file():
         raise FileNotFoundError(
@@ -638,7 +648,7 @@ def require_compiled(outcome: BuildOutcome, source_paths: Sequence[str]) -> None
 
 
 def run_automation_tests(prefix: str = "Cataclysm",
-                         timeout: float = 1800.0) -> TestOutcome:
+                         timeout: float | None = None) -> TestOutcome:
     """Run the Unreal automation tests and read the results out of the log.
 
     Standard output carries only the software development kit validation banner,

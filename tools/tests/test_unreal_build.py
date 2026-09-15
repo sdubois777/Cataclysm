@@ -19,6 +19,7 @@ end-to-end run.
 
 from __future__ import annotations
 
+import inspect
 import os
 import pathlib
 import re
@@ -106,6 +107,26 @@ LogAutomationController: Display: ...Automation Test Queue Empty 141 tests perfo
 def outcome(text: str, returncode: int = 0) -> BuildOutcome:
     result, compiled, up_to_date, actions = parse_build_output(text)
     return BuildOutcome(returncode, text, result, compiled, up_to_date, actions)
+
+
+@pytest.mark.parametrize("function", [unreal_build.build, unreal_build.run_automation_tests])
+def test_no_timeout_is_the_default_on_a_build_or_a_test_run(function) -> None:
+    """Issue #1580. CLAUDE.md: never put a timeout on an Unreal build.
+
+    `build()` defaulted to 1800 seconds and passed it to `subprocess.run`,
+    which on expiry kills the command interpreter and nothing under it: the
+    compile workers go on holding the build mutex, which is exactly the state
+    the rule exists to prevent. A build started with `-WaitMutex` also counts
+    its wait for another session's build against the same limit. The test run
+    is held to the same default because `python tools/unreal_build.py tests`
+    builds first and a limit on the second half is the same trap one step
+    later. This reads the signature, so a finite default cannot come back
+    silently; it failed against the 1800.0 default before the change.
+    """
+    default = inspect.signature(function).parameters["timeout"].default
+    assert default is None, (
+        f"{function.__name__} defaults timeout to {default!r}; CLAUDE.md forbids a "
+        f"timeout on an Unreal build (issue #1580), so the default must be None")
 
 
 def test_a_build_that_compiled_is_read_correctly() -> None:
