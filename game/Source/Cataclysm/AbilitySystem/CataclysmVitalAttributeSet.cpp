@@ -163,6 +163,14 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 	{
 		// Zero is a legitimate value for all of these. A class with no energy
 		// shield is a design position, not an error state.
+		//
+		// LOWERING A MAXIMUM LEAVES THE CURRENT VALUE WHERE IT WAS, ON PURPOSE.
+		// Nothing here re-clamps the energy shield (or mana) when its maximum
+		// falls, so a character can hold 100 shield against a maximum of 40
+		// until something writes the shield attribute, and the shield branch
+		// above clamps it then. Ruled deliberate on 2026-09-14 under the
+		// owner's delegation, issue #1757: a shield already raised is not taken
+		// away by a lowered ceiling, it is simply not refilled past it.
 		NewValue = FMath::Max(NewValue, 0.0f);
 	}
 	else if (Attribute == GetHealingCeilingReductionAttribute()
