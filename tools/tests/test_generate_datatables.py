@@ -1735,12 +1735,31 @@ class TestEnchantmentEffects:
                 {"Action Event": ""})]))
 
     def test_an_event_the_game_does_not_record_is_refused(self, tmp_path):
-        # THE EVENT LIST IS THE CLOCK CONDITIONS' OWN, so a critical strike is
-        # refused today for the same reason no row can ask about one: nothing
-        # records it.
+        # THIS USED TO USE A CRITICAL STRIKE as its example of an event the
+        # game does not record. It records one now, so the example had to
+        # change -- which is the test noticing the vocabulary grew rather than
+        # quietly passing on a name that had become real.
         with pytest.raises(gen.DataError, match="which the game does not record"):
             gen.enchantment_effects(self.book(tmp_path, [self.action_row(
-                {"Action Event": "critical_strike"})]))
+                {"Action Event": "sneezes_twice"})]))
+
+    def test_an_event_with_no_clock_of_its_own_is_accepted(self, tmp_path):
+        # FIVE EVENTS HAVE NO CLOCK, because every clock is something done TO
+        # the character and these are things the character DID.
+        for event in gen.ACTION_ONLY_EVENTS:
+            out = gen.enchantment_effects(self.book(tmp_path, [
+                self.action_row({"Action Event": event})]))
+            assert out[0]["ActionEvent"] == event
+
+    def test_a_hit_dealt_is_not_a_hit_taken(self):
+        # THE SAME WORD AT OPPOSITE ENDS OF ONE BLOW. `hit_taken` is stamped on
+        # the character that was hit; `hit_dealt` fires on the one that hit. A
+        # test exists for this because the two are one character apart in
+        # writing and a whole side of the blow apart in meaning.
+        events = gen.action_events()
+        assert "hit_dealt" in events and "hit_taken" in events
+        assert "hit_dealt" in gen.ACTION_ONLY_EVENTS
+        assert "hit_taken" not in gen.ACTION_ONLY_EVENTS
 
     def test_a_base_that_is_neither_maximum_nor_current_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="takes its percentage of"):
@@ -1754,26 +1773,81 @@ class TestEnchantmentEffects:
             gen.enchantment_effects(self.book(tmp_path, [self.action_row(
                 {"Value Kind": "more"})]))
 
-    def test_an_action_row_carrying_a_condition_is_refused(self, tmp_path):
-        # NOT JUDGED AT THE MOMENT AN ACTION FIRES, so it would be dropped in
-        # silence. The rows that want one arrive with the events that carry
-        # them.
-        with pytest.raises(gen.DataError, match="would be dropped without"):
+    def test_an_action_row_may_carry_a_condition(self, tmp_path):
+        # THIS WAS A REFUSAL AND IS NOW A PERMISSION. It was refused while
+        # nothing judged a condition at the moment an action fires; the change
+        # that added the five clockless events judges it there, so
+        # "killing an enemy while below 30% HP" can be written.
+        #
+        # AND THE NAME IS A REAL ONE. This test first used a made-up condition
+        # and passed anyway, because the refusal it was written against fired
+        # before anything looked the name up. With the refusal gone the name is
+        # checked, which is the rule underneath doing its job.
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Condition": "health_below", "Condition Value": 30})]))
+
+        assert out[0]["Condition"] == "health_below"
+        assert out[0]["ConditionValue"] == 30.0
+        assert out[0]["Action"] == "health"
+
+    def test_an_action_row_carrying_a_scale_is_still_refused(self, tmp_path):
+        # A SCALE SIZES A STAT'S MODIFIER and an action has no stat, so this one
+        # stays refused while the condition beside it does not.
+        with pytest.raises(gen.DataError, match="an action has no stat"):
             gen.enchantment_effects(self.book(tmp_path, [self.action_row(
-                {"Condition": "below_half_health"})]))
+                {"Scale": "momentum_stacks", "Scale Step": 1})]))
+
+    def test_an_action_row_may_carry_required_tags(self, tmp_path):
+        # TWO ROWS ARE SCOPED: "melee kills" and "strike skills ... on hit".
+        # Type.Melee is on 30 of the 403 weapon skills and Type.Strike on 31,
+        # measured 2026-09-14.
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Required Tags": "Type.Melee", "Action Event": "kill"})]))
+
+        assert out[0]["RequiredTags"] == "Type.Melee"
+        assert out[0]["ActionEvent"] == "kill"
+
+    def test_a_fraction_of_the_events_own_amount_is_accepted(self, tmp_path):
+        # "Skills that cost HP restore that amount as mana" is a fraction of
+        # what the event carried rather than of a pool. Only the health cost
+        # carries an amount today.
+        out = gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+            {"Action": "mana", "Action Event": "health_cost",
+             "Fraction Of": "event_amount"})]))
+
+        assert out[0]["FractionOf"] == "event_amount"
+
+    def test_a_fraction_of_an_amount_no_event_carries_is_refused(self, tmp_path):
+        # A ROW ASKING FOR THE AMOUNT OF AN EVENT THAT CARRIES NONE would
+        # resolve to nothing and say so nowhere, which is the silent failure
+        # this table keeps producing.
+        with pytest.raises(gen.DataError, match="carries no amount"):
+            gen.enchantment_effects(self.book(tmp_path, [self.action_row(
+                {"Action Event": "block", "Fraction Of": "event_amount"})]))
 
     def test_an_action_row_carrying_a_scale_is_refused(self, tmp_path):
         with pytest.raises(gen.DataError, match="would be dropped without"):
             gen.enchantment_effects(self.book(tmp_path, [self.action_row(
                 {"Scale": "momentum_stacks", "Scale Step": 1})]))
 
-    def test_the_event_vocabulary_is_the_clock_conditions_own(self):
-        # DERIVED, NOT REPEATED. If these two ever stop agreeing, a clock added
-        # later would be missing from the actions and nothing else would say so.
-        assert gen.action_events() == {
-            name[len("seconds_after_"):] for name in gen.CONDITIONS
-            if name.startswith("seconds_after_")}
-        assert gen.action_events(), "no event names were derived at all"
+    def test_the_event_vocabulary_is_the_clocks_plus_the_five_with_none(self):
+        # THE CLOCK HALF IS STILL DERIVED, so a clock added later cannot be
+        # missing from the actions. The other half is written out because those
+        # events have no clock to derive from, and this pins the union so that
+        # neither half can be dropped without a test saying so.
+        clocks = {name[len("seconds_after_"):] for name in gen.CONDITIONS
+                  if name.startswith("seconds_after_")}
+
+        assert gen.action_events() == clocks | set(gen.ACTION_ONLY_EVENTS)
+        assert clocks, "no clock names were derived at all"
+        assert gen.ACTION_ONLY_EVENTS, "the clockless list is empty"
+        assert not (clocks & set(gen.ACTION_ONLY_EVENTS)), (
+            "an event is in both halves, so one of them is wrong")
+
+    def test_every_event_that_carries_an_amount_is_an_event(self):
+        # A NAME IN THE SHORTER LIST THAT IS NOT IN THE LONGER ONE would refuse
+        # every row using it and look like a rule rather than a typo.
+        assert set(gen.EVENTS_WITH_AN_AMOUNT) <= gen.action_events()
 
     def test_two_actions_on_one_enchantment_both_survive(self, tmp_path):
         # THE ACTION COLUMNS ARE PART OF THE DUPLICATE KEY. Without them these

@@ -2022,6 +2022,32 @@ struct CATACLYSM_API FCataclysmStatInputs
 };
 
 /**
+ * What a pool action's percentage is a percentage OF.
+ *
+ * AN ENUM RATHER THAN TWO BOOLS, because there are three answers and two bools
+ * would carry an unstated invariant that both must not be true at once.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmPoolActionBase : uint8
+{
+	/** The most the pool can hold. What a sentence means when it says nothing. */
+	Maximum UMETA(DisplayName = "The pool's maximum"),
+
+	/**
+	 * What the character holds right now. Different from the maximum on a hurt
+	 * character, and a percentage of it can never empty the pool by itself.
+	 */
+	Current UMETA(DisplayName = "What is currently held"),
+
+	/**
+	 * The amount the event itself carried -- the health a skill's cost took, for
+	 * the row that restores that amount as mana. Only events that carry an
+	 * amount may be named by such a row, and the generator refuses the rest.
+	 */
+	EventAmount UMETA(DisplayName = "The amount the event carried"),
+};
+
+/**
  * What a worn enchantment DOES when an event happens, rather than what it
  * changes. Issue #1815.
  *
@@ -2063,13 +2089,39 @@ struct CATACLYSM_API FCataclysmPoolAction
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float Percent = 0.0f;
 
+	/** What the percentage is a percentage OF. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmPoolActionBase Base = ECataclysmPoolActionBase::Maximum;
+
 	/**
-	 * True when the percentage is of the pool's maximum, false when it is of what
-	 * the character currently holds. The two differ on a hurt character and both
-	 * are authored.
+	 * Tags the thing that caused the event must carry, or empty for any.
+	 *
+	 * TWO AUTHORED ROWS ARE SCOPED THIS WAY: "melee kills" and "strike skills
+	 * ... on hit". The tags tested are the SKILL'S, carried by the announcement
+	 * that raised the event -- `Type.Melee` is on 30 of the 403 rows of
+	 * `game/Data/WeaponSkills.csv` and `Type.Strike` on 31, measured 2026-09-14.
+	 *
+	 * AN EVENT THAT CARRIES NO TAGS CANNOT SATISFY A SCOPED ROW, which is the
+	 * right answer rather than a missing one: a row scoped to melee must not
+	 * fire on an event that cannot say whether it was melee.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
-	bool bOfMaximum = true;
+	FGameplayTagContainer RequiredTags;
+
+	/**
+	 * A state of the character this only fires in, judged AT THE MOMENT the
+	 * event happens rather than when a stat is read.
+	 *
+	 * `Always` is the default and means no condition, which is what that
+	 * enumerator has meant since issue #959. One authored row wants a real
+	 * one: "killing an enemy while below 30% HP".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmStatCondition Condition = ECataclysmStatCondition::Always;
+
+	/** What that condition compares against. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ConditionValue = 0.0f;
 };
 
 /**

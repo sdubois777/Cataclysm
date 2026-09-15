@@ -396,12 +396,21 @@ public:
 	/**
 	 * Fire every worn action hung on this event, now.
 	 *
-	 * CALLED BY EACH `NoteX()` RATHER THAN BY A SUBSCRIBER OF ITS OWN, because
-	 * every event a row can name is already one of those, called at the event's
-	 * own site, on the right character, at the moment it happens. An action needs
-	 * no plumbing that a clock did not already need.
+	 * CALLED BY EACH `NoteX()` FOR THE EVENTS THAT HAVE A CLOCK, because those
+	 * are already called at the event's own site on the right character. The five
+	 * events with no clock are things the character DID rather than had done to
+	 * it, so they arrive from the combat announcements instead and the player
+	 * character calls this from those.
+	 *
+	 * @param EventTags  the tags of whatever caused the event, usually a skill's,
+	 *                   or null when the event has none. A row scoped to tags
+	 *                   cannot fire on an event that carries none, which is the
+	 *                   right answer rather than a missing one.
+	 * @param EventAmount what the event carried, for a row taking a fraction of
+	 *                   that rather than of a pool. Zero when it carried nothing.
 	 */
-	void ActOnEvent(FName Event);
+	void ActOnEvent(FName Event, const FGameplayTagContainer* EventTags = nullptr,
+					float EventAmount = 0.0f);
 
 	/**
 	 * What the dungeon floor this character is standing on does to its stat
@@ -602,7 +611,12 @@ public:
 	 * actually took health, so a skill with no health cost does not open a
 	 * window every time it is used.
 	 */
-	void NoteHealthCostPaid();
+	/**
+	 * @param HealthSpent how much the cost took, which a row restoring "that
+	 *                    amount" as something else reads. Zero is allowed and
+	 *                    means such a row moves nothing.
+	 */
+	void NoteHealthCostPaid(float HealthSpent = 0.0f);
 
 	/**
 	 * How long ago that was, in seconds, or -1 if it has never happened.
@@ -1460,7 +1474,12 @@ protected:
 	int32 PoolActionDepth = 0;
 
 	/** Move one pool, by the rules the project owner's delegate ruled on 2026-09-14. */
-	void ApplyPoolAction(const FCataclysmPoolAction& Action);
+	void ApplyPoolAction(const FCataclysmPoolAction& Action,
+						 const FGameplayTagContainer* EventTags, float EventAmount);
+
+	/** Whether this row's tags and condition allow it to fire on this event. */
+	bool PoolActionAllowed(const FCataclysmPoolAction& Action,
+						   const FGameplayTagContainer* EventTags) const;
 
 	/**
 	 * The two attributes a pool name means: what is held, and the most that can

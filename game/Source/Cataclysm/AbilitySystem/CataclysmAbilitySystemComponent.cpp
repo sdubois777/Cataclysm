@@ -916,7 +916,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	return State;
 }
 
-void UCataclysmAbilitySystemComponent::NoteHealthCostPaid()
+void UCataclysmAbilitySystemComponent::NoteHealthCostPaid(float HealthSpent)
 {
 	// NO WORLD MEANS NO CLOCK, so there is nothing to record and nothing that
 	// could read it back. Leaving the stamp at its "never" value is right: a
@@ -926,7 +926,9 @@ void UCataclysmAbilitySystemComponent::NoteHealthCostPaid()
 		LastHealthCostAtSeconds = World->GetTimeSeconds();
 	}
 
-	ActOnEvent(FName(TEXT("health_cost")));
+	// THE AMOUNT GOES ACROSS, because one authored row restores THAT AMOUNT as
+	// mana rather than a fraction of a pool.
+	ActOnEvent(FName(TEXT("health_cost")), /*EventTags=*/nullptr, HealthSpent);
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceHealthCostPaid() const
@@ -1821,7 +1823,8 @@ bool UCataclysmAbilitySystemComponent::PoolAttributesFor(
 	return false;
 }
 
-void UCataclysmAbilitySystemComponent::ActOnEvent(FName Event)
+void UCataclysmAbilitySystemComponent::ActOnEvent(
+	FName Event, const FGameplayTagContainer* EventTags, float EventAmount)
 {
 	// DEPTH ONE, BY CONSTRUCTION. See `PoolActionDepth` for why this is stated
 	// rather than left to hold by accident.
@@ -1836,15 +1839,55 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(FName Event)
 	const TArray<FCataclysmPoolAction> Firing = PoolActions;
 	for (const FCataclysmPoolAction& Action : Firing)
 	{
-		if (Action.Event == Event)
+		if (Action.Event == Event && PoolActionAllowed(Action, EventTags))
 		{
-			ApplyPoolAction(Action);
+			ApplyPoolAction(Action, EventTags, EventAmount);
 		}
 	}
 }
 
+bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
+	const FCataclysmPoolAction& Action,
+	const FGameplayTagContainer* EventTags) const
+{
+	// THE SAME TAG RULE THE STAT PIPELINE APPLIES, copied as a rule rather than
+	// re-derived: `HasTag` matches a held tag against the required tag's children
+	// as well, so a skill tagged `Type.AOE.PointBlank` satisfies a requirement of
+	// `Type.AOE`. That hierarchy is why the design's tags are dotted.
+	//
+	// AN EVENT WITH NO TAGS CANNOT SATISFY A SCOPED ROW. A row scoped to melee
+	// must not fire on an event that cannot say whether it was melee, so the
+	// absence is a refusal rather than a pass.
+	if (!Action.RequiredTags.IsEmpty())
+	{
+		if (!EventTags)
+		{
+			return false;
+		}
+		for (const FGameplayTag& Required : Action.RequiredTags)
+		{
+			if (!EventTags->HasTag(Required))
+			{
+				return false;
+			}
+		}
+	}
+
+	// AND THE CONDITION IS JUDGED NOW, which is the whole difference from a stat
+	// row: the pipeline asks a stat row's condition when something reads the
+	// stat, and a pool moves at a moment instead.
+	if (Action.Condition != ECataclysmStatCondition::Always
+		&& !UCataclysmStatPipeline::ConditionHolds(
+			Action.Condition, Action.ConditionValue, CurrentConditions()))
+	{
+		return false;
+	}
+	return true;
+}
+
 void UCataclysmAbilitySystemComponent::ApplyPoolAction(
-	const FCataclysmPoolAction& Action)
+	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags,
+	float EventAmount)
 {
 	FGameplayAttribute Held;
 	FGameplayAttribute Maximum;
@@ -1858,9 +1901,24 @@ void UCataclysmAbilitySystemComponent::ApplyPoolAction(
 		return;
 	}
 
-	// OF THE MAXIMUM OR OF WHAT IS HELD, and the two differ on a hurt character.
-	const float Base = Action.bOfMaximum ? GetNumericAttribute(Maximum)
-										 : GetNumericAttribute(Held);
+	// THREE THINGS THE PERCENTAGE CAN BE OF, and they differ: the maximum and
+	// what is held differ on a hurt character, and the amount the event carried
+	// is not a property of the pool at all.
+	float Base = 0.0f;
+	switch (Action.Base)
+	{
+	case ECataclysmPoolActionBase::Current:
+		Base = GetNumericAttribute(Held);
+		break;
+	case ECataclysmPoolActionBase::EventAmount:
+		Base = EventAmount;
+		break;
+	case ECataclysmPoolActionBase::Maximum:
+	default:
+		Base = GetNumericAttribute(Maximum);
+		break;
+	}
+	(void)EventTags;
 	const float Amount = Base * Action.Percent / 100.0f;
 	if (FMath::IsNearlyZero(Amount))
 	{

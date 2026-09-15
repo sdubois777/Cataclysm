@@ -2913,7 +2913,12 @@ void UCataclysmSkillTemplate::PayHealthCost()
 			// the first health cost of a fight would grant a stack.
 			UCataclysmStacks::NoteHealthCostPaid(Cataclysm);
 
-			Cataclysm->NoteHealthCostPaid();
+			// AND HOW MUCH IT TOOK, because one authored row restores THAT
+			// AMOUNT as mana rather than a fraction of a pool. `Cost` is the
+			// same figure `GainFromHealthCost` above reads, so the Fervour a
+			// cost grants and the mana a cost restores cannot disagree about
+			// what the cost was.
+			Cataclysm->NoteHealthCostPaid(Cost);
 		}
 	}
 
