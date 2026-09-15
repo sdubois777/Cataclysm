@@ -2477,6 +2477,7 @@ Taking the middle rather than the strictest is deliberate. This design also has 
 | Displacement, such as a 4 metre knockback | No | The target can act on arrival |
 | Stagger | No | A staggered target can still act. It is a state other effects read rather than a hold |
 | Disarm | No | Movement and any skill that does not need the weapon still work |
+| Pin, such as Impale, Nail Down, Skewer and Thicket | No | The Disarm sentence with its halves swapped: a pinned target still turns, attacks and uses any skill that does not need movement. Ruled 2026-09-14, issue #1149: no damage threshold, no immunity window, no boss immunity, so pins can be chained and a boss can be pinned |
 | Madness | **Partly** | The target operates every part of itself, but not for the side that owns it. It gets the immunity window and boss immunity, and not the damage threshold. See below |
 
   
