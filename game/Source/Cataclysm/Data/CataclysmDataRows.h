@@ -2104,8 +2104,12 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
  *
  * `tools/generate_datatables.py` REFUSES THREE KINDS OF ROW when it writes the
  * file: one naming an enchantment that does not exist or whose words it does
- * not repeat exactly, one naming a set row, and one stating a range that its
- * enchantment's words do not state.
+ * not repeat exactly, one stating a RANGE on a set row (each of a set's rows
+ * states one number, because an item records only the set's lowest threshold
+ * row), and one stating a range that its enchantment's words do not state. A
+ * row naming a set row is accepted: set bonuses are authored here like any
+ * other and granted by piece count in `CataclysmItem.cpp`. This said the
+ * generator refused any row naming a set, and it never did. Issue #1621.
  */
 USTRUCT(BlueprintType)
 struct FCataclysmEnchantmentEffectRow : public FTableRowBase
