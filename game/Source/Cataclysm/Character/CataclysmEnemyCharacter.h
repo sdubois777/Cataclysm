@@ -435,6 +435,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetIsAnIllusion(bool bNowAnIllusion);
 
+	/**
+	 * Whether this creature is an illusion.
+	 *
+	 * THE FIELD ITSELF IS PROTECTED, like `StartingAttackDamage` and every other
+	 * designed figure beside it, and `BlueprintReadOnly` on it grants Blueprint
+	 * access rather than C++ access. The automation tests read this instead.
+	 *
+	 * THE FIRST BUILD OF THIS CHANGE FAILED ON EXACTLY THAT. Three lines in
+	 * `CataclysmDungeonModifierEffectsTests.cpp` read the field directly and got
+	 * `error C2248: cannot access protected member`. The access section had been
+	 * checked -- for `ApplyStartingAttributes`, which is public from the top of
+	 * the class -- and not for the field, which sits in a protected section
+	 * beginning hundreds of lines later. Checking one declaration's section says
+	 * nothing about another's.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Enemy")
+	bool IsAnIllusion() const { return bIsAnIllusion; }
+
 	//~ Dying. Issue #522.
 
 	/**

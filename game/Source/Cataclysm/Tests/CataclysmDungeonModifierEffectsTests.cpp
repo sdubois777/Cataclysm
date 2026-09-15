@@ -7511,7 +7511,7 @@ bool FCataclysmIllusionPopulationTest::RunTest(const FString& Parameters)
 			{
 				continue;
 			}
-			if (Creature->bIsAnIllusion)
+			if (Creature->IsAnIllusion())
 			{
 				++OutIllusions;
 			}
@@ -7708,7 +7708,7 @@ bool FCataclysmIllusionHarmlessTest::RunTest(const FString& Parameters)
 			 AttackDamageOf(Fake) > 0.0f);
 
 	Fake->SetIsAnIllusion(true);
-	TestTrue(TEXT("it says it is an illusion"), Fake->bIsAnIllusion);
+	TestTrue(TEXT("it says it is an illusion"), Fake->IsAnIllusion());
 	TestEqual(TEXT("and its attacks are worth nothing"),
 			  AttackDamageOf(Fake), 0.0f, 0.01f);
 
@@ -7816,17 +7816,50 @@ bool FCataclysmIllusionSurvivesRecomputeTest::RunTest(const FString& Parameters)
 
 	// IT GOES BACK TO ITS KIND'S DAMAGE WHEN IT STOPS BEING AN ILLUSION, with
 	// nothing restored by hand. The designed figure was never overwritten.
+	//
+	// COMPARED AGAINST A MATCHING CREATURE RATHER THAN AGAINST THE FIGURE THAT
+	// WAS ASKED FOR, and the first version of this assertion got that wrong. It
+	// expected 250, which is what `SetAttackDamage` was handed, and the run
+	// answered 490: `ApplyStartingAttributes` multiplies the asked-for figure by
+	// the rarity's damage scale, and `SetRarityStep(2)` four lines above had
+	// raised it. **The rule was right and the assertion was wrong**, and its
+	// failure printed a number, which reads as the code being at fault.
+	//
+	// A SECOND CREATURE BUILT THE SAME WAY IS THE HONEST COMPARISON. It is given
+	// the same damage and the same rarity and is never made an illusion, so
+	// whatever the scale is, both should read it. That also stops this assertion
+	// going stale the day a rarity step's multiplier is retuned.
+	ACataclysmEnemyCharacter* NeverAnIllusion =
+		World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(), FVector(900.0f, 0.0f, 0.0f),
+			FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a creature to compare against spawned"),
+					 NeverAnIllusion))
+	{
+		return false;
+	}
+	NeverAnIllusion->SetAttackDamage(250.0f);
+	NeverAnIllusion->SetRarityStep(2);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the comparison creature is armed: %.1f"),
+					  AttackDamageOf(NeverAnIllusion)),
+				  AttackDamageOf(NeverAnIllusion) > 0.0f))
+	{
+		return false;
+	}
+
 	Creature->SetIsAnIllusion(false);
-	TestEqual(TEXT("and it deals its designed damage again once it is not one"),
-			  AttackDamageOf(Creature), 250.0f, 0.01f);
+	TestEqual(TEXT("and it deals what a matching creature deals once it is not one"),
+			  AttackDamageOf(Creature), AttackDamageOf(NeverAnIllusion), 0.01f);
 
 	// THE GUARD FIX, ON A CREATURE THAT IS NOT AN ILLUSION AT ALL. Issues #1820
 	// and #41. Until now `ApplyStartingAttributes` guarded its write with
 	// `StartingAttackDamage > 0.0f`, so asking for zero recorded the zero and
-	// skipped the write: this creature would still read 250 below, and the
-	// declaration of `StartingAttackDamage` said the opposite.
+	// skipped the write: this creature would still read its scaled designed
+	// damage below rather than zero, and the declaration of
+	// `StartingAttackDamage` said the opposite.
 	TestFalse(TEXT("the creature is not an illusion for this part"),
-			  Creature->bIsAnIllusion);
+			  Creature->IsAnIllusion());
 	Creature->SetAttackDamage(0.0f);
 	TestEqual(TEXT("asking a plain creature for zero damage writes zero"),
 			  AttackDamageOf(Creature), 0.0f, 0.01f);
