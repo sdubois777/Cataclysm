@@ -113,6 +113,7 @@ being absorbed in silence.
 
 **Building an event for either would be a mechanism with nothing on the other end
 of it**, which is the trap this work has been avoiding row by row.
+
 ---
 
 ## 2026-09-14 — A creature can be an illusion, the flag lives where its damage is recomputed rather than being written once, and a public setter that took a zero was dropping it
