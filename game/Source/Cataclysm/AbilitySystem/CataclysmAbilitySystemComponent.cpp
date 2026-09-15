@@ -1154,6 +1154,39 @@ bool UCataclysmAbilitySystemComponent::MayReleaseNova() const
 		|| World->GetTimeSeconds() >= NovaNextAllowedSeconds;
 }
 
+void UCataclysmAbilitySystemComponent::NoteEnemyInReach()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		EnemyLastInReachSeconds = World->GetTimeSeconds();
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::OutOfContactFor(float Seconds) const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		// NO CLOCK MEANS NO DECAY. A lapse that cannot be timed would otherwise
+		// read as "out of contact for ever" and empty the pool of any character
+		// whose world is gone, which is every character in a test that never
+		// began play.
+		return false;
+	}
+
+	if (EnemyLastInReachSeconds < 0.0f)
+	{
+		// NEVER IN CONTACT IS OUT OF CONTACT. See the header: this asks whether
+		// contact has lapsed rather than whether an event has recurred. It costs
+		// nothing today because a character that has never been near an enemy
+		// has an empty pool to drain, and it is the answer the node's sentence
+		// gives rather than the one that happens to be harmless.
+		return true;
+	}
+
+	return World->GetTimeSeconds() - EnemyLastInReachSeconds >= Seconds;
+}
+
 void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
 {
 	const UWorld* World = GetWorld();

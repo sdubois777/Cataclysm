@@ -4,6 +4,9 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "AbilitySystem/CataclysmTargeting.h"
+#include "Character/CataclysmCharacterBase.h"
+#include "Character/CataclysmTargetCandidates.h"
 #include "AbilitySystemComponent.h"
 
 const TCHAR* UCataclysmFervour::FromDamageStat = TEXT("fervour_from_damage");
@@ -20,6 +23,12 @@ const TCHAR* UCataclysmFervour::FromMinionsStat =
 	TEXT("fervour_from_minions");
 const TCHAR* UCataclysmFervour::OnMinionDeathStat =
 	TEXT("fervour_on_minion_death");
+const TCHAR* UCataclysmFervour::PerEnemyInReachStat =
+	TEXT("fervour_per_enemy_in_reach");
+const TCHAR* UCataclysmFervour::DecayPerSecondStat =
+	TEXT("fervour_decay_per_second");
+const TCHAR* UCataclysmFervour::DecayGraceMetresStat =
+	TEXT("fervour_decay_grace_metres");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -329,17 +338,44 @@ float UCataclysmFervour::GainPerSecondStep(
 	const float PerMinionPerSecond = Cataclysm->StatForSkill(
 		FName(FromMinionsStat), FGameplayTagContainer(), 0.0f);
 
+	// AND THE RAVAGER'S RATE, WHICH IS PER ENEMY STANDING NEAR RATHER THAN PER
+	// MINION. Issue #1515: "1 per second for every enemy within 4 metres of
+	// you". `Ravager_basic_spine_000` is its only source.
+	//
+	// A THIRD STAT RATHER THAN A THIRD VALUE OF EITHER ABOVE, for the reason
+	// the minion rate gives for being separate from the flat one. The
+	// Ravager's `Held Ground` node reads "+2% increased Fervour gained from
+	// enemies near you", and a shared stat would hand that increase to Low Life
+	// and to the Ritualist's minions as well. One character can reach all 24
+	// class trees, so holding all three nodes is ordinary rather than exotic.
+	//
+	// THE BODIES ARE NOT COUNTED IN HERE, exactly as the minions are not. The
+	// row carries `Scale=enemies_in_reach` with `ReachMetres=4`, so
+	// `StatForSkill` has already multiplied the rate by how many hostile actors
+	// stand inside that radius, counted from the world at the moment of this
+	// call. A Ravager standing alone gets zero out of this line with no special
+	// case written for it.
+	//
+	// ASKED FOR RATHER THAN READ OFF THE ATTRIBUTE, and the fallback is zero
+	// for the same reason again: a scaled bonus is never folded into a gameplay
+	// attribute -- it would be stale the moment anything moved -- so the
+	// attribute reads zero even for a Ravager holding the node.
+	const float PerEnemyNearPerSecond = Cataclysm->StatForSkill(
+		FName(PerEnemyInReachStat), FGameplayTagContainer(), 0.0f);
+
 	// SUMMED RATHER THAN ONE OR THE OTHER, and clamped once below. A character
-	// in both trees, hurt and holding minions, is earning from both rules at
-	// once and should receive both.
+	// in several trees -- hurt, holding minions and standing in a crowd -- is
+	// earning from every rule at once and should receive all of them.
 	const float PerSecondAltogether =
-		FMath::Max(0.0f, PerSecond) + FMath::Max(0.0f, PerMinionPerSecond);
+		FMath::Max(0.0f, PerSecond) + FMath::Max(0.0f, PerMinionPerSecond)
+		+ FMath::Max(0.0f, PerEnemyNearPerSecond);
 	if (PerSecondAltogether <= 0.0f)
 	{
 		// EVERY CHARACTER IN THE GAME UNTIL A POINT IS SPENT IN LOW LIFE OR IN
-		// THE RITUALIST'S STARTING NODE; every character holding Low Life that
-		// is not hurt enough for the condition; and every Ritualist commanding
-		// nothing at all.
+		// THE RITUALIST'S OR THE RAVAGER'S STARTING NODE; every character
+		// holding Low Life that is not hurt enough for the condition; every
+		// Ritualist commanding nothing at all; and every Ravager standing
+		// alone.
 		return 0.0f;
 	}
 
@@ -365,6 +401,107 @@ float UCataclysmFervour::GainPerSecondStep(
 
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
+								  float SecondsInStep)
+{
+	if (!Character || SecondsInStep <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!Cataclysm)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		Cataclysm->GetSet<UCataclysmClassResourceAttributeSet>();
+	if (!Resource)
+	{
+		// No class resource set means no pool to drain, which is every enemy.
+		return 0.0f;
+	}
+
+	// THE RATE FIRST, BECAUSE IT IS THE CHEAPEST QUESTION AND REFUSES MOST
+	// CHARACTERS. Zero for everyone without `Ravager_basic_spine_000`, which is
+	// every character in the game until a point is spent there, so the walk for
+	// nearby bodies below is never paid for by anyone the rule does not apply
+	// to. That ordering is the whole reason this is not expensive.
+	const float PerSecond = Cataclysm->StatForSkill(
+		FName(DecayPerSecondStat), FGameplayTagContainer(), 0.0f);
+	if (PerSecond <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// AND NOTHING TO DRAIN IS ALSO A REFUSAL, checked before the walk for the
+	// same reason. A Ravager standing alone with an empty pool is the ordinary
+	// state between fights and must not cost a search of the world every step.
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = Cataclysm->GetNumericAttribute(Pool);
+	if (Before <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// THE RADIUS IS A STAT AND TWO NODES ADD TO IT. The starting node grants 4
+	// and `Ravager_keystone_d_kC` No Ground Given grants 4 more, so a character
+	// holding both is asking about 8 -- which is what that keystone's sentence
+	// names. See `DecayGraceMetresStat`.
+	const float Metres = Cataclysm->StatForSkill(
+		FName(DecayGraceMetresStat), FGameplayTagContainer(), 0.0f);
+
+	// A RADIUS OF NOTHING IS NOT A RADIUS OF EVERYTHING. A character with the
+	// decay rate and no radius -- which no authored data produces, because one
+	// node grants both -- would otherwise be judged out of contact always. The
+	// safe direction for an unknown reading is the one that does not strengthen
+	// the rule against the character.
+	if (Metres > 0.0f)
+	{
+		if (UCataclysmTargetCandidates* Candidates =
+				UCataclysmTargetCandidates::In(Character->GetWorld()))
+		{
+			TArray<float> Distances;
+			Candidates->HostileDistancesWithinMetres(
+				Character, Character->GetActorLocation(), Metres, Distances);
+			if (Distances.Num() > 0)
+			{
+				// CONTACT HOLDS, SO THE CLOCK RESTARTS AND NOTHING DRAINS.
+				Cataclysm->NoteEnemyInReach();
+				return 0.0f;
+			}
+		}
+	}
+
+	if (!Cataclysm->OutOfContactFor(DecayGraceSeconds))
+	{
+		// INSIDE THE THREE SECONDS. The node grants the grace so that stepping
+		// behind a pillar does not empty a bar the character spent a fight
+		// filling.
+		return 0.0f;
+	}
+
+	// CLAMPED BEFORE IT IS WRITTEN, the same rule `GainPerSecondStep` follows
+	// and for the reason it gives: `ApplyModToAttribute` writes a base value,
+	// and whether that reaches `PreAttributeChange` depends on whether an
+	// aggregator happens to exist for the attribute.
+	const float Change =
+		FMath::Clamp(Before - PerSecond * SecondsInStep,
+					 0.0f, Resource->GetMaxClassResource())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+
+	Cataclysm->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return Cataclysm->GetNumericAttribute(Pool) - Before;
 }
 
 float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)

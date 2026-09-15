@@ -262,3 +262,8 @@ Ravager_keystone_spine_003#2,Ravager_keystone_spine_003,movement_speed_reduction
 Ravager_keystone_a_kB#1,Ravager_keystone_a_kB,crowd_control_resistance,flat,50.0,,,0.0,,0.0,0,-1.0
 Ravager_keystone_d_kA#1,Ravager_keystone_d_kA,movement_speed_reduction_suppressed,flat,1.0,,,0.0,,0.0,0,-1.0
 Ravager_keystone_a_kB#2,Ravager_keystone_a_kB,crowd_control_ends_when_its_applier_dies,flat,1.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_spine_000#1,Ravager_basic_spine_000,fervour_per_enemy_in_reach,flat,1.0,,,0.0,enemies_in_reach,1.0,0,4.0
+Ravager_basic_spine_000#2,Ravager_basic_spine_000,fervour_decay_per_second,flat,5.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_spine_000#3,Ravager_basic_spine_000,fervour_decay_grace_metres,flat,4.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_d_b0#1,Ravager_basic_d_b0,fervour_per_enemy_in_reach,increased,2.0,,,0.0,,0.0,0,-1.0
+Ravager_keystone_d_kC#1,Ravager_keystone_d_kC,fervour_decay_grace_metres,flat,4.0,,,0.0,,0.0,0,-1.0

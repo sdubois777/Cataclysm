@@ -169,6 +169,27 @@ void ACataclysmCharacterBase::RegenerationStep()
 		UCataclysmFervour::GainPerSecondStep(
 			UCataclysmTargeting::AbilitySystemOf(this),
 			UCataclysmRegeneration::StepSeconds);
+
+		// AND FERVOUR MAY LEAVE THE SAME WAY, FOR A CHARACTER THAT HAS LOST
+		// CONTACT. Issue #1515. `Ravager_basic_spine_000` reads "Fervour decays
+		// at 5 per second after 3 seconds with no enemy within 4 metres, so
+		// losing contact is what empties it rather than a timer", and this is
+		// the first thing in the game that takes Fervour away on a clock rather
+		// than because something happened.
+		//
+		// AFTER THE GAIN AND INSIDE THE SAME GUARD. After, so a character
+		// standing in a crowd earns and keeps rather than earning and then
+		// being judged out of contact on stale state -- the gain's rate and
+		// this refusal both read the world at the moment they are called, so
+		// the order decides which reading each gets. Inside, because a corpse
+		// should no more lose Fervour than gain it, and one guard saying so is
+		// clearer than two.
+		//
+		// ITS RETURN VALUE IS DROPPED, the same as every call above it. Zero is
+		// the ordinary answer for every character in the game: only a Ravager
+		// holding the starting node, with Fervour in hand, out of contact for
+		// three seconds, gets anything else.
+		UCataclysmFervour::DecayStep(this, UCataclysmRegeneration::StepSeconds);
 	}
 
 	// AND A CHARACTER LOW ENOUGH ON HEALTH MAY RELEASE A NOVA. Issue #1050.

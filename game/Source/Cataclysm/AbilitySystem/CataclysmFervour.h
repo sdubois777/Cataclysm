@@ -10,6 +10,7 @@
 #include "CataclysmFervour.generated.h"
 
 class UAbilitySystemComponent;
+class ACataclysmCharacterBase;
 
 /**
  * What fills Fervour and what empties it.
@@ -114,6 +115,42 @@ public:
 	static const TCHAR* OnMinionDeathStat;
 
 	/**
+	 * Fervour a second for each enemy standing near this character. The
+	 * Ravager's starting node is its only source. Issue #1515.
+	 *
+	 * THE ROW COUNTS, NOT THIS CODE. Its row carries `Scale=enemies_in_reach`
+	 * with `ReachMetres=4`, so the value `StatForSkill` answers already has
+	 * the bodies multiplied in, exactly as `FromMinionsStat` above has the
+	 * minions multiplied in.
+	 */
+	static const TCHAR* PerEnemyInReachStat;
+
+	/**
+	 * Fervour a second this character LOSES once it has been out of contact
+	 * for `DecayGraceSeconds`. The Ravager's starting node is its only source.
+	 * Issue #1515.
+	 */
+	static const TCHAR* DecayPerSecondStat;
+
+	/**
+	 * How near an enemy must stand to stop that decay. Two Ravager nodes grant
+	 * it and their flat values SUM: the starting node's 4 and No Ground Given's
+	 * 4 make the 8 that keystone's sentence names. Issue #1515.
+	 */
+	static const TCHAR* DecayGraceMetresStat;
+
+	/**
+	 * How long this character may be out of contact before Fervour decays.
+	 * Issue #1515.
+	 *
+	 * A CONSTANT RATHER THAN A STAT, unlike the radius beside it, because no
+	 * node in any tree changes the delay and one keystone changes the radius.
+	 * `Ravager_basic_spine_000` states it: "after 3 seconds with no enemy
+	 * within 4 metres".
+	 */
+	static constexpr float DecayGraceSeconds = 3.0f;
+
+	/**
 	 * Marks a restoration of health as coming from the character's own
 	 * regeneration rate rather than from leech.
 	 *
@@ -199,6 +236,38 @@ public:
 	 *         resource set
 	 */
 	static float GainForCast(UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Take away the Fervour a step this long costs a character that has been
+	 * out of contact, and answer what left. Issue #1515.
+	 *
+	 * THE FIRST THING IN THE GAME THAT EMPTIES THE POOL ON A TIMER. Everything
+	 * else that removes Fervour removes it because something happened -- today
+	 * only healing does, which is the Masochist's rule.
+	 * `Ravager_basic_spine_000` reads "Fervour decays at 5 per second after 3
+	 * seconds with no enemy within 4 metres, so losing contact is what empties
+	 * it rather than a timer."
+	 *
+	 * IT TAKES THE CHARACTER RATHER THAN THE ABILITY SYSTEM, unlike every other
+	 * function here, because it has to ask the world where the bodies are and a
+	 * component does not know its own position.
+	 *
+	 * IT DRAINS WHATEVER FILLED THE POOL. A character holding both this node
+	 * and the Masochist's Low Life loses Fervour out of contact that Low Life
+	 * put there, and that is the sentence rather than an oversight: "While you
+	 * have this" scopes the rule to holding the node, not to the Fervour's
+	 * source.
+	 *
+	 * THREE REFUSALS BEFORE IT LOOKS AT THE WORLD, and the order is what keeps
+	 * this cheap: no decay rate, which is every character without the node; an
+	 * empty pool, which is a Ravager between fights; and no radius. Only a
+	 * Ravager with Fervour actually in hand pays for a search.
+	 *
+	 * @return how much Fervour really left, which is zero for a character with
+	 *         no such node, an empty pool, contact held, or the grace unspent
+	 */
+	static float DecayStep(ACataclysmCharacterBase* Character,
+						   float SecondsInStep);
 
 	/**
 	 * Add the Fervour this character gains from its health dropping low.

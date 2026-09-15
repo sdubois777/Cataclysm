@@ -932,6 +932,47 @@ public:
 	}
 
 	/**
+	 * Record that an enemy is standing inside this character's Fervour decay
+	 * radius right now. Issue #1515.
+	 *
+	 * THE OTHER TIMESTAMPS IN THIS FILE ANSWER "MAY I ACT AGAIN YET"; THIS ONE
+	 * ANSWERS "WHEN WAS I LAST IN CONTACT". `Ravager_basic_spine_000` reads
+	 * "Fervour decays at 5 per second after 3 seconds with no enemy within 4
+	 * metres, so losing contact is what empties it rather than a timer" -- so
+	 * what has to be remembered is the last moment contact HELD, not the last
+	 * moment something fired.
+	 *
+	 * RECORDED EVERY STEP CONTACT HOLDS, so the three seconds are counted from
+	 * the last such moment and an enemy re-entering the radius resets them
+	 * rather than shortening them. A character that keeps stepping in and out
+	 * of reach never decays, which is what "losing contact is what empties it"
+	 * means.
+	 */
+	void NoteEnemyInReach();
+
+	/**
+	 * Whether this character has been out of contact for at least that long.
+	 * Issue #1515.
+	 *
+	 * NEVER IN CONTACT COUNTS AS OUT OF CONTACT, which is the opposite choice
+	 * from `MayReleaseNova` above and is deliberate. That one asks whether an
+	 * interval has elapsed since an event, so never having had the event means
+	 * nothing to wait for. This asks whether contact has lapsed, and a
+	 * character that never had contact has no contact now. The node's sentence
+	 * is about holding contact rather than about an event recurring.
+	 *
+	 * NO WORLD MEANS NO CLOCK AND SO NO DECAY, the safe direction and the same
+	 * refusal every other window in this file makes.
+	 */
+	bool OutOfContactFor(float Seconds) const;
+
+	/** When contact last held, in world seconds; negative if never. For tests. */
+	float EnemyLastInReachAt() const
+	{
+		return EnemyLastInReachSeconds;
+	}
+
+	/**
 	 * Whether this character's aura may apply again now. Issue #1057.
 	 *
 	 * THE MASOCHIST'S Beacon of Despair APPLIES A DEBUFF "every 3 seconds", and
@@ -1662,6 +1703,9 @@ protected:
 	 * is still happening; the only question is when the next may come.
 	 */
 	float NovaNextAllowedSeconds = -1.0f;
+
+	/** When an enemy was last inside the Fervour decay radius. Issue #1515. */
+	float EnemyLastInReachSeconds = -1.0f;
 
 	/**
 	 * The earliest world time this character's aura may apply again. Issue

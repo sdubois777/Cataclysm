@@ -511,7 +511,20 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: does nothing at all. The stat names the SIZE of the reduction and the one
 #: read site subtracts it, which is how `healing_ceiling_reduction` and the
 #: other four `_reduction` stats in this project are already spelled.
-AUTHORED_ROWS = 263
+#: AND TO 268 ON 2026-09-14. Five rows on three Ravager nodes, none of which
+#: held a row before: the tree's starting node `Fervour`
+#: (`Ravager_basic_spine_000`) takes THREE, because its one sentence states
+#: three separate things -- a rate from nearby enemies, a decay rate, and the
+#: radius that stops the decay -- and each is its own stat. `Held Ground`
+#: (`Ravager_basic_d_b0`) and `No Ground Given` (`Ravager_keystone_d_kC`) take
+#: one each. Issue #1515.
+#:
+#: ONE OF THE FIVE IS `increased` AND THE OTHER FOUR ARE `flat`, which is the
+#: exception the rule above describes rather than a lapse.
+#: `fervour_per_enemy_in_reach` is zero for every character until the starting
+#: node grants it flat, so Held Ground's "+2% increased Fervour gained from
+#: enemies near you" has that flat value to multiply.
+AUTHORED_ROWS = 268
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -822,7 +835,17 @@ AUTHORED_ROWS = 263
 #: MEASURED PER TREE RATHER THAN ADDED TO THE FIGURE ABOVE, and two trees move
 #: this time: the Ritualist is 57 of its 74 and the Ravager 50 of its 74. The
 #: Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the Berserker none.
-AUTHORED_NODES = 193
+#: AND TO 196 ON 2026-09-14. Three Ravager nodes, none of which held a row
+#: before: the tree's starting node `Fervour`, `Held Ground` and `No Ground
+#: Given`. Issue #1515.
+#:
+#: THE TWO COUNTS MOVE BY DIFFERENT AMOUNTS AGAIN, five rows over three nodes,
+#: because the starting node's sentence states three things.
+#:
+#: MEASURED PER TREE: the Ravager is 58 of its 74 and the Ritualist 60 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+AUTHORED_NODES = 196
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1825,6 +1848,26 @@ VALUE_FORMS = {
     "fervour_from_damage": "{value:g} per 1% of maximum health lost",
     "fervour_from_cost": "{value:g} per 1% of maximum health spent",
     "fervour_lost_to_healing": "{value:g} per 1% of maximum health restored",
+
+    # AND ALL THREE OF THE RAVAGER'S, WHOSE NODE HAS THE SAME SHAPE AS THE
+    # RITUALIST'S ABOVE. Issue #1515. It names the resource once at the front
+    # and then states three rules against it: "Enemies in reach generate
+    # Fervour: 1 for each enemy your attacks hit, and 1 per second for every
+    # enemy within 4 metres of you. While you have this, Fervour decays at 5
+    # per second after 3 seconds with no enemy within 4 metres".
+    #
+    # EACH FORM CARRIES THE WORDS THAT FOLLOW ITS OWN NUMBER, for the reason
+    # the Ritualist's two give. Here it matters more, not less: that sentence
+    # holds two separate numbers followed by "per second", so a form of
+    # "{value:g} per second" would be satisfied by either and a workbook that
+    # swapped the rate and the decay would pass.
+    "fervour_per_enemy_in_reach": "{value:g} per second for every enemy",
+    "fervour_decay_per_second": "decays at {value:g} per second",
+
+    # AND THE RADIUS, WHICH IS A DISTANCE RATHER THAN A COUNT OR A RATE. "with
+    # no enemy within 4 metres". The keystone that widens it states its value
+    # in words instead and is exempted in `VALUE_IN_WORDS` below.
+    "fervour_decay_grace_metres": "{value:g} metres",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -1862,6 +1905,23 @@ VALUE_IN_WORDS = {
     # so as a flag rather than as a 99% reduction.
     ("Masochist_keystone_fc_kB", "fervour_loss_suppressed"):
         ("does not remove fervour", 1.0),
+
+    # AND THE RAVAGER'S `No Ground Given`, WHOSE SENTENCE STATES TWO DISTANCES
+    # AND ITS ROW'S VALUE IS NEITHER OF THEM. Issue #1515. It reads "Your
+    # Fervour does not decay while an enemy is within 8 metres of you, rather
+    # than 4" -- so the 8 is the total a character holding it ends up with and
+    # the 4 is what the starting node already grants. The row grants 4 MORE,
+    # because two flat rows on one stat sum, and that increment appears in the
+    # sentence as neither digit.
+    #
+    # WHAT THIS EXEMPTION STILL CHECKS is the pair of distances in the words, so
+    # a reword that changed either one fails here. WHAT IT DOES NOT CHECK is the
+    # arithmetic tying the row's 4 to the sentence's 8, and that is checked
+    # instead by `Cataclysm.Passives.NoGroundGivenWidensTheRadiusToEight`, which
+    # reads the total off a real Ravager holding both nodes. Neither check alone
+    # is enough and the pair is why the increment is authorable at all.
+    ("Ravager_keystone_d_kC", "fervour_decay_grace_metres"):
+        ("within 8 metres of you, rather than 4", 4.0),
     ("Masochist_keystone_spine_002", "fervour_loss_suppressed"):
         ("no longer removes fervour", 1.0),
 
