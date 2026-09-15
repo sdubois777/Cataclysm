@@ -7478,6 +7478,26 @@ bool FCataclysmIllusionPopulationTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// EMPTIED BEFORE EACH POPULATION, AND NOT LEFT TO THE GAME MODE TO DO.
+	// `PopulateFloor` clears the last floor's creatures only when
+	// `FloorBrief.bSameArenaAsLastFloor` is false -- it is true for every floor
+	// of an arena dungeon, where a wave is meant to join what is already there.
+	// This test builds three floors in turn and counts the creatures on each, so
+	// a floor that kept the previous floor's creatures would make the second
+	// count include real creatures from the first and fail an assertion about
+	// illusions. The rule would be right and the test would be wrong, and the
+	// failure would say "not every creature it placed is an illusion", which
+	// accuses the rule.
+	//
+	// ASSERTED EMPTY RATHER THAN JUST CLEARED, so that a clear which stops
+	// working is a failure here rather than a confusing count later.
+	const auto StartWithNoCreatures = [this, Mode]()
+	{
+		Mode->ClearFloorEnemies();
+		return TestEqual(TEXT("the floor starts with no creatures on it"),
+						 Mode->FloorEnemies.Num(), 0);
+	};
+
 	// HOW MANY OF THE FLOOR'S CREATURES ARE ILLUSIONS, AND HOW MANY CAN STILL
 	// HURT SOMEBODY. Both are counted, because "none is an illusion" and "none
 	// has any damage" are different facts and a fault could produce either.
@@ -7512,6 +7532,7 @@ bool FCataclysmIllusionPopulationTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	StartWithNoCreatures();
 	Mode->PopulateFloor();
 
 	int32 Illusions = 0;
@@ -7538,6 +7559,7 @@ bool FCataclysmIllusionPopulationTest::RunTest(const FString& Parameters)
 		{
 			return false;
 		}
+		StartWithNoCreatures();
 		Mode->PopulateFloor();
 
 		const int32 PlacedAll = CountThem(Illusions, Armed);
@@ -7564,6 +7586,7 @@ bool FCataclysmIllusionPopulationTest::RunTest(const FString& Parameters)
 		{
 			return false;
 		}
+		StartWithNoCreatures();
 		Mode->PopulateFloor();
 
 		const int32 PlacedNone = CountThem(Illusions, Armed);
