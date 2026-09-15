@@ -65,10 +65,11 @@ enum class ECataclysmWearResult : uint8
 	 * Cataclysm.WeaponSlots.AWeaponItsDamageTypeDoesNotCoverOffersNothing
 	 * asserts it on purpose so that nobody "fixes" it later.
 	 *
-	 * SO THE OPEN QUESTION IS ONLY WHETHER AN UNARMED CHARACTER SHOULD HAVE NO
-	 * SKILLS, and issue #841 is where that is decided. Letting the slots empty
-	 * was recommended when this was built and the project owner chose this
-	 * instead. It stays or goes on its own merits, not on any content arriving.
+	 * THE QUESTION WAS WHETHER AN UNARMED CHARACTER SHOULD HAVE NO SKILLS, AND
+	 * IT IS ANSWERED: YES. Ruled on 2026-09-14 under the owner's delegation,
+	 * issue #841, closed. Letting the slots empty was recommended when this was
+	 * built and the project owner chose this instead; the ruling keeps it. This
+	 * refusal is the rule, not a scaffold waiting on anything.
 	 *
 	 * SWAPPING IS NOT REFUSED, only taking the last one off. Wearing a different
 	 * weapon over this one goes through WearFromCarried and never reaches here.
