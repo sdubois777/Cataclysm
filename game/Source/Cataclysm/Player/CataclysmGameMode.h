@@ -248,9 +248,12 @@ public:
 	 * formula".
 	 *
 	 * THE SUM AND NOT THE MODIFIERS. What a dungeon carries is
-	 * `FCataclysmDungeon::Modifiers`, and what those modifiers DO is not built
-	 * -- every one of the 117 is still only a name and a description. This is
-	 * the one part of them that reaches the game. Issue #41.
+	 * `FCataclysmDungeon::Modifiers`. What those modifiers DO on a floor lives
+	 * in `Dungeon/CataclysmDungeonModifierEffects.h`, whose `BuiltStateOf`
+	 * says which rows have a rule and which are still only a name and a
+	 * description; this function is only their danger weight, summed. It said
+	 * "what those modifiers DO is not built" until issue #1598, which stopped
+	 * being true with the first rule of issue #41.
 	 */
 	virtual float RunModifierScore() const { return 0.0f; }
 
