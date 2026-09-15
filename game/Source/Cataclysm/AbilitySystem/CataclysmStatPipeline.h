@@ -1628,6 +1628,15 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 * the Deeper Cuts node. Both answer no to a threshold above zero, so the two
 	 * do not have to be told apart by any caller; they are kept distinct because
 	 * the distinction is real.
+	 *
+	 * THREADED ON PURPOSE, AND NOT THE SAME VALUE AS THE BLOW CONTEXT'S. Issue
+	 * #1602, ruled 2026-09-14. The cost is passed from the caller that knows it
+	 * down to the lookup that needs it, through eight signatures and two stored
+	 * members, because it exists BEFORE any blow does: a projectile carries it
+	 * from firing to landing, and the structure describing a blow is built only
+	 * when one lands. There is no second copy that can disagree, so this is not
+	 * the duplication issue #1581 was about. Do not merge it onto the blow
+	 * context; the same note sits at each of the three declarations.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SkillHealthCostPercent = -1.0f;
