@@ -762,6 +762,43 @@ public:
 	static const TCHAR* FungalOvergrowthSlowDrawnAs;
 
 	/**
+	 * Illusory Enemies: "Some enemies are illusions. They look and act like real
+	 * enemies but do no damage." Issues #1820 and #41.
+	 *
+	 * THE SMALLEST RULE IN THIS FILE, AND THAT IS A PROPERTY OF THE GAME RATHER
+	 * THAN OF THE ROW. Every route by which a creature damages the player takes
+	 * its figure from one attribute, `attack_damage`, on that creature -- the
+	 * basic attack, every creature ability, every creature projectile, the
+	 * Hellhound's burning lane, the Gatekeeper's burning ground, and the
+	 * exploding brand a creature modifier grants. Measured 2026-09-14 by reading
+	 * all 30 damage-apply call sites in the 133 non-test source files of
+	 * `game/Source/Cataclysm`. So "do no damage" is one number.
+	 *
+	 * THE ROW STATES NO FIGURE AT ALL. "Some" is the only quantity in it, and
+	 * `IllusoryEnemiesSharePercent` below is this rule's own judgement.
+	 *
+	 * IT CHANGES NOTHING ELSE ABOUT A CREATURE, which is the row's own sentence
+	 * -- "they look and act like real enemies". An illusion has its kind's
+	 * health and armour, is drawn and animated as its kind, chases and attacks as
+	 * its kind, takes blows, dies, announces its death, and is worth what its
+	 * kind is worth. Only the damage its attacks carry is zero.
+	 *
+	 * SO `Demonic_Hellfire` ON AN ILLUSION EXPLODES FOR NOTHING, and that is the
+	 * zero working rather than a case anybody wrote. That rule's explosion is the
+	 * dying creature's own attack damage multiplied by a count, and it refuses at
+	 * zero. A floor carrying both rules needs no code that knows about both.
+	 *
+	 * TWO THINGS STILL REACH THE PLAYER FROM AN ILLUSION AND THE ROW PERMITS
+	 * BOTH. The Abyssal Warden's aura strips two resistances through a status
+	 * effect that deals no damage, and a status effect carrying a
+	 * `FlatDamagePerTick` would not scale with attack damage at all. No creature
+	 * applies one of the second kind today -- the resistance strip is the only
+	 * status effect any creature applies -- so the row holds as written. Said
+	 * here because it is a fact about today and not a law.
+	 */
+	static const TCHAR* IllusoryEnemiesKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -1632,6 +1669,43 @@ public:
 		FungalOvergrowthMushroomRadiusCm > 0.0f,
 		"A mushroom that reaches nowhere is a mushroom nobody can stand on.");
 
+	/**
+	 * What share of a floor's creatures are illusions, in percent.
+	 *
+	 * A JUDGEMENT, AND THE ROW STATES NOTHING. "Some enemies are illusions" is
+	 * the whole of it. `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
+	 * fails if the row ever states a figure of its own, at which point this
+	 * stops being a judgement and has to be read off the row instead.
+	 *
+	 * ONE IN FOUR, AND THE REASONING IS THE ROW'S OWN SUBJECT. This rule works by
+	 * uncertainty: it is worth something only while the player cannot tell which
+	 * creature in front of them is real. That fails in both directions. At a
+	 * large share most of what a player meets is harmless and the floor stops
+	 * being dangerous; at a small one a player would finish a dungeon without
+	 * meeting an illusion and the row would change nothing. A quarter keeps most
+	 * enemies real and still puts illusions in front of a player on every floor.
+	 *
+	 * NOT THE TABLE'S 10, WHICH IS THE FIGURE THE TWO ROWS BEFORE THIS ONE TOOK.
+	 * `SporeCloudsChancePercentOnDeath` and `HellfireChancePercentOnDeath` are
+	 * both 10 because that is what `game/Data/DungeonModifiers.csv` uses for a
+	 * CHANCE FIRED BY AN EVENT. This is not that: it is a share of a floor's
+	 * population, decided once per creature as it is placed, and nothing in the
+	 * table sets a precedent for one.
+	 *
+	 * DECIDED PER CREATURE AND NOT AS A COUNT PER FLOOR. A count would need to
+	 * know how many creatures a floor holds before placing any of them, and it
+	 * would make the number of illusions predictable to a player who counted.
+	 */
+	static constexpr float IllusoryEnemiesSharePercent = 25.0f;
+
+	static_assert(
+		IllusoryEnemiesSharePercent > 0.0f
+			&& IllusoryEnemiesSharePercent < 100.0f,
+		"At zero no creature is ever an illusion and the row is unbuilt; at a "
+		"hundred every creature is one and a floor carrying this row cannot hurt "
+		"the player at all, which 'Some enemies are illusions' does not ask "
+		"for.");
+
 	static_assert(
 		HellfireChancePercentOnDeath > 0.0f
 			&& HellfireChancePercentOnDeath < 100.0f,
@@ -2248,6 +2322,9 @@ public:
 	 * death leaves one; see `FungalOvergrowthBoostChancePercent`.
 	 */
 	static bool FungalOvergrowthBoosts(float Roll);
+
+	/** Whether a creature just placed on the floor is an illusion. */
+	static bool IllusoryEnemiesIsAnIllusion(float Roll);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

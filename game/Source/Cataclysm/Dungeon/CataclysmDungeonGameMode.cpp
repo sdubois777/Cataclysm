@@ -601,6 +601,25 @@ static TAutoConsoleVariable<float> CVarFungalOvergrowthRoll(
 	TEXT("100. -1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the roll that decides whether a creature being placed is an illusion, so
+ * a test can assert what a floor was populated with. Issues #1820 and #41.
+ *
+ * ROLLED AS A FLOOR IS POPULATED AND NOT ON AN EVENT, which is what makes it
+ * different from the five variables above. Each of those is read when something
+ * happens during play; this one is read once per creature, while the floor is
+ * being built, and is never read again for that creature.
+ *
+ * 0 MAKES EVERY CREATURE ON THE FLOOR AN ILLUSION and 100 makes none of them
+ * one, because the comparison is strictly below the share.
+ */
+static TAutoConsoleVariable<float> CVarIllusoryEnemiesRoll(
+	TEXT("Cataclysm.IllusoryEnemiesRoll"),
+	-1.0f,
+	TEXT("Pin the roll Illusory Enemies decides a creature with, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -635,6 +654,13 @@ namespace
 	float DungeonGameModeFungalOvergrowthRoll()
 	{
 		const float Pinned = CVarFungalOvergrowthRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll a creature is judged an illusion by: pinned, or drawn. */
+	float DungeonGameModeIllusoryEnemiesRoll()
+	{
+		const float Pinned = CVarIllusoryEnemiesRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 }
@@ -1243,6 +1269,30 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
 	}
 
 	ApplyDesignedStats(Enemy, Placement.Creature);
+
+	// AND SOME OF THEM ARE ILLUSIONS. `Chaos_Illusory_Enemies`. Issues #1820 and
+	// #41. This is the only rule in this file that changes a creature as it is
+	// placed rather than acting on the player, on the floor, or on a beat.
+	//
+	// AFTER `ApplyDesignedStats` AND NOT BEFORE, which reads as an ordering
+	// dependency and is NOT one. `SetIsAnIllusion` writes a flag that
+	// `ACataclysmEnemyCharacter::ApplyStartingAttributes` honours on every later
+	// recompute, so the two calls are safe in either order; its own declaration
+	// says why the flag exists rather than a zero written here. It is placed
+	// after so that a reader sees the creature fully made and then made an
+	// illusion, which is the order the row describes.
+	//
+	// EVERY CREATURE IS ASKED, INCLUDING THE GATEKEEPER. The row says "Some
+	// enemies" and names no exception, and a boss that turns out to be harmless
+	// is the strongest form of what the row is for. If a later ruling exempts
+	// bosses, the exemption goes here and says so.
+	if (FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::IllusoryEnemiesKey))
+		&& UCataclysmDungeonModifierEffects::IllusoryEnemiesIsAnIllusion(
+			DungeonGameModeIllusoryEnemiesRoll()))
+	{
+		Enemy->SetIsAnIllusion(true);
+	}
 
 	// PLACED AGAIN NOW ITS SIZE IS KNOWN. `Where` above was raised by the
 	// half height of the CLASS, which is the creature at Common. Since

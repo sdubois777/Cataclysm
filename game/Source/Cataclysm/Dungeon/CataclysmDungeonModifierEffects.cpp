@@ -40,6 +40,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::BrandOfTheAggressorKey =
 	TEXT("Demonic_Brand_of_the_Aggressor");
 const TCHAR* UCataclysmDungeonModifierEffects::FungalOvergrowthKey =
 	TEXT("Pestilence_Fungal_Overgrowth");
+const TCHAR* UCataclysmDungeonModifierEffects::IllusoryEnemiesKey =
+	TEXT("Chaos_Illusory_Enemies");
 
 // THE COLOURS EACH KIND OF MUSHROOM IS DRAWN IN, which are row keys of
 // `game/Data/ElementVisuals.csv` and not damage types this rule deals. The
@@ -201,7 +203,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(SporeCloudsKey)
 		|| RowKey == FName(HellfireKey)
 		|| RowKey == FName(BrandOfTheAggressorKey)
-		|| RowKey == FName(FungalOvergrowthKey))
+		|| RowKey == FName(FungalOvergrowthKey)
+		|| RowKey == FName(IllusoryEnemiesKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -352,6 +355,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(HellfireKey),
 		FName(BrandOfTheAggressorKey),
 		FName(FungalOvergrowthKey),
+		FName(IllusoryEnemiesKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1056,6 +1060,14 @@ bool UCataclysmDungeonModifierEffects::BrandErupts(int32 StacksBeforeThisBlow)
 bool UCataclysmDungeonModifierEffects::FungalOvergrowthBoosts(float Roll)
 {
 	return Roll < FungalOvergrowthBoostChancePercent;
+}
+
+bool UCataclysmDungeonModifierEffects::IllusoryEnemiesIsAnIllusion(float Roll)
+{
+	// BELOW AND NOT AT OR BELOW, the comparison every roll in this file makes,
+	// so a roll of exactly the share falls on the real side and a pinned 0
+	// always gives an illusion.
+	return Roll < IllusoryEnemiesSharePercent;
 }
 
 float UCataclysmDungeonModifierEffects::BrandNovaDamage(float MaximumHealth)
