@@ -660,6 +660,7 @@ not on the critical path. **The workbook was not, and the editor was.** Adding t
 properties to the row struct forces the generated CSV to gain columns of the same
 names, because `tools/tests/test_csv_columns_match_their_row_structs.py` compares the
 two — so the built asset had to be rebuilt after all.
+
 ---
 
 ## 2026-09-14 — Nine rows make eight keystones do what they say, and a keystone states its value in words rather than digits
@@ -1372,6 +1373,7 @@ nothing in the repository could notice.
 patterns now admit exactly the two rows that exposed them —
 `Negative_Taking_a_hit_reduces_your_damage_by_5_10_for_3`, written as attack and spell —
 and nothing else.
+
 ---
 
 ## 2026-09-14 — "Empower" is the buff the game already has, a crater's life is half the cadence that leaves it, and a comment naming one granter of that buff was wrong by three
@@ -42473,6 +42475,7 @@ baseline from before this change to compare against, so a single run would
 produce numbers with nothing to measure them against. Any tuning conclusion drawn
 from a sweep run before 2026-08-05 was computed on the old curve and should be
 treated as unverified, in the same way issue #6 treated the analysis scripts.
+
 ---
 
 ## 2026-08-05 — The empire tree is the node graph; the keystones document is commentary on it
@@ -42511,6 +42514,7 @@ false since 2026-08-02, when this repository's copies became authoritative. That
 header is replaced.
 
 `tools/tests/test_empire_tree_documents_agree.py` holds the comparison.
+
 ---
 
 ## 2026-08-05 — A damage over time effect deals a fixed amount per tick, not a total spread across a duration
@@ -45382,6 +45386,7 @@ there to hit anything.
 **Affects:** `Cataclysm_GDD_v2.md`, the weapon base table in section V, whose
 Wand and Staff rows now read "38 flat damage, 18% increased spell damage" and
 "66 flat damage, 32% increased spell damage". **Applied.**
+
 ---
 
 ## 2026-08-04 — Attack speed comes from the weapon as a rate, not an implicit, and every skill crits 5% by default
@@ -45465,6 +45470,7 @@ carries an attacks per second column. **Applied.** The base critical strike
 chance default is recorded here and in `character.DEFAULT_SKILL_CRIT_CHANCE`; the
 design document's stat source table already said the skill supplies it and needed
 no change.
+
 ---
 
 ## 2026-08-03 — The control scheme: what the left mouse button does, and why there are two schemes rather than one
