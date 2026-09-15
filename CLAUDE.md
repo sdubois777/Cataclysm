@@ -277,6 +277,13 @@ the break measures a different model and nothing anywhere says so. `REPO_ROOT`
 comes from the module's own file location, so `git archive HEAD | tar -x -C <an
 empty directory>` and running the proof there is enough. Issue #1429.
 
+**The same hazard runs the other way: a C++ guard proof must not run while
+the Python suite runs.** `prove_cpp_guard` breaks a C++ source file on
+purpose, and 110 Python test files read C++ source as text (398 references,
+measured 2026-09-12). A suite that reads the broken file reports a failure
+that looks real, is not reproducible afterwards, and points at the wrong
+thing. Finish one before starting the other. Issue #1630.
+
 **For a C++ guard, use `tools/unreal_build.py` instead.** The same class of
 problem exists for compiled C++ and it is worse, because the build tells you it
 succeeded. Restoring a source file with a tool that preserves its modification
@@ -308,10 +315,28 @@ other. Measured on `development`: `Cataclysm.Skills` performs **218** tests and
 ten extra are ten tests' worth of run time for nothing, and a count registered
 before the run will not match.
 
+**No static count of the Unreal suite is exact, so take the absolute total from
+a run and the delta from a diff.** Counting the registration macro is short
+(file-local wrapper macros hide tests from it) and counting name literals is
+long (some are not registered); three static methods gave 1,411, 1,564 and
+1,726 against a measured 1,664. When a run has to be predicted, register
+"the base's last measured total plus the tests this branch adds by name", and
+quote only what the run prints. Issues #1629 and #1665.
+
 **`assert result.proved`, for the same reason as the Python example above.**
 `prove_cpp_guard` has run both halves since the change for issue #1663, and
 `proved` is true only when a named test failed with the break in and nothing
 failed with it out.
+
+**A clamp in `PreAttributeChange` cannot be guard-proven from an automation
+test, and writing the base value does not reach past it.** The usual attempt
+is `SetNumericAttributeBase` with an out-of-range value, on the understanding
+that it sets the base while the clamp guards the current value. In Unreal
+Engine 5.8 that write is clamped before anything reads it: with no aggregator
+on the attribute, `SetAttributeBaseValue` goes through
+`SetNumericAttribute_Internal` to `PreAttributeChange`, so the clamp runs on
+the way to the current value. Breaking such a clamp fails nothing, and that is
+a fact about the engine rather than about the tests. Issue #1623.
 
 **The same rule, for the opposite reason.** A crashed Unreal run reports no
 failures at all, so `failed` used to read as a guard that did not notice --
@@ -350,6 +375,12 @@ the tests that matter -- with a trailing dot, as above.
 Three facts about the Unreal build and test commands that will otherwise cost a
 cycle each:
 
+- **A C++ digit separator (`1'200.0f`) in a HEADER stops the build with
+  "Unterminated character constant".** Unreal Header Tool tokenises headers
+  before the compiler and reads the apostrophe as an unclosed character
+  literal; the error names neither the number nor the separator. It is
+  harmless in a `.cpp`, which the header tool does not parse, and the test
+  files use it freely. Issue #1703.
 - **`Build.bat` refuses to run while the editor is open.** Live Coding holds the
   binaries. Close the editor, build, run the tests, reopen it. Closing it also
   removes the `mcp__unreal__*` tools until it is back.
@@ -504,6 +535,12 @@ has twice filed work asking the project owner to hand-edit Google Drive document
 that were already correct in the repository.
 
 **The `master-kit` plugin.** `.claude/settings.json` enables it for this project.
+That file is tracked in git and was added in commit `c13ab93` (2026-09-04), so
+a worktree checked out at any older commit has no `.claude/settings.json`, the
+plugin is not enabled there, and none of the four names below resolves -- which
+reads as the plugin being uninstalled while `claude plugin list` in the ordinary
+checkout says it is fine. Rebase the worktree before debugging the plugin.
+Issue #1277.
 **Its skills and commands are namespaced, and the prefix is part of the name.** A
 bare `master-session` or `/master-check` does not resolve; a session that tries
 one reports the skill is not installed, which is wrong. The four names are:
