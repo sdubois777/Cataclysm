@@ -2112,11 +2112,12 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * A state of the character this only fires in, judged AT THE MOMENT the
 	 * event happens rather than when a stat is read.
 	 *
-	 * `None` means always. One authored row wants one: "killing an enemy while
-	 * below 30% HP".
+	 * `Always` is the default and means no condition, which is what that
+	 * enumerator has meant since issue #959. One authored row wants a real
+	 * one: "killing an enemy while below 30% HP".
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
-	ECataclysmStatCondition Condition = ECataclysmStatCondition::None;
+	ECataclysmStatCondition Condition = ECataclysmStatCondition::Always;
 
 	/** What that condition compares against. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")

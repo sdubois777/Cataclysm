@@ -1876,7 +1876,7 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 	// AND THE CONDITION IS JUDGED NOW, which is the whole difference from a stat
 	// row: the pipeline asks a stat row's condition when something reads the
 	// stat, and a pool moves at a moment instead.
-	if (Action.Condition != ECataclysmStatCondition::None
+	if (Action.Condition != ECataclysmStatCondition::Always
 		&& !UCataclysmStatPipeline::ConditionHolds(
 			Action.Condition, Action.ConditionValue, CurrentConditions()))
 	{
