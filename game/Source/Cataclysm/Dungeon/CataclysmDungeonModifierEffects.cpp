@@ -42,6 +42,14 @@ const TCHAR* UCataclysmDungeonModifierEffects::FungalOvergrowthKey =
 	TEXT("Pestilence_Fungal_Overgrowth");
 const TCHAR* UCataclysmDungeonModifierEffects::IllusoryEnemiesKey =
 	TEXT("Chaos_Illusory_Enemies");
+const TCHAR* UCataclysmDungeonModifierEffects::HolyRepercussionsKey =
+	TEXT("Celestial_Holy_Repercussions");
+
+// THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
+// game/Data/ElementVisuals.csv and a member of the shipping damage type list.
+// The header says why it is a type rather than the stat name it becomes.
+const TCHAR* UCataclysmDungeonModifierEffects::HolyRepercussionsResistance =
+	TEXT("Celestial");
 
 // THE COLOURS EACH KIND OF MUSHROOM IS DRAWN IN, which are row keys of
 // `game/Data/ElementVisuals.csv` and not damage types this rule deals. The
@@ -204,7 +212,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(HellfireKey)
 		|| RowKey == FName(BrandOfTheAggressorKey)
 		|| RowKey == FName(FungalOvergrowthKey)
-		|| RowKey == FName(IllusoryEnemiesKey))
+		|| RowKey == FName(IllusoryEnemiesKey)
+		|| RowKey == FName(HolyRepercussionsKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -356,6 +365,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(BrandOfTheAggressorKey),
 		FName(FungalOvergrowthKey),
 		FName(IllusoryEnemiesKey),
+		FName(HolyRepercussionsKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -625,6 +635,26 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 											Effects.ResistanceMorePercent);
 	}
 
+	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
+	// #41. This is the first entry in this function to write a single resistance,
+	// and it is written OUTSIDE the loop above rather than inside it with a
+	// condition -- see `JudgmentResistanceLessPercent` in the header for why the
+	// two fields the loop reads could not carry a damage type without changing
+	// how The Nihil's Embrace's own values are applied.
+	//
+	// THE SAME `ResistanceStatFor` CALL THE LOOP MAKES, so a damage type renamed
+	// in the design workbook moves this with it instead of leaving a stat name
+	// nothing writes.
+	//
+	// NEGATED HERE AND HELD POSITIVE IN THE FIELD, which is the shape
+	// `ResistanceLessPercent` above uses: the field says how much is taken and
+	// the helper is signed.
+	DungeonModifierEffectsAddMultiplier(
+		Modifiers,
+		UCataclysmItemModifiers::ResistanceStatFor(
+			FName(HolyRepercussionsResistance)),
+		-Effects.JudgmentResistanceLessPercent);
+
 	// AND DEATH'S EMBRACE, ON THE STAT THAT SAYS HOW MUCH HEALING ARRIVES. Issue
 	// #41, slice 5. One stat rather than eight, because the reduction is read at
 	// each site that restores health rather than being spread over pools.
@@ -808,6 +838,17 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("all resistances %.0f%% more"),
 									Effects.ResistanceMorePercent));
+	}
+
+	// AND JUDGMENT, WHICH NAMES ITS RESISTANCE WHERE THE TWO ABOVE SAY "all".
+	// Issues #1820 and #41. A player reading "all resistances 25% less" when only
+	// one has moved would plan a floor around a loss they do not have.
+	if (Effects.JudgmentResistanceLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("%s resistance %.0f%% less from judgment"),
+			HolyRepercussionsResistance,
+			Effects.JudgmentResistanceLessPercent));
 	}
 
 	// AND DEATH'S EMBRACE. Issue #41, slice 5. Said as what the player loses
@@ -1060,6 +1101,30 @@ bool UCataclysmDungeonModifierEffects::BrandErupts(int32 StacksBeforeThisBlow)
 bool UCataclysmDungeonModifierEffects::FungalOvergrowthBoosts(float Roll)
 {
 	return Roll < FungalOvergrowthBoostChancePercent;
+}
+
+bool UCataclysmDungeonModifierEffects::HolyRepercussionsRetaliates(float Roll)
+{
+	// BELOW AND NOT AT OR BELOW, the comparison every roll in this file makes,
+	// so a pinned 0 always retaliates and a pinned 100 never does.
+	return Roll < HolyRepercussionsChancePercentOnHit;
+}
+
+int32 UCataclysmDungeonModifierEffects::HolyRepercussionsStacksAfterBurst(
+	int32 Stacks)
+{
+	// CLAMPED AT BOTH ENDS. A negative count reaching here is a fault somewhere
+	// else, and answering one rather than the cap would hide it behind a
+	// plausible number.
+	return FMath::Clamp(Stacks + 1, 0, HolyRepercussionsJudgmentMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(
+	int32 Stacks)
+{
+	const int32 Held =
+		FMath::Clamp(Stacks, 0, HolyRepercussionsJudgmentMostStacks);
+	return static_cast<float>(Held) * HolyRepercussionsJudgmentLessPerStackPercent;
 }
 
 bool UCataclysmDungeonModifierEffects::IllusoryEnemiesIsAnIllusion(float Roll)
