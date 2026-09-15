@@ -211,6 +211,21 @@ accuracy far from the world origin.
 Setting a name the system does not expose does nothing at all — no warning, no
 error. That is the usual cause of "it compiles and the effect never changes".
 
+**`SetEmitterData` through the editor's Niagara toolset changes the emitter in
+memory and does not mark the package dirty, so the save afterwards writes
+nothing and reports success.** Measured 2026-08-21 on `NS_Proj_Body` (issue
+#804): `SetEmitterData` answered its success value, `GetEmitterData` read the
+new value back from the same in-memory object, `AssetTools.save_assets`
+returned `true`, `AssetTools.is_dirty` was `false`, and the file's modification
+time and size did not change. An earlier `SetEmitterData` in the same session
+did reach disk only because a dozen `AddModule` and `SetStackInputData` calls
+followed it and dirtied the package. The workaround: after `SetEmitterData`,
+call `SetStackInputData` on any input with a value different from its current
+one, confirm `is_dirty` is `true`, set that input back, then save — and check
+the file's modification time and size on disk rather than the tool's return
+value. A project script that ever drives `SetEmitterData` in a loop needs that
+sequence built in.
+
 ### Lists of values
 
 **Standard.** Scalar setters cannot push a list. Arrays go through
