@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — Eight rulings made together under the owner's delegation, on questions the backlog triage raised
+
+**Affects:** nothing in the tree yet; this entry is the record. The rows and
+comments each ruling points at are named under it. Issues
+[#1832](https://github.com/sdubois777/Cataclysm/issues/1832),
+[#1778](https://github.com/sdubois777/Cataclysm/issues/1778),
+[#1711](https://github.com/sdubois777/Cataclysm/issues/1711),
+[#1700](https://github.com/sdubois777/Cataclysm/issues/1700),
+[#1713](https://github.com/sdubois777/Cataclysm/issues/1713),
+[#1690](https://github.com/sdubois777/Cataclysm/issues/1690),
+[#1673](https://github.com/sdubois777/Cataclysm/issues/1673) and
+[#1480](https://github.com/sdubois777/Cataclysm/issues/1480).
+
+The backlog triage of 2026-09-14 sorted every open issue and put fifty-two of
+them to the coordinating session as questions with a recommended answer. The
+coordinating session ruled on them the same day under the owner's delegation of
+that date. Eight of the rulings settle a question about the design or about how
+the data is read, so they are recorded here in one entry rather than eight,
+because they were made together; the rest were closures, re-bucketings or
+instructions to edit a file and are recorded on their issues.
+
+### A status effect description says what exists; a planned source is marked
+
+`game/Data/StatusEffects.csv` descriptions name sources that do not exist (#1832
+counts at least four). **A description describes what the game does today. A
+source that is planned but not built is written with "(planned)" after it**, so a
+reader cannot take an intention for a fact. The rows live in the design workbook,
+so the rewording is a data session's work; this records the rule it works to.
+
+### The Brand of the Aggressor erupts at twenty stacks, and the five-stack brand is a different one
+
+Three rows describe a stacking Brand that explodes on the player, two at five
+stacks and one at twenty (#1778). **The dungeon modifier row
+`Demonic_Brand_of_the_Aggressor` erupts at twenty, as its own sentence says and
+as it was built.** The two rows saying five, the enemy modifier
+`Demonic_Infernal_Brand` and its status effect row, describe the enemy
+modifier's brand, which is a different effect with its own code. The three rows
+do not disagree; they describe two things.
+
+### DoT_Void_Rift is deliberately unbuilt
+
+The `StatusEffects.csv` row `DoT_Void_Rift` describes void zones no code creates
+(#1711). **It is recorded as deliberately unbuilt**: it is neither a creature
+ability specification nor a duplicate of `Void_Singularity_Wells`, and nothing is
+owed on it until a design names what creates the zones.
+
+### A minion scales from level one and a player from level zero, on purpose
+
+A minion's per-level figure is `Base + PerLevel * Level` and a player's is
+`Base + PerLevel * (Level - 1)` (#1700). **The two are deliberately different.** A
+player at level 1 gets exactly its base figure. A minion's level is its
+summoner's, so a minion of a level-1 summoner is already one level's worth
+above its base; there is no level-0 minion for the base figure to belong to.
+Neither formula moves.
+
+### Being taken by Subjugate is not healing received
+
+Once a creature can carry `healing_received_reduction`, the question is whether
+Subjugate's heal-to-full obeys it (#1713). **It does not: being taken is not
+healing received.** `UCataclysmCommand::Subjugate` sets the thrall's health as
+part of making it a thrall, and that is the reading it already implements.
+
+### "Newest first" in this file means by date only
+
+This file's preamble says entries run newest first, and issues #1690, #1806 and
+#1594 each found a pair or a run of entries out of that order. **The order is by
+date only; the order of entries within one day is not meaningful, and an entry
+once written is never moved.** The two same-day runs in #1806 and the pair in
+#1594 are therefore accepted as they stand. A check that enforces the by-date
+rule without an allowance list is separate tooling work.
+
+### For Buff_Commander, the dungeon modifier row wins
+
+`DungeonModifiers.csv` says Commander raises health, damage and resistance;
+`StatusEffects.csv` says movement and attack speed (#1673). **The dungeon
+modifier row wins.** Movement speed does not reach creatures through that row,
+so the status effect row's version cannot be what the game does. The figures the
+rows leave open are delegated to whoever builds the rule.
+
+### The Ritualist's minion nodes also reach a Saboteur's deployables
+
+Nothing decided whether a Ritualist's minion nodes buff a Saboteur's turrets
+(#1480). **They do.** A Saboteur's deployables carry `Type.Minion`, and the three
+`minion_*` affixes in `game/Data/Affixes.csv` are already scoped that way; a
+passive node granting a minion stat follows the same scope rather than a
+narrower one of its own.
+
+---
+
 ## 2026-09-14 — A seasonal league resets the empire upgrade tree: the owner's answer of 2026-08-06, written into the design at last
 
 **Affects:** `docs/Cataclysm_GDD_v2.md` (one paragraph under the empire upgrade
