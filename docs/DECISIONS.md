@@ -788,7 +788,7 @@ into a gameplay attribute**. A read off the attribute would find zero for ever,
 drop nothing, and that clause would silently do nothing while every test that
 granted the flag unconditionally went on passing. This is the fourth time this
 project has met that defect — evasion in
-[#947](https://github.com/sdubois777/Cataclysm/issues/947), the regeneration
+[#1784](https://github.com/sdubois777/Cataclysm/pull/1784), the regeneration
 rates in [#1038](https://github.com/sdubois777/Cataclysm/issues/1038), crowd
 control resistance earlier today.
 
@@ -976,7 +976,7 @@ The resistance was read straight off the gameplay attribute. **A conditioned row
 is never folded into an attribute**, so a row granting resistance "while an enemy
 is within 4 metres" would have reached nothing and reported the base for ever.
 The same defect was fixed for evasion in
-[#947](https://github.com/sdubois777/Cataclysm/issues/947) and for the
+[#1784](https://github.com/sdubois777/Cataclysm/pull/1784) and for the
 regeneration rates in
 [#1038](https://github.com/sdubois777/Cataclysm/issues/1038), and the repair is
 the same: ask `StatForSkill`, passing the attribute as the fallback.

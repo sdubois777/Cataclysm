@@ -749,7 +749,7 @@ public:
 	 * Unstoppable's row carries a condition and a conditioned row is never
 	 * folded into a gameplay attribute. Reading the attribute would report the
 	 * base for ever and that clause would silently do nothing -- the defect
-	 * fixed for evasion in #947, the regeneration rates in #1038 and crowd
+	 * fixed for evasion in #1784, the regeneration rates in #1038 and crowd
 	 * control resistance in #1515.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_MovementSpeedReductionSuppressed)

@@ -2530,7 +2530,7 @@ float UCataclysmSkillEffects::AfterCrowdControlResistance(const AActor* Target,
 	// Unstoppable grants this stat only "while an enemy is within 4 metres of
 	// you", and a conditioned row is never folded into a gameplay attribute --
 	// so reading the attribute would report the base for ever and the node would
-	// do nothing. Same defect, same repair, as evasion in #947 and the
+	// do nothing. Same defect, same repair, as evasion in #1784 and the
 	// regeneration rates in #1038.
 	//
 	// THE ATTRIBUTE IS THE FALLBACK, so nothing changes for a target the
