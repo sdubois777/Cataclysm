@@ -1090,6 +1090,19 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Holy Repercussions: put the Judgment the player is carrying back on them.
+	 * Issues #1820 and #41.
+	 *
+	 * ITS BEAT DECIDES NOTHING, exactly like `StepWastingSickness`. The count
+	 * moves when a burst lands; this compares two integers and returns on almost
+	 * every beat. It exists because taking the stairs takes the reduction off the
+	 * character, and something has to notice and put it back.
+	 */
+	void StepHolyRepercussions(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -1375,6 +1388,37 @@ private:
 	 * be changed afterwards by another rule placing something else.
 	 */
 	void NoteDeathForFungalOvergrowth(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Holy Repercussions: a creature answers a blow the player landed on it with
+	 * a burst, and leaves a Judgment stack on the player. Issues #1820 and #41.
+	 *
+	 * THE SAME DIRECTION AS `NoteHitForBrandOfTheAggressor` AND THE OPPOSITE OF
+	 * `NoteHitForWastingSickness`. "upon being hit" is the CREATURE being hit, so
+	 * this tests that the player is the attacker and a creature is the target --
+	 * which is Brand's test exactly. Wasting Sickness tests the other way because
+	 * its row is about blows landing on the player.
+	 *
+	 * THE BURST IS DEALT IN THE CREATURE'S OWN NAME, unlike every other rule
+	 * here, and that is the row's own sentence: the ENEMY retaliates. So the
+	 * damage is the creature's own attack damage, its element is read off the
+	 * creature the way every creature's blow is, and an illusion -- whose attack
+	 * damage `Chaos_Illusory_Enemies` sets to zero -- retaliates for nothing
+	 * without this function knowing that rule exists.
+	 *
+	 * IT REACHES THE CREATURE'S ENEMIES, WHICH IS THE PLAYER'S SIDE.
+	 * `UCataclysmTargeting::FindEnemiesInSphere` asked with the creature as
+	 * instigator answers the player and their allies. The row says "dealing
+	 * damage in an area" and names no side, and the side is decided by whose
+	 * burst it is rather than by a ruling.
+	 *
+	 * ONE BLOW CANNOT ANSWER ITSELF. The burst is dealt by a creature to the
+	 * player, so it is announced like any other blow -- and this listener refuses
+	 * a blow whose attacker is not the player, so a burst cannot provoke another.
+	 * That guard is load-bearing here for the same reason Brand's is, and Brand's
+	 * proof found it the hard way.
+	 */
+	void NoteHitForHolyRepercussions(const struct FCataclysmHitNotice& Notice);
 
 	/**
 	 * Spore Clouds' poison, on a creature dying near the player. Issues #1820
@@ -1884,6 +1928,23 @@ private:
 	 * destroying one -- which `UCataclysmFloorContents::ClearTheFloor` does when
 	 * the player leaves. A weak pointer going invalid IS that.
 	 */
+	/**
+	 * How many Judgment stacks the player is carrying, and how many are on them.
+	 * Issues #1820 and #41.
+	 *
+	 * TWO NUMBERS FOR THE REASON `WastingSicknessStacks` HAS TWO: the count moves
+	 * on a burst and the reduction is applied on the beat, so the pair is what
+	 * lets a beat that changes nothing ask for no refresh.
+	 *
+	 * BOTH GO AT THE STAIRS, WHICH IS THE DIFFERENCE FROM WASTING SICKNESS. That
+	 * row says its debuff is "permanent for the duration of the dungeon", so only
+	 * its applied figure is cleared per floor. This row says nothing of the kind,
+	 * and its stacks come from creatures on the floor being left behind, so both
+	 * go.
+	 */
+	int32 JudgmentStacks = 0;
+	int32 JudgmentStacksApplied = 0;
+
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;
 	float FungalOvergrowthSpeedMoreApplied = 0.0f;
