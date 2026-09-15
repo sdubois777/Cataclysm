@@ -4489,6 +4489,14 @@ point: the tree cannot be run up on Standard and then carried into Heretic as a
 head start. Trying a different class is cheap; trying a harder mode is not, and
 it is not meant to be.
 
+**A seasonal league is a fourth partition, and it resets the tree.** A player
+starts a league with a fresh empire upgrade tree in each lethality mode, and a
+Solo Self-Found character made in a league has a fresh private tree of its
+own. The league's trees are separate from the permanent ones and do not fold
+into them when the league ends. Every shipped game surveyed for the lethality
+scoping partitions by league or realm first and by mode second, and this
+follows them. Decided by the project owner on 2026-08-06, issue #287.
+
 **The points are scoped as well as the tree they are spent on.** An empire
 upgrade point earned by a character is earned into that character's lethality
 mode, and can only be spent there. There is no single account balance of points
