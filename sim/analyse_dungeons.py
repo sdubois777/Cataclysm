@@ -22,8 +22,6 @@ PER_FLOOR_RISK = 0.010
 BOSS_MULT = 6.0
 ROSTER = ("Demonic", "Death", "War", "Pestilence", "Famine", "Celestial",
           "Chaos", "Void")
-SUBTYPES = ["None", "Timed", "Horde", "Siege", "Cow Level",
-            "Elite", "Volatile", "Sacrificial"]
 TYPES = ["Basic", "Quest", "Fallen City", "Cataclysm"]
 
 
