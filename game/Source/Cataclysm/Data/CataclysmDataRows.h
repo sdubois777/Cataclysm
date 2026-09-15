@@ -1953,10 +1953,15 @@ struct FCataclysmPassiveEffectRow : public FTableRowBase
 	 * Tags a skill must carry for this to apply to it. Empty applies to
 	 * everything.
 	 *
-	 * ONE ROW USES IT TODAY: the Saboteur's Bigger Traps, whose description
-	 * scopes its area of effect "for traps", carries `Type.Trap`. Eight more
-	 * nodes are scoped to melee attacks and cannot be expressed yet, because
-	 * the tag vocabulary has no tag for melee. Issue #939.
+	 * FEW ROWS USE IT, AND THE TAGS THEY USE ALL EXIST. Measured on 2026-09-14:
+	 * 7 of the 263 rows of `game/Data/PassiveEffects.csv` carry a tag, across
+	 * `Keyword.Regeneration`, `Type.Melee`, `Keyword.DoT`, `Keyword.Leech` and
+	 * `Type.Trap`. This said the vocabulary had no tag for melee; `Type.Melee`
+	 * is declared in `game/Config/Tags/CataclysmTags.ini` and two authored rows
+	 * carry it. What is thin is not the vocabulary but its application: most
+	 * skills do not carry the element or weapon tag their own row states, so a
+	 * scoped row reaches a fraction of what it names. Issues #939, #944, #1753
+	 * and #1506.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Passive Effect")
 	FString RequiredTags;
