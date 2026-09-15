@@ -1014,8 +1014,52 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.
-					Action.bOfMaximum = !Effect->FractionOf.Equals(
-						TEXT("current"), ESearchCase::IgnoreCase);
+					if (Effect->FractionOf.Equals(TEXT("current"),
+												 ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::Current;
+					}
+					else if (Effect->FractionOf.Equals(TEXT("event_amount"),
+													  ESearchCase::IgnoreCase))
+					{
+						Action.Base = ECataclysmPoolActionBase::EventAmount;
+					}
+
+					// THE SAME TAG PARSE THE STAT ROWS GET, so a scoped action row
+					// and a scoped stat row cannot disagree about what a tag list
+					// means.
+					TArray<FString> ActionTags;
+					Effect->RequiredTags.ParseIntoArray(
+						ActionTags, TEXT(","), /*InCullEmpty=*/true);
+					for (FString& Tag : ActionTags)
+					{
+						Tag.TrimStartAndEndInline();
+						if (!Tag.IsEmpty())
+						{
+							Action.RequiredTags.AddTag(
+								FGameplayTag::RequestGameplayTag(
+									FName(*Tag), /*ErrorIfNotFound=*/false));
+						}
+					}
+
+					// A CONDITION THE BUILD DOES NOT KNOW DROPS THE WHOLE ROW rather
+					// than firing it unconditioned, which is the rule the stat rows
+					// already follow: applying a drawback with its condition dropped
+					// would make it hold all the time.
+					if (!Effect->Condition.IsEmpty()
+						&& !UCataclysmStatPipeline::ConditionNamed(
+							Effect->Condition, Action.Condition))
+					{
+						UE_LOG(LogCataclysm, Warning,
+							   TEXT("Enchantment '%s' moves a pool under the "
+									"condition '%s', which this build does not know, "
+									"so the row does nothing. Regenerate "
+									"game/Data/EnchantmentEffects.csv from the "
+									"workbook."),
+							   *Effect->Enchantment, *Effect->Condition);
+						continue;
+					}
+					Action.ConditionValue = Effect->ConditionValue;
 					Actions->Add(Action);
 				}
 				continue;

@@ -2219,13 +2219,15 @@ namespace CataclysmEnchantmentEffectTest
 
 	/** One action, as the equipment refresh would hand it over. */
 	FCataclysmPoolAction PoolAction(const TCHAR* Event, const TCHAR* Pool,
-								   float Percent, bool bOfMaximum = true)
+								   float Percent,
+					   ECataclysmPoolActionBase Base =
+						   ECataclysmPoolActionBase::Maximum)
 	{
 		FCataclysmPoolAction Out;
 		Out.Event = FName(Event);
 		Out.Pool = FName(Pool);
 		Out.Percent = Percent;
-		Out.bOfMaximum = bOfMaximum;
+		Out.Base = Base;
 		return Out;
 	}
 
@@ -2307,7 +2309,8 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 			  FName(TEXT("health")));
 	TestEqual(TEXT("by the percentage it states"), Actions[0].Percent, 4.0f,
 			  0.001f);
-	TestTrue(TEXT("of the maximum"), Actions[0].bOfMaximum);
+	TestEqual(TEXT("of the maximum"), Actions[0].Base,
+			  ECataclysmPoolActionBase::Maximum);
 
 	// AND A CALLER THAT WANTS NO ACTIONS GETS NONE RATHER THAN A STAT MODIFIER,
 	// which is what the optional parameter has to mean.
@@ -2416,7 +2419,7 @@ bool FCataclysmAFractionOfHeldIsNotAFractionOfTheMaximum::RunTest(const FString&
 {
 	using namespace CataclysmEnchantmentEffectTest;
 
-	// THE BREAK THIS IS FOR: ignoring `bOfMaximum` and always reading the
+	// THE BREAK THIS IS FOR: ignoring the row's chosen base and always
 	// maximum. On a character at full health the two answers are the same, so
 	// this one is deliberately hurt -- 200 of 500 -- and the two answers are 20
 	// and 50.
@@ -2440,14 +2443,14 @@ bool FCataclysmAFractionOfHeldIsNotAFractionOfTheMaximum::RunTest(const FString&
 	}
 
 	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f,
-							   /*bOfMaximum=*/false)});
+							   ECataclysmPoolActionBase::Current)});
 	ASC.NoteBlocked();
 	TestEqual(TEXT("a tenth of what is held is twenty"),
 			  ASC.GetNumericAttribute(Health), 220.0f, 0.01f);
 
 	GivePools(ASC, /*Health=*/200.0f, /*MaxHealth=*/500.0f);
 	ASC.SetPoolActions({PoolAction(TEXT("block"), TEXT("health"), 10.0f,
-							   /*bOfMaximum=*/true)});
+							   ECataclysmPoolActionBase::Maximum)});
 	ASC.NoteBlocked();
 	TestEqual(TEXT("and a tenth of the maximum is fifty"),
 			  ASC.GetNumericAttribute(Health), 250.0f, 0.01f);
@@ -2581,6 +2584,169 @@ bool FCataclysmARefreshReplacesTheActions::RunTest(const FString&)
 	Wearer.Equipment->RefreshAttributes(&ASC);
 	TestEqual(TEXT("and a refresh wearing nothing leaves none"),
 			  ASC.GetPoolActions().Num(), 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// THE THREE RULES THE FIVE CLOCKLESS EVENTS BROUGHT WITH THEM. Issue #1815.
+//
+// A row may be scoped to the tags of whatever caused the event, gated on a
+// condition judged AT THE MOMENT it fires, and may take a fraction of the
+// amount the event carried rather than of a pool.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAScopedActionNeedsItsTag,
+	"Cataclysm.Enchantments.AScopedActionNeedsItsTagAndAnUntaggedEventCannotGiveIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAScopedActionNeedsItsTag::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: ignoring the row's required tags, which would let
+	// "melee kills restore health" fire on a spell kill. Type.Melee is on 30 of
+	// the 403 weapon skills and Type.Strike on 31, measured 2026-09-14.
+	//
+	// AND THE THIRD CASE IS THE ONE THAT IS EASY TO GET WRONG: an event that
+	// carries NO tags must not satisfy a scoped row. A row scoped to melee must
+	// not fire on an event that cannot say whether it was melee, so the absence
+	// is a refusal rather than a pass.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	GivePools(ASC, /*Health=*/100.0f, /*MaxHealth=*/500.0f);
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	FCataclysmPoolAction Scoped =
+		PoolAction(TEXT("kill"), TEXT("health"), 10.0f);
+	Scoped.RequiredTags.AddTag(
+		FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee")),
+										 /*ErrorIfNotFound=*/false));
+	if (!TestTrue(TEXT("the tag this build is asked about is a real one"),
+				  Scoped.RequiredTags.Num() == 1))
+	{
+		return false;
+	}
+	ASC.SetPoolActions({Scoped});
+
+	FGameplayTagContainer Melee;
+	Melee.AddTag(FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false));
+	FGameplayTagContainer Spell;
+	Spell.AddTag(FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Spell")), /*ErrorIfNotFound=*/false));
+
+	ASC.ActOnEvent(FName(TEXT("kill")), &Spell);
+	TestEqual(TEXT("a kill by a spell does not fire a melee row"),
+			  ASC.GetNumericAttribute(Health), 100.0f, 0.01f);
+
+	ASC.ActOnEvent(FName(TEXT("kill")), nullptr);
+	TestEqual(TEXT("and a kill that carries no tags at all does not either"),
+			  ASC.GetNumericAttribute(Health), 100.0f, 0.01f);
+
+	ASC.ActOnEvent(FName(TEXT("kill")), &Melee);
+	TestEqual(TEXT("and a melee kill does"),
+			  ASC.GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAConditionedActionIsJudgedWhenItFires,
+	"Cataclysm.Enchantments.AConditionedActionIsJudgedAtTheMomentItFires",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAConditionedActionIsJudgedWhenItFires::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: ignoring the row's condition, which would make
+	// "killing an enemy while below 30% HP restores health" restore at any
+	// health at all.
+	//
+	// BOTH WAYS ROUND, because a condition that never holds and one that always
+	// holds look the same to a test that only checks the firing half.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+
+	FCataclysmPoolAction Gated =
+		PoolAction(TEXT("kill"), TEXT("health"), 10.0f);
+	Gated.Condition = ECataclysmStatCondition::HealthBelowPercent;
+	Gated.ConditionValue = 30.0f;
+	ASC.SetPoolActions({Gated});
+
+	// FOUR HUNDRED OF FIVE HUNDRED is eighty per cent, well clear of thirty.
+	GivePools(ASC, /*Health=*/400.0f, /*MaxHealth=*/500.0f);
+	ASC.ActOnEvent(FName(TEXT("kill")));
+	if (!TestEqual(TEXT("a kill at full health restores nothing"),
+				   ASC.GetNumericAttribute(Health), 400.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// AND A HUNDRED OF FIVE HUNDRED is twenty per cent, under it.
+	GivePools(ASC, /*Health=*/100.0f, /*MaxHealth=*/500.0f);
+	ASC.ActOnEvent(FName(TEXT("kill")));
+	TestEqual(TEXT("and the same kill below thirty per cent restores a tenth"),
+			  ASC.GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAFractionOfTheEventsAmount,
+	"Cataclysm.Enchantments.AFractionOfTheEventsAmountIsNotAFractionOfAPool",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAFractionOfTheEventsAmount::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE BREAK THIS IS FOR: reading a pool when the row asked for the amount
+	// the event carried. "Skills that cost HP restore that amount as mana" is a
+	// fraction of what the cost took, and the figures are chosen so that the
+	// pool answers and the event answer cannot be confused: the amount is 40
+	// and the mana pool is 200 of 1000.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	const FGameplayAttribute Mana = UCataclysmVitalAttributeSet::GetManaAttribute();
+	ASC.SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 1000.0f);
+	ASC.SetNumericAttributeBase(Mana, 200.0f);
+
+	FCataclysmPoolAction OfAmount =
+		PoolAction(TEXT("health_cost"), TEXT("mana"), 50.0f);
+	OfAmount.Base = ECataclysmPoolActionBase::EventAmount;
+	ASC.SetPoolActions({OfAmount});
+
+	ASC.ActOnEvent(FName(TEXT("health_cost")), nullptr, /*EventAmount=*/40.0f);
+
+	// HALF OF FORTY IS TWENTY. Half of the maximum would be 500 and half of what
+	// is held would be 100, so neither pool reading can produce this number.
+	TestEqual(TEXT("half of the amount the event carried"),
+			  ASC.GetNumericAttribute(Mana), 220.0f, 0.01f);
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS

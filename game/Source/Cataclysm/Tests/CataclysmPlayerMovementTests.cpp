@@ -1294,13 +1294,13 @@ bool FCataclysmAnActionCannotSetOffAnotherAction::RunTest(const FString&)
 	FillOnEmpty.Event = FName(TEXT("resource_empty"));
 	FillOnEmpty.Pool = FName(TEXT("class_resource"));
 	FillOnEmpty.Percent = 100.0f;
-	FillOnEmpty.bOfMaximum = true;
+	FillOnEmpty.Base = ECataclysmPoolActionBase::Maximum;
 
 	FCataclysmPoolAction EmptyOnFull;
 	EmptyOnFull.Event = FName(TEXT("resource_full"));
 	EmptyOnFull.Pool = FName(TEXT("class_resource"));
 	EmptyOnFull.Percent = -100.0f;
-	EmptyOnFull.bOfMaximum = false;
+	EmptyOnFull.Base = ECataclysmPoolActionBase::Current;
 
 	AbilitySystem->SetPoolActions({FillOnEmpty, EmptyOnFull});
 
@@ -1328,6 +1328,88 @@ bool FCataclysmAnActionCannotSetOffAnotherAction::RunTest(const FString&)
 	// work while another row is running.
 	TestEqual(TEXT("and the full window opened all the same"),
 			  AbilitySystem->SecondsSinceClassResourceFull(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmASkillUseFiresAWornActionAndABasicAttackDoesNot,
+	"Cataclysm.Player.ASkillUseFiresAWornActionAndABasicAttackDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmASkillUseFiresAWornActionAndABasicAttackDoesNot::RunTest(
+	const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// THE BREAK THIS IS FOR: deleting the binding that hears a skill use. The
+	// five clockless events are the only ones that arrive from an announcement
+	// rather than from a call on the character's own component, so nothing else
+	// in this change would notice the binding missing.
+	//
+	// DRIVEN THROUGH THE ANNOUNCEMENT THE GAME RAISES, not by calling the
+	// handler: a test that called the handler would pass with no binding at all.
+	//
+	// A REAL PLAYER CHARACTER, because the handler is on the pawn.
+	//
+	// AND THE BASIC ATTACK IS THE SECOND HALF. Ruled 2026-09-14: it is the one
+	// slot the design calls automatic and free. Without that case a version
+	// firing on every slot would pass the first half.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 100.0f);
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction OnSkill;
+	OnSkill.Event = FName(TEXT("skill_use"));
+	OnSkill.Pool = FName(TEXT("health"));
+	OnSkill.Percent = 10.0f;
+	AbilitySystem->SetPoolActions({OnSkill});
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	if (!TestEqual(TEXT("health starts where it was put"),
+				   AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	const FGameplayTagContainer NoTags;
+	UCataclysmCombatEvents::NoteSkillUsed(
+		Character, TEXT("Cleaving Blow"), NoTags,
+		ECataclysmAbilitySlot::BasicAttack);
+	TestEqual(TEXT("a basic attack fires nothing"),
+			  AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f);
+
+	UCataclysmCombatEvents::NoteSkillUsed(
+		Character, TEXT("Cleaving Blow"), NoTags,
+		ECataclysmAbilitySlot::Heavy);
+	TestEqual(TEXT("and any other slot restores a tenth of the maximum"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS

@@ -17,6 +17,8 @@ class UCataclysmWeaponSlotsComponent;
 class USpringArmComponent;
 struct FOnAttributeChangeData;
 struct FCataclysmDeathNotice;
+struct FCataclysmHitNotice;
+struct FCataclysmSkillUsedNotice;
 
 /**
  * The player pawn. Its ability system component lives on the player state, so
@@ -174,6 +176,41 @@ public:
 	 * which is the opposite of what the node promises.
 	 */
 	void OnSomethingDied(const FCataclysmDeathNotice& Notice);
+
+	/**
+	 * A blow this character dealt, for the worn rows that act on one.
+	 *
+	 * TWO EVENTS COME OUT OF ONE ANNOUNCEMENT: a hit dealt, and a critical
+	 * strike when that hit was one. They are separate because a row may want
+	 * either, and a critical strike is a kind of hit rather than a different
+	 * thing.
+	 *
+	 * `hit_dealt` IS NOT `seconds_after_hit_taken`, which is the same word at
+	 * the opposite end of one blow: that one is stamped on whoever was hit.
+	 */
+	void OnSomethingWasHit(const FCataclysmHitNotice& Notice);
+
+	/**
+	 * A skill this character used, for the worn rows that act on one.
+	 *
+	 * NOT THE BASIC ATTACK, ruled 2026-09-14: it is the slot the design calls
+	 * automatic and free, and a row generating resource on it would generate
+	 * constantly. Every other shape is a skill use.
+	 */
+	void OnSkillWasUsed(const FCataclysmSkillUsedNotice& Notice);
+
+	/**
+	 * How near a death has to be to count as near this character.
+	 *
+	 * THE SAME 300 cm THE THREE DUNGEON RULES USE for a thing that happens at a
+	 * point -- Withered Ground, Singularity Wells and Infernal Rain, which tie
+	 * their three together with a static assertion. COPIED AS A CONCLUSION AND
+	 * NOT DERIVED AGAIN, and declared here rather than reached for across the
+	 * module, because an enchantment is not a dungeon rule and a character file
+	 * should not depend on the dungeon rule library to know how far away is
+	 * near.
+	 */
+	static constexpr float NearbyDeathRadiusCm = 300.0f;
 
 	/**
 	 * End every crowd control effect on this character that the named actor

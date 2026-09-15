@@ -858,9 +858,87 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	}
 }
 
+void ACataclysmPlayerCharacter::OnSomethingWasHit(
+	const FCataclysmHitNotice& Notice)
+{
+	// THE BLOWS THIS CHARACTER DEALT, not the ones it took. The clock for those
+	// is `seconds_after_hit_taken` and it is stamped on whoever was hit.
+	if (Notice.Attacker != this)
+	{
+		return;
+	}
+
+	UCataclysmAbilitySystemComponent* Acting =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!Acting)
+	{
+		return;
+	}
+
+	// THE SKILL'S OWN TAGS GO ACROSS, which is what a scoped row tests. One
+	// authored row is scoped this way: "strike skills generate ... on hit", and
+	// `Type.Strike` is on 31 of the 403 weapon skills.
+	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags);
+
+	// A CRITICAL STRIKE IS A KIND OF HIT, so it is a second event rather than a
+	// different one, and a row may want either. Fired after the hit so that a
+	// character wearing both rows gets both, in the order they are written.
+	if (Notice.bCritical)
+	{
+		Acting->ActOnEvent(FName(TEXT("critical_strike")), Notice.SkillTags);
+	}
+}
+
+void ACataclysmPlayerCharacter::OnSkillWasUsed(
+	const FCataclysmSkillUsedNotice& Notice)
+{
+	// NOT THE BASIC ATTACK. Ruled 2026-09-14: it is the one slot the design
+	// calls automatic and free, and a row generating resource on every use
+	// would generate constantly. The slot is on the notice, so this is one
+	// comparison rather than a guess about the skill's name.
+	if (Notice.User != this || Notice.Slot == ECataclysmAbilitySlot::BasicAttack)
+	{
+		return;
+	}
+
+	if (UCataclysmAbilitySystemComponent* Acting =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+	{
+		Acting->ActOnEvent(FName(TEXT("skill_use")), Notice.SkillTags);
+	}
+}
 void ACataclysmPlayerCharacter::OnSomethingDied(
 	const FCataclysmDeathNotice& Notice)
 {
+	// THE WORN ROWS FIRST, BEFORE THE KILLER TEST BELOW, because one of them
+	// fires on a death this character did NOT cause. Issue #1815.
+	if (UCataclysmAbilitySystemComponent* Acting =
+			Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent()))
+	{
+		// A KILL IS THIS CHARACTER'S KILL, including one its damage over time
+		// finished: the ruling of 2026-09-14 credits the character either way,
+		// and "melee kills" is settled by the killing blow's own tags rather
+		// than by how long ago it landed.
+		if (Notice.Killer == this)
+		{
+			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags);
+		}
+
+		// AND A DEATH NEAR THIS CHARACTER IS ANY DEATH BUT ITS OWN. The sentence
+		// says "when an enemy dies near you", which includes one this character
+		// killed while standing over it.
+		//
+		// NO TAGS GO ACROSS. The row is about a death happening nearby rather
+		// than about what did it, and handing over the killing skill's tags
+		// would let a scoped row fire on somebody else's blow.
+		if (Notice.Victim && Notice.Victim != this
+			&& FVector::Dist(GetActorLocation(), Notice.Location)
+				<= NearbyDeathRadiusCm)
+		{
+			Acting->ActOnEvent(FName(TEXT("nearby_death")));
+		}
+	}
+
 	// THIS CHARACTER HAS TO BE THE KILLER. The node says "when YOU kill the
 	// enemy that applied it", so a creature dying to anything else changes
 	// nothing here.
@@ -1843,6 +1921,19 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	{
 		Events->OnDeath.AddUObject(
 			this, &ACataclysmPlayerCharacter::OnSomethingDied);
+
+		// AND THE OTHER TWO ANNOUNCEMENTS, for the worn rows that act on a blow
+		// this character dealt or a skill it used. Issue #1815. Bound here
+		// beside the death one and safe for the same reason it gives.
+		//
+		// BINDING TURNS AN ANNOUNCEMENT ON. Both raisers return early when
+		// nothing is listening, so before this nothing built a skill-use notice
+		// at all. The hit one is already on in a dungeon, where the game mode
+		// listens for its own rules.
+		Events->OnHit.AddUObject(
+			this, &ACataclysmPlayerCharacter::OnSomethingWasHit);
+		Events->OnSkillUsed.AddUObject(
+			this, &ACataclysmPlayerCharacter::OnSkillWasUsed);
 	}
 
 	// BOUND FIRST, THEN READ. A change arriving between the two would otherwise
