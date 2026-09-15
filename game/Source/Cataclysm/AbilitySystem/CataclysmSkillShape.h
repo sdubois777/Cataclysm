@@ -511,9 +511,13 @@ struct CATACLYSM_API FCataclysmSkillShapeParams
 	 *
 	 * THE RULE IT CARRIES, decided on issue #361: standing in a patch for its
 	 * whole GroundDuration costs one hit of the skill that left it, so this is
-	 * 100 divided by GroundDuration. That keeps burning ground area denial
-	 * rather than a second damage source, and stops a longer patch being
-	 * automatically a bigger one.
+	 * 100 divided by GroundDuration, UNLESS THE ROW STATES OTHERWISE. That
+	 * keeps burning ground area denial rather than a second damage source, and
+	 * stops a longer patch being automatically a bigger one. The exception was
+	 * ruled on 2026-09-14 under the owner's delegation (issue #1167) for Buried
+	 * Fire, whose row says the fire "grows hotter every second it stands" and
+	 * whose ten seconds therefore cost 1.66 hits: a row that states a growth is
+	 * read as written, and the flat figure is the default for rows that do not.
 	 *
 	 * BEFORE ISSUE #590 THE ENGINE DID NOT READ IT. It derived the figure from
 	 * the Burn status effect instead -- 20% of a hit spread over 4 seconds, so
