@@ -3900,58 +3900,17 @@ def passive_effects(book) -> list[dict]:
                 f"Passive Effects row {index}: {node} has value kind {kind!r}, "
                 f"which is not flat, increased or more")
 
-        # A STATE OF THE CHARACTER THE BONUS ONLY APPLIES IN. Issue #959. Empty
-        # is "always", which is every row before that issue.
-        #
-        # REFUSED IF THE GAME CANNOT JUDGE IT. A condition the engine does not
-        # recognise is applied with no condition at all, which is a bonus that
-        # holds all the time instead of some of the time -- silently, and in the
-        # player's favour. Refusing here is the only place that can be caught.
-        condition = clean(_cell(raw, headers, "Condition")).lower()
-        if condition and condition not in CONDITIONS:
-            raise DataError(
-                f"Passive Effects row {index}: {node} names the condition "
-                f"{condition!r}, which the game cannot judge. Known: "
-                f"{', '.join(sorted(CONDITIONS))}.")
-
-        condition_value = 0.0
-        if condition and CONDITIONS[condition] is None:
-            # A CONDITION THAT COMPARES NOTHING TAKES NO VALUE, AND A VALUE
-            # BESIDE ONE IS REFUSED RATHER THAN IGNORED. Issue #962. Somebody
-            # writing a number next to `while_bleeding` believes it does
-            # something; the game never reads it, so the row would be worth
-            # something other than what its author thought and nothing at run
-            # time would say so. This is the only place that can be caught.
-            written = clean(_cell(raw, headers, "Condition Value"))
-            if written:
-                raise DataError(
-                    f"Passive Effects row {index}: {node} carries the condition "
-                    f"{condition!r} and a condition value of {written!r}. That "
-                    f"condition compares nothing, so the value would be "
-                    f"ignored. Leave the column empty.")
-        elif condition:
-            condition_value = number(_cell(raw, headers, "Condition Value"),
-                                     "Condition Value", index)
-            low, high, units = CONDITIONS[condition]
-            if not low <= condition_value <= high:
-                raise DataError(
-                    f"Passive Effects row {index}: {node} has a condition value "
-                    f"of {condition_value}, and {condition!r} takes {units} "
-                    f"between {low:g} and {high:g}.")
-
-        # A STATE THE BONUS'S SIZE GROWS WITH. Issue #968. Empty is a fixed
-        # value, which is every row before that issue.
-        #
-        # REFUSED IF THE GAME CANNOT JUDGE IT, and the direction of the failure
-        # is the reason. An unknown scale reaching the game is made worth nothing
-        # rather than worth its full value, so the node would silently grant
-        # nothing at all.
-        scale = clean(_cell(raw, headers, "Scale")).lower()
-        if scale and scale not in SCALES:
-            raise DataError(
-                f"Passive Effects row {index}: {node} names the scale "
-                f"{scale!r}, which the game cannot judge. Known: "
-                f"{', '.join(sorted(SCALES))}.")
+        # A STATE THE BONUS ONLY APPLIES IN (issue #959) AND A STATE ITS SIZE
+        # GROWS WITH (issue #968), CHECKED BY THE SAME HELPER THE ENCHANTMENT
+        # SHEETS USE. Empty is "always" and "a fixed value", which is every
+        # row before those issues. `_condition_and_scale` refuses a name the
+        # game cannot judge, a value beside a condition that compares nothing,
+        # a value outside the condition's range, and a step of nothing or
+        # outside the scale's range, with the reasons beside each refusal.
+        # This function carried its own copy of those checks until issue
+        # #1593; one copy means the wording and the rules cannot drift apart.
+        condition, condition_value, scale, scale_step = _condition_and_scale(
+            raw, headers, "Passive Effects", index, node)
 
         # HOW FAR "NEAR" IS, FOR THE TWO NAMES THAT COUNT NEARBY ENEMIES.
         # Issue #1597. A condition carries one number and "three or more
@@ -4000,21 +3959,6 @@ def passive_effects(book) -> list[dict]:
                     f"Passive Effects row {index}: {node} has a reach of "
                     f"{reach_metres}, and a radius takes metres above 0 and up "
                     f"to 100. A reach of nothing counts nobody.")
-
-        scale_step = 0.0
-        if scale:
-            scale_step = number(_cell(raw, headers, "Scale Step"),
-                                "Scale Step", index)
-            low, high, units = SCALES[scale]
-
-            # A STEP OF NOTHING MAKES THE BONUS WORTH NOTHING AT EVERY STATE,
-            # which is why zero is refused here rather than only bounded.
-            if scale_step <= 0.0 or not low <= scale_step <= high:
-                raise DataError(
-                    f"Passive Effects row {index}: {node} has a scaling step of "
-                    f"{scale_step}, and {scale!r} takes {units} above 0 and up "
-                    f"to {high:g}. A step of nothing is worth nothing at every "
-                    f"state.")
 
         # WHICH OF A CAPSTONE'S THREE OPTIONS THIS ROW BELONGS TO. Issue #1029.
         # Empty is "not an option", which is every row in the four trees except
@@ -4234,15 +4178,12 @@ def _condition_and_scale(raw, headers: dict[str, int], sheet: str, index: int,
                          who: str) -> tuple[str, float, str, float]:
     """A row's condition, its value, its scale and its step, checked.
 
-    THE SAME RULES `passive_effects` APPLIES, AND FOR THE SAME REASONS. A
-    condition the game cannot judge would be applied with no condition, and a
-    scale it cannot judge would be worth nothing, so both are refused here and
-    the error names what the game does know.
-
-    `passive_effects` STILL CARRIES ITS OWN COPY OF THESE CHECKS. Moving it onto
-    this helper waits until the passive-tree work on another branch has merged,
-    so that the two edits do not collide in this file. Both copies read the same
-    `CONDITIONS` and `SCALES`, so the names cannot differ between them.
+    THE ONE PLACE THESE RULES LIVE, for the Passive Effects sheet and the
+    enchantment sheets alike. A condition the game cannot judge would be
+    applied with no condition, and a scale it cannot judge would be worth
+    nothing, so both are refused here and the error names what the game does
+    know. `passive_effects` carried its own copy of these checks until issue
+    #1593; `sheet` and `who` are what let one copy name either sheet's row.
     """
     condition = clean(_cell(raw, headers, "Condition")).lower()
     if condition and condition not in CONDITIONS:
