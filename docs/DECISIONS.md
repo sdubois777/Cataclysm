@@ -46531,8 +46531,9 @@ same words Path of Exile and Last Epoch use.
 **Gems join keystones and enchantments as multiplicative sources.** The design
 document named only enchantments and keystones. Ordinary gear affixes are still
 excluded, which `MORE_SOURCES` enforces: an affix is flat or increased and never
-more. That keeps a rare drop readable and gives the 961 designed enchantments a
-job ordinary affixes cannot do.
+more. That keeps a rare drop readable and gives the designed enchantments a job
+ordinary affixes cannot do. (This said 961; that was the sheet's padded export
+range, not a count. Issue #1445.)
 
 **A more multiplier is scoped by tag exactly as an increase is**, so a gem
 granting more area damage does not help a single-target skill.
@@ -46629,8 +46630,10 @@ above. The working model is `sim/cataclysm_sim/enemy_stats.py`.
 
 ## 2026-08-03 — The gear affix pool, and where its numbers come from
 
-**Decision.** The ordinary affix pool now exists. Issue #79 recorded that 961
-enchantments were designed and not one ordinary affix, so gear granted no stats
+**Decision.** The ordinary affix pool now exists. Issue #79 recorded that
+several hundred enchantments were designed (it said 961, the sheet's padded
+export range rather than a count; issue #1445) and not one ordinary affix, so
+gear granted no stats
 at all while the Power Score model assumed gear supplies half a character's
 power.
 

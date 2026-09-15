@@ -1,7 +1,9 @@
 """Affix families and their values, starting with resistance.
 
-WHAT THIS IS FOR. Issue #79. The regular affix pool does not exist: 961
-enchantments are designed and not one ordinary affix. Gear therefore grants no
+WHAT THIS IS FOR. Issue #79. The regular affix pool does not exist: several
+hundred enchantments are designed (the two Enchantments tables in
+`game/Data/` hold the count; 961 was the sheet's padded export range, issue
+#1445) and not one ordinary affix. Gear therefore grants no
 stats, which is why the Power Score model can assume gear supplies half a
 character's power while nothing in the game delivers any of it.
 

@@ -73,7 +73,7 @@ and "more", and Torchlight Infinite calls them non-additional and additional.
 WHERE EACH BUCKET COMES FROM. Ordinary gear affixes are flat or increased and
 never more. More multipliers come from gems, passive tree keystones and
 enchantments, which MORE_SOURCES enforces. That keeps a rare drop readable and
-gives the 961 designed enchantments a job they did not previously have.
+gives the designed enchantments a job they did not previously have.
 
 THE DEFAULT LINE AND OVERRIDES. 33 of the 35 stats come from the class -- all but
 attack speed, which comes from the weapon, and critical strike chance, which comes
@@ -505,7 +505,7 @@ class Modifier:
 #: Stated by the project owner 2026-08-03, after looking at how Path of Exile,
 #: Last Epoch and Torchlight Infinite split their damage calculations. Keeping
 #: the multiplicative sources on gems, keystones and enchantments means a rare
-#: drop stays readable, and it gives the 961 designed enchantments a job they did
+#: drop stays readable, and it gives the designed enchantments a job they did
 #: not previously have.
 MORE_SOURCES = frozenset({"gem", "keystone", "enchantment"})
 
