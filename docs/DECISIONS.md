@@ -900,6 +900,68 @@ is not decided by "Option A" and is part of issue #58, the league infrastructure
 
 ---
 
+## 2026-09-14 — The word "drain" means a sentence takes something away, judged rather than derived
+
+**Affects:** `tools/tests/test_enchantment_effects_match_the_row_text.py` (the
+word list that decides whether a negative value belongs on a sentence). Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The judgement
+
+`drain`, `drains` and `drained` now count as a sentence taking something away,
+alongside `less`, `reduce`, `reduces`, `reduced`, `lose`, `slower`, `shorter`,
+`halved` and `slowed`.
+
+**This widens the MEANING and not a tense, which is why it is a judgement.** The
+neighbouring `INCREASE` pattern was widened on 2026-09-14 by adding `reduce` and
+`reduces` beside `reduced`, and that was a correction rather than a decision: a
+sentence admitted in one tense is admitted in the others for the same reason, so
+the check was no weaker afterwards. No word already in this list means drain, so
+adding it admits sentences the list previously refused, and that is a loosening
+somebody has to choose.
+
+### Why nothing noticed the word was missing
+
+Four of the enchantment sentences use it, measured 2026-09-14 in
+`game/Data/EnchantmentsNegative.csv`:
+
+| Sentence | Has an effect row |
+| :-- | :-- |
+| Channel skills drain 8%-15% of your maximum HP per second while active | no |
+| Using your ultimate ability drains 20%-40% of your maximum HP | **yes** |
+| Critical strikes drain 3%-6% of your current HP | no |
+| Dodging an attack drains 5%-10% of your class resource | no |
+
+**The one that has a row never reaches this check.** It is written as
+`added_health_cost` `flat` +20 to +40 — a POSITIVE amount of a cost — and the
+check only asks about a sentence when the row's value is negative. So the word
+has been missing for as long as the list has existed and no run could say so.
+
+"Dodging an attack drains 5%-10% of your class resource" will be the first row
+whose value is negative on a sentence using the word. It moves a pool rather
+than changing a stat, and its percentage is signed, so negative means drain.
+
+### Checked on made-up sentences, because no row exercises it yet
+
+`test_a_sentence_that_drains_takes_something_away` calls the rule directly with
+sentences written in the test, copying
+`test_longer_excuses_a_negative_value_on_one_stat_only` beside it and for the
+reason that test states: **a rule checked only against the real tables stops
+being checked the moment those tables change.** It needs no data row, so the
+widening is proved before the rows are authored rather than after.
+
+All three tenses are checked, and two controls: a sentence that says "costs"
+instead is still refused, and the word has to be a whole word rather than the
+start of a longer one.
+
+### What this does not do
+
+It does not excuse a row from stating its number, and it does not admit a
+negative value on a sentence that says nothing about taking anything away. It
+adds three words to one list and nothing else.
+
+---
+
 ## 2026-09-14 — Five events that cannot be clocks, because a clock is something done TO a character and these are things it did
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` (what a
