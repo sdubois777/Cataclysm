@@ -323,6 +323,89 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourPerCast)
 
 	/**
+	 * How much Fervour this character gains every second for the enemies
+	 * standing near it. Issue #1515.
+	 *
+	 * THE RAVAGER'S OWN GENERATOR, and the first thing in the game that fills
+	 * the pool for a class other than the Masochist. `Ravager_basic_spine_000`
+	 * reads "1 per second for every enemy within 4 metres of you".
+	 *
+	 * THE COUNTING IS THE ROW'S, NOT THIS CODE'S. The row carries
+	 * `Scale=enemies_in_reach` with `ReachMetres=4`, and the stat pipeline
+	 * multiplies the row's value by how many hostile actors stand inside that
+	 * radius. So this attribute already holds "Fervour per second from nearby
+	 * enemies" with the count applied, and its reader adds it per second
+	 * without counting anything itself.
+	 *
+	 * A SEPARATE STAT FROM `FervourPerSecond` ABOVE, and that is a ruling
+	 * rather than a tidy-up. `Ravager_basic_d_b0` Held Ground reads "+2%
+	 * increased Fervour gained from enemies near you per point", and a stat
+	 * shared with every other per-second source could not express "from
+	 * enemies near you" -- the node's sentence would become false the moment a
+	 * second per-second source existed. Held Ground is a plain `increased` row
+	 * against this stat and needs no mechanism of its own.
+	 *
+	 * ASKED FOR THROUGH THE STAT PIPELINE AND NEVER READ OFF THIS ATTRIBUTE,
+	 * because a scaled row is never folded into a gameplay attribute any more
+	 * than a conditioned one is. A plain read answers the unscaled value and
+	 * the node counts one enemy for ever.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourPerEnemyInReach)
+	FGameplayAttributeData FervourPerEnemyInReach;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourPerEnemyInReach)
+
+	/**
+	 * How much Fervour this character loses every second once it has been out
+	 * of contact long enough. Issue #1515.
+	 *
+	 * THE FIRST THING IN THE GAME THAT EMPTIES THE POOL ON A TIMER. Fervour is
+	 * lost today only when healing removes it, which is the Masochist's design
+	 * and is keyed to an event rather than to time.
+	 * `Ravager_basic_spine_000` reads "Fervour decays at 5 per second after 3
+	 * seconds with no enemy within 4 metres, so losing contact is what empties
+	 * it rather than a timer."
+	 *
+	 * A STAT THE NODE GRANTS RATHER THAN A CONSTANT, which is what keeps it off
+	 * every other class. Zero for a character without the node means no decay
+	 * at all, so a Masochist's pool behaves exactly as it did. A constant would
+	 * drain every pool in the game for a sentence only one node states.
+	 *
+	 * THE THREE SECONDS ARE A CONSTANT AND THIS IS NOT. No node changes the
+	 * delay; one keystone changes the radius. See `FervourDecayGraceMetres`
+	 * below and `UCataclysmFervour::DecayGraceSeconds`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourDecayPerSecond)
+	FGameplayAttributeData FervourDecayPerSecond;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourDecayPerSecond)
+
+	/**
+	 * How near an enemy has to stand to stop this character's Fervour decaying.
+	 * Issue #1515.
+	 *
+	 * TWO NODES GRANT IT AND THEY ADD UP TO THE SENTENCE. The starting node
+	 * grants 4, and `Ravager_keystone_d_kC` No Ground Given reads "Your Fervour
+	 * does not decay while an enemy is within 8 metres of you, rather than 4"
+	 * -- so its row grants 4 MORE and the total is the 8 its sentence names.
+	 *
+	 * THE SENTENCE SAYS REPLACEMENT AND THE ARITHMETIC IS ADDITION, which is
+	 * worth stating rather than leaving for a reader to notice. Two rows
+	 * granting one flat stat sum, as every other pair of rows in this game
+	 * does; expressing "8 rather than 4" as a replacement would need either an
+	 * `increased` of 100% on a keystone, which reads as a percentage where the
+	 * sentence states a distance, or code that takes the largest radius granted
+	 * rather than the total. Neither is worth a new rule for one node.
+	 * `Cataclysm.Passives.NoGroundGivenWidensTheRadiusToEight` pins the total
+	 * at 8 so a change to either row that breaks the sum fails loudly.
+	 *
+	 * ZERO MEANS NO RADIUS AND THEREFORE NO GRACE, which only a character
+	 * without the starting node can be -- and such a character has no decay
+	 * rate either, so nothing reads this.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourDecayGraceMetres)
+	FGameplayAttributeData FervourDecayGraceMetres;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourDecayGraceMetres)
+
+	/**
 	 * Whether this character's skills cost no health at all. Issue #1051.
 	 * Zero for no, above zero for yes.
 	 *
@@ -595,6 +678,9 @@ protected:
 	UFUNCTION() void OnRep_HealthDebtClearedOnlyByAKill(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourLossSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerSecond(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourPerEnemyInReach(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourDecayPerSecond(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourDecayGraceMetres(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerCast(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthCostSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaPoolBecomesHealth(const FGameplayAttributeData& OldValue);

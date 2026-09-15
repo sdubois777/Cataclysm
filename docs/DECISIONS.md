@@ -2,6 +2,145 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — The Ravager's Fervour fills from the enemies standing near it and drains when contact is lost
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h`
+and `.cpp` (three new attributes),
+`game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and `.cpp` (a third
+rate on the per-second step, and the decay),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and
+`.cpp` (the contact timestamp),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the new job on the
+step), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (three
+map entries), `docs/All_Things_Cataclysm.xlsx` and
+`game/Data/PassiveEffects.csv` (five rows), and the tests. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+Three Ravager nodes now do what they say: `Ravager_basic_spine_000` **Fervour**,
+`Ravager_basic_d_b0` **Held Ground** and `Ravager_keystone_d_kC` **No Ground
+Given**.
+
+### THE DEFAULT CHARACTER HAD A RESOURCE BAR NOTHING COULD MOVE
+
+This is why this family was chosen over the other three that were ranked, and it
+was measured rather than assumed. `game/Data/ClassStats.csv` holds
+`Default_class_resource` with a base of 100 and no Ravager row overriding it, so
+a Ravager carries a hundred-point pool. Every stat that fills one —
+`fervour_from_damage`, `fervour_per_second`, `fervour_from_cost`,
+`fervour_on_dropping_low`, `fervour_from_minions`, `fervour_on_minion_death` —
+is granted only by a Masochist node, so `UCataclysmFervour::HasAGenerator`
+answered false for a Ravager and the bar sat at zero for ever.
+
+**A character starts on the Ravager class line by default**, so this was the
+default character's own resource.
+
+### THE RATE IS ITS OWN STAT, AND THE RITUALIST ALREADY SETTLED WHY
+
+`fervour_per_enemy_in_reach` rather than a second use of `fervour_per_second`.
+Held Ground reads "+2% increased Fervour gained from enemies near you per
+point", and a shared stat could not express "from enemies near you": the
+increase would also reach the Masochist's Low Life keystone, which grants
+Fervour for being hurt, and the Ritualist's minion rate. One character can reach
+all 24 class trees, so holding all three nodes is ordinary rather than exotic.
+
+**The Ritualist's starting node made the same choice for the same reason** when
+it was built, and its comment says so. This copies that conclusion and
+re-derives it rather than citing it.
+
+### THE COUNTING IS THE ROW'S AND NOT THE CODE'S
+
+The row carries `Scale=enemies_in_reach` with `ReachMetres=4`, and the stat
+pipeline multiplies its value by how many hostile actors stand inside that
+radius. So the attribute already means "Fervour a second from nearby enemies"
+with the bodies applied, and the reader adds it per second without counting
+anything itself. `UCataclysmTargetCandidates::HostileDistancesWithinMetres`
+returns distances rather than a count precisely so each row can count inside its
+own reach after one walk.
+
+**This was the single largest surprise of the reconnaissance.** The scale, the
+condition, the reach column and the one-walk rule all existed before this
+change; what did not exist was anything that emptied the pool.
+
+### THE DECAY IS THE ONE NEW MECHANISM, AND IT IS A STAT RATHER THAN A RULE
+
+Nothing in this game removed Fervour on a clock. The only loss was
+`RemoveForHealing` — healing removes it, which is the Masochist's design — and
+that is keyed to an event rather than to time.
+
+`fervour_decay_per_second` is granted by the node, so a character without the
+node has zero and loses nothing. **A constant would have drained every pool in
+the game for a sentence one node states**, including the Masochist's, and every
+test of the new behaviour would still have passed.
+`Cataclysm.Passives.AMasochistWithoutTheRavagerNodeNeverDecays` is the control
+that would fail if it were ever made a constant.
+
+**It drains whatever filled the pool.** A character holding both this node and
+Low Life loses Fervour out of contact that Low Life put there. The sentence
+scopes the rule to holding the node — "While you have this" — and not to where
+the Fervour came from.
+
+### THE GRACE COUNTS FROM THE LAST MOMENT CONTACT HELD
+
+Three seconds, and it restarts every step an enemy is inside the radius. The
+alternative — counting from when the pool last rose — would keep a character
+topped up by an enemy they never fight.
+
+**Never having been in contact counts as being out of contact**, which is the
+opposite of the choice `MayReleaseNova` makes beside it in the same file. That
+one asks whether an interval has elapsed since an event, so never having had the
+event means nothing to wait for. This asks whether contact has lapsed, and a
+character that never had contact has none now. It costs nothing today because
+such a character has an empty bar, and it is the answer the sentence gives
+rather than the one that happens to be harmless.
+
+**Three seconds is a constant and the radius is a stat.** No node in any tree
+changes the delay; one keystone changes the radius.
+
+### THE RADIUS IS 4 PLUS 4, AND THE SENTENCE SAYS REPLACEMENT
+
+No Ground Given reads "Your Fervour does not decay while an enemy is within 8
+metres of you, **rather than 4**". Two flat rows on one stat sum, as every other
+pair of rows in this game does, so its row grants **4 more** and the total is the
+8 its sentence names.
+
+**The sentence says replacement and the arithmetic is addition**, and that is
+recorded here rather than left for a reader to notice. The alternatives were an
+`increased` of 100% on a keystone, which states a percentage where the sentence
+states a distance, or code that takes the largest radius granted rather than the
+total. Neither earns a new rule for one node.
+
+Two checks cover it between them and neither is enough alone.
+`VALUE_IN_WORDS` in
+`tools/tests/test_passive_effects_match_the_node_text.py` exempts that row from
+the digit check, because the row's value is neither digit in the sentence, and
+names the pair of distances in words so a reword of either fails.
+`Cataclysm.Passives.NoGroundGivenWidensTheRadiusToEight` reads the total off a
+real Ravager holding both nodes, using an enemy at five metres — outside the
+starting node's four and inside the keystone's eight.
+
+### ONE CLAUSE IS DELIBERATELY NOT BUILT
+
+The starting node's sentence opens "1 for each enemy your attacks hit", and that
+is **not** in this change. `fervour_from_damage` scales by health lost rather
+than by bodies, and no count of how many enemies one attack hit is available
+where the gain would be taken.
+
+It is deferred rather than forgotten, and it earns its own change: the same
+count also unlocks `Ravager_basic_b_a2` Cleaving Arc,
+`Ravager_keystone_b_kA` Sundering and `Ravager_basic_b_b2` Bought With Ruin. One
+change carries one mechanism.
+
+### WHAT THIS UNBLOCKS
+
+Three Fervour spenders — `Set Against It`, `Bought With Ruin` and `Wrung Out` —
+and `Grinding Halt` all needed a Ravager to have Fervour at all. None is in this
+change and each is now writable.
+
+Counted on the data afterwards: the Ravager tree stands at 58 of its 74 nodes
+and the Ritualist at 60 of 74, with the Masochist at 74 of 74 as the control.
+
+---
+
 ## 2026-09-14 — A dungeon rule that can help the player, and the first ground patch whose colour is its own rather than its owner's
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

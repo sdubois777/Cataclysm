@@ -486,7 +486,16 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	 * an attribute nobody declared off the sheet is counted as ON it and BOTH
 	 * numbers fail at once. One fix, not two.
 	 */
-	constexpr int32 OffSheetResourceStats = 23;
+	// AND TWENTY-SIX SINCE THE RAVAGER'S GENERATOR AND ITS DECAY, issue #1515:
+	// the rate from enemies standing near, the decay rate, and the radius that
+	// stops it. Off the sheet for the same reason as everything else counted
+	// here: no affix grants any of them, nothing scales any of them, no class
+	// differs on any of them, and one node supplies all three.
+	//
+	// RAISING THIS IS WHAT KEEPS THE SHEET COUNT WHERE IT IS. The sheet total
+	// is derived by subtracting this number, so an attribute nobody declares
+	// off the sheet is counted as ON it and both assertions fail.
+	constexpr int32 OffSheetResourceStats = 26;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

@@ -39,6 +39,9 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	// removes Fervour as usual, and one without Low Life gains none on a timer.
 	InitFervourLossSuppressed(0.0f);
 	InitFervourPerSecond(0.0f);
+	InitFervourPerEnemyInReach(0.0f);
+	InitFervourDecayPerSecond(0.0f);
+	InitFervourDecayGraceMetres(0.0f);
 
 	// AND ZERO FOR BOTH HALVES OF THE LAST DROP. Issue #1051. A character
 	// without that capstone option pays for its skills as usual and gains no
@@ -91,6 +94,9 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourLossSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerSecond);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerEnemyInReach);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourDecayPerSecond);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourDecayGraceMetres);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerCast);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthCostSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth);
@@ -145,6 +151,9 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetHealthDebtClearedOnlyByAKillAttribute()
 		|| Attribute == GetFervourLossSuppressedAttribute()
 		|| Attribute == GetFervourPerSecondAttribute()
+		|| Attribute == GetFervourPerEnemyInReachAttribute()
+		|| Attribute == GetFervourDecayPerSecondAttribute()
+		|| Attribute == GetFervourDecayGraceMetresAttribute()
 		|| Attribute == GetFervourPerCastAttribute()
 		|| Attribute == GetHealthCostSuppressedAttribute()
 		|| Attribute == GetManaPoolBecomesHealthAttribute()
@@ -226,6 +235,9 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetHealthDebtClearedOnlyByAKillAttribute());
 	All.Add(GetFervourLossSuppressedAttribute());
 	All.Add(GetFervourPerSecondAttribute());
+	All.Add(GetFervourPerEnemyInReachAttribute());
+	All.Add(GetFervourDecayPerSecondAttribute());
+	All.Add(GetFervourDecayGraceMetresAttribute());
 	All.Add(GetFervourPerCastAttribute());
 	All.Add(GetHealthCostSuppressedAttribute());
 	All.Add(GetManaPoolBecomesHealthAttribute());
@@ -271,6 +283,9 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtDelayExtension)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthDebtClearedOnlyByAKill)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourLossSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerSecond)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerEnemyInReach)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourDecayPerSecond)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourDecayGraceMetres)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerCast)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthCostSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth)

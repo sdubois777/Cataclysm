@@ -10206,4 +10206,582 @@ bool FCataclysmPassiveNoNodeNoEndingTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// The Ravager's Fervour: it fills from nearby enemies and drains out of
+// contact. Issue #1515.
+// --------------------------------------------------------------------------
+
+namespace CataclysmRavagerFervourTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	/** The tree's starting node: the rate, the decay and the radius. */
+	const TCHAR* const StartingNode = TEXT("Ravager_basic_spine_000");
+
+	/** "+2% increased Fervour gained from enemies near you per point." */
+	const TCHAR* const HeldGround = TEXT("Ravager_basic_d_b0");
+
+	/** "...within 8 metres of you, rather than 4." */
+	const TCHAR* const NoGroundGiven = TEXT("Ravager_keystone_d_kC");
+
+	/**
+	 * A STEP LONG ENOUGH TO READ AND SHORT ENOUGH TO BE A STEP. The real one is
+	 * `UCataclysmRegeneration::StepSeconds` and runs several times a second;
+	 * these tests call the same functions directly with a whole second so the
+	 * arithmetic in each assertion is the node's own number rather than that
+	 * number divided by a step length.
+	 */
+	constexpr float OneSecond = 1.0f;
+
+	/** 100 Unreal units to the metre; `UCataclysmTargeting::MetresBetween`. */
+	constexpr float Metre = 100.0f;
+
+	const FGameplayAttribute Pool()
+	{
+		return UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	}
+
+	float FervourOf(const FRealCharacter& Player)
+	{
+		return Player.AbilitySystem->GetNumericAttribute(Pool());
+	}
+
+	/** Put Fervour in the bar without waiting for a fight to fill it. */
+	void GiveFervour(FRealCharacter& Player, float Amount)
+	{
+		Player.AbilitySystem->ApplyModToAttribute(
+			Pool(), EGameplayModOp::Additive, Amount);
+	}
+
+	/** Spend points across any number of nodes, or take them all back. */
+	void Hold(FRealCharacter& Player,
+			  const TMap<FName, int32>& PointsByNode)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		for (const TPair<FName, int32>& Each : PointsByNode)
+		{
+			Allocation.Add(Each.Key, Each.Value);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	/** One enemy, that many metres along the x axis, harmless and unkillable. */
+	ACataclysmEnemyCharacter* EnemyAtMetres(UWorld* World, float Metres)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(
+				FVector(Metres * Metre, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(
+				UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetRarityStep(0);
+			Made->SetHealth(1'000'000.0f);
+			Made->SetAttackDamage(0.0f);
+		}
+		return Made;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavagerFervourArrivesTest,
+	"Cataclysm.Passives.FervourArrivesForEnemiesStandingNearARealRavager",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_spine_000` on a real character, read out of the built ASSET.
+ * Issue #1515.
+ *
+ * "1 per second for every enemy within 4 metres of you."
+ *
+ * THE BAR EXISTS ALREADY AND NOTHING COULD MOVE IT. `Default_class_resource` in
+ * `game/Data/ClassStats.csv` gives every class a pool of 100, and every stat
+ * that filled one belonged to a Masochist node, so this asserts the bar rises
+ * from zero rather than that a rate stat holds a number.
+ */
+bool FCataclysmRavagerFervourArrivesTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	Hold(Player, {{FName(StartingNode), 1}});
+	if (!TestEqual(TEXT("the bar starts empty"), FervourOf(Player), 0.0f,
+				   0.001f))
+	{
+		return false;
+	}
+
+	if (!TestNotNull(TEXT("an enemy three metres away, inside the four"),
+					 EnemyAtMetres(World, 3.0f)))
+	{
+		return false;
+	}
+
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("one second beside one enemy is one Fervour"),
+			  FervourOf(Player), 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavagerFervourCountsEachEnemyTest,
+	"Cataclysm.Passives.TheFervourRateCountsEachEnemyRatherThanAnyEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The rate is PER enemy, not a flat rate gated on one being near. Issue #1515.
+ *
+ * THE SCALE IS WHAT THIS PINS AND THE CONDITION WOULD PASS WITHOUT IT. A row
+ * written with `enemies_in_reach_at_least` instead of `Scale=enemies_in_reach`
+ * would grant one Fervour a second to a Ravager standing in any crowd, and the
+ * test above could not tell the two apart. Two enemies giving twice what one
+ * gives can only be the scale.
+ */
+bool FCataclysmRavagerFervourCountsEachEnemyTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	Hold(Player, {{FName(StartingNode), 1}});
+
+	if (!TestNotNull(TEXT("the first enemy"), EnemyAtMetres(World, 3.0f)))
+	{
+		return false;
+	}
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	const float AfterOne = FervourOf(Player);
+	if (!TestEqual(TEXT("one enemy gives one a second"), AfterOne, 1.0f, 0.001f))
+	{
+		return false;
+	}
+
+	if (!TestNotNull(TEXT("a second enemy, also inside the four"),
+					 EnemyAtMetres(World, 2.0f)))
+	{
+		return false;
+	}
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("two enemies give two a second, so the rate counts bodies"),
+			  FervourOf(Player) - AfterOne, 2.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavagerFervourRespectsTheRadiusTest,
+	"Cataclysm.Passives.NoFervourArrivesFromEnemiesOutsideTheFourMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The row's `ReachMetres` is four and an enemy further off is not counted.
+ * Issue #1515.
+ */
+bool FCataclysmRavagerFervourRespectsTheRadiusTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	Hold(Player, {{FName(StartingNode), 1}});
+
+	if (!TestNotNull(TEXT("an enemy five metres away, outside the four"),
+					 EnemyAtMetres(World, 5.0f)))
+	{
+		return false;
+	}
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("an enemy outside the radius generates nothing"),
+			  FervourOf(Player), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavagerFervourGraceHoldsTest,
+	"Cataclysm.Passives.FervourHoldsForThreeSecondsAfterContactIsLost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The three second grace. Issue #1515.
+ *
+ * "Fervour decays at 5 per second AFTER 3 seconds with no enemy within 4
+ * metres."
+ *
+ * THE GRACE IS THE HALF A DECAY TEST ALONE CANNOT SEE. A decay written with no
+ * delay drains the bar the instant a fight ends and still passes a test that
+ * only checks the bar falls.
+ */
+bool FCataclysmRavagerFervourGraceHoldsTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	Hold(Player, {{FName(StartingNode), 1}});
+	GiveFervour(Player, 50.0f);
+	if (!TestEqual(TEXT("fifty in the bar to lose"), FervourOf(Player), 50.0f,
+				   0.001f))
+	{
+		return false;
+	}
+
+	// CONTACT FIRST, so the clock has a moment to count from. Without this the
+	// character has never been in contact, which counts as out of contact and
+	// would decay at once -- correct behaviour, and not what this test is about.
+	ACataclysmEnemyCharacter* Near = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy inside the radius"), Near))
+	{
+		return false;
+	}
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	if (!TestEqual(TEXT("nothing decays while contact holds"),
+				   FervourOf(Player), 50.0f, 0.001f))
+	{
+		return false;
+	}
+
+	Near->Destroy();
+	World->TimeSeconds += 2.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	TestEqual(TEXT("two seconds after contact is lost, the bar is untouched"),
+			  FervourOf(Player), 50.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavagerFervourDecaysTest,
+	"Cataclysm.Passives.FervourDecaysAtFivePerSecondOnceTheGraceHasLapsed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The decay itself, once the grace has run out. Issue #1515.
+ */
+bool FCataclysmRavagerFervourDecaysTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	Hold(Player, {{FName(StartingNode), 1}});
+	GiveFervour(Player, 50.0f);
+
+	ACataclysmEnemyCharacter* Near = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy inside the radius"), Near))
+	{
+		return false;
+	}
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	Near->Destroy();
+
+	World->TimeSeconds += 4.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	TestEqual(TEXT("one second of decay takes five"), FervourOf(Player), 45.0f,
+			  0.001f);
+
+	UCataclysmFervour::DecayStep(Player.Character, 2.0f);
+	TestEqual(TEXT("and two more seconds take ten more"), FervourOf(Player),
+			  35.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavagerFervourGraceResetsTest,
+	"Cataclysm.Passives.ReenteringReachInsideTheGraceMeansNoDecayAtAll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The grace counts from the LAST moment contact held, not from the first time
+ * it was lost. Issue #1515.
+ *
+ * "...so losing contact is what empties it rather than a timer." A character
+ * stepping in and out of reach never decays, and a grace counted from the first
+ * loss would drain one that had been back in the fight for two seconds.
+ */
+bool FCataclysmRavagerFervourGraceResetsTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	Hold(Player, {{FName(StartingNode), 1}});
+	GiveFervour(Player, 50.0f);
+
+	ACataclysmEnemyCharacter* Near = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy inside the radius"), Near))
+	{
+		return false;
+	}
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+
+	// OUT FOR TWO SECONDS, WHICH IS INSIDE THE THREE.
+	Near->Destroy();
+	World->TimeSeconds += 2.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+
+	// AND BACK IN, WHICH RESTARTS THE COUNT.
+	if (!TestNotNull(TEXT("another enemy steps into reach"),
+					 EnemyAtMetres(World, 3.0f)))
+	{
+		return false;
+	}
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+
+	// TWO MORE SECONDS: four since the FIRST loss, two since the last.
+	World->TimeSeconds += 2.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	TestEqual(TEXT("four seconds after the first loss but two after the last, "
+				   "nothing has drained"),
+			  FervourOf(Player), 50.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourWithoutTheNodeNeverDecaysTest,
+	"Cataclysm.Passives.AMasochistWithoutTheRavagerNodeNeverDecays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The decay is a stat the node grants, not a rule of the game. Issue #1515.
+ *
+ * THE CONTROL FOR THE WHOLE CHANGE. A decay written as a constant would drain
+ * every pool in the game for a sentence one node states, and every test above
+ * would still pass. The Masochist fills its bar by being hurt and has no
+ * reason to lose it for standing alone.
+ */
+bool FCataclysmFervourWithoutTheNodeNeverDecaysTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Masochist with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	GiveFervour(Player, 50.0f);
+	if (!TestEqual(TEXT("fifty in the bar"), FervourOf(Player), 50.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// NO ENEMY AND A LONG TIME, which is the worst case for a character the
+	// rule does not apply to.
+	World->TimeSeconds += 30.0f;
+	UCataclysmFervour::DecayStep(Player.Character, 30.0f);
+	TestEqual(TEXT("a character without the Ravager's node keeps every point"),
+			  FervourOf(Player), 50.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeldGroundRaisesTheRateTest,
+	"Cataclysm.Passives.HeldGroundRaisesTheRateFromNearbyEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_d_b0` Held Ground. Issue #1515.
+ *
+ * "+2% increased Fervour gained from enemies near you per point."
+ *
+ * AN `increased` ROW AGAINST A STAT WITH NO BASE, which works only because the
+ * starting node grants the flat value it multiplies. Eight points is 16%, so a
+ * rate of one a second becomes 1.16.
+ */
+bool FCataclysmHeldGroundRaisesTheRateTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	if (!TestNotNull(TEXT("one enemy inside the radius"),
+					 EnemyAtMetres(World, 3.0f)))
+	{
+		return false;
+	}
+
+	Hold(Player, {{FName(StartingNode), 1}});
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	const float Plain = FervourOf(Player);
+	if (!TestEqual(TEXT("one a second without Held Ground"), Plain, 1.0f,
+				   0.001f))
+	{
+		return false;
+	}
+
+	Hold(Player, {{FName(StartingNode), 1}, {FName(HeldGround), 8}});
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("eight points of Held Ground is sixteen per cent more"),
+			  FervourOf(Player) - Plain, 1.16f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoGroundGivenWidensTheRadiusTest,
+	"Cataclysm.Passives.NoGroundGivenWidensTheRadiusToEight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_d_kC` No Ground Given. Issue #1515.
+ *
+ * "Your Fervour does not decay while an enemy is within 8 metres of you,
+ * rather than 4."
+ *
+ * THIS TEST IS WHAT CHECKS THE ARITHMETIC THE SENTENCE DOES NOT STATE. The
+ * keystone's row grants 4, not 8, because two flat rows on one stat sum with
+ * the starting node's 4. Neither digit in the sentence is the row's value, so
+ * `VALUE_IN_WORDS` in
+ * `tools/tests/test_passive_effects_match_the_node_text.py` exempts that row
+ * from the digit check and names this test as what replaces it. A change to
+ * either row that breaks the sum fails here.
+ *
+ * AN ENEMY AT FIVE METRES IS THE WHOLE EXPERIMENT: outside the starting node's
+ * four and inside the keystone's eight, so it decays without the keystone and
+ * holds with it.
+ */
+bool FCataclysmNoGroundGivenWidensTheRadiusTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	if (!TestNotNull(TEXT("an enemy five metres away"),
+					 EnemyAtMetres(World, 5.0f)))
+	{
+		return false;
+	}
+
+	// WITHOUT THE KEYSTONE: five metres is outside the four, so contact never
+	// holds and the bar drains once the grace lapses.
+	Hold(Player, {{FName(StartingNode), 1}});
+	GiveFervour(Player, 50.0f);
+	World->TimeSeconds += 4.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	if (!TestEqual(TEXT("at four metres of radius, an enemy at five is out of "
+					    "contact and the bar drains"),
+				   FervourOf(Player), 45.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// WITH IT: the two rows sum to eight, so the same enemy is in contact.
+	Hold(Player, {{FName(StartingNode), 1}, {FName(NoGroundGiven), 1}});
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	World->TimeSeconds += 4.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	TestEqual(TEXT("with No Ground Given the radius is eight, so the same "
+				   "enemy holds contact and nothing drains"),
+			  FervourOf(Player), 45.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

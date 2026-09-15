@@ -366,6 +366,27 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// keystone is its only source. The attribute stays at zero even for a
 		// character holding it, because its bonus carries a health condition;
 		// `GainPerSecondStep` asks for the stat rather than reading it.
+		// Issue #1515. The Ravager's own generator and its decay. Zero for
+		// every class, and the Ravager tree's starting node is the only source
+		// of any of the three: "Enemies in reach generate Fervour ... Fervour
+		// decays at 5 per second after 3 seconds with no enemy within 4
+		// metres." One keystone adds to the radius; nothing adds to the delay,
+		// which is a constant rather than a stat for that reason.
+		//
+		// NO CLASS LINE MAY NAME ANY OF THEM. A class whose Fervour filled
+		// itself from standing near anything would hand out the Ravager tree's
+		// defining rule for free, and one whose pool drained out of contact
+		// would take a cost with no node paying for it.
+		{TEXT("fervour_per_enemy_in_reach"),
+		 TEXT("the Ravager's starting node, as a flat rate scaled by how many "
+			  "enemies stand within its four metres")},
+		{TEXT("fervour_decay_per_second"),
+		 TEXT("the Ravager's starting node, as a flat rate read once the grace "
+			  "has lapsed")},
+		{TEXT("fervour_decay_grace_metres"),
+		 TEXT("the Ravager's starting node and its No Ground Given keystone, "
+			  "as flat distances that sum to the eight that keystone names")},
+
 		{TEXT("fervour_per_second"),
 		 TEXT("the Masochist's Low Life node, as a flat modifier")},
 

@@ -378,6 +378,35 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// from it is dropped before `StatForSkill` could be asked.
 			{FString(UCataclysmFervour::FromMinionsStat),
 			 Resource::GetFervourFromMinionsAttribute()},
+
+			// AND ALL THREE OF THE RAVAGER'S. Issue #1515. Zero for every
+			// class, and `Ravager_basic_spine_000` is the only source of any
+			// of them: "Enemies in reach generate Fervour ... Fervour decays
+			// at 5 per second after 3 seconds with no enemy within 4 metres."
+			//
+			// THE RATE IS A SEPARATE STAT FROM BOTH ABOVE, for the reason the
+			// minion rate gives for being separate from the flat one. `Held
+			// Ground` reads "+2% increased Fervour gained from enemies near
+			// you", and a shared stat would hand that increase to Low Life and
+			// to the Ritualist's minions as well.
+			//
+			// THE RATE'S ATTRIBUTE STAYS AT ZERO even for a Ravager holding the
+			// node, because its row carries the scale `enemies_in_reach` and a
+			// scaled bonus is worked out when it is asked for rather than
+			// folded in. The entry is needed anyway: `ApplyTo` loops over THIS
+			// map, and a stat missing from it is dropped before `StatForSkill`
+			// could be asked.
+			//
+			// THE RADIUS IS A STAT AND THE DELAY IS NOT. Two nodes grant the
+			// radius and their flat values sum to the 8 that `No Ground Given`
+			// names; no node anywhere changes the three seconds, so that is a
+			// constant in `UCataclysmFervour`.
+			{FString(UCataclysmFervour::PerEnemyInReachStat),
+			 Resource::GetFervourPerEnemyInReachAttribute()},
+			{FString(UCataclysmFervour::DecayPerSecondStat),
+			 Resource::GetFervourDecayPerSecondAttribute()},
+			{FString(UCataclysmFervour::DecayGraceMetresStat),
+			 Resource::GetFervourDecayGraceMetresAttribute()},
 			{FString(UCataclysmFervour::OnMinionDeathStat),
 			 Resource::GetFervourOnMinionDeathAttribute()},
 

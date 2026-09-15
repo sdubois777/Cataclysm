@@ -69,6 +69,9 @@ HOOKS = {
                 "has, issue #1120",
             "UCataclysmFervour::GainPerSecondStep":
                 "the Fervour that arrives from the passage of time",
+            "UCataclysmFervour::DecayStep":
+                "the Fervour a Ravager loses once it has been out of "
+                "contact for three seconds, issue #1515",
             "UCataclysmNova::Step":
                 "the nova a character at very low health releases, issue #1050",
             "UCataclysmContagion::AuraStep":
