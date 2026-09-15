@@ -8926,7 +8926,7 @@ session.
    duration stat", and that stopped being true the same day.** The character
    APPLYING the stagger now carries a `stagger_duration` stat of its own, so one
    stagger's duration is scaled from both ends and the two scalars multiply. The
-   entry at the top of this log records that. The word is corrected here rather
+   entry of 2026-09-12 headed "Two characters reach one stagger's duration and their scalars multiply, and a stagger can be refused by the target's health without refusing the shove" records that. The word is corrected here rather
    than left to be overridden, because a reader asking how long a stagger lasts
    can land on either entry and this one reads as a complete answer.
 3. **Eleven enchantment rows read this state, not ten.** The owner's answer says
@@ -13089,7 +13089,7 @@ should be guessed at.
 [#1458](https://github.com/sdubois777/Cataclysm/issues/1458): move rows between
 weights, changing no frequency and writing nothing new. The "Rows written" column
 above is therefore the sheet on 2026-09-07 and not the sheet now; it reads 11,
-53, 119 and 151 today. The entry at the top of this file has the reasoning. **Nothing is broken by it** — the ladder still separates
+53, 119 and 151 today. The entry dated 2026-09-08 headed "Enchantment rows are redistributed across the four weights, and the ladder is untouched" has the reasoning. **Nothing is broken by it** — the ladder still separates
 weight 1 from everything else by a factor of 46, which is the separation the
 ruling was mostly about.
 
@@ -13397,7 +13397,7 @@ Neither is fixed here and neither changes a figure above.
 - **The Last Stand figures** in `sim/README.md` and `docs/Cataclysm_GDD_v2.md`.
   They come from `sim/analyse_board_empty_surge.py` and its predecessors, not
   from the balance report, and they predate `surge_on_empty_board`. The 2026-09-07
-  entry at the top of this file already said so; `sim/README.md` did not, and now
+  entry headed "A surge fires whenever the board has no dungeons on it, and the 120-day clock stays" already said so; `sim/README.md` did not, and now
   does.
 - **Which of the four merges moved which figure.** No per-commit baseline was
   run. Only the totals are recorded above.
@@ -14121,7 +14121,7 @@ rather than reversed.**
   > POINTS` directly above the ordering. **And "under-powered" is not the
   > problem**: re-run on `998d758`, five of the six presets score 0% win and
   > 100% loss at tier 8, so the closest gap is exactly 0.0 points and four times
-  > the sample separates nothing. See the entry at the top of this file, and
+  > the sample separates nothing. See the entry dated 2026-09-07 headed "The balance report is re-run, and the preset ordering claim is removed because there is no tier 8 ordering to compare", and
   > issue [#1404](https://github.com/sdubois777/Cataclysm/issues/1404).
 - **The Last Stand win rate per Last Stand *entered*.** The instrument records
   reached and cleared, not entered. The reached denominator is the one
@@ -15286,7 +15286,7 @@ rounding of the six other weights described below. Neither moved it.
 > [#1369](https://github.com/sdubois777/Cataclysm/issues/1369) held the Cow Level at 7 and gave the Siege's slack to the
 > five sub-types that are neither. On `e8b33c2` the earned Cataclysm dungeon
 > opens in **50.4% / 48.3%**, cities lost is **16.48 / 16.23** and Sieges
-> created per campaign **10.50 / 10.72**. The entry at the top of this file has
+> created per campaign **10.50 / 10.72**. The entry dated 2026-09-07 headed "The campaign figures on record are refreshed, and stale ones are marked rather than rewritten" has
 > that table and the six-block spread behind it. **The Siege's own 7.5 is
 > untouched**, and so is this entry's ruling.
 >
@@ -15331,7 +15331,7 @@ any dose: 70 days against a median walk of 123.
 
 > **THE COW LEVEL ROW BELOW WAS SUPERSEDED THE SAME DAY.** Sharing the slack
 > across all six carried the Cow Level to 7.6 and put it above the Siege, which
-> nobody chose; the entry at the top of this file for
+> nobody chose; the entry dated 2026-09-06 headed "The Cow Level stays at 7 and only the five take the Siege's slack, so a Cow Level is the rarest thing again" for
 > [#1369](https://github.com/sdubois777/Cataclysm/issues/1369) puts it back to 7
 > and gives the 0.6 to the five that are neither the Siege nor the Cow Level.
 > **The Siege's 7.5 in this table is untouched and still current.** This section
@@ -15359,7 +15359,7 @@ Siege’s own share is 7.5 either way.
 
 > **RESOLVED, AND NO LONGER TRUE.** The owner was asked and delegated the answer
 > with one constraint; the Cow Level went back to 7 and the Siege is the second
-> rarest sub-type again. See the entry at the top of this file for
+> rarest sub-type again. See the entry dated 2026-09-06 headed "The Cow Level stays at 7 and only the five take the Siege's slack, so a Cow Level is the rarest thing again" for
 > [#1369](https://github.com/sdubois777/Cataclysm/issues/1369). The last two
 > sentences below, describing what the port test then held, are also superseded:
 > the ordering assertion is back at full strength.
@@ -16207,8 +16207,8 @@ the model now applies the multiplier on every defeat. The paragraph above record
 what was true when this entry was written and is kept because the correction it
 makes — that the model was never empty of empire progression, contrary to issue
 [#1348](https://github.com/sdubois777/Cataclysm/issues/1348) as filed — is still
-the thing a reader meets the wrong version of first. The entry at the top of this
-file has the formula. Line numbers have deliberately been removed from this
+the thing a reader meets the wrong version of first. The entry dated 2026-09-06 headed "The population multiplier's shape: base points × living over maximum, per dungeon, no floor"
+has the formula. Line numbers have deliberately been removed from this
 paragraph rather than refreshed: the two it carried were already stale within a
 day.
 
@@ -16608,7 +16608,7 @@ a day. The per-resolve numbers are no longer what decides anything.
 > trials)` — a worst-case binomial value at a 50% win rate and a function of the
 > sample size alone. At win rates of 6.7% to 8.0% the real resolution is much
 > tighter, so the four ladders may well be distinguishable at this sample; the
-> bound cannot say they are not. See the entry at the top of this file.
+> bound cannot say they are not. See the entry dated 2026-09-07 headed "The campaign figures on record are refreshed, and stale ones are marked rather than rewritten".
 
 **So no number is changed.** Every flat value is the fraction it replaced
 multiplied by that tier's base maximum. Changing them on this evidence would be
@@ -17488,7 +17488,7 @@ the report runs it — both tiers, 150 campaigns per cell, six presets:
 > and two test suites, and `surge_on_empty_board` has since been added, which
 > lengthens campaigns. That run cannot separate the two, so the figures above
 > stand as what was measured on 2026-09-05 and this note says what a later
-> measurement got. The entry at the top of this file has the detail.
+> measurement got. The entry dated 2026-09-07 headed "The balance report is re-run, and the preset ordering claim is removed because there is no tier 8 ordering to compare" has the detail.
 
 [#693](https://github.com/sdubois777/Cataclysm/issues/693) asks for the sweep's
 total campaign count to be checked. This change alters that total, so #693 should
@@ -17606,7 +17606,7 @@ margin.
 
 > **THE READING BELOW WAS REJECTED BY THE PROJECT OWNER ON 2026-09-05.** The
 > Corrupted Stalker is granted separately and does **not** take a modifier slot.
-> See the entry at the top of this file. This one is kept rather than deleted so
+> See the entry dated 2026-09-05 headed "The Corrupted Stalker is granted separately and does not take a modifier slot". This one is kept rather than deleted so
 > the record shows what was tried and why it changed, and because everything in
 > it except the pooling reading still holds — the missing row, the drift guard,
 > and the measurement of what a pool change costs.
@@ -17911,7 +17911,7 @@ two ways in, and over 400 campaigns at tier 1 they are not close:
 
 > **No longer current.** Re-measured on 2026-09-06: 27.7% of campaigns reach a Last Stand and about 1 in 84 of those are won, against 40.4% for the earned route. See the entry at the top of this file.
 >
-> **AND THOSE TWO ARE NOT CURRENT EITHER.** They were measured against Demonic as the only active Cataclysm and with the Siege's city damage switched off. Re-measured on `e8b33c2` over 6,000 campaigns in six disjoint blocks of 1,000 seeds at the same settings: the Last Stand is reached in **56.4%** of campaigns and cleared **1 in 34.5** of those reached, and the earned route opens in **50.0%** and is won **38.3%**. Issue [#1358](https://github.com/sdubois777/Cataclysm/issues/1358) and the entry at the top of this file. **The comparison this section draws is unaffected** — the two routes are still nothing like close.
+> **AND THOSE TWO ARE NOT CURRENT EITHER.** They were measured against Demonic as the only active Cataclysm and with the Siege's city damage switched off. Re-measured on `e8b33c2` over 6,000 campaigns in six disjoint blocks of 1,000 seeds at the same settings: the Last Stand is reached in **56.4%** of campaigns and cleared **1 in 34.5** of those reached, and the earned route opens in **50.0%** and is won **38.3%**. Issue [#1358](https://github.com/sdubois777/Cataclysm/issues/1358) and the entry dated 2026-09-07 headed "The campaign figures on record are refreshed, and stale ones are marked rather than rewritten". **The comparison this section draws is unaffected** — the two routes are still nothing like close.
 
 372 of those 400 campaigns reached a decision; the rest ran out of days. The Last
 Stand figures are stable across three different modifier pools — see the Last
@@ -43870,7 +43870,7 @@ struct together, so it was kept out of this change.
 
 *Done since, on 2026-08-04, by issue #218. The column is now `Max Damage Types`
 in the workbook and `MaxDamageTypes` in the CSV and the Unreal row struct. The
-entry at the top of this file records it.*
+entry dated 2026-08-04 headed "The weapon damage type column is named as a maximum, because that is what it holds" records it.*
 
 **The drop roll itself does not exist yet.** This change records the rule and sets
 the limits. Rolling a count between one and the cap belongs with loot generation.
