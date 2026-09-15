@@ -2,6 +2,56 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — Two scales the nine Masochist rows use, health missing and health owed, recorded at last
+
+**Affects:** nothing in the tree; this entry is the record the check in
+`tools/tests/test_every_condition_is_recorded_in_the_decisions_log.py` would
+ask for if it covered scales as well as conditions. The scales are declared in
+`tools/generate_datatables.py` (`SCALES`) and read in
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp`; the rows are in
+`game/Data/PassiveEffects.csv`. Issue
+[#1759](https://github.com/sdubois777/Cataclysm/issues/1759).
+
+A **scale** multiplies a modifier's value by something about the character,
+counted in whole steps and rounded down. The generator recognises ten scale
+names, and until this entry two of them appeared nowhere in this log while nine
+rows of `game/Data/PassiveEffects.csv` used them. They are live design that was
+never written down; this writes it down and changes nothing.
+
+### `health_missing`: for every N% of maximum health that is missing
+
+The share of the character's maximum health it does not currently have, as a
+percentage, counted in steps of the row's `ScaleStep`. A character 12% below full
+health with a step of 5 has two steps. Three rows use it, all Masochist: the
+basic node `Masochist_basic_fc_a0` (attack damage, step 5) and two rows of the
+100-point capstone `Masochist_capstone_100` (attack and spell damage, step 2).
+
+### `health_owed`: for every N% of maximum health the character currently owes
+
+The health debt a character is standing on, as a percentage of maximum health,
+counted in the same whole steps. Six rows use it, all Masochist: the basic node
+`Masochist_basic_bt_a1` (attack and spell damage, step 5), the keystone
+`Masochist_keystone_bt_kA`, The Reckoning (attack and spell damage, step 2), and
+two more rows of `Masochist_capstone_100` (step 2).
+
+### Owed is not missing, and both are bounded at the whole pool
+
+The two are independent readings of health. A character that deferred a cost
+owes health it is still standing on, so it can be at full health and owe a fifth
+of it; one that paid the same cost outright is a fifth down and owes nothing.
+Each has its own node. What is owed may pass the character's maximum — that is
+what The Reckoning kills them for — but the scale's upper bound is one step of
+the whole pool, because a step larger than the pool would be a bonus nothing
+could ever reach. Both facts are stated beside the declarations in
+`tools/generate_datatables.py` and are repeated here so the log holds them.
+
+### What is not settled here
+
+Widening the recording check to scales, so a future scale name cannot land
+without an entry, is separate tooling work and stays on the issue.
+
+---
+
 ## 2026-09-14 — Eight rulings made together under the owner's delegation, on questions the backlog triage raised
 
 **Affects:** nothing in the tree yet; this entry is the record. The rows and
