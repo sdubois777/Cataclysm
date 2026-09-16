@@ -197,6 +197,15 @@ namespace CataclysmStatTest
 		return State;
 	}
 
+	/** A blow from an attack that struck this many enemies together. Negative
+	 *  is "no attack in hand". Issue #1515. */
+	FCataclysmStatConditions StruckTogether(int32 Enemies)
+	{
+		FCataclysmStatConditions State;
+		State.EnemiesStruckTogether = Enemies;
+		return State;
+	}
+
 	/** A blow landed from this many metres away. Negative is not known. */
 	FCataclysmStatConditions StruckFrom(float Metres)
 	{
@@ -2818,6 +2827,96 @@ bool FCataclysmPricedHitAsksAboutTheBlowTest::RunTest(const FString&)
 	TestEqual(
 		TEXT("and a hit priced with no blow in hand still gets no increase"),
 		UCataclysmSkillEffects::ModifiedDamage(AbilitySystem, 100.0f, NoTags),
+		100.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineEnemiesStruckAtLeastTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanRequireAnAttackToStrikeEnoughEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * How many enemies one attack struck together, as a condition. Issue #1515.
+ *
+ * `Ravager_keystone_b_kA` Sundering: "Your melee attacks ignore enemy Armor
+ * entirely when they hit three or more enemies at once." At least three holds
+ * at three and above and not at two. An unknown count refuses, which is every
+ * lookup made with no attack in hand, and so does a threshold of nothing, which
+ * would otherwise hold for every blow in the game.
+ */
+bool FCataclysmPipelineEnemiesStruckAtLeastTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	FCataclysmStatModifier AtLeastThree = Increased(50.0f);
+	AtLeastThree.Condition = ECataclysmStatCondition::EnemiesStruckTogetherAtLeast;
+	AtLeastThree.ConditionValue = 3.0f;
+	const TArray<FCataclysmStatModifier> Three = { AtLeastThree };
+
+	TestEqual(TEXT("two enemies struck is not three"),
+		FPipeline::Evaluate(100.0f, Three, NoTags, StruckTogether(2)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("exactly three counts"),
+		FPipeline::Evaluate(100.0f, Three, NoTags, StruckTogether(3)).Final,
+		150.0f, 0.01f);
+	TestEqual(TEXT("and so do five"),
+		FPipeline::Evaluate(100.0f, Three, NoTags, StruckTogether(5)).Final,
+		150.0f, 0.01f);
+
+	TestEqual(TEXT("an unknown count refuses"),
+		FPipeline::Evaluate(100.0f, Three, NoTags, StruckTogether(-1)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and so does a state nobody filled in"),
+		FPipeline::Evaluate(100.0f, Three, NoTags, FCataclysmStatConditions()).Final,
+		100.0f, 0.01f);
+
+	FCataclysmStatModifier AtLeastNothing = AtLeastThree;
+	AtLeastNothing.ConditionValue = 0.0f;
+	const TArray<FCataclysmStatModifier> Nothing = { AtLeastNothing };
+	TestEqual(TEXT("a threshold of nothing refuses, even at ten enemies struck"),
+		FPipeline::Evaluate(100.0f, Nothing, NoTags, StruckTogether(10)).Final,
+		100.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineEnemiesStruckBeyondTheFirstTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanGrowWithEachEnemyStruckBeyondTheFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The same count as a scale, less one. Issue #1515.
+ *
+ * `Ravager_basic_b_a2` Cleaving Arc: "+1% increased Attack Damage per point for
+ * each enemy your attack hits beyond the first." One enemy struck is worth
+ * nothing and three are worth two steps. An unknown count is worth nothing
+ * rather than the row's bare value, which is the case a build that forgets the
+ * count gets wrong in the player's favour.
+ */
+bool FCataclysmPipelineEnemiesStruckBeyondTheFirstTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	FCataclysmStatModifier PerExtraEnemy = Increased(10.0f);
+	PerExtraEnemy.Scale = ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst;
+	PerExtraEnemy.ScaleStep = 1.0f;
+	const TArray<FCataclysmStatModifier> Arc = { PerExtraEnemy };
+
+	TestEqual(TEXT("one enemy struck is worth nothing"),
+		FPipeline::Evaluate(100.0f, Arc, NoTags, StruckTogether(1)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("two are worth one step"),
+		FPipeline::Evaluate(100.0f, Arc, NoTags, StruckTogether(2)).Final,
+		110.0f, 0.01f);
+	TestEqual(TEXT("three are worth two"),
+		FPipeline::Evaluate(100.0f, Arc, NoTags, StruckTogether(3)).Final,
+		120.0f, 0.01f);
+	TestEqual(TEXT("no enemies at all are worth nothing"),
+		FPipeline::Evaluate(100.0f, Arc, NoTags, StruckTogether(0)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and an unknown count is worth nothing, not the row's value"),
+		FPipeline::Evaluate(100.0f, Arc, NoTags, StruckTogether(-1)).Final,
 		100.0f, 0.01f);
 
 	return true;

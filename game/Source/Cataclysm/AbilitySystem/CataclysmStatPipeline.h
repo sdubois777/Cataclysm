@@ -1012,6 +1012,30 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	EnergyShieldAtMaximum
 		UMETA(DisplayName = "Energy Shield At Maximum"),
+
+	/**
+	 * The attack this blow belongs to struck AT LEAST THAT MANY enemies
+	 * together. Issue #1515.
+	 *
+	 * `Ravager_keystone_b_kA` Sundering is the node: "Your melee attacks
+	 * ignore enemy Armor entirely when they hit three or more enemies at
+	 * once." `ConditionValue` IS A NUMBER OF ENEMIES and the comparison is at
+	 * least.
+	 *
+	 * ONE ATTACK IS ONE GROUP OF BLOWS DEALT TOGETHER BY ONE USE, ruled on
+	 * 2026-09-16: a Strike's swing, a Charge's landing, each repeat of a
+	 * spinning Strike, each Flicker arrival and each Advance step. The count
+	 * is taken where the group is gathered, after the skill's own target cap
+	 * and before any blow resolves. See
+	 * `FCataclysmStatConditions::EnemiesStruckTogether`.
+	 *
+	 * NEGATIVE MEANS NO GROUP IS IN HAND, and refuses: a creature's attack, a
+	 * minion's blow, a damage over time tick and every lookup made with no
+	 * blow at all carry no count. A value below one refuses as well, for the
+	 * reason `EnemiesInReachAtLeast` gives.
+	 */
+	EnemiesStruckTogetherAtLeast
+		UMETA(DisplayName = "Enemies Struck Together At Least"),
 };
 
 /**
@@ -1251,6 +1275,24 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerCrippledEnemyInReach
 		UMETA(DisplayName = "Per Crippled Enemy In Reach"),
+
+	/**
+	 * Per enemy the attack this blow belongs to struck BEYOND THE FIRST.
+	 * Issue #1515.
+	 *
+	 * `Ravager_basic_b_a2` Cleaving Arc: "+1% increased Attack Damage per
+	 * point for each enemy your attack hits beyond the first." One enemy
+	 * struck is worth nothing and three are worth two, the arithmetic
+	 * Extinction's `ScalingSource=Consumed` already uses for "every OTHER
+	 * enemy consumed in the same instant".
+	 *
+	 * THE SAME COUNT `EnemiesStruckTogetherAtLeast` READS, under the same
+	 * ruling on what one attack is and what counts. An unknown count is
+	 * worth nothing, by the multiplication by zero `StackedValue` already
+	 * makes.
+	 */
+	PerEnemyStruckTogetherBeyondTheFirst
+		UMETA(DisplayName = "Per Enemy Struck Together Beyond The First"),
 };
 
 /**
@@ -1734,6 +1776,27 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float MetresMovedBeforeBlow = -1.0f;
+
+	/**
+	 * How many enemies the attack this blow belongs to struck together. Issue
+	 * #1515.
+	 *
+	 * A PROPERTY OF THE BLOW BEING DEALT, like `MetresMovedBeforeBlow` above,
+	 * and carried the same way: set on `FCataclysmHitDelivery` where the group
+	 * of blows is gathered, and passed into the lookup rather than read off
+	 * the character.
+	 *
+	 * COUNTED BEFORE ANY BLOW RESOLVES, so an enemy that evades still counts.
+	 * Each blow is priced before the next target is resolved, so the number
+	 * that LANDED is not known until all but the last have been priced; and
+	 * Extinction counts the enemies it consumes the same way. A judgement,
+	 * ruled on 2026-09-16 and recorded in `docs/DECISIONS.md`.
+	 *
+	 * NEGATIVE MEANS NO GROUP IS IN HAND, which refuses the condition and gives
+	 * the scale nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 EnemiesStruckTogether = -1;
 
 	/**
 	 * How far away the character being HIT stood, in metres, when the blow was
@@ -2402,7 +2465,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a thirty-ninth, which is the drift that put the passive tree eight
+	 * adds a fortieth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -2411,7 +2474,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * SIXTEEN OF THE THIRTY-EIGHT COMPARE NOTHING. They are the case labels
+	 * SIXTEEN OF THE THIRTY-NINE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

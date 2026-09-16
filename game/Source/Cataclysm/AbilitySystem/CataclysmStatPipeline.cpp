@@ -106,6 +106,7 @@ namespace
 		{ TEXT("opponent_carries_weaken"),      ECataclysmStatCondition::OpponentCarriesWeaken },
 		{ TEXT("target_health_below"),          ECataclysmStatCondition::TargetHealthBelowPercent },
 		{ TEXT("energy_shield_at_maximum"),     ECataclysmStatCondition::EnergyShieldAtMaximum },
+		{ TEXT("enemies_hit_at_least"),         ECataclysmStatCondition::EnemiesStruckTogetherAtLeast },
 	};
 
 	struct FNamedStatScale
@@ -126,6 +127,7 @@ namespace
 		{ TEXT("minions_held"),        ECataclysmStatScale::PerMinionHeld },
 		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
 		{ TEXT("crippled_enemies_in_reach"), ECataclysmStatScale::PerCrippledEnemyInReach },
+		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
 	};
 
 	/**
@@ -768,6 +770,16 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// is what happens if one reaches the game anyway.
 		return Value >= 1.0f
 			&& static_cast<float>(EnemiesInReach(State, ReachMetres)) >= Value;
+
+	case ECataclysmStatCondition::EnemiesStruckTogetherAtLeast:
+		// AT LEAST `Value` ENEMIES STRUCK BY THE ATTACK IN HAND. Issue #1515.
+		// Sundering's "three or more enemies at once" is this with three.
+		//
+		// A NEGATIVE COUNT IS NO ATTACK IN HAND AND REFUSES, and a value below
+		// one refuses for the reason the reach condition above gives: "at
+		// least nought enemies" would hold for every blow in the game.
+		return Value >= 1.0f && State.EnemiesStruckTogether >= 0
+			&& static_cast<float>(State.EnemiesStruckTogether) >= Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -967,6 +979,14 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 	case ECataclysmStatScale::PerCrippledEnemyInReach:
 		return StackedValue(Modifier,
 							CrippledEnemiesInReach(State, Modifier.ReachMetres));
+
+	// AND PER ENEMY STRUCK BEYOND THE FIRST. Issue #1515. One enemy struck is
+	// worth nothing, and an unknown count of -1 is worth nothing too: both
+	// reach `StackedValue` as a count of zero or less, which it answers with
+	// zero rather than with the row's value.
+	case ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst:
+		return StackedValue(Modifier,
+							FMath::Max(0, State.EnemiesStruckTogether - 1));
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full

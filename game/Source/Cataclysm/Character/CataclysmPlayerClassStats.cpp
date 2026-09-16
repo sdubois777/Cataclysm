@@ -415,6 +415,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// nothing while the node looked built.
 			{FString(UCataclysmFervour::HealthRestoredOnKillStat),
 			 Resource::GetHealthRestoredOnKillAttribute()},
+
+			// AND THE RAVAGER'S SECOND. Issue #1515. Zero for every class, and
+			// `Ravager_basic_b_b2` Bought With Ruin is its only source. Without
+			// this entry the row would be dropped by `ApplyTo` before
+			// `StatForSkill` could be asked, and an attack would buy nothing
+			// while the node looked built.
+			{FString(UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat),
+			 Resource::GetIncreasedDamageBoughtPerExtraEnemyHitAttribute()},
 			{FString(UCataclysmFervour::OnMinionDeathStat),
 			 Resource::GetFervourOnMinionDeathAttribute()},
 

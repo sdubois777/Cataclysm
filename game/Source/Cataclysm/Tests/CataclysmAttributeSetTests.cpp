@@ -499,7 +499,11 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// how much of maximum health a kill restores. Off the sheet for the same
 	// reason as everything above: no affix grants it, nothing scales it, no
 	// class differs on it, and one node supplies it.
-	constexpr int32 OffSheetResourceStats = 27;
+	// AND TWENTY-EIGHT SINCE THE RAVAGER'S SECOND, issue #1515: the increased
+	// damage a melee attack buys with Fervour for each enemy beyond the first.
+	// Off the sheet for the same reason: no affix grants it, nothing scales
+	// it, no class differs on it, and one node supplies it.
+	constexpr int32 OffSheetResourceStats = 28;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

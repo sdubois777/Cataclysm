@@ -289,7 +289,8 @@ public:
 		float MetresMovedBeforeBlow = -1.0f,
 		float TargetDistanceMetres = -1.0f,
 		bool bTargetIsStaggered = false,
-		const AActor* Target = nullptr) const;
+		const AActor* Target = nullptr,
+		int32 EnemiesStruckTogether = -1) const;
 
 	/**
 	 * The increases this character carries for a named stat, as a fraction.
@@ -356,7 +357,8 @@ public:
 		float MetresMovedBeforeBlow = -1.0f,
 		float TargetDistanceMetres = -1.0f,
 		bool bTargetIsStaggered = false,
-		const AActor* Target = nullptr) const;
+		const AActor* Target = nullptr,
+		int32 EnemiesStruckTogether = -1) const;
 
 	/**
 	 * What one stat was worked out from, or null for a stat nothing recorded.
@@ -481,7 +483,8 @@ public:
 					   float MetresMovedBeforeBlow = -1.0f,
 					   float TargetDistanceMetres = -1.0f,
 					   bool bTargetIsStaggered = false,
-					   const AActor* Target = nullptr) const;
+					   const AActor* Target = nullptr,
+					   int32 EnemiesStruckTogether = -1) const;
 
 	/**
 	 * What is true of this character right now, for a conditional bonus.
@@ -504,13 +507,18 @@ public:
 	 *        or -1 for no target in hand. The mirror of `Blow`'s own distance,
 	 *        read from the other end of the same blow, and passed in for the same
 	 *        reason. Issue #1596.
+	 * @param EnemiesStruckTogether  how many enemies the attack the blow in
+	 *        hand belongs to struck together, counted before any of its blows
+	 *        resolved, or -1 for no group of blows in hand. Passed in for the
+	 *        reason `MetresMovedBeforeBlow` is. Issue #1515.
 	 */
 	FCataclysmStatConditions CurrentConditions(
 		float SkillHealthCostPercent = -1.0f,
 		const FCataclysmBlowContext& Blow = FCataclysmBlowContext(),
 		float MetresMovedBeforeBlow = -1.0f,
 		float TargetDistanceMetres = -1.0f,
-		bool bTargetIsStaggered = false) const;
+		bool bTargetIsStaggered = false,
+		int32 EnemiesStruckTogether = -1) const;
 
 	/**
 	 * The same conditions with the nearby enemies' distances filled in, when a

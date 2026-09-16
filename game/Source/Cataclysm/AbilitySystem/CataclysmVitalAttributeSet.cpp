@@ -549,10 +549,34 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								  Offence->GetPenetration())
 							: Offence->GetPenetration();
 
+						// ARMOUR PENETRATION IS ASKED WITH THE ATTACK'S COUNT, so a row
+						// conditioned on how many enemies the attack struck together
+						// is judged against this blow. Issue #1515. Sundering: "Your
+						// melee attacks ignore enemy Armor entirely when they hit three
+						// or more enemies at once." The count travels on the effect; a
+						// blow without one reads -1, which refuses, and every other
+						// fact is passed as none, which is what the ask above passes.
+						//
+						// A DEFENDER THAT FORBIDS PENETRATION STILL WINS: the Ravager's
+						// own keystone is judged after this, in the damage
+						// calculation, and ignores this figure whatever it is.
+						const int32 EnemiesStruckTogether = FMath::RoundToInt(
+							Data.EffectSpec.GetSetByCallerMagnitude(
+								FName(UCataclysmSkillEffects::EnemiesStruckTogetherDataName),
+								/*WarnIfNotFound=*/false,
+								/*DefaultIfNotFound=*/-1.0f));
+
 						Hit.ArmorPenetration = AskingToPenetrate
 							? AskingToPenetrate->StatForSkill(
 								  FName(TEXT("armor_penetration")), AssetTags,
-								  Offence->GetArmorPenetration())
+								  Offence->GetArmorPenetration(),
+								  /*SkillHealthCostPercent=*/-1.0f,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  /*TargetDistanceMetres=*/-1.0f,
+								  /*bTargetIsStaggered=*/false,
+								  /*Target=*/nullptr,
+								  EnemiesStruckTogether)
 							: Offence->GetArmorPenetration();
 					}
 

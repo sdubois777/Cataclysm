@@ -390,6 +390,15 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("health_restored_on_kill"),
 		 TEXT("the Ravager's Wrung Out node, as a flat percentage of maximum "
 			  "health per point, bought with Fervour on a kill")},
+		// Issue #1515. The increased damage a melee attack buys with Fervour for
+		// each enemy it strikes beyond the first. Zero for every class; the
+		// Ravager's Bought With Ruin is its only source. NO CLASS LINE MAY NAME
+		// IT, for the reason the row above gives: it would hand out the node's
+		// effect without its cost.
+		{TEXT("increased_damage_bought_per_extra_enemy_hit"),
+		 TEXT("the Ravager's Bought With Ruin node, as a flat percentage of "
+			  "increased damage per point for each enemy a melee attack strikes "
+			  "beyond the first, bought with Fervour")},
 		{TEXT("fervour_decay_grace_metres"),
 		 TEXT("the Ravager's starting node and its No Ground Given keystone, "
 			  "as flat distances that sum to the eight that keystone names")},

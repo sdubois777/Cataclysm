@@ -32,6 +32,8 @@ const TCHAR* UCataclysmFervour::DecayGraceMetresStat =
 	TEXT("fervour_decay_grace_metres");
 const TCHAR* UCataclysmFervour::HealthRestoredOnKillStat =
 	TEXT("health_restored_on_kill");
+const TCHAR* UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat =
+	TEXT("increased_damage_bought_per_extra_enemy_hit");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -687,6 +689,57 @@ float UCataclysmFervour::RestoreHealthOnKill(UAbilitySystemComponent* AbilitySys
 								  Maximum * Percent / 100.0f);
 
 	return AbilitySystem->GetNumericAttribute(Health) - Before;
+}
+
+float UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
+	UAbilitySystemComponent* AbilitySystem,
+	const FGameplayTagContainer& SkillTags, int32 EnemiesStruckTogether)
+{
+	// ONE ENEMY OR NONE BUYS NOTHING AND COSTS NOTHING: the sentence counts the
+	// enemies "beyond the first". An unknown count of -1 lands here too.
+	const int32 Beyond = EnemiesStruckTogether - 1;
+	if (!AbilitySystem || Beyond <= 0)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		return 0.0f;
+	}
+
+	// THROUGH THE PIPELINE WITH THE SKILL'S TAGS, fallback zero. The row requires
+	// `Type.Melee`, so an attack without that tag reads zero here and neither
+	// pays nor buys.
+	const float PercentPerEnemy = Cataclysm->StatForSkill(
+		FName(IncreasedDamageBoughtPerExtraEnemyHitStat), SkillTags, 0.0f);
+	if (PercentPerEnemy <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// ALL OR NOTHING FOR THE WHOLE ATTACK: "If you cannot pay, the attack still
+	// hits but gains nothing." Holding less than the whole cost spends nothing.
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Held = AbilitySystem->GetNumericAttribute(Pool);
+	const float Cost = ExtraEnemyHitCost * static_cast<float>(Beyond);
+	if (Held < Cost)
+	{
+		return 0.0f;
+	}
+
+	// PAID BEFORE ANY BLOW, and clamped the way every write to the pool in this
+	// file is clamped, for the reason `Move` gives.
+	const float Spend =
+		FMath::Clamp(Held - Cost, 0.0f, Resource->GetMaxClassResource()) - Held;
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Spend);
+
+	return PercentPerEnemy * static_cast<float>(Beyond);
 }
 
 float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySystem)

@@ -337,6 +337,44 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	float MetresMovedBeforeBlow = -1.0f;
 
 	/**
+	 * How many enemies the attack this blow belongs to struck together. Issue
+	 * #1515.
+	 *
+	 * SET ONCE PER ATTACK by `UCataclysmSkillTemplate::HitTargets`, before any of
+	 * its blows is priced, and the same for every blow of that attack --
+	 * including both halves of a Consume split, which `HitScaled` deals in two
+	 * calls. What one attack is, and why an enemy that evades still counts, is
+	 * `FCataclysmStatConditions::EnemiesStruckTogether`.
+	 *
+	 * ALSO SENT TO THE DEFENDER, under `EnemiesStruckTogetherDataName`, because
+	 * armour penetration is asked for where the blow lands. Sundering ignores
+	 * armour when "they hit three or more enemies at once".
+	 *
+	 * -1 IS THE ORDINARY CASE for a blow no skill dealt as part of a group: a
+	 * creature's attack, a minion's blow, a projectile striking in flight, a
+	 * patch of burning ground. Each refuses a condition about the count.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	int32 EnemiesStruckTogether = -1;
+
+	/**
+	 * The increased damage this attack bought with Fervour, in percent. Issue
+	 * #1515.
+	 *
+	 * `Ravager_basic_b_b2` Bought With Ruin: "Each enemy your melee attack hits
+	 * beyond the first costs 2 Fervour and deals +3% increased damage per
+	 * point. If you cannot pay, the attack still hits but gains nothing."
+	 * `UCataclysmFervour::BuyDamageForEnemiesStruckTogether` decides it once for
+	 * the whole attack, and `ApplyHit` adds it into the increases on every blow
+	 * of that attack.
+	 *
+	 * ZERO WHEN NOTHING WAS BOUGHT, which is every blow of a character without
+	 * the node and every attack the character could not pay for.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float IncreasedDamageBoughtPercent = 0.0f;
+
+	/**
 	 * The attacker's chance to apply each ailment with this blow, in percent,
 	 * keyed by the name it travels under on the damage effect. Issue #899.
 	 *
@@ -703,6 +741,8 @@ public:
 	 * @param TargetDistanceMetres   how far away the character being hit stood,
 	 *        or -1
 	 * @param bTargetIsStaggered     whether that character was staggered
+	 * @param EnemiesStruckTogether  how many enemies the attack struck together,
+	 *        or -1 for a blow no skill dealt as part of a group. Issue #1515.
 	 */
 	static float ModifiedDamage(const UAbilitySystemComponent* Source,
 								float BaseDamage,
@@ -711,7 +751,8 @@ public:
 								float MetresMovedBeforeBlow = -1.0f,
 								float TargetDistanceMetres = -1.0f,
 								bool bTargetIsStaggered = false,
-								const AActor* Target = nullptr);
+								const AActor* Target = nullptr,
+								int32 EnemiesStruckTogether = -1);
 
 	/**
 	 * Deal a hit of an amount already worked out.
@@ -1110,7 +1151,8 @@ public:
 								   float MetresMovedBeforeBlow = -1.0f,
 								   float TargetDistanceMetres = -1.0f,
 								   bool bTargetIsStaggered = false,
-								   const AActor* Target = nullptr);
+								   const AActor* Target = nullptr,
+								   int32 EnemiesStruckTogether = -1);
 
 	/**
 	 * How much larger an attack should be than its attack-damage attribute
@@ -1132,7 +1174,8 @@ public:
 							  float MetresMovedBeforeBlow = -1.0f,
 							  float TargetDistanceMetres = -1.0f,
 							  bool bTargetIsStaggered = false,
-							  const AActor* Target = nullptr);
+							  const AActor* Target = nullptr,
+							  int32 EnemiesStruckTogether = -1);
 
 	/** The two tags that make a skill's hit area damage. */
 	static const TCHAR* PointBlankAreaTagName;
@@ -1406,6 +1449,19 @@ public:
 	 * `StatedMagnitudeDataName` above gives.
 	 */
 	static const TCHAR* ShareOfCurrentHealthDataName;
+
+	/**
+	 * The name `FCataclysmHitDelivery::EnemiesStruckTogether` travels under on
+	 * the damage effect. Issue #1515.
+	 *
+	 * READ WHERE THE BLOW LANDS, by the defender's armour penetration lookup,
+	 * which passes it into the attacker's conditions. ABSENT FOR A BLOW THAT
+	 * CARRIES NO COUNT, and read back as -1, which refuses.
+	 *
+	 * A PLAIN NAME AND NOT A GAMEPLAY TAG, for the reason
+	 * `StatedMagnitudeDataName` above gives.
+	 */
+	static const TCHAR* EnemiesStruckTogetherDataName;
 
 	/**
 	 * Copy every debuff this actor carries onto each of these others.

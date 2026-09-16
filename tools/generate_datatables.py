@@ -3592,6 +3592,19 @@ CONDITIONS = {
     # than a node that means it.
     "enemies_in_reach_at_least": (1.0, 20.0, "a number of enemies"),
 
+    # "When they hit three or more enemies at once" is `enemies_hit_at_least`
+    # with 3. Issue #1515, for `Ravager_keystone_b_kA` Sundering.
+    #
+    # THE ENEMIES ONE ATTACK STRUCK TOGETHER, ruled on 2026-09-16: one group of
+    # blows dealt by one use, counted after the skill's target cap and before
+    # any blow resolves, so an enemy that evades still counts. The engine's
+    # `FCataclysmStatConditions::EnemiesStruckTogether` carries the reason.
+    #
+    # BOUNDED AS THE REACH COUNT ABOVE IS, for the same two reasons: at least
+    # nought is true of every blow, and a threshold past twenty is far likelier
+    # to be a mistake than a node that means it.
+    "enemies_hit_at_least": (1.0, 20.0, "a number of enemies"),
+
     # THE FOUR PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER, and the
     # first that read one at all. Issues #1515 and #1642.
     #
@@ -3848,6 +3861,15 @@ SCALES = {
     # that the count is uncapped is untouched. It cannot exceed the unfiltered
     # count, which is itself uncapped.
     "crippled_enemies_in_reach": (0.0, 10.0, "a number of crippled enemies"),
+
+    # "For each enemy your attack hits beyond the first" is
+    # `enemies_hit_beyond_the_first` with a step of 1. Issue #1515, for
+    # `Ravager_basic_b_a2` Cleaving Arc.
+    #
+    # THE COUNT `enemies_hit_at_least` READS, LESS ONE: one enemy struck is
+    # worth nothing and three are worth two. Bounded on the step as the reach
+    # scales above are, and for the same reason.
+    "enemies_hit_beyond_the_first": (0.0, 10.0, "a number of enemies beyond the first"),
 }
 
 

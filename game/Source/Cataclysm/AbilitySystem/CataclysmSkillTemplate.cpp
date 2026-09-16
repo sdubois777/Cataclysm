@@ -42,6 +42,7 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Engine/World.h"
+#include "Misc/ScopeExit.h"
 // For the wait between a swing starting and its blow landing. Issue #1133.
 #include "TimerManager.h"
 #include "GameFramework/PlayerController.h"
@@ -1654,6 +1655,21 @@ float UCataclysmSkillTemplate::HitScaled(const TArray<AActor*>& Targets,
 		return 0.0f;
 	}
 
+	// ONE ATTACK, HOWEVER MANY CALLS DEAL IT. Issue #1515. A Consume split below
+	// deals one swing in two `HitTargets` calls, and both must carry the swing's
+	// count and share one payment, so the attack begins here for the whole
+	// group rather than once in each call. Every shape that reaches this --
+	// a Strike's swing, a Charge's landing, a Flicker arrival, an Advance step
+	// -- is therefore counted the same way.
+	const bool bBeganForTheWholeGroup = BeginAttackOn(Targets);
+	ON_SCOPE_EXIT
+	{
+		if (bBeganForTheWholeGroup)
+		{
+			EndAttack();
+		}
+	};
+
 	// NOTHING TO SCALE BY, so this is the ordinary blow. Every skill that states
 	// no ScalingSource takes this path, which is 50 of the 56 Demonic rows.
 	if (Params.ScalingSource.IsEmpty()
@@ -1690,6 +1706,34 @@ float UCataclysmSkillTemplate::HitScaled(const TArray<AActor*>& Targets,
 			Untouched, ScaledDamagePercent(ScalingUnits(Consumed.Num(), false)));
 	}
 	return Total;
+}
+
+bool UCataclysmSkillTemplate::BeginAttackOn(const TArray<AActor*>& Targets)
+{
+	// AN ATTACK ALREADY IN PROGRESS OWNS THE COUNT, which is how both halves of a
+	// Consume split carry the whole swing's.
+	if (AttackEnemiesStruckTogether >= 0)
+	{
+		return false;
+	}
+
+	AttackEnemiesStruckTogether = Targets.Num();
+
+	// PAID ONCE FOR THE WHOLE ATTACK, BEFORE ITS FIRST BLOW. Bought With Ruin:
+	// "Each enemy your melee attack hits beyond the first costs 2 Fervour".
+	// Nothing is bought or paid by a character without the node, by an attack
+	// that struck one enemy, or by one the character cannot pay for.
+	AttackIncreasedDamageBoughtPercent =
+		UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
+			GetAbilitySystemComponentFromActorInfo(), SkillTags,
+			AttackEnemiesStruckTogether);
+	return true;
+}
+
+void UCataclysmSkillTemplate::EndAttack()
+{
+	AttackEnemiesStruckTogether = -1;
+	AttackIncreasedDamageBoughtPercent = 0.0f;
 }
 
 AActor* UCataclysmSkillTemplate::Avatar() const
@@ -1819,6 +1863,22 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// AND THIS SKILL ITSELF, SO WHAT IT HITS CAN NAME IT. Issue #41, slice 4.
 	// Carried on the effect context; see `FCataclysmHitDelivery::Skill`.
 	Delivery.Skill = this;
+
+	// AND HOW MANY ENEMIES THIS ATTACK STRUCK TOGETHER, with any damage it bought
+	// with Fervour. Issue #1515. Begun here only when no attack is already in
+	// progress -- `HitScaled` begins one for a whole Consume split -- so every
+	// caller that deals its group in one call counts these targets. Counted and
+	// paid before the first blow is priced.
+	const bool bBeganAttack = BeginAttackOn(Targets);
+	ON_SCOPE_EXIT
+	{
+		if (bBeganAttack)
+		{
+			EndAttack();
+		}
+	};
+	Delivery.EnemiesStruckTogether = AttackEnemiesStruckTogether;
+	Delivery.IncreasedDamageBoughtPercent = AttackIncreasedDamageBoughtPercent;
 
 	float Total = 0.0f;
 
