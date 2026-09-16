@@ -37,7 +37,7 @@ resource-or-charge row on [#1844](https://github.com/sdubois777/Cataclysm/issues
 
 ### A death nearby counts only when the victim was an enemy
 
-Ruled 2026-09-16 under the project owner's delegation. Reading #1878's handler against the
+A labelled judgement, ruled 2026-09-16 under the project owner's delegation. Reading #1878's handler against the
 sentence found that the character raised `nearby_death` for any death within 300 cm but its
 own, and a summoner's own minion dying beside it is announced exactly as an enemy's is: a
 minion at zero health calls `HandleDeath`, which calls `MarkDead`, which announces. The row
@@ -49,7 +49,7 @@ false for a dead character and a death is announced after the victim is marked d
 
 ### A hit dealt, and a critical strike, is a blow that connected
 
-Ruled 2026-09-16 under the project owner's delegation. #1878's handler raised `hit_dealt` and
+A labelled judgement, ruled 2026-09-16 under the project owner's delegation. #1878's handler raised `hit_dealt` and
 `critical_strike` for every hit announcement credited to the character. Two kinds of
 announcement are not a blow that connected, and both are now refused:
 
@@ -79,7 +79,8 @@ and the test and its proof cover the hit half.
 
 ### Minions: a minion's kill is the wearer's, and a minion's blow is never critical
 
-Confirmed under the 2026-09-14 ruling that a kill credited to the character counts. A minion's
+A labelled judgement, confirmed 2026-09-16 under the project owner's delegation
+and applying the 2026-09-14 ruling that a kill credited to the character counts. A minion's
 blow and kill are credited to its summoner, so the row on "killing an enemy while below 30% HP"
 fires on a minion's kill.
 
@@ -93,7 +94,8 @@ minion either, because a minion's blow carries no skill tags.
 
 ### A melee basic-attack kill is a melee kill
 
-Ruled 2026-09-16 that it must be, and it already is. `UCataclysmWeaponSkills::BasicAttackFor`
+A labelled judgement, ruled 2026-09-16 under the project owner's delegation that it
+must be; and it already is. `UCataclysmWeaponSkills::BasicAttackFor`
 adds `Type.Melee` to a basic attack whose shape is a strike, which every melee weapon's is, and
 `Cataclysm.WeaponSlots.AMeleeWeaponsBasicAttackIsAMeleeAttackAndARangedOnesIsNot` holds it. So
 "Melee kills restore 3%-6% of your maximum HP" reaches the basic attack as well as the 30 weapon
