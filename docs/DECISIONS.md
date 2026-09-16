@@ -2,6 +2,105 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — Seven enchantment rows on a kill, a critical strike, a death nearby, a skill use and a strike's hit, and the rules that make those events fire only when the sentences say
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: seven rows),
+`game/Data/EnchantmentEffects.csv` and the DataTable asset built from it,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (which deaths and hits the
+character's worn rows hear), `tools/tests/test_enchantment_effects_match_the_row_text.py`
+(the pins), `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (the row-count pin),
+`docs/README.md`, and the tests in `CataclysmPlayerMovementTests.cpp` and
+`CataclysmEnchantmentEffectTests.cpp`. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The seven rows
+
+| Sentence | Pool | Event | Of | Low | High | Scope |
+| :-- | :-- | :-- | :-- | --: | --: | :-- |
+| Killing an enemy while below 30% HP instantly restores 15%-25% of your maximum HP | health | kill | maximum | 15 | 25 | `health_below` 30 |
+| Melee kills restore 3%-6% of your maximum HP | health | kill | maximum | 3 | 6 | `Type.Melee` |
+| Critical strikes restore 2%-4% of your maximum HP | health | critical_strike | maximum | 2 | 4 | |
+| Critical strikes drain 3%-6% of your current HP | health | critical_strike | current | -3 | -6 | |
+| When an enemy dies near you, restore 5%-10% of your maximum HP | health | nearby_death | maximum | 5 | 10 | |
+| Each skill use generates 1%-3% of your maximum class resource | class_resource | skill_use | maximum | 1 | 3 | |
+| Strike skills generate 5%-10% of your class resource on hit | class_resource | hit_dealt | maximum | 5 | 10 | `Type.Strike` |
+
+176 rows over 148 enchantments, from 169 over 141: one row each,
+because a row moves one pool. These are the first authored action rows to carry a condition,
+a required tag or `current`, and the first on the five events of
+[#1878](https://github.com/sdubois777/Cataclysm/pull/1878), so all seven went through the whole
+generator on a throwaway copy of the tree before the workbook was edited.
+
+The other two of #1878's nine rows stay blocked, each for a reason outside this change:
+the healing-skill row on [#1822](https://github.com/sdubois777/Cataclysm/issues/1822) and the
+resource-or-charge row on [#1844](https://github.com/sdubois777/Cataclysm/issues/1844).
+
+### A death nearby counts only when the victim was an enemy
+
+Ruled 2026-09-16 under the project owner's delegation. Reading #1878's handler against the
+sentence found that the character raised `nearby_death` for any death within 300 cm but its
+own, and a summoner's own minion dying beside it is announced exactly as an enemy's is: a
+minion at zero health calls `HandleDeath`, which calls `MarkDead`, which announces. The row
+would have restored health every time the wearer's own minion died.
+
+It now asks `UCataclysmTeams::AttitudeBetween(character, victim)` for Hostile.
+**`UCataclysmTargeting::IsHostileTo` would have refused every death**, because it answers
+false for a dead character and a death is announced after the victim is marked dead.
+
+### A hit dealt, and a critical strike, is a blow that connected
+
+Ruled 2026-09-16 under the project owner's delegation. #1878's handler raised `hit_dealt` and
+`critical_strike` for every hit announcement credited to the character. Two kinds of
+announcement are not a blow that connected, and both are now refused:
+
+- **A damage-over-time tick.** An ailment carries the skill that applied it, so every tick of
+  a strike's burn arrived tagged `Type.Strike`, and "Strike skills generate 5%-10% of your
+  class resource on hit" would have generated on each one. The project already treats a tick
+  as not a hit for retaliation, with Path of Exile, Diablo IV and Last Epoch as its sources.
+- **An evaded blow.** This is on purpose the opposite of the defender's side, where
+  `NoteHitTaken` counts an evaded blow as a hit taken; that rule serves effects that trigger
+  on being hit and does not transfer. It also differs from the count of enemies one attack
+  strikes ([#1926](https://github.com/sdubois777/Cataclysm/pull/1926)), which counts enemies
+  before any blow resolves because it prices the attack rather than answering a hit.
+
+The ruling rests on on-hit effects in the genre needing the hit to land. Maxroll's Last Epoch
+defenses guide says a dodge avoids a hit, "negating any damage it would do and any ailments it
+would apply". No quotable statement was found for Path of Exile or Diablo IV: the Path of
+Exile wikis refuse automated reading, the Path of Exile database page on evasion does not say
+what an evaded attack does, no Diablo IV search result stated it, and Last Epoch's own support
+article on dodge returned HTTP 403.
+
+**The critical strike half cannot be seen today.** A tick cannot critically strike and an
+evaded blow is never reported critical
+(`Cataclysm.Crit.ADamageOverTimeTickNeverCriticallyStrikes`,
+`Cataclysm.Crit.AnEvadedHitIsNeverReportedAsACriticalStrike`), so nothing refused carries
+`bCritical`. It is refused anyway, so the rule does not rest on either of those staying true,
+and the test and its proof cover the hit half.
+
+### Minions: a minion's kill is the wearer's, and a minion's blow is never critical
+
+Confirmed under the 2026-09-14 ruling that a kill credited to the character counts. A minion's
+blow and kill are credited to its summoner, so the row on "killing an enemy while below 30% HP"
+fires on a minion's kill.
+
+**The two critical strike rows never fire for a minion, read from the code rather than run.**
+All three blows an `ACataclysmMinion` deals -- its typed blow, its untyped blow and its
+explosion -- take their delivery from `MinionDelivery` in `CataclysmMinion.cpp`, which sets
+`bCannotCriticallyStrike`. `UCataclysmSkillEffects::ApplyTypedSpec` turns that into the tag
+that makes `UCataclysmVitalAttributeSet` refuse a critical strike, and its burns are damage over
+time, which cannot critically strike at all. The two scoped rows cannot fire for a
+minion either, because a minion's blow carries no skill tags.
+
+### A melee basic-attack kill is a melee kill
+
+Ruled 2026-09-16 that it must be, and it already is. `UCataclysmWeaponSkills::BasicAttackFor`
+adds `Type.Melee` to a basic attack whose shape is a strike, which every melee weapon's is, and
+`Cataclysm.WeaponSlots.AMeleeWeaponsBasicAttackIsAMeleeAttackAndARangedOnesIsNot` holds it. So
+"Melee kills restore 3%-6% of your maximum HP" reaches the basic attack as well as the 30 weapon
+skills tagged `Type.Melee`. Nothing was changed for it.
+
+---
+
 ## 2026-09-16 — Cleaving Arc, Bought With Ruin and Sundering are authored, and each reads how many enemies one attack struck
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`
