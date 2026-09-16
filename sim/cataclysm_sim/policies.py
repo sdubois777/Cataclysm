@@ -83,10 +83,10 @@ def siege_daily_damage(sim, d, city) -> float:
     `TuningConfig.siege_damage_growth_per_day`.
 
     ANY DUNGEON TYPE CAN CARRY THE SUB-TYPE, not only the ordinary ones:
-    `_roll_subtype` runs for every `_make_dungeon`. Measured on 2026-09-06 over
-    10,000 campaigns at the settings `siege_urgency` names below, the 89,652
-    Sieges that reached the map were 78% Basic, 11% Quest, 10% Fallen City and
-    1% Cataclysm, about 8.97 a campaign. That is why the callers below apply
+    `_roll_subtype` runs for every `_make_dungeon`. Measured on 2026-09-16 over
+    10,000 campaigns at the settings `siege_urgency` names below, the 65,636
+    Sieges that reached the map were 79% Basic, 11% Quest, 10% Fallen City and
+    1% Cataclysm, about 6.56 a campaign. That is why the callers below apply
     this in all three scoring branches instead of only the ordinary one.
 
     THE RATE FELL FROM 10.6 A CAMPAIGN AND THE FOUR SHARES DID NOT MOVE AT ALL.
@@ -95,6 +95,10 @@ def siege_daily_damage(sim, d, city) -> float:
     Siege is a property of `_roll_subtype` and not of how long a campaign runs,
     which is why one number moved and the other four did not -- and it is the
     shares rather than the rate that the sentence above exists to justify.
+    THE RATE FELL AGAIN, FROM 8.97 TO 6.56, on issue #1432 (2026-09-16), when a
+    city's fall stopped firing a surge inside `surge_interval_min`; the four
+    shares moved by under a point (78 / 11 / 10 / 1 to 78.5 / 10.7 / 9.6 /
+    1.1 before rounding), for the same reason.
 
     THE COUNTS THAT USED TO BE HERE -- 114 Basic, 28 Fallen City, 11 Quest and 3
     Cataclysm over twelve campaigns -- were taken before two changes of the same
@@ -163,17 +167,17 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     WHY THE DISTINCTION STILL MATTERS NOW THAT THE MARGIN IS NOT TIGHT. At
     difficulty tier 1 -- one active Cataclysm -- with no empire tree, `triage`,
     and static surges of five dungeons every 120 days, the median walk is 14
-    days to an Outpost, 23 to a Bulwark, 37 to a Sanctuary and 123 to the
+    days to an Outpost, 24 to a Bulwark, 37 to a Sanctuary and 123 to the
     Pillar. Against the 25 / 39 / 55 days a fresh Siege leaves those three
-    sizes, the slack is 11 / 16 / 18 days. Measured on 2026-09-06 over 10,000
-    campaigns and 1,250,908 dungeons, each recorded at the moment it was made;
-    issue #1364.
+    sizes, the slack is 11 / 15 / 18 days. Measured on 2026-09-16 over 10,000
+    campaigns and 890,790 dungeons, each recorded at the moment it was made;
+    issues #1364 and #1432.
 
     QUOTE THOSE TO THE DAY AND NO FINER, AND RE-MEASURE RATHER THAN CARRYING
     THEM FORWARD. The walk lengths are nearly uniform where the median sits --
-    49.0% of Outpost dungeons walk in 13 days or fewer and 56.2% in 14 or fewer
+    47.3% of Outpost dungeons walk in 13 days or fewer and 54.9% in 14 or fewer
     -- so the median is a coin flip between two adjacent days, and a block of
-    200 campaigns lands on either side of it at random. That is how this file
+    250 campaigns lands on either side of it at random. That is how this file
     came to state 12 / 20 / 33 while issue #1364 measured 14 / 22 / 33 on the
     same code: neither was reproducible, and neither was wrong by much.
     `tests/test_the_siege_prose_in_policies_is_true.py` re-measures all four and
@@ -199,14 +203,27 @@ def siege_urgency(sim, d, city, fatal_mult: float) -> float:
     changed.** Re-measured over 10,000 campaigns on 2026-09-06; the guard failed
     first, which is what it is for.
 
-    THE OUTPOST MEDIAN NOW SITS HIGHER INSIDE ITS OWN BIN THAN IT DID, and that
-    is worth knowing before the next change moves it again. 56.2% of Outpost
+    THE OUTPOST MEDIAN SAT HIGHER INSIDE ITS OWN BIN AFTER #1357 THAN BEFORE,
+    and that was worth knowing before the next change moved it again. On
+    2026-09-06, 56.2% of Outpost
     dungeons walk in the stated 14 days or fewer, where the figure was 50.5% at
     the stated 13. The guard asks for that share to be between 44% and 58%, so
     the headroom above is now under two points rather than seven and a half. It
-    passes; the next thing that lengthens a campaign is likely to trip it, and
+    passed; the next thing that lengthens a campaign was likely to trip it, and
     the answer then is to re-measure rather than to widen the range. Issue #1389
     carries what to look at when it does.
+
+    AND IT MOVED A THIRD TIME, ON ISSUE #1432, FOR A REASON THAT IS ABOUT HOW
+    MANY SURGES LAND. A city's fall used to fire a surge whatever the gap since
+    the last one; from 2026-09-16 it respects `surge_interval_min` like the
+    other two triggers. Fewer surges land, fewer cities fall, campaigns run
+    longer, and the mix of city sizes a surge has left to hit changes again.
+    Re-measured over 10,000 campaigns on 2026-09-16: the Bulwark median rose
+    from 23 to 24 and the other three held; the sample fell from 1,250,908
+    dungeons to 890,790; the Outpost share at 14 days or fewer fell from 56.2%
+    to 54.9%, so the headroom under the guard's 58% is three points. The guard
+    failed first, again, which is what it is for; the day loop's before-and-
+    after figures are in the decisions log entry for #1432.
 
     THE SETTINGS ARE PART OF THE FIGURE. Five dungeons a surge is what the
     balance report uses and NOT `TuningConfig.surge_dungeon_count`, which is 4.

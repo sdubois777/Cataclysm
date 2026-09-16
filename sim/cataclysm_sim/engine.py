@@ -897,7 +897,20 @@ class Simulation:
         if not city.erased:
             self._make_dungeon(DungeonType.FALLEN_CITY, city)
 
-        if cfg.surge_on_city_fall:
+        # A FALL RESPECTS THE SAME MINIMUM GAP AS THE OTHER TWO TRIGGERS. Issue
+        # #1432, ruled 2026-09-14. The scheduled wave spaces itself by
+        # `surge_gap()` and the board-empty trigger refuses inside
+        # `surge_interval_min`; this trigger had no spacing at all, so a fall the
+        # day after a surge landed a whole second wave and two cities falling on
+        # one day landed two. At difficulty tier 4 that was 89% of every surge
+        # that fired, 82% of them inside the 25-day floor. The fall itself still
+        # stands -- the Fallen City dungeon, the lane opening -- and the
+        # scheduled clock is untouched; only the extra wave is withheld when the
+        # last one landed less than `surge_interval_min` days ago. A braked
+        # fall is not retried later: the fall is a moment, not a standing state
+        # like an empty board, and the scheduled wave still comes.
+        if (cfg.surge_on_city_fall
+                and self.days_since_last_surge() >= cfg.surge_interval_min):
             self.trigger_surge(from_city_fall=True)
 
     def _retake(self, city: City) -> None:

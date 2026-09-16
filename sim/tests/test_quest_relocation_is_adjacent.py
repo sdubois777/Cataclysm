@@ -209,6 +209,10 @@ class TestWhereAQuestDungeonMayMoveTo:
                 f"{city.name} may relocate a quest dungeon onto the Pillar")
 
 
+#: Campaigns the module fixture plays. See its docstring for why a hundred.
+CAMPAIGNS = 100
+
+
 @pytest.fixture(scope="module")
 def moves():
     """Every relocation that happened, as (from, to, neighbours-of-from).
@@ -219,8 +223,17 @@ def moves():
     `TestWhyAQuestDungeonStays` asserts both occur.
 
     **IT IS A MODULE FIXTURE AND WAS A CLASS ONE.** Two classes read it now --
-    the adjacency rule and the reasons a dungeon stays -- and twenty campaigns
-    are too slow to run twice.
+    the adjacency rule and the reasons a dungeon stays, and the campaigns are
+    not worth running twice.
+
+    ONE HUNDRED CAMPAIGNS, AND IT WAS TWENTY. Issue #1432 made a city's fall
+    respect the minimum surge gap, so fewer cities fall (11.89 to 5.25 lost per
+    campaign at tier 1) and fewer neighbours are sealed. Measured on 2026-09-16
+    under this fixture's settings: twenty campaigns gave 89 quest timers with a
+    choice and NO dungeon hemmed in; forty gave 213 and 1; sixty gave 276 and
+    12; a hundred gave 464 timers with a choice, 242 moves and 21 hemmed in, in
+    three seconds. A hundred is the smallest round count at which the rarest
+    outcome appears more than a handful of times.
     """
     seen: list[tuple[int, int, list[int]]] = []
     stayed: list[int] = []
@@ -248,7 +261,7 @@ def moves():
 
     Simulation._resolve = watched
     try:
-        for seed in range(20):
+        for seed in range(CAMPAIGNS):
             Simulation(safe(), seed=seed).run(POLICIES["triage"])
     finally:
         Simulation._resolve = original
@@ -259,10 +272,10 @@ def moves():
 class TestWhatActuallyHappensInACampaign:
     """Driving real runs, because a helper nothing calls is worth nothing.
 
-    THE SAMPLE IS STATED SO IT CAN BE RECHECKED. Twenty campaigns under the
-    `triage` policy produce a few hundred quest timers between them, which is
-    enough for every outcome -- moved, declined, and had nowhere to go -- to
-    appear many times over.
+    THE SAMPLE IS STATED SO IT CAN BE RECHECKED. `CAMPAIGNS` campaigns under
+    the `triage` policy produce a few hundred quest timers between them, which
+    is enough for every outcome -- moved, declined, and had nowhere to go -- to
+    appear many times over; the fixture's docstring gives the counts.
     """
 
     def test_quest_dungeons_actually_relocated(self, moves):
@@ -272,7 +285,7 @@ class TestWhatActuallyHappensInACampaign:
         seen, _ = moves
 
         assert len(seen) > 20, (
-            f"only {len(seen)} quest relocations happened across 20 campaigns, "
+            f"only {len(seen)} quest relocations happened across {CAMPAIGNS} campaigns, "
             "which is too few to say anything about the rule")
 
     def test_every_move_landed_on_an_adjacent_city(self, moves):
@@ -346,7 +359,7 @@ class TestWhyAQuestDungeonStays:
         chose = len(seen) + declined
 
         assert chose > 100, (
-            f"only {chose} quest timers had a choice to make across 20 "
+            f"only {chose} quest timers had a choice to make across {CAMPAIGNS} "
             "campaigns, which is too few to say anything about the rate")
 
         wanted = TuningConfig().quest_move_chance

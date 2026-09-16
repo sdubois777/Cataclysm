@@ -445,8 +445,23 @@ class TestItReachesRealCampaigns:
         """The blind figure is produced by forcing the urgency back to 1.0,
         which reproduces the previous scoring exactly: the multiplier vanishes
         and the fired-timer discount applies again, which is what the code did
-        before issue #1340."""
-        n = 40
+        before issue #1340.
+
+        TWO HUNDRED CAMPAIGNS AND "MORE", WHERE IT WAS FORTY AND "A FIFTH
+        MORE". Issue #1432 made a city's fall respect the minimum surge gap, so
+        fewer surges land and fewer Sieges stand, and the seeing policy's
+        advantage shrank. Measured on 2026-09-16 in three disjoint blocks of
+        200 campaigns each, Sieges cleared seeing against blind: triage 541/439,
+        518/393, 527/452 (1.235 pooled); lane_aware 610/513, 591/524, 586/535
+        (1.137 pooled). At forty campaigns the same code gave 101/92 and
+        121/109, on the wrong side of the old floor by sampling alone. So the
+        sample is two hundred, and the floor is that the seeing policy clears
+        strictly more: for lane_aware the fifth is no longer true at any sample
+        size, and the block spread (0.047 for lane_aware) puts "more" about
+        three standard deviations from its pooled ratio. The ratios are stated
+        here so the next reader can see what moved rather than what passed.
+        """
+        n = 200
         policy = policies.ALL[name]
         seeing = self.sieges_cleared(policy, n)
 
@@ -454,8 +469,11 @@ class TestItReachesRealCampaigns:
                             lambda *a, **k: 1.0)
         blind = self.sieges_cleared(policy, n)
 
-        assert seeing > blind * 1.2, (
+        assert seeing > blind, (
             f"{name} cleared {seeing} Sieges over {n} campaigns at difficulty "
             f"tier 1, no empire tree, surge size 4, against {blind} with the "
-            "urgency forced back to 1.0. The policy is no longer acting on a "
-            "Siege differently from any other dungeon. Issue #1340.")
+            "urgency forced back to 1.0 (ratio "
+            f"{seeing / blind if blind else float('inf'):.3f}; 1.235 for triage and "
+            "1.137 for lane_aware over 600 campaigns on 2026-09-16). The policy "
+            "is no longer acting on a Siege differently from any other "
+            "dungeon. Issue #1340.")

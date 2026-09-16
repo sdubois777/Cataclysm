@@ -337,7 +337,9 @@ class TuningConfig:
     # being arithmetically impossible.
     cataclysm_volume_exponent: float = 0.7
 
-    # A surge also fires immediately when a city falls.
+    # A surge also fires immediately when a city falls, unless the last surge
+    # landed less than `surge_interval_min` days ago (issue #1432): the same
+    # brake the board-empty trigger respects.
     surge_on_city_fall: bool = True
     # Does a fall-triggered surge also advance the escalation counter? If it
     # does, losing a city permanently speeds the game up -- a death spiral.
@@ -579,7 +581,8 @@ class TuningConfig:
     # IT WAS 10 UNTIL 2026-09-06 AND THE OWNER CUT IT ON ISSUE #1349, verbatim
     # "Halve the rate and cut the growth". At 10 an unattended Siege emptied a
     # city in 14 / 23 / 34 / 47 days by size against a median walk of
-    # 14 / 23 / 37, so the player arrived on the day the city fell for the two
+    # 14 / 24 / 37 (the walk today, re-measured on issue #1432; it was 14 / 23 /
+    # 37 on the day of the cut), so the player arrived on the day the city fell for the two
     # smaller sizes and after it had fallen for the third; at 2.5 it
     # takes 25 / 39 / 55 / 70. Damage dealt grows with the SQUARE of the days a
     # Siege has stood, so this number buys days back far more slowly than it
