@@ -2,6 +2,67 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — Cleaving Arc, Bought With Ruin and Sundering are authored, and each reads how many enemies one attack struck
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`
+(three rows), `game/Content/Data/DT_PassiveEffects.uasset`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (three tests),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and `docs/README.md`
+(the row count), `tools/tests/test_passive_effects_match_the_node_text.py` and
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`.
+Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+The entry below, "One attack counts the enemies it strikes together, and three
+Ravager nodes can read the count", built the mechanism and said the three rows
+waited on the workbook. These are the rows. They were authored in the same
+workbook turn as the Ritualist Stat renames in the entry after this one.
+
+| row | stat | kind | value | required tag | condition | scale |
+| :-- | :-- | :-- | --: | :-- | :-- | :-- |
+| `Ravager_basic_b_a2#1` Cleaving Arc | `attack_damage` | increased | 1 | | | `enemies_hit_beyond_the_first`, step 1 |
+| `Ravager_basic_b_b2#1` Bought With Ruin | `increased_damage_bought_per_extra_enemy_hit` | flat | 3 | `Type.Melee` | | |
+| `Ravager_keystone_b_kA#1` Sundering | `armor_penetration` | flat | 100 | `Type.Melee` | `enemies_hit_at_least` 3 | |
+
+### WHAT THE ROWS DECIDE THAT THE MECHANISM'S ENTRY DID NOT
+
+- **Sundering's "entirely" is 100 points of armour penetration.** Armour
+  penetration is the share of armour a blow ignores, and the damage calculation
+  clamps that share at 100, so 100 is all of it. The sentence has no digit, so
+  the value is pinned in words in `VALUE_IN_WORDS`, as "ignore enemy armor
+  entirely". A defender carrying `armor_penetration_suppressed` still keeps its
+  armour, as the mechanism's entry records.
+- **Bought With Ruin's row holds only the percentage.** The 2 Fervour is
+  `UCataclysmFervour::ExtraEnemyHitCost`, a constant, because no node changes
+  it; ruling 4 of the mechanism's entry.
+- **The tags follow ruling 5 of that entry:** Bought With Ruin and Sundering
+  require `Type.Melee`, and Cleaving Arc, which says "your attack", requires
+  nothing.
+- **The condition's words are "enemies at once"**, with the count "three or
+  more" in words. "Hit" alone would match sentences about every kind of blow,
+  and "at once" is what separates this count from the count of enemies near the
+  character.
+
+`enemies_hit_at_least` leaves the list of conditions built ahead of their rows,
+as that list's own comment said it would.
+
+### TESTS
+
+Three tests read the real rows on a real Ravager, and each fails until
+`DT_PassiveEffects.uasset` is rebuilt from the new table:
+
+- `Cataclysm.Passives.CleavingArcRaisesARealRavagersAttackDamageForEachEnemyBeyondTheFirst`
+- `Cataclysm.Passives.BoughtWithRuinLetsARealRavagersMeleeAttacksBuyDamage`
+- `Cataclysm.Passives.SunderingIgnoresArmourOnlyWhenARealRavagersMeleeAttackStrikesThree`
+
+### COUNTS
+
+    passive effect rows     270 -> 273   AUTHORED_ROWS, CHECK_TABLE, docs/README.md
+    authored nodes          198 -> 201   AUTHORED_NODES; the Ravager 60 -> 63 of 74
+    conditions built ahead    4 -> 3     39 conditions, 36 named by a row
+    Unreal automation tests  +3 by name, all in Cataclysm.Passives.
+
+---
+
 ## 2026-09-16 — The ten Ritualist nodes that named an imp or a thrall say minion, and Crowned and The Swarm reach every minion
 
 **Affects:** `docs/Ritualist_Class_Tree_Final.json` (ten sentences) and
@@ -18,8 +79,9 @@ for `Ritualist_keystone_a_kC#1` and `Ritualist_keystone_b_kA#1` with
 comment), `tools/tests/test_passive_effects_match_the_node_text.py` and
 `tools/tests/test_class_passive_trees.py`. The two keystones were built under
 issue [#1718](https://github.com/sdubois777/Cataclysm/issues/1718). Opens
-[#1932](https://github.com/sdubois777/Cataclysm/issues/1932) and
-[#1933](https://github.com/sdubois777/Cataclysm/issues/1933).
+[#1932](https://github.com/sdubois777/Cataclysm/issues/1932),
+[#1933](https://github.com/sdubois777/Cataclysm/issues/1933) and
+[#1934](https://github.com/sdubois777/Cataclysm/issues/1934).
 
 ### THE OWNER REVERSED THE RULING OF 2026-09-08
 
@@ -61,7 +123,7 @@ carry them. **Each is marked JUDGEMENT so it can be overruled.**
 
 - **Room for One More** (row built: `class_resource` flat 30). The row is
   unchanged. Today the 30 is reserved only by thralls, because a thrall's
-  reserve is the only one anything reads.
+  reserve is the only one anything reads; #1934 records that.
 - **Press the Advantage** (no row yet). When built, it is `spell_damage`
   increased 2 on the scale `minions_held`, which counts imps, thralls and
   deployed machines together, so it widens from thralls to everything the
@@ -134,8 +196,9 @@ deployable's 5.
   deployables 5. Only a thrall's reserve is read by anything -- Subjugate's
   check for room for another thrall -- so for imps and deployables the reduction
   changes nothing until something reads their reserve. Issue #1160 covers only a
-  thrall's reserve not being taken out of the pool; no issue records that the
-  other reserves are read by nothing.
+  thrall's reserve not being taken out of the pool, and #1934 records that the
+  other reserves are read by nothing. **Until #1934 is fixed, Room for One More
+  and Crowned reach only thralls.**
 - **One row of 403 states a cap,** Summon Imp's 3. It is read at three places:
   a summon destroying its oldest, a deployable refusing to place another, and a
   summon that spawns over time. So play is unchanged until another row states a
@@ -143,11 +206,10 @@ deployable's 5.
 
 ### TESTS
 
-- **New:**
-  `Cataclysm.Command.TheSwarmRaisesTheCapOfASummonThatMakesSomethingOtherThanImps`.
-  A row written in the test summons motes under a cap of one: three casts leave
-  one mote without the bonus and three with it. It fails while the imp
-  condition is in place, which is the change it guards.
+- **New:** `Cataclysm.Command.TheSwarmLetsADeployableThatStatesACapPlaceTwoMore`.
+  Bolt Turret's own parameters with a cap of one added: three activations
+  leave one turret without the bonus and three with it. It fails while the
+  imp condition is in place, which is the change it guards.
 - **Renamed, and re-read against the rows' new stat names:**
   `Cataclysm.Passives.CrownedLowersARealRitualistsThrallReserve` is now
   `Cataclysm.Passives.CrownedLowersARealRitualistsMinionReserve`, and
@@ -161,6 +223,10 @@ deployable's 5.
   deployable's reserve was planned and cannot be written. Nothing reads either
   reserve, so the test would assert only its own arithmetic -- the reason the
   2026-09-14 entry gave for not testing that an imp's reserve stayed unchanged.
+  **The reserve helper's `Possess` condition was removed with nothing to
+  observe today.** What shows the removal did not break the one reserve that is
+  read is `Cataclysm.Command.CrownedTakesAThrallThePoolWouldOtherwiseRefuse`
+  still passing.
 - **Python.** `VALUE_IS_A_DIFFERENCE` in
   `tools/tests/test_passive_effects_match_the_node_text.py` loses both entries,
   because the sentences now state the change ("5 less Fervour", "allows 2 more")
