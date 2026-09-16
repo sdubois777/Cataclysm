@@ -716,6 +716,77 @@ def require_compiled(outcome: BuildOutcome, source_paths: Sequence[str]) -> None
             "the object built from the broken version. See issue #139.")
 
 
+#: A test declaration in the C++ tree: the engine's registration macro, or one
+#: of this project's file-local wrappers around it, at the start of a line, with
+#: the test's dotted name as the first string literal after the class.
+#:
+#: ANCHORED AT LINE START ON PURPOSE. Issue #1707: the count is what a pull
+#: request quotes forward as a pre-registered figure, so it must be one anybody
+#: can re-derive from the tree with the same two anchored searches, and a
+#: mention of the macro in a comment or a string must not count.
+DECLARED_TEST = re.compile(
+    r"^(?:IMPLEMENT_SIMPLE_AUTOMATION_TEST|CATACLYSM_[A-Z_]*TEST)\(\s*\w+\s*,\s*"
+    r"\"([^\"]+)\"", re.MULTILINE)
+
+
+def declared_tests(source_root: pathlib.Path | None = None) -> tuple[str, ...]:
+    """Every automation test the C++ tree declares, by its dotted name.
+
+    WHY THE COMMAND PRINTS THIS. Issue #1707. A merged pull request recorded an
+    Unreal total that matched no tree in its range, and three predictions were
+    built on it before anybody could tell which part had drifted. A bare total
+    belongs to no tree; this puts the declared count, the commit it was
+    counted on and the names declared but not run beside the performed count,
+    so a body that copies the command's line carries its inputs.
+    """
+    root = GAME_DIR / "Source" if source_root is None else source_root
+    names: list[str] = []
+    for path in sorted(root.rglob("*.cpp")) + sorted(root.rglob("*.h")):
+        names.extend(DECLARED_TEST.findall(
+            path.read_text(encoding="utf-8", errors="replace")))
+    return tuple(names)
+
+
+def current_commit() -> str:
+    """The short hash of the checked-out commit, or 'unknown' if git cannot say."""
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+            text=True, cwd=REPO_ROOT, check=True).stdout.strip() or "unknown"
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+
+
+def declared_line(tests: "TestOutcome", declared: Sequence[str], commit: str) -> str:
+    """The line printed after the run's own: what the tree declares, where, and
+    which declared tests the run did not report.
+
+    COMPARED BY FULL DOTTED NAME WHEN THE LOG GIVES ONE, AND BY THE LAST SEGMENT
+    OTHERWISE. `CLAUDE.md` records that the engine's log names a test without
+    its group in front, while a declaration carries the whole dotted path; six
+    last segments are shared by more than one declaration (one per creature),
+    so a last-segment comparison can hide a missing twin, and the line says
+    which comparison it made.
+    """
+    reported = set(tests.succeeded + tests.failed)
+    by_full_name = any("." in name for name in reported)
+
+    def key(name: str) -> str:
+        return name if by_full_name else name.rsplit(".", 1)[-1]
+    seen = {key(name) for name in reported}
+    missing = sorted(name for name in declared if key(name) not in seen)
+    line = f"Declared: {len(declared)} tests in the tree at {commit}"
+    if tests.performed is not None:
+        line += f"; {tests.performed} performed, gap {len(declared) - tests.performed}"
+    if missing:
+        how = "full name" if by_full_name else "last segment, which can hide a twin"
+        line += (f"; declared but not reported by the run (compared by {how}): "
+                 + ", ".join(missing))
+    else:
+        line += "; every declared test was reported by the run"
+    return line + ". Issue #1707."
+
+
 def run_automation_tests(prefix: str = "Cataclysm",
                          timeout: float | None = None) -> TestOutcome:
     """Run the Unreal automation tests and read the results out of the log.
@@ -1142,6 +1213,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     tests = run_automation_tests(arguments.prefix)
     print(f"Tests: {tests.summary}")
+    # THE INPUTS BESIDE THE ANSWER. Issue #1707. A prefix narrows the run and not
+    # the tree, so with a prefix the gap is the tests outside it and the line
+    # still says what the whole tree declares; the names are the useful part.
+    print(declared_line(tests, declared_tests(), current_commit()))
 
     code = exit_code_for(tests)
 

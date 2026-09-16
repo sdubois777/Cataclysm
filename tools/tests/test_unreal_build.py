@@ -230,6 +230,63 @@ def test_the_retry_limit_default_is_the_documented_one() -> None:
     assert default == unreal_build.MUTEX_RETRY_ATTEMPTS
 
 
+# WHAT THE TREE DECLARES, PRINTED BESIDE WHAT THE RUN PERFORMED. Issue #1707.
+
+A_SOURCE_WITH_BOTH_MACRO_FORMS = '''\
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAttributeDefaultsTest,
+\t"Cataclysm.AbilitySystem.AttributeDefaults",
+\tEAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+CATACLYSM_AILMENT_TEST(FCataclysmAilmentApplicationTest,
+\t"Cataclysm.Ailments.ChanceAboveCertaintyBecomesMagnitude")
+
+// A comment naming IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNotATest, "Cataclysm.Not.Declared") is not a declaration.
+    IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIndentedTest, "Cataclysm.Not.AtLineStart", 0)
+'''
+
+
+def test_declared_tests_reads_both_macro_forms_and_only_at_line_start(
+        tmp_path: pathlib.Path) -> None:
+    (tmp_path / "ATests.cpp").write_text(A_SOURCE_WITH_BOTH_MACRO_FORMS, encoding="utf-8")
+    assert unreal_build.declared_tests(tmp_path) == (
+        "Cataclysm.AbilitySystem.AttributeDefaults",
+        "Cataclysm.Ailments.ChanceAboveCertaintyBecomesMagnitude")
+
+
+def test_the_real_tree_declares_a_thousand_or_more() -> None:
+    """The control: a reader that found nothing would report a gap of minus
+    everything. 1,926 were declared when this landed (2026-09-16)."""
+    assert len(unreal_build.declared_tests()) >= 1000
+
+
+def test_the_declared_line_names_what_the_run_did_not_report() -> None:
+    declared = ("Cataclysm.A.Ran", "Cataclysm.B.AlsoRan", "Cataclysm.C.NeverRan")
+    run = TestOutcome(2, ("Ran",), ("AlsoRan",))
+    line = unreal_build.declared_line(run, declared, "abc1234")
+    assert "3 tests in the tree at abc1234" in line
+    assert "2 performed, gap 1" in line
+    assert "not reported by the run" in line and "Cataclysm.C.NeverRan" in line
+    assert "Ran" in line and "AlsoRan" not in line.split("not reported")[1]
+    assert "last segment" in line, "short log names must be compared by last segment"
+
+
+def test_the_declared_line_compares_full_names_when_the_log_gives_them() -> None:
+    """Two creatures declare `ItWearsItsMeshAndHidesThePlaceholder`; a log that
+    names the group must not let one twin stand in for the other."""
+    declared = ("Cataclysm.Imp.Twin", "Cataclysm.Brute.Twin")
+    run = TestOutcome(1, ("Cataclysm.Imp.Twin",), ())
+    line = unreal_build.declared_line(run, declared, "abc1234")
+    assert "Cataclysm.Brute.Twin" in line.split("not reported")[1]
+    assert "full name" in line
+
+
+def test_the_declared_line_says_so_when_nothing_is_missing() -> None:
+    run = TestOutcome(1, ("Cataclysm.A.Ran",), ())
+    line = unreal_build.declared_line(run, ("Cataclysm.A.Ran",), "abc1234")
+    assert "every declared test was reported by the run" in line
+    assert "gap 0" in line
+
+
 def test_a_build_that_compiled_is_read_correctly() -> None:
     built = outcome(BUILD_THAT_COMPILED)
     assert built.succeeded
