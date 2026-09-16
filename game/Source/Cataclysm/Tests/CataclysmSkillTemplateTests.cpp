@@ -13745,4 +13745,505 @@ bool FCataclysmChargeKnockdownNeedsALandedBlowTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// The count of enemies one attack strikes together, for the Ravager's Bought
+// With Ruin, Cleaving Arc and Sundering. Issue #1515.
+//
+// DRIVEN WITH MODIFIERS RECORDED DIRECTLY rather than with the nodes' rows,
+// which wait on the design workbook. Each test records exactly the modifier a
+// row would carry, so what is exercised here is the count and the route it
+// takes to a blow; the passive tree tests read the rows once they exist.
+// --------------------------------------------------------------------------
+
+namespace CataclysmEnemiesStruckTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** The plain Heavy blow these fighters deal: 250% of a weapon damage of 100,
+	 *  the figure `QuenchHitsAConsumedEnemyHarderThanOneThatWasNotAlight` pins. */
+	constexpr float PlainBlow = WeaponDamage * 250.0f / 100.0f;
+
+	/** Record one stat's modifier on a caster, replacing everything recorded. */
+	void Give(FScopedFighter& Caster, const TCHAR* Stat,
+			  const FCataclysmStatModifier& Modifier)
+	{
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(Modifier);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(Stat), Inputs);
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** The melee tag, as a container a modifier can require. */
+	FGameplayTagContainer MeleeTags()
+	{
+		FGameplayTagContainer Tags;
+		const FGameplayTag Melee = UCataclysmDamageCalculation::MeleeTag();
+		if (Melee.IsValid())
+		{
+			Tags.AddTag(Melee);
+		}
+		return Tags;
+	}
+
+	/** Cleaving Arc's shape at ten per step: +10% increased attack damage for
+	 *  each enemy the attack struck beyond the first. */
+	FCataclysmStatModifier PerEnemyBeyondTheFirst()
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = 10.0f;
+		Modifier.Scale = ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst;
+		Modifier.ScaleStep = 1.0f;
+		return Modifier;
+	}
+
+	/** Bought With Ruin's shape: this much increased damage bought per enemy
+	 *  beyond the first, for melee attacks only. */
+	FCataclysmStatModifier BoughtWithRuinModifier(float PercentPerEnemy)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = PercentPerEnemy;
+		Modifier.RequiredTags = MeleeTags();
+		return Modifier;
+	}
+
+	/** A Fervour pool of a hundred, holding this much. The maximum first, so the
+	 *  pool's own clamp cannot cut the holding to nothing. */
+	void HoldFervour(FScopedFighter& Caster, float Held)
+	{
+		Caster.Set(UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+				   100.0f);
+		Caster.Set(UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+				   Held);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwingCarriesItsCountTest,
+	"Cataclysm.Skills.EveryBlowOfASwingCarriesHowManyEnemiesTheSwingStruck",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A swing counts the enemies it strikes, and every blow of it carries the count.
+ * Issue #1515.
+ *
+ * THE SAME SWING TWICE, first with nothing recorded and then with Cleaving Arc's
+ * scale recorded, so the second figure is a change from a measured first rather
+ * than a number assumed. Three enemies are two beyond the first: +20% on every
+ * blow, which also pins that the count starts at one rather than at nought.
+ *
+ * THROUGH `HitScaled`, which is how an ordinary swing is dealt.
+ */
+bool FCataclysmSwingCarriesItsCountTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemiesStruckTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Cleave"));
+	if (!Cleave)
+	{
+		AddError(TEXT("Could not grant the cleave."));
+		return false;
+	}
+
+	float FirstBefore = First.Health();
+	float SecondBefore = Second.Health();
+	float ThirdBefore = Third.Health();
+
+	if (!TestEqual(TEXT("the plain swing strikes all three"), Cleave->SwingOnce(), 3))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with nothing recorded the first takes the plain blow"),
+		FirstBefore - First.Health(), PlainBlow, 0.01f);
+	TestEqual(TEXT("and so does the second"),
+		SecondBefore - Second.Health(), PlainBlow, 0.01f);
+	TestEqual(TEXT("and the third"),
+		ThirdBefore - Third.Health(), PlainBlow, 0.01f);
+
+	Give(Caster, TEXT("attack_damage"), PerEnemyBeyondTheFirst());
+
+	FirstBefore = First.Health();
+	SecondBefore = Second.Health();
+	ThirdBefore = Third.Health();
+
+	TestEqual(TEXT("the same swing strikes all three again"), Cleave->SwingOnce(), 3);
+
+	const float TwoBeyond = PlainBlow * 1.2f;
+	TestEqual(TEXT("the first blow carries two enemies beyond the first: +20%"),
+		FirstBefore - First.Health(), TwoBeyond, 0.01f);
+	TestEqual(TEXT("and so does the second"),
+		SecondBefore - Second.Health(), TwoBeyond, 0.01f);
+	TestEqual(TEXT("and the third"),
+		ThirdBefore - Third.Health(), TwoBeyond, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwingInOneCallCountsItsTargetsTest,
+	"Cataclysm.Skills.ASwingDealtInOneCallCountsItsOwnTargets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The fallback: a group of blows dealt in one call with no swing in progress
+ * counts its own targets. Issue #1515.
+ *
+ * A SWING GIVEN ITS OWN FIGURE goes straight to `HitTargets` without passing
+ * `HitScaled` -- the route Pyroclasm's closing hit takes, and the route every
+ * aura pulse, debuff, summon and landing projectile takes -- so here nothing
+ * began the attack before `HitTargets` did.
+ */
+bool FCataclysmSwingInOneCallCountsItsTargetsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemiesStruckTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Cleave"));
+	if (!Cleave)
+	{
+		AddError(TEXT("Could not grant the cleave."));
+		return false;
+	}
+
+	Give(Caster, TEXT("attack_damage"), PerEnemyBeyondTheFirst());
+
+	const float FirstBefore = First.Health();
+	const float SecondBefore = Second.Health();
+	const float ThirdBefore = Third.Health();
+
+	TestEqual(TEXT("the swing given its own 250% strikes all three"),
+		Cleave->SwingOnce(250.0f), 3);
+
+	const float TwoBeyond = PlainBlow * 1.2f;
+	TestEqual(TEXT("dealt in one call, the first blow still carries two beyond the first"),
+		FirstBefore - First.Health(), TwoBeyond, 0.01f);
+	TestEqual(TEXT("and so does the second"),
+		SecondBefore - Second.Health(), TwoBeyond, 0.01f);
+	TestEqual(TEXT("and the third"),
+		ThirdBefore - Third.Health(), TwoBeyond, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSplitSwingSharesItsCountTest,
+	"Cataclysm.Skills.BothHalvesOfAConsumeSplitCarryTheWholeSwingsCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * One swing dealt in two calls is still one attack. Issue #1515.
+ *
+ * QUENCH SPLITS ITS SWING: the enemies whose fire it consumed take one call and
+ * the rest take another, because the two are worth different amounts. Both
+ * calls must carry the WHOLE swing's count. Two alight and two cold are four
+ * enemies, three beyond the first, so +30% on every blow -- where counting each
+ * call alone would give two enemies, one beyond the first, and +10%.
+ */
+bool FCataclysmSplitSwingSharesItsCountTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemiesStruckTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter AlightNear(World, FVector(1 * M, 0, 0));
+	FScopedFighter AlightFar(World, FVector(2 * M, 0, 0));
+	FScopedFighter ColdNear(World, FVector(3 * M, 0, 0));
+	FScopedFighter ColdFar(World, FVector(4 * M, 0, 0));
+
+	SetAlight(Caster, AlightNear);
+	SetAlight(Caster, AlightFar);
+
+	UCataclysmStrikeSkill* Quench = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=6; Angle=360; Burn=1; ConsumeBurn=1; MoreDamagePer=50; "
+			 "ScalingSource=Consume"),
+		TEXT("Quench"));
+	if (!Quench)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	Give(Caster, TEXT("attack_damage"), PerEnemyBeyondTheFirst());
+
+	const float AlightNearBefore = AlightNear.Health();
+	const float AlightFarBefore = AlightFar.Health();
+	const float ColdNearBefore = ColdNear.Health();
+	const float ColdFarBefore = ColdFar.Health();
+
+	TestEqual(TEXT("one swing strikes all four"), Quench->SwingOnce(), 4);
+
+	const float Cold = PlainBlow * 1.3f;
+	const float Consumed = PlainBlow * 1.5f * 1.3f;
+	TestEqual(TEXT("a cold enemy takes the plain blow raised by three beyond the first"),
+		ColdNearBefore - ColdNear.Health(), Cold, 0.01f);
+	TestEqual(TEXT("and so does the other cold one"),
+		ColdFarBefore - ColdFar.Health(), Cold, 0.01f);
+	TestEqual(TEXT("a consumed enemy takes its 50% more raised by the same three"),
+		AlightNearBefore - AlightNear.Health(), Consumed, 0.01f);
+	TestEqual(TEXT("and so does the other consumed one"),
+		AlightFarBefore - AlightFar.Health(), Consumed, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoughtDamagePaysTest,
+	"Cataclysm.Skills.BoughtDamageCostsTwoFervourForEachEnemyBeyondTheFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Bought With Ruin's payment. Issue #1515.
+ *
+ * "Each enemy your melee attack hits beyond the first costs 2 Fervour and deals
+ * +3% increased damage per point." Eight points are 24% per enemy. A melee swing
+ * striking three enemies has two beyond the first, so it pays four Fervour once
+ * and every one of its blows carries +48%.
+ */
+bool FCataclysmBoughtDamagePaysTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemiesStruckTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Cleave"), TEXT("Type.Melee"));
+	if (!Cleave)
+	{
+		AddError(TEXT("Could not grant the cleave."));
+		return false;
+	}
+	if (!TestTrue(TEXT("the strike is a melee skill, which the bought damage requires"),
+			Cleave->SkillTags.HasTag(UCataclysmDamageCalculation::MeleeTag())))
+	{
+		return false;
+	}
+
+	HoldFervour(Caster, 10.0f);
+	Give(Caster, UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat,
+		 BoughtWithRuinModifier(24.0f));
+
+	const float FirstBefore = First.Health();
+	const float SecondBefore = Second.Health();
+	const float ThirdBefore = Third.Health();
+
+	TestEqual(TEXT("the swing strikes all three"), Cleave->SwingOnce(), 3);
+
+	TestEqual(TEXT("two enemies beyond the first cost two Fervour each: ten becomes six"),
+		Caster.Fervour(), 6.0f, 0.01f);
+
+	const float Bought = PlainBlow * 1.48f;
+	TestEqual(TEXT("and the first blow carries the 48% bought"),
+		FirstBefore - First.Health(), Bought, 0.01f);
+	TestEqual(TEXT("and so does the second"),
+		SecondBefore - Second.Health(), Bought, 0.01f);
+	TestEqual(TEXT("and the third"),
+		ThirdBefore - Third.Health(), Bought, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBoughtDamageRefusedTest,
+	"Cataclysm.Skills.BoughtDamageBuysNothingUntilTheWholeCostCanBePaid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * All or nothing, and exactly the cost is enough. Issue #1515.
+ *
+ * "If you cannot pay, the attack still hits but gains nothing." Ruled on
+ * 2026-09-16 to mean the whole attack's cost: three Fervour cannot pay the four
+ * that two extra enemies cost, so none is spent and no blow gains anything. Then
+ * four Fervour, exactly the cost, pays it all -- which is what makes the refusal
+ * a boundary rather than a node that never pays.
+ */
+bool FCataclysmBoughtDamageRefusedTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemiesStruckTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Cleave"), TEXT("Type.Melee"));
+	if (!Cleave)
+	{
+		AddError(TEXT("Could not grant the cleave."));
+		return false;
+	}
+	if (!TestTrue(TEXT("the strike is a melee skill, so a refusal is about the cost"),
+			Cleave->SkillTags.HasTag(UCataclysmDamageCalculation::MeleeTag())))
+	{
+		return false;
+	}
+
+	Give(Caster, UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat,
+		 BoughtWithRuinModifier(24.0f));
+
+	HoldFervour(Caster, 3.0f);
+	float FirstBefore = First.Health();
+	float SecondBefore = Second.Health();
+	float ThirdBefore = Third.Health();
+
+	TestEqual(TEXT("the swing strikes all three"), Cleave->SwingOnce(), 3);
+	TestEqual(TEXT("three Fervour cannot pay the four, so none of it is spent"),
+		Caster.Fervour(), 3.0f, 0.01f);
+	TestEqual(TEXT("and the first blow gains nothing"),
+		FirstBefore - First.Health(), PlainBlow, 0.01f);
+	TestEqual(TEXT("nor the second"),
+		SecondBefore - Second.Health(), PlainBlow, 0.01f);
+	TestEqual(TEXT("nor the third"),
+		ThirdBefore - Third.Health(), PlainBlow, 0.01f);
+
+	HoldFervour(Caster, 4.0f);
+	FirstBefore = First.Health();
+	SecondBefore = Second.Health();
+	ThirdBefore = Third.Health();
+
+	TestEqual(TEXT("the swing strikes all three again"), Cleave->SwingOnce(), 3);
+	TestEqual(TEXT("four Fervour pays the four exactly"),
+		Caster.Fervour(), 0.0f, 0.01f);
+	const float Bought = PlainBlow * 1.48f;
+	TestEqual(TEXT("and the first blow carries the 48% bought"),
+		FirstBefore - First.Health(), Bought, 0.01f);
+	TestEqual(TEXT("and so does the second"),
+		SecondBefore - Second.Health(), Bought, 0.01f);
+	TestEqual(TEXT("and the third"),
+		ThirdBefore - Third.Health(), Bought, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArmourIgnoredByCountTest,
+	"Cataclysm.Skills.ArmourIsIgnoredOnlyWhenTheAttackStrikesEnoughEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Sundering's route, from the swing to the armour. Issue #1515.
+ *
+ * "Your melee attacks ignore enemy Armor entirely when they hit three or more
+ * enemies at once." Armour penetration is asked for where the blow lands, on
+ * the defender's side, so the count has to travel on the damage effect to get
+ * there. Three armoured enemies struck: every blow ignores the armour and takes
+ * the plain blow. The same swing capped at two: the same armour stands.
+ */
+bool FCataclysmArmourIgnoredByCountTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemiesStruckTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+	for (FScopedFighter* Enemy : { &First, &Second, &Third })
+	{
+		Enemy->Set(UCataclysmCombatAttributeSet::GetArmorAttribute(), 1000.0f);
+	}
+
+	UCataclysmStrikeSkill* Sunder = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Sunder"), TEXT("Type.Melee"));
+	if (!Sunder)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	FCataclysmStatModifier Sundering;
+	Sundering.Bucket = ECataclysmStatBucket::Flat;
+	Sundering.Source = ECataclysmModifierSource::PassiveKeystone;
+	Sundering.Value = 100.0f;
+	Sundering.RequiredTags = MeleeTags();
+	Sundering.Condition = ECataclysmStatCondition::EnemiesStruckTogetherAtLeast;
+	Sundering.ConditionValue = 3.0f;
+	Give(Caster, TEXT("armor_penetration"), Sundering);
+
+	float FirstBefore = First.Health();
+	float SecondBefore = Second.Health();
+	float ThirdBefore = Third.Health();
+
+	TestEqual(TEXT("the swing strikes all three"), Sunder->SwingOnce(), 3);
+	TestEqual(TEXT("three struck: the first's armour is ignored and it takes the plain blow"),
+		FirstBefore - First.Health(), PlainBlow, 0.01f);
+	TestEqual(TEXT("and so does the second"),
+		SecondBefore - Second.Health(), PlainBlow, 0.01f);
+	TestEqual(TEXT("and the third"),
+		ThirdBefore - Third.Health(), PlainBlow, 0.01f);
+
+	Sunder->Params.MaxTargets = 2;
+	FirstBefore = First.Health();
+	SecondBefore = Second.Health();
+	ThirdBefore = Third.Health();
+
+	TestEqual(TEXT("capped at two, the same swing strikes two"), Sunder->SwingOnce(), 2);
+
+	int32 Struck = 0;
+	for (const float Taken : { FirstBefore - First.Health(),
+							   SecondBefore - Second.Health(),
+							   ThirdBefore - Third.Health() })
+	{
+		if (Taken > 0.0f)
+		{
+			++Struck;
+			TestTrue(FString::Printf(TEXT("two struck: the armour stands, so a struck "
+										  "enemy takes less than the plain %.0f (took %.1f)"),
+									 PlainBlow, Taken),
+					 Taken < PlainBlow - 1.0f);
+		}
+	}
+	TestEqual(TEXT("and exactly two enemies took anything"), Struck, 2);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
