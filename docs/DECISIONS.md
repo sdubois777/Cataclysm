@@ -2,6 +2,49 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-14 — Type.Summon means a skill that creates a creature; Keyword.Summon means a skill about creatures you already command
+
+**Affects:** nothing in the tree; this entry is the record. The tags are
+declared in `game/Config/Tags/CataclysmTags.ini` and carried by rows of
+`game/Data/WeaponSkills.csv`; the enchantment rows that must choose between
+them are in `game/Data/EnchantmentsPositive.csv`. Issue
+[#1824](https://github.com/sdubois777/Cataclysm/issues/1824).
+
+Five weapon skills carry `Keyword.Summon` and only two of them summon
+anything. Measured on `development` at `b5683e16`:
+
+| Skill | Name | `Type.Summon` | What it does |
+| :-- | :-- | :-- | :-- |
+| `Demonic_Staff_Special` | Summon Imp | yes | Tears a lesser imp out of the rift |
+| `Demonic_Staff_Ultimate` | Subjugate | yes | Takes an enemy permanently below half health |
+| `Demonic_Staff_Support` | Quarry | no | Marks an enemy; everything you already command attacks it |
+| `Demonic_Staff_Heavy` | Compel | no | Everything you already command strikes one enemy |
+| `Demonic_Staff_Movement` | Vesselstep | no | Trades places with a creature you already command |
+
+**The distinction is real, consistent, and now stated:** `Type.Summon` is on a
+skill that CREATES a creature; `Keyword.Summon` is on a skill that RELATES TO
+creatures the character commands, whether or not it creates one. The data
+already draws that line; this records it so the wider tag is not reached for by
+habit.
+
+### What a row must do
+
+A row scoped to "summoning" — an enchantment that pays out when a minion is
+summoned, or that changes what a summon costs — must require `Type.Summon`.
+Requiring `Keyword.Summon` would make Quarry, Compel and Vesselstep count as
+summons, which their own descriptions say they are not. A row that means "any
+skill that concerns your minions" requires `Keyword.Summon`, and that is the
+narrower set of rows.
+
+### What is not changed
+
+No tag moves and no row moves. The comment on each tag in
+`game/Config/Tags/CataclysmTags.ini` is the place to repeat this if a reader
+needs it beside the declaration; that edit is a data-side change and is not made
+here.
+
+---
+
 ## 2026-09-14 — Two scales the nine Masochist rows use, health missing and health owed, recorded at last
 
 **Affects:** nothing in the tree; this entry is the record the check in
