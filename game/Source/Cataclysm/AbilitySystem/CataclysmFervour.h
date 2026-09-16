@@ -280,10 +280,15 @@ public:
 	 *   rule of 2026-09-05 that an evaded attack applies nothing it carries.
 	 * - ONCE PER ENEMY PER ATTACK, where one attack is what the count of enemies
 	 *   struck together calls one: a skill that lands twice per use gives two.
-	 * - EVERY USE WHOSE BLOWS CARRY DAMAGE through
-	 *   `UCataclysmSkillTemplate::HitTargets`, aura pulses included. A use sending
-	 *   no damage gives nothing, and ticks, ground patches, retaliation and
-	 *   minions' blows never reach that function.
+	 * - EVERY LANDED, DAMAGING BLOW THE PLAYER'S OWN ATTACK DEALS, WHEREVER IT
+	 *   RESOLVES. Four places call this: `UCataclysmSkillTemplate::HitTargets`,
+	 *   which deals most skill blows, aura pulses included;
+	 *   `ACataclysmProjectile::HitOne`, once per contact, so a piercing shot
+	 *   pays per enemy passed and a return pass pays again; the rack throw's
+	 *   spawn-less fallback in `UCataclysmProjectileSkill`; and
+	 *   `UCataclysmBuriedWeapon`'s hit on the next enemy. A use sending no damage
+	 *   gives nothing, and minions' and enemies' blows earn nothing: a firer
+	 *   without the node reads zero.
 	 *
 	 * NOT THE COUNT OF ENEMIES STRUCK TOGETHER, AND DELIBERATELY. That count is
 	 * taken before the blows resolve because it prices them, so an enemy that

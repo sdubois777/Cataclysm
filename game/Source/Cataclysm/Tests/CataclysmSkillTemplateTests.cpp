@@ -14492,4 +14492,76 @@ bool FCataclysmFervourNotForNoDamageTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourForEachProjectileContactTest,
+	"Cataclysm.Skills.AProjectileEarnsFervourForEachEnemyItLandsOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A projectile's contacts earn Fervour too. Issue #1515.
+ *
+ * A PROJECTILE NEVER PASSES THROUGH `HitTargets`: each contact is dealt by
+ * `ACataclysmProjectile::HitOne`, so it pays there, once per contact. Ruled on
+ * 2026-09-16 with the other routes that deal the player's blows elsewhere.
+ *
+ * A PIERCING SHOT THROUGH TWO ENEMIES, ONE OF WHICH EVADES, earns one. Both
+ * contacts are asserted -- the near enemy hurt, the nimble one untouched -- so
+ * the one Fervour is known to come from a landed contact and to have been refused
+ * for an evaded one. DRIVEN WITH `Step`, because the test world is never ticked.
+ */
+bool FCataclysmFervourForEachProjectileContactTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourPerHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(3 * M, 0, 0));
+	FScopedFighter Nimble(World, FVector(6 * M, 0, 0));
+	HoldFervour(Caster, 0.0f);
+
+	// FAR ABOVE ANY ROLL, for the reason the test of an evaded swing above gives.
+	Nimble.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 500.0f);
+
+	Give(Caster, TEXT("fervour_per_enemy_hit"), PerEnemyHit(1.0f));
+
+	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+		Caster.Actor, FVector::ZeroVector, FVector(10 * M, 0, 0),
+		/*InRadiusCm=*/100.0f, /*InSpeed=*/1000.0f, /*InPierce=*/5,
+		/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+	if (!Shot)
+	{
+		AddError(TEXT("The projectile was not fired."));
+		return false;
+	}
+
+	const float NearBefore = Near.Health();
+	const float NimbleBefore = Nimble.Health();
+
+	// Ten metres at ten metres a second is one second of flight. Stepped until
+	// it finishes, with a bound so a shot that never finishes cannot hang the run.
+	for (int32 Steps = 0; Steps < 60 && Shot->Step(0.05f); ++Steps)
+	{
+	}
+
+	if (!TestTrue(TEXT("the shot landed on the near enemy"),
+			NearBefore - Near.Health() > 0.0f))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("and the nimble one evaded it: its health did not move"),
+			NimbleBefore - Nimble.Health(), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("so the shot earns one: each enemy it lands on, and not the one "
+				   "that evaded"),
+		Caster.Fervour(), 1.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

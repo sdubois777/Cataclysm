@@ -4,6 +4,8 @@
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the Fervour the axe's next landing earns its thrower. Issue #1515.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -101,6 +103,19 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 		UCataclysmSkillEffects::ApplyBurn(Credited, NextHost, Dealt,
 										  /*bScalesWithInstigator=*/true,
 										  /*bBurnIsDesigned=*/true);
+	}
+
+	// AND THE FERVOUR THE LANDING EARNS WHOEVER THREW THE AXE. Issue #1515, the
+	// Ravager's starting node: "1 for each enemy your attacks hit". This blow
+	// never passes through `UCataclysmSkillTemplate::HitTargets`, so it pays
+	// here, by the same test: it landed and it carried damage. ONLY WHILE THE
+	// THROWER IS STILL HERE: when it has gone, `Credited` is the dying creature,
+	// and a creature's blows earn nothing.
+	if (Buried->Caster.IsValid() && Dealt > 0.0f && !Resolved.bEvaded)
+	{
+		UCataclysmFervour::GainForEnemiesHit(
+			UCataclysmTargeting::AbilitySystemOf(Credited), Buried->SkillTags,
+			/*EnemiesHit=*/1);
 	}
 
 	// AND IT IS NOW IN THAT ONE, which is what makes it go on. Copied from the

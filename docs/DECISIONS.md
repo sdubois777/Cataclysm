@@ -2,6 +2,135 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — An attack earns the Ravager one Fervour for each enemy its blows land on, wherever each blow resolves
+
+**Affects:**
+`game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h` and
+`.cpp` (one attribute), `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h`
+and `.cpp` (the stat name and the gain),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`,
+`CataclysmProjectile.cpp`, `CataclysmSkillTemplates.cpp` and
+`CataclysmBuriedWeapon.cpp` (the four places that pay),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, and the tests.
+Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515). Opens
+[#1938](https://github.com/sdubois777/Cataclysm/issues/1938).
+
+`Ravager_basic_spine_000`, the Ravager's starting node, reads "Enemies in reach
+generate Fervour: 1 for each enemy your attacks hit, and 1 per second for every
+enemy within 4 metres of you." The rate per enemy in reach and the decay were
+built by pull request #1869. This change builds the first clause: the stat
+`fervour_per_enemy_hit` and `UCataclysmFervour::GainForEnemiesHit`. **The node's
+row for it waits on the design workbook**; it joins the next workbook turn, with
+Press the Advantage and Headlong's second clause, each with a test that reads
+its row.
+
+### FIVE RULINGS, EACH A JUDGEMENT
+
+Proposed with a recommendation each and ruled on 2026-09-16 by the
+coordinating session under the owner's delegation. **Two are flagged for the
+owner's review.**
+
+1. **"Hit" is a blow that LANDED.** An evaded blow gives nothing. A blow that
+   armour stopped completely still counts, because it connected. That is the
+   test mana on hit makes, and the owner's rule of 2026-09-05 that an evaded
+   attack applies nothing it carries.
+2. **Once per enemy per attack.** One attack is what the count of enemies struck
+   together calls one. A Consume split deals one swing in two calls and each
+   enemy is in exactly one of them, so the two payments add to one per enemy. A
+   use that lands on the same enemy twice pays twice.
+3. **Every landed, damaging blow the player's own attack deals, wherever it
+   resolves. FOR THE OWNER'S REVIEW: aura pulses count**, because the rule
+   follows Cleaving Arc's "your attack", which requires no tag. A use that
+   sends no damage gives nothing.
+4. **No cap and no cooldown. FOR THE OWNER'S REVIEW.** The sentence states
+   neither. The largest burst is Pyroclasm: seven attacks in three seconds,
+   so 70 Fervour against ten enemies, on a 20-second cooldown. The Ravager's
+   pool is 100, and the in-reach rate already gives 10 a second beside ten
+   enemies. Diablo 4
+   caps a per-hit gain per use (see the research below); this node does not.
+5. **Held Ground does not raise it.** Its row names the in-reach stat, and a
+   projectile can hit an enemy 12 metres away.
+
+### WHERE A BLOW RESOLVES, AND WHICH PAY
+
+**Ruling 3 was first written as "every damaging use through `HitTargets`", and
+that would have left the Ravager's own thrown axe earning nothing.** The plan
+said projectile contacts pass through `HitTargets`; they do not. A projectile
+deals each contact in `ACataclysmProjectile::HitOne`, which calls `ApplyHit`
+directly. The ruling was restated once that was measured.
+
+| where the blow resolves | what it is | pays |
+| :-- | :-- | :-- |
+| `UCataclysmSkillTemplate::HitTargets` | most skill blows: swings, leaps, channelled spins, aura pulses, a projectile skill with no speed | yes, once per enemy per call |
+| `ACataclysmProjectile::HitOne` | each contact of a fired projectile | yes, once per contact: a piercing shot pays per enemy passed, a return pass pays again |
+| `UCataclysmProjectileSkill`, the rack throw's spawn-less fallback | a throw whose projectile could not be spawned | yes; the call now asks for the blow's result, so it can know the blow landed |
+| `UCataclysmBuriedWeapon`, the hit on the next enemy | Harrower's axe moving on when its host dies | yes, while its thrower is still here |
+| `ACataclysmMinion` | a minion's blows | no |
+| the enemy character files | an enemy's own attacks | no |
+
+The last two never pay because their attacker holds no such stat, not because of
+a check on the route.
+
+**The same gap exists for running buffs, and is not closed here.** A landed blow
+reaches `UCataclysmSkillTemplate::NoteBlowLanded` only from `HitTargets`, so a
+buff such as Groundbreaker ignores projectile contacts although the comment
+beside that call says otherwise. That is #1938.
+
+### WHY THIS IS NOT THE COUNT OF ENEMIES STRUCK TOGETHER
+
+The entry "One attack counts the enemies it strikes together, and three Ravager
+nodes can read the count" counts every enemy an attack swings at, an evading one
+included. That count prices the blows: Cleaving Arc's increase, Sundering's
+penetration, and Bought With Ruin's payment before the first blow. It is taken
+before any blow resolves, because each blow's damage is worked out before the
+next enemy is resolved.
+
+**This gain prices nothing and is paid after each blow resolves**, when whether
+it landed is known, so the reason for counting a miss does not apply. **The
+same word "hit" therefore means struck in Cleaving Arc, Bought With Ruin and
+Sundering, and landed here.**
+
+### WHAT THE GENRE RESEARCH SETTLES
+
+Two web searches on 2026-09-16. Each result below is the search tool's summary;
+the pages themselves were not read.
+
+- Diablo 4's Barbarian skill Rend "grants 5 Fury per enemy hit, up to a maximum
+  of 25 Fury" per use (diablo4.wiki.fextralife.com).
+- Path of Exile has "Gain 1 Rage on Melee Hit" (pathofexile.fandom.com); its
+  rate limit could not be confirmed from the summary.
+
+**The research settles the shape: a resource gained per enemy hit, per use. It
+does not settle whether to cap it.** Diablo 4 caps its per use, and this node's
+sentence states no cap, which is ruling 4.
+
+### TESTS
+
+Five, all in `Cataclysm.Skills.`, driven with the node's modifier recorded
+directly because the row waits on the workbook:
+
+- `EachEnemyAnAttackLandsOnGrantsFervour`: three enemies landed on is three, and
+  nothing recorded is none.
+- `AnEnemyThatEvadesTheAttackGrantsNoFervour`: one of three evades, two.
+- `BothHalvesOfAConsumeSplitGrantFervourForTheirOwnEnemies`: two consumed and
+  one cold, three.
+- `AnAttackThatSendsNoDamageGrantsNoFervour`: a swing given 0%, none.
+- `AProjectileEarnsFervourForEachEnemyItLandsOn`: a piercing shot through two
+  enemies, one evading, one.
+
+### NOT IN THIS CHANGE
+
+- **The row** on the starting node, and a test that reads it.
+- **A cap, a cooldown, or Held Ground raising the gain**, per rulings 4 and 5.
+- **Running buffs hearing about projectile contacts**, which is #1938.
+
+### COUNTS
+
+    class resource attributes 30 -> 31, OffSheetResourceStats 28 -> 29
+    Unreal automation tests +5 by name, all in Cataclysm.Skills.
+
+---
+
 ## 2026-09-16 — A dungeon floor's damage carries its own rule's type, on the hit or on the zone, and the floor's shared damage source holds none
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (typing and

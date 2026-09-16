@@ -17,6 +17,10 @@
 // For the attack speed a rack of axes is thrown at. Issue #37.
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
+// For what a rack's spawn-less throw resolved to, and the Fervour it earns.
+// Issue #1515. `CataclysmSkillEffects.h` only declares the result.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For deciding whether a row's Terrain cell names a wall, whose two ends
 // differ, or a round kind, whose two ends are the same point.
@@ -1486,8 +1490,20 @@ bool UCataclysmProjectileSkill::ThrowOne()
 	{
 		// No speed stated, so it arrives at once. Butcher's Bill states 2000 and
 		// nothing else empties a rack, so this is a guard rather than a case.
-		UCataclysmSkillEffects::ApplyHit(Self, Target, GetDamagePercent(),
-										 SkillTags, FCataclysmHitDelivery());
+		//
+		// AND IT ASKS WHAT THE BLOW RESOLVED TO, for the Fervour it earns. Issue
+		// #1515: the Ravager's starting node pays for each enemy a blow lands on,
+		// and `Dealt` is what was sent, so only the result says whether it landed.
+		FCataclysmDamageResult Resolved;
+		const float Dealt = UCataclysmSkillEffects::ApplyHit(
+			Self, Target, GetDamagePercent(), SkillTags, FCataclysmHitDelivery(),
+			&Resolved);
+		if (Dealt > 0.0f && !Resolved.bEvaded)
+		{
+			UCataclysmFervour::GainForEnemiesHit(
+				GetAbilitySystemComponentFromActorInfo(), SkillTags,
+				/*EnemiesHit=*/1);
+		}
 	}
 
 	if (ThrowsMade >= Params.Count)
