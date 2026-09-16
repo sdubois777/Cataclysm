@@ -218,6 +218,44 @@ float UCataclysmGameplayAbility::GetManaOnHit() const
 												  GetAbilityLevel());
 }
 
+FGameplayAttribute UCataclysmGameplayAbility::CostPool(
+	const UAbilitySystemComponent* AbilitySystem)
+{
+	// OUT OF HEALTH FOR A CHARACTER THAT TRADED ITS MANA POOL FOR ONE. Issue
+	// #1067. The Masochist's Water to Blood: "every ability costs health instead
+	// of mana."
+	//
+	// THE SAME NUMBER OUT OF A DIFFERENT POOL. The option converts the pool, not
+	// the price, so a skill that cost 40 mana costs 40 health.
+	return UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem)
+		? UCataclysmVitalAttributeSet::GetHealthAttribute()
+		: UCataclysmVitalAttributeSet::GetManaAttribute();
+}
+
+bool UCataclysmGameplayAbility::PoolCovers(
+	const UAbilitySystemComponent* AbilitySystem, const FGameplayAttribute& Pool,
+	float Cost)
+{
+	if (!AbilitySystem)
+	{
+		return false;
+	}
+
+	// STRICTLY MORE THAN FOR HEALTH, WHERE MANA ASKS FOR AT LEAST. A cost that
+	// took a character to exactly zero health would kill it, and no skill should
+	// be able to do that by being paid for.
+	//
+	// ROCK BOTTOM DOES NOT REACH THIS COST. That option turns an unpayable health
+	// cost into debt, and `UCataclysmSkillTemplate::PayHealthCost` applies it to
+	// the added health costs it charges; this cost is the mana cost moved onto
+	// health and is taken whole by `ApplyCost`. So a cast this cannot cover is
+	// refused, and an aura's upkeep it cannot cover switches the aura off.
+	const float Held = AbilitySystem->GetNumericAttribute(Pool);
+	return Pool == UCataclysmVitalAttributeSet::GetHealthAttribute()
+		? Held > Cost
+		: Held >= Cost;
+}
+
 bool UCataclysmGameplayAbility::CheckCost(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -241,27 +279,10 @@ bool UCataclysmGameplayAbility::CheckCost(
 		return false;
 	}
 
-	// OUT OF HEALTH FOR A CHARACTER THAT TRADED ITS MANA POOL FOR ONE. Issue
-	// #1067. The Masochist's Water to Blood: "every ability costs health instead
-	// of mana."
-	//
-	// THE SAME NUMBER OUT OF A DIFFERENT POOL. The option converts the pool, not
-	// the price, so a skill that cost 40 mana costs 40 health.
-	//
-	// STRICTLY MORE THAN, WHERE MANA ASKS FOR AT LEAST. A cost that took a
-	// character to exactly zero health would kill it, and no skill should be
-	// able to do that by being cast. The design gives health costs their own
-	// floor rules, and Rock Bottom -- the first option of the next capstone --
-	// is the node that says what happens at the bottom. Until that is built the
-	// cast is refused rather than fatal.
-	if (UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem))
-	{
-		return AbilitySystem->GetNumericAttribute(
-			UCataclysmVitalAttributeSet::GetHealthAttribute()) > Cost;
-	}
-
-	return AbilitySystem->GetNumericAttribute(
-		UCataclysmVitalAttributeSet::GetManaAttribute()) >= Cost;
+	// OUT OF WHICHEVER POOL THIS CHARACTER PAYS FROM, asked of the two functions
+	// above so that an aura's per-pulse upkeep asks exactly the same question.
+	// Issues #1067 and #1901.
+	return PoolCovers(AbilitySystem, CostPool(AbilitySystem), Cost);
 }
 
 void UCataclysmGameplayAbility::ApplyCost(
@@ -292,12 +313,8 @@ void UCataclysmGameplayAbility::ApplyCost(
 	//
 	// OUT OF WHICHEVER POOL THIS CHARACTER PAYS FROM, and `CheckCost` above has
 	// already refused the cast if that pool could not cover it. Issue #1067.
-	const FGameplayAttribute Paying =
-		UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem)
-			? UCataclysmVitalAttributeSet::GetHealthAttribute()
-			: UCataclysmVitalAttributeSet::GetManaAttribute();
-
-	AbilitySystem->ApplyModToAttribute(Paying, EGameplayModOp::Additive, -Cost);
+	AbilitySystem->ApplyModToAttribute(CostPool(AbilitySystem),
+									   EGameplayModOp::Additive, -Cost);
 }
 
 bool UCataclysmGameplayAbility::CheckCooldown(

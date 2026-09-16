@@ -2771,6 +2771,121 @@ bool FCataclysmAuraDrainTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraUpkeepPaidFromHealthTest,
+	"Cataclysm.Skills.AnAuraKeepsRunningOnHealthWhenTheManaPoolBecameHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * An aura's per-pulse upkeep is paid from the pool the activation paid from.
+ * Issue #1901.
+ *
+ * WHAT WENT WRONG. The owner's playtest of 2026-09-15 activated Conflagration
+ * eight times. Water to Blood empties the mana pool and moves every cost onto
+ * health; the activation honoured that and `UCataclysmAuraSkill::Pulse` read
+ * mana directly, so the first pulse found none and switched the aura off.
+ *
+ * THE FLAG IS SET AS A STAT INPUT, for the reason
+ * `FCataclysmSkillWaterToBloodCostTest` gives: the option is asked through
+ * `StatForSkill`, so writing the attribute would measure nothing.
+ *
+ * THREE PULSES, each answering a different wrong implementation. The first
+ * runs with no mana, which is how the option leaves a character, and fails if
+ * the pulse reads mana. The second runs with mana put back, and fails if the
+ * pool is chosen by whether mana is empty rather than by the option. The third
+ * leaves exactly one pulse's worth of health, and fails if paying from health
+ * lost the switch-off issue #36 requires.
+ */
+bool FCataclysmAuraUpkeepPaidFromHealthTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	// Conflagration. No Duration, so it is a toggle and pays per pulse.
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"),
+		TEXT("Conflagration"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+
+	const float PerPulse = Aura->GetManaCost();
+	if (!TestTrue(FString::Printf(TEXT("the aura costs something a pulse (%.1f)"),
+								  PerPulse),
+				  PerPulse > 0.0f))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier Traded;
+	Traded.Bucket = ECataclysmStatBucket::Flat;
+	Traded.Source = ECataclysmModifierSource::PassiveKeystone;
+	Traded.Value = 1.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(Traded);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(UCataclysmSkillTemplate::ManaPoolBecomesHealthStat), Inputs);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// NO MANA POOL AT ALL, which is how `UCataclysmPlayerClassStats::ApplyTo`
+	// leaves a character holding the option: both the maximum and the mana are
+	// set to zero. A round health pool so every figure below is exact.
+	Caster.Set(Vital::GetMaxManaAttribute(), 0.0f);
+	Caster.Set(Vital::GetManaAttribute(), 0.0f);
+	Caster.Set(Vital::GetMaxHealthAttribute(), 1'000.0f);
+	Caster.Set(Vital::GetHealthAttribute(), 1'000.0f);
+
+	TestTrue(TEXT("the aura switches on, paid in health"), Activate(Caster, Aura));
+	TestTrue(TEXT("and is held"), Aura->IsHeld());
+
+	// 1. THE PULSE THAT SWITCHED IT OFF.
+	const float BeforeFirst = Caster.Health();
+	Aura->Pulse();
+
+	TestTrue(TEXT("it is still running after a pulse with no mana"), Aura->IsHeld());
+	TestFalse(TEXT("and did not end for want of its upkeep"),
+			  Aura->bEndedForLackOfMana);
+	TestEqual(TEXT("the pulse's upkeep came out of health"), Caster.Health(),
+			  BeforeFirst - PerPulse, 0.01f);
+	TestEqual(TEXT("and the pulse was counted"), Aura->Pulses, 1);
+
+	// 2. THE POOL IS CHOSEN BY THE OPTION, NOT BY THE MANA BEING EMPTY. With mana
+	// put back -- the same deliberate state `FCataclysmSkillWaterToBloodCostTest`
+	// uses -- the pulse still pays in health and leaves the mana alone.
+	Caster.Set(Vital::GetMaxManaAttribute(), 500.0f);
+	Caster.Set(Vital::GetManaAttribute(), 500.0f);
+	const float BeforeSecond = Caster.Health();
+	Aura->Pulse();
+
+	TestTrue(TEXT("it is still running with mana to hand"), Aura->IsHeld());
+	TestEqual(TEXT("that pulse came out of health too"), Caster.Health(),
+			  BeforeSecond - PerPulse, 0.01f);
+	TestEqual(TEXT("and the mana was left alone"), Caster.Mana(), 500.0f, 0.01f);
+
+	// 3. AND IT STILL SWITCHES OFF WHEN HEALTH CANNOT COVER A PULSE, strictly
+	// more than, as a health-paid activation asks. Issue #36 requires the
+	// switch-off; a fix that paid from health and lost it would kill instead.
+	Caster.Set(Vital::GetHealthAttribute(), PerPulse);
+	Aura->Pulse();
+
+	TestFalse(TEXT("it switches off when health cannot cover a pulse"),
+			  Aura->IsHeld());
+	TestTrue(TEXT("and says why"), Aura->bEndedForLackOfMana);
+	TestEqual(TEXT("and takes nothing it could not pay"), Caster.Health(),
+			  PerPulse, 0.01f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraTogglesTest,
 	"Cataclysm.Skills.PressingAnAuraAgainSwitchesItOff",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

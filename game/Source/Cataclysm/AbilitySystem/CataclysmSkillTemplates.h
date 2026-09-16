@@ -1576,7 +1576,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	bool IsHeld() const { return bHeld; }
 
-	/** True when the last end was caused by running out of mana. Read by tests. */
+	/**
+	 * True when the last end was caused by an upkeep the aura could not pay:
+	 * from mana, or from health for a character whose mana pool became health.
+	 * Issue #1901. Read by tests.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	bool bEndedForLackOfMana = false;
 

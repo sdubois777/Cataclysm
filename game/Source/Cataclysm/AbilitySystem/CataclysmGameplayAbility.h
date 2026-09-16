@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Abilities/GameplayAbility.h"
+#include "AttributeSet.h"
 #include "GameplayTagContainer.h"
 #include "CataclysmGameplayAbility.generated.h"
 
@@ -190,6 +191,21 @@ public:
 	// per slot to put them in. Both halves of each pair are overridden together:
 	// a Check without its Apply lets an ability fire forever, which is the
 	// failure that leaves no trace.
+
+	/**
+	 * The pool a character pays a skill's mana cost from: HEALTH for one that
+	 * traded its mana pool for it, MANA for everyone else. Issue #1067.
+	 *
+	 * ONE ANSWER FOR EVERY PAYER, which is why it is a function. The activation
+	 * cost asked this and `UCataclysmAuraSkill::Pulse` did not, so an aura
+	 * switched on by a character with no mana pool switched itself off at its
+	 * first pulse. Issue #1901.
+	 */
+	static FGameplayAttribute CostPool(const UAbilitySystemComponent* AbilitySystem);
+
+	/** Whether `Pool` covers `Cost`: strictly more for health, at least for mana. */
+	static bool PoolCovers(const UAbilitySystemComponent* AbilitySystem,
+						   const FGameplayAttribute& Pool, float Cost);
 
 	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle,
 						   const FGameplayAbilityActorInfo* ActorInfo,
