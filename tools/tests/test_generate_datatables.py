@@ -2137,6 +2137,27 @@ class TestEnchantmentEffects:
         problems = gen.validate_enchantment_effects(tables, {"Slot.Aura"})
         assert problems == ["EnchantmentEffects/X#1: undefined tag Not.A.Tag"]
 
+    def test_a_row_that_moves_a_pool_is_not_asked_for_a_stat(self):
+        """A row moves a pool or changes a stat, never both, so a pool row's
+        stat is empty by design, and `enchantment_effects` refuses a row naming
+        both. This validator asked EVERY row for a stat with a base, so it
+        refused every pool row: none had been authored until the eight rows of
+        issue #1815 were run through the whole generator on 2026-09-16, and all
+        eight failed here.
+
+        THE TAG CHECK STILL APPLIES, which is the second half. A pool row honours
+        its required tags, so an undeclared one matches no skill exactly as it
+        would on a stat row."""
+        pool_row = {"Name": "X#1", "Enchantment": "X", "Stat": "",
+                    "ValueKind": "", "RequiredTags": "", "Action": "health"}
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [pool_row]}, set()) == []
+
+        tagged = dict(pool_row, RequiredTags="Not.A.Tag")
+        assert gen.validate_enchantment_effects(
+            {"EnchantmentEffects": [tagged]}, {"Slot.Aura"}) == [
+            "EnchantmentEffects/X#1: undefined tag Not.A.Tag"]
+
 
 class TestAgainstTheRealWorkbook:
     def test_the_committed_csvs_are_current(self):

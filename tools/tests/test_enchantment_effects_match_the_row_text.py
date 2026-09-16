@@ -89,8 +89,18 @@ INCREASE = re.compile(
 
 #: A sentence that takes something away, which is where a negative value goes.
 #: The same three tenses, for the same reason as above.
+#:
+#: `drain`, `drains` AND `drained` ADDED ON 2026-09-14, a labelled judgement
+#: recorded in docs/DECISIONS.md. This one widens the MEANING and not a tense:
+#: no word already here means it. Four enchantment sentences use it, and the
+#: only one with an effect row -- "Using your ultimate ability drains 20%-40%
+#: of your maximum HP" -- is written as a POSITIVE added_health_cost, so it
+#: never reaches this pattern and nothing could notice the word missing.
+#: "Dodging an attack drains 5%-10% of your class resource" is the first row
+#: that will be negative on a sentence using it.
 TAKING = re.compile(
-    r"\b(less|reduce|reduces|reduced|lose|slower|shorter|halved|slowed)\b",
+    r"\b(less|reduce|reduces|reduced|lose|slower|shorter|halved|slowed"
+    r"|drain|drains|drained)\b",
     re.IGNORECASE)
 
 #: WORDS ADDED ON 2026-09-11 FOR THE RANGED ROWS, a labelled judgement recorded
@@ -166,6 +176,10 @@ JUDGED_NUMBERS = {
     # lower your HP the higher the retaliation": 1% increased retaliation
     # damage for every 2% of maximum health missing.
     "Positive_Your_retaliation_damage_scales_with_your_current",
+    # "Skills that cost HP restore that amount as mana": the whole of the
+    # health the cost took, returned as mana, so 100 of the amount the event
+    # carried. "that amount" is all of it.
+    "Positive_Skills_that_cost_HP_restore_that_amount_as_mana",
 }
 
 #: How many rows are written, and over how many enchantments. Pinned so that
@@ -280,8 +294,14 @@ JUDGED_NUMBERS = {
 #: stores and orphans every saved item carrying it. Issue #1799 carries that to
 #: the project owner. The sibling reword, Tyrant's Chains, was safe because its
 #: changed word sits past the 48-character cap, and it is written.
-AUTHORED_ROWS = 161
-AUTHORED_ENCHANTMENTS = 133
+#: AND 169 OVER 141 SINCE THE EIGHT ROWS THAT MOVE A POOL WHEN AN EVENT
+#: HAPPENS, from 161 over 133, issue #1815. ONE ROW EACH:
+#: a row moves one pool, where the damage rows above need one for attack and
+#: one for spell. Seven fire on a block, a dodge or a class resource reaching
+#: zero; the eighth returns the health a skill's cost took as mana and states
+#: no number, which is why its enchantment is in JUDGED_NUMBERS.
+AUTHORED_ROWS = 169
+AUTHORED_ENCHANTMENTS = 141
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
@@ -610,6 +630,30 @@ def test_longer_excuses_a_negative_value_on_one_stat_only():
         "debuff_duration_taken", "Debuffs on you last 20%-30% longer")
     assert not takes_something_away(
         "crowd_control_resistance", "CC effects applied to you are 40%-70% stronger")
+
+
+def test_a_sentence_that_drains_takes_something_away():
+    """The word added on 2026-09-14, checked on made-up sentences for the
+    reason the test above gives: a rule checked only against the real tables
+    stops being checked the moment those tables change.
+
+    ALL THREE TENSES, because the sentences use two of them and a reword could
+    use the third. The last two assertions are the control: the word has to be
+    what admits the sentence, rather than something else in it, and it has to
+    be the whole word."""
+    assert takes_something_away(
+        "class_resource",
+        "Dodging an attack drains 5%-10% of your class resource")
+    assert takes_something_away(
+        "health", "Channel skills drain 8%-15% of your maximum HP per second")
+    assert takes_something_away(
+        "class_resource",
+        "Your class resource is drained by 5%-10% when you dodge")
+    assert not takes_something_away(
+        "class_resource",
+        "Dodging an attack costs 5%-10% of your class resource")
+    assert not takes_something_away(
+        "class_resource", "Dodging an attack blocks your class drainpipe")
 
 
 def test_the_tables_state_the_measured_number_of_ranges(enchantments):

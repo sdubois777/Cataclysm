@@ -40,6 +40,107 @@ Fewer surges land, so fewer dungeons and fewer Sieges reach the map, fewer citie
 
 ---
 
+## 2026-09-16 — Eight rows that move a pool on a block, a dodge, an empty class resource or a health cost, and the three columns they needed
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: three
+columns and eight rows), `game/Data/EnchantmentEffects.csv` and the DataTable asset
+built from it, `tools/generate_datatables.py` (a check that refused every such row),
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (the
+pins and `JUDGED_NUMBERS`), `tools/tests/test_pool_action_names_match_the_engine.py`
+(new), `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`
+(the row-count pin), `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(one test) and `docs/README.md`. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The sheet had never had the columns such a row needs
+
+[#1843](https://github.com/sdubois777/Cataclysm/pull/1843) let a worn enchantment row
+move a pool when an event happens, and the generator reads three columns for it:
+`Action`, `Action Event` and `Fraction Of`. The sheet had eleven columns and none of
+the three, so every row of the generated table carried them empty, and nothing said
+a column was missing ([#1882](https://github.com/sdubois777/Cataclysm/issues/1882)).
+They are added after `Scale Step`, in the order the generator's own tests write the
+header.
+
+### The eight rows
+
+| Sentence | Pool | Event | Of | Low | High |
+| :-- | :-- | :-- | :-- | --: | --: |
+| When your class resource hits zero, instantly restore 20%-40% of your maximum HP | health | resource_empty | maximum | 20 | 40 |
+| Blocking an attack restores 3%-6% of your maximum HP | health | block | maximum | 3 | 6 |
+| Blocking an attack generates 5%-10% of your class resource | class_resource | block | maximum | 5 | 10 |
+| Blocked attacks restore 1%-3% of your maximum mana | mana | block | maximum | 1 | 3 |
+| Blocking attacks reduces your class resource by 5%-10% | class_resource | block | maximum | -5 | -10 |
+| Dodging an attack restores 5%-10% of your maximum HP | health | dodge | maximum | 5 | 10 |
+| Dodging an attack drains 5%-10% of your class resource | class_resource | dodge | maximum | -5 | -10 |
+| Skills that cost HP restore that amount as mana | mana | health_cost | event_amount | 100 | 100 |
+
+169 rows over 141 enchantments, from 161 over 133:
+one row each, because a row moves one pool.
+
+### "maximum" is written out rather than left empty
+
+Both readers accept it: the generator lists it among the bases, and the game
+treats anything but `current` and `event_amount` as the maximum. Writing it puts
+in the sheet the ruling of 2026-09-14 that "of your class resource", said without
+saying which, means the maximum. Three of the eight sentences say it that way.
+
+### The eighth row states no number, so its 100 is a labelled judgement
+
+"Skills that cost HP restore that amount as mana" names no figure. "That amount"
+is all of it, so the row returns 100 of what the cost took, read from the amount
+the health cost event carries. Chosen under the project owner's delegation of
+2026-09-11 for numbers the design leaves unstated, and named in `JUDGED_NUMBERS`,
+which excuses it from the two checks that need a number in the sentence and from
+nothing else. `Value High` is left empty in the sheet, which is how the one earlier
+judged-number row is written; the generator copies `Value Low` into it.
+
+### Two rows are negative
+
+"Blocking attacks reduces your class resource by 5%-10%" and "Dodging an attack
+drains 5%-10% of your class resource" take the resource away, so each is written
+the way the generator's range check asks: the first number as `Value Low` and the
+second as `Value High`, both negative. The second is the first row negative on a
+sentence using "drain", the word added to that check on 2026-09-14 by the entry
+that records it.
+
+### The generator refused all eight until this change
+
+`validate_enchantment_effects` asked every row whether something supplies its stat,
+and a row that moves a pool has no stat by design, so every one was refused. No such
+row had been written before, and the generator's tests for them called the sheet
+reader, which accepts them, rather than this check. It now skips the stat question
+for a row naming a pool; `_check_pool_action` already checks the pool.
+
+### One Unreal test reads a real row, out of the built asset
+
+Every earlier test of a pool action writes its own action in code, so all of them
+pass with the eight rows missing from `DT_EnchantmentEffects` or read at a figure
+their sentences do not state.
+`Cataclysm.Enchantments.AnAuthoredBlockRowFromTheBuiltTableRestoresTheHealthItStates`
+wears "Blocking an attack restores 3%-6% of your maximum HP", lets the equipment
+refresh read it out of the asset, blocks through `NoteBlocked`, and asserts health
+rose by 6% of the maximum: 30, on a character at 100 of 500.
+
+### The generator's pool and event names are held to the game's
+
+`tools/tests/test_pool_action_names_match_the_engine.py` reads the pools
+`UCataclysmAbilitySystemComponent::PoolAttributesFor` compares and the name every
+`ActOnEvent` call outside the tests passes, and holds them equal to `POOL_ACTIONS`
+and `action_events()`. **The two sides matched on 2026-09-16, when the pin was
+written: four pools and fifteen events.** A pool only the generator knows is a row
+that logs a warning and moves nothing; an event only the generator knows is a row
+that never fires and logs nothing at all. Continuous integration builds no C++, so
+it is a text check, like `test_stat_condition_names_match_the_engine.py`.
+
+The comment above `POOL_ACTIONS` named `UCataclysmItemModifiers::PoolActionFor`,
+which does not exist; it now names `PoolAttributesFor`. A comment in
+`game/Source/Cataclysm/Data/CataclysmDataRows.h` still names it and is left for
+[#1923](https://github.com/sdubois777/Cataclysm/issues/1923), because editing that
+header recompiles the 58 files that include it.
+
+---
+
 ## 2026-09-16 — One attack counts the enemies it strikes together, and three Ravager nodes can read the count
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
@@ -897,6 +998,68 @@ follows the genre. No further reasoning was given and none is invented here.
 The two other options remain as the record of what was considered. Whether a
 league's trees are kept read-only after it ends, deleted, or shown in a history,
 is not decided by "Option A" and is part of issue #58, the league infrastructure.
+
+---
+
+## 2026-09-14 — The word "drain" means a sentence takes something away, judged rather than derived
+
+**Affects:** `tools/tests/test_enchantment_effects_match_the_row_text.py` (the
+word list that decides whether a negative value belongs on a sentence). Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The judgement
+
+`drain`, `drains` and `drained` now count as a sentence taking something away,
+alongside `less`, `reduce`, `reduces`, `reduced`, `lose`, `slower`, `shorter`,
+`halved` and `slowed`.
+
+**This widens the MEANING and not a tense, which is why it is a judgement.** The
+neighbouring `INCREASE` pattern was widened on 2026-09-14 by adding `reduce` and
+`reduces` beside `reduced`, and that was a correction rather than a decision: a
+sentence admitted in one tense is admitted in the others for the same reason, so
+the check was no weaker afterwards. No word already in this list means drain, so
+adding it admits sentences the list previously refused, and that is a loosening
+somebody has to choose.
+
+### Why nothing noticed the word was missing
+
+Four of the enchantment sentences use it, measured 2026-09-14 in
+`game/Data/EnchantmentsNegative.csv`:
+
+| Sentence | Has an effect row |
+| :-- | :-- |
+| Channel skills drain 8%-15% of your maximum HP per second while active | no |
+| Using your ultimate ability drains 20%-40% of your maximum HP | **yes** |
+| Critical strikes drain 3%-6% of your current HP | no |
+| Dodging an attack drains 5%-10% of your class resource | no |
+
+**The one that has a row never reaches this check.** It is written as
+`added_health_cost` `flat` +20 to +40 — a POSITIVE amount of a cost — and the
+check only asks about a sentence when the row's value is negative. So the word
+has been missing for as long as the list has existed and no run could say so.
+
+"Dodging an attack drains 5%-10% of your class resource" will be the first row
+whose value is negative on a sentence using the word. It moves a pool rather
+than changing a stat, and its percentage is signed, so negative means drain.
+
+### Checked on made-up sentences, because no row exercises it yet
+
+`test_a_sentence_that_drains_takes_something_away` calls the rule directly with
+sentences written in the test, copying
+`test_longer_excuses_a_negative_value_on_one_stat_only` beside it and for the
+reason that test states: **a rule checked only against the real tables stops
+being checked the moment those tables change.** It needs no data row, so the
+widening is proved before the rows are authored rather than after.
+
+All three tenses are checked, and two controls: a sentence that says "costs"
+instead is still refused, and the word has to be a whole word rather than the
+start of a longer one.
+
+### What this does not do
+
+It does not excuse a row from stating its number, and it does not admit a
+negative value on a sentence that says nothing about taking anything away. It
+adds three words to one list and nothing else.
 
 ---
 

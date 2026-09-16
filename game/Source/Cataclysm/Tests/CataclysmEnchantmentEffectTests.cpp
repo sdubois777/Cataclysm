@@ -2200,8 +2200,10 @@ bool FCataclysmEnchantmentEventWindowRowsTest::RunTest(const FString& Parameters
 // "restore", "generate" or "drain", and none of them can be written as a
 // modifier.
 //
-// NO DATA ROW USES THIS YET, so every test below writes its own. The rows
-// arrive in a later change, after the design workbook is free.
+// EIGHT DATA ROWS USE THIS SINCE 2026-09-16, and every test below but one still
+// writes its own action, so that it can choose figures that tell the answers
+// apart. `AnAuthoredBlockRowFromTheBuiltTableRestoresTheHealthItStates` is the
+// one that reads a real row, out of the asset the game loads.
 
 namespace CataclysmEnchantmentEffectTest
 {
@@ -2578,9 +2580,9 @@ bool FCataclysmARefreshReplacesTheActions::RunTest(const FString&)
 		return false;
 	}
 
-	// AND A REFRESH WEARING NOTHING LEAVES NONE. No authored row moves a pool
-	// yet, so the real tables hand back an empty list, which is exactly the case
-	// that proves the list is written rather than added to.
+	// AND A REFRESH WEARING NOTHING LEAVES NONE. With nothing worn the real
+	// tables hand back an empty list whatever rows they hold, which is exactly
+	// the case that proves the list is written rather than added to.
 	Wearer.Equipment->RefreshAttributes(&ASC);
 	TestEqual(TEXT("and a refresh wearing nothing leaves none"),
 			  ASC.GetPoolActions().Num(), 0);
@@ -2747,6 +2749,87 @@ bool FCataclysmAFractionOfTheEventsAmount::RunTest(const FString&)
 	// is held would be 100, so neither pool reading can produce this number.
 	TestEqual(TEXT("half of the amount the event carried"),
 			  ASC.GetNumericAttribute(Mana), 220.0f, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// AN AUTHORED ROW, READ OUT OF THE ASSET THE GAME LOADS. Issue #1815.
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAnAuthoredBlockRowRestoresTheHealthItStates,
+	"Cataclysm.Enchantments.AnAuthoredBlockRowFromTheBuiltTableRestoresTheHealthItStates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAnAuthoredBlockRowRestoresTheHealthItStates::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// EVERY OTHER TEST OF AN ACTION WRITES ITS OWN, so all of them pass with the
+	// eight authored rows missing from `DT_EnchantmentEffects`, or read at a
+	// figure their sentences do not state. This one wears "Blocking an attack
+	// restores 3-6% of your maximum health", lets the equipment refresh read what
+	// it grants out of the asset, and blocks by the call a blocked blow makes:
+	// `UCataclysmVitalAttributeSet` calls `NoteBlocked`.
+	//
+	// THE BREAK THIS IS FOR: reading a row's range as its first number at both
+	// ends, which restores 3% where the item states 6%. The one other test that
+	// takes an action row through the accumulator writes 4 at both ends and
+	// cannot tell. It also fails until `tools/generate_datatable_assets.py` has
+	// rebuilt the asset from a CSV holding the row.
+	const TCHAR* BlockRestoresHealth =
+		TEXT("Positive_Blocking_an_attack_restores_3_6_of_your_maximu");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+
+	// PAIRED WITH A DRAWBACK THAT HAS NO EFFECT ROW, so the benefit is the only
+	// thing the helm does. An item built in code carries a roll of 1, which takes
+	// the far end of the range: 6.
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BlockRestoresHealth, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(&ASC);
+
+	if (ASC.GetPoolActions().Num() != 1)
+	{
+		AddError(FString::Printf(
+			TEXT("Wearing %s handed the character %d actions rather than one. "
+				 "DT_EnchantmentEffects may be older than the row: run  python "
+				 "tools/run_editor_python.py tools/generate_datatable_assets.py"),
+			BlockRestoresHealth, ASC.GetPoolActions().Num()));
+		return false;
+	}
+
+	// HURT, SO THE ROW'S FIGURE AND BASE BOTH SHOW. Written after the helm went on,
+	// because the refresh recomputes the maximum from the gear. At a hundred of
+	// five hundred, 6% of the maximum is 30; 6% of what is held would be 6, and
+	// the first number of the range would give 15.
+	GivePools(ASC, /*Health=*/100.0f, /*MaxHealth=*/500.0f);
+	if (!TestEqual(TEXT("the maximum is where it was put"),
+				   ASC.GetNumericAttribute(MaxHealth), 500.0f, 0.01f)
+		|| !TestEqual(TEXT("and so is the health"),
+					  ASC.GetNumericAttribute(Health), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	ASC.NoteBlocked();
+	TestEqual(TEXT("a block restores 6% of the maximum, which is 30"),
+			  ASC.GetNumericAttribute(Health), 130.0f, 0.01f);
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS
