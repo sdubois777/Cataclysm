@@ -106,9 +106,8 @@ neither passes a type.
 **Seven new automation tests measure the damage meeting its resistance.** Each deals the same damage
 twice to a player given 100,000 maximum health: once with the resistance its row names raised by 50,
 and once with another resistance raised by 50. It asserts the first takes under three quarters of what
-the second takes. Correctly typed damage takes about half. Untyped damage takes about the same both
-times, and damage of the other type takes about twice as much, so both of those fail. The tests are in
-`Cataclysm.DungeonModifierEffects.`:
+the second takes. Untyped damage takes about the same both times, and damage of the other type would
+take about twice as much, so both fail. The tests are in `Cataclysm.DungeonModifierEffects.`:
 
 - `AnArtilleryShellMeetsWarResistanceAndNotVoid`
 - `AHellfireExplosionMeetsDemonicResistanceAndNotVoid`
@@ -122,6 +121,16 @@ times, and damage of the other type takes about twice as much, so both of those 
 
 The zone tests call `ACataclysmGroundZone::Sweep` once per measurement, which is what the zone's timer
 calls, so the clock does not move between the two figures.
+
+**Measured on 2026-09-16, on commit a17e9437.** Six of the seven tests took half as much with their own
+resistance raised, to within the rounding of the printed figures: an artillery shell, for example, took
+10774.0 against 21548.0. The poison took about a third, 33.0 against 100.2, because each poison is
+measured over its whole length and both measurements lose the health regenerated during it: if the
+poison deals P, Pestilence resistance halves it and each measurement regenerates the same R, then
+P - R = 100.2 and P/2 - R = 33.0 give P = 134.4 and R = 34.2, about 4 health a second over the
+poison's 8 to 9 seconds. That rate is arithmetic and not a measurement. It disagrees with the comment
+in `SporesFromADeathNearThePlayerPoisonThem` that the player regenerates 1 a second, which issue
+[#1940](https://github.com/sdubois777/Cataclysm/issues/1940) records; that test is not changed here.
 
 **Three existing tests read the removed field**, and now read the zone's own:
 `AFloorCarryingInfernalRainDropsTypedPatches`, `AVoidOrbSlowsAPlayerStandingInItAndStopsWhenTheyLeave`
