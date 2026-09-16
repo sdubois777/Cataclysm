@@ -3503,16 +3503,19 @@ void ACataclysmDungeonGameMode::NoteHitForHolyRepercussions(
 		return;
 	}
 
-	// WHOSE BLOW, AND ON WHAT. The row says "upon being hit", and the thing being
-	// hit is the creature, so the player must be the attacker.
+	// WHOSE BLOW, AND ON WHAT -- TWO TESTS, EACH GUARDING A BLOW THE OTHER DOES
+	// NOT. This function's declaration carries the full reasoning; in short:
 	//
-	// THIS GUARD ALSO STOPS A BURST PROVOKING A BURST, and that is not a
-	// secondary benefit. The burst below is dealt by a creature to the player and
-	// is announced like any other blow; without this test it would arrive here,
-	// the player would not be its attacker, and it would be refused -- but a
-	// reader removing the guard for the first reason would silently create the
-	// second. `Demonic_Brand_of_the_Aggressor`'s guard proof found exactly that
-	// shape by tripping a test nobody predicted.
+	//   `!Creature`                  alone refuses the player hitting the player,
+	//                                which is Brand of the Aggressor's eruption.
+	//   `Notice.Attacker != Player`  alone refuses a creature, hazard or explosion
+	//                                hitting a creature. A reading of "upon being
+	//                                hit", which names no attacker.
+	//
+	// Both refuse the burst below, which is a creature hitting the player, so a
+	// burst cannot provoke another whichever half is removed.
+	// `OnlyThePlayersOwnBlowProvokesJudgmentAndTheStairsClearIt` lands one blow of
+	// each kind, so removing either half fails a test.
 	ACataclysmEnemyCharacter* Creature =
 		Cast<ACataclysmEnemyCharacter>(Notice.Target);
 	if (Notice.Attacker != Player || !Creature)

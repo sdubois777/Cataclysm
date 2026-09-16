@@ -1412,11 +1412,29 @@ private:
 	 * damage in an area" and names no side, and the side is decided by whose
 	 * burst it is rather than by a ruling.
 	 *
-	 * ONE BLOW CANNOT ANSWER ITSELF. The burst is dealt by a creature to the
-	 * player, so it is announced like any other blow -- and this listener refuses
-	 * a blow whose attacker is not the player, so a burst cannot provoke another.
-	 * That guard is load-bearing here for the same reason Brand's is, and Brand's
-	 * proof found it the hard way.
+	 * TWO TESTS DECIDE WHOSE BLOW COUNTS, AND EACH GUARDS A BLOW THE OTHER DOES
+	 * NOT.
+	 *
+	 * THE TARGET MUST BE A CREATURE. On its own this is the only thing refusing a
+	 * blow the PLAYER lands on the PLAYER -- which is exactly how
+	 * `Demonic_Brand_of_the_Aggressor` delivers its eruption. Without it, on a
+	 * floor carrying both rows, every eruption would add a Judgment stack.
+	 *
+	 * THE ATTACKER MUST BE THE PLAYER. On its own this is the only thing refusing a
+	 * blow on a creature from another CREATURE, a floor hazard or another rule's
+	 * explosion. THIS IS A READING OF THE ROW, not its wording: "upon being hit"
+	 * names no attacker. Requiring the player follows "retaliate", which answers an
+	 * attacker, and Judgment, which lands on the player and makes sense only if the
+	 * player provoked it.
+	 *
+	 * BOTH REFUSE THIS RULE'S OWN BURST, which is a creature hitting the player. So
+	 * a burst cannot provoke another whichever half is removed.
+	 *
+	 * TWO EARLIER DRAFTS OF THIS WERE WRONG, and the second tried to fix the first.
+	 * The first said the attacker half is what stops a burst provoking a burst. The
+	 * second said a creature-on-creature test would let each half fail on its own,
+	 * forgetting the target half's case. Both were caught by tracing a guard proof's
+	 * prediction through every assertion before any build.
 	 */
 	void NoteHitForHolyRepercussions(const struct FCataclysmHitNotice& Notice);
 

@@ -8117,10 +8117,18 @@ bool FCataclysmHolyGuardsTest::RunTest(const FString& Parameters)
 	// THE TWO THINGS THAT BOUND THE RULE: WHOSE BLOW, AND HOW LONG IT LASTS.
 	// Issues #1820 and #41.
 	//
-	// THE WHOSE-BLOW GUARD ALSO STOPS A BURST PROVOKING A BURST. A burst is a
-	// creature hitting the player, so it arrives back at the same listener; the
-	// attacker test is what refuses it. This test shows the guard on a creature's
-	// ordinary blow, which is the same shape.
+	// THREE BLOWS THAT MUST PROVOKE NOTHING, CHOSEN SO THAT EACH HALF OF THE
+	// GUARD IS THE ONLY THING REFUSING ONE OF THEM:
+	//
+	//   a creature hitting the player   both halves refuse it. A burst is this
+	//                                   shape.
+	//   a creature hitting a creature   only "the attacker is the player".
+	//   the player hitting the player   only "the target is a creature". This is
+	//                                   how Brand of the Aggressor erupts.
+	//
+	// THE FIRST VERSION LANDED ONLY THE FIRST BLOW and credited the attacker half
+	// with refusing it. Each half alone refuses that blow, so the test could not
+	// tell whether either half existed.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
 	{
@@ -8181,6 +8189,38 @@ bool FCataclysmHolyGuardsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("a blow the player RECEIVED provokes no Judgment"),
+			  CountNow(), Expected(0));
+
+	// A CREATURE HITTING ANOTHER CREATURE. The target IS a creature, so only the
+	// attacker test refuses it. `ApplyHit` has no side check, so it lands; it is
+	// asserted to have landed so a zero count below cannot mean nothing happened.
+	if (!TestTrue(TEXT("a creature's blow on another creature landed"),
+				  UCataclysmSkillEffects::ApplyHit(Striker, Target, 5.0f) > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and a blow the player did not strike provokes no Judgment"),
+			  CountNow(), Expected(0));
+
+	// THE PLAYER HITTING THE PLAYER, THROUGH THE CALL BRAND OF THE AGGRESSOR USES
+	// TO ERUPT. The attacker IS the player, so only the target test refuses it.
+	//
+	// ASSERTED TO HAVE COST HEALTH, NOT MERELY TO HAVE BEEN APPLIED. The listener
+	// returns before either test when a blow lands for nothing, so a blow that
+	// reached health is what makes the count below mean the guard refused it.
+	const float BeforeSelf = Player.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	UCataclysmSkillEffects::ApplyDirectDamage(Player.Character, Player.Character,
+											  50.0f);
+	if (!TestTrue(TEXT("the player's blow on themselves cost them health"),
+				  Player.AbilitySystem->GetNumericAttribute(
+					  UCataclysmVitalAttributeSet::GetHealthAttribute())
+					  < BeforeSelf))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and a blow the player landed on themselves provokes no "
+				   "Judgment"),
 			  CountNow(), Expected(0));
 
 	// THE PLAYER'S OWN BLOWS DO, AND THEY STOP AT THE CAP. One past the cap, so

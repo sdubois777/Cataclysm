@@ -49,14 +49,32 @@ enemies because the creature is retaliating; `Demonic_Brand_of_the_Aggressor` as
 allies because its row names the player's own side; `Demonic_Hellfire` asks for everyone because
 its row names nobody. None of the three needed a ruling on who is caught.
 
-### One burst cannot provoke another, and the same guard is what prevents it
+### Two tests decide whose blow counts, and each guards a blow the other does not
 
-The listener refuses any blow whose attacker is not the player, because "upon being hit" is the
-creature being hit. A burst is a creature hitting the player, so it is announced like any other
-blow and arrives back at this listener — where that same test refuses it. **A reader removing the
-guard for its first reason would silently create the second fault.** Brand of the Aggressor's
-guard proof found that shape by failing a test nobody predicted, so the reason is in the comment
-rather than left to be rediscovered.
+**The target must be a creature.** On its own this is the only thing refusing a blow the player
+lands on the player — which is exactly how `Demonic_Brand_of_the_Aggressor` delivers its eruption.
+Without it, on a floor carrying both rows, every eruption would add a Judgment stack.
+
+**The attacker must be the player.** On its own this is the only thing refusing a blow on a creature
+from another creature, a floor hazard or another rule's explosion. **This is a reading of the row,
+not its wording**: "upon being hit" names no attacker. Requiring the player follows "retaliate",
+which answers an attacker, and Judgment, which lands on the player and makes sense only if the
+player provoked it.
+
+**Both refuse this rule's own burst**, which is a creature hitting the player, so a burst cannot
+provoke another whichever half is removed.
+
+**Two drafts of this were wrong before it was right, and the second tried to fix the first.** The
+first said the attacker half is what stops a burst provoking a burst, and that removing it would
+create that fault — false, because the target half refuses a burst too. The second added a
+creature-on-creature blow and claimed that let each half fail a test on its own — also false,
+because it forgot the target half's own case. Both were found before any build, by tracing a guard
+proof's prediction through every assertion: removing either half failed nothing, because each half
+alone refused every blow the tests then constructed.
+
+The guards test now lands three blows that must provoke nothing — a creature hitting the player, a
+creature hitting a creature, and the player hitting the player through the call Brand of the
+Aggressor erupts with — so each half is the only thing refusing one of them.
 
 ### The five figures — the row states none
 
