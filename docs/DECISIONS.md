@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — Leech Spores drains the player once per cloud to heal the creatures near them, an earlier grouping of this row is superseded by its own words, and "within ten metres" is measured to a creature's body
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules: each row's key, its figures and its arithmetic),
+`CataclysmDungeonGameMode.h` and `.cpp` (the listener on the death announcement and the
+quarter-second beat), `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the
+automation tests for these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`
+(the Python checks that hold each rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Pestilence_Leech_Spores` in `game/Data/DungeonModifiers.csv`: "When you kill an enemy, a cloud of
+Leech Spores explodes from their corpse. If you come into contact with the spores, a small portion
+of your health is drained and used to heal any enemies within a 10-meter radius."
+
+### Three things were decided before this rule existed
+
+The entry for the change that built `ACataclysmGroundZone::SpawnForTheFloor` already settled three
+questions about this row, and none of them is a judgement made here:
+
+- **The cloud lasts the floor.** That entry lists Leech Spores among the hazard rows that "state no
+  duration at all ... because the design means them to last the floor".
+- **The floor hazard source owns it.** A hazard left "from their corpse" cannot be owned by a
+  creature that is already dead, because `ACataclysmGroundZone::Sweep` returns early when its owner
+  is gone.
+- **It acts differently on the player and on creatures.**
+
+### One reading in that entry is superseded for this row
+
+That entry grouped Leech Spores with hazards acting on **creatures standing in the same patch**. The
+row's own words are **"any enemies within a 10-meter radius"**, and a cloud is 300 cm wide, so the
+two readings name different creatures.
+
+**The row's words win.** The heal reaches every creature within 1000 cm of the player, found by a
+sphere search centred on the player at the moment of the drain. The earlier grouping was a summary of
+a family of rows that share a shape, not a reading of this sentence, and a stated figure is not
+overridden by a family summary. Ruled by the coordinating session.
+
+### "Within ten metres" is measured to a creature's body, not its centre
+
+`UCataclysmTargeting::FindEnemiesInSphere` is a sphere overlap against pawn collision. A creature is
+healed when its **body** touches the 1000 cm sphere, so one centred slightly beyond ten metres is
+still healed if its body crosses the line. That is how every area rule in this game measures —
+Brand of the Aggressor's eruption, Hellfire's explosion, Holy Repercussions' burst — so this rule
+follows the house rather than inventing a second meaning of "within".
+
+A creature body is 48 cm from centre (`EnemyCapsuleRadius`). The reach test places its far creature
+1100 cm from the player and **asserts its body edge is outside** before relying on it, so a later
+change that widens creature bodies past 100 cm fails that setup line and says why, rather than
+blaming the rule.
+
+### A drain and not a blow, and that decides how it meets other rules
+
+The player's health is taken through `UCataclysmSkillEffects::ReduceHealthDirectly`, which armour,
+resistance and evasion do not reduce and which is **not announced as a hit**. `War_Forced_March` and
+`Death_Mortal_Decay` take health the same way.
+
+**This matters on a floor carrying more than one rule.** `Celestial_Holy_Repercussions` and
+`Demonic_Brand_of_the_Aggressor` both listen for blows; a drain dealt as a blow would be counted by
+both. A Python check fails if the drain is ever changed to `ApplyDirectDamage` or `ApplyHit`, and it
+looks for the qualified call rather than the name, because a comment in the same function names the
+drain in prose.
+
+### Health moves and none is created
+
+The heal is paid from what **actually left** the player, measured before and after the drain — not
+from the share asked for. `ReduceHealthDirectly` stops at zero, so a player with less health than the
+share loses less, and paying from the share would heal more than was taken.
+
+The creatures divide it equally. One already at its maximum takes its share and wastes it, because
+`UCataclysmRegeneration::TopUp` caps there, so the total healed is never more than the total drained.
+An automation test asserts two creatures' gains sum to exactly what the player lost.
+
+### The judgements
+
+| Figure | Answer | Why |
+|---|---|---|
+| How much one cloud drains | 10% of **maximum** health | The row says "a small portion". A share of the maximum, `Demonic_Brand_of_the_Aggressor`'s shape, so a cloud costs a wounded player the same as a healthy one |
+| How often | **Once per cloud**; contact spends it | Reads "explodes" and "contact" together. A cloud lasts the floor untouched, and two clouds under the player are two contacts |
+| How the drain becomes a heal | An **equal split** of what was drained | Keeps "used to heal" literal: health moves from the player to the creatures and none is created |
+| How wide a cloud is | 300 cm, declared as `WitheredGroundPatchRadiusCm` | The settled figure for a thing at a point on the floor |
+
+**The heal radius, 1000 cm, is the row's own figure**, and a Python check holds the constant to the
+words "10-meter radius". All four judgements were ruled by the coordinating session under the owner's
+delegation of unstated numbers.
+
+### Removing a spent cloud needed nothing new
+
+A cloud is destroyed when it is touched. `ACataclysmGroundZone::EndPlay` already ends a patch's
+drawing for any ending other than its own life running out, and names "something calls Destroy" as
+one of those cases, so a spent cloud does not leave its drawing behind.
+
+---
+
 ## 2026-09-16 — The skill bar asks the cast's own cost rule, so a Masochist holding Water to Blood sees what it can pay from health
 
 **Affects:** `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` (whether a skill's

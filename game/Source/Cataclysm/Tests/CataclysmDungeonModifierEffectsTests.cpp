@@ -16,6 +16,7 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Components/CapsuleComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
@@ -117,6 +118,12 @@ namespace CataclysmDungeonModifierEffectsTest
 	 * a single resistance. Issues #1820 and #41.
 	 */
 	const FName HolyRepercussions(TEXT("Celestial_Holy_Repercussions"));
+
+	/**
+	 * And the one whose clouds drain the player once to heal the creatures near
+	 * them. Issues #1820 and #41.
+	 */
+	const FName LeechSpores(TEXT("Pestilence_Leech_Spores"));
 
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
@@ -8254,6 +8261,430 @@ bool FCataclysmHolyGuardsTest::RunTest(const FString& Parameters)
 						   *UCataclysmItemModifiers::ResistanceStatFor(
 							   FName(Effects::HolyRepercussionsResistance))
 								.ToString()));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeechSporesContactTest,
+	"Cataclysm.DungeonModifierEffects.ADeathLeavesACloudThatDrainsThePlayerOnceOnContact",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLeechSporesContactTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A CLOUD, CONTACT, ONE DRAIN, AND THE CLOUD GONE. Issues #1820 and #41.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never
+	// calls. Without it a creature dies and no cloud is left.
+	Mode->StartPlay();
+
+	Mode->DungeonModifiers = {LeechSpores};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto Beat = [Mode]()
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	};
+	const auto HealthOf = [](const AActor* Actor)
+	{
+		const UAbilitySystemComponent* Theirs =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return Theirs ? Theirs->GetNumericAttribute(
+							UCataclysmVitalAttributeSet::GetHealthAttribute())
+					  : -1.0f;
+	};
+
+	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: A CREATURE DIES. The creature
+	// is killed well away from the player so the cloud is somewhere to walk to.
+	ACataclysmEnemyCharacter* Victim = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(1500.0f, 0.0f, 0.0f),
+		100.0f);
+	if (!TestNotNull(TEXT("a creature to kill"), Victim))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Victim)))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Cloud = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			Cloud = *It;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("its death left a cloud"), Cloud))
+	{
+		return false;
+	}
+	const FVector CloudAt = Cloud->GetActorLocation();
+
+	// WHAT THE CLOUD IS: the stated width, lasting the floor, harming nobody by
+	// being there.
+	TestEqual(TEXT("the cloud is as wide as the figure says"), Cloud->RadiusCm,
+			  Effects::LeechSporesCloudRadiusCm, 0.01f);
+	TestTrue(TEXT("and lasts the floor rather than expiring"), Cloud->bLastsTheFloor);
+
+	// THE CONTROL: A CLOUD THE PLAYER IS NOT TOUCHING DOES NOTHING. Without this,
+	// a drain on every beat whatever the player did would pass the next part.
+	if (!TestFalse(TEXT("the player is not standing on the cloud yet"),
+				   Cloud->Covers(Player.Character->GetActorLocation())))
+	{
+		return false;
+	}
+	const float Untouched = HealthOf(Player.Character);
+	Beat();
+	TestEqual(TEXT("so a beat away from it drains nothing"),
+			  HealthOf(Player.Character), Untouched, 0.01f);
+	TestTrue(TEXT("and the cloud is still there"), IsValid(Cloud));
+
+	// CONTACT.
+	Player.Character->SetActorLocation(CloudAt);
+	if (!TestTrue(TEXT("the player now stands on the cloud"),
+				  Cloud->Covers(Player.Character->GetActorLocation())))
+	{
+		return false;
+	}
+	const float Maximum = Player.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	const float Share = Effects::LeechSporesDrain(Maximum);
+	const float Before = HealthOf(Player.Character);
+	if (!TestTrue(FString::Printf(
+					  TEXT("the player has more health than one drain takes: "
+						   "%.1f against %.1f"), Before, Share),
+				  Before > Share))
+	{
+		return false;
+	}
+
+	Beat();
+	const float AfterFirst = HealthOf(Player.Character);
+	TestEqual(FString::Printf(TEXT("contact drains %.0f%% of maximum health"),
+							  Effects::LeechSporesDrainPercentOfMaximumHealth),
+			  Before - AfterFirst, Share, 0.05f);
+
+	// SPENT. The cloud is gone after one contact.
+	int32 CloudsLeft = 0;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			++CloudsLeft;
+		}
+	}
+	TestEqual(TEXT("and the cloud is spent by it"), CloudsLeft, 0);
+
+	// ONCE, NOT ON EVERY BEAT. The player is still standing where the cloud was.
+	// "Did not fall again" rather than "unchanged", so health coming back by any
+	// other route cannot make this read as a second drain or hide one.
+	Beat();
+	TestTrue(FString::Printf(
+				 TEXT("a second beat on the same spot drains nothing more: %.1f "
+					  "after %.1f"), HealthOf(Player.Character), AfterFirst),
+			 HealthOf(Player.Character) >= AfterFirst - 0.05f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeechSporesReachTest,
+	"Cataclysm.DungeonModifierEffects.TheDrainHealsACreatureWithinTenMetresAndNotOneBeyond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLeechSporesReachTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW'S OWN FIGURE: "any enemies within a 10-meter radius", measured from
+	// the player. Issues #1820 and #41.
+	//
+	// INSIDE MEANS A CREATURE'S BODY REACHES THE SPHERE, NOT ITS CENTRE.
+	// `UCataclysmTargeting::FindEnemiesInSphere` is a sphere overlap against pawn
+	// collision, the way every area rule in this game measures. So a creature
+	// centred beyond 1000 cm is still healed if its body crosses the line, and
+	// the far creature here is placed so that its body does not.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never
+	// calls. Without it a creature dies and no cloud is left.
+	Mode->StartPlay();
+
+	Mode->DungeonModifiers = {LeechSpores};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto Beat = [Mode]()
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	};
+	const auto HealthOf = [](const AActor* Actor)
+	{
+		const UAbilitySystemComponent* Theirs =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return Theirs ? Theirs->GetNumericAttribute(
+							UCataclysmVitalAttributeSet::GetHealthAttribute())
+					  : -1.0f;
+	};
+
+	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: A CREATURE DIES. The creature
+	// is killed well away from the player so the cloud is somewhere to walk to.
+	ACataclysmEnemyCharacter* Victim = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(1500.0f, 0.0f, 0.0f),
+		100.0f);
+	if (!TestNotNull(TEXT("a creature to kill"), Victim))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Victim)))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Cloud = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			Cloud = *It;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("its death left a cloud"), Cloud))
+	{
+		return false;
+	}
+	const FVector CloudAt = Cloud->GetActorLocation();
+
+	Player.Character->SetActorLocation(CloudAt);
+	if (!TestTrue(TEXT("the player stands on the cloud"),
+				  Cloud->Covers(Player.Character->GetActorLocation())))
+	{
+		return false;
+	}
+
+	// TWO WOUNDED CREATURES, ONE EACH SIDE OF THE LINE. Wounded, so a heal shows;
+	// a creature at its maximum would take its share and show nothing.
+	ACataclysmEnemyCharacter* Near = SpawnCreatureWithHealth(
+		World, CloudAt + FVector(900.0f, 0.0f, 0.0f), 1000.0f);
+	ACataclysmEnemyCharacter* Far = SpawnCreatureWithHealth(
+		World, CloudAt + FVector(0.0f, 1100.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a creature inside the reach"), Near)
+		|| !TestNotNull(TEXT("and one beyond it"), Far))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ReduceHealthDirectly(Near, Near, 500.0f);
+	UCataclysmSkillEffects::ReduceHealthDirectly(Far, Far, 500.0f);
+
+	// EACH SIDE OF THE LINE, ASSERTED FROM WHERE THEY ACTUALLY STAND. A spawn can
+	// move a creature, and inclusion is by body, so the far creature must have its
+	// body -- centre distance less body width -- outside the reach. If creature
+	// bodies ever grow past what this assumes, this fails here and says so.
+	const FVector Feet = Player.Character->GetActorLocation();
+	const float NearBodyEdge =
+		FVector::Dist2D(Near->GetActorLocation(), Feet)
+		- Near->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const float FarBodyEdge =
+		FVector::Dist2D(Far->GetActorLocation(), Feet)
+		- Far->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	if (!TestTrue(FString::Printf(
+					  TEXT("the near creature's body is %.0f cm away, inside %.0f"),
+					  NearBodyEdge, Effects::LeechSporesHealRadiusCm),
+				  NearBodyEdge < Effects::LeechSporesHealRadiusCm)
+		|| !TestTrue(FString::Printf(
+						 TEXT("the far creature's body is %.0f cm away, outside %.0f"),
+						 FarBodyEdge, Effects::LeechSporesHealRadiusCm),
+					 FarBodyEdge > Effects::LeechSporesHealRadiusCm))
+	{
+		return false;
+	}
+
+	const float NearBefore = HealthOf(Near);
+	const float FarBefore = HealthOf(Far);
+	Beat();
+
+	TestTrue(FString::Printf(TEXT("the creature inside the reach was healed: "
+								  "%.1f from %.1f"), HealthOf(Near), NearBefore),
+			 HealthOf(Near) > NearBefore);
+	TestEqual(TEXT("and the one beyond it was not"), HealthOf(Far), FarBefore, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLeechSporesSplitTest,
+	"Cataclysm.DungeonModifierEffects.TwoCreaturesNearADrainEachGetHalfOfIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLeechSporesSplitTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// HEALTH MOVES AND NONE IS CREATED: what left the player is divided equally
+	// among the creatures healed. Issues #1820 and #41.
+	//
+	// THE CREATURES' MAXIMUMS ARE FAR ABOVE THE DRAIN, so neither is capped. A
+	// cap would waste part of a share and make "half each" read as less, which
+	// is the rule working rather than failing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never
+	// calls. Without it a creature dies and no cloud is left.
+	Mode->StartPlay();
+
+	Mode->DungeonModifiers = {LeechSpores};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto Beat = [Mode]()
+	{
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	};
+	const auto HealthOf = [](const AActor* Actor)
+	{
+		const UAbilitySystemComponent* Theirs =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return Theirs ? Theirs->GetNumericAttribute(
+							UCataclysmVitalAttributeSet::GetHealthAttribute())
+					  : -1.0f;
+	};
+
+	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: A CREATURE DIES. The creature
+	// is killed well away from the player so the cloud is somewhere to walk to.
+	ACataclysmEnemyCharacter* Victim = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(1500.0f, 0.0f, 0.0f),
+		100.0f);
+	if (!TestNotNull(TEXT("a creature to kill"), Victim))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Victim)))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Cloud = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			Cloud = *It;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("its death left a cloud"), Cloud))
+	{
+		return false;
+	}
+	const FVector CloudAt = Cloud->GetActorLocation();
+
+	Player.Character->SetActorLocation(CloudAt);
+	if (!TestTrue(TEXT("the player stands on the cloud"),
+				  Cloud->Covers(Player.Character->GetActorLocation())))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* One = SpawnCreatureWithHealth(
+		World, CloudAt + FVector(400.0f, 0.0f, 0.0f), 100000.0f);
+	ACataclysmEnemyCharacter* Two = SpawnCreatureWithHealth(
+		World, CloudAt + FVector(-400.0f, 0.0f, 0.0f), 100000.0f);
+	if (!TestNotNull(TEXT("a first creature"), One)
+		|| !TestNotNull(TEXT("and a second"), Two))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ReduceHealthDirectly(One, One, 50000.0f);
+	UCataclysmSkillEffects::ReduceHealthDirectly(Two, Two, 50000.0f);
+
+	const float PlayerBefore = HealthOf(Player.Character);
+	const float OneBefore = HealthOf(One);
+	const float TwoBefore = HealthOf(Two);
+	Beat();
+	const float Drained = PlayerBefore - HealthOf(Player.Character);
+
+	if (!TestTrue(FString::Printf(TEXT("the player was drained: %.1f"), Drained),
+				  Drained > 0.0f))
+	{
+		return false;
+	}
+
+	// HALF EACH, AGAINST WHAT WAS ACTUALLY DRAINED rather than against the share
+	// asked for, which is the figure the rule pays from.
+	const float Half = Drained / 2.0f;
+	TestEqual(FString::Printf(TEXT("the first creature gained half of %.1f"), Drained),
+			  HealthOf(One) - OneBefore, Half, 0.05f);
+	TestEqual(TEXT("and the second gained the other half"),
+			  HealthOf(Two) - TwoBefore, Half, 0.05f);
+
+	// AND TOGETHER EXACTLY WHAT WAS TAKEN, which is the claim itself. Two creatures
+	// each given the whole drain would pass neither line above, and would double
+	// the health in play.
+	TestEqual(TEXT("so the creatures gained exactly what the player lost"),
+			  (HealthOf(One) - OneBefore) + (HealthOf(Two) - TwoBefore), Drained,
+			  0.05f);
 
 	return true;
 }
