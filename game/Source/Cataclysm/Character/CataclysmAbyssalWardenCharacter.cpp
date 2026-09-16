@@ -647,7 +647,7 @@ bool ACataclysmAbyssalWardenCharacter::ResolveBody(bool bIncludeAnimation)
 	// saw it immediately: the placeholder rendered on top of the creature. It is
 	// not visible from the Brute's ResolveBody at a glance, because there it
 	// sits after two screens of rock and montage loading that this class has
-	// none of. `test_every_dressed_enemy_hides_its_placeholder` in
+	// none of. `test_every_dressed_enemy_hides_its_placeholder_cylinder` in
 	// `tools/tests/test_warden_matches_the_model.py` now refuses a dressed enemy
 	// that does not do this, for every enemy rather than only this one.
 	if (PlaceholderBody)

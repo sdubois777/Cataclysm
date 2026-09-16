@@ -57,7 +57,7 @@ public:
 	 * about three player capsules wide, so a passage two cells across reads as a
 	 * corridor two people can walk down rather than a gap. It is the number the
 	 * floor's size in metres is derived from, and
-	 * `tools/tests/test_a_floor_is_crossed_in_the_designed_time.py` holds the
+	 * `tools/tests/test_a_dungeon_floor_is_a_walk_not_a_room.py` holds the
 	 * result against the player's designed walking speed so that changing it has
 	 * to confront what it does to how long a floor takes.
 	 */
