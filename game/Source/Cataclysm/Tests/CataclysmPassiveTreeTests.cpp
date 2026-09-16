@@ -9956,6 +9956,133 @@ namespace CataclysmApplierDeathTest
 	}
 }
 
+// --- the Masochist keystone that caps healing -------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassivePointOfNoReturnOnARealCharacterTest,
+	"Cataclysm.Passives.PointOfNoReturnStopsARealMasochistHealingPastHalf",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Masochist_keystone_ll_kB` Point of No Return, first clause: "You cannot be
+ * healed above 50% of your maximum health". Issue #1904.
+ *
+ * WHY IT EXISTS. The owner reported the keystone no longer holding them at half
+ * health in the playtest of 2026-09-15. The only test of the ceiling,
+ * `Cataclysm.Regeneration.HealingStopsAtAReducedCeilingAndAnUncappedOneDoesNot`,
+ * WRITES the attribute, so nothing checked that spending the point reaches it.
+ * This reads the row out of the built asset, spends the point on a real
+ * Masochist, and heals through `UCataclysmRegeneration::TopUp`.
+ *
+ * FIVE TIMES THE MAXIMUM IS OFFERED, as the regeneration test offers, rather than
+ * a little more than the twenty per cent that would fit. Whatever else a
+ * Masochist does to healing it receives, that is more than fits, so the only
+ * thing that can stop it at exactly half is the ceiling.
+ *
+ * WHAT IT DOES NOT SHOW. The ceiling stops healing and does not pull health down
+ * to it -- the regeneration test asserts that is the design -- so a character
+ * that arrives in the world with full health stays above half until damage
+ * takes it below.
+ */
+bool FCataclysmPassivePointOfNoReturnOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmKeystoneRowTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Masochist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Masochist_keystone_ll_kB"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+
+	// THE CEILING'S ROW, FOUND BY ITS STAT. The keystone has three rows -- the
+	// ceiling, and 25% more attack and spell damage -- and their order in the
+	// table is not a promise.
+	const FCataclysmPassiveEffectRow* Ceiling = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row && Row->Stat == TEXT("healing_ceiling_reduction"))
+		{
+			Ceiling = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("Point of No Return has a row for the healing ceiling"),
+					 Ceiling))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as a flat reduction"), Ceiling->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of fifty"), Ceiling->ValuePerPoint, 50.0f);
+	TestEqual(TEXT("and carrying no condition"), Ceiling->Condition, FString());
+
+	const FGameplayAttribute Reduction = Vital::GetHealingCeilingReductionAttribute();
+	const FGameplayAttribute Health = Vital::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth = Vital::GetMaxHealthAttribute();
+
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("an unspent Masochist has no ceiling"),
+			  Player.AbilitySystem->GetNumericAttribute(Reduction), 0.0f, 0.001f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	if (!TestEqual(TEXT("spending the point sets the reduction to fifty"),
+				   Player.AbilitySystem->GetNumericAttribute(Reduction), 50.0f,
+				   0.001f))
+	{
+		return false;
+	}
+
+	// HEALING STOPS AT HALF. Forty per cent of the character's own maximum, set
+	// after the refresh so nothing the refresh does to the pools can move it.
+	const float Maximum = Player.AbilitySystem->GetNumericAttribute(MaxHealth);
+	if (!TestTrue(FString::Printf(TEXT("the Masochist has a maximum (%.1f)"),
+								  Maximum),
+				  Maximum > 0.0f))
+	{
+		return false;
+	}
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Maximum * 0.4f);
+	UCataclysmRegeneration::TopUp(*Player.AbilitySystem, Health, MaxHealth,
+								  /*Gain=*/Maximum * 5.0f, FGameplayTagContainer());
+	TestEqual(TEXT("healing stops at half of maximum health"),
+			  Player.AbilitySystem->GetNumericAttribute(Health), Maximum * 0.5f,
+			  0.05f);
+
+	// AND GIVING THE POINT BACK LIFTS IT, so the half above is the keystone's
+	// doing and not something every Masochist carries.
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("giving the point back removes the reduction"),
+			  Player.AbilitySystem->GetNumericAttribute(Reduction), 0.0f, 0.001f);
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Maximum * 0.4f);
+	UCataclysmRegeneration::TopUp(*Player.AbilitySystem, Health, MaxHealth,
+								  /*Gain=*/Maximum * 5.0f, FGameplayTagContainer());
+	TestEqual(TEXT("and the same healing then fills the pool"),
+			  Player.AbilitySystem->GetNumericAttribute(Health), Maximum, 0.05f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEndOnApplierDeathFlagTest,
 	"Cataclysm.Passives.NothingMovesYouGrantsTheEndOnApplierDeathFlagOnARealRavager",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
