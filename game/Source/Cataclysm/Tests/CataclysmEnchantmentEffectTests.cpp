@@ -749,9 +749,11 @@ bool FCataclysmEnchantmentEffectAttributesTest::RunTest(const FString& Parameter
 	// `ApplyTo` STOPPED LOOPING ONLY OVER `StatToAttribute` WHEN #1724 MERGED: a
 	// third pass loops over `StatsWithNoAttribute()` and records those stats
 	// without writing any attribute, so a row naming one of them is not dropped.
-	// Bespoke code reads their increases directly --
+	// Bespoke code reads them directly: the minion stats' increases in
 	// `UCataclysmCommand::AttackIntervalScaleFor`,
-	// `ACataclysmMinion::AttackTarget` and `ACataclysmMinion::Spawn`.
+	// `ACataclysmMinion::AttackTarget` and `ACataclysmMinion::Spawn`, and, since
+	// issue #1791, whether `mana_on_hit` is removed in
+	// `UCataclysmSkillTemplate::ApplyManaOnHit`.
 	//
 	// `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt`
 	// GAINED THIS IN #1733 AND THIS TEST DID NOT, because no enchantment row

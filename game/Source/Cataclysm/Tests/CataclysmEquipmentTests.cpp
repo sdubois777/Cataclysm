@@ -1298,12 +1298,13 @@ namespace CataclysmEquipmentTest
 	 *
 	 * SO WHAT REMAINS IS NOT A LIST OF FAULTS. The three minion stats are meant
 	 * to have no attribute, which is why this no longer keeps its own copy of
-	 * them: it asks the engine.
+	 * them: it asks the engine. `mana_on_hit` joined them for issue #1791, and no
+	 * affix grants it.
 	 *
 	 * THE LIST IS EXACT IN BOTH DIRECTIONS, which is the property worth keeping.
 	 * A stat missing an attribute that is not on it fails the test, and a stat
-	 * on it that now has one fails the test too. That is what guarantees a
-	 * fourth stat with no attribute cannot appear unnoticed.
+	 * on it that now has one fails the test too. That is what guarantees another
+	 * stat with no attribute cannot appear unnoticed.
 	 *
 	 * READ FROM `UCataclysmPlayerClassStats::StatsWithNoAttribute()` SINCE
 	 * #1733. Three places needed these same three names and each had a copy; the
@@ -1591,14 +1592,21 @@ bool FCataclysmEveryAffixStatHasAnAttribute::RunTest(const FString& Parameters)
 	// AND THE LIST HAS TO SHRINK AS THE WORK LANDS. A stat named there that now
 	// reaches an attribute is an exemption left behind, and leaving one standing
 	// would let the same stat break again with nothing noticing.
+	//
+	// IT NO LONGER ASKS THAT AN AFFIX GRANT EVERY NAME ON THE LIST, since issue
+	// #1791. It did, and so failed any name no affix grants. `mana_on_hit` is one:
+	// an enchantment row removes it and no affix grants it, because the list now
+	// serves enchantment rows and a slot's own figure as well as affixes. A name
+	// that nothing reads at all is still caught, by
+	// `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
 	for (const FString& Stat : StatsNoAttributeIsWrittenFrom())
 	{
-		if (!Missing.Contains(Stat))
+		if (Map.Contains(Stat))
 		{
 			AddError(FString::Printf(
 				TEXT("'%s' is listed in StatsNoAttributeIsWrittenFrom as having "
-					 "no attribute behind it, and it now has one, or no affix "
-					 "grants it any more. Delete it from that list."), *Stat));
+					 "no attribute behind it, and it now has one. Delete it from "
+					 "that list."), *Stat));
 		}
 	}
 

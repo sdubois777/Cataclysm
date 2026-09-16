@@ -3893,6 +3893,19 @@ SCALES = {
 #: `tools/tests/test_value_kinds_match_the_engine.py` holds the three lists to one.
 VALUE_KINDS = ("flat", "increased", "more", "removed")
 
+#: Stats a row may only remove, because the code reading them reads nothing else.
+#:
+#: `mana_on_hit` IS THE BASIC ATTACK'S OWN FIGURE from `game/Data/SkillSlots.csv`
+#: rather than a stat. Issue #1791. `UCataclysmSkillTemplate::ApplyManaOnHit` asks
+#: `UCataclysmAbilitySystemComponent::IsStatRemoved` for it and asks nothing more,
+#: so a flat, increased or more row on it would be written, recorded on the
+#: character, and read by nothing -- the silent failure issue #1025 describes.
+#:
+#: EVERY NAME HERE MUST BE ON THE ENGINE'S LIST OF STATS WITH NO ATTRIBUTE, or
+#: the character would never record the removal at all.
+#: `test_every_removal_only_stat_is_one_the_engine_records` holds that.
+REMOVAL_ONLY_STATS = frozenset({"mana_on_hit"})
+
 
 def _check_value_kind(sheet: str, index: int, who: str, stat: str,
                       kind: str) -> None:
@@ -3906,6 +3919,9 @@ def _check_value_kind(sheet: str, index: int, who: str, stat: str,
     removal, because removing a rate would divide by nothing and a cooldown of
     no length is not what any sentence says, so such a row would be written and
     grant nothing. `RATE_STATS` is the list of rates.
+
+    AND ANYTHING BUT A REMOVAL ON A STAT THAT MAY ONLY BE REMOVED IS REFUSED, for
+    the reason `REMOVAL_ONLY_STATS` gives.
     """
     if kind not in VALUE_KINDS:
         raise DataError(
@@ -3917,6 +3933,12 @@ def _check_value_kind(sheet: str, index: int, who: str, stat: str,
             f"{sheet} row {index}: {who} removes {stat!r}, which is a rate. A "
             f"rate has no removal: the game ignores one, because removing a "
             f"rate would divide by nothing, so the row would grant nothing.")
+
+    if stat in REMOVAL_ONLY_STATS and kind != "removed":
+        raise DataError(
+            f"{sheet} row {index}: {who} gives {stat!r} the value kind {kind!r}. "
+            f"That stat may only be removed: the code reading it asks whether "
+            f"it is removed and nothing else, so the row would grant nothing.")
 
 
 def passive_effects(book) -> list[dict]:
@@ -4768,6 +4790,10 @@ def stats_with_no_attribute() -> set[str]:
     increase against a base of zero is zero, which is why a stat like this is
     normally a defect and why the exemption is named rather than inferred.
     Issues #898 and #1733.
+
+    AND `mana_on_hit`, WHICH IS NOT A MINION'S. Issue #1791. The basic attack's
+    mana on hit is its slot's own figure, so there is nothing for an attribute to
+    hold either; a row may only remove it, which `REMOVAL_ONLY_STATS` enforces.
 
     AN EXEMPTION IS A PROMISE AND THIS DOES NOT KEEP IT. All this does is stop the
     sheet being refused. That every name here is really read by code is held by

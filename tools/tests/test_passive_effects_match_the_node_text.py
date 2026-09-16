@@ -1061,10 +1061,12 @@ def stats() -> set[str]:
             #
             # A DIFFERENT KIND OF ENTRY FROM THE LINE ABOVE, and the difference
             # is the whole reason it is a separate call. `ENGINE_SUPPLIED_BASES`
-            # promises code puts a BASE on the character. These three have no
-            # base and can have none: a minion's damage, health and attack
-            # interval come from its own type row, and a summoner's gear supplies
-            # an increase to apply to that rather than a value of its own.
+            # promises code puts a BASE on the character. These have no base and
+            # can have none: a minion's damage, health and attack interval come
+            # from its own type row, and a summoner's gear supplies an increase
+            # to apply to that rather than a value of its own. `mana_on_hit` is
+            # the basic attack's own figure, and a row may only remove it
+            # (issue #1791).
             #
             # READ OUT OF THE C++ RATHER THAN RESTATED. `ENGINE_SUPPLIED_BASES`
             # is a Python restatement held honest by a symbol-existence check;
@@ -2737,7 +2739,7 @@ def test_the_exempt_stats_are_read_from_the_engine():
     parse -- which is the wrong place to look and the expensive kind of wrong.
 
     SO THE FUNCTION RAISES AND THIS CHECKS IT RETURNS SOMETHING, rather than
-    checking for particular names. Naming the three here would put back the second
+    checking for particular names. Naming them here would put back the second
     copy the whole change exists to remove: the point is that Python holds no
     list, so a name added or removed in the C++ needs no edit here.
 

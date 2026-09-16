@@ -2075,9 +2075,11 @@ bool FCataclysmPassiveStatsHaveAttributesTest::RunTest(const FString&)
 	// it shows. `ApplyTo` no longer loops only over `StatToAttribute`: a third
 	// pass loops over `StatsWithNoAttribute()` and RECORDS those stats without
 	// writing any attribute, so a passive row naming one of them is not dropped.
-	// Bespoke code reads their increases directly --
+	// Bespoke code reads them directly: the minion stats' increases in
 	// `UCataclysmCommand::AttackIntervalScaleFor`,
-	// `ACataclysmMinion::AttackTarget` and `ACataclysmMinion::Spawn`.
+	// `ACataclysmMinion::AttackTarget` and `ACataclysmMinion::Spawn`, and, since
+	// issue #1791, whether `mana_on_hit` is removed in
+	// `UCataclysmSkillTemplate::ApplyManaOnHit`.
 	//
 	// READ FROM THE ENGINE'S OWN LIST RATHER THAN RESTATED HERE, so this test
 	// and the code it checks cannot disagree about which stats are exempt. Three

@@ -2144,6 +2144,29 @@ class TestEnchantmentEffects:
         assert (out[0]["Stat"], out[0]["ValueKind"]) == ("armor", "removed")
         assert out[0]["ValueLow"] == 1.0 and out[0]["ValueHigh"] == 1.0
 
+    def test_mana_on_hit_may_only_be_removed(self, tmp_path):
+        """The code reading `mana_on_hit` asks only whether it is removed, so an
+        increase on it would be written and read by nothing. Issue #1791. The
+        removal itself is accepted, which is the control."""
+        book = self.book(tmp_path, [self.row({"Stat": "mana_on_hit",
+                                              "Value Kind": "increased",
+                                              "Value Low": 20})])
+        with pytest.raises(gen.DataError, match="may only be removed"):
+            gen.enchantment_effects(book)
+
+        book = self.book(tmp_path, [self.row({"Stat": "mana_on_hit",
+                                              "Value Kind": "removed",
+                                              "Value Low": 1})])
+        assert gen.enchantment_effects(book)[0]["ValueKind"] == "removed"
+
+    def test_every_removal_only_stat_is_one_the_engine_records(self):
+        """A removal is recorded on a character only for a stat with an attribute
+        or on the engine's list of stats with none, and a stat that may only be
+        removed has no attribute. So each must be on that list, or its removal
+        row would be written and never reach the character."""
+        unrecorded = sorted(gen.REMOVAL_ONLY_STATS - gen.stats_with_no_attribute())
+        assert gen.REMOVAL_ONLY_STATS and not unrecorded, unrecorded
+
     def test_an_action_row_may_not_be_a_removal(self, tmp_path):
         """A removal is a kind of stat row, and an action row has no stat. The
         refusal `_check_pool_action` makes of any kind reaches this one too."""

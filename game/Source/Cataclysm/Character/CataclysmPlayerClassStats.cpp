@@ -195,12 +195,14 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 	// is nothing to look up and nothing that has to be ready first.
 	//
 	// THE ORDER IS THE ORDER A READER MEETS THEM: damage, then health, then
-	// attack speed. Nothing depends on it; it is stated so that a diff adding a
-	// fourth name is obviously an addition rather than a reshuffle.
+	// attack speed, then mana on hit, which is not a minion's and arrived with
+	// issue #1791. Nothing depends on it; it is stated so that a diff adding a
+	// name is obviously an addition rather than a reshuffle.
 	static const TArray<FString> Stats = {
 		TEXT("minion_damage"),
 		TEXT("minion_health"),
 		TEXT("minion_attack_speed"),
+		TEXT("mana_on_hit"),
 	};
 	return Stats;
 }
@@ -1283,11 +1285,17 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// `game/Data/MinionTypes.csv`, raised by its summoner's level. The summoner's
 	// gear adds increases to that figure rather than supplying one.
 	//
+	// AND `mana_on_hit` SINCE ISSUE #1791, which is not a minion's and is read
+	// for something else. The basic attack's mana on hit is its slot's own
+	// figure, so this stat has no value to hold either. What is recorded for it
+	// is a removal, and `UCataclysmSkillTemplate::ApplyManaOnHit` asks for that
+	// through `UCataclysmAbilitySystemComponent::IsStatRemoved`.
+	//
 	// A NAMED LIST RATHER THAN "EVERY STAT WITH NO ATTRIBUTE". Nothing validates
 	// the `Stat` column of an affix row against a vocabulary, so deriving this
 	// from whatever the character happens to carry would turn a misspelling into
-	// a stat, silently. Three names, and adding a fourth is a decision somebody
-	// makes rather than a side effect of a typo.
+	// a stat, silently. Adding a name is a decision somebody makes rather than a
+	// side effect of a typo.
 	//
 	// THE LIST MOVED OUT OF THIS FUNCTION FOR ISSUE #1733, because three other
 	// places need the same three names and were each keeping their own copy. It
