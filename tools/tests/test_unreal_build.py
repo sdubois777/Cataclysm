@@ -94,6 +94,26 @@ Result: Failed (OtherCompilationError)
 Total execution time: 6.20 seconds
 """
 
+#: The build the continuous integration runner stops. Captured 2026-09-14 in
+#: another worktree while the runner was compiling a pull request; the whole
+#: thing takes a quarter of a second. Issues #1577 and #1802.
+BUILD_DENIED_THE_MUTEX = """\
+Using 'git status' to determine working set for adaptive non-unity build (C:\\Projects\\Cataclysm).
+Unhandled exception: UnauthorizedAccessException: Access to the path\
+ 'Global\\UnrealBuildTool_Mutex_096b8b11a8779fc55e9da244f4a8ecf62868c83d' is denied.
+Result: Failed (OtherCompilationError)
+Total execution time: 0.23 seconds
+"""
+
+#: The build the open editor refuses. The line is Unreal's own; CLAUDE.md says
+#: to ask the editor's owner, not to wait, so this must not be retried.
+BUILD_REFUSED_BY_LIVE_CODING = """\
+Unable to build while Live Coding is active. Exit the editor and game, or press\
+ Ctrl+Alt+F11 if iterating on code in the editor or game
+Result: Failed (OtherCompilationError)
+Total execution time: 4.51 seconds
+"""
+
 #: Real lines from `game/Saved/Logs/Cataclysm.log`, captured 2026-08-04. The
 #: failing line is written in the same shape the runner uses for a success.
 TEST_LOG = """\
@@ -127,6 +147,87 @@ def test_no_timeout_is_the_default_on_a_build_or_a_test_run(function) -> None:
     assert default is None, (
         f"{function.__name__} defaults timeout to {default!r}; CLAUDE.md forbids a "
         f"timeout on an Unreal build (issue #1580), so the default must be None")
+
+
+class _Builds:
+    """A stand-in for `run_build_once` that hands out outcomes in order and
+    remembers how many times it was asked and what `build()` waited."""
+
+    def __init__(self, *texts: tuple[str, int]) -> None:
+        self.queue = [outcome(text, code) for text, code in texts]
+        self.runs = 0
+        self.waits: list[float] = []
+
+    def run(self, target, platform, configuration, timeout) -> BuildOutcome:
+        self.runs += 1
+        return self.queue.pop(0)
+
+    def wait(self, seconds: float) -> None:
+        self.waits.append(seconds)
+
+
+def _building_with(monkeypatch: pytest.MonkeyPatch, builds: _Builds) -> None:
+    monkeypatch.setattr(unreal_build, "run_build_once", builds.run)
+    monkeypatch.setattr(unreal_build, "BUILD_BATCH_FILE",
+                        pathlib.Path(__file__))  # any file that exists
+
+
+def test_a_mutex_denial_is_retried_and_the_second_build_is_returned(
+        monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture) -> None:
+    """Issues #1577 and #1802. The runner had the machine for the first
+    attempt; the retry a minute later built. Two runs, one wait, the success."""
+    builds = _Builds((BUILD_DENIED_THE_MUTEX, 6), (BUILD_THAT_COMPILED, 0))
+    _building_with(monkeypatch, builds)
+
+    result = unreal_build.build(wait=builds.wait)
+
+    assert result.succeeded and result.compiled == ("Module.Cataclysm.cpp",)
+    assert builds.runs == 2
+    assert builds.waits == [unreal_build.MUTEX_RETRY_WAIT_SECONDS]
+    assert "waiting" in capsys.readouterr().out, "the wait must be visible"
+
+
+def test_a_live_coding_refusal_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The editor is open. CLAUDE.md: ask its owner, do not wait."""
+    builds = _Builds((BUILD_REFUSED_BY_LIVE_CODING, 6), (BUILD_THAT_COMPILED, 0))
+    _building_with(monkeypatch, builds)
+
+    result = unreal_build.build(wait=builds.wait)
+
+    assert not result.succeeded
+    assert builds.runs == 1 and builds.waits == []
+
+
+def test_a_compile_error_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A quick failure is not a denial; the text is what decides."""
+    builds = _Builds((BUILD_THAT_FAILED, 6), (BUILD_THAT_COMPILED, 0))
+    _building_with(monkeypatch, builds)
+
+    result = unreal_build.build(wait=builds.wait)
+
+    assert not result.succeeded
+    assert builds.runs == 1 and builds.waits == []
+
+
+def test_a_denial_that_never_lifts_is_given_up_on_and_named(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """Bounded: `attempts` builds in all, then the last outcome comes back,
+    and `require_compiled` names the runner rather than a compiler error."""
+    builds = _Builds(*([(BUILD_DENIED_THE_MUTEX, 6)] * 3))
+    _building_with(monkeypatch, builds)
+
+    result = unreal_build.build(attempts=3, wait=builds.wait)
+
+    assert not result.succeeded
+    assert builds.runs == 3 and len(builds.waits) == 2
+    with pytest.raises(BuildDidNothing, match="runner holds the UnrealBuildTool mutex"):
+        require_compiled(result, ["game/Source/Cataclysm/AbilitySystem/CataclysmProjectile.cpp"])
+
+
+def test_the_retry_limit_default_is_the_documented_one() -> None:
+    """So a change to the constant and a change to the signature cannot drift."""
+    default = inspect.signature(unreal_build.build).parameters["attempts"].default
+    assert default == unreal_build.MUTEX_RETRY_ATTEMPTS
 
 
 def test_a_build_that_compiled_is_read_correctly() -> None:
