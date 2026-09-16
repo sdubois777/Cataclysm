@@ -874,6 +874,40 @@ public:
 	static const TCHAR* HolyRepercussionsResistance;
 
 	/**
+	 * Leech Spores: "When you kill an enemy, a cloud of Leech Spores explodes
+	 * from their corpse. If you come into contact with the spores, a small
+	 * portion of your health is drained and used to heal any enemies within a
+	 * 10-meter radius." Issues #1820 and #41.
+	 *
+	 * THREE THINGS ABOUT IT WERE DECIDED BEFORE THIS RULE EXISTED, and none is
+	 * a judgement made here. `docs/DECISIONS.md` records, for the change that
+	 * built `ACataclysmGroundZone::SpawnForTheFloor`, that this row is one of the
+	 * hazards that "state no duration at all" and so lasts the floor; that the
+	 * floor hazard source owns its cloud, because a hazard placed "from their
+	 * corpse" cannot be owned by a creature that is already dead; and that it
+	 * acts differently on the player and on creatures.
+	 *
+	 * ONE READING IN THAT RECORD IS SUPERSEDED FOR THIS ROW. It grouped Leech
+	 * Spores with hazards acting on "creatures standing in the same patch". The
+	 * row's own words are "any enemies within a 10-meter radius", and a cloud is
+	 * 300 cm wide, so the two name different creatures. The row's words win;
+	 * the grouping was a summary of a family of rows, not a reading of this one.
+	 *
+	 * A DRAIN AND NOT A BLOW. The player's health is taken through
+	 * `UCataclysmSkillEffects::ReduceHealthDirectly`, which no armour, resistance
+	 * or evasion reduces and which is NOT announced as a hit -- so a floor
+	 * carrying a rule that listens for blows does not count the drain as one.
+	 * `War_Forced_March` and `Death_Mortal_Decay` take health the same way.
+	 *
+	 * HEALTH MOVES AND NONE IS CREATED. What heals the creatures is what
+	 * actually left the player, measured before and after, which is less than
+	 * the share asked for when the player has less health than that share. The
+	 * creatures divide it equally; a creature already at its maximum takes its
+	 * share and wastes it, because `UCataclysmRegeneration::TopUp` caps there.
+	 */
+	static const TCHAR* LeechSporesKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -1822,6 +1856,53 @@ public:
 	static constexpr int32 HolyRepercussionsJudgmentMostStacks = 5;
 	static constexpr float HolyRepercussionsJudgmentLessPerStackPercent = 5.0f;
 
+	/**
+	 * What one cloud drains from the player, as a share of MAXIMUM health.
+	 *
+	 * A JUDGEMENT. The row says "a small portion of your health" and states no
+	 * figure. A share of the maximum rather than of what the player has now,
+	 * which is `Demonic_Brand_of_the_Aggressor`'s shape, so a cloud costs a
+	 * wounded player the same as a healthy one rather than less.
+	 */
+	static constexpr float LeechSporesDrainPercentOfMaximumHealth = 10.0f;
+
+	/**
+	 * How wide a cloud is.
+	 *
+	 * A JUDGEMENT, declared as another rule's constant rather than as a number
+	 * for the reason `BrandNovaRadiusCm` gives: 300 cm is this project's settled
+	 * answer for a thing at a point on the floor. The row says "a cloud".
+	 */
+	static constexpr float LeechSporesCloudRadiusCm = WitheredGroundPatchRadiusCm;
+
+	/**
+	 * How far from the player a creature can be and still be healed.
+	 *
+	 * THE ROW'S OWN FIGURE: "any enemies within a 10-meter radius". Measured
+	 * from the PLAYER at the moment of the drain rather than from the cloud,
+	 * because the drain is what feeds the heal and it is the player who is
+	 * drained.
+	 */
+	static constexpr float LeechSporesHealRadiusCm = 1000.0f;
+
+	static_assert(
+		LeechSporesDrainPercentOfMaximumHealth > 0.0f
+			&& LeechSporesDrainPercentOfMaximumHealth < 100.0f,
+		"A cloud that drains nothing heals nothing and the row is unbuilt; one "
+		"that drains all of a player's maximum kills them on contact, which 'a "
+		"small portion' does not describe.");
+
+	static_assert(
+		LeechSporesCloudRadiusCm > 0.0f,
+		"A cloud that covers nowhere can be touched by nobody.");
+
+	static_assert(
+		LeechSporesHealRadiusCm > LeechSporesCloudRadiusCm,
+		"The heal now reaches no further than the cloud is wide. The row says "
+		"'within a 10-meter radius', which is wider than a cloud, and this rule "
+		"deliberately read that over a record that grouped it with rules acting "
+		"only inside their own patch.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -2489,6 +2570,18 @@ public:
 
 	/** What a Judgment count takes off the player's Celestial resistance. */
 	static float HolyRepercussionsJudgmentLessPercent(int32 Stacks);
+
+	/** What one cloud asks to drain from a player with this maximum health. */
+	static float LeechSporesDrain(float MaximumHealth);
+
+	/**
+	 * What each creature is healed by when a drain is shared among them.
+	 *
+	 * EQUAL SHARES OF WHAT WAS ACTUALLY DRAINED, so the total healed never
+	 * exceeds the total taken. Nothing for no creatures, and nothing for a drain
+	 * that took nothing -- both are ordinary, not faults.
+	 */
+	static float LeechSporesHealEach(float Drained, int32 Creatures);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

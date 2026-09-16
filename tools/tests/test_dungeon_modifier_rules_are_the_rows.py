@@ -1599,6 +1599,122 @@ def test_judgment_is_written_to_one_resistance_outside_the_all_resistance_loop()
         "CataclysmDungeonModifierEffects.h for why it has its own field.")
 
 
+def test_leech_spores_row_still_states_the_heal_radius_the_rule_uses():
+    """The one figure the row states, held to the words it came from.
+
+    "any enemies within a 10-meter radius". `LeechSporesHealRadiusCm` is read off
+    that sentence, so if the row's figure moves the constant has to move with it.
+    Nothing in C++ would notice: the automation tests build every distance from
+    the constant, so they agree with themselves at any value.
+    """
+    words = flat(rows()["Pestilence_Leech_Spores"]["Description"])
+    metres = constant("LeechSporesHealRadiusCm") / 100.0
+
+    assert f"{metres:g}-meter radius" in words, (
+        f"Pestilence_Leech_Spores no longer says '{metres:g}-meter radius'. "
+        "LeechSporesHealRadiusCm in CataclysmDungeonModifierEffects.h is read off "
+        "that sentence, so move it to whatever the row now says. " + words)
+
+
+def test_leech_spores_row_still_says_a_kill_leaves_a_cloud_from_the_corpse():
+    """The trigger, and why the floor owns the cloud rather than the creature.
+
+    "When you kill an enemy" is why a listener sits on the death announcement.
+    "from their corpse" is why the floor hazard source owns the cloud: a hazard
+    left by a creature that is already dead cannot be owned by it, because
+    `ACataclysmGroundZone::Sweep` returns early when its owner is gone.
+    """
+    words = flat(rows()["Pestilence_Leech_Spores"]["Description"]).lower()
+
+    assert "when you kill an enemy" in words, (
+        "Pestilence_Leech_Spores no longer says a cloud comes from killing an "
+        "enemy. NoteDeathForLeechSpores listens to the death announcement because "
+        "of those words. " + words)
+    assert "from their corpse" in words, (
+        "Pestilence_Leech_Spores no longer says the cloud comes from the corpse. "
+        "The floor hazard source owns the cloud because a dead creature cannot; "
+        "if the cloud no longer comes from a death, that reasoning has to be made "
+        "again. " + words)
+
+
+def test_leech_spores_row_still_says_the_drain_heals_enemies():
+    """What contact does, in the row's own words.
+
+    "a small portion of your health is drained and used to heal any enemies".
+    "a small portion" is why the drain share is a judgement rather than a figure
+    read off the row; "drained" is why the health is TAKEN rather than dealt as a
+    blow; "used to heal" is why the heal is paid from what left the player.
+    """
+    words = flat(rows()["Pestilence_Leech_Spores"]["Description"]).lower()
+
+    for phrase in ("a small portion of your health", "is drained",
+                   "used to heal any enemies"):
+        assert phrase in words, (
+            f"Pestilence_Leech_Spores no longer says {phrase!r}. The drain's share, "
+            "its being taken rather than dealt, and the heal being paid from it all "
+            "rest on that sentence; see LeechSporesKey in "
+            "CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_leech_spores_leaves_a_cloud_only_for_the_players_kills():
+    """The row's "When you kill an enemy", held to the comparison that reads it.
+
+    The Mortal Decay entry in docs/DECISIONS.md records that a row naming who
+    does the killing makes its death listener require
+    `FCataclysmDeathNotice::Killer` to be the player's pawn. Most death listeners
+    on the game mode do not ask, because their rows name no killer, so a change
+    making this one look like its neighbours would read as tidying rather than
+    as a change to the rule. This fails first.
+
+    THE COMPARISON, NOT THE NAME. Comment lines are dropped before searching,
+    because the comment above the check names the killer in prose.
+    """
+    source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+              / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    body = body_of(source, "void ACataclysmDungeonGameMode::NoteDeathForLeechSpores(")
+    code = "\n".join(line for line in body.splitlines()
+                     if not line.lstrip().startswith("//"))
+
+    assert re.search(r"Notice\.Killer\s*!=\s*Player\b", code), (
+        "NoteDeathForLeechSpores no longer refuses a death the player did not "
+        "cause. Pestilence_Leech_Spores says \"When you kill an enemy\", and the "
+        "Mortal Decay entry in docs/DECISIONS.md records that a row naming the "
+        "killer counts only the player's kills. Without the check a creature "
+        "killed by anything else leaves a cloud.")
+
+
+def test_leech_spores_drains_rather_than_dealing_a_blow():
+    """The decision that decides how this rule meets every rule listening for blows.
+
+    `StepLeechSpores` takes the player's health through
+    `UCataclysmSkillEffects::ReduceHealthDirectly`, which is NOT announced as a hit.
+    A floor also carrying `Celestial_Holy_Repercussions` or
+    `Demonic_Brand_of_the_Aggressor` -- both of which listen for blows -- therefore
+    does not count a drain as one. Dealing it through `ApplyDirectDamage` or
+    `ApplyHit` instead would announce it, and would also let armour reduce what
+    leaves the player, so the heal would no longer be paid from a drain.
+
+    THE CALL, NOT THE NAME. Comments in that function name `ReduceHealthDirectly`
+    in prose, so this looks for the qualified call with its opening bracket, which
+    a comment does not write.
+    """
+    source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+              / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    body = body_of(source, "void ACataclysmDungeonGameMode::StepLeechSpores(")
+
+    assert "UCataclysmSkillEffects::ReduceHealthDirectly(" in body, (
+        "StepLeechSpores no longer drains the player through "
+        "UCataclysmSkillEffects::ReduceHealthDirectly. That call is not announced as "
+        "a hit and no armour reduces it; without it the drain is a blow that other "
+        "rules count and armour shrinks.")
+    for blow in ("UCataclysmSkillEffects::ApplyDirectDamage(",
+                 "UCataclysmSkillEffects::ApplyHit("):
+        assert blow not in body, (
+            f"StepLeechSpores now calls {blow}. The row says the health is "
+            "DRAINED; a blow is announced to every rule listening for blows and is "
+            "reduced by armour, so the heal would no longer be paid from a drain.")
+
+
 def test_brand_of_the_aggressor_row_still_states_the_count_the_rule_uses():
     """The first dungeon rule whose count is READ OFF THE ROW rather than judged.
 
