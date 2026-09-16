@@ -360,23 +360,57 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarAffordTest,
 
 bool FCataclysmSkillBarAffordTest::RunTest(const FString& Parameters)
 {
+	using namespace CataclysmSkillBarTest;
+
 	// THIS IS THE ONE THAT ALREADY COST SOMEBODY AN EVENING. Issue #653 was
 	// reported as "sometimes all of my abilities just become disabled", and it
 	// was an empty mana pool with nothing on screen saying so.
-	TestTrue(TEXT("plenty of mana pays a small cost"),
-			 UCataclysmSkillBar::CanAfford(10.0f, 100.0f));
-	TestFalse(TEXT("too little mana does not"),
-			  UCataclysmSkillBar::CanAfford(10.0f, 9.0f));
+	//
+	// ON A CHARACTER SINCE ISSUE #1910. The rule is asked of a character's own
+	// pool rather than of two numbers, so the numbers are put in its mana.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FBarCharacter Who(World);
+	const FGameplayAttribute Mana = UCataclysmVitalAttributeSet::GetManaAttribute();
+	Who.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 100.0f);
+	const auto AffordsWith = [&Who, &Mana](float Held, float Cost)
+	{
+		Who.AbilitySystem->SetNumericAttributeBase(Mana, Held);
+		return UCataclysmSkillBar::CanAfford(Who.AbilitySystem, Mana, Cost);
+	};
+
+	TestTrue(TEXT("plenty of mana pays a small cost"), AffordsWith(100.0f, 10.0f));
+	TestFalse(TEXT("too little mana does not"), AffordsWith(9.0f, 10.0f));
 
 	// EXACTLY ENOUGH IS ENOUGH. A bar that greyed out a skill the character could
 	// actually cast would be worse than no bar at all.
-	TestTrue(TEXT("exactly enough mana pays"),
-			 UCataclysmSkillBar::CanAfford(10.0f, 10.0f));
+	TestTrue(TEXT("exactly enough mana pays"), AffordsWith(10.0f, 10.0f));
 
 	// A FREE SKILL IS ALWAYS PAYABLE, including on an empty pool. The Movement
 	// slot's designed cost is zero.
 	TestTrue(TEXT("a skill that costs nothing is payable with nothing"),
-			 UCataclysmSkillBar::CanAfford(0.0f, 0.0f));
+			 AffordsWith(0.0f, 0.0f));
+
+	// AND NOTHING IS GREYED OUT WHILE THERE IS NO POOL TO READ. A pool that
+	// cannot be read reads as zero, so asking it anyway in the frames after a
+	// pawn appears would grey out every skill, which is issue #653 again.
+	TestTrue(TEXT("with no ability system every cost is payable"),
+			 UCataclysmSkillBar::CanAfford(nullptr, Mana, 10.0f));
+	AActor* Bare = World->SpawnActor<AActor>(FVector::ZeroVector,
+											 FRotator::ZeroRotator);
+	const UCataclysmAbilitySystemComponent* NoSets =
+		Bare ? NewObject<UCataclysmAbilitySystemComponent>(Bare) : nullptr;
+	if (TestNotNull(TEXT("an ability system with no attribute sets"), NoSets))
+	{
+		TestTrue(TEXT("and with no attribute set holding the pool, neither is any"),
+				 UCataclysmSkillBar::CanAfford(NoSets, Mana, 10.0f));
+	}
 
 	// AND THE COLOUR FOLLOWS IT. Three states, three different colours: an empty
 	// slot, a slot that cannot be paid for, and one that can.
@@ -409,6 +443,119 @@ bool FCataclysmSkillBarAffordTest::RunTest(const FString& Parameters)
 			 UCataclysmSkillBar::TintFor(Broke).A > 0.0f);
 	TestTrue(TEXT("a ready box is still visible"),
 			 UCataclysmSkillBar::TintFor(Ready).A > 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarWaterToBloodTest,
+	"Cataclysm.SkillBar.ASkillIsPayableFromHealthWhenTheManaPoolBecameHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The bar shows a skill as payable when the cast would be paid from health.
+ * Issue #1910.
+ *
+ * WHAT WENT WRONG. The bar compared raw mana with each skill's cost. Water to
+ * Blood sets the mana pool to zero and pays every cost from health, so a
+ * Masochist holding it saw every skill with a cost drawn as unaffordable while
+ * each one cast.
+ *
+ * THROUGH `Read`, THE FUNCTION THE HEADS-UP DISPLAY CALLS, rather than
+ * `CanAfford` alone, so this fails if the bar stops asking the rule even while
+ * the rule itself is right.
+ *
+ * THE FLAG IS A STAT INPUT, for the reason `FCataclysmSkillWaterToBloodCostTest`
+ * gives: the option is asked through `StatForSkill`, so writing the attribute
+ * would measure nothing.
+ */
+bool FCataclysmSkillBarWaterToBloodTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmSkillBarTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FBarCharacter Who(World);
+	const UCataclysmStrikeSkill* Strike = Grant<UCataclysmStrikeSkill>(
+		Who, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Slot.Heavy"));
+	if (!TestNotNull(TEXT("a heavy skill was granted"), Strike))
+	{
+		return false;
+	}
+	const float Cost = Strike->GetManaCost();
+	if (!TestTrue(FString::Printf(TEXT("the heavy skill costs something (%.1f)"),
+								  Cost),
+				  Cost > 0.0f))
+	{
+		return false;
+	}
+
+	// NO MANA AT ALL, which is how the option leaves a character, and far more
+	// health than the cost.
+	Who.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxManaAttribute(), 0.0f);
+	Who.AbilitySystem->SetNumericAttributeBase(Vital::GetManaAttribute(), 0.0f);
+	Who.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+											  100'000.0f);
+	Who.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+											  100'000.0f);
+
+	// THE CONTROL FIRST. Without the option a character with no mana cannot pay,
+	// so what follows is evidence of the option and not of a bar that marks
+	// everything payable.
+	{
+		const TArray<FCataclysmSkillBarSlot> Bar = UCataclysmSkillBar::Read(Who.Actor);
+		const FCataclysmSkillBarSlot* Box = BoxFor(Bar, ECataclysmAbilitySlot::Heavy);
+		if (!TestNotNull(TEXT("the bar drew a box for the heavy skill"), Box))
+		{
+			return false;
+		}
+		TestFalse(TEXT("without the option, no mana cannot pay"), Box->bAffordable);
+	}
+
+	FCataclysmStatModifier Traded;
+	Traded.Bucket = ECataclysmStatBucket::Flat;
+	Traded.Source = ECataclysmModifierSource::PassiveKeystone;
+	Traded.Value = 1.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(Traded);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(UCataclysmSkillTemplate::ManaPoolBecomesHealthStat), Inputs);
+	Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// THE HEADLINE. The same character, holding the option, can pay from health.
+	{
+		const TArray<FCataclysmSkillBarSlot> Bar = UCataclysmSkillBar::Read(Who.Actor);
+		const FCataclysmSkillBarSlot* Box = BoxFor(Bar, ECataclysmAbilitySlot::Heavy);
+		if (!TestNotNull(TEXT("the bar still draws the heavy skill"), Box))
+		{
+			return false;
+		}
+		TestTrue(TEXT("holding the option, it is payable from health"),
+				 Box->bAffordable);
+	}
+
+	// AND HEALTH IS ASKED THE WAY THE CAST ASKS IT: strictly more than the cost,
+	// because a cost that took the last of it would kill.
+	Who.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), Cost);
+	{
+		const TArray<FCataclysmSkillBarSlot> Bar = UCataclysmSkillBar::Read(Who.Actor);
+		const FCataclysmSkillBarSlot* Box = BoxFor(Bar, ECataclysmAbilitySlot::Heavy);
+		if (!TestNotNull(TEXT("and draws it again"), Box))
+		{
+			return false;
+		}
+		TestFalse(TEXT("with health exactly equal to the cost it is not payable"),
+				  Box->bAffordable);
+	}
 
 	return true;
 }

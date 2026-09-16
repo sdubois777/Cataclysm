@@ -214,13 +214,30 @@ public:
 	static FString CooldownTextFor(float Remaining);
 
 	/**
-	 * Whether a character with this much mana can pay this cost.
+	 * Whether this character can pay this cost from `Pool`, by the rule the cast
+	 * itself uses. Issue #1910.
 	 *
-	 * EQUAL IS ENOUGH. Spending exactly what is left is a use the design allows,
-	 * and a bar that greyed out a skill the character could actually cast would
-	 * be worse than no bar.
+	 * `Pool` IS `UCataclysmGameplayAbility::CostPool`, asked once for the whole
+	 * bar: health for a character whose mana pool became health, mana for
+	 * everyone else. Comparing raw mana drew every skill with a cost as
+	 * unaffordable for a Masochist holding Water to Blood, who has no mana and
+	 * casts from health.
+	 *
+	 * `UCataclysmGameplayAbility::PoolCovers` DECIDES IT, so equal is enough for
+	 * mana and strictly more is needed for health, exactly as `CheckCost` asks.
+	 * A bar that greyed out a skill the character could actually cast would be
+	 * worse than no bar.
+	 *
+	 * A COST OF NOTHING IS ALWAYS PAYABLE, as `CheckCost` returns early for it.
+	 *
+	 * AND SO IS ANY COST WHILE THERE IS NO POOL TO READ. For some frames after a
+	 * pawn appears it has no ability system, or one without the attribute set
+	 * holding the pool, and a pool that cannot be read reads as zero. Greying
+	 * out every skill for those frames would look like the fault issue #653 was
+	 * reported as.
 	 */
-	static bool CanAfford(float ManaCost, float Mana);
+	static bool CanAfford(const UAbilitySystemComponent* AbilitySystem,
+						  const FGameplayAttribute& Pool, float ManaCost);
 
 	/**
 	 * Whether a skill that answered this lock value is refused.
