@@ -125,6 +125,7 @@ namespace
 		{ TEXT("debuffs_carried"),     ECataclysmStatScale::PerDebuffCarried },
 		{ TEXT("minions_held"),        ECataclysmStatScale::PerMinionHeld },
 		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
+		{ TEXT("crippled_enemies_in_reach"), ECataclysmStatScale::PerCrippledEnemyInReach },
 	};
 
 	/**
@@ -137,7 +138,7 @@ namespace
 	 * anything nearby carries, and what a row whose radius was never authored
 	 * carries too. Both should grant nothing rather than count everybody.
 	 */
-	int32 EnemiesInReach(const FCataclysmStatConditions& State, float ReachMetres)
+	int32 CountWithin(const TArray<float>& Distances, float ReachMetres)
 	{
 		if (ReachMetres < 0.0f)
 		{
@@ -145,7 +146,7 @@ namespace
 		}
 
 		int32 Counted = 0;
-		for (const float Metres : State.HostileDistancesMetres)
+		for (const float Metres : Distances)
 		{
 			if (Metres <= ReachMetres)
 			{
@@ -153,6 +154,26 @@ namespace
 			}
 		}
 		return Counted;
+	}
+
+	int32 EnemiesInReach(const FCataclysmStatConditions& State, float ReachMetres)
+	{
+		return CountWithin(State.HostileDistancesMetres, ReachMetres);
+	}
+
+	/**
+	 * How many CRIPPLED hostile characters stand within this many metres.
+	 * Issue #1515.
+	 *
+	 * THE SAME LOOP AS `EnemiesInReach`, ON THE OTHER LIST. Both call
+	 * `CountWithin`, so "within this many metres" has one definition however
+	 * many lists there are -- the rule `EnemiesInReach`'s comment states for
+	 * the condition and the scale, carried one step further.
+	 */
+	int32 CrippledEnemiesInReach(const FCataclysmStatConditions& State,
+								 float ReachMetres)
+	{
+		return CountWithin(State.CrippledHostileDistancesMetres, ReachMetres);
 	}
 }
 
@@ -937,6 +958,13 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 	// design's existing rule that multiplicative sources need no cap.
 	case ECataclysmStatScale::PerEnemyInReach:
 		return StackedValue(Modifier, EnemiesInReach(State, Modifier.ReachMetres));
+
+	// AND PER CRIPPLED ENEMY, THE SAME ARITHMETIC ON THE FILTERED LIST. Issue
+	// #1515. A character near nobody crippled gets nothing by the same
+	// multiplication by zero, with no special case.
+	case ECataclysmStatScale::PerCrippledEnemyInReach:
+		return StackedValue(Modifier,
+							CrippledEnemiesInReach(State, Modifier.ReachMetres));
 	}
 
 	// A SCALE THIS BUILD DOES NOT KNOW IS WORTH NOTHING rather than its full

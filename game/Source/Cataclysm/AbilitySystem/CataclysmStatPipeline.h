@@ -1230,6 +1230,27 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerEnemyInReach
 		UMETA(DisplayName = "Per Enemy In Reach"),
+
+	/**
+	 * Per CRIPPLED enemy standing within the row's own `ReachMetres`. Issue
+	 * #1515.
+	 *
+	 * `PerEnemyInReach` ABOVE WITH ONE FILTER. `Ravager_keystone_c_kC` Grinding
+	 * Halt reads "Each Crippled enemy within 4 metres of you grants you 1
+	 * Fervour per second", so the count is the same count restricted to the
+	 * bodies carrying the Cripple debuff.
+	 *
+	 * ITS OWN LIST, NOT A FILTER APPLIED AT COUNTING TIME. The condition state
+	 * carries distances, and a distance cannot be tested for a gameplay tag;
+	 * whether a body is crippled has to be asked while the body is in hand,
+	 * which is when the list is filled. See
+	 * `FCataclysmStatConditions::CrippledHostileDistancesMetres`.
+	 *
+	 * NOT CAPPED, FOR THE REASON `PerEnemyInReach` GIVES AND UNDER THE SAME
+	 * RULING. It cannot exceed that count, which is itself uncapped.
+	 */
+	PerCrippledEnemyInReach
+		UMETA(DisplayName = "Per Crippled Enemy In Reach"),
 };
 
 /**
@@ -1788,6 +1809,25 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	TArray<float> HostileDistancesMetres;
+
+	/**
+	 * How far away each hostile character carrying the Cripple debuff is, within
+	 * the widest reach any crippled-enemy row asks about. Issue #1515.
+	 *
+	 * A SECOND LIST RATHER THAN A FLAG PER ENTRY OF THE ONE ABOVE. That list is
+	 * filled by a walk returning distances only, and nothing about a distance
+	 * says whether its body is crippled. This one is filled by the walk that
+	 * also returns the characters, so each can be asked about its debuffs while
+	 * it is in hand.
+	 *
+	 * FILLED ONLY WHEN A ROW ACTUALLY ASKS, exactly as the list above is, so a
+	 * lookup whose rows carry no crippled-enemy scale pays nothing for it.
+	 *
+	 * EMPTY AND "NOBODY CRIPPLED IS NEAR" ARE THE SAME ANSWER, and that is safe
+	 * for the reason the list above gives: every row reading it grants nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	TArray<float> CrippledHostileDistancesMetres;
 
 	/**
 	 * The debuffs the character being HIT is carrying, as the explicit tags
