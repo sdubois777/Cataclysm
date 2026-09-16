@@ -157,9 +157,9 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnForTheFloor(
 	// AND ITS DAMAGE TYPE, for the same reason: the first drawing reads it.
 	Zone->DamageType = InDamageType;
 
-	// AND NO SetLifeSpan AT ALL, WHICH IS THE WHOLE OF "LASTS THE FLOOR".
-	// UCataclysmFloorContents::ClearTheFloor destroys every zone in the world
-	// when the player leaves a floor, so that is what ends this one.
+	// AND NO SetLifeSpan AT ALL, WHICH IS THE WHOLE OF "LASTS THE FLOOR". The
+	// floor changing is what ends this one; the declaration says which of two
+	// functions destroys it.
 
 	Zone->FinishSpawning(Where);
 

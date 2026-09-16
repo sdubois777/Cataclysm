@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — A Horde dungeon's next wave keeps no zone the floor's rules placed: a floor change destroys every zone the floor's hazard source owns
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the floor
+rules and the per-floor reset), `game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h` (the
+one actor a floor's rules act through; comments only),
+`game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (patches of ground; comments
+only), `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests
+for these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks
+that hold each rule to its design row). Issue
+[#1925](https://github.com/sdubois777/Cataclysm/issues/1925). **Applied.**
+
+### What was wrong
+
+`ACataclysmDungeonGameMode::GoToFloor` removes the last floor's contents with
+`UCataclysmFloorContents::ClearTheFloor` only when the next floor is a new arena, and every floor
+after the first in a Horde dungeon reuses its arena. `ApplyFloorRulesToPlayer`, which runs at the
+end of every floor change, then emptied each rule's list of zones without destroying them. So on a
+Horde dungeon's next wave, every zone the last floor's rules had placed stayed in the world with no
+rule acting for it. What each kind of zone did then, read from the code and not measured:
+
+| Rule | Its zones | What a forgotten zone did |
+| :-- | :-- | :-- |
+| Infernal Rain | patches, 10 seconds | Kept burning until it expired. A zone that deals damage sweeps on its own timer, and its owner, the floor's hazard source, survives a same-arena change |
+| Hallowed Groundfall | craters, 15 seconds | The same |
+| Singularity Wells | wells, lasting the floor | Kept hurting any player who stood in one, for the rest of the dungeon. No slow, which comes from the rule |
+| Grasping Tentacles | tentacles, lasting the floor | Stayed visible and did nothing: a grab comes from the rule reading its list |
+| Withered Ground | patches, lasting the floor | The same |
+| Fungal Overgrowth | mushrooms, lasting the floor | The same |
+| Leech Spores | clouds, lasting the floor | The same, and could never be spent |
+| Artillery Strike | a circle, until its shell lands | A circle caught in its warning stayed visible and never landed |
+
+Blood Altar already destroyed its own ring at the stairs; this issue was found while that rule was
+planned.
+
+### The rulings
+
+Judgements, ruled by the coordinating session under the owner's delegation.
+
+1. **Every zone the floor's rules placed is destroyed on a same-arena floor change, at once**, as a
+   new arena's floor change already does: patches and craters still burning, and an Artillery
+   Strike circle whose shell has not landed. That shell then never lands. A circle drawn on the last
+   floor is not a warning about the next one, which is also why the rule forgets its warning at the
+   stairs. Letting timed zones expire instead was not taken: the next floor may not carry the rule
+   at all, and nothing would count those zones against a cap or act for them.
+2. **A zone no floor rule placed is left alone.** A creature's burning ground and a player's skill
+   belong to whatever placed them. A same-arena change already left them, and still does.
+3. **The zones are found by their owner, in one function.** `DungeonGameModeDestroyTheRulesZones`
+   destroys every ground zone owned by the floor's `ACataclysmFloorHazardSource`, and is called at
+   the top of `ApplyFloorRulesToPlayer`, outside its player check, so it runs with or without a pawn.
+   Every rule already places its zones in that source's name, so a rule added later is covered
+   without anyone remembering a list, and Blood Altar's own ring destroy is folded into it. A destroy
+   per rule's list was not taken: every new rule would have to add its list, and something would
+   have to check that it had.
+
+**Ruling 3 rests on every rule placing its zones in the source's name, so a Python check holds
+that**, which the coordinating session asked for:
+`test_every_ground_zone_the_game_mode_places_is_owned_by_the_hazard_source`. Every zone spawn in
+`CataclysmDungeonGameMode.cpp` passes `Source` as its owner, and every function holding one takes
+`Source` from `ACataclysmFloorHazardSource::ForFloor`.
+
+### Twenty comments said otherwise
+
+Twenty comments said `ClearTheFloor` destroys these zones, or the floor's hazard source, when the
+floor ends or changes, which was false on a Horde dungeon's next wave: eight in the per-floor reset,
+nine on the rules' members in the game mode's header, two on `ACataclysmGroundZone::SpawnForTheFloor`,
+and one on the hazard source, which also said the next floor makes a fresh source. All now say what
+happens whatever arena comes next. Three more sentences went with them: Hallowed Groundfall's reset
+said the creatures its empowerment was on were destroyed with the floor; the Fungal Overgrowth
+comment in the reset sat above Judgment's lines rather than its own; and Judgment's comment counted
+the paragraphs down to Wasting Sickness, which moving that comment changed.
+
+### The tests
+
+- **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** (C++, `Cataclysm.DungeonModifierEffects.`).
+  A Horde dungeon carries the eight rules on one floor. 121 beats and one kill by the player place
+  every rule's zones, told apart by damage type, colour and size, with the Artillery Strike circle one
+  beat into its warning. A zone a living creature placed is the control. After `GoToFloor(2)`, which
+  the test asserts is the same arena, no zone the rules placed remains, and the control does.
+- **`test_every_ground_zone_the_game_mode_places_is_owned_by_the_hazard_source`** (Python), as above.
+
+### What the tests do not show
+
+- **A zone placed for the new floor before the reset runs.** It would be destroyed with the last
+  floor's. None is today: `GoToFloor` runs `PopulateFloor` before the reset, and `PopulateFloor`
+  places no ground zone. Read from the code, not tested.
+- **The other two callers of the reset.** `StartPlay` and `LeaveEmpireDungeon` also run it, so both
+  now destroy the rules' zones too. No test places a zone before either.
+- **What a forgotten zone did**, in the table above. Read from the code; no test ran a Horde floor
+  change before this one.
+
+---
+
 ## 2026-09-16 — Three rows that needed no new mechanism: the Ravager's per-hit Fervour, Press the Advantage, and Headlong's second clause
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`

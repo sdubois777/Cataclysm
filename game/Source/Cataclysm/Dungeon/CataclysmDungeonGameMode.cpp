@@ -38,6 +38,7 @@
 #include "Empire/CataclysmDungeonKind.h"
 #include "Empire/CataclysmEmpireRun.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Player/CataclysmGameInstance.h"
 #include "HAL/IConsoleManager.h"
 #include "Save/CataclysmSaveWriter.h"
@@ -701,6 +702,50 @@ namespace
 		const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
 			UCataclysmDungeonModifierTable::LoadDungeonModifierTable(), FName(RowKey));
 		return Row ? FName(*Row->CataclysmType) : NAME_None;
+	}
+
+	/**
+	 * Destroy every ground zone the floor's rules placed, and answer how many.
+	 * Issue #1925.
+	 *
+	 * BY OWNER, WHICH IS WHAT MAKES THIS ONE PLACE. Every rule places its zones in
+	 * the name of the floor's one `ACataclysmFloorHazardSource`, and
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` holds every zone
+	 * spawn in this file to that. So asking for the owner finds every rule's zones,
+	 * a rule added later included, with no list of lists to keep up to date.
+	 *
+	 * A ZONE WITH ANY OTHER OWNER IS LEFT ALONE: a creature's burning ground and a
+	 * player's skill belong to whatever placed them, not to the floor's rules.
+	 *
+	 * NOTHING TO DO WHEN THE WORLD HOLDS NO SOURCE, which is a floor no rule has
+	 * placed anything on, and a new arena after `ClearTheFloor` has destroyed the
+	 * source with the rest of the last floor. `Existing` never makes one.
+	 *
+	 * COLLECTED FIRST AND DESTROYED AFTER, the way `ClearTheFloor` does it, so the
+	 * iteration never walks a world it is changing.
+	 */
+	int32 DungeonGameModeDestroyTheRulesZones(UWorld* World)
+	{
+		const ACataclysmFloorHazardSource* Source =
+			ACataclysmFloorHazardSource::Existing(World);
+		if (!Source)
+		{
+			return 0;
+		}
+
+		TArray<ACataclysmGroundZone*> Doomed;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It) && It->GetOwner() == Source)
+			{
+				Doomed.Add(*It);
+			}
+		}
+		for (ACataclysmGroundZone* Zone : Doomed)
+		{
+			Zone->Destroy();
+		}
+		return Doomed.Num();
 	}
 }
 
@@ -4314,6 +4359,25 @@ void ACataclysmDungeonGameMode::StepFungalOvergrowth(
 void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 {
 	UWorld* World = GetWorld();
+
+	// THE ZONES THE LAST FLOOR'S RULES PLACED ARE DESTROYED FIRST, WITH OR WITHOUT A
+	// PLAYER. Issue #1925. `GoToFloor` clears the world only when the next floor is
+	// a new arena, and a Horde dungeon's waves share one arena, so until this each
+	// rule's zones stayed on the next wave with no rule acting for them. Read from
+	// `ACataclysmGroundZone::Sweep`, not measured: a zone that deals damage kept
+	// sweeping, so a Singularity Well, which never expires, went on hurting any
+	// player who stood in it for the rest of the dungeon.
+	//
+	// EVERY ONE GOES, including patches and craters still burning and an Artillery
+	// Strike circle whose shell has not landed. That shell then never lands: a
+	// circle drawn on the last floor is not a warning about this one. The rules'
+	// lists below are still emptied, because each rule counts its own against its
+	// cap. See `DungeonGameModeDestroyTheRulesZones` for why this goes by owner.
+	const int32 RuleZonesDestroyed = DungeonGameModeDestroyTheRulesZones(World);
+	UE_LOG(LogCataclysm, Verbose,
+		   TEXT("Floor %d: %d ground zones the last floor's rules placed were destroyed."),
+		   FloorNumber, RuleZonesDestroyed);
+
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 
 	// NO PLAYER DURING THE FIRST `GoToFloor` OF `StartPlay`, whose pawn is made
@@ -4349,21 +4413,20 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 
 		// AND INFERNAL RAIN FORGETS BOTH ITS CLOCK AND ITS PATCHES. The clock so
 		// the first patch of a floor does not arrive on its first beat carrying
-		// the last floor's wait; the list because those actors are already gone --
-		// `UCataclysmFloorContents::ClearTheFloor` destroys every patch with the
-		// rest of the floor -- and a stale list would count expired patches
-		// against the cap and stop the rain entirely.
+		// the last floor's wait; the list because those actors are already
+		// destroyed -- see the top of this function -- and a stale list would count
+		// them against the cap and stop the rain entirely.
 		InfernalRainSecondsSinceLastPatch = 0.0f;
 		InfernalRainPatches.Empty();
 
 		// AND SINGULARITY WELLS FORGETS ITS CLOCK, ITS WELLS AND ITS SLOW. Issues
 		// #1605 and #41. The clock so the first well of a floor does not arrive on
-		// its first beat carrying the last floor's wait; the list because
-		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed those
-		// actors and a stale list would count them against the cap and stop the
-		// wells entirely; the slow because the call above has already taken it off
-		// the character, so leaving the figure here would make the next beat
-		// believe it was still applied and never put it back.
+		// its first beat carrying the last floor's wait; the list because those
+		// actors are already destroyed -- see the top of this function -- and a
+		// stale list would count them against the cap and stop the wells entirely;
+		// the slow because the call above has already taken it off the character,
+		// so leaving the figure here would make the next beat believe it was still
+		// applied and never put it back.
 		SingularityWellsSecondsSinceLastWell = 0.0f;
 		SingularityWells.Empty();
 		SingularityWellsSlowApplied = 0.0f;
@@ -4371,46 +4434,41 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND WITHERED GROUND FORGETS ITS PATCHES AND ITS REDUCTION. Issue #41.
 		// TWO LINES AND NOT THREE, because this rule holds no clock: its patches
 		// are placed by deaths rather than by a cadence, so there is no wait to
-		// carry across a floor. The list because
-		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed those
-		// actors; the reduction because the call above has already taken it off
-		// the character, so leaving the figure here would make the next beat
-		// believe it was still applied and never put it back.
+		// carry across a floor. The list because those actors are already
+		// destroyed -- see the top of this function; the reduction because the
+		// call above has already taken it off the character, so leaving the figure
+		// here would make the next beat believe it was still applied and never put
+		// it back.
 		WitheredGroundPatches.Empty();
 		WitheredGroundRecoveryLessApplied = 0.0f;
 
-		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
-		// Issues #1820 and #41. Four lines and no clock, which is the rule above
-		// this one exactly: the lists because
-		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed those
-		// actors; the two figures because the call above has already taken them
-		// off the character, so leaving either here would make the next beat
-		// believe it was still applied and never put it back.
 		// AND JUDGMENT GOES ENTIRELY, BOTH NUMBERS. Issues #1820 and #41. This
-		// is the opposite of Wasting Sickness two paragraphs below, which keeps
+		// is the opposite of Wasting Sickness further below, which keeps
 		// its count because its row calls the debuff "permanent for the duration
 		// of the dungeon". This row says nothing of the kind, and its stacks come
 		// from creatures the player has left behind on the last floor.
 		JudgmentStacks = 0;
 		JudgmentStacksApplied = 0;
 
-		// AND LEECH SPORES FORGETS ITS CLOUDS, which
-		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed. Nothing
-		// else to clear: a cloud's drain is done the moment it is touched.
+		// AND LEECH SPORES FORGETS ITS CLOUDS, which are already destroyed -- see the
+		// top of this function. Nothing else to clear: a cloud's drain is done the
+		// moment it is touched.
 		LeechSporesClouds.Empty();
 
 		// AND BLOOD ALTAR STARTS AGAIN: no deaths, a fresh clock, and its ring
-		// DESTROYED rather than forgotten, because a Horde dungeon's next floor keeps
-		// the last floor's ground zones (issue #1925). The next beat places a new
-		// ring at the new floor's exit.
-		if (ACataclysmGroundZone* Ring = BloodAltarRing.Get())
-		{
-			Ring->Destroy();
-		}
+		// forgotten. The ring is destroyed at the top of this function with every
+		// other zone the floor's rules placed (issue #1925), and the next beat
+		// places a new ring at the new floor's exit.
 		BloodAltarRing = nullptr;
 		BloodAltarDeaths = 0;
 		BloodAltarSecondsSinceLastPulse = 0.0f;
 
+		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
+		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape
+		// exactly: the lists because those actors are already destroyed -- see the
+		// top of this function; the two figures because the call above has already
+		// taken them off the character, so leaving either here would make the next
+		// beat believe it was still applied and never put it back.
 		FungalOvergrowthBoostMushrooms.Empty();
 		FungalOvergrowthSlowMushrooms.Empty();
 		FungalOvergrowthSpeedMoreApplied = 0.0f;
@@ -4427,14 +4485,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		WastingSicknessStacksApplied = 0;
 
 		// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues #1786
-		// and #41. The list because `UCataclysmFloorContents::ClearTheFloor` has
-		// already destroyed those actors and a stale list would count them
-		// against the cap and stop the tentacles entirely; the clock so the first
-		// of a floor does not arrive on its first beat carrying the last floor's
-		// wait; the grab because a player who took the stairs is not still held
-		// by a tentacle they left behind; and the applied figure because the call
-		// above has already taken the reduction off the character, so leaving it
-		// would make the next beat believe it was still applied.
+		// and #41. The list because those actors are already destroyed -- see the
+		// top of this function -- and a stale list would count them against the cap
+		// and stop the tentacles entirely; the clock so the first of a floor does
+		// not arrive on its first beat carrying the last floor's wait; the grab
+		// because a player who took the stairs is not still held by a tentacle they
+		// left behind; and the applied figure because the call above has already
+		// taken the reduction off the character, so leaving it would make the next
+		// beat believe it was still applied.
 		//
 		// THESE FOUR LINES WERE IN `NoteDeathForWastingSickness` UNTIL NOW, AND
 		// THAT WAS SHIPPED. The change that built Grasping Tentacles anchored
@@ -4462,12 +4520,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		EdictOfSilenceLockApplied = 0.0f;
 
 		// AND THE ARTILLERY STRIKE FORGETS THE CIRCLE, THE WARNING AND THE
-		// CLOCK. Issues #1820 and #41. The circle because
-		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed it and
-		// a stale pointer would stop the rule placing another; the warning
-		// because a shell must not land on a floor where nobody saw the circle
-		// that announced it; the clock so the first strike of a floor does not
-		// arrive on its first beat carrying the last floor's wait.
+		// CLOCK. Issues #1820 and #41. The circle because it is already destroyed
+		// -- see the top of this function -- and a stale pointer would stop the
+		// rule placing another; the warning because a shell must not land on a
+		// floor where nobody saw the circle that announced it, which is why a
+		// circle still counting down when the floor changes never lands; the clock
+		// so the first strike of a floor does not arrive on its first beat carrying
+		// the last floor's wait.
 		//
 		// THIS RULE KEEPS NOTHING ACROSS THE STAIRS, unlike the Edict of Silence
 		// directly above. Its row says nothing about the dungeon, only about a
@@ -4478,16 +4537,15 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		ArtilleryStrikeSecondsSinceLast = 0.0f;
 
 		// AND HALLOWED GROUNDFALL FORGETS ITS CRATERS AND ITS CLOCK. Issues
-		// #1820 and #41. The list because
-		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed those
-		// actors and a stale list would have the beat empowering creatures
-		// standing where craters used to be; the clock so the first bombardment
-		// of a floor does not arrive on its first beat carrying the last floor's
-		// wait.
+		// #1820 and #41. The list because those actors are already destroyed -- see
+		// the top of this function -- and a stale list would have the beat
+		// empowering creatures standing where craters used to be; the clock so the
+		// first bombardment of a floor does not arrive on its first beat carrying
+		// the last floor's wait.
 		//
 		// NOTHING ELSE TO FORGET. The empowerment is a status effect on a
-		// creature with its own one-second life, not a figure this rule holds,
-		// and the creatures it was on were destroyed with the floor.
+		// creature with its own one-second life, not a figure this rule holds, and
+		// it ends on its own within that second wherever the creature is.
 		HallowedGroundfallCratersBurning.Empty();
 		HallowedGroundfallSecondsSinceLast = 0.0f;
 

@@ -1861,6 +1861,62 @@ def test_blood_altar_passes_its_rows_type_on_the_pulse():
         "the pulse is dealt untyped.")
 
 
+def test_every_ground_zone_the_game_mode_places_is_owned_by_the_hazard_source():
+    """A same-arena floor change destroys the rules' zones by their owner (#1925).
+
+    `DungeonGameModeDestroyTheRulesZones` in `CataclysmDungeonGameMode.cpp` destroys every
+    ground zone owned by the floor's `ACataclysmFloorHazardSource`, at the top of
+    `ApplyFloorRulesToPlayer`. That finds a rule's zones only if the rule placed them in
+    the source's name. A zone placed with any other owner would stay on a Horde
+    dungeon's next wave with no rule acting for it, and nothing in C++ would say so.
+
+    TWO THINGS, BECAUSE A NAME IS NOT A TYPE: every zone spawn in the file passes a
+    variable named `Source` as its owner, and every function holding such a spawn takes
+    `Source` from `ACataclysmFloorHazardSource::ForFloor`.
+
+    THE CODE, NOT THE COMMENTS. Comment lines are removed first; the file explains in
+    comments how its zones are placed.
+    """
+    path = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+            / "CataclysmDungeonGameMode.cpp")
+    code = "\n".join(
+        line for line in path.read_text(encoding="utf-8").splitlines()
+        if not line.lstrip().startswith(("//", "/*", "*")))
+
+    spawns = list(re.finditer(
+        r"ACataclysmGroundZone::(Spawn|SpawnAlong|SpawnForTheFloor)\(\s*(\w+)\s*,", code))
+    assert spawns, (
+        "CataclysmDungeonGameMode.cpp places no ground zone that this check can find, so it "
+        "would pass having checked nothing. Were the spawn calls renamed?")
+
+    definitions = [(found.start(), found.group(1)) for found in re.finditer(
+        r"^\w[^\n;]*\bACataclysmDungeonGameMode::(\w+)\(", code, flags=re.MULTILINE)]
+    declared = "ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor("
+
+    wrong_owner = []
+    not_the_source = []
+    for spawn in spawns:
+        enclosing = [(at, name) for at, name in definitions if at < spawn.start()]
+        assert enclosing, (
+            f"A zone spawn at character {spawn.start()} of CataclysmDungeonGameMode.cpp is "
+            "outside every ACataclysmDungeonGameMode function, which this check does not "
+            "expect.")
+        at, name = enclosing[-1]
+        if spawn.group(2) != "Source":
+            wrong_owner.append(f"{name} passes {spawn.group(2)}")
+        if declared not in code[at:spawn.start()]:
+            not_the_source.append(name)
+
+    assert not wrong_owner, (
+        "A dungeon rule places a ground zone with an owner other than the floor's hazard "
+        "source, so a Horde dungeon's next wave would keep that zone: "
+        + "; ".join(wrong_owner) + f". Read {len(spawns)} zone spawns.")
+    assert not not_the_source, (
+        "A dungeon rule passes a Source that does not come from "
+        "ACataclysmFloorHazardSource::ForFloor in the same function: "
+        + "; ".join(not_the_source) + f". Read {len(spawns)} zone spawns.")
+
+
 def test_brand_of_the_aggressor_row_still_states_the_count_the_rule_uses():
     """The first dungeon rule whose count is READ OFF THE ROW rather than judged.
 
