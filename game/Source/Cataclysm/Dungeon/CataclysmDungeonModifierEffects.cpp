@@ -46,6 +46,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::HolyRepercussionsKey =
 	TEXT("Celestial_Holy_Repercussions");
 const TCHAR* UCataclysmDungeonModifierEffects::LeechSporesKey =
 	TEXT("Pestilence_Leech_Spores");
+const TCHAR* UCataclysmDungeonModifierEffects::BloodAltarKey =
+	TEXT("Demonic_Blood_Altar");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -216,7 +218,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(FungalOvergrowthKey)
 		|| RowKey == FName(IllusoryEnemiesKey)
 		|| RowKey == FName(HolyRepercussionsKey)
-		|| RowKey == FName(LeechSporesKey))
+		|| RowKey == FName(LeechSporesKey)
+		|| RowKey == FName(BloodAltarKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -370,6 +373,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(IllusoryEnemiesKey),
 		FName(HolyRepercussionsKey),
 		FName(LeechSporesKey),
+		FName(BloodAltarKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1140,6 +1144,30 @@ float UCataclysmDungeonModifierEffects::LeechSporesHealEach(float Drained,
 		return 0.0f;
 	}
 	return Drained / static_cast<float>(Creatures);
+}
+
+float UCataclysmDungeonModifierEffects::BloodAltarPulseDamage(float MaximumHealth,
+															  int32 Deaths)
+{
+	if (MaximumHealth <= 0.0f || Deaths <= 0)
+	{
+		return 0.0f;
+	}
+	const int32 Counted = FMath::Min(Deaths, BloodAltarDeathsToCeiling);
+	return MaximumHealth * BloodAltarMaxHealthPercentPerDeath
+		* static_cast<float>(Counted) / 100.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodAltarDeathsAfterOne(int32 Deaths)
+{
+	// CLAMPED BEFORE ADDING, so a count already at the ceiling cannot overflow and a
+	// count below zero, which nothing writes, still starts from nothing.
+	return FMath::Clamp(Deaths, 0, BloodAltarDeathsToCeiling - 1) + 1;
+}
+
+bool UCataclysmDungeonModifierEffects::BloodAltarPulseIsDue(float SecondsSinceLastPulse)
+{
+	return SecondsSinceLastPulse >= BloodAltarSecondsBetweenPulses;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

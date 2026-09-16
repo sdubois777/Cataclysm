@@ -908,6 +908,34 @@ public:
 	static const TCHAR* LeechSporesKey;
 
 	/**
+	 * Blood Altar: "Slaying enemies contributes to the blood altar. The altar sends
+	 * out damaging pulses that grow stronger with the number of enemies slain."
+	 * Issues #1820 and #41.
+	 *
+	 * EVERY CREATURE DEATH ON THE FLOOR FEEDS IT, including deaths the player did
+	 * not cause. "Slaying enemies" names no killer, which is the rule
+	 * `docs/DECISIONS.md` records for Fungal Overgrowth's "Killing enemies" and
+	 * Withered Ground's "on death". That is the OPPOSITE of Leech Spores above,
+	 * whose row says "When you kill an enemy" and so counts only the player's kills.
+	 *
+	 * ONE ALTAR A FLOOR, ON THE EXIT CELL, which is where the stairs are placed.
+	 * Nothing is drawn at the altar's centre, so "at" and "beside" the stairs are
+	 * the same place. Its reach is drawn as a ring lasting the floor, and the ring is
+	 * the only warning a pulse gets.
+	 *
+	 * A PULSE HITS THE PLAYER'S PAWN AND NOTHING ELSE. A pulse that struck creatures
+	 * could kill them, and every death it caused would make the next pulse stronger.
+	 *
+	 * DEMONIC DAMAGE DEALT FROM THE FLOOR, the way Artillery Strike's shell is:
+	 * `ApplyDirectDamage` from the floor hazard source as an area hit. So the
+	 * player's Demonic resistance applies, and a rule listening for hits sees a blow
+	 * the floor dealt rather than a creature's. The source's type is one field every
+	 * rule on the floor shares, so the pulse sets it from this row and puts back
+	 * what was there; issue #1924 records why that is needed.
+	 */
+	static const TCHAR* BloodAltarKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -1903,6 +1931,76 @@ public:
 		"deliberately read that over a record that grouped it with rules acting "
 		"only inside their own patch.");
 
+	/**
+	 * What each death counted adds to one pulse, as a share of the player's MAXIMUM
+	 * health.
+	 *
+	 * A JUDGEMENT, ruled under the owner's delegation of unstated figures. The row
+	 * says the pulses "grow stronger with the number of enemies slain" and gives no
+	 * figure. A share of the maximum follows `ArtilleryStrikeMaxHealthPercent` and
+	 * `BrandNovaMaxHealthPercent`, so a pulse costs a wounded player what it costs a
+	 * healthy one. An altar nobody has fed deals nothing.
+	 */
+	static constexpr float BloodAltarMaxHealthPercentPerDeath = 0.5f;
+
+	/**
+	 * The most one pulse can take, as a share of the player's maximum health.
+	 *
+	 * A JUDGEMENT. The row states no ceiling; without one, enough deaths make every
+	 * pulse a certain kill, and the row does not say the altar kills outright. For
+	 * comparison, `ArtilleryStrikeMaxHealthPercent` is 25.
+	 */
+	static constexpr float BloodAltarMostMaxHealthPercent = 30.0f;
+
+	/**
+	 * The death at which a pulse stops growing.
+	 *
+	 * DERIVED FROM THE TWO FIGURES ABOVE rather than written down, so the count the
+	 * floor panel shows and the damage stop at the same death.
+	 */
+	static constexpr int32 BloodAltarDeathsToCeiling = static_cast<int32>(
+		BloodAltarMostMaxHealthPercent / BloodAltarMaxHealthPercentPerDeath + 0.5f);
+
+	/**
+	 * How far a pulse reaches from the altar.
+	 *
+	 * A JUDGEMENT. The row gives no figure. The stairs stand at the altar's centre,
+	 * so no player leaves the floor without entering its reach; this figure decides
+	 * how far around the stairs a pulse can find them.
+	 */
+	static constexpr float BloodAltarReachCm = 1000.0f;
+
+	/**
+	 * How long after the floor's start, and after each pulse, the next pulse comes.
+	 *
+	 * THE PROJECT OWNER'S FIGURE, not a judgement. Nothing derives it, and nothing
+	 * else here is derived from it.
+	 */
+	static constexpr float BloodAltarSecondsBetweenPulses = 30.0f;
+
+	static_assert(
+		BloodAltarMaxHealthPercentPerDeath > 0.0f
+			&& BloodAltarMaxHealthPercentPerDeath <= BloodAltarMostMaxHealthPercent,
+		"A death that adds nothing leaves the altar harmless however much it is "
+		"fed, and one that adds more than the ceiling reaches the ceiling at the "
+		"first death, which is not 'grow stronger'.");
+
+	static_assert(
+		BloodAltarMostMaxHealthPercent < 100.0f,
+		"A pulse allowed to take all of a player's maximum health is a certain kill "
+		"once the altar is fed, which the row does not describe.");
+
+	static_assert(
+		static_cast<float>(BloodAltarDeathsToCeiling) * BloodAltarMaxHealthPercentPerDeath
+			== BloodAltarMostMaxHealthPercent,
+		"The share per death no longer divides the ceiling evenly, so a pulse would "
+		"reach its ceiling part way through a death and the floor panel's count "
+		"would stop at a different death from the damage.");
+
+	static_assert(
+		BloodAltarReachCm > 0.0f && BloodAltarSecondsBetweenPulses > 0.0f,
+		"An altar that reaches nowhere, or pulses on every beat, is not the row.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -2582,6 +2680,27 @@ public:
 	 * that took nothing -- both are ordinary, not faults.
 	 */
 	static float LeechSporesHealEach(float Drained, int32 Creatures);
+
+	/**
+	 * What one pulse takes from a player with this maximum health, once the altar has
+	 * counted this many deaths.
+	 *
+	 * NOTHING FOR NO DEATHS, and the share stops growing at
+	 * `BloodAltarDeathsToCeiling`. Nothing for a maximum health that is not positive.
+	 */
+	static float BloodAltarPulseDamage(float MaximumHealth, int32 Deaths);
+
+	/**
+	 * The altar's count after one more death.
+	 *
+	 * IT SATURATES AT `BloodAltarDeathsToCeiling`, the shape
+	 * `HolyRepercussionsStacksAfterBurst` has: a death past the ceiling changes
+	 * nothing a pulse does, so the count stops where the damage stops.
+	 */
+	static int32 BloodAltarDeathsAfterOne(int32 Deaths);
+
+	/** Whether the altar pulses this long after the floor's start or its last pulse. */
+	static bool BloodAltarPulseIsDue(float SecondsSinceLastPulse);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

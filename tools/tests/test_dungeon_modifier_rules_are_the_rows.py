@@ -1715,6 +1715,109 @@ def test_leech_spores_drains_rather_than_dealing_a_blow():
             "reduced by armour, so the heal would no longer be paid from a drain.")
 
 
+def test_blood_altar_row_still_names_no_killer():
+    """The row's "Slaying enemies" names nobody, which is why every death feeds the altar.
+
+    `NoteDeathForBloodAltar` asks only that the victim is a creature. The Mortal Decay
+    entry in docs/DECISIONS.md records that a row naming who does the killing counts
+    only the player's kills, which is what Leech Spores does for "When you kill an
+    enemy". If this row came to name the player as the killer, the listener would have
+    to ask too.
+    """
+    words = flat(rows()["Demonic_Blood_Altar"]["Description"]).lower()
+
+    assert "slaying enemies contributes to the blood altar" in words, (
+        "Demonic_Blood_Altar no longer says 'Slaying enemies contributes to the blood "
+        "altar'. NoteDeathForBloodAltar counts every creature death because of those "
+        "words. " + words)
+    named = re.search(r"\byou (kill|slay)\b|\bthe player (kills|slays)\b", words)
+    assert not named, (
+        f"Demonic_Blood_Altar now says {named.group(0) if named else ''!r}, which "
+        "names who does the killing. The Mortal Decay entry in docs/DECISIONS.md "
+        "records that such a row counts only the player's kills, so "
+        "NoteDeathForBloodAltar would have to ask who killed, as "
+        "NoteDeathForLeechSpores does. " + words)
+
+
+def test_blood_altar_row_still_says_the_pulses_grow_with_the_deaths():
+    """The one relation the row states, held to the words it came from.
+
+    "The altar sends out damaging pulses that grow stronger with the number of enemies
+    slain." `BloodAltarPulseDamage` takes a share for each death counted because of
+    those words. Every figure in it is a judgement or the owner's, recorded in
+    docs/DECISIONS.md, and none is read off the row.
+    """
+    words = flat(rows()["Demonic_Blood_Altar"]["Description"]).lower()
+
+    for phrase in ("sends out damaging pulses",
+                   "grow stronger with the number of enemies slain"):
+        assert phrase in words, (
+            f"Demonic_Blood_Altar no longer says {phrase!r}. BloodAltarPulseDamage and "
+            "StepBloodAltar rest on that sentence; see BloodAltarKey in "
+            "CataclysmDungeonModifierEffects.h. " + words)
+
+
+def _game_mode_code_of(opening: str) -> str:
+    """A game mode function's body with its comment lines removed."""
+    source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+              / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    return "\n".join(line for line in body_of(source, opening).splitlines()
+                     if not line.lstrip().startswith("//"))
+
+
+def test_blood_altar_counts_deaths_without_asking_who_killed():
+    """The decision that makes this row the opposite of Leech Spores, held in the code.
+
+    Two death listeners beside this one ask who killed -- Leech Spores and Mortal
+    Decay -- so copying a neighbour could add the question here by accident. This
+    fails if it does.
+
+    THE CODE, NOT THE COMMENTS. Comment lines are removed first, because this
+    function's comments say in words that the killer is not asked about. And the
+    victim is looked for too, so an absence of the killer cannot pass merely because
+    the function stopped reading the notice.
+    """
+    code = _game_mode_code_of("void ACataclysmDungeonGameMode::NoteDeathForBloodAltar(")
+
+    assert "Notice.Victim" in code, (
+        "NoteDeathForBloodAltar no longer reads the notice's victim at all, so this "
+        "check cannot tell a listener that ignores the killer from one that reads "
+        "nothing. " + code)
+    assert "Killer" not in code, (
+        "NoteDeathForBloodAltar now reads the notice's killer. Demonic_Blood_Altar "
+        "says 'Slaying enemies', which names nobody, so every creature death feeds the "
+        "altar; docs/DECISIONS.md records that as the opposite of Leech Spores.")
+
+
+def test_blood_altar_types_its_pulse_from_its_row_and_puts_the_type_back():
+    """The floor source's type is one field every rule on the floor shares (#1924).
+
+    `StepBloodAltar` sets `ACataclysmFloorHazardSource::DamageType` from its row before
+    the pulse and restores the previous value after it. Without the first the pulse can
+    be untyped, and no resistance meets it. Without the second it retypes whatever
+    another rule on the floor deals next.
+    """
+    code = _game_mode_code_of("void ACataclysmDungeonGameMode::StepBloodAltar(")
+
+    sets = code.find("Source->DamageType = FName(*Row->CataclysmType);")
+    deals = code.find("UCataclysmSkillEffects::ApplyDirectDamage(")
+    restores = code.find("Source->DamageType = TypedBefore;")
+
+    assert sets != -1, (
+        "StepBloodAltar no longer types the floor source from its own row before the "
+        "pulse, so the pulse is typed by whichever rule wrote the field last, or not at "
+        "all. Issue #1924.")
+    assert deals != -1, (
+        "StepBloodAltar no longer deals its pulse through ApplyDirectDamage, which is "
+        "the route docs/DECISIONS.md records for it.")
+    assert restores != -1, (
+        "StepBloodAltar no longer puts the floor source's previous type back after the "
+        "pulse, so it retypes the next blow another rule on the floor deals.")
+    assert sets < deals < restores, (
+        "StepBloodAltar's three steps are out of order: the source must be typed before "
+        "the pulse and restored after it.")
+
+
 def test_brand_of_the_aggressor_row_still_states_the_count_the_rule_uses():
     """The first dungeon rule whose count is READ OFF THE ROW rather than judged.
 

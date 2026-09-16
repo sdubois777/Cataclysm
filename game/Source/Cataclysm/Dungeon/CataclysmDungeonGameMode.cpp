@@ -2200,11 +2200,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// and #41.
 	const bool bLeechSpores = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::LeechSporesKey));
+	const bool bBloodAltar = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::BloodAltarKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
-		&& !bHolyRepercussions && !bLeechSpores)
+		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar)
 	{
 		return;
 	}
@@ -2290,6 +2292,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bLeechSpores)
 	{
 		StepLeechSpores(Player, AbilitySystem);
+	}
+	if (bBloodAltar)
+	{
+		StepBloodAltar(Player, AbilitySystem);
 	}
 
 	// AND MORTAL DECAY, WHICH ASKS FOR NO STAT REFRESH AT ALL. Issues #1786 and
@@ -3060,6 +3066,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForWitheredGround(Notice);
 	NoteDeathForFungalOvergrowth(Notice);
 	NoteDeathForLeechSpores(Notice);
+	NoteDeathForBloodAltar(Notice);
 	NoteDeathForMortalDecay(Notice);
 	NoteDeathForWastingSickness(Notice);
 	NoteDeathForSporeClouds(Notice);
@@ -3274,11 +3281,11 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	// "N of M" FOR BOTH ROWS, WHICH DIFFERS FROM THE PLAIN COUNT ASKED FOR ON THE
-	// SECOND ONE, and the reason is that the second one has an M.
+	// "N of M" FOR EVERY ROW, WHICH DIFFERS FROM THE PLAIN COUNT FIRST ASKED FOR ON
+	// WASTING SICKNESS, and the reason is that it has an M.
 	// `WastingSicknessMostStacks` is 5 and that row says its debuff stacks, so a
 	// player reading "2" cannot tell whether that is nearly all of it or a fifth
-	// of it. Both rows read alike and neither number is bare.
+	// of it. Every row reads alike and no number is bare.
 	TMap<FName, FString> Counting;
 
 	const FName Brand(Effects::BrandOfTheAggressorKey);
@@ -3306,6 +3313,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Wasting,
 					 FString::Printf(TEXT("%d of %d"), WastingSicknessStacks,
 									 Effects::WastingSicknessMostStacks));
+	}
+
+	// AND THE BLOOD ALTAR'S DEATHS, WITH M THE DEATH AT WHICH A PULSE STOPS GROWING.
+	// Issues #1820 and #41. The count alone: the panel shows no damage figure for
+	// any row, so this one does not start.
+	const FName Altar(Effects::BloodAltarKey);
+	if (FloorBrief.Modifiers.Contains(Altar))
+	{
+		Counting.Add(Altar, FString::Printf(TEXT("%d of %d"), BloodAltarDeaths,
+											Effects::BloodAltarDeathsToCeiling));
 	}
 
 	return Counting;
@@ -3543,6 +3560,33 @@ void ACataclysmDungeonGameMode::NoteDeathForLeechSpores(
 	}
 
 	LeechSporesClouds.Add(Cloud);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForBloodAltar(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::BloodAltarKey)))
+	{
+		return;
+	}
+
+	// A CREATURE'S DEATH, WHOEVER CAUSED IT. This notice is sent for every death on
+	// the floor, the player's included, so the victim is asked about. Who killed it
+	// is not asked, because "Slaying enemies" names nobody; the declaration says
+	// why that is the opposite of Leech Spores.
+	if (!Cast<ACataclysmEnemyCharacter>(Notice.Victim))
+	{
+		return;
+	}
+
+	const int32 Before = BloodAltarDeaths;
+	BloodAltarDeaths = Effects::BloodAltarDeathsAfterOne(BloodAltarDeaths);
+	if (BloodAltarDeaths != Before)
+	{
+		RefreshFloorModifierPanel();
+	}
 }
 
 void ACataclysmDungeonGameMode::NoteHitForHolyRepercussions(
@@ -4087,6 +4131,82 @@ void ACataclysmDungeonGameMode::StepLeechSpores(
 	}
 }
 
+void ACataclysmDungeonGameMode::StepBloodAltar(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem || !CurrentFloor
+		|| !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+		FName(Effects::BloodAltarKey));
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Row || !Source)
+	{
+		return;
+	}
+
+	// THE ALTAR, PLACED ONCE A FLOOR ON THE EXIT CELL. Drawn as its row's type, so its
+	// colour is its own rather than whatever the shared source was last typed as.
+	ACataclysmGroundZone* Ring = BloodAltarRing.Get();
+	if (!Ring)
+	{
+		const FVector Altar = CurrentFloor->ExitWorld();
+		Ring = ACataclysmGroundZone::SpawnForTheFloor(
+			Source, Altar, Altar, Effects::BloodAltarReachCm, 0.0f,
+			/*bAffectsEveryone=*/false, FName(*Row->CataclysmType));
+		if (!Ring)
+		{
+			return;
+		}
+		BloodAltarRing = Ring;
+	}
+
+	BloodAltarSecondsSinceLastPulse += SecondsBetweenWaveChecks;
+	if (!Effects::BloodAltarPulseIsDue(BloodAltarSecondsSinceLastPulse))
+	{
+		return;
+	}
+	BloodAltarSecondsSinceLastPulse = 0.0f;
+
+	// THE PLAYER, FOUND THE WAY ARTILLERY STRIKE FINDS WHO IS UNDER ITS SHELL, so
+	// "within reach" is measured to a body, as every area rule measures it. Anyone
+	// else the search finds is left alone.
+	const FVector Where = Ring->GetActorLocation();
+	const TArray<AActor*> Inside = UCataclysmTargeting::FindEveryoneInLine(
+		World, Source, Where, Where, Effects::BloodAltarReachCm);
+	if (!Inside.Contains(Player))
+	{
+		return;
+	}
+
+	const float Damage = Effects::BloodAltarPulseDamage(
+		AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute()),
+		BloodAltarDeaths);
+	if (Damage <= 0.0f)
+	{
+		return;
+	}
+
+	// DEMONIC FOR THIS BLOW, AND PUT BACK AFTER IT. The source's type is one field
+	// shared by every rule on the floor, and a floor can carry rules of more than
+	// one type (issue #1924), so the pulse types it from its own row and restores
+	// what was there rather than changing what another rule's blow is typed as.
+	const FName TypedBefore = Source->DamageType;
+	Source->DamageType = FName(*Row->CataclysmType);
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Damage, Delivery);
+	Source->DamageType = TypedBefore;
+}
+
 void ACataclysmDungeonGameMode::StepHolyRepercussions(
 	ACataclysmPlayerCharacter* Player,
 	UCataclysmAbilitySystemComponent* AbilitySystem)
@@ -4251,6 +4371,18 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed. Nothing
 		// else to clear: a cloud's drain is done the moment it is touched.
 		LeechSporesClouds.Empty();
+
+		// AND BLOOD ALTAR STARTS AGAIN: no deaths, a fresh clock, and its ring
+		// DESTROYED rather than forgotten, because a Horde dungeon's next floor keeps
+		// the last floor's ground zones (issue #1925). The next beat places a new
+		// ring at the new floor's exit.
+		if (ACataclysmGroundZone* Ring = BloodAltarRing.Get())
+		{
+			Ring->Destroy();
+		}
+		BloodAltarRing = nullptr;
+		BloodAltarDeaths = 0;
+		BloodAltarSecondsSinceLastPulse = 0.0f;
 
 		FungalOvergrowthBoostMushrooms.Empty();
 		FungalOvergrowthSlowMushrooms.Empty();
