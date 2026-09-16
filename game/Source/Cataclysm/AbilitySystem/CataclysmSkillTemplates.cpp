@@ -154,8 +154,8 @@ namespace
 	 * to mean "no cap at all", so a bonus added whether or not the row states a
 	 * cap would give a skill designed to have none a cap of two -- and would
 	 * cap thralls, fighting Crowned on the same character. Measured 2026-09-16:
-	 * of the five rows in `game/Data/WeaponSkills.csv` that summon or deploy,
-	 * only Summon Imp states a cap.
+	 * of the 403 rows in `game/Data/WeaponSkills.csv`, only Summon Imp's states
+	 * a cap.
 	 */
 	int32 MinionCapFor(const AActor* Self,
 					   const FCataclysmSkillShapeParams& Params,

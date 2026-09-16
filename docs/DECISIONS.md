@@ -2,6 +2,212 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — The ten Ritualist nodes that named an imp or a thrall say minion, and Crowned and The Swarm reach every minion
+
+**Affects:** `docs/Ritualist_Class_Tree_Final.json` (ten sentences) and
+`game/Data/PassiveNodes.csv` (regenerated from it); the workbook's Stat cells
+for `Ritualist_keystone_a_kC#1` and `Ritualist_keystone_b_kA#1` with
+`game/Data/PassiveEffects.csv`; `game/Content/Data/DT_PassiveNodes.uasset` and
+`DT_PassiveEffects.uasset`;
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`; the tests in
+`CataclysmCommandTests.cpp`, `CataclysmPassiveTreeTests.cpp` and
+`CataclysmPlayerClassStatsTests.cpp`; `tools/generate_datatables.py` (one
+comment), `tools/tests/test_passive_effects_match_the_node_text.py` and
+`tools/tests/test_class_passive_trees.py`. The two keystones were built under
+issue [#1718](https://github.com/sdubois777/Cataclysm/issues/1718). Opens
+[#1932](https://github.com/sdubois777/Cataclysm/issues/1932) and
+[#1933](https://github.com/sdubois777/Cataclysm/issues/1933).
+
+### THE OWNER REVERSED THE RULING OF 2026-09-08
+
+The entry "2026-09-08 — The Ritualist tree uses the game's own word for a
+minion, and three nodes that needed one named skill equipped are replaced" kept
+both words on purpose:
+
+> "Imp" and "thrall" are kept in the ten places a node means only one of the
+> two, because the two are genuinely different: an imp is summoned, temporary
+> and capped at three; a thrall is possessed, permanent and reserves 30 Fervour.
+
+On 2026-09-16 the project owner decided the opposite. The coordinating session
+relayed the decision in these words: "every Ritualist tree node whose text
+references imps or thralls must be changed to refer to generic minions
+instead." The ten sentences below were proposed and ruled on the same day, and
+the owner approved all ten without change.
+
+### THE TEN SENTENCES
+
+| node | was | is now |
+| :-- | :-- | :-- |
+| `Ritualist_keystone_spine_001` Room for One More | "+30 maximum Fervour, which is one further thrall at the 30 a thrall reserves." | "+30 maximum Fervour, which is 30 more for your minions to reserve." |
+| `Ritualist_basic_a_b2` Press the Advantage | "+2% increased Spell Damage per point for each thrall you have." | "+2% increased Spell Damage per point for each minion you have." |
+| `Ritualist_keystone_a_kB` Press-Ganged | "A thrall that dies is replaced by an imp at no cost." | "When one of your minions dies, a new minion is summoned where it died at no cost, no more than once every 10 seconds." |
+| `Ritualist_keystone_a_kC` Crowned | "Each thrall reserves 25 Fervour rather than 30." | "Each minion reserves 5 less Fervour, never less than 1." |
+| `Ritualist_basic_b_a2` Volatile | "+3% increased damage of the explosion an imp leaves per point." | "+3% increased damage of the explosion a minion leaves per point." |
+| `Ritualist_keystone_b_kA` The Swarm | "You may have 5 imps active rather than 3." | "Each skill that limits how many of its minions may be active allows 2 more." |
+| `Ritualist_keystone_b_kB` Every One Bursts | "Every imp explodes when it dies, not only one destroyed by a fourth." | "Every minion explodes when it dies, as one destroyed to make room for another does, with the radius and damage of the skill that brought it." |
+| `Ritualist_keystone_b_kC` Rekindled | "When an imp explodes a new one is summoned where it stood, no more than once every 5 seconds." | "When a minion explodes a new minion is summoned where it stood, no more than once every 5 seconds." |
+| `Ritualist_keystone_c_kC` Sacrificial Ward | "Damage that would break your Energy Shield instead destroys one of your imps, no more than once every 3 seconds." | "Damage that would break your Energy Shield instead destroys the minion with the least health remaining, no more than once every 3 seconds." |
+| `Ritualist_capstone_200` The Final Pact, option A Second Self | "One thrall becomes your equal: it has your Maximum Health, your Spell Damage and your Area of Effect, and reserves 60 Fervour rather than 30." | "The minion you have held longest becomes your equal: it has your Maximum Health, your Spell Damage and your Area of Effect, and reserves twice the Fervour it would. When it is gone, the next longest-held takes its place." |
+
+### WHAT EACH NODE MEANS NOW, AND WHICH PARTS ARE JUDGEMENTS
+
+The owner's decision named the word, not the rules and figures a generic minion
+needs. Those were ruled by the coordinating session under the owner's
+delegation of unstated numbers, and the owner then approved the sentences that
+carry them. **Each is marked JUDGEMENT so it can be overruled.**
+
+- **Room for One More** (row built: `class_resource` flat 30). The row is
+  unchanged. Today the 30 is reserved only by thralls, because a thrall's
+  reserve is the only one anything reads.
+- **Press the Advantage** (no row yet). When built, it is `spell_damage`
+  increased 2 on the scale `minions_held`, which counts imps, thralls and
+  deployed machines together, so it widens from thralls to everything the
+  character commands. **FOR THE OWNER TO REVISIT:** at 8 points with ten minions
+  it is +160% increased Spell Damage, and it is now the same effect as
+  `Ritualist_basic_spine_010` Attendant ("+1% increased Spell Damage per point
+  for each minion you have", at most 6 points) at twice the rate.
+- **Press-Ganged** (no row). **JUDGEMENT:** "no more than once every 10
+  seconds". Without a limit, a minion replaced by a minion would repeat for ever
+  and make the army permanent. "Of the same kind" was dropped because a taken
+  enemy cannot be summoned. When built, the new minion is the kind the
+  character's summon skill makes -- Summon Imp's today -- and a character with
+  no summon skill gets nothing.
+- **Crowned** (row built). **JUDGEMENT:** a flat 5 less for every minion, with a
+  floor of 1, and the row's value unchanged: a thrall 30 to 25, an imp 10 to 5,
+  a deployable 5 to 1. The alternative put to the owner was proportional, "a
+  sixth less", which also gives a thrall 25 but an imp 8.3. It was not taken;
+  the section on the genre below says why that matters.
+- **Volatile** (no row). It reaches whatever explodes.
+- **The Swarm** (row built). The row's value is unchanged, and today only
+  Summon Imp's row states a limit.
+- **Every One Bursts** (no row). **JUDGEMENT:** a taken enemy explodes too, at
+  its skill's figures -- Subjugate's 3 metres and 300% of weapon damage. The
+  rule of The Third Pact's option Shared Ruin, "everything within 4 metres
+  takes damage equal to 20% of that minion's maximum health", was considered
+  and not used; that option keeps its own rule.
+- **Rekindled** (no row). Because a taken enemy explodes under Every One Bursts,
+  the new minion is, when built, the kind the character's summon skill makes,
+  as for Press-Ganged.
+- **Sacrificial Ward** (no row). **JUDGEMENT:** the minion destroyed is the one
+  with the least health remaining, so the minion spent is the one closest to
+  dying. The alternative was the oldest.
+- **The Final Pact, A Second Self** (no row). **JUDGEMENT:** the minion held
+  longest, a reserve of twice its own rather than a fixed 60, and the next
+  longest-held taking its place. The alternatives were a minion the player
+  chooses, and a fixed 60. The other two options, Hollow Crown and Chorus,
+  already said "minion" and did not change.
+
+### THE TWO BUILT KEYSTONES IN CODE
+
+The entry "2026-09-14 — Two stats adjust a figure a skill's own row states, and
+the rules that stop them reaching skills their nodes never name" built both, and
+its reasoning uses names this change renames:
+
+    thrall_reserve_reduction     ->  minion_reserve_reduction
+    imp_cap_bonus                ->  minion_cap_bonus
+    ThrallReserveReduction       ->  MinionReserveReduction      (attribute)
+    ImpCapBonus                  ->  MinionCapBonus              (attribute)
+    ThrallReserveReductionStat   ->  MinionReserveReductionStat
+    ImpCapBonusStat              ->  MinionCapBonusStat
+    SmallestThrallReserve        ->  SmallestMinionReserve
+    ThrallReserveFor             ->  FervourReserveFor
+    ImpCapFor                    ->  MinionCapFor
+    ImpMinionType                    removed; the imp condition was its only reader
+
+**That entry's RULE TWO no longer applies to these two stats.** It read the
+subject from the row's own parameters -- `Possess` for a thrall, `Minions=Imp:1`
+for an imp -- because each node then named one kind. Both nodes now name every
+minion, so both conditions are gone.
+
+**Its RULE ONE still holds.** The reduction applies only to a row stating a
+reserve above zero, and the bonus only to a row stating a cap above zero, so
+neither brings a figure into existence. The floor of one on a reserve is now the
+node's own words, "never less than 1", and Crowned alone reaches it: 5 off a
+deployable's 5.
+
+**What each reaches, measured on 2026-09-16 in `game/Data/WeaponSkills.csv`:**
+
+- **Five rows state a reserve:** Subjugate 30, Summon Imp 10, and three War
+  deployables 5. Only a thrall's reserve is read by anything -- Subjugate's
+  check for room for another thrall -- so for imps and deployables the reduction
+  changes nothing until something reads their reserve. Issue #1160 covers only a
+  thrall's reserve not being taken out of the pool; no issue records that the
+  other reserves are read by nothing.
+- **One row of 403 states a cap,** Summon Imp's 3. It is read at three places:
+  a summon destroying its oldest, a deployable refusing to place another, and a
+  summon that spawns over time. So play is unchanged until another row states a
+  cap.
+
+### TESTS
+
+- **New:**
+  `Cataclysm.Command.TheSwarmRaisesTheCapOfASummonThatMakesSomethingOtherThanImps`.
+  A row written in the test summons motes under a cap of one: three casts leave
+  one mote without the bonus and three with it. It fails while the imp
+  condition is in place, which is the change it guards.
+- **Renamed, and re-read against the rows' new stat names:**
+  `Cataclysm.Passives.CrownedLowersARealRitualistsThrallReserve` is now
+  `Cataclysm.Passives.CrownedLowersARealRitualistsMinionReserve`, and
+  `Cataclysm.Passives.TheSwarmRaisesARealRitualistsImpCap` is now
+  `Cataclysm.Passives.TheSwarmRaisesARealRitualistsMinionCap`.
+- **Kept under their names,** because imps and thralls are still what they
+  exercise:
+  `Cataclysm.Command.TheSwarmKeepsMoreImpsAliveAndLeavesAnUncappedSummonAlone`
+  and `Cataclysm.Command.CrownedTakesAThrallThePoolWouldOtherwiseRefuse`.
+- **NOT WRITTEN, AND WHY.** A test of Crowned lowering an imp's or a
+  deployable's reserve was planned and cannot be written. Nothing reads either
+  reserve, so the test would assert only its own arithmetic -- the reason the
+  2026-09-14 entry gave for not testing that an imp's reserve stayed unchanged.
+- **Python.** `VALUE_IS_A_DIFFERENCE` in
+  `tools/tests/test_passive_effects_match_the_node_text.py` loses both entries,
+  because the sentences now state the change ("5 less Fervour", "allows 2 more")
+  rather than the result, and `VALUE_FORMS` gains a form for each.
+  `STRINGS_CONTAINING_THE_WORD` in `tools/tests/test_class_passive_trees.py`
+  goes from 42 to 46: four of the new sentences use "more" or "less", and none
+  as a percentage magnitude.
+
+### WHAT THE GENRE RESEARCH SETTLES AND WHAT IT DOES NOT
+
+**THE RESEARCH WAS DONE AFTER THE OWNER APPROVED THE SENTENCES, not before, and
+that is a fault in how this change was proposed.** Three web searches on
+2026-09-16; each result below is the search tool's summary, and the pages
+themselves were not read.
+
+- **A minion limit raised by a flat number added to the skill's own limit is the
+  shipped shape.** Diablo 4's Necromancer has an aspect that raises the maximum
+  number of Skeletal Warriors by 2 (diablo4.wiki.fextralife.com). Last Epoch's
+  Summon Skeleton allows 3, and skill nodes and passives add to that
+  (forum.lastepoch.com). **Both raise one minion type's limit per effect.** One
+  bonus reaching every skill that states a limit is the owner's decision, and
+  neither game settles it.
+- **A reservation lowered by a flat amount is not the shipped shape.** Path of
+  Exile lowers what a skill reserves proportionally: reservation efficiency
+  divides the amount reserved (pathofexile.fandom.com, whose pages refuse
+  fetches). **So Crowned's flat 5 with a floor of 1 is a judgement against the
+  genre's shape, recommended before the research was done.** Its consequence is
+  that a cheap minion gains most: a deployable's reserve falls by four fifths,
+  an imp's by half, and a thrall's by a sixth. The proportional alternative was
+  put to the owner and is recorded above.
+- **Nothing was researched for the rules of the six nodes without rows** --
+  explosions, replacement, sacrifice. They are sentences until they are built,
+  and building them should start with that research.
+
+### NOT IN THIS CHANGE
+
+- **The skills still name kinds.** Subjugate's description says "Holding a
+  thrall reserves 30 Fervour" and Summon Imp's "Up to 3 imps may be active at
+  once". The owner said both stay as they are.
+- **Two findings, filed rather than fixed.** #1932: the design document says
+  area of effect enlarges the imp's death explosion, while the code
+  deliberately uses the row's own radius. #1933: `CataclysmCommand.h` still
+  gives "no passive tree and no designed generator" as the reason nothing
+  spends Fervour.
+
+---
+
 ## 2026-09-16 — Blood Altar pulses at the player from the exit and is fed by every creature death on the floor; the pulse is Demonic damage the floor types and puts back, and the owner set its cadence
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

@@ -511,11 +511,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesTheImpCapTest,
  * observable behaviour of a cap.
  *
  * AND THE HALF THAT MATTERS MORE: A SUMMON THAT STATES NO CAP MUST STAY
- * UNCAPPED. Four of the five rows in `game/Data/WeaponSkills.csv` that summon or
- * deploy state no cap (measured 2026-09-16), and every read site treats a cap of
- * zero as "no limit". A bonus added whether or not the row states a cap would
- * give all four a cap of two -- and would cap thralls, fighting Crowned on the
- * same character. The second half of this test is that failure, written down.
+ * UNCAPPED. Of the 403 rows in `game/Data/WeaponSkills.csv`, only Summon Imp's
+ * states a cap (measured 2026-09-16), and every read site treats a cap of zero
+ * as "no limit". A bonus added whether or not the row states a cap would give
+ * every other summon and deployable a cap of two -- and would cap thralls,
+ * fighting Crowned on the same character. The second half of this test is that
+ * failure, written down.
  */
 bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 {
