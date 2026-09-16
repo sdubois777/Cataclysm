@@ -157,6 +157,69 @@ genre fact.
 
 ---
 
+## 2026-09-16 — Eight rows that move a pool on a block, a dodge, an empty class resource or a health cost, and the three columns they needed
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: three
+columns and eight rows), `game/Data/EnchantmentEffects.csv` and the DataTable asset
+built from it, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the
+pins and `JUDGED_NUMBERS`), `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`
+(the row-count pin) and `docs/README.md`. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The sheet had never had the columns such a row needs
+
+[#1843](https://github.com/sdubois777/Cataclysm/pull/1843) let a worn enchantment row
+move a pool when an event happens, and the generator reads three columns for it:
+`Action`, `Action Event` and `Fraction Of`. The sheet had eleven columns and none of
+the three, so every row of the generated table carried them empty, and nothing said
+a column was missing ([#1882](https://github.com/sdubois777/Cataclysm/issues/1882)).
+They are added after `Scale Step`, in the order the generator's own tests write the
+header.
+
+### The eight rows
+
+| Sentence | Pool | Event | Of | Low | High |
+| :-- | :-- | :-- | :-- | --: | --: |
+| When your class resource hits zero, instantly restore 20%-40% of your maximum HP | health | resource_empty | maximum | 20 | 40 |
+| Blocking an attack restores 3%-6% of your maximum HP | health | block | maximum | 3 | 6 |
+| Blocking an attack generates 5%-10% of your class resource | class_resource | block | maximum | 5 | 10 |
+| Blocked attacks restore 1%-3% of your maximum mana | mana | block | maximum | 1 | 3 |
+| Blocking attacks reduces your class resource by 5%-10% | class_resource | block | maximum | -5 | -10 |
+| Dodging an attack restores 5%-10% of your maximum HP | health | dodge | maximum | 5 | 10 |
+| Dodging an attack drains 5%-10% of your class resource | class_resource | dodge | maximum | -5 | -10 |
+| Skills that cost HP restore that amount as mana | mana | health_cost | event_amount | 100 | 100 |
+
+169 rows over 141 enchantments, from 161 over 133:
+one row each, because a row moves one pool.
+
+### "maximum" is written out rather than left empty
+
+Both readers accept it: the generator lists it among the bases, and the game
+treats anything but `current` and `event_amount` as the maximum. Writing it puts
+in the sheet the ruling of 2026-09-14 that "of your class resource", said without
+saying which, means the maximum. Three of the eight sentences say it that way.
+
+### The eighth row states no number, so its 100 is a labelled judgement
+
+"Skills that cost HP restore that amount as mana" names no figure. "That amount"
+is all of it, so the row returns 100 of what the cost took, read from the amount
+the health cost event carries. Chosen under the project owner's delegation of
+2026-09-11 for numbers the design leaves unstated, and named in `JUDGED_NUMBERS`,
+which excuses it from the two checks that need a number in the sentence and from
+nothing else. `Value High` is left empty in the sheet, which is how the one earlier
+judged-number row is written; the generator copies `Value Low` into it.
+
+### Two rows are negative
+
+"Blocking attacks reduces your class resource by 5%-10%" and "Dodging an attack
+drains 5%-10% of your class resource" take the resource away, so each is written
+the way the generator's range check asks: the first number as `Value Low` and the
+second as `Value High`, both negative. The second is the first row negative on a
+sentence using "drain", the word added to that check on 2026-09-14 by the entry
+that records it.
+
+---
+
 ## 2026-09-16 — Leech Spores drains the player once per cloud to heal the creatures near them, an earlier grouping of this row is superseded by its own words, and "within ten metres" is measured to a creature's body
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

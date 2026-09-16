@@ -160,3 +160,11 @@ Negative_Taking_a_hit_reduces_your_damage_by_5_10_for_3#2,Negative_Taking_a_hit_
 Positive_When_your_class_resource_hits_zero_gain_20_40#1,Positive_When_your_class_resource_hits_zero_gain_20_40,attack_damage,increased,20.0,40.0,,seconds_after_resource_empty,5.0,,0.0,,,
 Positive_When_your_class_resource_hits_zero_gain_20_40#2,Positive_When_your_class_resource_hits_zero_gain_20_40,spell_damage,increased,20.0,40.0,,seconds_after_resource_empty,5.0,,0.0,,,
 Positive_When_your_class_resource_is_full_gain_10_20_d#1,Positive_When_your_class_resource_is_full_gain_10_20_d,damage_reduction,flat,10.0,20.0,,seconds_after_resource_full,3.0,,0.0,,,
+Positive_When_your_class_resource_hits_zero_instantly_re#1,Positive_When_your_class_resource_hits_zero_instantly_re,,,20.0,40.0,,,0.0,,0.0,health,resource_empty,maximum
+Positive_Blocking_an_attack_restores_3_6_of_your_maximu#1,Positive_Blocking_an_attack_restores_3_6_of_your_maximu,,,3.0,6.0,,,0.0,,0.0,health,block,maximum
+Positive_Blocking_an_attack_generates_5_10_of_your_clas#1,Positive_Blocking_an_attack_generates_5_10_of_your_clas,,,5.0,10.0,,,0.0,,0.0,class_resource,block,maximum
+Positive_Blocked_attacks_restore_1_3_of_your_maximum_ma#1,Positive_Blocked_attacks_restore_1_3_of_your_maximum_ma,,,1.0,3.0,,,0.0,,0.0,mana,block,maximum
+Negative_Blocking_attacks_reduces_your_class_resource_by#1,Negative_Blocking_attacks_reduces_your_class_resource_by,,,-5.0,-10.0,,,0.0,,0.0,class_resource,block,maximum
+Positive_Dodging_an_attack_restores_5_10_of_your_maximu#1,Positive_Dodging_an_attack_restores_5_10_of_your_maximu,,,5.0,10.0,,,0.0,,0.0,health,dodge,maximum
+Negative_Dodging_an_attack_drains_5_10_of_your_class_re#1,Negative_Dodging_an_attack_drains_5_10_of_your_class_re,,,-5.0,-10.0,,,0.0,,0.0,class_resource,dodge,maximum
+Positive_Skills_that_cost_HP_restore_that_amount_as_mana#1,Positive_Skills_that_cost_HP_restore_that_amount_as_mana,,,100.0,100.0,,,0.0,,0.0,mana,health_cost,event_amount

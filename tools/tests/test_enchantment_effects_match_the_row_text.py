@@ -176,6 +176,10 @@ JUDGED_NUMBERS = {
     # lower your HP the higher the retaliation": 1% increased retaliation
     # damage for every 2% of maximum health missing.
     "Positive_Your_retaliation_damage_scales_with_your_current",
+    # "Skills that cost HP restore that amount as mana": the whole of the
+    # health the cost took, returned as mana, so 100 of the amount the event
+    # carried. "that amount" is all of it.
+    "Positive_Skills_that_cost_HP_restore_that_amount_as_mana",
 }
 
 #: How many rows are written, and over how many enchantments. Pinned so that
@@ -290,8 +294,14 @@ JUDGED_NUMBERS = {
 #: stores and orphans every saved item carrying it. Issue #1799 carries that to
 #: the project owner. The sibling reword, Tyrant's Chains, was safe because its
 #: changed word sits past the 48-character cap, and it is written.
-AUTHORED_ROWS = 161
-AUTHORED_ENCHANTMENTS = 133
+#: AND 169 OVER 141 SINCE THE EIGHT ROWS THAT MOVE A POOL WHEN AN EVENT
+#: HAPPENS, from 161 over 133, issue #1815. ONE ROW EACH:
+#: a row moves one pool, where the damage rows above need one for attack and
+#: one for spell. Seven fire on a block, a dodge or a class resource reaching
+#: zero; the eighth returns the health a skill's cost took as mana and states
+#: no number, which is why its enchantment is in JUDGED_NUMBERS.
+AUTHORED_ROWS = 169
+AUTHORED_ENCHANTMENTS = 141
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
