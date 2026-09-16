@@ -300,8 +300,11 @@ JUDGED_NUMBERS = {
 #: one for spell. Seven fire on a block, a dodge or a class resource reaching
 #: zero; the eighth returns the health a skill's cost took as mana and states
 #: no number, which is why its enchantment is in JUDGED_NUMBERS.
-AUTHORED_ROWS = 169
-AUTHORED_ENCHANTMENTS = 141
+#: AND 176 OVER 148 SINCE THE SEVEN ROWS ON A KILL, A CRITICAL STRIKE,
+#: A DEATH NEARBY, A SKILL USE OR A STRIKE'S HIT, from 169 over
+#: 141, issue #1815. ONE ROW EACH, because a row moves one pool.
+AUTHORED_ROWS = 176
+AUTHORED_ENCHANTMENTS = 148
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's

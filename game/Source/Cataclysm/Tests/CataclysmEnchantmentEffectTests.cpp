@@ -7,6 +7,10 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For hearing a death and for which side a creature is on, in the one test that
+// wears an authored row on a real player character and kills with it.
+#include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -16,6 +20,8 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
@@ -26,6 +32,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -2830,6 +2837,158 @@ bool FCataclysmAnAuthoredBlockRowRestoresTheHealthItStates::RunTest(const FStrin
 	ASC.NoteBlocked();
 	TestEqual(TEXT("a block restores 6% of the maximum, which is 30"),
 			  ASC.GetNumericAttribute(Health), 130.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAnAuthoredKillRowRestoresOnlyBelowItsLine,
+	"Cataclysm.Enchantments.AnAuthoredKillRowFromTheBuiltTableRestoresOnlyBelowItsHealthLine",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAnAuthoredKillRowRestoresOnlyBelowItsLine::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// THE FIRST AUTHORED ACTION ROW WITH A CONDITION, READ OUT OF THE ASSET THE
+	// GAME LOADS. Issue #1815. "Killing an enemy while below 30% HP instantly
+	// restores 15%-25% of your maximum HP" is a kill that restores health under
+	// `health_below` 30, and the condition is judged at the moment the kill
+	// fires rather than when something asks for a stat.
+	//
+	// THE BREAK THIS IS FOR: reading the row's condition value from anywhere but
+	// its own column. The low kill is made at 20%, which lies between the row's
+	// 30 and the first number of its range, 15, so a condition read from the
+	// wrong column refuses it. The kill at 80% is there so that a condition
+	// dropped altogether fails too.
+	//
+	// A REAL PLAYER CHARACTER, WEARING THE ROW THROUGH ITS OWN EQUIPMENT, AND REAL
+	// KILLS. The kill event is raised by the pawn when it hears the death
+	// announcement, so a bare ability system would never hear one, and each kill
+	// is the wearer's own blow through `ApplyHit`, which credits the death to it.
+	//
+	// IT FAILS UNTIL `tools/generate_datatable_assets.py` HAS REBUILT THE ASSET
+	// FROM A CSV HOLDING THE ROW.
+	const TCHAR* KillBelowThirty =
+		TEXT("Positive_Killing_an_enemy_while_below_30_HP_instantly_re");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* ASC =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("the announcements"), Events)
+		|| !TestNotNull(TEXT("ability system component"), ASC))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	if (!TestNotNull(TEXT("the character's own equipment"), Equipment))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), KillBelowThirty, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(ASC);
+
+	int32 KillActions = 0;
+	for (const FCataclysmPoolAction& Action : ASC->GetPoolActions())
+	{
+		KillActions += Action.Event == FName(TEXT("kill")) ? 1 : 0;
+	}
+	if (KillActions != 1)
+	{
+		AddError(FString::Printf(
+			TEXT("Wearing %s handed the character %d kill actions rather than "
+				 "one. DT_EnchantmentEffects may be older than the row: run  "
+				 "python tools/run_editor_python.py "
+				 "tools/generate_datatable_assets.py"),
+			KillBelowThirty, KillActions));
+		return false;
+	}
+
+	// WHO KILLED, heard the way the pawn hears it, so that a restore that did not
+	// happen cannot be a kill credited to somebody else.
+	AActor* LastKiller = nullptr;
+	const FDelegateHandle Heard = Events->OnDeath.AddLambda(
+		[&LastKiller](const FCataclysmDeathNotice& Notice)
+		{
+			LastKiller = Notice.Killer;
+		});
+	ON_SCOPE_EXIT { Events->OnDeath.Remove(Heard); };
+
+	// A CREATURE ON THE OTHER SIDE WITH ONE POINT OF HEALTH, killed by one of the
+	// wearer's blows. The body is not read again afterwards: an enemy's own death
+	// takes it out of the level.
+	const auto KillOneAt = [&](const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Victim =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (!Victim)
+		{
+			return false;
+		}
+		Victim->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Victim->SetHealth(1.0f);
+		LastKiller = nullptr;
+		const uint32 DeathsBefore = Events->DeathsSent();
+		UCataclysmSkillEffects::ApplyHit(Character, Victim, /*DamagePercent=*/100.0f);
+		return Events->DeathsSent() == DeathsBefore + 1 && LastKiller == Character;
+	};
+
+	// WRITTEN AFTER THE HELM WENT ON, because the refresh recomputes both from
+	// what is worn: the maximum, and an attack damage of nothing for a character
+	// holding no weapon.
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	ASC->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	// A KILL AT EIGHTY PER CENT.
+	GivePools(*ASC, /*Health=*/400.0f, /*MaxHealth=*/500.0f);
+	if (!TestEqual(TEXT("health starts at four hundred of five hundred"),
+				   ASC->GetNumericAttribute(Health), 400.0f, 0.01f)
+		|| !TestTrue(TEXT("the first kill was announced as the wearer's"),
+					 KillOneAt(FVector(200.0f, 0.0f, 0.0f))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a kill at eighty per cent restores nothing"),
+			  ASC->GetNumericAttribute(Health), 400.0f, 0.01f);
+
+	// AND A KILL AT TWENTY PER CENT, WHICH A QUARTER OF THE MAXIMUM ANSWERS. An
+	// item built in code carries a roll of 1, which takes the far end of 15-25.
+	GivePools(*ASC, /*Health=*/100.0f, /*MaxHealth=*/500.0f);
+	if (!TestEqual(TEXT("health is now one hundred"),
+				   ASC->GetNumericAttribute(Health), 100.0f, 0.01f)
+		|| !TestTrue(TEXT("the second kill was announced as the wearer's"),
+					 KillOneAt(FVector(0.0f, 200.0f, 0.0f))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a kill at twenty per cent restores a quarter of the maximum"),
+			  ASC->GetNumericAttribute(Health), 225.0f, 0.01f);
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS

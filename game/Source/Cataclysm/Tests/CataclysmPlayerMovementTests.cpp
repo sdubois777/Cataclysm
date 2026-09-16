@@ -7,8 +7,14 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+// For the announcements a worn row hears, and the counts of what was sent.
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmFervour.h"
+// For a minion of the wearer's own, and for dealing real blows and burns.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 // For the health a bonus can be made to depend on. Issue #959.
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -1409,6 +1415,263 @@ bool FCataclysmASkillUseFiresAWornActionAndABasicAttackDoesNot::RunTest(
 		Character, TEXT("Cleaving Blow"), NoTags,
 		ECataclysmAbilitySlot::Heavy);
 	TestEqual(TEXT("and any other slot restores a tenth of the maximum"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmANearbyDeathFiresOnlyForAnEnemy,
+	"Cataclysm.Player.ANearbyDeathFiresAWornActionForAnEnemyAndNotForTheWearersOwnMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmANearbyDeathFiresOnlyForAnEnemy::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// "WHEN AN ENEMY DIES NEAR YOU", AND THE WEARER'S OWN MINION IS NOT AN ENEMY.
+	// Ruled 2026-09-16, issue #1815. Until the team was asked, any death but the
+	// wearer's own fired the row, and a minion's death is announced exactly as an
+	// enemy's is.
+	//
+	// THE BREAK THIS IS FOR: letting a death through whatever side the victim was
+	// on. The enemy half is there as well so that a version refusing every death
+	// fails too -- which is what `UCataclysmTargeting::IsHostileTo` would have
+	// done, because it answers false for the dead.
+	//
+	// BOTH DIE BY THE ROUTE PLAY USES. Health written to zero reaches
+	// `UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` and then the
+	// body's own `HandleDeath`, which announces the death.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("the announcements"), Events)
+		|| !TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(Health, 100.0f);
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction OnNearbyDeath;
+	OnNearbyDeath.Event = FName(TEXT("nearby_death"));
+	OnNearbyDeath.Pool = FName(TEXT("health"));
+	OnNearbyDeath.Percent = 10.0f;
+	AbilitySystem->SetPoolActions({OnNearbyDeath});
+
+	// THE WEARER'S OWN MINION, A METRE AND A HALF AWAY.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Character, FVector(1.5f * M, 0.0f, 0.0f), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp);
+	if (!TestNotNull(TEXT("a minion"), Imp)
+		|| !TestNotNull(TEXT("with an ability system"), ImpSystem)
+		|| !TestEqual(TEXT("on the wearer's side"),
+					  static_cast<int32>(UCataclysmTeams::AttitudeBetween(Character, Imp)),
+					  static_cast<int32>(ETeamAttitude::Friendly))
+		|| !TestTrue(TEXT("and near enough to count"),
+					 FVector::Dist(Character->GetActorLocation(), Imp->GetActorLocation())
+						 <= ACataclysmPlayerCharacter::NearbyDeathRadiusCm)
+		|| !TestEqual(TEXT("health starts where it was put"),
+					  AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	const int32 DeathsBefore = static_cast<int32>(Events->DeathsSent());
+	ImpSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	if (!TestTrue(TEXT("the minion died"), UCataclysmSkillEffects::IsDead(Imp))
+		|| !TestEqual(TEXT("and its death was announced"),
+					  static_cast<int32>(Events->DeathsSent()),
+					  DeathsBefore + 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's own minion dying beside it restores nothing"),
+			  AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f);
+
+	// AND AN ENEMY, AS NEAR. NOT READ AGAIN AFTER IT DIES: an enemy's own death
+	// takes the body out of the level, so the pointer is finished with first.
+	ACataclysmEnemyCharacter* Enemy = SpawnHostile(World, FVector(0.0f, 1.5f * M, 0.0f));
+	UAbilitySystemComponent* EnemySystem = UCataclysmTargeting::AbilitySystemOf(Enemy);
+	if (!TestNotNull(TEXT("an enemy"), Enemy)
+		|| !TestNotNull(TEXT("with an ability system"), EnemySystem)
+		|| !TestEqual(TEXT("on the other side"),
+					  static_cast<int32>(UCataclysmTeams::AttitudeBetween(Character, Enemy)),
+					  static_cast<int32>(ETeamAttitude::Hostile))
+		|| !TestTrue(TEXT("and near enough to count"),
+					 FVector::Dist(Character->GetActorLocation(), Enemy->GetActorLocation())
+						 <= ACataclysmPlayerCharacter::NearbyDeathRadiusCm))
+	{
+		return false;
+	}
+
+	EnemySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	if (!TestEqual(TEXT("the enemy's death was announced"),
+				   static_cast<int32>(Events->DeathsSent()),
+				   DeathsBefore + 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and an enemy dying as near restores a tenth of the maximum"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmOnlyALandedBlowIsAHitDealt,
+	"Cataclysm.Player.OnlyABlowThatLandedFiresAWornHitActionAndNotATickOrAnEvadedBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmOnlyALandedBlowIsAHitDealt::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	// "ON HIT" MEANS A BLOW THAT CONNECTED. Ruled 2026-09-16, issue #1815: a
+	// damage over time tick is not a hit, and neither is an evaded blow.
+	//
+	// THE BREAK THIS IS FOR: letting a tick or an evaded blow through. The landed
+	// blow comes first, so that a version refusing every hit fails as well.
+	//
+	// EVERY BLOW IS A REAL ONE, dealt by the wearer through `ApplyHit` and
+	// `ApplyDamageOverTime` and resolved in the creature's own attribute set,
+	// which is where the announcement is raised. Each step asserts that it was
+	// announced, and what it did to the creature, before asserting what the
+	// worn row did, so "nothing fired" cannot mean "nothing happened".
+	//
+	// ONLY THE HIT IS WORN. The same filter refuses a critical strike on a tick
+	// or an evaded blow, and no such blow exists to test it with:
+	// `Cataclysm.Crit.ADamageOverTimeTickNeverCriticallyStrikes` and
+	// `Cataclysm.Crit.AnEvadedHitIsNeverReportedAsACriticalStrike`.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("the announcements"), Events)
+		|| !TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Health =
+		UCataclysmVitalAttributeSet::GetHealthAttribute();
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 500.0f);
+	AbilitySystem->SetNumericAttributeBase(Health, 100.0f);
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	FCataclysmPoolAction OnHitDealt;
+	OnHitDealt.Event = FName(TEXT("hit_dealt"));
+	OnHitDealt.Pool = FName(TEXT("health"));
+	OnHitDealt.Percent = 10.0f;
+	AbilitySystem->SetPoolActions({OnHitDealt});
+
+	ACataclysmEnemyCharacter* Target = SpawnHostile(World, FVector(2.0f * M, 0.0f, 0.0f));
+	UCataclysmAbilitySystemComponent* TargetSystem = Cast<UCataclysmAbilitySystemComponent>(
+		UCataclysmTargeting::AbilitySystemOf(Target));
+	if (!TestNotNull(TEXT("a creature to hit"), TargetSystem)
+		|| !TestEqual(TEXT("health starts where it was put"),
+					  AbilitySystem->GetNumericAttribute(Health), 100.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// A BLOW THAT LANDED.
+	float TargetBefore = TargetSystem->GetNumericAttribute(Health);
+	int32 Sent = static_cast<int32>(Events->HitsSent());
+	UCataclysmSkillEffects::ApplyHit(Character, Target, /*DamagePercent=*/100.0f);
+	if (!TestEqual(TEXT("the blow was announced"),
+				   static_cast<int32>(Events->HitsSent()), Sent + 1)
+		|| !TestTrue(TEXT("and hurt the creature"),
+					 TargetSystem->GetNumericAttribute(Health) < TargetBefore))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blow that landed restores a tenth of the maximum"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+
+	// A TICK OF A BURN THE WEARER SET.
+	const FGameplayTag Burn = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Burn")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("a burn is in the vocabulary"), Burn.IsValid())
+		|| !TestTrue(TEXT("and was set on the creature"),
+					 UCataclysmSkillEffects::ApplyDamageOverTime(
+						 Character, Target, /*DamagePerTick=*/100.0f,
+						 /*DurationSeconds=*/4.0f, Burn,
+						 /*bScalesWithInstigator=*/false)))
+	{
+		return false;
+	}
+	TargetBefore = TargetSystem->GetNumericAttribute(Health);
+	Sent = static_cast<int32>(Events->HitsSent());
+	if (!TestEqual(TEXT("one tick of it ran"),
+				   TargetSystem->ExecutePeriodicEffectsGrantingForTests(Burn), 1)
+		|| !TestEqual(TEXT("and was announced"),
+					  static_cast<int32>(Events->HitsSent()), Sent + 1)
+		|| !TestTrue(TEXT("and hurt the creature"),
+					 TargetSystem->GetNumericAttribute(Health) < TargetBefore))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a tick restores nothing"),
+			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
+
+	// AN EVADED BLOW. Every direct blow is evaded at 100, because the roll it is
+	// compared against is always below it.
+	TargetSystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	TargetBefore = TargetSystem->GetNumericAttribute(Health);
+	Sent = static_cast<int32>(Events->HitsSent());
+	UCataclysmSkillEffects::ApplyHit(Character, Target, /*DamagePercent=*/100.0f);
+	if (!TestEqual(TEXT("the evaded blow was announced"),
+				   static_cast<int32>(Events->HitsSent()), Sent + 1)
+		|| !TestEqual(TEXT("and took nothing from the creature"),
+					  TargetSystem->GetNumericAttribute(Health), TargetBefore, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("an evaded blow restores nothing"),
 			  AbilitySystem->GetNumericAttribute(Health), 150.0f, 0.01f);
 	return true;
 }
