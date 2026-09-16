@@ -68,6 +68,48 @@ def lock_path(environment: dict[str, str] | None = None) -> Path:
     return Path(common).resolve() / "cataclysm-unreal-editor.lock"
 
 
+def history_path(path: Path) -> Path:
+    """The append-only history beside the lock: the same name with `.log`.
+
+    WHY THIS EXISTS. Issue #1654. The lock file holds only its current holder,
+    so once the next session takes over nothing says whether the previous one
+    released or was stolen from. On 2026-09-12 that cost two interruptions to
+    working sessions to answer a question two lines here would have answered.
+    Same directory as the lock, so every worktree sees one copy and it is
+    never committed.
+    """
+    return path.with_suffix(".log")
+
+
+def record_transition(path: Path, what: str) -> None:
+    """Append one line to the history. NEVER A REASON TO FAIL THE LOCK: the
+    lock is the thing that matters and the history is diagnostics, so a
+    history that cannot be written is silently not written."""
+    line = "{} {}\n".format(datetime.now(timezone.utc).isoformat(timespec="seconds"), what)
+    try:
+        with open(history_path(path), "a", encoding="utf-8") as handle:
+            handle.write(line)
+    except OSError:
+        pass
+
+
+def history(path: Path, last: int = 5) -> str:
+    """The last `last` transitions, oldest first, or a line saying there are none.
+
+    A coordinating session reads this instead of asking two working sessions
+    whether a handover was a release or a steal. A `release X` followed by
+    `acquire Y` was clean; a `steal Y from X` was not.
+    """
+    try:
+        lines = history_path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return "No lock history recorded."
+    lines = [line for line in lines if line.strip()]
+    if not lines:
+        return "No lock history recorded."
+    return "\n".join(lines[-last:])
+
+
 def read_holder(path: Path) -> dict[str, str] | None:
     """Who holds the lock, or None if it is free.
 
@@ -117,6 +159,7 @@ def acquire(holder: str, path: Path) -> tuple[bool, str]:
                 current.get("taken") or "an unrecorded time"))
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(record)
+    record_transition(path, "acquire {}".format(holder))
     return True, "{} holds the Unreal editor.".format(holder)
 
 
@@ -136,6 +179,7 @@ def release(holder: str, path: Path) -> tuple[bool, str]:
             "python tools/unreal_lock.py steal {} --from {}".format(
                 holder, current.get("holder"), holder, current.get("holder")))
     path.unlink()
+    record_transition(path, "release {}".format(holder))
     return True, "{} released the Unreal editor.".format(holder)
 
 
@@ -154,6 +198,7 @@ def steal(holder: str, expected: str, path: Path) -> tuple[bool, str]:
             "Refusing to steal: you named {}, but {} holds it. Check again "
             "before taking it.".format(expected, current.get("holder")))
     path.unlink()
+    record_transition(path, "steal {} from {}".format(holder, expected))
     return acquire(holder, path)
 
 
@@ -185,13 +230,17 @@ def main(argv: list[str] | None = None) -> int:
     stealer.add_argument("holder", help="a name for your session")
     stealer.add_argument("--from", dest="expected", required=True,
                          help="who you believe currently holds it")
-    sub.add_parser("status")
+    stat = sub.add_parser("status")
+    stat.add_argument("--history", type=int, default=0, metavar="N",
+                      help="also print the last N transitions (issue #1654)")
 
     args = parser.parse_args(argv)
     path = lock_path()
 
     if args.command == "status":
         print(status(path))
+        if args.history:
+            print(history(path, args.history))
         return 0
     if args.command == "acquire":
         ok, message = acquire(args.holder, path)
