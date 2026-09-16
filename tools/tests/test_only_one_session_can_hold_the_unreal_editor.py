@@ -154,3 +154,55 @@ def test_the_lock_path_is_shared_by_every_worktree(lock, tmp_path):
     from_git = unreal_lock.lock_path({})
     assert from_git.name == "cataclysm-unreal-editor.lock"
     assert from_git.parent.name == ".git"
+
+
+# THE HISTORY BESIDE THE LOCK. Issue #1654. The lock file says who holds the
+# editor now; these say what the history says about how they came to.
+
+def test_a_release_then_an_acquire_reads_as_a_clean_handover(lock):
+    unreal_lock.acquire("session-a", lock)
+    unreal_lock.release("session-a", lock)
+    unreal_lock.acquire("session-b", lock)
+
+    lines = unreal_lock.history(lock, last=10).splitlines()
+    assert [line.split(" ", 1)[1] for line in lines] == [
+        "acquire session-a", "release session-a", "acquire session-b"]
+
+
+def test_a_steal_names_the_displaced_holder(lock):
+    """The one fact the incident needed and the lock file could not give."""
+    unreal_lock.acquire("session-a", lock)
+    unreal_lock.steal("session-b", "session-a", lock)
+
+    assert "steal session-b from session-a" in unreal_lock.history(lock)
+
+
+def test_a_refused_steal_or_release_writes_nothing(lock):
+    """Only transitions are history; a refusal changed nothing."""
+    unreal_lock.acquire("session-a", lock)
+    unreal_lock.steal("session-c", "session-b", lock)
+    unreal_lock.release("session-b", lock)
+
+    assert unreal_lock.history(lock, last=10).count("\n") == 0, unreal_lock.history(lock)
+
+
+def test_an_unwritable_history_does_not_stop_the_lock(lock):
+    """The lock is what matters; the history is diagnostics."""
+    unreal_lock.history_path(lock).mkdir()  # a directory: open(..., "a") fails
+
+    taken, _ = unreal_lock.acquire("session-a", lock)
+
+    assert taken is True
+    assert "session-a" in unreal_lock.status(lock)
+    assert unreal_lock.history(lock) == "No lock history recorded."
+
+
+def test_status_can_print_the_last_transitions(lock, monkeypatch, capsys):
+    monkeypatch.setenv(unreal_lock.LOCK_PATH_VARIABLE, str(lock))
+    unreal_lock.acquire("session-a", lock)
+    unreal_lock.release("session-a", lock)
+
+    assert unreal_lock.main(["status", "--history", "2"]) == 0
+    printed = capsys.readouterr().out
+    assert "The Unreal editor is free." in printed
+    assert "acquire session-a" in printed and "release session-a" in printed
