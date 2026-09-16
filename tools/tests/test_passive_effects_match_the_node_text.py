@@ -524,7 +524,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `fervour_per_enemy_in_reach` is zero for every character until the starting
 #: node grants it flat, so Held Ground's "+2% increased Fervour gained from
 #: enemies near you" has that flat value to multiply.
-AUTHORED_ROWS = 268
+#: AND TO 270 ON 2026-09-16. Two rows on two Ravager nodes, neither of which
+#: held a row before: `Wrung Out` (`Ravager_basic_d_c1`), the tree's first
+#: Fervour spender, and `Grinding Halt` (`Ravager_keystone_c_kC`), which grants
+#: the starting node's rate over crippled enemies only. Issue #1515.
+AUTHORED_ROWS = 270
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -845,7 +849,13 @@ AUTHORED_ROWS = 268
 #: MEASURED PER TREE: the Ravager is 58 of its 74 and the Ritualist 60 of its
 #: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
 #: Berserker none.
-AUTHORED_NODES = 196
+#: AND TO 198 ON 2026-09-16. `Wrung Out` and `Grinding Halt`. Issue #1515.
+#: One row each, so this and the row count move together this time.
+#:
+#: MEASURED PER TREE: the Ravager is 60 of its 74 and the Ritualist 60 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+AUTHORED_NODES = 198
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1620,6 +1630,26 @@ SCALE_WORDS = {
     # and that is asserted instead. Looking for a "1" would find the bonus's
     # own number in "2% more damage" territory and pass for the wrong reason.
     "enemies_in_reach": (("each", "enemy within"), None, None),
+
+    # THE SAME COUNT RESTRICTED TO CRIPPLED ENEMIES. Issue #1515. Grinding Halt
+    # reads "Each Crippled enemy within 4 metres of you grants you 1 Fervour per
+    # second".
+    #
+    # "CRIPPLED ENEMY WITHIN" AND NOT "ENEMY WITHIN", and the difference is the
+    # whole point of this entry. "enemy within" appears in both nodes' sentences,
+    # so a crippled-enemy row sitting on the starting node -- whose sentence says
+    # "every enemy within 4 metres" -- would pass a check for that phrase alone.
+    # Requiring the adjective is what refuses it.
+    #
+    # THE ENTRY ABOVE CANNOT TELL THE TWO APART IN THE OTHER DIRECTION: an
+    # `enemies_in_reach` row on Grinding Halt would find "each" and "enemy
+    # within" and pass. That is a limit of the entry above rather than of this
+    # one, and fixing it would change a check other nodes rely on, so it is
+    # recorded here rather than done here.
+    #
+    # A STEP FORM OF `None`, for the reason the entry above gives: the sentence
+    # says "each" and names no step.
+    "crippled_enemies_in_reach": (("each", "crippled enemy within"), None, None),
 }
 
 
@@ -1922,6 +1952,20 @@ VALUE_IN_WORDS = {
     # is enough and the pair is why the increment is authorable at all.
     ("Ravager_keystone_d_kC", "fervour_decay_grace_metres"):
         ("within 8 metres of you, rather than 4", 4.0),
+
+    # AND GRINDING HALT, WHICH IS NOT STRICTLY A VALUE IN WORDS AND IS HERE
+    # ANYWAY. Issue #1515. Its sentence has the digit -- "grants you 1 Fervour
+    # per second" -- but `VALUE_FORMS` is keyed by STAT, and
+    # `fervour_per_enemy_in_reach` is shared with the starting node, whose form
+    # is "{value:g} per second for every enemy". Grinding Halt says it the other
+    # way round, so that form cannot find its number.
+    #
+    # THE EXEMPTION STILL CHECKS BOTH HALVES: the phrase must appear, and the
+    # row's value must be the 1 it states. A reword dropping the clause fails, and
+    # so does a workbook changed away from 1. What it gives up is only that the
+    # match is done by a per-node phrase rather than by the per-stat form.
+    ("Ravager_keystone_c_kC", "fervour_per_enemy_in_reach"):
+        ("grants you 1 fervour per second", 1.0),
     ("Masochist_keystone_spine_002", "fervour_loss_suppressed"):
         ("no longer removes fervour", 1.0),
 
