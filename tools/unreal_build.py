@@ -81,7 +81,9 @@ be closed: Live Coding holds the binaries and `Build.bat` refuses to start.
 from __future__ import annotations
 
 import argparse
+import base64
 import dataclasses
+import json
 import os
 import pathlib
 import re
@@ -864,6 +866,101 @@ def restore_and_touch(path: pathlib.Path, content: bytes, not_before: float) -> 
         os.utime(path, (stamp, stamp))
 
 
+#: Where `prove_cpp_guard` keeps the original bytes of every file it breaks,
+#: from before the first break until after the last restore. None means "the
+#: repository's own git directory", which is outside the working tree and
+#: survives anything that happens to the checkout; tests set a path of their
+#: own. Issue #1917.
+RECOVERY_FILE: pathlib.Path | None = None
+
+
+def recovery_file() -> pathlib.Path:
+    """The file the originals are saved to. See `RECOVERY_FILE`."""
+    if RECOVERY_FILE is not None:
+        return RECOVERY_FILE
+    git_dir = subprocess.run(
+        ["git", "rev-parse", "--git-dir"], cwd=REPO_ROOT,
+        capture_output=True, text=True, check=True).stdout.strip()
+    return (REPO_ROOT / git_dir).resolve() / "cpp_guard_originals.json"
+
+
+class InterruptedProofFound(RuntimeError):
+    """A saved-originals file exists, so an earlier proof never restored."""
+
+
+def refuse_if_a_proof_was_interrupted() -> None:
+    """Raise, naming the file and the way out, when a proof left one behind.
+
+    WHY A PROOF REFUSES RATHER THAN RESTORING FOR YOU. Issue #1917: the build
+    wrapper was seen to end after 17 seconds with exit 127 and no output while
+    the build it started ran on. A Python process ended from outside never
+    reaches its `finally`, so a proof interrupted that way leaves the break in
+    the worktree and nothing says so. Restoring silently at the start of the
+    next proof would hide that it happened; refusing puts the fact in front of
+    whoever runs the next one, and `restore-proof` is one command away.
+    """
+    path = recovery_file()
+    if not path.exists():
+        return
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+        files = ", ".join(sorted(record.get("files", {})))
+        when = record.get("saved_at", "an unknown time")
+    except (OSError, ValueError):
+        files, when = "files that could not be read", "an unknown time"
+    raise InterruptedProofFound(
+        f"An earlier prove_cpp_guard run saved the originals of {files} at "
+        f"{when} and never restored them, so the break may still be in the "
+        f"worktree: {path} exists. Run `python tools/unreal_build.py "
+        "restore-proof` to write the originals back, then rebuild. Issue "
+        "#1917.")
+
+
+def save_originals_for_recovery(originals: Mapping[pathlib.Path, bytes],
+                                broken_at: float) -> None:
+    """Write every original to the recovery file, before any break is made."""
+    path = recovery_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "broken_at": broken_at,
+        "repo_root": str(REPO_ROOT),
+        "files": {str(file.relative_to(REPO_ROOT)).replace("\\", "/"):
+                  base64.b64encode(content).decode("ascii")
+                  for file, content in originals.items()},
+    }
+    path.write_text(json.dumps(record, indent=1), encoding="utf-8")
+
+
+def forget_the_saved_originals() -> None:
+    """Delete the recovery file; called only once every file is restored."""
+    path = recovery_file()
+    if path.exists():
+        path.unlink()
+
+
+def restore_an_interrupted_proof() -> list[str]:
+    """Write back every original the recovery file holds, and delete it.
+
+    Returns the relative paths restored, oldest break first as saved; an empty
+    list when there is no recovery file. The caller must rebuild afterwards:
+    the binaries may still hold the break, which is issue #139's fault, and
+    `restore_and_touch` pushes each file's time past the recorded break so the
+    next build cannot skip it.
+    """
+    path = recovery_file()
+    if not path.exists():
+        return []
+    record = json.loads(path.read_text(encoding="utf-8"))
+    not_before = float(record.get("broken_at", time.time()))
+    restored: list[str] = []
+    for relative, encoded in record["files"].items():
+        restore_and_touch(REPO_ROOT / relative, base64.b64decode(encoded), not_before)
+        restored.append(relative)
+    path.unlink()
+    return restored
+
+
 def state_after_a_failed_restore(broken_build: "BuildOutcome | None") -> str:
     """What the worktree holds when the rebuild after a restore did not compile.
 
@@ -934,6 +1031,14 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
     Four builds' worth of time. Every file is restored in a `finally`, and the
     restore is followed by a rebuild, so an exception or an interrupt cannot
     leave a binary that disagrees with the source.
+
+    A `finally` CANNOT RUN IN A PROCESS THAT WAS ENDED FROM OUTSIDE, and issue
+    #1917 saw the build wrapper end that way with the build still running. So
+    before the first break is written, the original bytes of every file are
+    saved to `recovery_file()`, outside the working tree; the file is deleted
+    only after every restore has been written; a run that finds one already
+    there refuses to start; and `python tools/unreal_build.py restore-proof`
+    writes the originals back by hand.
     """
     if not edits:
         raise ValueError("prove_cpp_guard needs at least one edit to make.")
@@ -965,6 +1070,12 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
     broken_build: BuildOutcome | None = None
 
     try:
+        refuse_if_a_proof_was_interrupted()
+
+        # EVERY EDIT IS READ AND CHECKED BEFORE ANY IS WRITTEN, so that the
+        # originals can be saved outside the working tree first (issue #1917)
+        # and so that a second edit's error leaves the first file untouched.
+        broken_text: dict[pathlib.Path, str] = {}
         for relative, edit in edits.items():
             path = REPO_ROOT / relative
             if not path.is_file():
@@ -977,6 +1088,10 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
                 raise ValueError(
                     f"The edit to {relative} changed nothing. A break that does "
                     "not break anything makes a working guard look worthless.")
+            broken_text[path] = after
+
+        save_originals_for_recovery(originals, broken_at)
+        for path, after in broken_text.items():
             # No `newline=` argument. `read_text` normalised the file's CRLF line
             # endings to LF, and the default here converts them back on Windows,
             # so the break changes only what the edit changed. Passing
@@ -1002,6 +1117,10 @@ def prove_cpp_guard(edits: Mapping[str, Callable[[str], str]],
         for path, content in originals.items():
             restore_and_touch(path, content, broken_at)
         if originals:
+            # ONLY ONCE EVERY RESTORE ABOVE HAS BEEN WRITTEN. A restore that
+            # raised never reaches this line, and the file stays for
+            # `restore-proof`. Issue #1917.
+            forget_the_saved_originals()
             restored_build = builder(target)
             try:
                 require_compiled(restored_build, list(edits))
@@ -1119,9 +1238,11 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         prog="python tools/unreal_build.py",
         description="Build the Unreal project and run its automation tests.")
     parser.add_argument(
-        "command", choices=("build", "tests"),
+        "command", choices=("build", "tests", "restore-proof"),
         help="build: compile the editor target. "
-             "tests: compile it and then run the automation tests.")
+             "tests: compile it and then run the automation tests. "
+             "restore-proof: write back the originals an interrupted "
+             "prove_cpp_guard run saved, then you rebuild (issue #1917).")
     parser.add_argument(
         "--prefix", default="Cataclysm",
         help="only run tests whose name starts with this (default: Cataclysm)")
@@ -1189,6 +1310,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Build, or build and test, reporting what happened and why."""
     arguments = parse_arguments(
         list(argv if argv is not None else sys.argv[1:]))
+
+    if arguments.command == "restore-proof":
+        restored = restore_an_interrupted_proof()
+        if not restored:
+            print(f"Nothing to restore: {recovery_file()} does not exist, so no "
+                  "prove_cpp_guard run was interrupted between its break and "
+                  "its restore.")
+            return 1
+        print("Restored from the saved originals: " + ", ".join(restored))
+        print("Rebuild before running any test; the binaries may still hold "
+              "the break (python tools/unreal_build.py build).")
+        return 0
 
     if not (arguments.command == "tests" and arguments.no_build):
         outcome = build(arguments.target)
