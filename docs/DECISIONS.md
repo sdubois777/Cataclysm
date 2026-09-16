@@ -73,12 +73,6 @@ is in hand.
 **The counting loop is now one helper used by both counters**, so "within this
 many metres" still has one definition across two lists.
 
-**`WithEnemiesInReach` returned early when no row asked about plain enemies in
-reach.** Left as it was, a character whose only nearby-enemy row is a crippled
-one would have returned with that list empty, and Grinding Halt would have
-granted nothing with nothing reporting why. It now returns early only when
-neither kind of row asks.
-
 ### GRINDING HALT SHARES THE STARTING NODE'S RATE, SO THE TWO ADD
 
 Its row grants `fervour_per_enemy_in_reach` — the same statistic the tree's
@@ -92,7 +86,11 @@ intended:
   from enemies near you", and crippled enemies are enemies near you, so the
   sentence supports this rather than merely permitting it.
 
-### WRUNG OUT: TWO JUDGEMENTS, LABELLED SO THEY CAN BE OVERRULED
+### WRUNG OUT: TWO JUDGEMENTS, CONFIRMED BY THE COORDINATING SESSION AND STILL JUDGEMENTS
+
+Both were confirmed on 2026-09-16, relayed as approval. They stay labelled as
+judgements because the node's sentence does not settle either one; the
+confirmation is a ruling on a reading, not a discovery that the sentence said it.
 
 **All or nothing.** "If you have no Fervour it restores nothing" is loose about a
 character holding 3. The same tree's Bought With Ruin states the case exactly —
@@ -111,13 +109,35 @@ through `UCataclysmRegeneration::TopUp`, which is what the life leech heals with
 so it obeys the same ceiling and the same received-healing reductions rather than
 a second copy of those rules.
 
-### THE DEATH HANDLER WOULD HAVE SILENCED IT
+### TWO DEFECTS FOUND BEFORE ANY MACHINE TIME, AND THE TEST THAT WOULD HAVE FAILED ON EACH
 
-`ACataclysmPlayerCharacter::OnSomethingDied` ran the applier-death clause of
-Nothing Moves You and then **returned early** for any character without that
-node. That return would have stopped Wrung Out for almost every kill in the game.
-It is now a condition, and the two rules run independently: one ends a stun, the
-other restores health, and neither may stop the other.
+Both were early returns written correctly for the code as it stood, and both
+would have made a node in this change do nothing with nothing reporting why.
+
+| defect | what it would have done | the test that would have failed |
+| :-- | :-- | :-- |
+| `ACataclysmPlayerCharacter::OnSomethingDied` ran the applier-death clause of Nothing Moves You and then **returned** for any character without that node | stopped Wrung Out for almost every kill in the game | `WrungOutRestoresHealthWhenARealRavagerKills` |
+| `UCataclysmAbilitySystemComponent::WithEnemiesInReach` **returned** when no row asked about plain enemies in reach | left the crippled list empty for a character whose only nearby-enemy row is Grinding Halt's | `GrindingHaltGrantsFervourForACrippledEnemyNear` and `GrindingHaltCountsEachCrippledEnemy` |
+
+The first is now a condition, and the two rules run independently: one ends a
+stun, the other restores health, and neither may stop the other. The second now
+returns early only when neither kind of row asks.
+
+**The right-hand column is a TRACE, not a guard proof.** Each was read off what
+the test holds: `WrungOutRestoresHealthWhenARealRavagerKills` holds Wrung Out
+alone, so the first return would fire; the two Grinding Halt tests hold the
+keystone alone, so the second would. The two guard proofs in this change target
+other lines. Proving either defect would be a third proof, which the budget of
+three per change allows for one of them.
+
+**One test would NOT have caught the second defect, and that is worth knowing.**
+`ACrippledEnemyCountsForTheStartingNodeAndGrindingHalt` holds the starting node
+as well, and the starting node's row asks about plain enemies in reach, so the
+early return never fires and that test passes with the defect present. Only the
+choice to test Grinding Halt WITHOUT the starting node exposes it. That choice
+was made so the Fervour asserted could only have come from the crippled-enemy
+row; that it also exposes this defect was not the reason, and is recorded so
+nobody later simplifies those tests into holding both nodes.
 
 ### A REGISTRATION SITE FOR A NEW SCALE, FOUND BY THE TEST
 
