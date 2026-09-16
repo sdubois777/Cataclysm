@@ -46,8 +46,11 @@ about an enemy's attack telegraph. None names a state.
 halves were wrong.** 73 was the count of one spelling of one token, and seven
 matches are not "Embrace" at all. The conclusion survived only because of what
 those seven turned out to be, which is the reason to count every match rather
-than the most common one. `EnemiesHit` does exist, but only as a local counter inside
-three specific skill shapes, not as anything a melee hit carries.
+than the most common one.
+
+`EnemiesHit` does exist, as a member on two classes, `UCataclysmMovementSkill`
+and `ACataclysmProjectile`. Game code sets it, and prints it in one log line;
+tests read it. Neither is anything a melee hit carries.
 
 ### GRINDING HALT NEEDED THE BODIES, NOT THE DISTANCES
 
