@@ -209,12 +209,12 @@ public:
 	static const TCHAR* PossessionThresholdBonusStat;
 
 	/**
-	 * The stat holding Fervour points TAKEN OFF what one thrall reserves. Issue
+	 * The stat holding Fervour points TAKEN OFF what one minion reserves. Issue
 	 * #1718.
 	 *
-	 * `Ritualist_keystone_a_kC` Crowned is the only source: "Each thrall
-	 * reserves 25 Fervour rather than 30." Its row is flat **5**, a positive
-	 * number that is subtracted.
+	 * `Ritualist_keystone_a_kC` Crowned is the only source: "Each minion
+	 * reserves 5 less Fervour, never less than 1." Its row is flat **5**, a
+	 * positive number that is subtracted.
 	 *
 	 * POSITIVE, AND THAT IS FORCED RATHER THAN CHOSEN. This stat was first
 	 * written as a bonus of -5 and did nothing:
@@ -223,39 +223,37 @@ public:
 	 * the measurement and the rule it produced -- a stat that lowers a figure
 	 * names the size of the reduction.
 	 *
-	 * A REDUCTION AND NOT THE RESERVE ITSELF. The Subjugate skill's row states
-	 * 30 and four other skills state a reserve of their own, so a stat holding
-	 * the figure would state one of them twice and reach the other four.
+	 * A REDUCTION AND NOT THE RESERVE ITSELF. Five skills state a reserve of
+	 * their own -- Subjugate 30, Summon Imp 10, three deployables 5 -- so a
+	 * stat holding the figure would state one of them twice and be wrong for
+	 * the other four.
 	 */
-	static const TCHAR* ThrallReserveReductionStat;
+	static const TCHAR* MinionReserveReductionStat;
 
 	/**
-	 * The least a thrall may reserve however much is taken off it.
+	 * The least a minion may reserve however much is taken off it: the "never
+	 * less than 1" of Crowned's sentence.
 	 *
 	 * `HasRoomForAnotherThrall` reads a reserve of zero or less as "capped by
 	 * nothing" and returns true for every thrall, so a reduction reaching zero
-	 * would remove the army limit rather than lower it. One keystone cannot
-	 * reach zero from 30; a second source of the same stat could.
+	 * would remove the army limit rather than lower it. Crowned alone takes a
+	 * deployable's 5 to zero.
 	 */
-	static constexpr float SmallestThrallReserve = 1.0f;
+	static constexpr float SmallestMinionReserve = 1.0f;
 
 	/**
-	 * The stat holding how many more minions of its kind a summon may keep
-	 * alive. Issue #1718.
+	 * The stat holding how many more minions a skill that states a cap may keep
+	 * active. Issue #1718.
 	 *
-	 * `Ritualist_keystone_b_kA` The Swarm is the only source: "You may have 5
-	 * imps active rather than 3." Its row is flat 2.
+	 * `Ritualist_keystone_b_kA` The Swarm is the only source: "Each skill that
+	 * limits how many of its minions may be active allows 2 more." Its row is
+	 * flat 2.
 	 *
-	 * IT REACHES ONLY A SKILL THAT SUMMONS IMPS, which the row says by naming
-	 * the minion type. Sixteen of the seventeen summoning and deploying skills
-	 * state no cap at all, and a bonus applied to the figure rather than to the
-	 * subject would give every one of them a limit they were never designed to
-	 * have.
+	 * IT REACHES ONLY A SKILL WHOSE ROW STATES A CAP. A skill stating none has
+	 * no limit at all, and a bonus added to a cap of zero would give it one it
+	 * was never designed to have.
 	 */
-	static const TCHAR* ImpCapBonusStat;
-
-	/** The row of the Minion Types sheet an imp is, as a skill row names it. */
-	static const TCHAR* ImpMinionType;
+	static const TCHAR* MinionCapBonusStat;
 
 	/**
 	 * Take an enemy permanently into this character's command.

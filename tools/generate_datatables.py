@@ -3816,12 +3816,13 @@ SCALES = {
     # Issue #1518. The Ritualist's generator reads it: "1 per second for each
     # minion you have".
     #
-    # IMPS AND THRALLS TOGETHER, WHICH IS WHAT THE TREE MEANS BY "MINION". The
-    # decision of 2026-09-08 settled the word: an imp is summoned, temporary and
-    # capped at three; a thrall is possessed, permanent and reserves 30 Fervour;
-    # and the tree says "minion" wherever a node means both.
-    # `UCataclysmCommand::ThingsCommandedBy` is the list the game counts, and it
-    # is deliberately not `ThrallCountOf`, which counts only the taken ones.
+    # EVERYTHING THE CHARACTER COMMANDS, WHICH IS WHAT THE TREE MEANS BY
+    # "MINION": imps, thralls and deployed machines together. The decision of
+    # 2026-09-08 kept "imp" and "thrall" in the ten places a node meant only
+    # one of the two; the owner reversed it on 2026-09-16, and every Ritualist
+    # node now says "minion". `UCataclysmCommand::ThingsCommandedBy` is the
+    # list the game counts, and it is deliberately not `ThrallCountOf`, which
+    # counts only the taken ones.
     #
     # COUNTED WHOLE THE WAY A DEBUFF AND A STACK ARE, because a minion is a
     # whole thing: there is nothing to divide and nothing to round.

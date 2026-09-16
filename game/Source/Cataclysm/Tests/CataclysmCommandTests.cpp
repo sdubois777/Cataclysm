@@ -501,8 +501,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesTheImpCapTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ritualist_keystone_b_kA` The Swarm: "You may have 5 imps active rather than
- * 3." Issue #1718.
+ * `Ritualist_keystone_b_kA` The Swarm: "Each skill that limits how many of its
+ * minions may be active allows 2 more." Issue #1718. Summon Imp states a cap of
+ * 3, so with the keystone it allows 5.
  *
  * COUNTED BY WHAT IS ALIVE AFTER MORE CASTS THAN THE CAP ALLOWS. At its cap
  * `SummonOne` destroys the oldest rather than refusing, so five casts leave
@@ -510,11 +511,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesTheImpCapTest,
  * observable behaviour of a cap.
  *
  * AND THE HALF THAT MATTERS MORE: A SUMMON THAT STATES NO CAP MUST STAY
- * UNCAPPED. Sixteen of the seventeen summoning and deploying skills state none,
- * and every read site treats a cap of zero as "no limit". A bonus applied to the
- * figure rather than to the subject would give all sixteen a cap of two -- and
- * would cap thralls, fighting Crowned on the same character. The second half of
- * this test is that failure, written down.
+ * UNCAPPED. Four of the five rows in `game/Data/WeaponSkills.csv` that summon or
+ * deploy state no cap (measured 2026-09-16), and every read site treats a cap of
+ * zero as "no limit". A bonus added whether or not the row states a cap would
+ * give all four a cap of two -- and would cap thralls, fighting Crowned on the
+ * same character. The second half of this test is that failure, written down.
  */
 bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 {
@@ -584,7 +585,8 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 
 	// --- WITH THE KEYSTONE: FIVE -------------------------------------------
 	FScopedCaster Swarming(World, FVector(0, 30 * M, 0));
-	Swarming.Set(UCataclysmCombatAttributeSet::GetImpCapBonusAttribute(), 2.0f);
+	Swarming.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
+				 2.0f);
 	TestEqual(TEXT("and five with The Swarm"),
 			  SummonRepeatedly(Swarming, ImpRow), 5);
 
@@ -593,9 +595,105 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 	// THE HALF A BUILD ADDING THE BONUS TO THE FIGURE WOULD FAIL. It would read
 	// two here rather than five.
 	FScopedCaster Uncapped(World, FVector(0, 60 * M, 0));
-	Uncapped.Set(UCataclysmCombatAttributeSet::GetImpCapBonusAttribute(), 2.0f);
+	Uncapped.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
+				 2.0f);
 	TestEqual(TEXT("a summon stating no cap keeps every one it made"),
 			  SummonRepeatedly(Uncapped, UncappedRow), Casts);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesANonImpCapTest,
+	"Cataclysm.Command.TheSwarmRaisesTheCapOfASummonThatMakesSomethingOtherThanImps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kA` The Swarm: "Each skill that limits how many of its
+ * minions may be active allows 2 more." Issue #1718, as the owner reworded the
+ * node on 2026-09-16.
+ *
+ * THE HALF OF THAT DECISION THE TEST ABOVE CANNOT SEE. Until it, the bonus
+ * reached only a row whose `Minions` parameter named an imp. The test above
+ * summons imps, so it passes either way. This one summons motes, a type in
+ * `game/Data/MinionTypes.csv` that is not an imp.
+ *
+ * A ROW WRITTEN HERE, BECAUSE NO SHIPPED ROW WOULD DO. Summon Imp's is the only
+ * row in `game/Data/WeaponSkills.csv` that states a cap. The cap is one, so
+ * three casts leave one mote at the row's own cap and three with the keystone.
+ */
+bool FCataclysmSwarmRaisesANonImpCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const TCHAR* const MoteRow =
+		TEXT("Count=1; MaxActive=1; Duration=20; Radius=3; Minions=Mote:1");
+
+	constexpr int32 Casts = 3;
+
+	// HOW MANY MOTES THE CASTER COMMANDS AFTER THREE CASTS, or -1 when a cast did
+	// not fire or something other than a mote was summoned.
+	const auto SummonRepeatedly = [&](FScopedCaster& Caster) -> int32
+	{
+		UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+			Caster, ECataclysmAbilitySlot::Ultimate, MoteRow,
+			TEXT("Summon Mote"));
+		if (!Skill)
+		{
+			AddError(TEXT("Could not grant the mote summon."));
+			return -1;
+		}
+
+		// THE SLOT'S COOLDOWN IS TURNED OFF, for the reason the test above gives:
+		// without it only the first cast fires, and one mote would read as a cap
+		// of one whatever the bonus did.
+		Skill->CooldownOverride = 0.0f;
+
+		for (int32 Attempt = 0; Attempt < Casts; ++Attempt)
+		{
+			if (!TestTrue(*FString::Printf(
+					TEXT("cast %d of %d fires"), Attempt + 1, Casts),
+					Activate(Caster, Skill)))
+			{
+				return -1;
+			}
+		}
+
+		// WHAT WAS SUMMONED IS ASSERTED RATHER THAN ASSUMED. A count of imps here
+		// would make this a second copy of the test above.
+		const TArray<AActor*> Commanded =
+			UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+		for (const AActor* Thing : Commanded)
+		{
+			const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Thing);
+			if (!TestTrue(TEXT("everything commanded is a mote"),
+						  Minion && Minion->TypeName == TEXT("Mote")))
+			{
+				return -1;
+			}
+		}
+		return Commanded.Num();
+	};
+
+	// --- THE CONTROL: THE ROW'S OWN CAP OF ONE -----------------------------
+	FScopedCaster Plain(World, FVector::ZeroVector);
+
+	// THE STATE THIS TEST BUILT, ASSERTED BEFORE ANY VERDICT, as in the test
+	// above: casts that summoned nothing would agree with any cap.
+	if (!TestEqual(TEXT("three casts leave one mote at the row's own cap"),
+				   SummonRepeatedly(Plain), 1))
+	{
+		return false;
+	}
+
+	// --- WITH THE KEYSTONE: THREE -------------------------------------------
+	FScopedCaster Swarming(World, FVector(0, 30 * M, 0));
+	Swarming.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
+				 2.0f);
+	TestEqual(TEXT("and three with The Swarm, although none of them is an imp"),
+			  SummonRepeatedly(Swarming), 3);
 
 	return true;
 }
@@ -605,8 +703,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrownedLowersTheReserveTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `Ritualist_keystone_a_kC` Crowned: "Each thrall reserves 25 Fervour rather
- * than 30." Issue #1718.
+ * `Ritualist_keystone_a_kC` Crowned: "Each minion reserves 5 less Fervour, never
+ * less than 1." Issue #1718. Subjugate states a reserve of 30 for a thrall, so
+ * with the keystone a thrall reserves 25.
  *
  * A POOL OF EXACTLY 25, WHICH IS THE ONLY SIZE THAT PROVES ANYTHING.
  * `HasRoomForAnotherThrall` asks whether `(thralls + 1) x reserve` fits in the
@@ -619,13 +718,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrownedLowersTheReserveTest,
  * DAMAGE, the same arrangement the Dominion test uses and for the same reason:
  * what is under test is the reserve, so nothing else may decide the outcome.
  *
- * WHAT IS NOT TESTED HERE, AND CANNOT BE. The ruling asked for a test showing an
- * imp's reserve unchanged. **Nothing reads an imp's reserve.** After this change
- * `FervourReserve` is read in exactly one place, the helper this test exercises,
- * and that helper returns the row's own figure untouched unless the row carries
- * `Possess`. The Summon Imp row states a reserve of 10 and no code consumes it,
- * so there is no behaviour to assert. That is recorded in `docs/DECISIONS.md`
- * rather than asserted by a test that would only be testing itself.
+ * WHAT IS NOT TESTED HERE, AND CANNOT BE. **Nothing reads an imp's or a
+ * deployable's reserve.** `FervourReserve` is read in exactly one place, the
+ * helper this test exercises, and only for a skill that takes a thrall. While
+ * the node said "Each thrall", a ruling asked for a test showing an imp's
+ * reserve unchanged; since the owner's decision of 2026-09-16 it says "Each
+ * minion", and the same test would show an imp's reserve lowered. Either way
+ * no code consumes the Summon Imp row's 10, so there is no behaviour to
+ * assert. Both are recorded in `docs/DECISIONS.md` rather than asserted by a
+ * test that would only be testing itself.
  */
 bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 {
@@ -684,7 +785,7 @@ bool FCataclysmCrownedLowersTheReserveTest::RunTest(const FString&)
 	// `UCataclysmCombatAttributeSet::PreAttributeChange`, so -5 was stored as 0,
 	// the reserve stayed at 30 and the keystone did nothing. A negative value
 	// cannot be held here at all.
-	Crowned.Set(UCataclysmCombatAttributeSet::GetThrallReserveReductionAttribute(),
+	Crowned.Set(UCataclysmCombatAttributeSet::GetMinionReserveReductionAttribute(),
 				5.0f);
 
 	UCataclysmSummonSkill* CrownedTry = GrantSkill<UCataclysmSummonSkill>(

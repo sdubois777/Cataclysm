@@ -852,12 +852,13 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// MUST LEAVE A TARGET UNDER TO TAKE IT AS A THRALL. Issue #1718.
 			{UCataclysmCommand::PossessionThresholdBonusStat,
 			 Combat::GetPossessionThresholdBonusAttribute()},
-			// AND WHAT ONE THRALL RESERVES, AND HOW MANY IMPS MAY LIVE. Issue
-			// #1718. Both are added to a figure the skill's own row states.
-			{UCataclysmCommand::ThrallReserveReductionStat,
-			 Combat::GetThrallReserveReductionAttribute()},
-			{UCataclysmCommand::ImpCapBonusStat,
-			 Combat::GetImpCapBonusAttribute()},
+			// AND WHAT ONE MINION RESERVES, AND HOW MANY MINIONS MAY BE ACTIVE.
+			// Issue #1718. Both are applied to a figure the skill's own row
+			// states.
+			{UCataclysmCommand::MinionReserveReductionStat,
+			 Combat::GetMinionReserveReductionAttribute()},
+			{UCataclysmCommand::MinionCapBonusStat,
+			 Combat::GetMinionCapBonusAttribute()},
 			// AND THE THREE ENERGY-SHIELD KEYSTONES, WHICH ARE FLAGS. Issue
 			// #1515. Each is zero or above zero and nothing in between means
 			// anything, because each node states a RULE rather than a magnitude.

@@ -8839,13 +8839,13 @@ bool FCataclysmPassiveDominionOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCrownedOnARealCharacterTest,
-	"Cataclysm.Passives.CrownedLowersARealRitualistsThrallReserve",
+	"Cataclysm.Passives.CrownedLowersARealRitualistsMinionReserve",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * `Ritualist_keystone_a_kC` Crowned on a real character. Issue #1718.
  *
- * "Each thrall reserves 25 Fervour rather than 30."
+ * "Each minion reserves 5 less Fervour, never less than 1."
  *
  * THE ROW HOLDS A POSITIVE 5 AND THE READ SITE SUBTRACTS IT. It is not a bonus
  * of -5: `UCataclysmCombatAttributeSet::PreAttributeChange` floors every
@@ -8887,8 +8887,8 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the reduction to what a thrall reserves"),
-			  Effects[0]->Stat, FString(TEXT("thrall_reserve_reduction")));
+	TestEqual(TEXT("and it is the reduction to what a minion reserves"),
+			  Effects[0]->Stat, FString(TEXT("minion_reserve_reduction")));
 	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
 
@@ -8905,7 +8905,7 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 			  Effects[0]->Condition, FString());
 
 	const FGameplayAttribute Reduction =
-		Combat::GetThrallReserveReductionAttribute();
+		Combat::GetMinionReserveReductionAttribute();
 
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
 	TestEqual(TEXT("an unspent Ritualist takes nothing off the reserve"),
@@ -8917,13 +8917,16 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
 
-	TestEqual(TEXT("taking Crowned takes five Fervour off what a thrall "
+	TestEqual(TEXT("taking Crowned takes five Fervour off what a minion "
 				   "reserves"),
 			  Player.AbilitySystem->GetNumericAttribute(Reduction), 5.0f,
 			  0.001f);
 
-	// AND FIVE OFF SUBJUGATE'S OWN THIRTY IS THE TWENTY-FIVE THE NODE PROMISES.
-	TestEqual(TEXT("which against Subjugate's own 30 is the 25 the node states"),
+	// AND FIVE IS THE "5 LESS" THE NODE STATES, which takes Subjugate's own
+	// thirty to twenty-five. The row holds the difference and never a reserve,
+	// so this reads the attribute against the sentence's own figure.
+	TestEqual(TEXT("which against Subjugate's own 30 leaves a thrall reserving "
+				   "25"),
 			  30.0f - Player.AbilitySystem->GetNumericAttribute(Reduction),
 			  25.0f, 0.001f);
 
@@ -8938,18 +8941,18 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSwarmOnARealCharacterTest,
-	"Cataclysm.Passives.TheSwarmRaisesARealRitualistsImpCap",
+	"Cataclysm.Passives.TheSwarmRaisesARealRitualistsMinionCap",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * `Ritualist_keystone_b_kA` The Swarm on a real character. Issue #1718.
  *
- * "You may have 5 imps active rather than 3."
+ * "Each skill that limits how many of its minions may be active allows 2 more."
  *
- * THE ROW HOLDS 2, THE DIFFERENCE FROM THE THREE SUMMON IMP'S OWN ROW STATES.
- * Sixteen of the seventeen summoning and deploying skills state NO cap, and
- * every read site treats a cap of zero as no limit at all, so a stat holding
- * the cap itself would hand all sixteen a cap of two.
+ * THE ROW HOLDS 2, WHICH IS ADDED TO THE CAP A SKILL'S OWN ROW STATES. Summon
+ * Imp's is 3, so 5. Every read site treats a cap of zero as no limit at all,
+ * so a stat holding a cap itself would hand a skill designed to have none a
+ * cap of two.
  */
 bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 {
@@ -8985,18 +8988,18 @@ bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the bonus to how many imps may be active"),
-			  Effects[0]->Stat, FString(TEXT("imp_cap_bonus")));
+	TestEqual(TEXT("and it is the bonus to how many minions may be active"),
+			  Effects[0]->Stat, FString(TEXT("minion_cap_bonus")));
 	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
 	TestEqual(TEXT("of two"), Effects[0]->ValuePerPoint, 2.0f);
 	TestEqual(TEXT("and carrying no condition"),
 			  Effects[0]->Condition, FString());
 
-	const FGameplayAttribute Bonus = Combat::GetImpCapBonusAttribute();
+	const FGameplayAttribute Bonus = Combat::GetMinionCapBonusAttribute();
 
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("an unspent Ritualist gets no extra imps"),
+	TestEqual(TEXT("an unspent Ritualist gets no extra minions"),
 			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
 
 	FCataclysmPassiveAllocation Allocation;
@@ -9004,11 +9007,12 @@ bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
 
-	TestEqual(TEXT("taking The Swarm is worth two more imps"),
+	TestEqual(TEXT("taking The Swarm is worth two more minions"),
 			  Player.AbilitySystem->GetNumericAttribute(Bonus), 2.0f, 0.001f);
 
-	// AND TWO ON TOP OF SUMMON IMP'S OWN THREE IS THE FIVE THE NODE PROMISES.
-	TestEqual(TEXT("which with Summon Imp's own 3 is the 5 the node states"),
+	// AND TWO IS THE "2 MORE" THE NODE STATES, which takes Summon Imp's own three
+	// to five.
+	TestEqual(TEXT("which with Summon Imp's own 3 allows 5"),
 			  3.0f + Player.AbilitySystem->GetNumericAttribute(Bonus), 5.0f,
 			  0.001f);
 

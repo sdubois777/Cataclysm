@@ -203,7 +203,16 @@ MAGNITUDE_WORDING = re.compile(r"\d+\s*%\s+(?:more|less)\b", re.IGNORECASE)
 #: Set Against It reads "while at 50 Fervour or more", which is ordinary
 #: English. So containing lost two and gained one while magnitudes lost two and
 #: gained none.
-STRINGS_CONTAINING_THE_WORD = 42
+#:
+#: CONTAINING ROSE BY FOUR ON 2026-09-16 AND MAGNITUDES DID NOT MOVE, when the
+#: owner had the ten Ritualist nodes naming imps or thralls reworded to say
+#: minion. Four of the ten new sentences use the word and none as a
+#: magnitude: Room for One More's "30 more for your minions to reserve",
+#: Press-Ganged's "no more than once every 10 seconds", Crowned's "5 less
+#: Fervour, never less than 1" and The Swarm's "allows 2 more". None of the
+#: four old sentences contained it. Rekindled and Sacrificial Ward already
+#: said "no more than once" and still do.
+STRINGS_CONTAINING_THE_WORD = 46
 STRINGS_USING_IT_AS_A_MAGNITUDE = 26
 
 #: A node that uses BOTH magnitude words for one number, as in "increased by 50%
@@ -907,9 +916,11 @@ def test_the_ritualist_tree_grows_the_army_by_growing_the_pool():
 
     `UCataclysmCommand::HasRoomForAnotherThrall` already enforces that against
     the character's MAXIMUM class resource. So maximum Fervour is not one stat
-    among many for this class -- it is the only thing in the game that makes the
-    army bigger, and a Ritualist tree that grants none caps every build at five
-    thralls forever.
+    among many for this class. It is one of two things in the tree that let a
+    Ritualist hold more thralls -- the other is the keystone Crowned, "Each
+    minion reserves 5 less Fervour, never less than 1", which fits six at 25
+    each into 150 -- and a tree that granted no maximum Fervour would cap
+    every build at five thralls, or six with Crowned, forever.
 
     WHY A COUNT RATHER THAN ONE NAMED NODE. Naming one node would pass while the
     other four were reworded away, and a single 2% node would not reach a sixth
@@ -920,9 +931,10 @@ def test_the_ritualist_tree_grows_the_army_by_growing_the_pool():
                 if "maximum Fervour" in (n["data"].get("description") or "")]
     assert len(granting) >= 4, (
         f"only {len(granting)} Ritualist nodes grant maximum Fervour: "
-        f"{granting}. The army cap is the Fervour pool itself, so this is the "
-        f"only thing in the tree that can make the army bigger than five "
-        f"thralls. docs/DECISIONS.md, 2026-09-01.")
+        f"{granting}. The army cap is the Fervour pool itself, so apart from "
+        f"Crowned's smaller reserve this is the only thing in the tree that "
+        f"can make the army bigger than five thralls. docs/DECISIONS.md, "
+        f"2026-09-01.")
 
 
 def test_the_design_document_says_how_every_tree_fills_fervour():
