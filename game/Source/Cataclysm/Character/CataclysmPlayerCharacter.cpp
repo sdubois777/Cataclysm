@@ -868,6 +868,28 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 		return;
 	}
 
+	// ONLY A BLOW THAT CONNECTED: NOT A DAMAGE OVER TIME TICK, AND NOT AN EVADED
+	// BLOW. Ruled 2026-09-16 under the project owner's delegation. Issue #1815.
+	//
+	// A TICK IS NOT A HIT, the rule retaliation already applies in
+	// `UCataclysmVitalAttributeSet` with Path of Exile, Diablo IV and Last Epoch
+	// behind it. Without it a strike's burn would generate resource on every
+	// tick, because an ailment carries the skill that applied it and so every
+	// tick arrives tagged `Type.Strike`.
+	//
+	// AN EVADED BLOW IS NOT A HIT DEALT, and that differs on purpose from the
+	// defender's side, where `NoteHitTaken` counts one. "On hit" means a blow
+	// that landed.
+	//
+	// THE CRITICAL STRIKE HALF CANNOT BE SEEN TODAY. A tick has no critical
+	// strike chance and an evaded blow is never reported critical, so nothing
+	// refused here carries `bCritical`. It is refused all the same, so that the
+	// rule does not rest on either of those staying true.
+	if (Notice.bDamageOverTime || Notice.bEvaded)
+	{
+		return;
+	}
+
 	UCataclysmAbilitySystemComponent* Acting =
 		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
 	if (!Acting)
@@ -924,14 +946,24 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags);
 		}
 
-		// AND A DEATH NEAR THIS CHARACTER IS ANY DEATH BUT ITS OWN. The sentence
-		// says "when an enemy dies near you", which includes one this character
-		// killed while standing over it.
+		// AND A DEATH NEAR THIS CHARACTER IS AN ENEMY'S. The sentence says "when
+		// an enemy dies near you", which includes one this character killed
+		// while standing over it.
+		//
+		// AN ENEMY BY TEAM. Ruled 2026-09-16 under the project owner's
+		// delegation, issue #1815: until then any death but this character's own
+		// counted, and a summoner's own minion dying beside it is announced
+		// exactly as an enemy's is. `UCataclysmTeams::AttitudeBetween` and NOT
+		// `UCataclysmTargeting::IsHostileTo`, which answers false for every dead
+		// character -- and a death is announced after the victim is marked dead,
+		// so that one would refuse every death there is.
 		//
 		// NO TAGS GO ACROSS. The row is about a death happening nearby rather
 		// than about what did it, and handing over the killing skill's tags
 		// would let a scoped row fire on somebody else's blow.
 		if (Notice.Victim && Notice.Victim != this
+			&& UCataclysmTeams::AttitudeBetween(this, Notice.Victim)
+				== ETeamAttitude::Hostile
 			&& FVector::Dist(GetActorLocation(), Notice.Location)
 				<= NearbyDeathRadiusCm)
 		{
