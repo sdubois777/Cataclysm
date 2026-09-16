@@ -604,8 +604,8 @@ bool FCataclysmSwarmRaisesTheImpCapTest::RunTest(const FString&)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesANonImpCapTest,
-	"Cataclysm.Command.TheSwarmRaisesTheCapOfASummonThatMakesSomethingOtherThanImps",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesADeployableCapTest,
+	"Cataclysm.Command.TheSwarmLetsADeployableThatStatesACapPlaceTwoMore",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -615,62 +615,67 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSwarmRaisesANonImpCapTest,
  *
  * THE HALF OF THAT DECISION THE TEST ABOVE CANNOT SEE. Until it, the bonus
  * reached only a row whose `Minions` parameter named an imp. The test above
- * summons imps, so it passes either way. This one summons motes, a type in
- * `game/Data/MinionTypes.csv` that is not an imp.
+ * summons imps, so it passes either way. This one deploys bolt turrets, which
+ * are not imps, through the deployable skill's own cap.
  *
  * A ROW WRITTEN HERE, BECAUSE NO SHIPPED ROW WOULD DO. Summon Imp's is the only
- * row in `game/Data/WeaponSkills.csv` that states a cap. The cap is one, so
- * three casts leave one mote at the row's own cap and three with the keystone.
+ * row in `game/Data/WeaponSkills.csv` that states a cap. This one is Bolt
+ * Turret's own parameters without its bleed, with a cap of one added, and each
+ * activation places one turret. A deployable at its cap places nothing more
+ * rather than replacing
+ * its oldest, so three activations leave one turret at the row's own cap and
+ * three with the keystone.
  */
-bool FCataclysmSwarmRaisesANonImpCapTest::RunTest(const FString&)
+bool FCataclysmSwarmRaisesADeployableCapTest::RunTest(const FString&)
 {
 	using namespace CataclysmCommandTest;
 
 	UWorld* World = MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	const TCHAR* const MoteRow =
-		TEXT("Count=1; MaxActive=1; Duration=20; Radius=3; Minions=Mote:1");
+	const TCHAR* const TurretRow =
+		TEXT("Count=1; MaxActive=1; Duration=5; Minions=BoltTurret:1; "
+			 "FervourReserve=5");
 
-	constexpr int32 Casts = 3;
+	constexpr int32 Activations = 3;
 
-	// HOW MANY MOTES THE CASTER COMMANDS AFTER THREE CASTS, or -1 when a cast did
-	// not fire or something other than a mote was summoned.
-	const auto SummonRepeatedly = [&](FScopedCaster& Caster) -> int32
+	// HOW MANY TURRETS THE CASTER COMMANDS AFTER THREE ACTIVATIONS, or -1 when
+	// an activation did not fire or something other than a turret went down.
+	const auto DeployRepeatedly = [&](FScopedCaster& Caster) -> int32
 	{
-		UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
-			Caster, ECataclysmAbilitySlot::Ultimate, MoteRow,
-			TEXT("Summon Mote"));
+		UCataclysmDeployableSkill* Skill = GrantSkill<UCataclysmDeployableSkill>(
+			Caster, ECataclysmAbilitySlot::Ultimate, TurretRow,
+			TEXT("Bolt Turret"));
 		if (!Skill)
 		{
-			AddError(TEXT("Could not grant the mote summon."));
+			AddError(TEXT("Could not grant Bolt Turret."));
 			return -1;
 		}
 
 		// THE SLOT'S COOLDOWN IS TURNED OFF, for the reason the test above gives:
-		// without it only the first cast fires, and one mote would read as a cap
-		// of one whatever the bonus did.
+		// without it only the first activation fires, and one turret would read
+		// as a cap of one whatever the bonus did.
 		Skill->CooldownOverride = 0.0f;
 
-		for (int32 Attempt = 0; Attempt < Casts; ++Attempt)
+		for (int32 Attempt = 0; Attempt < Activations; ++Attempt)
 		{
 			if (!TestTrue(*FString::Printf(
-					TEXT("cast %d of %d fires"), Attempt + 1, Casts),
+					TEXT("activation %d of %d fires"), Attempt + 1, Activations),
 					Activate(Caster, Skill)))
 			{
 				return -1;
 			}
 		}
 
-		// WHAT WAS SUMMONED IS ASSERTED RATHER THAN ASSUMED. A count of imps here
+		// WHAT WENT DOWN IS ASSERTED RATHER THAN ASSUMED. A count of imps here
 		// would make this a second copy of the test above.
 		const TArray<AActor*> Commanded =
 			UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
 		for (const AActor* Thing : Commanded)
 		{
 			const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Thing);
-			if (!TestTrue(TEXT("everything commanded is a mote"),
-						  Minion && Minion->TypeName == TEXT("Mote")))
+			if (!TestTrue(TEXT("everything commanded is a bolt turret"),
+						  Minion && Minion->TypeName == TEXT("BoltTurret")))
 			{
 				return -1;
 			}
@@ -682,9 +687,10 @@ bool FCataclysmSwarmRaisesANonImpCapTest::RunTest(const FString&)
 	FScopedCaster Plain(World, FVector::ZeroVector);
 
 	// THE STATE THIS TEST BUILT, ASSERTED BEFORE ANY VERDICT, as in the test
-	// above: casts that summoned nothing would agree with any cap.
-	if (!TestEqual(TEXT("three casts leave one mote at the row's own cap"),
-				   SummonRepeatedly(Plain), 1))
+	// above: activations that placed nothing would agree with any cap.
+	if (!TestEqual(TEXT("three activations leave one turret at the row's own "
+						"cap"),
+				   DeployRepeatedly(Plain), 1))
 	{
 		return false;
 	}
@@ -694,7 +700,7 @@ bool FCataclysmSwarmRaisesANonImpCapTest::RunTest(const FString&)
 	Swarming.Set(UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
 				 2.0f);
 	TestEqual(TEXT("and three with The Swarm, although none of them is an imp"),
-			  SummonRepeatedly(Swarming), 3);
+			  DeployRepeatedly(Swarming), 3);
 
 	return true;
 }
