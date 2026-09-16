@@ -1329,9 +1329,11 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// holds this character's finished stat line. Asking before it would read
 	// whatever the previous refresh left behind.
 	//
-	// THE MANA MAXIMUM GOES TO ZERO RATHER THAN BEING REDUCED, because a
-	// modifier cannot reach zero -- the pipeline floors a Less multiplier at -99
-	// -- and "no longer have a mana pool" is not ninety-nine per cent less.
+	// THE MANA MAXIMUM GOES TO ZERO RATHER THAN BEING REDUCED, because a More
+	// multiplier cannot reach zero -- the pipeline floors a Less one at -99 --
+	// and "no longer have a mana pool" is not ninety-nine per cent less. A
+	// removal can reach zero since issue #1791, and is not used here: the
+	// conversion needs the resolved maximum in hand before it is zeroed.
 	if (UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem))
 	{
 		const FGameplayAttribute MaxHealth =
@@ -1358,6 +1360,36 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 				AbilitySystem->SetNumericAttributeBase(
 					UCataclysmVitalAttributeSet::GetManaAttribute(), 0.0f);
 			}
+		}
+	}
+
+	// AND A CHARACTER WHOSE MAXIMUM MANA IS REMOVED HAS NO MANA TO STAND ON.
+	// Issue #1791. "Your maximum mana is reduced to zero" takes the maximum to
+	// nothing through the pipeline, like any removal, in pass two above. The
+	// mana the character already holds is another matter: nothing lowers a
+	// current pool when its maximum falls, and issue #1757 ruled that deliberate
+	// -- a pool already filled is not taken away by a lowered ceiling. So a
+	// character putting this on mid-fight would keep, and could spend, the mana
+	// it had.
+	//
+	// THE ONE EXCEPTION TO THAT RULING, AND KEYED ON THE REMOVAL RATHER THAN ON
+	// THE MAXIMUM READING ZERO, so a gear swap that only lowers the maximum still
+	// leaves the pool as #1757 says. A sentence saying the pool is gone is not a
+	// lowered ceiling, which is the reason Water to Blood empties mana above.
+	//
+	// BEFORE THE EARLY RETURN BELOW, because a character already in play is the
+	// case this exists for; one arriving in the world is filled to a maximum of
+	// nothing anyway. AFTER `SetStatInputs`, for the reason the block above gives.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		const FGameplayAttribute Mana =
+			UCataclysmVitalAttributeSet::GetManaAttribute();
+		if (AbilitySystem->HasAttributeSetForAttribute(Mana)
+			&& Cataclysm->IsStatRemoved(FName(TEXT("max_mana")),
+										FGameplayTagContainer()))
+		{
+			AbilitySystem->SetNumericAttributeBase(Mana, 0.0f);
 		}
 	}
 

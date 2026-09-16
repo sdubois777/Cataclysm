@@ -3874,6 +3874,51 @@ SCALES = {
 }
 
 
+#: The value kinds a stat row may carry, on both sheets that write one.
+#:
+#: THE THREE BUCKETS OF THE STAT PIPELINE, AND A REMOVAL. Issue #1791. A removal
+#: takes its stat to nothing whatever else reaches it:
+#: `UCataclysmStatPipeline::Evaluate` multiplies the finished figure by zero,
+#: which is the project owner's mechanic of 2026-09-16 for sentences such as
+#: "You have no armor". A removal row states 1 and nothing reads the number.
+#:
+#: ONE TUPLE FOR BOTH SHEETS. The Passive Effects and Enchantment Effects readers
+#: each spelled out the three buckets until then, so a fourth added to one of
+#: them only would be a kind one sheet writes and the other refuses.
+#:
+#: THE GAME READS THESE NAMES IN TWO PLACES, `EnchantmentModifierFor` in
+#: `CataclysmItem.cpp` and `UCataclysmPassiveTree::AccumulateInto`, and both send
+#: a name they have no case for to the increased bucket. A name added here and
+#: not there would be written as an increase of its value, which is why
+#: `tools/tests/test_value_kinds_match_the_engine.py` holds the three lists to one.
+VALUE_KINDS = ("flat", "increased", "more", "removed")
+
+
+def _check_value_kind(sheet: str, index: int, who: str, stat: str,
+                      kind: str) -> None:
+    """A stat row's value kind is one the game reads, on a stat it can apply to.
+
+    REFUSED RATHER THAN IGNORED, for the reason `_check_pool_action` gives: a
+    row that validates and then grants nothing is silent everywhere else.
+
+    A REMOVAL ON A RATE IS REFUSED. Issue #1791, ruled 2026-09-16 under the
+    project owner's delegation. `UCataclysmStatPipeline::EvaluateRate` ignores a
+    removal, because removing a rate would divide by nothing and a cooldown of
+    no length is not what any sentence says, so such a row would be written and
+    grant nothing. `RATE_STATS` is the list of rates.
+    """
+    if kind not in VALUE_KINDS:
+        raise DataError(
+            f"{sheet} row {index}: {who} has value kind {kind!r}, which is not "
+            f"{', '.join(VALUE_KINDS[:-1])} or {VALUE_KINDS[-1]}")
+
+    if kind == "removed" and stat in RATE_STATS:
+        raise DataError(
+            f"{sheet} row {index}: {who} removes {stat!r}, which is a rate. A "
+            f"rate has no removal: the game ignores one, because removing a "
+            f"rate would divide by nothing, so the row would grant nothing.")
+
+
 def passive_effects(book) -> list[dict]:
     """What a passive node grants, one stat effect per row.
 
@@ -3927,10 +3972,7 @@ def passive_effects(book) -> list[dict]:
             raise DataError(f"Passive Effects row {index}: {node} names no stat")
 
         kind = clean(_cell(raw, headers, "Value Kind")).lower()
-        if kind not in ("flat", "increased", "more"):
-            raise DataError(
-                f"Passive Effects row {index}: {node} has value kind {kind!r}, "
-                f"which is not flat, increased or more")
+        _check_value_kind("Passive Effects", index, node, stat, kind)
 
         # A STATE THE BONUS ONLY APPLIES IN (issue #959) AND A STATE ITS SIZE
         # GROWS WITH (issue #968), CHECKED BY THE SAME HELPER THE ENCHANTMENT
@@ -4382,10 +4424,8 @@ def enchantment_effects(book) -> list[dict]:
             _check_pool_action(index, name, action, action_event, fraction_of,
                                kind, raw, headers)
             fraction_of = fraction_of or FRACTION_BASES[0]
-        elif kind not in ("flat", "increased", "more"):
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} has value kind "
-                f"{kind!r}, which is not flat, increased or more")
+        else:
+            _check_value_kind("Enchantment Effects", index, name, stat, kind)
 
         low = number(_cell(raw, headers, "Value Low"), "Value Low", index)
         high_text = clean(_cell(raw, headers, "Value High"))
@@ -5690,6 +5730,10 @@ def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
 #: Cooldown reduction is the accumulated sum of increases rather than a value:
 #: a skill's cooldown is its own base divided by one plus this. A class base of
 #: zero is correct for it, so it is not worth reporting.
+#:
+#: AND A RATE HAS NO REMOVAL, so `_check_value_kind` refuses a `removed` row on
+#: one. Issue #1791. `UCataclysmStatPipeline::EvaluateRate` is the only reader of
+#: a rate, and it ignores a removal.
 RATE_STATS = frozenset({"cooldown_reduction"})
 
 

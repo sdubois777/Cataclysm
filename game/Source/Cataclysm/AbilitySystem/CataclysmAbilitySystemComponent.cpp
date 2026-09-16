@@ -412,6 +412,25 @@ float UCataclysmAbilitySystemComponent::IncreasesForStat(
 			   .SumOfIncreases / 100.0f;
 }
 
+bool UCataclysmAbilitySystemComponent::IsStatRemoved(
+	FName Stat, const FGameplayTagContainer& Tags) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		// NOTHING RECORDED, SO NOTHING REMOVED. Ordinary rather than a fault,
+		// for the reason `IncreasesForStat` gives above.
+		return false;
+	}
+
+	// THE SAME PASS AND THE SAME CONDITIONS AS `IncreasesForStat`, reading the
+	// count the pipeline keeps rather than the figure. Issue #1791.
+	return UCataclysmStatPipeline::Evaluate(
+			   Inputs->Base, Inputs->Modifiers, Tags,
+			   WithEnemiesInReach(Inputs->Modifiers, CurrentConditions()))
+			   .RemovedCount > 0;
+}
+
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,

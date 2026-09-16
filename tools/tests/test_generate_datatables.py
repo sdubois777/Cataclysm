@@ -1469,8 +1469,18 @@ class TestAPassiveNodeCanGrantSeveralStats:
 
     def test_a_bad_value_kind_is_still_refused(self, tmp_path):
         rows = self.book(tmp_path, [["A_node", "armor", "sideways", 3, None]])
-        with pytest.raises(gen.DataError, match="not flat, increased or more"):
+        with pytest.raises(gen.DataError,
+                           match="not flat, increased, more or removed"):
             gen.passive_effects(rows)
+
+    def test_a_removal_is_a_kind_a_node_may_carry(self, tmp_path):
+        """The sheets share one vocabulary of kinds. Issue #1791: no node removes
+        a stat yet, and the reader accepts one the way the enchantment reader
+        does, so the two cannot come to disagree."""
+        rows = self.book(tmp_path, [["A_node", "armor", "removed", 1, None]])
+        out = gen.passive_effects(rows)
+
+        assert [(r["Stat"], r["ValueKind"]) for r in out] == [("armor", "removed")]
 
     def test_the_validator_checks_the_node_column_and_not_the_row_name(self):
         """The row name carries a `#1` and no node is called that, so a validator
@@ -2103,7 +2113,26 @@ class TestEnchantmentEffects:
 
     def test_a_bad_value_kind_is_refused(self, tmp_path):
         book = self.book(tmp_path, [self.row({"Value Kind": "sideways"})])
-        with pytest.raises(gen.DataError, match="not flat, increased or more"):
+        with pytest.raises(gen.DataError,
+                           match="not flat, increased, more or removed"):
+            gen.enchantment_effects(book)
+
+    def test_a_removal_is_written_as_its_own_kind(self, tmp_path):
+        """"You have no armor" is a removal: the game multiplies the finished
+        armour by nothing. Issue #1791. The row states 1, which nothing reads."""
+        book = self.book(tmp_path, [self.row({"Stat": "armor",
+                                              "Value Kind": "removed",
+                                              "Value Low": 1})])
+        out = gen.enchantment_effects(book)
+
+        assert (out[0]["Stat"], out[0]["ValueKind"]) == ("armor", "removed")
+        assert out[0]["ValueLow"] == 1.0 and out[0]["ValueHigh"] == 1.0
+
+    def test_an_action_row_may_not_be_a_removal(self, tmp_path):
+        """A removal is a kind of stat row, and an action row has no stat. The
+        refusal `_check_pool_action` makes of any kind reaches this one too."""
+        book = self.book(tmp_path, [self.action_row({"Value Kind": "removed"})])
+        with pytest.raises(gen.DataError, match="must be empty on an action row"):
             gen.enchantment_effects(book)
 
     def test_the_same_stat_twice_on_one_enchantment_is_refused(self, tmp_path):

@@ -1050,6 +1050,21 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		}
 	}
 
+	// A REMOVAL COMES FROM THE SOURCES THAT MAY GRANT A MORE MULTIPLIER, AND
+	// FROM NO OTHER. Issue #1791. Taking a stat away entirely is a larger thing
+	// than multiplying it, so an ordinary affix may do neither; the readability
+	// rule in `CanGrantMore` is the same rule here. Its value is not checked,
+	// because nothing reads it.
+	if (Modifier.Bucket == ECataclysmStatBucket::Removed
+		&& !CanGrantMore(Modifier.Source))
+	{
+		return FString::Printf(
+			TEXT("a removal from %s. Only a gem, a passive keystone, an "
+				 "enchantment, a skill's own buff or a dungeon rule may remove "
+				 "a stat; everything else is flat or increased."),
+			*UEnum::GetValueAsString(Modifier.Source));
+	}
+
 	// A HEALTH THRESHOLD OUTSIDE 0 TO 100 IS A MODIFIER THAT NEVER APPLIES OR
 	// ALWAYS DOES, and either way it is not what was meant. Issue #959. Zero is
 	// legitimate and means "only at exactly no health", which is unreachable in
@@ -1243,6 +1258,23 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Accumulate(
 				++Out.MoreSourceCount;
 			}
 			break;
+
+		case ECataclysmStatBucket::Removed:
+			// A REMOVAL CARRIES NO AMOUNT, SO ONLY THAT ONE ARRIVED IS KEPT.
+			// Issue #1791. `Evaluate` reads the count; the value worked out
+			// above is not read.
+			if (!CanGrantMore(Modifier.Source))
+			{
+				// Ignored, for the reason a refused More multiplier is: an
+				// ordinary affix may not take a stat away any more than it may
+				// multiply one.
+				UE_LOG(LogCataclysm, Warning,
+					   TEXT("Stat pipeline ignored a removal: %s"),
+					   *ValidateModifier(Modifier));
+				break;
+			}
+			++Out.RemovedCount;
+			break;
 		}
 	}
 
@@ -1260,6 +1292,15 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::Evaluate(
 	Out.Final = (Out.Base + Out.Flat)
 			  * (1.0f + Out.SumOfIncreases / 100.0f)
 			  * Out.MoreMultiplier;
+
+	// A REMOVED STAT IS WORTH NOTHING, WHATEVER THE BUCKETS MADE OF IT. Issue
+	// #1791, in the project owner's words: "Just multiply the final number of
+	// the original formula by 0." LAST, so every step above stays in the
+	// breakdown and a character sheet can show what the stat would have been.
+	if (Out.RemovedCount > 0)
+	{
+		Out.Final *= 0.0f;
+	}
 
 	return Out;
 }
@@ -1282,6 +1323,19 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::EvaluateRate(
 	// at or below zero produces the unmodified base rather than a negative or
 	// infinite interval.
 	Out.Final = Divisor > UE_SMALL_NUMBER ? Out.Base / Divisor : Out.Base;
+
+	// A RATE HAS NO REMOVAL, SO ONE IS NOT APPLIED. Issue #1791. Removing a
+	// rate would divide by nothing, and a cooldown of no length is not what any
+	// sentence asks for. `tools/generate_datatables.py` refuses such a row, so
+	// only a hand-edited table reaches this, and it is logged rather than
+	// passed over in silence.
+	if (Out.RemovedCount > 0)
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("Stat pipeline ignored %d removal(s) of a rate, which has no "
+					"removal"),
+			   Out.RemovedCount);
+	}
 
 	return Out;
 }

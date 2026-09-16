@@ -325,6 +325,35 @@ public:
 	float IncreasesForStat(FName Stat, const FGameplayTagContainer& Tags) const;
 
 	/**
+	 * Whether a removal reaches this stat, for these tags, right now. Issue #1791.
+	 *
+	 * FOR A CONSUMER THAT DOES NOT GET THE STAT'S VALUE FROM THE PIPELINE. A
+	 * reader that asks `StatForSkill`, or reads an attribute
+	 * `UCataclysmPlayerClassStats::ApplyTo` wrote, already gets nothing for a
+	 * removed stat, because `UCataclysmStatPipeline::Evaluate` multiplies the
+	 * finished figure by nothing. Two things are not read that way. The basic
+	 * attack's mana on hit is its slot's own figure rather than a stat, and the
+	 * mana a character is standing on is a current value that nothing lowers
+	 * when its maximum goes. `UCataclysmSkillTemplate::ApplyManaOnHit` and
+	 * `ApplyTo` ask here for those two.
+	 *
+	 * JUDGED WITH THE CONDITIONS `IncreasesForStat` USES, so a removal that holds
+	 * only in some state is honoured here as it is in the value.
+	 *
+	 * THE COUNT AND NOT THE FIGURE. A stat can resolve to zero without being
+	 * removed -- a base of nothing does it -- and a consumer asking this is
+	 * asking which of the two it is.
+	 *
+	 * FALSE WHEN NOTHING WAS RECORDED, for the reason `StatForSkill` returns its
+	 * fallback: an enemy is never given a character stat line, and a player has
+	 * none until its first refresh.
+	 *
+	 * @param Stat  the stat name, as the data file spells it
+	 * @param Tags  what to test a scoped removal against
+	 */
+	bool IsStatRemoved(FName Stat, const FGameplayTagContainer& Tags) const;
+
+	/**
 	 * How much larger one skill's hit should be than the attack-damage
 	 * attribute already makes it, from "more" multipliers alone.
 	 *

@@ -7,10 +7,13 @@
 #include "CataclysmStatPipeline.generated.h"
 
 /**
- * Which of the three buckets a modifier enters.
+ * Which of the three buckets a modifier enters, or whether it removes the stat.
  *
  * Which bucket a modifier lands in is what decides whether it has diminishing
  * returns, and that is the whole point of having three.
+ *
+ * `Removed` IS NOT A FOURTH BUCKET IN THAT SENSE. It carries no amount and has
+ * no returns to diminish; it says the stat is gone. Issue #1791.
  */
 UENUM(BlueprintType)
 enum class ECataclysmStatBucket : uint8
@@ -23,11 +26,32 @@ enum class ECataclysmStatBucket : uint8
 
 	/** Multiplies on its own, outside that sum. */
 	More		UMETA(DisplayName = "More"),
+
+	/**
+	 * Takes the stat to nothing, whatever else reaches it. Issue #1791.
+	 *
+	 * THE PROJECT OWNER'S MECHANIC, 2026-09-16: "Just multiply the final number
+	 * of the original formula by 0." So the three buckets above still work the
+	 * figure out, and `UCataclysmStatPipeline::Evaluate` multiplies what they
+	 * make by nothing when one of these reached the stat. "You have no armor"
+	 * is not a 99% reduction, which is the most a Less multiplier can be; see
+	 * `UCataclysmStatPipeline::LessMultiplierFloor`.
+	 *
+	 * ITS VALUE IS NOT READ. A data row states 1 for it.
+	 *
+	 * THE SAME SOURCES THAT MAY GRANT A MORE MULTIPLIER MAY REMOVE A STAT, and
+	 * no others: `UCataclysmStatPipeline::CanGrantMore` decides both.
+	 *
+	 * A RATE HAS NO REMOVAL. `EvaluateRate` ignores one, because a cooldown of
+	 * nothing is not something any sentence asks for, and
+	 * `tools/generate_datatables.py` refuses one on a rate stat.
+	 */
+	Removed		UMETA(DisplayName = "Removed"),
 };
 
 /**
  * Where a modifier came from. This is not decoration: it decides whether the
- * modifier is allowed into the More bucket.
+ * modifier is allowed into the More bucket, and whether it may remove a stat.
  */
 UENUM(BlueprintType)
 enum class ECataclysmModifierSource : uint8
@@ -2278,12 +2302,33 @@ struct CATACLYSM_API FCataclysmStatBreakdown
 	/** Less multipliers that were clamped away from -100%. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 ClampedLessCount = 0;
+
+	/**
+	 * Removals that reached this stat. Issue #1791.
+	 *
+	 * ONE IS ENOUGH, and `Evaluate` takes the stat to nothing when this is above
+	 * zero. The count exists for the reason the ones above do, and so that
+	 * `UCataclysmAbilitySystemComponent::IsStatRemoved` can answer for a
+	 * consumer that reads no stat through the pipeline.
+	 *
+	 * COUNTED BY `EvaluateRate` TOO, AND NOT APPLIED THERE. A rate has no
+	 * removal, so a breakdown of one can show a count here beside a figure
+	 * that is not zero.
+	 *
+	 * A REMOVAL FROM A SOURCE THAT MAY NOT GRANT ONE IS NOT COUNTED. It is
+	 * ignored and logged, the way a refused More multiplier is.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 RemovedCount = 0;
 };
 
 /**
  * The three-bucket stat pipeline, ported from `sim/cataclysm_sim/character.py`.
  *
  *     Final = (base + flat) x (1 + sum of increases) x more1 x more2 x ...
+ *
+ * and that figure times nothing when a removal reaches the stat. Issue #1791;
+ * the simulation has no removal.
  *
  * WHY THIS EXISTS WHEN THE ABILITY SYSTEM ALREADY AGGREGATES. Unreal's own
  * aggregator computes
@@ -2312,8 +2357,10 @@ struct CATACLYSM_API FCataclysmStatBreakdown
  *   what keeps a rare drop readable and gives the designed enchantments a job
  *   affixes cannot do. The engine has no opinion on this.
  *
- *   THE FLOOR UNDER A LESS MULTIPLIER. Nothing in the engine stops a modifier
- *   of -100% or worse, which would zero a stat outright or invert it.
+ *   THE FLOOR UNDER A LESS MULTIPLIER. Nothing in the engine stops a More
+ *   modifier of -100% or worse, which would zero a stat outright or invert it.
+ *   A stat meant to be zero is removed instead, which is a kind of its own and
+ *   cannot invert anything. Issue #1791.
  *
  * WHY IT IS A SEPARATE CLASS of static functions, like
  * UCataclysmDamageCalculation: every step is arithmetic on numbers, so pulling
@@ -2332,17 +2379,27 @@ public:
 	 * The model refuses anything at or below -100% outright, because one source
 	 * could otherwise zero a stat or turn it negative. Refusing is not available
 	 * at runtime, so the value is clamped here and counted in the breakdown. -99
-	 * keeps the invariant -- the stat can be made very small and can never reach
-	 * zero or invert -- while still honouring what a -150% was reaching for.
-	 * Data import should reject the modifier outright instead; see
-	 * ValidateModifier.
+	 * keeps the invariant -- a Less multiplier can make the stat very small and
+	 * can never take it to zero or invert it -- while still honouring what a
+	 * -150% was reaching for. Data import should reject the modifier outright
+	 * instead; see ValidateModifier.
+	 *
+	 * THE INVARIANT IS ABOUT MORE MULTIPLIERS AND NOT ABOUT EVERY MODIFIER, since
+	 * issue #1791. A removal takes a stat to zero on purpose, because a sentence
+	 * saying "You have no armor" means none rather than one per cent. It does so
+	 * by multiplying the finished figure by nothing, so it cannot invert a stat
+	 * either, and this floor stays where it is.
 	 */
 	static constexpr float LessMultiplierFloor = -99.0f;
 
 	/** A required tag of this name is satisfied by any skill at all. */
 	static FGameplayTag GlobalScopeTag();
 
-	/** Whether a modifier from this source is allowed into the More bucket. */
+	/**
+	 * Whether a modifier from this source is allowed into the More bucket.
+	 *
+	 * AND WHETHER IT MAY REMOVE A STAT, which is the same answer. Issue #1791.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static bool CanGrantMore(ECataclysmModifierSource Source);
 
@@ -2404,6 +2461,10 @@ public:
 	 * class for most, the equipped weapon for attack speed, the skill itself
 	 * for critical strike chance.
 	 *
+	 * AND NOTHING AT ALL WHEN A REMOVAL APPLIES. Issue #1791. The three buckets
+	 * still work out their figure, and the breakdown keeps every step of it, so a
+	 * character sheet can show what the stat would have been.
+	 *
 	 * @param State  what is true of the character, for a modifier that carries a
 	 *               condition. The default knows nothing and refuses every
 	 *               condition, which is what every caller got before issue #959.
@@ -2425,6 +2486,11 @@ public:
 	 * or a cooldown reduction gem would make the cooldown longer. Because both
 	 * buckets divide, no number of them reaches zero, which is why the stat
 	 * needs no cap.
+	 *
+	 * A REMOVAL IS IGNORED HERE, counted in the breakdown and logged. Issue
+	 * #1791. Removing the rate would divide by nothing, and a cooldown of no
+	 * length is not what any sentence asks for; `tools/generate_datatables.py`
+	 * refuses such a row before it reaches here.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static FCataclysmStatBreakdown EvaluateRate(float Base,

@@ -737,9 +737,9 @@ CATACLYSM_TEST(FCataclysmFervourLossSuppressedTest,
 	// set the same flag with a different tag on the row.
 	//
 	// A FLAG RATHER THAN A REDUCTION, and this is where that matters. The stat
-	// pipeline clamps a Less multiplier at -99 so that no modifier can zero a
-	// stat, which is a rule worth keeping; a node that says "does not remove"
-	// therefore cannot be written as a reduction of the rate at all.
+	// pipeline clamps a Less multiplier at -99 so that no More multiplier can
+	// zero a stat, which is a rule worth keeping; a node that says "does not
+	// remove" therefore cannot be written as a reduction of the rate at all.
 	UWorld* World = MakeWorld();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 

@@ -67,8 +67,12 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import generate_datatables as gen  # noqa: E402
 
-#: The three buckets of the damage pipeline. Anything else is a typo.
-BUCKETS = {"flat", "increased", "more"}
+#: The value kinds a row may carry: the three buckets of the damage pipeline,
+#: and a removal, which takes the stat to nothing (issue #1791). Anything else
+#: is a typo. The generator's own tuple rather than a copy of it, for the reason
+#: the import above gives; `test_value_kinds_match_the_engine.py` holds that
+#: tuple to the names the game reads.
+KINDS = set(gen.VALUE_KINDS)
 
 
 def words_of(row: dict, nodes: dict) -> str:
@@ -1997,9 +2001,10 @@ VALUE_IN_WORDS = {
     # AND THE TWO NODES THAT STOP HEALING REMOVING FERVOUR. Issues #1006 and
     # #1007. Both are flags of 1 and neither sentence has a digit: one says
     # "does not remove Fervour" and the other "no longer removes Fervour". A
-    # modifier cannot take a stat to zero -- the pipeline clamps a Less
-    # multiplier at -99 on purpose -- so a rule that says "does not" has to say
-    # so as a flag rather than as a 99% reduction.
+    # More multiplier cannot take a stat to zero -- the pipeline clamps a Less
+    # one at -99 on purpose -- so a rule that says "does not" has to say so as a
+    # flag rather than as a 99% reduction. A removal can, since issue #1791, and
+    # these two flags predate it.
     ("Masochist_keystone_fc_kB", "fervour_loss_suppressed"):
         ("does not remove fervour", 1.0),
 
@@ -2526,8 +2531,8 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
 
     for row in effects:
         kind = row["ValueKind"].strip().lower()
-        assert kind in BUCKETS, (
-            f"{row['Name']}: {kind!r} is not one of {sorted(BUCKETS)}"
+        assert kind in KINDS, (
+            f"{row['Name']}: {kind!r} is not one of {sorted(KINDS)}"
         )
 
         described = words_of(row, nodes)
