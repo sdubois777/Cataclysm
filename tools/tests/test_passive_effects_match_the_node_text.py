@@ -528,7 +528,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: held a row before: `Wrung Out` (`Ravager_basic_d_c1`), the tree's first
 #: Fervour spender, and `Grinding Halt` (`Ravager_keystone_c_kC`), which grants
 #: the starting node's rate over crippled enemies only. Issue #1515.
-AUTHORED_ROWS = 270
+#: AND TO 273 ON 2026-09-16. Three rows on three Ravager nodes, none of which
+#: held a row before, and all three read how many enemies one attack struck
+#: together: `Cleaving Arc` (`Ravager_basic_b_a2`), `Bought With Ruin`
+#: (`Ravager_basic_b_b2`) and `Sundering` (`Ravager_keystone_b_kA`). Issue
+#: #1515. The same workbook turn renamed the Stat of two Ritualist rows,
+#: which moves no count.
+AUTHORED_ROWS = 273
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -855,7 +861,13 @@ AUTHORED_ROWS = 270
 #: MEASURED PER TREE: the Ravager is 60 of its 74 and the Ritualist 60 of its
 #: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
 #: Berserker none.
-AUTHORED_NODES = 198
+#: AND TO 201 ON 2026-09-16. `Cleaving Arc`, `Bought With Ruin` and
+#: `Sundering`, one row each, so this and the row count move together.
+#:
+#: MEASURED PER TREE: the Ravager is 63 of its 74 and the Ritualist 60 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+AUTHORED_NODES = 201
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1275,6 +1287,17 @@ CONDITION_WORDS = {
     # nothing" and would assert the count must be zero.
     "enemies_in_reach_at_least": ("within",
                                  {1.0: "an enemy", 3.0: "three or more"}),
+
+    # AND THE COUNT OF ENEMIES ONE ATTACK STRUCK TOGETHER. Issue #1515.
+    # Sundering reads "when they hit three or more enemies at once". The count
+    # is written as words, so the value form is a mapping, for the reason the
+    # entry above gives.
+    #
+    # THE FRAGMENT IS "enemies at once" AND NOT "hit". "Hit" is in sentences
+    # about every kind of blow; "at once" is what says the enemies were struck
+    # together by one attack rather than counted near the character, which is
+    # the difference between this predicate and the one above.
+    "enemies_hit_at_least": ("enemies at once", {3.0: "three or more"}),
 
     # THE THREE PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER. Issue
     # #1515. Each names its ailment, so the value form is None: there is no
@@ -2168,6 +2191,14 @@ VALUE_IN_WORDS = {
 
     ("Ravager_keystone_d_kA", "movement_speed_reduction_suppressed"):
         ("cannot be reduced by any effect", 1.0),
+
+    # AND SUNDERING, WHOSE "ENTIRELY" IS A HUNDRED. Issue #1515. It reads
+    # "Your melee attacks ignore enemy Armor entirely when they hit three or
+    # more enemies at once". Armour penetration is the share of armour a blow
+    # ignores, which the damage calculation clamps at 100, and the sentence
+    # has no digit for it.
+    ("Ravager_keystone_b_kA", "armor_penetration"):
+        ("ignore enemy armor entirely", 100.0),
 }
 
 

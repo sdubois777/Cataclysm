@@ -250,8 +250,8 @@ Ravager_basic_c_a1#1,Ravager_basic_c_a1,cripple_magnitude,increased,3.0,,,0.0,,0
 Ravager_basic_c_b1#1,Ravager_basic_c_b1,weaken_magnitude,increased,3.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_a_kA#1,Ritualist_keystone_a_kA,possession_threshold_bonus,flat,15.0,,,0.0,,0.0,0,-1.0
 Ravager_basic_c_c0#1,Ravager_basic_c_c0,area_of_effect,increased,4.0,,can_cripple_or_weaken,0.0,,0.0,0,-1.0
-Ritualist_keystone_a_kC#1,Ritualist_keystone_a_kC,thrall_reserve_reduction,flat,5.0,,,0.0,,0.0,0,-1.0
-Ritualist_keystone_b_kA#1,Ritualist_keystone_b_kA,imp_cap_bonus,flat,2.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_a_kC#1,Ritualist_keystone_a_kC,minion_reserve_reduction,flat,5.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_b_kA#1,Ritualist_keystone_b_kA,minion_cap_bonus,flat,2.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_c_kA#1,Ritualist_keystone_c_kA,shield_absorbs_damage_over_time,flat,1.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_c_kB#1,Ritualist_keystone_c_kB,shield_recharges_while_damaged,flat,1.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_d_kA#1,Ritualist_keystone_d_kA,mana_regen_restores_shield,flat,1.0,,,0.0,,0.0,0,-1.0
@@ -269,3 +269,6 @@ Ravager_basic_d_b0#1,Ravager_basic_d_b0,fervour_per_enemy_in_reach,increased,2.0
 Ravager_keystone_d_kC#1,Ravager_keystone_d_kC,fervour_decay_grace_metres,flat,4.0,,,0.0,,0.0,0,-1.0
 Ravager_basic_d_c1#1,Ravager_basic_d_c1,health_restored_on_kill,flat,1.0,,,0.0,,0.0,0,-1.0
 Ravager_keystone_c_kC#1,Ravager_keystone_c_kC,fervour_per_enemy_in_reach,flat,1.0,,,0.0,crippled_enemies_in_reach,1.0,0,4.0
+Ravager_basic_b_a2#1,Ravager_basic_b_a2,attack_damage,increased,1.0,,,0.0,enemies_hit_beyond_the_first,1.0,0,-1.0
+Ravager_basic_b_b2#1,Ravager_basic_b_b2,increased_damage_bought_per_extra_enemy_hit,flat,3.0,Type.Melee,,0.0,,0.0,0,-1.0
+Ravager_keystone_b_kA#1,Ravager_keystone_b_kA,armor_penetration,flat,100.0,Type.Melee,enemies_hit_at_least,3.0,,0.0,0,-1.0
