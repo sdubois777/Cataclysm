@@ -2,6 +2,65 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — Three rows that needed no new mechanism: the Ravager's per-hit Fervour, Press the Advantage, and Headlong's second clause
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`
+(three rows), `game/Content/Data/DT_PassiveEffects.uasset`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (three tests),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and `docs/README.md`
+(the row count), `tools/tests/test_passive_effects_match_the_node_text.py` and
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`.
+Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+One workbook turn, in the same change as the mechanism in the entry below:
+
+| row | node | stat | kind | value | tag | condition | scale |
+| :-- | :-- | :-- | :-- | --: | :-- | :-- | :-- |
+| `Ravager_basic_spine_000#4` | the Ravager's starting node | `fervour_per_enemy_hit` | flat | 1 | | | |
+| `Ritualist_basic_a_b2#1` | Press the Advantage | `spell_damage` | increased | 2 | | | `minions_held`, step 1 |
+| `Ravager_capstone_25#4` | The First Onslaught, option 3 Headlong | `attack_damage` | increased | 50 | `Type.Melee` | `metres_moved_before_attack` 5 | |
+
+### WHY EACH NEEDED NOTHING NEW
+
+- **The starting node's row** is read by the stat and the four places that pay
+  it, which are the entry below.
+- **Press the Advantage** uses the scale `minions_held`, which Attendant's row
+  already uses. Its sentence has said "for each minion you have" since the owner
+  reworded it. The note recorded with that rewording stands: at eight points and
+  ten minions it is +160%, the same effect as Attendant at twice the rate, and
+  the size is the owner's to revisit.
+- **Headlong's second clause**, "your first melee attack after moving 5 metres
+  deals 50% increased damage", uses the condition `metres_moved_before_attack`.
+  It was built on 2026-09-12, in the entry "A character knows whether it is
+  moving", for this clause among others. The distance is measured when the skill
+  is paid for and reset at each attack, which is what makes it the first attack
+  after moving. The condition leaves the list of conditions built ahead of their
+  rows. The row sits beside the option's movement speed row, and its Node Name
+  cell says Headlong, as that row's does.
+
+### TESTS
+
+Three, all in `Cataclysm.Passives.`, each failing until `DT_PassiveEffects` is
+rebuilt from the new table:
+
+- `TheRavagersStartingNodeGrantsFervourForEachEnemyItsAttacksHit` reads the row
+  on a real Ravager through `StatForSkill`, where the gain asks for it.
+- `PressTheAdvantageGrantsSpellDamageForEachMinionHeld` and
+  `HeadlongsFirstMeleeAttackAfterMovingFiveMetresGainsItsIncrease` read their
+  rows through the tree's own accumulation and the stat pipeline, as The Final
+  Pact's option test does. The pipeline takes the number of minions and the distance
+  moved as stated conditions, where a real character would need minions
+  summoned and a movement measured.
+
+### COUNTS
+
+    passive effect rows       273 -> 276   AUTHORED_ROWS, CHECK_TABLE, docs/README.md
+    authored nodes            201 -> 202   AUTHORED_NODES; the Ritualist 60 -> 61 of 74
+    conditions built ahead      3 -> 2     39 conditions, 37 named by a row
+    Unreal automation tests    +3 by name, all in Cataclysm.Passives.
+
+---
+
 ## 2026-09-16 — An attack earns the Ravager one Fervour for each enemy its blows land on, wherever each blow resolves
 
 **Affects:**
