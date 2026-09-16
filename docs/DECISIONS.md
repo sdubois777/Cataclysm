@@ -2,6 +2,124 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — A creature answers the player's blow in its own name, five judged figures are recorded with their precedents or the lack of one, and the player's floor effects grew a field that moves a single resistance
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules: each row's key, its figures and its arithmetic),
+`CataclysmDungeonGameMode.h` and `.cpp` (the listener on the blow announcement, the quarter-second
+beat, the per-floor reset and the counts shown on the floor panel),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for
+these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that
+hold each rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Celestial_Holy_Repercussions` in `game/Data/DungeonModifiers.csv`: "Enemies have a chance to
+retaliate with radiant bursts upon being hit, dealing damage in an area and inflicting 'Judgment'
+(a stacking debuff that increases holy damage taken)."
+
+### Why this row, and why not the three the survey names first
+
+#1820 names three example rows for each of its two families that already have their mechanism.
+Three of those six are built. **The other three are all blocked on a mechanism that does not
+exist**, measured one by one and recorded as a comment on that issue so nobody re-measures them:
+`Death_Necrotic_Ground` needs a zone that grows and a way to heal a creature over time;
+`Death_Dead_Rising` needs a creature revived after its body is destroyed; `Pestilence_Epidemic`
+needs a Plague Lord creature, a debuff transfer and a chain counter. The survey's examples show what
+a family *is*, and they are not a queue.
+
+This row was chosen by reading all 117 rows instead — 20 built, 97 not, 25 of those reacting to a
+death or a hit — and checking the candidates' mechanisms against the code.
+
+### The burst is the creature's own, which no other rule here does
+
+The row asks for the enemy to retaliate, so the burst is dealt **in the creature's name**: its size
+is the creature's own attack damage, read off it rather than written here, and its element is that
+creature's element the way every creature's blow is.
+
+**An illusion therefore retaliates for nothing, and neither rule knows the other exists.**
+`Chaos_Illusory_Enemies` sets a creature's attack damage to zero; a burst of zero deals nothing.
+
+It reaches the creature's enemies, which is the player's side, through
+`UCataclysmTargeting::FindEnemiesInSphere` asked as the creature. **Three rows now search an area
+and each asks a different question read off its own sentence:** this one asks for the creature's
+enemies because the creature is retaliating; `Demonic_Brand_of_the_Aggressor` asks for the player's
+allies because its row names the player's own side; `Demonic_Hellfire` asks for everyone because
+its row names nobody. None of the three needed a ruling on who is caught.
+
+### Two tests decide whose blow counts, and each guards a blow the other does not
+
+**The target must be a creature.** On its own this is the only thing refusing a blow the player
+lands on the player — which is exactly how `Demonic_Brand_of_the_Aggressor` delivers its eruption.
+Without it, on a floor carrying both rows, every eruption would add a Judgment stack.
+
+**The attacker must be the player.** On its own this is the only thing refusing a blow on a creature
+from another creature, a floor hazard or another rule's explosion. **This is a reading of the row,
+not its wording**: "upon being hit" names no attacker. Requiring the player follows "retaliate",
+which answers an attacker, and Judgment, which lands on the player and makes sense only if the
+player provoked it.
+
+**Both refuse this rule's own burst**, which is a creature hitting the player, so a burst cannot
+provoke another whichever half is removed.
+
+**Two drafts of this were wrong before it was right, and the second tried to fix the first.** The
+first said the attacker half is what stops a burst provoking a burst, and that removing it would
+create that fault — false, because the target half refuses a burst too. The second added a
+creature-on-creature blow and claimed that let each half fail a test on its own — also false,
+because it forgot the target half's own case. Both were found before any build, by tracing a guard
+proof's prediction through every assertion: removing either half failed nothing, because each half
+alone refused every blow the tests then constructed.
+
+The guards test now lands three blows that must provoke nothing — a creature hitting the player, a
+creature hitting a creature, and the player hitting the player through the call Brand of the
+Aggressor erupts with — so each half is the only thing refusing one of them.
+
+### The five figures — the row states none
+
+| Figure | Answer | Precedent |
+|---|---|---|
+| The chance a blow is answered | 10 percent | The table's figure for a chance fired by an event, which `Pestilence_Spore_Clouds` and `Demonic_Hellfire` both took. **It applies here and deliberately did not apply to `Chaos_Illusory_Enemies`**, whose 25 is a share of a floor's population rather than a chance on an event |
+| The burst's damage | The retaliating creature's own attack damage | `Demonic_Hellfire`'s pattern, and its stated reason: a figure written into the rule would make every creature retaliate alike |
+| The burst's reach | 300 cm, declared as `InfernalRainRadiusCm` | The project's settled figure for a thing at a point on the floor |
+| The most Judgment stacks | 5 | `Famine_Wasting_Sickness`'s cap, and **not** `Demonic_Brand_of_the_Aggressor`'s 20: Judgment is a debuff that stays, and that count erupts and clears |
+| What one stack is worth | 5 percent less Celestial resistance, 25 at the cap | **None.** No other rule in the file lowers a single resistance, so there was nothing to follow |
+
+**All five were ruled by the coordinating session under the owner's delegation of unstated
+numbers**, and each constant's comment names its precedent or says it has none.
+
+**Judgment is authored as a positive reduction and negated where it is applied**, which is the
+shape `ResistanceLessPercent` already uses, and which the pipeline's clamping of a negative value
+at the attribute requires.
+
+### The player's floor effects grew to fifteen fields, and why
+
+`FCataclysmPlayerFloorEffects::ResistanceLessPercent` and `ResistanceMorePercent` are each applied
+inside a loop over every damage type, and each is documented as "of every resistance". **Carrying a
+damage type on one of them would mean a branch inside that loop and a change to how
+`Void_The_Nihil_s_Embrace`'s two values are applied** — a shipped rule altered for a new one's
+convenience.
+
+So `JudgmentResistanceLessPercent` is a new field, written once, **outside** that loop, through
+`UCataclysmItemModifiers::ResistanceStatFor` — the same call the loop makes, so a damage type
+renamed in the design workbook moves both together. A Python check fails if its read ever moves
+inside the loop, and an automation test asserts Judgment moves **exactly one** stat, with the
+all-resistance field as its control.
+
+### The count clears at the stairs, which is the opposite of Wasting Sickness
+
+`Famine_Wasting_Sickness` keeps its count across floors because its own row calls the debuff
+"permanent for the duration of the dungeon". This row says nothing of the kind, and its stacks come
+from creatures the player has left behind on the last floor, so both the count and the applied
+reduction clear.
+
+The floor panel shows the count as "N of 5". **A lowered resistance is otherwise invisible**: it
+shows up only as damage arriving harder, and the panel prints the row's description word for word,
+so a player would read that a debuff stacks and never learn how much they carry.
+
+---
+
 ## 2026-09-14 — Type.Summon means a skill that creates a creature; Keyword.Summon means a skill about creatures you already command
 
 **Affects:** nothing in the tree; this entry is the record. The tags are

@@ -613,6 +613,21 @@ static TAutoConsoleVariable<float> CVarFungalOvergrowthRoll(
  * 0 MAKES EVERY CREATURE ON THE FLOOR AN ILLUSION and 100 makes none of them
  * one, because the comparison is strictly below the share.
  */
+/**
+ * Pins the roll a creature answers a blow with, so a test can assert what a blow
+ * provoked. Issues #1820 and #41.
+ *
+ * ITS OWN VARIABLE, for the reason `Cataclysm.GraspingTentaclesRoll` gives: a
+ * floor can carry more than one of these rows and a test of one must be able to
+ * pin its own roll without deciding another's.
+ */
+static TAutoConsoleVariable<float> CVarHolyRepercussionsRoll(
+	TEXT("Cataclysm.HolyRepercussionsRoll"),
+	-1.0f,
+	TEXT("Pin the roll Holy Repercussions answers a blow with, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 static TAutoConsoleVariable<float> CVarIllusoryEnemiesRoll(
 	TEXT("Cataclysm.IllusoryEnemiesRoll"),
 	-1.0f,
@@ -654,6 +669,13 @@ namespace
 	float DungeonGameModeFungalOvergrowthRoll()
 	{
 		const float Pinned = CVarFungalOvergrowthRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll a creature answers a blow with: pinned, or drawn. */
+	float DungeonGameModeHolyRepercussionsRoll()
+	{
+		const float Pinned = CVarHolyRepercussionsRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -2166,10 +2188,16 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// which is Withered Ground's shape above. Issues #1820 and #41.
 	const bool bFungalOvergrowth = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::FungalOvergrowthKey));
+	// AND HOLY REPERCUSSIONS, WHOSE BEAT DECIDES NOTHING, which is Wasting
+	// Sickness's shape: its count moves on a blow and this only puts the
+	// reduction back after a floor change took it off. Issues #1820 and #41.
+	const bool bHolyRepercussions = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::HolyRepercussionsKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
-		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth)
+		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
+		&& !bHolyRepercussions)
 	{
 		return;
 	}
@@ -2240,6 +2268,14 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bFungalOvergrowth)
 	{
 		StepFungalOvergrowth(Player, AbilitySystem);
+	}
+
+	// AND HOLY REPERCUSSIONS, WHICH IS FREE WHERE NOTHING HAS CHANGED. Issues
+	// #1820 and #41. It compares two integers and returns on almost every beat,
+	// so its position in this order is free the way Wasting Sickness's is.
+	if (bHolyRepercussions)
+	{
+		StepHolyRepercussions(Player, AbilitySystem);
 	}
 
 	// AND MORTAL DECAY, WHICH ASKS FOR NO STAT REFRESH AT ALL. Issues #1786 and
@@ -2979,6 +3015,17 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	Effects.MushroomSpeedMorePercent = FungalOvergrowthSpeedMoreApplied;
 	Effects.MushroomSpeedLessPercent = FungalOvergrowthSpeedLessApplied;
 
+	// AND WHAT JUDGMENT IS TAKING OFF ONE RESISTANCE. Issues #1820 and #41. Read
+	// unconditionally like the rest: a floor without that row carries no stacks,
+	// and nothing is what the effects already hold.
+	//
+	// ITS OWN FIELD AND NOT `ResistanceLessPercent`, which The Nihil's Embrace
+	// writes. That one is applied to all eight resistances in a loop; this is one
+	// of them. The field's own declaration says why the two cannot share.
+	Effects.JudgmentResistanceLessPercent =
+		UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(
+			JudgmentStacksApplied);
+
 	// AND WHETHER THE EDICT OF SILENCE HAS THE PLAYER'S SKILLS LOCKED. Issues
 	// #1786 and #41. Read unconditionally like the rest: a floor without that row
 	// never sets it, and nothing is what the effects already hold.
@@ -3021,6 +3068,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	// arms rather than reading a number here."
 	NoteHitForWastingSickness(Notice);
 	NoteHitForBrandOfTheAggressor(Notice);
+	NoteHitForHolyRepercussions(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
@@ -3225,6 +3273,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 											Effects::BrandStacksToErupt));
 	}
 
+	// AND JUDGMENT, WHICH A PLAYER CANNOT SEE ANY OTHER WAY. Issues #1820 and
+	// #41. A lowered resistance shows up only as damage arriving harder, and the
+	// floor panel prints the row's description word for word -- so without this
+	// a player reads that a debuff stacks and never learns how much they carry.
+	const FName Holy(Effects::HolyRepercussionsKey);
+	if (FloorBrief.Modifiers.Contains(Holy))
+	{
+		Counting.Add(Holy, FString::Printf(
+			TEXT("%d of %d"), JudgmentStacks,
+			Effects::HolyRepercussionsJudgmentMostStacks));
+	}
+
 	const FName Wasting(Effects::WastingSicknessKey);
 	if (FloorBrief.Modifiers.Contains(Wasting))
 	{
@@ -3413,6 +3473,103 @@ void ACataclysmDungeonGameMode::NoteDeathForWitheredGround(
 	}
 
 	WitheredGroundPatches.Add(Patch);
+}
+
+void ACataclysmDungeonGameMode::NoteHitForHolyRepercussions(
+	const FCataclysmHitNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::HolyRepercussionsKey)))
+	{
+		return;
+	}
+
+	// A LANDED BLOW AND NOT AN ATTEMPT, the test every blow listener here makes.
+	// `Landed` is what reached the target after every mitigation step and is zero
+	// for a blow that was evaded or wholly stopped.
+	if (Notice.Landed <= 0.0f)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Player)
+	{
+		return;
+	}
+
+	// WHOSE BLOW, AND ON WHAT -- TWO TESTS, EACH GUARDING A BLOW THE OTHER DOES
+	// NOT. This function's declaration carries the full reasoning; in short:
+	//
+	//   `!Creature`                  alone refuses the player hitting the player,
+	//                                which is Brand of the Aggressor's eruption.
+	//   `Notice.Attacker != Player`  alone refuses a creature, hazard or explosion
+	//                                hitting a creature. A reading of "upon being
+	//                                hit", which names no attacker.
+	//
+	// Both refuse the burst below, which is a creature hitting the player, so a
+	// burst cannot provoke another whichever half is removed.
+	// `OnlyThePlayersOwnBlowProvokesJudgmentAndTheStairsClearIt` lands one blow of
+	// each kind, so removing either half fails a test.
+	ACataclysmEnemyCharacter* Creature =
+		Cast<ACataclysmEnemyCharacter>(Notice.Target);
+	if (Notice.Attacker != Player || !Creature)
+	{
+		return;
+	}
+
+	if (!Effects::HolyRepercussionsRetaliates(
+			DungeonGameModeHolyRepercussionsRoll()))
+	{
+		return;
+	}
+
+	// THE BURST IS WORTH THE CREATURE'S OWN ATTACK DAMAGE, read off it rather
+	// than written here, which is `UCataclysmEnemyModifiers::InfernalBrand`'s
+	// stated reason: a figure in this file would make every creature retaliate
+	// alike. It also means an illusion retaliates for nothing, with no code here
+	// knowing that rule exists.
+	const UAbilitySystemComponent* Theirs =
+		UCataclysmTargeting::AbilitySystemOf(Creature);
+	const float Damage = Theirs
+		? Theirs->GetNumericAttribute(
+			  UCataclysmCombatAttributeSet::GetAttackDamageAttribute())
+		: 0.0f;
+
+	// THE JUDGMENT STACK LANDS WHETHER OR NOT THE BURST IS WORTH ANYTHING. The
+	// row gives the burst and the debuff as two things one retaliation does, and
+	// a creature with no damage has still retaliated.
+	JudgmentStacks = Effects::HolyRepercussionsStacksAfterBurst(JudgmentStacks);
+	RefreshFloorModifierPanel();
+
+	if (Damage <= 0.0f)
+	{
+		return;
+	}
+
+	// EVERYONE ON THE PLAYER'S SIDE INSIDE IT, asked as the CREATURE's enemies.
+	// The row says "dealing damage in an area" and names no side; whose burst it
+	// is decides the side, so no ruling was needed.
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		World, Creature, Creature->GetActorLocation(),
+		Effects::HolyRepercussionsBurstRadiusCm);
+
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsArea = true;
+	for (AActor* Target : Caught)
+	{
+		if (!IsValid(Target) || !UCataclysmTargeting::AbilitySystemOf(Target))
+		{
+			continue;
+		}
+		UCataclysmSkillEffects::ApplyDirectDamage(Creature, Target, Damage,
+												  Delivery);
+	}
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForFungalOvergrowth(
@@ -3767,6 +3924,19 @@ void ACataclysmDungeonGameMode::StepWitheredGround(
 	}
 }
 
+void ACataclysmDungeonGameMode::StepHolyRepercussions(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (JudgmentStacks == JudgmentStacksApplied)
+	{
+		return;
+	}
+
+	JudgmentStacksApplied = JudgmentStacks;
+	ApplyChangingFloorEffects(Player, AbilitySystem);
+}
+
 void ACataclysmDungeonGameMode::StepFungalOvergrowth(
 	ACataclysmPlayerCharacter* Player,
 	UCataclysmAbilitySystemComponent* AbilitySystem)
@@ -3906,6 +4076,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// actors; the two figures because the call above has already taken them
 		// off the character, so leaving either here would make the next beat
 		// believe it was still applied and never put it back.
+		// AND JUDGMENT GOES ENTIRELY, BOTH NUMBERS. Issues #1820 and #41. This
+		// is the opposite of Wasting Sickness two paragraphs below, which keeps
+		// its count because its row calls the debuff "permanent for the duration
+		// of the dungeon". This row says nothing of the kind, and its stacks come
+		// from creatures the player has left behind on the last floor.
+		JudgmentStacks = 0;
+		JudgmentStacksApplied = 0;
+
 		FungalOvergrowthBoostMushrooms.Empty();
 		FungalOvergrowthSlowMushrooms.Empty();
 		FungalOvergrowthSpeedMoreApplied = 0.0f;

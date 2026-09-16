@@ -250,6 +250,35 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float MushroomSpeedLessPercent = 0.0f;
 
 	/**
+	 * How much less of ONE resistance the player has, in percent: the Judgment
+	 * stacks Holy Repercussions leaves on them. Issues #1820 and #41.
+	 *
+	 * THE FIRST FIELD HERE THAT MOVES ONE RESISTANCE RATHER THAN ALL EIGHT, and
+	 * that is the whole reason it is a new field. `ResistanceLessPercent` and
+	 * `ResistanceMorePercent` above are each applied inside a loop over every
+	 * damage type and each is documented as "of every resistance". Carrying a
+	 * type on one of them would mean a branch inside that loop and a change to
+	 * how The Nihil's Embrace's own two values are applied -- a shipped rule
+	 * altered for a new one's convenience. This is one stat, written once,
+	 * outside the loop.
+	 *
+	 * WHICH RESISTANCE IS NOT A FIELD, because the row names it and only this
+	 * rule writes this. `HolyRepercussionsResistance` is the damage type, and
+	 * `UCataclysmItemModifiers::ResistanceStatFor` turns it into the stat name
+	 * -- the same call the loop above makes, so a renamed damage type moves both
+	 * together.
+	 *
+	 * NAMED FOR ITS SOURCE, like `SicknessMaxHealthLessPercent` and
+	 * `GraspMovementLessPercent` and for the same reason: a second field that
+	 * moves a stat another field already moves cannot be named after the stat.
+	 *
+	 * IT GROWS ON A BLOW AND IS GONE AT THE STAIRS, so it is worked out on the
+	 * beat rather than once a floor.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float JudgmentResistanceLessPercent = 0.0f;
+
+	/**
 	 * Whether the player's skills are locked, and by how much. Edict of Silence.
 	 * Issues #1786 and #41.
 	 *
@@ -281,6 +310,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& GraspMovementLessPercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
+			&& JudgmentResistanceLessPercent <= 0.0f
 			&& SkillsLockedValue <= 0.0f;
 	}
 };
@@ -797,6 +827,51 @@ public:
 	 * here because it is a fact about today and not a law.
 	 */
 	static const TCHAR* IllusoryEnemiesKey;
+
+	/**
+	 * Holy Repercussions: "Enemies have a chance to retaliate with radiant
+	 * bursts upon being hit, dealing damage in an area and inflicting 'Judgment'
+	 * (a stacking debuff that increases holy damage taken)." Issues #1820 and
+	 * #41.
+	 *
+	 * THE ROW STATES NO FIGURE AT ALL -- not the chance, the damage, the reach,
+	 * the cap, or what a stack is worth. All five are judgements and each is
+	 * named beside its constant, with the precedent it follows or the absence of
+	 * one. `docs/DECISIONS.md` carries the same five.
+	 *
+	 * IT IS THE PLAYER'S BLOW THAT PROVOKES IT, which is Brand of the
+	 * Aggressor's direction and the opposite of Wasting Sickness's. "upon being
+	 * hit" is the creature being hit, so the listener tests that the player is
+	 * the attacker and a creature is the target.
+	 *
+	 * THE BURST IS THE CREATURE'S OWN AND REACHES THE PLAYER, which is why it
+	 * asks `FindEnemiesInSphere` with the creature as instigator: a creature's
+	 * enemies are the player's side. `Demonic_Brand_of_the_Aggressor` asks
+	 * `FindAlliesInSphere` because its row names the player's own side, and
+	 * `Demonic_Hellfire` asks `FindEveryoneInLine` because its row names nobody.
+	 * Three rows, three searches, each read off its own sentence.
+	 *
+	 * AN ILLUSION RETALIATES FOR NOTHING, and no code here knows that. The burst
+	 * is the creature's own attack damage, `Chaos_Illusory_Enemies` makes that
+	 * zero, and `ApplyDirectDamage` of nothing is nothing. A floor carrying both
+	 * rows needs nothing written for the pair.
+	 */
+	static const TCHAR* HolyRepercussionsKey;
+
+	/**
+	 * Which resistance Judgment lowers.
+	 *
+	 * THE ROW'S OWN WORD. "increases holy damage taken" -- holy is Celestial in
+	 * this game's vocabulary, which is the Cataclysm type this row belongs to,
+	 * so the row and its own column agree.
+	 *
+	 * A DAMAGE TYPE AND NOT A STAT NAME. `UCataclysmItemModifiers::
+	 * ResistanceStatFor` builds `resistance_celestial` from it, which is the
+	 * same call `StatModifiersFor`'s all-resistance loop makes, so a damage type
+	 * renamed in the design workbook moves this with it rather than leaving a
+	 * stat name nothing writes.
+	 */
+	static const TCHAR* HolyRepercussionsResistance;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -1698,6 +1773,80 @@ public:
 	 */
 	static constexpr float IllusoryEnemiesSharePercent = 25.0f;
 
+	/**
+	 * How often a blow the player lands provokes a retaliation, in percent.
+	 *
+	 * A JUDGEMENT, AND THE TABLE'S OWN FIGURE FOR THIS SHAPE. The row says
+	 * "a chance" and states none. Ten is what `game/Data/DungeonModifiers.csv`
+	 * uses for a chance fired by an event, and it is what
+	 * `SporeCloudsChancePercentOnDeath` and `HellfireChancePercentOnDeath` both
+	 * took for the same reason.
+	 *
+	 * THAT PRECEDENT APPLIES HERE AND DID NOT APPLY TO THE ROW BEFORE THIS ONE.
+	 * `IllusoryEnemiesSharePercent` is deliberately 25 rather than 10, because a
+	 * share of a floor's population is not a chance fired by an event. This one
+	 * is fired by an event, so the ten is the right precedent rather than a
+	 * habit.
+	 */
+	static constexpr float HolyRepercussionsChancePercentOnHit = 10.0f;
+
+	/**
+	 * How far a radiant burst reaches.
+	 *
+	 * A JUDGEMENT, declared as another rule's constant rather than as a number
+	 * for the reason `BrandNovaRadiusCm` gives: 300 is this project's settled
+	 * answer for a thing at a point on the floor. The row says "in an area" and
+	 * nothing about size.
+	 */
+	static constexpr float HolyRepercussionsBurstRadiusCm = InfernalRainRadiusCm;
+
+	/**
+	 * The most Judgment stacks the player carries, and what one is worth.
+	 *
+	 * BOTH ARE JUDGEMENTS AND THE ROW STATES NEITHER. It says "a stacking debuff
+	 * that increases holy damage taken" and stops.
+	 *
+	 * THE CAP IS `WastingSicknessMostStacks`'S FIGURE AND NOT BRAND'S. Five,
+	 * because Judgment makes the player take MORE damage and an uncapped count
+	 * would make a floor lethal in a way the row does not ask for.
+	 * `Famine_Wasting_Sickness` caps at five for the same shape of reason;
+	 * `Demonic_Brand_of_the_Aggressor`'s twenty is a count that ERUPTS and
+	 * clears rather than a debuff that stays.
+	 *
+	 * WHAT A STACK IS WORTH HAS NO PRECEDENT IN THIS FILE AT ALL, and that is
+	 * said plainly rather than dressed up. No other rule lowers one resistance,
+	 * so there is no figure to follow. Five percent per stack is twenty-five at
+	 * the cap, which is a quarter of one resistance -- enough for a player to
+	 * feel on a Celestial floor and far from the pipeline's clamp.
+	 */
+	static constexpr int32 HolyRepercussionsJudgmentMostStacks = 5;
+	static constexpr float HolyRepercussionsJudgmentLessPerStackPercent = 5.0f;
+
+	static_assert(
+		HolyRepercussionsChancePercentOnHit > 0.0f
+			&& HolyRepercussionsChancePercentOnHit < 100.0f,
+		"Holy Repercussions is a CHANCE on a blow. At zero nothing ever "
+		"retaliates and the row is unbuilt; at a hundred every blow the player "
+		"lands is answered and the row's own word 'chance' describes nothing.");
+
+	static_assert(
+		HolyRepercussionsBurstRadiusCm > 0.0f,
+		"A burst that reaches nowhere reaches nobody, the player included.");
+
+	static_assert(
+		HolyRepercussionsJudgmentMostStacks > 1,
+		"A cap of one is not a stacking debuff, and the row's word 'stacking' "
+		"describes nothing.");
+
+	static_assert(
+		HolyRepercussionsJudgmentLessPerStackPercent > 0.0f
+			&& HolyRepercussionsJudgmentLessPerStackPercent
+				* HolyRepercussionsJudgmentMostStacks < 100.0f,
+		"Judgment at the cap now takes all of a resistance or more. The row asks "
+		"for holy damage TAKEN to increase, not for the resistance to stop "
+		"existing, and the pipeline clamps a single Less at -99 so the figure "
+		"would stop meaning what it says.");
+
 	static_assert(
 		IllusoryEnemiesSharePercent > 0.0f
 			&& IllusoryEnemiesSharePercent < 100.0f,
@@ -2325,6 +2474,21 @@ public:
 
 	/** Whether a creature just placed on the floor is an illusion. */
 	static bool IllusoryEnemiesIsAnIllusion(float Roll);
+
+	/** Whether a blow the player just landed is answered with a burst. */
+	static bool HolyRepercussionsRetaliates(float Roll);
+
+	/**
+	 * The Judgment count after a burst, which stops at the cap.
+	 *
+	 * IT SATURATES RATHER THAN WRAPPING, which is the difference from
+	 * `BrandStacksAfterHit`. That count clears itself at its threshold because
+	 * its row erupts; this one is a debuff that stays, so the cap holds it.
+	 */
+	static int32 HolyRepercussionsStacksAfterBurst(int32 Stacks);
+
+	/** What a Judgment count takes off the player's Celestial resistance. */
+	static float HolyRepercussionsJudgmentLessPercent(int32 Stacks);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

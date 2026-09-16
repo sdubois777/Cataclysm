@@ -1468,6 +1468,137 @@ def test_asking_a_creature_for_zero_attack_damage_is_not_guarded_away():
         "rather than deleting it.")
 
 
+def test_holy_repercussions_row_states_no_figure_of_its_own():
+    """All five of this rule's figures are JUDGEMENTS, and this is what says so.
+
+    The row gives a chance, an area, a stacking debuff and a direction, and not
+    one number: not the chance, the damage, the reach, the cap, or what a stack
+    is worth. Each constant in `CataclysmDungeonModifierEffects.h` carries the
+    precedent it follows, or says plainly that it has none.
+
+    THE DAY THE ROW STATES ONE, THAT JUDGEMENT STOPS BEING ONE and the constant
+    has to be read off the row instead.
+    """
+    words = flat(rows()["Celestial_Holy_Repercussions"]["Description"])
+
+    assert not re.search(r"\d", words), (
+        f"Celestial_Holy_Repercussions now states a number: {words!r}. Its "
+        "chance, burst damage, reach, stack cap and per-stack worth are all "
+        "judgements recorded beside the constants in "
+        "CataclysmDungeonModifierEffects.h, because the row gave none. Read the "
+        "new figure off the row and say so there.")
+
+
+def test_holy_repercussions_row_still_says_a_chance_upon_being_hit():
+    """The trigger and its direction, held to the row's own words.
+
+    "a chance" is why the rule rolls. "upon being hit" is why the listener tests
+    that the PLAYER is the attacker and a CREATURE the target -- the creature is
+    the thing being hit. A row that moved to the player being hit would leave the
+    listener reading the blow announcement backwards, and nothing in C++ would
+    notice.
+    """
+    words = flat(rows()["Celestial_Holy_Repercussions"]["Description"]).lower()
+
+    assert "chance" in words, (
+        "Celestial_Holy_Repercussions no longer says 'chance'. "
+        "HolyRepercussionsRetaliates rolls because of that word; without it every "
+        "blow would be answered. " + words)
+    assert "upon being hit" in words, (
+        "Celestial_Holy_Repercussions no longer says 'upon being hit'. "
+        "NoteHitForHolyRepercussions tests that the player is the attacker and a "
+        "creature the target because the creature is what is being hit. " + words)
+
+
+def test_holy_repercussions_row_still_names_holy_damage_and_a_stacking_debuff():
+    """Which resistance, and that it stacks.
+
+    "increases holy damage taken" is why Judgment lowers the Celestial
+    resistance and no other -- holy is Celestial in this game, which is the
+    Cataclysm type the row itself belongs to. "a stacking debuff" is why there is
+    a count and a cap rather than a single on-or-off reduction.
+    """
+    row = rows()["Celestial_Holy_Repercussions"]
+    words = flat(row["Description"]).lower()
+
+    assert "holy damage taken" in words, (
+        "Celestial_Holy_Repercussions no longer says 'holy damage taken'. "
+        "HolyRepercussionsResistance is Celestial because of those words. "
+        + words)
+    assert row["CataclysmType"] == "Celestial", (
+        f"Celestial_Holy_Repercussions is now typed {row['CataclysmType']!r}. "
+        "Its Judgment lowers the Celestial resistance on the reading that 'holy' "
+        "is this row's own Cataclysm; if the type changed, that reading has to be "
+        "made again.")
+    assert "stacking" in words, (
+        "Celestial_Holy_Repercussions no longer says its debuff stacks. "
+        "HolyRepercussionsJudgmentMostStacks and the live count on the floor "
+        "panel exist because of that word. " + words)
+
+    declared = re.search(
+        r'HolyRepercussionsResistance\s*=\s*TEXT\("([^"]+)"\)\s*;',
+        EFFECTS_SOURCE.read_text(encoding="utf-8"))
+    assert declared and declared.group(1) == row["CataclysmType"], (
+        "HolyRepercussionsResistance in CataclysmDungeonModifierEffects.cpp is "
+        f"{declared.group(1) if declared else 'not declared'!r}, which is not "
+        f"the row's own type {row['CataclysmType']!r}.")
+
+
+def test_holy_repercussions_chance_is_still_the_tables_figure_for_an_event():
+    """The one judgement with a precedent in the table, held to that precedent.
+
+    Ten is what `game/Data/DungeonModifiers.csv` uses for a chance fired by an
+    event, and `SporeCloudsChancePercentOnDeath` took it for exactly that reason.
+    This row's chance is also fired by an event, so it follows the same figure.
+
+    NOT A COMPARISON OF A CONSTANT WITH ITSELF. Both are written as literals,
+    independently, so the two can drift apart -- which is what this notices.
+    `IllusoryEnemiesSharePercent` is deliberately NOT this figure, because a share
+    of a floor's population is not a chance fired by an event.
+    """
+    holy = constant("HolyRepercussionsChancePercentOnHit")
+    spores = constant("SporeCloudsChancePercentOnDeath")
+
+    assert holy == spores, (
+        f"HolyRepercussionsChancePercentOnHit is {holy:g} and "
+        f"SporeCloudsChancePercentOnDeath is {spores:g}. Both are a chance fired "
+        "by an event and both followed the table's figure for one; if one has "
+        "moved on purpose, say why beside it and in docs/DECISIONS.md.")
+
+
+def test_judgment_is_written_to_one_resistance_outside_the_all_resistance_loop():
+    """The structural decision, held in the source.
+
+    `StatModifiersFor` applies `ResistanceLessPercent` and `ResistanceMorePercent`
+    inside a loop over every damage type. Judgment moves ONE resistance, which is
+    why it got its own field rather than sharing theirs. If its write moved inside
+    that loop it would lower all eight, and the automation test that counts
+    exactly one moved stat would be the only thing to notice.
+
+    THE USE, NOT THE NAME. A comment could name the field inside the loop and
+    satisfy a check for the bare word, so this looks for the field being READ:
+    `Effects.JudgmentResistanceLessPercent`.
+    """
+    source = EFFECTS_SOURCE.read_text(encoding="utf-8")
+    function = body_of(
+        source,
+        "TMap<FName, TArray<FCataclysmStatModifier>> "
+        "UCataclysmDungeonModifierEffects::StatModifiersFor(")
+    loop = body_of(
+        function,
+        "for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())")
+
+    use = "Effects.JudgmentResistanceLessPercent"
+    assert use in function, (
+        "StatModifiersFor no longer reads Effects.JudgmentResistanceLessPercent, "
+        "so Judgment reaches no stat at all.")
+    assert use not in loop, (
+        "StatModifiersFor now reads Effects.JudgmentResistanceLessPercent INSIDE "
+        "the loop over every damage type. Judgment lowers one resistance; inside "
+        "that loop it lowers all eight. See JudgmentResistanceLessPercent in "
+        "CataclysmDungeonModifierEffects.h for why it has its own field.")
+
+
 def test_brand_of_the_aggressor_row_still_states_the_count_the_rule_uses():
     """The first dungeon rule whose count is READ OFF THE ROW rather than judged.
 
