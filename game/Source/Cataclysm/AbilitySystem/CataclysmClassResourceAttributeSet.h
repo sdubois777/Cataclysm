@@ -454,6 +454,24 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, IncreasedDamageBoughtPerExtraEnemyHit)
 
 	/**
+	 * Fervour gained for each enemy one attack lands on. Issue #1515.
+	 *
+	 * THE LAST CLAUSE OF THE RAVAGER'S GENERATOR. `Ravager_basic_spine_000` reads
+	 * "Enemies in reach generate Fervour: 1 for each enemy your attacks hit, and 1
+	 * per second for every enemy within 4 metres of you"; the rate per enemy in
+	 * reach is `FervourPerEnemyInReach` above, and this is the first half.
+	 *
+	 * ZERO FOR EVERY CLASS, and the starting node is its only source.
+	 *
+	 * ASKED FOR THROUGH THE STAT PIPELINE WITH THE SKILL'S TAGS, fallback zero, for
+	 * the reason every Fervour rate here gives. See
+	 * `UCataclysmFervour::GainForEnemiesHit` for what counts as a hit.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourPerEnemyHit)
+	FGameplayAttributeData FervourPerEnemyHit;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourPerEnemyHit)
+
+	/**
 	 * Whether this character's skills cost no health at all. Issue #1051.
 	 * Zero for no, above zero for yes.
 	 *
@@ -731,6 +749,7 @@ protected:
 	UFUNCTION() void OnRep_FervourDecayGraceMetres(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthRestoredOnKill(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_IncreasedDamageBoughtPerExtraEnemyHit(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourPerEnemyHit(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerCast(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthCostSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaPoolBecomesHealth(const FGameplayAttributeData& OldValue);

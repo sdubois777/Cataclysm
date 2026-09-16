@@ -503,7 +503,10 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// damage a melee attack buys with Fervour for each enemy beyond the first.
 	// Off the sheet for the same reason: no affix grants it, nothing scales
 	// it, no class differs on it, and one node supplies it.
-	constexpr int32 OffSheetResourceStats = 28;
+	// AND TWENTY-NINE SINCE THE LAST CLAUSE OF THE RAVAGER'S GENERATOR, issue
+	// #1515: Fervour for each enemy an attack lands on. Off the sheet for the
+	// same reason again.
+	constexpr int32 OffSheetResourceStats = 29;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

@@ -1900,6 +1900,10 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	// reads at the end. A use that every target evaded pays the caster nothing.
 	bool bAnyLanded = false;
 
+	// HOW MANY ENEMIES THIS CALL'S BLOWS LANDED ON, carrying damage, for the
+	// Fervour the Ravager's starting node pays for each. Issue #1515.
+	int32 EnemiesHitForFervour = 0;
+
 	for (AActor* Target : Targets)
 	{
 		// WHICH SIDE THIS BLOW CAME FROM, ASKED BEFORE IT LANDS. Three Dagger
@@ -2013,6 +2017,12 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		{
 			NoteBlowLanded(Self, Target, Target->GetActorLocation(), bFromBehind);
 		}
+
+		// AND COUNTED FOR THE FERVOUR IT EARNS, by the same test: the blow
+		// landed, and it carried damage. Issue #1515, "1 for each enemy your
+		// attacks hit". Each target appears once in a call, so this is once per
+		// enemy; it is paid below, after every blow has resolved.
+		EnemiesHitForFervour += (bLanded && Dealt > 0.0f) ? 1 : 0;
 
 		// KNOCKBACK IS APPLIED HERE, WHICH IS WHAT MAKES IT A RIDER. It used to
 		// live inside UCataclysmStrikeSkill::SwingOnce, so only a Strike could
@@ -2173,6 +2183,18 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	if (Total > 0.0f && bAnyLanded)
 	{
 		ApplyManaOnHit();
+	}
+
+	// AND THE FERVOUR EACH ENEMY THIS CALL LANDED ON EARNS. Issue #1515. Paid
+	// after the blows resolve, because it prices none of them. A Consume split
+	// deals one swing in two calls and each enemy is in exactly one of them, so
+	// the two payments add up to one per enemy. Zero for every character
+	// without the Ravager's starting node.
+	if (EnemiesHitForFervour > 0)
+	{
+		UCataclysmFervour::GainForEnemiesHit(
+			GetAbilitySystemComponentFromActorInfo(), SkillTags,
+			EnemiesHitForFervour);
 	}
 
 	return Total;
