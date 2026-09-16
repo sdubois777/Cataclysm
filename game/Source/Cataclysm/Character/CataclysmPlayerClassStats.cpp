@@ -407,6 +407,14 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			 Resource::GetFervourDecayPerSecondAttribute()},
 			{FString(UCataclysmFervour::DecayGraceMetresStat),
 			 Resource::GetFervourDecayGraceMetresAttribute()},
+
+			// AND THE RAVAGER'S FIRST FERVOUR SPENDER. Issue #1515. Zero for
+			// every class, and `Ravager_basic_d_c1` Wrung Out is its only
+			// source. Without this entry the row would be dropped by `ApplyTo`
+			// before `StatForSkill` could be asked, and a kill would restore
+			// nothing while the node looked built.
+			{FString(UCataclysmFervour::HealthRestoredOnKillStat),
+			 Resource::GetHealthRestoredOnKillAttribute()},
 			{FString(UCataclysmFervour::OnMinionDeathStat),
 			 Resource::GetFervourOnMinionDeathAttribute()},
 

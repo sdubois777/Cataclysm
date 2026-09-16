@@ -167,6 +167,52 @@ public:
 	static constexpr float DecayGraceSeconds = 3.0f;
 
 	/**
+	 * How much of a character's maximum health a kill restores, in percent.
+	 * `Ravager_basic_d_c1` Wrung Out is its only source. Issue #1515.
+	 */
+	static const TCHAR* HealthRestoredOnKillStat;
+
+	/**
+	 * What one kill's restoration costs in Fervour. Issue #1515.
+	 *
+	 * A CONSTANT RATHER THAN A STAT, for the reason `DecayGraceSeconds` above
+	 * gives: no node in any tree changes it. `Ravager_basic_d_c1` states it:
+	 * "Killing an enemy spends 5 Fervour to restore 1% of your maximum health
+	 * per point."
+	 */
+	static constexpr float KillRestoreCost = 5.0f;
+
+	/**
+	 * Spend the Fervour one kill's restoration costs and restore the health it
+	 * buys, answering how much health really arrived. Issue #1515.
+	 *
+	 * THE SPENDING SIBLING OF `GainOnMinionDeath`: a death moves the pool, and
+	 * this time it moves it DOWN and buys something with it.
+	 *
+	 * ALL OR NOTHING, AND THAT IS A READING OF THE SENTENCE RATHER THAN ONE OF
+	 * ITS WORDS. "If you have no Fervour it restores nothing" is loose about a
+	 * character holding 3: spend 3 and restore it all, spend 3 and restore a
+	 * share, or spend nothing and restore nothing. The same tree's `Bought With
+	 * Ruin` states the case exactly for the same situation -- "If you cannot
+	 * pay, the attack still hits but gains nothing" -- so an unpayable cost buys
+	 * nothing, and "no Fervour" is the most obvious instance of not being able
+	 * to pay rather than the only one. Spending less than the cost for the full
+	 * effect would make the node free at one point of Fervour; a proportional
+	 * share would invent arithmetic no sentence states.
+	 *
+	 * ASKED FOR THROUGH THE PIPELINE, fallback zero, for the reason every rate in
+	 * this file gives: a row that later gains a condition is never folded into
+	 * an attribute, and a plain read would answer zero for ever.
+	 *
+	 * @return the health really restored, which is zero for a character without
+	 *         the node, for one that cannot pay, and for one already at full
+	 *         health -- in which last case NOTHING IS SPENT either, because
+	 *         paying for a restoration that restores nothing is a cost with no
+	 *         effect the sentence never describes
+	 */
+	static float RestoreHealthOnKill(UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Marks a restoration of health as coming from the character's own
 	 * regeneration rate rather than from leech.
 	 *

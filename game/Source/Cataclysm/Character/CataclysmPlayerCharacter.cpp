@@ -964,12 +964,24 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		Cataclysm->GetNumericAttribute(
 			UCataclysmCombatAttributeSet::
 				GetCrowdControlEndsWhenItsApplierDiesAttribute()));
-	if (Ends <= 0.0f)
+	if (Ends > 0.0f)
 	{
-		return;
+		EndCrowdControlAppliedBy(Notice.Victim);
 	}
 
-	EndCrowdControlAppliedBy(Notice.Victim);
+	// AND A KILL MAY BUY HEALTH WITH FERVOUR. Issue #1515.
+	// `Ravager_basic_d_c1` Wrung Out: "Killing an enemy spends 5 Fervour to
+	// restore 1% of your maximum health per point."
+	//
+	// THE CLAUSE ABOVE RETURNED EARLY UNTIL THIS WAS ADDED, and that early
+	// return is exactly what would have silenced this: every kill by a
+	// character without Nothing Moves You returned before reaching it. The two
+	// rules are independent -- one ends a stun, the other restores health --
+	// so neither may stop the other from running.
+	//
+	// ITS RETURN VALUE IS DROPPED. Zero is the ordinary answer for every
+	// character in the game, and it is returned for tests.
+	UCataclysmFervour::RestoreHealthOnKill(Cataclysm);
 }
 
 void ACataclysmPlayerCharacter::EndCrowdControlAppliedBy(const AActor* Applier)

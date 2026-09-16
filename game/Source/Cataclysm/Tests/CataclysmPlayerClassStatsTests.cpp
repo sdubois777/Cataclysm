@@ -383,6 +383,13 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("fervour_decay_per_second"),
 		 TEXT("the Ravager's starting node, as a flat rate read once the grace "
 			  "has lapsed")},
+		// Issue #1515. How much of maximum health a kill restores, paid for in
+		// Fervour. Zero for every class; the Ravager's Wrung Out is its only
+		// source. NO CLASS LINE MAY NAME IT: a class whose every kill restored
+		// health would hand out the node's whole effect without its cost.
+		{TEXT("health_restored_on_kill"),
+		 TEXT("the Ravager's Wrung Out node, as a flat percentage of maximum "
+			  "health per point, bought with Fervour on a kill")},
 		{TEXT("fervour_decay_grace_metres"),
 		 TEXT("the Ravager's starting node and its No Ground Given keystone, "
 			  "as flat distances that sum to the eight that keystone names")},

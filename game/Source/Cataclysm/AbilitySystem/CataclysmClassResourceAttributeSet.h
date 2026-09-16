@@ -406,6 +406,30 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourDecayGraceMetres)
 
 	/**
+	 * How much of this character's maximum health a kill restores, in percent,
+	 * bought with Fervour. Issue #1515.
+	 *
+	 * THE RAVAGER'S FIRST FERVOUR SPENDER. `Ravager_basic_d_c1` Wrung Out reads
+	 * "Killing an enemy spends 5 Fervour to restore 1% of your maximum health
+	 * per point", and its row grants one per point.
+	 *
+	 * HERE AND NOT IN THE VITAL SET, though it restores health, because what
+	 * makes it work is the pool: a character with no Fervour gets nothing from
+	 * it. It sits with the other Fervour rules for the same reason
+	 * `FervourOnDroppingLow` does.
+	 *
+	 * THE COST IS A CONSTANT AND THIS IS NOT. No node changes the 5 Fervour;
+	 * the node's points change the percentage. See
+	 * `UCataclysmFervour::KillRestoreCost`.
+	 *
+	 * ASKED FOR THROUGH THE STAT PIPELINE, fallback zero, for the reason every
+	 * Fervour rate here gives.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_HealthRestoredOnKill)
+	FGameplayAttributeData HealthRestoredOnKill;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthRestoredOnKill)
+
+	/**
 	 * Whether this character's skills cost no health at all. Issue #1051.
 	 * Zero for no, above zero for yes.
 	 *
@@ -681,6 +705,7 @@ protected:
 	UFUNCTION() void OnRep_FervourPerEnemyInReach(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourDecayPerSecond(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourDecayGraceMetres(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealthRestoredOnKill(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerCast(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthCostSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaPoolBecomesHealth(const FGameplayAttributeData& OldValue);
