@@ -182,6 +182,11 @@ class RunResult:
     decision_days: int              # free days facing 2+ urgent dungeons
     free_days: int                  # days the player was choosing at all
     overcommitted: int              # dungeons entered that could not finish in time
+    #: How many of the active Cataclysms met their own quest count. THIS IS THE
+    #: QUANTITY THE WIN READS, unlike `objectives`, which is a whole-campaign
+    #: total across every active Cataclysm: `_maybe_open_cataclysm` opens the
+    #: capital once `cataclysms_required()` of these are finished. Issue #1436.
+    cataclysms_finished: int
 
     @property
     def triage_pressure(self) -> float:
@@ -1386,4 +1391,5 @@ class Simulation:
             decision_days=self.decision_days,
             free_days=self.free_days,
             overcommitted=self.overcommitted,
+            cataclysms_finished=len(self.cataclysms_complete()),
         )

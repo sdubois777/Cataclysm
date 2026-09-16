@@ -190,7 +190,7 @@ _CAP_ORDER_ENDS_AT = "PRESET ORDER BY WIN RATE ALONE"
 
 #: The same, for the win-rate ordering kept as a second opinion. Issue #294.
 _WIN_ORDER_HEADING = "PRESET ORDER BY WIN RATE ALONE"
-_WIN_ORDER_ENDS_AT = "QUEST OBJECTIVES CLEARED"
+_WIN_ORDER_ENDS_AT = "QUEST DUNGEONS CLEARED"
 
 
 def _lines_between(printed: str, start: str, end: str) -> list[str]:
@@ -887,10 +887,29 @@ class TestThePresetSectionCoversBothEnds:
         base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
         experiments.exp_presets(base, tiers=(1, 8), trials=2)
         printed = capsys.readouterr().out
-        assert f"obj/{base.quest_objectives_required}" in printed, (
-            "the preset table no longer reports quest objectives cleared. "
+        assert "quests" in printed and "QUEST DUNGEONS CLEARED" in printed, (
+            "the preset table no longer reports quest dungeons cleared. "
             "Issue #294 added it because win rate stops separating the presets "
             "above tier 3.")
+        assert "obj/" not in printed, (
+            "the total is printed over a per-Cataclysm denominator again. It is "
+            "a whole-campaign total and is out of nothing. Issue #1436.")
+
+    def test_the_table_reports_cataclysms_finished_out_of_what_the_win_needs(
+            self, capsys):
+        """Issue #1436. The quantity the win reads is how many active
+        Cataclysms met their own quest count, against the half the win needs
+        at that tier: 1 of 1 at tier 1, 4 of 8 at tier 8. The column's label
+        is read from the config for the tier, so it cannot say 8 where the
+        win needs 4."""
+        base = replace(TuningConfig(), tier=experiments.SWEEP_TIER)
+        experiments.exp_presets(base, tiers=(1, 8), trials=2)
+        printed = capsys.readouterr().out
+        assert "cats/1" in printed and "cats/4" in printed, (
+            "the preset table does not report Cataclysms finished out of the "
+            "half the win needs at each tier. Issue #1436.")
+        assert "CATACLYSMS FINISHED" in printed
+        assert "tier 8, out of 4:" in printed
 
     def test_the_objectives_column_is_labelled_from_the_config(self, capsys):
         """The heading says how many objectives a win needs. Reading it from the
@@ -901,11 +920,15 @@ class TestThePresetSectionCoversBothEnds:
                        quest_objectives_required=5)
         experiments.exp_presets(base, tiers=(1,), trials=2)
         printed = capsys.readouterr().out
-        assert "obj/5" in printed, (
-            "the preset table's objectives heading does not follow "
-            "quest_objectives_required. It is hard-coded, so changing how many "
-            "objectives a win needs would leave the column labelled wrongly.")
-        assert "obj/8" not in printed
+        # THE FALLBACK NO LONGER LABELS ANYTHING. Issue #1436: the total is
+        # out of nothing, so changing the fallback must change no heading.
+        assert "obj/5" not in printed and "obj/8" not in printed, (
+            "the preset table labels the quest-dungeon total with "
+            "quest_objectives_required, a per-Cataclysm fallback no real "
+            "Cataclysm uses. Issue #1436.")
+        assert "cats/1" in printed, (
+            "the Cataclysms-finished heading does not follow "
+            "cataclysms_required for the tier.")
 
     def test_it_records_that_objectives_did_not_solve_the_problem(self, capsys):
         """CLAUDE.md: say what did not work, plainly and first. Objectives

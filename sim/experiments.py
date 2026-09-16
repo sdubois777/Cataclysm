@@ -203,6 +203,7 @@ def summarise(results):
         "stale": 100.0 * mean([0.0 if (r.won or r.lost) else 1.0 for r in results]),
         "cities": mean([r.cities_lost for r in results]),
         "obj": mean([r.objectives for r in results]),
+        "cataclysms": mean([r.cataclysms_finished for r in results]),
         "floors": mean([r.floors_cleared for r in results]),
         "power": mean([r.power for r in results]),
         "crafts": mean([r.crafts for r in results]),
@@ -1053,10 +1054,16 @@ def preset_tables(base: TuningConfig, tiers, trials: int):
     #: Loss rates, kept so the tolerance for a pair can be computed from the
     #: rates those two cells actually got rather than from the worst case.
     losses: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
-    #: Mean quest objectives cleared, out of `quest_objectives_required`. Kept
-    #: alongside the win rate because a win requires all of them, so this is the
-    #: same axis measured before it saturates. Issue #294.
+    #: Mean quest dungeons cleared, A WHOLE-CAMPAIGN TOTAL ACROSS EVERY ACTIVE
+    #: CATACLYSM and out of nothing. Issue #294 added it as the win's own axis
+    #: measured before it saturates; issue #1436 found it is not that axis
+    #: once more than one Cataclysm is active, since the win counts finished
+    #: Cataclysms and this counts dungeons whichever Cataclysm sent them. It
+    #: stays because it explains the collapse; `finished` below is the axis.
     objectives: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
+    #: Mean Cataclysms finished, out of the half the win needs at that tier.
+    #: This is what `Simulation._maybe_open_cataclysm` reads. Issue #1436.
+    finished: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
     #: Percentage of campaigns that ended with no result. Issue #293.
     stale: dict[int, dict[str, float]] = {tier: {} for tier in tiers}
     #: Presets whose campaigns mostly ran out of days, per tier. These are kept
@@ -1070,9 +1077,13 @@ def preset_tables(base: TuningConfig, tiers, trials: int):
         ceiling = scoring.tier_bounds(tier)[1]
         print(f"\n  TIER {tier} -- player power ceiling {ceiling:,.0f}, "
               f"day cap {base.max_days:,}")
+        # `quests` IS A TOTAL AND SAYS SO; `cats/N` IS OUT OF WHAT THE WIN NEEDS.
+        # This said `obj/8` -- a whole-campaign total over a per-Cataclysm
+        # fallback no real Cataclysm uses -- and at tier 8 printed 33.9 out
+        # of 8 for campaigns that all lost. Issue #1436.
+        needed = replace(base, tier=tier).cataclysms_required()
         header = (f"{'preset':<42}{'win%':>7}{'loss%':>7}{'w-l':>7}"
-                  f"{'stale%':>8}"
-                  f"{'obj/' + str(base.quest_objectives_required):>7}"
+                  f"{'stale%':>8}{'quests':>7}{'cats/' + str(needed):>7}"
                   f"{'cities':>8}{'floors':>9}{'crafts':>8}{'triage%':>9}")
         print(header)
         print("-" * len(header))
@@ -1084,10 +1095,12 @@ def preset_tables(base: TuningConfig, tiers, trials: int):
             losses[tier][tree.name] = s["lost"]
             margins[tier][tree.name] = s["win"] - s["lost"]
             objectives[tier][tree.name] = s["obj"]
+            finished[tier][tree.name] = s["cataclysms"]
             stale[tier][tree.name] = s["stale"]
             print(f"{tree.name:<42}{s['win']:>7.0f}{s['lost']:>7.0f}"
                   f"{s['win'] - s['lost']:>7.0f}"
-                  f"{s['stale']:>8.0f}{s['obj']:>7.1f}{s['cities']:>8.1f}"
+                  f"{s['stale']:>8.0f}{s['obj']:>7.1f}{s['cataclysms']:>7.2f}"
+                  f"{s['cities']:>8.1f}"
                   f"{s['floors']:>9.0f}{s['crafts']:>8.1f}{s['triage']:>9.1f}")
         unresolved[tier] = warn_about_unresolved_campaigns(
             wins[tier].keys(), stale[tier], base.max_days,
@@ -1253,17 +1266,35 @@ def preset_tables(base: TuningConfig, tiers, trials: int):
                   + (" > ".join(" = ".join(group) for group in order)
                      if order else "NO PRESET RANKED"))
 
-        print(f"\n  QUEST OBJECTIVES CLEARED, out of "
-              f"{base.quest_objectives_required}, as a second opinion. Issue "
-              "#294 asked whether")
-        print("  this separates the presets where win rate does not, because a "
-              "win requires")
-        print("  all of them and this is the same axis measured before it "
-              "saturates.")
+        print("\n  QUEST DUNGEONS CLEARED, a whole-campaign total across every "
+              "active Cataclysm and")
+        print("  out of nothing, as a second opinion. Issue #294 asked whether "
+              "this separates the")
+        print("  presets where win rate does not. It is NOT the win's axis once "
+              "more than one")
+        print("  Cataclysm is active: the win counts finished Cataclysms, each "
+              "against its own")
+        print("  quest count, and this counts dungeons whichever Cataclysm sent "
+              "them. Issue #1436.")
         for tier in tiers:
             values = sorted(objectives[tier].values())
             print(f"    tier {tier}: {values[-1] - values[0]:>4.1f} spread over "
                   + ", ".join(f"{v:.1f}" for v in values))
+
+        print("\n  CATACLYSMS FINISHED, out of the half the win needs at each "
+              "tier. This is the")
+        print("  quantity the win reads, so it is the axis issue #294 meant. "
+              "Whether it separates")
+        print("  the presets where win rate does not has not been measured "
+              "at the report's own")
+        print("  sample; the paragraph below was measured on the total above. "
+              "Issue #1436.")
+        for tier in tiers:
+            needed = replace(base, tier=tier).cataclysms_required()
+            values = sorted(finished[tier].values())
+            print(f"    tier {tier}, out of {needed}: "
+                  f"{values[-1] - values[0]:>4.2f} spread over "
+                  + ", ".join(f"{v:.2f}" for v in values))
         print("\n  MEASURED 2026-08-05: IT DOES NOT. It saturates at the low "
               "tiers, where five")
         print("  of six presets sit within 0.1 of each other, and at the high "
