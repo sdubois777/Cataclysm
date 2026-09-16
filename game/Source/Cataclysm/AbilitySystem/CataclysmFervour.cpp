@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmTargetCandidates.h"
 #include "AbilitySystemComponent.h"
@@ -29,6 +30,8 @@ const TCHAR* UCataclysmFervour::DecayPerSecondStat =
 	TEXT("fervour_decay_per_second");
 const TCHAR* UCataclysmFervour::DecayGraceMetresStat =
 	TEXT("fervour_decay_grace_metres");
+const TCHAR* UCataclysmFervour::HealthRestoredOnKillStat =
+	TEXT("health_restored_on_kill");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -614,6 +617,76 @@ float UCataclysmFervour::GainOnDroppingLow(UAbilitySystemComponent* AbilitySyste
 
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
 	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::RestoreHealthOnKill(UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to spend, which is every enemy.
+		return 0.0f;
+	}
+
+	// THE NODE FIRST, BECAUSE IT REFUSES ALMOST EVERYONE. Zero for every
+	// character without `Ravager_basic_d_c1`, so nobody else touches the pool
+	// or reads their health on a kill.
+	const float Percent = Cataclysm->StatForSkill(
+		FName(HealthRestoredOnKillStat), FGameplayTagContainer(), 0.0f);
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// AN UNPAYABLE COST BUYS NOTHING. See the header for why a character
+	// holding less than the cost restores nothing rather than a share: the same
+	// tree's `Bought With Ruin` states that rule outright.
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Held = AbilitySystem->GetNumericAttribute(Pool);
+	if (Held < KillRestoreCost)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
+	const float Before = AbilitySystem->GetNumericAttribute(Health);
+
+	// NOTHING TO RESTORE IS NOTHING TO BUY. A character already at full health
+	// keeps its Fervour: paying for a restoration that restores nothing is a
+	// cost with no effect, and no sentence describes one.
+	if (Maximum <= 0.0f || Before >= Maximum)
+	{
+		return 0.0f;
+	}
+
+	// PAID BEFORE THE HEALING, so a character whose healing is refused
+	// elsewhere still pays for the attempt the node describes. Clamped the way
+	// every write to the pool in this file is clamped, for the reason `Move`
+	// gives.
+	const float Spend =
+		FMath::Clamp(Held - KillRestoreCost, 0.0f, Resource->GetMaxClassResource())
+		- Held;
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Spend);
+
+	// `TopUp` IS WHAT THE LIFE LEECH HEALS WITH, so this healing obeys the same
+	// ceiling and the same received-healing reductions every other restoration
+	// of health does, rather than a second copy of those rules.
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Health, MaxHealth,
+								  Maximum * Percent / 100.0f);
+
+	return AbilitySystem->GetNumericAttribute(Health) - Before;
 }
 
 float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySystem)

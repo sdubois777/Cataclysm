@@ -206,7 +206,28 @@ void UCataclysmTargetCandidates::HostileDistancesWithinMetres(
 	const ACataclysmCharacterBase* Searcher, const FVector& Origin, float Metres,
 	TArray<float>& OutMetres)
 {
+	// THE ONE WALK, ASKED FOR DISTANCES ALONE. Issue #1515 added a second
+	// entry point that also wants the actors; both call `WalkHostilesWithin`
+	// below so there is one definition of "which characters are near this one".
+	WalkHostilesWithin(Searcher, Origin, Metres, OutMetres, nullptr);
+}
+
+void UCataclysmTargetCandidates::HostileActorsWithinMetres(
+	const ACataclysmCharacterBase* Searcher, const FVector& Origin, float Metres,
+	TArray<float>& OutMetres, TArray<ACataclysmCharacterBase*>& OutActors)
+{
+	WalkHostilesWithin(Searcher, Origin, Metres, OutMetres, &OutActors);
+}
+
+void UCataclysmTargetCandidates::WalkHostilesWithin(
+	const ACataclysmCharacterBase* Searcher, const FVector& Origin, float Metres,
+	TArray<float>& OutMetres, TArray<ACataclysmCharacterBase*>* OutActors)
+{
 	OutMetres.Reset();
+	if (OutActors)
+	{
+		OutActors->Reset();
+	}
 	LookedAt = 0;
 	if (!Searcher || Metres <= 0.0f)
 	{
@@ -249,6 +270,18 @@ void UCataclysmTargetCandidates::HostileDistancesWithinMetres(
 			}
 
 			OutMetres.Add(static_cast<float>(FMath::Sqrt(DistanceSquared) / 100.0));
+
+			// THE ACTOR TOO, WHEN THE CALLER ASKED FOR IT. Issue #1515.
+			// `Ravager_keystone_c_kC` Grinding Halt counts only the CRIPPLED
+			// enemies near a character, and a distance cannot be tested for a
+			// gameplay tag -- the caller needs the body to ask about.
+			//
+			// THE TWO LISTS RUN IN STEP, entry for entry, so a caller that
+			// wants both can pair them by index.
+			if (OutActors)
+			{
+				OutActors->Add(Candidate);
+			}
 		}
 	};
 

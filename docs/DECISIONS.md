@@ -2,6 +2,185 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — A Ravager's kill spends Fervour to restore health, and crippled enemies near it generate Fervour
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmTargetCandidates.h` and
+`.cpp` (a second entry point on the radius walk),
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (a new
+scale), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp`
+(filling its list), `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h` and
+`.cpp` (the kill rule), `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h`
+and `.cpp` (one attribute), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`
+(the death handler), `tools/generate_datatables.py` (the scale's name),
+`docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv` (two rows),
+and the tests. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+Two Ravager nodes now do what they say: `Ravager_basic_d_c1` **Wrung Out** — "Killing
+an enemy spends 5 Fervour to restore 1% of your maximum health per point. If you
+have no Fervour it restores nothing." — and `Ravager_keystone_c_kC` **Grinding
+Halt** — "Each Crippled enemy within 4 metres of you grants you 1 Fervour per
+second."
+
+### TWO OF THE FOUR NODES THIS WAS ASKED FOR, AND WHY NOT THE OTHER TWO
+
+The change before this one gave a Ravager a Fervour bar that fills and drains,
+which unblocked four nodes. **Two were built and two were stopped at the boundary
+rather than half-built**, and each sentence was checked against the code rather
+than assumed:
+
+| node | what it needs | outcome |
+| :-- | :-- | :-- |
+| Wrung Out | a death signal, the pool, a healing routine | all three existed; built |
+| Grinding Halt | the hostile characters within a radius, not their distances | one small gap; built |
+| Bought With Ruin | a count of enemies one melee blow hit, where the blow resolves | does not exist; its own change next |
+| Set Against It | a state the player enters and leaves | does not exist; ruled a toggle of the aura kind, built only if an aura toggle exists in code |
+
+**There is no brace, stance, toggle or maintained state in the game**, measured
+rather than inferred: "brace" occurs 214 times in `game/Source`, case-insensitive.
+207 are "Embrace" — Death's Embrace and Nihil's Embrace — and the other seven are
+the idiom "belt and braces" three times, a C++ braced initializer list, the armour
+slot `Item.Slot.Bracers`, a check that a name contains no braces, and a comment
+about an enemy's attack telegraph. None names a state.
+
+**This was first reported as "every one of the 73 matches is Embrace", and both
+halves were wrong.** 73 was the count of one spelling of one token, and seven
+matches are not "Embrace" at all. The conclusion survived only because of what
+those seven turned out to be, which is the reason to count every match rather
+than the most common one.
+
+`EnemiesHit` does exist, as a member on two classes, `UCataclysmMovementSkill`
+and `ACataclysmProjectile`. Game code sets it, and prints it in one log line;
+tests read it. Neither is anything a melee hit carries.
+
+### GRINDING HALT NEEDED THE BODIES, NOT THE DISTANCES
+
+`UCataclysmTargetCandidates::HostileDistancesWithinMetres` returns distances, and
+its own comment says why: one walk serves every radius asked for. **A distance
+cannot be tested for a gameplay tag**, so counting only the crippled enemies means
+holding each body to ask about its debuffs.
+
+`HostileActorsWithinMetres` answers with both, running in step. **It is a second
+entry point rather than a second walk**: both call one private body, so there is
+still a single definition of "which characters are near this one" — the thing
+the distances function's comment says must not be written twice. That function
+kept its signature and comment unchanged, as ruled.
+
+### ITS OWN LIST AND ITS OWN SCALE
+
+`crippled_enemies_in_reach` is the existing `enemies_in_reach` with one filter,
+named in both places a scale is named: the stat pipeline and the data generator.
+It reads its own list of distances on the condition state,
+`CrippledHostileDistancesMetres`, filled by `WithEnemiesInReach` while each body
+is in hand.
+
+**The counting loop is now one helper used by both counters**, so "within this
+many metres" still has one definition across two lists.
+
+### GRINDING HALT SHARES THE STARTING NODE'S RATE, SO THE TWO ADD
+
+Its row grants `fervour_per_enemy_in_reach` — the same statistic the tree's
+starting node grants — over crippled enemies only. Two consequences, both
+intended:
+
+- **A crippled enemy earns two a second** for a character holding both nodes: one
+  from each row. `Cataclysm.Passives.ACrippledEnemyCountsForTheStartingNodeAndGrindingHalt`
+  pins that the shared statistic sums the rows.
+- **Held Ground increases it too.** Its sentence is "+2% increased Fervour gained
+  from enemies near you", and crippled enemies are enemies near you, so the
+  sentence supports this rather than merely permitting it.
+
+### WRUNG OUT: TWO JUDGEMENTS, CONFIRMED BY THE COORDINATING SESSION AND STILL JUDGEMENTS
+
+Both were confirmed on 2026-09-16, relayed as approval. They stay labelled as
+judgements because the node's sentence does not settle either one; the
+confirmation is a ruling on a reading, not a discovery that the sentence said it.
+
+**All or nothing.** "If you have no Fervour it restores nothing" is loose about a
+character holding 3. The same tree's Bought With Ruin states the case exactly —
+"If you cannot pay, the attack still hits but gains nothing" — so an unpayable
+cost buys nothing, and "no Fervour" is the most obvious instance of not being able
+to pay rather than the only one. Spending less than the cost for the full effect
+would make the node free at one point of Fervour; a proportional share would
+invent arithmetic no sentence states.
+
+**Nothing is spent at full health.** Paying five Fervour for a restoration that
+restores nothing is a cost with no effect, and no sentence describes one.
+
+The five Fervour is a constant, `UCataclysmFervour::KillRestoreCost`, because no
+node changes it; the node's points change the percentage. The healing goes
+through `UCataclysmRegeneration::TopUp`, which is what the life leech heals with,
+so it obeys the same ceiling and the same received-healing reductions rather than
+a second copy of those rules.
+
+### TWO DEFECTS FOUND BEFORE ANY MACHINE TIME, AND THE TEST THAT WOULD HAVE FAILED ON EACH
+
+Both were early returns written correctly for the code as it stood, and both
+would have made a node in this change do nothing with nothing reporting why.
+
+| defect | what it would have done | the test that would have failed |
+| :-- | :-- | :-- |
+| `ACataclysmPlayerCharacter::OnSomethingDied` ran the applier-death clause of Nothing Moves You and then **returned** for any character without that node | stopped Wrung Out for almost every kill in the game | `WrungOutRestoresHealthWhenARealRavagerKills` |
+| `UCataclysmAbilitySystemComponent::WithEnemiesInReach` **returned** when no row asked about plain enemies in reach | left the crippled list empty for a character whose only nearby-enemy row is Grinding Halt's | `GrindingHaltGrantsFervourForACrippledEnemyNear` and `GrindingHaltCountsEachCrippledEnemy` |
+
+The first is now a condition, and the two rules run independently: one ends a
+stun, the other restores health, and neither may stop the other. The second now
+returns early only when neither kind of row asks.
+
+**The right-hand column is a TRACE, not a guard proof.** Each was read off what
+the test holds: `WrungOutRestoresHealthWhenARealRavagerKills` holds Wrung Out
+alone, so the first return would fire; the two Grinding Halt tests hold the
+keystone alone, so the second would. **The first defect is also this change's
+third guard proof**, chosen over the second because it reaches every holder of
+Wrung Out who lacks Nothing Moves You. The return is put back as it was, and the
+proof is predicted to fail `WrungOutRestoresHealthWhenARealRavagerKills` and
+nothing else. Its result is reported with the pull request and not here, because
+this entry was written before the proof ran.
+
+**One test would NOT have caught the second defect, and that is worth knowing.**
+`ACrippledEnemyCountsForTheStartingNodeAndGrindingHalt` holds the starting node
+as well, and the starting node's row asks about plain enemies in reach, so the
+early return never fires and that test passes with the defect present. Only the
+choice to test Grinding Halt WITHOUT the starting node exposes it. That choice
+was made so the Fervour asserted could only have come from the crippled-enemy
+row; that it also exposes this defect was not the reason, and is recorded so
+nobody later simplifies those tests into holding both nodes.
+
+### A REGISTRATION SITE FOR A NEW SCALE, FOUND BY THE TEST
+
+`SCALE_WORDS` in `tools/tests/test_passive_effects_match_the_node_text.py`
+requires every scale to name the words its node uses. The new entry requires
+**"crippled enemy within"** rather than "enemy within": the shorter phrase appears
+in both nodes' sentences and would let a crippled-enemy row sit on the starting
+node.
+
+**Recorded and not fixed:** the existing `enemies_in_reach` entry cannot tell the
+two apart in the other direction, because Grinding Halt's sentence contains
+"each" and "enemy within" too. Tightening it would change a check other nodes rely
+on, so it belongs in its own change.
+
+### One comment correction, made false by the previous change
+
+- **`CataclysmFervour.h` said the Ravager's generator was "the largest of the four
+  left" and that "nothing in the game empties Fervour on a timer".**
+  [#1869](https://github.com/sdubois777/Cataclysm/pull/1869) built that generator
+  and added the decay that empties the pool, so both were false the moment it
+  merged. The paragraph now says what is built, what is left of that node, and
+  that the Berserker's generator was refused partly on a ground that no longer
+  exists. **The same claim appears seven times in this log and is not touched
+  there**: this log is a dated record, newest first, and those entries were true
+  when written.
+
+### COUNTS
+
+    rows  268 -> 270    AUTHORED_ROWS, CHECK_TABLE, docs/README.md
+    nodes 196 -> 198    AUTHORED_NODES
+    class resource attributes 28 -> 29, OffSheetResourceStats 26 -> 27
+
+Counted on the data afterwards: the Ravager tree stands at 60 of its 74 nodes and
+the Ritualist at 60 of 74, with the Masochist at 74 of 74 as the control.
+
+---
+
 ## 2026-09-16 — A creature answers the player's blow in its own name, five judged figures are recorded with their precedents or the lack of one, and the player's floor effects grew a field that moves a single resistance
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

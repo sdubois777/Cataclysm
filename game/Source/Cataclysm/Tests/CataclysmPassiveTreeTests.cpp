@@ -10791,4 +10791,506 @@ bool FCataclysmNoGroundGivenWidensTheRadiusTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Wrung Out spends Fervour on a kill to restore health, and Grinding Halt
+// generates it from crippled enemies near the character. Issue #1515.
+// --------------------------------------------------------------------------
+
+namespace CataclysmSpenderTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	/** "Killing an enemy spends 5 Fervour to restore 1% ... per point." */
+	const TCHAR* const WrungOut = TEXT("Ravager_basic_d_c1");
+
+	/** "Each Crippled enemy within 4 metres of you grants you 1 Fervour..." */
+	const TCHAR* const GrindingHalt = TEXT("Ravager_keystone_c_kC");
+
+	/** Wrung Out's full six points, which is six per cent. */
+	constexpr int32 WrungOutPoints = 6;
+
+	float HealthOf(const FRealCharacter& Player)
+	{
+		return Player.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+	}
+
+	float MaxHealthOf(const FRealCharacter& Player)
+	{
+		return Player.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	}
+
+	/** Put the character at half health, so a restoration has room to land. */
+	void HalfHealth(FRealCharacter& Player)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			MaxHealthOf(Player) * 0.5f);
+	}
+
+	/** Cripple an enemy the way the game curses anything: a tag for a time. */
+	bool Cripple(FRealCharacter& Player, ACataclysmEnemyCharacter* Enemy)
+	{
+		const FGameplayTag Tag = UCataclysmDebuffs::CrippleTag();
+		return Tag.IsValid()
+			&& UCataclysmSkillEffects::ApplyTagForDuration(
+				   Player.Character, Enemy, Tag, 10.0f);
+	}
+
+	bool IsCrippled(const ACataclysmEnemyCharacter* Enemy)
+	{
+		return UCataclysmDebuffs::TagsOnActor(Enemy).HasTag(
+			UCataclysmDebuffs::CrippleTag());
+	}
+}
+
+// ---- Wrung Out --------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrungOutRestoresTest,
+	"Cataclysm.Passives.WrungOutRestoresHealthWhenARealRavagerKills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_d_c1` Wrung Out on a real character, read out of the built
+ * ASSET. Issue #1515.
+ *
+ * "Killing an enemy spends 5 Fervour to restore 1% of your maximum health per
+ * point."
+ *
+ * HEALTH IS READ IMMEDIATELY EITHER SIDE OF THE KILL. The blow the kill helper
+ * lands records a life leech payment for a Ravager, whose class line grants
+ * leech, but leech is paid out by the periodic step and this test runs none.
+ * If that ever changed, the difference would stop being exactly six per cent
+ * and this would fail loudly rather than pass for the wrong reason.
+ */
+bool FCataclysmWrungOutRestoresTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Victim = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy to kill"), Victim))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {{FName(WrungOut), WrungOutPoints}});
+	HalfHealth(Player);
+	GiveFervour(Player, 50.0f);
+
+	const float Maximum = MaxHealthOf(Player);
+	const float HealthBefore = HealthOf(Player);
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, Victim);
+
+	TestEqual(TEXT("six points of Wrung Out restore six per cent of maximum "
+				   "health"),
+			  HealthOf(Player) - HealthBefore, Maximum * 0.06f, 0.01f);
+	TestEqual(TEXT("and cost five Fervour"), FervourOf(Player), 45.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrungOutUnpayableTest,
+	"Cataclysm.Passives.WrungOutRestoresNothingWithoutFiveFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * An unpayable cost buys nothing, and nothing is spent. Issue #1515.
+ *
+ * ALL OR NOTHING IS A READING, recorded in `UCataclysmFervour::RestoreHealthOnKill`:
+ * the same tree's Bought With Ruin says "If you cannot pay, the attack still
+ * hits but gains nothing". Three Fervour is less than the five a kill costs.
+ */
+bool FCataclysmWrungOutUnpayableTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Victim = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy to kill"), Victim))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {{FName(WrungOut), WrungOutPoints}});
+	HalfHealth(Player);
+	GiveFervour(Player, 3.0f);
+
+	const float HealthBefore = HealthOf(Player);
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, Victim);
+
+	TestEqual(TEXT("three Fervour cannot pay five, so no health arrives"),
+			  HealthOf(Player), HealthBefore, 0.01f);
+	TestEqual(TEXT("and none of the three is spent"), FervourOf(Player), 3.0f,
+			  0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrungOutFullHealthTest,
+	"Cataclysm.Passives.WrungOutSpendsNothingAtFullHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A restoration that restores nothing costs nothing. Issue #1515.
+ *
+ * A JUDGEMENT RATHER THAN A WORD OF THE SENTENCE, recorded in
+ * `UCataclysmFervour::RestoreHealthOnKill`: paying five Fervour to restore health
+ * the character already has is a cost with no effect, and no sentence
+ * describes one.
+ */
+bool FCataclysmWrungOutFullHealthTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Victim = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy to kill"), Victim))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {{FName(WrungOut), WrungOutPoints}});
+	Player.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), MaxHealthOf(Player));
+	GiveFervour(Player, 50.0f);
+
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, Victim);
+	TestEqual(TEXT("at full health a kill spends no Fervour"), FervourOf(Player),
+			  50.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWrungOutControlTest,
+	"Cataclysm.Passives.AKillWithoutWrungOutRestoresNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The control: a kill is not a heal for anyone without the node. Issue #1515.
+ *
+ * THE DEATH HANDLER RETURNED EARLY BEFORE THIS CHANGE and now runs two rules in
+ * sequence. This is what fails if the new rule ever runs without its row.
+ */
+bool FCataclysmWrungOutControlTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Victim = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy to kill"), Victim))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {});
+	HalfHealth(Player);
+	GiveFervour(Player, 50.0f);
+
+	const float HealthBefore = HealthOf(Player);
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, Victim);
+	TestEqual(TEXT("without Wrung Out a kill restores no health"),
+			  HealthOf(Player), HealthBefore, 0.01f);
+	TestEqual(TEXT("and spends no Fervour"), FervourOf(Player), 50.0f, 0.001f);
+	return true;
+}
+
+// ---- Grinding Halt ----------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGrindingHaltGrantsTest,
+	"Cataclysm.Passives.GrindingHaltGrantsFervourForACrippledEnemyNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_c_kC` Grinding Halt on a real character, read out of the
+ * built ASSET. Issue #1515.
+ *
+ * "Each Crippled enemy within 4 metres of you grants you 1 Fervour per second."
+ *
+ * THE KEYSTONE ALONE, WITHOUT THE STARTING NODE, so the one Fervour this asserts
+ * can only have come from the crippled-enemy row. The starting node grants the
+ * same rate over every enemy and would add its own one; that is its own test.
+ */
+bool FCataclysmGrindingHaltGrantsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Near = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy three metres away"), Near)
+		|| !TestTrue(TEXT("and it is crippled"), Cripple(Player, Near)
+					 && IsCrippled(Near)))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {{FName(GrindingHalt), 1}});
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("one crippled enemy within four metres gives one Fervour a "
+				   "second"),
+			  FervourOf(Player), 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGrindingHaltUncrippledTest,
+	"Cataclysm.Passives.GrindingHaltIgnoresAnEnemyThatIsNotCrippled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The filter: an enemy near but not crippled grants nothing. Issue #1515.
+ *
+ * THE TEST THE DATA HALF CANNOT VOUCH FOR. It asserts nothing arrives, which is
+ * true without the row too, so only a break of the filter itself can show it
+ * discriminates.
+ */
+bool FCataclysmGrindingHaltUncrippledTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Near = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy three metres away"), Near)
+		|| !TestFalse(TEXT("and it is not crippled"), IsCrippled(Near)))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {{FName(GrindingHalt), 1}});
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("an enemy near but not crippled gives nothing"),
+			  FervourOf(Player), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGrindingHaltCountsTest,
+	"Cataclysm.Passives.GrindingHaltCountsEachCrippledEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The rate is PER crippled enemy, not a flat rate gated on one. Issue #1515.
+ */
+bool FCataclysmGrindingHaltCountsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = EnemyAtMetres(World, 3.0f);
+	ACataclysmEnemyCharacter* Second = EnemyAtMetres(World, 2.0f);
+	if (!TestNotNull(TEXT("a first enemy"), First)
+		|| !TestNotNull(TEXT("and a second"), Second)
+		|| !TestTrue(TEXT("both crippled"), Cripple(Player, First)
+					 && Cripple(Player, Second) && IsCrippled(First)
+					 && IsCrippled(Second)))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {{FName(GrindingHalt), 1}});
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("two crippled enemies give two a second"), FervourOf(Player),
+			  2.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGrindingHaltRadiusTest,
+	"Cataclysm.Passives.GrindingHaltIgnoresACrippledEnemyBeyondFourMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** The row's `ReachMetres` is four. Issue #1515. */
+bool FCataclysmGrindingHaltRadiusTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Far = EnemyAtMetres(World, 5.0f);
+	if (!TestNotNull(TEXT("an enemy five metres away"), Far)
+		|| !TestTrue(TEXT("and it is crippled"), Cripple(Player, Far)
+					 && IsCrippled(Far)))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(Player, {{FName(GrindingHalt), 1}});
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("a crippled enemy beyond four metres gives nothing"),
+			  FervourOf(Player), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrippledCountsTwiceTest,
+	"Cataclysm.Passives.ACrippledEnemyCountsForTheStartingNodeAndGrindingHalt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The two rows ADD. Issue #1515.
+ *
+ * THE STARTING NODE grants one Fervour a second for every enemy within four
+ * metres, and GRINDING HALT grants one more for every CRIPPLED enemy there. A
+ * crippled enemy is both, so it earns two. They share one rate statistic, which
+ * is why Held Ground increases both; this pins that the shared statistic sums
+ * the two rows rather than one replacing the other.
+ */
+bool FCataclysmCrippledCountsTwiceTest::RunTest(const FString&)
+{
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Near = EnemyAtMetres(World, 3.0f);
+	if (!TestNotNull(TEXT("an enemy three metres away"), Near)
+		|| !TestTrue(TEXT("and it is crippled"), Cripple(Player, Near)
+					 && IsCrippled(Near)))
+	{
+		return false;
+	}
+
+	CataclysmRavagerFervourTest::Hold(
+		Player, {{FName(StartingNode), 1}, {FName(GrindingHalt), 1}});
+	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
+	TestEqual(TEXT("a crippled enemy earns one from each row, so two"),
+			  FervourOf(Player), 2.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

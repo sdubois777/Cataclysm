@@ -495,7 +495,11 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// RAISING THIS IS WHAT KEEPS THE SHEET COUNT WHERE IT IS. The sheet total
 	// is derived by subtracting this number, so an attribute nobody declares
 	// off the sheet is counted as ON it and both assertions fail.
-	constexpr int32 OffSheetResourceStats = 26;
+	// AND TWENTY-SEVEN SINCE THE RAVAGER'S FIRST FERVOUR SPENDER, issue #1515:
+	// how much of maximum health a kill restores. Off the sheet for the same
+	// reason as everything above: no affix grants it, nothing scales it, no
+	// class differs on it, and one node supplies it.
+	constexpr int32 OffSheetResourceStats = 27;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

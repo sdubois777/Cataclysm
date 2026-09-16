@@ -267,3 +267,5 @@ Ravager_basic_spine_000#2,Ravager_basic_spine_000,fervour_decay_per_second,flat,
 Ravager_basic_spine_000#3,Ravager_basic_spine_000,fervour_decay_grace_metres,flat,4.0,,,0.0,,0.0,0,-1.0
 Ravager_basic_d_b0#1,Ravager_basic_d_b0,fervour_per_enemy_in_reach,increased,2.0,,,0.0,,0.0,0,-1.0
 Ravager_keystone_d_kC#1,Ravager_keystone_d_kC,fervour_decay_grace_metres,flat,4.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_d_c1#1,Ravager_basic_d_c1,health_restored_on_kill,flat,1.0,,,0.0,,0.0,0,-1.0
+Ravager_keystone_c_kC#1,Ravager_keystone_c_kC,fervour_per_enemy_in_reach,flat,1.0,,,0.0,crippled_enemies_in_reach,1.0,0,4.0

@@ -138,6 +138,33 @@ public:
 									  const FVector& Origin, float Metres,
 									  TArray<float>& OutMetres);
 
+	/**
+	 * The same walk, answering with the hostile CHARACTERS as well as their
+	 * distances. Issue #1515.
+	 *
+	 * A SECOND ENTRY POINT RATHER THAN A SECOND WALK. Both this and the
+	 * distances-only form above call one private body, so there is still one
+	 * definition of "which characters are near this one" -- which is the thing
+	 * that function's own comment says must not be written twice.
+	 *
+	 * WHY THE ACTORS ARE NEEDED AT ALL, since the form above deliberately
+	 * returns only distances: `Ravager_keystone_c_kC` Grinding Halt reads "Each
+	 * Crippled enemy within 4 metres of you grants you 1 Fervour per second",
+	 * and a distance cannot be tested for a gameplay tag. Counting the crippled
+	 * ones means holding the bodies to ask each about its debuffs.
+	 *
+	 * THE COST IS PAID ONLY BY A ROW THAT ASKS. A lookup whose rows carry no
+	 * crippled-enemy scale never calls this, exactly as a lookup with no
+	 * enemies-in-reach row never calls the form above.
+	 *
+	 * THE TWO OUTPUTS RUN IN STEP, entry for entry, so `OutActors[i]` is the
+	 * character `OutMetres[i]` measures.
+	 */
+	void HostileActorsWithinMetres(const ACataclysmCharacterBase* Searcher,
+								   const FVector& Origin, float Metres,
+								   TArray<float>& OutMetres,
+								   TArray<ACataclysmCharacterBase*>& OutActors);
+
 	/** How many list entries the last search looked at. Read by tests. */
 	int32 LookedAtByTheLastSearch() const { return LookedAt; }
 
@@ -150,6 +177,15 @@ public:
 	//~ End
 
 private:
+	/**
+	 * The one walk both public forms above use. `OutActors` may be null, which
+	 * is what the distances-only form passes.
+	 */
+	void WalkHostilesWithin(const ACataclysmCharacterBase* Searcher,
+							const FVector& Origin, float Metres,
+							TArray<float>& OutMetres,
+							TArray<ACataclysmCharacterBase*>* OutActors);
+
 	void BuildTheListsIfStale();
 	void WatchForMadnessOn(ACataclysmCharacterBase* Character, const FGameplayTag& Madness);
 	void NoteCharacterSpawned(AActor* Actor);

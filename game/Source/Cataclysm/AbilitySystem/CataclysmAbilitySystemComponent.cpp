@@ -781,6 +781,12 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	// Issue #1597. This loop is the whole cost to a lookup that counts no
 	// enemies, which is almost every lookup in the game.
 	float Widest = -1.0f;
+	// AND SEPARATELY THE WIDEST REACH A CRIPPLED-ENEMY ROW ASKS ABOUT. Issue
+	// #1515. Kept apart from `Widest` because it is filled by a different walk
+	// -- one that returns the characters, so each can be asked whether it is
+	// crippled -- and a lookup asking only about crippled enemies must not pay
+	// for the distances-only walk, nor the reverse.
+	float WidestCrippled = -1.0f;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		if (Modifier.Condition == ECataclysmStatCondition::EnemiesInReachAtLeast
@@ -788,12 +794,22 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 		{
 			Widest = FMath::Max(Widest, Modifier.ReachMetres);
 		}
+		if (Modifier.Scale == ECataclysmStatScale::PerCrippledEnemyInReach)
+		{
+			WidestCrippled = FMath::Max(WidestCrippled, Modifier.ReachMetres);
+		}
 	}
 
 	// A ROW THAT ASKS WITHOUT A REACH IS STILL NOTHING TO WALK. Its own
 	// reach is -1, so it counts nobody either way, and a list of such rows
-	// leaves `Widest` negative and walks no characters.
-	if (Widest <= 0.0f)
+	// leaves both reaches negative and walks no characters.
+	//
+	// BOTH, NOT EITHER. This returned early on `Widest` alone before issue
+	// #1515, which was right while it was the only list. Left that way, a
+	// character whose only nearby-enemy row is a crippled one would return
+	// here with the crippled list empty, and Grinding Halt would grant nothing
+	// with nothing reporting why.
+	if (Widest <= 0.0f && WidestCrippled <= 0.0f)
 	{
 		return State;
 	}
@@ -816,9 +832,45 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithEnemiesInReach(
 	if (UCataclysmTargetCandidates* Candidates =
 			UCataclysmTargetCandidates::In(GetWorld()))
 	{
-		Candidates->HostileDistancesWithinMetres(
-			Character, Character->GetActorLocation(), Widest,
-			State.HostileDistancesMetres);
+		if (Widest > 0.0f)
+		{
+			Candidates->HostileDistancesWithinMetres(
+				Character, Character->GetActorLocation(), Widest,
+				State.HostileDistancesMetres);
+		}
+
+		// AND THE CRIPPLED ONES, ASKED WHILE EACH BODY IS IN HAND. Issue #1515.
+		// A distance cannot be tested for a gameplay tag, which is the whole
+		// reason `HostileActorsWithinMetres` exists beside the walk above.
+		if (WidestCrippled > 0.0f)
+		{
+			TArray<float> Distances;
+			TArray<ACataclysmCharacterBase*> Bodies;
+			Candidates->HostileActorsWithinMetres(
+				Character, Character->GetActorLocation(), WidestCrippled,
+				Distances, Bodies);
+
+			// A TAG THE TABLE DOES NOT HOLD MATCHES NOTHING, so a renamed or
+			// missing Cripple effect counts nobody rather than everybody. The
+			// same refusal `UCataclysmDebuffs::CrippleTag` documents.
+			const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+			if (Cripple.IsValid())
+			{
+				for (int32 Index = 0; Index < Bodies.Num(); ++Index)
+				{
+					// `HasTag` AND NOT `HasTagExact`, so an effect granting a
+					// child of the Cripple tag still counts. `TagsOnActor`
+					// returns explicit tags, and `HasTag` reads their implied
+					// parents when it compares.
+					if (Bodies[Index]
+						&& UCataclysmDebuffs::TagsOnActor(Bodies[Index])
+							   .HasTag(Cripple))
+					{
+						State.CrippledHostileDistancesMetres.Add(Distances[Index]);
+					}
+				}
+			}
+		}
 	}
 
 	return State;

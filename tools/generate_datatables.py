@@ -3839,6 +3839,15 @@ SCALES = {
     # ruling. A step above ten enemies would be a bonus that almost never
     # moves, which is far likelier to be a mistake than a design.
     "enemies_in_reach": (0.0, 10.0, "a number of enemies"),
+
+    # "Each Crippled enemy within 4 metres of you" is `crippled_enemies_in_reach`
+    # with a step of 1. Issue #1515, for `Ravager_keystone_c_kC` Grinding Halt.
+    #
+    # THE SCALE ABOVE WITH ONE FILTER, and bounded the same way for the same
+    # reason: the bound is on the STEP, not on the count, so the owner's ruling
+    # that the count is uncapped is untouched. It cannot exceed the unfiltered
+    # count, which is itself uncapped.
+    "crippled_enemies_in_reach": (0.0, 10.0, "a number of crippled enemies"),
 }
 
 
@@ -3935,7 +3944,10 @@ def passive_effects(book) -> list[dict]:
         # THE SAME 0 TO 100 METRE BOUND `target_within_metres` USES, and the
         # same judgement behind it: a radius past 100 would cover any room the
         # game has, so it is far likelier to be a number in the wrong column.
-        counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach"}
+        # AND THE CRIPPLED-ENEMY SCALE, ISSUE #1515, which counts within a
+        # radius exactly as the two above do and so needs one just as much.
+        counts_enemies = {"enemies_in_reach_at_least", "enemies_in_reach",
+                          "crippled_enemies_in_reach"}
         named = counts_enemies & {condition, scale}
         written_reach = clean(_cell(raw, headers, "Reach Metres"))
         reach_metres = -1.0
