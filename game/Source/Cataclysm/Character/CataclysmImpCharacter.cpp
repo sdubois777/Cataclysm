@@ -396,8 +396,8 @@ bool ACataclysmImpCharacter::ResolveBody(bool bIncludeAnimation)
 	// OTHERWISE THE CYLINDER SITS INSIDE THE CREATURE.
 	// `ACataclysmEnemyCharacter` creates PlaceholderBody in its constructor and
 	// nothing about assigning a skeletal mesh removes it.
-	// `test_every_dressed_enemy_hides_its_placeholder` refuses a dressed enemy
-	// that does not do this.
+	// `test_every_dressed_enemy_hides_its_placeholder_cylinder` refuses a
+	// dressed enemy that does not do this.
 	if (PlaceholderBody)
 	{
 		PlaceholderBody->SetVisibility(false);
