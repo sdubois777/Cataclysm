@@ -108,10 +108,16 @@ REPORT_SETTINGS = dict(
 
 #: Campaigns the re-measurement runs. Chosen from evidence rather than taste:
 #: over ten disjoint blocks of this size the median never strayed more than one
-#: day from the 10,000-campaign answer on an Outpost, a Bulwark or a Sanctuary,
-#: re-run at the Cow Level weight of 7.0 that #1369 landed. Ten blocks of 120
-#: put a Sanctuary two days out, which is why it is not 120.
-CAMPAIGNS = 200
+#: day from the 10,000-campaign answer on an Outpost, a Bulwark or a Sanctuary.
+#: It was 200 until issue #1432: with a city's fall no longer firing a surge
+#: inside the minimum gap, 200 campaigns made 17,509 dungeons, under the
+#: 20,000 the `made` fixture demands. Ten blocks of 250 on 2026-09-16 made
+#: 21,217 to 23,601 dungeons each, with medians of 14 in every block for the
+#: Outpost, 23 to 24 for the Bulwark and 36 to 38 for the Sanctuary against a
+#: 10,000-campaign answer of 14 / 24 / 37, and 122 to 127 for the Pillar
+#: against 123, which is inside `PILLAR_TOLERANCE_DAYS` and touches it once.
+#: (Before #1432, ten blocks of 120 put a Sanctuary two days out.)
+CAMPAIGNS = 250
 
 #: How far a measured median may sit from the stated one. See the module
 #: docstring: the walk distribution is flat where the median falls.
@@ -348,7 +354,7 @@ class TestTheMedianWalkTheProseStates:
             "The docstring's claim that the median is a coin flip between two "
             "adjacent days rests on that being near half.")
         says(DOC_URGENCY,
-             "49.0% of Outpost dungeons walk in 13 days or fewer and 56.2% in "
+             "47.3% of Outpost dungeons walk in 13 days or fewer and 54.9% in "
              "14 or fewer",
              "Those are the shares from the 10,000-campaign measurement.")
 

@@ -2,6 +2,32 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — A city's fall fires a surge only when the last one is the minimum gap behind, and the campaign figures that moved with it are restated
+
+**Decision.** `Simulation._fall` in `sim/cataclysm_sim/engine.py` fires its surge only when `days_since_last_surge()` is at least `surge_interval_min` (25 days), the same brake the board-empty trigger already respects. Before this a city falling the day after a surge landed a whole second wave; at difficulty tier 4 with no empire tree the fall trigger was 89% of every surge that fired and 82% of those landed inside the 25-day floor. Ruled on 2026-09-14 under the owner's delegation to the coordinating session; issue #1432.
+
+**How much the model moved.** Measured with `triage`, no empire tree, 400 campaigns per tier, on 2026-09-16, before and after:
+
+| | Surges per campaign | Cities lost per campaign | Days survived |
+|---|---|---|---|
+| Tier 1, before | 23.67 | 11.89 | 1,326 |
+| Tier 1, after | 18.15 | 5.25 | 1,491 |
+| Tier 4, before | 25.89 | 24.05 | 737 |
+| Tier 4, after | 14.55 | 23.59 | 985 |
+
+Fewer surges land, so fewer dungeons and fewer Sieges reach the map, fewer cities fall, and campaigns run longer. The owner should read the tier 1 cities-lost figure as a real shift in what the model says, not as noise.
+
+**The figures that were re-pinned by measurement, as ruled (option (a): re-measure and restate, never loosen a floor to keep an old sentence).**
+
+- **The Siege prose in `sim/cataclysm_sim/policies.py`**, re-measured at the balance report's settings (tier 1, static surges of five dungeons every 120 days, no tree, `triage`) over 10,000 campaigns and 890,790 dungeons, where the 2026-09-06 measurement had 1,250,908. Against a median walk of 14 / 24 / 37 days to an Outpost, Bulwark and Sanctuary (the Bulwark rose from 23; the Pillar stays at 123), and the 25 / 39 / 55 days a fresh Siege leaves, the slack is eleven, fifteen and eighteen days. The Outpost shares at 13 and 14 days or fewer are 47.3% and 54.9% (were 49.0% and 56.2%). The Siege mix is 65,636 Sieges at 79% Basic, 11% Quest, 10% Fallen City and 1% Cataclysm, about 6.56 a campaign (was 89,652 at 78 / 11 / 10 / 1 and 8.97 a campaign; the shares moved by under a point, the rate fell with the surge count). The comment on `siege_damage_growth_per_day` in `sim/cataclysm_sim/config.py` quotes the same medians.
+- **`sim/tests/test_the_siege_prose_in_policies_is_true.py`** re-measures over 250 campaigns instead of 200, because 200 now make 17,509 dungeons, under the 20,000 its fixture demands; ten disjoint blocks of 250 made 21,217 to 23,601 dungeons each with medians within a day of the 10,000-campaign answer for the three answerable sizes, and 122 to 127 for the Pillar against 123.
+- **`sim/tests/test_quest_relocation_is_adjacent.py`** plays 100 campaigns instead of 20: at 20, no quest dungeon was ever hemmed in and only 89 timers had a choice against a floor of 100; at 100 there are 464 timers with a choice, 242 moves and 21 hemmed in, in three seconds.
+- **`sim/tests/test_policies_see_sieges.py`** plays 200 campaigns per policy instead of 40 and asks that a policy which sees a Siege clears strictly more of them than the same policy blind, where it asked for a fifth more. The fifth is no longer true: over three blocks of 200 campaigns the seeing-to-blind ratio is 1.235 for `triage` and 1.137 for `lane_aware` after this change, against 1.394 and 1.295 before it (blocks before: triage 520/382, 487/327, 506/376; lane_aware 612/490, 643/477, 582/451). The advantage of seeing a Siege is smaller because fewer Sieges stand at once; the policies still act on one.
+
+**What was not re-run.** `sim/experiments.py`, the full balance report, was not re-run; that waits for a gap the coordinating session names. Every figure it prints that rests on the surge count will move.
+
+---
+
 ## 2026-09-16 — A failing `assert phrase not in document` reports at once: the root conftest replaces pytest's diff builder, measured against pytest 9.1.1
 
 **Decision.** The repository's new root `conftest.py` replaces one private pytest function, `_pytest.assertion.util._notin_text`, so that a failing `assert phrase not in text` over a text of 10,000 characters or more prints where the phrase is (its character offset, how many times it occurs, and 60 characters of context each side) instead of pytest's own diff of the text against itself minus the phrase. Shorter texts keep pytest's diff. Tests keep the natural shape; the workaround of computing the answer into a variable before the assert is no longer needed, and the two tests that carry it keep it.
