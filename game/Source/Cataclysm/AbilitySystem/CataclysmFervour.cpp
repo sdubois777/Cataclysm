@@ -34,6 +34,7 @@ const TCHAR* UCataclysmFervour::HealthRestoredOnKillStat =
 	TEXT("health_restored_on_kill");
 const TCHAR* UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat =
 	TEXT("increased_damage_bought_per_extra_enemy_hit");
+const TCHAR* UCataclysmFervour::PerEnemyHitStat = TEXT("fervour_per_enemy_hit");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -740,6 +741,56 @@ float UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Spend);
 
 	return PercentPerEnemy * static_cast<float>(Beyond);
+}
+
+float UCataclysmFervour::GainForEnemiesHit(UAbilitySystemComponent* AbilitySystem,
+										   const FGameplayTagContainer& SkillTags,
+										   int32 EnemiesHit)
+{
+	if (!AbilitySystem || EnemiesHit <= 0)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to fill, which is every enemy.
+		return 0.0f;
+	}
+
+	// THROUGH THE PIPELINE WITH THE SKILL'S TAGS, fallback zero, for the reason
+	// every rate in this file gives: a row that later gains a condition or a
+	// scope is never folded into an attribute, and a plain read would answer
+	// zero for ever.
+	const float PerEnemy = Cataclysm->StatForSkill(
+		FName(PerEnemyHitStat), SkillTags, 0.0f);
+	if (PerEnemy <= 0.0f)
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT THE RAVAGER'S STARTING NODE.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// CLAMPED BEFORE IT IS WRITTEN, the rule every write to the pool in this file
+	// follows; `GainForCast` gives the reason.
+	const float Change =
+		FMath::Clamp(Before + PerEnemy * static_cast<float>(EnemiesHit), 0.0f,
+					 Resource->GetMaxClassResource())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
 }
 
 float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySystem)

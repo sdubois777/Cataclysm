@@ -42,20 +42,20 @@ class ACataclysmCharacterBase;
  * missing are different rules rather than different numbers, and each needs its
  * own code in its own place.
  *
- * THE RAVAGER'S IS PART BUILT, AND THIS PARAGRAPH SAID THE OPPOSITE UNTIL
- * ISSUE #1515. It read "the largest of the four left" and "nothing in the game
+ * THE RAVAGER'S IS BUILT IN CODE, ONE OF ITS ROWS STILL WAITING ON THE DESIGN
+ * WORKBOOK, AND THIS PARAGRAPH SAID THE OPPOSITE UNTIL ISSUE #1515. It read "the largest of the four left" and "nothing in the game
  * empties Fervour on a timer"; the first stopped being true and the second was
  * made false by the very change that added `DecayStep` below. A comment that
  * describes the present tense is wrong the moment the present moves, and this
  * one described a gap its own file then filled.
  *
- * WHAT IS BUILT: the rate from the enemies standing near, and the decay once
- * nothing is in reach. Both shipped together, because the decay is the rule
- * that makes the rate worth holding.
- *
- * WHAT IS LEFT OF IT: one clause, "1 for each enemy your attacks hit". No count
- * of how many enemies one blow hit is carried where a blow resolves, and that
- * count also unlocks `Cleaving Arc` and `Sundering`, so it is its own change.
+ * WHAT IS BUILT: the rate from the enemies standing near, the decay once
+ * nothing is in reach, and "1 for each enemy your attacks hit", which
+ * `GainForEnemiesHit` pays for each enemy an attack lands on. The rate and the
+ * decay shipped together, because the decay is the rule that makes the rate
+ * worth holding. The per-hit gain came after the count of enemies one attack
+ * strikes, and it does not use that count: see `GainForEnemiesHit`. Its row
+ * on the starting node is the one still waiting.
  *
  * AND THE DECAY NOW EXISTS, so "nothing empties Fervour on a timer" is no
  * longer a reason for anything. The Berserker's generator was refused partly on
@@ -258,6 +258,55 @@ public:
 	static float BuyDamageForEnemiesStruckTogether(
 		UAbilitySystemComponent* AbilitySystem,
 		const FGameplayTagContainer& SkillTags, int32 EnemiesStruckTogether);
+
+	/**
+	 * Fervour gained for each enemy one attack lands on. `Ravager_basic_spine_000`,
+	 * the Ravager's starting node, is its only source. Issue #1515.
+	 */
+	static const TCHAR* PerEnemyHitStat;
+
+	/**
+	 * Grant the Fervour one attack earned by landing on this many enemies, and
+	 * answer how much was really added. Issue #1515.
+	 *
+	 * `Ravager_basic_spine_000`: "Enemies in reach generate Fervour: 1 for each
+	 * enemy your attacks hit, and 1 per second for every enemy within 4 metres of
+	 * you."
+	 *
+	 * WHAT COUNTS, ruled on 2026-09-16 as judgements under the owner's delegation
+	 * and recorded in `docs/DECISIONS.md`:
+	 * - A BLOW THAT LANDED. An evaded blow gives nothing; one armour stopped
+	 *   completely still counts. That is the mana-on-hit test, and the owner's
+	 *   rule of 2026-09-05 that an evaded attack applies nothing it carries.
+	 * - ONCE PER ENEMY PER ATTACK, where one attack is what the count of enemies
+	 *   struck together calls one: a skill that lands twice per use gives two.
+	 * - EVERY LANDED, DAMAGING BLOW THE PLAYER'S OWN ATTACK DEALS, WHEREVER IT
+	 *   RESOLVES. Four places call this: `UCataclysmSkillTemplate::HitTargets`,
+	 *   which deals most skill blows, aura pulses included;
+	 *   `ACataclysmProjectile::HitOne`, once per contact, so a piercing shot
+	 *   pays per enemy passed and a return pass pays again; the rack throw's
+	 *   spawn-less fallback in `UCataclysmProjectileSkill`; and
+	 *   `UCataclysmBuriedWeapon`'s hit on the next enemy. A use sending no damage
+	 *   gives nothing, and minions' and enemies' blows earn nothing: a firer
+	 *   without the node reads zero.
+	 *
+	 * NOT THE COUNT OF ENEMIES STRUCK TOGETHER, AND DELIBERATELY. That count is
+	 * taken before the blows resolve because it prices them, so an enemy that
+	 * evades is in it. This gain prices nothing and is paid after the blows
+	 * resolve, when whether each one landed is known.
+	 *
+	 * NO CAP AND NO COOLDOWN, because the sentence states neither.
+	 *
+	 * ASKED WITH THE SKILL'S TAGS, fallback zero, so a later row scoped to a kind
+	 * of attack counts only for that kind.
+	 *
+	 * @param EnemiesHit  how many enemies the attack's blows landed on
+	 * @return the Fervour really added: zero for a character without the node,
+	 *         for an attack that landed on nothing, and for a full pool
+	 */
+	static float GainForEnemiesHit(UAbilitySystemComponent* AbilitySystem,
+								   const FGameplayTagContainer& SkillTags,
+								   int32 EnemiesHit);
 
 	/**
 	 * Marks a restoration of health as coming from the character's own

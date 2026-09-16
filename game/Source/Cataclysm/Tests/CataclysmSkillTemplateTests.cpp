@@ -14246,4 +14246,322 @@ bool FCataclysmArmourIgnoredByCountTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Fervour for each enemy an attack lands on: the Ravager's starting node, "1 for
+// each enemy your attacks hit". Issue #1515.
+//
+// DRIVEN WITH THE MODIFIER RECORDED DIRECTLY, as the tests above are, because the
+// node's row waits on the design workbook. What is exercised here is the count
+// and where it is paid; a passive tree test reads the row once it exists.
+// --------------------------------------------------------------------------
+
+namespace CataclysmFervourPerHitTest
+{
+	using namespace CataclysmEnemiesStruckTest;
+
+	/** The starting node's row as a recorded modifier: this much Fervour for
+	 *  each enemy an attack lands on, for any attack. */
+	FCataclysmStatModifier PerEnemyHit(float Value)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = Value;
+		return Modifier;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourForEachEnemyHitTest,
+	"Cataclysm.Skills.EachEnemyAnAttackLandsOnGrantsFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "1 for each enemy your attacks hit." Issue #1515.
+ *
+ * THE SAME SWING TWICE, first with nothing recorded and then with the node's one
+ * per enemy recorded, so the gain is a change from a measured first rather than
+ * a number assumed. Three enemies landed on is three Fervour.
+ */
+bool FCataclysmFervourForEachEnemyHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourPerHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+	HoldFervour(Caster, 0.0f);
+
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Cleave"));
+	if (!Cleave)
+	{
+		AddError(TEXT("Could not grant the cleave."));
+		return false;
+	}
+
+	if (!TestEqual(TEXT("the plain swing strikes all three"), Cleave->SwingOnce(), 3))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with nothing recorded the swing earns no Fervour"),
+		Caster.Fervour(), 0.0f, 0.001f);
+
+	Give(Caster, TEXT("fervour_per_enemy_hit"), PerEnemyHit(1.0f));
+
+	TestEqual(TEXT("the same swing strikes all three again"), Cleave->SwingOnce(), 3);
+	TestEqual(TEXT("and with one per enemy recorded it earns three"),
+		Caster.Fervour(), 3.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourNotForAnEvadedEnemyTest,
+	"Cataclysm.Skills.AnEnemyThatEvadesTheAttackGrantsNoFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * An enemy that evades gives nothing. Issue #1515.
+ *
+ * RULED ON 2026-09-16: "hit" here is a blow that LANDED, the test mana on hit
+ * makes, following the owner's rule that an evaded attack applies nothing it
+ * carries. It is NOT the count of enemies struck together, which includes an
+ * enemy that evades because it prices the blows before they resolve.
+ *
+ * THE EVASION IS ASSERTED, not assumed: the nimble enemy's health must not move,
+ * or the two below could agree for a reason that has nothing to do with it.
+ */
+bool FCataclysmFervourNotForAnEvadedEnemyTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourPerHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Nimble(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+	HoldFervour(Caster, 0.0f);
+
+	// FAR ABOVE ANY ROLL, for the reason the test of what an evaded blow leaves
+	// behind gives: a roll of exactly 100 against evasion of exactly 100 lands.
+	Nimble.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 500.0f);
+
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Cleave"));
+	if (!Cleave)
+	{
+		AddError(TEXT("Could not grant the cleave."));
+		return false;
+	}
+
+	Give(Caster, TEXT("fervour_per_enemy_hit"), PerEnemyHit(1.0f));
+
+	const float NimbleBefore = Nimble.Health();
+
+	TestEqual(TEXT("the swing strikes all three, the one that evades included"),
+		Cleave->SwingOnce(), 3);
+	if (!TestEqual(TEXT("the nimble enemy took nothing, so its blow was evaded"),
+			NimbleBefore - Nimble.Health(), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("so the swing earns two: an enemy that evades gives nothing"),
+		Caster.Fervour(), 2.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourForBothSplitHalvesTest,
+	"Cataclysm.Skills.BothHalvesOfAConsumeSplitGrantFervourForTheirOwnEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * One swing dealt in two calls still gives one per enemy. Issue #1515.
+ *
+ * QUENCH SPLITS ITS SWING: the enemies whose fire it consumed take one call and
+ * the rest take another. Each enemy is in exactly one of the two, so the two
+ * payments must add to one per enemy -- three here -- and not pay the whole
+ * swing's count twice.
+ *
+ * THE SPLIT IS ASSERTED: a consumed enemy takes 50% more than the cold one, which
+ * only happens when the swing was dealt in its two halves.
+ */
+bool FCataclysmFervourForBothSplitHalvesTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourPerHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter AlightNear(World, FVector(1 * M, 0, 0));
+	FScopedFighter AlightFar(World, FVector(2 * M, 0, 0));
+	FScopedFighter Cold(World, FVector(3 * M, 0, 0));
+	HoldFervour(Caster, 0.0f);
+
+	SetAlight(Caster, AlightNear);
+	SetAlight(Caster, AlightFar);
+
+	UCataclysmStrikeSkill* Quench = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy,
+		TEXT("Radius=6; Angle=360; Burn=1; ConsumeBurn=1; MoreDamagePer=50; "
+			 "ScalingSource=Consume"),
+		TEXT("Quench"));
+	if (!Quench)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	Give(Caster, TEXT("fervour_per_enemy_hit"), PerEnemyHit(1.0f));
+
+	const float AlightBefore = AlightNear.Health();
+	const float ColdBefore = Cold.Health();
+
+	TestEqual(TEXT("one swing strikes all three"), Quench->SwingOnce(), 3);
+	if (!TestTrue(TEXT("and it was split: a consumed enemy took more than the cold one"),
+			AlightBefore - AlightNear.Health() > ColdBefore - Cold.Health() + 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("each enemy gives one, whichever half dealt its blow: three"),
+		Caster.Fervour(), 3.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourNotForNoDamageTest,
+	"Cataclysm.Skills.AnAttackThatSendsNoDamageGrantsNoFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A use whose blows carry no damage gives nothing. Issue #1515.
+ *
+ * RULED ON 2026-09-16: every use whose blows carry damage counts, aura pulses
+ * included, and one that sends none does not -- the test `NoteBlowLanded` makes.
+ * A swing given its own figure of 0% lands on all three and hurts none, which is
+ * the shape of a support skill that touches enemies without damaging them.
+ */
+bool FCataclysmFervourNotForNoDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourPerHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+	FScopedFighter Third(World, FVector(3 * M, 0, 0));
+	HoldFervour(Caster, 0.0f);
+
+	UCataclysmStrikeSkill* Cleave = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Cleave"));
+	if (!Cleave)
+	{
+		AddError(TEXT("Could not grant the cleave."));
+		return false;
+	}
+
+	Give(Caster, TEXT("fervour_per_enemy_hit"), PerEnemyHit(1.0f));
+
+	const float FirstBefore = First.Health();
+
+	TestEqual(TEXT("a swing given no damage still strikes all three"),
+		Cleave->SwingOnce(0.0f), 3);
+	TestEqual(TEXT("and hurts none of them"), FirstBefore - First.Health(), 0.0f, 0.01f);
+	TestEqual(TEXT("so it earns no Fervour: a use that sends no damage gives nothing"),
+		Caster.Fervour(), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourForEachProjectileContactTest,
+	"Cataclysm.Skills.AProjectileEarnsFervourForEachEnemyItLandsOn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A projectile's contacts earn Fervour too. Issue #1515.
+ *
+ * A PROJECTILE NEVER PASSES THROUGH `HitTargets`: each contact is dealt by
+ * `ACataclysmProjectile::HitOne`, so it pays there, once per contact. Ruled on
+ * 2026-09-16 with the other routes that deal the player's blows elsewhere.
+ *
+ * A PIERCING SHOT THROUGH TWO ENEMIES, ONE OF WHICH EVADES, earns one. Both
+ * contacts are asserted -- the near enemy hurt, the nimble one untouched -- so
+ * the one Fervour is known to come from a landed contact and to have been refused
+ * for an evaded one. DRIVEN WITH `Step`, because the test world is never ticked.
+ */
+bool FCataclysmFervourForEachProjectileContactTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourPerHitTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(3 * M, 0, 0));
+	FScopedFighter Nimble(World, FVector(6 * M, 0, 0));
+	HoldFervour(Caster, 0.0f);
+
+	// FAR ABOVE ANY ROLL, for the reason the test of an evaded swing above gives.
+	Nimble.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 500.0f);
+
+	Give(Caster, TEXT("fervour_per_enemy_hit"), PerEnemyHit(1.0f));
+
+	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+		Caster.Actor, FVector::ZeroVector, FVector(10 * M, 0, 0),
+		/*InRadiusCm=*/100.0f, /*InSpeed=*/1000.0f, /*InPierce=*/5,
+		/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+	if (!Shot)
+	{
+		AddError(TEXT("The projectile was not fired."));
+		return false;
+	}
+
+	const float NearBefore = Near.Health();
+	const float NimbleBefore = Nimble.Health();
+
+	// Ten metres at ten metres a second is one second of flight. Stepped until
+	// it finishes, with a bound so a shot that never finishes cannot hang the run.
+	for (int32 Steps = 0; Steps < 60 && Shot->Step(0.05f); ++Steps)
+	{
+	}
+
+	if (!TestTrue(TEXT("the shot landed on the near enemy"),
+			NearBefore - Near.Health() > 0.0f))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("and the nimble one evaded it: its health did not move"),
+			NimbleBefore - Nimble.Health(), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("so the shot earns one: each enemy it lands on, and not the one "
+				   "that evaded"),
+		Caster.Fervour(), 1.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

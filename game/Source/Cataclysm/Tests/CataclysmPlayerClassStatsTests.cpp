@@ -399,6 +399,11 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		 TEXT("the Ravager's Bought With Ruin node, as a flat percentage of "
 			  "increased damage per point for each enemy a melee attack strikes "
 			  "beyond the first, bought with Fervour")},
+		// Issue #1515. Fervour for each enemy an attack lands on. Zero for every
+		// class; the Ravager's starting node is its only source.
+		{TEXT("fervour_per_enemy_hit"),
+		 TEXT("the Ravager's starting node, as a flat count of Fervour for each "
+			  "enemy an attack lands on")},
 		{TEXT("fervour_decay_grace_metres"),
 		 TEXT("the Ravager's starting node and its No Ground Given keystone, "
 			  "as flat distances that sum to the eight that keystone names")},

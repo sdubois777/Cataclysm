@@ -6,6 +6,8 @@
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the Fervour each enemy a shot lands on earns. Issue #1515.
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
@@ -634,6 +636,21 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 											  /*bBurnIsDesigned=*/true,
 											  /*DealtBy=*/nullptr,
 											  /*Skill=*/FiringSkill.Get());
+		}
+
+		// AND THE FERVOUR THIS ENEMY EARNS THE FIRER, when the shot landed.
+		// Issue #1515, the Ravager's starting node: "1 for each enemy your
+		// attacks hit". A projectile's contact never passes through
+		// `UCataclysmSkillTemplate::HitTargets`, which pays for every other
+		// skill blow, so it pays here. EACH CONTACT IS ITS OWN LANDING, as ruled
+		// on 2026-09-16: a piercing shot pays for every enemy it passes through
+		// and a return pass pays again. Zero for a firer without the node,
+		// which is every enemy and every minion.
+		if (!Resolved.bEvaded)
+		{
+			UCataclysmFervour::GainForEnemiesHit(
+				UCataclysmTargeting::AbilitySystemOf(Firer), SkillTags,
+				/*EnemiesHit=*/1);
 		}
 	}
 }

@@ -272,3 +272,6 @@ Ravager_keystone_c_kC#1,Ravager_keystone_c_kC,fervour_per_enemy_in_reach,flat,1.
 Ravager_basic_b_a2#1,Ravager_basic_b_a2,attack_damage,increased,1.0,,,0.0,enemies_hit_beyond_the_first,1.0,0,-1.0
 Ravager_basic_b_b2#1,Ravager_basic_b_b2,increased_damage_bought_per_extra_enemy_hit,flat,3.0,Type.Melee,,0.0,,0.0,0,-1.0
 Ravager_keystone_b_kA#1,Ravager_keystone_b_kA,armor_penetration,flat,100.0,Type.Melee,enemies_hit_at_least,3.0,,0.0,0,-1.0
+Ravager_basic_spine_000#4,Ravager_basic_spine_000,fervour_per_enemy_hit,flat,1.0,,,0.0,,0.0,0,-1.0
+Ritualist_basic_a_b2#1,Ritualist_basic_a_b2,spell_damage,increased,2.0,,,0.0,minions_held,1.0,0,-1.0
+Ravager_capstone_25#4,Ravager_capstone_25,attack_damage,increased,50.0,Type.Melee,metres_moved_before_attack,5.0,,0.0,3,-1.0

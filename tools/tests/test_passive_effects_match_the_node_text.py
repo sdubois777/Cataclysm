@@ -534,7 +534,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: (`Ravager_basic_b_b2`) and `Sundering` (`Ravager_keystone_b_kA`). Issue
 #: #1515. The same workbook turn renamed the Stat of two Ritualist rows,
 #: which moves no count.
-AUTHORED_ROWS = 273
+#: AND TO 276 ON 2026-09-16. Three rows that needed no new stat of their own:
+#: the Ravager's starting node `Fervour` (`Ravager_basic_spine_000`) takes a
+#: fourth, "1 for each enemy your attacks hit"; `Press the Advantage`
+#: (`Ritualist_basic_a_b2`) takes its first; and The First Onslaught's option
+#: `Headlong` (`Ravager_capstone_25`, option 3) takes a second, for its
+#: clause "your first melee attack after moving 5 metres deals 50% increased
+#: damage". Issue #1515.
+AUTHORED_ROWS = 276
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -867,7 +874,13 @@ AUTHORED_ROWS = 273
 #: MEASURED PER TREE: the Ravager is 63 of its 74 and the Ritualist 60 of its
 #: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
 #: Berserker none.
-AUTHORED_NODES = 201
+#: AND TO 202 ON 2026-09-16. `Press the Advantage` only: the other two rows
+#: of that workbook turn went to a node and a capstone that already had one.
+#:
+#: MEASURED PER TREE: the Ravager is 63 of its 74 and the Ritualist 61 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+AUTHORED_NODES = 202
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1931,6 +1944,13 @@ VALUE_FORMS = {
     # no enemy within 4 metres". The keystone that widens it states its value
     # in words instead and is exempted in `VALUE_IN_WORDS` below.
     "fervour_decay_grace_metres": "{value:g} metres",
+
+    # AND THE STARTING NODE'S FIRST CLAUSE, the same node's fourth row. Issue
+    # #1515: "1 for each enemy your attacks hit". The whole phrase, for the
+    # reason the two forms above give: the sentence holds a second "1" for the
+    # rate per enemy in reach, and a bare "{value:g}" would be satisfied by
+    # either.
+    "fervour_per_enemy_hit": "{value:g} for each enemy your attacks hit",
 
     # THE RITUALIST'S TWO KEYSTONES THAT ADJUST A FIGURE A SKILL ROW STATES.
     # Issue #1718. Until the owner reworded both on 2026-09-16, each sentence

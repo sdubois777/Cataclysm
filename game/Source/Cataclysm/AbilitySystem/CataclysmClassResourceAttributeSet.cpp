@@ -44,6 +44,7 @@ UCataclysmClassResourceAttributeSet::UCataclysmClassResourceAttributeSet()
 	InitFervourDecayGraceMetres(0.0f);
 	InitHealthRestoredOnKill(0.0f);
 	InitIncreasedDamageBoughtPerExtraEnemyHit(0.0f);
+	InitFervourPerEnemyHit(0.0f);
 
 	// AND ZERO FOR BOTH HALVES OF THE LAST DROP. Issue #1051. A character
 	// without that capstone option pays for its skills as usual and gains no
@@ -101,6 +102,7 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourDecayGraceMetres);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthRestoredOnKill);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, IncreasedDamageBoughtPerExtraEnemyHit);
+	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerEnemyHit);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, FervourPerCast);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, HealthCostSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth);
@@ -160,6 +162,7 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		|| Attribute == GetFervourDecayGraceMetresAttribute()
 		|| Attribute == GetHealthRestoredOnKillAttribute()
 		|| Attribute == GetIncreasedDamageBoughtPerExtraEnemyHitAttribute()
+		|| Attribute == GetFervourPerEnemyHitAttribute()
 		|| Attribute == GetFervourPerCastAttribute()
 		|| Attribute == GetHealthCostSuppressedAttribute()
 		|| Attribute == GetManaPoolBecomesHealthAttribute()
@@ -246,6 +249,7 @@ TArray<FGameplayAttribute> UCataclysmClassResourceAttributeSet::GetAllAttributes
 	All.Add(GetFervourDecayGraceMetresAttribute());
 	All.Add(GetHealthRestoredOnKillAttribute());
 	All.Add(GetIncreasedDamageBoughtPerExtraEnemyHitAttribute());
+	All.Add(GetFervourPerEnemyHitAttribute());
 	All.Add(GetFervourPerCastAttribute());
 	All.Add(GetHealthCostSuppressedAttribute());
 	All.Add(GetManaPoolBecomesHealthAttribute());
@@ -296,6 +300,7 @@ CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourDecayPerSecond)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourDecayGraceMetres)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthRestoredOnKill)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, IncreasedDamageBoughtPerExtraEnemyHit)
+CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerEnemyHit)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, FervourPerCast)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, HealthCostSuppressed)
 CATACLYSM_ON_REP(UCataclysmClassResourceAttributeSet, ManaPoolBecomesHealth)

@@ -11748,4 +11748,270 @@ bool FCataclysmPassiveSunderingOnARealCharacterTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// THREE ROWS THAT NEEDED NO NEW MECHANISM OF THEIR OWN. Issue #1515. Each test
+// reads its row out of the table the game loads, so a row authored with the
+// wrong stat, bucket, value, tag, condition or scale fails here rather than
+// granting the wrong thing in play.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveStartingNodePerHitRowTest,
+	"Cataclysm.Passives.TheRavagersStartingNodeGrantsFervourForEachEnemyItsAttacksHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_spine_000`, the Ravager's starting node, on a real character:
+ * its fourth row. Issue #1515.
+ *
+ * "Enemies in reach generate Fervour: 1 for each enemy your attacks hit, and 1
+ * per second for every enemy within 4 metres of you."
+ *
+ * THE ROW HOLDS ONE AND NOTHING IS COUNTED HERE. The enemies are counted where
+ * the blows land, by `UCataclysmFervour::GainForEnemiesHit`, whose own tests in
+ * `CataclysmSkillTemplateTests.cpp` record this modifier directly. This reads
+ * the real row where that function asks for it: through `StatForSkill`.
+ */
+bool FCataclysmPassiveStartingNodePerHitRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, FName(StartingNode));
+	TestEqual(TEXT("the starting node grants four stats"), Effects.Num(), 4);
+
+	const FCataclysmPassiveEffectRow* PerHit = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row && Row->Stat == TEXT("fervour_per_enemy_hit"))
+		{
+			PerHit = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("and one of them is Fervour for each enemy hit"), PerHit))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as a flat count"), PerHit->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), PerHit->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("for any attack"), PerHit->RequiredTags, FString());
+	TestEqual(TEXT("with no condition"), PerHit->Condition, FString());
+	TestEqual(TEXT("and no scale, because the enemies are counted where the "
+				   "blows land"),
+			  PerHit->Scale, FString());
+
+	const FName Stat(UCataclysmFervour::PerEnemyHitStat);
+	const auto PerEnemy = [&Player, &Stat]()
+	{
+		return Player.AbilitySystem->StatForSkill(Stat, FGameplayTagContainer(),
+												  0.0f);
+	};
+
+	Hold(Player, TMap<FName, int32>());
+	TestEqual(TEXT("a Ravager without the node earns nothing for an enemy hit"),
+			  PerEnemy(), 0.0f, 0.001f);
+
+	Hold(Player, {{FName(StartingNode), 1}});
+	TestEqual(TEXT("holding the starting node earns one for each enemy hit"),
+			  PerEnemy(), 1.0f, 0.001f);
+
+	Hold(Player, TMap<FName, int32>());
+	TestEqual(TEXT("and giving the point back takes it away"), PerEnemy(), 0.0f,
+			  0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassivePressTheAdvantageRowTest,
+	"Cataclysm.Passives.PressTheAdvantageGrantsSpellDamageForEachMinionHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_a_b2` Press the Advantage, read out of the tables the game
+ * loads. Issue #1515.
+ *
+ * "+2% increased Spell Damage per point for each minion you have."
+ *
+ * THROUGH THE TREE'S OWN ACCUMULATION AND THE STAT PIPELINE, the way the test of
+ * The Final Pact's second option reads its rows, with the number of minions
+ * stated in the conditions. Eight points and three minions are 48 percentage
+ * points, and no minions are none.
+ */
+bool FCataclysmPassivePressTheAdvantageRowTest::RunTest(const FString&)
+{
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_basic_a_b2"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Press the Advantage grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is spell damage"), Effects[0]->Stat,
+			  FString(TEXT("spell_damage")));
+	TestEqual(TEXT("stated as an increase"), Effects[0]->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of two a point"), Effects[0]->ValuePerPoint, 2.0f);
+	TestEqual(TEXT("for each minion held"), Effects[0]->Scale,
+			  FString(TEXT("minions_held")));
+	TestEqual(TEXT("one minion at a time"), Effects[0]->ScaleStep, 1.0f);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	const TMap<FName, TArray<FCataclysmStatModifier>> Granted =
+		UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+											{FName(TEXT("Demonic"))});
+	const TArray<FCataclysmStatModifier>* SpellDamage =
+		Granted.Find(FName(TEXT("spell_damage")));
+	if (!TestNotNull(TEXT("eight points grant spell damage"), SpellDamage))
+	{
+		return false;
+	}
+
+	const auto IncreasesWith = [SpellDamage](int32 Minions)
+	{
+		FCataclysmStatConditions State;
+		State.MinionsHeld = Minions;
+		return UCataclysmStatPipeline::Evaluate(
+			100.0f, *SpellDamage, FGameplayTagContainer(), State).SumOfIncreases;
+	};
+
+	TestEqual(TEXT("with no minions it grants nothing"), IncreasesWith(0), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("with three it grants 48 percentage points: two a point, "
+				   "eight points, three minions"),
+			  IncreasesWith(3), 48.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveHeadlongSecondClauseRowTest,
+	"Cataclysm.Passives.HeadlongsFirstMeleeAttackAfterMovingFiveMetresGainsItsIncrease",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The First Onslaught's third option, Headlong, read out of the tables the game
+ * loads: its second clause. Issue #1515.
+ *
+ * "+25% increased Movement Speed, and your first melee attack after moving 5
+ * metres deals 50% increased damage."
+ *
+ * THE CONDITION IS HOW FAR THE ATTACKER MOVED BEFORE THE ATTACK, measured when
+ * the skill is paid for and reset at each attack, which is what makes it the
+ * first attack after moving. It holds at five metres or more and refuses a blow
+ * that carries no distance. Read through the tree's own accumulation and the
+ * stat pipeline, as The Final Pact's test reads its option.
+ */
+bool FCataclysmPassiveHeadlongSecondClauseRowTest::RunTest(const FString&)
+{
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Capstone(TEXT("Ravager_capstone_25"));
+
+	const FCataclysmPassiveEffectRow* Clause = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row :
+		 UCataclysmPassiveTree::EffectsFor(EffectTable, Capstone))
+	{
+		if (Row && Row->Option == 3 && Row->Stat == TEXT("attack_damage"))
+		{
+			Clause = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("Headlong has an attack damage row"), Clause))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as an increase"), Clause->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of fifty"), Clause->ValuePerPoint, 50.0f);
+	TestEqual(TEXT("for melee attacks only"), Clause->RequiredTags,
+			  FString(TEXT("Type.Melee")));
+	TestEqual(TEXT("after moving at least"), Clause->Condition,
+			  FString(TEXT("metres_moved_before_attack")));
+	TestEqual(TEXT("five metres"), Clause->ConditionValue, 5.0f);
+
+	FCataclysmPassiveAllocation Picked;
+	Picked.Add(Capstone, 1);
+	Picked.SetChosenOption(Capstone, 3);
+	const TMap<FName, TArray<FCataclysmStatModifier>> Granted =
+		UCataclysmPassiveTree::ModifiersFor(Picked, NodeTable, EffectTable,
+											{FName(TEXT("Demonic"))});
+	const TArray<FCataclysmStatModifier>* AttackDamage =
+		Granted.Find(FName(TEXT("attack_damage")));
+	if (!TestNotNull(TEXT("choosing Headlong grants attack damage"), AttackDamage))
+	{
+		return false;
+	}
+
+	FGameplayTagContainer Melee;
+	const FGameplayTag MeleeTag = UCataclysmDamageCalculation::MeleeTag();
+	if (MeleeTag.IsValid())
+	{
+		Melee.AddTag(MeleeTag);
+	}
+	if (!TestEqual(TEXT("the melee tag exists"), Melee.Num(), 1))
+	{
+		return false;
+	}
+
+	const auto IncreasesAfter = [AttackDamage](float Metres,
+											   const FGameplayTagContainer& Tags)
+	{
+		FCataclysmStatConditions State;
+		State.MetresMovedBeforeBlow = Metres;
+		return UCataclysmStatPipeline::Evaluate(100.0f, *AttackDamage, Tags, State)
+			.SumOfIncreases;
+	};
+
+	TestEqual(TEXT("a melee attack after moving six metres gains 50"),
+			  IncreasesAfter(6.0f, Melee), 50.0f, 0.001f);
+	TestEqual(TEXT("and after exactly five, because the condition is at least"),
+			  IncreasesAfter(5.0f, Melee), 50.0f, 0.001f);
+	TestEqual(TEXT("after four it gains nothing"), IncreasesAfter(4.0f, Melee),
+			  0.0f, 0.001f);
+	TestEqual(TEXT("an attack that is not melee gains nothing after six"),
+			  IncreasesAfter(6.0f, FGameplayTagContainer()), 0.0f, 0.001f);
+	TestEqual(TEXT("and a blow that carries no distance gains nothing"),
+			  IncreasesAfter(-1.0f, Melee), 0.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

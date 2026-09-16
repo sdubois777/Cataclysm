@@ -47,11 +47,13 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: Sundering's row was authored: measured on branch
 #: `feat/ritualist-nodes-say-minion`, 39 conditions, 36 named by a row, these
 #: three not.
+#: `metres_moved_before_attack` left on 2026-09-16, when Headlong's second
+#: clause took a row: measured on branch `feat/ravager-fervour-per-enemy-hit`,
+#: 39 conditions, 37 named by a row, these two not.
 BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the movement conditions for the dungeon-modifier work; the
-    # enchantment rows that want them are among the 388 counted in issue #1815
+    # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
-    "metres_moved_before_attack",
     "not_attacked_for_seconds",
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
