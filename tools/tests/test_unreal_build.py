@@ -19,7 +19,9 @@ end-to-end run.
 
 from __future__ import annotations
 
+import base64
 import inspect
+import json
 import os
 import pathlib
 import re
@@ -709,6 +711,7 @@ def test_both_spellings_of_the_two_commands_are_accepted() -> None:
     assert parse_arguments(["--tests"]).command == "tests"
     assert parse_arguments(["build"]).command == "build"
     assert parse_arguments(["--build"]).command == "build"
+    assert parse_arguments(["restore-proof"]).command == "restore-proof"
 
 
 def test_the_test_prefix_and_target_can_be_chosen() -> None:
@@ -939,6 +942,17 @@ class RecordedBuilds:
     def __call__(self, target: str) -> BuildOutcome:
         self.calls += 1
         return self.remaining.pop(0) if self.remaining else self.remaining[-1]
+
+
+@pytest.fixture(autouse=True)
+def a_recovery_file_outside_the_repository(tmp_path: pathlib.Path,
+                                            monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
+    """Where `prove_cpp_guard` saves the originals it is about to break, for
+    every test in this file, so none writes into the real git directory and a
+    proof driven against `tmp_path` (which is not a repository) can find one."""
+    path = tmp_path / "recovery" / "cpp_guard_originals.json"
+    monkeypatch.setattr(unreal_build, "RECOVERY_FILE", path)
+    return path
 
 
 def a_source_file(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> pathlib.Path:
@@ -1605,3 +1619,112 @@ def test_a_failed_build_still_prints_the_compilers_own_words(
     assert "error C2065" in printed, (
         f"the compiler's own error must still be printed. It printed: "
         f"{printed!r}")
+
+
+# ---------------------------------------------------------------------------
+# Issue #1917: the originals survive a process ended from outside
+#
+# The build wrapper was seen to end after 17 seconds with exit 127 and no
+# output while its build ran on. A `finally` never runs in a process ended that
+# way, so a proof interrupted then would leave its break in the worktree with
+# nothing saying so. These hold the three parts of the answer: the originals
+# are saved outside the working tree before the first break and forgotten only
+# after the last restore; a proof refuses to start while a saved file exists;
+# and `restore-proof` writes the originals back.
+# ---------------------------------------------------------------------------
+
+
+def test_the_originals_are_saved_before_the_break_and_forgotten_after_the_restore(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+        a_recovery_file_outside_the_repository: pathlib.Path) -> None:
+    source = a_source_file(tmp_path, monkeypatch)
+    original = source.read_bytes()
+    recovery = a_recovery_file_outside_the_repository
+    seen_during_the_broken_build: list[dict] = []
+
+    def builder(target: str) -> BuildOutcome:
+        # READ DURING THE BROKEN BUILD, which is when a process ended from
+        # outside would leave the break behind.
+        if recovery.exists():
+            seen_during_the_broken_build.append(json.loads(recovery.read_text(encoding="utf-8")))
+        return build_that_compiled_thing()
+
+    prove_cpp_guard({"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+                    test_prefix="Cataclysm.Thing", builder=builder,
+                    tester=lambda prefix: TestOutcome(1, (), ("a",)))
+
+    assert seen_during_the_broken_build, "no originals were saved while the break was in"
+    saved = seen_during_the_broken_build[0]["files"]
+    assert list(saved) == ["Thing.cpp"]
+    assert base64.b64decode(saved["Thing.cpp"]) == original
+    assert not recovery.exists(), "the originals were not forgotten after the restore"
+    assert source.read_bytes() == original
+
+
+def test_a_proof_refuses_to_start_while_an_earlier_one_never_restored(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+        a_recovery_file_outside_the_repository: pathlib.Path) -> None:
+    source = a_source_file(tmp_path, monkeypatch)
+    before = source.read_bytes()
+    recovery = a_recovery_file_outside_the_repository
+    recovery.parent.mkdir(parents=True)
+    recovery.write_text(json.dumps({"saved_at": "2026-09-16T16:48:26Z", "broken_at": 0.0,
+                                    "files": {"Other.cpp": base64.b64encode(b"x").decode()}}),
+                        encoding="utf-8")
+    builds = RecordedBuilds(build_that_compiled_thing())
+
+    with pytest.raises(unreal_build.InterruptedProofFound) as refused:
+        prove_cpp_guard({"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+                        test_prefix="Cataclysm.Thing", builder=builds,
+                        tester=lambda prefix: TestOutcome(1, (), ("a",)))
+
+    assert "Other.cpp" in str(refused.value) and "restore-proof" in str(refused.value)
+    assert str(recovery) in str(refused.value)
+    assert source.read_bytes() == before, "the refusal came after the break was written"
+    assert builds.calls == 0, "the refusal came after a build was started"
+    assert recovery.exists(), "the refusal deleted the file it refused over"
+
+
+def test_restore_proof_writes_the_originals_back_and_forgets_them(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+        a_recovery_file_outside_the_repository: pathlib.Path, capsys) -> None:
+    source = a_source_file(tmp_path, monkeypatch)
+    original = source.read_bytes()
+    recovery = a_recovery_file_outside_the_repository
+    recovery.parent.mkdir(parents=True)
+    recovery.write_text(json.dumps({"saved_at": "2026-09-16T16:48:26Z",
+                                    "broken_at": time.time() - 5.0,
+                                    "files": {"Thing.cpp": base64.b64encode(original).decode()}}),
+                        encoding="utf-8")
+    source.write_text("float Reach() { return 0.0f; }\n", encoding="utf-8")  # the break left behind
+
+    code = unreal_build.main(["restore-proof"])
+
+    assert code == 0
+    printed = capsys.readouterr().out
+    assert "Thing.cpp" in printed and "Rebuild" in printed
+    assert source.read_bytes() == original
+    assert not recovery.exists()
+    assert unreal_build.main(["restore-proof"]) == 1, "a second restore has nothing to do"
+    assert "Nothing to restore" in capsys.readouterr().out
+
+
+def test_a_builder_that_raises_still_forgets_the_saved_originals(
+        tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+        a_recovery_file_outside_the_repository: pathlib.Path) -> None:
+    """The ordinary interrupt, an exception, still restores through the
+    `finally`; the saved file must go with it, or the next proof would refuse
+    over a restore that did happen."""
+    source = a_source_file(tmp_path, monkeypatch)
+    original = source.read_bytes()
+
+    def builder(target: str) -> BuildOutcome:
+        raise RuntimeError("the machine was taken")
+
+    with pytest.raises(RuntimeError, match="the machine was taken"):
+        prove_cpp_guard({"Thing.cpp": lambda text: text.replace("250.0f", "0.0f")},
+                        test_prefix="Cataclysm.Thing", builder=builder,
+                        tester=lambda prefix: TestOutcome(1, (), ("a",)))
+
+    assert source.read_bytes() == original
+    assert not a_recovery_file_outside_the_repository.exists()
