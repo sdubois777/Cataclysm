@@ -8315,8 +8315,69 @@ bool FCataclysmLeechSporesContactTest::RunTest(const FString& Parameters)
 					  : -1.0f;
 	};
 
-	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: A CREATURE DIES. The creature
-	// is killed well away from the player so the cloud is somewhere to walk to.
+	// A DEATH THE PLAYER DID NOT CAUSE LEAVES NO CLOUD. The row says "When you
+	// kill an enemy", which names who does the killing. The bystander is killed
+	// the way Mortal Decay's reaping test kills its own: `ReduceHealthDirectly`
+	// writes health rather than dealing a blow, and nobody has struck the
+	// bystander, so its notice cannot name the player -- which is checked below
+	// rather than trusted. It dies on the far side of the player from where the
+	// cloud will be, well outside the heal's reach.
+	//
+	// THE NOTICE IS HEARD, NOT ASSUMED. A death that was never announced would
+	// leave no cloud whatever this rule does, and this part would then pass for
+	// the wrong reason. So the test listens, and removes its listener before
+	// anything it captured can go away.
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the death announcer exists"), Events))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Bystander = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() - FVector(1500.0f, 0.0f, 0.0f),
+		100.0f);
+	if (!TestNotNull(TEXT("a bystanding creature"), Bystander))
+	{
+		return false;
+	}
+	int32 BystanderNotices = 0;
+	bool bBystanderNamedThePlayer = false;
+	const FDelegateHandle Heard = Events->OnDeath.AddLambda(
+		[&BystanderNotices, &bBystanderNamedThePlayer, &Player, Bystander](
+			const FCataclysmDeathNotice& Notice)
+		{
+			if (Notice.Victim == Bystander)
+			{
+				++BystanderNotices;
+				bBystanderNamedThePlayer |= Notice.Killer == Player.Character;
+			}
+		});
+	UCataclysmSkillEffects::ReduceHealthDirectly(Bystander, Bystander, 100000.0f);
+	Events->OnDeath.Remove(Heard);
+	if (!TestTrue(TEXT("the bystander died without the player"),
+				  UCataclysmSkillEffects::IsDead(Bystander))
+		|| !TestEqual(TEXT("and its death was announced once"), BystanderNotices, 1))
+	{
+		return false;
+	}
+	TestFalse(TEXT("naming somebody other than the player as its killer"),
+			  bBystanderNamedThePlayer);
+	int32 CloudsFromTheBystander = 0;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (IsValid(*It))
+		{
+			++CloudsFromTheBystander;
+		}
+	}
+	if (!TestEqual(TEXT("so a death the player did not cause leaves no cloud"),
+				   CloudsFromTheBystander, 0))
+	{
+		return false;
+	}
+
+	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: THE PLAYER KILLS A CREATURE. The
+	// creature is killed well away from the player so the cloud is somewhere to
+	// walk to.
 	ACataclysmEnemyCharacter* Victim = SpawnCreatureWithHealth(
 		World, Player.Character->GetActorLocation() + FVector(1500.0f, 0.0f, 0.0f),
 		100.0f);
@@ -8469,8 +8530,9 @@ bool FCataclysmLeechSporesReachTest::RunTest(const FString& Parameters)
 					  : -1.0f;
 	};
 
-	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: A CREATURE DIES. The creature
-	// is killed well away from the player so the cloud is somewhere to walk to.
+	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: THE PLAYER KILLS A CREATURE. The
+	// creature is killed well away from the player so the cloud is somewhere to
+	// walk to.
 	ACataclysmEnemyCharacter* Victim = SpawnCreatureWithHealth(
 		World, Player.Character->GetActorLocation() + FVector(1500.0f, 0.0f, 0.0f),
 		100.0f);
@@ -8610,8 +8672,9 @@ bool FCataclysmLeechSporesSplitTest::RunTest(const FString& Parameters)
 					  : -1.0f;
 	};
 
-	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: A CREATURE DIES. The creature
-	// is killed well away from the player so the cloud is somewhere to walk to.
+	// A CLOUD, LEFT THE WAY THE GAME LEAVES ONE: THE PLAYER KILLS A CREATURE. The
+	// creature is killed well away from the player so the cloud is somewhere to
+	// walk to.
 	ACataclysmEnemyCharacter* Victim = SpawnCreatureWithHealth(
 		World, Player.Character->GetActorLocation() + FVector(1500.0f, 0.0f, 0.0f),
 		100.0f);

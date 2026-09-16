@@ -1656,6 +1656,33 @@ def test_leech_spores_row_still_says_the_drain_heals_enemies():
             "CataclysmDungeonModifierEffects.h. " + words)
 
 
+def test_leech_spores_leaves_a_cloud_only_for_the_players_kills():
+    """The row's "When you kill an enemy", held to the comparison that reads it.
+
+    The Mortal Decay entry in docs/DECISIONS.md records that a row naming who
+    does the killing makes its death listener require
+    `FCataclysmDeathNotice::Killer` to be the player's pawn. Most death listeners
+    on the game mode do not ask, because their rows name no killer, so a change
+    making this one look like its neighbours would read as tidying rather than
+    as a change to the rule. This fails first.
+
+    THE COMPARISON, NOT THE NAME. Comment lines are dropped before searching,
+    because the comment above the check names the killer in prose.
+    """
+    source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+              / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    body = body_of(source, "void ACataclysmDungeonGameMode::NoteDeathForLeechSpores(")
+    code = "\n".join(line for line in body.splitlines()
+                     if not line.lstrip().startswith("//"))
+
+    assert re.search(r"Notice\.Killer\s*!=\s*Player\b", code), (
+        "NoteDeathForLeechSpores no longer refuses a death the player did not "
+        "cause. Pestilence_Leech_Spores says \"When you kill an enemy\", and the "
+        "Mortal Decay entry in docs/DECISIONS.md records that a row naming the "
+        "killer counts only the player's kills. Without the check a creature "
+        "killed by anything else leaves a cloud.")
+
+
 def test_leech_spores_drains_rather_than_dealing_a_blow():
     """The decision that decides how this rule meets every rule listening for blows.
 

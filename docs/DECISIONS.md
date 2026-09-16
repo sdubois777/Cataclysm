@@ -42,6 +42,26 @@ sphere search centred on the player at the moment of the drain. The earlier grou
 a family of rows that share a shape, not a reading of this sentence, and a stated figure is not
 overridden by a family summary. Ruled by the coordinating session.
 
+### Only the player's own kills leave a cloud, by the rule the Mortal Decay entry records
+
+The row says "When **you** kill an enemy", which names who does the killing. The 2026-09-13
+Mortal Decay entry records what that means for a listener on the death notice:
+`FCataclysmDeathNotice::Killer` must be the player's pawn. So `NoteDeathForLeechSpores` refuses
+a death that names anyone else as its killer, or nobody. That entry's two readings carry over
+unchanged rather than being decided again: a minion's kill counts, because the notice credits
+the summoner, and a creature the player struck that then died to something else still names
+the player, because the notice names the last blow on record.
+
+`Pestilence_Fungal_Overgrowth` is the contrast. Its entry reads "Killing enemies creates
+mushrooms" as unconditional, the way Withered Ground's "on death" is, because that sentence
+names no killer.
+
+**Every test of this rule makes its cloud with the player's own blow, so on that alone none of
+them would notice a listener that ignored the killer.** The contact test therefore first kills a
+bystander without the player and asserts no cloud was left. It listens for that death's notice while it does, so
+a death that was never announced cannot pass for one the rule refused. A Python check fails if
+the comparison is removed from the listener.
+
 ### "Within ten metres" is measured to a creature's body, not its centre
 
 `UCataclysmTargeting::FindEnemiesInSphere` is a sphere overlap against pawn collision. A creature is

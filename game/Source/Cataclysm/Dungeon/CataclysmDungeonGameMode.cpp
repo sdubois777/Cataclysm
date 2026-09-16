@@ -3507,8 +3507,20 @@ void ACataclysmDungeonGameMode::NoteDeathForLeechSpores(
 		return;
 	}
 
+	// AND THE PLAYER MUST HAVE KILLED IT. "When you kill an enemy" names who does
+	// the killing, and the design log's Mortal Decay entry records what that means
+	// for a listener on this notice: `NoteDeathForMortalDecay` asks the same for
+	// "reaping enemies". A creature whose death names anyone else as its killer,
+	// or nobody, leaves no cloud. A minion's kill still leaves one, because
+	// `FCataclysmDeathNotice::Killer` credits the summoner.
+	//
+	// THE SAME ROUTE TO THE PLAYER THE BEAT TAKES, so the two cannot disagree
+	// about whose floor this is.
 	UWorld* World = GetWorld();
-	if (!World)
+	APlayerController* Controller =
+		World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (!World || !Player || Notice.Killer != Player)
 	{
 		return;
 	}
