@@ -500,8 +500,8 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: nothing.
 #:
 #: THREE ARE `flat` AND ONE IS `increased`, for the reason the entry above
-#: gives. `possession_threshold_bonus`, `thrall_reserve_reduction` and
-#: `imp_cap_bonus` all start at zero, so an increase against them would grant
+#: gives. `possession_threshold_bonus`, `minion_reserve_reduction` and
+#: `minion_cap_bonus` all start at zero, so an increase against them would grant
 #: nothing; `area_of_effect` starts at 100, so a flat row would add four
 #: percentage points instead of four per cent.
 #:
