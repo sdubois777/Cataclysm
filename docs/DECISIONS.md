@@ -126,9 +126,12 @@ returns early only when neither kind of row asks.
 **The right-hand column is a TRACE, not a guard proof.** Each was read off what
 the test holds: `WrungOutRestoresHealthWhenARealRavagerKills` holds Wrung Out
 alone, so the first return would fire; the two Grinding Halt tests hold the
-keystone alone, so the second would. The two guard proofs in this change target
-other lines. Proving either defect would be a third proof, which the budget of
-three per change allows for one of them.
+keystone alone, so the second would. **The first defect is also this change's
+third guard proof**, chosen over the second because it reaches every holder of
+Wrung Out who lacks Nothing Moves You. The return is put back as it was, and the
+proof is predicted to fail `WrungOutRestoresHealthWhenARealRavagerKills` and
+nothing else. Its result is reported with the pull request and not here, because
+this entry was written before the proof ran.
 
 **One test would NOT have caught the second defect, and that is worth knowing.**
 `ACrippledEnemyCountsForTheStartingNodeAndGrindingHalt` holds the starting node
