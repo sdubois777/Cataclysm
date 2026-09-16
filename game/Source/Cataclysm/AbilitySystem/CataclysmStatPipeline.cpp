@@ -225,8 +225,10 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::CanCrippleOrWeaken:
 	case ECataclysmStatCondition::OpponentCarriesWeaken:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the fourteen says
-		// so in its own comment in the header.
+		// nothing for a number to be compared against. Each of the sixteen says
+		// so in its own comment in the header, and
+		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
+		// holds this count and the header's to the case labels (issue #1640).
 		//
 		// THE COUNT IN THAT SENTENCE SAID "TEN" FOR THREE NAMES. It is written
 		// out because a list nobody counts is a list somebody extends without

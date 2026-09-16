@@ -2402,7 +2402,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a twenty-second, which is the drift that put the passive tree eight
+	 * adds a thirty-ninth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -2411,13 +2411,13 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * FOURTEEN OF THE TWENTY-EIGHT COMPARE NOTHING: `WhileBleeding`,
-	 * `ClassResourceAtMaximum`, `EnergyShieldAtMaximum`, the three that ask
-	 * what kind of blow this is, the two that ask whether whoever threw it is a
-	 * boss or staggered, the two that ask whether the character is moving or
-	 * standing still, the one that asks whether the character being hit is
-	 * staggered, and the three that ask which ailment the character at the
-	 * other end of the blow is carrying.
+	 * SIXTEEN OF THE THIRTY-EIGHT COMPARE NOTHING. They are the case labels
+	 * before the first `return false;` in `ConditionTakesAValue`, and this
+	 * sentence no longer lists them by hand: the hand list rotted with the
+	 * count. Both numbers are read out of the code by
+	 * `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
+	 * (issue #1640), which fails the moment either moves, so this sentence
+	 * must be corrected in the change that adds a condition.
 	 * Each says so in its own comment above, and
 	 * `tools/generate_datatables.py` refuses to write a value on a row carrying
 	 * one, so there is no number to carry across.
