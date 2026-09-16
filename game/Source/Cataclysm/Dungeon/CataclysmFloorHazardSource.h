@@ -87,34 +87,14 @@ public:
 	virtual FGenericTeamId GetGenericTeamId() const override;
 	//~ End IGenericTeamAgentInterface
 
-	/**
-	 * Which of the player's eight resistances this hazard's damage is met by.
-	 *
-	 * WITHOUT THIS, A HAZARD MEETS NO RESISTANCE AT ALL.
-	 * `ACataclysmGroundZone::Sweep` damages through `ApplyDirectDamage` with this
-	 * actor as the source, and that path asks
-	 * `UCataclysmSkillEffects::DamageTypeOf` for the source's type to decide the
-	 * hit's element. Until this existed the answer was nothing, so a Demonic
-	 * modifier's burning ground ignored a player's Demonic resistance -- harsher
-	 * than any creature attack and a whole player stat worth nothing against it.
-	 *
-	 * IT IS READ OFF THE PLACING MODIFIER'S ROW, NOT CHOSEN. Every row of
-	 * `game/Data/DungeonModifiers.csv` carries a `CataclysmType`, so the modifier
-	 * that places a hazard says what it deals and the two cannot disagree.
-	 *
-	 * EMPTY MEANS UNTYPED, which is both the safe default and the right answer
-	 * for the one row typed `Generic`: the player's resistances are War, Demonic,
-	 * Death, Pestilence, Famine, Celestial, Chaos and Void, and Generic is not
-	 * among them, so there is nothing for a type to select. That row places no
-	 * hazard today in any case -- it is a creature that hunts the player.
-	 *
-	 * TYPING THIS APPLIES THE PROJECT OWNER'S RULE RATHER THAN WIDENING IT. The
-	 * second paragraph of `DamageTypeOf`'s comment says a projectile's hit is
-	 * typed by whoever fired it, "which is the same rule and not a special case".
-	 * A hazard is that shape: a thing sent by a source.
-	 */
-	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Floor Hazard")
-	FName DamageType;
+	// NO DAMAGE TYPE IS HELD HERE, DELIBERATELY. Issue #1924. This actor once
+	// carried one, set from the placing modifier's row -- and every rule on the
+	// floor shares this actor, so the type was whichever rule wrote it last. A
+	// floor carrying two Cataclysms dealt one rule's damage as the other's, and a
+	// rule that never wrote the field dealt its damage untyped. The type now
+	// travels with what deals the damage, set from the rule's row:
+	// `FCataclysmHitDelivery::DamageType` on a blow, and
+	// `ACataclysmGroundZone::DamageType` on a patch.
 
 protected:
 	/**

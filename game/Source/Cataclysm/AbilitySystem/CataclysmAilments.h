@@ -259,9 +259,15 @@ public:
 	 * @param Skill      the skill whose blow rolled it, if a skill's blow
 	 *                   did. Carried on the effect context, so that the
 	 *                   notice of each tick names it. Issue #41, slice 4
+	 * @param DamageType the type a damage-over-time ailment's ticks are met by,
+	 *                   or NAME_None for the instigator's. A dungeon floor rule
+	 *                   passes its row's, because its instigator is the floor's
+	 *                   shared hazard source. The other shapes do not read it.
+	 *                   Issue #1924
 	 * @return whether anything was applied
 	 */
 	static bool Apply(AActor* Instigator, AActor* Target,
 					  const FCataclysmAilmentKind& Kind, float Magnitude,
-					  const UGameplayAbility* Skill = nullptr);
+					  const UGameplayAbility* Skill = nullptr,
+					  FName DamageType = NAME_None);
 };

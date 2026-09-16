@@ -54,11 +54,14 @@ public:
 	 * @param RadiusCm     how wide
 	 * @param Duration     how long before it goes away
 	 * @param DamagePerTick how much each enemy inside takes per tick
+	 * @param InDamageType  the type its damage is met by, or NAME_None for its
+	 *                      owner's. See `DamageType`.
 	 * @return the zone, or null if any of the numbers is not positive
 	 */
 	static ACataclysmGroundZone* Spawn(AActor* Owner, const FVector& Location,
 									   float RadiusCm, float Duration,
-									   float DamagePerTick);
+									   float DamagePerTick,
+									   FName InDamageType = NAME_None);
 
 	/**
 	 * Put a long one in the world, covering everything within HalfWidthCm of the
@@ -80,11 +83,14 @@ public:
 	 *                        "The fire burns other enemies and the Hellhound
 	 *                        itself". Everything else leaves a zone that knows
 	 *                        whose side it is on.
+	 * @param InDamageType    the type its damage is met by, or NAME_None for
+	 *                        its owner's. See `DamageType`.
 	 */
 	static ACataclysmGroundZone* SpawnAlong(AActor* Owner, const FVector& Start,
 											const FVector& End, float HalfWidthCm,
 											float Duration, float DamagePerTick,
-											bool bBurnsEveryone = false);
+											bool bBurnsEveryone = false,
+											FName InDamageType = NAME_None);
 
 	/**
 	 * Put one in the world that lasts until the player leaves the floor.
@@ -114,7 +120,10 @@ public:
 	 *                          creatures in the same patch, which four of the
 	 *                          eight rows do.
 	 * @param InDrawnAsType  which element's colours to draw it in, or NAME_None
-	 *                       to draw it in its owner's. See `DrawnAsType`.
+	 *                       to draw it in its damage type's, or with neither
+	 *                       its owner's. See `DrawnAsType`.
+	 * @param InDamageType   the type its damage is met by, or NAME_None for its
+	 *                       owner's. See `DamageType`.
 	 * @return the patch, or null if the width is not positive
 	 */
 	static ACataclysmGroundZone* SpawnForTheFloor(AActor* Owner,
@@ -123,7 +132,8 @@ public:
 												  float HalfWidthCm,
 												  float DamagePerTick,
 												  bool bAffectsEveryone = false,
-												  FName InDrawnAsType = NAME_None);
+												  FName InDrawnAsType = NAME_None,
+												  FName InDamageType = NAME_None);
 
 	/**
 	 * Whether it burns whatever is standing in it, including its own owner.
@@ -330,18 +340,17 @@ public:
 	 *
 	 * IT IS ONLY THE APPEARANCE AND NOT THE DAMAGE, which matters because the
 	 * value is a damage type name. Nothing reads this to decide what a hit is
-	 * met by: `ACataclysmGroundZone::Sweep` passes its OWNER as the damage
-	 * source, and `UCataclysmSkillEffects::DamageTypeOf` asks that owner. So a
-	 * patch drawn in one element's colours still deals its owner's element, and
-	 * a patch that deals nothing -- `DamagePerTick` of zero and no curse, which
-	 * `Sweep` returns early on -- never asks about an element at all.
+	 * met by: that is `DamageType` below, or the owner's type when that is unset.
+	 * So a patch drawn in one element's colours still deals its own type's
+	 * element, and a patch that deals nothing -- `DamagePerTick` of zero and no
+	 * curse, which `Sweep` returns early on -- never asks about an element at all.
 	 *
-	 * ONE FLOOR HAS ONE HAZARD SOURCE AND ITS TYPE IS LAST-WRITER-WINS, which is
-	 * the other half of why this is per zone. `ACataclysmFloorHazardSource::
-	 * ForFloor` answers the same actor for every rule on the floor, and three
-	 * rules assign `Source->DamageType` from their own row just before spawning,
-	 * so a patch's owner-derived colour can be changed afterwards by a later rule
-	 * placing something else. A value held on the patch cannot be.
+	 * ONE FLOOR HAS ONE HAZARD SOURCE, which is the other half of why this is per
+	 * zone. `ACataclysmFloorHazardSource::ForFloor` answers the same actor for
+	 * every rule on the floor, so nothing held on that actor can say which rule
+	 * placed a patch. Until issue #1924 its one type field was written by three
+	 * rules and read by every patch, so a patch's colour could be changed by a
+	 * later rule placing something else. A value held on the patch cannot be.
 	 *
 	 * NAME_None RATHER THAN A FLAG, so the unset state and "draw it untyped" are
 	 * the same request. `UCataclysmElementVisuals::ColoursFor` answers false for
@@ -351,6 +360,24 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	FName DrawnAsType;
+
+	/**
+	 * Which of the defender's resistances this patch's damage is met by, or
+	 * NAME_None for its owner's. Issue #1924.
+	 *
+	 * SET BY A DUNGEON FLOOR RULE, FROM ITS ROW. A floor's patches all belong to the
+	 * floor's one hazard source, which carries no type, so the rule that places a
+	 * patch says what it deals by passing its row's `CataclysmType`. A patch placed
+	 * by another rule afterwards cannot change it.
+	 *
+	 * NAME_None FOR EVERY OTHER PATCH, whose owner types it as before: a creature's
+	 * burning ground deals the creature's element and a player's deals none.
+	 * `Sweep` puts this on each blow's delivery, where
+	 * `UCataclysmSkillEffects::ApplyTypedSpec` prefers it to the owner's, and
+	 * `TypeItIsDrawnAs` draws the patch in it when `DrawnAsType` is unset.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	FName DamageType;
 
 	/**
 	 * Which element's colours this patch is actually drawn in.

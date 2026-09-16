@@ -38,7 +38,6 @@
 // step, so rule three has to ask the enemy class. Issue #395.
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
-#include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
 #include "GameplayEffect.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
@@ -1060,27 +1059,16 @@ FName UCataclysmSkillEffects::DamageTypeOf(const AActor* Attacker)
 		return Enemy->DamageType;
 	}
 
-	// AND A FLOOR HAZARD'S SOURCE, WHICH IS THE SAME RULE AND NOT A SECOND ONE.
-	// The paragraph above says a projectile's hit is typed by whoever fired it
-	// because the instigator passed down the chain is that character rather than
-	// the thing it sent. A floor hazard is exactly that shape, and
-	// `ACataclysmGroundZone::Sweep` passes its owner as the source.
-	//
-	// UNTIL THIS EXISTED EVERY HAZARD MET NO RESISTANCE. The owner is a plain
-	// actor, so the cast above answered nothing, no element reached the spec, and
-	// `UCataclysmDamageCalculation` had nothing to select -- so a Demonic
-	// modifier's burning ground ignored a player's Demonic resistance entirely.
-	// That contradicted the stated reason for the rule, which is that the
-	// player's resistances should take effect.
-	//
-	// ITS TYPE IS EMPTY UNTIL A MODIFIER SETS IT, so a hazard nobody typed
-	// behaves exactly as it did before this change rather than picking a default
-	// that would be wrong for seven modifiers out of eight.
-	if (const ACataclysmFloorHazardSource* Hazard =
-			Cast<ACataclysmFloorHazardSource>(Attacker))
-	{
-		return Hazard->DamageType;
-	}
+	// A FLOOR HAZARD'S BLOW IS NOT TYPED HERE, AND THAT IS ISSUE #1924. Every
+	// dungeon floor rule deals damage in the name of the floor's one hazard source,
+	// and this function once answered that source's own type field -- a single
+	// value the last rule to place something had written. On a floor carrying two
+	// Cataclysms a blow could meet the other rule's resistance, and a rule that
+	// never wrote the field dealt its damage untyped unless another rule had. A
+	// floor blow now carries its row's type on `FCataclysmHitDelivery::DamageType`
+	// and a floor patch on `ACataclysmGroundZone::DamageType`, and
+	// `ApplyTypedSpec` reads those before asking here, so the source answers
+	// NAME_None like anything else that is not a creature.
 
 	return NAME_None;
 }
@@ -1098,12 +1086,17 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	// reaches the defender: see UCataclysmDamageCalculation::ElementTagFor.
 	FGameplayEffectSpec Spec(Effect, Context, /*Level=*/1.0f);
 
-	// THE ATTACKER'S TYPE FIRST, AND IT IS THE ONE THAT DECIDES A RESISTANCE.
-	// Unchanged: an enemy's hit says which of the player's eight resistances
-	// meets it, and a player's hit says nothing, because an enemy holds one
-	// generic resistance and has nothing to choose between.
-	const FGameplayTag Element =
-		UCataclysmDamageCalculation::ElementTagFor(DamageTypeOf(Attacker));
+	// THE BLOW'S OWN TYPE WHEN IT CARRIES ONE, OTHERWISE THE ATTACKER'S, AND
+	// EITHER IS WHAT DECIDES A RESISTANCE. A dungeon floor's blows carry their
+	// rule's type (issue #1924), because the actor they are dealt in the name of is
+	// shared by every rule on the floor. Every other blow carries none and is typed
+	// as before: an enemy's hit says which of the player's eight resistances meets
+	// it, and a player's hit says nothing, because an enemy holds one generic
+	// resistance and has nothing to choose between.
+	const FName BlowType = Delivery.DamageType.IsNone()
+		? DamageTypeOf(Attacker)
+		: Delivery.DamageType;
+	const FGameplayTag Element = UCataclysmDamageCalculation::ElementTagFor(BlowType);
 	if (Element.IsValid())
 	{
 		Spec.AddDynamicAssetTag(Element);
@@ -1580,7 +1573,8 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	AActor* Instigator, AActor* Target, float DamagePerTick,
 	float DurationSeconds, const FGameplayTag& EffectTag,
-	bool bScalesWithInstigator, AActor* DealtBy, const UGameplayAbility* Skill)
+	bool bScalesWithInstigator, AActor* DealtBy, const UGameplayAbility* Skill,
+	FName DamageType)
 {
 	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
 	{
@@ -1721,6 +1715,7 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// shield stacking. Issue #513.
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsDamageOverTime = true;
+	Delivery.DamageType = DamageType;
 	ApplyTypedSpec(Effect, Context, Defender, Instigator, Delivery, Stated);
 
 	return true;

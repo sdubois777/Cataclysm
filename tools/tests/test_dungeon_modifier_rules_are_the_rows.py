@@ -1789,33 +1789,76 @@ def test_blood_altar_counts_deaths_without_asking_who_killed():
         "altar; docs/DECISIONS.md records that as the opposite of Leech Spores.")
 
 
-def test_blood_altar_types_its_pulse_from_its_row_and_puts_the_type_back():
-    """The floor source's type is one field every rule on the floor shares (#1924).
+def test_no_floor_rule_writes_a_shared_damage_type():
+    """A floor's damage type travels with its hit or its zone, never on the source (#1924).
 
-    `StepBloodAltar` sets `ACataclysmFloorHazardSource::DamageType` from its row before
-    the pulse and restores the previous value after it. Without the first the pulse can
-    be untyped, and no resistance meets it. Without the second it retypes whatever
-    another rule on the floor deals next.
+    Every dungeon floor rule deals damage in the name of one actor,
+    `ACataclysmFloorHazardSource`, and all the rules on a floor share it. Until issue
+    #1924 it held a `DamageType` that rules wrote before dealing damage, and every hit the
+    floor dealt was typed by it. So the type was whichever rule had written it last: on a
+    floor of two Cataclysms one rule's damage met the other's resistance, and a rule that
+    never wrote it dealt damage that no resistance met.
+
+    THE HEADER IS CHECKED BECAUSE THE COMPILER REFUSES A WRITE ONLY WHILE THE FIELD IS
+    GONE. The game mode is checked too, because a write through a pointer is how the rules
+    set the field, and it would compile again the day the field came back.
+
+    THE CODE, NOT THE COMMENTS. Both files explain the removed field in comments, and
+    those lines are removed before the search. Each file is also checked for something it
+    must still contain, so a file that was not read cannot pass.
+    """
+    dungeon = REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+
+    def code_lines(path: pathlib.Path) -> str:
+        return "\n".join(
+            line for line in path.read_text(encoding="utf-8").splitlines()
+            if not line.lstrip().startswith(("//", "/*", "*")))
+
+    header = code_lines(dungeon / "CataclysmFloorHazardSource.h")
+    assert "static ACataclysmFloorHazardSource* ForFloor(" in header, (
+        "CataclysmFloorHazardSource.h no longer declares ForFloor, so this check cannot "
+        "tell a header with no type field from one it did not read. " + header)
+    assert "DamageType" not in header, (
+        "ACataclysmFloorHazardSource declares a DamageType again. Every rule on a floor "
+        "shares that actor, so a type held on it is whichever rule wrote it last. Issue "
+        "#1924 moved the type onto FCataclysmHitDelivery and ACataclysmGroundZone. "
+        + header)
+
+    game_mode = code_lines(dungeon / "CataclysmDungeonGameMode.cpp")
+    assert "Delivery.DamageType = " in game_mode, (
+        "CataclysmDungeonGameMode.cpp no longer puts a type on any hit's delivery, so this "
+        "check cannot tell a file that writes no shared type from one it did not read.")
+    written = re.findall(r"^.*->\s*DamageType\s*=.*$", game_mode, flags=re.MULTILINE)
+    assert not written, (
+        "CataclysmDungeonGameMode.cpp writes a damage type through a pointer, which is how "
+        "the rules wrote the floor source's shared type before issue #1924. A floor rule's "
+        "damage carries its row's type on its hit's delivery or on its zone instead: "
+        + "; ".join(line.strip() for line in written))
+
+
+def test_blood_altar_passes_its_rows_type_on_the_pulse():
+    """The pulse carries its row's type on its own delivery, set before it is dealt (#1924).
+
+    `StepBloodAltar` deals the pulse from the floor's hazard source, which holds no type
+    since issue #1924. Without the type on the delivery the pulse meets no resistance, and
+    a type set after the pulse is dealt types nothing.
+
+    THE CODE, NOT THE COMMENTS, as in the check above on this rule's death listener.
     """
     code = _game_mode_code_of("void ACataclysmDungeonGameMode::StepBloodAltar(")
 
-    sets = code.find("Source->DamageType = FName(*Row->CataclysmType);")
+    typed = code.find("Delivery.DamageType = FName(*Row->CataclysmType);")
     deals = code.find("UCataclysmSkillEffects::ApplyDirectDamage(")
-    restores = code.find("Source->DamageType = TypedBefore;")
 
-    assert sets != -1, (
-        "StepBloodAltar no longer types the floor source from its own row before the "
-        "pulse, so the pulse is typed by whichever rule wrote the field last, or not at "
-        "all. Issue #1924.")
+    assert typed != -1, (
+        "StepBloodAltar no longer puts its own row's type on the pulse's delivery, so the "
+        "pulse is dealt untyped and no resistance meets it. Issue #1924. " + code)
     assert deals != -1, (
-        "StepBloodAltar no longer deals its pulse through ApplyDirectDamage, which is "
-        "the route docs/DECISIONS.md records for it.")
-    assert restores != -1, (
-        "StepBloodAltar no longer puts the floor source's previous type back after the "
-        "pulse, so it retypes the next blow another rule on the floor deals.")
-    assert sets < deals < restores, (
-        "StepBloodAltar's three steps are out of order: the source must be typed before "
-        "the pulse and restored after it.")
+        "StepBloodAltar no longer deals its pulse through ApplyDirectDamage, which is the "
+        "route docs/DECISIONS.md records for it.")
+    assert typed < deals, (
+        "StepBloodAltar puts the type on the pulse's delivery after dealing the pulse, so "
+        "the pulse is dealt untyped.")
 
 
 def test_brand_of_the_aggressor_row_still_states_the_count_the_rule_uses():

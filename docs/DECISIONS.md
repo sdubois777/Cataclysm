@@ -2,6 +2,171 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — A dungeon floor's damage carries its own rule's type, on the hit or on the zone, and the floor's shared damage source holds none
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (typing and
+dealing a hit), `CataclysmAilments.h` and `.cpp` (applying an ailment), `CataclysmGroundZone.h` and
+`.cpp` (patches of ground that sweep for damage),
+`game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h` (the one actor a floor's rules deal
+damage from), `CataclysmDungeonGameMode.h` and `.cpp` (the floor rules),
+`CataclysmDungeonModifierEffects.h` and `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h`
+(comments only), `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the
+automation tests for these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the
+Python checks that hold each rule to its design row). Issue
+[#1924](https://github.com/sdubois777/Cataclysm/issues/1924). **Applied.**
+
+### What was wrong
+
+Every dungeon floor rule deals its damage in the name of one actor, `ACataclysmFloorHazardSource`,
+and all the rules on a floor share it. Until this change that actor held one `DamageType`, and
+`UCataclysmSkillEffects::DamageTypeOf` answered it for every hit the floor dealt. Infernal Rain,
+Singularity Wells and Grasping Tentacles wrote it as they placed something, and Blood Altar set it
+before each pulse and put the old value back after. That went wrong three ways:
+
+- **On a floor carrying rules of two Cataclysms, damage met whichever type was written last.** A
+  Singularity Well placed after a patch of Infernal Rain made the patch's burn Void.
+- **Artillery Strike, Hellfire, Spore Clouds and Hallowed Groundfall never wrote it.** On a floor of
+  their own, their damage met none of the player's eight resistances. The 2026-09-13 Infernal Rain
+  entry records the rule this broke: a floor hazard's damage is met by its row's type.
+- **A zone given no colour was drawn in that field's type,** so on a mixed floor a zone could be drawn
+  in another rule's colours.
+
+**The issue as filed named only Artillery Strike and Hellfire.** Spore Clouds, Hallowed Groundfall and
+the colour were added in a correction comment on the issue. They were found by reading the code before
+this change was planned.
+
+### Where each rule's type travels now
+
+| Rule, and its row's type | Its damage | What carries the type |
+| :-- | :-- | :-- |
+| Artillery Strike, War | a shell: one area hit | `FCataclysmHitDelivery::DamageType`, on the hit |
+| Hellfire, Demonic | an explosion: one area hit | the same |
+| Blood Altar, Demonic | a pulse: one area hit | the same, in place of setting and restoring the source's field |
+| Spore Clouds, Pestilence | a poison: damage over time | `UCataclysmAilments::Apply` passes it to `UCataclysmSkillEffects::ApplyDamageOverTime`, which puts it on the delivery that types the poison when it lands |
+| Infernal Rain, Demonic | each sweep of a patch | `ACataclysmGroundZone::DamageType`, passed to `Spawn` |
+| Singularity Wells, Void | each sweep of a well | the same, passed to `SpawnForTheFloor` |
+| Hallowed Groundfall, Celestial | each sweep of a crater | the same, passed to `Spawn` |
+
+Every type is read off the row's own `CataclysmType` column, as Infernal Rain's already was, so a row
+retyped in the design workbook retypes its damage with no code change.
+
+`UCataclysmSkillEffects::ApplyTypedSpec` types every hit, whether direct, swept or over time. It reads
+the delivery's type first and the attacker's second. A hit carrying no type of its own is typed as
+before: a creature's hit by the creature, and a player's hit not at all, which is the project owner's
+ruling of 2026-08-12.
+
+**Grasping Tentacles deals no damage.** It wrote the source's field only for its colour. It now passes
+its row's type as the tentacle's `DrawnAsType`, so a tentacle is still drawn in Void's colours.
+
+### The judgements
+
+Approved by the coordinating session under the owner's delegation, before any code was written. No
+genre research was needed: this restores the rule the Infernal Rain entry already records, and chooses
+only where the type is held.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| Where the type is held | **On each hit's delivery and on each zone**, not on the shared source | Three of the seven rules deal their damage through zone sweeps. A sweep runs on the zone's own timer, outside any rule's step, so a rule cannot set and restore a shared field around it the way Blood Altar did |
+| The source's field | **Removed**, not kept beside the new ones | A field any rule can write and no damage reads would invite the defect back. Without the field, a write does not compile |
+| What a zone is drawn in | **Its `DrawnAsType`, then its `DamageType`, then its owner's type** | A patch is drawn in the type it deals. A floor zone given neither -- Withered Ground's patches, Leech Spores' clouds and Artillery Strike's warning circle -- is drawn untyped, as it already was on any floor where no rule had written the field |
+
+### The functions that gained a parameter, and their callers
+
+Five functions gained a trailing `FName` parameter defaulted to `NAME_None`, so a caller that passes
+nothing compiles unchanged and behaves as before:
+
+- `UCataclysmSkillEffects::ApplyDamageOverTime`, as `DamageType`
+- `UCataclysmAilments::Apply`, as `DamageType`
+- `ACataclysmGroundZone::Spawn`, as `InDamageType`
+- `ACataclysmGroundZone::SpawnAlong`, as `InDamageType`, because `Spawn` passes its type on to it
+- `ACataclysmGroundZone::SpawnForTheFloor`, as `InDamageType`, after `InDrawnAsType`
+
+Two fields were added: `FCataclysmHitDelivery::DamageType` and `ACataclysmGroundZone::DamageType`.
+
+The ten callers of `Spawn` and `SpawnForTheFloor` outside the tests:
+
+| Caller | Function | What it passes now |
+| :-- | :-- | :-- |
+| `ACataclysmGatekeeperCharacter`, its Soulfall ground | `Spawn` | no type: typed by the Gatekeeper, as before |
+| `StepInfernalRain` | `Spawn` | its row's type, as the damage type |
+| `StepHallowedGroundfall` | `Spawn` | its row's type, as the damage type |
+| `StepSingularityWells` | `SpawnForTheFloor` | its row's type, as the damage type |
+| `StepArtilleryStrike`, the warning circle | `SpawnForTheFloor` | no type: the circle deals no damage |
+| `StepGraspingTentacles` | `SpawnForTheFloor` | its row's type, as the colour |
+| `NoteDeathForWitheredGround` | `SpawnForTheFloor` | no type, as before |
+| `NoteDeathForLeechSpores` | `SpawnForTheFloor` | no type, as before |
+| `NoteDeathForFungalOvergrowth` | `SpawnForTheFloor` | a colour, as before |
+| `StepBloodAltar`, the ring | `SpawnForTheFloor` | its row's type, as the colour, as before |
+
+`SpawnAlong` is also called by `UCataclysmSkillTemplate` and `ACataclysmHellhoundCharacter`, and
+neither passes a type.
+
+### The tests
+
+**Seven new automation tests measure the damage meeting its resistance.** Each deals the same damage
+twice to a player given 100,000 maximum health: once with the resistance its row names raised by 50,
+and once with another resistance raised by 50. It asserts the first takes under three quarters of what
+the second takes. Untyped damage takes about the same both times, and damage of the other type would
+take about twice as much, so both fail. The tests are in `Cataclysm.DungeonModifierEffects.`:
+
+- `AnArtilleryShellMeetsWarResistanceAndNotVoid`
+- `AHellfireExplosionMeetsDemonicResistanceAndNotVoid`
+- `SporeCloudsPoisonMeetsPestilenceResistanceAndNotVoid`. Each poison is measured from the death until
+  it wears off, because a poison landing on a running one only refreshes the running one.
+- `AnInfernalRainPatchMeetsDemonicResistanceAndNotVoid`
+- `ASingularityWellMeetsVoidResistanceAndNotDemonic`
+- `AHallowedCraterMeetsCelestialResistanceAndNotVoid`
+- `OnAFloorOfTwoTypesEachZoneMeetsOnlyItsOwnResistance`: a patch of Infernal Rain and a Singularity
+  Well on one floor, with the well placed after the patch, which is the order that made the patch Void.
+
+The zone tests call `ACataclysmGroundZone::Sweep` once per measurement, which is what the zone's timer
+calls, so the clock does not move between the two figures.
+
+**Measured on 2026-09-16, on commit a17e9437.** Six of the seven tests took half as much with their own
+resistance raised, to within the rounding of the printed figures: an artillery shell, for example, took
+10774.0 against 21548.0. The poison took about a third, 33.0 against 100.2, because each poison is
+measured over its whole length and both measurements lose the health regenerated during it: if the
+poison deals P, Pestilence resistance halves it and each measurement regenerates the same R, then
+P - R = 100.2 and P/2 - R = 33.0 give P = 134.4 and R = 34.2, about 4 health a second over the
+poison's 8 to 9 seconds. That rate is arithmetic and not a measurement. It disagrees with the comment
+in `SporesFromADeathNearThePlayerPoisonThem` that the player regenerates 1 a second, which issue
+[#1940](https://github.com/sdubois777/Cataclysm/issues/1940) records; that test is not changed here.
+
+**Three existing tests read the removed field**, and now read the zone's own:
+`AFloorCarryingInfernalRainDropsTypedPatches`, `AVoidOrbSlowsAPlayerStandingInItAndStopsWhenTheyLeave`
+and `TheTwoKindsOfMushroomAreDrawnInDifferentColours`. The last one's control now places a patch with a
+damage type and no colour, and asserts it is drawn in the damage type.
+
+**In Python,** `test_blood_altar_passes_its_rows_type_on_the_pulse` replaces
+`test_blood_altar_types_its_pulse_from_its_row_and_puts_the_type_back`, and
+`test_no_floor_rule_writes_a_shared_damage_type` checks that the source's header declares no type and
+that the game mode writes no type through a pointer.
+
+### What the tests do not show
+
+- **A zone's own timer sweeping with a type.** The typed tests call `Sweep` directly.
+  `ACraterBurnsThePlayerStandingInIt` moves the clock and shows the timer sweeping, but does not check
+  which resistance meets the burn.
+- **A colour on screen.** The automation run passes `-nullrhi`, so the colour test reads what the
+  drawing code was asked for.
+- **The exact amount a resistance takes off.** Floor damage also goes through the player's armour, so
+  each test compares its two measurements with each other and predicts neither.
+
+### What this changes in three earlier entries
+
+Each has a dated note added where it describes the old field:
+
+- **The Blood Altar entry below** describes the pulse setting the source's field and putting the old
+  value back. The pulse now carries its type on its own delivery.
+- **The 2026-09-14 entry on a ground patch's own colour**, written for Fungal Overgrowth, says the
+  source's `DamageType` is last-writer-wins, and that the type a zone's hit is met by always comes from
+  the zone's owner. A floor zone's hits are now met by the zone's own type, and a zone with no type
+  still takes its owner's.
+- **The 2026-09-13 Infernal Rain entry** says a floor hazard carries a `DamageType`. Its reasoning still
+  holds, since the type is read off the row, but the field is now the patch's and not the source's.
+
+---
+
 ## 2026-09-16 — Seven enchantment rows on a kill, a critical strike, a death nearby, a skill use and a strike's hit, and the rules that make those events fire only when the sentences say
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: seven rows),
@@ -446,6 +611,10 @@ no resistance at all. That is issue #1924, found while planning this rule and no
 `StepBloodAltar` sets the field from its own row immediately before the pulse and puts the previous
 value back right after it. The pulse is Demonic, and the altar changes nothing about how another
 rule's blow is typed.
+
+**Changed the same day, for issue #1924, by the entry above on a dungeon floor's damage type.** The
+source no longer holds a type. The pulse carries Demonic on its own delivery,
+`FCataclysmHitDelivery::DamageType`, and sets and restores nothing.
 
 ### A Horde floor keeps its zones, so the ring is destroyed at the stairs
 
@@ -1947,6 +2116,10 @@ afterwards by another rule placing something unrelated.
 `ACataclysmGroundZone::Sweep` returns early on a patch with no damage and no curse, so nothing
 ever asks a mushroom what element it is. The damage type a hit is met by comes from the zone's
 owner in every case, unchanged.
+
+**Changed on 2026-09-16, for issue #1924.** The floor source no longer holds a `DamageType`. A zone
+now carries its own, which its hits are met by and which it is drawn in when it has no
+`DrawnAsType`. A zone with neither still takes its owner's type.
 
 ### Which two colours, measured rather than chosen by eye
 
@@ -7619,6 +7792,10 @@ only informing this one.**
   `CataclysmType` column rather than naming one, so a row retyped in the workbook
   retypes its hazard with no code change.
 - **Visibility is why this row is `Partly` built.** See below.
+
+**Changed on 2026-09-16, for issue #1924.** The `DamageType` in the first point above is now held by
+each patch, `ACataclysmGroundZone::DamageType`, and not by the floor's source, because every rule on a
+floor shares that source. It is still read off the row.
 
 ### Why the row is `Partly` built and not `Built`
 

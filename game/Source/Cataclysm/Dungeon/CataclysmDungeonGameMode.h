@@ -1421,11 +1421,11 @@ private:
 	 * hazard, and a later change giving a mushroom something to apply would have
 	 * to rebuild the ownership first.
 	 *
-	 * IT DOES NOT SET `ACataclysmFloorHazardSource::DamageType`, WHICH THREE
-	 * OTHER RULES DO. That field decides which resistance a hazard's damage is
-	 * met by, and a mushroom deals no damage at all; its appearance comes from
-	 * `ACataclysmGroundZone::DrawnAsType`, which is set per mushroom and cannot
-	 * be changed afterwards by another rule placing something else.
+	 * IT GIVES ITS MUSHROOMS NO DAMAGE TYPE. A patch's `DamageType` decides which
+	 * resistance its damage is met by, and a mushroom deals no damage at all; its
+	 * appearance comes from `ACataclysmGroundZone::DrawnAsType`, which is set per
+	 * mushroom and cannot be changed afterwards by another rule placing something
+	 * else.
 	 */
 	void NoteDeathForFungalOvergrowth(const struct FCataclysmDeathNotice& Notice);
 

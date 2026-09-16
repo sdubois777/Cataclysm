@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -530,6 +531,164 @@ namespace CataclysmDungeonModifierEffectsTest
 			}
 		}
 		return nullptr;
+	}
+
+	/**
+	 * How far a test of a floor rule's damage type raises one of the player's
+	 * resistances. Issue #1924.
+	 *
+	 * FIFTY, SO DAMAGE IT MEETS LOSES HALF. `UCataclysmResistanceAttributeSet` starts
+	 * all eight at zero, and fifty is under `UCataclysmDamageCalculation::ResistanceCap`,
+	 * so all of the raise counts. `LostWithResistanceRaised` asserts both on the
+	 * player it is given rather than trusting this sentence.
+	 */
+	const float ResistanceRaisedBy = 50.0f;
+
+	/** The maximum health those tests give the player. Issue #1924. */
+	const float HealthForTypedDamage = 100000.0f;
+
+	/**
+	 * Give the player a hundred thousand maximum health and fill it. Issue #1924.
+	 *
+	 * SO WHAT A RESISTANCE TAKES OFF IS HUNDREDS OF POINTS. Several of these rules deal
+	 * a share of maximum health, and at this size a float steps by less than a
+	 * hundredth. The Blood Altar test uses the same figure, written the same way after
+	 * the floor is built.
+	 *
+	 * BEFORE THE FLOOR'S FIRST BEAT, because a rule reads the maximum when it places a
+	 * patch and the patch keeps that damage.
+	 */
+	bool GiveThePlayerHealthForTypedDamage(FAutomationTestBase& Test,
+										   const FPossessedPlayer& Player)
+	{
+		const FGameplayAttribute MaxHealth =
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+		const FGameplayAttribute Health =
+			UCataclysmVitalAttributeSet::GetHealthAttribute();
+		Player.AbilitySystem->SetNumericAttributeBase(MaxHealth, HealthForTypedDamage);
+		Player.AbilitySystem->SetNumericAttributeBase(Health, Player.Read(MaxHealth));
+		return Test.TestEqual(TEXT("the player's maximum health is a hundred thousand"),
+							  Player.Read(MaxHealth), HealthForTypedDamage, 0.01f)
+			&& Test.TestEqual(TEXT("and the player is at it"), Player.Read(Health),
+							  HealthForTypedDamage, 0.01f);
+	}
+
+	/**
+	 * What something takes off the player's health while one of their resistances is
+	 * raised, with the resistance put back afterwards. Issue #1924.
+	 *
+	 * WRITTEN TO THE BASE, AS THE BLOOD ALTAR TEST DOES, AND READ BACK THREE TIMES.
+	 * After the write, so a raise that did not take is named instead of reading as
+	 * damage that meets no resistance. Against the cap, so a raise the calculation
+	 * would partly ignore is named instead of reading as mistyped damage. And after
+	 * the act, because anything refreshing the player's attributes part-way through
+	 * would have put the resistance back, and the figure would measure something else.
+	 *
+	 * ANSWERS NOTHING WHEN ANY OF THOSE FAILED, OR WHEN THE ACT SAYS IT FAILED. The act
+	 * makes its own assertions, so the step that failed is named there.
+	 */
+	TOptional<float> LostWithResistanceRaised(FAutomationTestBase& Test,
+											  const FPossessedPlayer& Player,
+											  const FGameplayAttribute& Resistance,
+											  TFunctionRef<bool()> Act)
+	{
+		const FGameplayAttribute Health =
+			UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float BaseWas = Player.AbilitySystem->GetNumericAttributeBase(Resistance);
+		const float Was = Player.Read(Resistance);
+		Player.AbilitySystem->SetNumericAttributeBase(Resistance,
+													  BaseWas + ResistanceRaisedBy);
+		ON_SCOPE_EXIT
+		{
+			Player.AbilitySystem->SetNumericAttributeBase(Resistance, BaseWas);
+		};
+
+		const float Raised = Player.Read(Resistance);
+		if (!Test.TestEqual(FString::Printf(TEXT("%s rose by %.0f"),
+											*Resistance.GetName(), ResistanceRaisedBy),
+							Raised, Was + ResistanceRaisedBy, 0.01f)
+			|| !Test.TestTrue(FString::Printf(
+								  TEXT("and %.1f is within the %.0f cap, so all of it counts"),
+								  Raised, UCataclysmDamageCalculation::ResistanceCap),
+							  Raised <= UCataclysmDamageCalculation::ResistanceCap))
+		{
+			return {};
+		}
+
+		const float Before = Player.Read(Health);
+		if (!Act())
+		{
+			return {};
+		}
+		const float After = Player.Read(Health);
+
+		if (!Test.TestEqual(FString::Printf(
+								TEXT("%s was still raised when the damage was measured"),
+								*Resistance.GetName()),
+							Player.Read(Resistance), Raised, 0.01f))
+		{
+			return {};
+		}
+		return TOptional<float>(Before - After);
+	}
+
+	/**
+	 * Assert that a floor rule's damage is met by the resistance its row names and not
+	 * by another. Issue #1924.
+	 *
+	 * THE SAME DAMAGE, MEASURED ONCE WITH EACH RESISTANCE RAISED. Damage typed by its
+	 * row loses half to its own resistance and nothing to the other, so the first
+	 * figure is about half the second. Untyped damage meets neither, so the two are
+	 * about equal; damage typed as the other resistance makes the first about twice
+	 * the second. Under three quarters lies between the right answer and both wrong
+	 * ones.
+	 *
+	 * EACH FIGURE MUST BE MORE THAN NOTHING, asserted on its own, so damage that never
+	 * landed is named instead of reading as a resistance at work.
+	 */
+	void ExpectMetOnlyByItsOwnResistance(FAutomationTestBase& Test, const TCHAR* What,
+										 const FGameplayAttribute& Its,
+										 float LostWithIts,
+										 const FGameplayAttribute& Other,
+										 float LostWithOther)
+	{
+		Test.AddInfo(FString::Printf(
+			TEXT("%s took %.1f with %s raised and %.1f with %s raised"), What,
+			LostWithIts, *Its.GetName(), LostWithOther, *Other.GetName()));
+		Test.TestTrue(FString::Printf(TEXT("%s took health with %s raised: %.1f"), What,
+									  *Its.GetName(), LostWithIts),
+					  LostWithIts > 0.0f);
+		Test.TestTrue(FString::Printf(TEXT("%s took health with %s raised: %.1f"), What,
+									  *Other.GetName(), LostWithOther),
+					  LostWithOther > 0.0f);
+		Test.TestTrue(FString::Printf(
+						  TEXT("%s is met by %s and not by %s: %.1f against %.1f, where "
+							   "under three quarters of the second was needed"),
+						  What, *Its.GetName(), *Other.GetName(), LostWithIts,
+						  LostWithOther),
+					  LostWithIts < LostWithOther * 0.75f);
+	}
+
+	/**
+	 * Stand the player in a zone and have it sweep once. Issue #1924.
+	 *
+	 * `Sweep` IS WHAT THE ZONE'S OWN TIMER CALLS, once a second, so calling it deals one
+	 * tick without moving the clock: no regeneration lands and nothing else on the floor
+	 * acts between two measurements a test compares. The timer doing it is shown by
+	 * `ACraterBurnsThePlayerStandingInIt`, which moves the clock instead.
+	 */
+	bool StandInAndSweep(FAutomationTestBase& Test, const FPossessedPlayer& Player,
+						 ACataclysmGroundZone* Zone)
+	{
+		Player.Character->SetActorLocation(Zone->GetActorLocation());
+		if (!Test.TestTrue(TEXT("the player stands inside the zone"),
+						   Zone->Covers(Player.Character->GetActorLocation())))
+		{
+			return false;
+		}
+		Zone->Sweep();
+		return Test.TestEqual(TEXT("and its sweep found the player and nobody else"),
+							  Zone->LastSweepCount, 1);
 	}
 }
 
@@ -2130,14 +2289,16 @@ bool FCataclysmInfernalRainBeatTest::RunTest(const FString& Parameters)
 
 	// THE TYPE, WHICH IS THE WHOLE REASON THE FIRST COMMIT ON THIS BRANCH EXISTS.
 	// Untyped hazard damage meets none of the player's eight resistances.
-	ACataclysmFloorHazardSource* Source =
-		ACataclysmFloorHazardSource::Existing(World);
-	if (!TestNotNull(TEXT("the rain made a hazard source"), Source))
-	{
-		return false;
-	}
-	TestEqual(TEXT("the hazard is typed Demonic, as its row says"),
-			  Source->DamageType, FName(TEXT("Demonic")));
+	//
+	// READ OFF THE PATCH SINCE ISSUE #1924. The type was held on the floor's hazard
+	// source until then, and every rule on the floor shares that source, so the type
+	// was whatever the last rule to place something had written. This shows the rule
+	// giving its patch the type; `AnInfernalRainPatchMeetsDemonicResistanceAndNotVoid`
+	// shows the damage carrying it.
+	TestNotNull(TEXT("the rain made a hazard source"),
+				ACataclysmFloorHazardSource::Existing(World));
+	TestEqual(TEXT("the patch is typed Demonic, as its row says"),
+			  Patch->DamageType, FName(TEXT("Demonic")));
 
 	// WHAT THIS CANNOT TELL APART, said plainly: reading the row's type and
 	// splitting the row's KEY on its first underscore. `Demonic_Infernal_Rain`
@@ -2413,16 +2574,13 @@ bool FCataclysmWellBeatTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and it lasts the floor rather than expiring"),
 			 Well->bLastsTheFloor);
 
-	// AND IT IS TYPED VOID, OFF ITS OWN ROW. Without a type this damage would meet
-	// none of the player's eight resistances.
-	ACataclysmFloorHazardSource* Source =
-		ACataclysmFloorHazardSource::Existing(World);
-	if (!TestNotNull(TEXT("the rule made a hazard source"), Source))
-	{
-		return false;
-	}
+	// AND IT IS TYPED VOID, OFF ITS OWN ROW, held on the well itself since issue #1924
+	// rather than on the floor's shared hazard source. Without a type this damage would
+	// meet none of the player's eight resistances.
+	TestNotNull(TEXT("the rule made a hazard source"),
+				ACataclysmFloorHazardSource::Existing(World));
 	TestEqual(TEXT("the well is typed Void, as its row says"),
-			  Source->DamageType, FName(TEXT("Void")));
+			  Well->DamageType, FName(TEXT("Void")));
 
 	// IT DID NOT APPEAR ON THE PLAYER'S FEET, which is what makes a slow something
 	// to walk out of. `Covers` is the well's own answer, and the same test its
@@ -7436,26 +7594,30 @@ bool FCataclysmFungalColourTest::RunTest(const FString& Parameters)
 			 UCataclysmElementVisuals::ColoursFor(HurtingAskedFor, Primary,
 												  Secondary));
 
-	// THE CONTROL: A PATCH THAT ASKS FOR NO COLOUR STILL TAKES ITS OWNER'S.
-	// Withered Ground places one the same way and passes nothing, so this is what
-	// fails if the defaulted argument stopped falling back.
+	// THE CONTROL: A PATCH THAT ASKS FOR NO COLOUR IS DRAWN IN ITS DAMAGE TYPE'S.
+	// Infernal Rain, Singularity Wells and Hallowed Groundfall give their patches a
+	// damage type and no colour, so this is what fails if the defaulted argument
+	// stopped falling back. Until issue #1924 the fallback was the floor's hazard
+	// source's own type, which this test wrote; that field is gone, and a patch is now
+	// drawn in the type it deals.
 	ACataclysmFloorHazardSource* Source =
 		ACataclysmFloorHazardSource::Existing(World);
 	if (!TestNotNull(TEXT("the floor has a hazard source"), Source))
 	{
 		return false;
 	}
-	Source->DamageType = FName(TEXT("Pestilence"));
 	UCataclysmGroundEffect::LastDamageTypeAsked = NAME_None;
 	ACataclysmGroundZone* Plain = ACataclysmGroundZone::SpawnForTheFloor(
 		Source, FVector(4000.0f, 0.0f, 0.0f), FVector(4000.0f, 0.0f, 0.0f),
-		Effects::FungalOvergrowthMushroomRadiusCm, 0.0f);
+		Effects::FungalOvergrowthMushroomRadiusCm, 0.0f,
+		/*bAffectsEveryone=*/false, /*InDrawnAsType=*/NAME_None,
+		FName(TEXT("Pestilence")));
 	if (!TestNotNull(TEXT("a patch asking for no colour was placed"), Plain))
 	{
 		return false;
 	}
 	TestTrue(TEXT("it carries no colour of its own"), Plain->DrawnAsType.IsNone());
-	TestEqual(TEXT("so it is drawn in its owner's, exactly as before"),
+	TestEqual(TEXT("so it is drawn in the type it deals"),
 			  UCataclysmGroundEffect::LastDamageTypeAsked,
 			  FName(TEXT("Pestilence")));
 	TestEqual(TEXT("which is what it answers when asked"),
@@ -9101,6 +9263,667 @@ bool FCataclysmBloodAltarCeilingTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and a pulse on it"),
 			 Effects::BloodAltarPulseIsDue(Effects::BloodAltarSecondsBetweenPulses));
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The damage type a floor rule deals. Issue #1924
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmArtilleryTypedTest,
+	"Cataclysm.DungeonModifierEffects.AnArtilleryShellMeetsWarResistanceAndNotVoid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmArtilleryTypedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	// A SHELL IS WAR DAMAGE, AS ITS ROW IS WAR. Issue #1924. A shell is dealt in the
+	// name of the floor's hazard source, and until that issue the source's one shared
+	// type field decided which resistance met it. This rule never wrote the field, so
+	// on a floor carrying it alone a shell met no resistance at all.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {ArtilleryStrike};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// ONE SHELL FOR EACH RESISTANCE, landed the way the warning test above lands one:
+	// wait for the circle, stand in it, wait out the warning. A shell that has landed
+	// takes its circle away.
+	const auto LandAShellOnThePlayer = [this, Mode, World, &Player]() -> bool
+	{
+		Beat(Mode, BeatsFor(Effects::ArtilleryStrikeSecondsBetween) + 1);
+		ACataclysmGroundZone* Circle = TheOnlyCircle(World);
+		if (!TestNotNull(TEXT("a circle was placed"), Circle))
+		{
+			return false;
+		}
+		Player.Character->SetActorLocation(Circle->GetActorLocation());
+		Beat(Mode, BeatsFor(Effects::ArtilleryStrikeWarningSeconds) + 1);
+		return TestNull(TEXT("and the shell landed, which takes the circle away"),
+						TheOnlyCircle(World));
+	};
+
+	const FGameplayAttribute War = Resist::GetWarResistanceAttribute();
+	const FGameplayAttribute Void = Resist::GetVoidResistanceAttribute();
+	const TOptional<float> LostWithWar =
+		LostWithResistanceRaised(*this, Player, War, LandAShellOnThePlayer);
+	if (!LostWithWar.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> LostWithVoid =
+		LostWithResistanceRaised(*this, Player, Void, LandAShellOnThePlayer);
+	if (!LostWithVoid.IsSet())
+	{
+		return false;
+	}
+
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("an artillery shell"), War,
+									LostWithWar.GetValue(), Void,
+									LostWithVoid.GetValue());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHellfireTypedTest,
+	"Cataclysm.DungeonModifierEffects.AHellfireExplosionMeetsDemonicResistanceAndNotVoid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHellfireTypedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	// AN EXPLOSION IS DEMONIC DAMAGE, AS ITS ROW IS DEMONIC. Issue #1924, and the same
+	// defect as Artillery Strike's: dealt in the name of the floor's shared hazard
+	// source, whose type this rule never wrote.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never calls.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+	FScopedConsoleString Roll(TEXT("Cataclysm.HellfireRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {Hellfire};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// A CREATURE KILLED BESIDE THE PLAYER, THE SECOND ON THE OTHER SIDE, so it is not
+	// put where the first one's body lies. Both are given the same attack damage, which
+	// is what an explosion is worth, and what each holds is kept to compare.
+	const FVector Standing = Player.Character->GetActorLocation();
+	TArray<float> Worth;
+	const auto ExplodeACreatureBesideThePlayer =
+		[this, World, &Player, &Standing, &Worth]() -> bool
+	{
+		const float Side = Worth.IsEmpty() ? 1.0f : -1.0f;
+		ACataclysmEnemyCharacter* Creature = SpawnCreatureWithHealth(
+			World, Standing + FVector(Side * Effects::HellfireRadiusCm * 0.5f, 0.0f, 0.0f),
+			500.0f);
+		if (!TestNotNull(TEXT("a creature spawned beside the player"), Creature))
+		{
+			return false;
+		}
+		Worth.Add(GiveCreatureAttackDamage(Creature, 300.0f));
+		const float Apart = FVector::Dist2D(Creature->GetActorLocation(), Standing);
+		if (!TestTrue(FString::Printf(TEXT("it hits for something: %.1f"), Worth.Last()),
+					  Worth.Last() > 0.0f)
+			|| !TestTrue(FString::Printf(
+							 TEXT("and it stands within the explosion's reach: %.1f of %.1f"),
+							 Apart, Effects::HellfireRadiusCm),
+						 Apart <= Effects::HellfireRadiusCm))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		return TestTrue(TEXT("the player's blow killed it"),
+						UCataclysmSkillEffects::IsDead(Creature));
+	};
+
+	const FGameplayAttribute Demonic = Resist::GetDemonicResistanceAttribute();
+	const FGameplayAttribute Void = Resist::GetVoidResistanceAttribute();
+	const TOptional<float> LostWithDemonic = LostWithResistanceRaised(
+		*this, Player, Demonic, ExplodeACreatureBesideThePlayer);
+	if (!LostWithDemonic.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> LostWithVoid = LostWithResistanceRaised(
+		*this, Player, Void, ExplodeACreatureBesideThePlayer);
+	if (!LostWithVoid.IsSet())
+	{
+		return false;
+	}
+
+	// THE TWO EXPLOSIONS WERE THE SAME SIZE, or the comparison below is of two
+	// different blows.
+	if (!TestEqual(TEXT("the two creatures were worth the same explosion"), Worth[1],
+				   Worth[0], 0.01f))
+	{
+		return false;
+	}
+
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a Hellfire explosion"), Demonic,
+									LostWithDemonic.GetValue(), Void,
+									LostWithVoid.GetValue());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSporeCloudsTypedTest,
+	"Cataclysm.DungeonModifierEffects.SporeCloudsPoisonMeetsPestilenceResistanceAndNotVoid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSporeCloudsTypedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	// THE POISON IS PESTILENCE DAMAGE, AS ITS ROW IS PESTILENCE. Issue #1924. A poison
+	// takes its type when it lands, in `UCataclysmSkillEffects::ApplyTypedSpec`, and
+	// until that issue the type came from the floor's shared hazard source, which this
+	// rule never wrote.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never calls.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+	FScopedConsoleString Roll(TEXT("Cataclysm.SporeCloudsRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	const FGameplayTag Poison = AilmentTag(TEXT("Poison"));
+	if (!TestTrue(TEXT("the game defines the ailment this row names"),
+				  Poison.IsValid()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {SporeClouds};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	// A DEATH BESIDE THE PLAYER AND THE WHOLE OF THE POISON IT LEAVES, the second death
+	// on the other side. The whole poison, because one landing on a running poison only
+	// refreshes the running one (`UCataclysmSkillEffects::ApplyDamageOverTime`), so the
+	// second death would apply no poison of its own; waiting for each to wear off also
+	// gives both measurements every tick of one poison.
+	const FVector Standing = Player.Character->GetActorLocation();
+	int32 Deaths = 0;
+	const auto PoisonThePlayerFromADeathBesideThem =
+		[this, World, &Player, &Standing, &Deaths, &Poison]() -> bool
+	{
+		if (!TestFalse(TEXT("the player carries no poison before the death"),
+					   UCataclysmSkillEffects::HasTag(Player.Character, Poison)))
+		{
+			return false;
+		}
+		const float Side = Deaths++ == 0 ? 1.0f : -1.0f;
+		ACataclysmEnemyCharacter* Creature = SpawnCreatureWithHealth(
+			World,
+			Standing + FVector(Side * Effects::SporeCloudsReachCm * 0.5f, 0.0f, 0.0f),
+			500.0f);
+		if (!TestNotNull(TEXT("a creature spawned beside the player"), Creature))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Creature, 100000.0f);
+		if (!TestTrue(TEXT("the player's blow killed it"),
+					  UCataclysmSkillEffects::IsDead(Creature))
+			|| !TestTrue(TEXT("and its spores poisoned the player"),
+						 UCataclysmSkillEffects::HasTag(Player.Character, Poison)))
+		{
+			return false;
+		}
+		for (int32 Second = 0;
+			 Second < 30 && UCataclysmSkillEffects::HasTag(Player.Character, Poison);
+			 ++Second)
+		{
+			CataclysmTestWorld::RunClock(World, 1.0f);
+		}
+		return TestFalse(TEXT("and the poison wore off, so all of it was measured"),
+						 UCataclysmSkillEffects::HasTag(Player.Character, Poison));
+	};
+
+	const FGameplayAttribute Pestilence = Resist::GetPestilenceResistanceAttribute();
+	const FGameplayAttribute Void = Resist::GetVoidResistanceAttribute();
+	const TOptional<float> LostWithPestilence = LostWithResistanceRaised(
+		*this, Player, Pestilence, PoisonThePlayerFromADeathBesideThem);
+	if (!LostWithPestilence.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> LostWithVoid = LostWithResistanceRaised(
+		*this, Player, Void, PoisonThePlayerFromADeathBesideThem);
+	if (!LostWithVoid.IsSet())
+	{
+		return false;
+	}
+
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a Spore Clouds poison"), Pestilence,
+									LostWithPestilence.GetValue(), Void,
+									LostWithVoid.GetValue());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmInfernalRainTypedTest,
+	"Cataclysm.DungeonModifierEffects.AnInfernalRainPatchMeetsDemonicResistanceAndNotVoid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmInfernalRainTypedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	// A PATCH BURNS FOR DEMONIC DAMAGE, AS ITS ROW IS DEMONIC. Issue #1924. This rule
+	// typed its damage before that issue too, by writing the floor's shared hazard
+	// source, so on a floor carrying it alone this held then as well. What it adds is
+	// the damage meeting the resistance, where `AFloorCarryingInfernalRainDropsTypedPatches`
+	// reads the patch's field; the floor of two types at the end of this file is what
+	// the shared field got wrong.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {InfernalRain};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::InfernalRainSecondsBetweenPatches) + 1);
+	ACataclysmGroundZone* Patch = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("one patch fell"), Patch))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it burns for its share of the player's hundred thousand"),
+			  Patch->DamagePerTick,
+			  Effects::InfernalRainDamagePerSecond(HealthForTypedDamage), 0.01f);
+
+	const auto SweepThePlayer = [this, &Player, Patch]() -> bool
+	{
+		return StandInAndSweep(*this, Player, Patch);
+	};
+	const FGameplayAttribute Demonic = Resist::GetDemonicResistanceAttribute();
+	const FGameplayAttribute Void = Resist::GetVoidResistanceAttribute();
+	const TOptional<float> LostWithDemonic =
+		LostWithResistanceRaised(*this, Player, Demonic, SweepThePlayer);
+	if (!LostWithDemonic.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> LostWithVoid =
+		LostWithResistanceRaised(*this, Player, Void, SweepThePlayer);
+	if (!LostWithVoid.IsSet())
+	{
+		return false;
+	}
+
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("an Infernal Rain patch"), Demonic,
+									LostWithDemonic.GetValue(), Void,
+									LostWithVoid.GetValue());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWellTypedTest,
+	"Cataclysm.DungeonModifierEffects.ASingularityWellMeetsVoidResistanceAndNotDemonic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWellTypedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	// A WELL IS VOID DAMAGE, AS ITS ROW IS VOID. Issue #1924. Like Infernal Rain, this
+	// rule wrote the floor's shared type before that issue, so on a floor of its own
+	// this held then too; the floor of two types at the end of this file is the case
+	// that did not.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {SingularityWells};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::SingularityWellsSecondsBetweenWells) + 1);
+	ACataclysmGroundZone* Well = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("one well appeared"), Well))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it costs its share of the player's hundred thousand"),
+			  Well->DamagePerTick,
+			  Effects::SingularityWellDamagePerSecond(HealthForTypedDamage), 0.01f);
+
+	// NO BEAT BETWEEN THE SWEEPS. Standing in a well slows the player on the next beat,
+	// and that refreshes the player's attributes; `LostWithResistanceRaised` would name
+	// it, but nothing here needs it to happen.
+	const auto SweepThePlayer = [this, &Player, Well]() -> bool
+	{
+		return StandInAndSweep(*this, Player, Well);
+	};
+	const FGameplayAttribute Void = Resist::GetVoidResistanceAttribute();
+	const FGameplayAttribute Demonic = Resist::GetDemonicResistanceAttribute();
+	const TOptional<float> LostWithVoid =
+		LostWithResistanceRaised(*this, Player, Void, SweepThePlayer);
+	if (!LostWithVoid.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> LostWithDemonic =
+		LostWithResistanceRaised(*this, Player, Demonic, SweepThePlayer);
+	if (!LostWithDemonic.IsSet())
+	{
+		return false;
+	}
+
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a Singularity Well"), Void,
+									LostWithVoid.GetValue(), Demonic,
+									LostWithDemonic.GetValue());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGroundfallTypedTest,
+	"Cataclysm.DungeonModifierEffects.AHallowedCraterMeetsCelestialResistanceAndNotVoid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGroundfallTypedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	// A CRATER BURNS FOR CELESTIAL DAMAGE, AS ITS ROW IS CELESTIAL. Issue #1924. Its
+	// craters belong to the floor's shared hazard source, and until that issue their
+	// burn took that source's one type field, which this rule never wrote: on a floor
+	// of its own a crater met no resistance at all.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {HallowedGroundfall};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::HallowedGroundfallSecondsBetween) + 1);
+	if (!TestEqual(TEXT("a bombardment left its craters"), ZonesOnTheFloor(World),
+				   Effects::HallowedGroundfallCraters))
+	{
+		return false;
+	}
+	ACataclysmGroundZone* Crater = AnyZone(World);
+	if (!TestNotNull(TEXT("a crater can be read"), Crater))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it burns for its share of the player's hundred thousand"),
+			  Crater->DamagePerTick,
+			  Effects::HallowedGroundfallBurnPerSecond(HealthForTypedDamage), 0.01f);
+
+	// ONE CRATER SWEEPS. The others may overlap it, and they do not sweep, because the
+	// clock does not move.
+	const auto SweepThePlayer = [this, &Player, Crater]() -> bool
+	{
+		return StandInAndSweep(*this, Player, Crater);
+	};
+	const FGameplayAttribute Celestial = Resist::GetCelestialResistanceAttribute();
+	const FGameplayAttribute Void = Resist::GetVoidResistanceAttribute();
+	const TOptional<float> LostWithCelestial =
+		LostWithResistanceRaised(*this, Player, Celestial, SweepThePlayer);
+	if (!LostWithCelestial.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> LostWithVoid =
+		LostWithResistanceRaised(*this, Player, Void, SweepThePlayer);
+	if (!LostWithVoid.IsSet())
+	{
+		return false;
+	}
+
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a Hallowed Groundfall crater"),
+									Celestial, LostWithCelestial.GetValue(), Void,
+									LostWithVoid.GetValue());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoTypesFloorTest,
+	"Cataclysm.DungeonModifierEffects.OnAFloorOfTwoTypesEachZoneMeetsOnlyItsOwnResistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoTypesFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	// THE FLOOR ISSUE #1924 IS ABOUT: TWO RULES OF TWO TYPES, EACH PLACING ZONES. Until
+	// that issue both rules wrote their row's type onto the floor's one hazard source as
+	// they placed something, and every zone's damage took whatever that field held when
+	// the zone swept. So the rule that placed something last typed everything already
+	// on the floor.
+	//
+	// A PATCH FIRST AND A WELL AFTER IT, WHICH IS THE ORDER THAT SHOWS IT: the well made
+	// the patch Void. Rain falls sooner than a well appears, asserted below, so waiting
+	// for the first well leaves the first patch on the floor beside it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {InfernalRain, SingularityWells};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("rain falls sooner than a well appears"),
+				  Effects::InfernalRainSecondsBetweenPatches
+					  < Effects::SingularityWellsSecondsBetweenWells))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::SingularityWellsSecondsBetweenWells) + 1);
+
+	ACataclysmGroundZone* Patch = nullptr;
+	ACataclysmGroundZone* Well = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (It->bLastsTheFloor)
+		{
+			Well = *It;
+		}
+		else
+		{
+			Patch = *It;
+		}
+	}
+	if (!TestEqual(TEXT("the floor holds two zones"), ZonesOnTheFloor(World), 2)
+		|| !TestNotNull(TEXT("one a patch of rain, which expires"), Patch)
+		|| !TestNotNull(TEXT("and one a well, which lasts the floor"), Well))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Demonic = Resist::GetDemonicResistanceAttribute();
+	const FGameplayAttribute Void = Resist::GetVoidResistanceAttribute();
+	const auto SweepThePatch = [this, &Player, Patch]() -> bool
+	{
+		return StandInAndSweep(*this, Player, Patch);
+	};
+	const auto SweepTheWell = [this, &Player, Well]() -> bool
+	{
+		return StandInAndSweep(*this, Player, Well);
+	};
+
+	// THE PATCH, PLACED FIRST, IS DEMONIC, although a Void well was placed after it.
+	const TOptional<float> PatchWithDemonic =
+		LostWithResistanceRaised(*this, Player, Demonic, SweepThePatch);
+	if (!PatchWithDemonic.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> PatchWithVoid =
+		LostWithResistanceRaised(*this, Player, Void, SweepThePatch);
+	if (!PatchWithVoid.IsSet())
+	{
+		return false;
+	}
+
+	// AND THE WELL, PLACED LAST, IS VOID.
+	const TOptional<float> WellWithVoid =
+		LostWithResistanceRaised(*this, Player, Void, SweepTheWell);
+	if (!WellWithVoid.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> WellWithDemonic =
+		LostWithResistanceRaised(*this, Player, Demonic, SweepTheWell);
+	if (!WellWithDemonic.IsSet())
+	{
+		return false;
+	}
+
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a patch of rain on a floor with a well"),
+									Demonic, PatchWithDemonic.GetValue(), Void,
+									PatchWithVoid.GetValue());
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a well on a floor with rain"), Void,
+									WellWithVoid.GetValue(), Demonic,
+									WellWithDemonic.GetValue());
 	return true;
 }
 
