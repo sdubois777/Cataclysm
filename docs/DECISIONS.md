@@ -243,11 +243,14 @@ node of the path to Point of No Return (`Masochist_keystone_ll_kB`, reached from
 agrees: six times a reading at or below half was followed within eighteen seconds by one above
 it, which `TopUp` cannot do with the reduction at 50.
 
-**The issue's statement that every healing route goes through `TopUp` is not true**, and that
-question is left open rather than decided here. Three routes the player can reach raise health
-without it: the fill to maximum when the character is possessed, `ACataclysmPlayerCharacter::Revive`,
-and Living Pyre's return of blows taken, which skips the ceiling on purpose. Whether "cannot be
-healed above 50%" should govern a revive is a design question.
+**Not every healing route goes through `TopUp`, as the issue says, and none of the exceptions
+explains the log.** Three routes the player can reach raise health without it. The fill to
+maximum when the character is possessed, and `ACataclysmPlayerCharacter::Revive`, write health
+outright; the comment beside the ceiling in `CataclysmRegeneration.cpp` records a respawn as
+uncapped by decision -- "a respawn is a new life" -- with issue #956 open on that write. Living
+Pyre's return of blows taken skips the ceiling while issue #1607 is open. Neither write leaves
+health part of the way up, which is what the six readings show, and Living Pyre is the Fist's
+ultimate while the playtest character used a Greataxe.
 
 ---
 
