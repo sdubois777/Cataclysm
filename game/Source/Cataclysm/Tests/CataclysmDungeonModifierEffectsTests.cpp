@@ -112,6 +112,12 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	const FName IllusoryEnemies(TEXT("Chaos_Illusory_Enemies"));
 
+	/**
+	 * And the one a creature answers the player's blow with, leaving a debuff on
+	 * a single resistance. Issues #1820 and #41.
+	 */
+	const FName HolyRepercussions(TEXT("Celestial_Holy_Repercussions"));
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -7863,6 +7869,351 @@ bool FCataclysmIllusionSurvivesRecomputeTest::RunTest(const FString& Parameters)
 	Creature->SetAttackDamage(0.0f);
 	TestEqual(TEXT("asking a plain creature for zero damage writes zero"),
 			  AttackDamageOf(Creature), 0.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentArithmeticTest,
+	"Cataclysm.DungeonModifierEffects.JudgmentLowersOnlyTheCelestialResistanceAndStopsAtItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentArithmeticTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE NUMBERS, WITH NO WORLD. Issues #1820 and #41.
+	//
+	// "ONE RESISTANCE AND NOT EIGHT" IS THE CLAIM THAT JUSTIFIED A FIFTEENTH
+	// FIELD, so it is asserted as an exact count rather than as "celestial
+	// moved". A version that put Judgment inside the all-resistance loop would
+	// still move celestial -- and seven others with it.
+	TestEqual(TEXT("no stacks take nothing"),
+			  Effects::HolyRepercussionsJudgmentLessPercent(0), 0.0f, 0.001f);
+	TestEqual(TEXT("one stack takes one stack's worth"),
+			  Effects::HolyRepercussionsJudgmentLessPercent(1),
+			  Effects::HolyRepercussionsJudgmentLessPerStackPercent, 0.001f);
+
+	const float AtTheCap = Effects::HolyRepercussionsJudgmentLessPercent(
+		Effects::HolyRepercussionsJudgmentMostStacks);
+	TestEqual(TEXT("the cap takes the cap's worth"), AtTheCap,
+			  Effects::HolyRepercussionsJudgmentLessPerStackPercent
+				  * Effects::HolyRepercussionsJudgmentMostStacks,
+			  0.001f);
+	TestEqual(TEXT("a count past the cap takes no more than the cap"),
+			  Effects::HolyRepercussionsJudgmentLessPercent(
+				  Effects::HolyRepercussionsJudgmentMostStacks + 3),
+			  AtTheCap, 0.001f);
+	TestEqual(TEXT("and a negative count takes nothing rather than giving any"),
+			  Effects::HolyRepercussionsJudgmentLessPercent(-2), 0.0f, 0.001f);
+
+	// IT SATURATES AND DOES NOT WRAP, which is the difference from Brand of the
+	// Aggressor's count: that one clears itself at its threshold because its row
+	// erupts, and this one is a debuff that stays.
+	const int32 Most = Effects::HolyRepercussionsJudgmentMostStacks;
+	TestEqual(TEXT("a burst below the cap adds a stack"),
+			  Effects::HolyRepercussionsStacksAfterBurst(Most - 1), Most);
+	TestEqual(TEXT("a burst at the cap holds it there rather than clearing it"),
+			  Effects::HolyRepercussionsStacksAfterBurst(Most), Most);
+
+	// THE CHANCE, AND ITS BOUNDARY. Strictly below, like every roll in the file.
+	TestTrue(TEXT("a roll below the chance retaliates"),
+			 Effects::HolyRepercussionsRetaliates(
+				 Effects::HolyRepercussionsChancePercentOnHit - 0.01f));
+	TestFalse(TEXT("a roll at the chance does not"),
+			  Effects::HolyRepercussionsRetaliates(
+				  Effects::HolyRepercussionsChancePercentOnHit));
+
+	// AND WHERE IT LANDS: EXACTLY ONE STAT.
+	FCataclysmPlayerFloorEffects Judged;
+	Judged.JudgmentResistanceLessPercent = AtTheCap;
+	const TMap<FName, TArray<FCataclysmStatModifier>> Modifiers =
+		Effects::StatModifiersFor(Judged);
+
+	const FName Celestial = UCataclysmItemModifiers::ResistanceStatFor(
+		FName(Effects::HolyRepercussionsResistance));
+	TestEqual(FString::Printf(TEXT("Judgment moves exactly one stat, and it "
+								   "moved %d"), Modifiers.Num()),
+			  Modifiers.Num(), 1);
+	const TArray<FCataclysmStatModifier>* On = Modifiers.Find(Celestial);
+	if (!TestNotNull(*FString::Printf(TEXT("and that stat is %s"),
+									  *Celestial.ToString()),
+					 On))
+	{
+		return false;
+	}
+	TestEqual(TEXT("taking the cap's worth, as a reduction"),
+			  (*On)[0].Value, -AtTheCap, 0.001f);
+
+	// THE CONTROL, BUILT FROM THE SAME CALL. The existing all-resistance field
+	// still reaches all eight, so the exact count above is a property of
+	// Judgment and not of how this function happens to be written today.
+	FCataclysmPlayerFloorEffects Everywhere;
+	Everywhere.ResistanceLessPercent = AtTheCap;
+	TestEqual(TEXT("while the all-resistance field still reaches every type"),
+			  Effects::StatModifiersFor(Everywhere).Num(),
+			  UCataclysmItemModifiers::DamageTypeNames().Num());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHolyBurstTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureAnswersThePlayersBlowWithABurstAndAJudgmentStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHolyBurstTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE WHOLE RULE, THROUGH THE ROUTE THE GAME USES. Issues #1820 and #41.
+	// `UCataclysmSkillEffects::ApplyHit` announces the blow, which is what the
+	// listener hears, so this drives the announcement, the burst, the count and
+	// the resistance write together rather than calling the listener by hand.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	// THE ANNOUNCEMENTS ARE CONNECTED BY StartPlay, which a test world never
+	// calls. Without this the blow lands and nothing hears it.
+	Mode->StartPlay();
+
+	// A CREATURE BESIDE THE PLAYER, WITH HEALTH ENOUGH TO SURVIVE THE BLOWS AND
+	// DAMAGE ENOUGH THAT ITS BURST IS WORTH SOMETHING.
+	ACataclysmEnemyCharacter* Creature = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(150.0f, 0.0f, 0.0f),
+		10'000'000.0f);
+	if (!TestNotNull(TEXT("a creature to hit"), Creature))
+	{
+		return false;
+	}
+	Creature->SetAttackDamage(40.0f);
+
+	// INSIDE THE BURST, ASSERTED BEFORE ANYTHING DEPENDS ON IT. The burst is
+	// centred on the creature, so a player placed outside it would read "the
+	// burst did nothing" and send a reader into the rule.
+	const float Apart = FVector::Dist(Creature->GetActorLocation(),
+									  Player.Character->GetActorLocation());
+	if (!TestTrue(FString::Printf(
+					  TEXT("the player stands %.0f cm from the creature, inside "
+						   "the %.0f cm burst"),
+					  Apart, Effects::HolyRepercussionsBurstRadiusCm),
+				  Apart < Effects::HolyRepercussionsBurstRadiusCm))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {HolyRepercussions};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto PlayerHealth = [&Player]()
+	{
+		return Player.AbilitySystem->GetNumericAttribute(
+			Vital::GetHealthAttribute());
+	};
+	// THE COUNT IS COPIED BEFORE IT IS SEARCHED. `LiveCountsForTheFloor` answers
+	// a map BY VALUE, and searching the temporary then reading the result reads
+	// freed memory -- a test in this file did exactly that and printed garbage
+	// that read as a wrong answer rather than a fault in the test.
+	const auto CountNow = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Found = Counting.Find(HolyRepercussions);
+		return Found ? *Found : FString();
+	};
+	const auto Expected = [](int32 Stacks)
+	{
+		return FString::Printf(TEXT("%d of %d"), Stacks,
+							   UCataclysmDungeonModifierEffects::
+								   HolyRepercussionsJudgmentMostStacks);
+	};
+	const FString CelestialStat =
+		UCataclysmItemModifiers::ResistanceStatFor(
+			FName(Effects::HolyRepercussionsResistance)).ToString();
+
+	// THE CONTROL FIRST: A ROLL THAT NEVER RETALIATES. Without it, "the player
+	// lost health" would also be true of a blow that hurt the player some other
+	// way, and "the count moved" of a count that moves on every blow.
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.HolyRepercussionsRoll"),
+								  TEXT("100"));
+		const float Before = PlayerHealth();
+		if (!TestTrue(TEXT("the player's blow landed"),
+					  UCataclysmSkillEffects::ApplyHit(
+						  Player.Character, Creature, 50.0f) > 0.0f))
+		{
+			return false;
+		}
+		TestEqual(TEXT("a blow the creature does not answer costs the player "
+					   "nothing"),
+				  PlayerHealth(), Before, 0.01f);
+		TestEqual(TEXT("and leaves no Judgment"), CountNow(), Expected(0));
+	}
+
+	// NOW EVERY BLOW IS ANSWERED.
+	FScopedConsoleString Roll(TEXT("Cataclysm.HolyRepercussionsRoll"), TEXT("0"));
+
+	const float BeforeBurst = PlayerHealth();
+	if (!TestTrue(TEXT("the player's second blow landed"),
+				  UCataclysmSkillEffects::ApplyHit(
+					  Player.Character, Creature, 50.0f) > 0.0f))
+	{
+		return false;
+	}
+	const float AfterBurst = PlayerHealth();
+	TestTrue(FString::Printf(
+				 TEXT("the creature's burst reached the player: %.1f from %.1f"),
+				 AfterBurst, BeforeBurst),
+			 AfterBurst < BeforeBurst);
+	TestEqual(TEXT("and left one Judgment stack"), CountNow(), Expected(1));
+
+	// THE STACK REACHES THE CHARACTER ON THE BEAT, and on the one resistance.
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const FCataclysmStatModifier* Judged =
+		DungeonRuleOn(Player.AbilitySystem, *CelestialStat);
+	if (!TestNotNull(*FString::Printf(TEXT("Judgment reached %s"), *CelestialStat),
+					 Judged))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth one stack, as a reduction"), Judged->Value,
+			  -Effects::HolyRepercussionsJudgmentLessPerStackPercent, 0.001f);
+
+	// AND ONLY THAT RESISTANCE. War is any of the other seven; one is enough to
+	// show the rule did not reach through the all-resistance loop.
+	TestNull(TEXT("while War resistance carries no dungeon rule at all"),
+			 DungeonRuleOn(Player.AbilitySystem,
+						   *UCataclysmItemModifiers::ResistanceStatFor(
+							   TEXT("War")).ToString()));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHolyGuardsTest,
+	"Cataclysm.DungeonModifierEffects.OnlyThePlayersOwnBlowProvokesJudgmentAndTheStairsClearIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHolyGuardsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE TWO THINGS THAT BOUND THE RULE: WHOSE BLOW, AND HOW LONG IT LASTS.
+	// Issues #1820 and #41.
+	//
+	// THE WHOSE-BLOW GUARD ALSO STOPS A BURST PROVOKING A BURST. A burst is a
+	// creature hitting the player, so it arrives back at the same listener; the
+	// attacker test is what refuses it. This test shows the guard on a creature's
+	// ordinary blow, which is the same shape.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	ACataclysmEnemyCharacter* Target = SpawnCreatureWithHealth(
+		World, Player.Character->GetActorLocation() + FVector(150.0f, 0.0f, 0.0f),
+		10'000'000.0f);
+	// A CREATURE THAT CAN HIT, for the blows that must NOT provoke anything.
+	ACataclysmEnemyCharacter* Striker = SpawnCreatureThatCanHit(World, -150.0f);
+	if (!TestNotNull(TEXT("a creature to hit"), Target)
+		|| !TestNotNull(TEXT("and one that hits the player"), Striker))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {HolyRepercussions};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto CountNow = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Found = Counting.Find(HolyRepercussions);
+		return Found ? *Found : FString();
+	};
+	const auto Expected = [](int32 Stacks)
+	{
+		return FString::Printf(TEXT("%d of %d"), Stacks,
+							   UCataclysmDungeonModifierEffects::
+								   HolyRepercussionsJudgmentMostStacks);
+	};
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.HolyRepercussionsRoll"), TEXT("0"));
+
+	// A CREATURE'S BLOW ON THE PLAYER, WITH EVERY ROLL RETALIATING. If the rule
+	// did not test whose blow it was, this would count.
+	if (!TestTrue(TEXT("the creature's blow on the player landed"),
+				  UCataclysmSkillEffects::ApplyHit(
+					  Striker, Player.Character, 5.0f) > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blow the player RECEIVED provokes no Judgment"),
+			  CountNow(), Expected(0));
+
+	// THE PLAYER'S OWN BLOWS DO, AND THEY STOP AT THE CAP. One past the cap, so
+	// a count that wrapped or kept climbing would show here.
+	const int32 Most = Effects::HolyRepercussionsJudgmentMostStacks;
+	for (int32 Blow = 0; Blow < Most + 1; ++Blow)
+	{
+		if (!TestTrue(FString::Printf(TEXT("the player's blow %d landed"), Blow + 1),
+					  UCataclysmSkillEffects::ApplyHit(
+						  Player.Character, Target, 5.0f) > 0.0f))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("while the player's own blows stop at the cap"),
+			  CountNow(), Expected(Most));
+
+	// AND THE STAIRS CLEAR IT. Through `GoToFloor` and not `BuildFloor`: the
+	// per-floor reset lives in `ApplyFloorRulesToPlayer`, which `GoToFloor`
+	// calls and `BuildFloor` does not. This file records that trap more than
+	// once, and one of those records cost a build.
+	if (!TestTrue(TEXT("the player reached the next floor"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and a new floor carries no Judgment"), CountNow(), Expected(0));
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("so the celestial resistance is whole again"),
+			 DungeonRuleOn(Player.AbilitySystem,
+						   *UCataclysmItemModifiers::ResistanceStatFor(
+							   FName(Effects::HolyRepercussionsResistance))
+								.ToString()));
 
 	return true;
 }
