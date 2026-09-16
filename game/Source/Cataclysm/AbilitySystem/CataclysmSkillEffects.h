@@ -430,6 +430,25 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	FGameplayTag SkillElement;
 
 	/**
+	 * Which of the defender's resistances this blow is met by, when the blow says so
+	 * itself rather than through its attacker. Issue #1924.
+	 *
+	 * A DUNGEON FLOOR'S BLOWS SAY SO HERE. Every floor rule deals its damage in the
+	 * name of the floor's one hazard source, `ACataclysmFloorHazardSource`, and a
+	 * floor can carry rules of more than one Cataclysm. A type held on that shared
+	 * actor was whatever rule wrote it last, so a blow could meet another rule's
+	 * resistance, or none. A type carried by the blow cannot be changed by another
+	 * rule. Each rule sets it from its row's `CataclysmType`, so the modifier that
+	 * deals the damage says what the damage is.
+	 *
+	 * NAME_None MEANS "ASK THE ATTACKER", which is every other blow in the game: a
+	 * creature's hit is typed by the creature, and a player's hit stays untyped. See
+	 * `UCataclysmSkillEffects::DamageTypeOf`.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	FName DamageType;
+
+	/**
 	 * The actor that dealt the blow, when that is not the instigator. Issue #41,
 	 * slice 4.
 	 *
@@ -1235,13 +1254,18 @@ public:
 	 *                     see `ApplyBurn`. Issue #41, slice 4
 	 * @param Skill        the skill that applied it, when a skill did; see
 	 *                     `ApplyBurn`. Issue #41, slice 4
+	 * @param DamageType   the type the ticks are met by, or NAME_None for the
+	 *                     instigator's. A dungeon floor rule passes its row's,
+	 *                     because its instigator is the floor's shared hazard
+	 *                     source. Issue #1924
 	 */
 	static bool ApplyDamageOverTime(AActor* Instigator, AActor* Target,
 									float DamagePerTick, float DurationSeconds,
 									const FGameplayTag& EffectTag,
 									bool bScalesWithInstigator = true,
 									AActor* DealtBy = nullptr,
-									const UGameplayAbility* Skill = nullptr);
+									const UGameplayAbility* Skill = nullptr,
+									FName DamageType = NAME_None);
 
 	/**
 	 * Apply a share of the target's current health as damage over time. Void

@@ -687,6 +687,21 @@ namespace
 		const float Pinned = CVarIllusoryEnemiesRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
+
+	/**
+	 * The damage type a dungeon rule's damage carries: its row's `CataclysmType`.
+	 * Issue #1924.
+	 *
+	 * NAME_None WHEN THE ROW CANNOT BE FOUND, which deals the damage untyped rather
+	 * than refusing to deal it, so a table that failed to load changes what a blow
+	 * is met by and not whether it lands.
+	 */
+	FName DungeonGameModeTypeOfRow(const TCHAR* RowKey)
+	{
+		const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+			UCataclysmDungeonModifierTable::LoadDungeonModifierTable(), FName(RowKey));
+		return Row ? FName(*Row->CataclysmType) : NAME_None;
+	}
 }
 
 void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
@@ -1987,11 +2002,11 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 	{
 		return;
 	}
-	Source->DamageType = FName(*Row->CataclysmType);
-
+	// TYPED BY ITS ROW, ON THE PATCH ITSELF. Issue #1924.
 	ACataclysmGroundZone* Patch = ACataclysmGroundZone::Spawn(
 		Source, Where, UCataclysmDungeonModifierEffects::InfernalRainRadiusCm,
-		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, PerSecond);
+		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, PerSecond,
+		FName(*Row->CataclysmType));
 	if (!Patch)
 	{
 		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
@@ -2114,8 +2129,6 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 	{
 		return;
 	}
-	Source->DamageType = FName(*Row->CataclysmType);
-
 	// IT LASTS THE FLOOR, WHICH THE ROW NEITHER STATES NOR CONTRADICTS.
 	// `SpawnForTheFloor` exists for the hazard rows of issue #1605 that state no
 	// duration, and "pulsing void orbs" reads as a feature of the floor rather
@@ -2124,8 +2137,11 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 	//
 	// START AND END THE SAME POINT MAKES IT ROUND, which is how `Spawn` builds a
 	// circle too: a segment of no length is a circle at that point.
+	// TYPED BY ITS ROW, ON THE WELL ITSELF. Issue #1924.
 	ACataclysmGroundZone* Well = ACataclysmGroundZone::SpawnForTheFloor(
-		Source, Where, Where, Effects::SingularityWellsRadiusCm, PerSecond);
+		Source, Where, Where, Effects::SingularityWellsRadiusCm, PerSecond,
+		/*bAffectsEveryone=*/false, /*InDrawnAsType=*/NAME_None,
+		FName(*Row->CataclysmType));
 	if (!Well)
 	{
 		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
@@ -2483,6 +2499,8 @@ void ACataclysmDungeonGameMode::StepArtilleryStrike(
 		// what leaving `bIsDamageOverTime` false says.
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = true;
+		// AND TYPED BY THE ROW, since the source carries no type. Issue #1924.
+		Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::ArtilleryStrikeKey);
 
 		for (AActor* Target : Inside)
 		{
@@ -2655,9 +2673,14 @@ void ACataclysmDungeonGameMode::StepHallowedGroundfall(
 		// is a warning and hurts nobody; these craters burn from the moment they
 		// land, which is what "leaving consecrated craters that burn players"
 		// says. The zone does that itself and needs nothing from the beat.
+		//
+		// TYPED BY THE ROW, ON THE CRATER ITSELF. Until issue #1924 this rule typed
+		// nothing, so its burn met no resistance unless another rule on the floor
+		// had written the shared source's type.
 		ACataclysmGroundZone* Crater = ACataclysmGroundZone::Spawn(
 			Source, Where, Effects::HallowedGroundfallCraterRadiusCm,
-			Effects::HallowedGroundfallCraterSeconds, PerSecond);
+			Effects::HallowedGroundfallCraterSeconds, PerSecond,
+			DungeonGameModeTypeOfRow(Effects::HallowedGroundfallKey));
 		if (Crater)
 		{
 			HallowedGroundfallCratersBurning.Add(Crater);
@@ -2793,8 +2816,6 @@ void ACataclysmDungeonGameMode::StepGraspingTentacles(
 	{
 		return;
 	}
-	Source->DamageType = FName(*Row->CataclysmType);
-
 	// NO DAMAGE PER TICK. A tentacle grabs and does not burn: the row says
 	// "restricting their movement" and says nothing about harm. Since issue #1701
 	// a zone with no damage still sweeps, and this one does not even need that --
@@ -2804,8 +2825,12 @@ void ACataclysmDungeonGameMode::StepGraspingTentacles(
 	// IT LASTS THE FLOOR, which "appear all over the dungeon" reads as: a feature
 	// of the place rather than something passing through it. The cap is what
 	// keeps that from becoming a floor the player cannot cross.
+	// DRAWN IN ITS ROW'S COLOURS, which it took from the shared source's type
+	// until issue #1924 removed that field. It deals nothing, so the row's type
+	// is its appearance and not a damage type.
 	ACataclysmGroundZone* Tentacle = ACataclysmGroundZone::SpawnForTheFloor(
-		Source, Where, Where, Effects::GraspingTentaclesReachCm, 0.0f);
+		Source, Where, Where, Effects::GraspingTentaclesReachCm, 0.0f,
+		/*bAffectsEveryone=*/false, FName(*Row->CataclysmType));
 	if (!Tentacle)
 	{
 		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
@@ -3850,7 +3875,11 @@ void ACataclysmDungeonGameMode::NoteDeathForSporeClouds(
 		return;
 	}
 
-	UCataclysmAilments::Apply(Source, Player, *Poison, /*Magnitude=*/1.0f);
+	// TYPED BY THE ROW, since the source carries no type and a poison takes its
+	// element when it lands. Issue #1924.
+	UCataclysmAilments::Apply(Source, Player, *Poison, /*Magnitude=*/1.0f,
+							  /*Skill=*/nullptr,
+							  DungeonGameModeTypeOfRow(Effects::SporeCloudsKey));
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForHellfire(
@@ -3938,6 +3967,8 @@ void ACataclysmDungeonGameMode::NoteDeathForHellfire(
 	// for the same reason.
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsArea = true;
+	// AND TYPED BY THE ROW, since the source carries no type. Issue #1924.
+	Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::HellfireKey);
 
 	for (AActor* Target : Caught)
 	{
@@ -4195,16 +4226,12 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 		return;
 	}
 
-	// DEMONIC FOR THIS BLOW, AND PUT BACK AFTER IT. The source's type is one field
-	// shared by every rule on the floor, and a floor can carry rules of more than
-	// one type (issue #1924), so the pulse types it from its own row and restores
-	// what was there rather than changing what another rule's blow is typed as.
-	const FName TypedBefore = Source->DamageType;
-	Source->DamageType = FName(*Row->CataclysmType);
+	// DEMONIC, CARRIED BY THE BLOW. The source is shared by every rule on the floor
+	// and holds no type, so the pulse carries its own row's. Issue #1924.
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsArea = true;
+	Delivery.DamageType = FName(*Row->CataclysmType);
 	UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Damage, Delivery);
-	Source->DamageType = TypedBefore;
 }
 
 void ACataclysmDungeonGameMode::StepHolyRepercussions(

@@ -929,9 +929,8 @@ public:
 	 * DEMONIC DAMAGE DEALT FROM THE FLOOR, the way Artillery Strike's shell is:
 	 * `ApplyDirectDamage` from the floor hazard source as an area hit. So the
 	 * player's Demonic resistance applies, and a rule listening for hits sees a blow
-	 * the floor dealt rather than a creature's. The source's type is one field every
-	 * rule on the floor shares, so the pulse sets it from this row and puts back
-	 * what was there; issue #1924 records why that is needed.
+	 * the floor dealt rather than a creature's. The pulse carries this row's type
+	 * on its own delivery, as every floor rule's damage does since issue #1924.
 	 */
 	static const TCHAR* BloodAltarKey;
 

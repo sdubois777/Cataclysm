@@ -1089,7 +1089,8 @@ public:
 	 * DAMAGE CARRIES A TYPE. This said "the only damage in the game" until a
 	 * floor hazard gained one, and the hazard is the same rule rather than a
 	 * second one: see the second paragraph below, and
-	 * `ACataclysmFloorHazardSource::DamageType`.
+	 * `FCataclysmHitDelivery::DamageType`, which is how a floor hazard's blow
+	 * carries its type.
 	 *
 	 * THAT A PLAYER'S DAMAGE CARRIES NONE IS A RULING RATHER THAN AN OMISSION.
 	 * The project owner settled it on 2026-08-12:

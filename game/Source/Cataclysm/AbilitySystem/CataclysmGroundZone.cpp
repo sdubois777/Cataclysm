@@ -35,15 +35,16 @@ ACataclysmGroundZone::ACataclysmGroundZone()
 
 ACataclysmGroundZone* ACataclysmGroundZone::Spawn(
 	AActor* Owner, const FVector& Location, float RadiusCm, float Duration,
-	float DamagePerTick)
+	float DamagePerTick, FName InDamageType)
 {
 	// A circle is a path whose two ends are the same point.
-	return SpawnAlong(Owner, Location, Location, RadiusCm, Duration, DamagePerTick);
+	return SpawnAlong(Owner, Location, Location, RadiusCm, Duration, DamagePerTick,
+					  /*bBurnsEveryone=*/false, InDamageType);
 }
 
 ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 	AActor* Owner, const FVector& Start, const FVector& End, float HalfWidthCm,
-	float Duration, float DamagePerTick, bool bBurnsEveryone)
+	float Duration, float DamagePerTick, bool bBurnsEveryone, FName InDamageType)
 {
 	if (!IsValid(Owner) || HalfWidthCm <= 0.0f || Duration <= 0.0f)
 	{
@@ -98,6 +99,9 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 	Zone->FarEnd = Zone->GetActorLocation() + (End - Start);
 
 	Zone->SetLifeSpan(Duration);
+	// BEFORE FinishSpawning, because `BeginPlay` draws the patch inside it and
+	// the type decides the colour of a patch with no `DrawnAsType`.
+	Zone->DamageType = InDamageType;
 
 	// AND NOW IT BEGINS PLAY, with everything above already set. This is the
 	// second half of the deferred spawn and the whole reason for it: `BeginPlay`
@@ -109,7 +113,8 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnAlong(
 
 ACataclysmGroundZone* ACataclysmGroundZone::SpawnForTheFloor(
 	AActor* Owner, const FVector& Start, const FVector& End, float HalfWidthCm,
-	float DamagePerTick, bool bAffectsEveryone, FName InDrawnAsType)
+	float DamagePerTick, bool bAffectsEveryone, FName InDrawnAsType,
+	FName InDamageType)
 {
 	// NO DURATION TO REFUSE. The other two spawn functions check it because a
 	// patch with no stated life would burn for nothing; this one has no stated
@@ -149,6 +154,8 @@ ACataclysmGroundZone* ACataclysmGroundZone::SpawnForTheFloor(
 	// it runs inside `FinishSpawning`. Set after it, the first drawing would be
 	// the owner's colour and only the first redraw seconds later would be right.
 	Zone->DrawnAsType = InDrawnAsType;
+	// AND ITS DAMAGE TYPE, for the same reason: the first drawing reads it.
+	Zone->DamageType = InDamageType;
 
 	// AND NO SetLifeSpan AT ALL, WHICH IS THE WHOLE OF "LASTS THE FLOOR".
 	// UCataclysmFloorContents::ClearTheFloor destroys every zone in the world
@@ -220,12 +227,18 @@ void ACataclysmGroundZone::BeginPlay()
 
 FName ACataclysmGroundZone::TypeItIsDrawnAs() const
 {
-	// THE OWNER'S UNLESS THE PATCH WAS GIVEN ONE. That is what both call sites
-	// did before `DrawnAsType` existed, so a patch nobody typed is drawn exactly
-	// as it was. See the field for why a patch may want its own.
-	return DrawnAsType.IsNone()
+	// ITS OWN COLOUR, THEN ITS OWN DAMAGE TYPE, THEN ITS OWNER'S. A patch given
+	// neither is drawn exactly as every patch was before `DrawnAsType` existed. A
+	// floor patch's type comes before its owner's because that owner, the floor's
+	// shared hazard source, has none to give (issue #1924). See `DrawnAsType` for
+	// why a patch may want a colour of its own.
+	if (!DrawnAsType.IsNone())
+	{
+		return DrawnAsType;
+	}
+	return DamageType.IsNone()
 		? UCataclysmSkillEffects::DamageTypeOf(GetOwner())
-		: DrawnAsType;
+		: DamageType;
 }
 
 void ACataclysmGroundZone::Redraw()
@@ -369,6 +382,10 @@ void ACataclysmGroundZone::Sweep()
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = true;
 		Delivery.bIsDamageOverTime = true;
+		// AND ITS OWN TYPE WHEN IT HAS ONE, which a floor rule's patch does. The
+		// owner passed below is then the floor's shared hazard source, which
+		// carries none. Issue #1924.
+		Delivery.DamageType = DamageType;
 		// ONLY IF THERE IS DAMAGE TO DEAL. A patch that only curses reaches here
 		// now, and a hit of zero is still a hit: it would announce itself, count
 		// towards anything that reacts to being struck, and read in a combat log
