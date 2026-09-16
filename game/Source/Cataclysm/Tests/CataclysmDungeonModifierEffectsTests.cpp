@@ -24,6 +24,7 @@
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonFloor.h"
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
@@ -124,6 +125,12 @@ namespace CataclysmDungeonModifierEffectsTest
 	 * them. Issues #1820 and #41.
 	 */
 	const FName LeechSpores(TEXT("Pestilence_Leech_Spores"));
+
+	/**
+	 * And the one whose altar pulses harder for every death on the floor. Issues
+	 * #1820 and #41.
+	 */
+	const FName BloodAltar(TEXT("Demonic_Blood_Altar"));
 
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
@@ -8748,6 +8755,351 @@ bool FCataclysmLeechSporesSplitTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("so the creatures gained exactly what the player lost"),
 			  (HealthOf(One) - OneBefore) + (HealthOf(Two) - TwoBefore), Drained,
 			  0.05f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAltarPulseTest,
+	"Cataclysm.DungeonModifierEffects.ADeathFeedsTheAltarAndAPulseHurtsThePlayerWithinReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodAltarPulseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE ALTAR ON THE EXIT, FED BY DEATHS THE PLAYER DID NOT CAUSE, PULSING ON ITS
+	// CLOCK AT THE PLAYER ALONE. Issues #1820 and #41.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never
+	// calls. Without it a creature dies and the altar counts nothing.
+	Mode->StartPlay();
+
+	Mode->DungeonModifiers = {BloodAltar};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// PULSES COMPARED WITH EACH OTHER, NOT WITH THEIR STATED SHARE. A floor-dealt
+	// blow goes through the player's own mitigation -- Artillery Strike's test
+	// records a stated 127.5 reaching health as 109.9 -- so what a pulse takes can
+	// be bounded by its share but not equal to it. The player is given enough health
+	// that every pulse here is hundreds of points.
+	const FGameplayAttribute MaxHealth = Vital::GetMaxHealthAttribute();
+	const FGameplayAttribute Health = Vital::GetHealthAttribute();
+	Player.AbilitySystem->SetNumericAttributeBase(MaxHealth, 100000.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Health, Player.Read(MaxHealth));
+	const float Maximum = Player.Read(MaxHealth);
+	if (!TestTrue(FString::Printf(TEXT("the player's maximum health is large: %.0f"),
+								  Maximum),
+				  Maximum >= 100000.0f)
+		|| !TestEqual(TEXT("and the player is at it"), Player.Read(Health), Maximum,
+					  0.01f))
+	{
+		return false;
+	}
+
+	// THE ALTAR STANDS ON THE EXIT CELL FROM THE FIRST BEAT, as a ring lasting the
+	// floor.
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Ring = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("one ring was placed on the first beat"), Ring))
+	{
+		return false;
+	}
+	const FVector Altar = Ring->GetActorLocation();
+	const float FromExit = FVector::Dist2D(Altar, Mode->CurrentFloor->ExitWorld());
+	TestTrue(FString::Printf(TEXT("the ring stands on the exit cell: %.1f cm away"),
+							 FromExit),
+			 FromExit < 1.0f);
+	TestEqual(TEXT("it reaches as far as the figure says"), Ring->RadiusCm,
+			  Effects::BloodAltarReachCm, 0.01f);
+	TestTrue(TEXT("and lasts the floor"), Ring->bLastsTheFloor);
+
+	const auto AltarLine = [Mode]() -> FString
+	{
+		TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(BloodAltar);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+	const auto Counted = [](int32 Deaths)
+	{
+		return FString::Printf(TEXT("%d of %d"), Deaths,
+							   UCataclysmDungeonModifierEffects::BloodAltarDeathsToCeiling);
+	};
+	TestEqual(TEXT("an altar nobody has fed has counted nothing"), AltarLine(),
+			  Counted(0));
+
+	// DEATHS THE PLAYER DID NOT CAUSE. Each creature's own health runs out with no
+	// blow on record, far from the altar. "Slaying enemies" names no killer, so each
+	// one feeds the altar.
+	const auto KillACreatureWithoutThePlayer = [World, &Altar](int32 Index)
+	{
+		ACataclysmEnemyCharacter* Creature = SpawnCreatureWithHealth(
+			World, Altar + FVector(0.0f, 3000.0f + 300.0f * Index, 0.0f), 100.0f);
+		if (!Creature)
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ReduceHealthDirectly(Creature, Creature, 100000.0f);
+		return UCataclysmSkillEffects::IsDead(Creature);
+	};
+	if (!TestTrue(TEXT("a creature died without the player"),
+				  KillACreatureWithoutThePlayer(0)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and the altar counted it"), AltarLine(), Counted(1));
+
+	// THE PLAYER STANDS AT THE ALTAR, AND NOTHING HAPPENS BEFORE THE PULSE IS DUE.
+	// One beat has passed, so the pulse comes on the beat that brings the clock to
+	// its figure.
+	Player.Character->SetActorLocation(Altar);
+	const int32 BeatsPerPulse = BeatsFor(Effects::BloodAltarSecondsBetweenPulses);
+	const float BeforeFirst = Player.Read(Health);
+	Beat(Mode, BeatsPerPulse - 2);
+	TestEqual(TEXT("nothing is taken before the pulse is due"), Player.Read(Health),
+			  BeforeFirst, 0.01f);
+	Beat(Mode, 1);
+	const float LostToOne = BeforeFirst - Player.Read(Health);
+	TestTrue(FString::Printf(TEXT("a pulse after one death takes health: %.1f"),
+							 LostToOne),
+			 LostToOne > 0.0f);
+	TestTrue(FString::Printf(TEXT("and no more than its stated share: %.1f of %.1f"),
+							 LostToOne, Effects::BloodAltarPulseDamage(Maximum, 1)),
+			 LostToOne <= Effects::BloodAltarPulseDamage(Maximum, 1) + 0.01f);
+
+	// TWO MORE DEATHS, AND A LIVING CREATURE IN REACH THAT A PULSE MUST LEAVE ALONE.
+	if (!TestTrue(TEXT("a second creature died without the player"),
+				  KillACreatureWithoutThePlayer(1))
+		|| !TestTrue(TEXT("and a third"), KillACreatureWithoutThePlayer(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the altar counted all three"), AltarLine(), Counted(3));
+
+	ACataclysmEnemyCharacter* InReach =
+		SpawnCreatureWithHealth(World, Altar + FVector(200.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a living creature stands in the altar's reach"), InReach))
+	{
+		return false;
+	}
+	const float InReachBefore = HealthOf(InReach);
+
+	const float BeforeThree = Player.Read(Health);
+	Beat(Mode, BeatsPerPulse);
+	const float LostToThree = BeforeThree - Player.Read(Health);
+	TestTrue(FString::Printf(
+				 TEXT("a pulse after three deaths takes more than after one: %.1f "
+					  "against %.1f"), LostToThree, LostToOne),
+			 LostToThree > LostToOne + 1.0f);
+	TestTrue(FString::Printf(TEXT("and no more than its stated share: %.1f of %.1f"),
+							 LostToThree, Effects::BloodAltarPulseDamage(Maximum, 3)),
+			 LostToThree <= Effects::BloodAltarPulseDamage(Maximum, 3) + 0.01f);
+	TestEqual(TEXT("the creature in reach loses nothing"), HealthOf(InReach),
+			  InReachBefore, 0.01f);
+
+	// DEMONIC DAMAGE: THE PLAYER'S DEMONIC RESISTANCE MEETS A PULSE, AND ANOTHER
+	// RESISTANCE DOES NOT. Asserted rather than assumed because of issue #1924: a
+	// floor-dealt blow is typed only if its rule types it.
+	const FGameplayAttribute Demonic =
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute();
+	const FGameplayAttribute Void =
+		UCataclysmResistanceAttributeSet::GetVoidResistanceAttribute();
+	const float DemonicWas = Player.AbilitySystem->GetNumericAttributeBase(Demonic);
+	Player.AbilitySystem->SetNumericAttributeBase(Demonic, DemonicWas + 50.0f);
+	const float BeforeDemonic = Player.Read(Health);
+	Beat(Mode, BeatsPerPulse);
+	const float LostWithDemonic = BeforeDemonic - Player.Read(Health);
+	TestTrue(FString::Printf(
+				 TEXT("Demonic resistance takes something off a pulse: %.1f against "
+					  "%.1f"), LostWithDemonic, LostToThree),
+			 LostWithDemonic < LostToThree - 1.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Demonic, DemonicWas);
+
+	const float VoidWas = Player.AbilitySystem->GetNumericAttributeBase(Void);
+	Player.AbilitySystem->SetNumericAttributeBase(Void, VoidWas + 50.0f);
+	const float BeforeVoid = Player.Read(Health);
+	Beat(Mode, BeatsPerPulse);
+	const float LostWithVoid = BeforeVoid - Player.Read(Health);
+	TestEqual(FString::Printf(
+				  TEXT("and Void resistance takes nothing off it: %.1f against %.1f"),
+				  LostWithVoid, LostToThree),
+			  LostWithVoid, LostToThree, 0.5f);
+	Player.AbilitySystem->SetNumericAttributeBase(Void, VoidWas);
+
+	// OUTSIDE THE REACH, NOTHING. Inclusion is by body, so the player's body is
+	// placed beyond the reach and that is asserted before it is relied on.
+	const float BodyRadius =
+		Player.Character->GetCapsuleComponent()->GetScaledCapsuleRadius();
+	Player.Character->SetActorLocation(
+		Altar + FVector(Effects::BloodAltarReachCm + BodyRadius + 100.0f, 0.0f, 0.0f));
+	const float BodyEdge =
+		FVector::Dist2D(Player.Character->GetActorLocation(), Altar) - BodyRadius;
+	if (!TestTrue(FString::Printf(
+					  TEXT("the player's body is outside the reach: %.1f cm against "
+						   "%.1f"), BodyEdge, Effects::BloodAltarReachCm),
+				  BodyEdge > Effects::BloodAltarReachCm))
+	{
+		return false;
+	}
+	const float BeforeOutside = Player.Read(Health);
+	Beat(Mode, BeatsPerPulse);
+	TestEqual(TEXT("a player just outside the reach loses nothing"),
+			  Player.Read(Health), BeforeOutside, 0.01f);
+
+	// AND THE STAIRS START IT AGAIN: nothing counted, and one ring, on the new exit.
+	if (!TestTrue(TEXT("the player reached the next floor"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the next floor's altar has counted nothing"), AltarLine(),
+			  Counted(0));
+	Beat(Mode, 1);
+	ACataclysmGroundZone* NextRing = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("one ring stands on the next floor"), NextRing))
+	{
+		return false;
+	}
+	const float FromNextExit = FVector::Dist2D(NextRing->GetActorLocation(),
+											   Mode->CurrentFloor->ExitWorld());
+	TestTrue(FString::Printf(TEXT("on the next floor's exit cell: %.1f cm away"),
+							 FromNextExit),
+			 FromNextExit < 1.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAltarUnfedTest,
+	"Cataclysm.DungeonModifierEffects.AnUnfedAltarDoesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodAltarUnfedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE CONTROL: AN ALTAR NOBODY HAS FED PULSES FOR NOTHING. Issues #1820 and #41.
+	// The test above feeds its altar before the first pulse, so an altar that took
+	// health from the floor's start whether or not anything had died would pass it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode =
+		World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	Mode->DungeonModifiers = {BloodAltar};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Ring = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("the altar's ring is there, so the rule is on"), Ring))
+	{
+		return false;
+	}
+	TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+	const FString* Line = Counting.Find(BloodAltar);
+	if (!TestNotNull(TEXT("the floor panel shows the altar's count"), Line))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it has counted nothing"), *Line,
+			  FString::Printf(TEXT("0 of %d"), Effects::BloodAltarDeathsToCeiling));
+
+	Player.Character->SetActorLocation(Ring->GetActorLocation());
+	const float Before = Player.Read(Vital::GetHealthAttribute());
+	if (!TestTrue(FString::Printf(TEXT("the player has health to lose: %.1f"), Before),
+				  Before > 0.0f))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::BloodAltarSecondsBetweenPulses));
+	TestEqual(TEXT("a pulse from an altar nobody has fed takes nothing"),
+			  Player.Read(Vital::GetHealthAttribute()), Before, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodAltarCeilingTest,
+	"Cataclysm.DungeonModifierEffects.ThePulseStopsGrowingAtItsCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodAltarCeilingTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ARITHMETIC, ASKED DIRECTLY, and that is a choice with a reason. Reaching
+	// the ceiling through the game would spawn and kill more creatures in one test
+	// than the ceiling's count. These are the functions the game mode calls, and the
+	// test above shows the game mode's count reaching them.
+	const float Maximum = 100000.0f;
+	const float PerDeath = Maximum * Effects::BloodAltarMaxHealthPercentPerDeath / 100.0f;
+	const float Ceiling = Maximum * Effects::BloodAltarMostMaxHealthPercent / 100.0f;
+	const int32 AtCeiling = Effects::BloodAltarDeathsToCeiling;
+
+	TestEqual(TEXT("an altar nobody has fed deals nothing"),
+			  Effects::BloodAltarPulseDamage(Maximum, 0), 0.0f, 0.01f);
+	TestEqual(TEXT("one death adds one share"),
+			  Effects::BloodAltarPulseDamage(Maximum, 1), PerDeath, 0.01f);
+	TestEqual(TEXT("a death short of the ceiling is a share short of it"),
+			  Effects::BloodAltarPulseDamage(Maximum, AtCeiling - 1), Ceiling - PerDeath,
+			  0.01f);
+	TestEqual(TEXT("the ceiling's own death reaches it"),
+			  Effects::BloodAltarPulseDamage(Maximum, AtCeiling), Ceiling, 0.01f);
+	TestEqual(TEXT("a death past the ceiling adds nothing"),
+			  Effects::BloodAltarPulseDamage(Maximum, AtCeiling + 1), Ceiling, 0.01f);
+	TestEqual(TEXT("and neither do many"),
+			  Effects::BloodAltarPulseDamage(Maximum, AtCeiling * 4), Ceiling, 0.01f);
+	TestEqual(TEXT("a maximum health that is not positive loses nothing"),
+			  Effects::BloodAltarPulseDamage(0.0f, 10), 0.0f, 0.01f);
+
+	TestEqual(TEXT("the first death counts one"),
+			  Effects::BloodAltarDeathsAfterOne(0), 1);
+	TestEqual(TEXT("the ceiling's own death is counted"),
+			  Effects::BloodAltarDeathsAfterOne(AtCeiling - 1), AtCeiling);
+	TestEqual(TEXT("and the count stops there"),
+			  Effects::BloodAltarDeathsAfterOne(AtCeiling), AtCeiling);
+
+	TestFalse(TEXT("no pulse a beat before the figure"),
+			  Effects::BloodAltarPulseIsDue(Effects::BloodAltarSecondsBetweenPulses
+											- ACataclysmDungeonGameMode::SecondsBetweenWaveChecks));
+	TestTrue(TEXT("and a pulse on it"),
+			 Effects::BloodAltarPulseIsDue(Effects::BloodAltarSecondsBetweenPulses));
 
 	return true;
 }

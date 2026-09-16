@@ -1125,6 +1125,24 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Blood Altar: stand the altar at the exit, and pulse on its clock. Issues #1820
+	 * and #41.
+	 *
+	 * THE ALTAR IS PLACED ON THE FIRST BEAT OF A FLOOR CARRYING THE ROW, at
+	 * `ACataclysmDungeonFloor::ExitWorld` -- the cell `PlaceStairs` puts the stairs
+	 * on, which exists before the stairs do. A Horde floor places its stairs only
+	 * after its waves.
+	 *
+	 * A PULSE EVERY `BloodAltarSecondsBetweenPulses` FROM THE FLOOR'S START. It takes
+	 * a share of the player's maximum health for each death the altar has counted,
+	 * nothing from an altar nobody has fed, and only from the player, only within
+	 * the altar's reach.
+	 */
+	void StepBloodAltar(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -1468,13 +1486,26 @@ private:
 	 * the player is standing on it. It differs in what contact does, which is
 	 * `StepLeechSpores`'s business, and in a cloud being spent by it.
 	 *
-	 * EVERY CREATURE DEATH LEAVES ONE. The row says "When you kill an enemy, a
-	 * cloud ... explodes", which states no chance.
+	 * EVERY KILL BY THE PLAYER LEAVES ONE, AND NOTHING ELSE DOES. The row says
+	 * "When you kill an enemy, a cloud ... explodes", which names the killer and
+	 * states no chance. A death whose notice names anyone else, or nobody,
+	 * leaves no cloud.
 	 *
 	 * NO DAMAGE PER TICK. The cloud does nothing to anybody by being there; the
 	 * drain happens on contact, decided by the beat.
 	 */
 	void NoteDeathForLeechSpores(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Blood Altar: count a creature's death. Issues #1820 and #41.
+	 *
+	 * NO KILLER IS ASKED FOR, DELIBERATELY, which is the opposite of
+	 * `NoteDeathForLeechSpores` above. This row says "Slaying enemies", which names
+	 * nobody; that one says "When you kill an enemy". A creature killed by another
+	 * creature, by a hazard or by its own health running out feeds the altar all the
+	 * same, and so does an illusion, whose death is announced like any other.
+	 */
+	void NoteDeathForBloodAltar(const struct FCataclysmDeathNotice& Notice);
 
 	/**
 	 * Spore Clouds' poison, on a creature dying near the player. Issues #1820
@@ -2010,6 +2041,20 @@ private:
 	 * A weak pointer going invalid is the second; the first is removed by name.
 	 */
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> LeechSporesClouds;
+
+	/**
+	 * Blood Altar's count of deaths on this floor, the time since the floor's start
+	 * or its last pulse, and its ring. Issues #1820 and #41.
+	 *
+	 * ALL THREE GO AT THE STAIRS, AND THE RING IS DESTROYED THERE RATHER THAN
+	 * FORGOTTEN. A floor change clears the world's ground zones only when the next
+	 * floor is a new arena. A Horde dungeon keeps its arena, and a ring that was only
+	 * forgotten would stand on beside the one the next beat places. Issue #1925
+	 * records the rules that forget.
+	 */
+	int32 BloodAltarDeaths = 0;
+	float BloodAltarSecondsSinceLastPulse = 0.0f;
+	TWeakObjectPtr<class ACataclysmGroundZone> BloodAltarRing;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

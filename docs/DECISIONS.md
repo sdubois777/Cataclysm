@@ -2,6 +2,97 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — Blood Altar pulses at the player from the exit and is fed by every creature death on the floor; the pulse is Demonic damage the floor types and puts back, and the owner set its cadence
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules: each row's key, its figures and its arithmetic),
+`CataclysmDungeonGameMode.h` and `.cpp` (the listener on the death announcement, the
+quarter-second beat, the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for
+these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that
+hold each rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820),
+[#41](https://github.com/sdubois777/Cataclysm/issues/41),
+[#1924](https://github.com/sdubois777/Cataclysm/issues/1924) and
+[#1925](https://github.com/sdubois777/Cataclysm/issues/1925). **Applied.**
+
+### The row
+
+`Demonic_Blood_Altar` in `game/Data/DungeonModifiers.csv`: "Slaying enemies contributes to the blood
+altar. The altar sends out damaging pulses that grow stronger with the number of enemies slain."
+
+### What the row's own words decide
+
+1. **Every creature death on the floor feeds the altar, including deaths the player did not
+   cause.** "Slaying enemies" names no killer, which is the rule this log records for Fungal
+   Overgrowth's "Killing enemies creates mushrooms" and Withered Ground's "on death". **This is the
+   opposite of Leech Spores**, whose row says "When you kill an enemy" and which therefore counts only
+   the player's kills, by the rule the 2026-09-13 Mortal Decay entry records. An illusion's death
+   counts as well: `ACataclysmEnemyCharacter::HandleDeath` announces it like any other.
+2. **One altar a floor** -- "the blood altar".
+3. **A pulse's damage rises with the deaths counted** -- "grow stronger with the number of enemies
+   slain".
+
+### The owner's figure
+
+**A pulse every 30 seconds, counted from the floor's start.** This is the project owner's figure,
+not a judgement. Nothing derives it and nothing else here is derived from it. A recommendation of 5
+seconds, argued from the time it takes to walk across the altar's reach, was replaced by the owner
+before any code was written, and that argument no longer applies to anything.
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation of unstated figures, and flagged to
+the owner by that session.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| Where the altar stands | **On the exit cell**, `ACataclysmDungeonFloor::ExitWorld`, where the stairs are placed | The row names no place. There, the altar's growth meets the player when they leave a floor they fought through. Nothing is drawn at the altar's centre, so "at" and "beside" the stairs are the same place |
+| Who a pulse hits | **The player's pawn only** -- no creature, no summon | A pulse that killed creatures would add to the count that makes the next pulse stronger |
+| How strong | **0.5% of the player's maximum health for each death counted, from nothing** | "Contributes to the blood altar" reads as deaths being the altar's only power, so an altar nobody has fed does nothing. A share of the maximum follows Artillery Strike (25%) and Brand of the Aggressor's eruption (20%) |
+| A ceiling | **30% of maximum health a pulse**, reached at the 60th death, which is derived from the two figures rather than written down | The row states none; without one, enough deaths make every pulse a certain kill, and the row does not say the altar kills outright |
+| Reach | **1000 cm**, drawn as a ring lasting the floor | The stairs stand at the centre, so no player leaves the floor without entering it |
+| A warning before a pulse | **None but the ring** | The altar never moves. Artillery Strike needed a separate warning because its circle appears somewhere new each time |
+| The count | **Resets with each floor, stops at 60, and shows on the floor panel as "N of 60"** | A death past the ceiling changes nothing a pulse does. The panel shows only counts, for every row, so it shows no damage figure for this one either |
+
+### How a pulse is dealt
+
+A pulse is `UCataclysmSkillEffects::ApplyDirectDamage` from `ACataclysmFloorHazardSource` as an area
+hit -- Artillery Strike's route. So **the player's Demonic resistance reduces it**, and a rule listening
+for hits sees a blow the floor dealt rather than a creature's:
+
+- `Famine_Wasting_Sickness` counts any landed hit on the player, so on a floor carrying both rules a
+  pulse can add a Wasting Sickness stack -- as Artillery Strike's landing already can.
+- `Celestial_Holy_Repercussions` and `Demonic_Brand_of_the_Aggressor` ignore a pulse, because both
+  require the player as the attacker.
+
+**The type needed care.** A floor-dealt blow takes its type from one field on the one floor source
+that every rule on the floor shares, and a floor can carry rules of more than one cataclysm type.
+Only three rules set that field, and Artillery Strike and Hellfire never do, so their damage can meet
+no resistance at all. That is issue #1924, found while planning this rule and not fixed here.
+`StepBloodAltar` sets the field from its own row immediately before the pulse and puts the previous
+value back right after it. The pulse is Demonic, and the altar changes nothing about how another
+rule's blow is typed.
+
+### A Horde floor keeps its zones, so the ring is destroyed at the stairs
+
+`ACataclysmDungeonGameMode::GoToFloor` clears the world's ground zones only when the next floor is a
+new arena, and every floor after the first in a Horde dungeon reuses its arena. So the per-floor
+reset **destroys** the altar's ring rather than only forgetting it, and the next beat places a new
+ring on the new exit. Issue #1925 records the eight rules that only forget theirs.
+
+### What the tests do not show
+
+- **The exact share a pulse takes.** Floor-dealt damage goes through the player's own mitigation --
+  Artillery Strike's test records a stated 127.5 reaching health as 109.9 -- so the tests compare
+  pulses with each other and bound each one by its stated share.
+- **The ceiling reached through the game.** The arithmetic is tested directly, because reaching the
+  60th death in one test would spawn and kill more creatures than that.
+- **A same-arena floor change.** No test enters a Horde dungeon's second floor. The change for #1925
+  adds that test for every rule at once.
+
+---
+
 ## 2026-09-16 — A city's fall fires a surge only when the last one is the minimum gap behind, and the campaign figures that moved with it are restated
 
 **Decision.** `Simulation._fall` in `sim/cataclysm_sim/engine.py` fires its surge only when `days_since_last_surge()` is at least `surge_interval_min` (25 days), the same brake the board-empty trigger already respects. Before this a city falling the day after a surge landed a whole second wave; at difficulty tier 4 with no empire tree the fall trigger was 89% of every surge that fired and 82% of those landed inside the 25-day floor. Ruled on 2026-09-14 under the owner's delegation to the coordinating session; issue #1432.
