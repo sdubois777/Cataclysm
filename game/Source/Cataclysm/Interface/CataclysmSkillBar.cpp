@@ -171,9 +171,18 @@ FString UCataclysmSkillBar::CooldownTextFor(float Remaining)
 	return FString::Printf(TEXT("%d"), FMath::CeilToInt(Remaining));
 }
 
-bool UCataclysmSkillBar::CanAfford(float ManaCost, float Mana)
+bool UCataclysmSkillBar::CanAfford(const UAbilitySystemComponent* AbilitySystem,
+								   const FGameplayAttribute& Pool, float ManaCost)
 {
-	return Mana >= ManaCost;
+	if (ManaCost <= 0.0f)
+	{
+		return true;
+	}
+	if (!AbilitySystem || !AbilitySystem->HasAttributeSetForAttribute(Pool))
+	{
+		return true;
+	}
+	return UCataclysmGameplayAbility::PoolCovers(AbilitySystem, Pool, ManaCost);
 }
 
 FString UCataclysmSkillBar::KeyTextFor(const FKey& Key)
@@ -313,12 +322,12 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 	const UAbilitySystemComponent* Abilities =
 		UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Player);
 
-	// MANA IS READ ONCE FOR THE WHOLE BAR rather than per slot, because every
-	// box is asking the same character the same question and the answer cannot
-	// change between two boxes of one frame.
-	float Mana = 0.0f;
-	float MaxMana = 0.0f;
-	const bool bHasMana = UCataclysmCombatOverlay::ManaOf(Player, Mana, MaxMana);
+	// WHICH POOL PAYS IS ASKED ONCE FOR THE WHOLE BAR rather than per slot,
+	// because every box is asking the same character the same question and the
+	// answer cannot change between two boxes of one frame. It is the question
+	// the cast asks, so a character whose mana pool became health is shown what
+	// it can pay from health. Issue #1910.
+	const FGameplayAttribute Pool = UCataclysmGameplayAbility::CostPool(Abilities);
 
 	const ACataclysmPlayerController* Controller = CataclysmSkillBarControllerOf(Player);
 
@@ -354,12 +363,9 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 
 		Box.ManaCost = Ability->GetManaCost();
 
-		// A CHARACTER WITH NO MANA POOL CAN AFFORD EVERYTHING. That is not a
-		// guess: `UCataclysmCombatOverlay::ManaOf` answers false when there is no
-		// ability system to ask yet, which happens for some frames after a pawn
-		// appears, and greying out every skill for those frames would look like
-		// the fault issue #653 was reported as.
-		Box.bAffordable = !bHasMana || CanAfford(Box.ManaCost, Mana);
+		// `CanAfford` says why a character with no pool to read yet can afford
+		// everything, which is issue #653.
+		Box.bAffordable = CanAfford(Abilities, Pool, Box.ManaCost);
 
 		// THE LOCK IS ASKED PER BOX, WITH THIS SKILL'S OWN TAGS. Issue #1810.
 		// Unlike mana above, this is not one answer for the character:

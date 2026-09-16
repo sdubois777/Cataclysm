@@ -2,6 +2,41 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — The skill bar asks the cast's own cost rule, so a Masochist holding Water to Blood sees what it can pay from health
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` (whether a skill's
+box is drawn as payable) and `game/Source/Cataclysm/Tests/CataclysmSkillBarTests.cpp`. Issue
+[#1910](https://github.com/sdubois777/Cataclysm/issues/1910). **Applied.**
+
+### What was wrong
+
+`UCataclysmSkillBar::Read` compared each skill's mana cost with the character's raw mana. Water to
+Blood sets the mana pool to zero and pays every skill's cost from health, and the cast honours
+that, so a Masochist holding it saw every skill with a cost drawn in the unaffordable colour while
+each one could be cast. The owner's playtest character of 2026-09-15 held the option.
+
+### The bar asks the same two questions the cast asks
+
+`Read` asks `UCataclysmGameplayAbility::CostPool` once for the whole bar, and each box asks
+`UCataclysmGameplayAbility::PoolCovers`, which `CheckCost`, `ApplyCost` and an aura's upkeep already
+ask. So the bar and the cast cannot disagree about which pool pays or how much is enough:
+at least the cost for mana, strictly more than it for health.
+
+`UCataclysmSkillBar::CanAfford` changed shape to carry that: it takes the ability system, the pool
+and the cost rather than two numbers. It has no caller outside the bar and its tests, and it is not
+exposed to Blueprints.
+
+### Two answers are payable without asking the pool
+
+- **A cost of nothing**, as `CheckCost` returns early for it.
+- **Any cost while there is no pool to read.** For some frames after a pawn appears it has no
+  ability system, or one without the attribute set that holds the pool, and a pool that cannot be
+  read reads as zero. The bar used to get this from `UCataclysmCombatOverlay::ManaOf` answering
+  false; asking `PoolCovers` alone would have greyed out every skill in those frames, which is how
+  issue #653 was first reported. The test checks both cases.
+
+---
+
 ## 2026-09-16 — A Ravager's kill spends Fervour to restore health, and crippled enemies near it generate Fervour
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmTargetCandidates.h` and
