@@ -1347,6 +1347,16 @@ def compare_surge_sizes(measured, tiers, trials: int) -> None:
                     data["wins"][tier], data["losses"][tier], trials))
             orders[(size, tier)] = tuple(tuple(g) for g in order)
 
+    # A TIER WITH NO ORDERING CANNOT AGREE WITH ANYTHING. An ordering of one
+    # group -- every ranked preset tied, which tier 8 produces when all of
+    # them score 0% win and 100% loss -- compares equal to another ordering
+    # of one group, and an empty ordering equals an empty one, so "SAME at
+    # both surge sizes" printed for two statements that nothing can be
+    # ordered, and the conclusion below counted that tier as one where the
+    # ordering holds. Issue #1435. `preset_tables` guards the same case with
+    # its `flat` list and its all-empty check (issue #294); this is the same
+    # rule on the surge-size axis.
+    no_ordering: list[int] = []
     for tier in tiers:
         print(f"\n  TIER {tier}")
         for size in sizes:
@@ -1354,8 +1364,17 @@ def compare_surge_sizes(measured, tiers, trials: int) -> None:
             print(f"    {size} per surge: "
                   + (" > ".join(" = ".join(group) for group in order)
                      if order else "NO PRESET RANKED"))
+        flat = [size for size in sizes if len(orders[(size, tier)]) < 2]
         distinct = {orders[(size, tier)] for size in sizes}
-        if len(distinct) == 1:
+        if flat:
+            no_ordering.append(tier)
+            print("    NO ORDERING to compare at this tier: "
+                  + " and ".join(
+                      ("every ranked preset ties" if orders[(size, tier)]
+                       else "no preset is ranked") + f" at {size} per surge"
+                      for size in flat)
+                  + ". Two orderings of one group are not an agreement.")
+        elif len(distinct) == 1:
             print("    SAME at both surge sizes.")
         else:
             print("    DIFFERS between surge sizes, so an ordering read off "
@@ -1364,8 +1383,16 @@ def compare_surge_sizes(measured, tiers, trials: int) -> None:
                   "empire tree.")
 
     agree = [tier for tier in tiers
-             if len({orders[(size, tier)] for size in sizes}) == 1]
+             if tier not in no_ordering
+             and len({orders[(size, tier)] for size in sizes}) == 1]
     print()
+    if no_ordering:
+        print("  NO ORDERING at tier "
+              + ", ".join(str(t) for t in no_ordering)
+              + ": every ranked preset ties there, so those tiers say nothing")
+        print("  about whether an ordering survives a change of surge size "
+              "and are not counted")
+        print("  below. Issue #1435.")
     if len(agree) == len(tiers):
         print("  The ordering holds at every surge size measured, at every "
               "tier, so it is a")
