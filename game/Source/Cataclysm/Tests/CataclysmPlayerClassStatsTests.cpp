@@ -552,12 +552,12 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		// figure a skill's own row states, reaching only the subject its node
 		// names. Neither has an engine-supplied base, for the reason the entry
 		// above gives.
-		{TEXT("thrall_reserve_reduction"),
+		{TEXT("minion_reserve_reduction"),
 		 TEXT("the Ritualist's Crowned keystone, as a flat modifier, taken off "
-			  "the reserve the Subjugate skill row states")},
-		{TEXT("imp_cap_bonus"),
+			  "the reserve each summoning or deploying skill row states")},
+		{TEXT("minion_cap_bonus"),
 		 TEXT("the Ritualist's The Swarm keystone, as a flat modifier, added to "
-			  "the cap the Summon Imp skill row states")},
+			  "the cap a summoning or deploying skill row states")},
 
 		// Issue #1515. The three energy-shield keystones, and all three are
 		// FLAGS rather than bonuses: zero or above zero, with nothing in between

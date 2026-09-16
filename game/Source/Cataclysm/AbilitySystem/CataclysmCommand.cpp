@@ -25,21 +25,16 @@
 const TCHAR* UCataclysmCommand::PossessionThresholdBonusStat =
 	TEXT("possession_threshold_bonus");
 
-// WHAT CROWNED GRANTS. Issue #1718: "Each thrall reserves 25 Fervour rather
-// than 30." The 30 it is subtracted from is on the Subjugate skill's own row and
-// is not restated here, and four other skills state a reserve of their own that
-// this must not reach.
-const TCHAR* UCataclysmCommand::ThrallReserveReductionStat =
-	TEXT("thrall_reserve_reduction");
+// WHAT CROWNED GRANTS. Issue #1718: "Each minion reserves 5 less Fervour, never
+// less than 1." What it is subtracted from is on each skill's own row -- 30 on
+// Subjugate, 10 on Summon Imp -- and is not restated here.
+const TCHAR* UCataclysmCommand::MinionReserveReductionStat =
+	TEXT("minion_reserve_reduction");
 
-// AND WHAT THE SWARM GRANTS. Issue #1718: "You may have 5 imps active rather
-// than 3." The 3 is on the Summon Imp row.
-const TCHAR* UCataclysmCommand::ImpCapBonusStat = TEXT("imp_cap_bonus");
-
-// THE NAME A SKILL ROW USES FOR AN IMP, which is a row of the Minion Types
-// sheet: `Minions=Imp:1`. Written once here rather than at the read site, so a
-// renamed minion type breaks in one place rather than silently matching nothing.
-const TCHAR* UCataclysmCommand::ImpMinionType = TEXT("Imp");
+// AND WHAT THE SWARM GRANTS. Issue #1718: "Each skill that limits how many of its
+// minions may be active allows 2 more." The limit is on the skill's own row;
+// Summon Imp's is 3.
+const TCHAR* UCataclysmCommand::MinionCapBonusStat = TEXT("minion_cap_bonus");
 
 namespace
 {

@@ -8839,13 +8839,13 @@ bool FCataclysmPassiveDominionOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCrownedOnARealCharacterTest,
-	"Cataclysm.Passives.CrownedLowersARealRitualistsThrallReserve",
+	"Cataclysm.Passives.CrownedLowersARealRitualistsMinionReserve",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * `Ritualist_keystone_a_kC` Crowned on a real character. Issue #1718.
  *
- * "Each thrall reserves 25 Fervour rather than 30."
+ * "Each minion reserves 5 less Fervour, never less than 1."
  *
  * THE ROW HOLDS A POSITIVE 5 AND THE READ SITE SUBTRACTS IT. It is not a bonus
  * of -5: `UCataclysmCombatAttributeSet::PreAttributeChange` floors every
@@ -8887,8 +8887,8 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the reduction to what a thrall reserves"),
-			  Effects[0]->Stat, FString(TEXT("thrall_reserve_reduction")));
+	TestEqual(TEXT("and it is the reduction to what a minion reserves"),
+			  Effects[0]->Stat, FString(TEXT("minion_reserve_reduction")));
 	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
 
@@ -8905,7 +8905,7 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 			  Effects[0]->Condition, FString());
 
 	const FGameplayAttribute Reduction =
-		Combat::GetThrallReserveReductionAttribute();
+		Combat::GetMinionReserveReductionAttribute();
 
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
 	TestEqual(TEXT("an unspent Ritualist takes nothing off the reserve"),
@@ -8917,13 +8917,16 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
 
-	TestEqual(TEXT("taking Crowned takes five Fervour off what a thrall "
+	TestEqual(TEXT("taking Crowned takes five Fervour off what a minion "
 				   "reserves"),
 			  Player.AbilitySystem->GetNumericAttribute(Reduction), 5.0f,
 			  0.001f);
 
-	// AND FIVE OFF SUBJUGATE'S OWN THIRTY IS THE TWENTY-FIVE THE NODE PROMISES.
-	TestEqual(TEXT("which against Subjugate's own 30 is the 25 the node states"),
+	// AND FIVE IS THE "5 LESS" THE NODE STATES, which takes Subjugate's own
+	// thirty to twenty-five. The row holds the difference and never a reserve,
+	// so this reads the attribute against the sentence's own figure.
+	TestEqual(TEXT("which against Subjugate's own 30 leaves a thrall reserving "
+				   "25"),
 			  30.0f - Player.AbilitySystem->GetNumericAttribute(Reduction),
 			  25.0f, 0.001f);
 
@@ -8938,18 +8941,18 @@ bool FCataclysmPassiveCrownedOnARealCharacterTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSwarmOnARealCharacterTest,
-	"Cataclysm.Passives.TheSwarmRaisesARealRitualistsImpCap",
+	"Cataclysm.Passives.TheSwarmRaisesARealRitualistsMinionCap",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * `Ritualist_keystone_b_kA` The Swarm on a real character. Issue #1718.
  *
- * "You may have 5 imps active rather than 3."
+ * "Each skill that limits how many of its minions may be active allows 2 more."
  *
- * THE ROW HOLDS 2, THE DIFFERENCE FROM THE THREE SUMMON IMP'S OWN ROW STATES.
- * Sixteen of the seventeen summoning and deploying skills state NO cap, and
- * every read site treats a cap of zero as no limit at all, so a stat holding
- * the cap itself would hand all sixteen a cap of two.
+ * THE ROW HOLDS 2, WHICH IS ADDED TO THE CAP A SKILL'S OWN ROW STATES. Summon
+ * Imp's is 3, so 5. Every read site treats a cap of zero as no limit at all,
+ * so a stat holding a cap itself would hand a skill designed to have none a
+ * cap of two.
  */
 bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 {
@@ -8985,18 +8988,18 @@ bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("and it is the bonus to how many imps may be active"),
-			  Effects[0]->Stat, FString(TEXT("imp_cap_bonus")));
+	TestEqual(TEXT("and it is the bonus to how many minions may be active"),
+			  Effects[0]->Stat, FString(TEXT("minion_cap_bonus")));
 	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
 			  FString(TEXT("flat")));
 	TestEqual(TEXT("of two"), Effects[0]->ValuePerPoint, 2.0f);
 	TestEqual(TEXT("and carrying no condition"),
 			  Effects[0]->Condition, FString());
 
-	const FGameplayAttribute Bonus = Combat::GetImpCapBonusAttribute();
+	const FGameplayAttribute Bonus = Combat::GetMinionCapBonusAttribute();
 
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
-	TestEqual(TEXT("an unspent Ritualist gets no extra imps"),
+	TestEqual(TEXT("an unspent Ritualist gets no extra minions"),
 			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
 
 	FCataclysmPassiveAllocation Allocation;
@@ -9004,11 +9007,12 @@ bool FCataclysmPassiveSwarmOnARealCharacterTest::RunTest(const FString&)
 	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
 
-	TestEqual(TEXT("taking The Swarm is worth two more imps"),
+	TestEqual(TEXT("taking The Swarm is worth two more minions"),
 			  Player.AbilitySystem->GetNumericAttribute(Bonus), 2.0f, 0.001f);
 
-	// AND TWO ON TOP OF SUMMON IMP'S OWN THREE IS THE FIVE THE NODE PROMISES.
-	TestEqual(TEXT("which with Summon Imp's own 3 is the 5 the node states"),
+	// AND TWO IS THE "2 MORE" THE NODE STATES, which takes Summon Imp's own three
+	// to five.
+	TestEqual(TEXT("which with Summon Imp's own 3 allows 5"),
 			  3.0f + Player.AbilitySystem->GetNumericAttribute(Bonus), 5.0f,
 			  0.001f);
 
@@ -11417,6 +11421,330 @@ bool FCataclysmCrippledCountsTwiceTest::RunTest(const FString&)
 	UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond);
 	TestEqual(TEXT("a crippled enemy earns one from each row, so two"),
 			  FervourOf(Player), 2.0f, 0.001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// THE THREE RAVAGER NODES THAT READ HOW MANY ENEMIES ONE ATTACK STRUCK. Issue
+// #1515. The count and what reads it were built and tested in
+// `CataclysmSkillTemplateTests.cpp` and `CataclysmStatPipelineTests.cpp`; these
+// three read each node's REAL ROW on a real Ravager, so a row authored with the
+// wrong stat, bucket, tag, condition or scale fails here rather than granting
+// nothing in play.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmEnemiesStruckRowTest
+{
+	/** `Type.Melee`, or an empty container if the tag does not exist. */
+	FGameplayTagContainer MeleeTags()
+	{
+		FGameplayTagContainer Tags;
+		const FGameplayTag Melee = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false);
+		if (Melee.IsValid())
+		{
+			Tags.AddTag(Melee);
+		}
+		return Tags;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCleavingArcOnARealCharacterTest,
+	"Cataclysm.Passives.CleavingArcRaisesARealRavagersAttackDamageForEachEnemyBeyondTheFirst",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_b_a2` Cleaving Arc on a real character. Issue #1515.
+ *
+ * "+1% increased Attack Damage per point for each enemy your attack hits beyond
+ * the first." Eight points.
+ *
+ * A SCALED ROW IS NEVER FOLDED INTO THE ATTRIBUTE, so
+ * `AttackDamageIncreasesForSkill` answers, given the count the way a blow gives
+ * it. EVERY READING IS A DIFFERENCE FROM ONE ENEMY STRUCK, so whatever else the
+ * character's attack damage increases hold cancels out and only this row is
+ * left.
+ */
+bool FCataclysmPassiveCleavingArcOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_basic_b_a2"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Cleaving Arc grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is attack damage"), Effects[0]->Stat,
+			  FString(TEXT("attack_damage")));
+	TestEqual(TEXT("stated as an increase"), Effects[0]->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of one a point"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("scaled by each enemy the attack struck beyond the first"),
+			  Effects[0]->Scale, FString(TEXT("enemies_hit_beyond_the_first")));
+	TestEqual(TEXT("one step at a time"), Effects[0]->ScaleStep, 1.0f);
+	TestEqual(TEXT("and requiring no tag, because the node says \"your attack\""),
+			  Effects[0]->RequiredTags, FString());
+
+	// THE INCREASES FOR AN ATTACK THAT STRUCK THIS MANY ENEMIES TOGETHER, as a
+	// fraction. -1 is a blow that carries no count.
+	const auto IncreasesFor = [&Player](int32 EnemiesStruckTogether)
+	{
+		return Player.AbilitySystem->AttackDamageIncreasesForSkill(
+			FGameplayTagContainer(), -1.0f, -1.0f, -1.0f, false, nullptr,
+			EnemiesStruckTogether);
+	};
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	TestEqual(TEXT("eight points are worth 16% more against three enemies "
+				   "struck than against one"),
+			  IncreasesFor(3) - IncreasesFor(1), 0.16f, 0.0001f);
+	TestEqual(TEXT("and 8% more against two"),
+			  IncreasesFor(2) - IncreasesFor(1), 0.08f, 0.0001f);
+	TestEqual(TEXT("and a blow carrying no count gets what one enemy gets"),
+			  IncreasesFor(-1) - IncreasesFor(1), 0.0f, 0.0001f);
+
+	// AND GIVING THE POINTS BACK TAKES IT AWAY, so the difference above belongs
+	// to the points and to nothing else on the character.
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("with the points given back, three enemies are worth no "
+				   "more than one"),
+			  IncreasesFor(3) - IncreasesFor(1), 0.0f, 0.0001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveBoughtWithRuinOnARealCharacterTest,
+	"Cataclysm.Passives.BoughtWithRuinLetsARealRavagersMeleeAttacksBuyDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_b_b2` Bought With Ruin on a real character. Issue #1515.
+ *
+ * "Each enemy your melee attack hits beyond the first costs 2 Fervour and deals
+ * +3% increased damage per point. If you cannot pay, the attack still hits but
+ * gains nothing." Eight points.
+ *
+ * THE ROW HOLDS THE PERCENTAGE ONLY. The 2 Fervour is
+ * `UCataclysmFervour::ExtraEnemyHitCost`, because no node changes it, and what
+ * the purchase does is pinned by the Skills tests that give the stat directly.
+ * This reads what the real row gives, where the purchase asks for it: through
+ * `StatForSkill` with the attacking skill's own tags.
+ */
+bool FCataclysmPassiveBoughtWithRuinOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmEnemiesStruckRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_basic_b_b2"));
+	const FName Stat(UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat);
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Bought With Ruin grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is the damage bought for each extra enemy"),
+			  Effects[0]->Stat,
+			  FString(TEXT("increased_damage_bought_per_extra_enemy_hit")));
+	TestEqual(TEXT("stated as a flat amount, because the stat starts at zero"),
+			  Effects[0]->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of three a point"), Effects[0]->ValuePerPoint, 3.0f);
+	TestEqual(TEXT("for melee attacks only"), Effects[0]->RequiredTags,
+			  FString(TEXT("Type.Melee")));
+	TestEqual(TEXT("and carrying no condition"), Effects[0]->Condition,
+			  FString());
+
+	const FGameplayTagContainer Melee = MeleeTags();
+	if (!TestEqual(TEXT("the melee tag exists in the vocabulary"), Melee.Num(), 1))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Bought = UCataclysmClassResourceAttributeSet::
+		GetIncreasedDamageBoughtPerExtraEnemyHitAttribute();
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 8);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	const float Attribute = Player.AbilitySystem->GetNumericAttribute(Bought);
+
+	TestEqual(TEXT("eight points let a melee attack buy 24% for each enemy "
+				   "beyond the first"),
+			  Player.AbilitySystem->StatForSkill(Stat, Melee, Attribute), 24.0f,
+			  0.001f);
+	TestEqual(TEXT("and an attack that is not melee buys nothing"),
+			  Player.AbilitySystem->StatForSkill(Stat, FGameplayTagContainer(),
+												 Attribute),
+			  0.0f, 0.001f);
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	TestEqual(TEXT("and with the points given back a melee attack buys nothing"),
+			  Player.AbilitySystem->StatForSkill(
+				  Stat, Melee, Player.AbilitySystem->GetNumericAttribute(Bought)),
+			  0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSunderingOnARealCharacterTest,
+	"Cataclysm.Passives.SunderingIgnoresArmourOnlyWhenARealRavagersMeleeAttackStrikesThree",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_b_kA` Sundering on a real character. Issue #1515.
+ *
+ * "Your melee attacks ignore enemy Armor entirely when they hit three or more
+ * enemies at once."
+ *
+ * "ENTIRELY" IS 100 POINTS OF ARMOUR PENETRATION, the share of armour a blow
+ * ignores, which the damage calculation clamps to 100. A defender that forbids
+ * penetration still keeps its armour; the decisions entry of 2026-09-16 on the
+ * count records why.
+ *
+ * READ THE WAY THE DEFENDER'S ARMOUR LOOKUP READS IT: `StatForSkill` with the
+ * skill's tags and the count the blow carried. Every reading is a difference
+ * from the attribute, so any other source of penetration cancels out.
+ */
+bool FCataclysmPassiveSunderingOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmEnemiesStruckRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_b_kA"));
+	const FName Stat(TEXT("armor_penetration"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Sundering grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is armour penetration"), Effects[0]->Stat,
+			  FString(TEXT("armor_penetration")));
+	TestEqual(TEXT("stated as a flat amount"), Effects[0]->ValueKind,
+			  FString(TEXT("flat")));
+	TestEqual(TEXT("of a hundred, which is all of it"),
+			  Effects[0]->ValuePerPoint, 100.0f);
+	TestEqual(TEXT("for melee attacks only"), Effects[0]->RequiredTags,
+			  FString(TEXT("Type.Melee")));
+	TestEqual(TEXT("when the attack struck at least"), Effects[0]->Condition,
+			  FString(TEXT("enemies_hit_at_least")));
+	TestEqual(TEXT("three enemies"), Effects[0]->ConditionValue, 3.0f);
+
+	const FGameplayTagContainer Melee = MeleeTags();
+	if (!TestEqual(TEXT("the melee tag exists in the vocabulary"), Melee.Num(), 1))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	const float Attribute = Player.AbilitySystem->GetNumericAttribute(
+		Combat::GetArmorPenetrationAttribute());
+
+	// WHAT A BLOW WITH THESE TAGS THAT STRUCK THIS MANY ENEMIES TOGETHER GETS ON
+	// TOP OF THE ATTRIBUTE. -1 is a blow that carries no count.
+	const auto AddedFor = [&](const FGameplayTagContainer& Tags,
+							  int32 EnemiesStruckTogether)
+	{
+		return Player.AbilitySystem->StatForSkill(
+				   Stat, Tags, Attribute, -1.0f, FCataclysmBlowContext(), -1.0f,
+				   -1.0f, false, nullptr, EnemiesStruckTogether)
+			- Attribute;
+	};
+
+	TestEqual(TEXT("a melee attack striking three enemies ignores all armour"),
+			  AddedFor(Melee, 3), 100.0f, 0.001f);
+	TestEqual(TEXT("and one striking four does too"), AddedFor(Melee, 4),
+			  100.0f, 0.001f);
+	TestEqual(TEXT("a melee attack striking two ignores none of it"),
+			  AddedFor(Melee, 2), 0.0f, 0.001f);
+	TestEqual(TEXT("an attack that is not melee, striking three, ignores none"),
+			  AddedFor(FGameplayTagContainer(), 3), 0.0f, 0.001f);
+	TestEqual(TEXT("and a blow carrying no count ignores none"),
+			  AddedFor(Melee, -1), 0.0f, 0.001f);
+
 	return true;
 }
 

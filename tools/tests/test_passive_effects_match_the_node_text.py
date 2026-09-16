@@ -500,8 +500,8 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: nothing.
 #:
 #: THREE ARE `flat` AND ONE IS `increased`, for the reason the entry above
-#: gives. `possession_threshold_bonus`, `thrall_reserve_reduction` and
-#: `imp_cap_bonus` all start at zero, so an increase against them would grant
+#: gives. `possession_threshold_bonus`, `minion_reserve_reduction` and
+#: `minion_cap_bonus` all start at zero, so an increase against them would grant
 #: nothing; `area_of_effect` starts at 100, so a flat row would add four
 #: percentage points instead of four per cent.
 #:
@@ -528,7 +528,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: held a row before: `Wrung Out` (`Ravager_basic_d_c1`), the tree's first
 #: Fervour spender, and `Grinding Halt` (`Ravager_keystone_c_kC`), which grants
 #: the starting node's rate over crippled enemies only. Issue #1515.
-AUTHORED_ROWS = 270
+#: AND TO 273 ON 2026-09-16. Three rows on three Ravager nodes, none of which
+#: held a row before, and all three read how many enemies one attack struck
+#: together: `Cleaving Arc` (`Ravager_basic_b_a2`), `Bought With Ruin`
+#: (`Ravager_basic_b_b2`) and `Sundering` (`Ravager_keystone_b_kA`). Issue
+#: #1515. The same workbook turn renamed the Stat of two Ritualist rows,
+#: which moves no count.
+AUTHORED_ROWS = 273
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -855,7 +861,13 @@ AUTHORED_ROWS = 270
 #: MEASURED PER TREE: the Ravager is 60 of its 74 and the Ritualist 60 of its
 #: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
 #: Berserker none.
-AUTHORED_NODES = 198
+#: AND TO 201 ON 2026-09-16. `Cleaving Arc`, `Bought With Ruin` and
+#: `Sundering`, one row each, so this and the row count move together.
+#:
+#: MEASURED PER TREE: the Ravager is 63 of its 74 and the Ritualist 60 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+AUTHORED_NODES = 201
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -972,8 +984,8 @@ def nodes() -> dict[str, dict]:
 def skill_shape_params() -> dict[str, dict[str, float]]:
     """Each skill's `ShapeParams`, parsed, keyed by the skill's own name.
 
-    READ SO THAT `VALUE_IS_A_DIFFERENCE` BELOW CANNOT GO STALE. Three nodes
-    adjust a figure a skill's row states, and their workbook value is the
+    READ SO THAT `VALUE_IS_A_DIFFERENCE` BELOW CANNOT GO STALE. A node there
+    adjusts a figure a skill's row states, and its workbook value is the
     DIFFERENCE between that figure and the one the node's sentence states. If
     the base were written out here as a constant, re-tuning the skill row would
     leave the node's arithmetic silently wrong and nothing would say so.
@@ -1275,6 +1287,17 @@ CONDITION_WORDS = {
     # nothing" and would assert the count must be zero.
     "enemies_in_reach_at_least": ("within",
                                  {1.0: "an enemy", 3.0: "three or more"}),
+
+    # AND THE COUNT OF ENEMIES ONE ATTACK STRUCK TOGETHER. Issue #1515.
+    # Sundering reads "when they hit three or more enemies at once". The count
+    # is written as words, so the value form is a mapping, for the reason the
+    # entry above gives.
+    #
+    # THE FRAGMENT IS "enemies at once" AND NOT "hit". "Hit" is in sentences
+    # about every kind of blow; "at once" is what says the enemies were struck
+    # together by one attack rather than counted near the character, which is
+    # the difference between this predicate and the one above.
+    "enemies_hit_at_least": ("enemies at once", {3.0: "three or more"}),
 
     # THE THREE PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER. Issue
     # #1515. Each names its ailment, so the value form is None: there is no
@@ -1835,8 +1858,8 @@ VALUE_FORMS = {
     # size of the class's resource pool, and until 2026-09-11 every row on it
     # was an `increased` row, which is read as a percentage whatever the stat.
     # Room for One More is the first `flat` one: "+30 maximum Fervour, which is
-    # one further thrall at the 30 a thrall reserves". A flat maximum on a
-    # resource with another name would need its own form, and should get one.
+    # 30 more for your minions to reserve". A flat maximum on a resource with
+    # another name would need its own form, and should get one.
     "class_resource": "{value:g} maximum Fervour",
 
     # THE THREE RATES ON THE MASOCHIST'S FIRST SPINE NODE, which are the rows
@@ -1908,6 +1931,20 @@ VALUE_FORMS = {
     # no enemy within 4 metres". The keystone that widens it states its value
     # in words instead and is exempted in `VALUE_IN_WORDS` below.
     "fervour_decay_grace_metres": "{value:g} metres",
+
+    # THE RITUALIST'S TWO KEYSTONES THAT ADJUST A FIGURE A SKILL ROW STATES.
+    # Issue #1718. Until the owner reworded both on 2026-09-16, each sentence
+    # stated the RESULT -- "reserves 25 Fervour rather than 30", "5 imps active
+    # rather than 3" -- and `VALUE_IS_A_DIFFERENCE` below checked the row
+    # against the skill's own figure. Both now state the CHANGE, because each
+    # now reaches every minion rather than one skill's, so the row's own value
+    # is in the sentence and these are ordinary forms.
+    #
+    # EACH CARRIES THE WORDS AROUND ITS NUMBER, because "5" and "2" alone
+    # are digits a sentence could hold for another reason: Crowned's also
+    # says "never less than 1".
+    "minion_reserve_reduction": "{value:g} less Fervour",
+    "minion_cap_bonus": "allows {value:g} more",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -2154,6 +2191,14 @@ VALUE_IN_WORDS = {
 
     ("Ravager_keystone_d_kA", "movement_speed_reduction_suppressed"):
         ("cannot be reduced by any effect", 1.0),
+
+    # AND SUNDERING, WHOSE "ENTIRELY" IS A HUNDRED. Issue #1515. It reads
+    # "Your melee attacks ignore enemy Armor entirely when they hit three or
+    # more enemies at once". Armour penetration is the share of armour a blow
+    # ignores, which the damage calculation clamps at 100, and the sentence
+    # has no digit for it.
+    ("Ravager_keystone_b_kA", "armor_penetration"):
+        ("ignore enemy armor entirely", 100.0),
 }
 
 
@@ -2161,15 +2206,18 @@ VALUE_IN_WORDS = {
 #: figure a skill's own row already states.
 #:
 #: A THIRD SHAPE, AND NOT AN EXEMPTION. The two above are about a value the
-#: sentence gives in words. These three give it in digits -- but the digit in the
+#: sentence gives in words. This one gives it in digits -- but the digit in the
 #: sentence is the RESULT, not the change. Dominion says "below 65% health" while
 #: Subjugate's row says `HealthThresholdPercent=50`, so the workbook holds 15.
-#: Crowned says "reserves 25 Fervour" against `FervourReserve=30`, so it holds 5.
-#: The Swarm says "5 imps" against `MaxActive=3`, so it holds 2.
+#:
+#: THERE WERE THREE UNTIL 2026-09-16. Crowned said "reserves 25 Fervour" against
+#: `FervourReserve=30` and The Swarm "5 imps" against `MaxActive=3`. The owner
+#: reworded both to state the change itself -- "5 less Fervour", "allows 2
+#: more" -- so `VALUE_FORMS` above checks them like any other row.
 #:
 #: THE STAT IS A BONUS ON A DESIGNED FIGURE PRECISELY SO THE ROW STAYS THE ONLY
-#: PLACE THAT FIGURE IS WRITTEN. A stat holding 65, 25 or 5 outright would state
-#: the skill's number a second time and win, so re-tuning the skill row would
+#: PLACE THAT FIGURE IS WRITTEN. A stat holding 65 outright would state the
+#: skill's number a second time and win, so re-tuning the skill row would
 #: silently do nothing. `docs/DECISIONS.md` carries the argument.
 #:
 #: SO THIS CHECKS MORE THAN THE ORDINARY BRANCH DOES, RATHER THAN LESS. It reads
@@ -2182,10 +2230,6 @@ VALUE_IN_WORDS = {
 VALUE_IS_A_DIFFERENCE = {
     ("Ritualist_keystone_a_kA", "possession_threshold_bonus"):
         ("Subjugate", "HealthThresholdPercent", 65.0),
-    ("Ritualist_keystone_a_kC", "thrall_reserve_reduction"):
-        ("Subjugate", "FervourReserve", 25.0),
-    ("Ritualist_keystone_b_kA", "imp_cap_bonus"):
-        ("Summon Imp", "MaxActive", 5.0),
 }
 
 
@@ -2223,7 +2267,7 @@ def test_every_value_appears_in_the_nodes_own_description(
 
         # A VALUE THAT IS A DIFFERENCE IS CHECKED AGAINST BOTH FIGURES, the
         # node's sentence and the skill row it adjusts. See
-        # `VALUE_IS_A_DIFFERENCE` for why three rows are written that way.
+        # `VALUE_IS_A_DIFFERENCE` for why a row is written that way.
         gap = VALUE_IS_A_DIFFERENCE.get((row["Node"], row["Stat"]))
         if gap is not None:
             skill_name, parameter, states = gap

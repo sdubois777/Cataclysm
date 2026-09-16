@@ -569,35 +569,34 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, PossessionThresholdBonus)
 
 	/**
-	 * Fervour points added to what ONE THRALL reserves. Issue #1718.
+	 * Fervour points TAKEN OFF what one minion reserves. Issue #1718.
 	 *
-	 * `Ritualist_keystone_a_kC` Crowned is the node: "Each thrall reserves 25
-	 * Fervour rather than 30." Its row is flat -5, because zero is the
-	 * ordinary value and an increase against zero grants nothing.
+	 * `Ritualist_keystone_a_kC` Crowned is the node: "Each minion reserves 5
+	 * less Fervour, never less than 1." Its row is flat 5, positive, and the
+	 * read site subtracts it: every attribute in this set is floored at zero,
+	 * so a negative bonus would be stored as zero.
 	 *
-	 * IT REACHES ONLY A SKILL THAT TAKES A THRALL. Five skills state a
-	 * reserve; the read site identifies a thrall from the row's own
-	 * `Possess` parameter so an imp and three deployables are left alone.
+	 * IT REACHES EVERY SKILL THAT STATES A RESERVE, and only a thrall's reserve
+	 * is read today. See `FervourReserveFor` in `CataclysmSkillTemplates.cpp`.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_ThrallReserveReduction)
-	FGameplayAttributeData ThrallReserveReduction;
-	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ThrallReserveReduction)
+	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_MinionReserveReduction)
+	FGameplayAttributeData MinionReserveReduction;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MinionReserveReduction)
 
 	/**
-	 * How many more minions of its own kind a summon may keep alive. Issue
+	 * How many more minions a skill that states a cap may keep active. Issue
 	 * #1718.
 	 *
-	 * `Ritualist_keystone_b_kA` The Swarm is the node: "You may have 5 imps
-	 * active rather than 3." Its row is flat 2.
+	 * `Ritualist_keystone_b_kA` The Swarm is the node: "Each skill that limits
+	 * how many of its minions may be active allows 2 more." Its row is flat 2.
 	 *
-	 * IT REACHES ONLY A SKILL THAT SUMMONS IMPS, and only one that already
-	 * states a cap. Sixteen of the seventeen summoning and deploying skills
-	 * state none, and a bonus applied to the figure rather than to the subject
-	 * would give every one of them a limit the design never gave them.
+	 * IT REACHES ONLY A SKILL WHOSE ROW STATES A CAP, whatever that skill
+	 * summons or deploys. A skill stating none has no limit at all, and a bonus
+	 * added to a cap of zero would give it one the design never gave it.
 	 */
-	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_ImpCapBonus)
-	FGameplayAttributeData ImpCapBonus;
-	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ImpCapBonus)
+	UPROPERTY(BlueprintReadOnly, Category = "Minions", ReplicatedUsing = OnRep_MinionCapBonus)
+	FGameplayAttributeData MinionCapBonus;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, MinionCapBonus)
 
 	// -----------------------------------------------------------------------
 	// The three energy-shield keystones. Issue #1515.
@@ -1191,8 +1190,8 @@ protected:
 	UFUNCTION() void OnRep_CrippleMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_WeakenMagnitude(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_PossessionThresholdBonus(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_ThrallReserveReduction(const FGameplayAttributeData& OldValue);
-	UFUNCTION() void OnRep_ImpCapBonus(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_MinionReserveReduction(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_MinionCapBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldAbsorbsDamageOverTime(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargesWhileDamaged(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaRegenRestoresShield(const FGameplayAttributeData& OldValue);

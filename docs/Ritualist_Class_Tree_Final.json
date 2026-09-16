@@ -265,7 +265,7 @@
       "data": {
         "kind": "keystone",
         "name": "Room for One More",
-        "description": "+30 maximum Fervour, which is one further thrall at the 30 a thrall reserves.",
+        "description": "+30 maximum Fervour, which is 30 more for your minions to reserve.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -507,7 +507,7 @@
       "data": {
         "kind": "basic",
         "name": "Press the Advantage",
-        "description": "+2% increased Spell Damage per point for each thrall you have.",
+        "description": "+2% increased Spell Damage per point for each minion you have.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -595,7 +595,7 @@
       "data": {
         "kind": "keystone",
         "name": "Press-Ganged",
-        "description": "A thrall that dies is replaced by an imp at no cost.",
+        "description": "When one of your minions dies, a new minion is summoned where it died at no cost, no more than once every 10 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -617,7 +617,7 @@
       "data": {
         "kind": "keystone",
         "name": "Crowned",
-        "description": "Each thrall reserves 25 Fervour rather than 30.",
+        "description": "Each minion reserves 5 less Fervour, never less than 1.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -749,7 +749,7 @@
       "data": {
         "kind": "basic",
         "name": "Volatile",
-        "description": "+3% increased damage of the explosion an imp leaves per point.",
+        "description": "+3% increased damage of the explosion a minion leaves per point.",
         "currentPoints": 0,
         "color": "#94a3b8",
         "maxPoints": 8
@@ -881,7 +881,7 @@
       "data": {
         "kind": "keystone",
         "name": "The Swarm",
-        "description": "You may have 5 imps active rather than 3.",
+        "description": "Each skill that limits how many of its minions may be active allows 2 more.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -903,7 +903,7 @@
       "data": {
         "kind": "keystone",
         "name": "Every One Bursts",
-        "description": "Every imp explodes when it dies, not only one destroyed by a fourth.",
+        "description": "Every minion explodes when it dies, as one destroyed to make room for another does, with the radius and damage of the skill that brought it.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -925,7 +925,7 @@
       "data": {
         "kind": "keystone",
         "name": "Rekindled",
-        "description": "When an imp explodes a new one is summoned where it stood, no more than once every 5 seconds.",
+        "description": "When a minion explodes a new minion is summoned where it stood, no more than once every 5 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1233,7 +1233,7 @@
       "data": {
         "kind": "keystone",
         "name": "Sacrificial Ward",
-        "description": "Damage that would break your Energy Shield instead destroys one of your imps, no more than once every 3 seconds.",
+        "description": "Damage that would break your Energy Shield instead destroys the minion with the least health remaining, no more than once every 3 seconds.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1
@@ -1380,7 +1380,7 @@
         "options": [
           {
             "name": "A Second Self",
-            "description": "One thrall becomes your equal: it has your Maximum Health, your Spell Damage and your Area of Effect, and reserves 60 Fervour rather than 30."
+            "description": "The minion you have held longest becomes your equal: it has your Maximum Health, your Spell Damage and your Area of Effect, and reserves twice the Fervour it would. When it is gone, the next longest-held takes its place."
           },
           {
             "name": "Hollow Crown",
