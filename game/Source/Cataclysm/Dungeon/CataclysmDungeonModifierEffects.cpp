@@ -44,6 +44,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::IllusoryEnemiesKey =
 	TEXT("Chaos_Illusory_Enemies");
 const TCHAR* UCataclysmDungeonModifierEffects::HolyRepercussionsKey =
 	TEXT("Celestial_Holy_Repercussions");
+const TCHAR* UCataclysmDungeonModifierEffects::LeechSporesKey =
+	TEXT("Pestilence_Leech_Spores");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -213,7 +215,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(BrandOfTheAggressorKey)
 		|| RowKey == FName(FungalOvergrowthKey)
 		|| RowKey == FName(IllusoryEnemiesKey)
-		|| RowKey == FName(HolyRepercussionsKey))
+		|| RowKey == FName(HolyRepercussionsKey)
+		|| RowKey == FName(LeechSporesKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -366,6 +369,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(FungalOvergrowthKey),
 		FName(IllusoryEnemiesKey),
 		FName(HolyRepercussionsKey),
+		FName(LeechSporesKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1117,6 +1121,25 @@ int32 UCataclysmDungeonModifierEffects::HolyRepercussionsStacksAfterBurst(
 	// else, and answering one rather than the cap would hide it behind a
 	// plausible number.
 	return FMath::Clamp(Stacks + 1, 0, HolyRepercussionsJudgmentMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::LeechSporesDrain(float MaximumHealth)
+{
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return MaximumHealth * LeechSporesDrainPercentOfMaximumHealth / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::LeechSporesHealEach(float Drained,
+															int32 Creatures)
+{
+	if (Drained <= 0.0f || Creatures <= 0)
+	{
+		return 0.0f;
+	}
+	return Drained / static_cast<float>(Creatures);
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

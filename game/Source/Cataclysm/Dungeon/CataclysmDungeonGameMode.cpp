@@ -2,6 +2,8 @@
 
 #include "Dungeon/CataclysmDungeonGameMode.h"
 
+#include "AbilitySystem/CataclysmRegeneration.h"
+
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -2193,11 +2195,16 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// reduction back after a floor change took it off. Issues #1820 and #41.
 	const bool bHolyRepercussions = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::HolyRepercussionsKey));
+	// AND LEECH SPORES, WHICH PLACES NOTHING HERE. Its clouds are placed by a
+	// death; this beat only asks whether the player is touching one. Issues #1820
+	// and #41.
+	const bool bLeechSpores = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::LeechSporesKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
-		&& !bHolyRepercussions)
+		&& !bHolyRepercussions && !bLeechSpores)
 	{
 		return;
 	}
@@ -2276,6 +2283,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bHolyRepercussions)
 	{
 		StepHolyRepercussions(Player, AbilitySystem);
+	}
+
+	// AND LEECH SPORES. Its position is free: it moves no floor-effects field and
+	// asks for no refresh, so nothing above can undo it and it undoes nothing.
+	if (bLeechSpores)
+	{
+		StepLeechSpores(Player, AbilitySystem);
 	}
 
 	// AND MORTAL DECAY, WHICH ASKS FOR NO STAT REFRESH AT ALL. Issues #1786 and
@@ -3045,6 +3059,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForNihilsEmbrace(Notice);
 	NoteDeathForWitheredGround(Notice);
 	NoteDeathForFungalOvergrowth(Notice);
+	NoteDeathForLeechSpores(Notice);
 	NoteDeathForMortalDecay(Notice);
 	NoteDeathForWastingSickness(Notice);
 	NoteDeathForSporeClouds(Notice);
@@ -3473,6 +3488,49 @@ void ACataclysmDungeonGameMode::NoteDeathForWitheredGround(
 	}
 
 	WitheredGroundPatches.Add(Patch);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForLeechSpores(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::LeechSporesKey)))
+	{
+		return;
+	}
+
+	// THE VICTIM MUST BE A CREATURE. The row says "When you kill an enemy", and
+	// this notice is sent for every death on the floor including the player's.
+	if (!Cast<ACataclysmEnemyCharacter>(Notice.Victim))
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// OWNED BY THE FLOOR, AND THE DESIGN LOG SETTLED WHY. A hazard left "from
+	// their corpse" cannot be owned by a creature that is already dead, because
+	// `ACataclysmGroundZone::Sweep` returns early when its owner is gone.
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	ACataclysmGroundZone* Cloud = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Notice.Location, Notice.Location,
+		Effects::LeechSporesCloudRadiusCm, 0.0f);
+	if (!Cloud)
+	{
+		return;
+	}
+
+	LeechSporesClouds.Add(Cloud);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForHolyRepercussions(
@@ -3924,6 +3982,99 @@ void ACataclysmDungeonGameMode::StepWitheredGround(
 	}
 }
 
+void ACataclysmDungeonGameMode::StepLeechSpores(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	if (!Player || !AbilitySystem || UCataclysmSkillEffects::IsDead(Player))
+	{
+		return;
+	}
+
+	LeechSporesClouds.RemoveAll(
+		[](const TWeakObjectPtr<ACataclysmGroundZone>& Cloud)
+		{
+			return !Cloud.IsValid();
+		});
+
+	// WHICH CLOUDS THE PLAYER IS TOUCHING, COLLECTED BEFORE ANY IS SPENT, so the
+	// list is not changed underneath the loop that reads it.
+	const FVector Feet = Player->GetActorLocation();
+	TArray<ACataclysmGroundZone*> Touched;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Cloud : LeechSporesClouds)
+	{
+		if (Cloud.IsValid() && Cloud->Covers(Feet))
+		{
+			Touched.Add(Cloud.Get());
+		}
+	}
+	if (Touched.IsEmpty())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	for (ACataclysmGroundZone* Cloud : Touched)
+	{
+		// WHAT ACTUALLY LEAVES THE PLAYER, MEASURED RATHER THAN ASSUMED.
+		// `ReduceHealthDirectly` stops at zero, so a player with less health than
+		// the share loses less -- and the heal must be paid from what left, or
+		// health would be created.
+		const float Before = AbilitySystem->GetNumericAttribute(
+			Vital::GetHealthAttribute());
+		UCataclysmSkillEffects::ReduceHealthDirectly(
+			Player, Player,
+			Effects::LeechSporesDrain(AbilitySystem->GetNumericAttribute(
+				Vital::GetMaxHealthAttribute())));
+		const float Drained = FMath::Max(
+			0.0f, Before - AbilitySystem->GetNumericAttribute(
+							   Vital::GetHealthAttribute()));
+
+		// EVERY CREATURE NEAR THE PLAYER, and only creatures. The search is asked
+		// as the player, whose enemies are the creatures; anything else it finds
+		// is not an enemy the row means and would take a share of the heal.
+		TArray<UAbilitySystemComponent*> Healed;
+		if (World)
+		{
+			for (AActor* Near : UCataclysmTargeting::FindEnemiesInSphere(
+					 World, Player, Feet, Effects::LeechSporesHealRadiusCm))
+			{
+				if (!Cast<ACataclysmEnemyCharacter>(Near))
+				{
+					continue;
+				}
+				if (UAbilitySystemComponent* Theirs =
+						UCataclysmTargeting::AbilitySystemOf(Near))
+				{
+					Healed.Add(Theirs);
+				}
+			}
+		}
+
+		// AN EQUAL SHARE EACH. A creature already at its maximum takes its share
+		// and wastes it, because `TopUp` caps there -- so the total healed is never
+		// more than the total drained.
+		const float Each = Effects::LeechSporesHealEach(Drained, Healed.Num());
+		for (UAbilitySystemComponent* Theirs : Healed)
+		{
+			UCataclysmRegeneration::TopUp(*Theirs, Vital::GetHealthAttribute(),
+										  Vital::GetMaxHealthAttribute(), Each);
+		}
+
+		// SPENT. `ACataclysmGroundZone::EndPlay` ends the cloud's drawing for any
+		// ending but a natural expiry, and a Destroy is one of those.
+		LeechSporesClouds.RemoveAll(
+			[Cloud](const TWeakObjectPtr<ACataclysmGroundZone>& Held)
+			{
+				return Held.Get() == Cloud;
+			});
+		Cloud->Destroy();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepHolyRepercussions(
 	ACataclysmPlayerCharacter* Player,
 	UCataclysmAbilitySystemComponent* AbilitySystem)
@@ -4083,6 +4234,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// from creatures the player has left behind on the last floor.
 		JudgmentStacks = 0;
 		JudgmentStacksApplied = 0;
+
+		// AND LEECH SPORES FORGETS ITS CLOUDS, which
+		// `UCataclysmFloorContents::ClearTheFloor` has already destroyed. Nothing
+		// else to clear: a cloud's drain is done the moment it is touched.
+		LeechSporesClouds.Empty();
 
 		FungalOvergrowthBoostMushrooms.Empty();
 		FungalOvergrowthSlowMushrooms.Empty();

@@ -1103,6 +1103,28 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Leech Spores: spend every cloud the player is touching. Issues #1820 and #41.
+	 *
+	 * ONE DRAIN PER CLOUD, AND THE CLOUD IS GONE AFTER IT. A cloud lasts the floor
+	 * untouched; contact takes a share of the player's maximum health, heals the
+	 * creatures near the player with it, and removes the cloud. That reads the
+	 * row's "explodes" and "contact" together, which is a judgement recorded in
+	 * `docs/DECISIONS.md`.
+	 *
+	 * TWO CLOUDS UNDER THE PLAYER ARE TWO CONTACTS. Clouds are left wherever
+	 * creatures die, so several can overlap, and "once per cloud" means each
+	 * drains once rather than the pile draining once.
+	 *
+	 * IT READS AND ACTS ON THE SAME BEAT, which is the difference from
+	 * `StepWitheredGround`. That rule turns a reduction on and off as the player
+	 * moves; this one does a thing once and ends, so there is nothing to turn
+	 * back off when they step away.
+	 */
+	void StepLeechSpores(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -1437,6 +1459,22 @@ private:
 	 * prediction through every assertion before any build.
 	 */
 	void NoteHitForHolyRepercussions(const struct FCataclysmHitNotice& Notice);
+
+	/**
+	 * Leech Spores: leave a cloud where a creature died. Issues #1820 and #41.
+	 *
+	 * THE SAME SHAPE AS `NoteDeathForWitheredGround`: a creature dies, a piece of
+	 * ground lasting the floor is left where it fell, and the beat asks whether
+	 * the player is standing on it. It differs in what contact does, which is
+	 * `StepLeechSpores`'s business, and in a cloud being spent by it.
+	 *
+	 * EVERY CREATURE DEATH LEAVES ONE. The row says "When you kill an enemy, a
+	 * cloud ... explodes", which states no chance.
+	 *
+	 * NO DAMAGE PER TICK. The cloud does nothing to anybody by being there; the
+	 * drain happens on contact, decided by the beat.
+	 */
+	void NoteDeathForLeechSpores(const struct FCataclysmDeathNotice& Notice);
 
 	/**
 	 * Spore Clouds' poison, on a creature dying near the player. Issues #1820
@@ -1962,6 +2000,16 @@ private:
 	 */
 	int32 JudgmentStacks = 0;
 	int32 JudgmentStacksApplied = 0;
+
+	/**
+	 * Leech Spores' clouds on this floor that nobody has touched yet. Issues #1820
+	 * and #41.
+	 *
+	 * A CLOUD LEAVES THIS LIST TWO WAYS: the player touches it and it is spent,
+	 * or the floor ends and `UCataclysmFloorContents::ClearTheFloor` destroys it.
+	 * A weak pointer going invalid is the second; the first is removed by name.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> LeechSporesClouds;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;
