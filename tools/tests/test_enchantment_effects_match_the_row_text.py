@@ -316,8 +316,17 @@ JUDGED_NUMBERS = {
 #: AND 176 OVER 148 SINCE THE SEVEN ROWS ON A KILL, A CRITICAL STRIKE,
 #: A DEATH NEARBY, A SKILL USE OR A STRIKE'S HIT, from 169 over
 #: 141, issue #1815. ONE ROW EACH, because a row moves one pool.
-AUTHORED_ROWS = 176
-AUTHORED_ENCHANTMENTS = 148
+#: AND 201 OVER 160 SINCE THE ELEVEN SENTENCES THAT REMOVE A STAT AND
+#: STARVATION'S 2-PIECE BONUS, from 176 over 148, issue
+#: #1791. "You have no resistances." is eight rows, one per resistance.
+AUTHORED_ROWS = 201
+AUTHORED_ENCHANTMENTS = 160
+
+#: How many rows remove their stat, measured with the 201 above. Issue #1791.
+#: Without it `test_a_removed_row_is_worded_as_a_removal` and
+#: `test_every_removed_row_states_one` pass on a table holding no removal at
+#: all, which is what a table built before the rows existed looks like.
+REMOVED_ROWS = 22
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
@@ -341,7 +350,12 @@ AUTHORED_ENCHANTMENTS = 148
 #: EIGHT OF FOURTEEN SINCE 2026-09-14. Tyrant's Chains (6) needed one ruling and
 #: no new mechanism: its first bonus and its drawback are both minion rows in
 #: the `increased` bucket.
-SETS_THAT_WORK = [5, 6, 8, 9, 11, 12, 16, 17]
+#:
+#: NINE OF FOURTEEN SINCE 2026-09-16. Starvation (13) needed the removal of
+#: issue #1791: its drawback, "You have no health/mana/es regen", is three
+#: removed rows, and its 2-piece bonus three flat leech rows. Its 6-piece and
+#: 10-piece rows still wait.
+SETS_THAT_WORK = [5, 6, 8, 9, 11, 12, 13, 16, 17]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -477,10 +491,10 @@ def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
 
 
 def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
-    """Eight of the fourteen sets have a row written: Archon's Aegis (5),
+    """Nine of the fourteen sets have a row written: Archon's Aegis (5),
     Tyrant's Chains (6), Mana Weaver (8), Brute's Heart (9), Demon King's
-    Regalia (11), Plague Doctor (12), Divine Retribution (16) and Warlord's
-    Will (17). The other six wait
+    Regalia (11), Plague Doctor (12), Starvation (13), Divine Retribution
+    (16) and Warlord's Will (17). The other five wait
     for what their rows need, which `docs/DECISIONS.md` lists set by set. This
     moves only when somebody means it to.
 
@@ -740,6 +754,16 @@ def test_the_coverage_is_what_it_is_measured_to_be(effects):
         f"{len(effects)} effect rows, pinned at {AUTHORED_ROWS}. Change the "
         f"pin and the entry in docs/DECISIONS.md that states it together.")
     assert len({r["Enchantment"] for r in effects}) == AUTHORED_ENCHANTMENTS
+
+
+def test_the_removed_rows_are_the_ones_counted_here(effects):
+    """The two removal checks above loop over the rows that remove a stat, so
+    a table with none passes both. This is what makes them read something.
+    Issue #1791."""
+    removed = sum(1 for r in effects if r["ValueKind"] == "removed")
+    assert removed == REMOVED_ROWS, (
+        f"{removed} rows remove their stat, pinned at {REMOVED_ROWS}. Change "
+        f"the pin with the rows.")
 
 def test_every_flag_stat_row_states_one(effects):
     """A stat whose value is a yes states 1, so the exemption above cannot come
