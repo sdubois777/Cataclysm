@@ -21,7 +21,8 @@ from dataclasses import replace
 
 from cataclysm_sim import combat, policies, scoring
 from cataclysm_sim.config import (
-    TREE_ARCHITECT_AS_DESIGNED, TREE_EXPLORER_AS_DESIGNED, TREE_EXPLORER_DEEP,
+    TREE_ARCHITECT_AS_DESIGNED, TREE_EXPLORER_AS_DESIGNED,
+    TREE_EXPLORER_DAY_NODES_ONLY, TREE_EXPLORER_DEEP,
     TREE_EXPLORER_VIA_FLOORS, TREE_NONE, TREE_PROPOSED_FIX,
     CityTier, DungeonType, EmpireTree, SurgeMode, TuningConfig,
 )
@@ -433,8 +434,22 @@ def exp_days_vs_floors(base: TuningConfig):
     print("  and deletes the cost. Floor reduction pays for itself.")
 
 
-PRESETS = (TREE_NONE, TREE_EXPLORER_AS_DESIGNED, TREE_EXPLORER_VIA_FLOORS,
-           TREE_EXPLORER_DEEP, TREE_ARCHITECT_AS_DESIGNED, TREE_PROPOSED_FIX)
+#: WHAT SECTION 7 MEASURES, head to head, once per tier and per surge size.
+#:
+#: NOT THE SAME LIST AS `config.TREE_PRESETS`, AND ON PURPOSE. That list is
+#: every shipped preset, so a test can walk them all; this one chooses what
+#: the report pays campaigns to compare. Issue #1440 found the two read as
+#: one -- a session was told the report was missing a row when it was not --
+#: so each list now says what it is for.
+#:
+#: THE CHEAP EXPLORER BUILD IS IN, ruled 2026-09-14 on issue #1440: the
+#: branch's four unconditional speed nodes and none of its depth nodes, the
+#: build with the most idle time in the project (#1420), and the build every
+#: "Explorer maxed" figure quoted before #1399 describes. Its row costs one
+#: more preset's worth of section 7's campaigns.
+PRESETS = (TREE_NONE, TREE_EXPLORER_AS_DESIGNED, TREE_EXPLORER_DAY_NODES_ONLY,
+           TREE_EXPLORER_VIA_FLOORS, TREE_EXPLORER_DEEP,
+           TREE_ARCHITECT_AS_DESIGNED, TREE_PROPOSED_FIX)
 
 
 def win_rate_noise(trials: int) -> float:
@@ -445,7 +460,7 @@ def win_rate_noise(trials: int) -> float:
     50%. The difference of two independent rates has sqrt(2) times that. At 150
     campaigns per cell it comes to 5.8 percentage points.
 
-    WITHOUT THIS THE ORDERING IS NOISE. Six presets sorted by win rate always
+    WITHOUT THIS THE ORDERING IS NOISE. Presets sorted by win rate always
     produce an ordering, whether or not the gaps mean anything, and at tier 8 the
     win rate collapses towards zero and every preset ties. Reporting that as
     "the ordering differs between tiers" would be reporting the sort's tie-break
