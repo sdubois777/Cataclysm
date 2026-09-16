@@ -4076,9 +4076,11 @@ def passive_effects(book) -> list[dict]:
 #: The pools an effect row may move, and nothing else is a pool.
 #:
 #: EACH NAMES TWO ATTRIBUTES ON THE GAME SIDE -- what is held and the most
-#: that can be held -- and `UCataclysmItemModifiers::PoolActionFor` is what
-#: turns a name here into that pair. A name this set does not hold would be a
-#: row the game reads, finds no pair for, and silently grants nothing.
+#: that can be held -- and `UCataclysmAbilitySystemComponent::PoolAttributesFor`
+#: is what turns a name here into that pair. A name that function does not know
+#: would be a row the game reads, finds no pair for, and does nothing with but
+#: log a warning. `tools/tests/test_pool_action_names_match_the_engine.py`
+#: holds the two lists equal.
 POOL_ACTIONS = (
     "health",
     "mana",

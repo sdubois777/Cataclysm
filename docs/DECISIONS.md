@@ -161,9 +161,12 @@ genre fact.
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: three
 columns and eight rows), `game/Data/EnchantmentEffects.csv` and the DataTable asset
-built from it, `tools/tests/test_enchantment_effects_match_the_row_text.py` (the
-pins and `JUDGED_NUMBERS`), `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`
-(the row-count pin) and `docs/README.md`. Issue
+built from it, `tools/generate_datatables.py` (a check that refused every such row),
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (the
+pins and `JUDGED_NUMBERS`), `tools/tests/test_pool_action_names_match_the_engine.py`
+(new), `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp`
+(the row-count pin), `game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp`
+(one test) and `docs/README.md`. Issue
 [#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
 
 ### The sheet had never had the columns such a row needs
@@ -217,6 +220,35 @@ the way the generator's range check asks: the first number as `Value Low` and th
 second as `Value High`, both negative. The second is the first row negative on a
 sentence using "drain", the word added to that check on 2026-09-14 by the entry
 that records it.
+
+### The generator refused all eight until this change
+
+`validate_enchantment_effects` asked every row whether something supplies its stat,
+and a row that moves a pool has no stat by design, so every one was refused. No such
+row had been written before, and the generator's tests for them called the sheet
+reader, which accepts them, rather than this check. It now skips the stat question
+for a row naming a pool; `_check_pool_action` already checks the pool.
+
+### One Unreal test reads a real row, out of the built asset
+
+Every earlier test of a pool action writes its own action in code, so all of them
+pass with the eight rows missing from `DT_EnchantmentEffects` or read at a figure
+their sentences do not state.
+`Cataclysm.Enchantments.AnAuthoredBlockRowFromTheBuiltTableRestoresTheHealthItStates`
+wears "Blocking an attack restores 3%-6% of your maximum HP", lets the equipment
+refresh read it out of the asset, blocks through `NoteBlocked`, and asserts health
+rose by 6% of the maximum: 30, on a character at 100 of 500.
+
+### The generator's pool and event names are held to the game's
+
+`tools/tests/test_pool_action_names_match_the_engine.py` reads the pools
+`UCataclysmAbilitySystemComponent::PoolAttributesFor` compares and the name every
+`ActOnEvent` call outside the tests passes, and holds them equal to `POOL_ACTIONS`
+and `action_events()`. **The two sides matched on 2026-09-16, when the pin was
+written: four pools and fifteen events.** A pool only the generator knows is a row
+that logs a warning and moves nothing; an event only the generator knows is a row
+that never fires and logs nothing at all. Continuous integration builds no C++, so
+it is a text check, like `test_stat_condition_names_match_the_engine.py`.
 
 ---
 
