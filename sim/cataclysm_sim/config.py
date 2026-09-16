@@ -1268,6 +1268,9 @@ TREE_PROPOSED_FIX = EmpireTree(
     surge_bonus_days=10.0,
 )
 
+#: EVERY SHIPPED PRESET, so a test can walk them all. NOT WHAT THE BALANCE
+#: REPORT COMPARES: that is `experiments.PRESETS`, which chooses what section 7
+#: pays campaigns for. Issue #1440 found the two lists read as one.
 TREE_PRESETS = [
     TREE_NONE,
     TREE_EXPLORER_AS_DESIGNED,
