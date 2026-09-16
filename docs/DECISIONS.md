@@ -250,6 +250,12 @@ that logs a warning and moves nothing; an event only the generator knows is a ro
 that never fires and logs nothing at all. Continuous integration builds no C++, so
 it is a text check, like `test_stat_condition_names_match_the_engine.py`.
 
+The comment above `POOL_ACTIONS` named `UCataclysmItemModifiers::PoolActionFor`,
+which does not exist; it now names `PoolAttributesFor`. A comment in
+`game/Source/Cataclysm/Data/CataclysmDataRows.h` still names it and is left for
+[#1923](https://github.com/sdubois777/Cataclysm/issues/1923), because editing that
+header recompiles the 58 files that include it.
+
 ---
 
 ## 2026-09-16 — Leech Spores drains the player once per cloud to heal the creatures near them, an earlier grouping of this row is superseded by its own words, and "within ten metres" is measured to a creature's body
