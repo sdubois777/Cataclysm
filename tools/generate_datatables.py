@@ -4914,7 +4914,8 @@ def _stats_with_a_base(tables: dict[str, list[dict]]) -> set[str]:
 
 def validate_enchantment_effects(tables: dict[str, list[dict]],
                                  known: set[str]) -> list[str]:
-    """Every enchantment effect names a stat something supplies, and real tags.
+    """Every enchantment effect that changes a stat names one something
+    supplies, and every effect names real tags.
 
     BOTH FAIL SILENTLY WITHOUT THIS, as they do for a passive effect: an increase
     on a stat nothing supplies multiplies a base of zero, and a required tag
@@ -4944,7 +4945,13 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
 
     problems = []
     for row in effects:
-        if row["Stat"] not in stats:
+        # A ROW THAT MOVES A POOL HAS NO STAT, BY DESIGN. `enchantment_effects`
+        # refuses a row naming both a stat and a pool, and `_check_pool_action`
+        # checks its pool against the ones the game has. Asking it for a stat
+        # with a base refused every such row, which nothing showed until the
+        # eight rows of issue #1815 were run through the whole generator on
+        # 2026-09-16. Its required tags are still checked below.
+        if not row.get("Action") and row["Stat"] not in stats:
             problems.append(
                 f"EnchantmentEffects/{row['Name']}: {row['Stat']!r} is not a "
                 f"stat any class line, attribute, item base or engine base "
