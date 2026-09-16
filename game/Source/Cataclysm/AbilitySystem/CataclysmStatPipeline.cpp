@@ -1324,17 +1324,18 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::EvaluateRate(
 	// infinite interval.
 	Out.Final = Divisor > UE_SMALL_NUMBER ? Out.Base / Divisor : Out.Base;
 
-	// A RATE HAS NO REMOVAL, SO ONE IS NOT APPLIED. Issue #1791. Removing a
-	// rate would divide by nothing, and a cooldown of no length is not what any
-	// sentence asks for. `tools/generate_datatables.py` refuses such a row, so
-	// only a hand-edited table reaches this, and it is logged rather than
-	// passed over in silence.
+	// A REMOVAL LEAVES NO REDUCTION AT ALL, SO THE INTERVAL IS ITS BASE. Issue
+	// #1791. What a rate divides by is the reduction, and removing it says "you
+	// have no cooldown reduction", whatever increases and More multipliers
+	// reached it. It is not a cooldown of no length.
+	//
+	// THE SAME ANSWER THE GAME GIVES BY THE OTHER ROUTE. `cooldown_reduction`
+	// reaches a skill as an attribute that `UCataclysmPlayerClassStats::ApplyTo`
+	// writes through `Evaluate`, which takes a removed stat to nothing, and a
+	// reduction of nothing leaves every cooldown at its base length.
 	if (Out.RemovedCount > 0)
 	{
-		UE_LOG(LogCataclysm, Warning,
-			   TEXT("Stat pipeline ignored %d removal(s) of a rate, which has no "
-					"removal"),
-			   Out.RemovedCount);
+		Out.Final = Out.Base;
 	}
 
 	return Out;
@@ -1343,6 +1344,14 @@ FCataclysmStatBreakdown UCataclysmStatPipeline::EvaluateRate(
 float UCataclysmStatPipeline::DisplayedRateReduction(
 	const FCataclysmStatBreakdown& Breakdown)
 {
+	// NONE IS SHOWN FOR A REMOVED REDUCTION, because `EvaluateRate` applies
+	// none. Issue #1791. The increases stay in the breakdown and must not be
+	// shown as though they still counted.
+	if (Breakdown.RemovedCount > 0)
+	{
+		return 0.0f;
+	}
+
 	const float Divisor = (1.0f + Breakdown.SumOfIncreases / 100.0f)
 						* Breakdown.MoreMultiplier;
 

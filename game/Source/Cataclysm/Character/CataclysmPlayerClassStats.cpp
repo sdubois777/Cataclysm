@@ -198,10 +198,17 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 	// attack speed, then mana on hit, which is not a minion's and arrived with
 	// issue #1791. Nothing depends on it; it is stated so that a diff adding a
 	// name is obviously an addition rather than a reshuffle.
+	//
+	// EACH LINE SAYS WHAT READS IT AND WHAT IT READS, because the four are not
+	// read for the same thing.
 	static const TArray<FString> Stats = {
+		// Increases, read by ACataclysmMinion::AttackTarget at the blow.
 		TEXT("minion_damage"),
+		// Increases, read by ACataclysmMinion::Spawn at the summoning.
 		TEXT("minion_health"),
+		// Increases, read by UCataclysmCommand::AttackIntervalScaleFor.
 		TEXT("minion_attack_speed"),
+		// Whether it is removed, read by UCataclysmSkillTemplate::ApplyManaOnHit.
 		TEXT("mana_on_hit"),
 	};
 	return Stats;

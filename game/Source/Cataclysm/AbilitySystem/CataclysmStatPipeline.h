@@ -42,9 +42,9 @@ enum class ECataclysmStatBucket : uint8
 	 * THE SAME SOURCES THAT MAY GRANT A MORE MULTIPLIER MAY REMOVE A STAT, and
 	 * no others: `UCataclysmStatPipeline::CanGrantMore` decides both.
 	 *
-	 * A RATE HAS NO REMOVAL. `EvaluateRate` ignores one, because a cooldown of
-	 * nothing is not something any sentence asks for, and
-	 * `tools/generate_datatables.py` refuses one on a rate stat.
+	 * ON A RATE IT REMOVES THE REDUCTION, NOT THE INTERVAL. `EvaluateRate`
+	 * returns the base interval when one applies: "you have no cooldown
+	 * reduction", not a cooldown of no length.
 	 */
 	Removed		UMETA(DisplayName = "Removed"),
 };
@@ -2311,9 +2311,8 @@ struct CATACLYSM_API FCataclysmStatBreakdown
 	 * `UCataclysmAbilitySystemComponent::IsStatRemoved` can answer for a
 	 * consumer that reads no stat through the pipeline.
 	 *
-	 * COUNTED BY `EvaluateRate` TOO, AND NOT APPLIED THERE. A rate has no
-	 * removal, so a breakdown of one can show a count here beside a figure
-	 * that is not zero.
+	 * `EvaluateRate` READS IT TOO, and there it leaves the base interval rather
+	 * than nothing, because what a rate removes is its reduction.
 	 *
 	 * A REMOVAL FROM A SOURCE THAT MAY NOT GRANT ONE IS NOT COUNTED. It is
 	 * ignored and logged, the way a refused More multiplier is.
@@ -2487,10 +2486,11 @@ public:
 	 * buckets divide, no number of them reaches zero, which is why the stat
 	 * needs no cap.
 	 *
-	 * A REMOVAL IS IGNORED HERE, counted in the breakdown and logged. Issue
-	 * #1791. Removing the rate would divide by nothing, and a cooldown of no
-	 * length is not what any sentence asks for; `tools/generate_datatables.py`
-	 * refuses such a row before it reaches here.
+	 * A REMOVAL LEAVES THE BASE. Issue #1791. What a rate divides by is its
+	 * reduction, so removing it means no reduction at all, whatever increases
+	 * and More multipliers reached it: "you have no cooldown reduction". The
+	 * game reaches the same answer through the attribute, which `Evaluate`
+	 * takes to nothing.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static FCataclysmStatBreakdown EvaluateRate(float Base,
@@ -2499,7 +2499,12 @@ public:
 												const FCataclysmStatConditions& State =
 													FCataclysmStatConditions());
 
-	/** What a player is shown, as a percentage. Never reaches 100. */
+	/**
+	 * What a player is shown, as a percentage. Never reaches 100.
+	 *
+	 * AND 0 WHEN A REMOVAL REACHED THE RATE, because `EvaluateRate` then
+	 * applies no reduction. Issue #1791.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
 	static float DisplayedRateReduction(const FCataclysmStatBreakdown& Breakdown);
 

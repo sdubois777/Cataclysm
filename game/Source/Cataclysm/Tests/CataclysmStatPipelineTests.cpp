@@ -2132,6 +2132,22 @@ bool FCataclysmPipelineRemovalTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and accepts one from an enchantment"),
 		FPipeline::ValidateModifier(Removal).IsEmpty());
 
+	// ON A RATE A REMOVAL TAKES THE REDUCTION AWAY, NOT THE INTERVAL. "You have
+	// no cooldown reduction", which is what the game already does through the
+	// attribute. The figures are the rate test's below: a 4 second cooldown with
+	// a third of increases and a 20% more gem is 2.5 seconds.
+	TArray<FCataclysmStatModifier> Reduction = {
+		Increased(100.0f / 3.0f), MoreFromGem(20.0f)};
+	TestEqual(TEXT("a reduced rate is 2.5 seconds"),
+		FPipeline::EvaluateRate(4.0f, Reduction, NoTags).Final, 2.5f, 0.001f);
+	Reduction.Add(Removal);
+	const FCataclysmStatBreakdown NoReduction =
+		FPipeline::EvaluateRate(4.0f, Reduction, NoTags);
+	TestEqual(TEXT("with a removal as well it is its base, 4 seconds"),
+		NoReduction.Final, 4.0f, 0.001f);
+	TestEqual(TEXT("and a player is shown no reduction"),
+		FPipeline::DisplayedRateReduction(NoReduction), 0.0f, 0.001f);
+
 	return true;
 }
 

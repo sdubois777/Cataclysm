@@ -3914,25 +3914,18 @@ def _check_value_kind(sheet: str, index: int, who: str, stat: str,
     REFUSED RATHER THAN IGNORED, for the reason `_check_pool_action` gives: a
     row that validates and then grants nothing is silent everywhere else.
 
-    A REMOVAL ON A RATE IS REFUSED. Issue #1791, ruled 2026-09-16 under the
-    project owner's delegation. `UCataclysmStatPipeline::EvaluateRate` ignores a
-    removal, because removing a rate would divide by nothing and a cooldown of
-    no length is not what any sentence says, so such a row would be written and
-    grant nothing. `RATE_STATS` is the list of rates.
+    ANYTHING BUT A REMOVAL ON A STAT THAT MAY ONLY BE REMOVED IS REFUSED, for the
+    reason `REMOVAL_ONLY_STATS` gives.
 
-    AND ANYTHING BUT A REMOVAL ON A STAT THAT MAY ONLY BE REMOVED IS REFUSED, for
-    the reason `REMOVAL_ONLY_STATS` gives.
+    A REMOVAL ON COOLDOWN REDUCTION IS NOT REFUSED. Issue #1791, ruled 2026-09-16
+    under the project owner's delegation. It means "you have no cooldown
+    reduction": the stat's attribute is written through the same pipeline and
+    taken to nothing, so every cooldown runs at its base length.
     """
     if kind not in VALUE_KINDS:
         raise DataError(
             f"{sheet} row {index}: {who} has value kind {kind!r}, which is not "
             f"{', '.join(VALUE_KINDS[:-1])} or {VALUE_KINDS[-1]}")
-
-    if kind == "removed" and stat in RATE_STATS:
-        raise DataError(
-            f"{sheet} row {index}: {who} removes {stat!r}, which is a rate. A "
-            f"rate has no removal: the game ignores one, because removing a "
-            f"rate would divide by nothing, so the row would grant nothing.")
 
     if stat in REMOVAL_ONLY_STATS and kind != "removed":
         raise DataError(
@@ -5770,10 +5763,6 @@ def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
 #: Cooldown reduction is the accumulated sum of increases rather than a value:
 #: a skill's cooldown is its own base divided by one plus this. A class base of
 #: zero is correct for it, so it is not worth reporting.
-#:
-#: AND A RATE HAS NO REMOVAL, so `_check_value_kind` refuses a `removed` row on
-#: one. Issue #1791. `UCataclysmStatPipeline::EvaluateRate` is the only reader of
-#: a rate, and it ignores a removal.
 RATE_STATS = frozenset({"cooldown_reduction"})
 
 

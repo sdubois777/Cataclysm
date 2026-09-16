@@ -31,10 +31,11 @@
  *
  * WHAT THE LIST CLAIMS. The stats on it deliberately have no gameplay attribute,
  * and bespoke code reads them directly instead: the three minion stats for their
- * increases, and `mana_on_hit` for whether it is removed. Three checks stop refusing
- * a passive row or an affix naming them because of that claim: the data
- * generator's vocabulary, `test_every_stat_is_one_the_game_supplies`, and
- * `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt`.
+ * increases, and `mana_on_hit` for whether it is removed. Several checks stop
+ * refusing a row that names them because of that claim: the data generator's
+ * vocabulary, `test_every_stat_is_one_the_game_supplies`, and the engine tests
+ * that every stat a passive node, an enchantment or an affix grants has an
+ * attribute behind it.
  *
  * AN EXEMPTION IS A PROMISE AND A PROMISE CAN GO UNKEPT, WHICH IS ISSUE #1025.
  * `ENGINE_SUPPLIED_BASES` once exempted `damage_to_bleeding_window` and named the
@@ -69,8 +70,9 @@ namespace CataclysmStatExemptionTest
 	/** Centimetres in a metre, so a case can place a character in metres. */
 	constexpr float M = 100.0f;
 
-	/** What every probe grants. Not any affix's top roll, so a reading that
-	 *  matched one could only have come from the data. */
+	/** What each minion probe grants; the mana on hit probe removes its stat
+	 *  instead. Not any affix's top roll, so a reading that matched one could
+	 *  only have come from the data. */
 	constexpr float IncreasePercent = 40.0f;
 
 	/** Small enough that a blow can be read as a difference of two health
@@ -534,8 +536,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStatExemptionIsKeptTest,
  * Every name on the shared exemption list is read by code that changes its
  * answer, and a name with no probe fails by name.
  *
- * THIS IS THE HALF ISSUE #1025 WAS MISSING. The other three checks stop refusing
- * these stats; none of them asks whether the claim behind the exemption is true.
+ * THIS IS THE HALF ISSUE #1025 WAS MISSING. The other checks stop refusing these
+ * stats; none of them asks whether the claim behind the exemption is true.
  *
  * HOW TO PROVE IT WORKS: add a name to
  * `UCataclysmPlayerClassStats::StatsWithNoAttribute()` that nothing reads, run
@@ -549,8 +551,8 @@ bool FCataclysmStatExemptionIsKeptTest::RunTest(const FString&)
 		UCataclysmPlayerClassStats::StatsWithNoAttribute();
 
 	// A LIST THAT EMPTIED ITSELF WOULD PASS EVERY LOOP BELOW, which is what a
-	// refactor that lost the contents looks like. The three checks that read it
-	// would go back to refusing the rows, so this would be reported somewhere --
+	// refactor that lost the contents looks like. The checks that read it would
+	// go back to refusing the rows, so this would be reported somewhere --
 	// but reported here first, and by name.
 	if (!TestTrue(TEXT("the exemption list has names in it"), Exempt.Num() > 0))
 	{
