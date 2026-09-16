@@ -181,6 +181,79 @@ the Ritualist at 60 of 74, with the Masochist at 74 of 74 as the control.
 
 ---
 
+## 2026-09-16 — An aura's upkeep is paid from the pool its activation paid from, and Point of No Return is tested from the built asset with no code changed
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
+(which pool pays a skill's mana cost), `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h`
+and `.cpp` (the aura's per-pulse upkeep), `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`
+and `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp`. Issues
+[#1901](https://github.com/sdubois777/Cataclysm/issues/1901) and
+[#1904](https://github.com/sdubois777/Cataclysm/issues/1904). **Applied.**
+
+### One rule for which pool pays a skill's mana cost
+
+The Masochist's Water to Blood sets the mana maximum and the mana to zero and moves every
+skill's mana cost onto health. `UCataclysmGameplayAbility::CheckCost` and `ApplyCost` honoured
+that. `UCataclysmAuraSkill::Pulse`, which charges a toggled aura its upkeep every pulse, read the
+Mana attribute directly, found none, and switched the aura off at its first pulse.
+
+`CostPool` now answers which pool pays, and `PoolCovers` whether it covers the cost: strictly
+more for health, at least for mana, as `CheckCost` already asked. All three payers ask these two,
+so the activation and the upkeep cannot disagree again.
+
+**The owner did hold the option.** The save written at the end of the playtest of 2026-09-15,
+`Character_822C0313434D0EF6D6B4DABBA29E0EB0.sav`, records `Masochist_capstone_25` with
+`ChosenOption` 1, and Water to Blood is option 1 of that capstone. The playtest log alone could
+not show it: its health-cost lines come from the added health costs, which any Masochist pays.
+
+### The upkeep is taken whole and at once, which is a judgement
+
+The ruling asked for the upkeep to be charged "by the same deferred-cost path" as the activation.
+**The activation's mana cost is not deferred.** `ApplyCost` takes it whole from health at once;
+deferral and debt belong to the added health costs `UCataclysmSkillTemplate::PayHealthCost`
+charges. Those two instructions cannot both be followed, and this follows "the same rule as the
+activation cost".
+
+Routing the upkeep through `PayHealthCost` instead would do more than defer it. Every pulse would
+generate Fervour from spending, open the window "after you pay a health cost" opens, fire the
+`health_cost` event that worn enchantment rows act on, and write a line at `Log`, once a second
+for as long as the aura runs. That is a design change, not a fix, and is left for a ruling.
+
+So a pulse health cannot cover switches the aura off rather than killing, the same way a
+health-paid cast is refused.
+
+### The switch-off is logged once, at Log
+
+`bEndedForLackOfMana` recorded why an aura ended and nothing in the game read it, so a playtest
+log could not show an aura going out. The end now writes one line naming the skill, the slot, the
+upkeep, the pool and what was left in it.
+
+### Point of No Return: a test, and no code change
+
+The owner reported the keystone no longer holding them at half health. The row exists
+(`healing_ceiling_reduction` flat 50), the stat maps to `HealingCeilingReduction`, and
+`UCataclysmRegeneration::TopUp` caps healing at the reduced ceiling. The only test wrote the
+attribute directly, so `Cataclysm.Passives.PointOfNoReturnStopsARealMasochistHealingPastHalf` now
+reads the row from the built table, spends the point on a possessed Masochist, and heals through
+`TopUp`.
+
+**No fix is made, because the playtest character did not hold the keystone.** Its save lists
+The Edge (`Masochist_keystone_ll_kA`, reached from `ll_a2`) and every node of that path, and no
+node of the path to Point of No Return (`Masochist_keystone_ll_kB`, reached from `ll_b2`). The log
+agrees: six times a reading at or below half was followed within eighteen seconds by one above
+it, which `TopUp` cannot do with the reduction at 50.
+
+**Not every healing route goes through `TopUp`, as the issue says, and none of the exceptions
+explains the log.** Three routes the player can reach raise health without it. The fill to
+maximum when the character is possessed, and `ACataclysmPlayerCharacter::Revive`, write health
+outright; the comment beside the ceiling in `CataclysmRegeneration.cpp` records a respawn as
+uncapped by decision -- "a respawn is a new life" -- with issue #956 open on that write. Living
+Pyre's return of blows taken skips the ceiling while issue #1607 is open. Neither write leaves
+health part of the way up, which is what the six readings show, and Living Pyre is the Fist's
+ultimate while the playtest character used a Greataxe.
+
+---
+
 ## 2026-09-16 — A creature answers the player's blow in its own name, five judged figures are recorded with their precedents or the lack of one, and the player's floor effects grew a field that moves a single resistance
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

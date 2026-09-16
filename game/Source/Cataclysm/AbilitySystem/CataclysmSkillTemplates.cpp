@@ -3729,20 +3729,36 @@ int32 UCataclysmAuraSkill::Pulse()
 	{
 		const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
 		const float Cost = GetManaCost() * Period;
-		const float Mana = AbilitySystem->GetNumericAttribute(
-			UCataclysmVitalAttributeSet::GetManaAttribute());
 
-		if (Cost > 0.0f && Mana < Cost)
+		// OUT OF THE SAME POOL THE ACTIVATION PAID FROM, ASKED THE SAME WAY.
+		// Issue #1901. This read mana directly, and a Masochist holding Water to
+		// Blood has none: the option empties the pool and pays every cost from
+		// health. So the activation was paid in health, and the first pulse found
+		// no mana and switched the aura off.
+		//
+		// THE UPKEEP COPIES THE ACTIVATION'S MANA COST, WHICH IS TAKEN WHOLE AND AT
+		// ONCE by `ApplyCost`. The Masochist's deferral and debt rules belong to the
+		// added health costs `PayHealthCost` charges, and do not apply to that cost
+		// or to this one.
+		const FGameplayAttribute Pool = CostPool(AbilitySystem);
+
+		if (Cost > 0.0f && !PoolCovers(AbilitySystem, Pool, Cost))
 		{
+			// SAID ONCE, AT `Log` AND NOT `Verbose`, because the aura ends here and
+			// nothing in the game read the flag below, so a playtest log could not
+			// show why an aura went out. Issue #1901.
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("%s in %s switched off: a pulse's upkeep of %.1f %s could "
+						"not be paid from %.1f."),
+				   *SkillName, *CataclysmAbilitySlots::Tag(Slot).ToString(), Cost,
+				   *Pool.GetName(), AbilitySystem->GetNumericAttribute(Pool));
 			bEndedForLackOfMana = true;
 			Finish();
 			return 0;
 		}
 		if (Cost > 0.0f)
 		{
-			AbilitySystem->ApplyModToAttribute(
-				UCataclysmVitalAttributeSet::GetManaAttribute(),
-				EGameplayModOp::Additive, -Cost);
+			AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Cost);
 		}
 	}
 
