@@ -52,6 +52,11 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",
+    # Landed with the count of enemies one attack strikes, issue #1515, for
+    # the Ravager's Sundering. Its row waits on the workbook, which was ruled
+    # to the enchantment session first on 2026-09-16; leave the list when
+    # `Ravager_keystone_b_kA#1` is authored.
+    "enemies_hit_at_least",
 }
 
 #: A condition several enchantment effect rows name. The control.

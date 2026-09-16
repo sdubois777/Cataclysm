@@ -605,6 +605,41 @@ protected:
 	float HitTargets(const TArray<AActor*>& Targets, float DamagePercent = -1.0f);
 
 	/**
+	 * How many enemies the attack whose blows are being dealt struck together,
+	 * or -1 while no attack is in progress. Issue #1515.
+	 *
+	 * ONE ATTACK IS ONE GROUP OF BLOWS DEALT TOGETHER BY ONE USE, ruled on
+	 * 2026-09-16. `HitScaled` begins the attack for its whole group, so both
+	 * halves of a Consume split share one count; `HitTargets` begins one for
+	 * its own targets only when none is in progress. Every blow of the attack
+	 * carries the count on `FCataclysmHitDelivery::EnemiesStruckTogether`.
+	 *
+	 * COUNTED BEFORE ANY BLOW RESOLVES, after the skill's own target cap, so an
+	 * enemy that then evades still counts.
+	 */
+	int32 AttackEnemiesStruckTogether = -1;
+
+	/**
+	 * The increased damage, in percent, the attack in progress bought with
+	 * Fervour, or zero. Issue #1515. See
+	 * `UCataclysmFervour::BuyDamageForEnemiesStruckTogether`.
+	 */
+	float AttackIncreasedDamageBoughtPercent = 0.0f;
+
+	/**
+	 * Begin an attack on this group of targets unless one is already in
+	 * progress: count the enemies it struck, and pay once for any damage Bought
+	 * With Ruin buys. Issue #1515.
+	 *
+	 * @return whether THIS call began the attack, so that the caller that began
+	 *         it is the one that ends it
+	 */
+	bool BeginAttackOn(const TArray<AActor*>& Targets);
+
+	/** End the attack in progress. Issue #1515. */
+	void EndAttack();
+
+	/**
 	 * Whether the last blow this skill sent at that target connected.
 	 *
 	 * WHY A CALLER NEEDS TO ASK. Issue #1156. Nothing an attack carries should

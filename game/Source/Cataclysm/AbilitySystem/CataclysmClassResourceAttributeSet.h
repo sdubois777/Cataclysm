@@ -430,6 +430,30 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthRestoredOnKill)
 
 	/**
+	 * How much increased damage, in percent, a melee attack buys with Fervour
+	 * for each enemy it strikes beyond the first. Issue #1515.
+	 *
+	 * THE RAVAGER'S SECOND FERVOUR SPENDER. `Ravager_basic_b_b2` Bought With Ruin
+	 * reads "Each enemy your melee attack hits beyond the first costs 2 Fervour
+	 * and deals +3% increased damage per point", and its row grants three per
+	 * point, scoped to `Type.Melee`.
+	 *
+	 * HERE AND NOT IN THE COMBAT SET, though it raises damage, for the reason
+	 * `HealthRestoredOnKill` above gives: what makes it work is the pool.
+	 *
+	 * THE COST IS A CONSTANT AND THIS IS NOT. No node changes the 2 Fervour; the
+	 * node's points change the percentage. See
+	 * `UCataclysmFervour::ExtraEnemyHitCost`.
+	 *
+	 * ASKED FOR THROUGH THE STAT PIPELINE WITH THE SKILL'S TAGS, fallback zero.
+	 * The row is scoped to melee, so this attribute never carries it; what it
+	 * holds is whatever an unscoped row might grant, which today is nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_IncreasedDamageBoughtPerExtraEnemyHit)
+	FGameplayAttributeData IncreasedDamageBoughtPerExtraEnemyHit;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, IncreasedDamageBoughtPerExtraEnemyHit)
+
+	/**
 	 * Whether this character's skills cost no health at all. Issue #1051.
 	 * Zero for no, above zero for yes.
 	 *
@@ -706,6 +730,7 @@ protected:
 	UFUNCTION() void OnRep_FervourDecayPerSecond(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourDecayGraceMetres(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthRestoredOnKill(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_IncreasedDamageBoughtPerExtraEnemyHit(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerCast(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthCostSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaPoolBecomesHealth(const FGameplayAttributeData& OldValue);

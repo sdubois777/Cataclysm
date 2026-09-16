@@ -413,7 +413,8 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	const UAbilitySystemComponent* Source,
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
-	bool bTargetIsStaggered, const AActor* Target)
+	bool bTargetIsStaggered, const AActor* Target,
+	int32 EnemiesStruckTogether)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -428,14 +429,16 @@ float UCataclysmSkillEffects::IncreasesForSkill(
 	return FMath::Max(
 		0.0f, Cataclysm->AttackDamageIncreasesForSkill(
 				  SkillTags, SkillHealthCostPercent, MetresMovedBeforeBlow,
-				  TargetDistanceMetres, bTargetIsStaggered, Target));
+				  TargetDistanceMetres, bTargetIsStaggered, Target,
+				  EnemiesStruckTogether));
 }
 
 float UCataclysmSkillEffects::MoreForSkill(
 	const UAbilitySystemComponent* Source,
 	const FGameplayTagContainer& SkillTags, float SkillHealthCostPercent,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
-	bool bTargetIsStaggered, const AActor* Target)
+	bool bTargetIsStaggered, const AActor* Target,
+	int32 EnemiesStruckTogether)
 {
 	const UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<const UCataclysmAbilitySystemComponent>(Source);
@@ -447,7 +450,8 @@ float UCataclysmSkillEffects::MoreForSkill(
 		? Cataclysm->AttackDamageMoreForSkill(SkillTags, SkillHealthCostPercent,
 											  MetresMovedBeforeBlow,
 											  TargetDistanceMetres,
-											  bTargetIsStaggered, Target)
+											  bTargetIsStaggered, Target,
+											  EnemiesStruckTogether)
 		: 1.0f;
 }
 
@@ -501,7 +505,8 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 											 float MetresMovedBeforeBlow,
 											 float TargetDistanceMetres,
 											 bool bTargetIsStaggered,
-											 const AActor* Target)
+											 const AActor* Target,
+											 int32 EnemiesStruckTogether)
 {
 	// An ability system component this project did not make carries no modifier
 	// list, which is not a fault: an enemy's plain melee attack goes through
@@ -601,7 +606,8 @@ float UCataclysmSkillEffects::ModifiedDamage(const UAbilitySystemComponent* Sour
 										 FCataclysmBlowContext(),
 										 MetresMovedBeforeBlow,
 										 TargetDistanceMetres,
-										 bTargetIsStaggered))).Final;
+										 bTargetIsStaggered,
+										 EnemiesStruckTogether))).Final;
 }
 
 float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
@@ -754,7 +760,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		IncreasesForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
 						  Delivery.MetresMovedBeforeBlow,
 						  TargetDistanceMetres, bTargetIsStaggered,
-						  AilmentTarget);
+						  AilmentTarget, Delivery.EnemiesStruckTogether);
 	// AND A SECOND BONUS DECIDED BY THE TARGET, added into the same sum. Issue
 	// #1061. The Masochist's Wound Channeling: "you deal 1% increased damage per
 	// point to enemies carrying a debuff you also carry."
@@ -770,6 +776,15 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// two lists of debuffs, and neither is a special case of the other.
 	const float Conditional = DamageAgainstTypeOf(Source, Target)
 		+ UCataclysmDebuffs::DamageAgainstSharedDebuff(Source, Target);
+
+	// AND THE DAMAGE THIS ATTACK BOUGHT WITH FERVOUR, into the same sum and for
+	// the same reason: it is an increase, and increases are added. Issue #1515.
+	// Bought With Ruin: "Each enemy your melee attack hits beyond the first
+	// costs 2 Fervour and deals +3% increased damage per point." Paid once for
+	// the whole attack before its first blow, so every blow of that attack
+	// carries the same figure; zero for every other blow in the game.
+	const float Bought =
+		FMath::Max(0.0f, Delivery.IncreasedDamageBoughtPercent) / 100.0f;
 
 	// AND THE "MORE" MULTIPLIERS ARE WORKED OUT AGAIN AS THE INCREASES ARE.
 	// `MoreForSkill` is 1 for a character whose "more" modifiers on attack
@@ -787,7 +802,8 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 		WeaponDamageOf(Source) / FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER)
 		* MoreForSkill(Source, SkillTags, Delivery.SkillHealthCostPercent,
 					  Delivery.MetresMovedBeforeBlow, TargetDistanceMetres,
-					  bTargetIsStaggered, AilmentTarget);
+					  bTargetIsStaggered, AilmentTarget,
+					  Delivery.EnemiesStruckTogether);
 	const float Flat = IsSpell(SkillTags)
 		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,
 						TargetDistanceMetres, bTargetIsStaggered,
@@ -801,13 +817,14 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const float Damage = ModifiedDamage(
 		Source,
 		(BeforeIncreases * DamagePercent / 100.0f + Flat)
-			* (1.0f + Applying + Conditional),
+			* (1.0f + Applying + Conditional + Bought),
 		SkillTags,
 		Delivery.SkillHealthCostPercent,
 		Delivery.MetresMovedBeforeBlow,
 		TargetDistanceMetres,
 		bTargetIsStaggered,
-		AilmentTarget);
+		AilmentTarget,
+		Delivery.EnemiesStruckTogether);
 	if (Damage <= 0.0f)
 	{
 		// A character with no weapon damage. Expected before a weapon is
@@ -1240,6 +1257,16 @@ void UCataclysmSkillEffects::ApplyTypedSpec(UGameplayEffect* Effect,
 	{
 		Spec.SetSetByCallerMagnitude(FName(ShareOfCurrentHealthDataName),
 									 Delivery.ShareOfCurrentHealth);
+	}
+
+	// AND HOW MANY ENEMIES THE ATTACK STRUCK TOGETHER, for the armour
+	// penetration lookup where the blow lands. Issue #1515. Sent only when
+	// there is a count, so a blow without one reads the -1 that refuses.
+	if (Delivery.EnemiesStruckTogether >= 0)
+	{
+		Spec.SetSetByCallerMagnitude(
+			FName(EnemiesStruckTogetherDataName),
+			static_cast<float>(Delivery.EnemiesStruckTogether));
 	}
 
 	// AND THE ATTACKER'S CHANCE TO APPLY EACH AILMENT, as more numbers under
@@ -1701,6 +1728,8 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 
 const TCHAR* UCataclysmSkillEffects::ShareOfCurrentHealthDataName =
 	TEXT("Cataclysm.ShareOfCurrentHealth");
+const TCHAR* UCataclysmSkillEffects::EnemiesStruckTogetherDataName =
+	TEXT("Cataclysm.EnemiesStruckTogether");
 
 float UCataclysmSkillEffects::ShareOfHealthTick(float Share, float Health,
 												float MaxHealth, bool bIsBoss)

@@ -317,7 +317,8 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 	FName Stat, const FGameplayTagContainer& SkillTags, float Fallback,
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
-	bool bTargetIsStaggered, const AActor* Target) const
+	bool bTargetIsStaggered, const AActor* Target,
+	int32 EnemiesStruckTogether) const
 {
 	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
 	if (!Inputs)
@@ -343,14 +344,15 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 					   CurrentConditions(SkillHealthCostPercent, Blow,
 										 MetresMovedBeforeBlow,
 										 TargetDistanceMetres,
-										 bTargetIsStaggered)))).Final;
+										 bTargetIsStaggered,
+										 EnemiesStruckTogether)))).Final;
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
 	float TargetDistanceMetres, bool bTargetIsStaggered,
-	const AActor* Target) const
+	const AActor* Target, int32 EnemiesStruckTogether) const
 {
 	// THE SAME KEY `UCataclysmPlayerClassStats::ApplyTo` RECORDED IT UNDER, and
 	// the shared constant rather than a second spelling of the name, because a
@@ -379,7 +381,8 @@ float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 										 FCataclysmBlowContext(),
 										 MetresMovedBeforeBlow,
 										 TargetDistanceMetres,
-										 bTargetIsStaggered))))
+										 bTargetIsStaggered,
+										 EnemiesStruckTogether))))
 			   .SumOfIncreases / 100.0f;
 }
 
@@ -413,7 +416,7 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
 	float TargetDistanceMetres, bool bTargetIsStaggered,
-	const AActor* Target) const
+	const AActor* Target, int32 EnemiesStruckTogether) const
 {
 	// THE SAME KEY `AttackDamageIncreasesForSkill` READS, for the reason it
 	// gives: a name that did not match would fall back in silence and read as a
@@ -461,7 +464,8 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 								  FCataclysmBlowContext(),
 								  MetresMovedBeforeBlow,
 								  TargetDistanceMetres,
-								  bTargetIsStaggered)))).MoreMultiplier;
+								  bTargetIsStaggered,
+								  EnemiesStruckTogether)))).MoreMultiplier;
 
 	// THE FLOOR ONLY GUARDS A LIST BUILT BY HAND. The pipeline clamps every
 	// "less" at -99 per cent, so a product of them cannot reach zero.
@@ -471,7 +475,7 @@ float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	float SkillHealthCostPercent, const FCataclysmBlowContext& Blow,
 	float MetresMovedBeforeBlow, float TargetDistanceMetres,
-	bool bTargetIsStaggered) const
+	bool bTargetIsStaggered, int32 EnemiesStruckTogether) const
 {
 	// BUILT HERE SO NO CALLER HAS TO KNOW A STAT HAS A CONDITION ON IT.
 	// Issue #959. A skill asking what its critical strike chance is should not
@@ -751,6 +755,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// has a distance to hand, and "your first melee attack after moving 5 metres"
 	// is a question about that blow rather than about this instant.
 	State.MetresMovedBeforeBlow = MetresMovedBeforeBlow;
+
+	// AND HOW MANY ENEMIES THE ATTACK IN HAND STRUCK TOGETHER, by the same
+	// argument: a fact about the blow being dealt, passed in by the one caller
+	// that has the blow and -1 from every caller that does not. Issue #1515.
+	State.EnemiesStruckTogether = EnemiesStruckTogether;
 
 	// AND HOW FAR AWAY THE CHARACTER BEING HIT STOOD, passed straight through for
 	// the same reason, including its negative default. Issue #1596. Only a lookup

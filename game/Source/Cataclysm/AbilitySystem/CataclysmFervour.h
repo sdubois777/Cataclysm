@@ -213,6 +213,53 @@ public:
 	static float RestoreHealthOnKill(UAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * How much increased damage, in percent, a melee attack buys for each enemy
+	 * it strikes beyond the first. `Ravager_basic_b_b2` Bought With Ruin is its
+	 * only source. Issue #1515.
+	 */
+	static const TCHAR* IncreasedDamageBoughtPerExtraEnemyHitStat;
+
+	/**
+	 * What each enemy an attack strikes beyond the first costs in Fervour.
+	 * Issue #1515.
+	 *
+	 * A CONSTANT RATHER THAN A STAT, for the reason `KillRestoreCost` above
+	 * gives: no node changes it, and the node's points change only the damage.
+	 * `Ravager_basic_b_b2` states it: "Each enemy your melee attack hits beyond
+	 * the first costs 2 Fervour".
+	 */
+	static constexpr float ExtraEnemyHitCost = 2.0f;
+
+	/**
+	 * Pay for the enemies an attack struck beyond the first, and answer the
+	 * increased damage, in percent, that bought. Issue #1515.
+	 *
+	 * `Ravager_basic_b_b2` Bought With Ruin: "Each enemy your melee attack hits
+	 * beyond the first costs 2 Fervour and deals +3% increased damage per
+	 * point. If you cannot pay, the attack still hits but gains nothing."
+	 *
+	 * ONCE FOR THE WHOLE ATTACK, BEFORE ITS FIRST BLOW. `UCataclysmSkillTemplate`
+	 * calls this where the attack's targets are gathered, and every blow of that
+	 * attack carries the answer on `FCataclysmHitDelivery`.
+	 *
+	 * ALL OR NOTHING, ruled on 2026-09-16 as Wrung Out's cost was: holding less
+	 * than the whole cost spends nothing and buys nothing. A judgement, recorded
+	 * in `docs/DECISIONS.md`.
+	 *
+	 * ASKED WITH THE SKILL'S TAGS, so the row's `RequiredTags=Type.Melee` keeps
+	 * every attack that is not melee from buying anything or paying anything.
+	 *
+	 * @param EnemiesStruckTogether  how many enemies the attack struck, counted
+	 *        before any of its blows resolved
+	 * @return the increased damage bought, in percent: zero for a character
+	 *         without the node, for an attack that struck one enemy or none,
+	 *         and for one the character could not pay for
+	 */
+	static float BuyDamageForEnemiesStruckTogether(
+		UAbilitySystemComponent* AbilitySystem,
+		const FGameplayTagContainer& SkillTags, int32 EnemiesStruckTogether);
+
+	/**
 	 * Marks a restoration of health as coming from the character's own
 	 * regeneration rate rather than from leech.
 	 *

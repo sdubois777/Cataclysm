@@ -1650,6 +1650,16 @@ SCALE_WORDS = {
     # A STEP FORM OF `None`, for the reason the entry above gives: the sentence
     # says "each" and names no step.
     "crippled_enemies_in_reach": (("each", "crippled enemy within"), None, None),
+
+    # PER ENEMY ONE ATTACK STRUCK BEYOND THE FIRST. Issue #1515. Cleaving Arc
+    # reads "+1% increased Attack Damage per point for each enemy your attack
+    # hits beyond the first".
+    #
+    # "BEYOND THE FIRST" IS REQUIRED, not only "each enemy", because it is the
+    # arithmetic: without it the row could sit on a sentence counting every
+    # enemy hit and grant one step too many. A step form of `None`, because
+    # the sentence says "each" and names no step.
+    "enemies_hit_beyond_the_first": (("each enemy", "beyond the first"), None, None),
 }
 
 
