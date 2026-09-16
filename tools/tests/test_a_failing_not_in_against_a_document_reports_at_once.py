@@ -112,3 +112,51 @@ def test_a_real_failing_not_in_prints_the_offset_and_not_the_diff(pytester):
     assert printed_the_offset, out[-3000:]
     assert not printed_pytests_diff, "pytest built its own diff as well"
     assert elapsed < 10.0, f"the failing guard took {elapsed:.1f}s to report"
+
+
+def run_with_pytests_private_name(pytester, prelude: str) -> tuple[int, str]:
+    """A subprocess pytest whose conftest first runs `prelude` against
+    pytest's own module and then this repository's root conftest, over one
+    failing `not in` and one test that records what the conftest did."""
+    # THE FUTURE IMPORT IS DROPPED FROM THE COPY, because it must be the first
+    # statement of a file and the prelude has to run before the conftest does.
+    conftest = CONFTEST.read_text(encoding="utf-8").replace(
+        "from __future__ import annotations\n", "")
+    pytester.makeconftest(
+        "import _pytest.assertion.util as assertion_util\n" + prelude + "\n" + conftest)
+    pytester.makepyfile(
+        test_guard="""
+        import _pytest.assertion.util as assertion_util
+
+        def test_the_superseded_sentence_is_gone():
+            assert "the superseded sentence" not in "lorem the superseded sentence ipsum", "it is live again"
+
+        def test_what_the_diff_builder_is_now():
+            print("DIFF BUILDER:", getattr(assertion_util, "_notin_text", None).__name__
+                  if hasattr(assertion_util, "_notin_text") else "absent")
+        """)
+    result = pytester.runpytest_subprocess("-p", "no:cacheprovider", "-s")
+    return result.ret, result.stdout.str()
+
+
+def test_a_pytest_without_the_private_name_is_left_alone_and_still_reports(pytester):
+    """The guard for a pytest upgrade, first half: the name is gone. The
+    conftest must not raise at import (which would stop every collection), must
+    not add the name back, and the failing `not in` must still fail."""
+    ret, out = run_with_pytests_private_name(pytester, "del assertion_util._notin_text")
+    assert ret == 1, out[-2000:]
+    assert "1 failed, 1 passed" in out, out[-2000:]
+    assert "DIFF BUILDER: absent" in out, out[-2000:]
+
+
+def test_a_pytest_whose_private_function_is_re_signed_is_left_alone(pytester):
+    """Second half: the name exists with other parameters. The conftest must
+    leave that function in place, and the failing `not in` must still fail."""
+    ret, out = run_with_pytests_private_name(
+        pytester,
+        "def a_stub(term, text):\n"
+        "    yield 'the stub explained it'\n"
+        "assertion_util._notin_text = a_stub")
+    assert ret == 1, out[-2000:]
+    assert "1 failed, 1 passed" in out, out[-2000:]
+    assert "DIFF BUILDER: a_stub" in out, out[-2000:]

@@ -30,21 +30,27 @@ implementation and its own builds the whole diff into a list before anything
 chooses between them, so the stall happens before the choice. The only place
 the diff can be prevented is the function that builds it, so this file replaces
 that function on pytest's own module, for texts at or above the threshold only,
-and leaves it alone otherwise. The name is private to pytest and the version is
-pinned; on an upgrade that removes it, the import below raises and the whole
-suite refuses to start, which is the loud failure wanted rather than a quiet
-return of the stall.
+and leaves it alone otherwise.
+
+THE NAME IS PRIVATE TO PYTEST, AND THIS FILE DOES NOTHING WHEN IT IS NOT WHAT
+WAS MEASURED. The replacement was written and measured against pytest 9.1.1
+only. If a later pytest has no `_notin_text`, or has one whose parameters are
+not `(term, text, verbose)`, nothing here is installed and pytest's own
+behaviour stands: every test still collects and a failing `not in` still fails,
+only slowly again over a long text. `tools/tests/test_a_failing_not_in_against_a_document_reports_at_once.py`
+proves both halves: under the pinned pytest the replacement is in place by
+name, and with the name removed or re-signed a failing `not in` still reports.
 
 THE FIX IS HERE AND NOT IN EACH TEST. Every `assert phrase not in text` in the
 suite, present and future, written the natural way, reports where the phrase is
 and the text around it and never builds the diff. The two tests that carried the
 workaround (the answer computed into a variable before the assert) keep it; it
-is harmless. `tools/tests/test_a_failing_not_in_against_a_document_reports_at_once.py`
-holds this replacement to its job through the plugin manager this run
-registered pytest with, and through a real failing test in a subprocess.
+is harmless.
 """
 
 from __future__ import annotations
+
+import inspect
 
 import _pytest.assertion.util as assertion_util
 
@@ -56,11 +62,30 @@ LARGE_TEXT_CHARACTERS = 10_000
 #: Characters shown on each side of the phrase.
 CONTEXT_CHARACTERS = 60
 
+#: The pytest the replacement was measured against, and the parameters its
+#: private function had there. Anything else is left alone; see the docstring.
+MEASURED_AGAINST_PYTEST = "9.1.1"
+MEASURED_PARAMETERS = ["term", "text", "verbose"]
+
 pytest_plugins = ["pytester"]
 
-#: pytest's own. An AttributeError here on a pytest upgrade is intended: see the
-#: module docstring.
-_pytests_own_notin_text = assertion_util._notin_text
+
+def pytests_own_diff_builder():
+    """pytest's `_notin_text` when it is the function that was measured, else
+    None. Never raises: an absent name or an unreadable signature is None."""
+    original = getattr(assertion_util, "_notin_text", None)
+    if original is None:
+        return None
+    try:
+        parameters = list(inspect.signature(original).parameters)
+    except (TypeError, ValueError):
+        return None
+    if parameters != MEASURED_PARAMETERS:
+        return None
+    return original
+
+
+_pytests_own_notin_text = pytests_own_diff_builder()
 
 
 def explain_a_phrase_found_in_a_large_text(phrase: str, text: str) -> list[str]:
@@ -87,4 +112,5 @@ def a_failing_not_in_over_a_large_text_explains_itself(term: str, text: str, ver
     yield from _pytests_own_notin_text(term, text, verbose)
 
 
-assertion_util._notin_text = a_failing_not_in_over_a_large_text_explains_itself
+if _pytests_own_notin_text is not None:
+    assertion_util._notin_text = a_failing_not_in_over_a_large_text_explains_itself

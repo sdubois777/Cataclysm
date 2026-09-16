@@ -2,6 +2,18 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — A failing `assert phrase not in document` reports at once: the root conftest replaces pytest's diff builder, measured against pytest 9.1.1
+
+**Decision.** The repository's new root `conftest.py` replaces one private pytest function, `_pytest.assertion.util._notin_text`, so that a failing `assert phrase not in text` over a text of 10,000 characters or more prints where the phrase is (its character offset, how many times it occurs, and 60 characters of context each side) instead of pytest's own diff of the text against itself minus the phrase. Shorter texts keep pytest's diff. Tests keep the natural shape; the workaround of computing the answer into a variable before the assert is no longer needed, and the two tests that carry it keep it.
+
+**Why.** Issue #1635: guards over `docs/` written that way passed every day and stalled when they fired (killed at 300 seconds over the flattened decisions log on 2026-09-12; 77 to 104 seconds per failure over the design document). The cause, established 2026-09-16 against pytest 9.1.1: pytest explains a failing `not in` between two strings by a line diff of the text against itself with the phrase removed, and a document flattened to one line makes that a character-level comparison that grows faster than the text (0.03s at 10,000 single-line characters, 0.19s at 40,000, 0.55s at 80,000; not finished at 120 seconds over the 2,586,463-character flattened decisions log). A failing `in` has no such explanation and took 0.13s on the same text. The public hook `pytest_assertrepr_compare` was tried first and cannot help: it is not first-result, and pytest builds its own diff before any implementation's answer is chosen.
+
+**What it is measured against, and what happens on an upgrade.** The replacement was written and measured against pytest 9.1.1, the version `sim/requirements-dev.txt` pins. When the private name is absent or its parameters are not `(term, text, verbose)`, the conftest installs nothing and pytest's own behaviour stands: collection still works and a failing `not in` still fails, only slowly again over a long text. `tools/tests/test_a_failing_not_in_against_a_document_reports_at_once.py` proves both: under the pinned pytest the replacement is in place by name and a real failing test prints the offset; with the name deleted, and with it re-signed, a subprocess pytest still collects and still reports the failure.
+
+**Ruled** by the coordinating session on 2026-09-16 under the owner's delegation: accepted with the condition that the replacement does nothing, silently, when the name is absent or its signature differs, with one test proving that.
+
+---
+
 ## 2026-09-16 — One attack counts the enemies it strikes together, and three Ravager nodes can read the count
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
