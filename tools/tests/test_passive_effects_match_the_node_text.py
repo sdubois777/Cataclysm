@@ -2589,8 +2589,14 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
     `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt` reads
     the same file and fails when a stat has no gameplay attribute behind it,
     which is where a misspelling really stops working.
+
+    A REMOVAL IS NOT ASKED, since issue #1791, for the reason
+    `validate_passive_effects` gives: it multiplies nothing, so there is no base
+    for it to lack. No node removes a stat yet.
     """
     for row in effects:
+        if row["ValueKind"].strip().lower() == "removed":
+            continue
         assert row["Stat"] in stats, (
             f"{row['Name']} grants {row['Stat']!r}, which is not a stat any "
             f"class stat line or attribute names, and no flat row here supplies "

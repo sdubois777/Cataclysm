@@ -4890,7 +4890,11 @@ def validate_passive_effects(tables: dict[str, list[dict]],
                 f"PassiveEffects/{row['Name']}: no passive node is called "
                 f"{row['Node']}, so the effect reaches nothing")
 
-        if stats and row["Stat"] not in stats:
+        # A REMOVAL IS NOT ASKED FOR A BASE, for the reason
+        # `validate_enchantment_effects` gives: it multiplies nothing. Issue #1791.
+        # The two sheets share one vocabulary of kinds, so they share this too.
+        if (stats and str(row["ValueKind"]).lower() != "removed"
+                and row["Stat"] not in stats):
             problems.append(
                 f"PassiveEffects/{row['Name']}: {row['Stat']!r} is not a stat "
                 f"any class line or attribute names, and no flat row in this "
@@ -4994,7 +4998,17 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
         # with a base refused every such row, which nothing showed until the
         # eight rows of issue #1815 were run through the whole generator on
         # 2026-09-16. Its required tags are still checked below.
-        if not row.get("Action") and row["Stat"] not in stats:
+        #
+        # AND A REMOVAL NEEDS NOTHING UNDER IT. Issue #1791. The complaint is an
+        # increase multiplying a base of zero, and a removal multiplies nothing:
+        # it takes the stat to zero from whatever supplies it, the rolled affixes
+        # this set leaves out included. "You have no resistances." is eight such
+        # rows, and a player's resistances come from affixes alone, so asking it
+        # for a base refused all eight when the rows were run through the whole
+        # generator on 2026-09-16.
+        if (not row.get("Action")
+                and str(row["ValueKind"]).lower() != "removed"
+                and row["Stat"] not in stats):
             problems.append(
                 f"EnchantmentEffects/{row['Name']}: {row['Stat']!r} is not a "
                 f"stat any class line, attribute, item base or engine base "

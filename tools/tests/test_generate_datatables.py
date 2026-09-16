@@ -1506,6 +1506,22 @@ class TestAPassiveNodeCanGrantSeveralStats:
         assert len(problems) == 1, problems
         assert "no passive node is called Ghost" in problems[0]
 
+    def test_a_removal_is_not_asked_for_a_base(self):
+        """The rule `validate_enchantment_effects` has, on this sheet too, because
+        the two share one vocabulary of kinds. Issue #1791. The same row as an
+        increase is still reported, which is the control."""
+        removal = {"Name": "Real_node#1", "Node": "Real_node",
+                   "Stat": "resistance_war", "ValueKind": "removed",
+                   "RequiredTags": ""}
+        tables = {"PassiveEffects": [removal],
+                  "PassiveNodes": [{"Name": "Real_node"}],
+                  "ClassStats": [{"Stat": "armor"}]}
+        assert gen.validate_passive_effects(tables, set()) == []
+
+        tables["PassiveEffects"] = [dict(removal, ValueKind="increased")]
+        problems = gen.validate_passive_effects(tables, set())
+        assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
+
 
 class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
     """ISSUE #1597. Two readings count the enemies standing near a character: the
@@ -2157,6 +2173,21 @@ class TestEnchantmentEffects:
              "Stat": "retaliation_radius_metres", "ValueKind": "flat",
              "RequiredTags": ""}]}
         assert gen.validate_enchantment_effects(tables, set()) == []
+
+    def test_a_removal_is_not_asked_for_a_base(self):
+        """A removal multiplies nothing, so a stat only an affix supplies -- which
+        this check does not count -- is one it may remove. Issue #1791: "You have
+        no resistances." is eight such rows. The same stat on an increase is
+        still refused, which is the control."""
+        removal = {"Name": "X#1", "Enchantment": "X", "Stat": "resistance_war",
+                   "ValueKind": "removed", "RequiredTags": ""}
+        tables = {"EnchantmentEffects": [removal], "ClassStats": [{"Stat": "armor"}]}
+        assert gen.validate_enchantment_effects(tables, set()) == []
+
+        increase = dict(removal, ValueKind="increased")
+        tables = {"EnchantmentEffects": [increase], "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, set())
+        assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
 
     def test_the_validator_reports_an_undeclared_tag(self):
         tables = {"EnchantmentEffects": [
