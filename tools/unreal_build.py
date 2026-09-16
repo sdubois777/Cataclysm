@@ -591,7 +591,10 @@ def parse_build_output(text: str) -> tuple[str | None, tuple[str, ...], bool, in
 def build(target: str = DEFAULT_TARGET,
           platform: str = DEFAULT_PLATFORM,
           configuration: str = DEFAULT_CONFIGURATION,
-          timeout: float | None = None) -> BuildOutcome:
+          timeout: float | None = None,
+          *,
+          attempts: int = 5,
+          wait: Callable[[float], None] = time.sleep) -> BuildOutcome:
     """Run `Build.bat` for one target and report what it actually compiled.
 
     The editor must be closed. With it open the build refuses to start, because
@@ -606,12 +609,66 @@ def build(target: str = DEFAULT_TARGET,
     `tools/tests/test_unreal_build.py` reads this signature and fails if a
     finite default comes back. A caller that passes a number is choosing to
     break the rule and must say why.
+
+    RETRIED ONLY ON THE ONE FAILURE THE PROJECT DOCUMENTS AS RETRYABLE. Issues
+    #1577 and #1802. The continuous integration runner is a Windows service on
+    this machine; while it compiles a pull request it holds UnrealBuildTool's
+    global mutex, and a build started then fails in about a quarter of a
+    second with `UnauthorizedAccessException` on opening
+    `Global\\UnrealBuildTool_Mutex_<hash>`. `-WaitMutex` cannot absorb that,
+    because the process fails while opening the named object, before it has
+    anything to wait on. CLAUDE.md's remedy is to wait about a minute and
+    retry, and that is what this does, `attempts` times at most, printing
+    each wait so the delay is visible. Two failures are deliberately NOT
+    retried: "Unable to build while Live Coding is active" means the editor
+    is open and CLAUDE.md says to ask its owner rather than wait, and a
+    compile error is a compile error. Both are told apart from the denial by
+    the text of the output, not by how fast the build failed.
+
+    @param attempts  how many times to run the build in all; 1 means never retry
+    @param wait      what to call with the seconds to wait; ONLY EVER PASSED BY
+                     TESTS, so they do not sleep a minute per case
     """
     if not BUILD_BATCH_FILE.is_file():
         raise FileNotFoundError(
             f"{BUILD_BATCH_FILE} does not exist. Set UE_ROOT to the engine "
             "installation directory if it is not at the default location.")
 
+    outcome = run_build_once(target, platform, configuration, timeout)
+    for attempt in range(2, attempts + 1):
+        if outcome.succeeded or not is_mutex_denial(outcome.stdout):
+            break
+        print(f"Build: the continuous integration runner holds the UnrealBuildTool "
+              f"mutex; waiting {MUTEX_RETRY_WAIT_SECONDS:g} seconds and retrying "
+              f"({attempt} of {attempts}).", flush=True)
+        wait(MUTEX_RETRY_WAIT_SECONDS)
+        outcome = run_build_once(target, platform, configuration, timeout)
+    return outcome
+
+
+#: What the build prints when the continuous integration runner holds the
+#: UnrealBuildTool mutex. Both strings appear on the one line; either alone is
+#: taken as the denial, so a change to the exception's wording still matches.
+MUTEX_DENIAL_MARKERS = ("UnauthorizedAccessException", "UnrealBuildTool_Mutex")
+
+#: How long to wait before retrying a build the mutex denial stopped. CLAUDE.md
+#: says about a minute, and the runner's compile of a comment-only change took
+#: 1m15s when this was measured; a second wait covers that.
+MUTEX_RETRY_WAIT_SECONDS = 60.0
+
+#: How many builds `build()` runs in all before giving up on the denial.
+MUTEX_RETRY_ATTEMPTS = 5
+
+
+def is_mutex_denial(output: str) -> bool:
+    """Whether a failed build's output is the runner holding the mutex."""
+    return any(marker in output for marker in MUTEX_DENIAL_MARKERS)
+
+
+def run_build_once(target: str, platform: str, configuration: str,
+                   timeout: float | None) -> BuildOutcome:
+    """One run of `Build.bat`, read into a `BuildOutcome`. `build()` calls this;
+    tests replace it so the retry above can be driven without an engine."""
     completed = subprocess.run(
         [str(BUILD_BATCH_FILE), target, platform, configuration,
          f"-Project={PROJECT_FILE}", "-WaitMutex"],
@@ -630,6 +687,18 @@ def require_compiled(outcome: BuildOutcome, source_paths: Sequence[str]) -> None
     nothing.
     """
     if not outcome.succeeded:
+        # TWO FAILURES WANT TWO SENTENCES. Issue #1802: the sentence about a
+        # compiler error is written for the common case and sent a reader
+        # looking for a mistake in their own break when the runner had simply
+        # taken the machine.
+        if is_mutex_denial(outcome.stdout):
+            raise BuildDidNothing(
+                f"The build did not succeed. {outcome.summary}\n"
+                "The continuous integration runner holds the UnrealBuildTool "
+                "mutex (UnauthorizedAccessException on "
+                "Global\\UnrealBuildTool_Mutex), and the build was retried "
+                "without getting it. Nothing is wrong with the source: wait "
+                "for the runner's compile to finish and run this again.")
         raise BuildDidNothing(
             f"The build did not succeed. {outcome.summary}\n"
             "Read the whole tail of the build output, not only the Result line: "
