@@ -2,6 +2,123 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — One attack counts the enemies it strikes together, and three Ravager nodes can read the count
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp` (a condition, a scale, and the count they read),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and
+`.cpp` (the count through four lookups),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` and `.cpp` (the
+count and the bought damage on each blow, and the count on the damage effect),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp` (one
+attack begun once per group of blows),
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the armour
+penetration lookup), `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h`
+and `.cpp` (Bought With Ruin's payment),
+`game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h` and
+`.cpp` (one attribute),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`tools/generate_datatables.py` (two names), and the tests. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+Three Ravager nodes need one mechanism, and this change is that mechanism. Their
+rows wait on the design workbook and are not in it:
+
+| node | sentence |
+| :-- | :-- |
+| `Ravager_basic_b_b2` Bought With Ruin | "Each enemy your melee attack hits beyond the first costs 2 Fervour and deals +3% increased damage per point. If you cannot pay, the attack still hits but gains nothing." |
+| `Ravager_basic_b_a2` Cleaving Arc | "+1% increased Attack Damage per point for each enemy your attack hits beyond the first." |
+| `Ravager_keystone_b_kA` Sundering | "Your melee attacks ignore enemy Armor entirely when they hit three or more enemies at once." |
+
+### FIVE RULINGS, MADE BEFORE ANY CODE
+
+Put to the coordinating session with a recommendation each and accepted on
+2026-09-16 under the owner's delegation of blocker resolution. Two are
+judgements, labelled here so they can be overruled.
+
+1. **What one attack is.** One group of blows dealt together by one use: a
+   Strike's swing, a Charge's landing, each repeat of a spinning Strike, each
+   Flicker arrival, each Advance step.
+2. **What counts. A JUDGEMENT.** In one sentence a player could read: every
+   enemy your attack swings at counts, even one that dodges the blow. The count
+   is taken after the skill's own target cap and before any blow resolves, for
+   two reasons: each blow's damage is worked out before the next enemy is
+   resolved, so the number that landed is not known until all but the last are
+   priced; and Extinction already counts the enemies it consumes "in the same
+   instant" the same way. An enemy that evades therefore also raises Bought
+   With Ruin's cost.
+3. **Where the count lives.** The route `MetresMovedBeforeBlow` already takes: a
+   field on `FCataclysmHitDelivery`, one more defaulted parameter through the
+   lookups that price a blow, a field on `FCataclysmStatConditions` where -1
+   means unknown, and a number on the damage effect so the defender's armour
+   penetration lookup can pass it on. Unknown gives the scale nothing and
+   refuses the condition.
+4. **Bought With Ruin's arithmetic.** (a) 2 Fervour per enemy beyond the first,
+   a constant like Wrung Out's 5; the node's points change only the damage.
+   **(b) ALL OR NOTHING FOR THE WHOLE ATTACK, A JUDGEMENT:** holding less than
+   the whole cost spends nothing and gains nothing, the same reading of "If you
+   cannot pay" as Wrung Out's. (c) 3% increased per point per enemy beyond the
+   first, in the increases, on every blow of that attack: an enemy cannot
+   "deal" damage, so the sentence gives the attack the damage, as Cleaving Arc's
+   does.
+5. **Scope.** Bought With Ruin and Sundering require `Type.Melee`; Cleaving Arc
+   says "your attack" and requires nothing.
+
+### TWO PLACES THE BUILD DIFFERS FROM THE LETTER OF THE PLAN
+
+**The shared count is begun in `HitScaled`, not in `SwingOnce`.** The plan said
+the swing sets its count before calling `HitScaled`. `HitScaled` is the one
+function that deals one group in two calls, and a Charge reaches it too, so
+beginning the attack there covers every caller with the same meaning.
+`HitTargets` begins an attack for its own targets only when none is in progress,
+which is the fallback every aura pulse, debuff, summon and landing projectile
+takes.
+
+**The new parameter is LAST in every signature, not beside
+`MetresMovedBeforeBlow`.** Each of those parameters is followed today by the
+target's distance, whether it is staggered, and the target, and inserting before
+them would shift every call that passes those by position.
+
+### SUNDERING DOES NOT BEAT A DEFENDER THAT FORBIDS PENETRATION
+
+The existing rule stands: a defender carrying `armor_penetration_suppressed` --
+the Ravager's own keystone grants it -- keeps all of its armour against every
+attack, Sundering included. The count reaches the armour penetration lookup, and
+the damage calculation then ignores that figure for such a defender, as it
+ignores every other.
+
+### WHAT THE GENRE RESEARCH SETTLES AND WHAT IT DOES NOT
+
+It settles the shape of two of the three: gains "for each enemy hit" are counted
+per enemy (Path of Exile's gain on hit, from a search summary of its wiki, which
+refuses fetches; Diablo 4's Hammer of the Ancients, "Gain 3%[+] increased Fury
+Generation for 5 seconds for each enemy damaged", read on
+diablo4.wiki.fextralife.com), and ignoring armour is a percentage of it (Path of
+Exile's Overwhelm, from a search summary; this game's own `armor_penetration`).
+**No shipped example was found of an attack's damage sized by how many enemies
+the same attack LANDED on**, so ruling 2 is this game's judgement and not a
+genre fact.
+
+### NOT IN THIS CHANGE
+
+- **The three nodes' rows.** The workbook goes to the enchantment session first.
+  `enemies_hit_at_least` is listed as built ahead of its row in
+  `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`,
+  and leaves that list when Sundering's row is authored.
+- **The next Ravager change:** the starting node's "1 for each enemy your
+  attacks hit". It is a gain per landed hit, which is a different mechanism from
+  a count fixed before the blows resolve.
+- **Bundling the per-blow facts into one struct.** About eight signatures would
+  change; it is its own change and was not started.
+
+### COUNTS
+
+    class resource attributes 29 -> 30, OffSheetResourceStats 27 -> 28
+    generator conditions +1 (enemies_hit_at_least), scales +1 (enemies_hit_beyond_the_first)
+    Unreal automation tests +8, by name: two in Cataclysm.StatPipeline., six in Cataclysm.Skills.
+
+---
+
 ## 2026-09-16 — Leech Spores drains the player once per cloud to heal the creatures near them, an earlier grouping of this row is superseded by its own words, and "within ten metres" is measured to a creature's body
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
