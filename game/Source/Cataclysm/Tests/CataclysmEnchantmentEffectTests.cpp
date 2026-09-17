@@ -3230,4 +3230,124 @@ bool FCataclysmRemovingMaximumManaEmptiesTheManaHeld::RunTest(const FString&)
 			  ASC.GetNumericAttribute(Mana), 0.0f, 0.0001f);
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmNoMeleeBlowIsEvadedOrBlocked,
+	"Cataclysm.Enchantments.AnAuthoredRowLetsNoMeleeBlowBeEvadedOrBlockedAndLeavesTheRest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNoMeleeBlowIsEvadedOrBlocked::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// "You cannot evade or block melee attacks" IS TWO REMOVALS, of evasion and
+	// of block chance, each holding only against a blow `hit_is_melee_attack`
+	// names. Ruled 2026-09-17 under the project owner's delegation: a melee
+	// attack is a blow whose effect carries Type.Melee, the reading the written
+	// "less damage from melee attacks" rows already use.
+	//
+	// GEAR SUPPLIES BOTH STATS, because a removal takes away what the pipeline
+	// resolves: `Chest_Jerkin` carries an evasion implicit and `Weapon_Shield` a
+	// block chance implicit. Each roll is pinned to 0, so any evasion or block
+	// chance at all evades or blocks, and a blow that is neither is one the stat
+	// did not reach.
+	//
+	// THE CONTROL COMES FIRST: the same gear under a helm without the row evades
+	// and blocks a melee blow, so what stops it afterwards is the row. And with
+	// the row worn a ranged blow is still evaded and still blocked -- the half a
+	// removal that lost its condition would fail.
+	//
+	// IT FAILS UNTIL `tools/generate_datatable_assets.py` HAS REBUILT THE ASSET
+	// FROM A CSV HOLDING THE ROWS.
+	const TCHAR* NoMeleeEvasionOrBlock =
+		TEXT("Negative_You_cannot_evade_or_block_melee_attacks");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	const TCHAR* const PlainPieces[] = {
+		TEXT("Chest_Jerkin"), TEXT("Weapon_Shield"), TEXT("Head_Helm")};
+	for (const TCHAR* Base : PlainPieces)
+	{
+		Wearer.Equipment->Equip(
+			Carrying(Base, BenefitWithNoEffect, DrawbackWithNoEffect),
+			Removed, AlsoRemoved, Slot);
+	}
+	Wearer.Equipment->RefreshAttributes(&ASC);
+	GivePools(ASC, /*Health=*/10'000.0f, /*MaxHealth=*/10'000.0f);
+
+	FCataclysmIncomingHit Melee;
+	Melee.Damage = 400.0f;
+	Melee.bIsMelee = true;
+	FCataclysmIncomingHit Ranged;
+	Ranged.Damage = 400.0f;
+	Ranged.bIsRanged = true;
+
+	// EVASION IS ROLLED BEFORE BLOCK AND AN EVADED BLOW STOPS THERE, so each
+	// question pins the other roll out of reach.
+	const auto Evades = [&ASC](const FCataclysmIncomingHit& Hit)
+	{
+		return UCataclysmDamageCalculation::Resolve(
+			Hit, &ASC, /*Tier=*/1, /*EvasionRoll=*/0.0f, /*BlockRoll=*/100.0f)
+			.bEvaded;
+	};
+	const auto Blocks = [&ASC](const FCataclysmIncomingHit& Hit)
+	{
+		return UCataclysmDamageCalculation::Resolve(
+			Hit, &ASC, /*Tier=*/1, /*EvasionRoll=*/100.0f, /*BlockRoll=*/0.0f)
+			.bBlocked;
+	};
+
+	if (!TestTrue(TEXT("the gear evades a melee blow under a plain helm"),
+				  Evades(Melee))
+		|| !TestTrue(TEXT("and blocks one"), Blocks(Melee)))
+	{
+		return false;
+	}
+
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, NoMeleeEvasionOrBlock),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(&ASC);
+	GivePools(ASC, /*Health=*/10'000.0f, /*MaxHealth=*/10'000.0f);
+
+	const FCataclysmStatModifier* OnEvasion =
+		TheEnchantmentModifierOn(ASC, TEXT("evasion"));
+	const FCataclysmStatModifier* OnBlock =
+		TheEnchantmentModifierOn(ASC, TEXT("block_chance"));
+	if (!OnEvasion || !OnBlock)
+	{
+		AddError(FString::Printf(
+			TEXT("Wearing %s did not put exactly one enchantment modifier on "
+				 "evasion and one on block chance. DT_EnchantmentEffects may be "
+				 "older than the rows: run  python tools/run_editor_python.py "
+				 "tools/generate_datatable_assets.py"),
+			NoMeleeEvasionOrBlock));
+		return false;
+	}
+	TestEqual(TEXT("evasion's row arrived as a removal"), OnEvasion->Bucket,
+			  ECataclysmStatBucket::Removed);
+	TestEqual(TEXT("against melee blows"), OnEvasion->Condition,
+			  ECataclysmStatCondition::HitIsMeleeAttack);
+	TestEqual(TEXT("block chance's row arrived as a removal"), OnBlock->Bucket,
+			  ECataclysmStatBucket::Removed);
+	TestEqual(TEXT("against melee blows too"), OnBlock->Condition,
+			  ECataclysmStatCondition::HitIsMeleeAttack);
+
+	TestFalse(TEXT("a melee blow is not evaded"), Evades(Melee));
+	TestFalse(TEXT("nor blocked"), Blocks(Melee));
+	TestTrue(TEXT("a ranged blow is still evaded"), Evades(Ranged));
+	TestTrue(TEXT("and still blocked"), Blocks(Ranged));
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
