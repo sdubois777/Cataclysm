@@ -299,15 +299,27 @@ def test_a_hit_that_does_not_stun_records_no_duration():
     assert r.stun_seconds == 0.0
 
 
-def test_crowd_control_resistance_reduces_the_stun_chance_proportionally():
-    """Proportionally rather than by subtraction, so a character at 100
-    resistance cannot be stunned at all whatever the incoming chance."""
+def test_crowd_control_resistance_shortens_a_stun_rather_than_making_it_rarer():
+    """The rule the project owner decided on 2026-09-05 and the game has used
+    since. A defender at 50 resistance is stunned just as often as one at 0 and
+    for half as long; one at 100 is not stunned at all. Issue #1950.
+
+    THE CHANCE IS THE SAME FOR ALL THREE, which is the half that changed: this
+    model reduced the chance until now."""
     blunt = hit(subtype="Blunt")
-    assert dm.effective_stun_chance(blunt, plain()) == pytest.approx(10.0)
-    assert dm.effective_stun_chance(
-        blunt, plain(crowd_control_resistance=50.0)) == pytest.approx(5.0)
-    assert dm.effective_stun_chance(
-        blunt, plain(crowd_control_resistance=100.0)) == 0.0
+
+    assert dm.stun_against(blunt, plain()) == (
+        pytest.approx(10.0), pytest.approx(dm.INCIDENTAL_STUN_SECONDS))
+
+    # HALF THE DURATION AT THE SAME CHANCE. The old rule gave the opposite pair,
+    # 5% chance at the full 0.75 seconds, so this case tells the two apart.
+    chance, seconds = dm.stun_against(blunt, plain(crowd_control_resistance=50.0))
+    assert chance == pytest.approx(10.0)
+    assert seconds == pytest.approx(dm.INCIDENTAL_STUN_SECONDS / 2)
+
+    # AND AT 100 THERE IS NO STUN, which both rules agree on and which is why it
+    # cannot be the only case checked.
+    assert dm.stun_against(blunt, plain(crowd_control_resistance=100.0)) == (0.0, 0.0)
 
 
 def test_stun_chance_scales_with_gear():
@@ -869,21 +881,32 @@ def test_a_blunt_weapon_brings_its_own_chance_and_nothing_else_does():
     assert both.total_stun_chance() == 100.0
 
 
-def test_crowd_control_resistance_bites_into_the_overflow_too():
-    """A defender at 50 resistance facing 400% chance sees 200%, which is still
-    certainty and still doubles the duration -- but from twice the investment.
-    Reducing only the capped 100 would make resistance worth nothing at all
-    against a heavy stun build, which is the opposite of what it is for."""
-    attacker = dm.Attacker(damage=100.0, subtype="Blunt", bonus_stun_chance=390.0)
+def test_the_duration_cap_is_applied_before_resistance_shortens_it():
+    """The order the game uses, and the one thing about this rule that cannot be
+    guessed from the rule itself. Issue #1950.
+
+    In `CataclysmAilments.cpp` the pooled chance goes through `StunApplication`,
+    which caps the chance at 100 and turns the rest into a longer stun up to
+    `LONGEST_STUN_SECONDS`; the roll happens; and only then does `ApplyStun`
+    shorten the seconds by the defender's resistance.
+
+    790 FROM THE AFFIX PLUS BLUNT'S OWN 10 IS 800%, CHOSEN BECAUSE THE CAP BINDS
+    THERE. 0.75 seconds times eight is 6.0, held at the 3.0 cap, then halved to
+    1.5. Shortening first would give 0.75 times eight times a half, which is 3.0
+    -- the cap itself, and twice this answer. At 400% the two orders agree
+    exactly, which is why that is not the case used here."""
+    attacker = dm.Attacker(damage=100.0, subtype="Blunt", bonus_stun_chance=790.0)
     tough = plain(crowd_control_resistance=50.0)
 
     chance, seconds = dm.stun_against(attacker, tough)
     assert chance == 100.0
-    assert seconds == pytest.approx(dm.INCIDENTAL_STUN_SECONDS * 2)
+    assert seconds == pytest.approx(dm.LONGEST_STUN_SECONDS / 2)
+    assert seconds < dm.LONGEST_STUN_SECONDS, (
+        "the cap was applied after resistance rather than before it")
 
     # And full resistance still means no stun at all, whatever is stacked.
     immune = plain(crowd_control_resistance=100.0)
-    assert dm.stun_against(attacker, immune)[0] == 0.0
+    assert dm.stun_against(attacker, immune) == (0.0, 0.0)
 
 
 def test_a_stunning_hit_reports_the_scaled_duration():

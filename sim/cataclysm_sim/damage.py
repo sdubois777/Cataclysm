@@ -656,29 +656,35 @@ def effective_resistance(resistance: float, penetration: float) -> float:
     return max(RESISTANCE_FLOOR, min(RESISTANCE_CAP, penetrated))
 
 
-def effective_stun_chance(attacker: Attacker, defender: Defender) -> float:
-    """Chance to stun after the defender's crowd control resistance.
+def after_crowd_control_resistance(seconds: float, defender: Defender) -> float:
+    """How long a stun lasts against this defender, after its resistance.
 
-    Resistance reduces the chance proportionally rather than subtracting from
-    it, so a character at 100 resistance cannot be stunned at all and one at 50
-    is stunned half as often, whatever the incoming chance.
+    RESISTANCE SHORTENS A STUN; IT DOES NOT MAKE ONE LESS LIKELY. A defender at
+    50 is stunned as often as one at 0 and for half as long, and one at 100 is
+    not stunned at all. The project owner decided that on 2026-09-05, and issue
+    #1950 is where this model was found still reducing the CHANCE, as it had
+    since before that decision.
 
-    IT REDUCES THE ATTACKER'S TOTAL, NOT THE CAPPED CHANCE, so a defender's
-    resistance bites into the overflow as well. A 50 resistance defender facing
-    400% chance to stun sees 200%, which is still certainty and still doubles
-    the duration -- but sees it from twice as much investment as before. Reducing
-    only the capped 100 would make resistance worth nothing at all against a
-    heavy stun build, which is the opposite of what a defensive stat is for.
+    NAMED FOR `UCataclysmSkillEffects::AfterCrowdControlResistance`, the one
+    function in the game that reads the stat, so that each is findable from the
+    other. The game's copy takes any crowd control effect's amount -- a stun's
+    seconds, a knockdown's seconds, a shove's centimetres -- and this one takes
+    only a stun's seconds, because a stun is the only crowd control this model
+    has.
+
+    ZERO IS NOT A SHORT STUN, IT IS NO STUN. The caller has to treat it as a
+    refusal rather than as a duration, which is what `ApplyStun` does in the
+    game: it returns false at zero or less, before it looks at anything else.
     """
+    if seconds < 0.0:
+        raise ValueError(f"a stun of {seconds} seconds is not a duration")
+
     reduction = max(0.0, min(100.0, defender.crowd_control_resistance))
-    return attacker.total_stun_chance() * (1.0 - reduction / 100.0)
+    return seconds * (1.0 - reduction / 100.0)
 
 
 def stun_against(attacker: Attacker, defender: Defender) -> tuple[float, float]:
     """The chance to stun this defender and how long the stun would last.
-
-    Both halves after the defender's crowd control resistance, which is the only
-    place the two are put together.
 
     THE DURATION DOES NOT DEPEND ON THE WEAPON. Every source of chance to stun --
     a blunt weapon's 10%, an affix, whatever gems and enchantments grant later --
@@ -686,8 +692,24 @@ def stun_against(attacker: Attacker, defender: Defender) -> tuple[float, float]:
     `INCIDENTAL_STUN_SECONDS` before the overflow lengthens it. A skill whose
     STATED effect is to stun is a different thing entirely and carries its own
     duration in its data; see `Attacker.stun_is_designed`.
+
+    THE CAP COMES FIRST AND RESISTANCE COMES AFTER IT, which is the order the
+    game uses and the one thing here that could not be guessed. In
+    `CataclysmAilments.cpp` the pooled chance goes through `StunApplication`,
+    which caps the chance at 100 and turns the rest into a longer stun up to
+    `LONGEST_STUN_SECONDS`; the roll happens; and only then does `ApplyStun`
+    shorten the seconds. Shortening before the cap would give a different answer
+    every time the cap binds: 800% chance against 50 resistance is 1.5 seconds
+    this way and the full 3.0 the other way.
+
+    A DEFENDER THAT CANNOT BE STUNNED GETS NO CHANCE EITHER, so a caller cannot
+    roll a stun of zero seconds and report it as a stun.
     """
-    return stun_application(effective_stun_chance(attacker, defender))
+    chance, seconds = stun_application(attacker.total_stun_chance())
+    seconds = after_crowd_control_resistance(seconds, defender)
+    if seconds <= 0.0:
+        return 0.0, 0.0
+    return chance, seconds
 
 
 def resolve(attacker: Attacker, defender: Defender,
@@ -794,8 +816,17 @@ def resolve(attacker: Attacker, defender: Defender,
         stunned = False
     elif attacker.stun_is_designed or can_be_stunned(to_health, defender):
         stun_chance, stun_seconds = stun_against(attacker, defender)
-        stunned = (force_stun if force_stun is not None
-                   else rng.uniform(0, 100) < stun_chance)
+        if stun_seconds <= 0.0:
+            # CROWD CONTROL RESISTANCE AT 100 IS A GATE, NOT A REDUCED ROLL, so
+            # it holds against `force_stun` the way boss immunity does. Without
+            # this, forcing a stun onto a fully resistant defender would report
+            # a stun of zero seconds, which is a stun that did not happen being
+            # counted as one. Issue #1950.
+            stunned = False
+            stun_seconds = 0.0
+        else:
+            stunned = (force_stun if force_stun is not None
+                       else rng.uniform(0, 100) < stun_chance)
     else:
         stunned = False
         stun_seconds = 0.0

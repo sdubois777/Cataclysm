@@ -2410,7 +2410,7 @@ Weapons have a physical sub-type that determines baseline combat properties:
 
   
 
-The stun uses the shortest duration any designed skill uses. A weapon sub-type that can stun on every hit must not outclass the skills whose entire purpose is stunning, which run to 3 seconds. Crowd control resistance reduces the chance proportionally, so a character at 100% cannot be stunned at all. An evaded hit never stuns, because nothing made contact; a blocked hit still can, because a block reduces damage rather than preventing contact — provided what got through still clears the damage threshold below.
+The stun uses the shortest duration any designed skill uses. A weapon sub-type that can stun on every hit must not outclass the skills whose entire purpose is stunning, which run to 3 seconds. Crowd control resistance shortens the stun proportionally rather than making it land less often, so a character at 50% is stunned as often and for half as long, and one at 100% cannot be stunned at all. It shortens what is left after the 3 second cap, not before it. An evaded hit never stuns, because nothing made contact; a blocked hit still can, because a block reduces damage rather than preventing contact — provided what got through still clears the damage threshold below.
 
   
 
@@ -2620,7 +2620,7 @@ Halving is also the only option under which no skill ever visibly does nothing. 
 
   
 
-**What offensive crowd control gear exists was settled on 2026-08-16.** Two crowd control effects are available as affixes: Chance to cripple, which slows, and Chance to stun, which is new. **There is no affix that scales a stun's duration, and there will not be one.**
+**What offensive crowd control gear exists was settled on 2026-08-16.** Two crowd control effects are available as affixes: Chance to cripple, which slows, and Chance to stun, which is new. **There is no affix that lengthens a stun, and there will not be one.** Shortening one is a different thing and is allowed: crowd control resistance shortens an incoming stun, and gear grants that. Narrowed from "scales a stun's duration" by the project owner on 2026-09-17, when resistance became a lever on duration.
 
   
 
