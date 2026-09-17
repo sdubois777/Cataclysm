@@ -145,11 +145,50 @@ rung added to the creature ladder, and the ceiling written as its own 3. Summari
 "PROVED: 1 failed, 102 passed | restored: 103 passed", and "2 failed, 101 passed" for the break that
 trips two.
 
+### What the runs found, including what they found wrong
+
+**The first whole-suite run in the window failed eight of the nine new tests**: 2,044 performed, 2,036
+succeeded, 8 failed. Both causes were in the tests, not in the rule, and both are worth writing down.
+
+1. **Seven failed on "the floor placed creatures of its own".**
+   `ACataclysmDungeonGameMode::BuildFloor` makes a floor's layout and its brief and spawns nobody;
+   `PopulateFloor` is what puts creatures out, and `GoToFloor` calls both. These tests need the floor's
+   own creatures, because the rule calls guards of the summoner's kind and a kind is read off a
+   creature's class. They now reach floor one with `GoToFloor`.
+2. **One failed comparing how many creatures stood in the world before and after a floor change**,
+   expecting 145 and measuring 280. A Horde dungeon's next wave brings its own population, so that
+   count cannot say whether a guard was called. It now asserts the floor panel's own count of guards,
+   which is cleared at the change and rises only when a guard arrives.
+
+**After the correction, in the same window and under the same editor lock:** 2,044 tests performed,
+2,044 succeeded, 0 failed, with "2044 declared in the tree, 2044 performed, gap 0"; the group
+`Cataclysm.DungeonModifierEffects.` performed 118 and all 118 succeeded. **The suite was run twice under
+one lock**, which the pull request states and which is flagged to the project owner as the two windows
+before this one were.
+
+**The three guard proofs, all proved, and one prediction that was wrong.**
+
+| Proof | Break | With the break | Restored |
+| :-- | :-- | :-- | :-- |
+| P1 | the guards arrive at their summoner's own rung | 118 performed, 116 succeeded, 2 failed | 118, 118, 0 |
+| P2 | the ceiling on a guard's rung removed | 118 performed, 117 succeeded, 1 failed | 118, 118, 0 |
+| P3 | the record of who has already rolled removed | 118 performed, 113 succeeded, **5** failed | 118, 118, 0 |
+
+P1 failed the two tests registered for it, on "and stands a rung above it" (rung 1 where 2 was wanted)
+and on the ceiling test's boss-rung half (rung 4, and a boss). P2 failed the one registered, on all four
+of its assertions: a Herald's guards stood at rung 4 and a first-boss-rung creature's at rung 5, both
+bosses.
+
+**P3 was registered as failing four tests and failed five.** The fifth is the chance-boundary test, on
+"a roll of 49.99 calls the guards", which wanted two new creatures and measured four. The reason is that
+the creature wounded in that test's first half is still wounded in its second half: with the record
+gone it rolls again beside the second creature, so two summoners call guards where the test expects one.
+The prediction missed that a creature stays eligible across the two halves. The proof stands — the
+tests failed with the break in and every one passed with it out — but the registered count was wrong,
+and the measurement is what this entry records.
+
 ### What the tests do not show
 
-- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the automation run and the three guard proofs wait for this machine's next free window. Until then no
-  claim in the section above about what the automation tests measure has been measured.
 - **Only three of the rule's claims are guard-proved**, which is the standing budget of three proofs a
   change: that the guards' rung is written after they spawn, that the ceiling holds, and that the record
   of who has rolled holds. The rank gate and the two boundaries are tested and not proved.
