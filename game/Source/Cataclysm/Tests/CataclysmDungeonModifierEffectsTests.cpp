@@ -17,6 +17,7 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Components/CapsuleComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -142,6 +143,10 @@ namespace CataclysmDungeonModifierEffectsTest
 
 	/** And the one whose waves of creatures rise on a clock. Issues #1820, #41. */
 	const FName GraveTide(UCataclysmDungeonModifierEffects::GraveTideKey);
+
+	/** And the one whose wounded creatures turn into a rarer kind. Issues #1820, #41. */
+	const FName VolatileEvolution(
+		UCataclysmDungeonModifierEffects::VolatileEvolutionKey);
 
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
@@ -501,6 +506,86 @@ namespace CataclysmDungeonModifierEffectsTest
 			? System->GetNumericAttribute(
 				UCataclysmVitalAttributeSet::GetHealthAttribute())
 			: -1.0f;
+	}
+
+	/** What that health is measured against, or a negative number if it cannot say. */
+	float MaxHealthOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System
+			? System->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+			: -1.0f;
+	}
+
+	/** The other pool, and its maximum. Volatile Evolution has to preserve both. */
+	float ShieldOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System
+			? System->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetEnergyShieldAttribute())
+			: -1.0f;
+	}
+
+	float MaxShieldOf(const AActor* Actor)
+	{
+		const UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Actor);
+		return System
+			? System->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute())
+			: -1.0f;
+	}
+
+	/** Put a creature's two pools where a test wants them, whatever its maximums are. */
+	void WoundCreatureTo(ACataclysmEnemyCharacter* Creature, float HealthNow,
+						 float ShieldNow)
+	{
+		if (UAbilitySystemComponent* System =
+				Creature ? Creature->GetAbilitySystemComponent() : nullptr)
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), HealthNow);
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), ShieldNow);
+		}
+	}
+
+	/**
+	 * A creature with a DESIGNED maximum health and energy shield, wounded to the two
+	 * figures given. Issues #1820 and #41.
+	 *
+	 * `SetHealth` RATHER THAN A WRITE STRAIGHT ONTO THE ATTRIBUTE, which is what
+	 * `SpawnCreatureWithHealth` above does and why that one will not serve here. A rung
+	 * of the rarity ladder scales the DESIGNED figure: a creature whose maximum was
+	 * written onto the attribute has no designed figure to scale, so its maximum would
+	 * not move when it mutated and a test of "it kept the health it had" would be
+	 * measuring a pool that never changed.
+	 */
+	ACataclysmEnemyCharacter* SpawnCreatureWoundedTo(UWorld* World,
+													const FVector& Where,
+													float DesignedMaxHealth,
+													float ShieldFraction,
+													float HealthNow, float ShieldNow)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Creature = World->SpawnActor<ACataclysmEnemyCharacter>(
+			ACataclysmEnemyCharacter::StaticClass(), Where, FRotator::ZeroRotator,
+			Spawn);
+		if (!Creature)
+		{
+			return nullptr;
+		}
+		Creature->SetHealth(DesignedMaxHealth);
+		Creature->SetEnergyShieldFraction(ShieldFraction);
+		WoundCreatureTo(Creature, HealthNow, ShieldNow);
+		Creature->SetActorLocation(Where);
+		return Creature;
 	}
 
 	ACataclysmEnemyCharacter* SpawnCreatureThatCanHit(UWorld* World, float AlongX)
@@ -9995,10 +10080,12 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 									 GraspingTentacles, WitheredGround, FungalOvergrowth,
 									 LeechSpores, ArtilleryStrike, NecroticGround};
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
-	// AND RAVENOUS HOARD AND GRAVE TIDE, WHICH PLACE NO ZONE. Issues #1820 and #41.
+	// AND RAVENOUS HOARD, GRAVE TIDE AND VOLATILE EVOLUTION, WHICH PLACE NO ZONE.
+	// Issues #1820 and #41.
 	TArray<FName> Rules = ZoneRules;
 	Rules.Add(RavenousHoard);
 	Rules.Add(GraveTide);
+	Rules.Add(VolatileEvolution);
 	Mode->DungeonModifiers = Rules;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
 	{
@@ -11728,6 +11815,642 @@ bool FCataclysmGraveTideFloorChangeTest::RunTest(const FString& Parameters)
 	TestEqual(FString::Printf(TEXT("and the new floor's first wave is three: %d"),
 							  CreaturesNow().Num() - OnArrival),
 			  CreaturesNow().Num() - OnArrival, Effects::GraveTideCreaturesInWave(0));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Volatile_Evolution: "Enemies have a chance to mutate into higher rarity mobs
+// once they drop below 75% hp." Issues #1820 and #41.
+//
+// WHAT EVERY TEST HERE RELIES ON. A floor's own creatures are placed at full health, so
+// the only creature a beat can offer a mutation to is one a test wounded itself. That is
+// why a count on the panel is worth asserting at all.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionMutationTest,
+	"Cataclysm.DungeonModifierEffects.AWoundedCreatureRisesARungAndKeepsTheHealthAndShieldItHad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionMutationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW, AND THE RULING THAT A MUTATION MUST NOT HEAL. Both routes into a new rung
+	// end by refilling health and energy shield, so the rule reads both pools first and
+	// writes both back. The figures are asserted with no tolerance at all: a preserved
+	// number is the same number, and a tolerance would also accept a refill that landed
+	// nearby.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {VolatileEvolution};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a wounded creature was placed"), Creature))
+	{
+		return false;
+	}
+
+	const float MaxHealthBefore = MaxHealthOf(Creature);
+	const float MaxShieldBefore = MaxShieldOf(Creature);
+	TestEqual(TEXT("it starts Common"), Creature->RarityStep, 0);
+	TestEqual(TEXT("with sixty health of a hundred"), HealthOf(Creature), 60.0f, 0.0f);
+	TestEqual(TEXT("and twenty of a fifty point shield"), ShieldOf(Creature), 20.0f,
+			  0.0f);
+
+	Beat(Mode, 1);
+
+	AddInfo(FString::Printf(
+		TEXT("Volatile Evolution: after one beat the creature is at rarity step %d, "
+			 "health %.2f of %.2f (was %.2f of %.2f), shield %.2f of %.2f (was %.2f)"),
+		Creature->RarityStep, HealthOf(Creature), MaxHealthOf(Creature), 60.0f,
+		MaxHealthBefore, ShieldOf(Creature), MaxShieldOf(Creature), MaxShieldBefore));
+
+	TestEqual(TEXT("one beat raised it one rung"), Creature->RarityStep,
+			  Effects::VolatileEvolutionRungsGained);
+	TestTrue(FString::Printf(TEXT("its maximum health rose from %.2f to %.2f"),
+							 MaxHealthBefore, MaxHealthOf(Creature)),
+			 MaxHealthOf(Creature) > MaxHealthBefore);
+	TestEqual(TEXT("and it kept the health it had, to the last decimal"),
+			  HealthOf(Creature), 60.0f, 0.0f);
+	TestTrue(FString::Printf(TEXT("which is under the new maximum, so it is a kept "
+								  "figure and not a refilled pool: %.2f of %.2f"),
+							 HealthOf(Creature), MaxHealthOf(Creature)),
+			 HealthOf(Creature) < MaxHealthOf(Creature));
+	TestTrue(FString::Printf(TEXT("its maximum shield rose from %.2f to %.2f"),
+							 MaxShieldBefore, MaxShieldOf(Creature)),
+			 MaxShieldOf(Creature) > MaxShieldBefore);
+	TestEqual(TEXT("and it kept the energy shield it had, to the last decimal"),
+			  ShieldOf(Creature), 20.0f, 0.0f);
+	TestTrue(FString::Printf(TEXT("which is under the new maximum too: %.2f of %.2f"),
+							 ShieldOf(Creature), MaxShieldOf(Creature)),
+			 ShieldOf(Creature) < MaxShieldOf(Creature));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionThresholdTest,
+	"Cataclysm.DungeonModifierEffects.AtThreeQuartersHealthACreatureIsLeftAloneAndJustUnderItMutates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionThresholdTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ONE FIGURE THE ROW STATES: "once they drop below 75% hp". Below, and not at:
+	// the creature sits exactly on the threshold for forty beats and is left alone, then
+	// loses a tenth of a point and mutates on the next beat. A test that only wounded a
+	// creature to half would pass against a rule that mutated everything.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {VolatileEvolution};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// EXACTLY THE THRESHOLD, COMPUTED FROM THE FIGURE RATHER THAN TYPED: 75 of 100.
+	const float DesignedMaxHealth = 100.0f;
+	const float OnTheThreshold =
+		DesignedMaxHealth * Effects::VolatileEvolutionHealthPercentToMutate / 100.0f;
+	ACataclysmEnemyCharacter* Creature = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), DesignedMaxHealth, 0.5f, OnTheThreshold,
+		20.0f);
+	if (!TestNotNull(TEXT("a creature was placed"), Creature))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("it stands exactly on the threshold"), HealthOf(Creature),
+				   OnTheThreshold, 0.0f))
+	{
+		return false;
+	}
+
+	Beat(Mode, 40);
+	TestEqual(FString::Printf(TEXT("at %.2f of %.2f, ten seconds of beats change nothing"),
+							  HealthOf(Creature), MaxHealthOf(Creature)),
+			  Creature->RarityStep, 0);
+
+	WoundCreatureTo(Creature, OnTheThreshold - 0.1f, 20.0f);
+	Beat(Mode, 1);
+	TestEqual(FString::Printf(TEXT("a tenth of a point lower and it mutates: %.2f of "
+								   "%.2f"), HealthOf(Creature), MaxHealthOf(Creature)),
+			  Creature->RarityStep, Effects::VolatileEvolutionRungsGained);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionChanceTest,
+	"Cataclysm.DungeonModifierEffects.AWoundedCreatureMutatesUnderTheChanceAndNotOnTheChanceItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionChanceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A CHANCE AND NOT A CERTAINTY, and the boundary is where the two readings of "a
+	// chance of ten" differ: a roll of exactly ten misses and a roll under ten hits.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {VolatileEvolution};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a wounded creature was placed"), Creature))
+	{
+		return false;
+	}
+
+	{
+		// THE CHANCE ITSELF, WHICH MISSES. Forty beats of it.
+		FScopedConsoleString OnTheChance(
+			TEXT("Cataclysm.VolatileEvolutionRoll"),
+			*FString::Printf(TEXT("%f"), Effects::VolatileEvolutionChancePercent));
+		if (!TestNotNull(TEXT("the mutation roll can be pinned"), OnTheChance.Variable))
+		{
+			return false;
+		}
+		Beat(Mode, 40);
+		TestEqual(FString::Printf(TEXT("a roll of exactly %.0f never mutates it"),
+								  Effects::VolatileEvolutionChancePercent),
+				  Creature->RarityStep, 0);
+	}
+
+	{
+		// AND A HUNDREDTH UNDER IT, WHICH HITS, ON THE FIRST BEAT.
+		FScopedConsoleString UnderTheChance(
+			TEXT("Cataclysm.VolatileEvolutionRoll"),
+			*FString::Printf(TEXT("%f"),
+							 Effects::VolatileEvolutionChancePercent - 0.01f));
+		if (!TestNotNull(TEXT("the mutation roll can be pinned again"),
+						 UnderTheChance.Variable))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		TestEqual(FString::Printf(TEXT("a roll of %.2f mutates it"),
+								  Effects::VolatileEvolutionChancePercent - 0.01f),
+				  Creature->RarityStep, Effects::VolatileEvolutionRungsGained);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionModifierTest,
+	"Cataclysm.DungeonModifierEffects.AMutatedCreatureCarriesAModifierItDidNotHaveBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionModifierTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// A RARER CREATURE IS NOT ONLY A BIGGER ONE. `UCataclysmEnemyModifiers::
+	// CountForRarityStep` is the rung itself, so a Common carries none and an Elite one,
+	// and the rule draws the difference after it raises the rung.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {VolatileEvolution};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a wounded creature was placed"), Creature))
+	{
+		return false;
+	}
+	// A FIXED DRAW, so the test says which modifier it got rather than only how many.
+	Creature->SetModifierSeedForTests(20260917);
+	if (!TestEqual(TEXT("a Common carries no modifier"), Creature->ModifierRows.Num(), 0))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+
+	AddInfo(FString::Printf(TEXT("Volatile Evolution: the mutated creature carries %d "
+								 "modifier(s): %s"),
+							Creature->ModifierRows.Num(),
+							*FString::JoinBy(Creature->ModifierRows, TEXT(", "),
+											 [](const FName& Row)
+											 { return Row.ToString(); })));
+
+	TestEqual(TEXT("it rose to Elite"), Creature->RarityStep, 1);
+	TestEqual(TEXT("and carries the one modifier that rung draws"),
+			  Creature->ModifierRows.Num(),
+			  UCataclysmEnemyModifiers::CountForRarityStep(Creature->RarityStep));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionCeilingTest,
+	"Cataclysm.DungeonModifierEffects.NoMutationMakesABossOutOfAHeraldHoweverLongTheFightLasts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionCeilingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE CEILING, RULED AND NOT STATED BY THE ROW: Herald is as far as a mutation goes.
+	// A creature one rung higher is a boss, which carries the boss stun rule and the boss
+	// row of the drop table, and a floor rule must not mint one in the middle of a fight.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {VolatileEvolution};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Herald = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a creature was placed"), Herald))
+	{
+		return false;
+	}
+
+	// THE RUNG FIRST AND THE WOUND AFTER IT, because setting a rung refills both pools.
+	Herald->SetRarityStep(Effects::VolatileEvolutionHighestRung);
+	WoundCreatureTo(Herald, MaxHealthOf(Herald) * 0.5f, 0.0f);
+	if (!TestEqual(TEXT("it stands at Herald"), Herald->RarityStep,
+				   Effects::VolatileEvolutionHighestRung)
+		|| !TestFalse(TEXT("which is not a boss"), Herald->IsBoss()))
+	{
+		return false;
+	}
+
+	Beat(Mode, 40);
+
+	TestEqual(FString::Printf(TEXT("ten seconds of beats leave it at Herald: step %d"),
+							  Herald->RarityStep),
+			  Herald->RarityStep, Effects::VolatileEvolutionHighestRung);
+	TestFalse(TEXT("and it never becomes a boss"), Herald->IsBoss());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionOnceTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureMutatesOnlyOnceHoweverLongTheFightLasts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ONE CREATURE MUTATES ONCE, RULED. It matters here more than it looks: a creature
+	// that kept sixty health and now measures it against a maximum of a hundred and
+	// eighty-five is further below the threshold than it was, so without the rule
+	// remembering it, every later beat would raise it again.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(VolatileEvolution);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {VolatileEvolution};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a wounded creature was placed"), Creature))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("it mutated once"), Creature->RarityStep,
+				   Effects::VolatileEvolutionRungsGained))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("and is still under the threshold afterwards: %.2f of "
+								  "%.2f"), HealthOf(Creature), MaxHealthOf(Creature)),
+			 Effects::VolatileEvolutionIsWounded(HealthOf(Creature),
+												 MaxHealthOf(Creature)));
+
+	Beat(Mode, 40);
+	TestEqual(FString::Printf(TEXT("ten further seconds of beats leave it at step %d"),
+							  Creature->RarityStep),
+			  Creature->RarityStep, Effects::VolatileEvolutionRungsGained);
+	TestEqual(TEXT("and the floor counts one mutation, not eleven"), PanelLine(),
+			  FString(TEXT("mutated 1")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionPanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelCountsTheCreaturesThatMutated",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// WHAT THE PLAYER IS TOLD, which for this row is a count with no ceiling: the limit
+	// is one mutation each, not a number of mutations the floor may have.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(VolatileEvolution);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {VolatileEvolution};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a floor just built has had no mutation"), PanelLine(),
+			  FString(TEXT("mutated 0")));
+
+	ACataclysmEnemyCharacter* First = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a wounded creature was placed"), First))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("one wounded creature, one mutation"), PanelLine(),
+			  FString(TEXT("mutated 1")));
+
+	ACataclysmEnemyCharacter* Second = SpawnCreatureWoundedTo(
+		World, FVector(52000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a second wounded creature was placed"), Second))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("two of them, two mutations"), PanelLine(),
+			  FString(TEXT("mutated 2")));
+
+	// AND A FLOOR WITHOUT THE ROW SAYS NOTHING OF MUTATIONS, so the line belongs to the
+	// row and not to the panel.
+	Mode->DungeonModifiers = {DeathsEmbrace};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row has no line of its own"), PanelLine(),
+			  FString(TEXT("no line")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVolatileEvolutionFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeClearsTheCountAndAMutatedCreatureIsNotOfferedAnother",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVolatileEvolutionFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE TWO HALVES OF THE RULING PULL DIFFERENT WAYS, AND A HORDE DUNGEON IS WHERE
+	// THEY MEET. Its next wave shares the arena, so a creature lives through the change.
+	// The count is what mutated on this floor and goes back to nothing; the creature
+	// keeps the rung it reached and has already had its one mutation.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(VolatileEvolution);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {VolatileEvolution};
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a wounded creature was placed"), Creature))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("it mutated"), Creature->RarityStep,
+				   Effects::VolatileEvolutionRungsGained)
+		|| !TestEqual(TEXT("and the floor counts it"), PanelLine(),
+					  FString(TEXT("mutated 1"))))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the creature lived through the change, which is what a Horde "
+					   "dungeon's next wave does"), IsValid(Creature)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the new floor counts no mutation"), PanelLine(),
+			  FString(TEXT("mutated 0")));
+	TestEqual(TEXT("and the creature keeps the rung it reached"), Creature->RarityStep,
+			  Effects::VolatileEvolutionRungsGained);
+
+	Beat(Mode, 40);
+	AddInfo(FString::Printf(TEXT("Volatile Evolution: after the change the creature is at "
+								 "step %d, health %.2f of %.2f, and the panel says %s"),
+							Creature->RarityStep, HealthOf(Creature),
+							MaxHealthOf(Creature), *PanelLine()));
+	TestEqual(TEXT("ten seconds of beats on the new floor do not raise it again"),
+			  Creature->RarityStep, Effects::VolatileEvolutionRungsGained);
+	TestEqual(TEXT("and nothing is counted on the new floor"), PanelLine(),
+			  FString(TEXT("mutated 0")));
 
 	return true;
 }

@@ -270,13 +270,24 @@ public:
 	 * EditInstanceOnly, SO A RARITY CAN BE SET ON A CREATURE PLACED IN A LEVEL.
 	 *
 	 * WHY IT HAD TO CHANGE. This was VisibleAnywhere, which greys the field out
-	 * in the Details panel, and SetRarityStep above has never had a caller
-	 * outside the automation tests -- the thing meant to supply a rarity is the
-	 * enemy generator, which is issue #508 and does not exist. So every creature
-	 * in a play session was Common and nothing in the editor could change it.
-	 * That made the whole rarity ladder unreachable by hand: the drop rate, the
-	 * added magic find, and the boss stun rule all read this and all sat at rung
-	 * zero. Found on 2026-08-19 when the project owner asked how to set it.
+	 * in the Details panel, and on the day it was found SetRarityStep above had
+	 * no caller outside the automation tests -- the thing meant to supply a
+	 * rarity is the enemy generator, which is issue #508 and does not exist. So
+	 * every creature in a play session was Common and nothing in the editor
+	 * could change it. That made the whole rarity ladder unreachable by hand:
+	 * the drop rate, the added magic find, and the boss stun rule all read this
+	 * and all sat at rung zero. Found on 2026-08-19 when the project owner asked
+	 * how to set it.
+	 *
+	 * THAT SENTENCE STAYED IN THE PRESENT TENSE AFTER IT STOPPED BEING TRUE, and
+	 * it is dated above rather than deleted because it is why the field is
+	 * typeable. Measured on 2026-09-17: SetRarityStep has call sites in three
+	 * files that are not tests -- `ACataclysmDungeonGameMode`'s floor spawners
+	 * and `ACataclysmGameMode`'s sandbox spawners, both through
+	 * `ACataclysmGameMode::RarityStepFor`, and
+	 * `FCataclysmSaveApply::CreatureInto` restoring a saved creature. The dungeon
+	 * rule `Chaos_Volatile_Evolution` is the fourth, and the first to call it in
+	 * the middle of a fight rather than as a creature is placed.
 	 *
 	 * INSTANCE ONLY, NOT EditAnywhere, WHICH WOULD ALSO ALLOW A BLUEPRINT
 	 * DEFAULT. The comment above says why: rarity is the encounter's business
@@ -285,10 +296,21 @@ public:
 	 * class-wide answer to a per-encounter question, and every Brute placed
 	 * afterwards would silently inherit it.
 	 *
-	 * THE CLAMP IS WHAT SetRarityStep DOES, APPLIED TO THE PANEL. Typing into a
-	 * Details field does not go through that function, so without these a
+	 * THE CLAMP HERE IS WIDER THAN THE ONE SetRarityStep DOES, AND THIS LINE USED
+	 * TO SAY THEY WERE THE SAME. That function clamps the bottom only --
+	 * `RarityStep = FMath::Max(0, NewStep)` -- so these two figures are the only
+	 * ceiling anywhere, and they only reach what somebody types into a Details
+	 * field. Typing there does not go through that function, so without these a
 	 * negative step would make IsBoss's comparison meaningless and a step above
 	 * the ladder would find no row in EnemyDrops.csv and drop nothing at all.
+	 *
+	 * A CALLER THAT NEEDS A CEILING APPLIES ITS OWN, and one does: the dungeon
+	 * rule `Chaos_Volatile_Evolution` raises a wounded creature's rung and holds
+	 * it to `UCataclysmDungeonModifierEffects::VolatileEvolutionHighestRung`,
+	 * Herald, so a floor rule cannot make a boss out of an ordinary creature.
+	 * Giving this function a top clamp of its own was considered and not done:
+	 * it would change what every existing caller may ask for, which is wider
+	 * than that rule.
 	 * The maximum is the last rung of the ladder and
 	 * `tools/tests/test_enemy_tables_match_the_model.py` pins it to the model,
 	 * because continuous integration builds no C++ and a ladder that grew a rung

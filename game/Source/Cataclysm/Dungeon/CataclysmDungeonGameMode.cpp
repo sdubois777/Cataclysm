@@ -638,6 +638,21 @@ static TAutoConsoleVariable<float> CVarIllusoryEnemiesRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the roll a wounded creature is offered a mutation on, so a test can assert what
+ * a beat did. Issues #1820 and #41.
+ *
+ * ITS OWN VARIABLE, for the reason `Cataclysm.GraspingTentaclesRoll` gives: a floor can
+ * carry more than one of these rows and a test of one must be able to pin its own roll
+ * without deciding another's.
+ */
+static TAutoConsoleVariable<float> CVarVolatileEvolutionRoll(
+	TEXT("Cataclysm.VolatileEvolutionRoll"),
+	-1.0f,
+	TEXT("Pin the roll Volatile Evolution offers a wounded creature, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -686,6 +701,13 @@ namespace
 	float DungeonGameModeIllusoryEnemiesRoll()
 	{
 		const float Pinned = CVarIllusoryEnemiesRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll a wounded creature's mutation is decided by: pinned, or drawn. */
+	float DungeonGameModeVolatileEvolutionRoll()
+	{
+		const float Pinned = CVarVolatileEvolutionRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -2274,12 +2296,16 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND GRAVE TIDE, WHICH PUTS CREATURES ON THE FLOOR. Issues #1820 and #41.
 	const bool bGraveTide = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::GraveTideKey));
+	// AND VOLATILE EVOLUTION, WHICH TURNS A WOUNDED CREATURE INTO A RARER ONE. Issues
+	// #1820 and #41.
+	const bool bVolatileEvolution = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::VolatileEvolutionKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
-		&& !bRavenousHoard && !bGraveTide)
+		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution)
 	{
 		return;
 	}
@@ -2436,6 +2462,17 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bRavenousHoard)
 	{
 		StepRavenousHoard(Player);
+	}
+
+	// AND VOLATILE EVOLUTION BESIDE IT, WHOSE POSITION IS FREE FOR THE SAME REASON.
+	// Issues #1820 and #41. It reads a creature's health and writes that creature's
+	// rarity, health and energy shield; no rule above it reads any of those on the beat.
+	// Before Grave Tide below, so a creature placed by a wave is offered its first
+	// mutation on the next beat rather than on the beat it arrived, which is the order
+	// every rule here already follows.
+	if (bVolatileEvolution)
+	{
+		StepVolatileEvolution(Player);
 	}
 
 	// AND GRAVE TIDE LAST, BECAUSE IT SPAWNS CREATURES. Issues #1820 and #41. A creature
@@ -3465,6 +3502,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(Tide, FString::Printf(TEXT("wave %d of %d"), GraveTideWaves,
 										   Effects::GraveTideMostWaves));
+	}
+
+	// A COUNT WITH NO CEILING IN IT, unlike every line above. There is no limit on how
+	// many creatures a floor may mutate: the limit is one each, and the floor's
+	// population is not a figure this rule owns.
+	const FName Mutating(Effects::VolatileEvolutionKey);
+	if (FloorBrief.Modifiers.Contains(Mutating))
+	{
+		Counting.Add(Mutating, FString::Printf(TEXT("mutated %d"),
+											   VolatileEvolutionMutations));
 	}
 
 	return Counting;
@@ -4545,6 +4592,125 @@ void ACataclysmDungeonGameMode::StepRavenousHoard(ACataclysmPlayerCharacter* Pla
 	}
 }
 
+// THE CEILING ON A MUTATION AND THE FIRST BOSS RUNG ARE ONE FACT WRITTEN TWICE, so they
+// are compared here, where the ceiling is used. The rule library cannot do it: it holds
+// figures for the tests and the Python checks to read and does not include the creature
+// class.
+static_assert(
+	UCataclysmDungeonModifierEffects::VolatileEvolutionHighestRung
+		== ACataclysmEnemyCharacter::FirstBossRarityStep - 1,
+	"Volatile Evolution's ceiling is the rung under the first boss rung. If the rarity "
+	"ladder gains or loses a rung, a floor rule must not start making bosses out of "
+	"ordinary creatures in the middle of a fight.");
+
+void ACataclysmDungeonGameMode::StepVolatileEvolution(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vitals = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	const int32 Before = VolatileEvolutionMutations;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || !UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			continue;
+		}
+
+		// ONE CREATURE MUTATES ONCE, and the membership is what says so. Ruled under the
+		// project owner's delegation; the row says only that enemies have a chance.
+		if (VolatileEvolutionMutated.Contains(Creature))
+		{
+			continue;
+		}
+
+		// AND NEVER PAST HERALD. `VolatileEvolutionRungAfter` holds the ceiling, so a
+		// creature already at it is answered with the rung it is on and is skipped here
+		// rather than being counted as a mutation that changed nothing.
+		const int32 Rung = Effects::VolatileEvolutionRungAfter(Creature->RarityStep);
+		if (Rung <= Creature->RarityStep)
+		{
+			continue;
+		}
+
+		UAbilitySystemComponent* Abilities =
+			UCataclysmTargeting::AbilitySystemOf(Creature);
+		if (!Abilities)
+		{
+			continue;
+		}
+
+		const float Health = Abilities->GetNumericAttribute(Vitals::GetHealthAttribute());
+		const float MaxHealth =
+			Abilities->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
+		if (!Effects::VolatileEvolutionIsWounded(Health, MaxHealth))
+		{
+			continue;
+		}
+
+		if (DungeonGameModeVolatileEvolutionRoll()
+			>= Effects::VolatileEvolutionChancePercent)
+		{
+			continue;
+		}
+
+		// WHAT IT HAD IN BOTH POOLS, READ BEFORE ANYTHING IS WRITTEN. The two calls
+		// below each end in `ApplyStartingAttributes`, which refills health and energy
+		// shield to the new maximums.
+		const float Shield =
+			Abilities->GetNumericAttribute(Vitals::GetEnergyShieldAttribute());
+
+		Creature->SetRarityStep(Rung);
+
+		// AND THE MODIFIERS THE NEW RUNG CARRIES. `DrawModifiersForRarity` draws only the
+		// shortfall and never draws one the creature already holds, so a creature that
+		// rises from Common to Elite gains exactly one.
+		Creature->DrawModifiersForRarity();
+
+		// NOW PUT BOTH POOLS BACK, HELD TO THE NEW MAXIMUMS. The maximums are read again
+		// because the rung is what moved them.
+		Abilities->SetNumericAttributeBase(
+			Vitals::GetHealthAttribute(),
+			FMath::Min(Health,
+					   Abilities->GetNumericAttribute(Vitals::GetMaxHealthAttribute())));
+		Abilities->SetNumericAttributeBase(
+			Vitals::GetEnergyShieldAttribute(),
+			FMath::Min(Shield,
+					   Abilities->GetNumericAttribute(
+						   Vitals::GetMaxEnergyShieldAttribute())));
+
+		VolatileEvolutionMutated.Add(Creature);
+		++VolatileEvolutionMutations;
+
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Volatile Evolution: %s mutated to rarity step %d, keeping %.1f "
+					"health and %.1f energy shield"),
+			   *Creature->GetName(), Rung, Health, Shield);
+	}
+
+	// THE DESTROYED ARE FORGOTTEN. A creature that died is left where it is: it cannot
+	// mutate again in any case, and dropping it would let a resurrection of it -- which
+	// no row has yet -- mutate a second time.
+	for (auto Entry = VolatileEvolutionMutated.CreateIterator(); Entry; ++Entry)
+	{
+		if (Entry->IsStale())
+		{
+			Entry.RemoveCurrent();
+		}
+	}
+
+	if (VolatileEvolutionMutations != Before)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepGraveTide()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -4829,6 +4995,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// lives through a Horde dungeon's change of wave.
 		GraveTideSecondsSinceLastWave = 0.0f;
 		GraveTideWaves = 0;
+
+		// AND VOLATILE EVOLUTION FORGETS ITS COUNT AND NOT ITS MEMBERSHIP. Issues #1820
+		// and #41. The count is what mutated on this floor and the panel says so. The
+		// creatures themselves keep the rung they reached -- nothing puts a rarity back
+		// -- so a creature that lives through a Horde dungeon's change of wave has had
+		// its one mutation and must not be offered another.
+		VolatileEvolutionMutations = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

@@ -981,6 +981,27 @@ public:
 	static const TCHAR* GraveTideKey;
 
 	/**
+	 * The row whose wounded creatures turn into a rarer kind. Issues #1820 and #41.
+	 *
+	 * A CREATURE BELOW `VolatileEvolutionHealthPercentToMutate` OF ITS MAXIMUM HEALTH
+	 * HAS `VolatileEvolutionChancePercent` ON EACH BEAT of rising
+	 * `VolatileEvolutionRungsGained` rung of the rarity ladder. It rises once and never
+	 * past `VolatileEvolutionHighestRung`, and rising re-reads its whole stat block and
+	 * draws the modifiers its new rung carries.
+	 *
+	 * SO IT IS WORTH MORE WHEN IT DIES, WITH NOTHING WRITTEN TO MAKE THAT SO.
+	 * `UCataclysmDropSpawner::SpawnDropsFor` and the experience grant beside it in
+	 * `ACataclysmEnemyCharacter`'s death handler both read the rarity step the creature
+	 * holds at the moment it dies.
+	 *
+	 * THE HEALTH AND ENERGY SHIELD IT HAD ARE PUT BACK AFTERWARDS.
+	 * `ACataclysmEnemyCharacter::SetRarityStep` and `DrawModifiersForRarity` both end by
+	 * calling `ApplyStartingAttributes`, which refills both pools, and a mutation that
+	 * healed the creature would undo the work that wounded it.
+	 */
+	static const TCHAR* VolatileEvolutionKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2198,6 +2219,60 @@ public:
 			&& GraveTideFirstWaveCreatures > 0,
 		"A tide with no wave, no creature in it or no time between waves is not the row.");
 
+	/**
+	 * How far a creature's health must fall before it can mutate, as a share of its
+	 * maximum.
+	 *
+	 * STATED BY THE ROW, WHICH IS UNUSUAL AMONG THESE FIGURES: "once they drop below 75%
+	 * hp". It is not a judgement, and
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` reads the row's own
+	 * sentence for the number rather than trusting this line.
+	 */
+	static constexpr float VolatileEvolutionHealthPercentToMutate = 75.0f;
+
+	/**
+	 * The chance a creature under that share mutates, on each beat of the floor.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation. The row says only "a
+	 * chance" and states no figure.
+	 *
+	 * ITS OWN NUMBER RATHER THAN ANOTHER ROW'S, DELIBERATELY. Ten is what this library
+	 * already uses wherever a row says a chance -- `SporeCloudsChancePercentOnDeath`,
+	 * `HellfireChancePercentOnDeath` and `HolyRepercussionsChancePercentOnHit` are all
+	 * ten -- so this starts from that figure. Writing it as `= SporeCloudsChance...`
+	 * would say the two must move together, and nothing in the design says that.
+	 */
+	static constexpr float VolatileEvolutionChancePercent = 10.0f;
+
+	/** How many rungs of the rarity ladder one mutation climbs. A JUDGEMENT: one. */
+	static constexpr int32 VolatileEvolutionRungsGained = 1;
+
+	/**
+	 * The highest rung a mutation reaches: Herald, the rung under the first boss.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation.
+	 * `ACataclysmEnemyCharacter::FirstBossRarityStep` is 4 and `IsBoss()` is that
+	 * comparison, so a rule allowed one rung higher could make a boss out of an
+	 * ordinary creature in the middle of a fight, carrying the boss stun rule and the
+	 * boss row of `game/Data/EnemyDrops.csv` with it.
+	 *
+	 * TIED TO THAT CONSTANT BY A `static_assert` IN `CataclysmDungeonGameMode.cpp`,
+	 * where the cap is applied, because this header does not include the creature class
+	 * and should not: it is a table of figures that the tests and the Python checks
+	 * read.
+	 */
+	static constexpr int32 VolatileEvolutionHighestRung = 3;
+
+	static_assert(
+		VolatileEvolutionHealthPercentToMutate > 0.0f
+			&& VolatileEvolutionHealthPercentToMutate < 100.0f
+			&& VolatileEvolutionChancePercent > 0.0f
+			&& VolatileEvolutionChancePercent <= 100.0f
+			&& VolatileEvolutionRungsGained > 0
+			&& VolatileEvolutionHighestRung >= VolatileEvolutionRungsGained,
+		"A threshold at full health or at none, a chance of nothing, a climb of no rungs "
+		"or a ceiling below one climb is not a creature that mutates when it is wounded.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -2943,6 +3018,24 @@ public:
 	 * multiplier on their own attack damage, held to `GraveTideMostDamagePercent`.
 	 */
 	static float GraveTideDamageMultiplier(int32 WavesSoFar);
+
+	/**
+	 * Whether a creature at this health is wounded enough to mutate: below
+	 * `VolatileEvolutionHealthPercentToMutate` of the maximum given.
+	 *
+	 * FALSE FOR A MAXIMUM OF ZERO OR LESS, which is a creature whose attributes have not
+	 * been written yet rather than one at death's door.
+	 */
+	static bool VolatileEvolutionIsWounded(float Health, float MaxHealth);
+
+	/**
+	 * The rung a creature at this rung reaches when it mutates, held to
+	 * `VolatileEvolutionHighestRung`.
+	 *
+	 * THE CEILING IS HERE AND NOWHERE ELSE, so there is one place it can be wrong, which
+	 * is what `RavenousHoardStacksAfter` says about its own cap.
+	 */
+	static int32 VolatileEvolutionRungAfter(int32 RarityStep);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
