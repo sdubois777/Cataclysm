@@ -957,6 +957,19 @@ public:
 	static const TCHAR* NecroticGroundKey;
 
 	/**
+	 * The row whose creatures grow stronger the longer they stay alive. Issues #1820
+	 * and #41.
+	 *
+	 * EACH CREATURE COUNTS ITS OWN TIME ALIVE, from the first beat that finds it, and
+	 * holds a stack for every `RavenousHoardSecondsPerStack` of it, up to
+	 * `RavenousHoardMostStacks`. Each stack adds `RavenousHoardDamagePercentPerStack`
+	 * of its own base to its attack damage. Nothing else about the creature changes,
+	 * its health least of all: see
+	 * `ACataclysmEnemyCharacter::SetFloorRuleDamageMultiplier`.
+	 */
+	static const TCHAR* RavenousHoardKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2105,6 +2118,33 @@ public:
 		"The first patch is placed past its own radius from the player, so the range it "
 		"is drawn from has to reach further than that.");
 
+	/**
+	 * How long a creature must stay alive for each stack of Ravenous Hoard.
+	 *
+	 * A JUDGEMENT, ruled under the owner's delegation of unstated figures, and Death's
+	 * Embrace's figure: that row is this project's answer to "worse the longer you
+	 * stay", on the player's side. The row states no rate.
+	 */
+	static constexpr float RavenousHoardSecondsPerStack = DeathsEmbraceSecondsPerStack;
+
+	/** The most stacks a creature holds. A JUDGEMENT, and Death's Embrace's cap. */
+	static constexpr int32 RavenousHoardMostStacks = DeathsEmbraceMostStacks;
+
+	/**
+	 * What each stack adds to a creature's attack damage, as a share of its own base.
+	 *
+	 * A JUDGEMENT, and Death's Embrace's figure for a stack, so at the cap a creature
+	 * hits half as hard again. The row says only "grow stronger".
+	 */
+	static constexpr float RavenousHoardDamagePercentPerStack =
+		DeathsEmbracePercentPerStack;
+
+	static_assert(
+		RavenousHoardSecondsPerStack > 0.0f && RavenousHoardMostStacks > 0
+			&& RavenousHoardDamagePercentPerStack > 0.0f,
+		"A creature that never gains a stack, or gains one worth nothing, does not grow "
+		"stronger the longer it lives.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -2822,6 +2862,17 @@ public:
 	 * a creature with this maximum health. Nothing for either not positive.
 	 */
 	static float NecroticGroundRegenPerBeat(float MaximumHealth, float BeatSeconds);
+
+	/**
+	 * How many Ravenous Hoard stacks a creature alive this many seconds holds: one for
+	 * each whole `RavenousHoardSecondsPerStack`, at most `RavenousHoardMostStacks`.
+	 *
+	 * THE CAP IS HERE AND NOWHERE ELSE, so there is one place it can be wrong.
+	 */
+	static int32 RavenousHoardStacksAfter(float SecondsAlive);
+
+	/** What a creature holding this many stacks multiplies its attack damage by. */
+	static float RavenousHoardDamageMultiplier(int32 Stacks);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

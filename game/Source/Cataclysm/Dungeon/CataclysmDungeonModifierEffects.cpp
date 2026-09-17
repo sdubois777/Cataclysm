@@ -50,6 +50,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::BloodAltarKey =
 	TEXT("Demonic_Blood_Altar");
 const TCHAR* UCataclysmDungeonModifierEffects::NecroticGroundKey =
 	TEXT("Death_Necrotic_Ground");
+const TCHAR* UCataclysmDungeonModifierEffects::RavenousHoardKey =
+	TEXT("Famine_Ravenous_Hoard");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -222,7 +224,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(HolyRepercussionsKey)
 		|| RowKey == FName(LeechSporesKey)
 		|| RowKey == FName(BloodAltarKey)
-		|| RowKey == FName(NecroticGroundKey))
+		|| RowKey == FName(NecroticGroundKey)
+		|| RowKey == FName(RavenousHoardKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -378,6 +381,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(LeechSporesKey),
 		FName(BloodAltarKey),
 		FName(NecroticGroundKey),
+		FName(RavenousHoardKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1203,6 +1207,23 @@ float UCataclysmDungeonModifierEffects::NecroticGroundRegenPerBeat(float Maximum
 	}
 	return MaximumHealth * NecroticGroundCreatureRegenPercentPerSecond / 100.0f
 		* BeatSeconds;
+}
+
+int32 UCataclysmDungeonModifierEffects::RavenousHoardStacksAfter(float SecondsAlive)
+{
+	if (SecondsAlive <= 0.0f)
+	{
+		return 0;
+	}
+	return FMath::Clamp(FMath::FloorToInt(SecondsAlive / RavenousHoardSecondsPerStack),
+						0, RavenousHoardMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::RavenousHoardDamageMultiplier(int32 Stacks)
+{
+	return 1.0f
+		+ static_cast<float>(FMath::Max(0, Stacks)) * RavenousHoardDamagePercentPerStack
+			/ 100.0f;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

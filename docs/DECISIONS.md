@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — Ravenous Hoard grows each creature's attack damage by a tenth of its own for every ten seconds it lives, up to half again, and leaves its health where it was
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a creature's
+designed stats, and now a route that changes its attack damage alone),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library of dungeon
+rules: each row's key, its figures and its arithmetic), `CataclysmDungeonGameMode.h` and `.cpp` (the
+quarter-second beat, the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Famine_Ravenous_Hoard` in `game/Data/DungeonModifiers.csv`: "Enemies in the dungeon grow stronger the
+longer they remain alive, as their desperation turns into aggression." No text in `docs/` says more
+about it.
+
+### What the row's own words decide
+
+1. **Each creature grows with its own time alive**, not with the floor's.
+2. **"Enemies in the dungeon" names no exception**, so bosses grow, and so do creatures placed after
+   the floor began. The player's minions are not enemies, and they are a different class,
+   `ACataclysmMinion`, that the rule never looks at.
+3. **An illusion deals nothing however long it lives.**
+
+The row names no visible sign of the growth, so nothing is drawn on a creature, and the row is marked
+built.
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation of unstated figures, and flagged to the
+owner by that session.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| What grows | **Attack damage only** | "Stronger" could also mean speed or health. Neither has a creature route today that changes that stat and nothing else, so the owner may widen this |
+| How fast, how much, how far | **A stack for every 10 seconds alive, each adding 10% of the creature's own base attack damage, at most 5 stacks (+50%)** | Death's Embrace's cadence, figure and cap (10 seconds, 10, 5 stacks): this project's figure for "worse the longer you stay", on the player's side. The step shape is Path of Exile's; see the research |
+| When a creature's clock starts | **On the first beat that finds it, counting that beat.** A creature placed before a beat holds its first stack on its 40th beat, at most 0.25 seconds after it was placed | Death's Embrace counts its time on the same beat |
+| Bosses | **Included** | Reading 2 |
+| The floor panel | **"strongest N of 5"**, the most stacks any creature held on the last beat | Every creature holds its own count, and the panel has one line for a row |
+
+### What the growth multiplies, and a correction to the ruling
+
+**The ruling said the growth multiplies with the creature multipliers the game already has, naming
+Commander, Cripple and Feasting. That premise was the coordinating session's, and it did not hold;
+this dungeon session found that and the coordinating session accepted the correction.** Read in
+`CataclysmEnemyCharacter.h` on commit 452a0c79:
+
+- `CommanderMultiplier` covers movement speed and attack speed, which the project owner decided on
+  2026-08-20.
+- `CrippleMultiplier` covers the same two stats.
+- `FeastingMultiplier` covers attack speed only.
+- None of the three multiplies damage. The one multiplier on a creature's attack damage is the
+  rarity's damage scale, applied in `ApplyStartingAttributes`.
+
+So the growth multiplies the rarity-scaled attack damage. The test
+`AGrowingCreatureKeepsItsRarityScaleAndItsCommanderPace` measures both at once, on one creature two
+rarity steps above Common that holds Commander: its damage at the cap, and its attack interval. **The
+figures it prints are written here after this change's Unreal run, before the change merges.**
+
+### A creature's health must not move, so the growth has a route of its own
+
+`ACataclysmEnemyCharacter::ApplyStartingAttributes` writes a creature's attributes from its designed
+figures, and six public setters re-run it. It also sets health and the energy shield to their maximums,
+which is right for a creature being placed and wrong for one in a fight. A rule that grew a wounded
+creature's damage through it would heal the creature at every stack.
+
+- **`SetFloorRuleDamageMultiplier`** rewrites the attack damage alone.
+- **`WriteAttackDamage`**, a private helper, is the one place the attack damage is written: the
+  designed figure, times the rarity's scale, times the floor rule's multiplier, or zero for an
+  illusion. `ApplyStartingAttributes` and the new setter both call it, so the formula exists once.
+- **Two Python checks followed the write into the helper.**
+  `test_the_illusion_is_honoured_where_a_creatures_damage_is_recomputed` and
+  `test_asking_a_creature_for_zero_attack_damage_is_not_guarded_away` required the illusion's zero and
+  the `>= 0.0f` guard inside `ApplyStartingAttributes`. They now read `WriteAttackDamage`, and the
+  first also requires `ApplyStartingAttributes` to call it in its code.
+- **`SetIsAnIllusion`'s comment said "THE DAMAGE IS THE ONLY THING IT CHANGES".** That is true only
+  when it runs as a creature is placed, which is where Illusory Enemies calls it, because it re-runs
+  `ApplyStartingAttributes`. The comment now says so.
+
+### At a floor change
+
+The per-floor reset forgets every creature's clock and the panel's count. It also gives every creature
+in the world its own damage back, because a Horde dungeon's next wave shares the arena and a creature
+can live through the change. It resets every creature rather than only those holding a clock, so the
+growth cannot outlast a clock that was lost.
+
+### The research
+
+Read on 2026-09-17.
+
+| Game | What it does | What it settles here |
+| :-- | :-- | :-- |
+| Path of Exile, Frenzy Charges on a monster | Each charge gives 4% more damage, 15% increased attack and cast speed and 5% increased movement speed | A monster growing stronger in steps during a fight is a shipped shape |
+| Path of Exile, map modifiers | Current map modifiers say "Monsters gain a Frenzy Charge on Hit". A 2012 forum thread quotes an older one: "Monsters gain 1 Frenzy charge every 30 seconds" | Growth over time was shipped once, and was later replaced by growth on hit |
+| Path of Exile, charges in general | Maxroll gives a default maximum of 3 charges, for players | That the steps stop somewhere |
+
+**Nothing read settles how big a step is, how often one comes or where they stop for this game**, so
+those are the judgements above.
+
+Sources: [PoEDB: Frenzy charge](https://poedb.tw/us/Frenzy_charge),
+[Maxroll: Charges guide](https://maxroll.gg/poe/resources/charges) and
+[Path of Exile forum: "Monsters gain 1 Frenzy charge every 30 seconds"](http://www.pathofexile.com/forum/view-thread/42769).
+
+### The tests
+
+C++, `Cataclysm.DungeonModifierEffects.`, five new:
+
+- **`ACreaturesDamageGrowsATenthOfItsBaseEveryTenSecondsAliveUpToFiveStacks`.** Its own damage a beat
+  short of ten seconds; one stack at ten; a stack every ten seconds after that to five; and no more at
+  sixty seconds or at seventy.
+- **`GainingAStackLeavesACreaturesHealthExactlyWhereItWas`.** A creature given a thousand health
+  through `SetHealth` and put at half. Its health is read on the beat before its first stack and on
+  the beat of it, and the two must be the same number.
+- **`EachCreatureCountsItsOwnTimeAliveAndThePanelShowsTheStrongest`.** A creature placed twenty
+  seconds into the floor starts at its own damage. Ten seconds later it holds one stack, the first
+  creature holds three, and the panel reads "strongest 3 of 5".
+- **`AnIllusionWithFiveStacksStillDealsNothing`.** An illusion alone on the floor for fifty seconds
+  holds every stack, and its blow moves the player's health by nothing. The same blow from a creature
+  that is not an illusion takes health.
+- **`AGrowingCreatureKeepsItsRarityScaleAndItsCommanderPace`**, above.
+
+One changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** carries Ravenous Hoard. A
+creature far from every zone grows during the floor's beats, and after the floor change it hits for
+its own damage again and the panel reads "strongest 0 of 5".
+
+Python, three new: the row states no number; the row still says "Enemies in the dungeon" and "grow
+stronger the longer they remain alive"; and the three figures are still declared as Death's Embrace's
+constants. And the two illusion checks above, changed.
+
+### What the tests do not show
+
+- **A creature restored from a save.** The multiplier and the clocks are not saved, so a restored
+  creature starts again at its own damage and its clock starts on the next beat that finds it. Read
+  from `FCataclysmSaveApply`, which puts back a creature's rarity, its modifiers and its health, and
+  not tested.
+- **A creature spawned by a wave or by another creature.** The rule reaches every
+  `ACataclysmEnemyCharacter` hostile to the player, and the tests place their creatures directly.
+- **A creature turned to the player's side.** `UCataclysmTargeting::IsHostileTo` leaves it out, and no
+  test turns one.
+- **What reads the attack damage.** The growth reaches exactly what reads the attack damage attribute.
+  Which creature attacks do, and which deal a figure of their own, was not surveyed for this change.
+
+---
+
 ## 2026-09-17 — A kill restores health at no cost, and an enemy dying within ten metres grants Fervour
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h`

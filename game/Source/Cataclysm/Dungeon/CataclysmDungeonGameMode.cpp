@@ -2267,11 +2267,16 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// shape. Issues #1820 and #41.
 	const bool bNecroticGround = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::NecroticGroundKey));
+	// AND RAVENOUS HOARD, WHICH CHANGES CREATURES AND NOT THE PLAYER. Issues #1820
+	// and #41.
+	const bool bRavenousHoard = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::RavenousHoardKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
-		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround)
+		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
+		&& !bRavenousHoard)
 	{
 		return;
 	}
@@ -2420,6 +2425,14 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bNecroticGround)
 	{
 		StepNecroticGround(Player, AbilitySystem);
+	}
+
+	// AND RAVENOUS HOARD, WHOSE POSITION IS FREE. Issues #1820 and #41. It writes no
+	// field any rule above shares and asks for no refresh of the player's stats: it
+	// changes creatures' attack damage and nothing else.
+	if (bRavenousHoard)
+	{
+		StepRavenousHoard(Player);
 	}
 }
 
@@ -3422,6 +3435,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		}
 		Counting.Add(Fog, FString::Printf(TEXT("%d of %d"), Patches,
 										  Effects::NecroticGroundMostPatches));
+	}
+
+	// AND RAVENOUS HOARD'S STRONGEST CREATURE, AS OF THE LAST BEAT. Issues #1820 and #41.
+	// Every creature holds its own count, and the panel shows one line a row, so it
+	// shows the count nearest the cap.
+	const FName Hoard(Effects::RavenousHoardKey);
+	if (FloorBrief.Modifiers.Contains(Hoard))
+	{
+		Counting.Add(Hoard, FString::Printf(TEXT("strongest %d of %d"),
+											RavenousHoardStrongest,
+											Effects::RavenousHoardMostStacks));
 	}
 
 	return Counting;
@@ -4448,6 +4472,60 @@ void ACataclysmDungeonGameMode::StepNecroticGround(
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::StepRavenousHoard(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE, WHEREVER IT CAME FROM. `IsHostileTo`
+	// also turns away the dead. The player's minions are `ACataclysmMinion`, which this
+	// never iterates.
+	int32 Strongest = 0;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || !UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			continue;
+		}
+
+		// ITS OWN CLOCK, STARTED BY THE FIRST BEAT THAT FINDS IT AND COUNTING THAT BEAT,
+		// so a creature placed before a beat holds its first stack on its fortieth:
+		// Death's Embrace's convention, and at most a beat after it was placed.
+		float& SecondsAlive = RavenousHoardSecondsAlive.FindOrAdd(Creature);
+		SecondsAlive += SecondsBetweenWaveChecks;
+
+		// THE SETTER RETURNS AT ONCE WHEN THE MULTIPLIER HAS NOT CHANGED, so this writes
+		// nothing between stacks.
+		const int32 Stacks = Effects::RavenousHoardStacksAfter(SecondsAlive);
+		Creature->SetFloorRuleDamageMultiplier(
+			Effects::RavenousHoardDamageMultiplier(Stacks));
+		Strongest = FMath::Max(Strongest, Stacks);
+	}
+
+	// THE DESTROYED AND THE DEAD ARE FORGOTTEN, so no clock is kept for them. A stale key
+	// is a destroyed creature.
+	for (auto Entry = RavenousHoardSecondsAlive.CreateIterator(); Entry; ++Entry)
+	{
+		const ACataclysmEnemyCharacter* Creature = Entry.Key().Get();
+		if (Entry.Key().IsStale() || (Creature && UCataclysmSkillEffects::IsDead(Creature)))
+		{
+			Entry.RemoveCurrent();
+		}
+	}
+
+	if (Strongest != RavenousHoardStrongest)
+	{
+		RavenousHoardStrongest = Strongest;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepHolyRepercussions(
 	ACataclysmPlayerCharacter* Player,
 	UCataclysmAbilitySystemComponent* AbilitySystem)
@@ -4641,6 +4719,19 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		NecroticGroundSecondsSinceLastPatch = 0.0f;
 		NecroticGroundSecondsSinceLastBurn = 0.0f;
 		NecroticGroundHealingLessApplied = 0.0f;
+
+		// AND RAVENOUS HOARD FORGETS EVERY CLOCK AND ITS STRONGEST COUNT, AND EVERY
+		// CREATURE STILL STANDING GETS ITS OWN DAMAGE BACK. Issues #1820 and #41. A
+		// Horde dungeon's next wave shares the arena, so a creature can live through the
+		// change; with its clock gone its stacks are gone, and the next floor may not
+		// carry the row at all. Every creature in the world and not only the ones in the
+		// clocks, so the damage cannot outlive a clock that was lost.
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			It->SetFloorRuleDamageMultiplier(1.0f);
+		}
+		RavenousHoardSecondsAlive.Empty();
+		RavenousHoardStrongest = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape
