@@ -388,6 +388,36 @@ namespace CataclysmStatExemptionTest
 	};
 
 	/**
+	 * Grant a flat figure, which is how a flag arrives.
+	 *
+	 * `Grant` ABOVE MAKES AN INCREASE, which is right for a stat that scales
+	 * something and useless for one that is either set or not:
+	 * `minion_explodes_on_death` is a flag a passive row sets to one, and an
+	 * increase of forty per cent of nothing is still nothing.
+	 */
+	void GrantFlat(AActor* Who, const FString& Stat, float Value)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Who));
+		if (!System)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flat.Value = Value;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(*Stat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
 	 * Take a stat away, as "You cannot regenerate mana through any means" does.
 	 *
 	 * FROM AN ENCHANTMENT, because only a source that may grant a More multiplier
@@ -505,6 +535,128 @@ namespace CataclysmStatExemptionTest
 			Removed.Get(Mana), 500.0f, 0.01f);
 	}
 
+	/** What a summoning skill states for the explosion these probes use. */
+	constexpr float ProbeExplosionRadiusCm = 300.0f;
+	constexpr float ProbeExplosionDamagePercent = 50.0f;
+
+	/** An imp of the authored type, told what its explosion would be. */
+	ACataclysmMinion* ImpToldItsExplosion(FAutomationTestBase& Test,
+										  AActor* Summoner, const FVector& Where)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Summoner, Where, /*Lifetime=*/20.0f, /*bBurns=*/false, TEXT("Imp"));
+		if (!Test.TestNotNull(TEXT("an imp"), Imp))
+		{
+			return nullptr;
+		}
+		Imp->RecordExplosion(ProbeExplosionRadiusCm, ProbeExplosionDamagePercent);
+		return Imp;
+	}
+
+	/** Write a minion's health to nothing, which is how anything else dies. */
+	void KillMinion(ACataclysmMinion* Minion)
+	{
+		if (UAbilitySystemComponent* System =
+				UCataclysmTargeting::AbilitySystemOf(Minion))
+		{
+			System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 0.0f);
+		}
+	}
+
+	void ProbeExplodesOnDeath(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		// TWO SUMMONERS A HUNDRED METRES APART, as `ProbeManaOnHit` has: each
+		// loses one minion, so nothing about a second death can be what the
+		// reading measures.
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Flagged(World, FVector(0, 100 * M, 0));
+		GrantFlat(Flagged.Actor, TEXT("minion_explodes_on_death"), 1.0f);
+
+		ACataclysmMinion* PlainImp =
+			ImpToldItsExplosion(Test, Plain.Actor, FVector(1 * M, 0, 0));
+		ACataclysmMinion* FlaggedImp =
+			ImpToldItsExplosion(Test, Flagged.Actor, FVector(1 * M, 100 * M, 0));
+		if (!PlainImp || !FlaggedImp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(PlainImp)) { PlainImp->Destroy(); } };
+
+		KillMinion(PlainImp);
+		KillMinion(FlaggedImp);
+
+		// THE BODY IS THE READING. An explosion destroys the minion, so the
+		// difference between the two deaths is visible without a target: one
+		// leaves a corpse for the summon cap to count and the other does not.
+		Test.TestTrue(
+			TEXT("a minion whose summoner lacks the flag leaves its body"),
+			IsValid(PlainImp));
+		Test.TestFalse(
+			TEXT("and one whose summoner has it is destroyed by its own "
+				 "explosion, so ACataclysmMinion::HandleDeath really reads "
+				 "minion_explodes_on_death"),
+			IsValid(FlaggedImp));
+	}
+
+	void ProbeExplosionDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger PlainTarget(World, FVector(2 * M, 0, 0));
+		FScopedSwinger Raised(World, FVector(0, 100 * M, 0));
+		FScopedSwinger RaisedTarget(World, FVector(2 * M, 100 * M, 0));
+		Grant(Raised.Actor, TEXT("minion_explosion_damage"), IncreasePercent);
+
+		ACataclysmMinion* PlainImp =
+			ImpToldItsExplosion(Test, Plain.Actor, FVector(1 * M, 0, 0));
+		ACataclysmMinion* RaisedImp =
+			ImpToldItsExplosion(Test, Raised.Actor, FVector(1 * M, 100 * M, 0));
+		if (!PlainImp || !RaisedImp)
+		{
+			return;
+		}
+
+		// NO FLAG ON EITHER, because this stat belongs to the explosion rather
+		// than to the death: the summon cap sets one off the same way, and this
+		// calls what the cap calls.
+		const FGameplayAttribute Health = Vital::GetHealthAttribute();
+		PlainImp->Explode(ProbeExplosionRadiusCm, ProbeExplosionDamagePercent);
+		RaisedImp->Explode(ProbeExplosionRadiusCm, ProbeExplosionDamagePercent);
+
+		const float PlainLost = TargetHealthPool - PlainTarget.Get(Health);
+		const float RaisedLost = TargetHealthPool - RaisedTarget.Get(Health);
+
+		// THE PLAIN EXPLOSION MUST HURT FIRST, or "more" below would hold with
+		// both of them dealing nothing at all.
+		if (!Test.TestTrue(
+				FString::Printf(TEXT("the plain explosion hurt its target: %.2f"),
+								PlainLost),
+				PlainLost > 0.0f))
+		{
+			return;
+		}
+		Test.TestTrue(
+			FString::Printf(
+				TEXT("and the one under minion_explosion_damage hurt more "
+					 "(%.2f against %.2f), so ACataclysmMinion::Explode really "
+					 "reads it"),
+				RaisedLost, PlainLost),
+			RaisedLost > PlainLost + 0.001f);
+	}
+
 	/**
 	 * One probe per exempt stat.
 	 *
@@ -519,6 +671,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_damage"),       &ProbeDamage},
 			{TEXT("minion_health"),       &ProbeHealth},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
+			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},
+			{TEXT("minion_explosion_damage"),  &ProbeExplosionDamage},
 		};
 		return Made;
 	}
