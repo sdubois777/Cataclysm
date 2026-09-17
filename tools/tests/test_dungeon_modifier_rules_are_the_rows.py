@@ -2345,3 +2345,101 @@ def test_volatile_evolutions_ceiling_is_tied_to_the_first_boss_rung():
         "ACataclysmEnemyCharacter::FirstBossRarityStep - 1 is gone from "
         "CataclysmDungeonGameMode.cpp. Without it the ceiling is a bare 3 that a change "
         "to the rarity ladder would silently make wrong.")
+
+
+def test_royal_guard_row_still_states_the_three_figures_the_rule_uses():
+    """Three of this rule's four numbers are the row's own, not judgements.
+
+    "DROPS BELOW 30% HEALTH", "A 50% CHANCE" and "TWO GUARDS". If any of them moves in the
+    row and not in the header, the rule stops being the row, and docs/DECISIONS.md stops
+    being able to call only the fourth a judgement.
+    """
+    words = flat(rows()["War_Royal_Guard"]["Description"])
+    stated = re.findall(r"(\d+(?:\.\d+)?)\s*%", words)
+
+    assert stated == ["30", "50"], (
+        "The Royal Guard row no longer states 30% health and a 50% chance in that order. "
+        "Check RoyalGuardHealthPercentToSummon and RoyalGuardChancePercent against it and "
+        "update docs/DECISIONS.md. " + words)
+    assert "two guards" in words.lower(), (
+        "The Royal Guard row no longer says two guards arrive. Check "
+        "RoyalGuardGuardsSummoned against it. " + words)
+
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+    missing = [name for name, pattern in (
+        ("RoyalGuardHealthPercentToSummon", r"RoyalGuardHealthPercentToSummon\s*=\s*30\.0f\s*;"),
+        ("RoyalGuardChancePercent", r"RoyalGuardChancePercent\s*=\s*50\.0f\s*;"),
+        ("RoyalGuardGuardsSummoned", r"RoyalGuardGuardsSummoned\s*=\s*2\s*;"),
+    ) if not re.search(pattern, text)]
+
+    assert not missing, (
+        f"{', '.join(missing)} no longer holds the figure the row states. The row says "
+        f"{stated[0]}% health, a {stated[1]}% chance and two guards.")
+
+
+def test_royal_guard_row_still_says_a_chance_of_guards_of_a_higher_rank():
+    """The three phrases the rule's readings rest on.
+
+    "CHANCE" is why a beat rolls rather than calling guards every time. "SUMMON TWO
+    GUARDS" is why creatures are spawned at all, and how many. "OF THE NEXT HIGHER RANK"
+    is why their rarity rung is written after they spawn, which is what makes them
+    stronger than the creature that called them.
+    """
+    words = flat(rows()["War_Royal_Guard"]["Description"]).lower()
+
+    assert "chance" in words, (
+        "The Royal Guard row no longer says there is a chance. The rule rolls against "
+        "RoyalGuardChancePercent because it did. " + words)
+    assert "summon two guards" in words, (
+        "The Royal Guard row no longer says two guards are summoned. The rule spawns "
+        "RoyalGuardGuardsSummoned creatures because it did. " + words)
+    assert "next higher rank" in words, (
+        "The Royal Guard row no longer says the guards are of the next higher rank. The "
+        "rule writes their rarity rung after spawning them because it did. " + words)
+
+
+def test_royal_guard_row_still_says_uncommon_so_the_ruling_is_read_again():
+    """The row names a rank no ladder in this game has, and the rule had to be ruled.
+
+    "ABOVE UNCOMMON RANKED". game/Data/EnemyRarities.csv is Common, Elite, Legendary,
+    Herald, Boss, Cataclysm Boss; the only Uncommon in the game's data is the second
+    crafting material tier, and gear uses a third vocabulary again. It was ruled to mean
+    Elite and above.
+
+    THIS CHECK FAILS WHEN THE ROW IS REWORDED, WHICH IS THE POINT, and the reword is
+    already decided: the project owner chose "above Common ranked" on 2026-09-17, and the
+    row's text lives in the design workbook, so it lands in a later change than the rule.
+    WHEN THIS FAILS WITH THAT WORDING, replace the word this pins and leave
+    RoyalGuardLowestRungThatSummons alone: "above Common ranked" is Elite and above, and
+    docs/DECISIONS.md records the decision. Any OTHER new wording has to be read again
+    from scratch.
+    """
+    words = flat(rows()["War_Royal_Guard"]["Description"]).lower()
+    ladder = flat((REPO_ROOT / "game" / "Data" / "EnemyRarities.csv")
+                  .read_text(encoding="utf-8")).lower()
+
+    assert "uncommon" in words, (
+        "The Royal Guard row no longer says \"above Uncommon ranked\". If it now says "
+        "\"above Common ranked\", that is the reword the project owner chose on "
+        "2026-09-17: pin that wording here instead and leave "
+        "RoyalGuardLowestRungThatSummons at Elite. Any other wording has to be read again "
+        "and the rung decided against it. " + words)
+    assert "uncommon" not in ladder, (
+        "game/Data/EnemyRarities.csv now has an Uncommon rung. The ruling that the row's "
+        "word names nothing was made when it had none; re-read it.")
+
+
+def test_royal_guards_ceiling_is_the_mutation_rules_ceiling_and_not_its_own_number():
+    """Both rules stop below the first boss rung, and they say so in one place.
+
+    A SECOND 3 HERE WOULD BE THE SAME FACT TWICE with nothing holding the two together,
+    and only one of them is tied to ACataclysmEnemyCharacter::FirstBossRarityStep by the
+    static_assert the check above this one guards.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    assert re.search(
+        r"\bRoyalGuardHighestRung\s*=\s*VolatileEvolutionHighestRung\s*;", text), (
+        "RoyalGuardHighestRung is no longer declared as VolatileEvolutionHighestRung. If "
+        "the two rules are meant to stop at different rungs now, say why in "
+        "docs/DECISIONS.md and tie the new one to the first boss rung as the other is.")

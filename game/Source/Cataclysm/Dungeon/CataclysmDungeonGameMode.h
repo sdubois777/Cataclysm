@@ -1206,6 +1206,21 @@ private:
 	void StepVolatileEvolution(class ACataclysmPlayerCharacter* Player);
 
 	/**
+	 * Royal Guard: give each badly hurt creature of Elite rank or above its one chance of
+	 * calling two guards of its own kind. Issues #1820 and #41.
+	 *
+	 * THE PLAYER IS ASKED FOR ONLY TO TELL WHICH SIDE A CREATURE IS ON, which is what
+	 * `StepRavenousHoard` and `StepVolatileEvolution` above ask it for.
+	 *
+	 * THE GUARDS ARE THE SUMMONER'S OWN KIND, WORKED OUT FROM ITS CLASS. A creature does
+	 * not carry which of the seven kinds it is, so the step compares its class with each
+	 * kind's through `ClassFor`. A creature that is none of them -- the plain
+	 * `ACataclysmEnemyCharacter` a test spawns, or a kind added to the class list and not
+	 * to `ClassFor` -- calls nothing and says so in the log.
+	 */
+	void StepRoyalGuard(class ACataclysmPlayerCharacter* Player);
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -2170,6 +2185,25 @@ private:
 	 */
 	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> VolatileEvolutionMutated;
 	int32 VolatileEvolutionMutations = 0;
+
+	/**
+	 * Royal Guard: which creatures have already had their one roll, and how many guards
+	 * arrived on this floor, which the floor panel shows. Issues #1820 and #41.
+	 *
+	 * THE MEMBERSHIP OUTLIVES THE FLOOR AND THE COUNT DOES NOT, for the reason written
+	 * above `VolatileEvolutionMutated`: a creature that lives through a Horde dungeon's
+	 * change of wave has already had its roll, while the count answers what happened on
+	 * this floor.
+	 *
+	 * THE ROLL IS RECORDED WHETHER OR NOT IT SUCCEEDED, which is what "one chance" means.
+	 * A creature that rolled and missed does not roll again on the next beat, and a
+	 * creature whose kind could not be told does not either.
+	 *
+	 * WEAK POINTERS, AND THE STEP DROPS THE STALE ONES, as Ravenous Hoard keeps its
+	 * clocks.
+	 */
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> RoyalGuardRolled;
+	int32 RoyalGuardGuardsArrived = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

@@ -653,6 +653,18 @@ static TAutoConsoleVariable<float> CVarVolatileEvolutionRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the roll a badly hurt creature calls its guards on, so a test can assert what a
+ * beat did. Issues #1820 and #41. Its own variable, for the reason
+ * `Cataclysm.GraspingTentaclesRoll` gives.
+ */
+static TAutoConsoleVariable<float> CVarRoyalGuardRoll(
+	TEXT("Cataclysm.RoyalGuardRoll"),
+	-1.0f,
+	TEXT("Pin the roll Royal Guard offers a badly hurt creature, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -709,6 +721,48 @@ namespace
 	{
 		const float Pinned = CVarVolatileEvolutionRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll a badly hurt creature's guards are decided by: pinned, or drawn. */
+	float DungeonGameModeRoyalGuardRoll()
+	{
+		const float Pinned = CVarRoyalGuardRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/**
+	 * Which of the seven kinds a creature is, or `Count` when it is none of them.
+	 *
+	 * BY CLASS, BECAUSE A CREATURE DOES NOT CARRY ITS KIND. `ACataclysmDungeonGameMode::
+	 * ClassFor` maps a kind to a class and nothing maps back, so this asks each kind in
+	 * turn. The seven classes all derive straight from `ACataclysmEnemyCharacter` and
+	 * from none of each other, so at most one answers -- a Blueprint made from one of
+	 * them answers for that one.
+	 *
+	 * `Count` IS A REAL ANSWER AND NOT AN ERROR. The plain `ACataclysmEnemyCharacter`
+	 * that automation tests spawn is not any kind, and neither is a creature class added
+	 * to the game without being added to `ClassFor`. The caller decides what to do about
+	 * it; Royal Guard calls no guards and says so in the log.
+	 */
+	ECataclysmDungeonCreature DungeonGameModeKindOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		if (!Creature)
+		{
+			return ECataclysmDungeonCreature::Count;
+		}
+		const int32 Kinds = static_cast<int32>(ECataclysmDungeonCreature::Count);
+		for (int32 Index = 0; Index < Kinds; ++Index)
+		{
+			const ECataclysmDungeonCreature Kind =
+				static_cast<ECataclysmDungeonCreature>(Index);
+			const TSubclassOf<ACataclysmEnemyCharacter> Class =
+				ACataclysmDungeonGameMode::ClassFor(Kind);
+			if (Class && Creature->IsA(Class))
+			{
+				return Kind;
+			}
+		}
+		return ECataclysmDungeonCreature::Count;
 	}
 
 	/**
@@ -2300,12 +2354,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// #1820 and #41.
 	const bool bVolatileEvolution = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::VolatileEvolutionKey));
+	// AND ROYAL GUARD, WHICH CALLS TWO MORE CREATURES TO A HURT ONE. Issues #1820, #41.
+	const bool bRoyalGuard = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::RoyalGuardKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
-		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution)
+		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard)
 	{
 		return;
 	}
@@ -2481,6 +2538,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bGraveTide)
 	{
 		StepGraveTide();
+	}
+
+	// AND ROYAL GUARD AFTER IT, THE SECOND RULE THAT SPAWNS CREATURES. Issues #1820 and
+	// #41. A guard that arrives on this beat is counted by every rule above it on the
+	// next one, which is the order Grave Tide's waves already follow. It reads a
+	// creature's health and rung and writes neither, so no rule above it is disturbed.
+	if (bRoyalGuard)
+	{
+		StepRoyalGuard(Player);
 	}
 }
 
@@ -3512,6 +3578,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(Mutating, FString::Printf(TEXT("mutated %d"),
 											   VolatileEvolutionMutations));
+	}
+
+	// AND HOW MANY GUARDS HAVE ARRIVED, a count with no ceiling for the reason the line
+	// above has none: the limit is one roll each, not a number of guards a floor may hold.
+	const FName Guarding(Effects::RoyalGuardKey);
+	if (FloorBrief.Modifiers.Contains(Guarding))
+	{
+		Counting.Add(Guarding, FString::Printf(TEXT("guards %d"), RoyalGuardGuardsArrived));
 	}
 
 	return Counting;
@@ -4711,6 +4785,130 @@ void ACataclysmDungeonGameMode::StepVolatileEvolution(ACataclysmPlayerCharacter*
 	}
 }
 
+void ACataclysmDungeonGameMode::StepRoyalGuard(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vitals = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// WHO IS ON THE FLOOR WHEN THE BEAT STARTS, COLLECTED BEFORE ANY GUARD IS SPAWNED.
+	// Spawning inside a `TActorIterator` walk adds actors to what it is walking, so a
+	// guard could be offered its own roll on the beat it arrived.
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (IsValid(Creature) && UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			Standing.Add(Creature);
+		}
+	}
+
+	const int32 Before = RoyalGuardGuardsArrived;
+	for (ACataclysmEnemyCharacter* Creature : Standing)
+	{
+		if (!IsValid(Creature) || RoyalGuardRolled.Contains(Creature))
+		{
+			continue;
+		}
+
+		// ELITE AND ABOVE ONLY, WHICH IS THE READING OF "ABOVE UNCOMMON RANKED". The rule
+		// library says what the row's word names and why it needed a ruling.
+		if (!Effects::RoyalGuardMaySummon(Creature->RarityStep))
+		{
+			continue;
+		}
+
+		UAbilitySystemComponent* Abilities =
+			UCataclysmTargeting::AbilitySystemOf(Creature);
+		if (!Abilities)
+		{
+			continue;
+		}
+		const float Health = Abilities->GetNumericAttribute(Vitals::GetHealthAttribute());
+		const float MaxHealth =
+			Abilities->GetNumericAttribute(Vitals::GetMaxHealthAttribute());
+		if (!Effects::RoyalGuardIsWounded(Health, MaxHealth))
+		{
+			continue;
+		}
+
+		// THE ROLL IS REMEMBERED WHETHER OR NOT IT SUCCEEDS, so a creature that falls
+		// below the share is offered one chance and not one a beat.
+		RoyalGuardRolled.Add(Creature);
+
+		if (DungeonGameModeRoyalGuardRoll() >= Effects::RoyalGuardChancePercent)
+		{
+			continue;
+		}
+
+		const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Creature);
+		if (Kind == ECataclysmDungeonCreature::Count)
+		{
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("Royal Guard: %s is none of the kinds this dungeon places, so no "
+						"guards were called"),
+				   *Creature->GetName());
+			continue;
+		}
+
+		FCataclysmEnemyPlacement Placement;
+		Placement.Cell = CurrentFloor->CellOfWorld(Creature->GetActorLocation());
+		Placement.Creature = Kind;
+
+		const int32 Rung = Effects::RoyalGuardRungForGuards(Creature->RarityStep);
+		int32 Arrived = 0;
+		for (int32 Guard = 0; Guard < Effects::RoyalGuardGuardsSummoned; ++Guard)
+		{
+			ACataclysmEnemyCharacter* Called =
+				SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier);
+			if (!Called)
+			{
+				continue;
+			}
+
+			// THE RUNG IS WRITTEN AFTER THE SPAWN, BECAUSE THE SPAWN SETS ITS OWN.
+			// `SpawnPlacedCreature` calls `ApplyDesignedStats`, which gives the creature
+			// its kind's rung; a guard's rung is the summoner's plus one, held to the
+			// ceiling. The draw tops up the modifiers the new rung carries, and the
+			// refill both calls end in is right here: a guard arrives whole.
+			Called->SetRarityStep(Rung);
+			Called->DrawModifiersForRarity();
+			FloorEnemies.Add(Called);
+			++Arrived;
+		}
+
+		RoyalGuardGuardsArrived += Arrived;
+
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Royal Guard: %s (%s, rarity step %d) called %d guard%s at rarity "
+					"step %d"),
+			   *Creature->GetName(), CataclysmDungeonCreatureName(Kind),
+			   Creature->RarityStep, Arrived, Arrived == 1 ? TEXT("") : TEXT("s"), Rung);
+	}
+
+	// THE DESTROYED ARE FORGOTTEN, so the record does not grow from floor to floor. A
+	// creature that died keeps its entry until it is destroyed, which costs nothing: it
+	// cannot roll again in any case.
+	for (auto Entry = RoyalGuardRolled.CreateIterator(); Entry; ++Entry)
+	{
+		if (Entry->IsStale())
+		{
+			Entry.RemoveCurrent();
+		}
+	}
+
+	if (RoyalGuardGuardsArrived != Before)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepGraveTide()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -5002,6 +5200,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// -- so a creature that lives through a Horde dungeon's change of wave has had
 		// its one mutation and must not be offered another.
 		VolatileEvolutionMutations = 0;
+
+		// AND ROYAL GUARD FORGETS ITS COUNT AND NOT ITS ROLLS. Issues #1820 and #41. The
+		// count is how many guards arrived on this floor. The creatures that rolled keep
+		// their entry, so one that lives through a Horde dungeon's change of wave has
+		// had its one chance; the guards themselves are in `FloorEnemies` and go the way
+		// every other creature on the floor goes.
+		RoyalGuardGuardsArrived = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

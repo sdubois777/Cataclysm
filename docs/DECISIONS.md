@@ -2,6 +2,202 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A creature of Elite rank or above that falls under 30% of its health gets one chance in two of calling two guards of its own kind, a rung above it and never past Herald
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat, the
+per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`War_Royal_Guard` in `game/Data/DungeonModifiers.csv`: "When an above Uncommon ranked enemy drops below
+30% health, there is a 50% chance they summon two guards of the next higher rank." No text in `docs/`
+says more about it.
+
+### This row states three of its four figures, which is unusual here
+
+| From the row itself | The constant |
+| :-- | :-- |
+| "drops below 30% health" | `RoyalGuardHealthPercentToSummon` |
+| "a 50% chance" | `RoyalGuardChancePercent` |
+| "two guards" | `RoyalGuardGuardsSummoned` |
+| "of the next higher rank" | one rung, held to `RoyalGuardHighestRung` |
+
+`test_royal_guard_row_still_states_the_three_figures_the_rule_uses` reads all three off the row rather
+than trusting the header, so a change to the row that the code does not follow fails the fast suite.
+
+### The word that names nothing, and the ruling it forced
+
+**"Above Uncommon ranked" names no rank any ladder in this game has.** Measured on 2026-09-17:
+`game/Data/EnemyRarities.csv` is Common, Elite, Legendary, Herald, Boss and Cataclysm Boss. The only
+Uncommon in the game's data is the second crafting material tier in `game/Data/MaterialTiers.csv`, and
+gear is a third vocabulary again in `game/Data/GearRarity.csv` — Everyday, Quality, Superb, Masterful,
+Legendary, Mythical, Ascendant.
+
+**Ruled: it means every rung above the bottom one, so Elite and above.**
+
+**The project owner has since chosen to reword the row**, decided 2026-09-17 and relayed by the
+coordinating session: "When an above Common ranked enemy drops below 30% health, there is a 50% chance
+they summon two guards of the next higher rank." Nothing else in the sentence changes, and the rule's
+reading does not change either: "above Common ranked" is Elite and above, which is what
+`RoyalGuardLowestRungThatSummons` already holds.
+
+**The reword is not in this change**, because the row's text lives in the design workbook and another
+session holds it. Until it lands,
+`test_royal_guard_row_still_says_uncommon_so_the_ruling_is_read_again` holds the row's present word in
+place. **That check is meant to fail when the reword lands**, and whoever sees it fail should replace
+the word it pins with "above Common ranked" and leave the rung where it is — the decision behind it is
+recorded here, so nothing has to be re-argued. It also fails if a rung named Uncommon is ever added to
+the creature ladder, which would make the row mean something else entirely, and that one is a real
+question rather than a known answer.
+
+### Two other decisions the owner made the same day, recorded here because this branch is what is open
+
+**A revived creature pays nothing a second time.** Decided 2026-09-17 and relayed by the coordinating
+session: a creature that is revived or resurrected is marked, and its second death drops no loot and
+grants no experience. That answers the question raised in the Volatile Evolution entry below, which
+measured the code as it stands — the drop roll and the experience grant sit in the dying creature's own
+handler and read nothing about how many times it has died — and it unblocks
+`Celestial_Divine_Resurgence` and `Death_Dead_Rising`. The mark and the two suppressions are one
+mechanism, to be built with whichever of those rows is taken first. **It does not touch this row:** a
+guard is a new creature that has never died, so it pays in full, which is what the section above says.
+
+**"Waves of undead" in the Grave Tide row is the intended wording.** Decided 2026-09-17 and relayed by
+the coordinating session: the owner intends undead creatures to exist by the time that row matters. The
+Grave Tide entry below says the word "is flavour until there is an undead creature" and was flagged to
+the owner; that sentence is superseded by this one. It is corrected here rather than rewritten there,
+because that entry is a dated record of what was known when it was written.
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation of unstated figures, and flagged to the
+owner by that session.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| Which creatures call guards | **Elite and above** | The reading above |
+| The ceiling on a guard's rung | **Herald, the rung under the first boss rung** — the same ceiling Volatile Evolution has, written as that constant rather than as a second number | A Herald's guards would otherwise be Bosses and a Boss's would be Cataclysm Bosses, which is a floor rule making a boss out of an ordinary creature in the middle of a fight |
+| How often | **One roll per creature, ever, spent whether it hits or misses** | "A 50% chance" is a chance at the moment it falls, not 50% every quarter of a second, which would be a certainty within a second |
+| Where the guards stand | **The summoner's own floor cell**, through `ACataclysmDungeonFloor::CellOfWorld` | One place decides what a cell may hold |
+| What kind they are | **The summoner's own kind**, found by comparing its class with each of the seven kinds `ACataclysmDungeonGameMode::ClassFor` knows | "Their guards". A creature does not carry which kind it is, and this needs no new field and no change to a save |
+| A creature of no kind | **Calls nothing, and the log says so** | The plain `ACataclysmEnemyCharacter`, and any creature class added to the game but not to `ClassFor`. Guessing a kind for it would put a creature on the floor that the floor's own populator would never place |
+| The floor panel | **"guards N"**, a count with no ceiling | The limit is one roll each, not a number of guards a floor may hold |
+
+### A guard arrives whole, and the rule that came before it needed the opposite
+
+`SetRarityStep` and `DrawModifiersForRarity` both end in `ApplyStartingAttributes`, which refills health
+and energy shield. Volatile Evolution, merged earlier the same day, has to undo that: a creature that
+mutates has already been fought, and healing it would undo the player's work. A guard has not been
+fought at all, so the refill is exactly right and the rule does nothing about it. The same two calls,
+opposite requirements, written down here so the next rule that changes a rung asks which case it is in.
+
+### What it pays the player
+
+**The guards are ordinary creatures.** Each drops loot and pays experience by its own rung when it
+dies, from `ACataclysmEnemyCharacter`'s own death handler, which reads the rung the creature holds at
+that moment and nothing about who killed it. So a floor carrying this row is worth more than one
+without it: an Elite at a fifth of its health puts two Legendaries on the floor, and both pay. That
+follows from the row rather than from any choice made here, and it is flagged to the owner.
+
+### What the tests do
+
+Nine automation tests in `Cataclysm.DungeonModifierEffects.`, and one existing test changed. They use
+the floor's **own** creatures, because those are real kinds standing on real cells and they start at
+full health, so no creature a test has not wounded can call anything.
+
+- **`AWoundedEliteCallsTwoGuardsOfItsOwnKindAtTheNextRung`** — two arrive, each of the summoner's class,
+  each a rung above it, each at full health of its own larger pool, each in the floor's creature list;
+  the summoner's own health and rung are unchanged.
+- **`AtThirtyPercentHealthACreatureCallsNoGuardsAndJustUnderItCallsThem`** — the row's figure on its
+  boundary: forty beats at exactly the threshold, then a tenth of a point lower.
+- **`GuardsArriveOnARollUnderTheChanceAndNotOnTheChanceItself`** — the chance on its boundary, with two
+  creatures rather than one, because a roll is spent whether it hits or misses.
+- **`ACommonCreatureCallsNoGuardsHoweverLowItFalls`** — the ruled reading of the row's word.
+- **`NoGuardArrivesAboveHerald`** — a Herald's guards and a boss-rung creature's guards both stand at
+  Herald and neither is a boss.
+- **`ACreatureGetsOneChanceAtGuardsHoweverLongTheFightLasts`** — a missed roll is not offered again,
+  even with the roll then pinned to a certain hit.
+- **`ACreatureOfNoKindCallsNoGuards`** — the refusal above.
+- **`TheFloorPanelCountsTheGuardsThatArrived`** — "guards 0", 2, 4, and no line at all on a floor
+  without the row.
+- **`AFloorChangeClearsTheCountAndASummonerGetsNoSecondChance`** — on a Horde dungeon's next wave, where
+  the creature lives through the change: the count goes back to nothing and the creature, still badly
+  hurt, gets no second roll.
+- Changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** now carries this row among the
+  rules on its floor.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` hold the rule to the row: the
+three figures the row states, the three phrases the readings rest on, the "Uncommon" wording and the
+creature ladder that lacks it, and the ceiling being the other rule's constant rather than a second
+number.
+
+**Measured, with the break-and-restore helper, on a `git archive` extract of the head:** nine breaks,
+each proved and each failing exactly what was predicted — the row stating 40% or a 25% chance, the
+header's threshold moving without the row, the row dropping "two guards" (which fails two checks),
+dropping "chance", dropping "next higher rank", the row reworded as this entry proposes, an Uncommon
+rung added to the creature ladder, and the ceiling written as its own 3. Summaries read
+"PROVED: 1 failed, 102 passed | restored: 103 passed", and "2 failed, 101 passed" for the break that
+trips two.
+
+### What the runs found, including what they found wrong
+
+**The first whole-suite run in the window failed eight of the nine new tests**: 2,044 performed, 2,036
+succeeded, 8 failed. Both causes were in the tests, not in the rule, and both are worth writing down.
+
+1. **Seven failed on "the floor placed creatures of its own".**
+   `ACataclysmDungeonGameMode::BuildFloor` makes a floor's layout and its brief and spawns nobody;
+   `PopulateFloor` is what puts creatures out, and `GoToFloor` calls both. These tests need the floor's
+   own creatures, because the rule calls guards of the summoner's kind and a kind is read off a
+   creature's class. They now reach floor one with `GoToFloor`.
+2. **One failed comparing how many creatures stood in the world before and after a floor change**,
+   expecting 145 and measuring 280. A Horde dungeon's next wave brings its own population, so that
+   count cannot say whether a guard was called. It now asserts the floor panel's own count of guards,
+   which is cleared at the change and rises only when a guard arrives.
+
+**After the correction, in the same window and under the same editor lock:** 2,044 tests performed,
+2,044 succeeded, 0 failed, with "2044 declared in the tree, 2044 performed, gap 0"; the group
+`Cataclysm.DungeonModifierEffects.` performed 118 and all 118 succeeded. **The suite was run twice under
+one lock**, which the pull request states and which is flagged to the project owner as the two windows
+before this one were.
+
+**The three guard proofs, all proved, and one prediction that was wrong.**
+
+| Proof | Break | With the break | Restored |
+| :-- | :-- | :-- | :-- |
+| P1 | the guards arrive at their summoner's own rung | 118 performed, 116 succeeded, 2 failed | 118, 118, 0 |
+| P2 | the ceiling on a guard's rung removed | 118 performed, 117 succeeded, 1 failed | 118, 118, 0 |
+| P3 | the record of who has already rolled removed | 118 performed, 113 succeeded, **5** failed | 118, 118, 0 |
+
+P1 failed the two tests registered for it, on "and stands a rung above it" (rung 1 where 2 was wanted)
+and on the ceiling test's boss-rung half (rung 4, and a boss). P2 failed the one registered, on all four
+of its assertions: a Herald's guards stood at rung 4 and a first-boss-rung creature's at rung 5, both
+bosses.
+
+**P3 was registered as failing four tests and failed five.** The fifth is the chance-boundary test, on
+"a roll of 49.99 calls the guards", which wanted two new creatures and measured four. The reason is that
+the creature wounded in that test's first half is still wounded in its second half: with the record
+gone it rolls again beside the second creature, so two summoners call guards where the test expects one.
+The prediction missed that a creature stays eligible across the two halves. The proof stands — the
+tests failed with the break in and every one passed with it out — but the registered count was wrong,
+and the measurement is what this entry records.
+
+### What the tests do not show
+
+- **Only three of the rule's claims are guard-proved**, which is the standing budget of three proofs a
+  change: that the guards' rung is written after they spawn, that the ceiling holds, and that the record
+  of who has rolled holds. The rank gate and the two boundaries are tested and not proved.
+- **How often this fires in real play.** Every test pins the roll.
+- **What two guards do to a fight.** No test plays the encounter out against a player, and none kills a
+  guard to see what it pays.
+
+---
+
 ## 2026-09-17 — What a skill costs a character is a stat, and one function answers it for the check, the payment, an aura's upkeep and the skill bar
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
@@ -716,6 +912,8 @@ a floor." No text in `docs/` says more about it.
 Hellhound, the Brute, the Abyssal Warden, the Corrupted Sentinel, the Succubus and the Gatekeeper, and
 none of them is undead. The waves are made of whatever the floor's own populator picks, and the word is
 flavour until there is an undead creature. Flagged to the owner.
+**Answered 2026-09-17: the owner keeps the word; undead creatures are intended later; see the Royal
+Guard entry.**
 
 ### The judgements
 
