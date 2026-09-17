@@ -2,6 +2,132 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A creature the player kills has one chance in ten of bringing a greater one of its own kind out of its corpse, at most one a floor
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the list of rules told about a
+death, the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Demonic_Demon_Prince` in `game/Data/DungeonModifiers.csv`: "Occassionally when you slay an enemy, a
+demonic prince will rip out through it's corpse and attack you." **Those are the row's own spellings**
+— "Occassionally" and "it's" — and this change leaves them alone. A Python check pins both, so a silent
+tidy fails the fast suite rather than passing; the wording is the project owner's to change, as the
+Royal Guard row's "above Uncommon ranked" was. No text in `docs/` says more.
+
+### What the row's own words decide
+
+1. **A chance, not a certainty**: "Occassionally". The row states no figure at all.
+2. **The player must do the killing**: "when YOU slay an enemy". This is the first of the ten rules
+   told about a death to ask who did it; the nine before it fire on any creature's death.
+3. **It comes out of the corpse**: "rip out through it's corpse". So it stands where the creature died,
+   and it is of that creature's kind.
+
+### "A demonic prince" names no creature this game has
+
+The seven kinds a floor places are the Imp, the Hellhound, the Brute, the Abyssal Warden, the Corrupted
+Sentinel, the Succubus and the Gatekeeper. Ruled: what rises is **the slain creature's own kind**,
+raised to the rung below the first boss rung, until the project owner names a creature for it. The same
+shape of question as "undead" in Grave Tide and "above Uncommon ranked" in Royal Guard, and flagged to
+the owner with them.
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation of unstated figures, and flagged to the
+owner by that session.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| The chance | **10% on a kill the player made**, its own constant | The row says only "Occassionally". Ten is what this library uses wherever a row says a chance on a death or a hit. Royal Guard's fifty is not a precedent: that row states its own figure |
+| How many a floor | **One** | The row states no ceiling, and without one a floor fills with them |
+| What rises | **The slain creature's kind**, read off its class by the lookup written for Royal Guard | "Their corpse". It needs no new field on a creature and no change to a save |
+| At what rung | **The rung below the first boss rung**, written as the constant the other two rules share | One fact in one place; only that constant is tied to `ACataclysmEnemyCharacter::FirstBossRarityStep` |
+| A creature of no kind | **Nothing rises, and the log says so** | Royal Guard's refusal, for its reason: a kind guessed here would put a creature on the floor the floor's own populator would never place |
+| The floor panel | **"prince N of 1"** | A count against its ceiling, the shape Grave Tide's waves use, because this row has one |
+
+### "When you slay an enemy" is two questions in the code, not one
+
+**A minion's blow is credited to its summoner.** `FCataclysmHitNotice::Attacker` says so in its own
+comment: "The character the blow is credited to, which is the effect's instigator. A minion's blow is
+credited to its summoner." So the killer on a death notice is the player even when a minion landed the
+killing blow, and a rule that asked only "is the killer the player" would count a minion's kill.
+
+**The field that tells them apart is the one beside it.** `CombatEventsDealtBy` returns "the context's
+source object when it is an actor, which is how a minion is recorded … and otherwise the causer, which
+for every other blow in the game is the instigator itself", and `ACataclysmMinion` sets that source
+object to the minion on every blow it deals.
+
+So the rule asks for **the killer to be the player and the dealer not to be a minion**. It is written
+that way round — excluding minions rather than requiring the dealer to be the player — because the
+comment above only promises the dealer equals the instigator "for every other blow in the game", and
+what a projectile's causer is has not been measured here.
+
+**Ruled under the project owner's decision of 2026-09-17 that a minion's hits are the minion's own.**
+If the Conduit keystone later makes a minion's kill the player's, this rule reads the dealer and would
+follow it, and `AKillDealtByASummonedMinionBringsNoPrince` is the test that will fail first — which is
+what should happen, because the decision behind it will have changed.
+
+### What it pays the player
+
+**What rises is an ordinary creature.** It drops loot and pays experience by its own rung when it dies,
+from the dying creature's own handler, so a kill that brings one hands the player a rich fight once a
+floor. That follows from the row rather than from any choice made here, and it is flagged to the owner.
+
+### What the tests do
+
+Eight automation tests in `Cataclysm.DungeonModifierEffects.`, and one existing test changed. Each
+calls `StartPlay` on the game mode, because a test world never does and the death announcement is
+connected there, and each kills with a real blow, because the notice's killer is read off the last blow
+on record.
+
+- **`SlayingACreatureBringsAPrinceOfItsOwnKindAtHerald`** — one rises, of the slain creature's class, at
+  the shared rung, not a boss, whole, in the floor's creature list, and the panel counts it.
+- **`APrinceComesOnARollUnderTheChanceAndNotOnTheChanceItself`** — the ruled figure on its boundary.
+- **`ACreatureKilledByAnotherCreatureBringsNoPrince`** — the row's "when you slay".
+- **`AKillDealtByASummonedMinionBringsNoPrince`** — the owner's decision, built against the dealer, with
+  the reasoning above written in the test.
+- **`OnlyOnePrinceAFloorHoweverManyDie`** — three kills, one rises.
+- **`ACreatureOfNoKindBringsNoPrince`** — the refusal.
+- **`AFloorChangeLetsTheNextFloorHaveItsOwnPrince`** — on a Horde dungeon's next wave: the count is
+  cleared and the new floor may have its own.
+- **`TheFloorPanelSaysWhetherThePrinceHasRisen`** — "prince 0 of 1", then "prince 1 of 1", and no line
+  on a floor without the row.
+- Changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** now carries this row too.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` hold the rule to the row: that
+the row still states no figure; that it still says "Occassionally", that the player does the killing and
+that the creature comes out of "it's corpse", both spellings pinned as the row has them; that the chance
+and the ceiling are numbers of their own; and that the rung is the shared constant rather than a third
+copy of it.
+
+**Measured, with the break-and-restore helper, on a `git archive` extract of the head:** seven breaks,
+each proved and each failing exactly what was predicted — the row stating a percentage, its spelling
+tidied to "Occasionally", the player dropped from the sentence, the corpse dropped from it, the chance
+bound to Spore Clouds' figure, the ceiling bound to Grave Tide's, and the rung written as its own 3.
+Summaries read "PROVED: 1 failed, 106 passed | restored: 107 passed", and two failures for the break
+that trips two checks.
+
+### What the tests do not show
+
+- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
+  the automation run and the three guard proofs wait for this machine's next free window.
+- **Three claims will be guard-proved and the rest will not**, which is the standing budget of three
+  proofs a change: that the killer must be the player, that a minion's kill is not the player's, and
+  that only one rises a floor. The rung written after the spawn is tested and will not be proved; the
+  shared ceiling already carries a proof in each of the two merged rules that use it.
+- **How often this fires in real play.** Every test pins the roll.
+- **What a creature at that rung does to a fight**, and what it actually pays when it dies: the drop
+  roll and the experience grant were read in the code, not run.
+
+---
+
 ## 2026-09-17 — A creature of Elite rank or above that falls under 30% of its health gets one chance in two of calling two guards of its own kind, a rung above it and never past Herald
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
