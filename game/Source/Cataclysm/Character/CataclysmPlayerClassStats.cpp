@@ -440,6 +440,16 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// the node looked built.
 			{FString(UCataclysmFervour::PerEnemyHitStat),
 			 Resource::GetFervourPerEnemyHitAttribute()},
+
+			// AND THE TWO DEATH RULES THAT COST NOTHING. Issue #1515. Zero for every
+			// class; the Ravager's Long Hold and the Ritualist's Fed by the Fallen
+			// are their only sources. Without these entries the rows would be
+			// dropped by `ApplyTo` before `StatForSkill` could be asked, and a kill
+			// or a death nearby would pay nothing while the options looked built.
+			{FString(UCataclysmFervour::HealthRestoredOnKillAtNoCostStat),
+			 Resource::GetHealthRestoredOnKillAtNoCostAttribute()},
+			{FString(UCataclysmFervour::OnEnemyDeathNearbyStat),
+			 Resource::GetFervourOnEnemyDeathNearbyAttribute()},
 			{FString(UCataclysmFervour::OnMinionDeathStat),
 			 Resource::GetFervourOnMinionDeathAttribute()},
 

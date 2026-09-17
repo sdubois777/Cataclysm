@@ -48,6 +48,10 @@
 // For an enemy with no defences, to land a real character's attack on.
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+// For a minion dying beside its summoner, which Fed by the Fallen must not
+// count, and the ability system that kills it. Issue #1515.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
@@ -12013,6 +12017,425 @@ bool FCataclysmPassiveHeadlongSecondClauseRowTest::RunTest(const FString&)
 	TestEqual(TEXT("and a blow that carries no distance gains nothing"),
 			  IncreasesAfter(-1.0f, Melee), 0.0f, 0.001f);
 
+	return true;
+}
+
+// ---- Two death rules that cost nothing: Long Hold and Fed by the Fallen -----
+
+namespace CataclysmDeathRewardsTest
+{
+	using namespace CataclysmFourRowTest;
+
+	/** A flat row of one stat, the shape each capstone option's row will take. */
+	FCataclysmStatModifier Flat(float Value)
+	{
+		FCataclysmStatModifier Made;
+		Made.Bucket = ECataclysmStatBucket::Flat;
+		Made.Source = ECataclysmModifierSource::PassiveKeystone;
+		Made.Value = Value;
+		return Made;
+	}
+
+	/**
+	 * Record these stats as the character's stat lines, one flat row each.
+	 *
+	 * STATED HERE BECAUSE THE ASSET DOES NOT CARRY THE ROWS YET: they follow in a
+	 * later turn of the design workbook. WHOLESALE, as `SetStatInputs` always
+	 * is. The kill and death routes read nothing else off a stat line: health,
+	 * its maximum and the pool are attributes, and a stat with nothing recorded
+	 * answers its attribute.
+	 */
+	void Record(FRealCharacter& Player, const TMap<FName, float>& FlatByStat)
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		for (const TPair<FName, float>& Each : FlatByStat)
+		{
+			FCataclysmStatInputs& Line = Lines.FindOrAdd(Each.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Flat(Each.Value));
+		}
+		Player.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	}
+
+	/** Health as a share of the maximum, so a reading names no class's pool size. */
+	float ShareOfMaximum(const FRealCharacter& Player, float Health)
+	{
+		const float Maximum = Player.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		return Maximum > 0.0f ? Health / Maximum : -1.0f;
+	}
+
+	float MaximumFervourOf(const FRealCharacter& Player)
+	{
+		return Player.AbilitySystem->GetNumericAttribute(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute());
+	}
+
+	/** How far this body stands from the player, in metres. */
+	float MetresFrom(const FRealCharacter& Player, const AActor* Other)
+	{
+		return FVector::Dist(Player.Character->GetActorLocation(),
+							 Other->GetActorLocation()) / 100.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLongHoldRestoresOnAKillTest,
+	"Cataclysm.DeathRewards.LongHoldRestoresHealthOnAKillAndNothingOnADeathItDidNotCause",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Ravager's Long Hold capstone option on a real character. Issue #1515.
+ *
+ * "Killing an enemy restores 5% of your maximum health."
+ *
+ * THE BREAK THIS IS FOR: paying the restoration on a death this character did
+ * not cause. The kill comes first, so a version that restores on no death at
+ * all fails as well, and the kill at full health holds the ceiling.
+ *
+ * EVERY READING IS A SHARE OF THE MAXIMUM, so no assertion depends on how much
+ * health a Ravager has at the level the test world gives it.
+ */
+bool FCataclysmLongHoldRestoresOnAKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+	using namespace CataclysmDeathRewardsTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager"), Player.IsComplete()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Killed = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(3.0f * Metre, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* DiedAnyway = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(0.0f, 3.0f * Metre, 0.0f));
+	ACataclysmEnemyCharacter* KilledAtFull = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(-3.0f * Metre, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("an enemy to kill"), Killed)
+		|| !TestNotNull(TEXT("an enemy that dies to nobody"), DiedAnyway)
+		|| !TestNotNull(TEXT("an enemy to kill at full health"), KilledAtFull))
+	{
+		return false;
+	}
+
+	Record(Player, {{FName(UCataclysmFervour::HealthRestoredOnKillAtNoCostStat), 5.0f}});
+	HalfHealth(Player);
+	GiveFervour(Player, 50.0f);
+
+	const float BeforeKill = HealthOf(Player);
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, Killed);
+	TestEqual(TEXT("a kill restores five per cent of maximum health"),
+			  ShareOfMaximum(Player, HealthOf(Player) - BeforeKill), 0.05f, 0.001f);
+	TestEqual(TEXT("and spends no Fervour"), FervourOf(Player), 50.0f, 0.001f);
+
+	const float BeforeOtherDeath = HealthOf(Player);
+	UCataclysmCombatEvents::NoteDeath(DiedAnyway);
+	TestEqual(TEXT("a death this Ravager did not cause restores nothing"),
+			  ShareOfMaximum(Player, HealthOf(Player) - BeforeOtherDeath), 0.0f,
+			  0.001f);
+
+	Player.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), MaxHealthOf(Player));
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, KilledAtFull);
+	TestEqual(TEXT("and a kill at full health leaves it at full"),
+			  ShareOfMaximum(Player, HealthOf(Player)), 1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLongHoldBeforeWrungOutTest,
+	"Cataclysm.DeathRewards.LongHoldHealsBeforeWrungOutBuysAnything",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Long Hold and Wrung Out held together. Issue #1515.
+ *
+ * RULED 2026-09-17 under the project owner's delegation: the restoration that
+ * costs nothing runs first. A Ravager three per cent below full is healed to
+ * full by Long Hold's five, and Wrung Out, finding full health, spends nothing.
+ * In the other order Wrung Out would spend five Fervour to restore the same
+ * three per cent.
+ *
+ * THE FIRST KILL IS THE CONTROL. From half health both run: five per cent at no
+ * cost and six bought with five Fervour. Without it, "no Fervour was spent"
+ * could pass because Wrung Out never ran at all.
+ */
+bool FCataclysmLongHoldBeforeWrungOutTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmSpenderTest;
+	using namespace CataclysmRavagerFervourTest;
+	using namespace CataclysmDeathRewardsTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager"), Player.IsComplete()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* First = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(3.0f * Metre, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Second = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(0.0f, 3.0f * Metre, 0.0f));
+	if (!TestNotNull(TEXT("a first enemy to kill"), First)
+		|| !TestNotNull(TEXT("a second enemy to kill"), Second))
+	{
+		return false;
+	}
+
+	Record(Player, {
+		{FName(UCataclysmFervour::HealthRestoredOnKillAtNoCostStat), 5.0f},
+		{FName(UCataclysmFervour::HealthRestoredOnKillStat),
+		 static_cast<float>(WrungOutPoints)}});
+	GiveFervour(Player, 50.0f);
+
+	HalfHealth(Player);
+	const float BeforeFirst = HealthOf(Player);
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, First);
+	TestEqual(TEXT("from half health both run: five per cent free and six bought"),
+			  ShareOfMaximum(Player, HealthOf(Player) - BeforeFirst), 0.11f, 0.001f);
+	TestEqual(TEXT("and the six cost five Fervour"), FervourOf(Player), 45.0f, 0.001f);
+
+	Player.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(),
+		MaxHealthOf(Player) * 0.97f);
+	CataclysmApplierDeathTest::KilledByThePlayer(Player, Second);
+	TestEqual(TEXT("three per cent below full, the kill heals to full"),
+			  ShareOfMaximum(Player, HealthOf(Player)), 1.0f, 0.001f);
+	TestEqual(TEXT("and Wrung Out, finding full health, spends no Fervour"),
+			  FervourOf(Player), 45.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFedByTheFallenRadiusTest,
+	"Cataclysm.DeathRewards.FedByTheFallenGrantsFervourForAnEnemyDyingWithinTenMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Ritualist's Fed by the Fallen capstone option on a real character.
+ * Issue #1515.
+ *
+ * "You gain 10 Fervour whenever an enemy dies within 10 metres of you."
+ *
+ * THE BREAK THIS IS FOR: the worn rows' three metres read in place of ten. Six
+ * metres is inside ten and outside three, so both deaths there fail under it,
+ * and twelve is outside both.
+ *
+ * WHOEVER KILLED IT: the first enemy dies to nobody here and the second to this
+ * Ritualist. Ruled 2026-09-17: any enemy's death counts, the character's own
+ * kills included.
+ */
+bool FCataclysmFedByTheFallenRadiusTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmRavagerFervourTest;
+	using namespace CataclysmDeathRewardsTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist"), Player.IsComplete()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* SixAway = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(6.0f * Metre, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* KilledSixAway = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(0.0f, 6.0f * Metre, 0.0f));
+	ACataclysmEnemyCharacter* TwelveAway = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(-12.0f * Metre, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* AtMaximum = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(0.0f, -6.0f * Metre, 0.0f));
+	if (!TestNotNull(TEXT("an enemy six metres away"), SixAway)
+		|| !TestNotNull(TEXT("an enemy to kill six metres away"), KilledSixAway)
+		|| !TestNotNull(TEXT("an enemy twelve metres away"), TwelveAway)
+		|| !TestNotNull(TEXT("an enemy for the full bar"), AtMaximum))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("six metres is inside ten and outside three"),
+				  MetresFrom(Player, SixAway) > 5.5f && MetresFrom(Player, SixAway) < 6.5f
+				  && MetresFrom(Player, KilledSixAway) > 5.5f
+				  && MetresFrom(Player, KilledSixAway) < 6.5f
+				  && MetresFrom(Player, AtMaximum) > 5.5f
+				  && MetresFrom(Player, AtMaximum) < 6.5f)
+		|| !TestTrue(TEXT("and twelve is outside ten"),
+					 MetresFrom(Player, TwelveAway) > 11.5f))
+	{
+		return false;
+	}
+
+	Record(Player, {{FName(UCataclysmFervour::OnEnemyDeathNearbyStat), 10.0f}});
+
+	// AN EMPTY BAR TO START, so a pool that began full cannot read as a death
+	// that granted nothing.
+	GiveFervour(Player, -FervourOf(Player));
+	if (!TestEqual(TEXT("the bar starts empty"), FervourOf(Player), 0.0f, 0.001f)
+		|| !TestTrue(TEXT("and can hold more than twenty"),
+					 MaximumFervourOf(Player) > 20.0f))
+	{
+		return false;
+	}
+
+	const float BeforeSix = FervourOf(Player);
+	UCataclysmCombatEvents::NoteDeath(SixAway);
+	TestEqual(TEXT("an enemy dying six metres away, killed by nobody here, grants ten"),
+			  FervourOf(Player) - BeforeSix, 10.0f, 0.001f);
+
+	// THE KILL IS SPLIT FROM ITS ANNOUNCEMENT HERE, so the test can show the blow
+	// is on record as the Ritualist's before the death is announced. Without that
+	// check, a blow that recorded nobody would make this a second death killed by
+	// nobody, and the case would pass without being the case it names.
+	const float BeforeKilled = FervourOf(Player);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, KilledSixAway,
+									 CataclysmApplierDeathTest::FullSwing,
+									 FGameplayTagContainer());
+	const UCataclysmAbilitySystemComponent* VictimSystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(KilledSixAway));
+	if (!TestTrue(TEXT("the killing blow is on record as the Ritualist's"),
+				  VictimSystem && VictimSystem->GetLastBlow().IsOnRecord()
+				  && VictimSystem->GetLastBlow().Attacker.Get() == Player.Character))
+	{
+		return false;
+	}
+	UCataclysmCombatEvents::NoteDeath(KilledSixAway);
+	TestEqual(TEXT("and one this Ritualist kills there grants ten as well"),
+			  FervourOf(Player) - BeforeKilled, 10.0f, 0.001f);
+
+	const float BeforeTwelve = FervourOf(Player);
+	UCataclysmCombatEvents::NoteDeath(TwelveAway);
+	TestEqual(TEXT("one dying twelve metres away grants nothing"),
+			  FervourOf(Player) - BeforeTwelve, 0.0f, 0.001f);
+
+	GiveFervour(Player, MaximumFervourOf(Player) - FervourOf(Player));
+	if (!TestEqual(TEXT("the bar is full before the last death"),
+				   FervourOf(Player), MaximumFervourOf(Player), 0.001f))
+	{
+		return false;
+	}
+	UCataclysmCombatEvents::NoteDeath(AtMaximum);
+	TestEqual(TEXT("and a full bar stays at its maximum"),
+			  FervourOf(Player), MaximumFervourOf(Player), 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFedByTheFallenOwnMinionTest,
+	"Cataclysm.DeathRewards.FedByTheFallenGrantsNothingForTheRitualistsOwnMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "WHENEVER AN ENEMY DIES", AND THE RITUALIST'S OWN MINION IS NOT AN ENEMY.
+ * Issue #1515. Ruled 2026-09-17 under the project owner's delegation, the
+ * rule the worn rows' nearby death already follows: a minion dying beside its
+ * summoner is announced exactly as an enemy's death is.
+ *
+ * THE BREAK THIS IS FOR: letting any death through Fed by the Fallen's branch.
+ * The enemy comes after, as near, so a version refusing every death fails too.
+ *
+ * THE MINION DIES BY THE ROUTE PLAY USES: health written to zero reaches the
+ * body's own death handling, which announces the death.
+ */
+bool FCataclysmFedByTheFallenOwnMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmRavagerFervourTest;
+	using namespace CataclysmDeathRewardsTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = CataclysmFourRowTest::Spawn(World);
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestTrue(TEXT("a possessed Ritualist"), Player.IsComplete())
+		|| !TestNotNull(TEXT("the announcements"), Events))
+	{
+		return false;
+	}
+
+	Record(Player, {{FName(UCataclysmFervour::OnEnemyDeathNearbyStat), 10.0f}});
+	GiveFervour(Player, -FervourOf(Player));
+	if (!TestEqual(TEXT("the bar starts empty"), FervourOf(Player), 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Player.Character, FVector(2.0f * Metre, 0.0f, 0.0f), /*Lifetime=*/60.0f,
+		/*bBurns=*/false);
+	UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp);
+	if (!TestNotNull(TEXT("a minion"), Imp)
+		|| !TestNotNull(TEXT("with an ability system"), ImpSystem)
+		|| !TestEqual(TEXT("on the Ritualist's side"),
+					  static_cast<int32>(UCataclysmTeams::AttitudeBetween(
+						  Player.Character, Imp)),
+					  static_cast<int32>(ETeamAttitude::Friendly))
+		|| !TestTrue(TEXT("and inside ten metres"), MetresFrom(Player, Imp) < 10.0f))
+	{
+		return false;
+	}
+
+	const float BeforeMinion = FervourOf(Player);
+	const int32 DeathsBefore = static_cast<int32>(Events->DeathsSent());
+	ImpSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	if (!TestTrue(TEXT("the minion died"), UCataclysmSkillEffects::IsDead(Imp))
+		|| !TestEqual(TEXT("and its death was announced"),
+					  static_cast<int32>(Events->DeathsSent()), DeathsBefore + 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the Ritualist's own minion dying two metres away grants nothing"),
+			  FervourOf(Player) - BeforeMinion, 0.0f, 0.001f);
+
+	ACataclysmEnemyCharacter* Enemy = CataclysmApplierDeathTest::SpawnEnemy(
+		World, FVector(0.0f, 2.0f * Metre, 0.0f));
+	if (!TestNotNull(TEXT("an enemy"), Enemy)
+		|| !TestEqual(TEXT("on the other side"),
+					  static_cast<int32>(UCataclysmTeams::AttitudeBetween(
+						  Player.Character, Enemy)),
+					  static_cast<int32>(ETeamAttitude::Hostile)))
+	{
+		return false;
+	}
+	const float BeforeEnemy = FervourOf(Player);
+	UCataclysmCombatEvents::NoteDeath(Enemy);
+	TestEqual(TEXT("and an enemy dying as near grants ten"),
+			  FervourOf(Player) - BeforeEnemy, 10.0f, 0.001f);
 	return true;
 }
 

@@ -213,6 +213,43 @@ public:
 	static float RestoreHealthOnKill(UAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * How much of a character's maximum health a kill restores AT NO COST, in
+	 * percent. `Ravager_capstone_50`'s third option, Long Hold, is its only
+	 * source. Issue #1515.
+	 *
+	 * NOT `HealthRestoredOnKillStat` ABOVE, which Wrung Out's kill buys with
+	 * Fervour and which restores nothing when the Fervour is not there. One
+	 * stat for both would make Long Hold cost Fervour or Wrung Out free.
+	 */
+	static const TCHAR* HealthRestoredOnKillAtNoCostStat;
+
+	/**
+	 * Restore the health a kill restores at no cost, answering how much really
+	 * arrived. Issue #1515.
+	 *
+	 * "Killing an enemy restores 5% of your maximum health." NOTHING IS READ
+	 * FROM THE POOL OR SPENT: this is `RestoreHealthOnKill` without the price,
+	 * and it heals through the same `UCataclysmRegeneration::TopUp`, so it
+	 * obeys the same ceiling and the same received-healing reductions.
+	 *
+	 * IT DOES NOT DECIDE WHETHER THIS CHARACTER KILLED ANYTHING. The death
+	 * handler on `ACataclysmPlayerCharacter` owns that, and calls this BEFORE
+	 * `RestoreHealthOnKill`: ruled 2026-09-17 under the project owner's
+	 * delegation, so a kill this heals to full leaves Wrung Out nothing to buy,
+	 * and Wrung Out spends nothing at full health.
+	 *
+	 * ASKED FOR THROUGH THE PIPELINE WITH THE ATTRIBUTE AS THE FALLBACK, as
+	 * `GainOnMinionDeath` asks and for its reason: the row carries no
+	 * condition, so it is folded into the attribute, and a zero fallback would
+	 * throw it away for an ability system with no stat line recorded.
+	 *
+	 * @return the health really restored, which is zero for a character
+	 *         without the option, for one already at full health, and for one
+	 *         with no class resource attribute set
+	 */
+	static float RestoreHealthOnKillAtNoCost(UAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * How much increased damage, in percent, a melee attack buys for each enemy
 	 * it strikes beyond the first. `Ravager_basic_b_b2` Bought With Ruin is its
 	 * only source. Issue #1515.
@@ -477,6 +514,53 @@ public:
 	 *         with no such node, for a full bar, and for no class resource set
 	 */
 	static float GainOnMinionDeath(UAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * Fervour gained when an enemy dies near this character.
+	 * `Ritualist_capstone_50`'s second option, Fed by the Fallen, is its only
+	 * source. Issue #1515.
+	 */
+	static const TCHAR* OnEnemyDeathNearbyStat;
+
+	/**
+	 * How near an enemy's death must be to grant that Fervour, in metres.
+	 * Issue #1515.
+	 *
+	 * A CONSTANT RATHER THAN A STAT, for the reason `KillRestoreCost` gives: no
+	 * node changes it. The option states it: "You gain 10 Fervour whenever an
+	 * enemy dies within 10 metres of you."
+	 *
+	 * NOT `ACataclysmPlayerCharacter::NearbyDeathRadiusCm`, the worn rows'
+	 * three metres for "when an enemy dies near you", a sentence that names no
+	 * distance.
+	 */
+	static constexpr float EnemyDeathNearbyRadiusMetres = 10.0f;
+
+	/**
+	 * Gain the Fervour an enemy's death this far away grants, answering what
+	 * really arrived. Issue #1515.
+	 *
+	 * IT DOES NOT DECIDE WHETHER THE DEATH WAS AN ENEMY'S. The death handler on
+	 * `ACataclysmPlayerCharacter` owns that, with the one test the worn rows'
+	 * nearby death uses: any enemy, whoever killed it, this character's own
+	 * kills included, and never its own minion. Ruled 2026-09-17 under the
+	 * project owner's delegation. THIS decides only whether the death was near
+	 * enough, so the radius has one home.
+	 *
+	 * WITHIN MEANS AT OR INSIDE, the way the worn rows' radius is compared.
+	 *
+	 * CLAMPED AT THE MAXIMUM, the rule every write to the pool in this file
+	 * follows. No reservation is read or changed.
+	 *
+	 * @param AbilitySystem  this character's
+	 * @param MetresAway     how far from this character the death happened, or
+	 *                      negative when that is not known, which grants nothing
+	 * @return how much Fervour was really added, which is zero for a character
+	 *         without the option, for a death too far away, for a full bar,
+	 *         and for no class resource attribute set
+	 */
+	static float GainOnEnemyDeathNearby(UAbilitySystemComponent* AbilitySystem,
+										float MetresAway);
 
 	/**
 	 * How much Fervour a health change of this size is worth.

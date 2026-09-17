@@ -506,7 +506,12 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// AND TWENTY-NINE SINCE THE LAST CLAUSE OF THE RAVAGER'S GENERATOR, issue
 	// #1515: Fervour for each enemy an attack lands on. Off the sheet for the
 	// same reason again.
-	constexpr int32 OffSheetResourceStats = 29;
+	// AND THIRTY-ONE SINCE THE TWO DEATH RULES THAT COST NOTHING, issue #1515:
+	// the health a kill restores at no cost, and the Fervour an enemy's death
+	// nearby grants. Off the sheet for the same reason again: no affix grants
+	// either, nothing scales them, no class differs on them, and one capstone
+	// option supplies each.
+	constexpr int32 OffSheetResourceStats = 31;
 
 	TestEqual(TEXT("Eight primary attributes"), Primary, 8);
 

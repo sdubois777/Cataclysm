@@ -35,6 +35,10 @@ const TCHAR* UCataclysmFervour::HealthRestoredOnKillStat =
 const TCHAR* UCataclysmFervour::IncreasedDamageBoughtPerExtraEnemyHitStat =
 	TEXT("increased_damage_bought_per_extra_enemy_hit");
 const TCHAR* UCataclysmFervour::PerEnemyHitStat = TEXT("fervour_per_enemy_hit");
+const TCHAR* UCataclysmFervour::HealthRestoredOnKillAtNoCostStat =
+	TEXT("health_restored_on_kill_at_no_cost");
+const TCHAR* UCataclysmFervour::OnEnemyDeathNearbyStat =
+	TEXT("fervour_on_enemy_death_nearby");
 
 FGameplayTag UCataclysmFervour::LeechTag()
 {
@@ -692,6 +696,53 @@ float UCataclysmFervour::RestoreHealthOnKill(UAbilitySystemComponent* AbilitySys
 	return AbilitySystem->GetNumericAttribute(Health) - Before;
 }
 
+float UCataclysmFervour::RestoreHealthOnKillAtNoCost(
+	UAbilitySystemComponent* AbilitySystem)
+{
+	if (!AbilitySystem)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no attribute to hold the option, which is
+		// every enemy.
+		return 0.0f;
+	}
+
+	// THE OPTION FIRST, BECAUSE IT REFUSES ALMOST EVERYONE. Zero for every
+	// character without Long Hold, so nobody else reads their health on a kill.
+	const float Percent = Cataclysm->StatForSkill(
+		FName(HealthRestoredOnKillAtNoCostStat), FGameplayTagContainer(),
+		Resource->GetHealthRestoredOnKillAtNoCost());
+	if (Percent <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Maximum = AbilitySystem->GetNumericAttribute(MaxHealth);
+	const float Before = AbilitySystem->GetNumericAttribute(Health);
+	if (Maximum <= 0.0f || Before >= Maximum)
+	{
+		return 0.0f;
+	}
+
+	// `TopUp`, FOR THE REASON `RestoreHealthOnKill` GIVES: the same ceiling and
+	// the same received-healing reductions as every other restoration.
+	UCataclysmRegeneration::TopUp(*AbilitySystem, Health, MaxHealth,
+								  Maximum * Percent / 100.0f);
+
+	return AbilitySystem->GetNumericAttribute(Health) - Before;
+}
+
 float UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
 	UAbilitySystemComponent* AbilitySystem,
 	const FGameplayTagContainer& SkillTags, int32 EnemiesStruckTogether)
@@ -841,6 +892,55 @@ float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySyste
 
 	// CLAMPED BEFORE IT IS WRITTEN, the rule every other write to the pool in
 	// this file follows and for the reason they give.
+	const float Change =
+		FMath::Clamp(Before + OnDeath, 0.0f, Resource->GetMaxClassResource())
+		- Before;
+	if (FMath::IsNearlyZero(Change))
+	{
+		return 0.0f;
+	}
+
+	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Change);
+	return AbilitySystem->GetNumericAttribute(Pool) - Before;
+}
+
+float UCataclysmFervour::GainOnEnemyDeathNearby(UAbilitySystemComponent* AbilitySystem,
+												float MetresAway)
+{
+	// TOO FAR, OR NOT KNOWN, GRANTS NOTHING. At the radius or inside it counts.
+	if (!AbilitySystem || MetresAway < 0.0f
+		|| MetresAway > EnemyDeathNearbyRadiusMetres)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmClassResourceAttributeSet* Resource =
+		AbilitySystem->GetSet<UCataclysmClassResourceAttributeSet>();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Resource || !Cataclysm)
+	{
+		// No class resource set means no pool to fill, which is every enemy.
+		return 0.0f;
+	}
+
+	// WITH THE ATTRIBUTE AS THE FALLBACK, for the reason `GainOnMinionDeath`
+	// gives. NO TAGS: a death nearby is not a skill of any kind.
+	const float OnDeath = Cataclysm->StatForSkill(
+		FName(OnEnemyDeathNearbyStat), FGameplayTagContainer(),
+		Resource->GetFervourOnEnemyDeathNearby());
+	if (OnDeath <= 0.0f)
+	{
+		// EVERY CHARACTER IN THE GAME WITHOUT FED BY THE FALLEN.
+		return 0.0f;
+	}
+
+	const FGameplayAttribute Pool =
+		UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const float Before = AbilitySystem->GetNumericAttribute(Pool);
+
+	// CLAMPED BEFORE IT IS WRITTEN, the rule every write to the pool in this
+	// file follows.
 	const float Change =
 		FMath::Clamp(Before + OnDeath, 0.0f, Resource->GetMaxClassResource())
 		- Before;
