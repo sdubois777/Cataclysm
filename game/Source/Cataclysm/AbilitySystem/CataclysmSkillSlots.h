@@ -130,6 +130,24 @@ public:
 	static const TCHAR* ManaOnHitStat;
 
 	/**
+	 * The stat a skill's mana cost is asked for. Issue #1815.
+	 *
+	 * THE SKILL'S OWN COST IS THE BASE, so the pipeline's shape gives every
+	 * sentence the data states without a new rule:
+	 * `(base + flat) x (1 + increases) x more`, with the removal kind of issue
+	 * #1791 as "costs no mana". "Your spells cost 10%-20% less mana" is a More
+	 * multiplier below zero, "Your spells mana costs are quadrupled" is +300,
+	 * and a character with no row is handed its own cost back unchanged.
+	 *
+	 * ASKED IN ONE PLACE, `UCataclysmGameplayAbility::ManaCostFor`, because four
+	 * things read a cost: the check that refuses a cast, the payment, an aura's
+	 * per-pulse upkeep and the skill bar that greys a box out. Any of them
+	 * reading the raw cost while another read this would charge one number and
+	 * show or refuse another.
+	 */
+	static const TCHAR* ManaCostStat;
+
+	/**
 	 * The tag marking that this slot is waiting to be used again.
 	 *
 	 * Invalid for the Basic Attack and the Aura, which is correct rather than

@@ -60,6 +60,19 @@ public:
 	FGameplayTagContainer SkillTags;
 
 	/**
+	 * The tags above are what a stat asked for this skill is scoped by.
+	 * Issue #1815.
+	 *
+	 * WITHOUT THIS OVERRIDE A COST LOOKUP ON THE BASE CLASS WOULD SEE NONE OF
+	 * THEM, and "Your spells cost 10%-20% less mana" would reach every skill.
+	 * `UCataclysmGameplayAbility::ManaCostFor` is what asks.
+	 */
+	virtual const FGameplayTagContainer& SkillTagsForStats() const override
+	{
+		return SkillTags;
+	}
+
+	/**
 	 * This skill's radius after the caster's area of effect. Issue #895.
 	 *
 	 * NOTHING READ THE AreaOfEffect ATTRIBUTE AT ALL until that issue. It

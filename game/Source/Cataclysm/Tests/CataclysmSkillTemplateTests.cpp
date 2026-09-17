@@ -63,6 +63,8 @@
 #include "EngineUtils.h"
 #include "GameplayTagsManager.h"
 #include "GameFramework/Actor.h"
+// For the test that the bar, the check and the payment agree on a skill's cost.
+#include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
 // For pinning the critical strike roll in the one test whose subject it is.
@@ -14659,6 +14661,420 @@ bool FCataclysmFervourForEachProjectileContactTest::RunTest(const FString&)
 	TestEqual(TEXT("so the shot earns one: each enemy it lands on, and not the one "
 				   "that evaded"),
 		Caster.Fervour(), 1.0f, 0.001f);
+
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// What a skill costs THIS character: the `mana_cost` stat. Issue #1815.
+//
+// FOUR THINGS READ A COST and they must agree: the check that refuses a cast,
+// the payment, an aura's per-pulse upkeep, and the skill bar that greys out a
+// box. `UCataclysmGameplayAbility::ManaCostFor` is the one place the stat is
+// asked, and the agreement test below is what would notice a reader left behind.
+// --------------------------------------------------------------------------
+
+namespace CataclysmManaCostTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** Record one modifier on the mana cost stat, as an enchantment row does. */
+	void GiveManaCostRow(FScopedFighter& Who, ECataclysmStatBucket Bucket,
+						 float Value, const TCHAR* RequiredTag = nullptr,
+						 ECataclysmStatCondition Condition =
+							 ECataclysmStatCondition::Always,
+						 float ConditionValue = 0.0f)
+	{
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = Bucket;
+		Modifier.Source = ECataclysmModifierSource::Enchantment;
+		Modifier.Value = Value;
+		Modifier.Condition = Condition;
+		Modifier.ConditionValue = ConditionValue;
+		if (RequiredTag)
+		{
+			Modifier.RequiredTags.AddTag(
+				UGameplayTagsManager::Get().RequestGameplayTag(
+					FName(RequiredTag), /*ErrorIfNotFound=*/false));
+		}
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers = {Modifier};
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(UCataclysmSkillSlots::ManaCostStat), MoveTemp(Inputs));
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** A Heavy strike whose cost is stated rather than taken from its slot. */
+	UCataclysmStrikeSkill* GrantCosting(FScopedFighter& Who, float Cost,
+										const FString& TagCell = FString())
+	{
+		UCataclysmStrikeSkill* Skill = GrantSkill<UCataclysmStrikeSkill>(
+			Who, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+			TEXT("A skill that costs something"), TagCell);
+		if (Skill)
+		{
+			// STATED, NOT THE SLOT'S. 40 is a figure no row of the Skill Slots
+			// sheet states at level 100, so a reading that ignored the override
+			// could not produce it by accident.
+			Skill->ManaCostOverride = Cost;
+		}
+		return Skill;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaCostScalesTest,
+	"Cataclysm.Skills.AManaCostRowScalesWhatASkillCostsAndAnotherTakesItAway",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmManaCostScalesTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	// THE SKILL'S OWN COST IS THE BASE, so the pipeline's three buckets give
+	// every sentence in the data: "Your spells cost 10%-20% less mana" is a More
+	// multiplier below zero, "Skills cost 50%-75% more mana" one above, and
+	// "While below 50% HP your skills cost no mana" is the removal kind.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Plain(World, FVector::ZeroVector);
+	FScopedFighter Cheaper(World, FVector(10 * M, 0, 0));
+	FScopedFighter Dearer(World, FVector(20 * M, 0, 0));
+	FScopedFighter Free(World, FVector(30 * M, 0, 0));
+
+	UCataclysmStrikeSkill* PlainSkill = GrantCosting(Plain, 40.0f);
+	UCataclysmStrikeSkill* CheaperSkill = GrantCosting(Cheaper, 40.0f);
+	UCataclysmStrikeSkill* DearerSkill = GrantCosting(Dearer, 40.0f);
+	UCataclysmStrikeSkill* FreeSkill = GrantCosting(Free, 40.0f);
+	if (!PlainSkill || !CheaperSkill || !DearerSkill || !FreeSkill)
+	{
+		AddError(TEXT("Could not grant the four skills."));
+		return false;
+	}
+
+	GiveManaCostRow(Cheaper, ECataclysmStatBucket::More, -50.0f);
+	GiveManaCostRow(Dearer, ECataclysmStatBucket::More, 300.0f);
+	GiveManaCostRow(Free, ECataclysmStatBucket::Removed, 1.0f);
+
+	// THE CONTROL: a character with no row pays exactly what the skill states,
+	// which is what makes this safe for every skill in the game.
+	TestEqual(TEXT("the skill states 40"), PlainSkill->GetManaCost(), 40.0f, 0.01f);
+	TestEqual(TEXT("and a character with no row pays 40"),
+		PlainSkill->ManaCostFor(Plain.AbilitySystem), 40.0f, 0.01f);
+
+	TestEqual(TEXT("a row halving it pays 20"),
+		CheaperSkill->ManaCostFor(Cheaper.AbilitySystem), 20.0f, 0.01f);
+	TestEqual(TEXT("one quadrupling it pays 160"),
+		DearerSkill->ManaCostFor(Dearer.AbilitySystem), 160.0f, 0.01f);
+	TestEqual(TEXT("and a removal pays nothing"),
+		FreeSkill->ManaCostFor(Free.AbilitySystem), 0.0f, 0.01f);
+
+	// AND THE SKILL'S OWN FIGURE IS UNTOUCHED, because the stat answers what this
+	// character pays rather than changing what the skill costs.
+	TestEqual(TEXT("the skill still states 40 under a removal"),
+		FreeSkill->GetManaCost(), 40.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaCostScopedTest,
+	"Cataclysm.Skills.AManaCostRowReachesOnlyTheSkillsItsTagsName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE FAILING DIRECTION FOR THE SCOPING. "Your spells cost 10%-20% less mana" is
+ * scoped with `RequiredTags=Type.Spell`, and the only thing that enforces it is
+ * `ManaCostFor` passing the skill's own tags into the lookup. A lookup given an
+ * empty container would answer the same for every skill, and the test above
+ * would still pass.
+ */
+bool FCataclysmManaCostScopedTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Who(World, FVector::ZeroVector);
+
+	// ONE CHARACTER AND TWO SKILLS, so the row is the same row and only the
+	// skill's tags differ.
+	UCataclysmStrikeSkill* Spell = GrantCosting(Who, 40.0f, TEXT("Type.Spell"));
+	UCataclysmStrikeSkill* Swing = GrantSkill<UCataclysmStrikeSkill>(
+		Who, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"),
+		TEXT("A swing"), TEXT("Type.Strike, Type.Melee"));
+	if (!Spell || !Swing)
+	{
+		AddError(TEXT("Could not grant the spell and the swing."));
+		return false;
+	}
+	Swing->ManaCostOverride = 40.0f;
+
+	GiveManaCostRow(Who, ECataclysmStatBucket::More, -50.0f, TEXT("Type.Spell"));
+
+	TestEqual(TEXT("the spell pays half"),
+		Spell->ManaCostFor(Who.AbilitySystem), 20.0f, 0.01f);
+	TestEqual(TEXT("and the swing, which the row does not name, pays all of it"),
+		Swing->ManaCostFor(Who.AbilitySystem), 40.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaCostAgreementTest,
+	"Cataclysm.Skills.TheBarTheCheckAndThePaymentAgreeOnWhatASkillCosts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE TEST THIS CHANGE EXISTS FOR. Four things read a skill's cost, and a
+ * character holding "your skills cost no mana" must see one answer from all of
+ * them: the bar shows nothing and stays lit, the check allows the cast with an
+ * empty pool, and the payment takes nothing.
+ *
+ * AN EMPTY POOL IS WHAT MAKES IT BITE. With mana in hand a reader left on the
+ * slot's figure would still allow the cast and still charge it, and nothing here
+ * would notice.
+ */
+bool FCataclysmManaCostAgreementTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Who(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+
+	UCataclysmStrikeSkill* Skill = GrantCosting(Who, 40.0f);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	// THE CONTROL FIRST, AND WITHOUT IT THIS TEST PROVES NOTHING: with no row and
+	// no mana the bar greys the box out and the cast is refused.
+	Who.Set(Vital::GetManaAttribute(), 0.0f);
+	{
+		const TArray<FCataclysmSkillBarSlot> Bar =
+			UCataclysmSkillBar::Read(Who.Actor);
+		const FCataclysmSkillBarSlot* Box = Bar.FindByPredicate(
+			[](const FCataclysmSkillBarSlot& One)
+			{
+				return One.Slot == ECataclysmAbilitySlot::Heavy;
+			});
+		if (!TestNotNull(TEXT("the bar drew a box for the skill"), Box))
+		{
+			return false;
+		}
+		TestEqual(TEXT("with no row it shows the skill's own cost"),
+			Box->ManaCost, 40.0f, 0.01f);
+		TestFalse(TEXT("and an empty pool cannot pay it"), Box->bAffordable);
+	}
+	TestFalse(TEXT("so the cast is refused"), Activate(Who, Skill));
+
+	// AND NOW THE ROW THAT TAKES THE COST AWAY.
+	GiveManaCostRow(Who, ECataclysmStatBucket::Removed, 1.0f);
+
+	{
+		const TArray<FCataclysmSkillBarSlot> Bar =
+			UCataclysmSkillBar::Read(Who.Actor);
+		const FCataclysmSkillBarSlot* Box = Bar.FindByPredicate(
+			[](const FCataclysmSkillBarSlot& One)
+			{
+				return One.Slot == ECataclysmAbilitySlot::Heavy;
+			});
+		if (!TestNotNull(TEXT("the bar still draws the box"), Box))
+		{
+			return false;
+		}
+		TestEqual(TEXT("the bar shows it costs nothing"), Box->ManaCost, 0.0f, 0.01f);
+		TestTrue(TEXT("so the box is not greyed out"), Box->bAffordable);
+	}
+
+	const float ManaBefore = Who.Mana();
+	TestTrue(TEXT("the check allows the cast with an empty pool"),
+		Activate(Who, Skill));
+	TestEqual(TEXT("and the payment takes nothing"), Who.Mana(), ManaBefore, 0.01f);
+
+	// AND A ROW THAT ONLY CHANGES THE NUMBER, NOT JUST ONE THAT TAKES IT AWAY.
+	// A removal alone lets this test pass for the wrong reason: zero is what a
+	// broken reading answers too, which is exactly how the first run of this
+	// suite on 2026-09-17 passed here while four other tests failed. A More
+	// multiplier of -50 has one right answer, 20, and no wrong reading gives it.
+	FScopedFighter Halved(World, FVector(10 * M, 0, 0));
+	UCataclysmStrikeSkill* HalvedSkill = GrantCosting(Halved, 40.0f);
+	if (!HalvedSkill)
+	{
+		AddError(TEXT("Could not grant the second skill."));
+		return false;
+	}
+	GiveManaCostRow(Halved, ECataclysmStatBucket::More, -50.0f);
+
+	// EXACTLY THE HALVED COST IN THE POOL, so the cast is allowed only if the
+	// check asked for the halved figure, and the pool lands on nothing only if
+	// the payment took the same one.
+	Halved.Set(UCataclysmVitalAttributeSet::GetManaAttribute(), 20.0f);
+	{
+		const TArray<FCataclysmSkillBarSlot> Bar =
+			UCataclysmSkillBar::Read(Halved.Actor);
+		const FCataclysmSkillBarSlot* Box = Bar.FindByPredicate(
+			[](const FCataclysmSkillBarSlot& One)
+			{
+				return One.Slot == ECataclysmAbilitySlot::Heavy;
+			});
+		if (!TestNotNull(TEXT("the bar drew a box for the halved skill"), Box))
+		{
+			return false;
+		}
+		TestEqual(TEXT("the bar shows the halved cost"), Box->ManaCost, 20.0f, 0.01f);
+		TestTrue(TEXT("and 20 in the pool can pay it"), Box->bAffordable);
+	}
+
+	TestTrue(TEXT("the check allows the cast on the halved cost"),
+		Activate(Halved, HalvedSkill));
+	TestEqual(TEXT("and the payment takes the halved cost, not the skill's own"),
+		Halved.Mana(), 0.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaCostWhileStationaryTest,
+	"Cataclysm.Skills.AManaCostRowUnderAMovementConditionIsJudgedWhenTheCostIsAsked",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * WHAT `Ritual Focus` NEEDS: "Skills you cast while standing still cost no mana"
+ * is a removal on this stat under `while_stationary`, so the cost has to be
+ * asked with the caster's own state in hand rather than read off anything. A
+ * conditioned row is never folded into a gameplay attribute, so a reader that
+ * took an attribute would find this row doing nothing at all.
+ *
+ * THE SAME CHARACTER, THE SAME ROW, TWO MOMENTS. Nothing is applied or removed
+ * between the two reads: one step taken is the whole difference, which is what
+ * makes this a condition rather than a state written onto the character.
+ *
+ * THE BAR IS ASKED TOO, because the box is drawn from the same reading and a
+ * character standing still should see the box say nothing.
+ */
+bool FCataclysmManaCostWhileStationaryTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Who(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Skill = GrantCosting(Who, 40.0f);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	GiveManaCostRow(Who, ECataclysmStatBucket::Removed, 1.0f,
+					/*RequiredTag=*/nullptr,
+					ECataclysmStatCondition::WhileStationary);
+
+	const auto BoxCost = [this, &Who]() -> float
+	{
+		const TArray<FCataclysmSkillBarSlot> Bar =
+			UCataclysmSkillBar::Read(Who.Actor);
+		const FCataclysmSkillBarSlot* Box = Bar.FindByPredicate(
+			[](const FCataclysmSkillBarSlot& One)
+			{
+				return One.Slot == ECataclysmAbilitySlot::Heavy;
+			});
+		if (!Box)
+		{
+			AddError(TEXT("The bar drew no box for the skill."));
+			return -1.0f;
+		}
+		return Box->ManaCost;
+	};
+
+	// STANDING STILL HAS TO BE STARTED, and this test was written without
+	// starting it. `SecondsSinceMoved` answers -1 for a character no movement
+	// sample has looked at yet, and `WhileStationary` refuses an unknown
+	// reading, so a character that has stood perfectly still since it was
+	// spawned is not stationary as far as the condition is concerned.
+	// `NoteDidNotMove` is that first sample, and its own comment says that is
+	// when standing still begins. The same sentence is written above the same
+	// call in `CataclysmEnchantmentEffectTests.cpp`.
+	Who.AbilitySystem->NoteDidNotMove();
+
+	// NOW THE ROW REACHES THE SKILL and it costs nothing.
+	TestEqual(TEXT("standing still, the skill costs nothing"),
+		Skill->ManaCostFor(Who.AbilitySystem), 0.0f, 0.01f);
+	TestEqual(TEXT("and the bar says so"), BoxCost(), 0.0f, 0.01f);
+
+	// ONE STEP, AND THE ROW STOPS REACHING IT. The reading is how long since the
+	// character last moved, and it has just moved.
+	Who.AbilitySystem->NoteMovedMetres(1.0f);
+
+	TestEqual(TEXT("having just moved, the same skill costs all of it"),
+		Skill->ManaCostFor(Who.AbilitySystem), 40.0f, 0.01f);
+	TestEqual(TEXT("and the bar says that too"), BoxCost(), 40.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaCostAuraUpkeepTest,
+	"Cataclysm.Skills.AnAurasUpkeepPaysWhatTheStatSaysRatherThanTheSlotsFigure",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your aura costs 30%-50% less mana per second" is a row on this stat, and an
+ * aura's upkeep is a fourth reader of the cost. An upkeep left on the slot's
+ * figure would drain the full amount every second while the cast that switched
+ * the aura on paid the reduced one.
+ */
+bool FCataclysmManaCostAuraUpkeepTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"),
+		TEXT("A toggled aura"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+
+	const float PerPulse = Aura->GetManaCost();
+	if (!TestTrue(FString::Printf(TEXT("the aura slot drains mana: %.1f a second"),
+								  PerPulse),
+				  PerPulse > 0.0f))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("it activates"), Activate(Caster, Aura)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: one pulse with no row drains the slot's figure.
+	const float BeforePlain = Caster.Mana();
+	Aura->Pulse();
+	TestEqual(TEXT("one pulse with no row drains a second's worth"),
+		Caster.Mana(), BeforePlain - PerPulse, 0.01f);
+
+	GiveManaCostRow(Caster, ECataclysmStatBucket::More, -50.0f);
+
+	const float BeforeHalved = Caster.Mana();
+	Aura->Pulse();
+	TestEqual(TEXT("and under a row halving the cost it drains half of it"),
+		Caster.Mana(), BeforeHalved - PerPulse * 0.5f, 0.01f);
 
 	return true;
 }

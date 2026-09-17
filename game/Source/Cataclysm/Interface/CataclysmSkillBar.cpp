@@ -361,7 +361,11 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 			Box.Name = NameForEmptySlot(Slot);
 		}
 
-		Box.ManaCost = Ability->GetManaCost();
+		// WHAT THIS CHARACTER PAYS, NOT WHAT THE SLOT STATES. Issue #1815. The
+		// box shows this number and greys itself out by it, so a bar left on
+		// `GetManaCost` would show a price the cast does not charge -- and would
+		// grey out a skill a row had made free.
+		Box.ManaCost = Ability->ManaCostFor(Abilities);
 
 		// `CanAfford` says why a character with no pool to read yet can afford
 		// everything, which is issue #653.

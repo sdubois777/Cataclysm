@@ -206,6 +206,58 @@ float UCataclysmGameplayAbility::GetManaCost() const
 	return UCataclysmSkillSlots::ManaCostAtLevel(AtLevel100, GetAbilityLevel());
 }
 
+const FGameplayTagContainer& UCataclysmGameplayAbility::SkillTagsForStats() const
+{
+	// NONE HERE, AND THE ONE SHARED EMPTY CONTAINER rather than a local, because
+	// this hands back a reference. `UCataclysmSkillTemplate` overrides it with the
+	// skill's own tags; an enemy's C++ ability has none and keeps this.
+	return FGameplayTagContainer::EmptyContainer;
+}
+
+float UCataclysmGameplayAbility::ManaCostFor(
+	const UAbilitySystemComponent* AbilitySystem) const
+{
+	const float Base = GetManaCost();
+	if (Base <= 0.0f)
+	{
+		// NOTHING TO SCALE. The Basic Attack and the Aura's activation are free,
+		// and a stat cannot make a free skill cost something: every row in the
+		// data reduces a cost or takes it away.
+		return Base;
+	}
+
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		// An ability system this project did not make carries no stat line, so it
+		// pays the skill's own cost. An enemy's abilities come through here too.
+		return Base;
+	}
+
+	// THE SKILL'S OWN COST AS THE BASE, so the three buckets do the work: a More
+	// multiplier below zero is "less mana", one above is "more mana", and the
+	// removal kind of issue #1791 is "costs no mana".
+	//
+	// `StatAppliedTo` AND NOT `StatForSkill`, AND THE DIFFERENCE IS THE WHOLE
+	// READING. `StatForSkill` takes its third argument as a FALLBACK for a
+	// character with no row and otherwise runs the pipeline on the recorded
+	// line's base, which for a stat with no attribute is zero -- so it answered
+	// zero for every character that had a row at all. Four tests and a probe
+	// caught it on 2026-09-17.
+	//
+	// WITH THE SKILL'S TAGS, which is what scopes "Your spells cost 10%-20% less
+	// mana" to spells, and with the caster's current conditions, which is what
+	// lets "while standing still" be judged as the cost is asked.
+	const float Asked = Cataclysm->StatAppliedTo(
+		FName(UCataclysmSkillSlots::ManaCostStat), SkillTagsForStats(), Base);
+
+	// NEVER BELOW ZERO. A Less multiplier stops at -99%, so it cannot get here,
+	// but a negative flat row could, and a cost below zero would pay a character
+	// for casting.
+	return FMath::Max(0.0f, Asked);
+}
+
 float UCataclysmGameplayAbility::GetManaOnHit() const
 {
 	// NO OVERRIDE PROPERTY, UNLIKE THE COST AND THE COOLDOWN. Those two exist
@@ -266,14 +318,20 @@ bool UCataclysmGameplayAbility::CheckCost(
 		return false;
 	}
 
-	const float Cost = GetManaCost();
+	const UAbilitySystemComponent* AbilitySystem =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+
+	// WHAT IT COSTS THIS CHARACTER, NOT WHAT THE SLOT STATES. Issue #1815. The
+	// same function answers the payment below, an aura's upkeep and the skill
+	// bar, so a cast this refuses is one the character really cannot pay for.
+	const float Cost = ManaCostFor(AbilitySystem);
 	if (Cost <= 0.0f)
 	{
+		// FREE IS ALLOWED WITH NO POOL AT ALL, which is what "your skills cost no
+		// mana" has to mean: a character at nothing left still casts.
 		return true;
 	}
 
-	const UAbilitySystemComponent* AbilitySystem =
-		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 	if (!AbilitySystem)
 	{
 		return false;
@@ -292,14 +350,18 @@ void UCataclysmGameplayAbility::ApplyCost(
 {
 	Super::ApplyCost(Handle, ActorInfo, ActivationInfo);
 
-	const float Cost = GetManaCost();
+	UAbilitySystemComponent* AbilitySystem =
+		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+
+	// THE SAME FIGURE `CheckCost` ALLOWED THE CAST ON. Issue #1815. Asking
+	// `GetManaCost` here instead would charge the slot's number while the check
+	// above used the character's, so a free cast would still empty a pool.
+	const float Cost = ManaCostFor(AbilitySystem);
 	if (Cost <= 0.0f)
 	{
 		return;
 	}
 
-	UAbilitySystemComponent* AbilitySystem =
-		ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 	if (!AbilitySystem)
 	{
 		return;

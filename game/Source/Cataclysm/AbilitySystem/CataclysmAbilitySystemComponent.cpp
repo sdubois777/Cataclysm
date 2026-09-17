@@ -351,6 +351,25 @@ float UCataclysmAbilitySystemComponent::StatForSkill(
 										 EnemiesStruckTogether)))).Final;
 }
 
+float UCataclysmAbilitySystemComponent::StatAppliedTo(
+	FName Stat, const FGameplayTagContainer& SkillTags, float Figure) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		// NOTHING RECORDED FOR THIS STAT, so the figure stands as it came in.
+		// That is every enemy, and a player before its first refresh.
+		return Figure;
+	}
+
+	// THE CALLER'S FIGURE IS THE BASE, and `Inputs->Base` is deliberately not
+	// added to it: the recorded base belongs to a stat the character holds, and
+	// this asks about a figure the caller holds. See the header.
+	return UCataclysmStatPipeline::Evaluate(Figure, Inputs->Modifiers, SkillTags,
+											CurrentConditions())
+		.Final;
+}
+
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
