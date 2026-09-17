@@ -516,6 +516,34 @@ public:
 					   int32 EnemiesStruckTogether = -1) const;
 
 	/**
+	 * This stat's modifiers applied to a figure THE CALLER SUPPLIES, with the
+	 * character's current conditions in hand. Issue #1815.
+	 *
+	 * WHY IT EXISTS BESIDE `StatForSkill`, AND THE TRAP IT REPLACES. That one
+	 * answers a stat the CHARACTER has: the pipeline runs on the recorded line's
+	 * own base, and `Fallback` is used only when nothing was recorded for the
+	 * stat at all. A skill's mana cost is not a figure the character has --
+	 * every skill states its own -- so
+	 * `StatForSkill("mana_cost", tags, the skill's cost)` reads like "apply this
+	 * stat to this cost" and is not. The moment one row is recorded the pipeline
+	 * runs on the RECORDED base, which for a stat with no gameplay attribute is
+	 * zero, so every cost comes out zero. Measured 2026-09-17: it failed four
+	 * tests and a probe at once, and the one test it did not fail passed for the
+	 * wrong reason, because its row was a removal and zero was the right answer
+	 * either way.
+	 *
+	 * THE RECORDED BASE IS IGNORED ON PURPOSE: the figure handed in IS the base.
+	 * A flat row still adds to it, increases still sum and multiply once, and a
+	 * removal still takes the result to nothing.
+	 *
+	 * @param Figure  what the stat applies to, such as the cost this skill
+	 *                states at this level. Handed straight back when the
+	 *                character has no row for the stat.
+	 */
+	float StatAppliedTo(FName Stat, const FGameplayTagContainer& SkillTags,
+						float Figure) const;
+
+	/**
 	 * What is true of this character right now, for a conditional bonus.
 	 *
 	 * PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than

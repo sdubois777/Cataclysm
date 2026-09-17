@@ -3741,7 +3741,12 @@ int32 UCataclysmAuraSkill::Pulse()
 	if (AbilitySystem && Params.Duration <= 0.0f)
 	{
 		const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
-		const float Cost = GetManaCost() * Period;
+
+		// WHAT IT COSTS THIS CHARACTER, ASKED THE WAY THE ACTIVATION ASKS. Issue
+		// #1815. "Your aura costs 30%-50% less mana per second" is a row on this
+		// same stat, and an upkeep left on `GetManaCost` would drain the slot's
+		// figure while the cast that switched the aura on paid the reduced one.
+		const float Cost = ManaCostFor(AbilitySystem) * Period;
 
 		// OUT OF THE SAME POOL THE ACTIVATION PAID FROM, ASKED THE SAME WAY.
 		// Issue #1901. This read mana directly, and a Masochist holding Water to

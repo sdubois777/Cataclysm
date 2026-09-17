@@ -2,6 +2,187 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — What a skill costs a character is a stat, and one function answers it for the check, the payment, an aura's upkeep and the skill bar
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
+(`ManaCostFor`, `SkillTagsForStats`, and the two cost overrides),
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`StatAppliedTo`, a lookup that applies a
+stat's rows to a figure the caller hands it),
+`CataclysmSkillTemplate.h` (the tags override), `CataclysmSkillTemplates.cpp` (an aura's
+per-pulse upkeep), `CataclysmSkillBar.cpp` (the box's number),
+`CataclysmSkillSlots.h` and `.cpp` (the stat's name),
+`CataclysmPlayerClassStats.cpp` (the exemption list), and tests in
+`CataclysmSkillTemplateTests.cpp` and `CataclysmStatExemptionTests.cpp`. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The judgements
+
+**Each of these was ruled on 2026-09-17 by the coordinating session, under the project
+owner's delegation of 2026-09-14, and each is open to the owner's veto.** They are judgements
+rather than readings of the design: the design document says what a mana cost is and that it
+is a flat number scaling with level, and says nothing about a stat that changes one.
+
+1. **The stat is `mana_cost`, asked with the skill's own cost as the base**, rather than a
+   separate reduction stat. One name, one direction, and the removal kind of issue #1791
+   already means "none".
+2. **All four readers of a cost are in scope in this one change**: the check that refuses a
+   cast, the payment, an aura's per-pulse upkeep and the skill bar. Leaving any of them out
+   would ship a game that charges one number and shows or refuses another.
+3. **"When your class resource is above 75%, all skills cost 20%-40% less mana" is held**,
+   because no condition reads a class resource above a share and adding one is its own
+   change.
+4. **Ritual Focus's row belongs to the session that owns the Ritualist tree**, rather than
+   being written here with the mechanism.
+
+### The mechanism
+
+A skill's mana cost is asked for through the stat pipeline, with the skill's own cost as the
+base:
+
+```
+StatAppliedTo("mana_cost", the skill's tags, the cost this skill states at this level)
+```
+
+`(base + flat) x (1 + increases) x more` then gives every sentence the data states without a
+new rule. "Your spells cost 10%-20% less mana" is a More multiplier below zero, "Skills cost
+50%-75% more mana" one above, "Your spells mana costs are quadrupled" is +300, and "While
+below 50% HP your skills cost no mana" is the removal kind added for issue #1791. A character
+with no row is handed the skill's own cost back unchanged, so nothing about any skill in the
+game moves until a row exists.
+
+**Never below zero.** A Less multiplier stops at -99%, so it cannot reach it, but a negative
+flat row could, and a cost below zero would pay a character for casting.
+
+### Why the lookup is `StatAppliedTo` and not `StatForSkill`
+
+**`StatForSkill`'s third argument is a fallback, not a base.** It is handed back only when the
+character has no line recorded for that stat at all. Once a line exists the pipeline runs on
+the recorded base, and the recorded base is zero for a stat with no gameplay attribute --
+which `mana_cost` is, for the reason two sections below.
+
+**This change was written against `StatForSkill`, and the whole suite caught it.** Every skill
+cost came back zero for every character carrying a `mana_cost` row: the exact opposite of what
+a row saying "10% less mana" asks for, and free casting for anyone who owned one. Five tests
+failed saying so.
+
+`UCataclysmAbilitySystemComponent::StatAppliedTo(stat, the skill's tags, a figure)` is the
+lookup that was missing. It applies the character's recorded rows for that stat to the figure
+the caller hands it, judged against the character's conditions at that moment, and hands the
+figure straight back unchanged when no line is recorded. Its header comment records the trap,
+so the next caller that has a figure of its own does not have to find it again.
+
+### One reading, because four things read a cost
+
+| What | Where | What it does with the number |
+| :-- | :-- | :-- |
+| the check that refuses a cast | `UCataclysmGameplayAbility::CheckCost` | asks whether the pool covers it |
+| the payment | `UCataclysmGameplayAbility::ApplyCost` | takes it out of the pool |
+| an aura's per-pulse upkeep | `UCataclysmAuraSkill::Pulse` | drains it every interval, or switches the aura off |
+| the skill bar | `UCataclysmSkillBar::Read` | prints it on the box and greys the box out |
+
+**Any one of them left reading the slot's figure would charge one number and show or refuse
+another**: a skill made free would still be greyed out, or a cast allowed and then paid for
+twice over. So they all call `UCataclysmGameplayAbility::ManaCostFor`, and
+`Cataclysm.Skills.TheBarTheCheckAndThePaymentAgreeOnWhatASkillCosts` is what notices a reader
+left behind. Its control is the same character with no row and an empty pool: the box greys
+out and the cast is refused.
+
+### Asked with the caster's own state, which is what a conditioned row needs
+
+`StatAppliedTo` builds the character's current conditions as it answers, so a row that applies
+only in a state is judged at the moment the cost is asked. **Ritual Focus needs exactly that**:
+"Skills you cast while standing still cost no mana" is a removal under `while_stationary`, and
+a conditioned row is never folded into a gameplay attribute, so a reader that took an attribute
+would find the row doing nothing at all.
+`Cataclysm.Skills.AManaCostRowUnderAMovementConditionIsJudgedWhenTheCostIsAsked` holds it: one
+character, one row, nothing applied or removed between the two reads, and one step taken
+between them.
+
+### The tags a cost lookup is scoped by
+
+A skill's tags live on `UCataclysmSkillTemplate::SkillTags`, a subclass of the ability the
+cost belongs to, and an enemy's C++ ability has none at all. `SkillTagsForStats` is a virtual
+on the base class, empty there and the skill's own tags on the template, so a lookup on the
+base class can scope a row: "Your spells cost 10%-20% less mana" reaches a spell and leaves a
+swing alone. The cooldown-skip lookup beside it passes an empty container and says why; this
+one could not, because half the sentences in the data name a keyword.
+
+### No attribute, and what keeps that honest
+
+`mana_cost` joins `UCataclysmPlayerClassStats::StatsWithNoAttribute()`. There is nothing for a
+gameplay attribute to hold: every skill states a different cost, so one number on the
+character would be the wrong number for all but one of them. The stat refresh records a stat's
+modifiers only for a stat with an attribute or one on that list, so without this a row would
+be dropped and the lookup would answer the fallback for ever -- the defect issue #1791 found
+for `mana_on_hit`.
+
+**An exemption is a promise, and the probe is what keeps it.**
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` fails by name for any stat on
+that list without one, and the probe added here grants a row halving a 40 mana skill and reads
+20 back.
+
+**The generator needs no change for the rows that follow.** It reads that same C++ list, so a
+`mana_cost` row is not refused for naming a stat no class line, attribute or item base
+supplies.
+
+### This change carries no rows
+
+The stat serves six sentences in the enchantment tables: the two that reduce a spell's or
+every skill's cost, the one that reduces an aura's per second, the two that raise a cost, and
+"While below 50% HP your skills cost no mana". They are written in a workbook turn of their
+own.
+
+**Ritual Focus**, `Ritualist_keystone_d_kB`, "Skills you cast while standing still cost no
+mana", is a row on this stat with `while_stationary` and the removal kind. It belongs to the
+Ritualist tree, so the session that owns that tree writes it.
+
+**"When your class resource is above 75%, all skills cost 20%-40% less mana" is held.** There
+is no condition for a class resource above a share; `class_resource_at_maximum` is the only
+one, and a threshold condition is its own change.
+
+**Four further sentences are not this stat's work at all**: Mana Weaver's 10-piece bonus
+doubles a cost per use and resets each dungeon, and the two Spellblade's Will rows and Null
+Emperor's 6-piece bonus all count stacks. Each needs a carried counter.
+
+### Tests
+
+- `Cataclysm.Skills.AManaCostRowScalesWhatASkillCostsAndAnotherTakesItAway`: no row pays 40,
+  a halving row pays 20, a quadrupling row pays 160, a removal pays nothing, and the skill
+  still states 40 throughout.
+- `Cataclysm.Skills.AManaCostRowReachesOnlyTheSkillsItsTagsName`: one character, one row
+  scoped to spells, two skills.
+- `Cataclysm.Skills.TheBarTheCheckAndThePaymentAgreeOnWhatASkillCosts`, described above.
+- `Cataclysm.Skills.AManaCostRowUnderAMovementConditionIsJudgedWhenTheCostIsAsked`: standing
+  still the skill costs nothing and the bar says so; after one step both say 40. **Standing
+  still has to be started.** `while_stationary` reads "the last movement sample saw no
+  movement", and a character no sample has looked at yet answers "never moved", which the
+  condition refuses. So the test takes that first sample before it reads anything, the way
+  `CataclysmEnchantmentEffectTests.cpp` already does beside the same call.
+- `Cataclysm.Skills.AnAurasUpkeepPaysWhatTheStatSaysRatherThanTheSlotsFigure`: one pulse at
+  the slot's figure, then one at half under a row.
+- the `mana_cost` probe inside
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+### What the runs found
+
+**Three whole-suite runs were spent on this change, under one editor lock, and the first two
+failed.** They are recorded because the failures are the evidence that these tests reach the
+behaviour they are named for.
+
+| Run | Result | What it found |
+| :-- | :-- | :-- |
+| first | 2035 performed, 2030 succeeded, 5 failed | every cost came back zero, because the lookup was `StatForSkill` and its third argument is a fallback rather than a base |
+| second | 2035 performed, 2034 succeeded, 1 failed | the movement test never took a first movement sample, so `while_stationary` correctly refused its character; a defect in the test and not in the game |
+| third | 2035 performed, 2035 succeeded, 0 failed | nothing |
+
+**The guard proof** put the check that refuses a cast, an aura's per-pulse upkeep and the
+skill bar back on the figure the skill itself states, leaving only the payment reading the
+stat. With that break in place, 242 tests under `Cataclysm.Skills.` and `Cataclysm.SkillBar.`
+performed, 239 succeeded and 3 failed -- the three named in the prediction written before the
+build. With it restored, 242 performed, 242 succeeded, 0 failed.
+
+---
+
 ## 2026-09-17 — A minion explodes when it dies, if its summoner says so, and the explosion takes a stat
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`

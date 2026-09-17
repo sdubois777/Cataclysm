@@ -127,6 +127,8 @@ float UCataclysmSkillSlots::ManaOnHitAtLevel(float OnHitAtLevel100, int32 Level)
 
 const TCHAR* UCataclysmSkillSlots::ManaOnHitStat = TEXT("mana_on_hit");
 
+const TCHAR* UCataclysmSkillSlots::ManaCostStat = TEXT("mana_cost");
+
 const TCHAR* UCataclysmSkillSlots::LockedStat = TEXT("skill_locked");
 
 FGameplayTag UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot Slot)

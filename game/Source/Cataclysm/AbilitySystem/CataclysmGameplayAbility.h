@@ -164,6 +164,43 @@ public:
 	float GetManaCost() const;
 
 	/**
+	 * The tags a stat asked for this skill is scoped by. Empty here. Issue #1815.
+	 *
+	 * A SKILL'S TAGS LIVE ON `UCataclysmSkillTemplate::SkillTags`, a subclass of
+	 * this one, and an enemy's C++ ability has none at all. This virtual is how a
+	 * cost lookup on the base class reaches them, so that "Your spells cost
+	 * 10%-20% less mana" reaches spells and nothing else.
+	 *
+	 * EMPTY MEANS EVERY UNSCOPED MODIFIER APPLIES, which is what an ability with
+	 * no tags of its own should get: a row scoped to a keyword simply does not
+	 * reach it.
+	 */
+	virtual const FGameplayTagContainer& SkillTagsForStats() const;
+
+	/**
+	 * What one use costs THIS character, after the `mana_cost` stat. Issue #1815.
+	 *
+	 * THE ONE PLACE THE STAT IS ASKED, and every reader of a cost goes through
+	 * it: `CheckCost`, `ApplyCost`, an aura's per-pulse upkeep in
+	 * `UCataclysmAuraSkill::Pulse`, and `UCataclysmSkillBar`, which greys out a
+	 * box the character cannot pay for. A reader left on `GetManaCost` would show
+	 * or refuse one number while the game charged another, and that disagreement
+	 * is the thing this function exists to make impossible.
+	 *
+	 * THE SKILL'S OWN COST IS THE BASE, so a character with no row is handed it
+	 * back unchanged, and `removed` -- the kind issue #1791 added -- is what
+	 * "costs no mana" means.
+	 *
+	 * NEVER BELOW ZERO. A More multiplier cannot reach it, because
+	 * `LessMultiplierFloor` stops at -99%, but a negative flat row could, and a
+	 * cost below zero would pay the caster for casting.
+	 *
+	 * @param AbilitySystem  whose cost it is. An ability system this project did
+	 *                       not make carries no stat line, so it gets the base.
+	 */
+	float ManaCostFor(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/**
 	 * Mana one landed use RETURNS to the character holding it, at their level.
 	 *
 	 * ONLY THE BASIC ATTACK HAS ONE. game/Data/SkillSlots.csv gives the Basic

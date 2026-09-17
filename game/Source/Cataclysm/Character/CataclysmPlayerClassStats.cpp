@@ -216,6 +216,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("minion_explosion_damage"),
 		// Whether it is removed, read by UCataclysmSkillTemplate::ApplyManaOnHit.
 		TEXT("mana_on_hit"),
+		// What a skill costs, read by UCataclysmGameplayAbility::ManaCostFor,
+		// which hands it the SKILL'S OWN cost as the base. Issue #1815. There is
+		// nothing for an attribute to hold: every skill has a different cost, so
+		// one number on the character would be the wrong number for all but one
+		// of them.
+		TEXT("mana_cost"),
 	};
 	return Stats;
 }

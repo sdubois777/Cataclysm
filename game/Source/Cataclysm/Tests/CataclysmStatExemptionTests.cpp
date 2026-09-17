@@ -664,6 +664,97 @@ namespace CataclysmStatExemptionTest
 	 * gap to be filled by adding an empty probe: an empty probe would pass and
 	 * put the exemption straight back into the state issue #1025 describes.
 	 */
+	/**
+	 * Scale a stat, as "Your spells cost 10%-20% less mana" does.
+	 *
+	 * A MORE MULTIPLIER FROM AN ENCHANTMENT, for the reason `Remove` above gives:
+	 * an ordinary affix may not grant one, so a probe that used one would measure
+	 * the refusal rather than the reader.
+	 */
+	void Scale(AActor* Who, const FString& Stat, float Percent)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Who));
+		if (!System)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Multiplier;
+		Multiplier.Bucket = ECataclysmStatBucket::More;
+		Multiplier.Source = ECataclysmModifierSource::Enchantment;
+		Multiplier.Value = Percent;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(*Stat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Multiplier};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** A Heavy strike costing 40 mana, a figure no slot in the sheet states. */
+	UCataclysmStrikeSkill* GrantCostingSkill(FScopedSwinger& Caster)
+	{
+		const FGameplayAbilitySpecHandle Handle =
+			Caster.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(),
+				ECataclysmAbilitySlot::Heavy, /*Level=*/100, Caster.Actor);
+		FGameplayAbilitySpec* Spec =
+			Handle.IsValid()
+				? Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle)
+				: nullptr;
+		UCataclysmStrikeSkill* Skill =
+			Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillName = TEXT("A skill that costs something");
+			Skill->ManaCostOverride = 40.0f;
+		}
+		return Skill;
+	}
+
+	void ProbeManaCost(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		// TWO CHARACTERS RATHER THAN ONE WITH THE ROW ADDED HALFWAY, as the probes
+		// above use two: the reading is asked once of each, so nothing about the
+		// order can be what it measures.
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Cheaper(World, FVector(0, 100 * M, 0));
+		Scale(Cheaper.Actor, UCataclysmSkillSlots::ManaCostStat, -50.0f);
+
+		UCataclysmStrikeSkill* PlainSkill = GrantCostingSkill(Plain);
+		UCataclysmStrikeSkill* CheaperSkill = GrantCostingSkill(Cheaper);
+		if (!Test.TestNotNull(TEXT("a skill that costs mana"), PlainSkill)
+			|| !Test.TestNotNull(TEXT("and one under the row"), CheaperSkill))
+		{
+			return;
+		}
+
+		// THE SKILL REALLY COSTS SOMETHING, checked first, or both readings below
+		// would compare nothing with nothing.
+		const float Base = PlainSkill->GetManaCost();
+		if (!Test.TestTrue(
+				FString::Printf(TEXT("the skill costs mana: %.1f"), Base),
+				Base > 0.0f))
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("a character with no row pays the skill's own cost"),
+					   PlainSkill->ManaCostFor(Plain.AbilitySystem), Base, 0.01f);
+		Test.TestEqual(TEXT("and one carrying a row that halves it pays half"),
+					   CheaperSkill->ManaCostFor(Cheaper.AbilitySystem),
+					   Base * 0.5f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -671,6 +762,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_damage"),       &ProbeDamage},
 			{TEXT("minion_health"),       &ProbeHealth},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
+			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},
 			{TEXT("minion_explosion_damage"),  &ProbeExplosionDamage},
 		};
