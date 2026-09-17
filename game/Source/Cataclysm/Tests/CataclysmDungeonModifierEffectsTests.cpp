@@ -12547,9 +12547,12 @@ bool FCataclysmRoyalGuardSummonTest::RunTest(const FString& Parameters)
 		return Found;
 	};
 
+	// `GoToFloor` AND NOT `BuildFloor`, BECAUSE THIS ROW NEEDS THE FLOOR'S OWN CREATURES.
+	// Building a floor makes its layout and its brief and spawns nobody; `PopulateFloor`
+	// is what puts creatures out, and `GoToFloor` calls both. Measured: with `BuildFloor`
+	// alone this test failed on the line below, with no creature to wound.
 	Mode->DungeonModifiers = {RoyalGuard};
-	Mode->FloorNumber = 1;
-	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
 		|| !TestTrue(TEXT("the floor placed creatures of its own"),
 					 Mode->FloorEnemies.Num() > 0))
 	{
@@ -12662,9 +12665,12 @@ bool FCataclysmRoyalGuardThresholdTest::RunTest(const FString& Parameters)
 		return Count;
 	};
 
+	// `GoToFloor` AND NOT `BuildFloor`, BECAUSE THIS ROW NEEDS THE FLOOR'S OWN CREATURES.
+	// Building a floor makes its layout and its brief and spawns nobody; `PopulateFloor`
+	// is what puts creatures out, and `GoToFloor` calls both. Measured: with `BuildFloor`
+	// alone this test failed on the line below, with no creature to wound.
 	Mode->DungeonModifiers = {RoyalGuard};
-	Mode->FloorNumber = 1;
-	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
 		|| !TestTrue(TEXT("the floor placed creatures of its own"),
 					 Mode->FloorEnemies.Num() > 0))
 	{
@@ -12743,9 +12749,10 @@ bool FCataclysmRoyalGuardChanceTest::RunTest(const FString& Parameters)
 		return Count;
 	};
 
+	// `GoToFloor` AND NOT `BuildFloor`, for the reason written in the test above: only
+	// `PopulateFloor` puts creatures on a floor, and this row needs two of them.
 	Mode->DungeonModifiers = {RoyalGuard};
-	Mode->FloorNumber = 1;
-	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
 		|| !TestTrue(TEXT("the floor placed two creatures of its own"),
 					 Mode->FloorEnemies.Num() > 1))
 	{
@@ -12842,9 +12849,12 @@ bool FCataclysmRoyalGuardRankGateTest::RunTest(const FString& Parameters)
 		return Count;
 	};
 
+	// `GoToFloor` AND NOT `BuildFloor`, BECAUSE THIS ROW NEEDS THE FLOOR'S OWN CREATURES.
+	// Building a floor makes its layout and its brief and spawns nobody; `PopulateFloor`
+	// is what puts creatures out, and `GoToFloor` calls both. Measured: with `BuildFloor`
+	// alone this test failed on the line below, with no creature to wound.
 	Mode->DungeonModifiers = {RoyalGuard};
-	Mode->FloorNumber = 1;
-	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
 		|| !TestTrue(TEXT("the floor placed creatures of its own"),
 					 Mode->FloorEnemies.Num() > 0))
 	{
@@ -12915,9 +12925,10 @@ bool FCataclysmRoyalGuardCeilingTest::RunTest(const FString& Parameters)
 		return Found;
 	};
 
+	// `GoToFloor` AND NOT `BuildFloor`, for the reason written in the test above: only
+	// `PopulateFloor` puts creatures on a floor, and this row needs two of them.
 	Mode->DungeonModifiers = {RoyalGuard};
-	Mode->FloorNumber = 1;
-	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
 		|| !TestTrue(TEXT("the floor placed two creatures of its own"),
 					 Mode->FloorEnemies.Num() > 1))
 	{
@@ -13001,9 +13012,12 @@ bool FCataclysmRoyalGuardOnceTest::RunTest(const FString& Parameters)
 		return Count;
 	};
 
+	// `GoToFloor` AND NOT `BuildFloor`, BECAUSE THIS ROW NEEDS THE FLOOR'S OWN CREATURES.
+	// Building a floor makes its layout and its brief and spawns nobody; `PopulateFloor`
+	// is what puts creatures out, and `GoToFloor` calls both. Measured: with `BuildFloor`
+	// alone this test failed on the line below, with no creature to wound.
 	Mode->DungeonModifiers = {RoyalGuard};
-	Mode->FloorNumber = 1;
-	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
 		|| !TestTrue(TEXT("the floor placed creatures of its own"),
 					 Mode->FloorEnemies.Num() > 0))
 	{
@@ -13149,9 +13163,10 @@ bool FCataclysmRoyalGuardPanelTest::RunTest(const FString& Parameters)
 		return Line ? *Line : FString(TEXT("no line"));
 	};
 
+	// `GoToFloor` AND NOT `BuildFloor`, for the reason written in the test above: only
+	// `PopulateFloor` puts creatures on a floor, and this row needs two of them.
 	Mode->DungeonModifiers = {RoyalGuard};
-	Mode->FloorNumber = 1;
-	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
 		|| !TestTrue(TEXT("the floor placed two creatures of its own"),
 					 Mode->FloorEnemies.Num() > 1))
 	{
@@ -13228,15 +13243,6 @@ bool FCataclysmRoyalGuardFloorChangeTest::RunTest(const FString& Parameters)
 		const FString* Line = Counting.Find(RoyalGuard);
 		return Line ? *Line : FString(TEXT("no line"));
 	};
-	const auto HowMany = [World]()
-	{
-		int32 Count = 0;
-		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
-		{
-			Count += IsValid(*It) ? 1 : 0;
-		}
-		return Count;
-	};
 
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
 	Mode->DungeonModifiers = {RoyalGuard};
@@ -13275,13 +13281,18 @@ bool FCataclysmRoyalGuardFloorChangeTest::RunTest(const FString& Parameters)
 
 	// STILL BADLY HURT, SO ONLY THE RECORD STOPS IT.
 	WoundCreatureTo(Summoner, MaxHealthOf(Summoner) * 0.2f, 0.0f);
-	const int32 Before = HowMany();
 	Beat(Mode, 40);
 	AddInfo(FString::Printf(TEXT("Royal Guard: after the change the summoner is at %.2f "
 								 "of %.2f and the panel says %s"),
 							HealthOf(Summoner), MaxHealthOf(Summoner), *PanelLine()));
-	TestEqual(TEXT("and it gets no second chance on the new floor"), HowMany(), Before);
-	TestEqual(TEXT("so nothing is counted there"), PanelLine(),
+
+	// THE RULE'S OWN COUNT AND NOT A HEAD COUNT OF THE WORLD. Counting creatures cannot
+	// answer this: a Horde dungeon's next wave brings its own population, so the world
+	// holds far more creatures after the change whether or not a guard was called.
+	// Measured before this line was written: 145 creatures before the change and 280
+	// after it, with no guard called at all. The panel's count was cleared at the change
+	// and rises only when a guard arrives.
+	TestEqual(TEXT("and it gets no second chance on the new floor"), PanelLine(),
 			  FString(TEXT("guards 0")));
 
 	return true;
