@@ -1956,8 +1956,12 @@ namespace CataclysmMinionDeathTest
 	 */
 	float MetresBetween(const AActor* A, const AActor* B)
 	{
+		// QUALIFIED, BECAUSE `M` BELONGS TO THE OTHER NAMESPACE IN THIS FILE.
+		// The cases below open both namespaces inside their own bodies, so they
+		// may write `M` plainly; nothing here is inside one of those bodies.
 		return static_cast<float>(
-			FVector::Dist(A->GetActorLocation(), B->GetActorLocation())) / M;
+			FVector::Dist(A->GetActorLocation(), B->GetActorLocation()))
+			/ CataclysmCommandTest::M;
 	}
 
 	/** An imp told what its summoning skill says its explosion is. */
