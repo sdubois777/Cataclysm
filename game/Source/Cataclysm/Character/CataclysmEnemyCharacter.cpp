@@ -1089,16 +1089,32 @@ void ACataclysmEnemyCharacter::SetIsAnIllusion(bool bNowAnIllusion)
 	ApplyStartingAttributes();
 }
 
-void ACataclysmEnemyCharacter::SetFloorRuleDamageMultiplier(float NewMultiplier)
+void ACataclysmEnemyCharacter::SetPlacedDamageMultiplier(float NewMultiplier)
 {
 	const float Wanted = FMath::Max(0.0f, NewMultiplier);
-	if (FloorRuleDamageMultiplier == Wanted)
+	if (PlacedDamageMultiplier == Wanted)
 	{
 		return;
 	}
 
-	FloorRuleDamageMultiplier = Wanted;
+	PlacedDamageMultiplier = Wanted;
+	RewriteAttackDamage();
+}
 
+void ACataclysmEnemyCharacter::SetTimeAliveDamageMultiplier(float NewMultiplier)
+{
+	const float Wanted = FMath::Max(0.0f, NewMultiplier);
+	if (TimeAliveDamageMultiplier == Wanted)
+	{
+		return;
+	}
+
+	TimeAliveDamageMultiplier = Wanted;
+	RewriteAttackDamage();
+}
+
+void ACataclysmEnemyCharacter::RewriteAttackDamage()
+{
 	// THE DAMAGE ALONE, AND NOT `ApplyStartingAttributes`, which sets health and the
 	// energy shield to their maximums: a creature whose damage a rule grows in the
 	// middle of a fight would be healed by it. See the header.
@@ -1292,8 +1308,8 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 
 	// THE ATTACK DAMAGE, THROUGH THE ONE HELPER THAT WRITES IT. Issues #1820 and #41.
 	// An illusion's zero and a floor rule's multiplier are both decided there, so
-	// every recompute here honours them and `SetFloorRuleDamageMultiplier`, which
-	// must not re-run this function, writes the same figure.
+	// every recompute here honours them, and the two floor-rule setters, which must not
+	// re-run this function, write the same figure.
 	WriteAttackDamage(DamageScale);
 
 	// --- the rest of the designed stat block. Issue #372 ---
@@ -1459,15 +1475,18 @@ void ACataclysmEnemyCharacter::WriteAttackDamage(float DamageScale)
 	// what uncovered it and because a public setter documented as working should
 	// work.
 	//
-	// AND A DUNGEON FLOOR'S RULE MULTIPLIES THE SCALED FIGURE, `Famine_Ravenous_Hoard`
-	// first. See `SetFloorRuleDamageMultiplier`.
+	// AND A DUNGEON FLOOR'S RULES MULTIPLY THE SCALED FIGURE, `Famine_Ravenous_Hoard`
+	// for time alive and `Death_Grave_Tide` for the wave that placed the creature. Both,
+	// so neither rule's figure is lost when the other writes. See
+	// `SetPlacedDamageMultiplier`.
 	if (StartingAttackDamage >= 0.0f
 		&& AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
 	{
 		AbilitySystemComponent->SetNumericAttributeBase(
 			Damage, bIsAnIllusion
 				? 0.0f
-				: StartingAttackDamage * DamageScale * FloorRuleDamageMultiplier);
+				: StartingAttackDamage * DamageScale * PlacedDamageMultiplier
+					  * TimeAliveDamageMultiplier);
 	}
 }
 

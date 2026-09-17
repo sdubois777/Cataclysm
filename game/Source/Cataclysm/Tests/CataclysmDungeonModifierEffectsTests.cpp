@@ -140,6 +140,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one whose creatures hit harder the longer they live. Issues #1820, #41. */
 	const FName RavenousHoard(UCataclysmDungeonModifierEffects::RavenousHoardKey);
 
+	/** And the one whose waves of creatures rise on a clock. Issues #1820, #41. */
+	const FName GraveTide(UCataclysmDungeonModifierEffects::GraveTideKey);
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -9992,9 +9995,10 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 									 GraspingTentacles, WitheredGround, FungalOvergrowth,
 									 LeechSpores, ArtilleryStrike, NecroticGround};
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
-	// AND RAVENOUS HOARD, WHICH PLACES NO ZONE. Issues #1820 and #41.
+	// AND RAVENOUS HOARD AND GRAVE TIDE, WHICH PLACE NO ZONE. Issues #1820 and #41.
 	TArray<FName> Rules = ZoneRules;
 	Rules.Add(RavenousHoard);
+	Rules.Add(GraveTide);
 	Mode->DungeonModifiers = Rules;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
 	{
@@ -10035,6 +10039,18 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 				  AttackDamageOf(Lingerer) > LingererBase + 0.5f))
 	{
 		return false;
+	}
+
+	// AND GRAVE TIDE PUT ONE WAVE ON THE FLOOR IN THOSE BEATS, which the panel counts.
+	{
+		const TMap<FName, FString> Waves = Mode->LiveCountsForTheFloor();
+		const FString* Line = Waves.Find(GraveTide);
+		if (!TestEqual(TEXT("Grave Tide raised its first wave"),
+					   Line ? *Line : FString(TEXT("no line")),
+					   FString::Printf(TEXT("wave 1 of %d"), Effects::GraveTideMostWaves)))
+		{
+			return false;
+		}
 	}
 
 	// AND ONE KILL BY THE PLAYER PLACES THE OTHER THREE, far from the player so no
@@ -10197,6 +10213,13 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the floor panel counts no stacks on the new wave"),
 			  HoardLine ? *HoardLine : FString(TEXT("no line")),
 			  FString::Printf(TEXT("strongest 0 of %d"), Effects::RavenousHoardMostStacks));
+
+	// AND GRAVE TIDE'S COUNT OF WAVES STARTS AGAIN. Issues #1820 and #41. It rose once
+	// during the beats above, which is asserted before the change.
+	const FString* TideLine = Counting.Find(GraveTide);
+	TestEqual(TEXT("and the floor panel counts no wave of the tide on the new wave"),
+			  TideLine ? *TideLine : FString(TEXT("no line")),
+			  FString::Printf(TEXT("wave 0 of %d"), Effects::GraveTideMostWaves));
 
 	return true;
 }
@@ -11186,6 +11209,525 @@ bool FCataclysmRavenousCombinationTest::RunTest(const FString& Parameters)
 	TestEqual(FString::Printf(TEXT("and it still attacks at Commander's pace: %.4f s"),
 							  Creature->SecondsBetweenAttacks()),
 			  Creature->SecondsBetweenAttacks(), CommanderInterval, 0.0001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Grave Tide. Issues #1820 and #41
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGraveTideCadenceTest,
+	"Cataclysm.DungeonModifierEffects.AWaveRisesOnItsCadenceAndEachIsLargerThanTheLast",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGraveTideCadenceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// "WAVES OF UNDEAD PERIODICALLY RISE", AS RULED: nothing before the cadence, three
+	// creatures on it, and one more in each wave after that.
+	//
+	// THE FLOOR IS BUILT AND NOT POPULATED, so every creature counted here is one the
+	// rule put there. `BuildFloor` places no creature; `GoToFloor` is what populates.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// WHO IS ON THE FLOOR, AND WHICH OF THEM ARE NEW. A wave's creatures are told from
+	// the floor's by comparing the two lists, because the rule hands nothing back.
+	const auto CreaturesNow = [World]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	};
+
+	Mode->DungeonModifiers = {GraveTide};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestEqual(TEXT("a floor just built holds no creature"), CreaturesNow().Num(), 0))
+	{
+		return false;
+	}
+
+	const int32 BeatsPerWave = BeatsFor(Effects::GraveTideSecondsBetweenWaves);
+	Beat(Mode, BeatsPerWave - 1);
+	TestEqual(TEXT("no wave a beat short of the cadence"), CreaturesNow().Num(), 0);
+
+	Beat(Mode, 1);
+	const int32 AfterFirst = CreaturesNow().Num();
+	TestEqual(FString::Printf(TEXT("the first wave rose on the cadence: %d creatures"),
+							  AfterFirst),
+			  AfterFirst, Effects::GraveTideCreaturesInWave(0));
+
+	Beat(Mode, BeatsPerWave);
+	const int32 AfterSecond = CreaturesNow().Num();
+	TestEqual(FString::Printf(TEXT("the second wave is one creature larger: %d more"),
+							  AfterSecond - AfterFirst),
+			  AfterSecond - AfterFirst, Effects::GraveTideCreaturesInWave(1));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGraveTideStrengthTest,
+	"Cataclysm.DungeonModifierEffects.AWaveAfterTheFirstPlacesItsCreaturesStrongerThanTheirOwnDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGraveTideStrengthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// "THESE WAVES GROW STRONGER": the second wave's creatures are placed at a share
+	// above their own damage.
+	//
+	// THE SAME CREATURE IS READ TWICE, WITH THE WAVE'S MULTIPLIER AND WITHOUT IT, rather
+	// than against a control creature. A control has to be of the same kind to have the
+	// same designed damage, and a test cannot ask what kind a spawned creature is: the
+	// map from kind to class is one way and private, and `ApplyDesignedStats` takes the
+	// kind. Reading one creature twice measures what the rule did to its damage and
+	// needs no second creature.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// WHO IS ON THE FLOOR, AND WHICH OF THEM ARE NEW. A wave's creatures are told from
+	// the floor's by comparing the two lists, because the rule hands nothing back.
+	const auto CreaturesNow = [World]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	};
+
+	Mode->DungeonModifiers = {GraveTide};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const int32 BeatsPerWave = BeatsFor(Effects::GraveTideSecondsBetweenWaves);
+	Beat(Mode, BeatsPerWave);
+	const TArray<ACataclysmEnemyCharacter*> First = CreaturesNow();
+	Beat(Mode, BeatsPerWave);
+
+	ACataclysmEnemyCharacter* Risen = nullptr;
+	for (ACataclysmEnemyCharacter* Creature : CreaturesNow())
+	{
+		if (!First.Contains(Creature))
+		{
+			Risen = Creature;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("the second wave placed a creature"), Risen))
+	{
+		return false;
+	}
+
+	const float Placed = AttackDamageOf(Risen);
+	Risen->SetPlacedDamageMultiplier(1.0f);
+	const float ItsOwn = AttackDamageOf(Risen);
+	if (!TestTrue(FString::Printf(TEXT("it has damage of its own: %.2f"), ItsOwn),
+				  ItsOwn > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(FString::Printf(TEXT("a second-wave creature was placed at %.2f, its own "
+								   "%.2f times the wave's share"), Placed, ItsOwn),
+			  Placed, ItsOwn * Effects::GraveTideDamageMultiplier(1), 0.05f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGraveTideCeilingTest,
+	"Cataclysm.DungeonModifierEffects.TheTideStopsAtSixWavesHoweverLongThePlayerStays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGraveTideCeilingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE CEILING, WHICH THE ROW DOES NOT STATE AND THE FLOOR NEEDS: without it a floor
+	// fills for as long as the player stands on it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// WHO IS ON THE FLOOR, AND WHICH OF THEM ARE NEW. A wave's creatures are told from
+	// the floor's by comparing the two lists, because the rule hands nothing back.
+	const auto CreaturesNow = [World]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	};
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(GraveTide);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {GraveTide};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const int32 BeatsPerWave = BeatsFor(Effects::GraveTideSecondsBetweenWaves);
+	int32 Expected = 0;
+	for (int32 Wave = 0; Wave < Effects::GraveTideMostWaves; ++Wave)
+	{
+		Beat(Mode, BeatsPerWave);
+		Expected += Effects::GraveTideCreaturesInWave(Wave);
+	}
+	const int32 AtTheCeiling = CreaturesNow().Num();
+	TestEqual(FString::Printf(TEXT("six waves put %d creatures on the floor"), AtTheCeiling),
+			  AtTheCeiling, Expected);
+	TestEqual(TEXT("and the panel counts them all"), PanelLine(),
+			  FString::Printf(TEXT("wave %d of %d"), Effects::GraveTideMostWaves,
+							  Effects::GraveTideMostWaves));
+
+	Beat(Mode, BeatsPerWave * 2);
+	TestEqual(TEXT("a seventh wave never comes"), CreaturesNow().Num(), AtTheCeiling);
+	TestEqual(TEXT("and the panel still counts six"), PanelLine(),
+			  FString::Printf(TEXT("wave %d of %d"), Effects::GraveTideMostWaves,
+							  Effects::GraveTideMostWaves));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGraveTidePanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelCountsTheWavesThatHaveRisen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGraveTidePanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT THE PLAYER IS TOLD, which for every counting row is one line.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(GraveTide);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {GraveTide};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a floor just built has had no wave"), PanelLine(),
+			  FString::Printf(TEXT("wave 0 of %d"), Effects::GraveTideMostWaves));
+
+	const int32 BeatsPerWave = BeatsFor(Effects::GraveTideSecondsBetweenWaves);
+	Beat(Mode, BeatsPerWave);
+	TestEqual(TEXT("one wave in"), PanelLine(),
+			  FString::Printf(TEXT("wave 1 of %d"), Effects::GraveTideMostWaves));
+	Beat(Mode, BeatsPerWave);
+	TestEqual(TEXT("two waves in"), PanelLine(),
+			  FString::Printf(TEXT("wave 2 of %d"), Effects::GraveTideMostWaves));
+
+	// AND A FLOOR WITHOUT THE ROW SAYS NOTHING OF WAVES, so the line is the row's and
+	// not the panel's.
+	Mode->DungeonModifiers = {DeathsEmbrace};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row has no line of its own"), PanelLine(),
+			  FString(TEXT("no line")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGraveTideBothRulesTest,
+	"Cataclysm.DungeonModifierEffects.AWaveCreatureGrowsWithItsTimeAliveAsWellAsItsWave",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGraveTideBothRulesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// TWO RULES ON ONE CREATURE, AND NEITHER LOSES ITS FIGURE. The wave sets one
+	// multiplier when it places the creature; Ravenous Hoard writes the other on every
+	// beat from the creature's time alive. The creature's damage is its own times both,
+	// and the test takes each multiplier off in turn to read what is under it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// WHO IS ON THE FLOOR, AND WHICH OF THEM ARE NEW. A wave's creatures are told from
+	// the floor's by comparing the two lists, because the rule hands nothing back.
+	const auto CreaturesNow = [World]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	};
+
+	Mode->DungeonModifiers = {GraveTide, RavenousHoard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const int32 BeatsPerWave = BeatsFor(Effects::GraveTideSecondsBetweenWaves);
+	Beat(Mode, BeatsPerWave);
+	const TArray<ACataclysmEnemyCharacter*> First = CreaturesNow();
+	Beat(Mode, BeatsPerWave);
+
+	ACataclysmEnemyCharacter* Risen = nullptr;
+	for (ACataclysmEnemyCharacter* Creature : CreaturesNow())
+	{
+		if (!First.Contains(Creature))
+		{
+			Risen = Creature;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("the second wave placed a creature"), Risen))
+	{
+		return false;
+	}
+
+	// TEN SECONDS ALIVE IS ONE STACK. The rule finds a creature on the beat after it was
+	// placed, so its clock reads ten seconds exactly after forty more beats.
+	Beat(Mode, BeatsFor(Effects::RavenousHoardSecondsPerStack));
+
+	const float Both = AttackDamageOf(Risen);
+	Risen->SetPlacedDamageMultiplier(1.0f);
+	const float TimeAliveOnly = AttackDamageOf(Risen);
+	Risen->SetTimeAliveDamageMultiplier(1.0f);
+	const float ItsOwn = AttackDamageOf(Risen);
+	if (!TestTrue(FString::Printf(TEXT("it has damage of its own: %.2f"), ItsOwn),
+				  ItsOwn > 0.0f))
+	{
+		return false;
+	}
+
+	const float Wave = Effects::GraveTideDamageMultiplier(1);
+	const float Stack = Effects::RavenousHoardDamageMultiplier(1);
+	AddInfo(FString::Printf(TEXT("a second-wave creature ten seconds alive: %.2f, from "
+								 "%.2f of its own x %.2f for the wave x %.2f for the "
+								 "stack; with the wave's multiplier taken off, %.2f"),
+							Both, ItsOwn, Wave, Stack, TimeAliveOnly));
+	TestEqual(FString::Printf(TEXT("its damage is its own times both: %.2f"), Both), Both,
+			  ItsOwn * Wave * Stack, 0.05f);
+	TestEqual(FString::Printf(TEXT("and with the wave's taken off, its own times the "
+								   "stack: %.2f"), TimeAliveOnly),
+			  TimeAliveOnly, ItsOwn * Stack, 0.05f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGraveTideFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeClearsTheTideAndLeavesNoCreatureOfTheLastFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmGraveTideFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE STAIRS END THE TIDE. The count and the clock go, the creatures the waves
+	// placed go with the floor, and the next floor's tide starts from nothing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// WHO IS ON THE FLOOR, AND WHICH OF THEM ARE NEW. A wave's creatures are told from
+	// the floor's by comparing the two lists, because the rule hands nothing back.
+	const auto CreaturesNow = [World]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	};
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(GraveTide);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {GraveTide};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const int32 BeatsPerWave = BeatsFor(Effects::GraveTideSecondsBetweenWaves);
+	Beat(Mode, BeatsPerWave * 2);
+
+	// AND PART OF A THIRD CADENCE, SO THE CLOCK IS NOT AT ZERO WHEN THE STAIRS ARE
+	// TAKEN. A wave sets the clock to zero as it rises, so a test that stops on the beat
+	// a wave rises leaves nothing for the reset to clear, and a reset that cleared
+	// nothing would pass. Measured before this line existed: the break that stops the
+	// reset clearing the clock failed no test at all.
+	Beat(Mode, BeatsPerWave / 3);
+
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Risen;
+	for (ACataclysmEnemyCharacter* Creature : CreaturesNow())
+	{
+		Risen.Add(Creature);
+	}
+	if (!TestEqual(TEXT("two waves rose on the first floor"), Risen.Num(),
+				   Effects::GraveTideCreaturesInWave(0)
+					   + Effects::GraveTideCreaturesInWave(1))
+		|| !TestEqual(TEXT("and the panel counts them"), PanelLine(),
+					  FString::Printf(TEXT("wave 2 of %d"), Effects::GraveTideMostWaves)))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	int32 Remaining = 0;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Creature : Risen)
+	{
+		Remaining += Creature.IsValid() ? 1 : 0;
+	}
+	TestEqual(FString::Printf(TEXT("no creature of the last floor's waves remains: %d of "
+								   "%d"), Remaining, Risen.Num()), Remaining, 0);
+	TestEqual(TEXT("and the creatures on the floor are the new floor's own"),
+			  CreaturesNow().Num(), Mode->FloorEnemies.Num());
+	TestEqual(TEXT("the panel counts no wave on the new floor"), PanelLine(),
+			  FString::Printf(TEXT("wave 0 of %d"), Effects::GraveTideMostWaves));
+
+	// AND THE CLOCK STARTS AGAIN: a beat short of the cadence puts nothing down.
+	const int32 OnArrival = CreaturesNow().Num();
+	Beat(Mode, BeatsPerWave - 1);
+	TestEqual(TEXT("a beat short of the cadence on the new floor, no wave"),
+			  CreaturesNow().Num(), OnArrival);
+	Beat(Mode, 1);
+	TestEqual(FString::Printf(TEXT("and the new floor's first wave is three: %d"),
+							  CreaturesNow().Num() - OnArrival),
+			  CreaturesNow().Num() - OnArrival, Effects::GraveTideCreaturesInWave(0));
 
 	return true;
 }

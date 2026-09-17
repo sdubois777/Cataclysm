@@ -1176,6 +1176,21 @@ private:
 	void StepRavenousHoard(class ACataclysmPlayerCharacter* Player);
 
 	/**
+	 * Grave Tide: on its cadence, put a wave of creatures on the floor. Issues #1820
+	 * and #41.
+	 *
+	 * THE RULE SPAWNS ITS OWN WAVE RATHER THAN QUEUEING IT. `WaveStillToArrive` is the
+	 * one queue of creatures still to arrive, a floor change replaces or keeps it whole,
+	 * and nothing on a queued creature says which rule queued it -- so a queued wave
+	 * could arrive on a floor that does not carry the row. A wave here is a handful of
+	 * creatures, where that queue exists for a wave of sixty.
+	 *
+	 * THE FLOOR'S OWN POPULATOR CHOOSES WHERE THEY STAND, so one place decides what a
+	 * cell may hold.
+	 */
+	void StepGraveTide();
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -2114,6 +2129,14 @@ private:
 	 */
 	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> RavenousHoardSecondsAlive;
 	int32 RavenousHoardStrongest = 0;
+
+	/**
+	 * Grave Tide: the seconds since its last wave and how many waves this floor has had.
+	 * Issues #1820 and #41. Both go at the stairs; the creatures a wave placed are the
+	 * floor's, and a floor change disposes of them as it does of any other.
+	 */
+	float GraveTideSecondsSinceLastWave = 0.0f;
+	int32 GraveTideWaves = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

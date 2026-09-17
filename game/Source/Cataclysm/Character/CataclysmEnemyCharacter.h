@@ -429,8 +429,8 @@ public:
 	 * also sets health and the energy shield to their maximums, so called on a
 	 * wounded creature this would heal it; this comment said the damage was the
 	 * only thing it changed, without that condition, until issues #1820 and #41.
-	 * See `bIsAnIllusion`, and `SetFloorRuleDamageMultiplier` for the route that
-	 * changes the damage alone.
+	 * See `bIsAnIllusion`, and `SetPlacedDamageMultiplier` and
+	 * `SetTimeAliveDamageMultiplier` for the routes that change the damage alone.
 	 *
 	 * NO ACCESS SPECIFIER ADDED AROUND THIS, DELIBERATELY. The section in force
 	 * here is the `public:` opened at the top of the class, which
@@ -460,8 +460,14 @@ public:
 	bool IsAnIllusion() const { return bIsAnIllusion; }
 
 	/**
-	 * Multiplies this creature's attack damage for a dungeon floor's rule, and changes
-	 * nothing else about it. `Famine_Ravenous_Hoard`. Issues #1820 and #41.
+	 * Multiplies this creature's attack damage for the rule that PLACED it, and changes
+	 * nothing else about it. `Death_Grave_Tide`. Issues #1820 and #41.
+	 *
+	 * TWO MULTIPLIERS AND NOT ONE, because two rules can act on one creature and
+	 * neither may overwrite the other. A wave sets this one as it places a creature and
+	 * never touches it again; `SetTimeAliveDamageMultiplier` below is written every beat
+	 * by a rule that counts how long the creature has lived. `WriteAttackDamage`
+	 * multiplies by both.
 	 *
 	 * THE ATTACK DAMAGE ALONE IS REWRITTEN, THROUGH `WriteAttackDamage`, AND
 	 * `ApplyStartingAttributes` IS NOT RE-RUN. That function sets health and the
@@ -482,7 +488,23 @@ public:
 	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
-	void SetFloorRuleDamageMultiplier(float NewMultiplier);
+	void SetPlacedDamageMultiplier(float NewMultiplier);
+
+	/**
+	 * Multiplies this creature's attack damage for a rule that counts how long it has
+	 * been alive. `Famine_Ravenous_Hoard`. Issues #1820 and #41.
+	 *
+	 * NAMED FOR WHERE IT COMES FROM, like `SetPlacedDamageMultiplier` above, and it was
+	 * called `SetFloorRuleDamageMultiplier` until Grave Tide needed a second source. A
+	 * general name holding one of two sources is what misleads the next reader.
+	 *
+	 * Everything the setter above says about the route, the designed figure, the
+	 * illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetTimeAliveDamageMultiplier(float NewMultiplier);
 
 	//~ Dying. Issue #522.
 
@@ -1282,9 +1304,10 @@ protected:
 	 * decided and writes the damage through that helper, and SIX PUBLIC SETTERS
 	 * re-run it -- `SetHealth`, `SetAttackDamage`, `SetArmour`, `SetRarityStep`,
 	 * `SetEnergyShieldFraction` and `DrawModifiersForRarity` -- each recomputing
-	 * the attack damage from `StartingAttackDamage`, the rarity's damage scale and
-	 * `FloorRuleDamageMultiplier`. `SetFloorRuleDamageMultiplier` writes it through
-	 * the helper too. A zero written once is undone by any of them.
+	 * the attack damage from `StartingAttackDamage`, the rarity's damage scale and the
+	 * two floor-rule multipliers. `SetPlacedDamageMultiplier` and
+	 * `SetTimeAliveDamageMultiplier` write it through the helper too. A zero written
+	 * once is undone by any of them.
 	 *
 	 * TODAY NOTHING CALLS ONE AFTER A FLOOR IS POPULATED, measured 2026-09-14
 	 * across `game/Source` outside the tests: the only caller of any of the six
@@ -1307,14 +1330,20 @@ protected:
 	bool bIsAnIllusion = false;
 
 	/**
-	 * What a dungeon floor's rule multiplies this creature's attack damage by; 1.0 is
-	 * the creature's own damage. Issues #1820 and #41.
+	 * What the rule that placed this creature multiplies its attack damage by, and what
+	 * a rule counting its time alive multiplies it by. 1.0 each is the creature's own
+	 * damage, and `WriteAttackDamage` multiplies by both. Issues #1820 and #41.
 	 *
-	 * See `SetFloorRuleDamageMultiplier` for why it multiplies the designed figure and
-	 * why setting it rewrites the attack damage and nothing else.
+	 * TWO FIELDS SO TWO RULES CANNOT OVERWRITE EACH OTHER: a wave writes the first as it
+	 * places a creature, and Ravenous Hoard writes the second on every beat. See
+	 * `SetPlacedDamageMultiplier` for why either multiplies the designed figure and why
+	 * setting one rewrites the attack damage and nothing else.
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	float FloorRuleDamageMultiplier = 1.0f;
+	float PlacedDamageMultiplier = 1.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float TimeAliveDamageMultiplier = 1.0f;
 
 	/**
 	 * What SetArmour was last asked for. Zero means no armour.
@@ -1363,14 +1392,22 @@ private:
 	 * Writes the attack damage attribute from the designed figure, and nothing else.
 	 * Issues #1820 and #41.
 	 *
-	 * ONE PLACE FOR THE FORMULA, called by `ApplyStartingAttributes` and by
-	 * `SetFloorRuleDamageMultiplier`: the designed figure, times the rarity's damage
-	 * scale, times the floor rule's multiplier, or zero for an illusion. Two copies of
-	 * it would give two answers the first time one of them changed.
+	 * ONE PLACE FOR THE FORMULA, called by `ApplyStartingAttributes` and by the two
+	 * floor-rule setters: the designed figure, times the rarity's damage scale, times
+	 * both floor-rule multipliers, or zero for an illusion. Two copies of it would give
+	 * two answers the first time one of them changed.
 	 *
 	 * @param DamageScale  the rarity's damage multiplier, which the caller has read
 	 */
 	void WriteAttackDamage(float DamageScale);
+
+	/**
+	 * Reads the rarity's damage scale and writes the attack damage with it.
+	 *
+	 * WHAT BOTH FLOOR-RULE SETTERS DO AFTER STORING THEIR FIGURE, so the lookup and the
+	 * write are not written twice.
+	 */
+	void RewriteAttackDamage();
 
 	/**
 	 * Plays one of this creature's death clips, if it has any.

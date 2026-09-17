@@ -965,9 +965,20 @@ public:
 	 * `RavenousHoardMostStacks`. Each stack adds `RavenousHoardDamagePercentPerStack`
 	 * of its own base to its attack damage. Nothing else about the creature changes,
 	 * its health least of all: see
-	 * `ACataclysmEnemyCharacter::SetFloorRuleDamageMultiplier`.
+	 * `ACataclysmEnemyCharacter::SetTimeAliveDamageMultiplier`, which was called
+	 * `SetFloorRuleDamageMultiplier` until Grave Tide added a second source.
 	 */
 	static const TCHAR* RavenousHoardKey;
+
+	/**
+	 * The row whose waves of creatures rise through the floor. Issues #1820 and #41.
+	 *
+	 * A WAVE EVERY `GraveTideSecondsBetweenWaves`, each one creature larger than the
+	 * last and each creature placed with a damage multiplier a step above the last
+	 * wave's, up to `GraveTideMostWaves` waves. The creatures are the ones the floor's
+	 * own populator picks; the row's "undead" names no creature this game has.
+	 */
+	static const TCHAR* GraveTideKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -2145,6 +2156,48 @@ public:
 		"A creature that never gains a stack, or gains one worth nothing, does not grow "
 		"stronger the longer it lives.");
 
+	/**
+	 * How long between one wave of Grave Tide and the next, counted from the floor's
+	 * start.
+	 *
+	 * A JUDGEMENT, ruled under the owner's delegation, and the figure this project uses
+	 * for a floor event on a clock: `ArtilleryStrikeSecondsBetween`. The row says
+	 * "periodically" and states no figure.
+	 */
+	static constexpr float GraveTideSecondsBetweenWaves = ArtilleryStrikeSecondsBetween;
+
+	/** How many creatures rise in the first wave. A JUDGEMENT. */
+	static constexpr int32 GraveTideFirstWaveCreatures = 3;
+
+	/** How many more rise in each wave after the first. A JUDGEMENT: "more numerous". */
+	static constexpr int32 GraveTideMoreCreaturesPerWave = 1;
+
+	/** How many waves one floor holds. A JUDGEMENT: without a ceiling a floor fills. */
+	static constexpr int32 GraveTideMostWaves = 6;
+
+	/**
+	 * What each wave after the first adds to its creatures' attack damage, as a share of
+	 * their own.
+	 *
+	 * A JUDGEMENT, and Death's Embrace's figure for a step, the same share Ravenous
+	 * Hoard gives for time alive. "Grow stronger" states no figure.
+	 */
+	static constexpr float GraveTideDamagePercentPerWave = DeathsEmbracePercentPerStack;
+
+	/**
+	 * The most a wave's creatures are placed with, as a share of their own damage.
+	 *
+	 * A JUDGEMENT, and Ravenous Hoard's ceiling: that rule's cap of stacks at that share
+	 * each, so a wave cannot place a creature stronger than one that lived to its cap.
+	 */
+	static constexpr float GraveTideMostDamagePercent =
+		RavenousHoardMostStacks * GraveTideDamagePercentPerWave;
+
+	static_assert(
+		GraveTideSecondsBetweenWaves > 0.0f && GraveTideMostWaves > 0
+			&& GraveTideFirstWaveCreatures > 0,
+		"A tide with no wave, no creature in it or no time between waves is not the row.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -2873,6 +2926,23 @@ public:
 
 	/** What a creature holding this many stacks multiplies its attack damage by. */
 	static float RavenousHoardDamageMultiplier(int32 Stacks);
+
+	/**
+	 * Whether Grave Tide's next wave is due: this long since the last one, and fewer
+	 * than `GraveTideMostWaves` waves so far.
+	 *
+	 * THE CEILING FIRST, so a floor at its limit does no arithmetic.
+	 */
+	static bool GraveTideWaveIsDue(float SecondsSinceLastWave, int32 WavesSoFar);
+
+	/** How many creatures rise in the wave after this many waves. */
+	static int32 GraveTideCreaturesInWave(int32 WavesSoFar);
+
+	/**
+	 * What the creatures of the wave after this many waves are placed with, as a
+	 * multiplier on their own attack damage, held to `GraveTideMostDamagePercent`.
+	 */
+	static float GraveTideDamageMultiplier(int32 WavesSoFar);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
