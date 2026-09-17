@@ -735,8 +735,9 @@ public:
 	 * `Ravager_keystone_d_kA` Relentless grants it always: "Your Movement Speed
 	 * cannot be reduced by any effect." `Ravager_keystone_spine_003`
 	 * Unstoppable grants the same stat while an enemy is within four metres,
-	 * which is the third clause of "You cannot be stunned, slowed or knocked
-	 * back while an enemy is within 4 metres of you."
+	 * which is the clause about being slowed in "You cannot be stunned,
+	 * slowed, knocked back or knocked down while an enemy is within 4 metres
+	 * of you."
 	 *
 	 * IT DROPS THE REDUCING MODIFIERS RATHER THAN FLOORING THE ANSWER, and the
 	 * difference is not academic. A character with a node worth +20% standing

@@ -305,7 +305,7 @@ Ravager_basic_spine_009,Ravager,basic_spine_009,basic,Stoked,+2% increased maxim
 Ravager_basic_spine_010,Ravager,basic_spine_010,basic,Unspent Ruin,+1% increased Attack Damage per point for every full 20 Fervour you currently hold.,6,0,-150.0,-12.0,,,,,,
 Ravager_keystone_spine_001,Ravager,keystone_spine_001,keystone,Ironhide,Your Armor cannot be ignored: armor penetration and piercing weapons remove none of it.,1,0,150.0,516.0,,,,,,
 Ravager_keystone_spine_002,Ravager,keystone_spine_002,keystone,Every Swing Lands,"Your melee attacks cannot be evaded, and your melee arc is a full circle rather than a cone.",1,0,0.0,252.0,,,,,,
-Ravager_keystone_spine_003,Ravager,keystone_spine_003,keystone,Unstoppable,"You cannot be stunned, slowed or knocked back while an enemy is within 4 metres of you.",1,0,-150.0,-144.0,,,,,,
+Ravager_keystone_spine_003,Ravager,keystone_spine_003,keystone,Unstoppable,"You cannot be stunned, slowed, knocked back or knocked down while an enemy is within 4 metres of you.",1,0,-150.0,-144.0,,,,,,
 Ravager_basic_a_stem0,Ravager,basic_a_stem0,basic,Slab of Muscle,+2% increased Maximum Health per point.,8,0,-450.0,-12.0,,,,,,
 Ravager_basic_a_stem1,Ravager,basic_a_stem1,basic,Hardened,+2% increased Armor per point.,6,0,-450.0,-144.0,,,,,,
 Ravager_basic_a_stem2,Ravager,basic_a_stem2,basic,Rooted,+3% increased Crowd Control Resistance per point.,6,0,-300.0,-276.0,,,,,,

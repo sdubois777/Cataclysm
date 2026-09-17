@@ -19,13 +19,15 @@
 /**
  * `Ravager_keystone_spine_003` Unstoppable. Issue #1515.
  *
- * "You cannot be stunned, slowed or knocked back while an enemy is within 4
- * metres of you."
+ * "You cannot be stunned, slowed, knocked back or knocked down while an enemy
+ * is within 4 metres of you."
  *
- * TWO OF THE THREE CLAUSES ARE BUILDABLE AND THE THIRD IS NOT. Stuns and shoves
- * both pass through `UCataclysmSkillEffects::AfterCrowdControlResistance`, so a
- * hundred crowd control resistance is what "cannot be stunned or knocked back"
- * means. **"Slowed" HAS NO MECHANIC AT ALL**: `game/Data/StatusEffects.csv` has
+ * THREE OF THE FOUR CLAUSES ARE BUILDABLE AND THE FOURTH IS NOT. Stuns, shoves
+ * and knockdowns all pass through
+ * `UCataclysmSkillEffects::AfterCrowdControlResistance`, so a hundred crowd
+ * control resistance is what "cannot be stunned, knocked back or knocked down"
+ * means. THE KNOCKDOWN JOINED THEM ON 2026-09-17, issue #1815: until then it
+ * asked the stat nothing, and the sentence did not name it. **"Slowed" HAS NO MECHANIC AT ALL**: `game/Data/StatusEffects.csv` has
  * no slow row, its `EffectKind` column only ever holds Buff, Debuff or DoT, and
  * movement reductions come from dungeon rules rather than from anything a
  * character can resist. So there is nothing for the third clause to forbid, and

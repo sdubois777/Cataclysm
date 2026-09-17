@@ -2,6 +2,130 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — Never Lets Go is written, and Unstoppable's sentence names the knockdown
+
+**Affects:** `docs/Ravager_Class_Tree_Final.json` (one sentence, the only place a
+node's words are authored), `docs/All_Things_Cataclysm.xlsx` and
+`game/Data/PassiveEffects.csv` (two rows), `game/Data/PassiveNodes.csv`,
+`game/Content/Data/DT_PassiveNodes.uasset` and
+`game/Content/Data/DT_PassiveEffects.uasset`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (one test and one
+quoted sentence), `game/Source/Cataclysm/Tests/CataclysmUnstoppableTests.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h`,
+`docs/README.md`, `game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and
+`tools/tests/test_passive_effects_match_the_node_text.py` (the counts, a widened
+condition phrase and a value stated in words). Issues
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515) and
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
+
+### UNSTOPPABLE NOW SAYS "KNOCKED DOWN"
+
+`Ravager_keystone_spine_003` Unstoppable reads, from this change:
+
+> "You cannot be stunned, slowed, knocked back or knocked down while an enemy is
+> within 4 metres of you."
+
+**The node gained a promise without gaining a row.** Its two rows are unchanged:
+a hundred `crowd_control_resistance` and the movement-speed flag, both under the
+condition that an enemy is within four metres. What changed is underneath them.
+A knockdown asked crowd control resistance nothing until
+[#1954](https://github.com/sdubois777/Cataclysm/pull/1954) sent its seconds
+through `UCataclysmSkillEffects::AfterCrowdControlResistance`, where a stun's
+already went, and at a hundred a knockdown does not land at all. So the
+keystone's hundred already refuses one, and the sentence was understating what
+the node does.
+
+**This is a judgement rather than a reading of the design**, relayed by the
+coordinating session under the project owner's delegation of 2026-09-14. This
+log records the owner's decision of 2026-09-05 as "Crowd control resistance
+shortens a stun and a shove, and at 100 stops them", which names no knockdown,
+and nothing in `docs/` says whether Unstoppable was meant to cover one. The judgement is that a sentence which lists what cannot happen to
+you must list everything the stat now refuses, because a player reads the node
+and not the resistance table.
+
+**Eight places carry the sentence or describe its clauses**, and all eight move
+together: the class-tree JSON, the generated `PassiveNodes.csv`, the built
+`DT_PassiveNodes` asset, the keystone's own test file, the passive tree test that
+reads both of its rows, the comment on the movement-speed floor stat, the comment
+in the node-text test that says which effects the hundred covers, and this entry.
+**Four older entries in this log quote the old sentence and are left alone**:
+they are dated records of what was true when they were written.
+
+**The comment on the movement-speed stat stops counting clauses.** It called the
+slow "the third clause"; the sentence now has four. It names the clause instead,
+so the next addition cannot make it wrong.
+
+### NEVER LETS GO: TWO ROWS AND NOTHING BUILT
+
+`Ravager_capstone_25` option 2, the First Onslaught's second option: "Enemies you
+hit are Crippled for 4 seconds, and your attacks deal 20% increased damage to
+Crippled enemies."
+
+| row | stat | kind | value | condition |
+| :-- | :-- | :-- | --: | :-- |
+| `Ravager_capstone_25#5` | `cripple_chance` | flat | 100 | |
+| `Ravager_capstone_25#6` | `attack_damage` | increased | 20 | `target_carries_cripple` |
+
+- **A hundred per cent chance is what "are Crippled" means** for a stat that is
+  rolled. `UCataclysmAilments` draws 0 to 100 and applies the ailment when the
+  roll is below the chance, so a hundred always applies and nothing new is
+  needed. Three `cripple_chance` rows already exist, at 2, 3 and 4, so the stat
+  and its authoring shape are not new; only the size is.
+- **Four seconds is not a row.** Cripple's own duration in
+  `game/Data/StatusEffects.csv` is four seconds, so the figure in the sentence is
+  already true.
+- **The damage row carries no required tag**, because the sentence says "your
+  attacks" rather than your melee attacks, and `attack_damage` is already the
+  attacks' stat and not the spells'.
+
+### WHY THIS OPTION WAS WRITABLE AND ATTRITION IS NOT
+
+`UCataclysmPlayerClassStats::ApplyTo` resolves every stat with no readings in
+hand, so **a row carrying a condition or a scale never reaches a gameplay
+attribute**; it only works where the consumer asks through `StatForSkill`. An
+ailment chance is read straight from its attribute. Those two facts together are
+the whole difference between two sentences that look alike:
+
+- Never Lets Go's chance carries no condition, folds into the attribute, and the
+  roll sees it.
+- `Ravager_keystone_c_kA` Attrition, "Your melee attacks always Cripple and
+  always Weaken, with no chance roll", is about melee attacks only. That is a
+  condition, a conditioned row cannot reach the attribute, and so the node
+  **cannot be written until an ailment chance is asked through the pipeline with
+  the blow in hand**. It is not authored here, and this entry is the reason.
+
+### THE CONDITION'S WORDS
+
+`target_carries_cripple` required the phrase "against crippled enemies", which is
+how `Ravager_basic_c_a2` words it. Never Lets Go says "damage to Crippled
+enemies", the same promise in different words, so the entry now holds both. The
+node-text test's own comment says widening is the intended route rather than
+wording the design prose around the test.
+
+### COUNTS
+
+    passive effect rows      280 -> 282   AUTHORED_ROWS, CHECK_TABLE, docs/README.md
+    authored options          22 -> 23    AUTHORED_OPTIONS; `Never Lets Go`
+    authored nodes           206          unchanged: this node already had rows
+    passive node rows        441          unchanged: a sentence changed, not a row
+    Unreal automation tests   +1 by name, Cataclysm.Passives.
+
+### TESTS
+
+One reader, `Cataclysm.Passives.NeverLetsGoAlwaysCripplesAndAddsDamageAgainstCrippledEnemies`,
+which reads both rows out of the built table, checks that choosing the option
+grants a hundred Cripple chance and that the chance has the attribute the roll
+reads, and then resolves the damage row twice: twenty against a target carrying
+Cripple and nothing against a target without it. It also asserts that the option
+grants exactly one attack damage row, because the node's other two options grant
+attack damage as well, so an ignored option choice would show as three.
+
+Both this test and the test that compares every asset with its table fail until
+`DT_PassiveEffects` and `DT_PassiveNodes` are rebuilt, and that run is the
+evidence that the rows and the sentence reach the game.
+
+---
+
 ## 2026-09-17 — Grave Tide puts a wave of creatures on the floor every thirty seconds, each wave one creature larger and a step stronger than the last, up to six
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a creature's
