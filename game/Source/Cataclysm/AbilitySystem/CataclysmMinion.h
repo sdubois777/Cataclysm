@@ -200,6 +200,23 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
 	void Explode(float RadiusCm, float DamagePercent);
 
+	/**
+	 * Remember what the skill that summoned this one states its explosion is,
+	 * so a death can use the figures the summon cap already uses.
+	 *
+	 * TOLD AT THE SUMMONING RATHER THAN READ AT THE DEATH. The radius and the
+	 * damage are the skill row's, and a dying minion has no way back to the
+	 * ability that made it. `Ritualist_keystone_b_kB` Every One Bursts says
+	 * "with the radius and damage of the skill that brought it", so the two
+	 * figures have to travel with the minion. Issue #1515.
+	 *
+	 * A MINION NOBODY TOLD KEEPS ZEROES AND NEVER EXPLODES ON ITS DEATH, which
+	 * is the deployable shape's case: `UCataclysmDeployableSkill` states no
+	 * explosion, so a ballista dying leaves a body exactly as it does now.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
+	void RecordExplosion(float RadiusCm, float DamagePercent);
+
 	/** Hit the nearest enemy in reach. Called by tests. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
 	void AttackOnce();
@@ -222,6 +239,18 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	float AttackIntervalSeconds = DefaultAttackIntervalSeconds;
+
+	/**
+	 * What this one's death explodes for, when its summoner's stat says it
+	 * explodes at all. Both are zero until `RecordExplosion` says otherwise,
+	 * and a zero in either refuses the explosion rather than making a silent
+	 * one of no size.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	float ExplosionRadiusCm = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
+	float ExplosionDamagePercent = 0.0f;
 
 	/**
 	 * Whether it goes to its target or stays where it was put.

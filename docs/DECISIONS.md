@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A minion explodes when it dies, if its summoner says so, and the explosion takes a stat
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`
+(the two figures a minion carries, the death explosion and the stat on the
+explosion's damage),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp` (the summoning
+skill tells the minion what its explosion would be),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the two stat
+names) and `game/Source/Cataclysm/Tests/CataclysmCommandTests.cpp` (five tests).
+Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515). No data row
+is authored here; the rows are a later workbook turn.
+
+### WHAT IT MAKES POSSIBLE
+
+Two Ritualist sentences that had no mechanism:
+
+- `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when it
+  dies, as one destroyed to make room for another does, with the radius and
+  damage of the skill that brought it."
+- `Ritualist_basic_b_a2` Volatile: "+3% increased damage of the explosion a
+  minion leaves per point."
+
+**Before this, a minion exploded only when the summon cap destroyed it** to make
+room for a new one, and no stat touched that explosion.
+`ACataclysmMinion::HandleDeath` marked the minion dead and did nothing else.
+
+### THE TWO STATS
+
+    minion_explodes_on_death   a flag, read at a death, for Every One Bursts
+    minion_explosion_damage    increases, read at an explosion, for Volatile
+
+**Neither has a gameplay attribute, and neither needs one.** Both are named in
+`UCataclysmPlayerClassStats::StatsWithNoAttribute`, beside `minion_damage`,
+`minion_health` and `minion_attack_speed`, which is the list of stats recorded on
+the character's stat line and read at the moment they matter. Two of the tests
+assert the membership rather than trusting it: a name missing from that list is
+recorded nowhere, so the flag would read as nothing and a case could pass while
+doing nothing at all.
+
+### FOUR PIECES
+
+1. **The minion carries what its summoning skill states.**
+   `ACataclysmMinion::RecordExplosion` is called where `UCataclysmSummonSkill`
+   spawns it, with the same two figures the cap already passes when it destroys
+   the oldest. A dying minion has no way back to the ability that made it, and
+   Every One Bursts says "with the radius and damage of the skill that brought
+   it", so the figures travel with the minion.
+2. **The death explodes it when the summoner's flag is above zero**, read with
+   `StatForSkill` so that a row carrying a condition still works — a conditioned
+   row never reaches a gameplay attribute, and these stats have none anyway.
+3. **The explosion's damage takes the summoner's increases**, inside `Explode`
+   rather than at either caller, so both causes take it: the summon cap
+   destroying the oldest, and a death under the flag. Volatile's sentence names
+   the explosion rather than what caused it.
+4. **The two names are registered** in the one list that records them, each with
+   the line saying what reads it.
+
+**Area of effect is still not taken from the summoner.** The radius is the
+skill's stated figure, as the comment at the cap's call site records for issues
+[#910](https://github.com/sdubois777/Cataclysm/issues/910) and
+[#340](https://github.com/sdubois777/Cataclysm/issues/340). The new stat is the
+damage and only the damage.
+
+### AN EXPLODED MINION LEAVES NO BODY
+
+`Explode` destroys the actor, which is what already happened to a minion the cap
+evicted. So a minion whose summoner has taken Every One Bursts is gone the moment
+it dies, where an ordinary minion's body stays until its lifespan ends.
+
+**This is a judgement rather than a reading of the design**, relayed by the
+coordinating session under the project owner's delegation of 2026-09-14: an
+exploded minion is destroyed, as an evicted one already is. Nothing in `docs/`
+says how long a body stays. The comment in `HandleDeath` that promised the actor
+is never removed now says where the exception is, rather than being left to
+contradict the code beneath it.
+
+**A deployed machine is unaffected.** `UCataclysmDeployableSkill` states no
+explosion, so a ballista is never told one, and the death path requires both
+figures before it explodes anything. A ballista dying leaves a body exactly as it
+does today, and that is a guard in the code rather than a side effect: a zero
+radius would otherwise have destroyed the body while hurting nobody, because
+`Explode` destroys the actor whether or not it finds anything.
+
+### WHAT WAS PLANNED AND DELIBERATELY NOT BUILT
+
+The plan carried a fifth piece: a guard so a minion could not explode twice, with
+a test for it. **It was dropped because that test could not fail.** `Explode`
+destroys the actor, and `UCataclysmSummonSkill::LivingMinionCount` drops entries
+whose actor is destroyed, so the cap can never evict a body that already
+exploded. A guard would have been code whose test passes however broken the guard
+is, which this project treats as worse than no test at all.
+
+**What the cap does with a body that is dead and still present is a real
+question, and it is not changed here:**
+[#1957](https://github.com/sdubois777/Cataclysm/issues/1957). A dead minion still
+counts toward the cap, so a new summon can destroy a living minion while a corpse
+holds a slot. Every One Bursts happens to sidestep it, because its minions leave
+no corpse.
+
+### THE FERVOUR A SUMMONER GAINS FOR LOSING A MINION IS UNAFFECTED
+
+It is granted where the health reaches zero, **before** the death handler runs,
+and `CataclysmVitalAttributeSet.cpp` states that the order is deliberate: a death
+handler may remove the actor, and the code that finds the commander cannot walk
+the ownership chain of one that is leaving. So exploding inside `HandleDeath`
+does not rob the summoner. One of the five tests holds it, and it is the test
+that would fail if that order ever changed.
+
+### TESTS
+
+Six, in `Cataclysm.MinionDeath.`:
+
+- a flagged minion's death hurts an enemy a metre away and not one ten metres
+  away, so the radius means something;
+- a minion whose summoner has not taken it leaves a body and hurts nothing;
+- the death explosion's damage is 500 without the stat and 750 with +50% of it,
+  both stated as figures rather than as a ratio, because a ratio of 1.5 holds
+  when both explosions deal nothing;
+- the explosion the cap sets off takes the same stat, with no flag on either
+  summoner, which separates the two places the multiplier could have gone;
+- an exploding minion leaves no body and still pays its summoner the five Fervour
+  a minion's death grants;
+- **and a real summon, activated, produces a minion carrying the skill's radius
+  and damage.** The other five tell the minion themselves, the way
+  `UCataclysmSummonSkill::SummonOne` does, because summoning through the ability
+  for every measurement would be measuring the ability. So a build where the
+  skill never told the minion anything would have passed all five while no
+  minion in the game ever exploded. That case was added after the first five
+  were written, on noticing that the break which would prove the first piece
+  had nothing to fail.
+
+---
+
 ## 2026-09-17 — A creature under three quarters of its health has a one in ten chance each beat of rising one rung of the rarity ladder, once, never past Herald, and keeping the health and shield it had
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library

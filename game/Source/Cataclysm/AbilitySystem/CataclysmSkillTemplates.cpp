@@ -3475,6 +3475,12 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		Self, RiftLocation, Lifetime, Params.bBurns, SummonedType);
 	if (Minion)
 	{
+		// WHAT ITS DEATH WOULD EXPLODE FOR, TOLD NOW WHILE THE ROW IS IN HAND.
+		// Issue #1515. These are the same two figures the cap uses above when
+		// it destroys the oldest, and a dead minion cannot reach this ability
+		// to ask for them. `minion_explodes_on_death` on the summoner is what
+		// decides whether they are ever used.
+		Minion->RecordExplosion(Params.RadiusCm, GetDamagePercent());
 		Minions.Add(Minion);
 	}
 	return Minion;

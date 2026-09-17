@@ -177,6 +177,29 @@ namespace
 			FName(Stat), FGameplayTagContainer()));
 	}
 
+	/**
+	 * What one of the summoner's stats stands at, or nothing.
+	 *
+	 * THE SIBLING OF `SummonerMultiplierFor` ABOVE, and it reads a flag rather
+	 * than a multiplier: `minion_explodes_on_death` is a stat a passive row
+	 * sets to one, so what matters is whether it is above zero. Issue #1515.
+	 *
+	 * `StatForSkill` RATHER THAN THE ATTRIBUTE, because the stat has no
+	 * gameplay attribute at all -- it is one of the names in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute` -- so the recorded
+	 * stat line is the only place its value exists. Nothing for a summoner
+	 * with no stat line, which is ordinary: an enemy summoner never has one.
+	 */
+	float SummonerStat(const AActor* Summoner, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner));
+		return Theirs
+			? Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f)
+			: 0.0f;
+	}
+
 	FCataclysmHitDelivery MinionDelivery(ACataclysmMinion* Minion, bool bIsArea)
 	{
 		FCataclysmHitDelivery Delivery;
@@ -666,13 +689,69 @@ void ACataclysmMinion::HandleDeath()
 	// that is still what takes it out of the level, so the summon cap, the
 	// spawning path and every test that counts minions behave exactly as they
 	// did. Removing the body sooner is a separate change with its own issue.
+	//
+	// EXCEPT WHERE THE EXPLOSION BELOW REMOVES IT, since issue #1515. A
+	// minion whose summoner carries `minion_explodes_on_death` is destroyed
+	// by `Explode`, exactly as one the summon cap evicts already is, so that
+	// minion leaves no body and stops counting toward the cap at once. Every
+	// minion whose summoner has not taken that keystone behaves as before.
+	// What the cap does with a body that is dead and still present is
+	// https://github.com/sdubois777/Cataclysm/issues/1957 and is not changed
+	// here.
 	UCataclysmSkillEffects::MarkDead(this);
+
+	// AND IT MAY BLOW UP ON THE WAY OUT. Issue #1515.
+	// `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when
+	// it dies, as one destroyed to make room for another does, with the radius
+	// and damage of the skill that brought it."
+	//
+	// THE SUMMONER'S STAT DECIDES, NOT THE MINION'S. What the player chose is
+	// on the player, and `Explode` already reads the summoner for everything
+	// else the blow needs.
+	//
+	// BOTH FIGURES MUST BE THERE. A minion nobody told what its explosion is
+	// leaves a body, because `Explode` destroys the actor whether or not it
+	// finds anything to hurt, and a deployed ballista that vanished silently
+	// on death would be a change to the deployable shape rather than to this
+	// keystone.
+	//
+	// THE FERVOUR A SUMMONER GAINS FOR LOSING A MINION IS ALREADY SAFE. It is
+	// granted before this runs, and `CataclysmVitalAttributeSet.cpp` says why:
+	// a death handler may remove the actor, and the code that finds the
+	// commander cannot walk the ownership chain of one that is leaving.
+	if (ExplosionRadiusCm > 0.0f && ExplosionDamagePercent > 0.0f
+		&& SummonerStat(Summoner, TEXT("minion_explodes_on_death")) > 0.0f)
+	{
+		Explode(ExplosionRadiusCm, ExplosionDamagePercent);
+	}
+}
+
+void ACataclysmMinion::RecordExplosion(float RadiusCm, float DamagePercent)
+{
+	ExplosionRadiusCm = RadiusCm;
+	ExplosionDamagePercent = DamagePercent;
 }
 
 void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 {
 	if (IsValid(Summoner) && RadiusCm > 0.0f && DamagePercent > 0.0f)
 	{
+		// THE SUMMONER'S OWN STAT ON THE EXPLOSION'S DAMAGE. Issue #1515.
+		// `Ritualist_basic_b_a2` Volatile: "+3% increased damage of the
+		// explosion a minion leaves per point."
+		//
+		// HERE RATHER THAN AT EITHER CALLER, so both causes of an explosion
+		// take it: the summon cap destroying the oldest, and a death under
+		// `minion_explodes_on_death`. The sentence names the explosion rather
+		// than what caused it.
+		//
+		// AREA OF EFFECT IS STILL NOT TAKEN, and that is unchanged: the
+		// radius is the skill's stated figure, as the caller's comment in
+		// `CataclysmSkillTemplates.cpp` records for issues #910 and #340.
+		// This stat is the damage and only the damage.
+		const float Percent = DamagePercent
+			* SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"));
+
 		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
 			GetWorld(), this, GetActorLocation(), RadiusCm);
 
@@ -681,7 +760,7 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 			// AREA DAMAGE: an explosion swept a sphere. The melee attack
 			// above is a single blow and stays evadable. Issue #513.
 			const float Dealt = UCataclysmSkillEffects::ApplyHit(
-				Summoner, Target, DamagePercent, FGameplayTagContainer(),
+				Summoner, Target, Percent, FGameplayTagContainer(),
 				MinionDelivery(this, /*bIsArea=*/true));
 			// Designed, for the reason the melee attack above records.
 			//

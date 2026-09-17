@@ -21,6 +21,7 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Character/CataclysmPlayerClassStats.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
@@ -1854,6 +1855,512 @@ bool FCataclysmSubjugateHealsTest::RunTest(const FString&)
 	TestEqual(TEXT("and a refused take leaves its health alone"), Ours.Health(),
 			  300.0f, 0.01f);
 
+	return true;
+}
+
+// ---- A minion's death explodes it, when its summoner says so --------------
+
+/**
+ * What the five cases below share. Issue #1515.
+ *
+ * `Ritualist_keystone_b_kB` Every One Bursts: "Every minion explodes when it
+ * dies, as one destroyed to make room for another does, with the radius and
+ * damage of the skill that brought it."
+ * `Ritualist_basic_b_a2` Volatile: "+3% increased damage of the explosion a
+ * minion leaves per point."
+ *
+ * EVERY EXPECTED FIGURE IS WORKED OUT HERE rather than asked of the engine. A
+ * summoner swinging 1,000 and an explosion stated at 50% is 500 to each enemy
+ * inside the radius; +50% increased explosion damage makes it 750. A pool of
+ * 100,000 steps in units of 0.0078125, so both land exactly on it.
+ */
+namespace CataclysmMinionDeathTest
+{
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	/** What a summoning skill states, as Summon Imp's own sentence does. */
+	constexpr float ExplosionRadiusCm = 300.0f;
+	constexpr float ExplosionDamagePercent = 50.0f;
+
+	/** A stat a summoner carries, and the bucket it arrives in. */
+	struct FStatLine
+	{
+		const TCHAR* Name;
+		ECataclysmStatBucket Bucket;
+		float Value;
+	};
+
+	/**
+	 * Give a summoner its whole stat line at once.
+	 *
+	 * WHOLESALE, BECAUSE `SetStatInputs` REPLACES. `GiveRitualistGenerator`
+	 * above says the same thing about itself, which is why a case needing both
+	 * the minion-death Fervour and the explosion flag states them together
+	 * rather than calling that helper and then this one.
+	 *
+	 * THROUGH THE RECORDED STAT LINE AND NOT AN ATTRIBUTE, which is the only
+	 * place the two explosion stats exist: both are named in
+	 * `UCataclysmPlayerClassStats::StatsWithNoAttribute`, and two cases below
+	 * assert that rather than trusting it.
+	 */
+	void GiveStats(CataclysmCommandTest::FScopedCaster& Who,
+				   const TArray<FStatLine>& Lines)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		for (const FStatLine& Line : Lines)
+		{
+			FCataclysmStatModifier Modifier;
+			Modifier.Bucket = Line.Bucket;
+			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+			Modifier.Value = Line.Value;
+
+			FCataclysmStatInputs Inputs;
+			Inputs.Base = 0.0f;
+			Inputs.Modifiers.Add(Modifier);
+			Stats.Add(FName(Line.Name), Inputs);
+		}
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** A summoner or a target that swings for a stated figure. */
+	void SwingsFor(CataclysmCommandTest::FScopedCaster& Who, float Damage)
+	{
+		Who.Set(Combat::GetAttackDamageAttribute(), Damage);
+	}
+
+	/** What a placed actor has left, read the way anything else reads it. */
+	float HealthOf(const CataclysmCommandTest::FScopedCaster& Who)
+	{
+		return Who.AbilitySystem->GetNumericAttribute(
+			Vital::GetHealthAttribute());
+	}
+
+	/** Write a minion's health to nothing, which is how anything else dies. */
+	void Kill(ACataclysmMinion* Minion)
+	{
+		if (UAbilitySystemComponent* System =
+				UCataclysmTargeting::AbilitySystemOf(Minion))
+		{
+			System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 0.0f);
+		}
+	}
+
+	/** An imp told what its summoning skill says its explosion is. */
+	ACataclysmMinion* SummonTold(CataclysmCommandTest::FScopedCaster& Summoner,
+								 const FVector& Where)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Summoner.Actor, Where, /*Lifetime=*/60.0f, /*bBurns=*/false,
+			TEXT("Imp"));
+		if (Imp)
+		{
+			Imp->RecordExplosion(ExplosionRadiusCm, ExplosionDamagePercent);
+		}
+		return Imp;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathExplodesTest,
+	"Cataclysm.MinionDeath.AFlaggedMinionsDeathExplodesAndHurtsOnlyWhatIsInsideTheRadius",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion whose summoner carries `minion_explodes_on_death` blows up when it
+ * dies, hurting what stands inside the radius its summoning skill stated.
+ *
+ * TWO ENEMIES, ONE IN AND ONE OUT, because "it explodes" passes on its own if
+ * the explosion has no edge: a sphere of any size at all would hurt the near one
+ * and read as success. The far one is what makes the radius mean something.
+ *
+ * A REAL DEATH RATHER THAN A CALL TO `Explode`. The change is that a death
+ * reaches the explosion, so this writes the minion's health to nothing and lets
+ * the engine take it from there.
+ */
+bool FCataclysmMinionDeathExplodesTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	SwingsFor(Summoner, 1000.0f);
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f}});
+
+	FScopedCreature Near(World, FVector(11 * M, 0, 0));
+	FScopedCreature Far(World, FVector(20 * M, 0, 0));
+
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+
+	// THE FLAG IS A STAT THE ENGINE RECORDS, asserted rather than assumed: a
+	// name missing from that list is recorded nowhere, the flag would read as
+	// nothing, and this whole case would pass while doing nothing at all.
+	TestTrue(TEXT("the flag is a stat the engine records"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(TEXT("minion_explodes_on_death"))));
+
+	// THE GEOMETRY, STATED BEFORE THE DEATH: one metre in, ten metres out, and
+	// the explosion is three.
+	TestEqual(TEXT("one enemy stands a metre away"),
+			  FVector::Dist(Imp->GetActorLocation(),
+							Near.Actor->GetActorLocation()) / M, 1.0f, 0.001f);
+	TestEqual(TEXT("and one stands ten metres away"),
+			  FVector::Dist(Imp->GetActorLocation(),
+							Far.Actor->GetActorLocation()) / M, 10.0f, 0.001f);
+	TestTrue(TEXT("both are enemies of the imp"),
+			 UCataclysmTargeting::IsHostileTo(Near.Actor, Imp)
+				 && UCataclysmTargeting::IsHostileTo(Far.Actor, Imp));
+
+	const float NearBefore = Near.Health();
+	const float FarBefore = Far.Health();
+
+	Kill(Imp);
+
+	TestFalse(TEXT("the explosion took the body with it"), IsValid(Imp));
+	TestTrue(TEXT("the enemy inside the radius was hurt"),
+			 Near.Health() < NearBefore);
+	TestEqual(TEXT("and the one outside took nothing"),
+			  FarBefore - Far.Health(), 0.0f, 0.1f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathWithoutTheStatTest,
+	"Cataclysm.MinionDeath.AMinionWhoseSummonerHasNotTakenItLeavesABodyAndHurtsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The same death with no flag on the summoner: nothing is hurt and the body
+ * stays, which is what every minion in the game did before this change.
+ *
+ * THE BODY IS HALF OF WHAT THIS HOLDS. `Explode` destroys the actor, so a death
+ * that exploded when it should not would show twice over: an enemy that lost
+ * health, and a corpse no longer there for the summon cap to count.
+ *
+ * THE MINION IS STILL TOLD WHAT ITS EXPLOSION WOULD BE, because the summoning
+ * skill always tells it. What is missing here is the keystone, which is the only
+ * thing that should decide.
+ */
+bool FCataclysmMinionDeathWithoutTheStatTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	SwingsFor(Summoner, 1000.0f);
+
+	FScopedCreature Near(World, FVector(11 * M, 0, 0));
+
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	const float NearBefore = Near.Health();
+
+	Kill(Imp);
+
+	// THE DAMAGE FIRST, THEN THE BODY, AND NOTHING IS ASKED OF A BODY THAT IS
+	// GONE. A build that exploded this minion would have destroyed the actor,
+	// and `IsDead` would then be reading a destroyed one.
+	TestEqual(TEXT("the enemy a metre away took nothing"),
+			  NearBefore - Near.Health(), 0.0f, 0.1f);
+	if (!TestTrue(TEXT("its body is still there"), IsValid(Imp)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the minion is dead"), UCataclysmSkillEffects::IsDead(Imp));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathExplosionDamageTest,
+	"Cataclysm.MinionDeath.TheDeathExplosionsDamageRisesWithTheSummonersStat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `minion_explosion_damage` raises what a death explosion deals. Volatile's six
+ * points are +18%; this uses +50%, a figure no other arithmetic here produces.
+ *
+ * TWO SUMMONERS FIFTY METRES APART RATHER THAN ONE MEASURED TWICE. A minion that
+ * explodes is destroyed, so the same one cannot be killed again, and two
+ * explosions in one place would catch each other's enemies.
+ *
+ * BOTH FIGURES ARE ABSOLUTE RATHER THAN A RATIO. A ratio of 1.5 holds when both
+ * explosions deal nothing, which is the shape of mistake that passes while the
+ * feature is dead.
+ */
+bool FCataclysmMinionDeathExplosionDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE CONTROL: the flag and nothing else.
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	SwingsFor(Plain, 1000.0f);
+	GiveStats(Plain, {{TEXT("minion_explodes_on_death"),
+					   ECataclysmStatBucket::Flat, 1.0f}});
+	FScopedCaster PlainTarget(World, FVector(11 * M, 0, 0));
+
+	// AND THE SAME AGAIN WITH THE STAT, fifty metres away.
+	FScopedCaster Raised(World, FVector(0, 50 * M, 0));
+	SwingsFor(Raised, 1000.0f);
+	GiveStats(Raised, {{TEXT("minion_explodes_on_death"),
+						ECataclysmStatBucket::Flat, 1.0f},
+					   {TEXT("minion_explosion_damage"),
+						ECataclysmStatBucket::Increased, 50.0f}});
+	FScopedCaster RaisedTarget(World, FVector(11 * M, 50 * M, 0));
+
+	ACataclysmMinion* PlainImp = SummonTold(Plain, FVector(10 * M, 0, 0));
+	ACataclysmMinion* RaisedImp =
+		SummonTold(Raised, FVector(10 * M, 50 * M, 0));
+	if (!TestNotNull(TEXT("an imp for the control"), PlainImp)
+		|| !TestNotNull(TEXT("and one for the stat"), RaisedImp))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the damage stat is one the engine records"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(TEXT("minion_explosion_damage"))));
+
+	const float PlainBefore = HealthOf(PlainTarget);
+	const float RaisedBefore = HealthOf(RaisedTarget);
+
+	Kill(PlainImp);
+	Kill(RaisedImp);
+
+	TestEqual(TEXT("the control explosion deals 50% of 1000"),
+			  PlainBefore - HealthOf(PlainTarget), 500.0f, 0.1f);
+	TestEqual(TEXT("and +50% explosion damage deals 750"),
+			  RaisedBefore - HealthOf(RaisedTarget), 750.0f, 0.1f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionCapExplosionDamageTest,
+	"Cataclysm.MinionDeath.TheExplosionTheSummonCapSetsOffTakesTheSameStat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The stat is on the explosion rather than on the death, so the explosion the
+ * summon cap sets off takes it too. Volatile's sentence names "the explosion a
+ * minion leaves" and not what caused it.
+ *
+ * NO FLAG ON EITHER SUMMONER, DELIBERATELY. That is what separates the two
+ * places the multiplier could have been put: a build that scaled the damage in
+ * the death path would pass the case above and fail this one.
+ *
+ * `Explode` IS CALLED THE WAY THE CAP CALLS IT, at
+ * `CataclysmSkillTemplates.cpp:3455`, with the skill's stated radius and damage.
+ * What this does not drive is the cap's own counting: that needs a granted row
+ * and four casts against one cooldown, and `Cataclysm.Command.` holds the cap's
+ * behaviour. So this case is about the arithmetic of the explosion.
+ */
+bool FCataclysmMinionCapExplosionDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Plain(World, FVector::ZeroVector);
+	SwingsFor(Plain, 1000.0f);
+	FScopedCaster PlainTarget(World, FVector(11 * M, 0, 0));
+
+	FScopedCaster Raised(World, FVector(0, 50 * M, 0));
+	SwingsFor(Raised, 1000.0f);
+	GiveStats(Raised, {{TEXT("minion_explosion_damage"),
+						ECataclysmStatBucket::Increased, 50.0f}});
+	FScopedCaster RaisedTarget(World, FVector(11 * M, 50 * M, 0));
+
+	ACataclysmMinion* PlainImp = SummonTold(Plain, FVector(10 * M, 0, 0));
+	ACataclysmMinion* RaisedImp =
+		SummonTold(Raised, FVector(10 * M, 50 * M, 0));
+	if (!TestNotNull(TEXT("an imp for the control"), PlainImp)
+		|| !TestNotNull(TEXT("and one for the stat"), RaisedImp))
+	{
+		return false;
+	}
+
+	const float PlainBefore = HealthOf(PlainTarget);
+	const float RaisedBefore = HealthOf(RaisedTarget);
+
+	PlainImp->Explode(ExplosionRadiusCm, ExplosionDamagePercent);
+	RaisedImp->Explode(ExplosionRadiusCm, ExplosionDamagePercent);
+
+	TestEqual(TEXT("the control explosion deals 50% of 1000"),
+			  PlainBefore - HealthOf(PlainTarget), 500.0f, 0.1f);
+	TestEqual(TEXT("and +50% explosion damage deals 750"),
+			  RaisedBefore - HealthOf(RaisedTarget), 750.0f, 0.1f);
+	TestFalse(TEXT("an explosion destroys the minion whatever set it off"),
+			  IsValid(PlainImp));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDeathStillPaysFervourTest,
+	"Cataclysm.MinionDeath.AnExplodingMinionLeavesNoBodyAndStillPaysItsSummoner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion that explodes on its death still pays its summoner the Fervour a
+ * minion's death grants, and leaves no body behind.
+ *
+ * NEIGHBOURING BEHAVIOUR RATHER THAN NEW CODE, and it is not obvious: the
+ * explosion destroys the actor inside `HandleDeath`, and the Fervour is granted
+ * by whoever noticed the health reach zero. It survives because that grant runs
+ * BEFORE the death handler, which `CataclysmVitalAttributeSet.cpp` says it does
+ * deliberately. This case is what would fail if that order ever changed.
+ *
+ * FIVE IS THE RITUALIST'S OWN FIGURE, the same one
+ * `Cataclysm.Fervour.AMinionDyingGrantsFervour` uses, and it is stated on the
+ * summoner here together with the explosion flag, because `SetStatInputs`
+ * replaces rather than adds.
+ */
+bool FCataclysmMinionDeathStillPaysFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Commander(World, FVector::ZeroVector);
+	SwingsFor(Commander, 1000.0f);
+	GiveStats(Commander, {{UCataclysmFervour::OnMinionDeathStat,
+						   ECataclysmStatBucket::Flat, 5.0f},
+						  {TEXT("minion_explodes_on_death"),
+						   ECataclysmStatBucket::Flat, 1.0f}});
+	SetFervour(Commander, 0.0f);
+
+	// FIVE METRES OUT, CLEAR OF THE THREE-METRE EXPLOSION, so nothing here
+	// depends on whether a summoner standing on its own minion's blast is
+	// caught by it.
+	ACataclysmMinion* Imp = SummonTold(Commander, FVector(5 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the bar starts empty"),
+			  Commander.AbilitySystem->GetNumericAttribute(
+				  Resource::GetClassResourceAttribute()),
+			  0.0f, 0.001f);
+
+	Kill(Imp);
+
+	TestFalse(TEXT("the explosion left no body"), IsValid(Imp));
+	TestEqual(TEXT("and the summoner still gained the five a death grants"),
+			  Commander.AbilitySystem->GetNumericAttribute(
+				  Resource::GetClassResourceAttribute()),
+			  5.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSummonTellsItsMinionTest,
+	"Cataclysm.MinionDeath.ASummoningSkillTellsTheMinionWhatItsExplosionWouldBe",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A real summon, activated, and the minion it made carries the skill's radius
+ * and damage.
+ *
+ * THIS IS THE CASE THE OTHER FIVE CANNOT MAKE. Each of them tells the minion
+ * itself, the way `UCataclysmSummonSkill::SummonOne` does, because a test that
+ * summoned through the ability for every measurement would be measuring the
+ * ability. So a build where the skill never told the minion anything would pass
+ * all five of them while no minion in the game ever exploded. Issue #1515.
+ *
+ * THE FIGURES ARE STATED HERE, NOT READ BACK. `Radius=3` is three metres, which
+ * is 300 centimetres, and the damage is stated on the skill as 50 rather than
+ * taken from a slot, so neither expected figure comes from the code under test.
+ * Summon Imp's own row states `Radius=3` and leaves its damage to its slot,
+ * which is why this states one.
+ */
+bool FCataclysmSummonTellsItsMinionTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Caster(World, FVector::ZeroVector);
+	SwingsFor(Caster, 1000.0f);
+
+	// SUMMON IMP'S OWN SHAPE, less the Fervour it reserves: the reserve is not
+	// what this case is about, and a reservation refused would stop the summon
+	// for a reason that has nothing to do with the explosion.
+	UCataclysmSummonSkill* Skill = GrantSkill<UCataclysmSummonSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Burn=1; Minions=Imp:1"),
+		TEXT("Summon Imp"));
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant Summon Imp."));
+		return false;
+	}
+	Skill->DamagePercentOverride = 50.0f;
+
+	if (!TestTrue(TEXT("the summon activates"), Activate(Caster, Skill)))
+	{
+		return false;
+	}
+
+	const TArray<AActor*> Made =
+		UCataclysmCommand::ThingsCommandedBy(Caster.Actor);
+	if (!TestEqual(TEXT("one imp was summoned"), Made.Num(), 1))
+	{
+		return false;
+	}
+	ACataclysmMinion* Imp = Cast<ACataclysmMinion>(Made[0]);
+	if (!TestNotNull(TEXT("and it is a minion"), Imp))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("it was told the skill's three metre radius"),
+			  Imp->ExplosionRadiusCm, 300.0f, 0.001f);
+	TestEqual(TEXT("and the damage the skill states"),
+			  Imp->ExplosionDamagePercent, 50.0f, 0.001f);
 	return true;
 }
 
