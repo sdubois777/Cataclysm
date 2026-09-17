@@ -54,6 +54,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::RavenousHoardKey =
 	TEXT("Famine_Ravenous_Hoard");
 const TCHAR* UCataclysmDungeonModifierEffects::GraveTideKey =
 	TEXT("Death_Grave_Tide");
+const TCHAR* UCataclysmDungeonModifierEffects::VolatileEvolutionKey =
+	TEXT("Chaos_Volatile_Evolution");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -228,7 +230,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(BloodAltarKey)
 		|| RowKey == FName(NecroticGroundKey)
 		|| RowKey == FName(RavenousHoardKey)
-		|| RowKey == FName(GraveTideKey))
+		|| RowKey == FName(GraveTideKey)
+		|| RowKey == FName(VolatileEvolutionKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -386,6 +389,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(NecroticGroundKey),
 		FName(RavenousHoardKey),
 		FName(GraveTideKey),
+		FName(VolatileEvolutionKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1251,6 +1255,26 @@ float UCataclysmDungeonModifierEffects::GraveTideDamageMultiplier(int32 WavesSoF
 	const float Wanted =
 		static_cast<float>(FMath::Max(0, WavesSoFar)) * GraveTideDamagePercentPerWave;
 	return 1.0f + FMath::Min(Wanted, GraveTideMostDamagePercent) / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::VolatileEvolutionIsWounded(float Health,
+																 float MaxHealth)
+{
+	// A MAXIMUM OF ZERO OR LESS IS A CREATURE WHOSE ATTRIBUTES ARE NOT WRITTEN YET,
+	// and dividing by it would make every such creature look mortally wounded on the
+	// first beat that found it.
+	if (MaxHealth <= 0.0f)
+	{
+		return false;
+	}
+	return Health < MaxHealth * VolatileEvolutionHealthPercentToMutate / 100.0f;
+}
+
+int32 UCataclysmDungeonModifierEffects::VolatileEvolutionRungAfter(int32 RarityStep)
+{
+	const int32 From = FMath::Max(0, RarityStep);
+	return FMath::Min(From + VolatileEvolutionRungsGained,
+					  VolatileEvolutionHighestRung);
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

@@ -2257,3 +2257,91 @@ def test_grave_tides_cadence_and_shares_are_still_the_rules_they_came_from():
         "; ".join(lost) + ". Each was copied from another rule as a conclusion, not "
         "chosen as a number. If one is now a figure of its own, say why in "
         "docs/DECISIONS.md.")
+
+
+def test_volatile_evolution_row_still_states_the_threshold_the_header_uses():
+    """The one figure this rule does not judge: the row states it.
+
+    "ONCE THEY DROP BELOW 75% HP". Unlike the rows either side of it, this one carries a
+    number, so the constant is read off the row rather than ruled. If the row's figure
+    moves and the header's does not, the rule stops being the row.
+    """
+    words = flat(rows()["Chaos_Volatile_Evolution"]["Description"])
+    stated = re.findall(r"(\d+(?:\.\d+)?)\s*%", words)
+
+    assert stated == ["75"], (
+        "The Volatile Evolution row no longer states 75% as the health a creature "
+        "mutates below. Check VolatileEvolutionHealthPercentToMutate against it and "
+        "update docs/DECISIONS.md. " + words)
+
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+    assert re.search(
+        rf"\bVolatileEvolutionHealthPercentToMutate\s*=\s*{stated[0]}\.0f\s*;", text), (
+        f"The row says {stated[0]}% and VolatileEvolutionHealthPercentToMutate no longer "
+        "says the same. One of the two moved without the other.")
+
+
+def test_volatile_evolution_row_still_says_a_chance_to_become_a_higher_rarity():
+    """The three phrases the rule's readings rest on.
+
+    "A CHANCE" is why a beat rolls rather than mutating every wounded creature. "MUTATE
+    INTO HIGHER RARITY MOBS" is why the rule moves the rung of the rarity ladder, which
+    is what carries the bigger stat block, the extra modifier and the better drop. "ONCE
+    THEY DROP BELOW" is why a wound is the trigger and not a hit, a death or a clock.
+    """
+    words = flat(rows()["Chaos_Volatile_Evolution"]["Description"]).lower()
+
+    assert "a chance" in words, (
+        "The Volatile Evolution row no longer says enemies have a chance. The rule rolls "
+        "against VolatileEvolutionChancePercent because it did; re-read the ruling in "
+        "docs/DECISIONS.md. " + words)
+    assert "higher rarity" in words, (
+        "The Volatile Evolution row no longer says the enemy becomes a higher rarity. "
+        "The rule raises the rung of the rarity ladder because it did, which is also "
+        "what makes the creature worth more when it dies. " + words)
+    assert "once they drop below" in words, (
+        "The Volatile Evolution row no longer makes a wound the trigger. The rule tests "
+        "health on every beat because it did. " + words)
+
+
+def test_volatile_evolutions_chance_is_its_own_number_and_not_another_rules():
+    """The chance is a judgement of its own, deliberately not bound to a neighbour.
+
+    THREE OTHER ROWS IN THIS LIBRARY SAY "A CHANCE" AND ALL THREE USE TEN, which is
+    where this figure started. Writing it as `= SporeCloudsChancePercentOnDeath` would
+    say the two must move together, and the ruling did not say that. This check fails if
+    somebody later binds them, so the decision is made again rather than by accident.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    assert re.search(r"\bVolatileEvolutionChancePercent\s*=\s*\d+(?:\.\d+)?f\s*;", text), (
+        "VolatileEvolutionChancePercent is no longer a number of its own. If it is now "
+        "another rule's figure, say why in docs/DECISIONS.md.")
+    assert re.search(r"\bVolatileEvolutionRungsGained\s*=\s*\d+\s*;", text), (
+        "VolatileEvolutionRungsGained is no longer a number of its own.")
+
+
+def test_volatile_evolutions_ceiling_is_tied_to_the_first_boss_rung():
+    """The ceiling on a mutation is the rung under the first boss rung, and says so.
+
+    THE TWO CONSTANTS LIVE IN DIFFERENT FILES, so nothing but this tie stops a ladder
+    that gains or loses a rung from letting a floor rule make a boss out of an ordinary
+    creature in the middle of a fight. The tie is a static_assert in the game mode, where
+    the ceiling is applied; this check is that it is still there, because continuous
+    integration builds no C++ and would not notice it going.
+    """
+    header = EFFECTS_HEADER.read_text(encoding="utf-8")
+    assert re.search(r"\bVolatileEvolutionHighestRung\s*=\s*\d+\s*;", header), (
+        "VolatileEvolutionHighestRung is no longer a plain rung number in "
+        "CataclysmDungeonModifierEffects.h.")
+
+    mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    tie = re.search(
+        r"static_assert\(\s*UCataclysmDungeonModifierEffects::VolatileEvolutionHighestRung"
+        r"\s*==\s*ACataclysmEnemyCharacter::FirstBossRarityStep\s*-\s*1\s*,", mode)
+
+    assert tie, (
+        "The static_assert tying Volatile Evolution's ceiling to "
+        "ACataclysmEnemyCharacter::FirstBossRarityStep - 1 is gone from "
+        "CataclysmDungeonGameMode.cpp. Without it the ceiling is a bare 3 that a change "
+        "to the rarity ladder would silently make wrong.")

@@ -1244,9 +1244,18 @@ void ACataclysmEnemyCharacter::DrawModifiersForRarity()
 	// THE SAME CALL EVERY SETTER ENDS WITH, for the reason `SetHealth` gives:
 	// the order a spawner does these things in must not matter. It refills
 	// health and shield to the new maximums, which is right for a creature that
-	// has only just been spawned, and a spawner is the only caller. It is not
-	// reached when nothing was drawn, so a Common creature, which draws none, is
-	// not touched here.
+	// has only just been spawned. It is not reached when nothing was drawn, so a
+	// Common creature, which draws none, is not touched here.
+	//
+	// A SPAWNER IS NO LONGER THE ONLY CALLER, AND THIS COMMENT SAID IT WAS. The
+	// dungeon rule `Chaos_Volatile_Evolution` raises a wounded creature's rarity
+	// in the middle of a fight and calls this afterwards to draw the modifiers
+	// the new rung carries. The refill below is wrong for that creature, so that
+	// rule reads its health and energy shield before it starts and writes both
+	// back when it is done; see `ACataclysmDungeonGameMode::StepVolatileEvolution`.
+	// Nothing here tries to tell the two cases apart, for the reason
+	// `SetRarityStep` gives about the creature's height: from inside this
+	// function they look the same.
 	ApplyStartingAttributes();
 }
 

@@ -1191,6 +1191,21 @@ private:
 	void StepGraveTide();
 
 	/**
+	 * Volatile Evolution: give every wounded creature its chance of rising a rung of
+	 * the rarity ladder. Issues #1820 and #41.
+	 *
+	 * THE PLAYER IS ASKED FOR ONLY TO TELL WHICH SIDE A CREATURE IS ON, which is what
+	 * `StepRavenousHoard` above asks it for.
+	 *
+	 * IT PUTS THE HEALTH AND THE ENERGY SHIELD BACK ITSELF. Both routes into a new rung
+	 * -- `ACataclysmEnemyCharacter::SetRarityStep` and its `DrawModifiersForRarity` --
+	 * end by calling `ApplyStartingAttributes`, which refills both pools to the new
+	 * maximums. A mutation that healed the creature would undo the work that wounded it,
+	 * and the wound is what let it mutate.
+	 */
+	void StepVolatileEvolution(class ACataclysmPlayerCharacter* Player);
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -2137,6 +2152,24 @@ private:
 	 */
 	float GraveTideSecondsSinceLastWave = 0.0f;
 	int32 GraveTideWaves = 0;
+
+	/**
+	 * Volatile Evolution: which creatures have already mutated, and how many mutated on
+	 * this floor, which the floor panel shows. Issues #1820 and #41.
+	 *
+	 * THE MEMBERSHIP OUTLIVES THE FLOOR AND THE COUNT DOES NOT, and the two are
+	 * deliberately different. The rung a creature reached stays with it -- nothing in
+	 * this project puts a rarity back, and its drawn modifiers cannot be taken away --
+	 * so a creature that lives through a Horde dungeon's change of wave has already had
+	 * its one mutation. The count answers a different question, what happened on this
+	 * floor, which is what the panel is showing.
+	 *
+	 * WEAK POINTERS, AND THE STEP DROPS THE STALE ONES, the way Ravenous Hoard keeps its
+	 * clocks, so a destroyed creature leaves nothing behind that could be read as one
+	 * still standing.
+	 */
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> VolatileEvolutionMutated;
+	int32 VolatileEvolutionMutations = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;
