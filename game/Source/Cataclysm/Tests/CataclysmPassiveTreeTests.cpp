@@ -12310,8 +12310,24 @@ bool FCataclysmFedByTheFallenRadiusTest::RunTest(const FString&)
 	TestEqual(TEXT("an enemy dying six metres away, killed by nobody here, grants ten"),
 			  FervourOf(Player) - BeforeSix, 10.0f, 0.001f);
 
+	// THE KILL IS SPLIT FROM ITS ANNOUNCEMENT HERE, so the test can show the blow
+	// is on record as the Ritualist's before the death is announced. Without that
+	// check, a blow that recorded nobody would make this a second death killed by
+	// nobody, and the case would pass without being the case it names.
 	const float BeforeKilled = FervourOf(Player);
-	CataclysmApplierDeathTest::KilledByThePlayer(Player, KilledSixAway);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, KilledSixAway,
+									 CataclysmApplierDeathTest::FullSwing,
+									 FGameplayTagContainer());
+	const UCataclysmAbilitySystemComponent* VictimSystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(KilledSixAway));
+	if (!TestTrue(TEXT("the killing blow is on record as the Ritualist's"),
+				  VictimSystem && VictimSystem->GetLastBlow().IsOnRecord()
+				  && VictimSystem->GetLastBlow().Attacker.Get() == Player.Character))
+	{
+		return false;
+	}
+	UCataclysmCombatEvents::NoteDeath(KilledSixAway);
 	TestEqual(TEXT("and one this Ritualist kills there grants ten as well"),
 			  FervourOf(Player) - BeforeKilled, 10.0f, 0.001f);
 
