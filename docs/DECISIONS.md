@@ -2,6 +2,169 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A creature under three quarters of its health has a one in ten chance each beat of rising one rung of the rarity ladder, once, never past Herald, and keeping the health and shield it had
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat, the
+per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a creature's rarity, its stat
+block and the modifiers a rung carries — three comments corrected, no behaviour changed),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Chaos_Volatile_Evolution` in `game/Data/DungeonModifiers.csv`: "Enemies have a chance to mutate into
+higher rarity mobs once they drop below 75% hp." No text in `docs/` says more about it.
+
+### What the row's own words decide
+
+1. **A chance and not a certainty**: "have a chance". So a beat rolls.
+2. **The rarity ladder is what moves**: "mutate into higher rarity mobs". Rarity is a rung from 0 to 5
+   in `game/Data/EnemyRarities.csv` — Common, Elite, Legendary, Herald, Boss, Cataclysm Boss — and a
+   rung is already what scales a creature's health, damage and armour, how big its body is, how many
+   modifiers it carries, what it drops and how much experience it pays.
+3. **A wound is the trigger, and the row states its figure**: "once they drop below 75% hp". This is
+   the only figure in the rule that is not a judgement, and
+   `test_volatile_evolution_row_still_states_the_threshold_the_header_uses` reads it off the row rather
+   than trusting the constant.
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation of unstated figures, and flagged to the
+owner by that session.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| The chance | **10% on each beat**, its own constant | The row says only "a chance". Ten is what this library already uses wherever a row says one — Spore Clouds on death, Hellfire on death, Holy Repercussions on a hit — so it starts there. It is deliberately NOT written as another rule's figure: that would say the four must move together, which nothing in the design says |
+| How far it climbs | **One rung** | The row says "higher rarity" and states no distance |
+| The ceiling | **Herald, the rung under the first boss rung** | One rung higher is a Boss. `ACataclysmEnemyCharacter::IsBoss()` is `RarityStep >= FirstBossRarityStep`, and boss-ness carries the boss stun rule and the boss row of `game/Data/EnemyDrops.csv`. A floor rule must not make a boss out of an ordinary creature in the middle of a fight |
+| How many times | **Once per creature, and the memory outlives the floor** | The rung stays with the creature — nothing in this project puts a rarity back — so a creature that lives through a Horde dungeon's change of wave has already had its one mutation |
+| Its health and energy shield | **Both kept exactly as they were** | See below |
+| The floor panel | **"mutated N"**, a count with no ceiling | The limit is one mutation each, not a number of mutations a floor may have |
+
+### Why a mutation must not heal, and what had to be written to stop it
+
+**Both routes into a new rung end by refilling both pools.** `SetRarityStep` ends in
+`ApplyStartingAttributes`, which writes the maximum and then the current value of health and energy
+shield; `DrawModifiersForRarity` ends in the same call. Left alone, a creature wounded to sixty of a
+hundred would mutate and come back at a hundred and eighty-five of a hundred and eighty-five: the
+player's work undone by the rule that the work triggered.
+
+So the rule reads both pools before it starts and writes both back afterwards, each held to the new
+maximum. A mutated creature is harder to kill because its pool is larger, not because the rule healed
+it.
+
+**The two shipped games nearest to this do the same.** Path of Exile's Affliction league: wisps
+"disperse and inhabit random monsters in the area increasing their power and rewards", with Primal,
+Wild and Vivid giving item rarity, item quantity and currency
+([maxroll.gg](https://maxroll.gg/poe/news/affliction-league-information-revealed)). Path of Exile's
+Torment league: a monster a Tormented Spirit touches or possesses "gains a modifier (Spirit's
+Touch/Grip) based on the spirit that bestowed them, in addition to some slight increase to movement,
+attack and cast speeds", and possessed monsters have "significantly increased IIQ and IIR"
+([poedb.tw](https://poedb.tw/us/Tormented_Spirit)). Both upgrade a monster in place and let its reward
+rise with it; neither restores its life. **What the research does not settle:** the chance, the single
+rung and the Herald ceiling. Those are the judgements above and are labelled as such.
+
+**Two other pages could not be read from here and are not cited:** `poewiki.net` answers with a bot
+check ("Access Denied", Anubis) and `poe2db.tw/Azmerian_wisp` returns 404. An earlier draft of this
+proposal quoted search-result text about Torment; that text is replaced above by the page itself.
+
+### A mutated creature is worth more when it dies, and nothing was written to make that so
+
+Read while proposing the row, both inside `ACataclysmEnemyCharacter`'s death handler (at lines 267 and
+297 of `CataclysmEnemyCharacter.cpp` on 2026-09-17; search for the two calls rather than the lines,
+which move):
+
+- `UCataclysmDropSpawner::SpawnDropsFor(World, RarityStep, ...)`, the loot;
+- `State->GrantExperience(UCataclysmEnemyScore::ScoreFor(FloorIn(World), RarityStep))`, the experience.
+
+Both are inside the dying creature's own handler, both read that creature's rung, and both pay the
+first player controller's player state **whatever killed it**. Nothing consults the death notice's
+`Killer`. So the row's promise — a rarer enemy is a better prize — lands with no plumbing, and the same
+fact answers a question the coordinating session had put to the owner about revived creatures: a
+creature that dies twice pays twice, by default, today.
+
+### The ceiling is tied to the first boss rung, in the one place it is applied
+
+`VolatileEvolutionHighestRung` is 3 in the rule library, and the library cannot see the creature class
+— it is a table of figures that the tests and the Python checks read. So the tie is a `static_assert`
+in `CataclysmDungeonGameMode.cpp`, beside the step that applies it:
+`VolatileEvolutionHighestRung == ACataclysmEnemyCharacter::FirstBossRarityStep - 1`. Those are two
+constants written in two files, so the assert can fail; it is not a constant compared with itself.
+`test_volatile_evolutions_ceiling_is_tied_to_the_first_boss_rung` is there because continuous
+integration builds no C++ and would not notice the tie being deleted.
+
+**`SetRarityStep` did not gain a ceiling of its own**, and was considered for one. It clamps the bottom
+only — `RarityStep = FMath::Max(0, NewStep)` — and giving it a top clamp would change what every
+existing caller may ask for, which is wider than this row.
+
+### Three comments this rule made false, corrected in the same change
+
+| Where | What it said | What is true |
+| :-- | :-- | :-- |
+| `CataclysmEnemyCharacter.h`, on `RarityStep` | `SetRarityStep` "has never had a caller outside the automation tests" | It has call sites in three files that are not tests — the dungeon floor spawners, the sandbox spawners and the save restore — and this rule is the fourth. The sentence is kept, dated to when it was true, because it is why the field is typeable |
+| `CataclysmEnemyCharacter.h`, on `RarityStep` | the panel's 0..5 clamp "is what SetRarityStep does" | That function clamps the bottom only. The panel figures are the only ceiling anywhere, and they only reach what somebody types into a Details field |
+| `CataclysmEnemyCharacter.cpp`, in `DrawModifiersForRarity` | "a spawner is the only caller", and the refill "is right for a creature that has only just been spawned" | This rule calls it in the middle of a fight, where the refill is wrong, which is why the rule puts both pools back itself |
+
+### What the tests do
+
+Eight automation tests in `Cataclysm.DungeonModifierEffects.`, and one existing test changed.
+
+- **`AWoundedCreatureRisesARungAndKeepsTheHealthAndShieldItHad`** — a creature designed at a hundred
+  health with a shield worth half of it, wounded to sixty and twenty, mutates on one beat: its rung
+  rises by one, both maximums rise, and both current figures are asserted equal to what they were with
+  a tolerance of zero and asserted to be under the new maximums, so a refilled pool cannot pass as a
+  kept one.
+- **`AtThreeQuartersHealthACreatureIsLeftAloneAndJustUnderItMutates`** — the row's figure, on the
+  boundary: forty beats at exactly the threshold change nothing, and a tenth of a point lower mutates
+  on the next beat.
+- **`AWoundedCreatureMutatesUnderTheChanceAndNotOnTheChanceItself`** — the chance, on its boundary: a
+  roll of exactly ten misses for forty beats, a roll of 9.99 hits on the first.
+- **`AMutatedCreatureCarriesAModifierItDidNotHaveBefore`** — a Common carries none and the Elite it
+  becomes carries the one that rung draws.
+- **`NoMutationMakesABossOutOfAHeraldHoweverLongTheFightLasts`** — a wounded Herald is left where it is
+  and never becomes a boss.
+- **`ACreatureMutatesOnlyOnceHoweverLongTheFightLasts`** — and it asserts the creature is still under
+  the threshold afterwards, which is why the rule has to remember it at all.
+- **`TheFloorPanelCountsTheCreaturesThatMutated`** — "mutated 0", then 1, then 2, and no line at all on
+  a floor without the row.
+- **`AFloorChangeClearsTheCountAndAMutatedCreatureIsNotOfferedAnother`** — on a Horde dungeon's next
+  wave, where the creature lives through the change: the count goes back to nothing, the creature keeps
+  its rung, and ten seconds of beats do not raise it again.
+- Changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** now carries this row among the
+  rules on its floor.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` hold the rule to the row: the
+threshold the row states against the constant, the three phrases the readings rest on, the chance being
+a number of its own, and the tie between the ceiling and the first boss rung.
+
+**Measured, with the break-and-restore helper, on a `git archive` extract of the head:** seven breaks,
+each proved — the row stating 80% instead of 75, the constant moving without the row, the row dropping
+"a chance", dropping "higher rarity", dropping "once they drop below", the chance being bound to Spore
+Clouds' figure, and the `static_assert` being deleted. Each failed exactly the checks predicted and
+nothing failed with the breaks out: "PROVED: 1 failed, 98 passed | restored: 99 passed" and, for the
+break that trips two, "2 failed, 97 passed".
+
+### What the tests do not show
+
+- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
+  the automation run and the three guard proofs wait for this machine's next free window. Until then no
+  claim in this section about what the automation tests measure has been measured.
+- **How often a creature actually mutates in play.** Every test pins the roll. Ten percent a beat is
+  four rolls a second, so a creature that stays wounded mutates quickly; whether that is right is a
+  tuning question for play, not something a test can answer.
+- **What a mutated creature does to the fight.** It hits harder, takes longer to kill and carries a
+  modifier drawn from its type's pool; none of the tests plays that out against a player.
+- **Nothing measures the reward.** The drop roll and the experience grant were read, not run: no test
+  here kills a mutated creature and counts what it paid.
+
+---
+
 ## 2026-09-17 — "While below 30% HP you are immune to crowd control" is written, now that a knockdown reads the stat
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: 1 row),
