@@ -1002,6 +1002,29 @@ public:
 	static const TCHAR* VolatileEvolutionKey;
 
 	/**
+	 * The row whose wounded creatures call two guards of their own kind. Issues #1820
+	 * and #41.
+	 *
+	 * A CREATURE OF `RoyalGuardLowestRungThatSummons` OR ABOVE, BELOW
+	 * `RoyalGuardHealthPercentToSummon` OF ITS MAXIMUM HEALTH, HAS
+	 * `RoyalGuardChancePercent` ONCE of calling `RoyalGuardGuardsSummoned` creatures of
+	 * its own kind, a rung above itself and never past `RoyalGuardHighestRung`.
+	 *
+	 * "ABOVE UNCOMMON RANKED" NAMES NO RUNG THIS GAME HAS. `game/Data/EnemyRarities.csv`
+	 * is Common, Elite, Legendary, Herald, Boss and Cataclysm Boss; the only Uncommon in
+	 * the game's data is the second crafting material tier in
+	 * `game/Data/MaterialTiers.csv`, and gear uses a third vocabulary again. Ruled to
+	 * mean every rung above the bottom one, so Elite and above, and the design decisions
+	 * log proposes the reword "above Common ranked" for the project owner.
+	 *
+	 * THE GUARDS ARE ORDINARY CREATURES. Each drops loot and pays experience by its own
+	 * rung when it dies, from its own death handler, so a floor carrying this row is
+	 * worth more than one without it. That follows from the row rather than from a
+	 * choice, and the entry says so.
+	 */
+	static const TCHAR* RoyalGuardKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2273,6 +2296,49 @@ public:
 		"A threshold at full health or at none, a chance of nothing, a climb of no rungs "
 		"or a ceiling below one climb is not a creature that mutates when it is wounded.");
 
+	/**
+	 * How far a creature's health must fall before it calls its guards, as a share of its
+	 * maximum. STATED BY THE ROW: "drops below 30% health".
+	 */
+	static constexpr float RoyalGuardHealthPercentToSummon = 30.0f;
+
+	/** The chance it calls them when it falls that far. STATED BY THE ROW: "50% chance". */
+	static constexpr float RoyalGuardChancePercent = 50.0f;
+
+	/** How many arrive. STATED BY THE ROW: "two guards". */
+	static constexpr int32 RoyalGuardGuardsSummoned = 2;
+
+	/**
+	 * The lowest rung that calls guards at all: Elite, the rung above Common.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation, because the row's own
+	 * words name no rung this game has. See `RoyalGuardKey` above for what it says and
+	 * what the three ladders in the data actually are.
+	 */
+	static constexpr int32 RoyalGuardLowestRungThatSummons = 1;
+
+	/**
+	 * The highest rung a guard can arrive at: the same ceiling Volatile Evolution has.
+	 *
+	 * NOT A SECOND NUMBER, DELIBERATELY. Both rules are held below the first boss rung
+	 * for one reason -- a floor rule must not make a boss out of an ordinary creature in
+	 * the middle of a fight -- and that reason is tied to
+	 * `ACataclysmEnemyCharacter::FirstBossRarityStep` by the `static_assert` beside the
+	 * other rule's ceiling in `CataclysmDungeonGameMode.cpp`. Writing a second 3 here
+	 * would be the same fact in two places with nothing holding them together.
+	 */
+	static constexpr int32 RoyalGuardHighestRung = VolatileEvolutionHighestRung;
+
+	static_assert(
+		RoyalGuardHealthPercentToSummon > 0.0f
+			&& RoyalGuardHealthPercentToSummon < 100.0f
+			&& RoyalGuardChancePercent > 0.0f
+			&& RoyalGuardChancePercent <= 100.0f
+			&& RoyalGuardGuardsSummoned > 0
+			&& RoyalGuardLowestRungThatSummons > 0,
+		"A threshold at full health or at none, a chance of nothing, no guards at all, or "
+		"a rule that every creature answers is not the row.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -3036,6 +3102,26 @@ public:
 	 * is what `RavenousHoardStacksAfter` says about its own cap.
 	 */
 	static int32 VolatileEvolutionRungAfter(int32 RarityStep);
+
+	/**
+	 * Whether a creature at this health is hurt enough to call its guards: below
+	 * `RoyalGuardHealthPercentToSummon` of the maximum given.
+	 *
+	 * FALSE FOR A MAXIMUM OF ZERO OR LESS, for the reason `VolatileEvolutionIsWounded`
+	 * gives: that is a creature whose attributes have not been written yet.
+	 */
+	static bool RoyalGuardIsWounded(float Health, float MaxHealth);
+
+	/** Whether a creature of this rung calls guards at all. */
+	static bool RoyalGuardMaySummon(int32 RarityStep);
+
+	/**
+	 * The rung the guards of a creature at this rung arrive at: one higher, held to
+	 * `RoyalGuardHighestRung`.
+	 *
+	 * THE CEILING IS HERE AND NOWHERE ELSE, so there is one place it can be wrong.
+	 */
+	static int32 RoyalGuardRungForGuards(int32 RarityStep);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

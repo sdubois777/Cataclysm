@@ -148,6 +148,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	const FName VolatileEvolution(
 		UCataclysmDungeonModifierEffects::VolatileEvolutionKey);
 
+	/** And the one whose hurt creatures call two guards. Issues #1820, #41. */
+	const FName RoyalGuard(UCataclysmDungeonModifierEffects::RoyalGuardKey);
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -585,6 +588,36 @@ namespace CataclysmDungeonModifierEffectsTest
 		Creature->SetEnergyShieldFraction(ShieldFraction);
 		WoundCreatureTo(Creature, HealthNow, ShieldNow);
 		Creature->SetActorLocation(Where);
+		return Creature;
+	}
+
+	/**
+	 * One of the floor's OWN creatures, put at a rung and wounded to a share of its
+	 * maximum health. Issues #1820 and #41.
+	 *
+	 * THE FLOOR'S OWN AND NOT A SPAWNED ONE, because Royal Guard calls guards of the
+	 * summoner's kind and works that kind out from its class. A plain
+	 * `ACataclysmEnemyCharacter`, which is what the helpers above spawn, is none of the
+	 * seven kinds and calls nothing -- which is its own test, and useless for the rest.
+	 * A floor's creatures are real kinds standing on real cells.
+	 *
+	 * THE RUNG FIRST AND THE WOUND AFTER IT, because setting a rung refills both pools.
+	 */
+	ACataclysmEnemyCharacter* AFloorCreatureAtRungWounded(ACataclysmDungeonGameMode* Mode,
+														 int32 Index, int32 Rung,
+														 float ShareOfMaximum)
+	{
+		if (!Mode || !Mode->FloorEnemies.IsValidIndex(Index))
+		{
+			return nullptr;
+		}
+		ACataclysmEnemyCharacter* Creature = Mode->FloorEnemies[Index];
+		if (!IsValid(Creature))
+		{
+			return nullptr;
+		}
+		Creature->SetRarityStep(Rung);
+		WoundCreatureTo(Creature, MaxHealthOf(Creature) * ShareOfMaximum, 0.0f);
 		return Creature;
 	}
 
@@ -10086,6 +10119,7 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	Rules.Add(RavenousHoard);
 	Rules.Add(GraveTide);
 	Rules.Add(VolatileEvolution);
+	Rules.Add(RoyalGuard);
 	Mode->DungeonModifiers = Rules;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
 	{
@@ -12451,6 +12485,803 @@ bool FCataclysmVolatileEvolutionFloorChangeTest::RunTest(const FString& Paramete
 			  Creature->RarityStep, Effects::VolatileEvolutionRungsGained);
 	TestEqual(TEXT("and nothing is counted on the new floor"), PanelLine(),
 			  FString(TEXT("mutated 0")));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// War_Royal_Guard: "When an above Uncommon ranked enemy drops below 30% health, there is
+// a 50% chance they summon two guards of the next higher rank." Issues #1820 and #41.
+//
+// WHAT EVERY TEST HERE USES. The floor's own creatures, through
+// `AFloorCreatureAtRungWounded`: they are real kinds standing on real cells, and the rule
+// calls guards of the summoner's kind at the summoner's cell. They also start at full
+// health, so no creature a test has not wounded can call anything.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardSummonTest,
+	"Cataclysm.DungeonModifierEffects.AWoundedEliteCallsTwoGuardsOfItsOwnKindAtTheNextRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardSummonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW, WHOLE: two guards, of the summoner's own kind, a rung above it, and the
+	// summoner itself untouched. A guard arrives whole, which is the opposite of what
+	// Volatile Evolution needs from the same two calls and is right here: a creature that
+	// has just been called has had nothing happen to it yet.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the guard roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto CreaturesNow = [World]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	};
+
+	Mode->DungeonModifiers = {RoyalGuard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("the floor placed creatures of its own"),
+					 Mode->FloorEnemies.Num() > 0))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Summoner =
+		AFloorCreatureAtRungWounded(Mode, 0, 1, 0.2f);
+	if (!TestNotNull(TEXT("an Elite creature of the floor, badly hurt"), Summoner))
+	{
+		return false;
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Before = CreaturesNow();
+	const int32 FloorEnemiesBefore = Mode->FloorEnemies.Num();
+	const float SummonerHealth = HealthOf(Summoner);
+	const float SummonerMaximum = MaxHealthOf(Summoner);
+
+	Beat(Mode, 1);
+
+	TArray<ACataclysmEnemyCharacter*> Arrived;
+	for (ACataclysmEnemyCharacter* Creature : CreaturesNow())
+	{
+		if (!Before.Contains(Creature))
+		{
+			Arrived.Add(Creature);
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("Royal Guard: a creature at rarity step %d on %.2f of %.2f health called %d "
+			 "guard(s)"),
+		Summoner->RarityStep, SummonerHealth, SummonerMaximum, Arrived.Num()));
+
+	if (!TestEqual(TEXT("two guards arrived"), Arrived.Num(),
+				   Effects::RoyalGuardGuardsSummoned))
+	{
+		return false;
+	}
+
+	for (ACataclysmEnemyCharacter* Guard : Arrived)
+	{
+		TestTrue(FString::Printf(TEXT("a guard is the summoner's own kind: %s against %s"),
+								 *Guard->GetClass()->GetName(),
+								 *Summoner->GetClass()->GetName()),
+				 Guard->GetClass() == Summoner->GetClass());
+		TestEqual(TEXT("and stands a rung above it"), Guard->RarityStep,
+				  Summoner->RarityStep + 1);
+		TestEqual(FString::Printf(TEXT("and arrives whole: %.2f of %.2f"),
+								  HealthOf(Guard), MaxHealthOf(Guard)),
+				  HealthOf(Guard), MaxHealthOf(Guard), 0.0f);
+		TestTrue(FString::Printf(TEXT("with a larger pool than the summoner's: %.2f "
+									  "against %.2f"),
+								 MaxHealthOf(Guard), SummonerMaximum),
+				 MaxHealthOf(Guard) > SummonerMaximum);
+		TestTrue(TEXT("and the floor holds it, so a floor change disposes of it"),
+				 Mode->FloorEnemies.Contains(Guard));
+	}
+
+	TestEqual(TEXT("the summoner keeps the health it had"), HealthOf(Summoner),
+			  SummonerHealth, 0.0f);
+	TestEqual(TEXT("and its own rung"), Summoner->RarityStep, 1);
+	TestEqual(TEXT("and the floor's list grew by the guards"),
+			  Mode->FloorEnemies.Num(),
+			  FloorEnemiesBefore + Effects::RoyalGuardGuardsSummoned);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardThresholdTest,
+	"Cataclysm.DungeonModifierEffects.AtThirtyPercentHealthACreatureCallsNoGuardsAndJustUnderItCallsThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardThresholdTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ONE OF THE THREE FIGURES THE ROW STATES, ON ITS BOUNDARY: "drops below 30% health".
+	// Below, and not at.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the guard roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto HowMany = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	};
+
+	Mode->DungeonModifiers = {RoyalGuard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("the floor placed creatures of its own"),
+					 Mode->FloorEnemies.Num() > 0))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Summoner =
+		AFloorCreatureAtRungWounded(Mode, 0, 1, 1.0f);
+	if (!TestNotNull(TEXT("an Elite creature of the floor"), Summoner))
+	{
+		return false;
+	}
+
+	// EXACTLY THE THRESHOLD, COMPUTED FROM THE FIGURE RATHER THAN TYPED.
+	const float OnTheThreshold = MaxHealthOf(Summoner)
+		* Effects::RoyalGuardHealthPercentToSummon / 100.0f;
+	WoundCreatureTo(Summoner, OnTheThreshold, 0.0f);
+	if (!TestEqual(TEXT("it stands exactly on the threshold"), HealthOf(Summoner),
+				   OnTheThreshold, 0.0f))
+	{
+		return false;
+	}
+
+	const int32 Before = HowMany();
+	Beat(Mode, 40);
+	TestEqual(FString::Printf(TEXT("at %.2f of %.2f, ten seconds of beats call nothing"),
+							  HealthOf(Summoner), MaxHealthOf(Summoner)),
+			  HowMany(), Before);
+
+	WoundCreatureTo(Summoner, OnTheThreshold - 0.1f, 0.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("a tenth of a point lower and the guards come"), HowMany() - Before,
+			  Effects::RoyalGuardGuardsSummoned);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardChanceTest,
+	"Cataclysm.DungeonModifierEffects.GuardsArriveOnARollUnderTheChanceAndNotOnTheChanceItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardChanceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE SECOND FIGURE THE ROW STATES, ON ITS BOUNDARY: a roll of exactly fifty misses
+	// and a roll under fifty hits.
+	//
+	// TWO CREATURES AND NOT ONE, because a roll is spent whether it hits or misses: the
+	// creature that rolled fifty would never roll again, so the second half of this test
+	// would measure the record rather than the chance.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const auto HowMany = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	};
+
+	Mode->DungeonModifiers = {RoyalGuard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("the floor placed two creatures of its own"),
+					 Mode->FloorEnemies.Num() > 1))
+	{
+		return false;
+	}
+
+	{
+		FScopedConsoleString OnTheChance(
+			TEXT("Cataclysm.RoyalGuardRoll"),
+			*FString::Printf(TEXT("%f"), Effects::RoyalGuardChancePercent));
+		if (!TestNotNull(TEXT("the guard roll can be pinned"), OnTheChance.Variable))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Unlucky =
+			AFloorCreatureAtRungWounded(Mode, 0, 1, 0.2f);
+		if (!TestNotNull(TEXT("an Elite creature of the floor, badly hurt"), Unlucky))
+		{
+			return false;
+		}
+		const int32 Before = HowMany();
+		Beat(Mode, 40);
+		TestEqual(FString::Printf(TEXT("a roll of exactly %.0f calls nothing"),
+								  Effects::RoyalGuardChancePercent),
+				  HowMany(), Before);
+	}
+
+	{
+		FScopedConsoleString UnderTheChance(
+			TEXT("Cataclysm.RoyalGuardRoll"),
+			*FString::Printf(TEXT("%f"), Effects::RoyalGuardChancePercent - 0.01f));
+		if (!TestNotNull(TEXT("the guard roll can be pinned again"),
+						 UnderTheChance.Variable))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Lucky =
+			AFloorCreatureAtRungWounded(Mode, 1, 1, 0.2f);
+		if (!TestNotNull(TEXT("a second Elite creature, badly hurt"), Lucky))
+		{
+			return false;
+		}
+		const int32 Before = HowMany();
+		Beat(Mode, 1);
+		TestEqual(FString::Printf(TEXT("a roll of %.2f calls the guards"),
+								  Effects::RoyalGuardChancePercent - 0.01f),
+				  HowMany() - Before, Effects::RoyalGuardGuardsSummoned);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardRankGateTest,
+	"Cataclysm.DungeonModifierEffects.ACommonCreatureCallsNoGuardsHoweverLowItFalls",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardRankGateTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// THE RULED READING OF "ABOVE UNCOMMON RANKED": Elite and above, so the bottom rung
+	// calls nothing. The row's word names no rung this game has; the rule library says so
+	// and the design decisions log proposes a reword to the project owner.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the guard roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto HowMany = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	};
+
+	Mode->DungeonModifiers = {RoyalGuard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("the floor placed creatures of its own"),
+					 Mode->FloorEnemies.Num() > 0))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Common = AFloorCreatureAtRungWounded(Mode, 0, 0, 0.05f);
+	if (!TestNotNull(TEXT("a Common creature of the floor, nearly dead"), Common))
+	{
+		return false;
+	}
+
+	const int32 Before = HowMany();
+	Beat(Mode, 40);
+	TestEqual(FString::Printf(TEXT("a Common at %.2f of %.2f calls nothing in ten seconds"),
+							  HealthOf(Common), MaxHealthOf(Common)),
+			  HowMany(), Before);
+	TestEqual(TEXT("and it is still a Common"), Common->RarityStep, 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardCeilingTest,
+	"Cataclysm.DungeonModifierEffects.NoGuardArrivesAboveHerald",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardCeilingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE CEILING, RULED AND NOT STATED BY THE ROW, AND THE SAME CEILING THE MUTATION
+	// RULE HAS: a floor rule must not make a boss. Two summoners are asked -- one at
+	// Herald, whose guards would be bosses, and one at the first boss rung, whose guards
+	// would be Cataclysm Bosses.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the guard roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto CreaturesNow = [World]()
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
+	};
+
+	Mode->DungeonModifiers = {RoyalGuard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("the floor placed two creatures of its own"),
+					 Mode->FloorEnemies.Num() > 1))
+	{
+		return false;
+	}
+
+	const auto GuardsOf = [&](int32 Index, int32 Rung, const TCHAR* What)
+	{
+		ACataclysmEnemyCharacter* Summoner =
+			AFloorCreatureAtRungWounded(Mode, Index, Rung, 0.2f);
+		if (!Summoner)
+		{
+			return false;
+		}
+		const TArray<ACataclysmEnemyCharacter*> Before = CreaturesNow();
+		Beat(Mode, 1);
+		int32 Seen = 0;
+		for (ACataclysmEnemyCharacter* Creature : CreaturesNow())
+		{
+			if (Before.Contains(Creature))
+			{
+				continue;
+			}
+			++Seen;
+			TestEqual(FString::Printf(TEXT("a guard of %s stands at Herald"), What),
+					  Creature->RarityStep, Effects::RoyalGuardHighestRung);
+			TestFalse(FString::Printf(TEXT("and a guard of %s is not a boss"), What),
+					  Creature->IsBoss());
+		}
+		TestEqual(FString::Printf(TEXT("%s called its guards"), What), Seen,
+				  Effects::RoyalGuardGuardsSummoned);
+		return true;
+	};
+
+	if (!TestTrue(TEXT("a Herald summoner was set up"),
+				  GuardsOf(0, Effects::RoyalGuardHighestRung, TEXT("a Herald")))
+		|| !TestTrue(TEXT("a boss-rung summoner was set up"),
+					 GuardsOf(1, ACataclysmEnemyCharacter::FirstBossRarityStep,
+							  TEXT("a creature at the first boss rung"))))
+	{
+		return false;
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardOnceTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureGetsOneChanceAtGuardsHoweverLongTheFightLasts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// ONE CHANCE, RULED, AND SPENT WHETHER IT HITS OR MISSES. The roll is pinned to a
+	// certain miss first, and then to a certain hit: a creature that had already rolled
+	// calls nothing, which is what "a 50% chance" means rather than "50% a beat".
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	const auto HowMany = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	};
+
+	Mode->DungeonModifiers = {RoyalGuard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("the floor placed creatures of its own"),
+					 Mode->FloorEnemies.Num() > 0))
+	{
+		return false;
+	}
+
+	int32 Before = 0;
+	{
+		FScopedConsoleString Miss(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("100"));
+		if (!TestNotNull(TEXT("the guard roll can be pinned"), Miss.Variable))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Summoner =
+			AFloorCreatureAtRungWounded(Mode, 0, 1, 0.2f);
+		if (!TestNotNull(TEXT("an Elite creature of the floor, badly hurt"), Summoner))
+		{
+			return false;
+		}
+		Before = HowMany();
+		Beat(Mode, 1);
+		TestEqual(TEXT("a missed roll calls nothing"), HowMany(), Before);
+	}
+
+	{
+		FScopedConsoleString Hit(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("0"));
+		if (!TestNotNull(TEXT("the guard roll can be pinned again"), Hit.Variable))
+		{
+			return false;
+		}
+		Beat(Mode, 40);
+		TestEqual(TEXT("and the chance does not come round again, however long it lives"),
+				  HowMany(), Before);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardNoKindTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureOfNoKindCallsNoGuards",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardNoKindTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// GUARDS ARE THE SUMMONER'S OWN KIND, AND A CREATURE MAY BE NO KIND AT ALL. The plain
+	// `ACataclysmEnemyCharacter` is not one of the seven the dungeon places, and neither
+	// would a creature class added to the game and not to `ClassFor`. Ruled: it calls
+	// nothing and the log says so, rather than guessing a kind for it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the guard roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto HowMany = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	};
+
+	Mode->DungeonModifiers = {RoyalGuard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Nameless = SpawnCreatureWoundedTo(
+		World, FVector(50000.0f, 0.0f, 0.0f), 100.0f, 0.5f, 60.0f, 20.0f);
+	if (!TestNotNull(TEXT("a creature of no kind was placed"), Nameless))
+	{
+		return false;
+	}
+	Nameless->SetRarityStep(1);
+	WoundCreatureTo(Nameless, MaxHealthOf(Nameless) * 0.2f, 0.0f);
+
+	const int32 Before = HowMany();
+	Beat(Mode, 40);
+	TestEqual(FString::Printf(TEXT("a creature of no kind at %.2f of %.2f calls nothing"),
+							  HealthOf(Nameless), MaxHealthOf(Nameless)),
+			  HowMany(), Before);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardPanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelCountsTheGuardsThatArrived",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// WHAT THE PLAYER IS TOLD: a count of the guards, with no ceiling in the line.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the guard roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(RoyalGuard);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {RoyalGuard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+		|| !TestTrue(TEXT("the floor placed two creatures of its own"),
+					 Mode->FloorEnemies.Num() > 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a floor just built has called no guards"), PanelLine(),
+			  FString(TEXT("guards 0")));
+
+	if (!TestNotNull(TEXT("an Elite creature of the floor, badly hurt"),
+					 AFloorCreatureAtRungWounded(Mode, 0, 1, 0.2f)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("one summoner, two guards"), PanelLine(), FString(TEXT("guards 2")));
+
+	if (!TestNotNull(TEXT("a second Elite creature, badly hurt"),
+					 AFloorCreatureAtRungWounded(Mode, 1, 1, 0.2f)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("two summoners, four guards"), PanelLine(), FString(TEXT("guards 4")));
+
+	// AND A FLOOR WITHOUT THE ROW SAYS NOTHING OF GUARDS.
+	Mode->DungeonModifiers = {DeathsEmbrace};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row has no line of its own"), PanelLine(),
+			  FString(TEXT("no line")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRoyalGuardFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeClearsTheCountAndASummonerGetsNoSecondChance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRoyalGuardFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// THE TWO HALVES OF THE RULING, WHERE THEY MEET: a Horde dungeon's next wave shares
+	// the arena, so a creature lives through the change. The count is what arrived on this
+	// floor and goes back to nothing; the creature has already had its one chance.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.RoyalGuardRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the guard roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(RoyalGuard);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+	const auto HowMany = [World]()
+	{
+		int32 Count = 0;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			Count += IsValid(*It) ? 1 : 0;
+		}
+		return Count;
+	};
+
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {RoyalGuard};
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1))
+		|| !TestTrue(TEXT("the floor placed creatures of its own"),
+					 Mode->FloorEnemies.Num() > 0))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Summoner =
+		AFloorCreatureAtRungWounded(Mode, 0, 1, 0.2f);
+	if (!TestNotNull(TEXT("an Elite creature of the floor, badly hurt"), Summoner))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("its guards came"), PanelLine(), FString(TEXT("guards 2"))))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the summoner lived through the change, which is what a Horde "
+					   "dungeon's next wave does"), IsValid(Summoner)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the new floor counts no guards"), PanelLine(),
+			  FString(TEXT("guards 0")));
+
+	// STILL BADLY HURT, SO ONLY THE RECORD STOPS IT.
+	WoundCreatureTo(Summoner, MaxHealthOf(Summoner) * 0.2f, 0.0f);
+	const int32 Before = HowMany();
+	Beat(Mode, 40);
+	AddInfo(FString::Printf(TEXT("Royal Guard: after the change the summoner is at %.2f "
+								 "of %.2f and the panel says %s"),
+							HealthOf(Summoner), MaxHealthOf(Summoner), *PanelLine()));
+	TestEqual(TEXT("and it gets no second chance on the new floor"), HowMany(), Before);
+	TestEqual(TEXT("so nothing is counted there"), PanelLine(),
+			  FString(TEXT("guards 0")));
 
 	return true;
 }

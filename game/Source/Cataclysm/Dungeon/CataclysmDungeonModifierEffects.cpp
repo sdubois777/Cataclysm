@@ -56,6 +56,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::GraveTideKey =
 	TEXT("Death_Grave_Tide");
 const TCHAR* UCataclysmDungeonModifierEffects::VolatileEvolutionKey =
 	TEXT("Chaos_Volatile_Evolution");
+const TCHAR* UCataclysmDungeonModifierEffects::RoyalGuardKey =
+	TEXT("War_Royal_Guard");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -231,7 +233,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(NecroticGroundKey)
 		|| RowKey == FName(RavenousHoardKey)
 		|| RowKey == FName(GraveTideKey)
-		|| RowKey == FName(VolatileEvolutionKey))
+		|| RowKey == FName(VolatileEvolutionKey)
+		|| RowKey == FName(RoyalGuardKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -390,6 +393,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(RavenousHoardKey),
 		FName(GraveTideKey),
 		FName(VolatileEvolutionKey),
+		FName(RoyalGuardKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1275,6 +1279,29 @@ int32 UCataclysmDungeonModifierEffects::VolatileEvolutionRungAfter(int32 RarityS
 	const int32 From = FMath::Max(0, RarityStep);
 	return FMath::Min(From + VolatileEvolutionRungsGained,
 					  VolatileEvolutionHighestRung);
+}
+
+bool UCataclysmDungeonModifierEffects::RoyalGuardIsWounded(float Health,
+														  float MaxHealth)
+{
+	// A MAXIMUM OF ZERO OR LESS IS A CREATURE WHOSE ATTRIBUTES ARE NOT WRITTEN YET, the
+	// reason `VolatileEvolutionIsWounded` above gives.
+	if (MaxHealth <= 0.0f)
+	{
+		return false;
+	}
+	return Health < MaxHealth * RoyalGuardHealthPercentToSummon / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::RoyalGuardMaySummon(int32 RarityStep)
+{
+	return RarityStep >= RoyalGuardLowestRungThatSummons;
+}
+
+int32 UCataclysmDungeonModifierEffects::RoyalGuardRungForGuards(int32 RarityStep)
+{
+	const int32 From = FMath::Max(0, RarityStep);
+	return FMath::Min(From + 1, RoyalGuardHighestRung);
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(
