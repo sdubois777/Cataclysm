@@ -61,8 +61,12 @@ this dungeon session found that and the coordinating session accepted the correc
 
 So the growth multiplies the rarity-scaled attack damage. The test
 `AGrowingCreatureKeepsItsRarityScaleAndItsCommanderPace` measures both at once, on one creature two
-rarity steps above Common that holds Commander: its damage at the cap, and its attack interval. **The
-figures it prints are written here after this change's Unreal run, before the change merges.**
+rarity steps above Common that holds Commander: its damage at the cap, and its attack interval.
+**Measured on head 66f43a5a**, in a full Unreal run that performed 1998 tests with all 1998
+succeeding, it printed "at 5 stacks: attack damage 294.000, from 100.0 designed x 1.960 rarity
+scale x 1.50 growth; attack interval 1.2500 s". That is 100 x 1.96 x 1.5 = 294 for the damage. The
+interval is the creature's designed 1.5 seconds divided by Commander's 1.2, which the test asserts
+before the growth and again at the cap: the growth reached the damage and left the pace alone.
 
 ### A creature's health must not move, so the growth has a route of its own
 
