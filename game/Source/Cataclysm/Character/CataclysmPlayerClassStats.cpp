@@ -195,8 +195,8 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 	// is nothing to look up and nothing that has to be ready first.
 	//
 	// THE ORDER IS THE ORDER A READER MEETS THEM: damage, then health, then
-	// attack speed, then mana on hit, which is not a minion's and arrived with
-	// issue #1791. Nothing depends on it; it is stated so that a diff adding a
+	// attack speed, then the two an exploding minion needs, then mana on hit,
+	// which is not a minion's and arrived with issue #1791. Nothing depends on it; it is stated so that a diff adding a
 	// name is obviously an addition rather than a reshuffle.
 	//
 	// EACH LINE SAYS WHAT READS IT AND WHAT IT READS, because the four are not
@@ -208,6 +208,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		TEXT("minion_health"),
 		// Increases, read by UCataclysmCommand::AttackIntervalScaleFor.
 		TEXT("minion_attack_speed"),
+		// Whether a minion explodes when it dies, read by
+		// ACataclysmMinion::HandleDeath. A flag: a row sets it to one.
+		TEXT("minion_explodes_on_death"),
+		// Increases, read by ACataclysmMinion::Explode, for both the summon
+		// cap destroying the oldest and a death under the flag above.
+		TEXT("minion_explosion_damage"),
 		// Whether it is removed, read by UCataclysmSkillTemplate::ApplyManaOnHit.
 		TEXT("mana_on_hit"),
 	};
