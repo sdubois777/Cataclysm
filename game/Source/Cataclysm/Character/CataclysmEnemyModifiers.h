@@ -175,10 +175,12 @@ public:
 	 *
 	 * A HUNDRED IS IMMUNE, which is what
 	 * `UCataclysmSkillEffects::AfterCrowdControlResistance` makes true: it
-	 * scales a stun's seconds and a shove's centimetres by the stat and
-	 * answers nothing at a hundred. Until 2026-09-05 the stat touched only
-	 * the chance of an incidental blunt stun, so setting it to a hundred
-	 * would have blocked almost nothing a player would notice.
+	 * scales a stun's seconds, a knockdown's seconds and a shove's
+	 * centimetres by the stat and answers nothing at a hundred. Until
+	 * 2026-09-05 the stat touched only the chance of an incidental blunt
+	 * stun, so setting it to a hundred would have blocked almost nothing a
+	 * player would notice; and until 2026-09-17 a knockdown asked nothing,
+	 * so a player's knockdown still floored this creature. Issue #1815.
 	 */
 	static constexpr float UnyieldingCrowdControlResistance = 100.0f;
 

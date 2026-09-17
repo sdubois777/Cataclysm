@@ -2,6 +2,110 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A knockdown obeys crowd control resistance the way a stun does: shortened, and at 100 it does not land
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (`ApplyKnockdown`)
+and `.h` (the comments on it and on `AfterCrowdControlResistance`), the comments on Unyielding in
+`CataclysmEnemyModifiers.h` and `CataclysmEnemyCharacter.cpp`, and six tests in
+`CataclysmCrowdControlResistanceTests.cpp`, `CataclysmSkillTemplateTests.cpp` and
+`CataclysmTerrainTests.cpp`. Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
+**Applied.**
+
+### The ruling, and what it corrects
+
+Ruled 2026-09-17 by the coordinating session under the project owner's delegation: a
+knockdown's seconds read crowd control resistance the way a stun's do.
+
+Until now `UCataclysmSkillEffects::AfterCrowdControlResistance` was called from `ApplyStun`
+and from the one body behind knockback, pull, drag and launch, and `ApplyKnockdown` asked
+nothing. A knockdown was built on 2026-09-01
+([#1151](https://github.com/sdubois777/Cataclysm/pull/1151)). The owner's decision four days
+later, "Crowd control resistance shortens a stun and a shove, and at 100 stops them", names
+stuns and shoves and does not mention a knockdown. So a creature at 100 was still floored for
+the whole length.
+
+The design counts a knockdown as crowd control of the hardest kind: "A knockdown is a hard
+stop, so it carries all three parts of the rule."
+
+It was found while writing "While below 30% HP you are immune to crowd control", which was
+ruled writable as `crowd_control_resistance` flat 100 and then held for this. The entry "A
+melee blow is not evaded or blocked under the two drawbacks that say so" says why.
+
+### How Diablo IV does it
+
+Game8's page "What is Control Impaired?" lists the statuses that count as Control Impaired in
+Diablo IV, Knockdown and Stun among them. One gear affix, "Control Impaired Duration
+Reduction", shortens every one of them
+([game8.co](https://game8.co/games/Diablo-4/archives/415226)). Icy Veins lists Knockdown among
+Diablo IV's crowd control effects
+([icy-veins.com](https://www.icy-veins.com/d4/guides/crowd-control-status-effects/)). Both
+pages were read on 2026-09-17.
+
+The same Diablo IV list includes Slow and Chill. The decision of 2026-09-05 leaves slows out
+of this stat, and that stands.
+
+### What it does
+
+- **`ApplyKnockdown` passes its seconds through `AfterCrowdControlResistance` first**, before
+  the immunity window it shares with a stun, a running skill's immunity, the damage threshold
+  and the boss rule. That is the place `ApplyStun` asks.
+- **At 50 a 2 second knockdown lasts 1 second.**
+- **At 100 it does not land**, opens no immunity window and leaves no stagger. A shove the
+  target resists entirely leaves nothing either.
+- **Every knockdown goes through that function.** `State.KnockedDown` is applied nowhere
+  else, and four places call it: a charge carrying `knockdown_seconds`, the three rows stating
+  `ForcedMovement=Knockdown` (The Gathering, Break the World and Crater), a Pit and a Fissure.
+- **A Fissure is spent only by a knockdown that lands**, which is how it already treated a
+  boss. So a creature at 100 leaves it for the next creature it can floor.
+
+### The sentences this changes
+
+- **Unyielding** (enemy modifier, 100): "Immunity to crowd control effects". A player's
+  knockdown no longer floors such a creature, so the sentence is now true of a knockdown.
+- **Nothing Moves You** (Ravager keystone, flat 50): "Crowd control effects on you last half as
+  long". Now true of a knockdown too.
+- **Unstoppable** (Ravager keystone, flat 100 while an enemy is within 4 metres): "You cannot be
+  stunned, slowed or knocked back while an enemy is within 4 metres of you." It now also stops
+  a knockdown, which the sentence does not say, so the keystone is stronger than its words by
+  one effect. **A labelled judgement, ruled 2026-09-17 under the project owner's delegation:**
+  accepted for now, and the node text gains "knocked down" in the Passive Nodes sheet of
+  `docs/All_Things_Cataclysm.xlsx` the next time the workbook is free for it.
+- **The two class lines that grant the stat** (the Ravager's 5 plus 0.15 a level and the
+  Masochist's 10 plus 0.2 a level) shorten a knockdown on those characters by the same share
+  as a stun.
+- **"While below 30% HP you are immune to crowd control"** can now be written as it was ruled:
+  `crowd_control_resistance` flat 100 under `health_below` 30. The rule reading "immune" as 100
+  was set aside with it. Both return in their own change.
+
+### Found while reading, and not changed here
+
+- [#1950](https://github.com/sdubois777/Cataclysm/issues/1950): the design document's Blunt
+  paragraph and `effective_stun_chance` in `sim/cataclysm_sim/damage.py` still make crowd
+  control resistance reduce the CHANCE of a stun. The game has reduced its DURATION since
+  2026-09-05. Needs the operator.
+- [#1951](https://github.com/sdubois777/Cataclysm/issues/1951): "CC effects applied to you last
+  40%-70% longer" is written as a negative `crowd_control_resistance`, which
+  `AfterCrowdControlResistance` reads as zero, so the row makes nothing last longer. That is as
+  true of a knockdown after this change as of a stun before it.
+
+### Tests
+
+The rule itself:
+
+- `Cataclysm.CrowdControl.ADesignedKnockdownObeysResistanceTheSameAsAStun`: 0, 50 and 100
+  resistance against a 2 second designed knockdown, reading the length off the effect.
+- `Cataclysm.CrowdControl.UnyieldingMakesACreatureImmuneToBeingKnockedDown`
+
+One for each place that knocks something down, each with a target at 100 and a control with
+none:
+
+- `Cataclysm.Skills.AChargeKnockdownDoesNotLandOnAFullyResistantTarget`
+- `Cataclysm.Skills.AForcedMovementKnockdownDoesNotLandOnAFullyResistantTarget`
+- `Cataclysm.Terrain.APitDoesNotFloorACreatureThatFullyResistsIt`
+- `Cataclysm.Terrain.AFissureIsNotSpentOnACreatureThatFullyResistsIt`
+
+---
+
 ## 2026-09-17 — Four rows: Weight Against Them, Drawn Deep, Long Hold and Fed by the Fallen
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`

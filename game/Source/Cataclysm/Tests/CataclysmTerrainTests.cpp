@@ -4,6 +4,7 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -360,6 +361,61 @@ bool FCataclysmPitRefusesACharge::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPitResistedTest,
+	"Cataclysm.Terrain.APitDoesNotFloorACreatureThatFullyResistsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPitResistedTest::RunTest(const FString&)
+{
+	using namespace CataclysmTerrainTest;
+
+	// A PIT IS ONE OF THE PLACES THAT CALL `ApplyKnockdown`, and since 2026-09-17
+	// a knockdown reads the target's crowd control resistance the way a stun
+	// does: shortened, and at 100 not landing at all. Issue #1815.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Hammer(World, FVector::ZeroVector, ECataclysmTeam::Players);
+
+	FScopedTerrain Hole(Hammer.Actor, ECataclysmTerrainKind::Pit,
+						FVector::ZeroVector, FVector::ZeroVector,
+						/*SizeCm=*/5 * M, /*Duration=*/12.0f,
+						/*HoldSeconds=*/7.0f);
+	if (!Hole.Actor)
+	{
+		AddError(TEXT("A pit should have spawned."));
+		return false;
+	}
+
+	// TWO CREATURES FALL IN TOGETHER, AND ONLY THE STAT DIFFERS. The one with
+	// none is the control. Both start outside and walk in, as in
+	// `APitKnocksDownWhateverFallsIntoIt`.
+	FScopedFighter Bare(World, FVector(20 * M, 0.0f, 0.0f),
+						ECataclysmTeam::Monsters);
+	FScopedFighter Immune(World, FVector(-20 * M, 0.0f, 0.0f),
+						  ECataclysmTeam::Monsters);
+	Immune.Actor->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(), 100.0f);
+
+	Bare.MoveTo(FVector(1 * M, 0.0f, 0.0f));
+	Immune.MoveTo(FVector(-1 * M, 0.0f, 0.0f));
+	Hole.Actor->Sweep();
+
+	TestTrue(TEXT("a creature with no resistance that falls in is knocked down"),
+		UCataclysmSkillEffects::IsKnockedDown(Bare.Actor));
+	TestFalse(TEXT("and one at 100 resistance is not"),
+		UCataclysmSkillEffects::IsKnockedDown(Immune.Actor));
+	TestEqual(TEXT("so the sweep floored exactly one"),
+		Hole.Actor->LastSweepCount, 1);
+
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // Fissure -- one creature, once
 // --------------------------------------------------------------------------
@@ -419,6 +475,69 @@ bool FCataclysmFissureIsSpentByOneCreatureTest::RunTest(const FString&)
 	// AND IT IS GONE. Destroying rather than waiting out its six seconds is what
 	// "the next enemy" means.
 	TestFalse(TEXT("and the fissure is spent"), IsValid(Crack));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFissureResistedTest,
+	"Cataclysm.Terrain.AFissureIsNotSpentOnACreatureThatFullyResistsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFissureResistedTest::RunTest(const FString&)
+{
+	using namespace CataclysmTerrainTest;
+
+	// A FISSURE IS ONE OF THE PLACES THAT CALL `ApplyKnockdown`, and since
+	// 2026-09-17 a knockdown reads the target's crowd control resistance the way a
+	// stun does. Issue #1815.
+	//
+	// A FISSURE IS SPENT ONLY BY A KNOCKDOWN THAT LANDS, which is how it already
+	// treated a boss, whose knockdown the boss rule refuses. So a creature it
+	// cannot floor leaves it for the next creature it can.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!World)
+	{
+		AddError(TEXT("Could not create a world."));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Hammer(World, FVector::ZeroVector, ECataclysmTeam::Players);
+
+	ACataclysmTerrain* Crack = ACataclysmTerrain::Spawn(
+		Hammer.Actor, ECataclysmTerrainKind::Fissure, FVector::ZeroVector,
+		FVector::ZeroVector, /*SizeCm=*/2 * M, /*Duration=*/6.0f,
+		/*HoldSeconds=*/0.0f);
+	if (!Crack)
+	{
+		AddError(TEXT("A fissure should have spawned."));
+		return false;
+	}
+
+	FScopedFighter Immune(World, FVector(1 * M, 0.0f, 0.0f),
+						  ECataclysmTeam::Monsters);
+	Immune.Actor->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(), 100.0f);
+
+	Crack->Sweep();
+
+	TestFalse(TEXT("a creature at 100 resistance crossing it is not knocked down"),
+		UCataclysmSkillEffects::IsKnockedDown(Immune.Actor));
+	if (!TestTrue(TEXT("so the fissure is not spent"), IsValid(Crack)))
+	{
+		return false;
+	}
+
+	// AND THE NEXT CREATURE IT CAN FLOOR SPENDS IT, which is the control: the
+	// crack was waiting, not broken.
+	FScopedFighter Bare(World, FVector(1 * M, 50.0f, 0.0f),
+						ECataclysmTeam::Monsters);
+
+	Crack->Sweep();
+
+	TestTrue(TEXT("a creature with no resistance crossing it next is knocked down"),
+		UCataclysmSkillEffects::IsKnockedDown(Bare.Actor));
+	TestFalse(TEXT("and that spends the fissure"), IsValid(Crack));
 
 	return true;
 }

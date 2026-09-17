@@ -1509,11 +1509,14 @@ void ACataclysmEnemyCharacter::ApplyModifierAttributes()
 					Retaliation);
 	}
 
-	// AND SHRUGS OFF BEING STUNNED, SLOWED OR SHOVED. Unyielding. The stat
-	// shortens a stun's seconds and a shove's centimetres and answers
-	// nothing at a hundred, so a hundred is immunity. Until 2026-09-05 it
-	// touched only the chance of an incidental blunt stun and this modifier
-	// could not have been built at all.
+	// AND SHRUGS OFF BEING STUNNED, KNOCKED DOWN OR SHOVED. Unyielding. The
+	// stat shortens a stun's seconds, a knockdown's seconds and a shove's
+	// centimetres and answers nothing at a hundred, so a hundred is immunity.
+	// Until 2026-09-05 it touched only the chance of an incidental blunt stun
+	// and this modifier could not have been built at all. NOT A SLOW, which
+	// this said until 2026-09-17: the decision of 2026-09-05 leaves slows out,
+	// and nothing about a slow reads the stat. The knockdown is from issue
+	// #1815.
 	const float CrowdControl =
 		UCataclysmEnemyModifiers::CrowdControlResistancePercent(ModifierRows);
 	if (CrowdControl > 0.0f)
