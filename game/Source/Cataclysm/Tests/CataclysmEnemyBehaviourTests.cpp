@@ -69,6 +69,29 @@ namespace CataclysmBehaviourTest
 	/** Metres, so the tests read like the design document does. */
 	constexpr float M = 100.0f;
 
+	//~ THE IMP'S AUTHORED FIGURES, from `game/Data/MinionTypes.csv`. Written
+	//~ out rather than read back, so a case here states its own arithmetic.
+	constexpr float ImpBaseDamage = 10.5f;
+	constexpr float ImpDamagePerLevel = 10.5f;
+
+	/**
+	 * What one imp's blow is worth.
+	 *
+	 * ITS OWN, SINCE ISSUE #1515. Two cases below used to spawn an imp with no
+	 * type at all and expect 30% of the SUMMONER'S weapon damage; the owner
+	 * ruled that a bug and the fallback is deleted, so they summon a real Imp
+	 * and measure the figure its type row states.
+	 *
+	 * THE LEVEL IS ASKED OF THE ENGINE AND NOTHING ELSE IS: a summoner built
+	 * here has no player state, so the minion takes the level the class stats
+	 * are previewed at.
+	 */
+	float ImpBlow()
+	{
+		return ImpBaseDamage + ImpDamagePerLevel
+			* static_cast<float>(UCataclysmPlayerClassStats::ChosenLevel());
+	}
+
 	/** The player capsule radius in CataclysmPlayerCharacter.cpp. */
 	constexpr float PlayerCapsuleRadiusCm = 42.0f;
 
@@ -476,8 +499,12 @@ bool FCataclysmImpChasesWhatItAttacksTest::RunTest(const FString&)
 						   /*Health=*/1000.0f, /*AttackDamage=*/0.0f);
 
 	const FVector Where(2 * M, 0, 0);
+	// A REAL IMP RATHER THAN A TYPELESS ONE, SINCE ISSUE #1515: a minion with
+	// no type row has no damage of its own, and the share of its summoner's
+	// weapon it used to take is deleted.
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
-		Summoner.Actor, Where, /*Lifetime=*/20.0f, /*bBurns=*/false);
+		Summoner.Actor, Where, /*Lifetime=*/20.0f, /*bBurns=*/false,
+		TEXT("Imp"));
 	if (!Imp)
 	{
 		AddError(TEXT("Could not summon an imp."));
@@ -534,12 +561,9 @@ bool FCataclysmImpChasesWhatItAttacksTest::RunTest(const FString&)
 	TestTrue(FString::Printf(TEXT("And the monster lost health (%.0f to %.0f)"),
 		Before, Monster.Health()), Monster.Health() < Before);
 
-	// A SHARE OF THE SUMMONER'S WEAPON DAMAGE, not of its own, which it has
-	// none of. The summoner's attack damage is 100 and an imp deals 25% of it.
-	const float Expected =
-		100.0f * ACataclysmMinion::DamagePercentOfSummoner / 100.0f;
-	TestEqual(TEXT("For a share of its summoner's weapon damage"),
-		Before - Monster.Health(), Expected);
+	// ITS OWN BLOW, NOT A SHARE OF ITS SUMMONER'S WEAPON. Issue #1515.
+	TestEqual(TEXT("For its own figure, from the Imp row"),
+		Before - Monster.Health(), ImpBlow(), 0.01f);
 
 	// It never turns on the character that made it, whatever else is nearby.
 	Monster.Actor->SetActorLocation(FVector(50 * M, 0, 0));
@@ -3609,9 +3633,11 @@ bool FCataclysmMinionNeverCriticallyStrikesTest::RunTest(const FString&)
 			UCataclysmCombatAttributeSet::GetCritMultiplierAttribute(), 300.0f);
 	}
 
+	// A REAL IMP, for the reason issue #1515 gives above: a typeless one has
+	// no damage of its own to compare against a critical strike.
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
 		Summoner.Actor, FVector(2 * M, 0, 0), /*Lifetime=*/20.0f,
-		/*bBurns=*/false);
+		/*bBurns=*/false, TEXT("Imp"));
 	if (!Imp)
 	{
 		AddError(TEXT("Could not summon an imp."));
@@ -3622,13 +3648,11 @@ bool FCataclysmMinionNeverCriticallyStrikesTest::RunTest(const FString&)
 	const float Before = Monster.Health();
 	Imp->AttackOnce();
 
-	// A share of the summoner's weapon damage and not one point more. 100 attack
-	// damage at 30% is 30; a tripled critical strike would read 90.
-	const float Expected =
-		100.0f * ACataclysmMinion::DamagePercentOfSummoner / 100.0f;
-	TestEqual(TEXT("an imp deals its share and never the summoner's critical "
-				   "strike"),
-		Before - Monster.Health(), Expected, 0.01f);
+	// ITS OWN BLOW AND NOT ONE POINT MORE: a tripled critical strike would read
+	// three times this figure.
+	TestEqual(TEXT("an imp deals its own figure and never the summoner's "
+				   "critical strike"),
+		Before - Monster.Health(), ImpBlow(), 0.01f);
 
 	// AND THE SUMMONER ITSELF STILL CRITICALLY STRIKES, which is what makes the
 	// reading above a rule about minions rather than a roll that failed to fire.

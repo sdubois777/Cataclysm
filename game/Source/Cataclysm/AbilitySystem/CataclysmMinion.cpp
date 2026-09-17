@@ -465,6 +465,12 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 		Minion->OwnDamagePerHit =
 			RaisedByLevel(Type->BaseDamage, Type->DamagePerLevel, Level);
 
+		// AND WHAT ITS DEATH IS WORTH, AS A SHARE OF THAT BLOW. Issue #1515.
+		// The type row states it, so an explosion is the minion's own figure
+		// rather than the summoning skill's percentage of the summoner's
+		// weapon. Only the radius still comes from the skill.
+		Minion->ExplosionPercentOfOwnDamage = Type->ExplosionPercentOfOwnDamage;
+
 		// MAXIMUM FIRST, THEN CURRENT, and the order is not incidental: the
 		// vital attribute set clamps health to the maximum in
 		// `PreAttributeChange`, so raising the current value first would clamp
@@ -642,12 +648,13 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 			MinionDelivery(this, /*bIsArea=*/false), &Resolved);
 		Dealt = Damage;
 	}
-	else
-	{
-		Dealt = UCataclysmSkillEffects::ApplyHit(
-			Summoner, Target, DamagePercentOfSummoner, FGameplayTagContainer(),
-			MinionDelivery(this, /*bIsArea=*/false), &Resolved);
-	}
+	// AND NOTHING AT ALL WITHOUT A TYPE ROW, SINCE ISSUE #1515. A minion used
+	// to fall back to 30% of its SUMMONER'S weapon damage here, which the
+	// owner ruled a bug on 2026-09-17: a minion's blow carries the minion's
+	// own numbers. `tools/generate_datatables.py` now refuses a summoning row
+	// that names no minion type, so a minion with no stat block cannot be
+	// summoned by shipped data at all, and one made any other way swings for
+	// nothing rather than for its summoner.
 
 	// AND THE BURN TAKES NONE OF THE SUMMONER'S DAMAGE OVER TIME STATS, for the
 	// same reason its blow takes no critical strike, no penetration, no weapon
@@ -719,22 +726,34 @@ void ACataclysmMinion::HandleDeath()
 	// granted before this runs, and `CataclysmVitalAttributeSet.cpp` says why:
 	// a death handler may remove the actor, and the code that finds the
 	// commander cannot walk the ownership chain of one that is leaving.
-	if (ExplosionRadiusCm > 0.0f && ExplosionDamagePercent > 0.0f
+	if (ExplosionRadiusCm > 0.0f && ExplosionPercentOfOwnDamage > 0.0f
 		&& SummonerStat(Summoner, TEXT("minion_explodes_on_death")) > 0.0f)
 	{
-		Explode(ExplosionRadiusCm, ExplosionDamagePercent);
+		Explode();
 	}
 }
 
-void ACataclysmMinion::RecordExplosion(float RadiusCm, float DamagePercent)
+void ACataclysmMinion::RecordExplosionRadius(float RadiusCm)
 {
 	ExplosionRadiusCm = RadiusCm;
-	ExplosionDamagePercent = DamagePercent;
 }
 
-void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
+void ACataclysmMinion::Explode()
 {
-	if (IsValid(Summoner) && RadiusCm > 0.0f && DamagePercent > 0.0f)
+	// WHAT IT IS WORTH IS ITS OWN BLOW, NOT ITS SUMMONER'S WEAPON. Issue
+	// #1515. `game/Data/MinionTypes.csv` states the share -- the owner's
+	// figure of 2026-09-17 is three of its own blows for every kind -- and
+	// until then the caller passed the summoning skill's damage percentage,
+	// which `ApplyHit` read against the summoner's weapon.
+	//
+	// THE SUMMONER'S INCREASED MINION DAMAGE IS IN THE BLOW ALREADY, because
+	// the blow this is a share of is the one `AttackTarget` deals, and that
+	// reads `minion_damage` fresh at every swing. Reading it again here would
+	// count it twice.
+	const float OwnBlow = OwnDamagePerHit;
+	const float Damage = OwnBlow * ExplosionPercentOfOwnDamage / 100.0f;
+
+	if (IsValid(Summoner) && ExplosionRadiusCm > 0.0f && Damage > 0.0f)
 	{
 		// THE SUMMONER'S OWN STAT ON THE EXPLOSION'S DAMAGE. Issue #1515.
 		// `Ritualist_basic_b_a2` Volatile: "+3% increased damage of the
@@ -749,19 +768,26 @@ void ACataclysmMinion::Explode(float RadiusCm, float DamagePercent)
 		// radius is the skill's stated figure, as the caller's comment in
 		// `CataclysmSkillTemplates.cpp` records for issues #910 and #340.
 		// This stat is the damage and only the damage.
-		const float Percent = DamagePercent
+		const float Scaled = Damage
 			* SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"));
 
 		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), this, GetActorLocation(), RadiusCm);
+			GetWorld(), this, GetActorLocation(), ExplosionRadiusCm);
 
 		for (AActor* Target : Caught)
 		{
 			// AREA DAMAGE: an explosion swept a sphere. The melee attack
 			// above is a single blow and stays evadable. Issue #513.
-			const float Dealt = UCataclysmSkillEffects::ApplyHit(
-				Summoner, Target, Percent, FGameplayTagContainer(),
+			// AN AMOUNT, NOT A PERCENTAGE, SINCE ISSUE #1515: `ApplyHit` reads a
+			// percentage against the INSTIGATOR'S weapon, which is the summoner's
+			// and is exactly what a minion's blow must not use. `ApplyDirectDamage`
+			// takes the figure as it stands, which is how `AttackTarget` deals a
+			// typed minion's swing.
+			float Dealt = 0.0f;
+			UCataclysmSkillEffects::ApplyDirectDamage(
+				Summoner, Target, Scaled,
 				MinionDelivery(this, /*bIsArea=*/true));
+			Dealt = Scaled;
 			// Designed, for the reason the melee attack above records.
 			//
 			// AND NOT TESTED FOR EVASION, DELIBERATELY. An explosion is area

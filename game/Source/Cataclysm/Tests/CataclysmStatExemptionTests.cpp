@@ -535,11 +535,17 @@ namespace CataclysmStatExemptionTest
 			Removed.Get(Mana), 500.0f, 0.01f);
 	}
 
-	/** What a summoning skill states for the explosion these probes use. */
+	/**
+	 * The radius a summoning skill states for the explosions these probes use.
+	 *
+	 * WHAT AN EXPLOSION IS WORTH IS NO LONGER STATED HERE. Since issue #1515
+	 * it is the minion's own blow times the share its type row gives, so an
+	 * imp spawned with its type carries the figure already and these probes
+	 * measure one against the other rather than against a number.
+	 */
 	constexpr float ProbeExplosionRadiusCm = 300.0f;
-	constexpr float ProbeExplosionDamagePercent = 50.0f;
 
-	/** An imp of the authored type, told what its explosion would be. */
+	/** An imp of the authored type, told how wide its explosion would be. */
 	ACataclysmMinion* ImpToldItsExplosion(FAutomationTestBase& Test,
 										  AActor* Summoner, const FVector& Where)
 	{
@@ -549,7 +555,7 @@ namespace CataclysmStatExemptionTest
 		{
 			return nullptr;
 		}
-		Imp->RecordExplosion(ProbeExplosionRadiusCm, ProbeExplosionDamagePercent);
+		Imp->RecordExplosionRadius(ProbeExplosionRadiusCm);
 		return Imp;
 	}
 
@@ -633,8 +639,8 @@ namespace CataclysmStatExemptionTest
 		// than to the death: the summon cap sets one off the same way, and this
 		// calls what the cap calls.
 		const FGameplayAttribute Health = Vital::GetHealthAttribute();
-		PlainImp->Explode(ProbeExplosionRadiusCm, ProbeExplosionDamagePercent);
-		RaisedImp->Explode(ProbeExplosionRadiusCm, ProbeExplosionDamagePercent);
+		PlainImp->Explode();
+		RaisedImp->Explode();
 
 		const float PlainLost = TargetHealthPool - PlainTarget.Get(Health);
 		const float RaisedLost = TargetHealthPool - RaisedTarget.Get(Health);

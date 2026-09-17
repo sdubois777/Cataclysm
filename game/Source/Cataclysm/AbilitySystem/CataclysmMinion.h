@@ -71,31 +71,25 @@ public:
 	static constexpr float DefaultAttackIntervalSeconds = 1.0f;
 
 	/**
-	 * Percent of the summoner's weapon damage one of its hits deals.
+	 * WHAT A MINION'S BLOW NO LONGER TAKES FROM ITS SUMMONER. Issue #1515.
 	 *
-	 * FROM THE DESIGN, AND IT WAS NOT. This was 25 and was labelled a judgement,
-	 * because nothing in the design said what a summoned imp hit for. Issue #165
-	 * asked for a real figure and the design now states 30, taken from Diablo IV,
-	 * whose Necromancer minions gain 30% of the player's weapon damage.
+	 * A constant lived here until 2026-09-17: 30% of the summoner's weapon
+	 * damage, which a minion with no type row dealt. Issue #209 had already
+	 * made it a fallback rather than the rule, and the project owner then
+	 * ruled the fallback itself a bug -- a minion's blow carries the minion's
+	 * own numbers -- so it is gone. `AttackTarget` deals nothing without a
+	 * type row, and `tools/generate_datatables.py` refuses a summoning row
+	 * that names no minion type.
 	 *
-	 * IT IS NO LONGER THE RULE, IT IS THE FALLBACK. Issue #209 replaced it with
-	 * each type's own base damage plus an amount per level, and issue #340 built
-	 * that half: `Spawn` reads `BaseDamage` and `DamagePerLevel` from the minion
-	 * type row and raises them by the summoner's level, and `AttackTarget` deals
-	 * the result. This constant is reached only by a minion that named no type,
-	 * which `CataclysmSkillTemplates.cpp:3260` produces for a summoning skill
-	 * whose shape parameters name no minion kind.
-	 *
-	 * WHAT IS STILL MISSING IS THE ATTRIBUTE CHANNEL, the third of the three the
-	 * design allows. `game/Data/MinionScaling.csv` states it -- spirit for
-	 * creatures, agility for machines, one percent of damage per point -- and no
-	 * code in the engine reads that table. The only read of a `PercentPerPoint`
-	 * column is `CataclysmClassStats.cpp:198`, and it reads the PLAYER attribute
-	 * table. **Issue #340 tracks the remaining gap**, and
+	 * WHAT IS STILL MISSING IS THE ATTRIBUTE CHANNEL, the third of the three
+	 * routes the design allows from a summoner to its minion.
+	 * `game/Data/MinionScaling.csv` states it -- spirit for creatures,
+	 * agility for machines, one percent of damage per point -- and no code in
+	 * the engine reads that table. **Issue #340 tracks that gap**, and
 	 * `test_the_attribute_channel_is_recorded_as_still_missing` in
-	 * `tools/tests/test_minion_damage.py` fails when this constant goes.
+	 * `tools/tests/test_minion_damage.py` is what keeps it recorded now that
+	 * the constant it used to watch has gone.
 	 */
-	static constexpr float DamagePercentOfSummoner = 30.0f;
 
 	/**
 	 * Put one in the world.
@@ -197,8 +191,18 @@ public:
 	 * Summon Imp: "Summoning a fourth destroys the oldest, which explodes for
 	 * damage in a 3 meter radius."
 	 */
+	/**
+	 * Blow up, hurting everything within the radius it was told, then be
+	 * destroyed.
+	 *
+	 * NO FIGURES PASSED IN, SINCE ISSUE #1515. The radius is the summoning
+	 * skill's, told at the summoning, and the damage is this minion's own:
+	 * its blow times the share its type row states. Until then the caller
+	 * passed the skill's damage percentage, which was read against the
+	 * SUMMONER'S weapon -- the rule the owner corrected.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
-	void Explode(float RadiusCm, float DamagePercent);
+	void Explode();
 
 	/**
 	 * Remember what the skill that summoned this one states its explosion is,
@@ -212,10 +216,15 @@ public:
 	 *
 	 * A MINION NOBODY TOLD KEEPS ZEROES AND NEVER EXPLODES ON ITS DEATH, which
 	 * is the deployable shape's case: `UCataclysmDeployableSkill` states no
-	 * explosion, so a ballista dying leaves a body exactly as it does now.
+	 * explosion radius, so a ballista dying leaves a body exactly as it does
+	 * now.
+	 *
+	 * ONLY THE RADIUS COMES FROM THE SKILL, SINCE ISSUE #1515. What the
+	 * explosion is worth is the minion's own, taken from its type row at the
+	 * summoning, so nothing about a minion's blow reads the summoner's weapon.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
-	void RecordExplosion(float RadiusCm, float DamagePercent);
+	void RecordExplosionRadius(float RadiusCm);
 
 	/** Hit the nearest enemy in reach. Called by tests. */
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Minion")
@@ -241,16 +250,19 @@ public:
 	float AttackIntervalSeconds = DefaultAttackIntervalSeconds;
 
 	/**
-	 * What this one's death explodes for, when its summoner's stat says it
-	 * explodes at all. Both are zero until `RecordExplosion` says otherwise,
-	 * and a zero in either refuses the explosion rather than making a silent
-	 * one of no size.
+	 * What this one's death explodes: how wide, and what it is worth.
+	 *
+	 * THE RADIUS IS THE SUMMONING SKILL'S and arrives through
+	 * `RecordExplosionRadius`; the share is this kind's own, read from
+	 * `game/Data/MinionTypes.csv` at the summoning. Both are zero until
+	 * something says otherwise, and a zero in either refuses the explosion
+	 * rather than making a silent one of no size.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	float ExplosionRadiusCm = 0.0f;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
-	float ExplosionDamagePercent = 0.0f;
+	float ExplosionPercentOfOwnDamage = 0.0f;
 
 	/**
 	 * Whether it goes to its target or stays where it was put.

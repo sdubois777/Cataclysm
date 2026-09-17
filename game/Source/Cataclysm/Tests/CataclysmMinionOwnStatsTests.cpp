@@ -441,29 +441,26 @@ bool FCataclysmMinionTypesDifferTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTypelessMinionTest,
-	"Cataclysm.MinionStats.AMinionWithNoTypeStillTakesAShareOfItsSummoners",
+	"Cataclysm.MinionStats.AMinionWithNoTypeHasNoFiguresAndDealsNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * The fallback, pinned rather than left incidental.
+ * A minion with no type row has no figures of its own and hurts nothing.
  *
- * WHY IT EXISTS AT ALL, AND IT IS NOT ONLY A TEST FIXTURE.
- * `CataclysmSkillTemplates.cpp:3260` hands `Spawn` an empty type name when a
- * summoning skill's shape parameters name no minion kind. A mis-authored row
- * then fields a creature that deals nothing at all, because
- * `ApplyDirectDamage` refuses a figure of zero or less -- the minion still
- * spawns, it simply never hurts anything -- which is what the fallback
- * prevents. No shipped row does it today.
+ * THIS CASE USED TO PIN THE OPPOSITE. Until 2026-09-17 a minion with no type
+ * dealt 30% of its SUMMONER'S weapon damage, and this test existed so that
+ * nobody removed that fallback by accident. The owner ruled the fallback a
+ * bug -- a minion's blow carries the minion's own numbers -- so the rule it
+ * guarded is gone and the case now guards what replaced it.
  *
- * Three tests that predate the type table also summon one and
- * assert the old share, and they exist to check other things -- that an imp
- * never turns on its summoner, that it cannot take the summoner's critical
- * strike, that a burning minion sets what it hits alight. Forcing them into the
- * new model would have damaged tests that are about none of this.
+ * THE BLOW STILL HAPPENS, which is what makes "nothing" a measurement rather
+ * than an absence: `AttackTarget` runs, `AttacksMade` rises, and the target
+ * simply loses no health, because `ApplyDirectDamage` refuses a figure of
+ * zero or less.
  *
- * SO THE SEAM IS DELIBERATE AND IT IS ASSERTED HERE. Without this, a later
- * change could remove the fallback and those three would fail with no statement
- * anywhere of what the fallback was for.
+ * SHIPPED DATA CANNOT REACH IT. `tools/generate_datatables.py` refuses a
+ * summoning row that names no minion type, which
+ * `test_a_summon_that_names_no_minion_type_is_refused` holds.
  */
 bool FCataclysmTypelessMinionTest::RunTest(const FString&)
 {
@@ -494,8 +491,10 @@ bool FCataclysmTypelessMinionTest::RunTest(const FString&)
 	Nameless->AttackTarget(Target.Actor);
 	const float Dealt = Before - Target.Health();
 
-	TestEqual(TEXT("and deals the old share of its summoner's weapon"), Dealt,
-			  100.0f * ACataclysmMinion::DamagePercentOfSummoner / 100.0f, 0.01f);
+	TestEqual(TEXT("it swung"), Nameless->AttacksMade, 1);
+	TestEqual(TEXT("and the target lost nothing, because the minion has no "
+				   "damage of its own and takes none of its summoner's"),
+			  Dealt, 0.0f, 0.001f);
 
 	return true;
 }

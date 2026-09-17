@@ -74,6 +74,63 @@ def test_the_table_holds_every_minion_type_a_skill_produces():
                                   "SpikeTrap"}
 
 
+
+def test_a_summon_that_names_no_minion_type_is_refused():
+    """A summoning row has to say what it summons.
+
+    WHY THIS EXISTS NOW. Until 2026-09-17 a summoning skill whose shape
+    parameters named no minion kind produced a creature that dealt 30% of its
+    SUMMONER'S weapon damage. The owner ruled that a bug -- a minion's blow
+    carries the minion's own numbers -- and the fallback is deleted, so such a
+    minion would now swing for nothing at all. The mistake is refused at
+    generation rather than shipped as a creature that cannot hurt anything.
+
+    TWO SHAPES SUMMON AND THE REST DO NOT. `Summon` and `Deployable` are the two
+    that put a creature in the world; a strike or a projectile naming no minions
+    is ordinary and is not checked.
+
+    AND ONE SUMMON SHAPE LEGITIMATELY NAMES NONE. The Staff's Subjugate is a
+    Summon that summons nothing: it takes an enemy over instead, and the
+    creature it commands already has its own stat block. Its row carries
+    `Possess=1`, which is what exempts it, and this case asserts the exemption
+    as well as the refusal -- an exemption nothing tests is an exemption that
+    can be dropped by accident.
+    """
+    skills_path = ROOT / "game" / "Data" / "WeaponSkills.csv"
+    types_path = ROOT / "game" / "Data" / "MinionTypes.csv"
+    rows = list(csv.DictReader(skills_path.open(encoding="utf-8-sig")))
+    types = list(csv.DictReader(types_path.open(encoding="utf-8-sig")))
+
+    summoning = [row for row in rows
+                 if row["Shape"] in ("Summon", "Deployable")]
+    assert summoning, (
+        f"{skills_path.name} holds no Summon or Deployable row, so this "
+        f"check is measuring nothing.")
+
+    for row in summoning:
+        params = row["ShapeParams"] or ""
+        if "Possess=1" in params:
+            continue
+        assert "Minions=" in params, (
+            f"{row['Name']} is a {row['Shape']} and names no Minions, so the "
+            f"creature it summons would have no stat block and would deal "
+            f"nothing. Name a type from MinionTypes.csv, or mark the row "
+            f"Possess=1 if it takes an enemy over instead.")
+
+    possessing = [row for row in summoning
+                  if "Possess=1" in (row["ShapeParams"] or "")]
+    assert possessing, (
+        "no summoning row carries Possess=1 any more, so the exemption the "
+        "generator grants is unused. Either a row lost it or the exemption "
+        "should go with it.")
+    for row in possessing:
+        assert "Minions=" not in (row["ShapeParams"] or ""), (
+            f"{row['Name']} both possesses and names Minions, which the "
+            f"engine cannot do: UCataclysmSummonSkill::ActivateAbility takes "
+            f"the possession branch and never reaches the spawn.")
+
+    assert types, f"{types_path.name} is empty, so nothing could be named."
+
 def test_every_demonic_minion_skill_produces_a_type_the_table_defines():
     """The whole reason this table exists: a skill names a creature and the
     creature's numbers live in one place, so two skills making the same creature
@@ -326,12 +383,16 @@ def test_a_minion_is_fragile_enough_to_be_worth_killing():
 # The generator's guards
 # --------------------------------------------------------------------------
 
+#: THE SHEET'S COLUMNS, AND EVERY ONE OF THEM IS REQUIRED. A column added to
+#: the sheet has to be added here too, or every guard below fails on a figure
+#: that is missing from the fixture rather than on the thing it guards.
+#: `Explosion Percent Of Own Damage` arrived on 2026-09-17.
 HEADERS = ["Minion Type", "Family", "Base Health", "Health Per Level",
-           "Base Damage", "Damage Per Level", "Attack Interval Seconds",
-           "Move Speed", "Threat Percent", "Reach Cm", "Notice Radius Cm",
-           "Target Mode", "Tags"]
+           "Base Damage", "Damage Per Level", "Explosion Percent Of Own Damage",
+           "Attack Interval Seconds", "Move Speed", "Threat Percent",
+           "Reach Cm", "Notice Radius Cm", "Target Mode", "Tags"]
 
-GOOD = ["Imp", "Creature", 200, 90, 10, 10.0, 1.0, 4.4, 100, 200, 1500,
+GOOD = ["Imp", "Creature", 200, 90, 10, 10.0, 300, 1.0, 4.4, 100, 200, 1500,
         "Nearest", "Type.Minion, Type.Summon, Minion.Creature, Minion.Melee"]
 
 SCALING_HEADERS = ["Attribute", "Requires Tag", "Stat", "Percent Per Point"]

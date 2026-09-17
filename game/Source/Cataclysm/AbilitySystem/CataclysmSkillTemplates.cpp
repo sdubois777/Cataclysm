@@ -3452,7 +3452,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 			// minion affixes: no minion stat has an attribute, and nothing
 			// reads MinionScaling.csv. So this is a recorded gap rather than
 			// an oversight, and the line below is deliberate. Issue #895.
-			Oldest->Explode(Params.RadiusCm, GetDamagePercent());
+			Oldest->Explode();
 		}
 	}
 
@@ -3480,7 +3480,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		// it destroys the oldest, and a dead minion cannot reach this ability
 		// to ask for them. `minion_explodes_on_death` on the summoner is what
 		// decides whether they are ever used.
-		Minion->RecordExplosion(Params.RadiusCm, GetDamagePercent());
+		Minion->RecordExplosionRadius(Params.RadiusCm);
 		Minions.Add(Minion);
 	}
 	return Minion;

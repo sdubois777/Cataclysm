@@ -2,6 +2,116 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A minion's explosion is its own figure, and the share of its summoner's weapon is deleted
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/MinionTypes.csv` (one
+new column), `game/Content/Data/DT_MinionTypes.uasset`,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp`,
+`tools/generate_datatables.py`, and six test files. Issues
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515),
+[#209](https://github.com/sdubois777/Cataclysm/issues/209) and
+[#340](https://github.com/sdubois777/Cataclysm/issues/340).
+
+**The first of three changes correcting what a minion's blow carries.** The
+project owner ruled on 2026-09-17 that a minion's blow is the minion's own: it
+carries the minion's stats and minion affixes, and none of the summoner's on-hit
+chances or effects, unless the Conduit keystone is taken. This change removes the
+two places where a minion's damage was read off the summoner's weapon. The
+instigator itself, and what the keystone turns back on, are the two changes that
+follow.
+
+### THE EXPLOSION IS THE MINION'S OWN
+
+The Minion Types sheet gains one column, **Explosion Percent Of Own Damage**,
+stating what a kind's explosion is worth as a share of its own blow.
+
+> **The owner's figure of 2026-09-17: 300 for every one of the five kinds,
+> machines included.** An explosion is worth three of that minion's own blows. It
+> is a starting number and the column exists so a kind can differ later; every
+> kind states one so that the Ritualist keystone "Every minion explodes when it
+> dies" stays true of all of them.
+
+**What it replaces.** Summon Imp states no damage of its own, so it took its
+slot's figure, and the Special slot is 150% of the SUMMONER's weapon damage. That
+is what a minion's explosion dealt until now, at the summon cap or on a death.
+The design sentence says only "explodes for damage in a 3 meter radius" and names
+no size, so no shipped sentence changes.
+
+**The skill still states how wide, and the minion now states what it is worth.**
+`RecordExplosionRadius` carries the one figure the skill has; the share comes
+from the type row at the summoning. `Explode` takes no arguments at all.
+
+**It deals an amount rather than a percentage.** `ApplyHit` reads a percentage
+against the instigator's weapon, and the instigator is the summoner, which is the
+whole thing being removed; `ApplyDirectDamage` takes the figure as it stands, as
+a typed minion's ordinary swing already does.
+
+### THE SHARE OF THE SUMMONER'S WEAPON IS DELETED
+
+A minion summoned with no type row dealt 30% of its summoner's weapon damage.
+Issue #209 had already made that a fallback rather than the rule; the owner ruled
+the fallback itself a bug. It is gone, `ACataclysmMinion::DamagePercentOfSummoner`
+with it, and such a minion now swings for nothing.
+
+**So the generator refuses a summoning row that names no minion type**, which is
+the only way the game could produce one. Two exclusions, both measured rather
+than assumed:
+
+- **Only the two shapes that summon are checked.** `Summon` and `Deployable` put
+  a creature in the world; the other shapes in `game/Data/WeaponSkills.csv` name
+  no minions and should not. My first attempt refused every skill in the game.
+- **A summon that takes rather than makes is exempt.** The Staff's Subjugate is a
+  `Summon` shape that summons nothing: it drives your will into an enemy and
+  keeps the creature that is already there. Its row carries `Possess=1`, which is
+  what the engine branches on, and it is what exempts the row here.
+
+### THE GAP THAT CONSTANT WAS KEEPING
+
+`test_the_attribute_channel_is_recorded_as_still_missing` used the constant's
+presence to record a different, still-open gap: the third route the decision of
+2026-08-06 allows from a summoner to a minion, increased damage from one primary
+attribute per type, which `game/Data/MinionScaling.csv` states and no engine code
+reads. Its own comment said to rewrite it rather than delete it when the fallback
+went. **The fallback went first and the channel is still unbuilt**, so the test
+now watches the table instead: it fails when any engine file outside the tests
+reads `MinionScaling.csv`, and asks to be rewritten again then.
+
+**It reads the code with the comments stripped, and that is not fussiness.** Two
+engine files name that table in prose to say that nothing reads it. A search of
+the raw text would count those two as readers and report the gap closed while it
+is as open as ever.
+
+### WHAT MOVED IN THE TESTS
+
+- `Cataclysm.Skills.AMinionHitsForAShareOfItsSummonersWeapon` becomes
+  `Cataclysm.Skills.AMinionWithNoTypeRowSwingsForNothing`, and keeps the burn it
+  applies, so "hurt nothing" is a blow that dealt nothing rather than one that
+  never landed.
+- `Cataclysm.MinionStats.AMinionWithNoTypeStillTakesAShareOfItsSummoners` becomes
+  `Cataclysm.MinionStats.AMinionWithNoTypeHasNoFiguresAndDealsNothing`. It used to
+  exist so that nobody removed the fallback by accident; it now guards what
+  replaced it.
+- `Cataclysm.AI.ASummonedImpGoesToTheFightRatherThanStandingStill` and
+  `Cataclysm.AI.ASummonedImpNeverCriticallyStrikesEvenWhenItsSummonerWould`
+  summon a real Imp and expect the figure its type row states.
+- The six cases in `Cataclysm.MinionDeath.` and the two probes in
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` measure the
+  minion's own figure.
+- `Cataclysm.Skills.SummoningPastTheCapExplodesTheOldest` names `Imp` in its
+  summon, because a typeless imp's explosion is now worth nothing and the case
+  would have measured a burst that never happened.
+- New: `test_a_summon_that_names_no_minion_type_is_refused` holds the refusal and
+  the possession exemption together, because an exemption nothing tests is one
+  that can be dropped by accident.
+
+**And the inline fixture that stands in for the sheet gained the column**, or
+every generator guard built on it would have failed on a missing figure rather
+than on the thing it guards.
+
+---
+
 ## 2026-09-17 — A creature of Elite rank or above that falls under 30% of its health gets one chance in two of calling two guards of its own kind, a rung above it and never past Herald
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library

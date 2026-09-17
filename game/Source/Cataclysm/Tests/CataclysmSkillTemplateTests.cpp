@@ -2640,7 +2640,10 @@ bool FCataclysmSummonCapTest::RunTest(const FString&)
 	// destroys the oldest, which explodes for damage in a 3 meter radius."
 	UCataclysmSummonSkill* Summon = GrantSkill<UCataclysmSummonSkill>(
 		Caster, ECataclysmAbilitySlot::Special,
-		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Burn=1"),
+		// NAMING THE MINION IS NOW REQUIRED OF A SUMMON. Issue #1515: a minion
+		// with no type row has no damage of its own and its explosion is worth
+		// nothing, so this case would measure a burst that never happened.
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Burn=1; Minions=Imp:1"),
 		TEXT("Summon Imp"));
 	if (!Summon)
 	{
@@ -2672,8 +2675,26 @@ bool FCataclysmSummonCapTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionAttacksTest,
-	"Cataclysm.Skills.AMinionHitsForAShareOfItsSummonersWeapon",
+	"Cataclysm.Skills.AMinionWithNoTypeRowSwingsForNothing",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion nobody gave a type row to hurts nothing, and still sets alight
+ * what it swings at.
+ *
+ * IT USED TO TAKE 30% OF ITS SUMMONER'S WEAPON DAMAGE. The owner ruled that
+ * a bug on 2026-09-17: a minion's blow carries the minion's own numbers, and
+ * a minion with no type row has none. The fallback is deleted.
+ *
+ * SO THE CASE IS NOW A REFUSAL RATHER THAN A FIGURE, and the burn is what
+ * keeps it honest: the swing still happens and still applies what it carries,
+ * so "hurt nothing" is a blow that dealt nothing rather than a blow that
+ * never landed.
+ *
+ * NOTHING IN THE SHIPPED DATA CAN REACH THIS. `tools/generate_datatables.py`
+ * refuses a summoning row that names no minion type, and
+ * `test_a_summon_that_names_no_minion_type_is_refused` holds that.
+ */
 
 bool FCataclysmMinionAttacksTest::RunTest(const FString&)
 {
@@ -2698,13 +2719,9 @@ bool FCataclysmMinionAttacksTest::RunTest(const FString&)
 	Minion->AttackOnce();
 
 	TestEqual(TEXT("It attacked once"), Minion->AttacksMade, 1);
-	TestTrue(TEXT("The enemy took damage"), Enemy.Health() < Before);
-
-	// A SHARE OF THE SUMMONER'S WEAPON, not of its own, which it has none of.
-	const float Expected =
-		WeaponDamage * ACataclysmMinion::DamagePercentOfSummoner / 100.0f;
-	TestEqual(TEXT("It dealt its share of the summoner's weapon damage"),
-		Before - Enemy.Health(), Expected);
+	TestEqual(TEXT("and the enemy lost nothing to a minion with no figures "
+				   "of its own"),
+		Before - Enemy.Health(), 0.0f, 0.001f);
 
 	TestTrue(TEXT("And set the enemy alight"),
 		UCataclysmSkillEffects::HasTag(Enemy.Actor, UCataclysmSkillEffects::BurnTag()));
