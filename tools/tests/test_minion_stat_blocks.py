@@ -131,6 +131,56 @@ def test_a_summon_that_names_no_minion_type_is_refused():
 
     assert types, f"{types_path.name} is empty, so nothing could be named."
 
+
+def _tables(shape, params):
+    """The two tables `validate_minion_references` reads, with one skill row."""
+    return {
+        "WeaponSkills": [{
+            "Name": "Test_Weapon_Slot",
+            "Shape": shape,
+            "ShapeParams": params,
+        }],
+        "MinionTypes": [{"Name": "Imp"}],
+    }
+
+
+def test_the_generator_refuses_a_summon_that_names_no_minion_type():
+    """The check itself, driven with a bad row and with the two good ones.
+
+    WHY THIS EXISTS BESIDE THE CASE ABOVE. That one reads the shipped rows and
+    would pass with this refusal deleted, because the shipped rows are correct.
+    This one hands the check a row that is wrong, so a deleted refusal fails a
+    test rather than going unnoticed until a bad row ships.
+
+    THE THREE CASES ARE THE THREE BRANCHES. A summoning shape naming no minions
+    is the mistake; one naming a type is ordinary; and a summoning shape that
+    takes an enemy over instead carries `Possess=1` and names none on purpose.
+    """
+    refused = gen.validate_minion_references(
+        _tables("Summon", "Count=1; Duration=20; Radius=3"))
+    assert any("names no Minions" in problem for problem in refused), (
+        "a Summon row naming no minion type was accepted. Since 2026-09-17 a "
+        "minion with no type row deals nothing, so such a row summons a "
+        "creature that cannot hurt anything.")
+
+    accepted = gen.validate_minion_references(
+        _tables("Summon", "Count=1; Duration=20; Minions=Imp:1"))
+    assert not accepted, (
+        f"a Summon row naming a real type was refused: {accepted}")
+
+    possessing = gen.validate_minion_references(
+        _tables("Summon", "Range=15; Possess=1; HealthThresholdPercent=50"))
+    assert not possessing, (
+        f"the possession exemption has gone: {possessing}. The Staff's "
+        f"Subjugate is a Summon shape that takes an enemy over and names no "
+        f"minions on purpose.")
+
+    ordinary = gen.validate_minion_references(
+        _tables("Strike", "Radius=2; MaxTargets=3"))
+    assert not ordinary, (
+        f"a Strike naming no minions was refused: {ordinary}. Only the two "
+        f"shapes that summon are checked.")
+
 def test_every_demonic_minion_skill_produces_a_type_the_table_defines():
     """The whole reason this table exists: a skill names a creature and the
     creature's numbers live in one place, so two skills making the same creature
