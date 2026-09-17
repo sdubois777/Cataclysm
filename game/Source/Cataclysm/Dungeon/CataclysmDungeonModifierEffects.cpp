@@ -52,6 +52,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::NecroticGroundKey =
 	TEXT("Death_Necrotic_Ground");
 const TCHAR* UCataclysmDungeonModifierEffects::RavenousHoardKey =
 	TEXT("Famine_Ravenous_Hoard");
+const TCHAR* UCataclysmDungeonModifierEffects::GraveTideKey =
+	TEXT("Death_Grave_Tide");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -225,7 +227,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(LeechSporesKey)
 		|| RowKey == FName(BloodAltarKey)
 		|| RowKey == FName(NecroticGroundKey)
-		|| RowKey == FName(RavenousHoardKey))
+		|| RowKey == FName(RavenousHoardKey)
+		|| RowKey == FName(GraveTideKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -382,6 +385,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(BloodAltarKey),
 		FName(NecroticGroundKey),
 		FName(RavenousHoardKey),
+		FName(GraveTideKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1224,6 +1228,29 @@ float UCataclysmDungeonModifierEffects::RavenousHoardDamageMultiplier(int32 Stac
 	return 1.0f
 		+ static_cast<float>(FMath::Max(0, Stacks)) * RavenousHoardDamagePercentPerStack
 			/ 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::GraveTideWaveIsDue(float SecondsSinceLastWave,
+														 int32 WavesSoFar)
+{
+	if (WavesSoFar >= GraveTideMostWaves)
+	{
+		return false;
+	}
+	return SecondsSinceLastWave >= GraveTideSecondsBetweenWaves;
+}
+
+int32 UCataclysmDungeonModifierEffects::GraveTideCreaturesInWave(int32 WavesSoFar)
+{
+	return GraveTideFirstWaveCreatures
+		+ FMath::Max(0, WavesSoFar) * GraveTideMoreCreaturesPerWave;
+}
+
+float UCataclysmDungeonModifierEffects::GraveTideDamageMultiplier(int32 WavesSoFar)
+{
+	const float Wanted =
+		static_cast<float>(FMath::Max(0, WavesSoFar)) * GraveTideDamagePercentPerWave;
+	return 1.0f + FMath::Min(Wanted, GraveTideMostDamagePercent) / 100.0f;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

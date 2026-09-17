@@ -2271,12 +2271,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// and #41.
 	const bool bRavenousHoard = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::RavenousHoardKey));
+	// AND GRAVE TIDE, WHICH PUTS CREATURES ON THE FLOOR. Issues #1820 and #41.
+	const bool bGraveTide = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::GraveTideKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
-		&& !bRavenousHoard)
+		&& !bRavenousHoard && !bGraveTide)
 	{
 		return;
 	}
@@ -2433,6 +2436,14 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bRavenousHoard)
 	{
 		StepRavenousHoard(Player);
+	}
+
+	// AND GRAVE TIDE LAST, BECAUSE IT SPAWNS CREATURES. Issues #1820 and #41. A creature
+	// placed on this beat is counted by every rule above it on the next one, which is
+	// the order Necrotic Ground's patches already follow.
+	if (bGraveTide)
+	{
+		StepGraveTide();
 	}
 }
 
@@ -3446,6 +3457,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Hoard, FString::Printf(TEXT("strongest %d of %d"),
 											RavenousHoardStrongest,
 											Effects::RavenousHoardMostStacks));
+	}
+
+	// AND GRAVE TIDE'S WAVES SO FAR. Issues #1820 and #41.
+	const FName Tide(Effects::GraveTideKey);
+	if (FloorBrief.Modifiers.Contains(Tide))
+	{
+		Counting.Add(Tide, FString::Printf(TEXT("wave %d of %d"), GraveTideWaves,
+										   Effects::GraveTideMostWaves));
 	}
 
 	return Counting;
@@ -4503,7 +4522,7 @@ void ACataclysmDungeonGameMode::StepRavenousHoard(ACataclysmPlayerCharacter* Pla
 		// THE SETTER RETURNS AT ONCE WHEN THE MULTIPLIER HAS NOT CHANGED, so this writes
 		// nothing between stacks.
 		const int32 Stacks = Effects::RavenousHoardStacksAfter(SecondsAlive);
-		Creature->SetFloorRuleDamageMultiplier(
+		Creature->SetTimeAliveDamageMultiplier(
 			Effects::RavenousHoardDamageMultiplier(Stacks));
 		Strongest = FMath::Max(Strongest, Stacks);
 	}
@@ -4524,6 +4543,76 @@ void ACataclysmDungeonGameMode::StepRavenousHoard(ACataclysmPlayerCharacter* Pla
 		RavenousHoardStrongest = Strongest;
 		RefreshFloorModifierPanel();
 	}
+}
+
+void ACataclysmDungeonGameMode::StepGraveTide()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	GraveTideSecondsSinceLastWave += SecondsBetweenWaveChecks;
+	if (!Effects::GraveTideWaveIsDue(GraveTideSecondsSinceLastWave, GraveTideWaves))
+	{
+		return;
+	}
+
+	// WHERE THEY STAND IS THE FLOOR POPULATOR'S ANSWER, asked for this floor's own plan
+	// and density, so a wave cannot put a creature anywhere the floor would not.
+	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
+		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	if (Population.Enemies.IsEmpty())
+	{
+		// NOTHING TO PLACE IS NOT A WAVE, and the clock is left alone so the next beat
+		// asks again rather than skipping a whole cadence.
+		return;
+	}
+
+	const int32 Wanted = Effects::GraveTideCreaturesInWave(GraveTideWaves);
+	const float Multiplier = Effects::GraveTideDamageMultiplier(GraveTideWaves);
+
+	int32 Placed = 0;
+	for (int32 Which = 0; Which < Wanted; ++Which)
+	{
+		// DRAWN FROM THE WHOLE POPULATION, so a wave is spread as the floor is rather
+		// than gathered where the list happens to start.
+		const FCataclysmEnemyPlacement& Placement =
+			Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+		ACataclysmEnemyCharacter* Risen =
+			SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier);
+		if (!Risen)
+		{
+			continue;
+		}
+
+		// THE WAVE'S OWN STRENGTH, SET ONCE. Ravenous Hoard writes the other multiplier
+		// every beat, and neither touches the other's.
+		Risen->SetPlacedDamageMultiplier(Multiplier);
+
+		// THE FLOOR'S LIST, so a floor change disposes of these creatures with the rest.
+		// NOT `CurrentWave`, which counts a Horde wave's own creatures and decides when
+		// the next one arrives.
+		FloorEnemies.Add(Risen);
+		++Placed;
+	}
+
+	if (Placed <= 0)
+	{
+		return;
+	}
+
+	++GraveTideWaves;
+	GraveTideSecondsSinceLastWave = 0.0f;
+	UE_LOG(LogCataclysm, Verbose,
+		   TEXT("Grave Tide: wave %d of %d put %d creature%s on floor %d at %.2f "
+				"times their own damage."),
+		   GraveTideWaves, Effects::GraveTideMostWaves, Placed,
+		   Placed == 1 ? TEXT("") : TEXT("s"), FloorNumber, Multiplier);
+	RefreshFloorModifierPanel();
 }
 
 void ACataclysmDungeonGameMode::StepHolyRepercussions(
@@ -4728,10 +4817,18 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// clocks, so the damage cannot outlive a clock that was lost.
 		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
 		{
-			It->SetFloorRuleDamageMultiplier(1.0f);
+			It->SetTimeAliveDamageMultiplier(1.0f);
+			It->SetPlacedDamageMultiplier(1.0f);
 		}
 		RavenousHoardSecondsAlive.Empty();
 		RavenousHoardStrongest = 0;
+
+		// AND GRAVE TIDE FORGETS ITS CLOCK AND ITS WAVES. Issues #1820 and #41. The
+		// creatures its waves placed are in `FloorEnemies` and go the way every other
+		// creature on the floor goes; the loop above puts back the damage of any that
+		// lives through a Horde dungeon's change of wave.
+		GraveTideSecondsSinceLastWave = 0.0f;
+		GraveTideWaves = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

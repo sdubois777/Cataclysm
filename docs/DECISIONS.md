@@ -2,6 +2,143 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — Grave Tide puts a wave of creatures on the floor every thirty seconds, each wave one creature larger and a step stronger than the last, up to six
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a creature's
+designed stats, and the two multipliers a floor rule may put on its attack damage),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library of dungeon
+rules: each row's key, its figures and its arithmetic), `CataclysmDungeonGameMode.h` and `.cpp` (the
+quarter-second beat, the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Death_Grave_Tide` in `game/Data/DungeonModifiers.csv`: "Waves of undead periodically rise from the
+ground and flood the dungeon. These waves grow stronger and more numerous the longer players remain on
+a floor." No text in `docs/` says more about it.
+
+### What the row's own words decide
+
+1. **The waves come on a clock**, not on something the player does: "periodically".
+2. **Each wave is larger and its creatures stronger than the last**, counted from the floor's start:
+   "grow stronger and more numerous the longer players remain on a floor".
+3. **They appear on the floor itself**, not at an entrance: "rise from the ground and flood the
+   dungeon".
+
+**"Undead" names no creature this game has.** The seven kinds a floor can place are the Imp, the
+Hellhound, the Brute, the Abyssal Warden, the Corrupted Sentinel, the Succubus and the Gatekeeper, and
+none of them is undead. The waves are made of whatever the floor's own populator picks, and the word is
+flavour until there is an undead creature. Flagged to the owner.
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation of unstated figures, and flagged to the
+owner by that session.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| How often a wave rises | **Every 30 seconds from the floor's start**, `ArtilleryStrikeSecondsBetween` | The row says "periodically" and states no figure; 30 seconds is this project's figure for a floor event on a clock |
+| How many rise | **Three in the first wave, one more in each wave after it** | "More numerous" states no figure |
+| How much stronger | **Each wave's creatures are placed at 10% above their own attack damage for each wave before it, up to 50%** | Death's Embrace's share for a step, and Ravenous Hoard's cap at that share, so a wave cannot place a creature stronger than one that lived to that rule's ceiling |
+| How many waves | **Six a floor** | The row states no ceiling, and without one a floor fills for as long as the player stands on it |
+| Where they stand | **Wherever the floor's own populator would put a creature**, `FCataclysmFloorPopulator::Populate` on this floor's plan and density | One place decides what a cell may hold |
+| The floor panel | **"wave N of 6"** | The panel shows one line for a row |
+
+### Two multipliers on a creature's damage, not one
+
+Ravenous Hoard (merged the same day) gave a creature one multiplier, written every beat from its time
+alive. A wave's own strength written through the same setter would be overwritten on the next beat. So
+the creature now holds two, named for where each comes from:
+
+- **`SetPlacedDamageMultiplier`**, set once by the rule that places the creature;
+- **`SetTimeAliveDamageMultiplier`**, written every beat by a rule that counts how long it has lived.
+  This is Ravenous Hoard's setter, renamed: it was `SetFloorRuleDamageMultiplier`, and a general name
+  holding one of two sources is what misleads the next reader.
+
+`WriteAttackDamage` multiplies the designed figure by the rarity's damage scale and by both. A test
+places a creature under both rules and reads its damage three times, taking one multiplier off at a
+time, so the product is measured rather than assumed.
+
+### The rule spawns its own wave rather than queueing it
+
+`WaveStillToArrive` is the game's one queue of creatures still to arrive. `PopulateFloor` assigns it a
+new floor's own wave when that floor's brief says the wave walks in, and leaves it as it was otherwise,
+and the per-floor reset runs after `PopulateFloor`. So a rule that queued creatures there could not
+clear its own leftovers without deleting the new floor's wave, and nothing on a queued placement says
+which rule queued it.
+
+**So the rule spawns its wave itself on the beat**, through `SpawnPlacedCreature`, the same function
+that queue uses, and keeps no queue of its own. A wave here is three to eight creatures, where that
+queue exists for a wave of sixty. Its creatures go into `FloorEnemies`, the floor's own list, so a
+floor change disposes of them with every other creature; they are deliberately not added to
+`CurrentWave`, which counts a Horde wave's creatures and decides when the next one arrives.
+
+### At a floor change
+
+The per-floor reset forgets the clock and the count of waves. The creatures the waves placed are the
+floor's, and a floor change disposes of them as it does of any other creature. A creature that lives
+through a Horde dungeon's change of wave has both of its multipliers put back to 1 by the loop Ravenous
+Hoard added.
+
+### The research
+
+Read on 2026-09-17, both from Maxroll.
+
+| Game | What it does | What it settles here |
+| :-- | :-- | :-- |
+| Path of Exile, Delirium | The fog spawns extra monsters while it runs, and "monsters will also become harder the deeper you go" | An encounter that keeps adding monsters and makes them harder as it goes is a shipped shape. Its growth is by distance, not by time |
+| Diablo IV, Helltide | A threat meter fills as the player stays and fights; "Entering a new tier triggers an ambush while also adding more random ambushes of more lethal packs of enemies" | Growth in both number and danger, tied to staying |
+
+**Neither settles how often a wave should come, how many creatures it holds or how much stronger each
+is**, so those are the judgements above.
+
+Sources: [Maxroll: Delirium mirror farming guide](https://maxroll.gg/poe/currency/delirium-mirror-farming-guide)
+and [Maxroll: Helltide guide](https://maxroll.gg/d4/resources/helltide-guide).
+
+### The tests
+
+C++, `Cataclysm.DungeonModifierEffects.`, six new:
+
+- **`AWaveRisesOnItsCadenceAndEachIsLargerThanTheLast`.** Nothing a beat short of 30 seconds, three
+  creatures on it, four more on the next cadence.
+- **`AWaveAfterTheFirstPlacesItsCreaturesStrongerThanTheirOwnDamage`.** A second-wave creature's damage
+  is read, its wave multiplier is taken off, and its damage is read again: the first is the second
+  times the wave's share.
+- **`TheTideStopsAtSixWavesHoweverLongThePlayerStays`.** Six waves put 33 creatures on the floor, the
+  panel reads "wave 6 of 6", and two further cadences add nothing.
+- **`TheFloorPanelCountsTheWavesThatHaveRisen`.** "wave 0 of 6" before any wave, then 1, then 2, and no
+  line at all on a floor that does not carry the row.
+- **`AWaveCreatureGrowsWithItsTimeAliveAsWellAsItsWave`.** On a floor carrying Ravenous Hoard too, a
+  second-wave creature ten seconds alive is read three times, one multiplier taken off at a time. Its
+  damage is its own times both, and the figures are printed.
+- **`AFloorChangeClearsTheTideAndLeavesNoCreatureOfTheLastFloor`.** After the stairs no creature of the
+  last floor's waves remains, the creatures on the floor are the new floor's own population, the panel
+  reads "wave 0 of 6", and the next wave waits a full cadence.
+
+One changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** carries Grave Tide, asserts its
+first wave rose during the floor's beats, and that the count is back to none after the change.
+
+Python, three new: the row states no figure; it still says "periodically", "grow stronger and more
+numerous" and "the longer players remain on a floor"; and the cadence and the two shares are still
+declared as the Artillery Strike, Death's Embrace and Ravenous Hoard constants.
+
+### What the tests do not show
+
+- **What a wave costs in a frame.** Three to eight creatures are spawned in one beat. Nothing measures
+  the time that takes.
+- **A wave on a floor whose populator returns nothing.** The rule leaves its clock alone and tries
+  again on the next beat; no test builds such a floor.
+- **Rewards.** A wave's creatures are ordinary spawns, so they drop and pay what any placed creature
+  does. No test reads a drop.
+- **A creature restored from a save.** Neither multiplier is saved, as the Ravenous Hoard entry
+  records, and the count of waves is not saved either.
+
+---
+
 ## 2026-09-17 — A knockdown obeys crowd control resistance the way a stun does: shortened, and at 100 it does not land
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (`ApplyKnockdown`)

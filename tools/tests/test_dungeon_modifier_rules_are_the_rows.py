@@ -1418,7 +1418,8 @@ def test_the_illusion_is_honoured_where_a_creatures_damage_is_recomputed():
 
     THE DECISION MOVED ONE CALL DOWN IN ISSUES #1820 AND #41, AND THIS CHECK MOVED
     WITH IT. `WriteAttackDamage` writes the attack damage for
-    `ApplyStartingAttributes` and for `SetFloorRuleDamageMultiplier`, which must not
+    `ApplyStartingAttributes` and for the two floor-rule setters,
+    `SetPlacedDamageMultiplier` and `SetTimeAliveDamageMultiplier`, which must not
     re-run the whole recompute because that refills health. So the flag has to be
     read in the helper, and the recompute the six setters re-run has to call the
     helper -- in its code, not in a comment.
@@ -2189,4 +2190,70 @@ def test_ravenous_hoards_cadence_cap_and_share_are_still_death_s_embrace_s():
     assert not lost, (
         "; ".join(lost) + ". Each was copied from Death's Embrace as a conclusion, "
         "not chosen as a number. If one is now a figure of its own, say why in "
+        "docs/DECISIONS.md.")
+
+
+def test_grave_tide_row_states_no_number_of_its_own():
+    """Every figure this rule uses is judged: its row states none.
+
+    IF THE ROW EVER STATES ONE -- a count of creatures, a cadence, a share -- this
+    fails, so the constant is read off the row and docs/DECISIONS.md stops calling it a
+    judgement.
+    """
+    words = flat(rows()["Death_Grave_Tide"]["Description"])
+
+    assert "%" not in words, words
+    assert not [c for c in words if c.isdigit()], (
+        "The Grave Tide row now states a number. Check GraveTideSecondsBetweenWaves, "
+        "GraveTideFirstWaveCreatures, GraveTideMoreCreaturesPerWave, GraveTideMostWaves "
+        "and GraveTideDamagePercentPerWave against it and update docs/DECISIONS.md. "
+        + words)
+
+
+def test_grave_tide_row_still_says_waves_rise_periodically_and_grow():
+    """The three phrases the rule's readings rest on.
+
+    "PERIODICALLY" is why the waves come on a clock rather than on a trigger. "GROW
+    STRONGER AND MORE NUMEROUS" is why each wave is larger than the last and its
+    creatures are placed above their own damage. "THE LONGER PLAYERS REMAIN ON A FLOOR"
+    is why both are counted from the floor's start and cleared at the stairs.
+    """
+    words = flat(rows()["Death_Grave_Tide"]["Description"]).lower()
+
+    assert "periodically" in words, (
+        "The Grave Tide row no longer says the waves come periodically. The rule counts "
+        "a cadence because it did; re-read the ruling in docs/DECISIONS.md. " + words)
+    assert "grow stronger and more numerous" in words, (
+        "The Grave Tide row no longer says the waves grow stronger and more numerous. "
+        "Each wave is larger than the last and its creatures are placed above their own "
+        "damage because it did. " + words)
+    assert "the longer players remain on a floor" in words, (
+        "The Grave Tide row no longer counts the growth by time on a floor. The rule's "
+        "clock and its count of waves are cleared at the stairs because it did. " + words)
+
+
+def test_grave_tides_cadence_and_shares_are_still_the_rules_they_came_from():
+    """The judged figures that were copied from other rules, held as derivations.
+
+    THE CADENCE IS THE ARTILLERY STRIKE'S, this project's figure for a floor event on a
+    clock. THE SHARE A WAVE ADDS IS DEATH'S EMBRACE'S, the same step Ravenous Hoard
+    gives for time alive, AND THE CEILING IS RAVENOUS HOARD'S CAP AT THAT SHARE, so a
+    wave cannot place a creature stronger than one that lived to that rule's cap. A
+    later change to any of those carries this rule with it.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    derivations = {
+        "GraveTideSecondsBetweenWaves": r"ArtilleryStrikeSecondsBetween",
+        "GraveTideDamagePercentPerWave": r"DeathsEmbracePercentPerStack",
+        "GraveTideMostDamagePercent":
+            r"RavenousHoardMostStacks\s*\*\s*GraveTideDamagePercentPerWave",
+    }
+    lost = [f"{name} is no longer declared as {source}"
+            for name, source in derivations.items()
+            if not re.search(rf"\b{name}\s*=\s*{source}\s*;", text)]
+
+    assert not lost, (
+        "; ".join(lost) + ". Each was copied from another rule as a conclusion, not "
+        "chosen as a number. If one is now a figure of its own, say why in "
         "docs/DECISIONS.md.")
