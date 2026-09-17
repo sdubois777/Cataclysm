@@ -68,8 +68,13 @@ of this stat, and that stands.
   stunned, slowed or knocked back while an enemy is within 4 metres of you." It now also stops
   a knockdown, which the sentence does not say, so the keystone is stronger than its words by
   one effect. **A labelled judgement, ruled 2026-09-17 under the project owner's delegation:**
-  accepted for now, and the node text gains "knocked down" in the Passive Nodes sheet of
-  `docs/All_Things_Cataclysm.xlsx` the next time the workbook is free for it.
+  accepted for now, and the node text gains "knocked down" in a change of its own. That text is
+  in `docs/Ravager_Class_Tree_Final.json`, which `tools/generate_datatables.py` reads for the
+  passive trees, so the reword needs no workbook: it moves `PassiveNodes.csv` and its DataTable
+  asset, and a comment in `CataclysmPassiveTreeTests.cpp` quotes the sentence. Two Ultimate
+  skills, Living Pyre and Unstoppable Force, use the same words in their own descriptions and
+  are not touched by any of this: a skill states its immunity with `Immune=`, which reads
+  nothing from this stat.
 - **The two class lines that grant the stat** (the Ravager's 5 plus 0.15 a level and the
   Masochist's 10 plus 0.2 a level) shorten a knockdown on those characters by the same share
   as a stun.
