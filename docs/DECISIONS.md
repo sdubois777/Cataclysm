@@ -117,7 +117,10 @@ C++, `Cataclysm.DungeonModifierEffects.`, six new:
   damage is its own times both, and the figures are printed.
 - **`AFloorChangeClearsTheTideAndLeavesNoCreatureOfTheLastFloor`.** After the stairs no creature of the
   last floor's waves remains, the creatures on the floor are the new floor's own population, the panel
-  reads "wave 0 of 6", and the next wave waits a full cadence.
+  reads "wave 0 of 6", and the next wave waits a full cadence. **It beats ten seconds past the second
+  wave before taking the stairs, and that line exists because the first attempt to prove the reset
+  failed:** the test stopped on the beat a wave rose, which sets the clock to zero, so the clock was
+  already zero at the change and a break that stopped the reset clearing it failed no test at all.
 
 One changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** carries Grave Tide, asserts its
 first wave rose during the floor's beats, and that the count is back to none after the change.

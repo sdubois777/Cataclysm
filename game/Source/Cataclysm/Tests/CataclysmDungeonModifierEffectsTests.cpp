@@ -11680,6 +11680,14 @@ bool FCataclysmGraveTideFloorChangeTest::RunTest(const FString& Parameters)
 
 	const int32 BeatsPerWave = BeatsFor(Effects::GraveTideSecondsBetweenWaves);
 	Beat(Mode, BeatsPerWave * 2);
+
+	// AND PART OF A THIRD CADENCE, SO THE CLOCK IS NOT AT ZERO WHEN THE STAIRS ARE
+	// TAKEN. A wave sets the clock to zero as it rises, so a test that stops on the beat
+	// a wave rises leaves nothing for the reset to clear, and a reset that cleared
+	// nothing would pass. Measured before this line existed: the break that stops the
+	// reset clearing the clock failed no test at all.
+	Beat(Mode, BeatsPerWave / 3);
+
 	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Risen;
 	for (ACataclysmEnemyCharacter* Creature : CreaturesNow())
 	{
