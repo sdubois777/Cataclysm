@@ -1614,11 +1614,17 @@ public:
 	 * the character sheet -- granted by an affix on seven gear slots, by two
 	 * class lines and by a helmet implicit -- was worth almost nothing.
 	 *
-	 * IT REDUCES HOW MUCH, NOT WHETHER. A stun's seconds and a shove's
-	 * centimetres are both scaled by it. Diablo IV's impairment reduction stat
-	 * works this way, shortening a crowd control effect rather than rolling
-	 * against it, and reducing an amount is the only rule that can serve a
-	 * DESIGNED stun, which has no chance to reduce.
+	 * IT REDUCES HOW MUCH, NOT WHETHER. A stun's seconds, a knockdown's seconds
+	 * and a shove's centimetres are all scaled by it. Diablo IV's impairment
+	 * reduction stat works this way, shortening a crowd control effect rather
+	 * than rolling against it, and reducing an amount is the only rule that can
+	 * serve a DESIGNED stun, which has no chance to reduce.
+	 *
+	 * THE KNOCKDOWN ARRIVED ON 2026-09-17, issue #1815. The decision of
+	 * 2026-09-05 named stuns and shoves, and a knockdown -- built four days
+	 * before it -- was left reading nothing, so a creature at 100 was still
+	 * floored for the whole length. Diablo IV's "Control Impaired Duration
+	 * Reduction" shortens its Knockdown and its Stun alike.
 	 *
 	 * **AT 100 NOTHING LANDS, AND THIS IS THE ONE PLACE THIS GAME LETS A STAT
 	 * REACH IMMUNITY.** Every other unconditional mitigation layer is capped
@@ -1642,11 +1648,11 @@ public:
 	 * before its first refresh -- answers exactly what it answered before.
 	 *
 	 * ASKED AFRESH AT THE MOMENT THE EFFECT LANDS, which is what lets the
-	 * condition be one that changes. Both callers ask here and neither keeps the
-	 * answer: `ApplyStun` asks as the stun is applied, and the shared
-	 * displacement body asks as the shove is resolved. A stat asked once and
-	 * cached could not carry "while an enemy is within 4 metres", because the
-	 * condition turning true later would never arrive.
+	 * condition be one that changes. No caller keeps the answer: `ApplyStun` and
+	 * `ApplyKnockdown` ask as the hold is applied, and the shared displacement
+	 * body asks as the shove is resolved. A stat asked once and cached could not
+	 * carry "while an enemy is within 4 metres", because the condition turning
+	 * true later would never arrive.
 	 *
 	 * @param Amount  seconds, or centimetres, or whatever the effect is measured
 	 *                in. Zero or less answers zero
@@ -1824,6 +1830,10 @@ public:
 	 * down skips the damage threshold and skips neither the window nor boss
 	 * immunity. Every row that states `ForcedMovement=Knockdown` means to, so
 	 * `bKnockdownIsDesigned` is true for all three of them.
+	 *
+	 * AND THE TARGET'S CROWD CONTROL RESISTANCE SHORTENS IT, AS IT DOES A STUN,
+	 * before any of those rules are asked; at 100 nothing lands. Since
+	 * 2026-09-17, issue #1815. See `AfterCrowdControlResistance`.
 	 *
 	 * @param DamageDealt  what this hit actually did, after mitigation. Ignored
 	 *                     when the knockdown is designed.

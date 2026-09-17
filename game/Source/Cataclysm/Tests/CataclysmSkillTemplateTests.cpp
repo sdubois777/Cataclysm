@@ -7463,6 +7463,57 @@ bool FCataclysmForcedMovementNamesTwoVerbsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmForcedMovementKnockdownResistedTest,
+	"Cataclysm.Skills.AForcedMovementKnockdownDoesNotLandOnAFullyResistantTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmForcedMovementKnockdownResistedTest::RunTest(const FString&)
+{
+	// A ROW STATING `ForcedMovement=Knockdown` IS ONE OF THE PLACES THAT CALL
+	// `ApplyKnockdown` -- Break the World, Crater and The Gathering -- and since
+	// 2026-09-17 a knockdown reads the target's crowd control resistance the way a
+	// stun does. Issue #1815.
+	//
+	// KNOCKDOWN ALONE, WITHOUT THE GATHERING'S PULL, so a target moved out of
+	// reach cannot explain what happens to it. Two seconds, The Gathering's
+	// stated length. One swing reaches both targets, and the one with no
+	// resistance is the control.
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Bare(World, FVector(0, 3 * M, 0));
+	FScopedFighter Immune(World, FVector(0, -3 * M, 0));
+
+	Immune.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(), 100.0f);
+
+	UCataclysmStrikeSkill* Floor = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Radius=6; Angle=360; ForcedMovement=Knockdown; "
+			 "ForcedMovementDuration=2"),
+		TEXT("Floored"));
+	if (!Floor)
+	{
+		AddError(TEXT("Could not grant the knockdown skill."));
+		return false;
+	}
+
+	if (!TestTrue(TEXT("It activates"), Activate(Caster, Floor)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the target with no resistance is knocked down"),
+		UCataclysmSkillEffects::IsKnockedDown(Bare.Actor));
+	TestFalse(TEXT("and the target at 100 resistance is not"),
+		UCataclysmSkillEffects::IsKnockedDown(Immune.Actor));
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkewerBindsWhatItPinsTest,
 	"Cataclysm.Skills.AProjectileStatingOnDeathReleaseBindsTheLineItPinned",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -13741,6 +13792,54 @@ bool FCataclysmChargeKnockdownNeedsALandedBlowTest::RunTest(const FString&)
 
 	TestFalse(TEXT("and an evaded charge knocks nothing down"),
 		UCataclysmSkillEffects::IsKnockedDown(Enemy.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeKnockdownResistedTest,
+	"Cataclysm.Skills.AChargeKnockdownDoesNotLandOnAFullyResistantTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE CHARGE IS ONE OF THE PLACES THAT CALL `ApplyKnockdown`, and since
+ * 2026-09-17 a knockdown reads the target's crowd control resistance the way a
+ * stun does: shortened, and at 100 not landing at all. Issue #1815. There is a
+ * test like this one for each place, so one that stopped going through
+ * `ApplyKnockdown` -- and so stopped asking -- fails by name.
+ *
+ * ONE CHARGE, TWO TARGETS. The swing reaches all the way round, so the same
+ * activation strikes a target with no resistance and one with a hundred, and the
+ * stat is the only thing that differs between them. The first is the control.
+ */
+bool FCataclysmChargeKnockdownResistedTest::RunTest(const FString&)
+{
+	using namespace CataclysmChargeKnockdownTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Bare(World, FVector(2 * M, 0, 0));
+	FScopedFighter Immune(World, FVector(-2 * M, 0, 0));
+	GiveChargeKnockdown(Caster, 1.5f);
+
+	Immune.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute(), 100.0f);
+
+	UCataclysmStrikeSkill* Charge = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("Charge"), ChargeTags);
+	if (!Charge || !TestTrue(TEXT("the charge activates"),
+							 Activate(Caster, Charge)))
+	{
+		AddError(TEXT("Could not run the charge."));
+		return false;
+	}
+
+	TestTrue(TEXT("the target with no resistance is knocked down"),
+		UCataclysmSkillEffects::IsKnockedDown(Bare.Actor));
+	TestFalse(TEXT("and the target at 100 resistance is not"),
+		UCataclysmSkillEffects::IsKnockedDown(Immune.Actor));
 
 	return true;
 }

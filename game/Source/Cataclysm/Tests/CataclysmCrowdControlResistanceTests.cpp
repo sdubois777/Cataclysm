@@ -28,7 +28,9 @@
  * be built at all.
  *
  * WHAT IT IS NOW. It scales the amount of a crowd control effect: a stun's
- * seconds and a shove's centimetres. At 100 nothing lands.
+ * seconds, a knockdown's seconds and a shove's centimetres. At 100 nothing
+ * lands. The knockdown joined on 2026-09-17, issue #1815; until then a
+ * knockdown asked nothing and floored even a creature carrying Unyielding.
  *
  * **AT 100 A STAT REACHES IMMUNITY, WHICH THIS GAME OTHERWISE REFUSES.** Armour
  * caps at 75%, resistance at 70% and flat damage reduction at 75%, and
@@ -239,6 +241,114 @@ CATACLYSM_CC_TEST(FCataclysmCrowdControlStunTest,
 }
 
 // ---------------------------------------------------------------------------
+// What it does to a knockdown
+// ---------------------------------------------------------------------------
+
+namespace CataclysmCrowdControlTest
+{
+	/**
+	 * How long the knockdown on this creature runs, read off the effect that
+	 * grants `State.KnockedDown`, or zero when there is none.
+	 *
+	 * NOT THE LONGEST EFFECT ON THE CREATURE. A knockdown that lands also opens
+	 * the five second immunity window and leaves a one second stagger, and the
+	 * window would answer instead. A world built for a test is never ticked, so
+	 * the time left is the whole length the knockdown was applied for.
+	 */
+	float KnockdownSecondsOn(ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* System =
+			Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		if (!System)
+		{
+			return 0.0f;
+		}
+
+		float Longest = 0.0f;
+		for (const float Seconds : System->GetActiveEffectsTimeRemaining(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+					 FGameplayTagContainer(UCataclysmSkillEffects::KnockedDownTag()))))
+		{
+			Longest = FMath::Max(Longest, Seconds);
+		}
+		return Longest;
+	}
+}
+
+CATACLYSM_CC_TEST(FCataclysmCrowdControlKnockdownTest,
+	"Cataclysm.CrowdControl.ADesignedKnockdownObeysResistanceTheSameAsAStun")
+{
+	using namespace CataclysmCrowdControlTest;
+
+	// RULED 2026-09-17, issue #1815. A knockdown was built on 2026-09-01, and the
+	// decision of 2026-09-05 that gave this stat its reach named stuns and shoves,
+	// so until now a knockdown asked nothing and a creature at 100 was floored for
+	// the whole length.
+	//
+	// DESIGNED, BECAUSE THAT IS THE CASE THAT MATTERS, as for the stun above.
+	// Every row stating `ForcedMovement=Knockdown` is designed and so skips the
+	// damage threshold; it must not skip the target's own resistance.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE ATTACKER NEEDS AN ABILITY SYSTEM TOO, for the reason the stun test
+	// above gives.
+	FScopedCreature Attacker(World, 0.0f, FVector::ZeroVector);
+
+	{
+		// NONE LEAVES IT WHOLE, AND THIS IS THE CONTROL. Two seconds, The
+		// Gathering's stated length.
+		FScopedCreature Bare(World, 0.0f, FVector(600.0f, 0.0f, 0.0f));
+		TestTrue(TEXT("a knockdown lands on a target with no resistance"),
+				 UCataclysmSkillEffects::ApplyKnockdown(
+					 Attacker.Actor, Bare.Actor, /*DurationSeconds=*/2.0f,
+					 /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true));
+		TestTrue(TEXT("and that target is knocked down"),
+				 UCataclysmSkillEffects::IsKnockedDown(Bare.Actor));
+		TestEqual(TEXT("for the whole 2 seconds"),
+				  KnockdownSecondsOn(Bare.Actor), 2.0f, 0.001f);
+	}
+
+	{
+		// HALF IS HALF, as it is for a stun and for a shove.
+		FScopedCreature Half(World, 50.0f, FVector(1200.0f, 0.0f, 0.0f));
+		TestTrue(TEXT("a knockdown still lands at 50 resistance"),
+				 UCataclysmSkillEffects::ApplyKnockdown(
+					 Attacker.Actor, Half.Actor, /*DurationSeconds=*/2.0f,
+					 /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true));
+		TestEqual(TEXT("for half of it, 1 second"),
+				  KnockdownSecondsOn(Half.Actor), 1.0f, 0.001f);
+	}
+
+	{
+		// A HUNDRED STOPS IT, AND STOPS IT BEFORE ANYTHING ELSE IS ASKED. So no
+		// immunity window is opened and no stagger is left, which is also what a
+		// shove the target resists entirely leaves.
+		FScopedCreature Immune(World, 100.0f, FVector(1800.0f, 0.0f, 0.0f));
+		TestFalse(TEXT("a designed knockdown does not land on a fully resistant target"),
+				  UCataclysmSkillEffects::ApplyKnockdown(
+					  Attacker.Actor, Immune.Actor, /*DurationSeconds=*/2.0f,
+					  /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true));
+		TestFalse(TEXT("and the target is not knocked down"),
+				  UCataclysmSkillEffects::IsKnockedDown(Immune.Actor));
+		TestFalse(TEXT("nor left staggered"),
+				  UCataclysmSkillEffects::IsStaggered(Immune.Actor));
+
+		const UAbilitySystemComponent* System =
+			Immune.Actor->GetAbilitySystemComponent();
+		TestFalse(TEXT("nor given the immunity window a landed hold opens"),
+				  System && System->HasMatchingGameplayTag(
+								UCataclysmSkillEffects::StunImmuneTag()));
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // What it does to being shoved
 // ---------------------------------------------------------------------------
 
@@ -360,6 +470,72 @@ CATACLYSM_CC_TEST(FCataclysmUnyieldingTest,
 												/*bStunIsDesigned=*/true));
 	TestFalse(TEXT("and it is not stunned afterwards either"),
 			  UCataclysmSkillEffects::IsStunned(Unyielding));
+
+	return true;
+}
+
+CATACLYSM_CC_TEST(FCataclysmUnyieldingKnockdownTest,
+	"Cataclysm.CrowdControl.UnyieldingMakesACreatureImmuneToBeingKnockedDown")
+{
+	using namespace CataclysmCrowdControlTest;
+
+	// "IMMUNITY TO CROWD CONTROL EFFECTS", AND A KNOCKDOWN IS ONE. The design
+	// counts it as the hardest of them -- "A knockdown is a hard stop, so it
+	// carries all three parts of the rule" -- and until 2026-09-17 a player's
+	// knockdown floored this creature anyway, because a knockdown asked nothing
+	// about the stat. Issue #1815.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE ATTACKER NEEDS AN ABILITY SYSTEM OF ITS OWN, for the reason the
+	// fixture's header gives.
+	FScopedCreature Attacker(World, 0.0f, FVector::ZeroVector);
+
+	// WITHOUT THE MODIFIER IT IS KNOCKED DOWN, so the refusal below is the
+	// modifier's doing and not the creature being impossible to floor.
+	ACataclysmEnemyCharacter* Enemy =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(300.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a creature"), Enemy))
+	{
+		return false;
+	}
+
+	Enemy->SetRarityStep(0);
+	Enemy->SetHealth(500.0f);
+
+	TestTrue(TEXT("a creature without Unyielding is knocked down"),
+			 UCataclysmSkillEffects::ApplyKnockdown(Attacker.Actor, Enemy,
+													/*DurationSeconds=*/2.0f,
+													/*DamageDealt=*/0.0f,
+													/*bKnockdownIsDesigned=*/true));
+
+	// A SECOND CREATURE RATHER THAN A SECOND KNOCKDOWN, because the first one
+	// opened the immunity window a knockdown shares with a stun.
+	ACataclysmEnemyCharacter* Unyielding =
+		World->SpawnActor<ACataclysmEnemyCharacter>(FVector(600.0f, 0.0f, 0.0f),
+													FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a second creature"), Unyielding))
+	{
+		return false;
+	}
+
+	Unyielding->SetRarityStep(0);
+	Unyielding->SetHealth(500.0f);
+	Unyielding->ModifierRows.Add(FName(UCataclysmEnemyModifiers::UnyieldingRow));
+	Unyielding->ApplyStartingAttributes();
+
+	TestFalse(TEXT("a creature carrying Unyielding is not knocked down"),
+			  UCataclysmSkillEffects::ApplyKnockdown(Attacker.Actor, Unyielding,
+													 /*DurationSeconds=*/2.0f,
+													 /*DamageDealt=*/0.0f,
+													 /*bKnockdownIsDesigned=*/true));
+	TestFalse(TEXT("and it is not knocked down afterwards either"),
+			  UCataclysmSkillEffects::IsKnockedDown(Unyielding));
 
 	return true;
 }

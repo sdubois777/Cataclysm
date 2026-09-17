@@ -2713,11 +2713,28 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 		return false;
 	}
 
-	// THE SAME THREE RULES A STUN TAKES, IN THE SAME ORDER, because section VI of
-	// the design document puts the two effects in one row of its table and says
-	// so outright: "The same exemption applies as for stun: a skill whose stated
-	// effect is to knock down ignores the damage threshold, and does not ignore
-	// boss immunity or the immunity window."
+	// RULE ZERO, AS FOR A STUN: THE TARGET'S CROWD CONTROL RESISTANCE SHORTENS
+	// IT, AND AT 100 IT DOES NOT LAND AT ALL. Ruled 2026-09-17, issue #1815.
+	// Knockdown was built on 2026-09-01 and the owner's decision of 2026-09-05
+	// that gave the stat its reach named stuns and shoves only, so until this a
+	// knockdown floored a creature carrying Unyielding, "Immunity to crowd
+	// control effects", for its whole length. Diablo IV shortens a knockdown by
+	// the same stat that shortens a stun.
+	//
+	// FIRST, for the reasons `ApplyStun` gives: a designed knockdown skips the
+	// damage threshold and not the target's own resistance, and a knockdown the
+	// target resists entirely opens no immunity window and leaves no stagger.
+	DurationSeconds = AfterCrowdControlResistance(Target, DurationSeconds);
+	if (DurationSeconds <= 0.0f)
+	{
+		return false;
+	}
+
+	// AND THE SAME THREE ANTI-STUN-LOCK RULES A STUN TAKES, IN THE SAME ORDER,
+	// because section VI of the design document puts the two effects in one row
+	// of its table and says so outright: "The same exemption applies as for
+	// stun: a skill whose stated effect is to knock down ignores the damage
+	// threshold, and does not ignore boss immunity or the immunity window."
 	//
 	// RULE TWO FIRST, AND IT IS THE SAME WINDOW RATHER THAN A SECOND ONE. "The
 	// two share one window rather than one each, because two 3-second holds taken
