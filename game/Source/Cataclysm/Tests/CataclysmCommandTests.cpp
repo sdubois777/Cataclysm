@@ -1947,6 +1947,19 @@ namespace CataclysmMinionDeathTest
 		}
 	}
 
+	/**
+	 * How far apart two actors stand, in metres, as a float.
+	 *
+	 * `FVector::Dist` ANSWERS IN DOUBLE, and `TestEqual` takes a float triple
+	 * or a double triple. Handing it a double distance and a float expectation
+	 * is ambiguous and the build refuses it, which is how this arrived.
+	 */
+	float MetresBetween(const AActor* A, const AActor* B)
+	{
+		return static_cast<float>(
+			FVector::Dist(A->GetActorLocation(), B->GetActorLocation())) / M;
+	}
+
 	/** An imp told what its summoning skill says its explosion is. */
 	ACataclysmMinion* SummonTold(CataclysmCommandTest::FScopedCaster& Summoner,
 								 const FVector& Where)
@@ -2014,11 +2027,9 @@ bool FCataclysmMinionDeathExplodesTest::RunTest(const FString&)
 	// THE GEOMETRY, STATED BEFORE THE DEATH: one metre in, ten metres out, and
 	// the explosion is three.
 	TestEqual(TEXT("one enemy stands a metre away"),
-			  FVector::Dist(Imp->GetActorLocation(),
-							Near.Actor->GetActorLocation()) / M, 1.0f, 0.001f);
+			  MetresBetween(Imp, Near.Actor), 1.0f, 0.001f);
 	TestEqual(TEXT("and one stands ten metres away"),
-			  FVector::Dist(Imp->GetActorLocation(),
-							Far.Actor->GetActorLocation()) / M, 10.0f, 0.001f);
+			  MetresBetween(Imp, Far.Actor), 10.0f, 0.001f);
 	TestTrue(TEXT("both are enemies of the imp"),
 			 UCataclysmTargeting::IsHostileTo(Near.Actor, Imp)
 				 && UCataclysmTargeting::IsHostileTo(Far.Actor, Imp));
