@@ -133,6 +133,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	const FName BloodAltar(TEXT("Demonic_Blood_Altar"));
 
+	/** And the fog that spreads, cuts healing and heals creatures. Issues #1820, #41. */
+	const FName NecroticGround(UCataclysmDungeonModifierEffects::NecroticGroundKey);
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -9943,7 +9946,7 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	// A HORDE DUNGEON'S WAVES SHARE ONE ARENA, AND UNTIL ISSUE #1925 EVERY RULE'S
 	// ZONES STAYED ON THE NEXT WAVE. `GoToFloor` clears the world only when the next
 	// floor is a new arena, and the per-floor reset forgot each rule's zones without
-	// destroying them. This puts all eight rules that place zones on one Horde
+	// destroying them. This puts all nine rules that place zones on one Horde
 	// floor, lets each place some, and goes to the next wave.
 	//
 	// A ZONE A CREATURE PLACED IS THE CONTROL, AND IT MUST STILL BE THERE AFTERWARDS.
@@ -9982,7 +9985,7 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 
 	const TArray<FName> ZoneRules = {InfernalRain, HallowedGroundfall, SingularityWells,
 									 GraspingTentacles, WitheredGround, FungalOvergrowth,
-									 LeechSpores, ArtilleryStrike};
+									 LeechSpores, ArtilleryStrike, NecroticGround};
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
 	Mode->DungeonModifiers = ZoneRules;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
@@ -9998,7 +10001,7 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// THE BEATS PLACE FIVE RULES' ZONES. Enough for the slowest cadence, and no more:
+	// THE BEATS PLACE SIX RULES' ZONES. Enough for the slowest cadence, and no more:
 	// one beat past it leaves Artillery Strike's circle counting down, which is the
 	// circle whose shell a floor change must stop.
 	Beat(Mode, BeatsFor(FMath::Max(Effects::ArtilleryStrikeSecondsBetween,
@@ -10036,14 +10039,17 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	}
 
 	// WHAT EACH RULE LEFT, TOLD APART BY WHAT ONLY THAT RULE'S ZONES CARRY. Since issue
-	// #1924 a zone that deals damage carries its row's type, and Grasping Tentacles
-	// passes its row's type as a colour. The Withered Ground patch and the Leech
-	// Spores cloud carry neither and are the same size, so they are counted together.
+	// #1924 a zone that deals damage carries its row's type, and Grasping Tentacles and
+	// Necrotic Ground pass their rows' types as colours. The Withered Ground patch and
+	// the Leech Spores cloud carry neither and are the same size, so they are counted
+	// together.
 	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::Existing(World);
 	if (!TestNotNull(TEXT("the rules made the floor's hazard source"), Source)
 		|| !TestTrue(TEXT("the helping mushroom is not drawn in the tentacles' Void, so "
 						  "the two are told apart"),
-					 FName(Effects::FungalOvergrowthBoostDrawnAs) != FName(TEXT("Void"))))
+					 FName(Effects::FungalOvergrowthBoostDrawnAs) != FName(TEXT("Void")))
+		|| !TestTrue(TEXT("nor in the fog's Death, so those two are told apart too"),
+					 FName(Effects::FungalOvergrowthBoostDrawnAs) != FName(TEXT("Death"))))
 	{
 		return false;
 	}
@@ -10054,6 +10060,7 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	int32 Tentacles = 0;
 	int32 Circles = 0;
 	int32 Mushrooms = 0;
+	int32 Fog = 0;
 	int32 Plain = 0;
 	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
 	{
@@ -10078,6 +10085,10 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 		{
 			++Tentacles;
 		}
+		else if (It->DrawnAsType == FName(TEXT("Death")))
+		{
+			++Fog;
+		}
 		else if (It->DrawnAsType == FName(Effects::FungalOvergrowthBoostDrawnAs))
 		{
 			++Mushrooms;
@@ -10092,9 +10103,9 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 		}
 	}
 	const FString Found = FString::Printf(
-		TEXT("%d patches, %d craters, %d wells, %d tentacles, %d circles, %d mushrooms "
-			 "and %d plain zones"),
-		Patches, Craters, Wells, Tentacles, Circles, Mushrooms, Plain);
+		TEXT("%d patches, %d craters, %d wells, %d tentacles, %d circles, %d mushrooms, "
+			 "%d patches of fog and %d plain zones"),
+		Patches, Craters, Wells, Tentacles, Circles, Mushrooms, Fog, Plain);
 	AddInfo(FString::Printf(TEXT("the rules placed %s"), *Found));
 	if (!TestTrue(FString::Printf(TEXT("Infernal Rain placed a patch: %s"), *Found),
 				  Patches > 0)
@@ -10110,6 +10121,9 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 					  Circles, 1)
 		|| !TestTrue(FString::Printf(TEXT("Fungal Overgrowth placed a mushroom: %s"), *Found),
 					 Mushrooms > 0)
+		|| !TestTrue(FString::Printf(TEXT("Necrotic Ground placed a patch of fog: %s"),
+									 *Found),
+					 Fog > 0)
 		|| !TestEqual(FString::Printf(TEXT("the death left a Withered Ground patch and a "
 										   "Leech Spores cloud: %s"), *Found),
 					  Plain, 2)
@@ -10140,6 +10154,527 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 								   "%d of %d"), Remaining, RuleZones.Num()),
 			  Remaining, 0);
 	TestTrue(TEXT("and the zone a creature placed is still there"), Control.IsValid());
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Necrotic Ground. Issues #1820 and #41
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecroticSpreadTest,
+	"Cataclysm.DungeonModifierEffects.TheFogSpreadsOnItsCadenceFromPatchToPatchUpToItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNecroticSpreadTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// "COVERED IN A SPREADING NECROTIC FOG", AS RULED: the first patch one cadence in,
+	// near the player but not on them; every later one touching a patch already there;
+	// twelve at most, each lasting the floor.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {NecroticGround};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto Centres = [World]()
+	{
+		TArray<FVector> Found;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			if (IsValid(*It))
+			{
+				Found.Add(It->GetActorLocation());
+			}
+		}
+		return Found;
+	};
+
+	const FVector Feet = Player.Character->GetActorLocation();
+	Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches) - 1);
+	TestEqual(TEXT("no fog a beat short of one cadence"), ZonesOnTheFloor(World), 0);
+	Beat(Mode, 1);
+	ACataclysmGroundZone* First = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("one patch on the cadence"), First))
+	{
+		return false;
+	}
+	const double FirstAway = FVector::Dist2D(First->GetActorLocation(), Feet);
+	TestFalse(TEXT("the first patch is not on the player"), First->Covers(Feet));
+	TestTrue(FString::Printf(TEXT("and it is near them: %.1f cm of %.1f"), FirstAway,
+							 Effects::NecroticGroundFirstPatchWithinCm),
+			 FirstAway <= Effects::NecroticGroundFirstPatchWithinCm + 0.5);
+	TestEqual(TEXT("a patch is as wide as the figure says"), First->RadiusCm,
+			  Effects::NecroticGroundPatchRadiusCm, 0.01f);
+	TestTrue(TEXT("and lasts the floor"), First->bLastsTheFloor);
+	TestEqual(TEXT("and carries no damage of its own"), First->DamagePerTick, 0.0f, 0.001f);
+	TestEqual(TEXT("and is drawn in Death's colours"), First->DrawnAsType,
+			  FName(TEXT("Death")));
+
+	// EACH LATER PATCH IS ONE PATCH-WIDTH FROM A PATCH ALREADY THERE, which is what
+	// "touching" means for two circles of one size. THE WIDTH IS READ OFF THE PATCH
+	// AND NOT OFF `NecroticGroundSpreadCm`, so a spread that stopped meaning touching
+	// fails here rather than agreeing with itself.
+	const double Touching = 2.0 * First->RadiusCm;
+	TArray<FVector> Before = Centres();
+	for (int32 Expected = 2; Expected <= Effects::NecroticGroundMostPatches; ++Expected)
+	{
+		Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches));
+		const TArray<FVector> After = Centres();
+		if (!TestEqual(FString::Printf(TEXT("patch %d appeared on its cadence"), Expected),
+					   After.Num(), Expected))
+		{
+			return false;
+		}
+		TOptional<FVector> Newest;
+		for (const FVector& Centre : After)
+		{
+			if (!Before.ContainsByPredicate([&Centre](const FVector& Old)
+				{
+					return Old.Equals(Centre, 0.01);
+				}))
+			{
+				Newest = Centre;
+			}
+		}
+		if (!TestTrue(TEXT("the new patch is told apart from the old"), Newest.IsSet()))
+		{
+			return false;
+		}
+		double ClosestToTouching = TNumericLimits<double>::Max();
+		for (const FVector& Old : Before)
+		{
+			ClosestToTouching = FMath::Min(ClosestToTouching,
+				FMath::Abs(FVector::Dist2D(Old, Newest.GetValue()) - Touching));
+		}
+		TestTrue(FString::Printf(TEXT("patch %d touches one already there: %.3f cm off "
+									  "one patch-width"), Expected, ClosestToTouching),
+				 ClosestToTouching < 0.5);
+		Before = After;
+	}
+
+	Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches) * 3);
+	TestEqual(TEXT("and the fog stops at its cap"), ZonesOnTheFloor(World),
+			  Effects::NecroticGroundMostPatches);
+
+	TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+	const FString* Line = Counting.Find(NecroticGround);
+	TestEqual(TEXT("the floor panel counts the patches"),
+			  Line ? *Line : FString(TEXT("no line")),
+			  FString::Printf(TEXT("%d of %d"), Effects::NecroticGroundMostPatches,
+							  Effects::NecroticGroundMostPatches));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecroticHealingTest,
+	"Cataclysm.DungeonModifierEffects.StandingInTheFogCutsHealingReceivedByHalfAndLeavingRestoresIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNecroticHealingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// "REDUCES YOUR HEALING EFFECTIVENESS BY 50% WHILE STANDING IN IT", read as the amount
+	// of health restored, which is what `HealingReceivedReduction` holds. Then, on a
+	// floor carrying Death's Embrace as well, the two add, as ruled.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {NecroticGround};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto Reduction = [&Player]()
+	{
+		return Player.Read(Vital::GetHealingReceivedReductionAttribute());
+	};
+	TestEqual(TEXT("nothing cut before the fog"), Reduction(), 0.0f, 0.01f);
+
+	Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches));
+	ACataclysmGroundZone* Patch = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("one patch on the cadence"), Patch))
+	{
+		return false;
+	}
+	TestEqual(TEXT("nothing cut while the player stands outside it"), Reduction(), 0.0f,
+			  0.01f);
+
+	Player.Character->SetActorLocation(Patch->GetActorLocation());
+	Beat(Mode, 1);
+	TestEqual(TEXT("standing in the fog cuts healing received by the row's 50"),
+			  Reduction(), Effects::NecroticGroundHealingLessPercent, 0.01f);
+
+	Player.Character->SetActorLocation(
+		Patch->GetActorLocation() + FVector(20000.0f, 0.0f, 0.0f));
+	Beat(Mode, 1);
+	TestEqual(TEXT("and leaving the fog puts it back"), Reduction(), 0.0f, 0.01f);
+
+	// WITH DEATH'S EMBRACE: one stack is ten seconds on the floor, by which time the fog
+	// has spread to a second patch.
+	Mode->DungeonModifiers = {NecroticGround, DeathsEmbrace};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("and it carries the fog"),
+					 Mode->FloorBrief.Modifiers.Contains(NecroticGround))
+		|| !TestTrue(TEXT("and Death's Embrace"),
+					 Mode->FloorBrief.Modifiers.Contains(DeathsEmbrace)))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::DeathsEmbraceSecondsPerStack));
+	ACataclysmGroundZone* Next = AnyZone(World);
+	if (!TestNotNull(TEXT("the next floor has fog"), Next))
+	{
+		return false;
+	}
+	Player.Character->SetActorLocation(Next->GetActorLocation());
+	Beat(Mode, 1);
+	TestEqual(FString::Printf(TEXT("in the fog at one Embrace stack the two add: %.1f"),
+							  Reduction()),
+			  Reduction(),
+			  Effects::DeathsEmbracePercentPerStack + Effects::NecroticGroundHealingLessPercent,
+			  0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecroticRegenTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureInTheFogRegainsATenthOfItsMaximumHealthASecondAndOneOutsideDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNecroticRegenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// "ENEMIES STANDING IN THE FOG REGEN THEIR HEALTH AT 10%/S": a tenth of the creature's
+	// own maximum a second, and nothing for one standing elsewhere on the floor.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {NecroticGround};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches));
+	ACataclysmGroundZone* Patch = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("one patch on the cadence"), Patch))
+	{
+		return false;
+	}
+	const FVector Centre = Patch->GetActorLocation();
+
+	ACataclysmEnemyCharacter* Inside = SpawnCreatureWithHealth(World, Centre, 1000.0f);
+	ACataclysmEnemyCharacter* Outside =
+		SpawnCreatureWithHealth(World, Centre + FVector(20000.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a creature stands in the fog"), Inside)
+		|| !TestNotNull(TEXT("and one far from it"), Outside))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Creature : {Inside, Outside})
+	{
+		Creature->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			Vital::GetHealthAttribute(), 500.0f);
+	}
+	if (!TestEqual(TEXT("the creature in the fog is at half health"), HealthOf(Inside),
+				   500.0f, 0.01f)
+		|| !TestEqual(TEXT("and so is the one outside"), HealthOf(Outside), 500.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// ONE SECOND, AND NO NEW PATCH IN IT: the next is a whole cadence away.
+	Beat(Mode, BeatsFor(1.0f));
+	const float Expected =
+		500.0f + 1000.0f * Effects::NecroticGroundCreatureRegenPercentPerSecond / 100.0f;
+	TestEqual(FString::Printf(TEXT("the creature in the fog regained a tenth in a second: "
+								   "%.1f"), HealthOf(Inside)),
+			  HealthOf(Inside), Expected, 0.5f);
+	TestEqual(TEXT("and the creature outside regained nothing"), HealthOf(Outside), 500.0f,
+			  0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNecroticBurnTest,
+	"Cataclysm.DungeonModifierEffects.TheFogBurnsThePlayerOnceASecondAndDeathResistanceMeetsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNecroticBurnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE BURN: once a second for a player in the fog, Death damage, and ONCE however many
+	// patches cover the player, which is why the rule deals it rather than each patch.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {NecroticGround};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenPatches));
+	ACataclysmGroundZone* First = TheOnlyCircle(World);
+	if (!TestNotNull(TEXT("one patch on the cadence"), First))
+	{
+		return false;
+	}
+	const FVector InFog = First->GetActorLocation();
+	Player.Character->SetActorLocation(InFog);
+	const FVector Feet = Player.Character->GetActorLocation();
+
+	// INTO THE FOG FIRST, AND ONE BEAT FOR ITS HEALING CUT. Entering works the player's
+	// stats out again, which would put back a maximum health or a resistance written
+	// before it; staying in the fog changes nothing, so nothing is worked out again.
+	Beat(Mode, 1);
+	if (!GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	const auto OneSecondInTheFog = [Mode]() -> bool
+	{
+		Beat(Mode, BeatsFor(Effects::NecroticGroundSecondsBetweenBurns));
+		return true;
+	};
+	const FGameplayAttribute Death = Resist::GetDeathResistanceAttribute();
+	const FGameplayAttribute Void = Resist::GetVoidResistanceAttribute();
+	const TOptional<float> LostWithDeath =
+		LostWithResistanceRaised(*this, Player, Death, OneSecondInTheFog);
+	if (!LostWithDeath.IsSet())
+	{
+		return false;
+	}
+	const TOptional<float> LostWithVoid =
+		LostWithResistanceRaised(*this, Player, Void, OneSecondInTheFog);
+	if (!LostWithVoid.IsSet())
+	{
+		return false;
+	}
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a second in the necrotic fog"), Death,
+									LostWithDeath.GetValue(), Void, LostWithVoid.GetValue());
+	const float OneBurn = Effects::NecroticGroundBurn(HealthForTypedDamage);
+	TestTrue(FString::Printf(TEXT("and a second costs one burn at most: %.1f of %.1f"),
+							 LostWithVoid.GetValue(), OneBurn),
+			 LostWithVoid.GetValue() <= OneBurn + 0.5f);
+
+	// TWO PATCHES ON THE PLAYER. The rule places the second; the test moves it onto the
+	// player. BOTH ENDS MOVE: a patch covers the segment from its location to `FarEnd`, and
+	// a circle's far end is its own centre, so moving the actor alone would stretch it.
+	for (int32 Waited = 0; Waited <= BeatsFor(Effects::NecroticGroundSecondsBetweenPatches)
+						   && ZonesOnTheFloor(World) < 2; ++Waited)
+	{
+		Beat(Mode, 1);
+	}
+	ACataclysmGroundZone* Second = nullptr;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (IsValid(*It) && *It != First)
+		{
+			Second = *It;
+		}
+	}
+	if (!TestNotNull(TEXT("the fog spread to a second patch"), Second))
+	{
+		return false;
+	}
+	Second->SetActorLocation(InFog);
+	Second->FarEnd = InFog;
+	if (!TestTrue(TEXT("the first patch covers the player"), First->Covers(Feet))
+		|| !TestTrue(TEXT("and so does the second"), Second->Covers(Feet)))
+	{
+		return false;
+	}
+	const float BeforeTwo = Player.Read(Vital::GetHealthAttribute());
+	OneSecondInTheFog();
+	const float LostInTwo = BeforeTwo - Player.Read(Vital::GetHealthAttribute());
+	TestEqual(FString::Printf(TEXT("two patches on the player still burn once a second: "
+								   "%.1f against one patch's %.1f"),
+							  LostInTwo, LostWithVoid.GetValue()),
+			  LostInTwo, LostWithVoid.GetValue(), 0.5f);
+
+	// AND OUTSIDE THE FOG, NOTHING. The beat after leaving takes the cut off and works the
+	// stats out again, so the measured second starts after it.
+	Player.Character->SetActorLocation(InFog + FVector(20000.0f, 0.0f, 0.0f));
+	Beat(Mode, 1);
+	const float BeforeOutside = Player.Read(Vital::GetHealthAttribute());
+	OneSecondInTheFog();
+	TestEqual(TEXT("a second outside the fog costs nothing"),
+			  Player.Read(Vital::GetHealthAttribute()), BeforeOutside, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmZeroDamageBlowTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureBlowOfZeroDamageIsNotAnnouncedAsAHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmZeroDamageBlowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// A MEASUREMENT, NOT A GUARD, and its answer was predicted before the build that first
+	// ran it. `Pestilence_Contagious_Touch` turns every creature's contact damage into a
+	// stacking debuff, which a rule could count from the hit announcement only if a blow
+	// of no damage is still announced. Read on 2f87abbc, it is not:
+	// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` resolves an incoming blow and
+	// calls `UCataclysmCombatEvents::NoteBlow`, which announces it, only inside
+	// `if (LocalDamage > 0.0f)`.
+	//
+	// A PLAIN LISTENER AND NOT A RULE, because `NoteHitForWastingSickness` ignores a notice
+	// that landed nothing and so could not tell the two answers apart. No `StartPlay`
+	// either: the announcer is a world subsystem, and this listener is the only one bound.
+	//
+	// THE CONTROL MUST PASS WHATEVER THE MEASUREMENT SAYS: a creature with attack damage is
+	// announced, so the listener and the blow both work.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the world announces hits"), Events)
+		|| !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	const FVector Feet = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Harmless =
+		SpawnCreatureWithHealth(World, Feet + FVector(200.0f, 0.0f, 0.0f), 1000.0f);
+	ACataclysmEnemyCharacter* Armed =
+		SpawnCreatureWithHealth(World, Feet - FVector(200.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a harmless creature spawned"), Harmless)
+		|| !TestNotNull(TEXT("and an armed one"), Armed))
+	{
+		return false;
+	}
+
+	// ZERO THROUGH THE SETTER ILLUSORY ENEMIES USES, and read back.
+	Harmless->SetAttackDamage(0.0f);
+	if (!TestEqual(TEXT("the harmless creature's attack damage reads zero"),
+				   AttackDamageOf(Harmless), 0.0f, 0.001f)
+		|| !TestTrue(TEXT("and the armed one hits for something"),
+					 GiveCreatureAttackDamage(Armed, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+
+	int32 FromHarmless = 0;
+	int32 FromArmed = 0;
+	float ArmedLanded = 0.0f;
+	const FDelegateHandle Heard = Events->OnHit.AddLambda(
+		[Harmless, Armed, &FromHarmless, &FromArmed, &ArmedLanded](
+			const FCataclysmHitNotice& Notice)
+		{
+			if (Notice.Attacker == Harmless)
+			{
+				++FromHarmless;
+			}
+			else if (Notice.Attacker == Armed)
+			{
+				++FromArmed;
+				ArmedLanded = Notice.Landed;
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnHit.Remove(Heard); };
+
+	const float Before = HealthOf(Player.Character);
+	UCataclysmSkillEffects::ApplyHit(Harmless, Player.Character, 100.0f);
+	TestEqual(TEXT("the harmless blow takes no health"), HealthOf(Player.Character), Before,
+			  0.01f);
+	TestEqual(TEXT("a creature blow of zero damage is not announced: notices heard from it"),
+			  FromHarmless, 0);
+
+	UCataclysmSkillEffects::ApplyHit(Armed, Player.Character, 100.0f);
+	TestEqual(TEXT("the control: the armed creature's blow is announced once"), FromArmed, 1);
+	TestTrue(FString::Printf(TEXT("and it landed: %.1f"), ArmedLanded), ArmedLanded > 0.0f);
 
 	return true;
 }

@@ -2005,3 +2005,108 @@ def test_brand_of_the_aggressor_nova_radius_is_still_a_derivation():
         "InfernalRainRadiusCm. It was copied as a conclusion because 300 is what "
         "this project uses for a thing at a point on the floor. If it is now a "
         "figure of its own, say why in docs/DECISIONS.md.")
+
+
+def test_necrotic_ground_row_still_states_the_healing_cut_the_rule_uses():
+    """The fog's first figure is READ OFF THE ROW, not judged.
+
+    "reduces your healing effectiveness by 50% while standing in it".
+    `NecroticGroundHealingLessPercent` is that 50, written while the player stands in a
+    patch into the stat Death's Embrace also writes.
+
+    IF THE ROW'S NUMBER MOVES, THE RULE'S MUST. The automation tests build their
+    expectation from the constant, so they would agree with themselves at any value, and
+    the floor panel would show the player the row's figure while the game cut another.
+    """
+    words = flat(rows()["Death_Necrotic_Ground"]["Description"])
+    cut = constant("NecroticGroundHealingLessPercent")
+
+    expected = f"reduces your healing effectiveness by {cut:g}% while standing in it"
+    assert expected in words, (
+        f"The row no longer says '{expected}'. NecroticGroundHealingLessPercent in "
+        "CataclysmDungeonModifierEffects.h is read off this sentence, so move it to "
+        "whatever the row now says. " + words)
+
+
+def test_necrotic_ground_row_still_states_the_regeneration_the_rule_uses():
+    """The fog's second figure, held the same way: "regen their health at 10%/s".
+
+    A SHARE OF EACH CREATURE'S OWN MAXIMUM, A SECOND. The rule pays a quarter of it on
+    each quarter-second beat, so the constant is per second only while the row says "/s".
+    """
+    words = flat(rows()["Death_Necrotic_Ground"]["Description"])
+    regen = constant("NecroticGroundCreatureRegenPercentPerSecond")
+
+    expected = f"Enemies standing in the fog regen their health at {regen:g}%/s"
+    assert expected in words, (
+        f"The row no longer says '{expected}'. "
+        "NecroticGroundCreatureRegenPercentPerSecond in "
+        "CataclysmDungeonModifierEffects.h is read off this sentence, so move it to "
+        "whatever the row now says. " + words)
+
+
+def test_necrotic_ground_row_still_says_a_spreading_fog_that_hurts_and_no_third_figure():
+    """The words the rule's shape is read from, and the figures it was not given.
+
+    "A SPREADING NECROTIC FOG" is why patches keep appearing, each touching one already
+    there, up to a cap. "DEALS DAMAGE OVER TIME" is why the fog burns once a second
+    rather than once on entering.
+
+    THE ROW STATES TWO FIGURES AND NO THIRD. The cadence, the cap, the patch size and the
+    burn's share are judgements in docs/DECISIONS.md. If the row ever states one of them,
+    this fails, so the constant is read off the row instead and the entry stops calling
+    it a judgement.
+    """
+    words = flat(rows()["Death_Necrotic_Ground"]["Description"])
+    lowered = words.lower()
+    stated = re.findall(r"[0-9]+(?:\.[0-9]+)?", words)
+    read = [f"{constant('NecroticGroundHealingLessPercent'):g}",
+            f"{constant('NecroticGroundCreatureRegenPercentPerSecond'):g}"]
+
+    assert "a spreading necrotic fog" in lowered, (
+        "The Necrotic Ground row no longer says the fog spreads. The rule places a new "
+        "patch every NecroticGroundSecondsBetweenPatches because it does; re-read the "
+        "ruling in docs/DECISIONS.md. " + words)
+    assert "deals damage over time" in lowered, (
+        "The Necrotic Ground row no longer says the fog deals damage over time. The rule "
+        "burns a player standing in it once a second because it does; re-read the ruling "
+        "in docs/DECISIONS.md. " + words)
+    assert stated == read, (
+        f"The Necrotic Ground row states the figures {stated}, and the rule reads only "
+        f"{read} off it. A new figure is one of the judgements docs/DECISIONS.md records "
+        "for this rule: read it off the row instead. " + words)
+
+
+def test_necrotic_grounds_patch_size_first_reach_and_burn_are_still_derivations():
+    """Three figures the row does not state, held as derivations and not as numbers.
+
+    EACH WAS COPIED FROM A RULE THAT ANSWERED THE SAME QUESTION, so a later change to
+    that rule carries this one:
+
+    - a patch is as wide as Infernal Rain's, `InfernalRainRadiusCm`, the figure this
+      project uses for a thing at a point on the floor;
+    - the first patch lands where Infernal Rain's does, within `InfernalRainFallsWithinCm`
+      of the player and never on them;
+    - the burn is Singularity Wells' share, `SingularityWellsPercentPerSecond`, the lower
+      of the two shares the floor's burning zones take, because the fog also halves
+      healing.
+
+    REPLACING ANY OF THEM WITH A LITERAL WOULD BREAK THAT LINK SILENTLY, which is what this
+    notices. The same shape as
+    `test_brand_of_the_aggressor_nova_radius_is_still_a_derivation` above.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    derivations = {
+        "NecroticGroundPatchRadiusCm": "InfernalRainRadiusCm",
+        "NecroticGroundFirstPatchWithinCm": "InfernalRainFallsWithinCm",
+        "NecroticGroundPercentPerSecond": "SingularityWellsPercentPerSecond",
+    }
+    lost = [f"{name} is no longer declared as {source}"
+            for name, source in derivations.items()
+            if not re.search(rf"\b{name}\s*=\s*{source}\s*;", text)]
+
+    assert not lost, (
+        "; ".join(lost) + ". Each was copied from that rule as a conclusion, not "
+        "chosen as a number. If one is now a figure of its own, say why in "
+        "docs/DECISIONS.md.")

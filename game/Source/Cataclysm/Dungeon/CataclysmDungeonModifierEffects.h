@@ -935,6 +935,28 @@ public:
 	static const TCHAR* BloodAltarKey;
 
 	/**
+	 * Necrotic Ground: "The dungeon floor is covered in a spreading necrotic fog. The
+	 * fog deals damage over time and reduces your healing effectiveness by 50% while
+	 * standing in it. Enemies standing in the fog regen their health at 10%/s."
+	 * Issues #1820 and #41.
+	 *
+	 * THE FOG IS PATCHES THAT SPREAD. The first appears one cadence into the floor,
+	 * near the player but not on them; each later one touches a random patch already
+	 * there; the floor holds at most `NecroticGroundMostPatches`, and they last the
+	 * floor.
+	 *
+	 * STANDING IN ANY PATCH DOES TWO THINGS TO THE PLAYER. Health restored is cut by
+	 * the row's 50 points, which add to Death's Embrace's in the same stat, and once a
+	 * second the fog burns for a share of maximum health as Death damage. THE RULE
+	 * DEALS THE BURN, NOT EACH PATCH'S SWEEP, so a player where patches overlap loses
+	 * the one figure rather than one for each patch.
+	 *
+	 * A CREATURE STANDING IN ANY PATCH, bosses included, regains the row's 10% of its
+	 * own maximum health a second, counted once however many patches cover it.
+	 */
+	static const TCHAR* NecroticGroundKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2000,6 +2022,89 @@ public:
 		BloodAltarReachCm > 0.0f && BloodAltarSecondsBetweenPulses > 0.0f,
 		"An altar that reaches nowhere, or pulses on every beat, is not the row.");
 
+	/**
+	 * How much Necrotic Ground cuts the health a player standing in its fog restores,
+	 * in points of `HealingReceivedReduction`.
+	 *
+	 * THE ROW'S OWN FIGURE: "reduces your healing effectiveness by 50%". Death's
+	 * Embrace writes the same stat, and the two add. The stat is held between 0 and
+	 * 100, so a player at five Embrace stacks (50) standing in the fog (50 more)
+	 * restores no health at all.
+	 */
+	static constexpr float NecroticGroundHealingLessPercent = 50.0f;
+
+	/**
+	 * What a creature standing in the fog regains a second, as a share of its own
+	 * maximum health.
+	 *
+	 * THE ROW'S OWN FIGURE: "Enemies standing in the fog regen their health at 10%/s".
+	 */
+	static constexpr float NecroticGroundCreatureRegenPercentPerSecond = 10.0f;
+
+	/**
+	 * How long after the floor's start, and after each patch, the next patch comes.
+	 *
+	 * A JUDGEMENT, ruled under the owner's delegation of unstated figures. The row says
+	 * the fog is "spreading" and gives no rate.
+	 */
+	static constexpr float NecroticGroundSecondsBetweenPatches = 5.0f;
+
+	/**
+	 * The most patches the fog spreads to on one floor.
+	 *
+	 * A JUDGEMENT. "The dungeon floor is covered" states no extent; twelve is four times
+	 * `InfernalRainMostPatches`.
+	 */
+	static constexpr int32 NecroticGroundMostPatches = 12;
+
+	/**
+	 * How wide one patch is.
+	 *
+	 * DERIVED, not chosen: this project's settled figure for a patch on the floor.
+	 */
+	static constexpr float NecroticGroundPatchRadiusCm = InfernalRainRadiusCm;
+
+	/**
+	 * How far a new patch's centre is from the patch it spreads from: one patch-width,
+	 * so the two touch.
+	 */
+	static constexpr float NecroticGroundSpreadCm = NecroticGroundPatchRadiusCm * 2.0f;
+
+	/**
+	 * How far from the player the first patch may appear.
+	 *
+	 * DERIVED, Infernal Rain's placement: near the player, never on them.
+	 */
+	static constexpr float NecroticGroundFirstPatchWithinCm = InfernalRainFallsWithinCm;
+
+	/**
+	 * What the fog burns a player standing in it for, a second, as a share of maximum
+	 * health.
+	 *
+	 * A JUDGEMENT. The ground zones other floor rules place that burn by the second
+	 * take one of two shares: 2%, Infernal Rain's and Hallowed Groundfall's, or 1%,
+	 * `SingularityWellsPercentPerSecond`. The fog takes the lower because it also
+	 * halves healing. The row says "deals damage over time" and gives no figure.
+	 */
+	static constexpr float NecroticGroundPercentPerSecond = SingularityWellsPercentPerSecond;
+
+	/** How often the burn lands, which is what "a second" in the figure above means. */
+	static constexpr float NecroticGroundSecondsBetweenBurns = 1.0f;
+
+	static_assert(
+		NecroticGroundHealingLessPercent > 0.0f && NecroticGroundHealingLessPercent <= 100.0f,
+		"The healing cut is a share of a hundred, and at zero the fog cuts nothing.");
+
+	static_assert(
+		NecroticGroundMostPatches > 1 && NecroticGroundSecondsBetweenPatches > 0.0f,
+		"A fog that cannot reach a second patch does not spread, and one placed on every "
+		"beat covers the floor at once.");
+
+	static_assert(
+		NecroticGroundFirstPatchWithinCm > NecroticGroundPatchRadiusCm + 1.0f,
+		"The first patch is placed past its own radius from the player, so the range it "
+		"is drawn from has to reach further than that.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -2700,6 +2805,23 @@ public:
 
 	/** Whether the altar pulses this long after the floor's start or its last pulse. */
 	static bool BloodAltarPulseIsDue(float SecondsSinceLastPulse);
+
+	/**
+	 * Whether the fog spreads to another patch, this long after the floor's start or its
+	 * last patch, with this many already on the floor.
+	 *
+	 * THE CAP FIRST, so a floor at its limit does no arithmetic.
+	 */
+	static bool NecroticGroundPatchIsDue(float SecondsSinceLastPatch, int32 PatchesAlive);
+
+	/** What one burn takes from a player with this maximum health; nothing for none. */
+	static float NecroticGroundBurn(float MaximumHealth);
+
+	/**
+	 * What a creature standing in the fog regains in one beat of this many seconds, for
+	 * a creature with this maximum health. Nothing for either not positive.
+	 */
+	static float NecroticGroundRegenPerBeat(float MaximumHealth, float BeatSeconds);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
