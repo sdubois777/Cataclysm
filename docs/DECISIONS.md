@@ -544,14 +544,59 @@ bound to Spore Clouds' figure, the ceiling bound to Grave Tide's, and the rung w
 Summaries read "PROVED: 1 failed, 106 passed | restored: 107 passed", and two failures for the break
 that trips two checks.
 
+### What the runs found, and the four faults they found in the tests
+
+**The rule was never changed after the first run. Every fault was in the tests**, and each is written
+here because each is a trap the next person will meet.
+
+1. **The first build failed to compile.** `UCataclysmSkillEffects::ApplyHit` takes the blow's skill
+   tags fourth and its delivery fifth; the minion test passed a delivery fourth. The signature had been
+   read through a filtered search that printed only lines matching certain words, and the tag-container
+   parameter matched none of them, so it never appeared. **A filtered view of a signature can hide a
+   parameter.**
+2. **Four tests then failed on "the blow killed it".** `ACataclysmDungeonGameMode::StartPlay` does not
+   only build floor one, it populates it: the engine log for one test lists well over a hundred
+   creatures with drawn modifiers, among them `Demonic_Unholy_Sigils`, whose row reads "Allies in this
+   sigil cannot be killed". These tests need `StartPlay`, because the death announcement is connected
+   there and nowhere else, so they keep it and then call `ClearFloorEnemies`. What is left in the world
+   is what the test spawned.
+3. **One test still failed: the one where a creature kills a creature.** A creature spawned bare in a
+   test carries no attack damage, so its blow was worth nothing and nobody died. It now grants the
+   killer damage and asserts the figure is above zero before striking.
+4. **Then three failed, and a different three.** An ordinary blow is rolled against the defender's
+   evasion — `UCataclysmDamageCalculation` returns having dealt nothing when the roll lands under it —
+   so a test kill was a coin toss. Across three runs the failures were four, then one, then three, a
+   different set each time. The creatures these tests kill now have their evasion set to zero. A block
+   could not have caused it: a block only takes a share off the damage.
+
+**After those four, in the same window and under the same editor lock:** the whole suite performed
+2,055 tests, 2,055 succeeded, 0 failed, with "2055 declared in the tree, 2055 performed, gap 0"; the
+group `Cataclysm.DungeonModifierEffects.` performed 126 and all 126 succeeded. 39 tests reported
+skipping part of what they check, all of them creature-art or weapon-mesh tests that cannot run in a
+worktree. **The suite was run three times under one lock**, which the pull request states and which is
+flagged to the project owner.
+
+**The three guard proofs, each proved and each failing exactly what was registered.**
+
+| Proof | Break | With the break | Restored |
+| :-- | :-- | :-- | :-- |
+| P1 | the rule stops asking whether the player did the killing | 126 performed, 125 succeeded, 1 failed | 126, 126, 0 |
+| P2 | the rule stops asking whether a minion dealt the blow | 126 performed, 125 succeeded, 1 failed | 126, 126, 0 |
+| P3 | the ceiling of one a floor removed | 126 performed, 124 succeeded, 2 failed | 126, 126, 0 |
+
+P1 failed `ACreatureKilledByAnotherCreatureBringsNoPrince` on "a death the player did not cause brings
+nothing", which wanted one creature standing and measured two. P2 failed
+`AKillDealtByASummonedMinionBringsNoPrince` on "a kill dealt by a minion brings nothing", which wanted
+none and measured one — the owner's decision, demonstrably enforced. P3 failed
+`OnlyOnePrinceAFloorHoweverManyDie` on "three kills brought 3" and on the panel reading "prince 3 of 1",
+and `AFloorChangeLetsTheNextFloorHaveItsOwnPrince` on "and a second kill on that floor brings nothing".
+
 ### What the tests do not show
 
-- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the automation run and the three guard proofs wait for this machine's next free window.
-- **Three claims will be guard-proved and the rest will not**, which is the standing budget of three
-  proofs a change: that the killer must be the player, that a minion's kill is not the player's, and
-  that only one rises a floor. The rung written after the spawn is tested and will not be proved; the
-  shared ceiling already carries a proof in each of the two merged rules that use it.
+- **Three claims are guard-proved and the rest are not**, which is the standing budget of three proofs a
+  change: that the killer must be the player, that a minion's kill is not the player's, and that only
+  one rises a floor. The rung written after the spawn is tested and not proved; the shared ceiling
+  already carries a proof in each of the two merged rules that use it.
 - **How often this fires in real play.** Every test pins the roll.
 - **What a creature at that rung does to a fight**, and what it actually pays when it dies: the drop
   roll and the experience grant were read in the code, not run.
