@@ -179,6 +179,24 @@ FLAG_STATS = {"skill_locked"}
 #: above 75%" is flat 25, and each sentence states the complement of its row.
 COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction"}
 
+#: Words that state one stat's value without a number, per stat. Issue #1815.
+#:
+#: "IMMUNE" IS 100 ON `crowd_control_resistance` AND ON NOTHING ELSE. Ruled
+#: 2026-09-17 under the project owner's delegation: "While below 30% HP you are
+#: immune to crowd control" is that stat, flat 100, because at 100
+#: `UCataclysmSkillEffects::AfterCrowdControlResistance` lets no stun, knockdown
+#: or shove land -- the one place the owner let a stat reach immunity, on
+#: 2026-09-05. The knockdown joined the three on 2026-09-17, which is what the
+#: row waited for.
+#:
+#: PER STAT, NOT A SECOND `MULTIPLYING_WORDS`, because the same word means a
+#: different number, or none, on another stat. The sentence also states a number,
+#: 30, which is its condition value, so `JUDGED_NUMBERS` cannot excuse it: that
+#: list is for sentences that state no number at all.
+STATED_BY_WORD: dict[str, dict[str, float]] = {
+    "crowd_control_resistance": {"immune": 100.0},
+}
+
 #: Enchantments whose sentence states no number, so the number was chosen under
 #: the project owner's delegation of 2026-09-11 and recorded as a labelled
 #: judgement in docs/DECISIONS.md. Each is excused from the two checks that need
@@ -322,8 +340,13 @@ JUDGED_NUMBERS = {
 #: AND 204 OVER 162 SINCE "You cannot evade or block melee attacks" AND
 #: "Cannot evade melee attacks", from 201 over 160, issue #1815. The
 #: first is two rows, one removal each for evasion and block chance.
-AUTHORED_ROWS = 204
-AUTHORED_ENCHANTMENTS = 162
+#: AND 205 OVER 163 SINCE "While below 30% HP you are immune to crowd
+#: control", from 204 over 162, issue #1815. ONE FLAT ROW: 100
+#: crowd control resistance under health_below 30, which is immunity because at
+#: 100 AfterCrowdControlResistance lets nothing land. It was held until a
+#: knockdown read that stat, in #1954.
+AUTHORED_ROWS = 205
+AUTHORED_ENCHANTMENTS = 163
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -417,12 +440,15 @@ def takes_something_away(stat: str, words: str) -> bool:
 
 
 def value_is_stated(stat: str, value: float, words: str,
-                    complement_stats: set[str] | None = None) -> bool:
+                    complement_stats: set[str] | None = None,
+                    stated_by_word: dict[str, dict[str, float]] | None = None
+                    ) -> bool:
     """Whether a row's single value can be read out of its own sentence.
 
-    THREE WAYS IT CAN BE: the number itself is in the words; a multiplying word
-    such as "doubled" means it; or, for a stat in `complement_stats`, the words
-    state 100 minus it.
+    FOUR WAYS IT CAN BE: the number itself is in the words; a multiplying word
+    such as "doubled" means it; for a stat in `complement_stats`, the words
+    state 100 minus it; or a word `stated_by_word` gives for this stat, such as
+    "immune" on crowd_control_resistance, means it.
 
     THE EXEMPT SET IS A PARAMETER SO IT CAN BE EXERCISED WHILE THE REAL ONE IS
     EMPTY. `test_the_complement_exemption_reads_only_its_own_stats` passes a set
@@ -433,6 +459,8 @@ def value_is_stated(stat: str, value: float, words: str,
     """
     if complement_stats is None:
         complement_stats = COMPLEMENT_STATS
+    if stated_by_word is None:
+        stated_by_word = STATED_BY_WORD
 
     stated = numbers_in(outside_ranges(words))
     if abs(value) in stated:
@@ -440,6 +468,10 @@ def value_is_stated(stat: str, value: float, words: str,
 
     spelled = {word.lower() for word in re.findall(r"[A-Za-z]+", words)}
     if any(MULTIPLYING_WORDS.get(word) == value for word in spelled):
+        return True
+
+    # AND A WORD THAT MEANS A NUMBER ON THIS STAT ALONE.
+    if any(stated_by_word.get(stat, {}).get(word) == value for word in spelled):
         return True
 
     # AND THE COMPLEMENT, FOR THE STATS THAT CARRY ONE. A row of 40 on a
@@ -556,8 +588,9 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
             wrong.append(f"{row['Name']}: {value:g} against {text!r}")
     assert not wrong, (
         "these values appear nowhere in their enchantment's words outside a "
-        "range, as a number, as a multiplying word, or as the complement of a "
-        "number for a stat in COMPLEMENT_STATS: " + "; ".join(wrong))
+        "range, as a number, as a multiplying word, as the complement of a "
+        "number for a stat in COMPLEMENT_STATS, or as a word STATED_BY_WORD "
+        "gives for the stat: " + "; ".join(wrong))
 
 
 def test_every_condition_value_appears_in_the_words_too(effects, enchantments):
@@ -676,6 +709,53 @@ def test_the_complement_exemption_reads_only_its_own_stats():
     assert value_is_stated("max_health", 50.0, "Your health is reduced by 50%", set())
     assert value_is_stated("max_energy_shield", 100.0, "Double your energy shield", set())
     assert not value_is_stated("healing_ceiling_reduction", 40.0, ceiling, set())
+
+
+def test_a_word_states_a_value_only_on_its_own_stat():
+    """The word rule, on made-up sentences, for the reason
+    `test_the_complement_exemption_reads_only_its_own_stats` gives. Issue #1815.
+
+    THE FIRST ASSERTION IS THE CASE IT EXISTS FOR; the rest are the control. The
+    word means its number and no other, on its stat and no other, and only when
+    the sentence says the word."""
+    words = {"crowd_control_resistance": {"immune": 100.0}}
+    sentence = "While below 30% HP you are immune to crowd control"
+
+    assert value_is_stated("crowd_control_resistance", 100.0, sentence,
+                           set(), words)
+    assert not value_is_stated("crowd_control_resistance", 50.0, sentence,
+                               set(), words)
+    assert not value_is_stated("max_health", 100.0, sentence, set(), words)
+    assert not value_is_stated(
+        "crowd_control_resistance", 100.0,
+        "While below 30% HP you resist crowd control", set(), words)
+    # AND THE REAL TABLE IS WHAT THE TEST ABOVE READS BY DEFAULT.
+    assert value_is_stated("crowd_control_resistance", 100.0, sentence)
+
+
+def test_every_word_stated_value_is_still_needed(effects, enchantments):
+    """An excuse that outlives its reason hides a real mismatch, the argument
+    `test_every_judged_number_is_still_needed` makes. Each word in
+    STATED_BY_WORD must still be what admits a row: a single value on its stat,
+    on a sentence saying the word, that the other three ways cannot read out of
+    the words. Issue #1815.
+
+    PER WORD, NOT PER STAT. `crowd_control_resistance` had a row before the word
+    existed, "CC effects applied to you last 40%-70% longer", so a stat that
+    still has a row says nothing about whether its word is still needed."""
+    for stat, meanings in sorted(STATED_BY_WORD.items()):
+        for word, value in sorted(meanings.items()):
+            needing = [
+                r["Name"] for r in effects
+                if r["Stat"] == stat
+                and float(r["ValueLow"]) == value == float(r["ValueHigh"])
+                and word in {w.lower() for w in
+                             re.findall(r"[A-Za-z]+", words_of(r, enchantments))}
+                and not value_is_stated(stat, value, words_of(r, enchantments),
+                                        None, {})]
+            assert needing, (
+                f"no row needs {word!r} to state {value:g} on {stat}, so the "
+                f"word should leave STATED_BY_WORD")
 
 
 def test_every_complement_stat_is_still_used(effects):

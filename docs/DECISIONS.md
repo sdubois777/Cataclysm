@@ -2,6 +2,80 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — "While below 30% HP you are immune to crowd control" is written, now that a knockdown reads the stat
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: 1 row),
+`game/Data/EnchantmentEffects.csv` and the DataTable asset built from it, the row-count pins
+and the word rule in `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`CataclysmDataTableTests.cpp`, `docs/README.md`, and the test named below. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The row
+
+| Sentence | Row |
+| :-- | :-- |
+| While below 30% HP you are immune to crowd control | `crowd_control_resistance`, flat 100, under `health_below` 30 |
+
+205 rows over 163 enchantments, from 204 over 162. The removal count does not
+move: this row is flat.
+
+### Why it waited a day
+
+It was ruled writable on 2026-09-17 and held the same day, because `ApplyKnockdown` asked
+nothing about the stat: a wearer would have been floored while the sentence said immune. The
+entry "A knockdown obeys crowd control resistance the way a stun does" records the change that
+fixed it. The Unreal test below is also what says that change reached an authored row.
+
+### What the sentence means here
+
+**A labelled judgement, ruled 2026-09-17 under the project owner's delegation.** At 100
+`UCataclysmSkillEffects::AfterCrowdControlResistance` answers nothing, which is the one place
+this game lets a stat reach immunity, the owner's choice of 2026-09-05. That function is asked
+in three places: `ApplyStun`, `ApplyKnockdown`, and the one body behind knockback, pull, drag
+and launch. So the sentence covers a stun, a knockdown and a shove, and **does not reach**:
+
+- **a pin.** `ApplyPin` asks nothing about the stat, and section VI of the design document
+  lists "Pin, such as Impale, Nail Down, Skewer and Thicket" among the effects its hard-stop
+  rule does not cover, ruled 2026-09-14 under
+  [#1149](https://github.com/sdubois777/Cataclysm/issues/1149).
+- **Madness.** It is applied through the ailment path and asks nothing about the stat. The same
+  table calls it "Partly" covered: the immunity window and boss immunity, not the damage
+  threshold.
+- **a slow, such as Cripple.** The owner's decision of 2026-09-05 leaves slows out, and nothing
+  about a slow reads the stat.
+
+**The row is no weaker than the same words on a skill.** `UCataclysmSkillTemplate::IsImmuneTo`,
+which is what `Immune=CrowdControl` in a skill row goes through, is asked by the stun, the
+knockdown and the displacement body and by nothing else. So "immune to crowd control" already
+means those three in this game, in the code and in the design's table.
+
+**The genre draws the line wider, and that is recorded rather than followed.** Game8's page on
+Diablo IV's Control Impaired statuses lists Immobilize, Taunt and Slow beside Stun and
+Knockdown, all shortened by one affix
+([game8.co](https://game8.co/games/Diablo-4/archives/415226), read 2026-09-17). This game's
+line is the design's own table.
+
+### The number the sentence does not state
+
+The row is 100 and the sentence says "immune". `STATED_BY_WORD` in
+`test_enchantment_effects_match_the_row_text.py` reads "immune" as 100 on
+`crowd_control_resistance` and on no other stat, so the check that a single value appears in
+its enchantment's words has a fourth way to be satisfied. `JUDGED_NUMBERS` does not fit: that
+list is for sentences stating no number at all, and this one states 30, which is its condition
+value. Two tests hold the rule: one on made-up sentences, and one that fails if no row needs
+the word any more -- per word rather than per stat, because `crowd_control_resistance` already
+had a row before the word existed.
+
+### Tests
+
+`Cataclysm.Enchantments.AnAuthoredRowLetsNoStunOrKnockdownLandOnALowHealthWearer` wears the
+row from the built table: at a fifth of its health neither a designed stun nor a designed
+knockdown lands; at full health the same stun lands, and a knockdown lands on a second wearer,
+which the five second window the two share makes necessary. In Python, the two word-rule tests
+and the row-count pins.
+
+---
+
 ## 2026-09-17 — Never Lets Go is written, and Unstoppable's sentence names the knockdown
 
 **Affects:** `docs/Ravager_Class_Tree_Final.json` (one sentence, the only place a

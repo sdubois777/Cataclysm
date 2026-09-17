@@ -3350,4 +3350,122 @@ bool FCataclysmNoMeleeBlowIsEvadedOrBlocked::RunTest(const FString&)
 	TestTrue(TEXT("and still blocked"), Blocks(Ranged));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmLowHealthCrowdControlImmunity,
+	"Cataclysm.Enchantments.AnAuthoredRowLetsNoStunOrKnockdownLandOnALowHealthWearer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLowHealthCrowdControlImmunity::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// "While below 30% HP you are immune to crowd control" IS
+	// `crowd_control_resistance`, flat 100, under `health_below` 30. Ruled
+	// 2026-09-17 under the project owner's delegation. At 100
+	// `UCataclysmSkillEffects::AfterCrowdControlResistance` lets nothing land,
+	// which is the one place this game lets a stat reach immunity -- the owner's
+	// choice of 2026-09-05.
+	//
+	// THE KNOCKDOWN HALF IS ONLY TRUE SINCE A KNOCKDOWN READ THE STAT, issue
+	// #1815 again. Until then this row would have left a low-health wearer on the
+	// floor while saying it was immune, which is why the row waited for it.
+	//
+	// TWO WEARERS, BECAUSE A HOLD THAT LANDS OPENS A FIVE SECOND WINDOW that
+	// refuses the next one. The low-health assertions come first and land
+	// nothing, so no window opens on that wearer; the stun control is then the
+	// same wearer at full health, and the knockdown control is a second wearer.
+	//
+	// IT FAILS UNTIL `tools/generate_datatable_assets.py` HAS REBUILT THE ASSET
+	// FROM A CSV HOLDING THE ROW.
+	const TCHAR* CrowdControlImmunity =
+		TEXT("Positive_While_below_30_HP_you_are_immune_to_crowd_contr");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE ATTACKER NEEDS AN ABILITY SYSTEM OF ITS OWN, because
+	// `ApplyTagForDuration` reads one off the instigator to build the effect
+	// context, and a hold from an actor without one lands on nobody.
+	FWearer Attacker(World);
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), CrowdControlImmunity, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(&ASC);
+
+	// A FIFTH OF ITS HEALTH, WHICH IS UNDER THE ROW'S THIRTY PER CENT.
+	GivePools(ASC, /*Health=*/200.0f, /*MaxHealth=*/1000.0f);
+
+	const FCataclysmStatModifier* FromRow =
+		TheEnchantmentModifierOn(ASC, TEXT("crowd_control_resistance"));
+	if (!FromRow)
+	{
+		AddError(FString::Printf(
+			TEXT("Wearing %s did not put exactly one enchantment modifier on "
+				 "crowd control resistance. DT_EnchantmentEffects may be older "
+				 "than the row: run  python tools/run_editor_python.py "
+				 "tools/generate_datatable_assets.py"),
+			CrowdControlImmunity));
+		return false;
+	}
+	TestEqual(TEXT("the row arrived as a flat value"), FromRow->Bucket,
+			  ECataclysmStatBucket::Flat);
+	TestEqual(TEXT("of a hundred"), FromRow->Value, 100.0f, 0.001f);
+	TestEqual(TEXT("under a health threshold"), FromRow->Condition,
+			  ECataclysmStatCondition::HealthBelowPercent);
+	TestEqual(TEXT("of thirty per cent"), FromRow->ConditionValue, 30.0f, 0.001f);
+
+	TestFalse(TEXT("a designed stun does not land below 30% health"),
+			  UCataclysmSkillEffects::ApplyStun(
+				  Attacker.Actor, Wearer.Actor, /*DurationSeconds=*/1.5f,
+				  /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true));
+	TestFalse(TEXT("and the wearer is not stunned"),
+			  UCataclysmSkillEffects::IsStunned(Wearer.Actor));
+
+	TestFalse(TEXT("a designed knockdown does not land either"),
+			  UCataclysmSkillEffects::ApplyKnockdown(
+				  Attacker.Actor, Wearer.Actor, /*DurationSeconds=*/2.0f,
+				  /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true));
+	TestFalse(TEXT("nor is the wearer knocked down"),
+			  UCataclysmSkillEffects::IsKnockedDown(Wearer.Actor));
+
+	// AND AT FULL HEALTH THE SAME STUN LANDS, which is what says the two refusals
+	// above came from the row's condition rather than from the hold path being
+	// broken here.
+	GivePools(ASC, /*Health=*/1000.0f, /*MaxHealth=*/1000.0f);
+	TestTrue(TEXT("the same stun lands at full health"),
+			 UCataclysmSkillEffects::ApplyStun(
+				 Attacker.Actor, Wearer.Actor, /*DurationSeconds=*/1.5f,
+				 /*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true));
+	TestTrue(TEXT("and the wearer is stunned"),
+			 UCataclysmSkillEffects::IsStunned(Wearer.Actor));
+
+	// THE KNOCKDOWN CONTROL IS A SECOND WEARER, because the stun above opened the
+	// window a stun and a knockdown share.
+	FWearer Other(World);
+	Other.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), CrowdControlImmunity, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Other.Equipment->RefreshAttributes(Other.AbilitySystem);
+	GivePools(*Other.AbilitySystem, /*Health=*/1000.0f, /*MaxHealth=*/1000.0f);
+
+	TestTrue(TEXT("a knockdown lands on a wearer at full health"),
+			 UCataclysmSkillEffects::ApplyKnockdown(
+				 Attacker.Actor, Other.Actor, /*DurationSeconds=*/2.0f,
+				 /*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true));
+	TestTrue(TEXT("which knocks it down"),
+			 UCataclysmSkillEffects::IsKnockedDown(Other.Actor));
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS
