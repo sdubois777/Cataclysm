@@ -2,6 +2,125 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A kill restores health at no cost, and an enemy dying within ten metres grants Fervour
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmClassResourceAttributeSet.h`
+and `.cpp` (two attributes), `game/Source/Cataclysm/AbilitySystem/CataclysmFervour.h`
+and `.cpp` (the two stats, the radius and the two rules),
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` (the death handler
+calls both), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, and
+tests in `CataclysmPassiveTreeTests.cpp`, `CataclysmAttributeSetTests.cpp` and
+`CataclysmPlayerClassStatsTests.cpp`. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+Two capstone options pay out on a death and cost nothing:
+
+| Option | Sentence | Stat |
+| :-- | :-- | :-- |
+| `Ravager_capstone_50` option 3, Long Hold | "Killing an enemy restores 5% of your maximum health." | `health_restored_on_kill_at_no_cost` |
+| `Ritualist_capstone_50` option 2, Fed by the Fallen | "You gain 10 Fervour whenever an enemy dies within 10 metres of you." | `fervour_on_enemy_death_nearby` |
+
+**THIS CHANGE IS THE MECHANISM ONLY.** Their two rows follow in one turn of the
+design workbook with the two rows for Weight Against Them and Drawn Deep. Until
+then neither option does anything in game.
+
+### WHAT WAS BUILT
+
+- **Two stats, each an attribute on the class resource set** beside
+  `HealthRestoredOnKill`, each read through `StatForSkill` with the attribute as
+  the fallback, and each mapped in `UCataclysmPlayerClassStats::StatToAttribute`.
+- **`UCataclysmFervour::RestoreHealthOnKillAtNoCost`** restores that percentage of
+  maximum health through `UCataclysmRegeneration::TopUp`, the route Wrung Out
+  heals by, so the same ceiling and received-healing reductions apply. It reads
+  and spends no Fervour.
+- **`UCataclysmFervour::GainOnEnemyDeathNearby`** adds that much Fervour, clamped
+  at the maximum, when the death was at or inside
+  `EnemyDeathNearbyRadiusMetres`, a constant of 10 because no node changes it.
+- **`ACataclysmPlayerCharacter::OnSomethingDied` calls both.** Long Hold's call
+  sits in the first block, under this character being the killer. Fed by the
+  Fallen's sits beside the worn rows' `nearby_death`, and both now ask one helper
+  at the top of the file, `IsAnEnemysDeath`, whether the death was an enemy's.
+
+### WHY TWO STATS AND NOT THE ENCHANTMENTS' EVENT ROWS
+
+The enchantment rows already restore a pool on `kill` and `nearby_death`, through
+`FCataclysmPoolAction`. Passive rows cannot carry an event. Giving them one would
+mean three new Passive Effects columns, which is a row struct change, a generator
+and workbook column change and a rebuilt asset. Fed by the Fallen would also need
+two extensions to a pool action: a flat amount and a radius per row. Measured
+over `PassiveNodes.csv` against `PassiveEffects.csv`, six unbuilt Ravager and
+Ritualist entries name a kill, a death, "whenever", "when an" or "when you"; only
+these two restore or grant a pool. So that route would unlock these two and no
+third, and the stats follow Wrung Out's shape instead.
+
+### GENRE RESEARCH
+
+Read on 2026-09-17. `pathofexile.fandom.com` and `poewiki.net` could not be read,
+so Path of Exile text is from poe2db.tw.
+
+| Game | Source | Text | Page |
+| :-- | :-- | :-- | :-- |
+| Path of Exile 2 | Soul Core of Jiquani | "Recover 5% of maximum Life on Kill" | poe2db.tw/us/Kill |
+| Path of Exile 2 | notable Life from Death | "Recover 3% of maximum Life on Kill" | poe2db.tw/us/Kill |
+| Path of Exile 2 | notable Taste for Blood | "Gain 20 Life per enemy killed" | poe2db.tw/us/Kill |
+| Path of Exile 2 | notable Efficient Killing | "Recover 2% of maximum Mana on Kill" | poe2db.tw/us/Kill |
+| Path of Exile 2 | Presence | "Your Presence is an area around your character within which certain effects (such as many Auras) are applied. By default this has a 4 metre radius." | poe2db.tw/us/Presence |
+| Diablo 4 | Life On Kill | "You will recover X Life for every enemy you kill." | diablo4.wiki.fextralife.com/Life+On+Kill |
+| Last Epoch | forum post by a community member, not a developer | "You yourself have to deal the killing blow. Your minions do not trigger on kill effect for the players and vice versa." | forum.lastepoch.com/t/how-the-on-kill-effect-works/46372 |
+
+**What it settles.** A percentage of maximum life recovered on each kill is
+shipped at this size, including exactly 5%. A flat amount per kill is shipped
+too.
+
+**What it does not settle.** Which kills count: the Last Epoch post says a
+minion's kill is not the player's, and it is unofficial. A resource gained when an
+enemy dies within a radius: no shipped text was found, and the ten metres are the
+sentence's own.
+
+### RULINGS, AND EACH IS A JUDGEMENT
+
+Made on 2026-09-17 by the coordinating session under the owner's delegation.
+
+1. **Kills count as ruled on 2026-09-14**, a minion's kill and a kill by damage
+   over time included, the rule the enchantment rows already apply.
+2. **Fed by the Fallen counts any enemy's death within ten metres**, whoever killed
+   it and this character's own kills included, and never the death of its own
+   minion: the enemy test the worn rows' nearby death already uses.
+3. **The restoration that costs nothing runs first.** With Wrung Out and Long Hold
+   both held, a kill that Long Hold heals to full leaves Wrung Out nothing to buy,
+   and **Wrung Out then spends nothing, because it spends nothing at full health.**
+4. **Fervour gained is clamped at the maximum.** Nothing here reads or changes the
+   thrall reservation; issue #1160 is untouched.
+5. **The names** `health_restored_on_kill_at_no_cost` and
+   `fervour_on_enemy_death_nearby`, and the radius as a named constant.
+
+### FOR THE OWNER, NOT CHANGED
+
+- **Long Hold's size.** 5% of maximum health for each death notice, so a blow that
+  kills six enemies restores 30%.
+- **Fed by the Fallen's size.** 10 Fervour for each enemy's death within ten
+  metres. The Ritualist's pool is 150 and a thrall reserves 30, so three deaths
+  nearby pay for a thrall.
+
+### TESTS
+
+Four, in `Cataclysm.DeathRewards.`, each on a real possessed character with the
+option's row stated in the test:
+
+- `LongHoldRestoresHealthOnAKillAndNothingOnADeathItDidNotCause`: a kill from
+  half health restores 5% of maximum health and spends no Fervour; a death the
+  Ravager did not cause restores nothing; a kill at full health leaves it full.
+- `LongHoldHealsBeforeWrungOutBuysAnything`: from half health both run, 11% for
+  five Fervour; three per cent below full, the kill heals to full and no Fervour
+  is spent.
+- `FedByTheFallenGrantsFervourForAnEnemyDyingWithinTenMetres`: an enemy dying six
+  metres away grants 10, killed by nobody here or by the Ritualist; twelve metres
+  away grants nothing; a full bar stays full.
+- `FedByTheFallenGrantsNothingForTheRitualistsOwnMinion`: its own minion dying two
+  metres away grants nothing, and an enemy dying as near grants 10.
+
+---
+
 ## 2026-09-17 — Necrotic Ground spreads a fog that halves the healing of a player standing in it, heals the creatures in it, and burns the player once a second however many patches cover them
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
