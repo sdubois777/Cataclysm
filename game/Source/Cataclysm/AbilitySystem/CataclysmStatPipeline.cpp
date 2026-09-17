@@ -128,6 +128,8 @@ namespace
 		{ TEXT("enemies_in_reach"),    ECataclysmStatScale::PerEnemyInReach },
 		{ TEXT("crippled_enemies_in_reach"), ECataclysmStatScale::PerCrippledEnemyInReach },
 		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
+		{ TEXT("damage_reduction"),    ECataclysmStatScale::PerPercentOfDamageReduction },
+		{ TEXT("max_mana"),            ECataclysmStatScale::PerPointOfMaximumMana },
 	};
 
 	/**
@@ -920,6 +922,45 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 		// the other scales rather than off this node's words.
 		const float Steps =
 			FMath::FloorToFloat(State.LifeLeechPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerPercentOfDamageReduction:
+	{
+		// THE SAME TWO REFUSALS AS THE READINGS ABOVE. Issue #1515. The reading
+		// is negative for a caller with no character in hand and for an ability
+		// system with no combat attribute set, and a step of nothing would divide
+		// by zero.
+		//
+		// THE CAP IS NOT APPLIED HERE. It is applied where the reading is taken,
+		// in `UCataclysmAbilitySystemComponent::CurrentConditions`, by the
+		// function a hit uses, so this arithmetic counts whatever it is handed.
+		if (State.DamageReductionPercent < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// WHOLE STEPS, ROUNDED DOWN, the rule every scale here follows. Weight
+		// Against Them's step is 2, so 9% is four steps, not four and a half.
+		const float Steps =
+			FMath::FloorToFloat(State.DamageReductionPercent / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerPointOfMaximumMana:
+	{
+		// THE SAME TWO REFUSALS AGAIN. Issue #1515. Negative for a caller with no
+		// character in hand and for an ability system with no vital attribute
+		// set, which is where maximum mana lives.
+		if (State.MaximumMana < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// WHOLE STEPS, ROUNDED DOWN. Drawn Deep says "every full 200", so 399
+		// maximum mana is one step.
+		const float Steps =
+			FMath::FloorToFloat(State.MaximumMana / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 

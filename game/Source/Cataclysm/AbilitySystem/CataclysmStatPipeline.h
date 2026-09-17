@@ -1317,6 +1317,44 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerEnemyStruckTogetherBeyondTheFirst
 		UMETA(DisplayName = "Per Enemy Struck Together Beyond The First"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` percent of damage reduction the
+	 * character has. Issue #1515.
+	 *
+	 * `Ravager_capstone_100`'s second option, Weight Against Them: "+1% increased
+	 * Attack Damage for every 2% of Damage Reduction you have."
+	 *
+	 * A READING OF A STAT, AS `PerPercentOfLifeLeech` IS, AND READ THE SAME WAY:
+	 * off the attribute, so it holds what gear and unconditional rows put there.
+	 * A damage reduction row that holds only in a situation -- Banked Ruin's per
+	 * Fervour held, Wearing Them Down's against an enemy you Weakened -- changes
+	 * what a hit takes and not what this bonus is worth. Neither does the
+	 * separate multiplicative damage reduction.
+	 *
+	 * NEVER MORE THAN `UCataclysmDamageCalculation::DamageReductionCap`. "The
+	 * Damage Reduction you have" is the figure that reduces damage, and nothing
+	 * past the cap reduces any. A judgement ruled on 2026-09-17;
+	 * docs/DECISIONS.md records it beside the uncapped reading it was chosen
+	 * over.
+	 */
+	PerPercentOfDamageReduction
+		UMETA(DisplayName = "Per Percent Of Damage Reduction"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` points of maximum mana the
+	 * character has. Issue #1515.
+	 *
+	 * `Ritualist_basic_d_a2` Drawn Deep: "+1% increased Spell Damage per point
+	 * for every full 200 maximum mana you have."
+	 *
+	 * THE MAXIMUM AND NOT THE MANA IN HAND. A spell that spends mana does not
+	 * shrink the bonus of the spell after it. Path of Exile 2's Archmage reads
+	 * maximum mana the same way; Path of Exile 1's reads unreserved maximum
+	 * mana, because that game reserves mana and this one does not.
+	 */
+	PerPointOfMaximumMana
+		UMETA(DisplayName = "Per Point Of Maximum Mana"),
 };
 
 /**
@@ -1599,6 +1637,32 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float LifeLeechPercent = -1.0f;
+
+	/**
+	 * How much damage reduction the character has, in percent, never more than
+	 * `UCataclysmDamageCalculation::DamageReductionCap`. Issue #1515.
+	 *
+	 * NEGATIVE MEANS UNKNOWN: an ability system with no combat attribute set,
+	 * which is where damage reduction lives.
+	 *
+	 * READ OFF THE ATTRIBUTE, FOR THE REASON `LifeLeechPercent` GIVES, and passed
+	 * through `UCataclysmDamageCalculation::EffectiveDamageReduction`, the
+	 * function a hit uses, so the reading stops at the cap the protection stops
+	 * at.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float DamageReductionPercent = -1.0f;
+
+	/**
+	 * How much maximum mana the character has. Issue #1515.
+	 *
+	 * NEGATIVE MEANS UNKNOWN: an ability system with no vital attribute set.
+	 *
+	 * READ OFF THE ATTRIBUTE, FOR THE REASON `LifeLeechPercent` GIVES. The
+	 * maximum and not the mana in hand; `PerPointOfMaximumMana` says why.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MaximumMana = -1.0f;
 
 	/**
 	 * How many stacks of each kind the character is holding. Issues #1002,

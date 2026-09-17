@@ -3871,6 +3871,30 @@ SCALES = {
     # worth nothing and three are worth two. Bounded on the step as the reach
     # scales above are, and for the same reason.
     "enemies_hit_beyond_the_first": (0.0, 10.0, "a number of enemies beyond the first"),
+
+    # "for every 2% of Damage Reduction you have" is `damage_reduction` with a
+    # step of 2. Issue #1515, for `Ravager_capstone_100`'s second option,
+    # Weight Against Them.
+    #
+    # A READING OF A STAT, AS `life_leech` IS: the attribute, holding what gear
+    # and unconditional rows put there. A damage reduction row that holds only
+    # in a situation does not raise it.
+    #
+    # THE READING STOPS AT THE 75% CAP, ruled on 2026-09-17, because "the
+    # Damage Reduction you have" is the figure that reduces damage. So the
+    # upper bound is the cap: a step above it could never pay.
+    "damage_reduction": (0.0, 75.0, "a percentage of damage reduction"),
+
+    # "for every full 200 maximum mana you have" is `max_mana` with a step of
+    # 200. Issue #1515, for `Ritualist_basic_d_a2` Drawn Deep.
+    #
+    # THE MAXIMUM AND NOT THE MANA IN HAND, so spending mana does not shrink it.
+    #
+    # THE UPPER BOUND IS A JUDGEMENT IN THE SHAPE THE BOUNDS ABOVE USE. A
+    # Ritualist has 1,278 maximum mana at level 100 before gear and passives
+    # (90, and 12 a level after the first); a step past 1,000 would be a bonus
+    # a character reaches once, if at all, which is far likelier a mistake.
+    "max_mana": (0.0, 1000.0, "an amount of maximum mana"),
 }
 
 

@@ -1685,6 +1685,75 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
         assert out[0]["ReachMetres"] == -1.0
 
 
+class TestABonusCanGrowWithDamageReductionOrMaximumMana:
+    """ISSUE #1515. Two scales read a stat the character has rather than a
+    state it is in: `damage_reduction`, for Weight Against Them's "+1% increased
+    Attack Damage for every 2% of Damage Reduction you have", and `max_mana`,
+    for Drawn Deep's "for every full 200 maximum mana you have".
+
+    EACH STEP HAS AN UPPER BOUND, AND A ROW PAST IT IS REFUSED. The damage
+    reduction reading stops at the 75% cap, so a step above 75 could never
+    pay; a maximum mana step above 1,000 is a judgement recorded beside the
+    bound in `tools/generate_datatables.py`.
+
+    NO ROW ON THE SHEET USES EITHER YET. The two rows wait on a turn of the
+    design workbook, so these tests are what holds the names and bounds until
+    then.
+    """
+
+    def book(self, tmp_path, rows: list[list]):
+        return openpyxl.load_workbook(workbook_with(
+            tmp_path / "stat_scales.xlsx",
+            {"Passive Effects":
+             TestARowCountingNearbyEnemiesCarriesItsOwnRadius.sheet(rows)}))
+
+    def test_a_damage_reduction_scale_imports_with_its_step(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 1,
+             None, None, "damage_reduction", 2, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert len(out) == 1
+        assert out[0]["Scale"] == "damage_reduction"
+        assert out[0]["ScaleStep"] == 2.0
+
+    def test_a_damage_reduction_step_at_the_cap_imports(self, tmp_path):
+        """The control for the refusal below: 75 is inside the bound."""
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 1,
+             None, None, "damage_reduction", 75, None],
+        ])
+        assert gen.passive_effects(rows)[0]["ScaleStep"] == 75.0
+
+    def test_a_damage_reduction_step_past_the_cap_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "attack_damage", "increased", 1,
+             None, None, "damage_reduction", 76, None],
+        ])
+        with pytest.raises(gen.DataError, match="up to 75"):
+            gen.passive_effects(rows)
+
+    def test_a_maximum_mana_scale_imports_with_its_step(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "spell_damage", "increased", 1,
+             None, None, "max_mana", 200, None],
+        ])
+        out = gen.passive_effects(rows)
+
+        assert len(out) == 1
+        assert out[0]["Scale"] == "max_mana"
+        assert out[0]["ScaleStep"] == 200.0
+
+    def test_a_maximum_mana_step_past_a_thousand_is_refused(self, tmp_path):
+        rows = self.book(tmp_path, [
+            ["A_node", "spell_damage", "increased", 1,
+             None, None, "max_mana", 1001, None],
+        ])
+        with pytest.raises(gen.DataError, match="up to 1000"):
+            gen.passive_effects(rows)
+
+
 class TestEnchantmentEffects:
     """What an enchantment grants, read from the Enchantment Effects sheet. #45.
 
