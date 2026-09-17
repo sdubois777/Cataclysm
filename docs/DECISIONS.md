@@ -2,6 +2,139 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A bonus can grow with the damage reduction or the maximum mana a character has
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp` (two scales and two readings),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (where
+the readings are taken), `tools/generate_datatables.py` (the two names and their
+step bounds), and tests in `CataclysmStatPipelineTests.cpp`,
+`CataclysmConditionalDamageTests.cpp` and
+`tools/tests/test_generate_datatables.py`. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+Two nodes grant a bonus sized by another stat the character has:
+
+| Node | Sentence | Scale | Step |
+| :-- | :-- | :-- | --: |
+| `Ravager_capstone_100` option 2, Weight Against Them | "Your Armor is also offence: +1% increased Attack Damage for every 2% of Damage Reduction you have." | `damage_reduction` | 2 |
+| `Ritualist_basic_d_a2` Drawn Deep, 6 points | "+1% increased Spell Damage per point for every full 200 maximum mana you have." | `max_mana` | 200 |
+
+**THIS CHANGE IS THE MECHANISM ONLY.** The two `Passive Effects` rows, their
+node-text words in `tools/tests/test_passive_effects_match_the_node_text.py`,
+and two tests reading the rebuilt asset follow in a later turn of the design
+workbook, which is with the enchantment work. Until then neither node grants
+anything in game.
+
+### WHAT WAS BUILT
+
+Two values of `ECataclysmStatScale`, `PerPercentOfDamageReduction` and
+`PerPointOfMaximumMana`. Each is worth the row's value times the whole steps of
+its reading, rounded down, and nothing when the reading is unknown or the step
+is zero. Their readings are two fields of `FCataclysmStatConditions`, taken in
+`UCataclysmAbilitySystemComponent::CurrentConditions` from the character's own
+attribute sets:
+
+- `DamageReductionPercent`: the `DamageReduction` attribute passed through
+  `UCataclysmDamageCalculation::EffectiveDamageReduction`, the function a hit
+  uses, so never more than 75.
+- `MaximumMana`: the `MaxMana` attribute, floored at zero.
+
+Both stats the nodes grant are already worked out again at every hit with those
+readings in hand -- attack damage in `AttackDamageIncreasesForSkill`, spell
+damage in `UCataclysmSkillEffects::SpellDamageOf` through `StatForSkill` -- so
+nothing else needed wiring.
+
+### GENRE RESEARCH
+
+Read on 2026-09-17. `pathofexile.fandom.com`, `poewiki.net` and `twinfinite.net`
+could not be read, so Path of Exile text is from poedb.tw and poe2db.tw. The two
+Last Epoch lines are a guide author's paraphrase, not game text.
+
+| Game | Source | Text | Page |
+| :-- | :-- | :-- | :-- |
+| Path of Exile 2 | Archmage gem | "Non-Channelling Spells Gain 4% of Damage as extra Lightning damage for each 100 maximum Mana players have" | pathofexile2.wiki.fextralife.com/Archmage |
+| Path of Exile 1 | Archmage Support | "Supported Skills gain Added Lightning Damage equal to (8—14)% of Unreserved Maximum Mana" | poedb.tw/us/Archmage_Support |
+| Path of Exile 1 | weapon tree modifier | "Tectonic Slam and Infernal Blow deal 1% increased Attack Damage per 450 Armour" | poedb.tw/us/Armour |
+| Path of Exile 2 | a definition, and a modifier using it | "Uncapped Resistance is the value a Resistance would have if ignoring Maximum Resistance."; "Armour is increased by Uncapped Fire Resistance" | poe2db.tw/us/Uncapped_Resistance |
+| Torchlight Infinite | Sentinel talent Last Stand | "Block Ratio is set to 0% / For every +3% Attack or Spell Block Chance, +2% additional damage, up to +90%" | tlidb.com/es/Talent |
+| Last Epoch | Sorcerer node Archmage (paraphrase) | "Adds Flat Spell Damage and Chance to refund 20% of mana cost. These values are doubled at 300 Max Mana and tripled at 1000 Max Mana." | icy-veins.com/last-epoch/sorcerer-manastack-endgame-build |
+| Last Epoch | Static Orb node Manacharged (paraphrase) | "Adds More Dmage per 20 Max Mana" | the same page |
+| Diablo 4 | Power paragon glyph | "For every 5 Strength purchased within range, you gain +0.5% increased damage" | diablo4.wiki.fextralife.com/Power |
+
+**What it settles.** A bonus sized by whole blocks of another stat the character
+has is shipped in all four games: a defensive stat turned into damage (Path of
+Exile's armour, Torchlight Infinite's block chance) and maximum mana turned into
+spell damage (both Path of Exile games, Last Epoch). Path of Exile 2 and Last
+Epoch read MAXIMUM mana. Path of Exile 1 reads unreserved maximum mana because it
+reserves mana, and this game reserves none. Rounding down in whole steps was
+settled here on 2026-08-25.
+
+**What it does not settle:** whether such a bonus is recalculated as the stat
+changes or fixed at some moment, and any rule against a bonus derived from a
+stat looping back into that stat. Nothing read says.
+
+### RULINGS, AND EACH IS A JUDGEMENT
+
+Made on 2026-09-17 by the coordinating session under the owner's delegation.
+
+1. **One change, both scales.** They share one shape, a plain attribute read
+   stepped in whole blocks, which is the shape of the `life_leech` scale.
+2. **Capped at 75.** "The Damage Reduction you have" is the figure that reduces
+   damage, and this game names no uncapped reading. Path of Exile names a
+   reading past a cap in the modifier's own words. The alternative was the
+   stored figure, which is what the character sheet's damage reduction line
+   shows, with the cap beside it. **Flagged to the owner** with the sizes below.
+3. **The stored figure, not the figure at a hit.** Asking the pipeline for damage
+   reduction inside `CurrentConditions` would evaluate a stat in order to build
+   the state that evaluation needs, which the life leech reading refuses for the
+   same reason. **Consequence:** Banked Ruin (`Ravager_basic_d_b2`, "+1%
+   increased Damage Reduction per point for every full 25 Fervour you currently
+   hold") and Wearing Them Down (`Ravager_basic_c_b2`, "+2% increased Damage
+   Reduction per point against enemies you have Weakened") do not raise Weight
+   Against Them, and neither does the separate multiplicative damage reduction.
+4. **Recalculated at each hit**, as every scale is.
+5. **Step bounds** in `tools/generate_datatables.py`: `damage_reduction` above 0
+   and up to 75, because a step above the cap never pays; `max_mana` above 0 and
+   up to 1,000.
+
+### FOR THE OWNER, NOT CHANGED
+
+- **Weight Against Them's size.** At most +37% increased attack damage from one
+  capstone option, because 75 is 37 whole steps of 2. Uncapped, 90% stored
+  damage reduction would give +45%, with no ceiling.
+- **Drawn Deep's size.** A level 100 Ritualist has 1,278 maximum mana before gear
+  and passives (90, and 12 a level after the first), which is 6 whole steps, so
+  +36% at 6 points. With the three "+2% increased Maximum Mana per point" nodes
+  full (28 points, +56%), 1,994 is 9 steps, +54%.
+- **Weight Against Them's wording.** It opens "Your Armor is also offence", and
+  its rule reads Damage Reduction, not Armor. Not reworded.
+- **Not built by this:** the Ritualist keystone Vessel, "1 Fervour for every 20
+  maximum mana you have", reads maximum mana too, but it sizes a pool's maximum.
+  That is an attribute written when the character's stats refresh, where every
+  reading is unknown, so a row on these scales would be worth nothing there and
+  Vessel would need a route of its own. Reasoned from the code, not measured by a
+  test.
+
+### TESTS
+
+- `Cataclysm.StatPipeline.AnIncreaseCanGrowWithWholeStepsOfDamageReduction` and
+  `Cataclysm.StatPipeline.AnIncreaseCanGrowWithWholeStepsOfMaximumMana`: the
+  arithmetic handed a reading. Each sheet name is known; whole steps round down;
+  an unknown reading and a step of zero are worth nothing; each reads its own
+  field and not the other's.
+- `Cataclysm.ConditionalDamage.AttackDamageGrowsWithTheDamageReductionTheCharacterHasUpToItsCap`:
+  real hits from an attacker whose own damage reduction is set, with no reading
+  stated. 10% is +5%, 9% is +4%, 90% is +37%.
+- `Cataclysm.ConditionalDamage.SpellDamageGrowsWithTheMaximumManaAndNotTheManaInHand`:
+  real spells at six points. 399 maximum mana is +6%, 450 is +12%, and 450 with
+  the pool spent is still +12%.
+- `tools/tests/test_generate_datatables.py::TestABonusCanGrowWithDamageReductionOrMaximumMana`:
+  each name imports with its step; a damage reduction step of 75 imports and 76
+  is refused; a maximum mana step of 1,001 is refused.
+
+---
+
 ## 2026-09-16 — A stat an enchantment says you have none of is taken to nothing: a removal kind beside flat, increased and more, and the eleven drawbacks and Starvation's first bonus written with it
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: 25 rows),
