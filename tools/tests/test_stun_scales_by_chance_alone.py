@@ -1,9 +1,16 @@
 """Stun scales by chance to stun and nothing else. Issue #299.
 
-WHAT WAS DECIDED, 2026-08-16. There is no affix that scales a stun's duration.
-The chance to stun added by issue #298 is the only lever, and it covers both of
+WHAT WAS DECIDED, 2026-08-16. There is no affix that lengthens a stun. The
+chance to stun added by issue #298 is the only lever, and it covers both of
 the things a stun has: chance up to 100%, and duration above that through
 `stun_application` in `sim/cataclysm_sim/damage.py`, capped at 3 seconds.
+
+NARROWED ON 2026-09-17 BY THE PROJECT OWNER, under issue #1950, from "no affix
+that scales a stun's duration". Crowd control resistance became a lever on a
+stun's duration that day -- it SHORTENS an incoming one -- and gear grants it,
+so the older wording had quietly become false. Shortening is allowed and only
+lengthening is not. The two data assertions below were always narrower than the
+sentence and did not change.
 
 TWO ARGUMENTS, AND THE SECOND IS THE ONE THAT WOULD SURVIVE THE FIRST BEING
 WRONG.
@@ -25,9 +32,17 @@ everything that can be stunned at all. That difference is the whole argument,
 which is why the tests below check the document still states it rather than only
 the conclusion it supports.
 
-WHAT IS ASSERTED HERE. That no affix scales stun duration in the model or in the
-generated data, that the design document states the decision and both arguments,
-and that the cap the decision relies on is still below the immunity window.
+WHAT IS ASSERTED HERE. That no affix NAMED for stun duration exists in the model
+or in the generated data, that the design document states the decision and both
+arguments, and that the cap the decision relies on is still below the immunity
+window.
+
+**THE FIRST TWO SELECT ON AN AFFIX'S NAME, NOT ON WHAT IT DOES**, so they never
+held the whole sentence: they look for a name carrying both "stun" and
+"duration". Crowd control resistance shortens a stun and carries neither word,
+which is why narrowing the sentence on 2026-09-17 left them untouched. Stated
+here because a reader who takes them for a check on behaviour will over-trust
+them.
 """
 
 from __future__ import annotations
@@ -100,11 +115,21 @@ def test_the_one_stun_affix_is_a_chance_to_apply() -> None:
 # The document states the decision and why
 # --------------------------------------------------------------------------
 
-def test_the_document_says_there_is_no_duration_affix() -> None:
-    assert "no affix that scales a stun's duration" in design_document(), (
-        "the design document no longer states that no affix scales a stun's "
-        "duration. That was decided on 2026-08-16 under issue #299, and a "
-        "decision nobody can find is one that gets re-asked.")
+def test_the_document_says_there_is_no_lengthening_affix() -> None:
+    """NARROWED FROM "scales a stun's duration" ON 2026-09-17 by the project
+    owner, under issue #1950. Crowd control resistance became a lever on a
+    stun's duration that day -- it shortens an incoming stun -- and gear grants
+    it, so the older wording had quietly become false. What the decision of
+    2026-08-16 meant is that nothing LENGTHENS a stun except chance past 100%.
+
+    THE TWO TESTS ABOVE WERE ALREADY NARROWER THAN THE SENTENCE and did not
+    change: they select affixes whose NAME holds both "stun" and "duration",
+    which the crowd control resistance affix does not."""
+    assert "no affix that lengthens a stun" in design_document(), (
+        "the design document no longer states that no affix lengthens a stun. "
+        "That was decided on 2026-08-16 under issue #299 and narrowed to this "
+        "wording by the owner on 2026-09-17, and a decision nobody can find is "
+        "one that gets re-asked.")
 
 
 def test_the_document_states_the_cliff_argument() -> None:

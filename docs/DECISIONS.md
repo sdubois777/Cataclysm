@@ -198,6 +198,144 @@ and the measurement is what this entry records.
 
 ---
 
+## 2026-09-17 — The model shortens a stun by crowd control resistance, as the game has since 2026-09-05, and the design document says so
+
+**Affects:** `sim/cataclysm_sim/damage.py` (the rule and the gate in `resolve`),
+`sim/tests/test_damage.py` and `sim/tests/test_anti_stun_lock.py` (three tests rewritten, one
+added), and `docs/Cataclysm_GDD_v2.md` (one sentence in the Blunt paragraph). Issue
+[#1950](https://github.com/sdubois777/Cataclysm/issues/1950). **Applied.**
+
+### What was wrong
+
+The project owner decided on 2026-09-05 that crowd control resistance **shortens** a stun and
+stops it entirely at 100. The game has done that ever since, in
+`UCataclysmSkillEffects::AfterCrowdControlResistance`. **The Python model and the design
+document were not changed with it**, and both still said resistance made a stun land **less
+often**. They had said so since before the decision existed.
+
+The disagreement was not academic. A skill whose stated purpose is to stun has no chance to
+reduce -- that is the reason the owner gave for the game's rule -- so the old rule left the
+stat worth nothing at all against the four skills built to stun. In the model those skills
+were still rolling against a reduced chance.
+
+**The owner ruled on 2026-09-17 that the game is right and the model and the document follow
+it.** Relayed by the coordinating session under the delegation of 2026-09-14.
+
+### The order, which was read out of the game rather than chosen
+
+**The three second cap comes first and resistance shortens what is left.** This is the one part
+of the rule that could not be worked out from the rule itself, so it was read rather than
+assumed. In `CataclysmAilments.cpp` every source of chance to stun goes into one pool, a blunt
+weapon's own 10 included; `StunApplication` caps the chance at 100 and turns the rest into a
+longer stun, up to three seconds; the roll happens; and only then does `ApplyStun` scale the
+seconds and refuse at zero.
+
+Shortening before the cap gives a different answer every time the cap binds. At 800% chance
+against 50 resistance it is 1.5 seconds this way and the full 3.0 the other way.
+
+### What the model does now
+
+| Before | After |
+| :-- | :-- |
+| `effective_stun_chance(attacker, defender)` scaled the attacker's total chance by the defender's resistance | deleted |
+| — | `after_crowd_control_resistance(seconds, defender)`, named for the game function that does the same job, so each is findable from the other |
+| `stun_against` reduced the chance and let the duration follow | `stun_against` caps first, shortens second, and answers "no stun at all" when the seconds reach zero |
+
+**The deleted function was not kept and neutered.** A function still called "effective stun
+chance" that no longer reduces a chance is a name that lies, and it had exactly one caller.
+
+### Full resistance is a gate, not a reduced roll
+
+`resolve` takes a `force_stun` argument so tests can pin the roll. **Full resistance now holds
+against it**, the way boss immunity does. Without that, forcing a stun onto a defender at 100
+resistance reported a stun of zero seconds -- a stun that did not happen, counted as one.
+
+This is a real hole rather than a hypothetical one: it existed before this change too, where
+forcing a stun onto a fully resistant defender gave a stun of the full 0.75 seconds.
+
+### Tests, and why these numbers
+
+**The test values are chosen away from the points where the old rule and the new one agree.**
+At 400% chance against 50 resistance both give 100% chance and 1.5 seconds, because the old
+rule ate the overflow down to 200% while the new one halves a duration the cap had already
+held at 3.0. A test written on those numbers passes under either rule and proves nothing.
+
+| Case | Old rule | New rule |
+| :-- | :-- | :-- |
+| a blunt swing, 10% chance, 50 resistance | 5% chance, 0.75 seconds | 10% chance, 0.375 seconds |
+| 800% chance, 50 resistance | 100% chance, 3.0 seconds | 100% chance, 1.5 seconds |
+| any chance, 100 resistance | no stun | no stun |
+
+- `test_crowd_control_resistance_shortens_a_stun_rather_than_making_it_rarer` holds the first
+  row and the third.
+- `test_the_duration_cap_is_applied_before_resistance_shortens_it` holds the second, and
+  asserts the answer is below the cap, which is what fails if the order is reversed.
+- `test_a_designed_stun_still_obeys_crowd_control_resistance` now checks that a designed stun
+  at 50 resistance **lands** and lasts half as long, where before it checked that it landed
+  half as often.
+- `test_full_resistance_holds_even_when_a_stun_is_forced` is new, and carries a control: the
+  same forced hit against a defender with no resistance does stun, so the assertion is about
+  the resistance rather than about the force argument being ignored.
+
+**One of these caught its own author.** The designed-stun test was first written expecting
+0.375 seconds and measured 0.4125, because 100 from the flag plus a blunt weapon's own 10 is
+110% and the tenth of overflow lengthens the stun before resistance shortens it. The test now
+uses 90 from the flag, so the total is exactly 100 and nothing is left over.
+
+### The design document
+
+`docs/Cataclysm_GDD_v2.md`, in the paragraph beginning "The stun uses the shortest duration any
+designed skill uses.", said:
+
+> Crowd control resistance reduces the chance proportionally, so a character at 100% cannot be
+> stunned at all.
+
+It now says resistance shortens the stun proportionally rather than making it land less often,
+that a character at 50% is stunned as often and for half as long, and that it shortens what is
+left after the three second cap rather than before it.
+
+**That sentence was the only statement of the old rule anywhere in `docs/`**, confirmed by
+searching every mention of the stat.
+
+**It was nearly not corrected.** The first ruling was to leave it for the project owner to
+re-export from the Google Drive originals. That rests on a rule superseded on 2026-08-02:
+`CLAUDE.md` lines 123-127, read out of `origin/development`, say the repository copies are the
+source of truth and are **not** synced back to Drive, and lines 532-535 record that quoting the
+old rule has twice produced work asking the owner to hand-edit documents that were already
+correct here. The ruling was corrected on that basis.
+
+### A second sentence the owner narrowed, in the same change
+
+**The decision of 2026-08-16 under issue #299 said there is "no affix that scales a stun's
+duration".** After this change crowd control resistance is a lever on a stun's duration, and
+an affix grants it, so that sentence had quietly become false. **The project owner narrowed it
+on 2026-09-17** to "no affix that **lengthens** a stun", with shortening allowed and named as
+a different thing. The document now says so and gives the date it was narrowed.
+
+**Two test files held the old sentence, not one.** `sim/tests/test_anti_stun_lock.py` asserts
+it against the whole document and `tools/tests/test_stun_scales_by_chance_alone.py` against
+one section, and a first search found only the second. Both now assert the narrowed wording.
+**The lesson is the search, not the sentence**: one file was found by searching for the stat's
+name and the other only by searching for the sentence's own words.
+
+**Neither file's data assertions changed, and that is worth stating.** Both select affixes
+whose NAME contains "stun" and "duration"; crowd control resistance carries neither word, so
+those checks never held the sentence they sit under. They are checks on naming, not on
+behaviour, and the file now says so at the top, because a reader who takes them for the latter
+will over-trust them.
+
+### Not changed here
+
+**The model still has no displacement**, so the game's other reader of the stat -- a shove's
+centimetres -- has no counterpart here to bring into line.
+
+**Issue [#1951](https://github.com/sdubois777/Cataclysm/issues/1951) is untouched and still
+true**: "CC effects applied to you last 40%-70% longer" is written as a negative
+`crowd_control_resistance`, which both the game and now the model floor at zero, so the row
+lengthens nothing.
+
+---
+
 ## 2026-09-17 — What a skill costs a character is a stat, and one function answers it for the check, the payment, an aura's upkeep and the skill bar
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
@@ -1109,6 +1247,9 @@ of this stat, and that stands.
   paragraph and `effective_stun_chance` in `sim/cataclysm_sim/damage.py` still make crowd
   control resistance reduce the CHANCE of a stun. The game has reduced its DURATION since
   2026-09-05. Needs the operator.
+  **Answered the same day**, in the entry headed "The model shortens a stun by crowd control
+  resistance, as the game has since 2026-09-05, and the design document says so".
+  `effective_stun_chance` no longer exists; `after_crowd_control_resistance` replaced it.
 - [#1951](https://github.com/sdubois777/Cataclysm/issues/1951): "CC effects applied to you last
   40%-70% longer" is written as a negative `crowd_control_resistance`, which
   `AfterCrowdControlResistance` reads as zero, so the row makes nothing last longer. That is as

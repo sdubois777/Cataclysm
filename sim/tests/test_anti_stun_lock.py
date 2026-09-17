@@ -144,13 +144,52 @@ def test_a_designed_stun_ignores_the_damage_threshold():
 
 def test_a_designed_stun_still_obeys_crowd_control_resistance():
     """It skips the threshold, not every defence. A character at 100 crowd
-    control resistance cannot be stunned at all, which the design document has
-    said since before this rule existed."""
+    control resistance cannot be stunned at all.
+
+    THE STAT SHORTENS A DESIGNED STUN RATHER THAN MAKING IT MISS, which is the
+    project owner's decision of 2026-09-05 and the reason the game gave for it:
+    a designed stun has no chance to reduce, so a stat that reduced only the
+    chance was worth nothing against the four skills built to stun. Issue #1950
+    is where this model was found still reducing the chance."""
+    # 90 FROM THE FLAG PLUS BLUNT'S OWN 10 IS EXACTLY 100, chosen so the stun is
+    # certain with nothing left over to lengthen it. At 100 from the flag the
+    # total is 110 and the tenth of overflow makes the duration 0.825 before
+    # resistance, which is a true answer to a different question.
+    tiny = dm.Attacker(damage=MAX_HEALTH * 0.01, subtype="Blunt",
+                       bonus_stun_chance=90.0, stun_is_designed=True)
+
+    # HALF THE RESISTANCE STILL LANDS IT, for half as long. Under the old rule
+    # it landed only half the time, at its full length.
+    tough = defender(crowd_control_resistance=50.0)
+    assert landed(tiny, tough).stunned
+    assert landed(tiny, tough).stun_seconds == pytest.approx(
+        dm.INCIDENTAL_STUN_SECONDS / 2)
+
+    immune = defender(crowd_control_resistance=100.0)
+    assert dm.stun_against(tiny, immune) == (0.0, 0.0)
+    assert not landed(tiny, immune).stunned
+
+
+def test_full_resistance_holds_even_when_a_stun_is_forced():
+    """`force_stun` exists so tests can pin the roll, and full crowd control
+    resistance is not a roll -- it is a gate, the way boss immunity is.
+
+    WITHOUT THE GATE this reports a stun of zero seconds, which is a stun that
+    did not happen being counted as one. Issue #1950."""
     tiny = dm.Attacker(damage=MAX_HEALTH * 0.01, subtype="Blunt",
                        bonus_stun_chance=100.0, stun_is_designed=True)
     immune = defender(crowd_control_resistance=100.0)
-    assert dm.effective_stun_chance(tiny, immune) == pytest.approx(0.0)
-    assert not landed(tiny, immune).stunned
+
+    forced = dm.resolve(tiny, immune, force_evade=False, force_block=False,
+                        force_stun=True)
+    assert not forced.stunned
+    assert forced.stun_seconds == 0.0
+
+    # THE CONTROL: the same forced hit against a defender with no resistance
+    # does stun, so the assertion above is the resistance and not the force flag
+    # being ignored.
+    assert dm.resolve(tiny, defender(), force_evade=False, force_block=False,
+                      force_stun=True).stunned
 
 
 def test_an_ordinary_attack_is_not_a_designed_stun_by_default():
@@ -361,8 +400,8 @@ def test_the_document_records_that_point_four_is_now_answered(
     assert "not yet decided" not in crowd_control_gear_section, (
         "the design document defers a crowd control gear question again, in "
         "the section that settles it. Both were answered on 2026-08-16: an "
-        "affix grants a chance to stun (#298) and no affix scales a stun's "
-        "duration (#299).")
+        "affix grants a chance to stun (#298) and no affix lengthens a stun "
+        "(#299, narrowed from \"scales a stun's duration\" on 2026-09-17).")
     assert "settled on 2026-08-16" in crowd_control_gear_section, (
         "the design document no longer records when the crowd control gear "
         "question was settled, so it reads as though it never was.")
@@ -476,9 +515,15 @@ def test_the_open_questions_are_about_gear_and_not_about_slows(gdd):
     assert "no affix grants a chance to stun" not in gdd, (
         "the design document says no affix grants a chance to stun. One does, "
         "added by issue #298 on 2026-08-16.")
-    assert "There is no affix that scales a stun's duration" in gdd, (
-        "the design document no longer states that no affix scales a stun's "
-        "duration, which issue #299 decided on 2026-08-16.")
+    # NARROWED ON 2026-09-17 by the project owner, under issue #1950, from
+    # "scales a stun's duration". Crowd control resistance became a lever on a
+    # stun's duration that day and gear grants it, so the older wording was no
+    # longer true. What #299 decided is that nothing LENGTHENS a stun except
+    # chance past 100%.
+    assert "There is no affix that lengthens a stun" in gdd, (
+        "the design document no longer states that no affix lengthens a stun, "
+        "which issue #299 decided on 2026-08-16 and the owner narrowed to this "
+        "wording on 2026-09-17.")
 
 
 def test_the_reason_a_slow_is_separate_is_still_in_the_document(gdd):
