@@ -652,6 +652,17 @@ namespace CataclysmDungeonModifierEffectsTest
 				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Health);
 			System->SetNumericAttributeBase(
 				UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+
+			// AND IT CANNOT DODGE, WHICH IS WHAT MAKES A TEST KILL CERTAIN. An ordinary
+			// blow is rolled against the defender's evasion --
+			// `UCataclysmDamageCalculation` returns with nothing dealt when the roll
+			// lands under it -- and the roll is random, so a test that kills a creature
+			// with an ordinary blow fails sometimes and passes sometimes. Measured: in
+			// three runs of these tests, four then one then three failed on "the blow
+			// killed it", and a different set each time. A block cannot cause this: a
+			// block only takes a share off the damage.
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 		}
 		Imp->SetActorLocation(Where);
 		return Imp;
@@ -13412,6 +13423,13 @@ bool FCataclysmDemonPrinceRiseTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
 	TestEqual(TEXT("a floor just built has had no prince"), PanelLine(),
 			  FString::Printf(TEXT("prince 0 of %d"), Effects::DemonPrincesPerFloor));
 
@@ -13509,6 +13527,13 @@ bool FCataclysmDemonPrinceChanceTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
 
 	{
 		FScopedConsoleString OnTheChance(
@@ -13611,12 +13636,31 @@ bool FCataclysmDemonPrinceOtherKillerTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
 	ACataclysmEnemyCharacter* Slayer =
 		SpawnImpWithHealth(World, FVector(300.0f, 0.0f, 0.0f), 100.0f);
 	ACataclysmEnemyCharacter* Slain =
 		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
 	if (!TestNotNull(TEXT("an Imp to do the killing"), Slayer)
 		|| !TestNotNull(TEXT("an Imp to be killed"), Slain))
+	{
+		return false;
+	}
+
+	// AND THE KILLER NEEDS DAMAGE OF ITS OWN. A creature spawned bare carries none, and a
+	// blow worth nothing kills nobody, so the test would prove nothing about who did the
+	// killing. Measured before this line existed: this test failed on "a creature's blow
+	// killed it" while every test where the player struck passed.
+	const float SlayersDamage = GiveCreatureAttackDamage(Slayer, 100.0f);
+	if (!TestTrue(FString::Printf(TEXT("the killer hits for something: %.2f"),
+								  SlayersDamage),
+				  SlayersDamage > 0.0f))
 	{
 		return false;
 	}
@@ -13691,6 +13735,13 @@ bool FCataclysmDemonPrinceMinionKillTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
 	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
 		Player.Character, FVector(400.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
 		/*bBurns=*/false);
@@ -13704,9 +13755,13 @@ bool FCataclysmDemonPrinceMinionKillTest::RunTest(const FString& Parameters)
 
 	const int32 Before = LivingCreatures(World).Num();
 
+	// THE EMPTY TAG CONTAINER IS THE FOURTH ARGUMENT AND THE DELIVERY THE FIFTH.
+	// `ApplyHit` takes the blow's skill tags before its delivery, and a delivery passed
+	// in the fourth place does not compile.
 	FCataclysmHitDelivery Delivery;
 	Delivery.DealtBy = Minion;
-	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f, Delivery);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f,
+									 FGameplayTagContainer(), Delivery);
 	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
 	{
 		return false;
@@ -13770,6 +13825,13 @@ bool FCataclysmDemonPrinceCeilingTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
 
 	int32 Risen = 0;
 	for (int32 Kill = 0; Kill < 3; ++Kill)
@@ -13845,11 +13907,25 @@ bool FCataclysmDemonPrinceNoKindTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
 	ACataclysmEnemyCharacter* Nameless =
 		SpawnCreatureWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
 	if (!TestNotNull(TEXT("a creature of no kind"), Nameless))
 	{
 		return false;
+	}
+	// AND IT CANNOT DODGE EITHER, for the reason `SpawnImpWithHealth` gives: an ordinary
+	// blow is rolled against evasion, and a test kill has to be certain.
+	if (UAbilitySystemComponent* System = Nameless->GetAbilitySystemComponent())
+	{
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
 	}
 
 	const int32 Before = LivingCreatures(World).Num();
@@ -13937,6 +14013,10 @@ bool FCataclysmDemonPrinceFloorChangeTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// EMPTIED FOR THE REASON WRITTEN IN THE TESTS ABOVE: reaching a floor populates it,
+	// and this test counts what its own kills bring.
+	Mode->ClearFloorEnemies();
+
 	if (!TestEqual(TEXT("the first floor has its one"), KillAnImpAndCountWhatRose(600.0f),
 				   Effects::DemonPrincesPerFloor)
 		|| !TestEqual(TEXT("and a second kill on that floor brings nothing"),
@@ -13949,6 +14029,7 @@ bool FCataclysmDemonPrinceFloorChangeTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+	Mode->ClearFloorEnemies();
 	TestEqual(TEXT("the new floor counts none"), PanelLine(),
 			  FString::Printf(TEXT("prince 0 of %d"), Effects::DemonPrincesPerFloor));
 
@@ -14013,6 +14094,13 @@ bool FCataclysmDemonPrincePanelTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
 
 	TestEqual(TEXT("a floor just built has had none"), PanelLine(),
 			  FString::Printf(TEXT("prince 0 of %d"), Effects::DemonPrincesPerFloor));
