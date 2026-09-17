@@ -281,3 +281,6 @@ Ravager_capstone_50#1,Ravager_capstone_50,health_restored_on_kill_at_no_cost,fla
 Ritualist_capstone_50#1,Ritualist_capstone_50,fervour_on_enemy_death_nearby,flat,10.0,,,0.0,,0.0,2,-1.0
 Ravager_capstone_25#5,Ravager_capstone_25,cripple_chance,flat,100.0,,,0.0,,0.0,2,-1.0
 Ravager_capstone_25#6,Ravager_capstone_25,attack_damage,increased,20.0,,target_carries_cripple,0.0,,0.0,2,-1.0
+Ritualist_keystone_b_kB#1,Ritualist_keystone_b_kB,minion_explodes_on_death,flat,1.0,,,0.0,,0.0,0,-1.0
+Ritualist_basic_b_a2#1,Ritualist_basic_b_a2,minion_explosion_damage,increased,3.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_d_kB#1,Ritualist_keystone_d_kB,mana_cost,removed,1.0,,while_stationary,0.0,,0.0,0,-1.0

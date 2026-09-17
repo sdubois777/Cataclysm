@@ -336,6 +336,93 @@ lengthens nothing.
 
 ---
 
+## 2026-09-17 — Three Ritualist rows: Every One Bursts, Volatile and Ritual Focus
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`
+(three rows), `game/Content/Data/DT_PassiveEffects.uasset`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (three readers and
+one include), `docs/README.md` and
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (the row count), and
+`tools/tests/test_passive_effects_match_the_node_text.py` (the counts, a widened
+condition phrase and two values stated in words). Issues
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515) and
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
+
+**The rows for three mechanisms that already exist.** Two were built this
+evening -- a minion exploding when it dies, and the stat that scales that
+explosion -- and the third, a skill's mana cost as a stat, came from the
+enchantment session's change. No mechanism is built here.
+
+| row | node | stat | kind | value | condition |
+| :-- | :-- | :-- | :-- | --: | :-- |
+| `Ritualist_keystone_b_kB#1` | Every One Bursts | `minion_explodes_on_death` | flat | 1 | |
+| `Ritualist_basic_b_a2#1` | Volatile | `minion_explosion_damage` | increased | 3 | |
+| `Ritualist_keystone_d_kB#1` | Ritual Focus | `mana_cost` | removed | 1 | `while_stationary` |
+
+### THE FIRST REMOVAL ROW IN THIS SHEET
+
+Ritual Focus is "Skills you cast while standing still cost no mana", and a
+removal is the only shape that can say it: the pipeline clamps a Less multiplier
+at -99 on purpose, so "no mana" cannot be written as a reduction. Twenty-five
+removal rows exist on the Enchantment Effects sheet and none had ever gone
+through the passive effects path.
+
+**So the three rows went through the whole generator on a `git archive` copy of
+0fb266f6's tree before the workbook was opened**, which is the rule for a row of
+a new kind: the generator's own tests never reach the whole-table validators. The
+copy wrote `PassiveEffects.csv` with 285 rows and the removal row intact, and its
+whole Python suite came back with 12 failed, 5242 passed, 12 skipped. One failure
+was the asset checksum, which the rebuild answers. The other eleven are git
+checks that cannot run in a copy with no `.git`, exactly as they were in the
+four-row turn's dry run. Nothing about the new kind of row failed.
+
+### WHAT THE ROWS NEEDED OF THE CHECKS
+
+- **A second wording for the standing-still condition.** It required the words
+  "while stationary" and the node says "while standing still". Widening the entry
+  is what that table's own comment says to do rather than wording the design
+  prose around a test, and it is the second time this turn's family of rows has
+  needed it.
+- **Two values stated in words.** Neither Every One Bursts nor Ritual Focus has a
+  digit anywhere in its sentence, so the digit check is exempted for both and
+  each is matched against a phrase instead: "every minion explodes when it dies"
+  for the flag of one, and "cost no mana" for the removal of one.
+- **Volatile needed nothing**: an increased row is checked as a percentage and
+  its sentence says "+3%".
+
+### COUNTS
+
+    passive effect rows       282 -> 285   AUTHORED_ROWS, CHECK_TABLE, docs/README.md
+    nodes with rows           206 -> 209   AUTHORED_NODES; the Ritualist 63 -> 66 of 74
+    authored options           23          unchanged: none of the three is a capstone option
+    Unreal automation tests    +3 by name, all in Cataclysm.Passives.
+
+Measured while writing: the Ravager is 65 of 74, the Masochist 74 of 74, the
+Bulwark 3, the Saboteur 1 and the Berserker none.
+
+### TESTS
+
+Three readers, each failing until `DT_PassiveEffects` is rebuilt from the new
+table:
+
+- `EveryOneBurstsGrantsTheFlagThatExplodesAMinionOnItsDeath` reads the row and
+  that taking the keystone grants one. What a death does with it is
+  `Cataclysm.MinionDeath.`
+- `VolatileGrantsThreePerCentOfExplosionDamageAPoint` reads the row and that
+  eight points resolve to +24%, which is the whole node rather than one point.
+- `RitualFocusTakesASkillsManaCostToNothingWhileStandingStill` reads the row and
+  runs a stated cost of 40 through the pipeline twice: nothing while standing
+  still, and 40 while moving. **Both states are measured on purpose.** A removal
+  under a condition that is never true costs nothing and reads exactly like one
+  that is always true, if only the standing-still half is asked.
+
+All three also assert that the engine records the stat, because none of the three
+has a gameplay attribute: a name missing from
+`UCataclysmPlayerClassStats::StatsWithNoAttribute` is recorded nowhere, and the
+row would be written, stored and read by nobody.
+
+---
+
 ## 2026-09-17 — What a skill costs a character is a stat, and one function answers it for the check, the payment, an aura's upkeep and the skill bar
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`

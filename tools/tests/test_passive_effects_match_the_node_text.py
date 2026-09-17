@@ -555,7 +555,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: (`Ravager_capstone_25`, option 2), which needed nothing built: a
 #: hundred `cripple_chance`, and 20% increased attack damage under the
 #: condition that already existed for a crippled target. Issue #1515.
-AUTHORED_ROWS = 282
+#: AND TO 285 ON 2026-09-17. Three Ritualist rows, one on each of three
+#: nodes that held none: `Every One Bursts` (`Ritualist_keystone_b_kB`), a
+#: flag of one; `Volatile` (`Ritualist_basic_b_a2`), 3% increased explosion
+#: damage a point; and `Ritual Focus` (`Ritualist_keystone_d_kB`), the
+#: FIRST REMOVAL ROW IN THIS SHEET -- twenty-five exist on the Enchantment
+#: Effects sheet, and none had gone through the passive-effects path
+#: before. Issue #1515.
+AUTHORED_ROWS = 285
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -900,7 +907,13 @@ AUTHORED_ROWS = 282
 #: MEASURED PER TREE: the Ravager is 65 of its 74 and the Ritualist 63 of its
 #: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
 #: Berserker none.
-AUTHORED_NODES = 206
+#: AND TO 209 ON 2026-09-17. All three rows of that turn went to nodes with
+#: no row before, so this and the row count move together.
+#:
+#: MEASURED PER TREE: the Ritualist is 66 of its 74 and the Ravager 65 of
+#: its 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+AUTHORED_NODES = 209
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1266,7 +1279,12 @@ CONDITION_WORDS = {
     # exercised today; they are here because a name missing from this map is a
     # name whose row nothing compares against its node's own words.
     "while_moving": ("while moving", None),
-    "while_stationary": ("while stationary", None),
+    # TWO WORDINGS OF ONE PREDICATE. Issue #1515. `Ritual Focus` says
+    # "Skills you cast while standing still cost no mana", and standing
+    # still is what this predicate is. Widening the entry is what this
+    # table's own comment says to do rather than wording the design prose
+    # around the test.
+    "while_stationary": (("while stationary", "while standing still"), None),
 
     # TWO WORDINGS EXIST FOR THIS ONE IN THE NODES, and the fragment chosen here
     # matches only the first: "after remaining stationary for 3 seconds" and
@@ -2261,6 +2279,22 @@ VALUE_IN_WORDS = {
     # attack damage row, which the digit check matches with no exemption.
     ("Ravager_capstone_25", "cripple_chance"):
         ("enemies you hit are crippled", 100.0),
+
+    # AND THE TWO RITUALIST FLAGS OF 2026-09-17, neither of whose sentences
+    # holds a digit at all. Issue #1515.
+    #
+    # `Every One Bursts` is a flag of one: the death path asks whether the
+    # stat is above zero, and the sentence says every minion explodes rather
+    # than how often or how much.
+    #
+    # `Ritual Focus` is a REMOVAL of one, which is how a removal states
+    # itself in both effect sheets, and "cost no mana" is the phrase that
+    # says so. Neither sentence holds a digit anywhere, so neither entry
+    # can match a number that belongs to something else.
+    ("Ritualist_keystone_b_kB", "minion_explodes_on_death"):
+        ("every minion explodes when it dies", 1.0),
+    ("Ritualist_keystone_d_kB", "mana_cost"):
+        ("cost no mana", 1.0),
     ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
         ("slowed", 1.0),
 
