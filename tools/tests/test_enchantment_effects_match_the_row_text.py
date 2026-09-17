@@ -28,6 +28,8 @@ WHAT IS ASSERTED HERE.
     every condition value appears in those words too
     an effect in the `more` bucket is on a sentence worded as a multiplier, and
       one in the `increased` bucket on a sentence worded as an increase
+    an effect that removes its stat states 1 and is on a sentence saying the
+      stat is gone, with no, cannot, can't or zero
     a negative value is on a sentence that takes something away, or, on
       crowd_control_resistance alone, on one saying the effect lasts longer
     a sentence stating no number is excused from the checks that need one
@@ -117,6 +119,17 @@ TAKING = re.compile(
 #: negative value beside "longer" would be a sign error, and is still refused.
 LONGER_WHEN_NEGATIVE = {"crowd_control_resistance"}
 LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
+
+#: A sentence saying a stat is gone, which is what the `removed` kind is for.
+#: Issue #1791. The eleven sentences it was written for say it four ways: "You
+#: have no armor" and "You no longer regenerate mana", "Cannot block", "Can't
+#: regen your hp", and "Your maximum mana is reduced to zero". A removal states
+#: no number, so these words are the only thing in the sentence to hold it to.
+#:
+#: WHOLE WORDS, so that "Nobody" and "cannon" do not read as a removal.
+#: `test_a_removal_is_read_from_whole_words_only` holds that on made-up
+#: sentences.
+REMOVING = re.compile(r"\b(no|cannot|can't|zero)\b", re.IGNORECASE)
 
 #: Stats whose value is a yes or a no rather than a quantity, so the sentence
 #: states no number for it and should not. `skill_locked` above zero means the
@@ -303,8 +316,17 @@ JUDGED_NUMBERS = {
 #: AND 176 OVER 148 SINCE THE SEVEN ROWS ON A KILL, A CRITICAL STRIKE,
 #: A DEATH NEARBY, A SKILL USE OR A STRIKE'S HIT, from 169 over
 #: 141, issue #1815. ONE ROW EACH, because a row moves one pool.
-AUTHORED_ROWS = 176
-AUTHORED_ENCHANTMENTS = 148
+#: AND 201 OVER 160 SINCE THE ELEVEN SENTENCES THAT REMOVE A STAT AND
+#: STARVATION'S 2-PIECE BONUS, from 176 over 148, issue
+#: #1791. "You have no resistances." is eight rows, one per resistance.
+AUTHORED_ROWS = 201
+AUTHORED_ENCHANTMENTS = 160
+
+#: How many rows remove their stat, measured with the 201 above. Issue #1791.
+#: Without it `test_a_removed_row_is_worded_as_a_removal` and
+#: `test_every_removed_row_states_one` pass on a table holding no removal at
+#: all, which is what a table built before the rows existed looks like.
+REMOVED_ROWS = 22
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
@@ -328,7 +350,12 @@ AUTHORED_ENCHANTMENTS = 148
 #: EIGHT OF FOURTEEN SINCE 2026-09-14. Tyrant's Chains (6) needed one ruling and
 #: no new mechanism: its first bonus and its drawback are both minion rows in
 #: the `increased` bucket.
-SETS_THAT_WORK = [5, 6, 8, 9, 11, 12, 16, 17]
+#:
+#: NINE OF FOURTEEN SINCE 2026-09-16. Starvation (13) needed the removal of
+#: issue #1791: its drawback, "You have no health/mana/es regen", is three
+#: removed rows, and its 2-piece bonus three flat leech rows. Its 6-piece and
+#: 10-piece rows still wait.
+SETS_THAT_WORK = [5, 6, 8, 9, 11, 12, 13, 16, 17]
 
 #: How many ranges the two enchantment tables state, measured on 2026-09-11
 #: with a separate search of the two CSV files. The game's own reader,
@@ -464,10 +491,10 @@ def test_every_set_with_an_effect_is_written_whole(effects, enchantments):
 
 
 def test_the_sets_that_work_are_the_ones_counted_here(effects, enchantments):
-    """Eight of the fourteen sets have a row written: Archon's Aegis (5),
+    """Nine of the fourteen sets have a row written: Archon's Aegis (5),
     Tyrant's Chains (6), Mana Weaver (8), Brute's Heart (9), Demon King's
-    Regalia (11), Plague Doctor (12), Divine Retribution (16) and Warlord's
-    Will (17). The other six wait
+    Regalia (11), Plague Doctor (12), Starvation (13), Divine Retribution
+    (16) and Warlord's Will (17). The other five wait
     for what their rows need, which `docs/DECISIONS.md` lists set by set. This
     moves only when somebody means it to.
 
@@ -513,6 +540,12 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
             continue
         if row["Stat"] in FLAG_STATS:
             continue
+        # A REMOVAL STATES 1 AND NO SENTENCE SAYS IT, for the reason a flag
+        # stat's does not. Issue #1791. `test_every_removed_row_states_one`
+        # keeps the excuse from covering a magnitude, and
+        # `test_a_removed_row_is_worded_as_a_removal` checks the words instead.
+        if row["ValueKind"] == "removed":
+            continue
         text = words_of(row, enchantments)
         if not value_is_stated(row["Stat"], value, text):
             wrong.append(f"{row['Name']}: {value:g} against {text!r}")
@@ -551,6 +584,52 @@ def test_an_increased_row_is_worded_as_an_increase(effects, enchantments):
     assert not wrong, (
         "these rows are in the increased bucket and their sentence does not "
         "say increased, reduced or the like: " + "; ".join(wrong))
+
+
+def test_a_removed_row_is_worded_as_a_removal(effects, enchantments):
+    """A row that takes its stat to nothing is on a sentence saying the stat is
+    gone. Issue #1791. The words are all there is to check a removal against,
+    because it states no number."""
+    wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
+             for r in effects
+             if r["ValueKind"] == "removed"
+             and not REMOVING.search(words_of(r, enchantments))]
+    assert not wrong, (
+        "these rows remove their stat and their sentence does not say no, "
+        "cannot, can't or zero: " + "; ".join(wrong))
+
+
+def test_every_removed_row_states_one(effects):
+    """A removal carries no amount, so its row states 1 and nothing else. That
+    is what excuses it from the check that a value appears in its words, and
+    this keeps the excuse from covering a number somebody meant. The argument
+    `test_every_flag_stat_row_states_one` makes, for a kind rather than a stat."""
+    wrong = [f"{r['Name']}: {r['ValueLow']} to {r['ValueHigh']}"
+             for r in effects
+             if r["ValueKind"] == "removed"
+             and (float(r["ValueLow"]) != 1.0
+                  or float(r["ValueHigh"]) != 1.0)]
+    assert not wrong, (
+        "these rows remove their stat and state something other than 1, so "
+        "they are excused the value-in-words check while carrying a "
+        "magnitude: " + "; ".join(wrong))
+
+
+def test_a_removal_is_read_from_whole_words_only():
+    """The removal words, checked on made-up sentences for the reason
+    `test_a_sentence_that_drains_takes_something_away` gives: a rule checked
+    only against the real tables stops being checked when they change.
+
+    THE LAST FOUR ARE THE CONTROL. Three hold "no" or "zero" inside a longer
+    word, and one says "can" without the negation; none says a stat is gone."""
+    for words in ("You have no armor", "You no longer regenerate mana",
+                  "Cannot block", "Can't regen your hp",
+                  "Your maximum mana is reduced to zero"):
+        assert REMOVING.search(words), words
+    for words in ("Nobody escapes your armor", "Your cannons fire twice",
+                  "You can block twice as often",
+                  "Zeroes in on the weakest enemy"):
+        assert not REMOVING.search(words), words
 
 
 def test_a_negative_value_is_on_words_that_take_something_away(effects,
@@ -675,6 +754,16 @@ def test_the_coverage_is_what_it_is_measured_to_be(effects):
         f"{len(effects)} effect rows, pinned at {AUTHORED_ROWS}. Change the "
         f"pin and the entry in docs/DECISIONS.md that states it together.")
     assert len({r["Enchantment"] for r in effects}) == AUTHORED_ENCHANTMENTS
+
+
+def test_the_removed_rows_are_the_ones_counted_here(effects):
+    """The two removal checks above loop over the rows that remove a stat, so
+    a table with none passes both. This is what makes them read something.
+    Issue #1791."""
+    removed = sum(1 for r in effects if r["ValueKind"] == "removed")
+    assert removed == REMOVED_ROWS, (
+        f"{removed} rows remove their stat, pinned at {REMOVED_ROWS}. Change "
+        f"the pin with the rows.")
 
 def test_every_flag_stat_row_states_one(effects):
     """A stat whose value is a yes states 1, so the exemption above cannot come

@@ -1469,8 +1469,18 @@ class TestAPassiveNodeCanGrantSeveralStats:
 
     def test_a_bad_value_kind_is_still_refused(self, tmp_path):
         rows = self.book(tmp_path, [["A_node", "armor", "sideways", 3, None]])
-        with pytest.raises(gen.DataError, match="not flat, increased or more"):
+        with pytest.raises(gen.DataError,
+                           match="not flat, increased, more or removed"):
             gen.passive_effects(rows)
+
+    def test_a_removal_is_a_kind_a_node_may_carry(self, tmp_path):
+        """The sheets share one vocabulary of kinds. Issue #1791: no node removes
+        a stat yet, and the reader accepts one the way the enchantment reader
+        does, so the two cannot come to disagree."""
+        rows = self.book(tmp_path, [["A_node", "armor", "removed", 1, None]])
+        out = gen.passive_effects(rows)
+
+        assert [(r["Stat"], r["ValueKind"]) for r in out] == [("armor", "removed")]
 
     def test_the_validator_checks_the_node_column_and_not_the_row_name(self):
         """The row name carries a `#1` and no node is called that, so a validator
@@ -1495,6 +1505,22 @@ class TestAPassiveNodeCanGrantSeveralStats:
         problems = gen.validate_passive_effects(tables, set())
         assert len(problems) == 1, problems
         assert "no passive node is called Ghost" in problems[0]
+
+    def test_a_removal_is_not_asked_for_a_base(self):
+        """The rule `validate_enchantment_effects` has, on this sheet too, because
+        the two share one vocabulary of kinds. Issue #1791. The same row as an
+        increase is still reported, which is the control."""
+        removal = {"Name": "Real_node#1", "Node": "Real_node",
+                   "Stat": "resistance_war", "ValueKind": "removed",
+                   "RequiredTags": ""}
+        tables = {"PassiveEffects": [removal],
+                  "PassiveNodes": [{"Name": "Real_node"}],
+                  "ClassStats": [{"Stat": "armor"}]}
+        assert gen.validate_passive_effects(tables, set()) == []
+
+        tables["PassiveEffects"] = [dict(removal, ValueKind="increased")]
+        problems = gen.validate_passive_effects(tables, set())
+        assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
 
 
 class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
@@ -2103,7 +2129,49 @@ class TestEnchantmentEffects:
 
     def test_a_bad_value_kind_is_refused(self, tmp_path):
         book = self.book(tmp_path, [self.row({"Value Kind": "sideways"})])
-        with pytest.raises(gen.DataError, match="not flat, increased or more"):
+        with pytest.raises(gen.DataError,
+                           match="not flat, increased, more or removed"):
+            gen.enchantment_effects(book)
+
+    def test_a_removal_is_written_as_its_own_kind(self, tmp_path):
+        """"You have no armor" is a removal: the game multiplies the finished
+        armour by nothing. Issue #1791. The row states 1, which nothing reads."""
+        book = self.book(tmp_path, [self.row({"Stat": "armor",
+                                              "Value Kind": "removed",
+                                              "Value Low": 1})])
+        out = gen.enchantment_effects(book)
+
+        assert (out[0]["Stat"], out[0]["ValueKind"]) == ("armor", "removed")
+        assert out[0]["ValueLow"] == 1.0 and out[0]["ValueHigh"] == 1.0
+
+    def test_mana_on_hit_may_only_be_removed(self, tmp_path):
+        """The code reading `mana_on_hit` asks only whether it is removed, so an
+        increase on it would be written and read by nothing. Issue #1791. The
+        removal itself is accepted, which is the control."""
+        book = self.book(tmp_path, [self.row({"Stat": "mana_on_hit",
+                                              "Value Kind": "increased",
+                                              "Value Low": 20})])
+        with pytest.raises(gen.DataError, match="may only be removed"):
+            gen.enchantment_effects(book)
+
+        book = self.book(tmp_path, [self.row({"Stat": "mana_on_hit",
+                                              "Value Kind": "removed",
+                                              "Value Low": 1})])
+        assert gen.enchantment_effects(book)[0]["ValueKind"] == "removed"
+
+    def test_every_removal_only_stat_is_one_the_engine_records(self):
+        """A removal is recorded on a character only for a stat with an attribute
+        or on the engine's list of stats with none, and a stat that may only be
+        removed has no attribute. So each must be on that list, or its removal
+        row would be written and never reach the character."""
+        unrecorded = sorted(gen.REMOVAL_ONLY_STATS - gen.stats_with_no_attribute())
+        assert gen.REMOVAL_ONLY_STATS and not unrecorded, unrecorded
+
+    def test_an_action_row_may_not_be_a_removal(self, tmp_path):
+        """A removal is a kind of stat row, and an action row has no stat. The
+        refusal `_check_pool_action` makes of any kind reaches this one too."""
+        book = self.book(tmp_path, [self.action_row({"Value Kind": "removed"})])
+        with pytest.raises(gen.DataError, match="must be empty on an action row"):
             gen.enchantment_effects(book)
 
     def test_the_same_stat_twice_on_one_enchantment_is_refused(self, tmp_path):
@@ -2128,6 +2196,21 @@ class TestEnchantmentEffects:
              "Stat": "retaliation_radius_metres", "ValueKind": "flat",
              "RequiredTags": ""}]}
         assert gen.validate_enchantment_effects(tables, set()) == []
+
+    def test_a_removal_is_not_asked_for_a_base(self):
+        """A removal multiplies nothing, so a stat only an affix supplies -- which
+        this check does not count -- is one it may remove. Issue #1791: "You have
+        no resistances." is eight such rows. The same stat on an increase is
+        still refused, which is the control."""
+        removal = {"Name": "X#1", "Enchantment": "X", "Stat": "resistance_war",
+                   "ValueKind": "removed", "RequiredTags": ""}
+        tables = {"EnchantmentEffects": [removal], "ClassStats": [{"Stat": "armor"}]}
+        assert gen.validate_enchantment_effects(tables, set()) == []
+
+        increase = dict(removal, ValueKind="increased")
+        tables = {"EnchantmentEffects": [increase], "ClassStats": [{"Stat": "armor"}]}
+        problems = gen.validate_enchantment_effects(tables, set())
+        assert len(problems) == 1 and "'resistance_war' is not a stat" in problems[0]
 
     def test_the_validator_reports_an_undeclared_tag(self):
         tables = {"EnchantmentEffects": [

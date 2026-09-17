@@ -129,13 +129,14 @@ public:
 
 	/**
 	 * The stats deliberately carried WITHOUT a gameplay attribute, whose
-	 * increases bespoke code reads directly. Issues #898 and #1733.
+	 * modifiers bespoke code reads directly. Issues #898, #1733 and #1791.
 	 *
 	 * NOT A GAP AND NOT A LIST OF FAULTS. Every other stat with no attribute has
 	 * been one: #894 gave twelve of them attributes, #895 and #897 emptied their
-	 * shares, and the remaining three are here because they are meant to be.
+	 * shares, and the three minion stats are here because they are meant to be.
+	 * `mana_on_hit` is too, for the different reason given below.
 	 *
-	 * WHY THESE THREE CANNOT HAVE ONE. A minion's damage, health and attack
+	 * WHY THE MINION STATS CANNOT HAVE ONE. A minion's damage, health and attack
 	 * interval come from its own row in `game/Data/MinionTypes.csv`, raised by
 	 * its summoner's level. The summoner's gear and passives supply an INCREASE
 	 * to apply to that figure rather than a value of their own, so there is
@@ -148,6 +149,15 @@ public:
 	 * `minion_health` at the summoning. All three go through
 	 * `UCataclysmAbilitySystemComponent::IncreasesForStat`, which returns the
 	 * SUM of the increases rather than the stat's value.
+	 *
+	 * `mana_on_hit` IS THE ONE THAT IS NOT A MINION'S, and its reader reads a
+	 * removal rather than increases. Issue #1791. The basic attack's mana on hit
+	 * is its slot's own figure from `game/Data/SkillSlots.csv`, so there is no
+	 * value here either, and "You cannot regenerate mana through any means"
+	 * removes it. `UCataclysmSkillTemplate::ApplyManaOnHit` asks
+	 * `UCataclysmAbilitySystemComponent::IsStatRemoved` and reads nothing else,
+	 * which is why `tools/generate_datatables.py` refuses any other kind of row
+	 * on it: an increase would be recorded and read by nothing.
 	 *
 	 * THIS LIST DOES REAL WORK, WHICH IS WHY IT IS THE ONE TO SHARE. `ApplyTo`
 	 * loops over it to record these stats onto a character. So adding a name has

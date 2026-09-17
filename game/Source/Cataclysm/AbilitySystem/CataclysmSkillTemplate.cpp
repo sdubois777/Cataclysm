@@ -2216,6 +2216,22 @@ void UCataclysmSkillTemplate::ApplyManaOnHit() const
 		return;
 	}
 
+	// NOTHING WHILE MANA ON HIT IS REMOVED. Issue #1791. "You cannot regenerate
+	// mana through any means" removes it beside mana regeneration and mana
+	// leech. The figure is the slot's own rather than a stat, so the pipeline
+	// never multiplies it by nothing, and this asks whether a removal reaches it
+	// instead. With this skill's own tags, so a removal scoped to some skills
+	// would reach only those.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		if (Cataclysm->IsStatRemoved(FName(UCataclysmSkillSlots::ManaOnHitStat),
+									 SkillTags))
+		{
+			return;
+		}
+	}
+
 	// APPLIED DIRECTLY RATHER THAN THROUGH A GAMEPLAY EFFECT ASSET, the same way
 	// UCataclysmGameplayAbility::ApplyCost spends mana, and for the same reason:
 	// the magnitude comes from a generated table, so there is no authored asset

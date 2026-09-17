@@ -263,9 +263,13 @@ public:
 	 *
 	 * A FLAG RATHER THAN A REDUCTION OF THE RATE, and the reason is a rule the
 	 * pipeline states outright. `UCataclysmStatPipeline::LessMultiplierFloor` is
-	 * -99, so no modifier can take a stat to zero: "one source could otherwise
-	 * zero a stat or turn it negative". That floor is right. A node that says
-	 * "does not remove" is not a 99% reduction, so it needs to say so separately.
+	 * -99, so no More multiplier can take a stat to zero: "one source could
+	 * otherwise zero a stat or turn it negative". That floor is right. A node
+	 * that says "does not remove" is not a 99% reduction, so it needs to say so
+	 * separately.
+	 *
+	 * THIS SAID "NO MODIFIER" UNTIL ISSUE #1791, which added a removal that does
+	 * take a stat to zero. This flag predates it and is not changed by it.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourLossSuppressed)
 	FGameplayAttributeData FervourLossSuppressed;
@@ -503,8 +507,8 @@ public:
 	 * instead of mana."
 	 *
 	 * A FLAG AND NOT A REDUCTION, for the reason its neighbour above gives: a
-	 * modifier cannot take a stat to zero, because the pipeline floors a Less
-	 * multiplier at -99 on purpose, and ninety-nine per cent less mana is not
+	 * More multiplier cannot take a stat to zero, because the pipeline floors a
+	 * Less one at -99 on purpose, and ninety-nine per cent less mana is not
 	 * none.
 	 *
 	 * IT DOES TWO THINGS AND THEY ARE READ IN TWO PLACES.
@@ -539,8 +543,8 @@ public:
 	 *
 	 * A FLAG RATHER THAN A DURATION OF ZERO, for the reason `FervourLossSuppressed`
 	 * above gives at length: `UCataclysmStatPipeline::LessMultiplierFloor` is -99,
-	 * so no modifier can take a stat to zero, and a rule that is off has to say so
-	 * separately rather than by being worth nothing.
+	 * so no More multiplier can take a stat to zero, and a rule that is off has to
+	 * say so separately rather than by being worth nothing.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_DamageToBleedingOnLowHealth)
 	FGameplayAttributeData DamageToBleedingOnLowHealth;
@@ -592,8 +596,8 @@ public:
 	 * taken and hands the difference to `UCataclysmHealthDebt::Defer`.
 	 *
 	 * A FLAG AND NOT A REDUCTION, for the reason every flag beside it gives:
-	 * `UCataclysmStatPipeline::LessMultiplierFloor` is -99, so no modifier can
-	 * take a number to nothing, and this is a rule rather than a magnitude.
+	 * `UCataclysmStatPipeline::LessMultiplierFloor` is -99, so no More multiplier
+	 * can take a number to nothing, and this is a rule rather than a magnitude.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_UnpayableHealthCostBecomesDebt)
 	FGameplayAttributeData UnpayableHealthCostBecomesDebt;

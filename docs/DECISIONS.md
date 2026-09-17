@@ -2,6 +2,172 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-16 — A stat an enchantment says you have none of is taken to nothing: a removal kind beside flat, increased and more, and the eleven drawbacks and Starvation's first bonus written with it
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: 25 rows),
+`game/Data/EnchantmentEffects.csv` and the DataTable asset built from it,
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the removal),
+`CataclysmItem.cpp` and `CataclysmPassiveTree.cpp` (the two readers of a row's kind),
+`CataclysmAbilitySystemComponent.h` and `.cpp` (`IsStatRemoved`),
+`CataclysmSkillSlots.h` and `.cpp` and `CataclysmSkillTemplate.cpp` (mana on hit),
+`CataclysmPlayerClassStats.h` and `.cpp` (the mana a removed maximum leaves, and `mana_on_hit` on the list of stats with no attribute),
+`tools/generate_datatables.py` (the kinds, and what a removal is not asked for),
+comments in `CataclysmClassResourceAttributeSet.h`, the row-count pins in
+`tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`CataclysmDataTableTests.cpp` and `docs/README.md`, and the tests named below. Issue
+[#1791](https://github.com/sdubois777/Cataclysm/issues/1791). **Applied.**
+
+### The mechanism is the project owner's
+
+The owner's decision, 2026-09-16, relayed by the coordinating session: "it should be easy to
+add in the mechanic to do it. Just multiply the final number of the original formula by 0."
+
+So a row's value kind may now be `removed`. `UCataclysmStatPipeline::Evaluate` works the stat
+out through the three buckets exactly as before, `(base + flat) x (1 + increases) x more`,
+and multiplies that figure by 0 when a removal reaches the stat. Every step stays in the
+breakdown, beside a new count of removals. The floor that keeps a Less multiplier at -99%
+stays where it is: a More multiplier still cannot take a stat to zero, and a removal is the
+one thing that can.
+
+It replaces what #1791 proposed first, a flag stat per sentence read at each consumer.
+That branch, `feat/total-removal-flag-stats` (`c2a98b12`, eleven flag attributes), is
+deleted once this merges.
+
+### The rows
+
+| Sentence | Rows |
+| :-- | :-- |
+| You have no armor | `armor` removed |
+| You no longer regenerate mana | `mana_regen` removed |
+| You have no resistances. | the eight `resistance_*` stats, removed |
+| Your maximum mana is reduced to zero | `max_mana` removed |
+| You cannot regenerate mana through any means | `mana_regen`, `mana_leech` and `mana_on_hit` removed |
+| Can't regen your hp | `health_regen` removed |
+| You have no health leech | `life_leech` removed |
+| You deal no retaliation damage | `retaliation` removed |
+| Cannot block | `block_chance` removed |
+| Can't leech mana | `mana_leech` removed |
+| You have no health/mana/es regen (Starvation's drawback) | `health_regen`, `mana_regen` and `energy_shield_regen` removed |
+| Starvation (2-Piece Bonus): You have +5% life, mana, and es leech. | `life_leech`, `mana_leech` and `energy_shield_leech`, flat 5 |
+
+201 rows over 160 enchantments, from 176 over 148; 22 of the rows are removals. Starvation
+(set 13) is the ninth of fourteen sets with rows written. Its 6-piece and 10-piece rows wait,
+as Plague Doctor's do.
+
+### Where the removed stats are read, and why two things needed code
+
+The rows remove eighteen stats. Every one but `mana_on_hit` reaches the game only through
+the pipeline, so the removal needs nothing more:
+
+- asked for through `UCataclysmAbilitySystemComponent::StatForSkill`: armour and block chance
+  (the damage calculation's defender lookups), the three regeneration rates, life and mana
+  leech, and retaliation;
+- read off an attribute that `UCataclysmPlayerClassStats::ApplyTo` writes from the same
+  pipeline: the eight resistances and maximum mana, and the life leech that
+  `PerPercentOfLifeLeech` scales on.
+
+The rulings of 2026-09-14 on #1791 hold as scope with rows alone. Ruling A: a player holds
+none of the generic resistance attribute (only an enemy creates that set), and the difficulty
+penalty and an attacker's penetration still act on the zero. Ruling C: "through any means" is
+the three routes the three rows name. Ruling D: the scale input reads the attribute, which is
+zero. Ruling E: three regeneration rows.
+
+Two things are not read that way, and each asks `IsStatRemoved`, the one helper:
+
+- **Mana on hit** is the basic attack's own figure from `game/Data/SkillSlots.csv`, not a
+  stat. `UCataclysmSkillTemplate::ApplyManaOnHit` now pays nothing while `mana_on_hit` is
+  removed. `mana_on_hit` is on `UCataclysmPlayerClassStats::StatsWithNoAttribute()`,
+  because the stat refresh records a stat's modifiers only for a stat with an attribute
+  or one on that list, and a removal nothing records is one `IsStatRemoved` cannot see.
+  The generator refuses any kind but `removed` on it (`REMOVAL_ONLY_STATS`), because an
+  increase would be recorded and read by nothing; a test holds that name to the engine's
+  list. `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` holds the reading
+  to a probe: two real basic swings that both land, one paying its mana on hit and one,
+  under the removal, paying nothing.
+- **The mana a character already holds** is a current value, and nothing lowers a current pool
+  when its maximum falls; issue [#1757](https://github.com/sdubois777/Cataclysm/issues/1757)
+  ruled that deliberate. So `ApplyTo` sets mana to zero when `max_mana` is removed, before the
+  early return a helmet swap takes. It is the one exception to #1757, for the reason Water to
+  Blood already empties mana: a sentence saying there is no pool is not a lowered ceiling.
+  It is keyed on the removal rather than on the maximum reading zero, so a swap that only
+  lowers the maximum still leaves the pool as #1757 says.
+
+**Water to Blood converts nothing for a character whose maximum mana is removed.** The removal
+zeroes the maximum in the pass that resolves stats, and the conversion reads that maximum
+afterwards. That follows from the owner's mechanic rather than from a separate choice.
+
+### Judgements
+
+Each is a labelled judgement, ruled 2026-09-16 under the project owner's delegation.
+
+- **The kind is called `removed`, and a removal row states 1.** Nothing reads the number.
+  `test_every_removed_row_states_one` holds it, and `test_a_removed_row_is_worded_as_a_removal`
+  checks the sentence says no, cannot, can't or zero instead.
+- **A removal comes from the sources that may grant a More multiplier, and from no other.**
+  `UCataclysmStatPipeline::CanGrantMore` decides both: gems, passive keystones, enchantments, a
+  skill's own buff and a dungeon rule. A removal from an ordinary affix is ignored and logged,
+  and `ValidateModifier` refuses one.
+- **A removal on cooldown reduction means "you have no cooldown reduction"**, and is
+  accepted. Nothing writes one today. `cooldown_reduction` reaches a skill as an attribute
+  the stat refresh writes through the pipeline, so a removal leaves every cooldown at its
+  base length rather than making one of no length. `UCataclysmStatPipeline::EvaluateRate`,
+  which the game does not call, returns the base interval for one, and
+  `DisplayedRateReduction` shows no reduction, so both of the pipeline's paths agree with
+  the game. This was first ruled the other way, on a reading that removing the rate would
+  leave a cooldown of no length; that reading was wrong and the ruling was changed the same
+  day.
+- **Mana on hit is a stat with no attribute, `mana_on_hit`, removed by "You cannot regenerate
+  mana through any means" only.** "You no longer regenerate mana" keeps mana on hit, as ruling C
+  of 2026-09-14 said.
+- **The current mana is emptied only for the removal**, as above.
+- **Passive Effects accepts `removed` too.** The two sheets share one tuple of kinds,
+  `VALUE_KINDS` in the generator, and `tools/tests/test_value_kinds_match_the_engine.py` holds
+  it to the names both C++ readers accept. No node removes a stat yet.
+- **Starvation is written by its 2-piece bonus and its drawback.**
+
+### Found while writing, and changed
+
+- **A removal is not asked for a base.** Both generator validators refuse a stat row whose stat
+  no class line, attribute, item base or engine base supplies, because an increase on such a
+  stat multiplies nothing. Run through the whole generator on a copy of the tree, that refused
+  all eight resistance rows: a player's resistances come only from the `Resistance_*` affixes,
+  which those checks deliberately do not count. A removal multiplies nothing either, and takes
+  away what the affixes supply, so it is not asked. A labelled judgement, ruled 2026-09-16
+  under the project owner's delegation. The same row as an increase is still refused.
+- **`Cataclysm.Equipment.EveryStatAnAffixGrantsHasAnAttributeBehindIt` lost the second half
+  of its reverse check.** It failed any name on the no-attribute list that no affix grants,
+  and no affix grants `mana_on_hit`: the list now serves enchantment rows and a slot's own
+  figure as well as affixes. It still fails a name that now has an attribute, and
+  `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` still fails a name
+  nothing reads. A labelled judgement, ruled 2026-09-16 under the project owner's
+  delegation, over a second list for stats only a removal reaches, which would have
+  doubled the edits for a guard the generator's refusal already gives.
+- Comments that said no modifier can take a stat to zero now say no More multiplier can:
+  `CataclysmClassResourceAttributeSet.h` (four), `CataclysmPlayerClassStats.cpp`,
+  `CataclysmStatPipeline.h`, `CataclysmFervourTests.cpp` and
+  `tools/tests/test_passive_effects_match_the_node_text.py`.
+
+### How other games say it
+
+The shape was the owner's, not derived from research. The nearest precedent read is Path of
+Exile's Chaos Inoculation, whose stat text on PoE2DB is "Maximum Life is 1": a fixed figure
+rather than a reduction, which is what a removal is. What order that override takes against
+the game's increases could not be read from a primary page. The one statement found, that
+life modifiers apply before the keystone replaces the figure, is a search engine's summary of
+the Path of Exile Fandom wiki, which refused automated reading when it was tried on
+2026-09-11 and was not fetched again.
+
+### Tests
+
+`Cataclysm.StatPipeline.ARemovedStatResolvesToZeroWhateverElseReachesIt`,
+`Cataclysm.Enchantments.AnAuthoredRemovalRowFromTheBuiltTableTakesArmorToZero`,
+`Cataclysm.Enchantments.AnAuthoredRowRemovingMaximumManaEmptiesTheManaAlreadyHeld`,
+the mana on hit probe inside `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`,
+and in Python the generator's kind, base and `mana_on_hit` tests,
+the value-kind pin and the row-text checks.
+
+---
+
 ## 2026-09-16 — A Horde dungeon's next wave keeps no zone the floor's rules placed: a floor change destroys every zone the floor's hazard source owns
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the floor

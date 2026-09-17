@@ -195,12 +195,21 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 	// is nothing to look up and nothing that has to be ready first.
 	//
 	// THE ORDER IS THE ORDER A READER MEETS THEM: damage, then health, then
-	// attack speed. Nothing depends on it; it is stated so that a diff adding a
-	// fourth name is obviously an addition rather than a reshuffle.
+	// attack speed, then mana on hit, which is not a minion's and arrived with
+	// issue #1791. Nothing depends on it; it is stated so that a diff adding a
+	// name is obviously an addition rather than a reshuffle.
+	//
+	// EACH LINE SAYS WHAT READS IT AND WHAT IT READS, because the four are not
+	// read for the same thing.
 	static const TArray<FString> Stats = {
+		// Increases, read by ACataclysmMinion::AttackTarget at the blow.
 		TEXT("minion_damage"),
+		// Increases, read by ACataclysmMinion::Spawn at the summoning.
 		TEXT("minion_health"),
+		// Increases, read by UCataclysmCommand::AttackIntervalScaleFor.
 		TEXT("minion_attack_speed"),
+		// Whether it is removed, read by UCataclysmSkillTemplate::ApplyManaOnHit.
+		TEXT("mana_on_hit"),
 	};
 	return Stats;
 }
@@ -1283,11 +1292,17 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// `game/Data/MinionTypes.csv`, raised by its summoner's level. The summoner's
 	// gear adds increases to that figure rather than supplying one.
 	//
+	// AND `mana_on_hit` SINCE ISSUE #1791, which is not a minion's and is read
+	// for something else. The basic attack's mana on hit is its slot's own
+	// figure, so this stat has no value to hold either. What is recorded for it
+	// is a removal, and `UCataclysmSkillTemplate::ApplyManaOnHit` asks for that
+	// through `UCataclysmAbilitySystemComponent::IsStatRemoved`.
+	//
 	// A NAMED LIST RATHER THAN "EVERY STAT WITH NO ATTRIBUTE". Nothing validates
 	// the `Stat` column of an affix row against a vocabulary, so deriving this
 	// from whatever the character happens to carry would turn a misspelling into
-	// a stat, silently. Three names, and adding a fourth is a decision somebody
-	// makes rather than a side effect of a typo.
+	// a stat, silently. Adding a name is a decision somebody makes rather than a
+	// side effect of a typo.
 	//
 	// THE LIST MOVED OUT OF THIS FUNCTION FOR ISSUE #1733, because three other
 	// places need the same three names and were each keeping their own copy. It
@@ -1329,9 +1344,11 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// holds this character's finished stat line. Asking before it would read
 	// whatever the previous refresh left behind.
 	//
-	// THE MANA MAXIMUM GOES TO ZERO RATHER THAN BEING REDUCED, because a
-	// modifier cannot reach zero -- the pipeline floors a Less multiplier at -99
-	// -- and "no longer have a mana pool" is not ninety-nine per cent less.
+	// THE MANA MAXIMUM GOES TO ZERO RATHER THAN BEING REDUCED, because a More
+	// multiplier cannot reach zero -- the pipeline floors a Less one at -99 --
+	// and "no longer have a mana pool" is not ninety-nine per cent less. A
+	// removal can reach zero since issue #1791, and is not used here: the
+	// conversion needs the resolved maximum in hand before it is zeroed.
 	if (UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem))
 	{
 		const FGameplayAttribute MaxHealth =
@@ -1358,6 +1375,36 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 				AbilitySystem->SetNumericAttributeBase(
 					UCataclysmVitalAttributeSet::GetManaAttribute(), 0.0f);
 			}
+		}
+	}
+
+	// AND A CHARACTER WHOSE MAXIMUM MANA IS REMOVED HAS NO MANA TO STAND ON.
+	// Issue #1791. "Your maximum mana is reduced to zero" takes the maximum to
+	// nothing through the pipeline, like any removal, in pass two above. The
+	// mana the character already holds is another matter: nothing lowers a
+	// current pool when its maximum falls, and issue #1757 ruled that deliberate
+	// -- a pool already filled is not taken away by a lowered ceiling. So a
+	// character putting this on mid-fight would keep, and could spend, the mana
+	// it had.
+	//
+	// THE ONE EXCEPTION TO THAT RULING, AND KEYED ON THE REMOVAL RATHER THAN ON
+	// THE MAXIMUM READING ZERO, so a gear swap that only lowers the maximum still
+	// leaves the pool as #1757 says. A sentence saying the pool is gone is not a
+	// lowered ceiling, which is the reason Water to Blood empties mana above.
+	//
+	// BEFORE THE EARLY RETURN BELOW, because a character already in play is the
+	// case this exists for; one arriving in the world is filled to a maximum of
+	// nothing anyway. AFTER `SetStatInputs`, for the reason the block above gives.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		const FGameplayAttribute Mana =
+			UCataclysmVitalAttributeSet::GetManaAttribute();
+		if (AbilitySystem->HasAttributeSetForAttribute(Mana)
+			&& Cataclysm->IsStatRemoved(FName(TEXT("max_mana")),
+										FGameplayTagContainer()))
+		{
+			AbilitySystem->SetNumericAttributeBase(Mana, 0.0f);
 		}
 	}
 

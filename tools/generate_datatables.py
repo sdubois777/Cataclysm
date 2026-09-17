@@ -3874,6 +3874,66 @@ SCALES = {
 }
 
 
+#: The value kinds a stat row may carry, on both sheets that write one.
+#:
+#: THE THREE BUCKETS OF THE STAT PIPELINE, AND A REMOVAL. Issue #1791. A removal
+#: takes its stat to nothing whatever else reaches it:
+#: `UCataclysmStatPipeline::Evaluate` multiplies the finished figure by zero,
+#: which is the project owner's mechanic of 2026-09-16 for sentences such as
+#: "You have no armor". A removal row states 1 and nothing reads the number.
+#:
+#: ONE TUPLE FOR BOTH SHEETS. The Passive Effects and Enchantment Effects readers
+#: each spelled out the three buckets until then, so a fourth added to one of
+#: them only would be a kind one sheet writes and the other refuses.
+#:
+#: THE GAME READS THESE NAMES IN TWO PLACES, `EnchantmentModifierFor` in
+#: `CataclysmItem.cpp` and `UCataclysmPassiveTree::AccumulateInto`, and both send
+#: a name they have no case for to the increased bucket. A name added here and
+#: not there would be written as an increase of its value, which is why
+#: `tools/tests/test_value_kinds_match_the_engine.py` holds the three lists to one.
+VALUE_KINDS = ("flat", "increased", "more", "removed")
+
+#: Stats a row may only remove, because the code reading them reads nothing else.
+#:
+#: `mana_on_hit` IS THE BASIC ATTACK'S OWN FIGURE from `game/Data/SkillSlots.csv`
+#: rather than a stat. Issue #1791. `UCataclysmSkillTemplate::ApplyManaOnHit` asks
+#: `UCataclysmAbilitySystemComponent::IsStatRemoved` for it and asks nothing more,
+#: so a flat, increased or more row on it would be written, recorded on the
+#: character, and read by nothing -- the silent failure issue #1025 describes.
+#:
+#: EVERY NAME HERE MUST BE ON THE ENGINE'S LIST OF STATS WITH NO ATTRIBUTE, or
+#: the character would never record the removal at all.
+#: `test_every_removal_only_stat_is_one_the_engine_records` holds that.
+REMOVAL_ONLY_STATS = frozenset({"mana_on_hit"})
+
+
+def _check_value_kind(sheet: str, index: int, who: str, stat: str,
+                      kind: str) -> None:
+    """A stat row's value kind is one the game reads, on a stat it can apply to.
+
+    REFUSED RATHER THAN IGNORED, for the reason `_check_pool_action` gives: a
+    row that validates and then grants nothing is silent everywhere else.
+
+    ANYTHING BUT A REMOVAL ON A STAT THAT MAY ONLY BE REMOVED IS REFUSED, for the
+    reason `REMOVAL_ONLY_STATS` gives.
+
+    A REMOVAL ON COOLDOWN REDUCTION IS NOT REFUSED. Issue #1791, ruled 2026-09-16
+    under the project owner's delegation. It means "you have no cooldown
+    reduction": the stat's attribute is written through the same pipeline and
+    taken to nothing, so every cooldown runs at its base length.
+    """
+    if kind not in VALUE_KINDS:
+        raise DataError(
+            f"{sheet} row {index}: {who} has value kind {kind!r}, which is not "
+            f"{', '.join(VALUE_KINDS[:-1])} or {VALUE_KINDS[-1]}")
+
+    if stat in REMOVAL_ONLY_STATS and kind != "removed":
+        raise DataError(
+            f"{sheet} row {index}: {who} gives {stat!r} the value kind {kind!r}. "
+            f"That stat may only be removed: the code reading it asks whether "
+            f"it is removed and nothing else, so the row would grant nothing.")
+
+
 def passive_effects(book) -> list[dict]:
     """What a passive node grants, one stat effect per row.
 
@@ -3927,10 +3987,7 @@ def passive_effects(book) -> list[dict]:
             raise DataError(f"Passive Effects row {index}: {node} names no stat")
 
         kind = clean(_cell(raw, headers, "Value Kind")).lower()
-        if kind not in ("flat", "increased", "more"):
-            raise DataError(
-                f"Passive Effects row {index}: {node} has value kind {kind!r}, "
-                f"which is not flat, increased or more")
+        _check_value_kind("Passive Effects", index, node, stat, kind)
 
         # A STATE THE BONUS ONLY APPLIES IN (issue #959) AND A STATE ITS SIZE
         # GROWS WITH (issue #968), CHECKED BY THE SAME HELPER THE ENCHANTMENT
@@ -4382,10 +4439,8 @@ def enchantment_effects(book) -> list[dict]:
             _check_pool_action(index, name, action, action_event, fraction_of,
                                kind, raw, headers)
             fraction_of = fraction_of or FRACTION_BASES[0]
-        elif kind not in ("flat", "increased", "more"):
-            raise DataError(
-                f"Enchantment Effects row {index}: {name} has value kind "
-                f"{kind!r}, which is not flat, increased or more")
+        else:
+            _check_value_kind("Enchantment Effects", index, name, stat, kind)
 
         low = number(_cell(raw, headers, "Value Low"), "Value Low", index)
         high_text = clean(_cell(raw, headers, "Value High"))
@@ -4729,6 +4784,10 @@ def stats_with_no_attribute() -> set[str]:
     normally a defect and why the exemption is named rather than inferred.
     Issues #898 and #1733.
 
+    AND `mana_on_hit`, WHICH IS NOT A MINION'S. Issue #1791. The basic attack's
+    mana on hit is its slot's own figure, so there is nothing for an attribute to
+    hold either; a row may only remove it, which `REMOVAL_ONLY_STATS` enforces.
+
     AN EXEMPTION IS A PROMISE AND THIS DOES NOT KEEP IT. All this does is stop the
     sheet being refused. That every name here is really read by code is held by
     `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, which grants
@@ -4850,7 +4909,11 @@ def validate_passive_effects(tables: dict[str, list[dict]],
                 f"PassiveEffects/{row['Name']}: no passive node is called "
                 f"{row['Node']}, so the effect reaches nothing")
 
-        if stats and row["Stat"] not in stats:
+        # A REMOVAL IS NOT ASKED FOR A BASE, for the reason
+        # `validate_enchantment_effects` gives: it multiplies nothing. Issue #1791.
+        # The two sheets share one vocabulary of kinds, so they share this too.
+        if (stats and str(row["ValueKind"]).lower() != "removed"
+                and row["Stat"] not in stats):
             problems.append(
                 f"PassiveEffects/{row['Name']}: {row['Stat']!r} is not a stat "
                 f"any class line or attribute names, and no flat row in this "
@@ -4954,7 +5017,17 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
         # with a base refused every such row, which nothing showed until the
         # eight rows of issue #1815 were run through the whole generator on
         # 2026-09-16. Its required tags are still checked below.
-        if not row.get("Action") and row["Stat"] not in stats:
+        #
+        # AND A REMOVAL NEEDS NOTHING UNDER IT. Issue #1791. The complaint is an
+        # increase multiplying a base of zero, and a removal multiplies nothing:
+        # it takes the stat to zero from whatever supplies it, the rolled affixes
+        # this set leaves out included. "You have no resistances." is eight such
+        # rows, and a player's resistances come from affixes alone, so asking it
+        # for a base refused all eight when the rows were run through the whole
+        # generator on 2026-09-16.
+        if (not row.get("Action")
+                and str(row["ValueKind"]).lower() != "removed"
+                and row["Stat"] not in stats):
             problems.append(
                 f"EnchantmentEffects/{row['Name']}: {row['Stat']!r} is not a "
                 f"stat any class line, attribute, item base or engine base "

@@ -870,6 +870,14 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 			{
 				Modifier.Bucket = ECataclysmStatBucket::Flat;
 			}
+			// A ROW SAYING THE STAT IS GONE. Issue #1791. The sheets share one
+			// vocabulary of kinds, so a node may remove a stat the way an
+			// enchantment does, though no node does yet. The value is not read.
+			else if (Effect->ValueKind.Equals(TEXT("removed"),
+											  ESearchCase::IgnoreCase))
+			{
+				Modifier.Bucket = ECataclysmStatBucket::Removed;
+			}
 			else
 			{
 				Modifier.Bucket = ECataclysmStatBucket::Increased;

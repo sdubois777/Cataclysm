@@ -118,6 +118,18 @@ public:
 	static float ManaOnHitAtLevel(float OnHitAtLevel100, int32 Level);
 
 	/**
+	 * The stat a removal of mana on hit names. Issue #1791.
+	 *
+	 * THE FIGURE IS NOT A STAT AND THIS DOES NOT MAKE IT ONE. What a landed hit
+	 * returns is the slot's own number above, and nothing adds to it or scales
+	 * it. The stat exists so "You cannot regenerate mana through any means" can
+	 * take it away: `UCataclysmSkillTemplate::ApplyManaOnHit` asks
+	 * `UCataclysmAbilitySystemComponent::IsStatRemoved` for this name and returns
+	 * nothing while a removal reaches it.
+	 */
+	static const TCHAR* ManaOnHitStat;
+
+	/**
 	 * The tag marking that this slot is waiting to be used again.
 	 *
 	 * Invalid for the Basic Attack and the Aura, which is correct rather than

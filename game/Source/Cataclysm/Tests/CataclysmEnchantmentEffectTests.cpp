@@ -749,9 +749,11 @@ bool FCataclysmEnchantmentEffectAttributesTest::RunTest(const FString& Parameter
 	// `ApplyTo` STOPPED LOOPING ONLY OVER `StatToAttribute` WHEN #1724 MERGED: a
 	// third pass loops over `StatsWithNoAttribute()` and records those stats
 	// without writing any attribute, so a row naming one of them is not dropped.
-	// Bespoke code reads their increases directly --
+	// Bespoke code reads them directly: the minion stats' increases in
 	// `UCataclysmCommand::AttackIntervalScaleFor`,
-	// `ACataclysmMinion::AttackTarget` and `ACataclysmMinion::Spawn`.
+	// `ACataclysmMinion::AttackTarget` and `ACataclysmMinion::Spawn`, and, since
+	// issue #1791, whether `mana_on_hit` is removed in
+	// `UCataclysmSkillTemplate::ApplyManaOnHit`.
 	//
 	// `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt`
 	// GAINED THIS IN #1733 AND THIS TEST DID NOT, because no enchantment row
@@ -2989,6 +2991,243 @@ bool FCataclysmAnAuthoredKillRowRestoresOnlyBelowItsLine::RunTest(const FString&
 	}
 	TestEqual(TEXT("a kill at twenty per cent restores a quarter of the maximum"),
 			  ASC->GetNumericAttribute(Health), 225.0f, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// AN AUTHORED REMOVAL, READ OUT OF THE ASSET THE GAME LOADS. Issue #1791.
+
+namespace CataclysmEnchantmentEffectTest
+{
+	/**
+	 * The one modifier an enchantment put on a stat, or null when there is not
+	 * exactly one. Read from what the refresh recorded, so it is what the game
+	 * built out of the asset rather than what a test built.
+	 */
+	const FCataclysmStatModifier* TheEnchantmentModifierOn(
+		const UCataclysmAbilitySystemComponent& AbilitySystem, const TCHAR* Stat)
+	{
+		const FCataclysmStatInputs* Inputs =
+			AbilitySystem.GetStatInputs(FName(Stat));
+		if (!Inputs)
+		{
+			return nullptr;
+		}
+
+		// THE RECORDED ARRAY ITSELF AND NOT A COPY, because the pointer handed
+		// back points into it.
+		const FCataclysmStatModifier* Found = nullptr;
+		int32 Count = 0;
+		for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+		{
+			if (Modifier.Source == ECataclysmModifierSource::Enchantment)
+			{
+				Found = &Modifier;
+				++Count;
+			}
+		}
+		return Count == 1 ? Found : nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmAnAuthoredRemovalRowTakesArmorToZero,
+	"Cataclysm.Enchantments.AnAuthoredRemovalRowFromTheBuiltTableTakesArmorToZero",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAnAuthoredRemovalRowTakesArmorToZero::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// "You have no armor" IS `armor`, KIND `removed`, and the game multiplies the
+	// finished armour by nothing. Issue #1791, and the project owner's mechanic
+	// of 2026-09-16.
+	//
+	// ON A HELM, WHICH IS ARMOUR ITSELF. `Head_Helm` carries an armour implicit,
+	// so the item carrying the sentence also grants the armour it takes away, and
+	// the character's class line adds whatever armour it has on top.
+	//
+	// THE BREAK THIS IS FOR: the kind read as an increase, which is what
+	// `EnchantmentModifierFor` does with a name it has no case for. The row
+	// states 1, so that break is one per cent more armour rather than none.
+	//
+	// WHAT AN UNARMOURED CHARACTER TAKES IS MEASURED ON THIS ONE, with the same
+	// blow ignoring all of its armour. So the class the console variable picks
+	// cannot change the answer, and every other step of the blow is the same in
+	// both readings.
+	//
+	// IT FAILS UNTIL `tools/generate_datatable_assets.py` HAS REBUILT THE ASSET
+	// FROM A CSV HOLDING THE ROW.
+	const TCHAR* NoArmor = TEXT("Negative_You_have_no_armor");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	const FGameplayAttribute Armor = UCataclysmCombatAttributeSet::GetArmorAttribute();
+
+	// ONE BLOW, WITH EVASION AND BLOCK PINNED OFF, and the same blow ignoring
+	// every point of armour.
+	FCataclysmIncomingHit Blow;
+	Blow.Damage = 400.0f;
+	Blow.bIsMelee = true;
+	FCataclysmIncomingHit IgnoringArmor = Blow;
+	IgnoringArmor.ArmorPenetration = 100.0f;
+	const auto Taken = [&ASC](const FCataclysmIncomingHit& Hit)
+	{
+		return UCataclysmDamageCalculation::Resolve(
+			Hit, &ASC, /*Tier=*/1, /*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f)
+			.DealtToHealth;
+	};
+
+	// THE HELM WITHOUT THE SENTENCE FIRST, WHICH IS THE CONTROL. Its armour
+	// stands, so armour makes the blow smaller. Without this, a character whose
+	// armour never reached the damage step at all would pass the last assertion.
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(&ASC);
+
+	// LARGE ENOUGH THAT NO BLOW HERE IS CUT SHORT BY THE HEALTH LEFT. Written
+	// after the refresh, which recomputes the maximum from what is worn.
+	GivePools(ASC, /*Health=*/10'000.0f, /*MaxHealth=*/10'000.0f);
+
+	const float Armoured = ASC.GetNumericAttribute(Armor);
+	if (!TestTrue(FString::Printf(TEXT("the helm gives armour: %.2f"), Armoured),
+				  Armoured > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(
+				 TEXT("and armour makes a blow smaller: %.2f against %.2f"),
+				 Taken(Blow), Taken(IgnoringArmor)),
+			 Taken(Blow) < Taken(IgnoringArmor) - 1.0f);
+
+	// THEN THE SAME HELM, CARRYING THE SENTENCE.
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, NoArmor),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(&ASC);
+	GivePools(ASC, /*Health=*/10'000.0f, /*MaxHealth=*/10'000.0f);
+
+	const FCataclysmStatModifier* FromRow = TheEnchantmentModifierOn(ASC, TEXT("armor"));
+	if (!FromRow)
+	{
+		AddError(FString::Printf(
+			TEXT("Wearing %s did not put exactly one enchantment modifier on "
+				 "armour. DT_EnchantmentEffects may be older than the row: run  "
+				 "python tools/run_editor_python.py "
+				 "tools/generate_datatable_assets.py"),
+			NoArmor));
+		return false;
+	}
+	TestEqual(TEXT("the row arrived as a removal"), FromRow->Bucket,
+			  ECataclysmStatBucket::Removed);
+
+	TestEqual(TEXT("the armour attribute reads nothing"),
+			  ASC.GetNumericAttribute(Armor), 0.0f, 0.0001f);
+	TestEqual(TEXT("and so does the armour a blow asks the character for"),
+			  ASC.StatForSkill(FName(TEXT("armor")), FGameplayTagContainer(),
+							   /*Fallback=*/-1.0f),
+			  0.0f, 0.0001f);
+	TestEqual(TEXT("so a blow deals what it deals with all armour ignored"),
+			  Taken(Blow), Taken(IgnoringArmor), 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmRemovingMaximumManaEmptiesTheManaHeld,
+	"Cataclysm.Enchantments.AnAuthoredRowRemovingMaximumManaEmptiesTheManaAlreadyHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRemovingMaximumManaEmptiesTheManaHeld::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	// "Your maximum mana is reduced to zero", PUT ON BY A CHARACTER ALREADY IN
+	// PLAY. Issue #1791. The removal takes the maximum to nothing through the
+	// pipeline like any other. The mana already held is a current value, and
+	// nothing lowers a current pool when its maximum falls -- issue #1757 ruled
+	// that deliberate -- so `UCataclysmPlayerClassStats::ApplyTo` empties it for
+	// this removal in particular.
+	//
+	// THE REFRESH A HELMET SWAP MAKES, which leaves the pools where they are. A
+	// refresh that fills them would empty the mana to its new maximum of nothing
+	// anyway, and would pass without the write this test is for.
+	//
+	// THE CONTROL IS THE SAME REFRESH WITHOUT THE SENTENCE, which leaves the mana
+	// where it was. Without it, a refresh that emptied mana for any reason would
+	// pass the last assertion.
+	//
+	// IT FAILS UNTIL `tools/generate_datatable_assets.py` HAS REBUILT THE ASSET
+	// FROM A CSV HOLDING THE ROW.
+	const TCHAR* NoMaximumMana =
+		TEXT("Negative_Your_maximum_mana_is_reduced_to_zero");
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent& ASC = *Wearer.AbilitySystem;
+	const FGameplayAttribute Mana = UCataclysmVitalAttributeSet::GetManaAttribute();
+	const FGameplayAttribute MaxMana =
+		UCataclysmVitalAttributeSet::GetMaxManaAttribute();
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(&ASC, ECataclysmPoolFill::LeaveAsTheyAre);
+
+	const float Maximum = ASC.GetNumericAttribute(MaxMana);
+	if (!TestTrue(FString::Printf(TEXT("the class line gives a mana maximum: %.2f"),
+								  Maximum),
+				  Maximum > 1.0f))
+	{
+		return false;
+	}
+	ASC.SetNumericAttributeBase(Mana, Maximum / 2.0f);
+	Wearer.Equipment->RefreshAttributes(&ASC, ECataclysmPoolFill::LeaveAsTheyAre);
+	TestEqual(TEXT("a refresh without the sentence leaves the mana where it was"),
+			  ASC.GetNumericAttribute(Mana), Maximum / 2.0f, 0.01f);
+
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, NoMaximumMana),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(&ASC, ECataclysmPoolFill::LeaveAsTheyAre);
+
+	const FCataclysmStatModifier* FromRow =
+		TheEnchantmentModifierOn(ASC, TEXT("max_mana"));
+	if (!FromRow)
+	{
+		AddError(FString::Printf(
+			TEXT("Wearing %s did not put exactly one enchantment modifier on "
+				 "maximum mana. DT_EnchantmentEffects may be older than the row: "
+				 "run  python tools/run_editor_python.py "
+				 "tools/generate_datatable_assets.py"),
+			NoMaximumMana));
+		return false;
+	}
+	TestEqual(TEXT("the row arrived as a removal"), FromRow->Bucket,
+			  ECataclysmStatBucket::Removed);
+	TestEqual(TEXT("the mana maximum is nothing"),
+			  ASC.GetNumericAttribute(MaxMana), 0.0f, 0.0001f);
+	TestEqual(TEXT("and the mana already held went with it"),
+			  ASC.GetNumericAttribute(Mana), 0.0f, 0.0001f);
 	return true;
 }
 #endif // WITH_AUTOMATION_TESTS

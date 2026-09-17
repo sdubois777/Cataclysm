@@ -125,6 +125,8 @@ float UCataclysmSkillSlots::ManaOnHitAtLevel(float OnHitAtLevel100, int32 Level)
 	return OnHitAtLevel100 * (DefaultMaxManaAtLevel(Level) / Reference);
 }
 
+const TCHAR* UCataclysmSkillSlots::ManaOnHitStat = TEXT("mana_on_hit");
+
 const TCHAR* UCataclysmSkillSlots::LockedStat = TEXT("skill_locked");
 
 FGameplayTag UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot Slot)

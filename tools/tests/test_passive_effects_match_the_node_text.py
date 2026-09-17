@@ -67,8 +67,12 @@ sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 import generate_datatables as gen  # noqa: E402
 
-#: The three buckets of the damage pipeline. Anything else is a typo.
-BUCKETS = {"flat", "increased", "more"}
+#: The value kinds a row may carry: the three buckets of the damage pipeline,
+#: and a removal, which takes the stat to nothing (issue #1791). Anything else
+#: is a typo. The generator's own tuple rather than a copy of it, for the reason
+#: the import above gives; `test_value_kinds_match_the_engine.py` holds that
+#: tuple to the names the game reads.
+KINDS = set(gen.VALUE_KINDS)
 
 
 def words_of(row: dict, nodes: dict) -> str:
@@ -1057,10 +1061,12 @@ def stats() -> set[str]:
             #
             # A DIFFERENT KIND OF ENTRY FROM THE LINE ABOVE, and the difference
             # is the whole reason it is a separate call. `ENGINE_SUPPLIED_BASES`
-            # promises code puts a BASE on the character. These three have no
-            # base and can have none: a minion's damage, health and attack
-            # interval come from its own type row, and a summoner's gear supplies
-            # an increase to apply to that rather than a value of its own.
+            # promises code puts a BASE on the character. These have no base and
+            # can have none: a minion's damage, health and attack interval come
+            # from its own type row, and a summoner's gear supplies an increase
+            # to apply to that rather than a value of its own. `mana_on_hit` is
+            # the basic attack's own figure, and a row may only remove it
+            # (issue #1791).
             #
             # READ OUT OF THE C++ RATHER THAN RESTATED. `ENGINE_SUPPLIED_BASES`
             # is a Python restatement held honest by a symbol-existence check;
@@ -1997,9 +2003,10 @@ VALUE_IN_WORDS = {
     # AND THE TWO NODES THAT STOP HEALING REMOVING FERVOUR. Issues #1006 and
     # #1007. Both are flags of 1 and neither sentence has a digit: one says
     # "does not remove Fervour" and the other "no longer removes Fervour". A
-    # modifier cannot take a stat to zero -- the pipeline clamps a Less
-    # multiplier at -99 on purpose -- so a rule that says "does not" has to say
-    # so as a flag rather than as a 99% reduction.
+    # More multiplier cannot take a stat to zero -- the pipeline clamps a Less
+    # one at -99 on purpose -- so a rule that says "does not" has to say so as a
+    # flag rather than as a 99% reduction. A removal can, since issue #1791, and
+    # these two flags predate it.
     ("Masochist_keystone_fc_kB", "fervour_loss_suppressed"):
         ("does not remove fervour", 1.0),
 
@@ -2526,8 +2533,8 @@ def test_the_bucket_matches_the_nodes_own_wording(effects, nodes):
 
     for row in effects:
         kind = row["ValueKind"].strip().lower()
-        assert kind in BUCKETS, (
-            f"{row['Name']}: {kind!r} is not one of {sorted(BUCKETS)}"
+        assert kind in KINDS, (
+            f"{row['Name']}: {kind!r} is not one of {sorted(KINDS)}"
         )
 
         described = words_of(row, nodes)
@@ -2584,8 +2591,14 @@ def test_every_stat_is_one_the_game_supplies(effects, stats):
     `Cataclysm.Passives.EveryStatAPassiveNodeGrantsHasAnAttributeBehindIt` reads
     the same file and fails when a stat has no gameplay attribute behind it,
     which is where a misspelling really stops working.
+
+    A REMOVAL IS NOT ASKED, since issue #1791, for the reason
+    `validate_passive_effects` gives: it multiplies nothing, so there is no base
+    for it to lack. No node removes a stat yet.
     """
     for row in effects:
+        if row["ValueKind"].strip().lower() == "removed":
+            continue
         assert row["Stat"] in stats, (
             f"{row['Name']} grants {row['Stat']!r}, which is not a stat any "
             f"class stat line or attribute names, and no flat row here supplies "
@@ -2726,7 +2739,7 @@ def test_the_exempt_stats_are_read_from_the_engine():
     parse -- which is the wrong place to look and the expensive kind of wrong.
 
     SO THE FUNCTION RAISES AND THIS CHECKS IT RETURNS SOMETHING, rather than
-    checking for particular names. Naming the three here would put back the second
+    checking for particular names. Naming them here would put back the second
     copy the whole change exists to remove: the point is that Python holds no
     list, so a name added or removed in the C++ needs no edit here.
 

@@ -903,6 +903,12 @@ namespace
 		{
 			Out.Bucket = ECataclysmStatBucket::Flat;
 		}
+		// A ROW SAYING THE STAT IS GONE. Issue #1791. The value above is the 1
+		// the row states, and nothing reads it.
+		else if (Effect.ValueKind.Equals(TEXT("removed"), ESearchCase::IgnoreCase))
+		{
+			Out.Bucket = ECataclysmStatBucket::Removed;
+		}
 		else
 		{
 			Out.Bucket = ECataclysmStatBucket::Increased;

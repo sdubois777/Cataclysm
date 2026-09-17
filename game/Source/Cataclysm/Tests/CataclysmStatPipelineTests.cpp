@@ -2029,6 +2029,129 @@ bool FCataclysmPipelineLessFloorTest::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// A removal. Issue #1791.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineRemovalTest,
+	"Cataclysm.StatPipeline.ARemovedStatResolvesToZeroWhateverElseReachesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You have no armor" leaves no armour, whatever else the character carries.
+ *
+ * THE PROJECT OWNER'S MECHANIC, 2026-09-16: "Just multiply the final number of
+ * the original formula by 0." So all three buckets are present here, each large
+ * enough to be seen in the figure, and the removal still leaves nothing -- which
+ * is the difference from the Less multiplier above, floored so it never can.
+ *
+ * THE BREAKDOWN KEEPS EVERY STEP. Only the finished figure changes, so a
+ * character sheet can still show what the stat would have been.
+ *
+ * AND A REMOVAL IS DECIDED LIKE ANY OTHER MODIFIER. One whose condition does not
+ * hold removes nothing, and one from a source that may not grant a More
+ * multiplier is ignored and logged.
+ */
+bool FCataclysmPipelineRemovalTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	const FCataclysmStatModifier Removal = Make(
+		ECataclysmStatBucket::Removed, ECataclysmModifierSource::Enchantment, 1.0f);
+
+	// EVERY BUCKET, AND EACH ONE MOVES THE FIGURE: 100 base and 50 flat is 150,
+	// +100% increased makes 300, and a 50% more multiplier makes 450.
+	const TArray<FCataclysmStatModifier> Everything = {
+		Flat(50.0f), Increased(100.0f), MoreFromGem(50.0f)};
+	const FCataclysmStatBreakdown Kept =
+		FPipeline::Evaluate(100.0f, Everything, NoTags);
+	TestEqual(TEXT("without a removal the stat is 450"), Kept.Final, 450.0f, 0.01f);
+	TestEqual(TEXT("and no removal was counted"), Kept.RemovedCount, 0);
+
+	TArray<FCataclysmStatModifier> WithRemoval = Everything;
+	WithRemoval.Add(Removal);
+	const FCataclysmStatBreakdown Gone =
+		FPipeline::Evaluate(100.0f, WithRemoval, NoTags);
+	TestEqual(TEXT("with one the stat is nothing"), Gone.Final, 0.0f, 0.0001f);
+	TestEqual(TEXT("the removal was counted"), Gone.RemovedCount, 1);
+	TestEqual(TEXT("and the flat step is still in the breakdown"),
+		Gone.Flat, 50.0f, 0.01f);
+	TestEqual(TEXT("and the increases"), Gone.SumOfIncreases, 100.0f, 0.01f);
+	TestEqual(TEXT("and the more multiplier"), Gone.MoreMultiplier, 1.5f, 0.0001f);
+
+	// WHERE IT SITS IN THE LIST DOES NOT MATTER, because the multiplication by
+	// nothing is the last step rather than a step taken when the removal is met.
+	TArray<FCataclysmStatModifier> RemovalFirst = {Removal};
+	RemovalFirst.Append(Everything);
+	TestEqual(TEXT("a removal first in the list leaves nothing too"),
+		FPipeline::Evaluate(100.0f, RemovalFirst, NoTags).Final, 0.0f, 0.0001f);
+
+	// TWO REMOVALS ARE NOT A DEEPER ZERO. Two sentences removing one stat is
+	// what "You no longer regenerate mana" beside "You cannot regenerate mana
+	// through any means" does.
+	TArray<FCataclysmStatModifier> Twice = WithRemoval;
+	Twice.Add(Removal);
+	const FCataclysmStatBreakdown TwiceGone =
+		FPipeline::Evaluate(100.0f, Twice, NoTags);
+	TestEqual(TEXT("two removals leave nothing"), TwiceGone.Final, 0.0f, 0.0001f);
+	TestEqual(TEXT("and both were counted"), TwiceGone.RemovedCount, 2);
+
+	// A REMOVAL WITH A CONDITION REMOVES ONLY WHILE IT HOLDS. The condition is
+	// judged by `ModifierApplies` before any bucket is chosen, the same as for
+	// every other modifier.
+	FCataclysmStatModifier WhileLow = Removal;
+	WhileLow.Condition = ECataclysmStatCondition::HealthAtOrBelowPercent;
+	WhileLow.ConditionValue = 35.0f;
+	TArray<FCataclysmStatModifier> Conditional = Everything;
+	Conditional.Add(WhileLow);
+	const FCataclysmStatBreakdown Healthy =
+		FPipeline::Evaluate(100.0f, Conditional, NoTags, AtHealth(80.0f));
+	TestEqual(TEXT("a removal at or below 35% health removes nothing at 80%"),
+		Healthy.Final, 450.0f, 0.01f);
+	TestEqual(TEXT("and is not counted there"), Healthy.RemovedCount, 0);
+	const FCataclysmStatBreakdown Low =
+		FPipeline::Evaluate(100.0f, Conditional, NoTags, AtHealth(20.0f));
+	TestEqual(TEXT("and removes the stat at 20%"), Low.Final, 0.0f, 0.0001f);
+	TestEqual(TEXT("where it is counted"), Low.RemovedCount, 1);
+
+	// A REMOVAL FROM A SOURCE THAT MAY NOT GRANT A MORE MULTIPLIER IS IGNORED.
+	// An ordinary affix may take nothing away, for the reason it may multiply
+	// nothing.
+	AddExpectedError(TEXT("ignored a removal"),
+		EAutomationExpectedErrorFlags::Contains, 1);
+	const FCataclysmStatModifier FromAffix = Make(
+		ECataclysmStatBucket::Removed, ECataclysmModifierSource::GearAffix, 1.0f);
+	TArray<FCataclysmStatModifier> AffixRemoval = Everything;
+	AffixRemoval.Add(FromAffix);
+	const FCataclysmStatBreakdown Refused =
+		FPipeline::Evaluate(100.0f, AffixRemoval, NoTags);
+	TestEqual(TEXT("a removal from a gear affix leaves the stat at 450"),
+		Refused.Final, 450.0f, 0.01f);
+	TestEqual(TEXT("and is not counted"), Refused.RemovedCount, 0);
+	TestFalse(TEXT("validation reports a removal from a gear affix"),
+		FPipeline::ValidateModifier(FromAffix).IsEmpty());
+	TestTrue(TEXT("and accepts one from an enchantment"),
+		FPipeline::ValidateModifier(Removal).IsEmpty());
+
+	// ON A RATE A REMOVAL TAKES THE REDUCTION AWAY, NOT THE INTERVAL. "You have
+	// no cooldown reduction", which is what the game already does through the
+	// attribute. The figures are the rate test's below: a 4 second cooldown with
+	// a third of increases and a 20% more gem is 2.5 seconds.
+	TArray<FCataclysmStatModifier> Reduction = {
+		Increased(100.0f / 3.0f), MoreFromGem(20.0f)};
+	TestEqual(TEXT("a reduced rate is 2.5 seconds"),
+		FPipeline::EvaluateRate(4.0f, Reduction, NoTags).Final, 2.5f, 0.001f);
+	Reduction.Add(Removal);
+	const FCataclysmStatBreakdown NoReduction =
+		FPipeline::EvaluateRate(4.0f, Reduction, NoTags);
+	TestEqual(TEXT("with a removal as well it is its base, 4 seconds"),
+		NoReduction.Final, 4.0f, 0.001f);
+	TestEqual(TEXT("and a player is shown no reduction"),
+		FPipeline::DisplayedRateReduction(NoReduction), 0.0f, 0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // Rates
 // ---------------------------------------------------------------------------
 
