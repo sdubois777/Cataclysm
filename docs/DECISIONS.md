@@ -42,8 +42,8 @@ condition.
 
 ### DRY RUN
 
-The four rows went through the whole generator on a `git archive` copy of the tree
-before the workbook was edited, with the counts, scale words and value forms
+The four rows went through the whole generator on a `git archive` copy of a37d4aec's
+tree before the workbook was edited, with the counts, scale words and value forms
 applied. The whole Python suite in that copy: 12 failed, 5230 passed, 12 skipped.
 One failure was the predicted one, `test_every_csv_still_hashes_to_what_was_recorded`,
 naming `PassiveEffects.csv` alone, which the asset rebuild answers. The other
