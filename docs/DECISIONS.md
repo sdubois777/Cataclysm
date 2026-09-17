@@ -2,6 +2,137 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A creature of Elite rank or above that falls under 30% of its health gets one chance in two of calling two guards of its own kind, a rung above it and never past Herald
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat, the
+per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`War_Royal_Guard` in `game/Data/DungeonModifiers.csv`: "When an above Uncommon ranked enemy drops below
+30% health, there is a 50% chance they summon two guards of the next higher rank." No text in `docs/`
+says more about it.
+
+### This row states three of its four figures, which is unusual here
+
+| From the row itself | The constant |
+| :-- | :-- |
+| "drops below 30% health" | `RoyalGuardHealthPercentToSummon` |
+| "a 50% chance" | `RoyalGuardChancePercent` |
+| "two guards" | `RoyalGuardGuardsSummoned` |
+| "of the next higher rank" | one rung, held to `RoyalGuardHighestRung` |
+
+`test_royal_guard_row_still_states_the_three_figures_the_rule_uses` reads all three off the row rather
+than trusting the header, so a change to the row that the code does not follow fails the fast suite.
+
+### The word that names nothing, and the ruling it forced
+
+**"Above Uncommon ranked" names no rank any ladder in this game has.** Measured on 2026-09-17:
+`game/Data/EnemyRarities.csv` is Common, Elite, Legendary, Herald, Boss and Cataclysm Boss. The only
+Uncommon in the game's data is the second crafting material tier in `game/Data/MaterialTiers.csv`, and
+gear is a third vocabulary again in `game/Data/GearRarity.csv` — Everyday, Quality, Superb, Masterful,
+Legendary, Mythical, Ascendant.
+
+**Ruled: it means every rung above the bottom one, so Elite and above.** Flagged to the project owner,
+who may prefer to reword the row. **The reword this entry proposes is "When an above Common ranked
+enemy…", changing nothing else in the sentence.** Until that happens
+`test_royal_guard_row_still_says_uncommon_so_the_ruling_is_read_again` holds the row's word in place: it
+fails the moment anybody rewords it, so the ruling is read again against the new sentence rather than
+inherited by a rule nobody re-checked. It also fails if a rung named Uncommon is ever added to the
+creature ladder, which would make the row mean something else entirely.
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation of unstated figures, and flagged to the
+owner by that session.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| Which creatures call guards | **Elite and above** | The reading above |
+| The ceiling on a guard's rung | **Herald, the rung under the first boss rung** — the same ceiling Volatile Evolution has, written as that constant rather than as a second number | A Herald's guards would otherwise be Bosses and a Boss's would be Cataclysm Bosses, which is a floor rule making a boss out of an ordinary creature in the middle of a fight |
+| How often | **One roll per creature, ever, spent whether it hits or misses** | "A 50% chance" is a chance at the moment it falls, not 50% every quarter of a second, which would be a certainty within a second |
+| Where the guards stand | **The summoner's own floor cell**, through `ACataclysmDungeonFloor::CellOfWorld` | One place decides what a cell may hold |
+| What kind they are | **The summoner's own kind**, found by comparing its class with each of the seven kinds `ACataclysmDungeonGameMode::ClassFor` knows | "Their guards". A creature does not carry which kind it is, and this needs no new field and no change to a save |
+| A creature of no kind | **Calls nothing, and the log says so** | The plain `ACataclysmEnemyCharacter`, and any creature class added to the game but not to `ClassFor`. Guessing a kind for it would put a creature on the floor that the floor's own populator would never place |
+| The floor panel | **"guards N"**, a count with no ceiling | The limit is one roll each, not a number of guards a floor may hold |
+
+### A guard arrives whole, and the rule that came before it needed the opposite
+
+`SetRarityStep` and `DrawModifiersForRarity` both end in `ApplyStartingAttributes`, which refills health
+and energy shield. Volatile Evolution, merged earlier the same day, has to undo that: a creature that
+mutates has already been fought, and healing it would undo the player's work. A guard has not been
+fought at all, so the refill is exactly right and the rule does nothing about it. The same two calls,
+opposite requirements, written down here so the next rule that changes a rung asks which case it is in.
+
+### What it pays the player
+
+**The guards are ordinary creatures.** Each drops loot and pays experience by its own rung when it
+dies, from `ACataclysmEnemyCharacter`'s own death handler, which reads the rung the creature holds at
+that moment and nothing about who killed it. So a floor carrying this row is worth more than one
+without it: an Elite at a fifth of its health puts two Legendaries on the floor, and both pay. That
+follows from the row rather than from any choice made here, and it is flagged to the owner.
+
+### What the tests do
+
+Nine automation tests in `Cataclysm.DungeonModifierEffects.`, and one existing test changed. They use
+the floor's **own** creatures, because those are real kinds standing on real cells and they start at
+full health, so no creature a test has not wounded can call anything.
+
+- **`AWoundedEliteCallsTwoGuardsOfItsOwnKindAtTheNextRung`** — two arrive, each of the summoner's class,
+  each a rung above it, each at full health of its own larger pool, each in the floor's creature list;
+  the summoner's own health and rung are unchanged.
+- **`AtThirtyPercentHealthACreatureCallsNoGuardsAndJustUnderItCallsThem`** — the row's figure on its
+  boundary: forty beats at exactly the threshold, then a tenth of a point lower.
+- **`GuardsArriveOnARollUnderTheChanceAndNotOnTheChanceItself`** — the chance on its boundary, with two
+  creatures rather than one, because a roll is spent whether it hits or misses.
+- **`ACommonCreatureCallsNoGuardsHoweverLowItFalls`** — the ruled reading of the row's word.
+- **`NoGuardArrivesAboveHerald`** — a Herald's guards and a boss-rung creature's guards both stand at
+  Herald and neither is a boss.
+- **`ACreatureGetsOneChanceAtGuardsHoweverLongTheFightLasts`** — a missed roll is not offered again,
+  even with the roll then pinned to a certain hit.
+- **`ACreatureOfNoKindCallsNoGuards`** — the refusal above.
+- **`TheFloorPanelCountsTheGuardsThatArrived`** — "guards 0", 2, 4, and no line at all on a floor
+  without the row.
+- **`AFloorChangeClearsTheCountAndASummonerGetsNoSecondChance`** — on a Horde dungeon's next wave, where
+  the creature lives through the change: the count goes back to nothing and the creature, still badly
+  hurt, gets no second roll.
+- Changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** now carries this row among the
+  rules on its floor.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` hold the rule to the row: the
+three figures the row states, the three phrases the readings rest on, the "Uncommon" wording and the
+creature ladder that lacks it, and the ceiling being the other rule's constant rather than a second
+number.
+
+**Measured, with the break-and-restore helper, on a `git archive` extract of the head:** nine breaks,
+each proved and each failing exactly what was predicted — the row stating 40% or a 25% chance, the
+header's threshold moving without the row, the row dropping "two guards" (which fails two checks),
+dropping "chance", dropping "next higher rank", the row reworded as this entry proposes, an Uncommon
+rung added to the creature ladder, and the ceiling written as its own 3. Summaries read
+"PROVED: 1 failed, 102 passed | restored: 103 passed", and "2 failed, 101 passed" for the break that
+trips two.
+
+### What the tests do not show
+
+- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
+  the automation run and the three guard proofs wait for this machine's next free window. Until then no
+  claim in the section above about what the automation tests measure has been measured.
+- **Only three of the rule's claims are guard-proved**, which is the standing budget of three proofs a
+  change: that the guards' rung is written after they spawn, that the ceiling holds, and that the record
+  of who has rolled holds. The rank gate and the two boundaries are tested and not proved.
+- **How often this fires in real play.** Every test pins the roll.
+- **What two guards do to a fight.** No test plays the encounter out against a player, and none kills a
+  guard to see what it pays.
+
+---
+
 ## 2026-09-17 — What a skill costs a character is a stat, and one function answers it for the check, the payment, an aura's upkeep and the skill bar
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
