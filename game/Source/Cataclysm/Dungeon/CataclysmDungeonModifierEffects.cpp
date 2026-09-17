@@ -58,6 +58,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::VolatileEvolutionKey =
 	TEXT("Chaos_Volatile_Evolution");
 const TCHAR* UCataclysmDungeonModifierEffects::RoyalGuardKey =
 	TEXT("War_Royal_Guard");
+const TCHAR* UCataclysmDungeonModifierEffects::DemonPrinceKey =
+	TEXT("Demonic_Demon_Prince");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -234,7 +236,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(RavenousHoardKey)
 		|| RowKey == FName(GraveTideKey)
 		|| RowKey == FName(VolatileEvolutionKey)
-		|| RowKey == FName(RoyalGuardKey))
+		|| RowKey == FName(RoyalGuardKey)
+		|| RowKey == FName(DemonPrinceKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -394,6 +397,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GraveTideKey),
 		FName(VolatileEvolutionKey),
 		FName(RoyalGuardKey),
+		FName(DemonPrinceKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1302,6 +1306,16 @@ int32 UCataclysmDungeonModifierEffects::RoyalGuardRungForGuards(int32 RarityStep
 {
 	const int32 From = FMath::Max(0, RarityStep);
 	return FMath::Min(From + 1, RoyalGuardHighestRung);
+}
+
+bool UCataclysmDungeonModifierEffects::DemonPrinceRises(float Roll)
+{
+	return Roll < DemonPrinceChancePercent;
+}
+
+bool UCataclysmDungeonModifierEffects::DemonPrinceMayRise(int32 RisenSoFar)
+{
+	return RisenSoFar < DemonPrincesPerFloor;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

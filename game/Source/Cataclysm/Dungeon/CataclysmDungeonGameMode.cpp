@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
@@ -665,6 +666,18 @@ static TAutoConsoleVariable<float> CVarRoyalGuardRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the roll a kill the player made is offered a greater creature on, so a test can
+ * assert what a death brought. Issues #1820 and #41. Its own variable, for the reason
+ * `Cataclysm.GraspingTentaclesRoll` gives.
+ */
+static TAutoConsoleVariable<float> CVarDemonPrinceRoll(
+	TEXT("Cataclysm.DemonPrinceRoll"),
+	-1.0f,
+	TEXT("Pin the roll Demon Prince offers a kill the player made, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -727,6 +740,13 @@ namespace
 	float DungeonGameModeRoyalGuardRoll()
 	{
 		const float Pinned = CVarRoyalGuardRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll a corpse is decided by: pinned, or drawn. */
+	float DungeonGameModeDemonPrinceRoll()
+	{
+		const float Pinned = CVarDemonPrinceRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -3286,6 +3306,99 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForWastingSickness(Notice);
 	NoteDeathForSporeClouds(Notice);
 	NoteDeathForHellfire(Notice);
+	NoteDeathForDemonPrince(Notice);
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::DemonPrinceKey)))
+	{
+		return;
+	}
+
+	// ONE A FLOOR. The ceiling is asked first, so a floor that has had its own does no
+	// further work on any death.
+	if (!Effects::DemonPrinceMayRise(DemonPrincesRisen))
+	{
+		return;
+	}
+
+	ACataclysmEnemyCharacter* Slain = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Slain)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// "WHEN YOU SLAY AN ENEMY", WHICH IS TWO QUESTIONS. The killer is the blow's
+	// instigator and a minion's blow is credited to its summoner, so the killer alone
+	// would count a minion's kill as the player's. The dealer is the minion itself for a
+	// minion's blow, and the instigator for every other, so the pair says what the row
+	// says. The header above this function records the ruling and what may move it.
+	APlayerController* Controller = World->GetFirstPlayerController();
+	const ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Player || Notice.Killer != Player)
+	{
+		return;
+	}
+	if (Cast<ACataclysmMinion>(Notice.KillingCauser))
+	{
+		return;
+	}
+
+	if (!Effects::DemonPrinceRises(DungeonGameModeDemonPrinceRoll()))
+	{
+		return;
+	}
+
+	// ITS OWN KIND, WORKED OUT FROM ITS CLASS, and nothing rises for a creature that is
+	// none of the seven. That is Royal Guard's refusal and the same reason: a kind
+	// guessed here would put a creature on the floor the floor's own populator would
+	// never place.
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Slain);
+	if (Kind == ECataclysmDungeonCreature::Count)
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Demon Prince: %s is none of the kinds this dungeon places, so "
+					"nothing rose from it"),
+			   *Slain->GetName());
+		return;
+	}
+
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(Notice.Location);
+	Placement.Creature = Kind;
+
+	ACataclysmEnemyCharacter* Risen =
+		SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier);
+	if (!Risen)
+	{
+		return;
+	}
+
+	// THE RUNG AFTER THE SPAWN, because the spawn gives the creature its kind's own.
+	// The refill both calls end in is right here: what rises has not been fought yet.
+	Risen->SetRarityStep(Effects::DemonPrinceRung);
+	Risen->DrawModifiersForRarity();
+	FloorEnemies.Add(Risen);
+	++DemonPrincesRisen;
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Demon Prince: the player's kill of %s (%s) brought one of its own kind "
+				"at rarity step %d"),
+		   *Slain->GetName(), CataclysmDungeonCreatureName(Kind),
+		   Effects::DemonPrinceRung);
+
+	RefreshFloorModifierPanel();
 }
 
 void ACataclysmDungeonGameMode::OnSomethingWasHit(
@@ -3586,6 +3699,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	if (FloorBrief.Modifiers.Contains(Guarding))
 	{
 		Counting.Add(Guarding, FString::Printf(TEXT("guards %d"), RoyalGuardGuardsArrived));
+	}
+
+	// AND WHETHER THIS FLOOR'S ONE HAS RISEN. A count of one against its ceiling, the
+	// shape Grave Tide's waves use, because this row has a ceiling and Royal Guard's
+	// guards do not.
+	const FName Prince(Effects::DemonPrinceKey);
+	if (FloorBrief.Modifiers.Contains(Prince))
+	{
+		Counting.Add(Prince, FString::Printf(TEXT("prince %d of %d"), DemonPrincesRisen,
+											 Effects::DemonPrincesPerFloor));
 	}
 
 	return Counting;
@@ -5207,6 +5330,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// had its one chance; the guards themselves are in `FloorEnemies` and go the way
 		// every other creature on the floor goes.
 		RoyalGuardGuardsArrived = 0;
+
+		// AND DEMON PRINCE FORGETS THAT ONE ROSE. Issues #1820 and #41. The ceiling is
+		// one a floor, so the next floor may have its own; the creature that rose is in
+		// `FloorEnemies` and goes the way every other creature on the floor goes.
+		DemonPrincesRisen = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape
