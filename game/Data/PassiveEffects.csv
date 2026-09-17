@@ -275,3 +275,7 @@ Ravager_keystone_b_kA#1,Ravager_keystone_b_kA,armor_penetration,flat,100.0,Type.
 Ravager_basic_spine_000#4,Ravager_basic_spine_000,fervour_per_enemy_hit,flat,1.0,,,0.0,,0.0,0,-1.0
 Ritualist_basic_a_b2#1,Ritualist_basic_a_b2,spell_damage,increased,2.0,,,0.0,minions_held,1.0,0,-1.0
 Ravager_capstone_25#4,Ravager_capstone_25,attack_damage,increased,50.0,Type.Melee,metres_moved_before_attack,5.0,,0.0,3,-1.0
+Ravager_capstone_100#1,Ravager_capstone_100,attack_damage,increased,1.0,,,0.0,damage_reduction,2.0,2,-1.0
+Ritualist_basic_d_a2#1,Ritualist_basic_d_a2,spell_damage,increased,1.0,,,0.0,max_mana,200.0,0,-1.0
+Ravager_capstone_50#1,Ravager_capstone_50,health_restored_on_kill_at_no_cost,flat,5.0,,,0.0,,0.0,3,-1.0
+Ritualist_capstone_50#1,Ritualist_capstone_50,fervour_on_enemy_death_nearby,flat,10.0,,,0.0,,0.0,2,-1.0
