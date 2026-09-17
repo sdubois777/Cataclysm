@@ -40,13 +40,39 @@ Uncommon in the game's data is the second crafting material tier in `game/Data/M
 gear is a third vocabulary again in `game/Data/GearRarity.csv` — Everyday, Quality, Superb, Masterful,
 Legendary, Mythical, Ascendant.
 
-**Ruled: it means every rung above the bottom one, so Elite and above.** Flagged to the project owner,
-who may prefer to reword the row. **The reword this entry proposes is "When an above Common ranked
-enemy…", changing nothing else in the sentence.** Until that happens
-`test_royal_guard_row_still_says_uncommon_so_the_ruling_is_read_again` holds the row's word in place: it
-fails the moment anybody rewords it, so the ruling is read again against the new sentence rather than
-inherited by a rule nobody re-checked. It also fails if a rung named Uncommon is ever added to the
-creature ladder, which would make the row mean something else entirely.
+**Ruled: it means every rung above the bottom one, so Elite and above.**
+
+**The project owner has since chosen to reword the row**, decided 2026-09-17 and relayed by the
+coordinating session: "When an above Common ranked enemy drops below 30% health, there is a 50% chance
+they summon two guards of the next higher rank." Nothing else in the sentence changes, and the rule's
+reading does not change either: "above Common ranked" is Elite and above, which is what
+`RoyalGuardLowestRungThatSummons` already holds.
+
+**The reword is not in this change**, because the row's text lives in the design workbook and another
+session holds it. Until it lands,
+`test_royal_guard_row_still_says_uncommon_so_the_ruling_is_read_again` holds the row's present word in
+place. **That check is meant to fail when the reword lands**, and whoever sees it fail should replace
+the word it pins with "above Common ranked" and leave the rung where it is — the decision behind it is
+recorded here, so nothing has to be re-argued. It also fails if a rung named Uncommon is ever added to
+the creature ladder, which would make the row mean something else entirely, and that one is a real
+question rather than a known answer.
+
+### Two other decisions the owner made the same day, recorded here because this branch is what is open
+
+**A revived creature pays nothing a second time.** Decided 2026-09-17 and relayed by the coordinating
+session: a creature that is revived or resurrected is marked, and its second death drops no loot and
+grants no experience. That answers the question raised in the Volatile Evolution entry below, which
+measured the code as it stands — the drop roll and the experience grant sit in the dying creature's own
+handler and read nothing about how many times it has died — and it unblocks
+`Celestial_Divine_Resurgence` and `Death_Dead_Rising`. The mark and the two suppressions are one
+mechanism, to be built with whichever of those rows is taken first. **It does not touch this row:** a
+guard is a new creature that has never died, so it pays in full, which is what the section above says.
+
+**"Waves of undead" in the Grave Tide row is the intended wording.** Decided 2026-09-17 and relayed by
+the coordinating session: the owner intends undead creatures to exist by the time that row matters. The
+Grave Tide entry below says the word "is flavour until there is an undead creature" and was flagged to
+the owner; that sentence is superseded by this one. It is corrected here rather than rewritten there,
+because that entry is a dated record of what was known when it was written.
 
 ### The judgements
 
@@ -847,6 +873,8 @@ a floor." No text in `docs/` says more about it.
 Hellhound, the Brute, the Abyssal Warden, the Corrupted Sentinel, the Succubus and the Gatekeeper, and
 none of them is undead. The waves are made of whatever the floor's own populator picks, and the word is
 flavour until there is an undead creature. Flagged to the owner.
+**Answered 2026-09-17: the owner keeps the word; undead creatures are intended later; see the Royal
+Guard entry.**
 
 ### The judgements
 

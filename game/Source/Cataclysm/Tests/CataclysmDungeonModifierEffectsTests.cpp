@@ -12807,8 +12807,9 @@ bool FCataclysmRoyalGuardRankGateTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDungeonModifierEffectsTest;
 
 	// THE RULED READING OF "ABOVE UNCOMMON RANKED": Elite and above, so the bottom rung
-	// calls nothing. The row's word names no rung this game has; the rule library says so
-	// and the design decisions log proposes a reword to the project owner.
+	// calls nothing. The row's word names no rung this game has; the rule library says so.
+	// The project owner has since chosen to reword the row to "above Common ranked",
+	// which is the same rung, so this test does not move when that lands.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
 	{

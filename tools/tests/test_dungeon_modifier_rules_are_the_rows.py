@@ -2404,21 +2404,26 @@ def test_royal_guard_row_still_says_uncommon_so_the_ruling_is_read_again():
     "ABOVE UNCOMMON RANKED". game/Data/EnemyRarities.csv is Common, Elite, Legendary,
     Herald, Boss, Cataclysm Boss; the only Uncommon in the game's data is the second
     crafting material tier, and gear uses a third vocabulary again. It was ruled to mean
-    Elite and above, and docs/DECISIONS.md proposes the reword "above Common ranked" to
-    the project owner.
+    Elite and above.
 
-    THIS CHECK FAILS WHEN THE ROW IS REWORDED, WHICH IS THE POINT. The ruling was made
-    against a sentence that named nothing; a new sentence has to be read again rather than
-    inherited, and RoyalGuardLowestRungThatSummons re-decided against it.
+    THIS CHECK FAILS WHEN THE ROW IS REWORDED, WHICH IS THE POINT, and the reword is
+    already decided: the project owner chose "above Common ranked" on 2026-09-17, and the
+    row's text lives in the design workbook, so it lands in a later change than the rule.
+    WHEN THIS FAILS WITH THAT WORDING, replace the word this pins and leave
+    RoyalGuardLowestRungThatSummons alone: "above Common ranked" is Elite and above, and
+    docs/DECISIONS.md records the decision. Any OTHER new wording has to be read again
+    from scratch.
     """
     words = flat(rows()["War_Royal_Guard"]["Description"]).lower()
     ladder = flat((REPO_ROOT / "game" / "Data" / "EnemyRarities.csv")
                   .read_text(encoding="utf-8")).lower()
 
     assert "uncommon" in words, (
-        "The Royal Guard row no longer says \"above Uncommon ranked\". That wording is "
-        "what RoyalGuardLowestRungThatSummons was ruled against, so read the new sentence "
-        "and decide the rung again, then update this check and docs/DECISIONS.md. " + words)
+        "The Royal Guard row no longer says \"above Uncommon ranked\". If it now says "
+        "\"above Common ranked\", that is the reword the project owner chose on "
+        "2026-09-17: pin that wording here instead and leave "
+        "RoyalGuardLowestRungThatSummons at Elite. Any other wording has to be read again "
+        "and the rung decided against it. " + words)
     assert "uncommon" not in ladder, (
         "game/Data/EnemyRarities.csv now has an Uncommon rung. The ruling that the row's "
         "word names nothing was made when it had none; re-read it.")

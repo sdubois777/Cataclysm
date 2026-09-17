@@ -1014,8 +1014,10 @@ public:
 	 * is Common, Elite, Legendary, Herald, Boss and Cataclysm Boss; the only Uncommon in
 	 * the game's data is the second crafting material tier in
 	 * `game/Data/MaterialTiers.csv`, and gear uses a third vocabulary again. Ruled to
-	 * mean every rung above the bottom one, so Elite and above, and the design decisions
-	 * log proposes the reword "above Common ranked" for the project owner.
+	 * mean every rung above the bottom one, so Elite and above. THE PROJECT OWNER HAS
+	 * SINCE CHOSEN TO REWORD THE ROW to "above Common ranked", which means the same
+	 * rung and leaves `RoyalGuardLowestRungThatSummons` where it is; the row's text
+	 * lives in the design workbook and the reword lands in a later change.
 	 *
 	 * THE GUARDS ARE ORDINARY CREATURES. Each drops loot and pays experience by its own
 	 * rung when it dies, from its own death handler, so a floor carrying this row is
