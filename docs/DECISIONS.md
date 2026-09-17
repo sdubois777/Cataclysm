@@ -43,7 +43,7 @@ owner by that session.
 | The chance | **10% on each beat**, its own constant | The row says only "a chance". Ten is what this library already uses wherever a row says one — Spore Clouds on death, Hellfire on death, Holy Repercussions on a hit — so it starts there. It is deliberately NOT written as another rule's figure: that would say the four must move together, which nothing in the design says |
 | How far it climbs | **One rung** | The row says "higher rarity" and states no distance |
 | The ceiling | **Herald, the rung under the first boss rung** | One rung higher is a Boss. `ACataclysmEnemyCharacter::IsBoss()` is `RarityStep >= FirstBossRarityStep`, and boss-ness carries the boss stun rule and the boss row of `game/Data/EnemyDrops.csv`. A floor rule must not make a boss out of an ordinary creature in the middle of a fight |
-| How many times | **Once per creature, and the memory outlives the floor** | The rung stays with the creature — nothing in this project puts a rarity back — so a creature that lives through a Horde dungeon's change of wave has already had its one mutation |
+| How many times | **Once per creature, and the memory outlives the floor** | The rung stays with the creature — nothing in this project puts a rarity back — so a creature that lives through a Horde dungeon's change of wave has already had its one mutation. The beat drops every entry whose creature is gone, the way Ravenous Hoard prunes its clocks, so the record does not grow from floor to floor |
 | Its health and energy shield | **Both kept exactly as they were** | See below |
 | The floor panel | **"mutated N"**, a count with no ceiling | The limit is one mutation each, not a number of mutations a floor may have |
 
@@ -110,6 +110,14 @@ existing caller may ask for, which is wider than this row.
 | `CataclysmEnemyCharacter.h`, on `RarityStep` | `SetRarityStep` "has never had a caller outside the automation tests" | It has call sites in three files that are not tests — the dungeon floor spawners, the sandbox spawners and the save restore — and this rule is the fourth. The sentence is kept, dated to when it was true, because it is why the field is typeable |
 | `CataclysmEnemyCharacter.h`, on `RarityStep` | the panel's 0..5 clamp "is what SetRarityStep does" | That function clamps the bottom only. The panel figures are the only ceiling anywhere, and they only reach what somebody types into a Details field |
 | `CataclysmEnemyCharacter.cpp`, in `DrawModifiersForRarity` | "a spawner is the only caller", and the refill "is right for a creature that has only just been spawned" | This rule calls it in the middle of a fight, where the refill is wrong, which is why the rule puts both pools back itself |
+
+**A fourth was found and not corrected here.**
+`game/Source/Cataclysm/Save/CataclysmSaveApply.cpp`, in `FCataclysmSaveApply::CreatureInto`, says of
+setting a restored creature's rarity before its health that "neither scales the other today ... so the
+order is for a reader rather than for the arithmetic". Rarity has scaled the stat block since issue
+#848, so the order is load-bearing, and the next comment in the same function says so. The code is
+correct; only the sentence is wrong, and it is in a file this row does not touch. Filed as
+[#1958](https://github.com/sdubois777/Cataclysm/issues/1958).
 
 ### What the tests do
 
