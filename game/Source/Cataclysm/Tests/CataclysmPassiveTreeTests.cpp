@@ -30,6 +30,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 // For putting a real bleed on a real character. Issue #962.
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
 // For asking the game's own reader how far a character's retaliation reaches
 // and whether it leeches. Issues #1047 and #1048.
 #include "AbilitySystem/CataclysmRetaliation.h"
@@ -12848,6 +12849,226 @@ bool FCataclysmPassiveNeverLetsGoRowTest::RunTest(const FString&)
 											   FCataclysmStatConditions())
 				  .SumOfIncreases,
 			  0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveEveryOneBurstsRowTest,
+	"Cataclysm.Passives.EveryOneBurstsGrantsTheFlagThatExplodesAMinionOnItsDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kB` Every One Bursts, read out of the tables the game
+ * loads. Issue #1515.
+ *
+ * "Every minion explodes when it dies, as one destroyed to make room for another
+ * does, with the radius and damage of the skill that brought it."
+ *
+ * A FLAG OF ONE, because the death path asks whether the stat is above zero
+ * rather than how much of it there is. What a death then does with it is
+ * `Cataclysm.MinionDeath.AFlaggedMinionsDeathExplodesAndHurtsOnlyWhatIsInsideTheRadius`;
+ * this reads the row and the delivery.
+ *
+ * THE STAT HAS NO GAMEPLAY ATTRIBUTE ON PURPOSE, so the assertion that matters
+ * for delivery is that the engine records it: a name missing from
+ * `UCataclysmPlayerClassStats::StatsWithNoAttribute` is recorded nowhere, and
+ * `StatForSkill` would answer nothing however well the row was written.
+ */
+bool FCataclysmPassiveEveryOneBurstsRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Row = RowFor(
+		EffectTable, TEXT("Ritualist_keystone_b_kB"), 0,
+		TEXT("minion_explodes_on_death"));
+	if (!TestNotNull(TEXT("Every One Bursts has the explosion flag"), Row))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), Row->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("under no condition"), Row->Condition, FString());
+	TestEqual(TEXT("and on no scale"), Row->Scale, FString());
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* Flag = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ritualist_keystone_b_kB"), 1, 0,
+		TEXT("minion_explodes_on_death"));
+	if (!TestNotNull(TEXT("taking the keystone grants the flag"), Flag))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth one"),
+			  UCataclysmStatPipeline::Evaluate(0.0f, *Flag,
+											   FGameplayTagContainer()).Final,
+			  1.0f, 0.001f);
+	TestTrue(TEXT("and the engine records the stat, which has no attribute"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(TEXT("minion_explodes_on_death"))));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveVolatileRowTest,
+	"Cataclysm.Passives.VolatileGrantsThreePerCentOfExplosionDamageAPoint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_b_a2` Volatile, read out of the tables the game loads.
+ * Issue #1515.
+ *
+ * "+3% increased damage of the explosion a minion leaves per point."
+ *
+ * EIGHT POINTS IS THE WHOLE NODE and +24%, which is worth asserting rather than
+ * the single point: a row whose value per point was written as the total would
+ * pass a one-point reading and be worth an eighth of what it says.
+ *
+ * WHICH EXPLOSION IT REACHES is `Cataclysm.MinionDeath.` -- the death's and the
+ * summon cap's alike, because the stat is read inside `ACataclysmMinion::Explode`
+ * rather than at either caller.
+ */
+bool FCataclysmPassiveVolatileRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Row = RowFor(
+		EffectTable, TEXT("Ritualist_basic_b_a2"), 0,
+		TEXT("minion_explosion_damage"));
+	if (!TestNotNull(TEXT("Volatile has an explosion damage row"), Row))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as an increase"), Row->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of three a point"), Row->ValuePerPoint, 3.0f);
+	TestEqual(TEXT("under no condition"), Row->Condition, FString());
+	TestEqual(TEXT("and on no scale"), Row->Scale, FString());
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* Damage = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ritualist_basic_b_a2"), 8, 0,
+		TEXT("minion_explosion_damage"));
+	if (!TestNotNull(TEXT("eight points grant explosion damage"), Damage))
+	{
+		return false;
+	}
+	TestEqual(TEXT("eight points are twenty-four per cent"),
+			  UCataclysmStatPipeline::Evaluate(100.0f, *Damage,
+											   FGameplayTagContainer())
+				  .SumOfIncreases,
+			  24.0f, 0.001f);
+	TestTrue(TEXT("and the engine records the stat, which has no attribute"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(TEXT("minion_explosion_damage"))));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRitualFocusRowTest,
+	"Cataclysm.Passives.RitualFocusTakesASkillsManaCostToNothingWhileStandingStill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_d_kB` Ritual Focus, read out of the tables the game loads.
+ * Issue #1515.
+ *
+ * "Skills you cast while standing still cost no mana."
+ *
+ * A REMOVAL RATHER THAN A REDUCTION, and the first removal row in
+ * `game/Data/PassiveEffects.csv`. The pipeline clamps a Less multiplier at -99
+ * on purpose, so a rule that says "no mana" cannot be written as a reduction at
+ * all; twenty-five removals exist on the enchantment side and this is the shape
+ * they use.
+ *
+ * BOTH STATES ARE MEASURED, and that is the point of the case. A removal under a
+ * condition that is never true costs nothing and reads exactly like one that is
+ * always true, if only the standing-still half is asked.
+ *
+ * THE COST IS A FIGURE THE CALLER SUPPLIES rather than one the character has,
+ * which is why the mechanism added
+ * `UCataclysmAbilitySystemComponent::StatAppliedTo`. This case runs the same
+ * pipeline on the same figure, so it reads the row rather than the ability.
+ */
+bool FCataclysmPassiveRitualFocusRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Row = RowFor(
+		EffectTable, TEXT("Ritualist_keystone_d_kB"), 0,
+		UCataclysmSkillSlots::ManaCostStat);
+	if (!TestNotNull(TEXT("Ritual Focus has a mana cost row"), Row))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as a removal"), Row->ValueKind,
+			  FString(TEXT("removed")));
+	TestEqual(TEXT("of one, which is how a removal states itself"),
+			  Row->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("while standing still"), Row->Condition,
+			  FString(TEXT("while_stationary")));
+	TestEqual(TEXT("and on no scale"), Row->Scale, FString());
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* Cost = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ritualist_keystone_d_kB"), 1, 0,
+		UCataclysmSkillSlots::ManaCostStat);
+	if (!TestNotNull(TEXT("taking the keystone grants the removal"), Cost))
+	{
+		return false;
+	}
+
+	// FORTY IS A SKILL'S STATED COST, handed in as the figure the stat applies
+	// to, which is what `StatAppliedTo` does with a skill's own cost.
+	const float Stated = 40.0f;
+
+	FCataclysmStatConditions Still;
+	Still.bIsMoving = false;
+	Still.SecondsSinceMoved = 1.0f;
+	TestEqual(TEXT("standing still, the skill costs nothing"),
+			  UCataclysmStatPipeline::Evaluate(Stated, *Cost,
+											   FGameplayTagContainer(), Still)
+				  .Final,
+			  0.0f, 0.001f);
+
+	FCataclysmStatConditions Moving;
+	Moving.bIsMoving = true;
+	Moving.SecondsSinceMoved = 0.0f;
+	TestEqual(TEXT("and moving, it costs what it states"),
+			  UCataclysmStatPipeline::Evaluate(Stated, *Cost,
+											   FGameplayTagContainer(), Moving)
+				  .Final,
+			  Stated, 0.001f);
+
+	TestTrue(TEXT("and the engine records the stat, which has no attribute"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(UCataclysmSkillSlots::ManaCostStat)));
 	return true;
 }
 
