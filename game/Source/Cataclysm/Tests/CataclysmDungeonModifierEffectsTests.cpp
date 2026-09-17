@@ -13,11 +13,13 @@
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmMovement.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
+#include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Components/CapsuleComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -150,6 +152,9 @@ namespace CataclysmDungeonModifierEffectsTest
 
 	/** And the one whose hurt creatures call two guards. Issues #1820, #41. */
 	const FName RoyalGuard(UCataclysmDungeonModifierEffects::RoyalGuardKey);
+
+	/** And the one where the player's kill brings a greater creature. Issues #1820, #41. */
+	const FName DemonPrince(UCataclysmDungeonModifierEffects::DemonPrinceKey);
 
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
@@ -619,6 +624,62 @@ namespace CataclysmDungeonModifierEffectsTest
 		Creature->SetRarityStep(Rung);
 		WoundCreatureTo(Creature, MaxHealthOf(Creature) * ShareOfMaximum, 0.0f);
 		return Creature;
+	}
+
+	/**
+	 * An Imp with the health given, which is a creature of a KIND the dungeon places.
+	 * Issues #1820 and #41.
+	 *
+	 * A KIND AND NOT THE PLAIN CLASS, because Demon Prince brings a creature of the slain
+	 * one's kind and reads that kind off its class. The plain `ACataclysmEnemyCharacter`
+	 * the helpers above spawn is none of the seven, which is its own test.
+	 */
+	ACataclysmEnemyCharacter* SpawnImpWithHealth(UWorld* World, const FVector& Where,
+												float Health)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Imp = World->SpawnActor<ACataclysmImpCharacter>(
+			ACataclysmImpCharacter::StaticClass(), Where, FRotator::ZeroRotator, Spawn);
+		if (!Imp)
+		{
+			return nullptr;
+		}
+		if (UAbilitySystemComponent* System = Imp->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Health);
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), Health);
+
+			// AND IT CANNOT DODGE, WHICH IS WHAT MAKES A TEST KILL CERTAIN. An ordinary
+			// blow is rolled against the defender's evasion --
+			// `UCataclysmDamageCalculation` returns with nothing dealt when the roll
+			// lands under it -- and the roll is random, so a test that kills a creature
+			// with an ordinary blow fails sometimes and passes sometimes. Measured: in
+			// three runs of these tests, four then one then three failed on "the blow
+			// killed it", and a different set each time. A block cannot cause this: a
+			// block only takes a share off the damage.
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		}
+		Imp->SetActorLocation(Where);
+		return Imp;
+	}
+
+	/** Every living creature in the world, for telling what a death brought. */
+	TArray<ACataclysmEnemyCharacter*> LivingCreatures(UWorld* World)
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			if (IsValid(*It) && !UCataclysmSkillEffects::IsDead(*It))
+			{
+				Found.Add(*It);
+			}
+		}
+		return Found;
 	}
 
 	ACataclysmEnemyCharacter* SpawnCreatureThatCanHit(UWorld* World, float AlongX)
@@ -10120,6 +10181,7 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	Rules.Add(GraveTide);
 	Rules.Add(VolatileEvolution);
 	Rules.Add(RoyalGuard);
+	Rules.Add(DemonPrince);
 	Mode->DungeonModifiers = Rules;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
 	{
@@ -13294,6 +13356,779 @@ bool FCataclysmRoyalGuardFloorChangeTest::RunTest(const FString& Parameters)
 	// and rises only when a guard arrives.
 	TestEqual(TEXT("and it gets no second chance on the new floor"), PanelLine(),
 			  FString(TEXT("guards 0")));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Demon_Prince: "Occassionally when you slay an enemy, a demonic prince will rip
+// out through it's corpse and attack you." The row's own spellings. Issues #1820 and #41.
+//
+// WHAT EVERY TEST HERE NEEDS. `Mode->StartPlay()`, because a test world never calls it and
+// the death announcement is connected there; a creature of a KIND the dungeon places,
+// because what rises is the slain one's kind; and a real blow, because the notice's killer
+// is read off the last blow on record.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrinceRiseTest,
+	"Cataclysm.DungeonModifierEffects.SlayingACreatureBringsAPrinceOfItsOwnKindAtHerald",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrinceRiseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW, WHOLE: the player kills an Imp and an Imp of the rung below the first boss
+	// rung stands where it died, whole, and the floor holds it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DemonPrinceRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the prince roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(DemonPrince);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {DemonPrince};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("a floor just built has had no prince"), PanelLine(),
+			  FString::Printf(TEXT("prince 0 of %d"), Effects::DemonPrincesPerFloor));
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp to slay"), Slain))
+	{
+		return false;
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Before = LivingCreatures(World);
+	const int32 FloorEnemiesBefore = Mode->FloorEnemies.Num();
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+	if (!TestTrue(TEXT("the player's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Risen;
+	for (ACataclysmEnemyCharacter* Creature : LivingCreatures(World))
+	{
+		if (!Before.Contains(Creature))
+		{
+			Risen.Add(Creature);
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("Demon Prince: the player's kill brought %d creature(s); "
+								 "the panel says %s"),
+							Risen.Num(), *PanelLine()));
+
+	if (!TestEqual(TEXT("one creature rose from the corpse"), Risen.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("of the slain creature's own kind: %s against %s"),
+							 *Risen[0]->GetClass()->GetName(),
+							 *Slain->GetClass()->GetName()),
+			 Risen[0]->GetClass() == Slain->GetClass());
+	TestEqual(TEXT("at the rung below the first boss rung"), Risen[0]->RarityStep,
+			  Effects::DemonPrinceRung);
+	TestFalse(TEXT("which is not a boss"), Risen[0]->IsBoss());
+	TestEqual(FString::Printf(TEXT("and it arrives whole: %.2f of %.2f"),
+							  HealthOf(Risen[0]), MaxHealthOf(Risen[0])),
+			  HealthOf(Risen[0]), MaxHealthOf(Risen[0]), 0.0f);
+	TestTrue(TEXT("and the floor holds it, so a floor change disposes of it"),
+			 Mode->FloorEnemies.Contains(Risen[0]));
+	TestEqual(TEXT("the floor's list grew by one"), Mode->FloorEnemies.Num(),
+			  FloorEnemiesBefore + 1);
+	TestEqual(TEXT("and the panel counts it"), PanelLine(),
+			  FString::Printf(TEXT("prince 1 of %d"), Effects::DemonPrincesPerFloor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrinceChanceTest,
+	"Cataclysm.DungeonModifierEffects.APrinceComesOnARollUnderTheChanceAndNotOnTheChanceItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrinceChanceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// "OCCASSIONALLY", ON ITS BOUNDARY: a roll of exactly ten misses and a roll under ten
+	// brings one. The row states no figure, so ten is the ruled judgement and this test is
+	// where it is written down in behaviour.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {DemonPrince};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
+	{
+		FScopedConsoleString OnTheChance(
+			TEXT("Cataclysm.DemonPrinceRoll"),
+			*FString::Printf(TEXT("%f"), Effects::DemonPrinceChancePercent));
+		if (!TestNotNull(TEXT("the prince roll can be pinned"), OnTheChance.Variable))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* First =
+			SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+		if (!TestNotNull(TEXT("an Imp to slay"), First))
+		{
+			return false;
+		}
+		const int32 Before = LivingCreatures(World).Num();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, First, 100000.0f);
+		if (!TestTrue(TEXT("the player's blow killed it"),
+					  UCataclysmSkillEffects::IsDead(First)))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("a roll of exactly %.0f brings nothing"),
+								  Effects::DemonPrinceChancePercent),
+				  LivingCreatures(World).Num(), Before - 1);
+	}
+
+	{
+		FScopedConsoleString UnderTheChance(
+			TEXT("Cataclysm.DemonPrinceRoll"),
+			*FString::Printf(TEXT("%f"), Effects::DemonPrinceChancePercent - 0.01f));
+		if (!TestNotNull(TEXT("the prince roll can be pinned again"),
+						 UnderTheChance.Variable))
+		{
+			return false;
+		}
+		ACataclysmEnemyCharacter* Second =
+			SpawnImpWithHealth(World, FVector(900.0f, 0.0f, 0.0f), 100.0f);
+		if (!TestNotNull(TEXT("a second Imp to slay"), Second))
+		{
+			return false;
+		}
+		const int32 Before = LivingCreatures(World).Num();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Second, 100000.0f);
+		if (!TestTrue(TEXT("the player's blow killed it"),
+					  UCataclysmSkillEffects::IsDead(Second)))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("a roll of %.2f brings one"),
+								  Effects::DemonPrinceChancePercent - 0.01f),
+				  LivingCreatures(World).Num(), Before);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrinceOtherKillerTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureKilledByAnotherCreatureBringsNoPrince",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrinceOtherKillerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// "WHEN YOU SLAY AN ENEMY". This is the first of these death rules to ask who did the
+	// killing; the nine before it fire on any creature's death.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DemonPrinceRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the prince roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {DemonPrince};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
+	ACataclysmEnemyCharacter* Slayer =
+		SpawnImpWithHealth(World, FVector(300.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp to do the killing"), Slayer)
+		|| !TestNotNull(TEXT("an Imp to be killed"), Slain))
+	{
+		return false;
+	}
+
+	// AND THE KILLER NEEDS DAMAGE OF ITS OWN. A creature spawned bare carries none, and a
+	// blow worth nothing kills nobody, so the test would prove nothing about who did the
+	// killing. Measured before this line existed: this test failed on "a creature's blow
+	// killed it" while every test where the player struck passed.
+	const float SlayersDamage = GiveCreatureAttackDamage(Slayer, 100.0f);
+	if (!TestTrue(FString::Printf(TEXT("the killer hits for something: %.2f"),
+								  SlayersDamage),
+				  SlayersDamage > 0.0f))
+	{
+		return false;
+	}
+
+	const int32 Before = LivingCreatures(World).Num();
+	UCataclysmSkillEffects::ApplyHit(Slayer, Slain, 100000.0f);
+	if (!TestTrue(FString::Printf(TEXT("a creature's blow killed it: dead is %s"),
+								  UCataclysmSkillEffects::IsDead(Slain)
+									  ? TEXT("true") : TEXT("false")),
+				  UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a death the player did not cause brings nothing"),
+			  LivingCreatures(World).Num(), Before - 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrinceMinionKillTest,
+	"Cataclysm.DungeonModifierEffects.AKillDealtByASummonedMinionBringsNoPrince",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrinceMinionKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// A MINION'S KILL IS NOT THE PLAYER'S, under the project owner's decision that a
+	// minion's hits are the minion's own.
+	//
+	// WHY THIS NEEDS TWO TESTS IN THE RULE AND NOT ONE. A minion's blow is CREDITED to its
+	// summoner -- `FCataclysmHitNotice::Attacker` says so -- so the killer on the notice is
+	// the player here. What tells them apart is the actor that dealt it, which
+	// `ACataclysmMinion` sets to the minion on the delivery. This test builds the same
+	// delivery that class builds rather than driving a minion's own attack.
+	//
+	// IF THE CONDUIT KEYSTONE LATER MAKES A MINION'S KILL THE PLAYER'S, this test is what
+	// will fail, and it should: the decision behind it will have changed.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DemonPrinceRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the prince roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {DemonPrince};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Player.Character, FVector(400.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a summoned minion"), Minion)
+		|| !TestNotNull(TEXT("an Imp to be killed"), Slain))
+	{
+		return false;
+	}
+
+	const int32 Before = LivingCreatures(World).Num();
+
+	// THE EMPTY TAG CONTAINER IS THE FOURTH ARGUMENT AND THE DELIVERY THE FIFTH.
+	// `ApplyHit` takes the blow's skill tags before its delivery, and a delivery passed
+	// in the fourth place does not compile.
+	FCataclysmHitDelivery Delivery;
+	Delivery.DealtBy = Minion;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f,
+									 FGameplayTagContainer(), Delivery);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a kill dealt by a minion brings nothing"),
+			  LivingCreatures(World).Num(), Before - 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrinceCeilingTest,
+	"Cataclysm.DungeonModifierEffects.OnlyOnePrinceAFloorHoweverManyDie",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrinceCeilingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE CEILING, RULED AND NOT STATED BY THE ROW: one a floor, so a floor cannot fill
+	// with them however many creatures the player kills.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DemonPrinceRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the prince roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(DemonPrince);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {DemonPrince};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
+	int32 Risen = 0;
+	for (int32 Kill = 0; Kill < 3; ++Kill)
+	{
+		ACataclysmEnemyCharacter* Slain = SpawnImpWithHealth(
+			World, FVector(600.0f + 300.0f * Kill, 0.0f, 0.0f), 100.0f);
+		if (!TestNotNull(TEXT("an Imp to slay"), Slain))
+		{
+			return false;
+		}
+		const int32 Before = LivingCreatures(World).Num();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+		if (!TestTrue(TEXT("the player's blow killed it"),
+					  UCataclysmSkillEffects::IsDead(Slain)))
+		{
+			return false;
+		}
+		Risen += LivingCreatures(World).Num() - (Before - 1);
+	}
+
+	TestEqual(FString::Printf(TEXT("three kills brought %d"), Risen), Risen,
+			  Effects::DemonPrincesPerFloor);
+	TestEqual(TEXT("and the panel says the floor has had its one"), PanelLine(),
+			  FString::Printf(TEXT("prince %d of %d"), Effects::DemonPrincesPerFloor,
+							  Effects::DemonPrincesPerFloor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrinceNoKindTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureOfNoKindBringsNoPrince",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrinceNoKindTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// WHAT RISES IS THE SLAIN CREATURE'S KIND, AND A CREATURE MAY BE NO KIND AT ALL. The
+	// plain `ACataclysmEnemyCharacter` is none of the seven the dungeon places, so nothing
+	// rises and the log says so -- the refusal Royal Guard makes, for the same reason.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DemonPrinceRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the prince roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {DemonPrince};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
+	ACataclysmEnemyCharacter* Nameless =
+		SpawnCreatureWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature of no kind"), Nameless))
+	{
+		return false;
+	}
+	// AND IT CANNOT DODGE EITHER, for the reason `SpawnImpWithHealth` gives: an ordinary
+	// blow is rolled against evasion, and a test kill has to be certain.
+	if (UAbilitySystemComponent* System = Nameless->GetAbilitySystemComponent())
+	{
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	}
+
+	const int32 Before = LivingCreatures(World).Num();
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Nameless, 100000.0f);
+	if (!TestTrue(TEXT("the player's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Nameless)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("nothing rises from a creature of no kind"),
+			  LivingCreatures(World).Num(), Before - 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrinceFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeLetsTheNextFloorHaveItsOwnPrince",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrinceFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ONE A FLOOR AND NOT ONE A DUNGEON. The count goes at the stairs, so the next floor
+	// may have its own. A Horde dungeon's next wave is used, because there the creatures
+	// live through the change and nothing else about the floor is replaced.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DemonPrinceRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the prince roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(DemonPrince);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	const auto KillAnImpAndCountWhatRose = [&](float AlongX)
+	{
+		ACataclysmEnemyCharacter* Slain =
+			SpawnImpWithHealth(World, FVector(AlongX, 0.0f, 0.0f), 100.0f);
+		if (!Slain)
+		{
+			return -1;
+		}
+		const int32 Before = LivingCreatures(World).Num();
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+		if (!UCataclysmSkillEffects::IsDead(Slain))
+		{
+			return -1;
+		}
+		return LivingCreatures(World).Num() - (Before - 1);
+	};
+
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {DemonPrince};
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+
+	// EMPTIED FOR THE REASON WRITTEN IN THE TESTS ABOVE: reaching a floor populates it,
+	// and this test counts what its own kills bring.
+	Mode->ClearFloorEnemies();
+
+	if (!TestEqual(TEXT("the first floor has its one"), KillAnImpAndCountWhatRose(600.0f),
+				   Effects::DemonPrincesPerFloor)
+		|| !TestEqual(TEXT("and a second kill on that floor brings nothing"),
+					  KillAnImpAndCountWhatRose(900.0f), 0))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("the new floor counts none"), PanelLine(),
+			  FString::Printf(TEXT("prince 0 of %d"), Effects::DemonPrincesPerFloor));
+
+	TestEqual(TEXT("and the new floor may have its own"),
+			  KillAnImpAndCountWhatRose(1200.0f), Effects::DemonPrincesPerFloor);
+	TestEqual(TEXT("which the panel counts"), PanelLine(),
+			  FString::Printf(TEXT("prince %d of %d"), Effects::DemonPrincesPerFloor,
+							  Effects::DemonPrincesPerFloor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrincePanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelSaysWhetherThePrinceHasRisen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrincePanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT THE PLAYER IS TOLD: a count against its ceiling, the shape Grave Tide's waves
+	// use, because this row has a ceiling of one and Royal Guard's guards have none.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DemonPrinceRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the prince roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(DemonPrince);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {DemonPrince};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// AND EMPTIED OF THE CREATURES STARTING PLAY PUT ON IT. `StartPlay` above populates
+	// floor one, and those creatures draw their own modifiers: one of them, Unholy Sigils,
+	// reads "Allies in this sigil cannot be killed". Measured before this line existed:
+	// four of these tests failed on "the blow killed it", with the log showing over a
+	// hundred creatures in the world. What is left here is what the test spawns.
+	Mode->ClearFloorEnemies();
+
+	TestEqual(TEXT("a floor just built has had none"), PanelLine(),
+			  FString::Printf(TEXT("prince 0 of %d"), Effects::DemonPrincesPerFloor));
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp to slay"), Slain))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+	if (!TestTrue(TEXT("the player's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and then the floor has had its one"), PanelLine(),
+			  FString::Printf(TEXT("prince %d of %d"), Effects::DemonPrincesPerFloor,
+							  Effects::DemonPrincesPerFloor));
+
+	// AND A FLOOR WITHOUT THE ROW SAYS NOTHING OF PRINCES.
+	Mode->DungeonModifiers = {DeathsEmbrace};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row has no line of its own"), PanelLine(),
+			  FString(TEXT("no line")));
 
 	return true;
 }

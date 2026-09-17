@@ -1649,6 +1649,25 @@ private:
 	void NoteDeathForHellfire(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Demon Prince: a creature the PLAYER killed may bring a greater one of its own kind
+	 * out of its corpse. Issues #1820 and #41.
+	 *
+	 * THE FIRST OF THESE LISTENERS TO ASK WHO DID THE KILLING. The nine above it fire on
+	 * any creature's death; this row's sentence is "when you slay an enemy".
+	 *
+	 * WHICH IS TWO QUESTIONS, NOT ONE. `FCataclysmDeathNotice::Killer` is the blow's
+	 * instigator, and a minion's blow is credited to its summoner, so the killer is the
+	 * player when a minion lands the blow as well. `KillingCauser` is the actor that
+	 * dealt it, which is the minion itself for a minion's blow, so the rule asks for the
+	 * killer to be the player AND the dealer not to be a minion.
+	 *
+	 * RULED UNDER THE PROJECT OWNER'S DECISION that a minion's hits are the minion's own.
+	 * If the Conduit keystone later makes a minion's kill the player's, this reads the
+	 * dealer and would follow it.
+	 */
+	void NoteDeathForDemonPrince(const struct FCataclysmDeathNotice& Notice);
+
+	/**
 	 * Brand of the Aggressor's stack, on a blow the PLAYER landed on a creature.
 	 * Issues #1820 and #41.
 	 *
@@ -2204,6 +2223,16 @@ private:
 	 */
 	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> RoyalGuardRolled;
 	int32 RoyalGuardGuardsArrived = 0;
+
+	/**
+	 * Demon Prince: how many have risen on this floor, which the floor panel shows and
+	 * which is the whole of the rule's state. Issues #1820 and #41.
+	 *
+	 * A COUNT AND NOT A RECORD OF CREATURES, unlike the two rules above. The ceiling is
+	 * per floor rather than per creature -- a creature that has died cannot be asked
+	 * again -- so there is nothing to remember about anybody. It goes at the stairs.
+	 */
+	int32 DemonPrincesRisen = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

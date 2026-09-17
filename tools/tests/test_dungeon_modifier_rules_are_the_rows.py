@@ -2443,3 +2443,82 @@ def test_royal_guards_ceiling_is_the_mutation_rules_ceiling_and_not_its_own_numb
         "RoyalGuardHighestRung is no longer declared as VolatileEvolutionHighestRung. If "
         "the two rules are meant to stop at different rungs now, say why in "
         "docs/DECISIONS.md and tie the new one to the first boss rung as the other is.")
+
+
+def test_demon_prince_row_states_no_number_of_its_own():
+    """Every figure this rule uses is judged: its row states none.
+
+    "OCCASSIONALLY" IS THE ROW'S WHOLE STATEMENT OF THE CHANCE. If the row ever states a
+    figure -- a percentage, a count, a rank -- this fails, so the constant is read off the
+    row and docs/DECISIONS.md stops calling it a judgement.
+    """
+    words = flat(rows()["Demonic_Demon_Prince"]["Description"])
+
+    assert "%" not in words, words
+    assert not [c for c in words if c.isdigit()], (
+        "The Demon Prince row now states a number. Check DemonPrinceChancePercent, "
+        "DemonPrincesPerFloor and DemonPrinceRung against it and update "
+        "docs/DECISIONS.md. " + words)
+
+
+def test_demon_prince_row_still_says_a_kill_you_made_brings_one_from_the_corpse():
+    """The three phrases the rule's readings rest on, in the row's own spelling.
+
+    "OCCASSIONALLY" is why a death rolls rather than always bringing one. "WHEN YOU SLAY AN
+    ENEMY" is why this is the first of these death rules to ask who did the killing. "RIP
+    OUT THROUGH IT'S CORPSE" is why what rises stands where the creature died and is of its
+    kind.
+
+    THE ROW'S OWN SPELLINGS ARE PINNED AS THEY STAND -- "Occassionally" and "it's" -- so a
+    silent tidy fails this check and is put to the project owner as a reword, the way the
+    Royal Guard row's "above Uncommon ranked" was. The design data is the design; nobody
+    corrects it on the way past.
+    """
+    words = flat(rows()["Demonic_Demon_Prince"]["Description"])
+
+    assert "Occassionally" in words, (
+        "The Demon Prince row no longer opens with its own spelling of \"Occassionally\". "
+        "If that was a deliberate reword, read the sentence again and update this check "
+        "and docs/DECISIONS.md; if it was a tidy, the design data is the design. " + words)
+    assert "when you slay an enemy" in words.lower(), (
+        "The Demon Prince row no longer says the player must do the killing. The rule asks "
+        "for the killer to be the player and the blow not to be dealt by a minion because "
+        "it did. " + words)
+    assert "it's corpse" in words.lower(), (
+        "The Demon Prince row no longer says the creature rises from the slain one's "
+        "corpse -- in the row's own spelling, \"it's\". What rises stands on the cell the "
+        "creature died on because it did. " + words)
+
+
+def test_demon_princes_chance_is_its_own_number_and_not_another_rules():
+    """The chance is a judgement of its own, deliberately not bound to a neighbour.
+
+    TEN IS THE HOUSE FIGURE for a chance on a death or a hit, and this row starts from it.
+    Binding it to another rule's constant would say the two must move together, which the
+    ruling did not say. Royal Guard's fifty is not a precedent either: that row states its
+    own figure and this one does not.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    assert re.search(r"\bDemonPrinceChancePercent\s*=\s*\d+(?:\.\d+)?f\s*;", text), (
+        "DemonPrinceChancePercent is no longer a number of its own. If it is now another "
+        "rule's figure, say why in docs/DECISIONS.md.")
+    assert re.search(r"\bDemonPrincesPerFloor\s*=\s*\d+\s*;", text), (
+        "DemonPrincesPerFloor is no longer a number of its own.")
+
+
+def test_demon_princes_rung_is_the_shared_ceiling_and_not_a_third_number():
+    """Three rules now stop below the first boss rung, and they say so in one place.
+
+    A THIRD 3 WOULD BE THE SAME FACT A THIRD TIME with nothing holding the copies together.
+    Only Volatile Evolution's constant is tied to
+    ACataclysmEnemyCharacter::FirstBossRarityStep, by the static_assert a check above this
+    one guards, and the other two are declared as that constant.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    assert re.search(
+        r"\bDemonPrinceRung\s*=\s*VolatileEvolutionHighestRung\s*;", text), (
+        "DemonPrinceRung is no longer declared as VolatileEvolutionHighestRung. If this "
+        "rule is meant to stop at a different rung now, say why in docs/DECISIONS.md and "
+        "tie the new figure to the first boss rung as that one is.")

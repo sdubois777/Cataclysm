@@ -1027,6 +1027,30 @@ public:
 	static const TCHAR* RoyalGuardKey;
 
 	/**
+	 * The row where a creature the PLAYER kills can bring a greater one out of its corpse.
+	 * Issues #1820 and #41.
+	 *
+	 * A KILL THE PLAYER MADE HAS `DemonPrinceChancePercent` OF BRINGING ONE, at most
+	 * `DemonPrincesPerFloor` a floor. What rises is a creature of the slain one's own kind
+	 * at `DemonPrinceRung`, standing where it died.
+	 *
+	 * "A DEMONIC PRINCE" NAMES NO CREATURE THIS GAME HAS. The seven kinds a floor places
+	 * are the Imp, the Hellhound, the Brute, the Abyssal Warden, the Corrupted Sentinel,
+	 * the Succubus and the Gatekeeper. Ruled: the slain creature's own kind, raised to the
+	 * rung below the first boss rung, until the project owner names a creature for it.
+	 *
+	 * THE KILL MUST BE THE PLAYER'S OWN, WHICH IS TWO TESTS AND NOT ONE. The row says
+	 * "when you slay an enemy". A minion's blow is credited to its summoner --
+	 * `FCataclysmHitNotice::Attacker` says so in `CataclysmCombatEvents.h` -- so the
+	 * killer being the player is true of a minion's kill as well. The rule also requires
+	 * the blow's dealer not to be a minion, which is the field that tells them apart.
+	 * Ruled under the project owner's decision that a minion's hits are the minion's own;
+	 * the Conduit keystone may change that, and this rule reads the dealer, so it would
+	 * follow whatever that change decides.
+	 */
+	static const TCHAR* DemonPrinceKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2341,6 +2365,36 @@ public:
 		"A threshold at full health or at none, a chance of nothing, no guards at all, or "
 		"a rule that every creature answers is not the row.");
 
+	/**
+	 * The chance a kill the player made brings a greater creature out of the corpse.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation. The row says
+	 * "Occassionally" -- its own spelling -- and states no figure.
+	 *
+	 * ITS OWN NUMBER, STARTING FROM THE HOUSE FIGURE. Ten is what this library uses
+	 * wherever a row says a chance on a death or a hit: `SporeCloudsChancePercentOnDeath`,
+	 * `HellfireChancePercentOnDeath` and `HolyRepercussionsChancePercentOnHit`. Royal
+	 * Guard's fifty is not a precedent for it: that figure is stated by that row.
+	 */
+	static constexpr float DemonPrinceChancePercent = 10.0f;
+
+	/** How many may rise on one floor. A JUDGEMENT: one, so a floor cannot fill. */
+	static constexpr int32 DemonPrincesPerFloor = 1;
+
+	/**
+	 * The rung the risen creature stands at: the same ceiling the other two rules use.
+	 *
+	 * NOT A THIRD NUMBER, for the reason `RoyalGuardHighestRung` gives: one fact, one
+	 * place, and the tie to `ACataclysmEnemyCharacter::FirstBossRarityStep` lives beside
+	 * Volatile Evolution's ceiling in `CataclysmDungeonGameMode.cpp`.
+	 */
+	static constexpr int32 DemonPrinceRung = VolatileEvolutionHighestRung;
+
+	static_assert(
+		DemonPrinceChancePercent > 0.0f && DemonPrinceChancePercent <= 100.0f
+			&& DemonPrincesPerFloor > 0,
+		"A chance of nothing, or no creature allowed to rise at all, is not the row.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -3124,6 +3178,16 @@ public:
 	 * THE CEILING IS HERE AND NOWHERE ELSE, so there is one place it can be wrong.
 	 */
 	static int32 RoyalGuardRungForGuards(int32 RarityStep);
+
+	/** Whether a roll of 0 to 100 brings a greater creature out of a corpse. */
+	static bool DemonPrinceRises(float Roll);
+
+	/**
+	 * Whether another may rise on a floor that has already had this many.
+	 *
+	 * THE CEILING IS HERE AND NOWHERE ELSE, so there is one place it can be wrong.
+	 */
+	static bool DemonPrinceMayRise(int32 RisenSoFar);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
