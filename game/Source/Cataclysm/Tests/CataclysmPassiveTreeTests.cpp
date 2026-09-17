@@ -9763,8 +9763,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnstoppableOnARealCharacterTes
 
 /**
  * `Ravager_keystone_spine_003` Unstoppable, and it is the only one of the eight
- * with TWO rows: "You cannot be stunned, slowed or knocked back while an enemy
- * is within 4 metres of you."
+ * with TWO rows: "You cannot be stunned, slowed, knocked back or knocked down
+ * while an enemy is within 4 metres of you."
  *
  * THE ATTRIBUTES DO NOT MOVE AND THAT IS THE POINT RATHER THAN A MISS. Both rows
  * carry a condition, and a conditioned row is never folded into a gameplay
@@ -12734,6 +12734,120 @@ bool FCataclysmPassiveFedByTheFallenRowTest::RunTest(const FString&)
 	TestNotNull(TEXT("and the stat has an attribute for ApplyTo to write"),
 				UCataclysmPlayerClassStats::StatToAttribute().Find(
 					FString(UCataclysmFervour::OnEnemyDeathNearbyStat)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveNeverLetsGoRowTest,
+	"Cataclysm.Passives.NeverLetsGoAlwaysCripplesAndAddsDamageAgainstCrippledEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The First Onslaught's second option, Never Lets Go, read out of the tables the
+ * game loads. Issue #1515.
+ *
+ * "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20%
+ * increased damage to Crippled enemies."
+ *
+ * ITS TWO ROWS ARE DELIVERED BY DIFFERENT ROUTES, which is why both are asserted
+ * here. The Cripple chance carries no condition, so it folds into the gameplay
+ * attribute that the ailment roll reads -- `UCataclysmAilments` asks
+ * `GetCrippleChanceAttribute`, and a conditioned row would never reach it. The
+ * attack damage row does carry a condition, so it is resolved at the blow with
+ * the target's debuffs in hand and never touches an attribute at all.
+ *
+ * FOUR SECONDS IS NOT A ROW. Cripple already lasts four seconds in
+ * `game/Data/StatusEffects.csv`, so the sentence's figure is true without a row
+ * granting it, and nothing here pretends one does.
+ */
+bool FCataclysmPassiveNeverLetsGoRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Chance = RowFor(
+		EffectTable, TEXT("Ravager_capstone_25"), 2, TEXT("cripple_chance"));
+	if (!TestNotNull(TEXT("Never Lets Go has a cripple chance row"), Chance))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated flat"), Chance->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of a hundred"), Chance->ValuePerPoint, 100.0f);
+	TestEqual(TEXT("under no condition, so it folds into the attribute"),
+			  Chance->Condition, FString());
+	TestEqual(TEXT("and on no scale"), Chance->Scale, FString());
+
+	const FCataclysmPassiveEffectRow* Damage = RowFor(
+		EffectTable, TEXT("Ravager_capstone_25"), 2, TEXT("attack_damage"));
+	if (!TestNotNull(TEXT("and an attack damage row"), Damage))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as an increase"), Damage->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of twenty"), Damage->ValuePerPoint, 20.0f);
+	TestEqual(TEXT("only against a crippled target"), Damage->Condition,
+			  FString(TEXT("target_carries_cripple")));
+	TestEqual(TEXT("for every attack rather than melee alone"),
+			  Damage->RequiredTags, FString());
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* Chances = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ravager_capstone_25"), 1, 2,
+		TEXT("cripple_chance"));
+	if (!TestNotNull(TEXT("choosing Never Lets Go grants the cripple chance"),
+					 Chances))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth a hundred"),
+			  UCataclysmStatPipeline::Evaluate(0.0f, *Chances,
+											   FGameplayTagContainer()).Final,
+			  100.0f, 0.001f);
+	TestNotNull(TEXT("and the chance has the attribute the ailment roll reads"),
+				UCataclysmPlayerClassStats::StatToAttribute().Find(
+					FString(TEXT("cripple_chance"))));
+
+	const TArray<FCataclysmStatModifier>* AttackDamage =
+		Out.Find(FName(TEXT("attack_damage")));
+	if (!TestNotNull(TEXT("and the attack damage"), AttackDamage))
+	{
+		return false;
+	}
+	// ONE ROW AND NOT THE OTHER OPTIONS' TWO. The First Onslaught's first and
+	// third options both grant attack damage as well, so a chosen option that
+	// was not honoured would show up here as three modifiers.
+	TestEqual(TEXT("one attack damage row, the chosen option's"),
+			  AttackDamage->Num(), 1);
+
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	if (!TestTrue(TEXT("the Cripple tag exists in the vocabulary"),
+				  Cripple.IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatConditions Crippled;
+	Crippled.TargetDebuffs.AddTag(Cripple);
+	TestEqual(TEXT("twenty against a crippled target"),
+			  UCataclysmStatPipeline::Evaluate(100.0f, *AttackDamage,
+											   FGameplayTagContainer(), Crippled)
+				  .SumOfIncreases,
+			  20.0f, 0.001f);
+	TestEqual(TEXT("and nothing against a target that is not"),
+			  UCataclysmStatPipeline::Evaluate(100.0f, *AttackDamage,
+											   FGameplayTagContainer(),
+											   FCataclysmStatConditions())
+				  .SumOfIncreases,
+			  0.0f, 0.001f);
 	return true;
 }
 

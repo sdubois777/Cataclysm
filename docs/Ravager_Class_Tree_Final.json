@@ -309,7 +309,7 @@
       "data": {
         "kind": "keystone",
         "name": "Unstoppable",
-        "description": "You cannot be stunned, slowed or knocked back while an enemy is within 4 metres of you.",
+        "description": "You cannot be stunned, slowed, knocked back or knocked down while an enemy is within 4 metres of you.",
         "currentPoints": 0,
         "color": "#cbd5e1",
         "maxPoints": 1

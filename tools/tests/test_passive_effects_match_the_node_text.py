@@ -551,7 +551,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: scales; `Long Hold` (`Ravager_capstone_50`, option 3) and `Fed by the
 #: Fallen` (`Ritualist_capstone_50`, option 2), on the two death stats that
 #: cost nothing. Issue #1515.
-AUTHORED_ROWS = 280
+#: AND TO 282 ON 2026-09-17. Two rows for `Never Lets Go`
+#: (`Ravager_capstone_25`, option 2), which needed nothing built: a
+#: hundred `cripple_chance`, and 20% increased attack damage under the
+#: condition that already existed for a crippled target. Issue #1515.
+AUTHORED_ROWS = 282
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -973,7 +977,10 @@ AUTHORED_NODES = 206
 #: AND TO 22 ON 2026-09-17: `Weight Against Them`, `Long Hold` and `Fed by the
 #: Fallen`, one capstone option each; `Drawn Deep` is a plain node and moves
 #: `AUTHORED_NODES` alone. Issue #1515.
-AUTHORED_OPTIONS = 22
+#: AND TO 23 ON 2026-09-17: `Never Lets Go`, the First Onslaught's second
+#: option. Its node already had rows for the other two options, so
+#: `AUTHORED_NODES` does not move. Issue #1515.
+AUTHORED_OPTIONS = 23
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1348,7 +1355,13 @@ CONDITION_WORDS = {
     # NO `CONDITION_WORDS_MUST_NOT_SAY` ENTRY IS NEEDED, and that was checked
     # rather than assumed: none of these three fragments is a substring of
     # either other sentence, which is the condition that map exists for.
-    "target_carries_cripple": ("against crippled enemies", None),
+    # TWO WORDINGS OF ONE PREDICATE. Issue #1515. `Ravager_basic_c_a2` says
+    # "against Crippled enemies" and `Never Lets Go` says "damage to
+    # Crippled enemies"; both are the same promise, and widening the entry
+    # is what this table's own comment says to do rather than wording the
+    # design prose around the test.
+    "target_carries_cripple": (("against crippled enemies",
+                                "damage to crippled enemies"), None),
     "target_carries_cripple_and_weaken": ("both crippled and weakened", None),
 
     # AND THE ONE THAT ASKS ABOUT THE ATTACKER RATHER THAN THE TARGET. Spreading
@@ -2230,12 +2243,24 @@ VALUE_IN_WORDS = {
         ("cannot be evaded", 1.0),
 
     # UNSTOPPABLE IS ONE SENTENCE AND TWO ROWS, so it appears twice with two
-    # different phrases from it. The stun and the shove are one stat at a
-    # hundred, which is what "cannot" means for a stat that scales an amount;
+    # different phrases from it. The stun, the shove and the knockdown are one
+    # stat at a hundred -- the knockdown since issue #1815 on 2026-09-17, which
+    # is why the sentence now names it -- and that is what "cannot" means for a
+    # stat that scales an amount;
     # the slow is a separate flag because movement speed is not crowd control
     # resistance and is resolved somewhere else entirely.
     ("Ravager_keystone_spine_003", "crowd_control_resistance"):
         ("cannot be stunned", 100.0),
+
+    # AND THE FIRST ONSLAUGHT'S SECOND OPTION, NEVER LETS GO. Issue #1515.
+    # "Enemies you hit are Crippled for 4 seconds, and your attacks deal 20%
+    # increased damage to Crippled enemies." A hundred per cent chance is what
+    # "are Crippled" means for a stat that is rolled, and the sentence states
+    # no chance in digits. The 4 is Cripple's own duration in
+    # game/Data/StatusEffects.csv and belongs to no row; the 20 belongs to the
+    # attack damage row, which the digit check matches with no exemption.
+    ("Ravager_capstone_25", "cripple_chance"):
+        ("enemies you hit are crippled", 100.0),
     ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
         ("slowed", 1.0),
 
