@@ -200,3 +200,6 @@ Negative_You_have_no_health_mana_es_regen#3,Negative_You_have_no_health_mana_es_
 Positive_Starvation_2_Piece_Bonus_You_have_5_life_m#1,Positive_Starvation_2_Piece_Bonus_You_have_5_life_m,life_leech,flat,5.0,5.0,,,0.0,,0.0,,,
 Positive_Starvation_2_Piece_Bonus_You_have_5_life_m#2,Positive_Starvation_2_Piece_Bonus_You_have_5_life_m,mana_leech,flat,5.0,5.0,,,0.0,,0.0,,,
 Positive_Starvation_2_Piece_Bonus_You_have_5_life_m#3,Positive_Starvation_2_Piece_Bonus_You_have_5_life_m,energy_shield_leech,flat,5.0,5.0,,,0.0,,0.0,,,
+Negative_You_cannot_evade_or_block_melee_attacks#1,Negative_You_cannot_evade_or_block_melee_attacks,evasion,removed,1.0,1.0,,hit_is_melee_attack,0.0,,0.0,,,
+Negative_You_cannot_evade_or_block_melee_attacks#2,Negative_You_cannot_evade_or_block_melee_attacks,block_chance,removed,1.0,1.0,,hit_is_melee_attack,0.0,,0.0,,,
+Negative_Cannot_evade_melee_attacks#1,Negative_Cannot_evade_melee_attacks,evasion,removed,1.0,1.0,,hit_is_melee_attack,0.0,,0.0,,,

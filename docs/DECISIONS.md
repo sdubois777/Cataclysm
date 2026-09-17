@@ -121,6 +121,105 @@ option's row stated in the test:
 
 ---
 
+## 2026-09-17 — A melee blow is not evaded or blocked under the two drawbacks that say so, and why five sentences read beside them are not written
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the "Enchantment Effects" sheet: 3 rows),
+`game/Data/EnchantmentEffects.csv` and the DataTable asset built from it, the row-count pins
+in `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`CataclysmDataTableTests.cpp` and `docs/README.md`, and the test named below. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The rows
+
+| Sentence | Rows |
+| :-- | :-- |
+| You cannot evade or block melee attacks | `evasion` removed and `block_chance` removed, each under `hit_is_melee_attack` |
+| Cannot evade melee attacks | `evasion` removed, under `hit_is_melee_attack` |
+
+204 rows over 162 enchantments, from 201 over 160; 25 of the rows are removals, from 22.
+They are the first removals with a condition.
+
+**No code.** Both rolls in `UCataclysmDamageCalculation` already ask for their stat with the
+blow in hand, `BlowOf(Hit)`, and their comments name both sentences: that was issue
+[#947](https://github.com/sdubois777/Cataclysm/issues/947).
+`UCataclysmStatPipeline::ModifierApplies` judges a row's condition before any bucket reads
+it, so a removal counts only for a blow its condition holds for, and a conditioned row is
+never folded into the attribute. Those two rolls are the only places the source marks a
+blow evaded or blocked.
+
+**What the first row leaves as it was.** Area damage and damage over time are never rolled
+for evasion, with or without it. A block is rolled against area damage too, so an area blow
+that is melee is not blocked under it.
+
+### The judgement
+
+A labelled judgement, ruled 2026-09-17 under the project owner's delegation: **"melee
+attacks" are the blows `hit_is_melee_attack` holds for**, a blow whose effect carries
+`Type.Melee` and is not a spell. It is how the written "You take 15%-30% less damage from
+melee attacks" rows already read the words.
+
+### Ruled with them and not written
+
+**"While below 30% HP you are immune to crowd control"** was ruled writable the same day, as
+`crowd_control_resistance` flat 100 under `health_below` 30, and is not written. **The stat
+does not reach a knockdown**, so the sentence needs a mechanism first:
+
+- `UCataclysmSkillEffects::AfterCrowdControlResistance` is called from `ApplyStun` and from
+  the one body behind knockback, pull, drag and launch. `ApplyKnockdown` does not call it; it
+  applies the shared immunity window, a running skill's immunity, the damage threshold and
+  the boss rule.
+- Knockdown was built on 2026-09-01
+  ([#1151](https://github.com/sdubois777/Cataclysm/pull/1151)). The owner's decision of
+  2026-09-05, "Crowd control resistance shortens a stun and a shove, and at 100 stops them",
+  names stuns and shoves and does not mention a knockdown.
+- The design counts a knockdown as crowd control of the hardest kind: "A knockdown is a hard
+  stop, so it carries all three parts of the rule." A skill's own `Immune=CrowdControl` does
+  stop one, because `UCataclysmSkillTemplate::IsImmuneTo` matches that word for every effect
+  it is asked about.
+- Every knockdown the source applies comes from a weapon skill stating
+  `ForcedMovement=Knockdown`, from the `knockdown_seconds` stat a charge reads, or from Pit
+  and Fissure terrain, which sweeps its source's enemies. Whether any of them can reach a
+  player today was not established: an enemy can be given a starting ability set, and what
+  those sets hold was not read. The sentence would be false the day one does.
+
+The word rule the row needed, "immune" read as 100 on that stat and no other, is not written
+either, because nothing would use it. The ruling also read a slow as not crowd control, so
+Cripple would still land; that stands for when the row is written.
+
+**"Every hit you take deals an additional 5%-10% of your maximum HP as bonus damage"** is
+held, ruled 2026-09-17 under the project owner's delegation. Bonus damage is a damage
+instance, which the character's mitigation and its on-damage effects should see. The drain
+rule of [#1931](https://github.com/sdubois777/Cataclysm/pull/1931) writes the pool, floors
+at 1 health, is not mitigated and sets off nothing, so it is a different thing, and the row
+waits for an action that deals typed damage to the wearer. **The open question for that action:**
+the `hit_taken` event fires from `UCataclysmAbilitySystemComponent::NoteHitTaken`, which
+`UCataclysmVitalAttributeSet` calls for every blow that reaches the character, blocked,
+evaded or dealing nothing. Whether a damage over time tick reaches it was not established.
+
+### Looked writable and is not
+
+- **"After blocking you cannot block again for 1-2 seconds"** and **"After dodging you cannot
+  dodge again for 1-2 seconds"**. A `block_chance` or `evasion` removal under
+  `seconds_after_block` or `seconds_after_dodge` would say it, except that 1-2 is the window.
+  `UCataclysmItemValues::EnchantmentTextAtRoll` puts the item's roll in place of every range
+  the sentence states, and a condition value does not roll, so the text and the window would
+  disagree. Both wait for a condition value that rolls.
+- **"Can't inflict bleeding"**. Removing `bleed_chance` and `bleed_on_crit_chance` reaches
+  those two chances and nothing else, and 25 of the 403 weapon skills are tagged
+  `Keyword.DoT.Bleed` and describe bleeding, so the sentence would be false of them by
+  design. It waits for a mechanism that closes every route to a bleed, unless the narrow
+  reading is ruled.
+
+### Tests
+
+`Cataclysm.Enchantments.AnAuthoredRowLetsNoMeleeBlowBeEvadedOrBlockedAndLeavesTheRest`
+wears "You cannot evade or block melee attacks" from the built table over a Jerkin's evasion
+and a Shield's block chance, with both rolls pinned: a melee blow is neither evaded nor
+blocked, and a ranged blow is still both. In Python, the row-count and removal-count pins,
+which make the two removal checks read the new rows.
+
+---
+
 ## 2026-09-17 — Necrotic Ground spreads a fog that halves the healing of a player standing in it, heals the creatures in it, and burns the player once a second however many patches cover them
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the

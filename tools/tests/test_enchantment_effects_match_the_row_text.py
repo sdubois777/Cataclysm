@@ -319,14 +319,19 @@ JUDGED_NUMBERS = {
 #: AND 201 OVER 160 SINCE THE ELEVEN SENTENCES THAT REMOVE A STAT AND
 #: STARVATION'S 2-PIECE BONUS, from 176 over 148, issue
 #: #1791. "You have no resistances." is eight rows, one per resistance.
-AUTHORED_ROWS = 201
-AUTHORED_ENCHANTMENTS = 160
+#: AND 204 OVER 162 SINCE "You cannot evade or block melee attacks" AND
+#: "Cannot evade melee attacks", from 201 over 160, issue #1815. The
+#: first is two rows, one removal each for evasion and block chance.
+AUTHORED_ROWS = 204
+AUTHORED_ENCHANTMENTS = 162
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
 #: `test_every_removed_row_states_one` pass on a table holding no removal at
 #: all, which is what a table built before the rows existed looks like.
-REMOVED_ROWS = 22
+#: AND 25 SINCE THE THREE MELEE REMOVALS, from 22, issue #1815: the first
+#: removals with a condition, which take the stat away from a melee blow alone.
+REMOVED_ROWS = 25
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's
@@ -764,6 +769,7 @@ def test_the_removed_rows_are_the_ones_counted_here(effects):
     assert removed == REMOVED_ROWS, (
         f"{removed} rows remove their stat, pinned at {REMOVED_ROWS}. Change "
         f"the pin with the rows.")
+
 
 def test_every_flag_stat_row_states_one(effects):
     """A stat whose value is a yes states 1, so the exemption above cannot come
