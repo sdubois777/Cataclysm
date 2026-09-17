@@ -65,7 +65,9 @@ Two consequences, read from the code and not tested:
 - **A rule listening for hits sees each burn.** `Famine_Wasting_Sickness` counts every blow that
   lands on the player without asking who dealt it, as the Blood Altar entry records for its pulse.
   So on a floor carrying both rows, each second in the fog is a 10% chance of a Wasting Sickness
-  stack, and those stacks last the dungeon.
+  stack, and those stacks last the dungeon. Issue
+  [#1946](https://github.com/sdubois777/Cataclysm/issues/1946) asks the owner which blows should
+  roll for a stack, and lists the other floor rules whose damage rolls for one too.
 
 ### The combined healing cut with Death's Embrace
 
@@ -86,13 +88,15 @@ still announced.
 `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls `UCataclysmCombatEvents::NoteBlow`,
 which is the only place `OnHit` is broadcast, only inside `if (LocalDamage > 0.0f)`.
 
-**Measured: not yet.** This change's Unreal run measures it, and the result is written here before
-the change merges. The test is `ACreatureBlowOfZeroDamageIsNotAnnouncedAsAHit`: a creature whose
-attack damage is 0, set through `ACataclysmEnemyCharacter::SetAttackDamage` as Illusory Enemies sets
-it, strikes the player through `UCataclysmSkillEffects::ApplyHit`, and a listener bound to `OnHit`
-counts the notices that name it. A listener rather than Wasting Sickness, because that rule ignores
-a notice that landed nothing either way. The control, a creature at attack damage 100, must be
-announced once with a landed amount above 0 whatever the probe shows.
+**Measured on head 86f475b4, as predicted: not announced.** The full Unreal run of this change
+performed 1988 tests and all 1988 succeeded, this one among them. So a rule listening for hits is
+not told of a creature blow of zero damage dealt through `UCataclysmSkillEffects::ApplyHit`, the
+route the test measured. The test is `ACreatureBlowOfZeroDamageIsNotAnnouncedAsAHit`: a creature
+whose attack damage is 0, set through `ACataclysmEnemyCharacter::SetAttackDamage` as Illusory
+Enemies sets it, strikes the player through `UCataclysmSkillEffects::ApplyHit`, and a listener bound
+to `OnHit` counts the notices that name it. A listener rather than Wasting Sickness, because that
+rule ignores a notice that landed nothing either way. The control, a creature at attack damage 100,
+must be announced once with a landed amount above 0 whatever the probe shows.
 
 ### The tests
 
@@ -111,7 +115,9 @@ C++, `Cataclysm.DungeonModifierEffects.`, five new:
 - **`TheFogBurnsThePlayerOnceASecondAndDeathResistanceMeetsIt`.** A second in the fog with Death
   resistance raised by 50, against the same second with Void raised by 50, through issue #1924's
   helpers. Then two patches moved onto the player take one burn in a second, not two, and a second
-  outside the fog takes nothing.
+  outside the fog takes nothing. Measured on 86f475b4: the second took 431.0 health with Death
+  resistance raised and 861.9 with Void raised, from a player of 100,000 maximum health, so the
+  1,000 the burn deals reaches health as 861.9.
 - **`ACreatureBlowOfZeroDamageIsNotAnnouncedAsAHit`**, the probe above.
 
 One changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** carries Necrotic Ground as
@@ -158,7 +164,7 @@ Sources: [PoEDB: Consecrated Ground](https://poedb.tw/us/Consecrated_Ground),
 - **Where a patch lands on a real floor.** A patch is placed by distance and direction only, as an
   Infernal Rain patch is. Nothing checks that the spot is walkable or inside the arena, so a patch
   can land in a wall and later patches can spread from it. Read from the code.
-- **Wasting Sickness on the same floor**, above.
+- **Wasting Sickness on the same floor**, above, and issue #1946.
 - **A boss regenerating.** Reading 2 includes bosses, and no test uses one.
 - **The drawing.** The patches take their colours from the Death row of
   `game/Data/ElementVisuals.csv`. Nobody has looked at them in the editor.
