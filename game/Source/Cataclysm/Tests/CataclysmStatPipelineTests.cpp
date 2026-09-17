@@ -3045,4 +3045,152 @@ bool FCataclysmPipelineEnemiesStruckBeyondTheFirstTest::RunTest(const FString& P
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineDamageReductionScaleTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanGrowWithWholeStepsOfDamageReduction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A bonus sized by the character's damage reduction. Issue #1515.
+ *
+ * `Ravager_capstone_100`'s second option, Weight Against Them: "+1% increased
+ * Attack Damage for every 2% of Damage Reduction you have." This is the
+ * arithmetic alone, handed a reading. Where the reading comes from, and the cap
+ * it stops at, is
+ * `Cataclysm.ConditionalDamage.AttackDamageGrowsWithTheDamageReductionTheCharacterHasUpToItsCap`.
+ */
+bool FCataclysmPipelineDamageReductionScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	FCataclysmStatModifier PerTwoPercent = Increased(1.0f);
+	PerTwoPercent.Scale = ECataclysmStatScale::PerPercentOfDamageReduction;
+	PerTwoPercent.ScaleStep = 2.0f;
+	const TArray<FCataclysmStatModifier> Weight = { PerTwoPercent };
+
+	const auto Reducing = [](float Percent)
+	{
+		FCataclysmStatConditions State;
+		State.DamageReductionPercent = Percent;
+		return State;
+	};
+
+	// THE NAME A ROW WILL CARRY, the one `tools/generate_datatables.py` knows.
+	ECataclysmStatScale Named = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("the sheet's name damage_reduction is known"),
+		FPipeline::ScaleNamed(TEXT("damage_reduction"), Named));
+	TestEqual(TEXT("and it is this scale"), static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatScale::PerPercentOfDamageReduction));
+
+	TestEqual(TEXT("no damage reduction is worth nothing"),
+		FPipeline::Evaluate(100.0f, Weight, NoTags, Reducing(0.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("10% is five steps of two, so +5%"),
+		FPipeline::Evaluate(100.0f, Weight, NoTags, Reducing(10.0f)).Final,
+		105.0f, 0.01f);
+
+	// WHOLE STEPS, ROUNDED DOWN: 9% is four completed steps of two, not four
+	// and a half.
+	TestEqual(TEXT("9% is still four steps"),
+		FPipeline::Evaluate(100.0f, Weight, NoTags, Reducing(9.0f)).Final,
+		104.0f, 0.01f);
+
+	// NOTHING TO READ SCALES TO NOTHING, which is a different statement from
+	// having none: the character sheet has no character in hand.
+	TestEqual(TEXT("a caller that knows nothing about the character gets nothing"),
+		FPipeline::Evaluate(100.0f, Weight, NoTags).Final, 100.0f, 0.01f);
+	TestEqual(TEXT("and so does one that says outright there is nothing to read"),
+		FPipeline::Evaluate(100.0f, Weight, NoTags, Reducing(-1.0f)).Final,
+		100.0f, 0.01f);
+
+	// A STEP OF NOTHING IS WORTH NOTHING rather than dividing by zero.
+	FCataclysmStatModifier NoStep = PerTwoPercent;
+	NoStep.ScaleStep = 0.0f;
+	const TArray<FCataclysmStatModifier> Stepless = { NoStep };
+	TestEqual(TEXT("a step of nothing is worth nothing"),
+		FPipeline::Evaluate(100.0f, Stepless, NoTags, Reducing(50.0f)).Final,
+		100.0f, 0.01f);
+
+	// AND IT READS ITS OWN FIELD. A state that knows only the maximum mana is
+	// worth nothing to it, so a case reading the other new field fails here.
+	FCataclysmStatConditions ManaOnly;
+	ManaOnly.MaximumMana = 1'000.0f;
+	TestEqual(TEXT("maximum mana alone is worth nothing to it"),
+		FPipeline::Evaluate(100.0f, Weight, NoTags, ManaOnly).Final,
+		100.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineMaximumManaScaleTest,
+	"Cataclysm.StatPipeline.AnIncreaseCanGrowWithWholeStepsOfMaximumMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A bonus sized by the character's maximum mana. Issue #1515.
+ *
+ * `Ritualist_basic_d_a2` Drawn Deep: "+1% increased Spell Damage per point for
+ * every full 200 maximum mana you have." The arithmetic alone, handed a
+ * reading. Where the reading comes from is
+ * `Cataclysm.ConditionalDamage.SpellDamageGrowsWithTheMaximumManaAndNotTheManaInHand`.
+ */
+bool FCataclysmPipelineMaximumManaScaleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	FCataclysmStatModifier PerFullTwoHundred = Increased(1.0f);
+	PerFullTwoHundred.Scale = ECataclysmStatScale::PerPointOfMaximumMana;
+	PerFullTwoHundred.ScaleStep = 200.0f;
+	const TArray<FCataclysmStatModifier> Deep = { PerFullTwoHundred };
+
+	const auto WithMaximum = [](float Mana)
+	{
+		FCataclysmStatConditions State;
+		State.MaximumMana = Mana;
+		return State;
+	};
+
+	ECataclysmStatScale Named = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("the sheet's name max_mana is known"),
+		FPipeline::ScaleNamed(TEXT("max_mana"), Named));
+	TestEqual(TEXT("and it is this scale"), static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatScale::PerPointOfMaximumMana));
+
+	TestEqual(TEXT("no maximum mana is worth nothing"),
+		FPipeline::Evaluate(100.0f, Deep, NoTags, WithMaximum(0.0f)).Final,
+		100.0f, 0.01f);
+
+	// "EVERY FULL 200": 199 is not one, 200 is.
+	TestEqual(TEXT("199 is not a full 200"),
+		FPipeline::Evaluate(100.0f, Deep, NoTags, WithMaximum(199.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("200 is one step"),
+		FPipeline::Evaluate(100.0f, Deep, NoTags, WithMaximum(200.0f)).Final,
+		101.0f, 0.01f);
+	TestEqual(TEXT("450 is two full steps"),
+		FPipeline::Evaluate(100.0f, Deep, NoTags, WithMaximum(450.0f)).Final,
+		102.0f, 0.01f);
+
+	TestEqual(TEXT("a caller that knows nothing about the character gets nothing"),
+		FPipeline::Evaluate(100.0f, Deep, NoTags).Final, 100.0f, 0.01f);
+	TestEqual(TEXT("and so does one that says outright there is nothing to read"),
+		FPipeline::Evaluate(100.0f, Deep, NoTags, WithMaximum(-1.0f)).Final,
+		100.0f, 0.01f);
+
+	FCataclysmStatModifier NoStep = PerFullTwoHundred;
+	NoStep.ScaleStep = 0.0f;
+	const TArray<FCataclysmStatModifier> Stepless = { NoStep };
+	TestEqual(TEXT("a step of nothing is worth nothing"),
+		FPipeline::Evaluate(100.0f, Stepless, NoTags, WithMaximum(1'000.0f)).Final,
+		100.0f, 0.01f);
+
+	// AND IT READS ITS OWN FIELD, the mirror of the check in the test above.
+	FCataclysmStatConditions ReductionOnly;
+	ReductionOnly.DamageReductionPercent = 50.0f;
+	TestEqual(TEXT("damage reduction alone is worth nothing to it"),
+		FPipeline::Evaluate(100.0f, Deep, NoTags, ReductionOnly).Final,
+		100.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

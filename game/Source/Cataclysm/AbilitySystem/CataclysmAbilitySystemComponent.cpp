@@ -9,6 +9,9 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 // For the minions a scaling bonus counts. Issue #1518.
 #include "AbilitySystem/CataclysmCommand.h"
+// For the damage reduction cap, which a reading counted by a scaling bonus
+// stops at, the same cap a hit stops at. Issue #1515.
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the debuffs a conditional or scaling bonus asks about. Issue #962.
 #include "AbilitySystem/CataclysmDebuffs.h"
 // For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
@@ -654,6 +657,44 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// investment a character has made, not the figure it happens to have
 		// while standing in the right place.
 		State.LifeLeechPercent = FMath::Max(0.0f, ForLeech->GetLifeLeech());
+	}
+
+	// AND HOW MUCH DAMAGE REDUCTION THE CHARACTER HAS. Issue #1515. Weight
+	// Against Them grows with it: "+1% increased Attack Damage for every 2% of
+	// Damage Reduction you have."
+	//
+	// A PLAIN ATTRIBUTE READ, FOR THE REASON THE LIFE LEECH READING ABOVE GIVES.
+	// This value is an input to the pipeline, so asking the pipeline for it
+	// would evaluate a stat in order to build the state the evaluation needs.
+	// A damage reduction row that holds only in a situation changes what a hit
+	// takes and does NOT change what this bonus is worth.
+	//
+	// THROUGH THE FUNCTION A HIT USES, so the reading stops at the cap the
+	// protection stops at. A judgement ruled on 2026-09-17: "the Damage
+	// Reduction you have" is the figure that reduces damage.
+	//
+	// LEFT UNKNOWN WITHOUT A COMBAT ATTRIBUTE SET, where damage reduction lives.
+	if (const UCataclysmCombatAttributeSet* ForReduction =
+			GetSet<UCataclysmCombatAttributeSet>())
+	{
+		State.DamageReductionPercent =
+			UCataclysmDamageCalculation::EffectiveDamageReduction(
+				ForReduction->GetDamageReduction());
+	}
+
+	// AND HOW MUCH MAXIMUM MANA THE CHARACTER HAS. Issue #1515. Drawn Deep grows
+	// with it: "+1% increased Spell Damage per point for every full 200 maximum
+	// mana you have."
+	//
+	// THE MAXIMUM AND NOT THE MANA IN HAND, which is what the sentence says. A
+	// spell that spends mana does not shrink the bonus of the spell after it.
+	//
+	// A PLAIN ATTRIBUTE READ, FLOORED AT ZERO, for the reasons the readings above
+	// give. Left unknown without a vital attribute set.
+	if (const UCataclysmVitalAttributeSet* ForMana =
+			GetSet<UCataclysmVitalAttributeSet>())
+	{
+		State.MaximumMana = FMath::Max(0.0f, ForMana->GetMaxMana());
 	}
 
 	// AND HOW MANY STACKS OF EACH KIND ARE STANDING. Issues #1002, #1003 and

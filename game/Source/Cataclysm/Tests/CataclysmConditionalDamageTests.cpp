@@ -1859,4 +1859,177 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmOneBlowOpensExactlyTheRightWindowsByTableTe
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// A bonus sized by another stat the character has. Issue #1515.
+//
+// WHY THESE GO THROUGH A REAL HIT. The reading is taken in
+// `UCataclysmAbilitySystemComponent::CurrentConditions` from the attacker's own
+// attribute sets, and nothing here states it: a test that handed the pipeline a
+// reading would go on passing with the line that takes it deleted.
+// --------------------------------------------------------------------------
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmAttackDamageGrowsWithDamageReductionTest,
+	"Cataclysm.ConditionalDamage.AttackDamageGrowsWithTheDamageReductionTheCharacterHasUpToItsCap")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// WEIGHT AGAINST THEM, the Ravager's 100-point capstone's second option:
+	// "+1% increased Attack Damage for every 2% of Damage Reduction you have."
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	Attacker.Combat->SetAttackDamage(1'000.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatModifier WeightAgainstThem;
+	WeightAgainstThem.Bucket = ECataclysmStatBucket::Increased;
+	WeightAgainstThem.Source = ECataclysmModifierSource::PassiveKeystone;
+	WeightAgainstThem.Value = 1.0f;
+	WeightAgainstThem.Scale = ECataclysmStatScale::PerPercentOfDamageReduction;
+	WeightAgainstThem.ScaleStep = 2.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(1'000.0f));
+	Inputs.Modifiers.Add(WeightAgainstThem);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("attack_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// THE ATTACKER'S OWN DAMAGE REDUCTION, which protects the attacker and does
+	// nothing to the target. None is the figure every other hit is compared with.
+	Attacker.Combat->SetDamageReduction(0.0f);
+	const float WithNone = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	if (!TestTrue(FString::Printf(TEXT("the first hit lands (%.0f)"), WithNone),
+				  WithNone > 0.0f))
+	{
+		return false;
+	}
+
+	Attacker.Combat->SetDamageReduction(10.0f);
+	const float AtTen = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	TestEqual(FString::Printf(
+		TEXT("10%% damage reduction is five steps, +5%%, and was %.4f times"),
+		AtTen / WithNone),
+		AtTen / WithNone, 1.05f, 0.001f);
+
+	// WHOLE STEPS, ROUNDED DOWN.
+	Attacker.Combat->SetDamageReduction(9.0f);
+	const float AtNine = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	TestEqual(FString::Printf(
+		TEXT("9%% is still four steps, +4%%, and was %.4f times"),
+		AtNine / WithNone),
+		AtNine / WithNone, 1.04f, 0.001f);
+
+	// AND NO MORE THAN THE CAP. 90% stored is 75% that reduces anything, which
+	// is 37 whole steps of two, not 45.
+	Attacker.Combat->SetDamageReduction(90.0f);
+	const float AtNinety = HealthLostTo(Attacker, Target, FGameplayTagContainer());
+	TestEqual(FString::Printf(
+		TEXT("90%% counts as the 75%% cap, 37 steps, +37%%, and was %.4f times"),
+		AtNinety / WithNone),
+		AtNinety / WithNone, 1.37f, 0.001f);
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageGrowsWithMaximumManaTest,
+	"Cataclysm.ConditionalDamage.SpellDamageGrowsWithTheMaximumManaAndNotTheManaInHand")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// DRAWN DEEP at its full six points: "+1% increased Spell Damage per point
+	// for every full 200 maximum mana you have", so six percentage points for
+	// each full 200.
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Attacker(World);
+	ACataclysmEnemyCharacter* Target = SpawnTarget(World, TEXT("Demonic"));
+	if (!TestNotNull(TEXT("a target"), Target))
+	{
+		return false;
+	}
+
+	// NO WEAPON DAMAGE AT ALL, so the whole hit is the spell damage.
+	Attacker.Combat->SetAttackDamage(0.0f);
+	Attacker.Combat->SetSpellDamage(500.0f);
+	Attacker.AbilitySystem->SetAttackDamageIncreases(0.0f);
+
+	FCataclysmStatModifier DrawnDeep;
+	DrawnDeep.Bucket = ECataclysmStatBucket::Increased;
+	DrawnDeep.Source = ECataclysmModifierSource::PassiveKeystone;
+	DrawnDeep.Value = 6.0f;
+	DrawnDeep.Scale = ECataclysmStatScale::PerPointOfMaximumMana;
+	DrawnDeep.ScaleStep = 200.0f;
+
+	FCataclysmStatInputs Inputs;
+	Inputs.Base = 0.0f;
+	Inputs.Modifiers.Add(FlatFromGear(500.0f));
+	Inputs.Modifiers.Add(DrawnDeep);
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("spell_damage")), Inputs);
+	Attacker.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	// NO MAXIMUM MANA, the figure every other hit is compared with.
+	Attacker.Vitals->SetMaxMana(0.0f);
+	Attacker.Vitals->SetMana(0.0f);
+	const float WithNone = HealthLostTo(Attacker, Target, SpellTags());
+	if (!TestTrue(FString::Printf(TEXT("the first spell lands (%.0f)"), WithNone),
+				  WithNone > 0.0f))
+	{
+		return false;
+	}
+
+	// WHOLE STEPS: 399 is one full 200. The pool is full here and below, so
+	// only the last case tells the maximum from the mana in hand.
+	Attacker.Vitals->SetMaxMana(399.0f);
+	Attacker.Vitals->SetMana(399.0f);
+	const float AtOneStep = HealthLostTo(Attacker, Target, SpellTags());
+	TestEqual(FString::Printf(
+		TEXT("399 maximum mana is one full 200, +6%%, and was %.4f times"),
+		AtOneStep / WithNone),
+		AtOneStep / WithNone, 1.06f, 0.001f);
+
+	Attacker.Vitals->SetMaxMana(450.0f);
+	Attacker.Vitals->SetMana(450.0f);
+	const float AtTwoSteps = HealthLostTo(Attacker, Target, SpellTags());
+	TestEqual(FString::Printf(
+		TEXT("450 is two full 200s, +12%%, and was %.4f times"),
+		AtTwoSteps / WithNone),
+		AtTwoSteps / WithNone, 1.12f, 0.001f);
+
+	// AND SPENDING THE POOL CHANGES NOTHING, because the sentence counts the
+	// maximum mana you have and not the mana in hand.
+	Attacker.Vitals->SetMana(0.0f);
+	const float Spent = HealthLostTo(Attacker, Target, SpellTags());
+	TestEqual(FString::Printf(
+		TEXT("with the pool spent it is still +12%%, and was %.4f times"),
+		Spent / WithNone),
+		Spent / WithNone, 1.12f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
