@@ -101,12 +101,14 @@ public:
 	 * Harbingers -- because the design means them to last the floor. Issue
 	 * #1605.
 	 *
-	 * SO IT NEVER CALLS `SetLifeSpan`, AND NOTHING ELSE HAD TO CHANGE FOR
-	 * THAT TO WORK. `UCataclysmFloorContents::ClearTheFloor` already destroys
-	 * every zone in the world when the player leaves a floor, so the floor
-	 * ending is what ends this. The alternative considered was a very large
-	 * duration, which would be a false number sitting in the data for a reader
-	 * to find and believe.
+	 * SO IT NEVER CALLS `SetLifeSpan`, AND THE FLOOR ENDING IS WHAT ENDS THIS.
+	 * `UCataclysmFloorContents::ClearTheFloor` destroys every zone in the world
+	 * when the next floor is a new arena, and
+	 * `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer` destroys every zone the
+	 * floor's rules placed when it is not, which is a Horde dungeon's next wave
+	 * (issue #1925). The alternative considered was a very large duration, which
+	 * would be a false number sitting in the data for a reader to find and
+	 * believe.
 	 *
 	 * BESIDE `Spawn` AND `SpawnAlong` RATHER THAN CHANGING EITHER. Both refuse
 	 * a non-positive duration and both still do; no existing caller behaves

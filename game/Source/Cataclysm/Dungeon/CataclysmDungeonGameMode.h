@@ -555,6 +555,11 @@ public:
 	 * the brief -- so the rules follow the floor being stood on and never the one
 	 * before it. A Horde dungeon's waves are its floors, so each wave applies
 	 * them again.
+	 *
+	 * AND FIRST IT DESTROYS EVERY GROUND ZONE THE FLOOR'S RULES PLACED, with or
+	 * without a player. Issue #1925. A Horde dungeon's waves share one arena,
+	 * which `GoToFloor` does not clear, so without this each rule's zones would
+	 * stay on the next wave with no rule acting for them.
 	 */
 	void ApplyFloorRulesToPlayer();
 
@@ -1795,9 +1800,9 @@ private:
 	 * last beat put on the player. Issues #1786 and #41.
 	 *
 	 * THEY LAST THE FLOOR, so this list only ever shrinks by something destroying
-	 * a tentacle -- which `UCataclysmFloorContents::ClearTheFloor` does when the
-	 * player leaves. A weak pointer going invalid IS that, so nothing has to be
-	 * told.
+	 * a tentacle -- which a floor change does, whatever arena comes next (see
+	 * `ApplyFloorRulesToPlayer`). A weak pointer going invalid IS that, so nothing
+	 * has to be told.
 	 *
 	 * ALL FOUR GO BACK TO NOTHING ON A NEW FLOOR. The list because those actors
 	 * are already gone; the clock so the first tentacle of a floor does not
@@ -1842,10 +1847,10 @@ private:
 	/**
 	 * The circle on the ground, and how long it has been there.
 	 *
-	 * A WEAK POINTER, because `UCataclysmFloorContents::ClearTheFloor` destroys
-	 * every zone when the floor changes and a raw pointer would outlive it. The
-	 * pointer going invalid IS the circle being gone, which is the same reading
-	 * `GraspingTentacles` makes of its own list.
+	 * A WEAK POINTER, because a floor change destroys the circle, whatever arena
+	 * comes next (see `ApplyFloorRulesToPlayer`), and a raw pointer would outlive
+	 * it. The pointer going invalid IS the circle being gone, which is the same
+	 * reading `GraspingTentacles` makes of its own list.
 	 *
 	 * THE WARNING IS COUNTED IN BEATS RATHER THAN STAMPED IN WORLD TIME, which
 	 * is the choice Death's Embrace records: a subtraction from world time would
@@ -1853,16 +1858,16 @@ private:
 	 * exactly the kind of figure where that would be felt.
 	 *
 	 * BOTH GO BACK TO NOTHING ON A NEW FLOOR. A circle drawn on the last floor
-	 * is not a warning about this one, and `ClearTheFloor` has already destroyed
+	 * is not a warning about this one, and the floor change has already destroyed
 	 * it, so keeping the count would land a shell nobody was warned about.
 	 */
 	/**
 	 * The craters burning now, and how long since the last bombardment.
 	 *
-	 * WEAK POINTERS, because `UCataclysmFloorContents::ClearTheFloor` destroys
-	 * every zone when the floor changes; a pointer going invalid IS its crater
-	 * being gone, which is the reading every other rule here makes of its own
-	 * list.
+	 * WEAK POINTERS, because a floor change destroys every crater still burning,
+	 * whatever arena comes next (see `ApplyFloorRulesToPlayer`); a pointer going
+	 * invalid IS its crater being gone, which is the reading every other rule here
+	 * makes of its own list.
 	 *
 	 * THE LIST IS KEPT EVEN THOUGH THE ZONES BURN WITHOUT IT, because the beat
 	 * has to ask WHERE the craters are in order to empower what is standing in
@@ -1943,11 +1948,11 @@ private:
 	 * it.
 	 *
 	 * THE PATCHES ARE WEAK AND COUNTED BY ASKING, not tracked by being told. A
-	 * patch destroys itself when its ten seconds end and
-	 * `UCataclysmFloorContents::ClearTheFloor` destroys every one when the floor
-	 * does, so "how many are alight" is "how many of these are still valid" and
-	 * nothing has to notice an expiry. The patch actor keeps its own drawings the
-	 * same way and for the same reason.
+	 * patch destroys itself when its ten seconds end, and a floor change destroys
+	 * every one still burning (see `ApplyFloorRulesToPlayer`), so "how many are
+	 * alight" is "how many of these are still valid" and nothing has to notice an
+	 * expiry. The patch actor keeps its own drawings the same way and for the same
+	 * reason.
 	 *
 	 * BOTH GO BACK TO NOTHING ON A NEW FLOOR. The clock, so the first patch of a
 	 * floor does not arrive on its first beat carrying the last floor's wait; the
@@ -1967,9 +1972,9 @@ private:
 	 * resetting one timer: whichever ran first reset it, so the other never fired.
 	 *
 	 * THE WELLS LAST THE FLOOR, so this list only ever shrinks by something
-	 * destroying a well -- which `UCataclysmFloorContents::ClearTheFloor` does
-	 * when the player leaves. A weak pointer going invalid IS that, so nothing has
-	 * to be told.
+	 * destroying a well -- which a floor change does, whatever arena comes next
+	 * (see `ApplyFloorRulesToPlayer`). A weak pointer going invalid IS that, so
+	 * nothing has to be told.
 	 *
 	 * THE SLOW IN FORCE IS REMEMBERED SO A BEAT THAT CHANGES NOTHING ASKS FOR NO
 	 * REFRESH, which is what every other beat-driven field here does. It is also
@@ -1988,8 +1993,8 @@ private:
 	 * by a death, so there is nothing to advance and nothing to reset.
 	 *
 	 * THE PATCHES LAST THE FLOOR, so this list only ever shrinks by something
-	 * destroying a patch -- which `UCataclysmFloorContents::ClearTheFloor` does
-	 * when the player leaves. A weak pointer going invalid IS that.
+	 * destroying a patch -- which a floor change does, whatever arena comes next
+	 * (see `ApplyFloorRulesToPlayer`). A weak pointer going invalid IS that.
 	 *
 	 * THE REDUCTION IN FORCE IS REMEMBERED SO A BEAT THAT CHANGES NOTHING ASKS
 	 * FOR NO REFRESH, which every beat-driven field here does.
@@ -2012,8 +2017,8 @@ private:
 	 * it.
 	 *
 	 * THE MUSHROOMS LAST THE FLOOR, so these lists only ever shrink by something
-	 * destroying one -- which `UCataclysmFloorContents::ClearTheFloor` does when
-	 * the player leaves. A weak pointer going invalid IS that.
+	 * destroying one -- which a floor change does, whatever arena comes next (see
+	 * `ApplyFloorRulesToPlayer`). A weak pointer going invalid IS that.
 	 */
 	/**
 	 * How many Judgment stacks the player is carrying, and how many are on them.
@@ -2037,8 +2042,9 @@ private:
 	 * and #41.
 	 *
 	 * A CLOUD LEAVES THIS LIST TWO WAYS: the player touches it and it is spent,
-	 * or the floor ends and `UCataclysmFloorContents::ClearTheFloor` destroys it.
-	 * A weak pointer going invalid is the second; the first is removed by name.
+	 * or the floor ends and the floor change destroys it, whatever arena comes next
+	 * (see `ApplyFloorRulesToPlayer`). A weak pointer going invalid is the second;
+	 * the first is removed by name.
 	 */
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> LeechSporesClouds;
 
@@ -2047,10 +2053,11 @@ private:
 	 * or its last pulse, and its ring. Issues #1820 and #41.
 	 *
 	 * ALL THREE GO AT THE STAIRS, AND THE RING IS DESTROYED THERE RATHER THAN
-	 * FORGOTTEN. A floor change clears the world's ground zones only when the next
-	 * floor is a new arena. A Horde dungeon keeps its arena, and a ring that was only
-	 * forgotten would stand on beside the one the next beat places. Issue #1925
-	 * records the rules that forget.
+	 * FORGOTTEN, with every other zone the floor's rules placed, by
+	 * `ApplyFloorRulesToPlayer` (issue #1925). A floor change clears the world only
+	 * when the next floor is a new arena, and a Horde dungeon keeps its arena, so a
+	 * ring that was only forgotten would stand on beside the one the next beat
+	 * places.
 	 */
 	int32 BloodAltarDeaths = 0;
 	float BloodAltarSecondsSinceLastPulse = 0.0f;

@@ -9927,4 +9927,221 @@ bool FCataclysmTwoTypesFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A Horde dungeon's next floor. Issue #1925
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSameArenaZonesTest,
+	"Cataclysm.DungeonModifierEffects.OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A HORDE DUNGEON'S WAVES SHARE ONE ARENA, AND UNTIL ISSUE #1925 EVERY RULE'S
+	// ZONES STAYED ON THE NEXT WAVE. `GoToFloor` clears the world only when the next
+	// floor is a new arena, and the per-floor reset forgot each rule's zones without
+	// destroying them. This puts all eight rules that place zones on one Horde
+	// floor, lets each place some, and goes to the next wave.
+	//
+	// A ZONE A CREATURE PLACED IS THE CONTROL, AND IT MUST STILL BE THERE AFTERWARDS.
+	// Destroying every zone in the world would leave no rule's zone behind too, and
+	// only the control tells that apart from destroying the rules' zones.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// THE DEATH ANNOUNCEMENT IS CONNECTED BY StartPlay, which a test world never calls.
+	// Three of the eight rules place their zones on a death.
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+	// THE HELPING KIND OF MUSHROOM, so the one a death leaves is known by its colour.
+	FScopedConsoleString Roll(TEXT("Cataclysm.FungalOvergrowthRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mushroom roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const TArray<FName> ZoneRules = {InfernalRain, HallowedGroundfall, SingularityWells,
+									 GraspingTentacles, WitheredGround, FungalOvergrowth,
+									 LeechSpores, ArtilleryStrike};
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = ZoneRules;
+	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	for (const FName& Rule : ZoneRules)
+	{
+		if (!TestTrue(FString::Printf(TEXT("the floor carries %s"), *Rule.ToString()),
+					  Mode->FloorBrief.Modifiers.Contains(Rule)))
+		{
+			return false;
+		}
+	}
+
+	// THE BEATS PLACE FIVE RULES' ZONES. Enough for the slowest cadence, and no more:
+	// one beat past it leaves Artillery Strike's circle counting down, which is the
+	// circle whose shell a floor change must stop.
+	Beat(Mode, BeatsFor(FMath::Max(Effects::ArtilleryStrikeSecondsBetween,
+								   Effects::HallowedGroundfallSecondsBetween)) + 1);
+
+	// AND ONE KILL BY THE PLAYER PLACES THE OTHER THREE, far from the player so no
+	// beat could spend the cloud. There are no more beats after it in any case.
+	const FVector Standing = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Victim =
+		SpawnCreatureWithHealth(World, Standing + FVector(3000.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature to kill"), Victim))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+	if (!TestTrue(TEXT("the player's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Victim)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: GROUND A LIVING CREATURE PLACED, the way a creature places its own.
+	ACataclysmEnemyCharacter* Placer =
+		SpawnCreatureWithHealth(World, Standing - FVector(3000.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a creature to place the control"), Placer))
+	{
+		return false;
+	}
+	TWeakObjectPtr<ACataclysmGroundZone> Control = ACataclysmGroundZone::Spawn(
+		Placer, Placer->GetActorLocation(), 300.0f, /*Duration=*/600.0f,
+		/*DamagePerTick=*/1.0f);
+	if (!TestTrue(TEXT("the control zone was placed"), Control.IsValid()))
+	{
+		return false;
+	}
+
+	// WHAT EACH RULE LEFT, TOLD APART BY WHAT ONLY THAT RULE'S ZONES CARRY. Since issue
+	// #1924 a zone that deals damage carries its row's type, and Grasping Tentacles
+	// passes its row's type as a colour. The Withered Ground patch and the Leech
+	// Spores cloud carry neither and are the same size, so they are counted together.
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::Existing(World);
+	if (!TestNotNull(TEXT("the rules made the floor's hazard source"), Source)
+		|| !TestTrue(TEXT("the helping mushroom is not drawn in the tentacles' Void, so "
+						  "the two are told apart"),
+					 FName(Effects::FungalOvergrowthBoostDrawnAs) != FName(TEXT("Void"))))
+	{
+		return false;
+	}
+	TArray<TWeakObjectPtr<ACataclysmGroundZone>> RuleZones;
+	int32 Patches = 0;
+	int32 Craters = 0;
+	int32 Wells = 0;
+	int32 Tentacles = 0;
+	int32 Circles = 0;
+	int32 Mushrooms = 0;
+	int32 Plain = 0;
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (!IsValid(*It) || It->GetOwner() != Source)
+		{
+			continue;
+		}
+		RuleZones.Add(*It);
+		if (It->DamageType == FName(TEXT("Demonic")))
+		{
+			++Patches;
+		}
+		else if (It->DamageType == FName(TEXT("Celestial")))
+		{
+			++Craters;
+		}
+		else if (It->DamageType == FName(TEXT("Void")))
+		{
+			++Wells;
+		}
+		else if (It->DrawnAsType == FName(TEXT("Void")))
+		{
+			++Tentacles;
+		}
+		else if (It->DrawnAsType == FName(Effects::FungalOvergrowthBoostDrawnAs))
+		{
+			++Mushrooms;
+		}
+		else if (FMath::IsNearlyEqual(It->RadiusCm, Effects::ArtilleryStrikeRadiusCm))
+		{
+			++Circles;
+		}
+		else
+		{
+			++Plain;
+		}
+	}
+	const FString Found = FString::Printf(
+		TEXT("%d patches, %d craters, %d wells, %d tentacles, %d circles, %d mushrooms "
+			 "and %d plain zones"),
+		Patches, Craters, Wells, Tentacles, Circles, Mushrooms, Plain);
+	AddInfo(FString::Printf(TEXT("the rules placed %s"), *Found));
+	if (!TestTrue(FString::Printf(TEXT("Infernal Rain placed a patch: %s"), *Found),
+				  Patches > 0)
+		|| !TestTrue(FString::Printf(TEXT("Hallowed Groundfall placed a crater: %s"), *Found),
+					 Craters > 0)
+		|| !TestTrue(FString::Printf(TEXT("Singularity Wells placed a well: %s"), *Found),
+					 Wells > 0)
+		|| !TestTrue(FString::Printf(TEXT("Grasping Tentacles placed a tentacle: %s"),
+									 *Found),
+					 Tentacles > 0)
+		|| !TestEqual(FString::Printf(TEXT("Artillery Strike's circle is still counting "
+										   "down: %s"), *Found),
+					  Circles, 1)
+		|| !TestTrue(FString::Printf(TEXT("Fungal Overgrowth placed a mushroom: %s"), *Found),
+					 Mushrooms > 0)
+		|| !TestEqual(FString::Printf(TEXT("the death left a Withered Ground patch and a "
+										   "Leech Spores cloud: %s"), *Found),
+					  Plain, 2)
+		|| !TestTrue(TEXT("and the control is not the rules'"),
+					 Control->GetOwner() != Source))
+	{
+		return false;
+	}
+
+	// THE NEXT WAVE, IN THE SAME ARENA, which is the case the issue is about. A new
+	// arena clears the world with `ClearTheFloor` and would prove nothing here.
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2))
+		|| !TestTrue(TEXT("and it is the same arena as the first"),
+					 Mode->FloorBrief.bSameArenaAsLastFloor))
+	{
+		return false;
+	}
+
+	int32 Remaining = 0;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Zone : RuleZones)
+	{
+		if (Zone.IsValid())
+		{
+			++Remaining;
+		}
+	}
+	TestEqual(FString::Printf(TEXT("no zone the rules placed on the last floor remains: "
+								   "%d of %d"), Remaining, RuleZones.Num()),
+			  Remaining, 0);
+	TestTrue(TEXT("and the zone a creature placed is still there"), Control.IsValid());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

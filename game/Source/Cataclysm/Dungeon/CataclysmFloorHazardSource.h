@@ -47,11 +47,14 @@ class USceneComponent;
  * explodes "from their corpse". An owner that must be alive cannot serve either.
  * Issue #1605 carries the eight rows.
  *
- * ONE PER WORLD, FOUND OR MADE BY `ForFloor`. It is destroyed with the rest of
- * the floor's contents by `UCataclysmFloorContents::ClearTheFloor`, and the next
- * floor's first hazard makes a fresh one. That is why nothing has to spawn it at
- * floor creation time, and why `ACataclysmDungeonGameMode::BuildFloor` is
- * untouched by this.
+ * ONE PER WORLD, FOUND OR MADE BY `ForFloor`. When the next floor is a new arena
+ * it is destroyed with the rest of the floor's contents by
+ * `UCataclysmFloorContents::ClearTheFloor`, and the next floor's first hazard
+ * makes a fresh one. That is why nothing has to spawn it at floor creation time,
+ * and why `ACataclysmDungeonGameMode::BuildFloor` is untouched by this. A Horde
+ * dungeon's next wave keeps its arena and this actor with it, so
+ * `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer` destroys the zones it owns
+ * instead (issue #1925).
  */
 UCLASS()
 class CATACLYSM_API ACataclysmFloorHazardSource : public AActor,
@@ -74,7 +77,10 @@ public:
 	 * The one for this world, or null. Never spawns one.
 	 *
 	 * Read by tests, which need to be able to tell "there is none" from "there
-	 * is one" without creating the thing they are asking about.
+	 * is one" without creating the thing they are asking about. And by
+	 * `ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer`, which destroys the
+	 * zones this owns when the floor changes and must not make a source only to
+	 * find it owns nothing. Issue #1925.
 	 */
 	static ACataclysmFloorHazardSource* Existing(const UWorld* World);
 
