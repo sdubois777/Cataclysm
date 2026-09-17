@@ -1089,6 +1089,28 @@ void ACataclysmEnemyCharacter::SetIsAnIllusion(bool bNowAnIllusion)
 	ApplyStartingAttributes();
 }
 
+void ACataclysmEnemyCharacter::SetFloorRuleDamageMultiplier(float NewMultiplier)
+{
+	const float Wanted = FMath::Max(0.0f, NewMultiplier);
+	if (FloorRuleDamageMultiplier == Wanted)
+	{
+		return;
+	}
+
+	FloorRuleDamageMultiplier = Wanted;
+
+	// THE DAMAGE ALONE, AND NOT `ApplyStartingAttributes`, which sets health and the
+	// energy shield to their maximums: a creature whose damage a rule grows in the
+	// middle of a fight would be healed by it. See the header.
+	float HealthScale = 1.0f;
+	float DamageScale = 1.0f;
+	float ArmourScale = 1.0f;
+	UCataclysmEnemyRarity::ScalingFromCommon(
+		UCataclysmEnemyRarity::LoadEnemyRarityTable(), RarityStep,
+		HealthScale, DamageScale, ArmourScale);
+	WriteAttackDamage(DamageScale);
+}
+
 void ACataclysmEnemyCharacter::SetAttackDamage(float NewAttackDamage)
 {
 	if (NewAttackDamage < 0.0f)
@@ -1268,36 +1290,11 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 			UCataclysmVitalAttributeSet::GetHealthAttribute(), ScaledHealth);
 	}
 
-	// AN ILLUSION DEALS NOTHING, AND IT IS DECIDED HERE SO THAT EVERY RECOMPUTE
-	// HONOURS IT. Issues #1820 and #41. Six public setters re-run this function
-	// and each would otherwise put the creature's designed damage back; see
-	// `bIsAnIllusion` in the header for why the flag is on the creature rather
-	// than a zero written once after the floor is populated.
-	//
-	// THE DESIGNED FIGURE IS LEFT WHERE IT IS RATHER THAN OVERWRITTEN, so a
-	// creature that stops being an illusion goes back to dealing exactly what its
-	// kind deals, with nothing to restore.
-	const FGameplayAttribute Damage =
-		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
-
-	// `>= 0.0f` AND NOT `> 0.0f`, WHICH IS A DEFECT FIX AND NOT PART OF THE
-	// ILLUSION. Issues #1820 and #41. Until now, asking for zero through
-	// `SetAttackDamage` recorded the zero and skipped this write, so the
-	// attribute kept whatever it held: a creature already given its designed
-	// damage went on dealing it in full, and the declaration of
-	// `StartingAttackDamage` said the opposite. Nothing reported it.
-	//
-	// THE ILLUSION DOES NOT DEPEND ON THIS, said plainly because it would be easy
-	// to read the two changes as one. The branch above answers zero for an
-	// illusion whatever this guard says. This is fixed here because the rule is
-	// what uncovered it and because a public setter documented as working should
-	// work.
-	if (StartingAttackDamage >= 0.0f
-		&& AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
-	{
-		AbilitySystemComponent->SetNumericAttributeBase(
-			Damage, bIsAnIllusion ? 0.0f : StartingAttackDamage * DamageScale);
-	}
+	// THE ATTACK DAMAGE, THROUGH THE ONE HELPER THAT WRITES IT. Issues #1820 and #41.
+	// An illusion's zero and a floor rule's multiplier are both decided there, so
+	// every recompute here honours them and `SetFloorRuleDamageMultiplier`, which
+	// must not re-run this function, writes the same figure.
+	WriteAttackDamage(DamageScale);
 
 	// --- the rest of the designed stat block. Issue #372 ---
 	//
@@ -1427,6 +1424,51 @@ void ACataclysmEnemyCharacter::ApplyStartingAttributes()
 	// modifier written before the archetype's own figure would be overwritten by
 	// it on the next call, which happens every time a spawner sets anything.
 	ApplyModifierAttributes();
+}
+
+void ACataclysmEnemyCharacter::WriteAttackDamage(float DamageScale)
+{
+	if (!AbilitySystemComponent)
+	{
+		return;
+	}
+
+	// AN ILLUSION DEALS NOTHING, AND IT IS DECIDED HERE SO THAT EVERY RECOMPUTE
+	// HONOURS IT. Issues #1820 and #41. Six public setters re-run
+	// `ApplyStartingAttributes`, which writes the damage through this helper, and
+	// each would otherwise put the creature's designed damage back; see
+	// `bIsAnIllusion` in the header for why the flag is on the creature rather
+	// than a zero written once after the floor is populated.
+	//
+	// THE DESIGNED FIGURE IS LEFT WHERE IT IS RATHER THAN OVERWRITTEN, so a
+	// creature that stops being an illusion goes back to dealing exactly what its
+	// kind deals, with nothing to restore.
+	const FGameplayAttribute Damage =
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute();
+
+	// `>= 0.0f` AND NOT `> 0.0f`, WHICH IS A DEFECT FIX AND NOT PART OF THE
+	// ILLUSION. Issues #1820 and #41. Until now, asking for zero through
+	// `SetAttackDamage` recorded the zero and skipped this write, so the
+	// attribute kept whatever it held: a creature already given its designed
+	// damage went on dealing it in full, and the declaration of
+	// `StartingAttackDamage` said the opposite. Nothing reported it.
+	//
+	// THE ILLUSION DOES NOT DEPEND ON THIS, said plainly because it would be easy
+	// to read the two changes as one. The branch above answers zero for an
+	// illusion whatever this guard says. This is fixed here because the rule is
+	// what uncovered it and because a public setter documented as working should
+	// work.
+	//
+	// AND A DUNGEON FLOOR'S RULE MULTIPLIES THE SCALED FIGURE, `Famine_Ravenous_Hoard`
+	// first. See `SetFloorRuleDamageMultiplier`.
+	if (StartingAttackDamage >= 0.0f
+		&& AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
+	{
+		AbilitySystemComponent->SetNumericAttributeBase(
+			Damage, bIsAnIllusion
+				? 0.0f
+				: StartingAttackDamage * DamageScale * FloorRuleDamageMultiplier);
+	}
 }
 
 void ACataclysmEnemyCharacter::ApplyModifierAttributes()

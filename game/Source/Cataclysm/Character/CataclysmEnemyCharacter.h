@@ -424,7 +424,13 @@ public:
 	 * write an attribute whose set is not registered yet and is called again once
 	 * it is.
 	 *
-	 * THE DAMAGE IS THE ONLY THING IT CHANGES. See `bIsAnIllusion`.
+	 * THE DAMAGE IS THE ONLY THING IT CHANGES WHEN IT IS CALLED AS THE CREATURE IS
+	 * PLACED, which is where Illusory Enemies calls it. `ApplyStartingAttributes`
+	 * also sets health and the energy shield to their maximums, so called on a
+	 * wounded creature this would heal it; this comment said the damage was the
+	 * only thing it changed, without that condition, until issues #1820 and #41.
+	 * See `bIsAnIllusion`, and `SetFloorRuleDamageMultiplier` for the route that
+	 * changes the damage alone.
 	 *
 	 * NO ACCESS SPECIFIER ADDED AROUND THIS, DELIBERATELY. The section in force
 	 * here is the `public:` opened at the top of the class, which
@@ -452,6 +458,31 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Enemy")
 	bool IsAnIllusion() const { return bIsAnIllusion; }
+
+	/**
+	 * Multiplies this creature's attack damage for a dungeon floor's rule, and changes
+	 * nothing else about it. `Famine_Ravenous_Hoard`. Issues #1820 and #41.
+	 *
+	 * THE ATTACK DAMAGE ALONE IS REWRITTEN, THROUGH `WriteAttackDamage`, AND
+	 * `ApplyStartingAttributes` IS NOT RE-RUN. That function sets health and the
+	 * energy shield to their maximums, which is right for a creature being placed and
+	 * wrong for one in a fight: a rule growing a wounded creature's damage through it
+	 * would heal the creature every time.
+	 *
+	 * A MULTIPLIER ON THE DESIGNED FIGURE, NEVER ON THE ATTRIBUTE, for the reason the
+	 * maximum-health write in `ApplyStartingAttributes` gives: the attribute is
+	 * rewritten from the designed figure on every recompute, so a multiplier applied
+	 * to the attribute would compound. It multiplies the rarity's damage scale, an
+	 * illusion still deals nothing, and a later recompute keeps it, because
+	 * `ApplyStartingAttributes` writes the damage through the same helper.
+	 *
+	 * NOT SAVED. A creature restored from a save starts again at 1.0: the save keeps
+	 * its rarity, its modifiers and its health, and not this.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetFloorRuleDamageMultiplier(float NewMultiplier);
 
 	//~ Dying. Issue #522.
 
@@ -1244,14 +1275,16 @@ protected:
 	 * death is announced, it is drawn and animated like any other -- and one
 	 * number about it is zero.
 	 *
-	 * IT IS HONOURED INSIDE `ApplyStartingAttributes` RATHER THAN WRITTEN ONCE BY
-	 * WHOEVER MAKES THE ILLUSION, and that is the whole reason it is a field on
-	 * the creature instead of a call at floor population. That function is the
-	 * one place a creature's designed numbers are decided, and SIX PUBLIC SETTERS
+	 * IT IS HONOURED WHERE THE ATTACK DAMAGE IS WRITTEN, IN `WriteAttackDamage`,
+	 * RATHER THAN WRITTEN ONCE BY WHOEVER MAKES THE ILLUSION, and that is the whole
+	 * reason it is a field on the creature instead of a call at floor population.
+	 * `ApplyStartingAttributes` is the one place a creature's designed numbers are
+	 * decided and writes the damage through that helper, and SIX PUBLIC SETTERS
 	 * re-run it -- `SetHealth`, `SetAttackDamage`, `SetArmour`, `SetRarityStep`,
 	 * `SetEnergyShieldFraction` and `DrawModifiersForRarity` -- each recomputing
-	 * the attack damage from `StartingAttackDamage` and the rarity's damage scale.
-	 * A zero written once is undone by any of them.
+	 * the attack damage from `StartingAttackDamage`, the rarity's damage scale and
+	 * `FloorRuleDamageMultiplier`. `SetFloorRuleDamageMultiplier` writes it through
+	 * the helper too. A zero written once is undone by any of them.
 	 *
 	 * TODAY NOTHING CALLS ONE AFTER A FLOOR IS POPULATED, measured 2026-09-14
 	 * across `game/Source` outside the tests: the only caller of any of the six
@@ -1272,6 +1305,16 @@ protected:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsAnIllusion = false;
+
+	/**
+	 * What a dungeon floor's rule multiplies this creature's attack damage by; 1.0 is
+	 * the creature's own damage. Issues #1820 and #41.
+	 *
+	 * See `SetFloorRuleDamageMultiplier` for why it multiplies the designed figure and
+	 * why setting it rewrites the attack damage and nothing else.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float FloorRuleDamageMultiplier = 1.0f;
 
 	/**
 	 * What SetArmour was last asked for. Zero means no armour.
@@ -1316,6 +1359,19 @@ protected:
 	static constexpr float LongestChargeStepCm = 75.0f;
 
 private:
+	/**
+	 * Writes the attack damage attribute from the designed figure, and nothing else.
+	 * Issues #1820 and #41.
+	 *
+	 * ONE PLACE FOR THE FORMULA, called by `ApplyStartingAttributes` and by
+	 * `SetFloorRuleDamageMultiplier`: the designed figure, times the rarity's damage
+	 * scale, times the floor rule's multiplier, or zero for an illusion. Two copies of
+	 * it would give two answers the first time one of them changed.
+	 *
+	 * @param DamageScale  the rarity's damage multiplier, which the caller has read
+	 */
+	void WriteAttackDamage(float DamageScale);
+
 	/**
 	 * Plays one of this creature's death clips, if it has any.
 	 *

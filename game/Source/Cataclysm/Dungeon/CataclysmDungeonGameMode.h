@@ -1166,6 +1166,16 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Ravenous Hoard: count every hostile creature's time alive and give it the stacks
+	 * that time has earned. Issues #1820 and #41.
+	 *
+	 * EVERY CREATURE, WHEREVER IT CAME FROM -- placed with the floor, spawned by a
+	 * wave, summoned by another creature -- because the row names no exception. The
+	 * player is asked for only to tell which side a creature is on.
+	 */
+	void StepRavenousHoard(class ACataclysmPlayerCharacter* Player);
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -2092,6 +2102,18 @@ private:
 	float NecroticGroundSecondsSinceLastPatch = 0.0f;
 	float NecroticGroundSecondsSinceLastBurn = 0.0f;
 	float NecroticGroundHealingLessApplied = 0.0f;
+
+	/**
+	 * Ravenous Hoard: each creature's seconds alive on this floor, and the most stacks
+	 * any creature held on the last beat, which the floor panel shows. Issues #1820
+	 * and #41.
+	 *
+	 * WEAK KEYS, so a creature destroyed with its floor leaves nothing behind that could
+	 * be read as alive. Both go at the stairs, and every creature still standing then
+	 * is given its own damage back.
+	 */
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, float> RavenousHoardSecondsAlive;
+	int32 RavenousHoardStrongest = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

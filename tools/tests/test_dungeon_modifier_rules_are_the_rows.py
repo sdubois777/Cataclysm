@@ -1407,33 +1407,48 @@ def test_the_illusion_is_honoured_where_a_creatures_damage_is_recomputed():
     WHY IT MATTERS. Six public setters on `ACataclysmEnemyCharacter` re-run
     `ApplyStartingAttributes`, and each recomputes attack damage from the
     creature's designed figure. If the illusion were a zero written once at floor
-    population rather than a flag that function honours, any of the six would put
+    population rather than a flag that recompute honours, any of the six would put
     the damage back.
 
     **A C++ TEST DOES COVER THAT** -- it calls all six and asserts the creature
     stays harmless. This checks something narrower: that the decision still LIVES
-    in that function. A later change could satisfy the C++ test by writing the
-    zero somewhere that happens to run after every setter today, and would then
-    break silently the first time a seventh caller arrived.
+    where every recompute writes the damage. A later change could satisfy the C++
+    test by writing the zero somewhere that happens to run after every setter today,
+    and would then break silently the first time a seventh caller arrived.
+
+    THE DECISION MOVED ONE CALL DOWN IN ISSUES #1820 AND #41, AND THIS CHECK MOVED
+    WITH IT. `WriteAttackDamage` writes the attack damage for
+    `ApplyStartingAttributes` and for `SetFloorRuleDamageMultiplier`, which must not
+    re-run the whole recompute because that refills health. So the flag has to be
+    read in the helper, and the recompute the six setters re-run has to call the
+    helper -- in its code, not in a comment.
     """
     source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
               / "CataclysmEnemyCharacter.cpp").read_text(encoding="utf-8")
 
-    body = body_of(source,
-                   "void ACataclysmEnemyCharacter::ApplyStartingAttributes")
+    helper = body_of(source, "void ACataclysmEnemyCharacter::WriteAttackDamage")
+    recompute = "\n".join(
+        line for line in body_of(
+            source, "void ACataclysmEnemyCharacter::ApplyStartingAttributes").splitlines()
+        if not line.lstrip().startswith("//"))
 
     # THE FLAG BEING *USED*, NOT MERELY NAMED. A comment inside this same
     # function points a reader at `bIsAnIllusion` in the header, so a check for
     # the bare name passes even with the line that reads it deleted -- a check
     # that cannot fail for the thing it was written for. Measured before this
     # was corrected: 4 mentions in the file, 2 of them code.
-    assert re.search(r"bIsAnIllusion\s*\?", body), (
-        "ApplyStartingAttributes in CataclysmEnemyCharacter.cpp no longer READS "
-        "bIsAnIllusion when it writes the attack damage. That function is the "
-        "one place a creature's designed numbers are decided, and six public "
-        "setters re-run it, so an illusion decided anywhere else is undone by "
+    assert re.search(r"bIsAnIllusion\s*\?", helper), (
+        "WriteAttackDamage in CataclysmEnemyCharacter.cpp no longer READS "
+        "bIsAnIllusion when it writes the attack damage. Every write of a creature's "
+        "attack damage goes through that helper, and six public setters re-run the "
+        "recompute that calls it, so an illusion decided anywhere else is undone by "
         "whichever of them runs next. The field's own declaration carries the "
         "argument.")
+    assert "WriteAttackDamage(" in recompute, (
+        "ApplyStartingAttributes in CataclysmEnemyCharacter.cpp no longer calls "
+        "WriteAttackDamage in its code. The six setters that re-run it would then "
+        "write the attack damage some other way, and the illusion's zero and a floor "
+        "rule's multiplier, both decided in the helper, would not reach it.")
 
 
 def test_asking_a_creature_for_zero_attack_damage_is_not_guarded_away():
@@ -1448,21 +1463,24 @@ def test_asking_a_creature_for_zero_attack_damage_is_not_guarded_away():
 
     THIS IS NOT WHAT MAKES AN ILLUSION HARMLESS, and the source says so beside
     the guard. It is a separate defect that building the illusion uncovered.
+
+    READ IN `WriteAttackDamage` SINCE RAVENOUS HOARD, which moved the one write of a
+    creature's attack damage into that helper. The check above holds that
+    `ApplyStartingAttributes` still calls it.
     """
     source = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
               / "CataclysmEnemyCharacter.cpp").read_text(encoding="utf-8")
 
-    body = body_of(source,
-                   "void ACataclysmEnemyCharacter::ApplyStartingAttributes")
+    body = body_of(source, "void ACataclysmEnemyCharacter::WriteAttackDamage")
 
     assert re.search(r"StartingAttackDamage\s*>=\s*0\.0f", body), (
-        "ApplyStartingAttributes no longer guards its attack-damage write with "
+        "WriteAttackDamage no longer guards its attack-damage write with "
         "`StartingAttackDamage >= 0.0f`. At `> 0.0f` a zero asked for through "
         "SetAttackDamage is recorded and never written, so a creature keeps the "
         "damage it already had and the declaration of StartingAttackDamage -- "
         "'Zero means it deals nothing' -- becomes false again.")
     assert not re.search(r"StartingAttackDamage\s*>\s*0\.0f", body), (
-        "ApplyStartingAttributes contains a `StartingAttackDamage > 0.0f` "
+        "WriteAttackDamage contains a `StartingAttackDamage > 0.0f` "
         "comparison. If the old guard is back, a zero asked for is silently "
         "dropped. If it is a second, deliberate comparison, narrow this check "
         "rather than deleting it.")
@@ -2109,4 +2127,66 @@ def test_necrotic_grounds_patch_size_first_reach_and_burn_are_still_derivations(
     assert not lost, (
         "; ".join(lost) + ". Each was copied from that rule as a conclusion, not "
         "chosen as a number. If one is now a figure of its own, say why in "
+        "docs/DECISIONS.md.")
+
+
+def test_ravenous_hoard_row_states_no_number_of_its_own():
+    """Every figure this rule uses is judged: its row states none.
+
+    IF THE ROW EVER STATES ONE, this fails, so the constant is read off the row and
+    docs/DECISIONS.md stops calling it a judgement. The same shape as
+    `test_grasping_tentacles_states_no_number_of_its_own` above.
+    """
+    words = flat(rows()["Famine_Ravenous_Hoard"]["Description"])
+
+    assert "%" not in words, words
+    assert not [c for c in words if c.isdigit()], (
+        "The Ravenous Hoard row now states a number. Check "
+        "RavenousHoardSecondsPerStack, RavenousHoardMostStacks and "
+        "RavenousHoardDamagePercentPerStack against it and update docs/DECISIONS.md. "
+        + words)
+
+
+def test_ravenous_hoard_row_still_says_enemies_grow_stronger_the_longer_they_remain_alive():
+    """The two phrases the rule's readings rest on.
+
+    "ENEMIES IN THE DUNGEON" NAMES NO EXCEPTION, which is why bosses and creatures
+    placed later grow too. "GROW STRONGER THE LONGER THEY REMAIN ALIVE" is why each
+    creature counts its own time alive rather than the floor's.
+    """
+    words = flat(rows()["Famine_Ravenous_Hoard"]["Description"]).lower()
+
+    assert "enemies in the dungeon" in words, (
+        "The Ravenous Hoard row no longer names enemies in the dungeon without "
+        "exception. The rule grows every hostile creature, bosses included, because "
+        "it did; re-read the ruling in docs/DECISIONS.md. " + words)
+    assert "grow stronger the longer they remain alive" in words, (
+        "The Ravenous Hoard row no longer says enemies grow stronger the longer they "
+        "remain alive. Each creature counts its own time alive because it did; re-read "
+        "the ruling in docs/DECISIONS.md. " + words)
+
+
+def test_ravenous_hoards_cadence_cap_and_share_are_still_death_s_embrace_s():
+    """The three judged figures, held as derivations and not as numbers.
+
+    DEATH'S EMBRACE IS THIS PROJECT'S ANSWER TO "WORSE THE LONGER YOU STAY", on the
+    player's side: a stack every ten seconds, ten each, five at most. Ravenous Hoard
+    declares all three as that rule's constants, so a later change to one carries the
+    other. The same shape as
+    `test_necrotic_grounds_patch_size_first_reach_and_burn_are_still_derivations` above.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    derivations = {
+        "RavenousHoardSecondsPerStack": "DeathsEmbraceSecondsPerStack",
+        "RavenousHoardMostStacks": "DeathsEmbraceMostStacks",
+        "RavenousHoardDamagePercentPerStack": "DeathsEmbracePercentPerStack",
+    }
+    lost = [f"{name} is no longer declared as {source}"
+            for name, source in derivations.items()
+            if not re.search(rf"\b{name}\s*=\s*{source}\s*;", text)]
+
+    assert not lost, (
+        "; ".join(lost) + ". Each was copied from Death's Embrace as a conclusion, "
+        "not chosen as a number. If one is now a figure of its own, say why in "
         "docs/DECISIONS.md.")

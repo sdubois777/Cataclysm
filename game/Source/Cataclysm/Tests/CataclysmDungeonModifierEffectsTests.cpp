@@ -17,6 +17,7 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmEnemyRarity.h"
 #include "Components/CapsuleComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -135,6 +136,9 @@ namespace CataclysmDungeonModifierEffectsTest
 
 	/** And the fog that spreads, cuts healing and heals creatures. Issues #1820, #41. */
 	const FName NecroticGround(UCataclysmDungeonModifierEffects::NecroticGroundKey);
+
+	/** And the one whose creatures hit harder the longer they live. Issues #1820, #41. */
+	const FName RavenousHoard(UCataclysmDungeonModifierEffects::RavenousHoardKey);
 
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
@@ -9947,7 +9951,8 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	// ZONES STAYED ON THE NEXT WAVE. `GoToFloor` clears the world only when the next
 	// floor is a new arena, and the per-floor reset forgot each rule's zones without
 	// destroying them. This puts all nine rules that place zones on one Horde
-	// floor, lets each place some, and goes to the next wave.
+	// floor, lets each place some, and goes to the next wave. It carries Ravenous Hoard
+	// as well, which places no zone and whose growth on a creature the change must undo.
 	//
 	// A ZONE A CREATURE PLACED IS THE CONTROL, AND IT MUST STILL BE THERE AFTERWARDS.
 	// Destroying every zone in the world would leave no rule's zone behind too, and
@@ -9987,12 +9992,15 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 									 GraspingTentacles, WitheredGround, FungalOvergrowth,
 									 LeechSpores, ArtilleryStrike, NecroticGround};
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
-	Mode->DungeonModifiers = ZoneRules;
+	// AND RAVENOUS HOARD, WHICH PLACES NO ZONE. Issues #1820 and #41.
+	TArray<FName> Rules = ZoneRules;
+	Rules.Add(RavenousHoard);
+	Mode->DungeonModifiers = Rules;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
 	{
 		return false;
 	}
-	for (const FName& Rule : ZoneRules)
+	for (const FName& Rule : Rules)
 	{
 		if (!TestTrue(FString::Printf(TEXT("the floor carries %s"), *Rule.ToString()),
 					  Mode->FloorBrief.Modifiers.Contains(Rule)))
@@ -10001,11 +10009,33 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// A CREATURE FAR FROM EVERY ZONE, ALIVE THROUGH EVERY BEAT, FOR RAVENOUS HOARD TO
+	// GROW. Its damage is asserted above its own after the beats and equal to its own
+	// after the change. How much it grows is the business of that rule's own tests, and
+	// asserting it here would make this test's outcome depend on how many creatures the
+	// floor placed, if one clock were ever shared between them.
+	ACataclysmEnemyCharacter* Lingerer =
+		SpawnCreatureWithHealth(World, FVector(50000.0f, 0.0f, 0.0f), 1000.0f);
+	const float LingererBase = GiveCreatureAttackDamage(Lingerer, 100.0f);
+	if (!TestNotNull(TEXT("a creature to linger"), Lingerer)
+		|| !TestTrue(TEXT("and it hits for something"), LingererBase > 0.0f))
+	{
+		return false;
+	}
+
 	// THE BEATS PLACE SIX RULES' ZONES. Enough for the slowest cadence, and no more:
 	// one beat past it leaves Artillery Strike's circle counting down, which is the
 	// circle whose shell a floor change must stop.
 	Beat(Mode, BeatsFor(FMath::Max(Effects::ArtilleryStrikeSecondsBetween,
 								   Effects::HallowedGroundfallSecondsBetween)) + 1);
+
+	if (!TestTrue(FString::Printf(TEXT("Ravenous Hoard grew the lingering creature's "
+									   "damage: %.1f from %.1f"),
+								  AttackDamageOf(Lingerer), LingererBase),
+				  AttackDamageOf(Lingerer) > LingererBase + 0.5f))
+	{
+		return false;
+	}
 
 	// AND ONE KILL BY THE PLAYER PLACES THE OTHER THREE, far from the player so no
 	// beat could spend the cloud. There are no more beats after it in any case.
@@ -10154,6 +10184,19 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 								   "%d of %d"), Remaining, RuleZones.Num()),
 			  Remaining, 0);
 	TestTrue(TEXT("and the zone a creature placed is still there"), Control.IsValid());
+
+	// AND RAVENOUS HOARD'S GROWTH IS GONE FROM THE CREATURE THAT LIVED THROUGH THE
+	// CHANGE, with the panel's count back to nothing.
+	if (TestTrue(TEXT("the lingering creature lived through the change"), IsValid(Lingerer)))
+	{
+		TestEqual(TEXT("and it hits for its own damage again"), AttackDamageOf(Lingerer),
+				  LingererBase, 0.01f);
+	}
+	const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+	const FString* HoardLine = Counting.Find(RavenousHoard);
+	TestEqual(TEXT("and the floor panel counts no stacks on the new wave"),
+			  HoardLine ? *HoardLine : FString(TEXT("no line")),
+			  FString::Printf(TEXT("strongest 0 of %d"), Effects::RavenousHoardMostStacks));
 
 	return true;
 }
@@ -10675,6 +10718,474 @@ bool FCataclysmZeroDamageBlowTest::RunTest(const FString& Parameters)
 	UCataclysmSkillEffects::ApplyHit(Armed, Player.Character, 100.0f);
 	TestEqual(TEXT("the control: the armed creature's blow is announced once"), FromArmed, 1);
 	TestTrue(FString::Printf(TEXT("and it landed: %.1f"), ArmedLanded), ArmedLanded > 0.0f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Ravenous Hoard. Issues #1820 and #41
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavenousGrowthTest,
+	"Cataclysm.DungeonModifierEffects.ACreaturesDamageGrowsATenthOfItsBaseEveryTenSecondsAliveUpToFiveStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRavenousGrowthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// "GROW STRONGER THE LONGER THEY REMAIN ALIVE", AS RULED: a stack for every ten
+	// seconds alive, each a tenth of the creature's own base damage, five at most. The
+	// cap is read at sixty seconds and again at seventy, so a creature at five gains
+	// nothing further.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {RavenousHoard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// WHAT A CREATURE OF THIS BASE HITS FOR AT THIS MANY STACKS, built from the row's
+	// figures and not from the function under test.
+	const auto Grown = [](float Base, int32 Stacks)
+	{
+		return Base * (1.0f + static_cast<float>(Stacks)
+								  * Effects::RavenousHoardDamagePercentPerStack / 100.0f);
+	};
+
+	ACataclysmEnemyCharacter* Creature =
+		SpawnCreatureWithHealth(World, FVector(500.0f, 0.0f, 0.0f), 1000.0f);
+	const float Base = GiveCreatureAttackDamage(Creature, 100.0f);
+	if (!TestNotNull(TEXT("a creature was placed"), Creature)
+		|| !TestTrue(TEXT("and it hits for something"), Base > 0.0f))
+	{
+		return false;
+	}
+
+	const int32 BeatsPerStack = BeatsFor(Effects::RavenousHoardSecondsPerStack);
+	Beat(Mode, BeatsPerStack - 1);
+	TestEqual(TEXT("a beat short of ten seconds alive, it hits for its own damage"),
+			  AttackDamageOf(Creature), Base, 0.01f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("ten seconds alive, it holds one stack"), AttackDamageOf(Creature),
+			  Grown(Base, 1), 0.01f);
+
+	for (int32 Stacks = 2; Stacks <= Effects::RavenousHoardMostStacks; ++Stacks)
+	{
+		Beat(Mode, BeatsPerStack);
+		TestEqual(FString::Printf(TEXT("%d stacks at %.0f seconds alive"), Stacks,
+								  Stacks * Effects::RavenousHoardSecondsPerStack),
+				  AttackDamageOf(Creature), Grown(Base, Stacks), 0.01f);
+	}
+
+	Beat(Mode, BeatsPerStack);
+	TestEqual(FString::Printf(TEXT("no more at sixty seconds: %.2f"), AttackDamageOf(Creature)),
+			  AttackDamageOf(Creature), Grown(Base, Effects::RavenousHoardMostStacks), 0.01f);
+	Beat(Mode, BeatsPerStack);
+	TestEqual(FString::Printf(TEXT("no more at seventy seconds: %.2f"), AttackDamageOf(Creature)),
+			  AttackDamageOf(Creature), Grown(Base, Effects::RavenousHoardMostStacks), 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavenousHealthTest,
+	"Cataclysm.DungeonModifierEffects.GainingAStackLeavesACreaturesHealthExactlyWhereItWas",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRavenousHealthTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// THE RISK THIS RULE WAS BUILT AROUND. `ApplyStartingAttributes` sets health to its
+	// maximum, so growth written through it would heal a wounded creature on every
+	// stack. The health is read on the beat before the stack and on the beat of it, and
+	// the two must be the same number.
+	//
+	// HEALTH GIVEN THROUGH `SetHealth`, which is what makes that function refill it. A
+	// creature whose health bases were written directly has no designed health for it
+	// to refill to, and would pass whichever route the growth took.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {RavenousHoard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// WHAT A CREATURE OF THIS BASE HITS FOR AT THIS MANY STACKS, built from the row's
+	// figures and not from the function under test.
+	const auto Grown = [](float Base, int32 Stacks)
+	{
+		return Base * (1.0f + static_cast<float>(Stacks)
+								  * Effects::RavenousHoardDamagePercentPerStack / 100.0f);
+	};
+
+	ACataclysmEnemyCharacter* Creature =
+		SpawnCreatureWithHealth(World, FVector(500.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a creature was placed"), Creature))
+	{
+		return false;
+	}
+	Creature->SetHealth(1000.0f);
+	const float Base = GiveCreatureAttackDamage(Creature, 100.0f);
+	Creature->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		Vital::GetHealthAttribute(), 500.0f);
+	if (!TestTrue(TEXT("it hits for something"), Base > 0.0f)
+		|| !TestEqual(TEXT("its maximum health is a thousand"),
+					  Creature->GetAbilitySystemComponent()->GetNumericAttribute(
+						  Vital::GetMaxHealthAttribute()),
+					  1000.0f, 0.01f)
+		|| !TestEqual(TEXT("and it is at half"), HealthOf(Creature), 500.0f, 0.01f))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::RavenousHoardSecondsPerStack) - 1);
+	const float Before = HealthOf(Creature);
+	Beat(Mode, 1);
+	const float After = HealthOf(Creature);
+	if (!TestEqual(TEXT("the stack was gained on that beat"), AttackDamageOf(Creature),
+				   Grown(Base, 1), 0.01f))
+	{
+		return false;
+	}
+	TestEqual(FString::Printf(TEXT("the stack left the creature's health where it was: "
+								   "%.3f before, %.3f after"), Before, After),
+			  After, Before, 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavenousClocksTest,
+	"Cataclysm.DungeonModifierEffects.EachCreatureCountsItsOwnTimeAliveAndThePanelShowsTheStrongest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRavenousClocksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// EACH CREATURE ITS OWN CLOCK, STARTED WHEN IT IS FIRST FOUND, as ruled: a creature
+	// placed twenty seconds into the floor starts from its own damage, and the panel
+	// shows the stacks of the creature nearest the cap.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {RavenousHoard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// WHAT A CREATURE OF THIS BASE HITS FOR AT THIS MANY STACKS, built from the row's
+	// figures and not from the function under test.
+	const auto Grown = [](float Base, int32 Stacks)
+	{
+		return Base * (1.0f + static_cast<float>(Stacks)
+								  * Effects::RavenousHoardDamagePercentPerStack / 100.0f);
+	};
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(RavenousHoard);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	ACataclysmEnemyCharacter* First =
+		SpawnCreatureWithHealth(World, FVector(500.0f, 0.0f, 0.0f), 1000.0f);
+	const float FirstBase = GiveCreatureAttackDamage(First, 100.0f);
+	if (!TestNotNull(TEXT("a first creature was placed"), First)
+		|| !TestTrue(TEXT("and it hits for something"), FirstBase > 0.0f))
+	{
+		return false;
+	}
+
+	const int32 BeatsPerStack = BeatsFor(Effects::RavenousHoardSecondsPerStack);
+	Beat(Mode, 2 * BeatsPerStack);
+	TestEqual(TEXT("the first creature holds two stacks at twenty seconds alive"),
+			  AttackDamageOf(First), Grown(FirstBase, 2), 0.01f);
+
+	ACataclysmEnemyCharacter* Later =
+		SpawnCreatureWithHealth(World, FVector(-500.0f, 0.0f, 0.0f), 1000.0f);
+	const float LaterBase = GiveCreatureAttackDamage(Later, 100.0f);
+	if (!TestNotNull(TEXT("a second creature was placed later"), Later)
+		|| !TestEqual(TEXT("and it starts at its own damage"), AttackDamageOf(Later),
+					  LaterBase, 0.01f))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsPerStack);
+	TestEqual(FString::Printf(TEXT("the first creature holds three stacks at thirty "
+								   "seconds alive: %.2f"), AttackDamageOf(First)),
+			  AttackDamageOf(First), Grown(FirstBase, 3), 0.01f);
+	TestEqual(FString::Printf(TEXT("the later creature holds one stack at ten seconds "
+								   "alive: %.2f"), AttackDamageOf(Later)),
+			  AttackDamageOf(Later), Grown(LaterBase, 1), 0.01f);
+	TestEqual(TEXT("the floor panel shows the strongest creature's stacks"), PanelLine(),
+			  FString::Printf(TEXT("strongest 3 of %d"), Effects::RavenousHoardMostStacks));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavenousIllusionTest,
+	"Cataclysm.DungeonModifierEffects.AnIllusionWithFiveStacksStillDealsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRavenousIllusionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// AN ILLUSION DEALS NOTHING HOWEVER LONG IT LIVES. Measured as the health a blow of
+	// its takes from the player, not as its multiplier, which is 1.5 like any creature's
+	// at the cap and says nothing about what it deals.
+	//
+	// THE ILLUSION IS ALONE FOR THE BEATS, so the panel's five is its own. The armed
+	// creature is the control and is placed after them: it needs no stacks, only to show
+	// that the same blow from a creature that is not an illusion takes health.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {RavenousHoard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(RavenousHoard);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	if (!GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Illusion =
+		SpawnCreatureWithHealth(World, FVector(500.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a creature was placed"), Illusion)
+		|| !TestTrue(TEXT("and was given damage to take away"),
+					 GiveCreatureAttackDamage(Illusion, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+	Illusion->SetIsAnIllusion(true);
+	if (!TestEqual(TEXT("the illusion's attack damage reads zero"),
+				   AttackDamageOf(Illusion), 0.0f, 0.001f))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::RavenousHoardMostStacks
+						* Effects::RavenousHoardSecondsPerStack));
+	if (!TestEqual(TEXT("the illusion holds every stack there is"), PanelLine(),
+				   FString::Printf(TEXT("strongest %d of %d"),
+								   Effects::RavenousHoardMostStacks,
+								   Effects::RavenousHoardMostStacks)))
+	{
+		return false;
+	}
+
+	const float BeforeIllusion = HealthOf(Player.Character);
+	UCataclysmSkillEffects::ApplyHit(Illusion, Player.Character, 100.0f);
+	TestEqual(FString::Printf(TEXT("an illusion with five stacks deals nothing: the "
+								   "player's health moved by %.3f"),
+							  BeforeIllusion - HealthOf(Player.Character)),
+			  HealthOf(Player.Character), BeforeIllusion, 0.0f);
+
+	ACataclysmEnemyCharacter* Armed =
+		SpawnCreatureWithHealth(World, FVector(-500.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("the control creature was placed"), Armed)
+		|| !TestTrue(TEXT("and hits for something"),
+					 GiveCreatureAttackDamage(Armed, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+	const float BeforeArmed = HealthOf(Player.Character);
+	UCataclysmSkillEffects::ApplyHit(Armed, Player.Character, 100.0f);
+	TestTrue(FString::Printf(TEXT("the control: the same blow from a creature that is not "
+								  "an illusion took %.1f"),
+							 BeforeArmed - HealthOf(Player.Character)),
+			 HealthOf(Player.Character) < BeforeArmed);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavenousCombinationTest,
+	"Cataclysm.DungeonModifierEffects.AGrowingCreatureKeepsItsRarityScaleAndItsCommanderPace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRavenousCombinationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT THE GROWTH COMBINES WITH, MEASURED AND PRINTED. The coordinating session ruled
+	// that it multiply with the creature multipliers the game already has; read, only
+	// the rarity's damage scale touches attack damage, and Commander, Cripple and Feasting
+	// change movement and attack speed. So one creature two rarity steps above Common,
+	// holding Commander, is grown to the cap and read twice: its damage is its designed
+	// figure times the rarity's scale times the growth, and it still attacks at
+	// Commander's pace.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {RavenousHoard};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// WHAT A CREATURE OF THIS BASE HITS FOR AT THIS MANY STACKS, built from the row's
+	// figures and not from the function under test.
+	const auto Grown = [](float Base, int32 Stacks)
+	{
+		return Base * (1.0f + static_cast<float>(Stacks)
+								  * Effects::RavenousHoardDamagePercentPerStack / 100.0f);
+	};
+
+	const int32 Step = 2;
+	float HealthScale = 1.0f;
+	float DamageScale = 1.0f;
+	float ArmourScale = 1.0f;
+	if (!TestTrue(TEXT("the rarity table answers a scaling for the step"),
+				  UCataclysmEnemyRarity::ScalingFromCommon(
+					  UCataclysmEnemyRarity::LoadEnemyRarityTable(), Step, HealthScale,
+					  DamageScale, ArmourScale))
+		|| !TestTrue(FString::Printf(TEXT("and it scales damage: %.3f"), DamageScale),
+					 DamageScale > 1.0f))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature =
+		SpawnCreatureWithHealth(World, FVector(500.0f, 0.0f, 0.0f), 1000.0f);
+	if (!TestNotNull(TEXT("a creature was placed"), Creature))
+	{
+		return false;
+	}
+	Creature->SetRarityStep(Step);
+	const float Designed = 100.0f;
+	const float Scaled = GiveCreatureAttackDamage(Creature, Designed);
+	if (!TestEqual(TEXT("its damage is the designed figure times the rarity's scale"),
+				   Scaled, Designed * DamageScale, 0.05f)
+		|| !TestTrue(TEXT("Commander can be named"), EmpoweredTag().IsValid())
+		|| !TestTrue(TEXT("and was granted"),
+					 UCataclysmSkillEffects::ApplyTagForDuration(
+						 Creature, Creature, EmpoweredTag(), 600.0f)))
+	{
+		return false;
+	}
+
+	const float DesignedInterval = Creature->DesignedSecondsBetweenAttacks();
+	const float CommanderInterval = Creature->SecondsBetweenAttacks();
+	if (!TestEqual(FString::Printf(TEXT("holding Commander it attacks every %.4f s, its "
+										"%.4f s divided by Commander's increase"),
+								   CommanderInterval, DesignedInterval),
+				   CommanderInterval,
+				   DesignedInterval
+					   / (1.0f + ACataclysmEnemyCharacter::CommanderIncreasePercent / 100.0f),
+				   0.0001f))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::RavenousHoardMostStacks
+						* Effects::RavenousHoardSecondsPerStack));
+	const float Combined = AttackDamageOf(Creature);
+	AddInfo(FString::Printf(TEXT("at %d stacks: attack damage %.3f, from %.1f designed x "
+								 "%.3f rarity scale x %.2f growth; attack interval %.4f s"),
+							Effects::RavenousHoardMostStacks, Combined, Designed,
+							DamageScale, Grown(1.0f, Effects::RavenousHoardMostStacks),
+							Creature->SecondsBetweenAttacks()));
+	TestEqual(FString::Printf(TEXT("at the cap its damage is the designed figure times the "
+								   "rarity's scale times the growth: %.3f"), Combined),
+			  Combined, Grown(Designed * DamageScale, Effects::RavenousHoardMostStacks),
+			  0.05f);
+	TestEqual(FString::Printf(TEXT("and it still attacks at Commander's pace: %.4f s"),
+							  Creature->SecondsBetweenAttacks()),
+			  Creature->SecondsBetweenAttacks(), CommanderInterval, 0.0001f);
 
 	return true;
 }
