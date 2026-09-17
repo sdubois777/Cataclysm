@@ -2263,11 +2263,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FName(UCataclysmDungeonModifierEffects::LeechSporesKey));
 	const bool bBloodAltar = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::BloodAltarKey));
+	// AND NECROTIC GROUND, WHICH SPAWNS ACTORS AND MOVES A STAT, Singularity Wells'
+	// shape. Issues #1820 and #41.
+	const bool bNecroticGround = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::NecroticGroundKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
-		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar)
+		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround)
 	{
 		return;
 	}
@@ -2407,6 +2411,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bHallowedGroundfall)
 	{
 		StepHallowedGroundfall(Player, AbilitySystem);
+	}
+
+	// AND NECROTIC GROUND, WHICH SPAWNS ACTORS, so it is late for the reason every rule
+	// above it that spawns actors is. It also moves a stat, and calls the shared
+	// applier itself when it does, the way Singularity Wells does. Issues #1820 and
+	// #41.
+	if (bNecroticGround)
+	{
+		StepNecroticGround(Player, AbilitySystem);
 	}
 }
 
@@ -3048,9 +3061,14 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// nothing is what the effects already hold.
 	Effects.ResistanceLessPercent = ResistanceLessApplied;
 	Effects.ResistanceMorePercent = ResistanceMoreApplied;
+	// DEATH'S EMBRACE'S POINTS AND NECROTIC GROUND'S ADD, which is how this one stat
+	// combines. At five Embrace stacks in the fog that is 100, and
+	// `HealingReceivedReduction` is held between 0 and 100, so no health is restored.
+	// Issues #1820 and #41.
 	Effects.HealingReceivedLessPercent =
 		UCataclysmDungeonModifierEffects::DeathsEmbraceHealingLessPercent(
-			DeathsEmbraceStacksApplied);
+			DeathsEmbraceStacksApplied)
+		+ NecroticGroundHealingLessApplied;
 
 	// AND THE SLOW SINGULARITY WELLS HAS IN FORCE. Issues #1605 and #41. Read
 	// unconditionally like the rest: a floor without that row leaves the field at
@@ -3393,6 +3411,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(Altar, FString::Printf(TEXT("%d of %d"), BloodAltarDeaths,
 											Effects::BloodAltarDeathsToCeiling));
+	}
+	const FName Fog(Effects::NecroticGroundKey);
+	if (FloorBrief.Modifiers.Contains(Fog))
+	{
+		int32 Patches = 0;
+		for (const TWeakObjectPtr<ACataclysmGroundZone>& Patch : NecroticGroundPatches)
+		{
+			Patches += Patch.IsValid() ? 1 : 0;
+		}
+		Counting.Add(Fog, FString::Printf(TEXT("%d of %d"), Patches,
+										  Effects::NecroticGroundMostPatches));
 	}
 
 	return Counting;
@@ -4279,6 +4308,146 @@ void ACataclysmDungeonGameMode::StepBloodAltar(
 	UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Damage, Delivery);
 }
 
+void ACataclysmDungeonGameMode::StepNecroticGround(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	NecroticGroundPatches.RemoveAll([](const TWeakObjectPtr<ACataclysmGroundZone>& Patch)
+	{
+		return !Patch.IsValid();
+	});
+
+	// IS THE PLAYER IN THE FOG, asked once for the cut and the burn.
+	const FVector Feet = Player->GetActorLocation();
+	bool bInTheFog = false;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Patch : NecroticGroundPatches)
+	{
+		if (Patch->Covers(Feet))
+		{
+			bInTheFog = true;
+			break;
+		}
+	}
+
+	// THE HEALING CUT, WRITTEN ONLY WHEN IT CHANGES, Withered Ground's shape: the
+	// applier works the character's stats out again, which is not free.
+	const float WantedLess = bInTheFog ? Effects::NecroticGroundHealingLessPercent : 0.0f;
+	if (!FMath::IsNearlyEqual(WantedLess, NecroticGroundHealingLessApplied))
+	{
+		NecroticGroundHealingLessApplied = WantedLess;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	// THE BURN, ONCE A SECOND, FOR A PLAYER IN THE FOG AT THAT BEAT. Dealt here and not
+	// by each patch's own sweep, because patches overlap and each sweep would take the
+	// figure again from a player standing in two. Typed by the row, as every floor
+	// rule's damage is since issue #1924.
+	const FName Type = DungeonGameModeTypeOfRow(Effects::NecroticGroundKey);
+	NecroticGroundSecondsSinceLastBurn += SecondsBetweenWaveChecks;
+	if (NecroticGroundSecondsSinceLastBurn >= Effects::NecroticGroundSecondsBetweenBurns)
+	{
+		NecroticGroundSecondsSinceLastBurn = 0.0f;
+		const float Burn = Effects::NecroticGroundBurn(
+			AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+		ACataclysmFloorHazardSource* Burning = ACataclysmFloorHazardSource::Existing(World);
+		if (bInTheFog && Burning && Burn > 0.0f)
+		{
+			FCataclysmHitDelivery Delivery;
+			Delivery.bIsArea = true;
+			Delivery.bIsDamageOverTime = true;
+			Delivery.DamageType = Type;
+			UCataclysmSkillEffects::ApplyDirectDamage(Burning, Player, Burn, Delivery);
+		}
+	}
+
+	// THE CREATURES IN THE FOG REGENERATE, each counted once however many patches find
+	// it, and a dead one not at all.
+	TSet<UAbilitySystemComponent*> Regenerating;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Patch : NecroticGroundPatches)
+	{
+		const FVector Where = Patch->GetActorLocation();
+		for (AActor* Creature : UCataclysmTargeting::FindEnemiesInLine(
+				 World, Player, Where, Where, Effects::NecroticGroundPatchRadiusCm))
+		{
+			if (UCataclysmSkillEffects::IsDead(Creature))
+			{
+				continue;
+			}
+			if (UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Creature))
+			{
+				Regenerating.Add(Theirs);
+			}
+		}
+	}
+	for (UAbilitySystemComponent* Theirs : Regenerating)
+	{
+		UCataclysmRegeneration::TopUp(
+			*Theirs, Vital::GetHealthAttribute(), Vital::GetMaxHealthAttribute(),
+			Effects::NecroticGroundRegenPerBeat(
+				Theirs->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+				SecondsBetweenWaveChecks));
+	}
+
+	// AND THE FOG SPREADS ON ITS CADENCE, up to its cap.
+	NecroticGroundSecondsSinceLastPatch += SecondsBetweenWaveChecks;
+	if (!Effects::NecroticGroundPatchIsDue(NecroticGroundSecondsSinceLastPatch,
+										   NecroticGroundPatches.Num()))
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	if (!Source)
+	{
+		return;
+	}
+
+	const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+	FVector From;
+	float Away = 0.0f;
+	if (NecroticGroundPatches.IsEmpty())
+	{
+		// THE FIRST PATCH NEAR THE PLAYER BUT NOT ON THEM, Infernal Rain's placement:
+		// strictly past its own radius, because a patch's cover includes its edge.
+		From = Player->GetActorLocation();
+		Away = FMath::FRandRange(Effects::NecroticGroundPatchRadiusCm + 1.0f,
+								 Effects::NecroticGroundFirstPatchWithinCm);
+	}
+	else
+	{
+		// EVERY LATER PATCH TOUCHES A RANDOM ONE ALREADY THERE, its centre one
+		// patch-width from that patch's centre.
+		const int32 Pick = FMath::RandRange(0, NecroticGroundPatches.Num() - 1);
+		From = NecroticGroundPatches[Pick]->GetActorLocation();
+		Away = Effects::NecroticGroundSpreadCm;
+	}
+	const FVector Where(From.X + Away * FMath::Cos(Angle),
+						From.Y + Away * FMath::Sin(Angle),
+						From.Z);
+
+	// NO DAMAGE ON THE PATCH ITSELF, and drawn in the row's colours. The burn above is
+	// the damage; a patch that dealt its own would take it twice where patches overlap.
+	ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+		Source, Where, Where, Effects::NecroticGroundPatchRadiusCm, 0.0f,
+		/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type);
+	if (!Patch)
+	{
+		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again.
+		return;
+	}
+	NecroticGroundPatches.Add(Patch);
+	NecroticGroundSecondsSinceLastPatch = 0.0f;
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepHolyRepercussions(
 	ACataclysmPlayerCharacter* Player,
 	UCataclysmAbilitySystemComponent* AbilitySystem)
@@ -4462,6 +4631,16 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		BloodAltarRing = nullptr;
 		BloodAltarDeaths = 0;
 		BloodAltarSecondsSinceLastPulse = 0.0f;
+
+		// AND NECROTIC GROUND FORGETS ITS PATCHES, BOTH CLOCKS AND ITS HEALING CUT.
+		// Issues #1820 and #41. The patches are already destroyed -- see the top of this
+		// function; the cut because the call above has already taken it off the
+		// character, so leaving the figure would make the next beat believe it was
+		// still applied.
+		NecroticGroundPatches.Empty();
+		NecroticGroundSecondsSinceLastPatch = 0.0f;
+		NecroticGroundSecondsSinceLastBurn = 0.0f;
+		NecroticGroundHealingLessApplied = 0.0f;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

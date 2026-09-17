@@ -2,6 +2,175 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — Necrotic Ground spreads a fog that halves the healing of a player standing in it, heals the creatures in it, and burns the player once a second however many patches cover them
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+library of dungeon rules: each row's key, its figures and its arithmetic),
+`CataclysmDungeonGameMode.h` and `.cpp` (the quarter-second beat, the shared stat applier, the
+per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for
+these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that
+hold each rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`Death_Necrotic_Ground` in `game/Data/DungeonModifiers.csv`: "The dungeon floor is covered in a
+spreading necrotic fog. The fog deals damage over time and reduces your healing effectiveness by 50%
+while standing in it. Enemies standing in the fog regen their health at 10%/s."
+
+### What the row's own words decide
+
+1. **Standing in the fog cuts the health the player restores by 50 points of
+   `HealingReceivedReduction`, and leaving the fog takes the cut off.** "Healing effectiveness" is
+   read as the amount each heal restores -- regeneration, leech and direct heals, health only --
+   which is what that stat cuts and what Death's Embrace already writes. The player is in the fog
+   while any patch covers their location.
+2. **A creature standing in the fog regains 10% of its own maximum health a second**, paid a
+   quarter at a time on the beat through `UCataclysmRegeneration::TopUp`. "Enemies" names no
+   exception, so bosses regenerate too. A creature that several patches cover is paid once.
+3. **The fog burns the player and not the creatures**, which regenerate in it.
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation of unstated figures, and flagged to
+the owner by that session.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| Where the fog starts | **One patch 5 seconds into the floor, between 301 and 1200 cm from the player**: Infernal Rain's placement, near the player and never on them | The row names no place. The floor's centre and its entrance were the alternatives offered |
+| How it spreads | **Every 5 seconds, a new patch whose centre is one patch-width (600 cm) from a random patch already there, in a random direction**, so the two touch | "Spreading" read as growth outward from where it began |
+| How far | **At most 12 patches, each with a 300 cm radius, lasting the floor** | "Covered" states no extent. Twelve is four times Infernal Rain's cap of three, and 300 cm is the radius this project uses for a thing at a point on the floor |
+| How hard it burns | **1% of the player's maximum health a second, as Death damage** | Singularity Wells' share. The ground zones other floor rules place that burn by the second take 2% (Infernal Rain, Hallowed Groundfall) or 1% (Singularity Wells), and the fog takes the lower because it also halves healing |
+| With Death's Embrace on the same floor | **The two cuts add in the one stat** | That is how the stat already combines. See below for the combined figure |
+| The floor panel | **"N of 12"**, the patches on the floor | As Blood Altar shows its deaths |
+
+### The burn is dealt by the rule, not by each patch
+
+The patches deal no damage of their own. Once a second, counted on the beat from the floor's start,
+`StepNecroticGround` burns a player whom any patch covers: `UCataclysmSkillEffects::ApplyDirectDamage`
+from the floor's `ACataclysmFloorHazardSource`, as an area hit and a damage-over-time hit, with the
+row's Death type on its delivery (issue #1924).
+
+**Why not each patch's own sweep, a judgement the coordinating session accepted:** patches touch and
+can overlap. A player standing where two overlap would take the share from each, so the ruled 1% a
+second would become 2% or 3%. A test holds this with two patches on the player, and Diablo III's
+Plagued pools do the same (see the research below).
+
+Two consequences, read from the code and not tested:
+
+- **The burn's clock does not start when the player steps in.** A player who crosses the fog between
+  two ticks takes nothing, and one who stays takes the first burn up to a second after stepping in.
+- **A rule listening for hits sees each burn.** `Famine_Wasting_Sickness` counts every blow that
+  lands on the player without asking who dealt it, as the Blood Altar entry records for its pulse.
+  So on a floor carrying both rows, each second in the fog is a 10% chance of a Wasting Sickness
+  stack, and those stacks last the dungeon. Issue
+  [#1946](https://github.com/sdubois777/Cataclysm/issues/1946) asks the owner which blows should
+  roll for a stack, and lists the other floor rules whose damage rolls for one too.
+
+### The combined healing cut with Death's Embrace
+
+`ApplyChangingFloorEffects` writes Death's Embrace's points plus the fog's into
+`HealingReceivedReduction`, and `UCataclysmVitalAttributeSet::PreAttributeChange` holds that stat
+between 0 and 100. So a player at Death's Embrace's five stacks (50) standing in the fog (50 more) is
+at 100 and **restores no health at all**. At one stack in the fog the figure is 60, which a test
+measures.
+
+### The Contagious Touch probe
+
+Asked for by the coordinating session in this change, because its answer decides whether
+`Pestilence_Contagious_Touch` is the next row. That row turns a creature's contact damage into a
+stacking debuff, which a rule could count from the hit announcement only if a blow of no damage is
+still announced.
+
+**Predicted before the build that first ran it: not announced.** Read on commit 2f87abbc:
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute` calls `UCataclysmCombatEvents::NoteBlow`,
+which is the only place `OnHit` is broadcast, only inside `if (LocalDamage > 0.0f)`.
+
+**Measured on head 86f475b4, as predicted: not announced.** The full Unreal run of this change
+performed 1988 tests and all 1988 succeeded, this one among them. So a rule listening for hits is
+not told of a creature blow of zero damage dealt through `UCataclysmSkillEffects::ApplyHit`, the
+route the test measured. The test is `ACreatureBlowOfZeroDamageIsNotAnnouncedAsAHit`: a creature
+whose attack damage is 0, set through `ACataclysmEnemyCharacter::SetAttackDamage` as Illusory
+Enemies sets it, strikes the player through `UCataclysmSkillEffects::ApplyHit`, and a listener bound
+to `OnHit` counts the notices that name it. A listener rather than Wasting Sickness, because that
+rule ignores a notice that landed nothing either way. The control, a creature at attack damage 100,
+must be announced once with a landed amount above 0 whatever the probe shows.
+
+### The tests
+
+C++, `Cataclysm.DungeonModifierEffects.`, five new:
+
+- **`TheFogSpreadsOnItsCadenceFromPatchToPatchUpToItsCap`.** No patch a beat short of 5 seconds.
+  Then one patch that does not cover the player, within 1200 cm of them, with a 300 cm radius,
+  lasting the floor, drawn as Death and dealing nothing itself. Each later patch is two radii, measured off the patch,
+  from one already there. Twelve and no more after three further cadences, and the panel reads
+  "12 of 12".
+- **`StandingInTheFogCutsHealingReceivedByHalfAndLeavingRestoresIt`.** The cut reads 0, then 50 in
+  the fog, then 0 after leaving. Then, on a floor carrying Death's Embrace at one stack, 60 in the
+  fog.
+- **`ACreatureInTheFogRegainsATenthOfItsMaximumHealthASecondAndOneOutsideDoesNot`.** Two creatures
+  of 1000 maximum health at 500: after a second, 600 in the fog and 500 outside it.
+- **`TheFogBurnsThePlayerOnceASecondAndDeathResistanceMeetsIt`.** A second in the fog with Death
+  resistance raised by 50, against the same second with Void raised by 50, through issue #1924's
+  helpers. Then two patches moved onto the player take one burn in a second, not two, and a second
+  outside the fog takes nothing. Measured on 86f475b4: the second took 431.0 health with Death
+  resistance raised and 861.9 with Void raised, from a player of 100,000 maximum health, so the
+  1,000 the burn deals reaches health as 861.9.
+- **`ACreatureBlowOfZeroDamageIsNotAnnouncedAsAHit`**, the probe above.
+
+One changed: **`OnAHordeDungeonsNextFloorNoZoneTheRulesPlacedRemains`** carries Necrotic Ground as
+its ninth rule, tells its patches apart by their Death colour, and asserts that none of them remains
+on the next wave.
+
+Python, four: the row still states the 50 and the 10 the rule reads; it still says the fog spreads
+and deals damage over time, and states no third figure; and the patch radius, the first patch's
+reach and the burn's share are still declared as Infernal Rain's and Singularity Wells' constants.
+
+### The research
+
+Read on 2026-09-17. Path of Exile's figures come from PoEDB, which quotes the game's text; the
+Path of Exile wikis refused this project's page fetches when tried on 2026-09-11.
+
+| Game | What it does | What it settles here |
+| :-- | :-- | :-- |
+| Path of Exile, consecrated ground | Characters standing on it regenerate an additional 6% of their maximum life a second | That healing a share of the maximum a second while standing on ground is a shipped shape. The row states its own 10% |
+| Path of Exile, the "of Smothering" map modifiers | Players have 20%, 40%, 60% or 75% less recovery rate of life and energy shield, rising with the map's level | That a cut of this size to healing is shipped, but for a whole map and not for standing in ground |
+| Path of Exile, desecrated ground | Chaos damage over time to those standing on it, at a rate set by what placed it; a map modifier gives an area "patches of desecrated ground" | Damaging patches across an area. The page describes none that spread |
+| Diablo III, the Plagued elite affix | Pools whose damage ramps up the longer the player stays in them, and does not grow with the number of pools stacked on top of each other | **The burn that lands once however many patches overlap has this precedent**, found after the judgement was made. The ramp is not copied: the row states no growth in the damage |
+| Diablo IV, nightmare dungeon affixes | Maxroll's list names no spreading ground and no healing cut | Nothing |
+
+**Nothing read settles a fog that keeps spreading**, so where it starts, how it spreads, how far and
+how hard it burns are judgements and not readings of the genre.
+
+**The plan this change was ruled on said two things these sources do not**, corrected here:
+consecrated ground was given as 5% a second, and Plagued as a pool that grows once in an X
+pattern. Neither changed a ruling: the row states its own regeneration, and nothing was taken from
+the pattern.
+
+Sources: [PoEDB: Consecrated Ground](https://poedb.tw/us/Consecrated_Ground),
+[PoEDB: Recovery](https://poedb.tw/us/Recovery),
+[PoEDB: Desecrated Ground](https://poedb.tw/us/Desecrated_Ground),
+[Maxroll: Diablo 3 elite affixes](https://maxroll.gg/d3/resources/elite-affixes) and
+[Maxroll: Diablo 4 nightmare dungeons](https://maxroll.gg/d4/resources/nightmare-dungeons).
+
+### What the tests do not show
+
+- **Five Embrace stacks in the fog.** The 100 is read from the clamp and not measured; the test
+  measures one stack.
+- **A creature in two patches.** The code pays a creature once however many patches find it, and no
+  test puts one in two.
+- **Where a patch lands on a real floor.** A patch is placed by distance and direction only, as an
+  Infernal Rain patch is. Nothing checks that the spot is walkable or inside the arena, so a patch
+  can land in a wall and later patches can spread from it. Read from the code.
+- **Wasting Sickness on the same floor**, above, and issue #1946.
+- **A boss regenerating.** Reading 2 includes bosses, and no test uses one.
+- **The drawing.** The patches take their colours from the Death row of
+  `game/Data/ElementVisuals.csv`. Nobody has looked at them in the editor.
+
+---
+
 ## 2026-09-17 — A bonus can grow with the damage reduction or the maximum mana a character has
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and

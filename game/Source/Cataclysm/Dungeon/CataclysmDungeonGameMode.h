@@ -1148,6 +1148,24 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Necrotic Ground: spread the fog on its cadence, and on each beat act on whoever
+	 * stands in it. Issues #1820 and #41.
+	 *
+	 * THE PLAYER IS IN THE FOG WHEN ANY PATCH COVERS THEIR LOCATION, the reading
+	 * Withered Ground makes of its patches. A CREATURE IS IN IT BY THE SAME TEST:
+	 * `UCataclysmTargeting::FindEnemiesInLine` asks the patch about each creature's
+	 * location, as `ACataclysmGroundZone::Covers` does for the player.
+	 *
+	 * THREE THINGS ON ONE BEAT: the healing cut written when it changes, through the
+	 * shared applier; the burn once a second, dealt by this rule rather than by each
+	 * patch; and a creature regeneration. Then the cadence, so a patch placed on this
+	 * beat is first stood in on the next.
+	 */
+	void StepNecroticGround(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Mortal Decay: take the floor's share of the player's health this beat.
 	 * Issues #1786 and #41.
 	 *
@@ -2062,6 +2080,18 @@ private:
 	int32 BloodAltarDeaths = 0;
 	float BloodAltarSecondsSinceLastPulse = 0.0f;
 	TWeakObjectPtr<class ACataclysmGroundZone> BloodAltarRing;
+
+	/**
+	 * Necrotic Ground's patches, the time since its last patch and since its last burn,
+	 * and the healing cut in force. Issues #1820 and #41.
+	 *
+	 * ALL FOUR GO AT THE STAIRS, and the patches are destroyed there with every other
+	 * zone the floor's rules placed (issue #1925).
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> NecroticGroundPatches;
+	float NecroticGroundSecondsSinceLastPatch = 0.0f;
+	float NecroticGroundSecondsSinceLastBurn = 0.0f;
+	float NecroticGroundHealingLessApplied = 0.0f;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

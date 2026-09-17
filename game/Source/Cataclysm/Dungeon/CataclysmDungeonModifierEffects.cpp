@@ -48,6 +48,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::LeechSporesKey =
 	TEXT("Pestilence_Leech_Spores");
 const TCHAR* UCataclysmDungeonModifierEffects::BloodAltarKey =
 	TEXT("Demonic_Blood_Altar");
+const TCHAR* UCataclysmDungeonModifierEffects::NecroticGroundKey =
+	TEXT("Death_Necrotic_Ground");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -219,7 +221,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(IllusoryEnemiesKey)
 		|| RowKey == FName(HolyRepercussionsKey)
 		|| RowKey == FName(LeechSporesKey)
-		|| RowKey == FName(BloodAltarKey))
+		|| RowKey == FName(BloodAltarKey)
+		|| RowKey == FName(NecroticGroundKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -374,6 +377,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(HolyRepercussionsKey),
 		FName(LeechSporesKey),
 		FName(BloodAltarKey),
+		FName(NecroticGroundKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1168,6 +1172,37 @@ int32 UCataclysmDungeonModifierEffects::BloodAltarDeathsAfterOne(int32 Deaths)
 bool UCataclysmDungeonModifierEffects::BloodAltarPulseIsDue(float SecondsSinceLastPulse)
 {
 	return SecondsSinceLastPulse >= BloodAltarSecondsBetweenPulses;
+}
+
+bool UCataclysmDungeonModifierEffects::NecroticGroundPatchIsDue(
+	float SecondsSinceLastPatch, int32 PatchesAlive)
+{
+	if (PatchesAlive >= NecroticGroundMostPatches)
+	{
+		return false;
+	}
+	return SecondsSinceLastPatch >= NecroticGroundSecondsBetweenPatches;
+}
+
+float UCataclysmDungeonModifierEffects::NecroticGroundBurn(float MaximumHealth)
+{
+	if (MaximumHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return MaximumHealth * NecroticGroundPercentPerSecond / 100.0f
+		* NecroticGroundSecondsBetweenBurns;
+}
+
+float UCataclysmDungeonModifierEffects::NecroticGroundRegenPerBeat(float MaximumHealth,
+																  float BeatSeconds)
+{
+	if (MaximumHealth <= 0.0f || BeatSeconds <= 0.0f)
+	{
+		return 0.0f;
+	}
+	return MaximumHealth * NecroticGroundCreatureRegenPercentPerSecond / 100.0f
+		* BeatSeconds;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(
