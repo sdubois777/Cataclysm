@@ -77,6 +77,26 @@ namespace
 	constexpr float CapsuleRadius = 42.0f;
 	constexpr float CapsuleHalfHeight = 96.0f;
 
+	/**
+	 * Whether a death announcement is an ENEMY'S death, as "an enemy dies near
+	 * you" means it.
+	 *
+	 * ONE DEFINITION FOR TWO RULES, so they cannot disagree about a minion: the
+	 * worn rows' `nearby_death`, ruled 2026-09-16 under issue #1815, and Fed by
+	 * the Fallen, ruled 2026-09-17 under issue #1515. A summoner's own minion
+	 * dying beside it is announced exactly as an enemy's death is, and is not
+	 * one.
+	 *
+	 * `UCataclysmTeams::AttitudeBetween` AND NOT `UCataclysmTargeting::IsHostileTo`,
+	 * which answers false for every dead character -- and a death is announced
+	 * after the victim is marked dead, so that one would refuse every death.
+	 */
+	bool IsAnEnemysDeath(const AActor* Listener, const FCataclysmDeathNotice& Notice)
+	{
+		return Notice.Victim && Notice.Victim != Listener
+			&& UCataclysmTeams::AttitudeBetween(Listener, Notice.Victim)
+				== ETeamAttitude::Hostile;
+	}
 }
 
 const TCHAR* ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat =
@@ -946,6 +966,21 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags);
 		}
 
+		// AND LONG HOLD, BEFORE WRUNG OUT BELOW CAN BUY ANYTHING. Issue #1515.
+		// `Ravager_capstone_50`'s third option: "Killing an enemy restores 5% of
+		// your maximum health." A kill is this character's kill as above,
+		// minions' and damage over time's included.
+		//
+		// HERE AND NOT BESIDE WRUNG OUT AT THE END, because this block runs first.
+		// Ruled 2026-09-17 under the project owner's delegation: the restoration
+		// that costs nothing comes before the one bought with Fervour, so a kill
+		// this heals to full leaves Wrung Out nothing to buy, and Wrung Out
+		// spends nothing at full health.
+		if (Notice.Killer == this && Notice.Victim)
+		{
+			UCataclysmFervour::RestoreHealthOnKillAtNoCost(Acting);
+		}
+
 		// AND A DEATH NEAR THIS CHARACTER IS AN ENEMY'S. The sentence says "when
 		// an enemy dies near you", which includes one this character killed
 		// while standing over it.
@@ -961,13 +996,30 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		// NO TAGS GO ACROSS. The row is about a death happening nearby rather
 		// than about what did it, and handing over the killing skill's tags
 		// would let a scoped row fire on somebody else's blow.
-		if (Notice.Victim && Notice.Victim != this
-			&& UCataclysmTeams::AttitudeBetween(this, Notice.Victim)
-				== ETeamAttitude::Hostile
+		//
+		// THE TEAM TEST IS `IsAnEnemysDeath` AT THE TOP OF THIS FILE, since
+		// 2026-09-17, because Fed by the Fallen below asks the same question.
+		if (IsAnEnemysDeath(this, Notice)
 			&& FVector::Dist(GetActorLocation(), Notice.Location)
 				<= NearbyDeathRadiusCm)
 		{
 			Acting->ActOnEvent(FName(TEXT("nearby_death")));
+		}
+
+		// AND FED BY THE FALLEN, ON THE SAME KIND OF DEATH. Issue #1515.
+		// `Ritualist_capstone_50`'s second option: "You gain 10 Fervour whenever
+		// an enemy dies within 10 metres of you."
+		//
+		// THE SAME ENEMY TEST AS THE ROW ABOVE, ruled 2026-09-17 under the project
+		// owner's delegation: any enemy's death counts whoever killed it, this
+		// character's own kills included, and its own minion's never does. ITS
+		// OWN RADIUS, which is not the worn row's three metres:
+		// `UCataclysmFervour::GainOnEnemyDeathNearby` holds the ten the sentence
+		// states. 100 centimetres to the metre.
+		if (IsAnEnemysDeath(this, Notice))
+		{
+			UCataclysmFervour::GainOnEnemyDeathNearby(
+				Acting, FVector::Dist(GetActorLocation(), Notice.Location) / 100.0f);
 		}
 	}
 

@@ -404,6 +404,14 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("fervour_per_enemy_hit"),
 		 TEXT("the Ravager's starting node, as a flat count of Fervour for each "
 			  "enemy an attack lands on")},
+		// Issue #1515. The two death rules that cost nothing. Zero for every
+		// class; one capstone option supplies each.
+		{TEXT("health_restored_on_kill_at_no_cost"),
+		 TEXT("the Ravager's Long Hold capstone option, as a flat percentage of "
+			  "maximum health a kill restores without spending Fervour")},
+		{TEXT("fervour_on_enemy_death_nearby"),
+		 TEXT("the Ritualist's Fed by the Fallen capstone option, as a flat "
+			  "count of Fervour for an enemy dying within ten metres")},
 		{TEXT("fervour_decay_grace_metres"),
 		 TEXT("the Ravager's starting node and its No Ground Given keystone, "
 			  "as flat distances that sum to the eight that keystone names")},

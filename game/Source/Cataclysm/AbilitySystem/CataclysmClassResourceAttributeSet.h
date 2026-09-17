@@ -476,6 +476,37 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourPerEnemyHit)
 
 	/**
+	 * How much of a character's maximum health a kill restores AT NO COST, in
+	 * percent. Issue #1515.
+	 *
+	 * NOT `HealthRestoredOnKill` ABOVE, WHICH A KILL BUYS WITH FERVOUR. The
+	 * Ravager's Long Hold capstone option reads "Killing an enemy restores 5% of
+	 * your maximum health" and names no cost; Wrung Out's row spends 5 Fervour
+	 * and restores nothing without it. One stat for both would make Long Hold
+	 * cost Fervour or Wrung Out free.
+	 *
+	 * ZERO FOR EVERY CLASS, and that capstone option is its only source. See
+	 * `UCataclysmFervour::RestoreHealthOnKillAtNoCost`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_HealthRestoredOnKillAtNoCost)
+	FGameplayAttributeData HealthRestoredOnKillAtNoCost;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, HealthRestoredOnKillAtNoCost)
+
+	/**
+	 * Fervour gained when an enemy dies near this character. Issue #1515.
+	 *
+	 * The Ritualist's Fed by the Fallen capstone option: "You gain 10 Fervour
+	 * whenever an enemy dies within 10 metres of you." The ten metres are
+	 * `UCataclysmFervour::EnemyDeathNearbyRadiusMetres`, a constant.
+	 *
+	 * ZERO FOR EVERY CLASS, and that capstone option is its only source. See
+	 * `UCataclysmFervour::GainOnEnemyDeathNearby`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Class Resource", ReplicatedUsing = OnRep_FervourOnEnemyDeathNearby)
+	FGameplayAttributeData FervourOnEnemyDeathNearby;
+	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, FervourOnEnemyDeathNearby)
+
+	/**
 	 * Whether this character's skills cost no health at all. Issue #1051.
 	 * Zero for no, above zero for yes.
 	 *
@@ -754,6 +785,8 @@ protected:
 	UFUNCTION() void OnRep_HealthRestoredOnKill(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_IncreasedDamageBoughtPerExtraEnemyHit(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerEnemyHit(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_HealthRestoredOnKillAtNoCost(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_FervourOnEnemyDeathNearby(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_FervourPerCast(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_HealthCostSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaPoolBecomesHealth(const FGameplayAttributeData& OldValue);
