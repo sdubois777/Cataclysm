@@ -12439,4 +12439,302 @@ bool FCataclysmFedByTheFallenOwnMinionTest::RunTest(const FString&)
 	return true;
 }
 
+// ---- The four rows of 2026-09-17: two stat scales and two death rules -------
+
+namespace CataclysmFourRowsReadTest
+{
+	/** The one row a node or capstone option carries for this stat, or null. */
+	const FCataclysmPassiveEffectRow* RowFor(const UDataTable* EffectTable,
+											 const TCHAR* Node, int32 Option,
+											 const TCHAR* Stat)
+	{
+		const FCataclysmPassiveEffectRow* Found = nullptr;
+		for (const FCataclysmPassiveEffectRow* Row :
+			 UCataclysmPassiveTree::EffectsFor(EffectTable, FName(Node)))
+		{
+			if (Row && Row->Option == Option && Row->Stat == Stat)
+			{
+				Found = Row;
+			}
+		}
+		return Found;
+	}
+
+	/** What spending these points, and choosing this option, grants one stat. */
+	const TArray<FCataclysmStatModifier>* Granted(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Out,
+		const UDataTable* NodeTable, const UDataTable* EffectTable,
+		const TCHAR* Node, int32 Points, int32 Option, const TCHAR* Stat)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		Allocation.Add(FName(Node), Points);
+		if (Option > 0)
+		{
+			Allocation.SetChosenOption(FName(Node), Option);
+		}
+		Out = UCataclysmPassiveTree::ModifiersFor(Allocation, NodeTable, EffectTable,
+												  {FName(TEXT("Demonic"))});
+		return Out.Find(FName(Stat));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWeightAgainstThemRowTest,
+	"Cataclysm.Passives.WeightAgainstThemGrantsAttackDamageForEveryTwoPercentOfDamageReduction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Third Onslaught's second option, Weight Against Them, read out of the tables
+ * the game loads. Issue #1515.
+ *
+ * "Your Armor is also offence: +1% increased Attack Damage for every 2% of Damage
+ * Reduction you have."
+ *
+ * Through the tree's own accumulation and the stat pipeline, as Headlong's test
+ * reads its clause, with the damage reduction stated in the conditions. Where a
+ * real character's reading comes from, and the cap it stops at, is
+ * `Cataclysm.ConditionalDamage.AttackDamageGrowsWithTheDamageReductionTheCharacterHasUpToItsCap`.
+ */
+bool FCataclysmPassiveWeightAgainstThemRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Row =
+		RowFor(EffectTable, TEXT("Ravager_capstone_100"), 2, TEXT("attack_damage"));
+	if (!TestNotNull(TEXT("Weight Against Them has an attack damage row"), Row))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as an increase"), Row->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of one"), Row->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("for no skill in particular"), Row->RequiredTags, FString());
+	TestEqual(TEXT("under no condition"), Row->Condition, FString());
+	TestEqual(TEXT("scaled by damage reduction"), Row->Scale,
+			  FString(TEXT("damage_reduction")));
+	TestEqual(TEXT("in steps of two"), Row->ScaleStep, 2.0f);
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* AttackDamage = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ravager_capstone_100"), 1, 2,
+		TEXT("attack_damage"));
+	if (!TestNotNull(TEXT("choosing Weight Against Them grants attack damage"),
+					 AttackDamage))
+	{
+		return false;
+	}
+
+	const auto IncreasesWith = [AttackDamage](float Percent)
+	{
+		FCataclysmStatConditions State;
+		State.DamageReductionPercent = Percent;
+		return UCataclysmStatPipeline::Evaluate(100.0f, *AttackDamage,
+												FGameplayTagContainer(), State)
+			.SumOfIncreases;
+	};
+
+	TestEqual(TEXT("ten per cent of damage reduction grants five"),
+			  IncreasesWith(10.0f), 5.0f, 0.001f);
+	TestEqual(TEXT("nine grants four, in whole steps"), IncreasesWith(9.0f), 4.0f,
+			  0.001f);
+	TestEqual(TEXT("and an unknown reading grants nothing"), IncreasesWith(-1.0f),
+			  0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDrawnDeepRowTest,
+	"Cataclysm.Passives.DrawnDeepGrantsSpellDamageForEveryFullTwoHundredMaximumMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_d_a2` Drawn Deep, read out of the tables the game loads.
+ * Issue #1515.
+ *
+ * "+1% increased Spell Damage per point for every full 200 maximum mana you have."
+ *
+ * Six points and 450 maximum mana are two full steps of six, twelve percentage
+ * points; 199 is not one full step. Where a real character's reading comes from
+ * is `Cataclysm.ConditionalDamage.SpellDamageGrowsWithTheMaximumManaAndNotTheManaInHand`.
+ */
+bool FCataclysmPassiveDrawnDeepRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, FName(TEXT("Ritualist_basic_d_a2")));
+	if (!TestEqual(TEXT("Drawn Deep grants one stat"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it is spell damage"), Effects[0]->Stat,
+			  FString(TEXT("spell_damage")));
+	TestEqual(TEXT("stated as an increase"), Effects[0]->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of one a point"), Effects[0]->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("scaled by maximum mana"), Effects[0]->Scale,
+			  FString(TEXT("max_mana")));
+	TestEqual(TEXT("in steps of 200"), Effects[0]->ScaleStep, 200.0f);
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* SpellDamage = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ritualist_basic_d_a2"), 6, 0,
+		TEXT("spell_damage"));
+	if (!TestNotNull(TEXT("six points grant spell damage"), SpellDamage))
+	{
+		return false;
+	}
+
+	const auto IncreasesWith = [SpellDamage](float Mana)
+	{
+		FCataclysmStatConditions State;
+		State.MaximumMana = Mana;
+		return UCataclysmStatPipeline::Evaluate(100.0f, *SpellDamage,
+												FGameplayTagContainer(), State)
+			.SumOfIncreases;
+	};
+
+	TestEqual(TEXT("450 maximum mana at six points grants twelve"),
+			  IncreasesWith(450.0f), 12.0f, 0.001f);
+	TestEqual(TEXT("399 grants six, one full step"), IncreasesWith(399.0f), 6.0f,
+			  0.001f);
+	TestEqual(TEXT("and 199 grants nothing"), IncreasesWith(199.0f), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveLongHoldRowTest,
+	"Cataclysm.Passives.LongHoldGrantsFivePercentOfMaximumHealthOnAKill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Second Onslaught's third option, Long Hold, read out of the tables the game
+ * loads. Issue #1515.
+ *
+ * "Killing an enemy restores 5% of your maximum health."
+ *
+ * THE ROW, AND THE ATTRIBUTE IT LANDS ON. A flat stat with no attribute in
+ * `UCataclysmPlayerClassStats::StatToAttribute` would be dropped by `ApplyTo`,
+ * so the map entry is asserted beside the row. What a kill does with the stat is
+ * `Cataclysm.DeathRewards.LongHoldRestoresHealthOnAKillAndNothingOnADeathItDidNotCause`.
+ */
+bool FCataclysmPassiveLongHoldRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Row = RowFor(
+		EffectTable, TEXT("Ravager_capstone_50"), 3,
+		UCataclysmFervour::HealthRestoredOnKillAtNoCostStat);
+	if (!TestNotNull(TEXT("Long Hold has a row"), Row))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of five"), Row->ValuePerPoint, 5.0f);
+	TestEqual(TEXT("under no condition"), Row->Condition, FString());
+	TestEqual(TEXT("and on no scale"), Row->Scale, FString());
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* Restored = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ravager_capstone_50"), 1, 3,
+		UCataclysmFervour::HealthRestoredOnKillAtNoCostStat);
+	if (!TestNotNull(TEXT("choosing Long Hold grants the stat"), Restored))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth five per cent"),
+			  UCataclysmStatPipeline::Evaluate(0.0f, *Restored,
+											   FGameplayTagContainer()).Final,
+			  5.0f, 0.001f);
+	TestNotNull(TEXT("and the stat has an attribute for ApplyTo to write"),
+				UCataclysmPlayerClassStats::StatToAttribute().Find(
+					FString(UCataclysmFervour::HealthRestoredOnKillAtNoCostStat)));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveFedByTheFallenRowTest,
+	"Cataclysm.Passives.FedByTheFallenGrantsTenFervourForAnEnemyDyingNearby",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Second Pact's second option, Fed by the Fallen, read out of the tables the
+ * game loads. Issue #1515.
+ *
+ * "You gain 10 Fervour whenever an enemy dies within 10 metres of you."
+ *
+ * The row and the attribute it lands on, as Long Hold's test reads its own. The
+ * ten metres are a constant in code, not a column. What a death does with the
+ * stat is `Cataclysm.DeathRewards.FedByTheFallenGrantsFervourForAnEnemyDyingWithinTenMetres`.
+ */
+bool FCataclysmPassiveFedByTheFallenRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Row = RowFor(
+		EffectTable, TEXT("Ritualist_capstone_50"), 2,
+		UCataclysmFervour::OnEnemyDeathNearbyStat);
+	if (!TestNotNull(TEXT("Fed by the Fallen has a row"), Row))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of ten"), Row->ValuePerPoint, 10.0f);
+	TestEqual(TEXT("under no condition"), Row->Condition, FString());
+	TestEqual(TEXT("and on no scale"), Row->Scale, FString());
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* Gained = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ritualist_capstone_50"), 1, 2,
+		UCataclysmFervour::OnEnemyDeathNearbyStat);
+	if (!TestNotNull(TEXT("choosing Fed by the Fallen grants the stat"), Gained))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth ten Fervour"),
+			  UCataclysmStatPipeline::Evaluate(0.0f, *Gained,
+											   FGameplayTagContainer()).Final,
+			  10.0f, 0.001f);
+	TestNotNull(TEXT("and the stat has an attribute for ApplyTo to write"),
+				UCataclysmPlayerClassStats::StatToAttribute().Find(
+					FString(UCataclysmFervour::OnEnemyDeathNearbyStat)));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

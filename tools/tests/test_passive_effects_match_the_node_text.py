@@ -545,7 +545,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `Headlong` (`Ravager_capstone_25`, option 3) takes a second, for its
 #: clause "your first melee attack after moving 5 metres deals 50% increased
 #: damage". Issue #1515.
-AUTHORED_ROWS = 276
+#: AND TO 280 ON 2026-09-17. Four rows, one on each of four nodes that held
+#: none: `Weight Against Them` (`Ravager_capstone_100`, option 2) and `Drawn
+#: Deep` (`Ritualist_basic_d_a2`), on the damage reduction and maximum mana
+#: scales; `Long Hold` (`Ravager_capstone_50`, option 3) and `Fed by the
+#: Fallen` (`Ritualist_capstone_50`, option 2), on the two death stats that
+#: cost nothing. Issue #1515.
+AUTHORED_ROWS = 280
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -884,7 +890,13 @@ AUTHORED_ROWS = 276
 #: MEASURED PER TREE: the Ravager is 63 of its 74 and the Ritualist 61 of its
 #: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
 #: Berserker none.
-AUTHORED_NODES = 202
+#: AND TO 206 ON 2026-09-17. All four rows of that turn went to nodes with
+#: no row before, so this and the row count move together.
+#:
+#: MEASURED PER TREE: the Ravager is 65 of its 74 and the Ritualist 63 of its
+#: 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
+#: Berserker none.
+AUTHORED_NODES = 206
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -958,7 +970,10 @@ AUTHORED_NODES = 202
 #: this one. **A change authoring a capstone OPTION moves a count that a change
 #: authoring a plain node does not**, which is exactly the blind spot recorded
 #: above: a capstone counts once however many of its three options work.
-AUTHORED_OPTIONS = 19
+#: AND TO 22 ON 2026-09-17: `Weight Against Them`, `Long Hold` and `Fed by the
+#: Fallen`, one capstone option each; `Drawn Deep` is a plain node and moves
+#: `AUTHORED_NODES` alone. Issue #1515.
+AUTHORED_OPTIONS = 22
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1702,6 +1717,19 @@ SCALE_WORDS = {
     # enemy hit and grant one step too many. A step form of `None`, because
     # the sentence says "each" and names no step.
     "enemies_hit_beyond_the_first": (("each enemy", "beyond the first"), None, None),
+
+    # A READING OF THE CHARACTER'S DAMAGE REDUCTION. Issue #1515. Weight Against
+    # Them reads "+1% increased Attack Damage for every 2% of Damage Reduction
+    # you have". The step is written as a percentage, the shape `life_leech`
+    # uses, and "damage reduction" is the only scale here about it.
+    "damage_reduction": (("for every", "damage reduction"), "{value:g}%", None),
+
+    # AND OF ITS MAXIMUM MANA. Issue #1515. Drawn Deep reads "for every full 200
+    # maximum mana you have". The step form carries the words after the
+    # number, because a bare "200" is a digit a sentence could hold for
+    # another reason; "full" is required because it is what makes the steps
+    # whole.
+    "max_mana": (("for every full", "maximum mana"), "{value:g} maximum mana", None),
 }
 
 
@@ -1957,6 +1985,15 @@ VALUE_FORMS = {
     # rate per enemy in reach, and a bare "{value:g}" would be satisfied by
     # either.
     "fervour_per_enemy_hit": "{value:g} for each enemy your attacks hit",
+
+    # THE TWO DEATH RULES THAT COST NOTHING. Issue #1515. Long Hold reads
+    # "Killing an enemy restores 5% of your maximum health", so the form carries
+    # the words that say what the percentage is of. Fed by the Fallen reads "You
+    # gain 10 Fervour whenever an enemy dies within 10 metres of you": the
+    # sentence holds a second "10" for the radius, and a bare "{value:g}"
+    # would be satisfied by either.
+    "health_restored_on_kill_at_no_cost": "{value:g}% of your maximum health",
+    "fervour_on_enemy_death_nearby": "{value:g} Fervour whenever",
 
     # THE RITUALIST'S TWO KEYSTONES THAT ADJUST A FIGURE A SKILL ROW STATES.
     # Issue #1718. Until the owner reworded both on 2026-09-16, each sentence

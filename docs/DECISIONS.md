@@ -2,6 +2,82 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — Four rows: Weight Against Them, Drawn Deep, Long Hold and Fed by the Fallen
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`
+(four rows), `game/Content/Data/DT_PassiveEffects.uasset`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (four tests),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and `docs/README.md` (the
+row count), and `tools/tests/test_passive_effects_match_the_node_text.py` (the
+counts, two scale words and two value forms). Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+The rows for the two mechanism entries below, "A bonus can grow with the damage
+reduction or the maximum mana a character has" and "A kill restores health at no
+cost, and an enemy dying within ten metres grants Fervour". One workbook turn:
+
+| row | node | stat | kind | value | scale | option |
+| :-- | :-- | :-- | :-- | --: | :-- | --: |
+| `Ravager_capstone_100#1` | The Third Onslaught, Weight Against Them | `attack_damage` | increased | 1 | `damage_reduction`, step 2 | 2 |
+| `Ritualist_basic_d_a2#1` | Drawn Deep | `spell_damage` | increased | 1 | `max_mana`, step 200 | |
+| `Ravager_capstone_50#1` | The Second Onslaught, Long Hold | `health_restored_on_kill_at_no_cost` | flat | 5 | | 3 |
+| `Ritualist_capstone_50#1` | The Second Pact, Fed by the Fallen | `fervour_on_enemy_death_nearby` | flat | 10 | | 2 |
+
+None of the four nodes held a row before, and no row carries a required tag or a
+condition.
+
+### WHAT THE ROWS DECIDE THAT THE MECHANISM ENTRIES DID NOT
+
+- **Drawn Deep's value is 1 a point**, so its six points make six percentage
+  points for each full 200 maximum mana, the sizes the mechanism entry flagged for
+  the owner.
+- **The words checks.** `damage_reduction` needs "for every" and "damage
+  reduction", with its step written as a percentage, the shape `life_leech` uses.
+  `max_mana` needs "for every full" and "maximum mana", with its step written as
+  "200 maximum mana", because a bare 200 is a digit a sentence could hold for
+  another reason.
+- **The value forms.** Long Hold's is "5% of your maximum health". Fed by the
+  Fallen's is "10 Fervour whenever", because its sentence holds a second 10 for
+  the radius, and a bare 10 would be satisfied by either.
+
+### DRY RUN
+
+The four rows went through the whole generator on a `git archive` copy of a37d4aec's
+tree before the workbook was edited, with the counts, scale words and value forms
+applied. The whole Python suite in that copy: 12 failed, 5230 passed, 12 skipped.
+One failure was the predicted one, `test_every_csv_still_hashes_to_what_was_recorded`,
+naming `PassiveEffects.csv` alone, which the asset rebuild answers. The other
+eleven are git checks that cannot run in a copy with no `.git`: eight printed "not
+a git repository" and three stopped on a git command exiting with status 128. The
+`PassiveEffects.csv` the copy wrote is byte-identical to the branch's.
+
+**The four C++ readers were not in that copy.** The Python run on the branch is the
+first to read them as text.
+
+### TESTS
+
+Four, in `Cataclysm.Passives.`, each failing until `DT_PassiveEffects` is rebuilt
+from the new table:
+
+- `WeightAgainstThemGrantsAttackDamageForEveryTwoPercentOfDamageReduction` and
+  `DrawnDeepGrantsSpellDamageForEveryFullTwoHundredMaximumMana` read the rows
+  through the tree's own accumulation and the stat pipeline, with the reading
+  stated in the conditions, as Headlong's test does.
+- `LongHoldGrantsFivePercentOfMaximumHealthOnAKill` and
+  `FedByTheFallenGrantsTenFervourForAnEnemyDyingNearby` read the row, what the
+  option grants through the pipeline, and that the stat has an attribute in
+  `UCataclysmPlayerClassStats::StatToAttribute`, without which `ApplyTo` would
+  drop it.
+
+### COUNTS
+
+    passive effect rows       276 -> 280   AUTHORED_ROWS, CHECK_TABLE, docs/README.md
+    authored nodes            202 -> 206   AUTHORED_NODES; the Ravager 63 -> 65 and the Ritualist 61 -> 63 of 74
+    authored options           19 -> 22    AUTHORED_OPTIONS
+    Unreal automation tests    +4 by name, all in Cataclysm.Passives.
+
+---
+
 ## 2026-09-17 — Ravenous Hoard grows each creature's attack damage by a tenth of its own for every ten seconds it lives, up to half again, and leaves its health where it was
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a creature's
