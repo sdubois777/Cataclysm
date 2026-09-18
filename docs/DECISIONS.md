@@ -1584,6 +1584,17 @@ one knows it was argued and not measured.
   set the rule matches against failed exactly the three tests registered for it
   and left the other eight passing; restored, all eleven passed.
 
+**Corrected 2026-09-18.** The sentence above says "two of the three lookups";
+there were FOUR — `StatForSkill`, the attack-damage askers, `StatAppliedTo` and
+`RateAppliedTo` — of which two carried every call-site reading and two carried
+none. The arithmetic broke when the survey was compressed into prose; the survey
+itself counted four. **And `RateAppliedTo` was deleted the same day by the
+cooldown repair**, so a reader measuring this against the code now will find
+three lookups, two carrying all and one carrying none. **The pairing counts in
+this entry are unaffected**: they were measured per stat and per scale, from the
+data and from each asker's own conditions, and the lookup tally was a summary of
+that same evidence rather than an input to it.
+
 ---
 
 ## 2026-09-18 — Both critical strike lookups are handed the character being struck, so a row about the target reaches them
