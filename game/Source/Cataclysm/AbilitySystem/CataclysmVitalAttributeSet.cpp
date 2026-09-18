@@ -666,12 +666,47 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						// attacker's critical strike chance, so the condition on it
 						// is about the attacker, and `StatForSkill` is asked of the
 						// attacker's own ability system.
+						//
+						// AND THE CHARACTER BEING STRUCK IS HANDED OVER, which is not
+						// the same thing and was missing. Issue #1982. A condition about
+						// the TARGET -- "against Boss enemies", "against an enemy you
+						// have Crippled" -- is still a condition on the attacker's own
+						// row: it is the attacker asking about what it is hitting.
+						// `Target` is the NINTH parameter and defaults to null, so this
+						// call reached it only by passing the eight before it, and until
+						// it did, `WithTargetState` had nothing to read. Every such row
+						// on a critical strike stat was accepted by every check,
+						// shipped, and granted nothing.
+						//
+						// THE STRUCK CHARACTER IS THIS ATTRIBUTE SET'S OWNER, because
+						// this runs on the DEFENDER. It is the same pairing
+						// `Hit.OpponentDistanceMetres` uses further up, where the causer
+						// is the attacker and the owning actor is what it hit.
+						//
+						// SIX CONDITIONS, NOT TWO. `WithTargetState` fills the target's
+						// ailments, its health share and whether it is a boss, so this
+						// reaches `target_carries_cripple`,
+						// `target_carries_cripple_and_weaken`,
+						// `target_carries_void_splinter`, `target_health_below`,
+						// `target_is_boss` and `target_is_not_boss`.
+						//
+						// THE DISTANCE AND THE STAGGER ARE STILL NOT PASSED. They are
+						// separate parameters rather than part of the target state, so a
+						// row on a critical strike stat asking `target_within_metres`
+						// still grants nothing. Said here rather than left for the next
+						// author to find.
 						const UCataclysmAbilitySystemComponent* Asking =
 							Cast<const UCataclysmAbilitySystemComponent>(Attacker);
 						const float OwnCritChance = Asking
 							? Asking->StatForSkill(FName(TEXT("crit_chance")),
 												   AssetTags,
-												   Offence->GetCritChance())
+												   Offence->GetCritChance(),
+												   /*SkillHealthCostPercent=*/-1.0f,
+												   FCataclysmBlowContext(),
+												   /*MetresMovedBeforeBlow=*/-1.0f,
+												   /*TargetDistanceMetres=*/-1.0f,
+												   /*bTargetIsStaggered=*/false,
+												   /*Target=*/GetOwningActor())
 							: Offence->GetCritChance();
 
 						// HELD UNDER THE ATTACKER'S OWN CEILING, which matters only
@@ -707,7 +742,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Hit.CritMultiplier = Asking
 							? Asking->StatForSkill(FName(TEXT("crit_multiplier")),
 												   AssetTags,
-												   Offence->GetCritMultiplier())
+												   Offence->GetCritMultiplier(),
+												   /*SkillHealthCostPercent=*/-1.0f,
+												   FCataclysmBlowContext(),
+												   /*MetresMovedBeforeBlow=*/-1.0f,
+												   /*TargetDistanceMetres=*/-1.0f,
+												   /*bTargetIsStaggered=*/false,
+												   /*Target=*/GetOwningActor())
 							: Offence->GetCritMultiplier();
 					}
 				}
