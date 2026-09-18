@@ -425,7 +425,14 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// minion_hits_count_as_yours, which UCataclysmCombatEvents::NoteBlow had
 	// been reading since that morning with nothing in the data supplying it,
 	// so the keystone granted nothing to a player who took it. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        286)
+	// AND 288 SINCE 2026-09-18, for the TWO rows that make the Ritualist keystone
+	// Behind the Veil do something in play: minions_draw_nearby_enemies_metres at
+	// 10 and minions_draw_nearby_enemies_minimum at 3. Two rows and not one
+	// because the node states two numbers, a reach and a count, and both were
+	// ruled into the data rather than into code. The same shape as the entry
+	// above: UCataclysmCommand::MinionDrawingEnemyFrom read both stats before any
+	// row supplied them, so the keystone granted nothing. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        288)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
