@@ -497,6 +497,169 @@ rehearsal and not findings.
 
 ---
 
+## 2026-09-18 — Every elite creature buffs the allies beside it, and the word "Commander" now means three different things
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the rules stepped every quarter
+second, the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Character/CataclysmSuccubusCharacter.cpp` (one comment that was already wrong),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820),
+[#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+[#1997](https://github.com/sdubois777/Cataclysm/issues/1997). **Applied.**
+
+### The row
+
+`War_Commander_s_Aura` in `game/Data/DungeonModifiers.csv`: "Certain elite enemies act as commanders,
+providing buffs (e.g., increased health, damage, or resistance) to nearby allies." No text in `docs/`
+says more.
+
+### Nothing new was needed, and that was measured before a line was written
+
+**FOUR THINGS ALREADY GRANT THE COMMANDER BUFF AND TWO OF THEM ARE NOT ON THE CREATURE CLASS AT ALL.**
+`UCataclysmEnemyModifiers` grants it twice, once for a Horde Leader's rally on death and once for the
+buff a sacrifice gives; `ACataclysmSuccubusCharacter::PulseDominion` grants it to every ally within 8
+metres; and the dungeon floor rule `Celestial_Hallowed_Groundfall` grants it from this same
+quarter-second beat to every creature standing in one of its craters.
+
+So this rule grants it the same way that last one does and adds nothing to
+`ACataclysmEnemyCharacter`. The open question before planning was whether a floor rule could grant the
+tag without new machinery on the creature; the answer was already in the game, twice.
+
+### The word "Commander" means three things now, and a reader must go by the rule key
+
+| What | What it means |
+| :-- | :-- |
+| the Commander gameplay tag | **"buffed by a commander", never "is a commander"**. `CommanderMultiplier` makes whoever holds it 20% faster, and all four granters give it to OTHERS |
+| `War_March_of_Progress` | ONE creature a floor, chosen and hunted. It carries no tag and nothing on it changes |
+| `War_Commander_s_Aura` | EVERY creature at Elite or above, each granting the tag to its neighbours |
+
+**NEITHER ROW'S WORDS CHANGE.** Both sentences are the project owner's and the March of Progress
+reading merged before this one, so it does not give way. The disambiguation is made where a player and
+a reader actually see it, ruled under the owner's delegation:
+
+- every identifier carries its own rule's key, so `MarchOfProgressCommander` and `CommandersAuraCommanders`
+  cannot be mistaken for each other;
+- the floor panel names the creature for one and the rule for the other —
+  `Imp, this floor's Commander, alive, 0 slain this run` beside
+  `2 commanders on this floor (Commander's Aura)`;
+- and this table is what a reader is meant to consult rather than the word.
+
+**THE PLAYER-FACING OVERLAP IS A JUDGEMENT AND THE OWNER MAY VETO IT.** A player on a floor carrying
+both rows still reads the word twice in two senses. The alternative was rewording a merged row, which
+is the owner's sentence to change and not this session's.
+
+**NAMING THE CREATURE DOES NOT CLOSE ISSUE #1997.** A name on a panel is still not a way to pick one
+creature out of a crowd. That issue says what a player would need.
+
+### The four rulings, each under the project owner's delegation
+
+**ONE. "Certain elite enemies" is read as EVERY creature at Elite or above.** The row names no number,
+so "certain" is read as the rank and not as a count. `War_Royal_Guard`'s row was reworded by the owner
+to "above Uncommon ranked" and this library already reads that as Elite, the rung above Common, so
+`CommandersAuraLowestRung` is DECLARED as `RoyalGuardLowestRungThatSummons` rather than as 1. There is
+no ceiling either: a Legendary, a Herald and a boss all command, because refusing them would be a
+figure the row does not state.
+
+**TWO. The reach is the Succubus's own 800 cm.** That creature grants this same buff to every ally
+within 8 metres, so a second distance for the same buff would mean the game empowered creatures at two
+ranges with no row asking for it. A Python check reads both headers, because this library does not
+include the creature classes and a copied number drifts.
+
+**THREE. The buff is the existing Commander tag and the row's examples are not followed.** The row
+suggests "increased health, damage, or resistance"; the tag raises movement speed and attack speed.
+**The row's first example is one this project has already measured as harmful.** The owner decided on
+2026-08-20 which stats that tag covers and excluded maximum health, because an enemy's attributes are
+BASE values and current health does not rise with the maximum — so an ally walking in and out of an
+aura would lose health permanently from an effect meant to help it. "e.g." states examples rather than
+a requirement, and `ACataclysmEnemyCharacter` records that this tag "remains the only thing in the
+game that makes a creature better", so using it is the one reading that needs no new buff. A Python
+check reads the "e.g." as well as the word "elite", so that if the row is ever reworded into a
+requirement this decision is revisited rather than quietly outlived.
+
+**FOUR. A commander does not buff itself.** `UCataclysmTargeting::FindAlliesInSphere` excludes the
+instigator it is given, so passing the commanding creature is the whole of it.
+
+### Nothing is remembered between beats, and the buff is not stripped at the stairs
+
+The buff is re-applied every beat for one second — `HallowedGroundfallEmpowerSeconds`, that rule's own
+figure, since it grants the same tag from the same beat in the same shape. `ApplyTagForDuration` keeps
+one effect per tag, so a creature between two commanders is 20% faster and not 44%, and so is one
+standing in a Hallowed Groundfall crater as well.
+
+**THE SUCCUBUS TRACKS WHO IT HAS BUFFED AND THIS RULE DOES NOT, WHICH IS A JUDGEMENT.** That creature
+must take the buff off the moment an ally leaves its aura, so it keeps a list. This rule lets the buff
+lapse instead: re-applying is cheaper than tracking, and the longest a creature can keep it after
+walking away is one second.
+
+**AND A FLOOR CHANGE DOES NOT STRIP IT.** Marked as a judgement. It lapses within a second on a floor
+that does not carry this row, and stripping it would also take a Succubus's grant off its allies,
+because removing an effect by its tag cannot tell which rule granted it.
+
+**ONE INTERACTION RECORDED RATHER THAN LEFT TO BE DISCOVERED.** A Succubus removes this tag from
+creatures that leave ITS aura, and that removal cannot tell whose grant it is removing either. So a
+creature buffed by this rule that walks out of a Succubus's aura loses this rule's buff too — until the
+next beat puts it back, so at most a quarter second. Small and self-healing, but real.
+
+### Two comments this change makes wrong, both corrected to count nothing
+
+`BloodForgedChampionsLowestRung` said "**Two** rules meaning the same rung should not be able to drift
+apart". This rule's lowest rung is declared the same way and makes it three.
+
+`ACataclysmSuccubusCharacter::PulseDominion` said asking for a creature's allies was "**THE ONLY PLACE
+IN THE GAME**" that did so. **That was already false when it was written** — `UCataclysmEnemyModifiers`
+asks four times — and this rule asks once for every creature that commands. Both now tell the reader to
+count the callers rather than read a number, which is the habit issue #1760 records.
+
+### Two faults written and caught before any build
+
+**THE GRANT'S ARGUMENTS ARE (Instigator, Target) AND THIS WAS WRITTEN BACKWARDS.** The two grants of
+this buff nearest this rule both pass the same actor twice, so neither tells the order apart;
+`PulseDominion` is the one that does, passing `this, Ally`. Written the other way round the rule buffs
+the commander and nothing else, which compiles and reads correctly. A comment sits at the call and a
+Python check asserts the order.
+
+**AND THE REWORDED PANEL ASKED THE WRONG QUESTION FIRST.** Its first version asked whether the
+Commander's weak pointer was still valid and called that "alive". A creature that has died keeps a
+valid weak pointer until its body is removed, so it would have printed "alive" for the Commander the
+player had just killed. The name is taken first now and the state decided from the slain flag, which
+is the only thing that answers it. The same property of a dead creature's pointer had already cost the
+March of Progress change a test that passed for the wrong reason.
+
+### What the tests do
+
+Seven automation tests in `Cataclysm.DungeonModifierEffects.`, taking that group from 186 registered to
+193 by a diff. They cover: an Elite buffing the ally beside it and not itself; every rung at Elite or
+above commanding while a Common commands nobody, measured in the arithmetic across the whole ladder and
+on two Commons standing together; an ally inside the reach buffed and one outside it not, both placed
+from the rule's own figure so a change to the reach moves both; a creature between two commanders
+buffed once rather than twice; the buff lapsing once nothing grants it; the floor panel counting
+commanders and naming its rule; and a floor change forgetting the count before any beat runs.
+
+**THE BUFF IS READ BACK THROUGH `CommanderMultiplier`**, which is what the tag DOES: 1.2 for a creature
+holding it and 1.0 for one that is not. Every test measures that rather than the presence of a name.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, taking that file from 130 to
+134: the row's own words; both borrowed figures, one read out of the Succubus's header and one required
+to be DECLARED as the constant it borrows; the argument order of the grant; and that both War rules'
+panel lines say which Commander they mean.
+
+### What the tests do not show
+
+- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
+  the seven automation tests and the three guard proofs wait for this machine's next free window, and
+  this section will be replaced by what those runs print.
+- **That a player can tell the two Commanders apart on a real floor.** The panel wording is asserted as
+  a string; whether a player reading it mid-fight makes the distinction was not measured, and the
+  overlap is recorded above as a judgement the owner may veto.
+- **What a floor of this is like to play.** Every creature at Elite or above buffing its neighbours is
+  a large change to how a crowded floor fights, and nothing here measures it.
+
+---
+
 ## 2026-09-18 — A floor that makes every creature hit harder the deeper you go, and one creature whose death pays permanent armour
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
