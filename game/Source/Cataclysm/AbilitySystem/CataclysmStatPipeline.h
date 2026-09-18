@@ -1186,6 +1186,51 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Class Resource Above Percent"),
 
 	/**
+	 * The class resource is AT OR ABOVE that many POINTS. Issue #1515.
+	 *
+	 * "While you have 50 or more Fervour, you gain +2% increased Damage
+	 * Reduction and +3% increased Attack Damage per point" is the row, the
+	 * Ravager's Set Against It. `ConditionValue` IS A COUNT OF POINTS, and the
+	 * comparison is at or above, the boundary `HealthAtOrAbovePercent` draws for
+	 * "or more".
+	 *
+	 * POINTS AND NOT A PERCENTAGE, WHICH IS THE OPPOSITE CHOICE FROM ITS
+	 * NEIGHBOUR ABOVE, so the reason has to be better than that one's and it is
+	 * measured rather than argued. `ClassResourceAbovePercent` says classes do
+	 * not share a maximum. That is true and it is NOT the reason here: this node
+	 * is in the Ravager tree and only a Ravager will ever take it, so there is no
+	 * disagreement between classes to point at.
+	 *
+	 * THE REASON IS THAT ONE CHARACTER'S OWN BAR MOVES. Measured 2026-09-18:
+	 * `class_resource` gains nothing per level -- `game/Data/ClassStats.csv`
+	 * states 100 for every class and 150 for the Ritualist, both with a
+	 * per-level gain of zero -- but it is raised by an affix ("Flat maximum
+	 * class resource", up to 7, on four slots), by enchantments (+20% to +40%
+	 * increased, and a negative one), and by FOURTEEN passive effect rows. So a
+	 * Ravager who invests in maximum Fervour carries a bar above 100, and a
+	 * threshold written as a percentage would demand more Fervour the more of it
+	 * they could hold. The owner's sentence says fifty Fervour. Points keep it
+	 * saying that.
+	 *
+	 * IT IS THE SAME SHAPE OF ARGUMENT `EnergyShieldAtMaximum` MAKES, and it
+	 * lands in a different place: that one's bar moves over a character's
+	 * LIFETIME, because the shield gains per level; this one's moves over a
+	 * character's BUILD, because the pool does not gain per level and is raised
+	 * by what the player chooses instead.
+	 *
+	 * SO A ROW USING THIS IS UNAMBIGUOUS ONLY ON A NODE IN ONE CLASS'S TREE,
+	 * because fifty points is a third of a Ritualist's bar and half of everyone
+	 * else's. Every row using it today is.
+	 *
+	 * TWO CLAUSES AND NOT THREE. The reading has to be known, and then the count
+	 * is worth comparing. The maximum is not read at all, which is the whole
+	 * difference from its neighbour, so there is no bar-of-nothing to guard
+	 * against and nothing to divide by.
+	 */
+	ClassResourcePointsAtLeast
+		UMETA(DisplayName = "Class Resource Points At Least"),
+
+	/**
 	 * The character is holding some energy shield. Issue #1981.
 	 *
 	 * "You take 10%-20% increased damage from all sources while your shield is
@@ -2827,7 +2872,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a forty-sixth, which is the drift that put the passive tree eight
+	 * adds a forty-seventh, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -2836,7 +2881,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * NINETEEN OF THE FORTY-FIVE COMPARE NOTHING. They are the case labels
+	 * NINETEEN OF THE FORTY-SIX COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by
