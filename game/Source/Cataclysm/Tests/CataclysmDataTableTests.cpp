@@ -489,7 +489,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// `mana_cost`, the stat added in #1962, whose base is the cost the skill
 	// itself states rather than a figure the character holds: two reduce a
 	// cost, three raise one, and one removes it below half health.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    211)
+		// AND 244 SINCE THE THIRTY-THREE ROWS OF THE ENCHANTMENT SURVEY, issue
+	// #1815. Ten more sentences were approved and held: three belong to item
+	// sets, one needs a base no class supplies, and five are held on the words
+	// their sentences use. docs/DECISIONS.md carries each reason.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    244)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
