@@ -349,6 +349,153 @@ type is. It now refuses the quoted literal, which is what writing the answer dow
 
 ---
 
+## 2026-09-18 — A minion draws a nearby enemy off its summoner, a boss ignores it, and it is not crowd control
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and
+`.cpp`, `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` and two test
+files. The keystone is `Ritualist_keystone_spine_002`, Behind the Veil, from
+issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+**The node's sentence, unchanged:** "Enemies within 10 metres attack your minions
+rather than you, while you have three or more minions."
+
+### WHAT IT DOES
+
+A creature that would attack a character attacks one of that character's minions
+instead, when the character has the keystone, commands at least the stated
+number, and the creature stands within the stated reach. It is decided in
+`ACataclysmEnemyController::ChooseTarget`, after the order a commander may have
+given and after the search for the nearest hostile, so a creature that found
+nobody or found somebody else is left alone.
+
+### WHAT THE GENRE SETTLED, AND WHAT IT DID NOT
+
+Both shipped games express "attack this instead" by naming one creature to
+attack rather than by changing damage, which is the shape used here.
+
+| Game | Its wording | Read from |
+|---|---|---|
+| Path of Exile | "Enemies you Taunt can only target you, and deal 10% less damage to anyone else. Taunt lasts for 3 seconds", ending if the taunter dies | `poedb.tw/us/Taunt` |
+| Diablo 4 | Taunt forces the target to attack the source for a duration, is classed as crowd control, and has no effect on bosses | Icy Veins and the Fextralife wiki; that wiki's own Taunt page returned 404 |
+| Last Epoch | no developer statement found; players report that enemies attack the character rather than minions almost always | the official forum, community posts |
+
+**What it did not settle:** this node is a standing property of the character
+with a radius and a minion count, not a timed effect a skill applies. Its reach,
+its count and its exemptions are specific to this game.
+
+### THE OWNER'S DECISIONS, 2026-09-18
+
+**A BOSS IGNORES IT.** Every rank below boss is redirected. It reads the rank the
+spawner set, the same way `UCataclysmSkillEffects::ApplyStun` reads stun immunity
+and the subjugation rule reads "bosses cannot be taken" — as that rule's own
+comment asks, so the three cannot drift apart. **This game already refuses twice
+to let a boss have its behaviour taken over**, which is a stronger reason than
+the genre one: it is the house rule, and Diablo 4 agrees with it.
+
+**IT IS NOT CROWD CONTROL** and no resistance shortens or refuses it. **This goes
+against Diablo 4 on purpose**, which classes its Taunt as crowd control. The
+reason is what the resistance would have to do here:
+`UCataclysmSkillEffects::AfterCrowdControlResistance` scales an amount — in
+practice a duration — and removes the effect at 100. **This rule has no duration
+to scale**, because it is re-decided on every thinking pass for as long as the
+character stands there. Treating it as crowd control would mean building a second
+kind of resistance, which is a different piece of work from this node. If
+creatures should ever shrug it off, the shape is a named exemption per creature
+type, not the resistance stat.
+
+### THE JUDGEMENTS, RULED UNDER THE OWNER'S DELEGATION OF 2026-09-14
+
+| Question | Answer | Why |
+|---|---|---|
+| Ten metres from whom? | **From the character** | The sentence is about enemies near you, and it is what makes the keystone legible in play |
+| Which minion? | **The one drawing most attention**, ties to whichever stands nearest the creature | `ThreatPercent` on the minion type row is the number the design already states |
+| A minion drawing nothing? | **Not eligible at all**, rather than ranked last | That column's own comment says a turret sits near zero and an imp at 100, "which is how a decoy and a turret are one number rather than two behaviours". Sending enemies at a turret would contradict the number the data states |
+| No eligible minion in reach? | **The creature chooses as it does today** | The sentence promises a redirection, not a protection |
+| Where do the ten and the three live? | **In rows on the node**, not as constants in code | Every other node's numbers live in the data, and a reader of the row must see them |
+| Does a subjugated enemy count towards the three? | **Yes** | It is commanded, `UCataclysmCommand::ThingsCommandedBy` already counts it, and the target choice says outright that a thrall is part of the army. It is ELIGIBLE to be attacked only if its own type row states a threat above zero, and none does |
+
+### TWO STATS AND NO FLAG
+
+`minions_draw_nearby_enemies_metres` carries the reach and
+`minions_draw_nearby_enemies_minimum` the count. Neither has a gameplay
+attribute: the base is zero and the node's flat row is the whole of the answer.
+**A reach above zero IS the keystone being present**, so there is no third stat
+holding a flag — a character without the node has no row, the lookup answers
+zero, and the rule stops before asking anything else.
+
+### WHAT THIS CHANGE DOES NOT DO, SAID PLAINLY
+
+**The two rows are not written yet, so the keystone still grants nothing in
+play.** The rows are authored in the design workbook, which another session
+holds; they arrive with the regenerated data and the rebuilt asset. Until then
+every test here grants the two stats by hand, **and a test that grants a stat by
+hand passes with no row at all** — which is exactly what happened to the sibling
+keystone Conduit, read by the engine a day before any row granted it, with every
+test passing throughout. The test that closes that hole reads the row and lands
+with the rows.
+
+### WHAT THE MACHINE MEASURED
+
+**The rows landed, and the pair that proves it ran in one window on one tree.**
+
+| Step | Registered before the run | What the run printed |
+|---|---|---|
+| The group `Cataclysm.Command.`, before the asset was rebuilt | 19 performed, exactly `TheKeystonesOwnRowsDrawANearbyEnemy` failing | 19 performed, 18 succeeded, 1 failed, that test |
+| The whole Unreal suite, after the rebuild | 2118 performed, 0 failed | 2118 performed, 0 failed, 0 refused |
+| Removing the redirect from the creature's target choice | fails three named tests | those three, difference none |
+| Deleting the exemption that lets a boss ignore it | fails one named test | that one, difference none |
+| Ranking a minion that draws nobody instead of skipping it | fails one named test | that one, difference none |
+
+**The first two lines are the point.** The test that reads the keystone's rows
+fails before the asset is rebuilt and passes after it, on the same tree in the
+same window. That is what says the ROWS make the keystone work, rather than
+anything a test granted by hand — the check Conduit did not have.
+
+### A FAULT THE FIRST RUN FOUND, IN THE TESTS AND NOT THE ENGINE
+
+The first pass of the group failed **two** tests where one was registered. The
+extra one was `AMinionDrawsANearbyEnemyOffItsSummoner`, on three of its
+assertions.
+
+**Two tests had placed the minions along the same axis as the hunting creature
+and beyond it**, so the nearest minion stood two metres away while the summoner
+stood four. The creature's own search then answered a minion, and the keystone
+redirects a creature that would attack the CHARACTER — so it was never consulted.
+**Those two tests were not measuring the keystone at all.** One of them carried a
+comment asserting the opposite, that every minion stood further away than the
+summoner, which was false as the actors were placed.
+
+The repair is the arrangement the boss test already used and which passed
+throughout: the creature on one axis and the minions on the other, which puts the
+trap about 6.4 metres from the creature, the mote 8.1 and the imp 9.9, against
+the summoner's 4. **Recorded because the lesson is general**: when a test's
+premise is that one actor is the nearest, the distances have to be computed
+rather than read off the order the coordinates were typed, and a comment stating
+a geometry nobody computed is worse than no comment. It cost one build and one
+test pass inside the window.
+
+### ONE TEST EXISTS BECAUSE A GUARD PROOF COULD NOT HAVE FIRED
+
+**Choosing the breaks before asking for the machine found a rule nothing
+measured.** Three proofs were planned, one per mechanism, and the third -- making
+a minion that draws nobody eligible instead of skipped -- would have failed no
+test at all. Attention is compared before distance, so in every test written by
+then a minion drawing nothing loses to one drawing something **whether or not the
+rule excludes it**. The exclusion was untested and the proof would have been
+registered against nothing.
+
+The only case that tells the two readings apart is one where nothing else is
+eligible, so
+`Cataclysm.Command.AMinionDrawingNobodyIsNotEligibleAtAll` was written: one
+minion of the type that draws nobody and a row asking for one, answered nobody;
+then the same character, the same row and the same distance with a minion that
+draws, answered that minion. **Recorded because the finding belongs to the
+method, not to this keystone**: a break with no test to fail is a missing test,
+and it is found without a build.
+
+---
+
 ## 2026-09-18 — Four conditions and two scale sources land ahead of their rows, and two sentences that looked like the same shape are not
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the stat

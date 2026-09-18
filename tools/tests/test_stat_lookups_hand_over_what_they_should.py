@@ -153,6 +153,15 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 
 INVENTORY = {
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "the two numbers Behind the Veil states -- how far a Ritualist's "
+        'minions draw nearby enemies off their summoner, and how many '
+        'minions that takes -- asked of the character a creature would '
+        'otherwise attack. No tags, because both are properties of that '
+        'character and not of any skill, and no blow is in hand: the '
+        'question is asked while a creature chooses whom to attack, '
+        'before anything is thrown',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAilments.cpp',
      'FName(Kind.Stat), SkillTags, FromAttribute, SkillHealthCostPercent'):
         "an ailment's chance and magnitude, asked with the skill's tags "

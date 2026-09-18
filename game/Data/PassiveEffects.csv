@@ -285,3 +285,5 @@ Ritualist_keystone_b_kB#1,Ritualist_keystone_b_kB,minion_explodes_on_death,flat,
 Ritualist_basic_b_a2#1,Ritualist_basic_b_a2,minion_explosion_damage,increased,3.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_d_kB#1,Ritualist_keystone_d_kB,mana_cost,removed,1.0,,while_stationary,0.0,,0.0,0,-1.0
 Ritualist_keystone_spine_003#1,Ritualist_keystone_spine_003,minion_hits_count_as_yours,flat,1.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_spine_002#1,Ritualist_keystone_spine_002,minions_draw_nearby_enemies_metres,flat,10.0,,,0.0,,0.0,0,-1.0
+Ritualist_keystone_spine_002#2,Ritualist_keystone_spine_002,minions_draw_nearby_enemies_minimum,flat,3.0,,,0.0,,0.0,0,-1.0

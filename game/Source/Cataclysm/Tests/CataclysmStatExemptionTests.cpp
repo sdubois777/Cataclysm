@@ -835,6 +835,147 @@ namespace CataclysmStatExemptionTest
 			FlaggedHit->GetLastBlow().Attacker == Flagged.Actor);
 	}
 
+	/**
+	 * Behind the Veil's two numbers, granted together.
+	 *
+	 * TOGETHER BECAUSE `GrantFlat` ABOVE REPLACES THE WHOLE STAT MAP. Calling it
+	 * once per stat would leave only the second, and the probe would then
+	 * measure a character missing the other half.
+	 */
+	void GrantTheVeil(AActor* Who, float Metres, float Minimum)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Who));
+		if (!System)
+		{
+			return;
+		}
+
+		auto Flat = [](float Value)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = Value;
+
+			FCataclysmStatInputs Line;
+			Line.Base = 0.0f;
+			Line.Modifiers = {Row};
+			return Line;
+		};
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		Inputs.Add(FName(TEXT("minions_draw_nearby_enemies_metres")),
+				   Flat(Metres));
+		Inputs.Add(FName(TEXT("minions_draw_nearby_enemies_minimum")),
+				   Flat(Minimum));
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * A character on the players' side and a creature standing `Metres` away.
+	 *
+	 * REAL CHARACTERS AND NOT `FScopedFighter`, because both probes below turn
+	 * on the distance between the two, and a bare actor with no root component
+	 * stands at the origin whatever it is told.
+	 */
+	bool AVeilPair(FAutomationTestBase& Test, UWorld* World, float Metres,
+				   ACataclysmEnemyCharacter*& Summoner,
+				   ACataclysmEnemyCharacter*& Hunting)
+	{
+		Summoner = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+		Hunting = World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(Metres * M, 0, 0), FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("a summoner"), Summoner)
+			|| !Test.TestNotNull(TEXT("a creature hunting it"), Hunting))
+		{
+			return false;
+		}
+
+		Summoner->SetGenericTeamId(
+			UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		return true;
+	}
+
+	void ProbeMinionsDrawNearbyEnemiesMetres(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmEnemyCharacter* Summoner = nullptr;
+		ACataclysmEnemyCharacter* Hunting = nullptr;
+		if (!AVeilPair(Test, World, /*Metres=*/8.0f, Summoner, Hunting))
+		{
+			return;
+		}
+
+		ACataclysmMinion* Imp = SummonImp(Test, World, Summoner);
+		if (!Imp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+		// THE ONLY THING THAT MOVES IS THE REACH ROW. The creature stands eight
+		// metres away throughout, so a reader that ignored this stat would
+		// answer the same both times.
+		GrantTheVeil(Summoner, /*Metres=*/6.0f, /*Minimum=*/1.0f);
+		Test.TestNull(
+			TEXT("a reach of six does not reach a creature eight metres away"),
+			UCataclysmCommand::MinionDrawingEnemyFrom(Summoner, Hunting));
+
+		GrantTheVeil(Summoner, /*Metres=*/10.0f, /*Minimum=*/1.0f);
+		Test.TestTrue(
+			TEXT("and a reach of ten does, so "
+				 "UCataclysmCommand::MinionDrawingEnemyFrom really reads "
+				 "minions_draw_nearby_enemies_metres"),
+			UCataclysmCommand::MinionDrawingEnemyFrom(Summoner, Hunting) == Imp);
+	}
+
+	void ProbeMinionsDrawNearbyEnemiesMinimum(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmEnemyCharacter* Summoner = nullptr;
+		ACataclysmEnemyCharacter* Hunting = nullptr;
+		if (!AVeilPair(Test, World, /*Metres=*/4.0f, Summoner, Hunting))
+		{
+			return;
+		}
+
+		ACataclysmMinion* Imp = SummonImp(Test, World, Summoner);
+		if (!Imp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+		// AND HERE ONLY THE COUNT MOVES. One minion stands there throughout and
+		// the reach is the same both times.
+		GrantTheVeil(Summoner, /*Metres=*/10.0f, /*Minimum=*/1.0f);
+		Test.TestTrue(
+			TEXT("a row asking for one is satisfied by one minion"),
+			UCataclysmCommand::MinionDrawingEnemyFrom(Summoner, Hunting) == Imp);
+
+		GrantTheVeil(Summoner, /*Metres=*/10.0f, /*Minimum=*/5.0f);
+		Test.TestNull(
+			TEXT("and one asking for five is not, so "
+				 "UCataclysmCommand::MinionDrawingEnemyFrom really reads "
+				 "minions_draw_nearby_enemies_minimum"),
+			UCataclysmCommand::MinionDrawingEnemyFrom(Summoner, Hunting));
+	}
+
 	// ------------------------------------------------------------------
 	// THE SECOND PROMISE THIS FILE KEEPS, AND IT IS A DIFFERENT ONE. Issue
 	// #1973. Above: every stat with no gameplay attribute is read by bespoke
@@ -1509,6 +1650,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},
 			{TEXT("minion_explosion_damage"),  &ProbeExplosionDamage},
 			{TEXT("minion_hits_count_as_yours"), &ProbeHitsCountAsYours},
+			{TEXT("minions_draw_nearby_enemies_metres"),
+									&ProbeMinionsDrawNearbyEnemiesMetres},
+			{TEXT("minions_draw_nearby_enemies_minimum"),
+									&ProbeMinionsDrawNearbyEnemiesMinimum},
 		};
 		return Made;
 	}

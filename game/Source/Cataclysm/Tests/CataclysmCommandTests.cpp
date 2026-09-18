@@ -21,6 +21,10 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+// For the keystone's own rows, read out of the imported effect table by
+// the test that grants nothing by hand. Issue #1515.
+#include "Character/CataclysmPassiveTree.h"
+#include "Data/CataclysmDataRows.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
@@ -2419,6 +2423,553 @@ bool FCataclysmSummonTellsItsMinionTest::RunTest(const FString&)
 	TestEqual(TEXT("and its own row said what an explosion of its is worth"),
 			  Imp->ExplosionPercentOfOwnDamage,
 			  ImpExplosionPercentOfOwnDamage, 0.001f);
+	return true;
+}
+
+// ==========================================================================
+// Behind the Veil
+// ==========================================================================
+
+namespace CataclysmBehindTheVeilTest
+{
+	using namespace CataclysmCommandTest;
+
+	/** Every threat figure below is `game/Data/MinionTypes.csv`'s own. */
+	const TCHAR* const DrawsMost = TEXT("Imp");          // ThreatPercent 100
+	const TCHAR* const DrawsSome = TEXT("Mote");         // ThreatPercent 40
+	const TCHAR* const DrawsLittle = TEXT("Ballista");   // ThreatPercent 5
+	const TCHAR* const DrawsAsLittle = TEXT("BoltTurret");  // ThreatPercent 5
+	const TCHAR* const DrawsNobody = TEXT("SpikeTrap");  // ThreatPercent 0
+
+	/**
+	 * Give a character the keystone's two numbers by hand.
+	 *
+	 * BY HAND BECAUSE THE ROWS ARE NOT WRITTEN YET. The design workbook is held
+	 * by another session, so `Ritualist_keystone_spine_002` still carries no
+	 * effect row and nothing in the data grants these stats. **These tests
+	 * therefore pass with no row at all**, which is exactly the hole the sibling
+	 * keystone fell into: Conduit's flag was read by the engine a day before any
+	 * row granted it, and every test passed throughout. The test that closes it
+	 * reads the ROW, and it lands with the rows.
+	 */
+	void GiveBehindTheVeil(AActor* Who, float Metres, float Minimum)
+	{
+		UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Who));
+		if (!Theirs)
+		{
+			return;
+		}
+
+		auto FlatRow = [](float Value)
+		{
+			FCataclysmStatModifier Row;
+			Row.Bucket = ECataclysmStatBucket::Flat;
+			Row.Source = ECataclysmModifierSource::PassiveKeystone;
+			Row.Value = Value;
+
+			FCataclysmStatInputs Inputs;
+			Inputs.Base = 0.0f;
+			Inputs.Modifiers.Add(Row);
+			return Inputs;
+		};
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("minions_draw_nearby_enemies_metres")),
+				  FlatRow(Metres));
+		Stats.Add(FName(TEXT("minions_draw_nearby_enemies_minimum")),
+				  FlatRow(Minimum));
+		Theirs->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** One minion of a named type, or null with the reason already reported. */
+	ACataclysmMinion* SummonOfType(FAutomationTestBase& Test, AActor* Summoner,
+								   const FVector& Where, const TCHAR* Type)
+	{
+		ACataclysmMinion* Made = ACataclysmMinion::Spawn(
+			Summoner, Where, /*Lifetime=*/60.0f, /*bBurns=*/false,
+			FString(Type));
+		if (!Made)
+		{
+			Test.AddError(FString::Printf(TEXT("Could not summon a %s."), Type));
+		}
+		return Made;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilDrawsAnEnemyOffTest,
+	"Cataclysm.Command.AMinionDrawsANearbyEnemyOffItsSummoner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Behind the Veil: "Enemies within 10 metres attack your minions rather than
+ * you, while you have three or more minions." Issue #1515.
+ *
+ * THE SUMMONER IS THE NEAREST THING TO THE CREATURE THROUGHOUT, which is what
+ * makes this a test of the keystone rather than of the search. Without the node
+ * the creature attacks whoever is nearest, and that is the summoner; with it,
+ * the creature walks past the summoner to a minion standing further away.
+ *
+ * AND THE MINION IT PICKS IS NOT THE NEAREST ONE. The trap draws nobody and
+ * stands closest; the imp draws most and stands furthest. A rule that ranked by
+ * distance, or that treated a threat of zero as merely the lowest rank, would
+ * send the creature to the trap and fail here.
+ */
+bool FCataclysmVeilDrawsAnEnemyOffTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(4 * M, 0, 0));
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Hunting.Actor->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("The hunting creature has no brain to drive."));
+		return false;
+	}
+
+	// THE CONTROL, BEFORE ANY MINION EXISTS: it goes for the summoner.
+	TestTrue(TEXT("with no keystone it attacks the summoner"),
+		Brain->ChooseTarget() == Summoner.Actor);
+
+	// ACROSS THE SUMMONER AND NOT BEHIND IT. The creature stands four metres
+	// away along one axis; putting the minions along the OTHER one leaves every
+	// one of them further from the creature than the summoner is -- the trap at
+	// about 6.4 metres, the mote at 8.1, the imp at 9.9, against the summoner's
+	// 4. Placing them beyond the creature on its own axis put the trap two
+	// metres away, nearer than the summoner, so the search answered the trap and
+	// the keystone never applied: it redirects a creature that would attack the
+	// CHARACTER. Three assertions failed and the run found it.
+	ACataclysmMinion* Trap =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 5 * M, 0), DrawsNobody);
+	ACataclysmMinion* Some =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
+	ACataclysmMinion* Most =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 9 * M, 0), DrawsMost);
+	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Some)) { Some->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Most)) { Most->Destroy(); } };
+	if (!Trap || !Some || !Most)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the summoner commands three things"),
+		UCataclysmCommand::ThingsCommandedBy(Summoner.Actor).Num(), 3);
+
+	// THE SECOND CONTROL: three minions and still no keystone. Every minion is
+	// hostile to this creature and further away than the summoner, so the
+	// search alone still answers the summoner.
+	TestTrue(TEXT("three minions alone change nothing"),
+		Brain->ChooseTarget() == Summoner.Actor);
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+
+	TestTrue(TEXT("with the keystone the creature is drawn to the imp"),
+		Brain->ChooseTarget() == Most);
+	TestFalse(TEXT("and not to the trap, which stands nearest and draws nobody"),
+		Brain->ChooseTarget() == Trap);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilSparesABossTest,
+	"Cataclysm.Command.ABossIgnoresTheMinionsThatDrawOtherEnemies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A boss chooses for itself. Ruled by the project owner on 2026-09-18.
+ *
+ * THE RUNG BELOW IT IS THE CONTROL, so this measures the boss rung rather than
+ * something both creatures share. It is the same pair
+ * `Cataclysm.CombatEvents` uses for the same reason.
+ */
+bool FCataclysmVeilSparesABossTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Boss(World, FVector(4 * M, 0, 0));
+	FScopedCreature Herald(World, FVector(-4 * M, 0, 0));
+	Boss.Actor->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Herald.Actor->SetRarityStep(
+		ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	TestTrue(TEXT("the one is a boss"), Boss.Actor->IsBoss());
+	TestFalse(TEXT("and the other is the rung below"), Herald.Actor->IsBoss());
+
+	ACataclysmMinion* One =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 6 * M, 0), DrawsMost);
+	ACataclysmMinion* Two =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
+	ACataclysmMinion* Three =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 8 * M, 0), DrawsLittle);
+	ON_SCOPE_EXIT { if (IsValid(One)) { One->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Two)) { Two->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Three)) { Three->Destroy(); } };
+	if (!One || !Two || !Three)
+	{
+		return false;
+	}
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+
+	TestTrue(TEXT("the boss keeps coming for the summoner"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Boss.Actor) == nullptr);
+
+	ACataclysmEnemyController* HeraldBrain =
+		Cast<ACataclysmEnemyController>(Herald.Actor->GetController());
+	if (!HeraldBrain)
+	{
+		AddError(TEXT("The herald has no brain to drive."));
+		return false;
+	}
+
+	TestTrue(TEXT("and the rung below it is drawn off"),
+		HeraldBrain->ChooseTarget() == One);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilReadsItsNumbersTest,
+	"Cataclysm.Command.TheReachAndTheMinionCountComeFromTheRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Both numbers are read from the character's own rows, not assumed here.
+ *
+ * EACH IS MOVED ON ITS OWN AND THE OTHER LEFT ALONE, so a rule that read one
+ * and hard-coded the other passes half of this and fails the other half.
+ */
+bool FCataclysmVeilReadsItsNumbersTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(8 * M, 0, 0));
+
+	ACataclysmMinion* One =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 6 * M, 0), DrawsMost);
+	ACataclysmMinion* Two =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
+	ACataclysmMinion* Three =
+		SummonOfType(*this, Summoner.Actor, FVector(0, 8 * M, 0), DrawsLittle);
+	ON_SCOPE_EXIT { if (IsValid(One)) { One->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Two)) { Two->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Three)) { Three->Destroy(); } };
+	if (!One || !Two || !Three)
+	{
+		return false;
+	}
+
+	// THE CREATURE STANDS EIGHT METRES AWAY THROUGHOUT. Only the row moves.
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/6.0f, /*Minimum=*/3.0f);
+	TestNull(TEXT("a reach of six does not reach a creature eight away"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor));
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+	TestTrue(TEXT("and a reach of ten does"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor) == One);
+
+	// AND THE COUNT, WITH THE SAME THREE MINIONS STANDING THERE.
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/4.0f);
+	TestNull(TEXT("a row asking for four is not satisfied by three"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor));
+
+	// AND A CHARACTER WITH NO ROWS AT ALL IS ANSWERED NOTHING, which is what
+	// makes a reach above zero the keystone's presence rather than a flag.
+	FScopedCreature Plain(World, FVector(0, 30 * M, 0), ECataclysmTeam::Players);
+	TestNull(TEXT("a character without the node draws nobody"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Plain.Actor, Hunting.Actor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilBreaksATieByDistanceTest,
+	"Cataclysm.Command.TwoMinionsDrawingAlikeSendTheEnemyToTheNearer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two minions drawing the same attention are separated by distance.
+ *
+ * THE TWO TYPES STATE THE SAME THREAT IN THE SHIPPED DATA, five percent each,
+ * so this measures the tie-break rather than a difference the rows already
+ * carry. The trap beside them draws nobody and stands nearest of the three.
+ */
+bool FCataclysmVeilBreaksATieByDistanceTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(4 * M, 0, 0));
+
+	ACataclysmMinion* Trap =
+		SummonOfType(*this, Summoner.Actor, FVector(5 * M, 0, 0), DrawsNobody);
+	ACataclysmMinion* Nearer =
+		SummonOfType(*this, Summoner.Actor, FVector(9 * M, 0, 0), DrawsLittle);
+	ACataclysmMinion* Further =
+		SummonOfType(*this, Summoner.Actor, FVector(14 * M, 0, 0),
+					 DrawsAsLittle);
+	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Nearer)) { Nearer->Destroy(); } };
+	ON_SCOPE_EXIT { if (IsValid(Further)) { Further->Destroy(); } };
+	if (!Trap || !Nearer || !Further)
+	{
+		return false;
+	}
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/3.0f);
+
+	TestTrue(TEXT("the nearer of the two that draw alike takes it"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor) == Nearer);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilSkipsAMinionDrawingNobodyTest,
+	"Cataclysm.Command.AMinionDrawingNobodyIsNotEligibleAtAll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion whose type draws nobody is not eligible, rather than ranked last.
+ *
+ * WHY THIS IS ITS OWN TEST AND NOT AN ASSERTION IN THE ONES ABOVE. It was
+ * written because choosing a guard proof's break found the hole: attention is
+ * compared before distance, so in every case above a minion drawing nothing
+ * loses to one drawing something WHETHER OR NOT the rule excludes it. Breaking
+ * the exclusion failed nothing. The only case that separates the two readings is
+ * one where nothing else is eligible at all -- and then the answer is either
+ * "nobody" or "the one drawing nothing".
+ *
+ * THE CONTROL IS THE SAME SETUP WITH A MINION THAT DRAWS. Without it a test
+ * that answered "nobody" for some unrelated reason -- a count not met, a reach
+ * too short, no keystone -- would read as the exclusion working.
+ */
+bool FCataclysmVeilSkipsAMinionDrawingNobodyTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(4 * M, 0, 0));
+
+	// ONE MINION AND A ROW ASKING FOR ONE, so the count is met and the only
+	// thing left to decide the answer is whether that minion draws anybody.
+	ACataclysmMinion* Trap =
+		SummonOfType(*this, Summoner.Actor, FVector(5 * M, 0, 0), DrawsNobody);
+	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
+	if (!Trap)
+	{
+		return false;
+	}
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/1.0f);
+
+	TestEqual(TEXT("the count the row asks for is met"),
+		UCataclysmCommand::ThingsCommandedBy(Summoner.Actor).Num(), 1);
+	TestNull(TEXT("and a minion that draws nobody draws nobody"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor));
+
+	// THE CONTROL: the same character, the same row, the same distance, and a
+	// minion whose type states a threat above zero.
+	Trap->Destroy();
+	ACataclysmMinion* Imp =
+		SummonOfType(*this, Summoner.Actor, FVector(5 * M, 0, 0), DrawsMost);
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+	if (!Imp)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("while one that draws is taken, so the difference is the "
+				  "threat its type states and nothing else"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor) == Imp);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilReadsItsOwnRowsTest,
+	"Cataclysm.Command.TheKeystonesOwnRowsDrawANearbyEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The keystone works from the rows the game loads, with nothing granted by hand.
+ *
+ * WHY THIS TEST EXISTS AND THE FOUR BESIDE IT ARE NOT ENOUGH. Every other test
+ * of this keystone calls `GiveBehindTheVeil`, which writes the two stats onto
+ * the character directly. **All of them pass with no row in the data at all**,
+ * so between them they cannot tell a working keystone from one the engine reads
+ * and nothing supplies. That is not hypothetical: the sibling keystone Conduit
+ * was read by the engine for a day before any row granted it, with every test
+ * passing throughout, and `Ritualist_capstone_200#3` granted nothing from the
+ * day it was written. This test is the one that notices.
+ *
+ * SO IT TAKES THE NUMBERS FROM THE ROWS AND STATES NONE OF ITS OWN. The reach
+ * and the count are read out of `game/Data/PassiveEffects.csv` through the
+ * imported asset, and the creature and the minions are placed using those
+ * figures. A workbook that moved either number would move this test with it
+ * rather than break it -- the node's sentence is what pins the numbers
+ * themselves, and `tools/tests/test_passive_effects_match_the_node_text.py`
+ * holds that.
+ *
+ * IT FAILS WHEN THE ROWS ARE ABSENT, which is the half of a guard proof that
+ * this whole change turns on, and which is measured across the asset rebuild.
+ */
+bool FCataclysmVeilReadsItsOwnRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the passive effect table loads"),
+					 const_cast<UDataTable*>(Effects)))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// THE KEYSTONE'S OWN ROWS, BY NODE KEY. Two of them, one per number.
+	const TArray<const FCataclysmPassiveEffectRow*> Rows =
+		UCataclysmPassiveTree::EffectsFor(
+			Effects, FName(TEXT("Ritualist_keystone_spine_002")));
+	if (!TestEqual(TEXT("Behind the Veil carries two rows"), Rows.Num(), 2))
+	{
+		AddError(TEXT("The keystone's rows are missing from the data, so it "
+					  "grants nothing in play however the engine reads it. "
+					  "Author them in the Passive Effects sheet of "
+					  "docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+
+	float Metres = 0.0f;
+	float Minimum = 0.0f;
+	TMap<FName, FCataclysmStatInputs> FromTheRows;
+	for (const FCataclysmPassiveEffectRow* Row : Rows)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flat.Value = Row->ValuePerPoint;
+
+		FCataclysmStatInputs Line;
+		Line.Base = 0.0f;
+		Line.Modifiers.Add(Flat);
+		FromTheRows.Add(FName(*Row->Stat), Line);
+
+		if (Row->Stat == FString(TEXT("minions_draw_nearby_enemies_metres")))
+		{
+			Metres = Row->ValuePerPoint;
+		}
+		else if (Row->Stat
+				 == FString(TEXT("minions_draw_nearby_enemies_minimum")))
+		{
+			Minimum = Row->ValuePerPoint;
+		}
+	}
+
+	if (!TestTrue(FString::Printf(TEXT("the rows state a reach: %.1f"), Metres),
+				  Metres > 0.0f)
+		|| !TestTrue(FString::Printf(TEXT("and a count: %.1f"), Minimum),
+					 Minimum > 0.0f))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+
+	// PLACED BY THE ROWS' OWN FIGURES. Inside the reach, and nearer the creature
+	// than any minion is, so the search alone would answer the summoner.
+	FScopedCreature Hunting(World, FVector((Metres - 2.0f) * M, 0, 0));
+
+	// THE MINIONS GO ACROSS THE SUMMONER, on the other axis, for the reason the
+	// behaviour test above gives: along this one they would stand nearer the
+	// creature than the summoner does and the search would answer a minion
+	// before the keystone was ever consulted.
+
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Summoner.Actor));
+	if (!TestNotNull(TEXT("the summoner has an ability system"), Theirs))
+	{
+		return false;
+	}
+	Theirs->SetStatInputs(MoveTemp(FromTheRows));
+
+	// AS MANY MINIONS AS THE ROW ASKS FOR, the last of them the one that draws
+	// most, and every one of them further from the creature than the summoner.
+	const int32 Wanted = FMath::RoundToInt(Minimum);
+	TArray<ACataclysmMinion*> Made;
+	for (int32 Index = 0; Index < Wanted; ++Index)
+	{
+		const bool bLast = Index == Wanted - 1;
+		ACataclysmMinion* One = SummonOfType(
+			*this, Summoner.Actor,
+			FVector(0, (Metres + 2.0f + Index) * M, 0),
+			bLast ? DrawsMost : DrawsLittle);
+		if (!One)
+		{
+			break;
+		}
+		Made.Add(One);
+	}
+	ON_SCOPE_EXIT
+	{
+		for (ACataclysmMinion* One : Made)
+		{
+			if (IsValid(One)) { One->Destroy(); }
+		}
+	};
+	if (!TestEqual(TEXT("the row's count of minions stands there"),
+				   Made.Num(), Wanted))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Hunting.Actor->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("The hunting creature has no brain to drive."));
+		return false;
+	}
+
+	TestTrue(TEXT("the creature is drawn to the minion drawing most, from the "
+				  "keystone's own rows and nothing granted by hand"),
+		Brain->ChooseTarget() == Made.Last());
+
 	return true;
 }
 
