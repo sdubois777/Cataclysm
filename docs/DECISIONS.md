@@ -647,11 +647,99 @@ Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, taking
 to be DECLARED as the constant it borrows; the argument order of the grant; and that both War rules'
 panel lines say which Commander they mean.
 
+### What the runs found
+
+Measured 2026-09-18 under one editor lock.
+
+**THE BASE WAS MEASURED FIRST, AND THAT IS WHY 193 IS A MEASUREMENT.** The figure registered for this
+group came from counting registration macros in one file, which is a static count — and this project
+records three static methods giving 1,411, 1,564 and 1,726 against a measured 1,664. So the base
+commit `1082a1a2` was checked out with none of this work present and the group run there:
+
+```
+Build: Succeeded - 27 actions, 24 files compiled
+Tests: 186 tests performed, 186 succeeded, 0 failed
+Declared: 2136 tests in the tree at 1082a1a2
+```
+
+186 plus these seven is 193, which is what had been registered.
+
+**THE COMPILE SUCCEEDED ON ITS FIRST ATTEMPT**, which is worth recording because the previous rule's
+did not and cost a cycle of a shared machine. Before this window every file-local helper this change
+adds was checked against where it is defined, and every assertion its tests make against the engine's
+own list of overloads in `AutomationTest.h`. Two faults were found that way and cost no machine time.
+
+```
+Build: Succeeded - 13 actions, 10 files compiled
+```
+
+**THE FIRST WHOLE-SUITE RUN FAILED ONE OF THESE SEVEN TESTS, AND THE FAULT WAS THE TEST'S SETUP.**
+
+```
+Tests: 2143 tests performed, 2142 succeeded, 1 failed: TheBuffLapsesOnceNothingIsGrantingIt
+Declared: 2143 tests in the tree at 15be0c3d; 2143 performed, gap 0
+
+Expected 'and the buff is gone once nothing grants it' to be 1.000000, but it was 1.200000
+```
+
+That test checks the buff lapses once nothing is granting it. To arrange "nothing grants it" it dropped
+the row from the floor and moved to the next floor — and `GoToFloor` onto a floor that is not the same
+arena calls `ClearFloorEnemies`, which DESTROYS every creature standing on the old one, including the
+ally the test then read. **A destroyed actor is not freed at once in this engine**, so its ability
+system still held the effect and still answered 1.2. The test was reading a creature the floor change
+had just destroyed and never exercised what it is named for. It now destroys the commanding creature
+and leaves the ally alive, then moves the world clock past the buff's one-second life.
+
+**That is the third time on this pair of rules that a property of dead or destroyed creatures has
+caught a test**, after a Commander's weak pointer staying valid after death made one test pass for the
+wrong reason and nearly made the floor panel print "alive" for a creature the player had just killed.
+
+**TWO WHOLE-SUITE RUNS, AND THE SECOND IS THE FIGURE OF RECORD**, because the first was taken before
+that repair.
+
+| Whole suite | Head | What it printed |
+| :-- | :-- | :-- |
+| 1 of 2 | `15be0c3d` | 2143 performed, 2142 succeeded, **1 failed**, declared 2143, gap 0 |
+| 2 of 2, the run of record | `b2e2a9e7` | 2143 performed, 2143 succeeded, 0 failed, declared 2143, gap 0 |
+
+39 tests reported skipping part of what they check in each run; all are art tests and a worktree holds
+no Paragon content. The group printed 193 performed, 193 succeeded, 0 failed after the repair, and
+again as the restored half of all three guard proofs.
+
+### The three guard proofs
+
+All three printed `PROVED`, none crashed, every restored half 193 performed and 0 failed, the anchors
+were re-checked to occur exactly once immediately before the first proof ran, and the working tree was
+checked clean after each.
+
+| Proof | What was broken | What failed | Predicted |
+| :-- | :-- | :-- | :-- |
+| 1 | every creature commands, whatever its rung | `EveryRungAtEliteOrAboveCommandsAndCommonDoesNot`, `AnEliteBuffsTheAlliesStandingNearIt`, `ThePanelCountsTheCommandersAndNamesItsRule` | the same three |
+| 2 | the grant's arguments reversed, so each commander buffs itself | `AnEliteBuffsTheAlliesStandingNearIt`, `AnAllyBeyondTheReachIsNotBuffed`, `StandingBetweenTwoCommandersIsNotTwiceTheBuff`, `TheBuffLapsesOnceNothingIsGrantingIt` | the same four |
+| 3 | the floor change stops forgetting how many commanded | `AFloorChangeForgetsHowManyCommanded` | the same one |
+
+**EACH PROOF PREDICTED WHAT KEEPS PASSING AS WELL AS WHAT FAILS, AND EACH OF THOSE HELD TOO.** Proof 1
+left the reach test and the two-commander test passing, because their extra commanders would only
+re-grant a buff their subjects already hold or reach nobody. Proof 2 left the panel and floor-change
+tests passing, because the count of commanders does not depend on who ends up buffed. A break that
+fails everything shows only that it broke something.
+
+**PROOF 2 IS THE ONE WORTH THE CYCLE, BECAUSE THE CODE WAS WRITTEN THAT WAY ROUND FIRST.** Reversed,
+every commander buffs itself and no ally is buffed at all, and it compiles and reads correctly.
+
+### One thing done in the wrong order
+
+**THE BRANCH WAS PUSHED BEFORE ITS WHOLE PYTHON SUITE HAD BEEN READ.** The checks that read this
+change's C++ had passed — 3507 in `tools/tests/` — and this change touches no simulation file, and the
+coordinating session needed the branch on the remote to run its controls; but the rule is to read the
+whole run first. It came back clean at 5323 passed, so nothing was consumed. Recorded because it is the
+second time across these two dungeon rules that a push went ahead of a result.
+
 ### What the tests do not show
 
-- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the seven automation tests and the three guard proofs wait for this machine's next free window, and
-  this section will be replaced by what those runs print.
+- **That a creature placed by the floor itself commands.** Every test here places its own creatures,
+  because that is the only way to decide which rung each one holds. Nothing measures a floor the
+  population pass filled.
 - **That a player can tell the two Commanders apart on a real floor.** The panel wording is asserted as
   a string; whether a player reading it mid-fight makes the distinction was not measured, and the
   overlap is recorded above as a judgement the owner may veto.
