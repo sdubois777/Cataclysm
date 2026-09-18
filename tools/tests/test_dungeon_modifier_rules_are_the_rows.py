@@ -2614,3 +2614,81 @@ def test_epidemics_plague_lord_rung_is_the_shared_ceiling():
         "EpidemicPlagueLordRung is no longer declared as VolatileEvolutionHighestRung. If "
         "a Plague Lord is meant to stand at a different rung now, say why in "
         "docs/DECISIONS.md and tie the new figure to the first boss rung as that one is.")
+
+
+def test_blood_forged_champions_row_still_says_elites_absorb_nearby_dying_allies():
+    """The three phrases this rule's readings rest on.
+
+    "ELITE ENEMIES" is why the rule asks the rank. "NEARBY DYING ALLIES" is why it asks
+    the distance AND why it asks no killer: the row names the survivor and nobody else.
+    "MINI-BOSS" is why the rule stops at Herald rather than anywhere else.
+    """
+    words = flat(rows()["War_Blood_Forged_Champions"]["Description"]).lower()
+
+    assert "elite enemies" in words, (
+        "The War Blood-Forged Champions row no longer says ELITE enemies absorb. The rule "
+        "refuses a Common because it did. " + words)
+    assert "nearby dying allies" in words, (
+        "The War Blood-Forged Champions row no longer says NEARBY DYING ALLIES. The rule "
+        "measures a distance, and asks no killer at all, because it did. " + words)
+    assert "mini-boss" in words, (
+        "The War Blood-Forged Champions row no longer ends at a mini-boss. The rule stops "
+        "at Herald because CataclysmEnemyCharacter.h calls Herald a mini-boss. " + words)
+
+
+def test_blood_forged_champions_row_states_no_figure_of_its_own():
+    """EVERY ONE OF THIS RULE'S FOUR FIGURES IS A JUDGEMENT, and this is what says so.
+
+    The row carries no number at all: not a distance, not a count of deaths, not a rank
+    expressed as a number. That is why docs/DECISIONS.md marks all four as judgements
+    ruled under the project owner's delegation. If a number ever appears in the row, one
+    of those judgements has been overtaken by the design and has to be re-read off it.
+    """
+    words = flat(rows()["War_Blood_Forged_Champions"]["Description"])
+    digits = re.findall(r"\d+(?:\.\d+)?", words)
+
+    assert digits == [], (
+        "The War Blood-Forged Champions row now states a number, and this rule's figures "
+        "were all chosen as judgements on the understanding that it stated none. Read the "
+        f"new figure off the row and correct docs/DECISIONS.md. Found {digits} in: {words}")
+
+
+def test_blood_forged_champions_reach_is_the_contagion_librarys_and_not_a_number():
+    """"Nearby" means one distance in a floor rule, not two.
+
+    THE ROW STATES NO DISTANCE, so the figure is judged, and the judgement was to take
+    the reach Epidemic already uses for the same word rather than to choose a second six.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    assert re.search(
+        r"\bBloodForgedChampionsRadiusMetres\s*=\s*UCataclysmContagion::RadiusMetres\s*;",
+        text), (
+        "BloodForgedChampionsRadiusMetres is no longer declared as "
+        "UCataclysmContagion::RadiusMetres. If a champion is meant to reach further than "
+        "a disease does, say why in docs/DECISIONS.md.")
+
+
+def test_blood_forged_champions_rungs_are_the_two_constants_that_already_mean_them():
+    """Neither end of this rule's ladder is a number of its own.
+
+    The bottom is RoyalGuardLowestRungThatSummons, which already carries this project's
+    answer to which creatures count as Elite, with the reading of EnemyRarities.csv that
+    produced it. The top is VolatileEvolutionHighestRung, which is tied to
+    ACataclysmEnemyCharacter::FirstBossRarityStep by the static_assert an earlier check
+    guards, so no floor rule can make a boss out of an ordinary creature.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    missing = [name for name, pattern in (
+        ("BloodForgedChampionsLowestRung",
+         r"\bBloodForgedChampionsLowestRung\s*=\s*RoyalGuardLowestRungThatSummons\s*;"),
+        ("BloodForgedChampionsHighestRung",
+         r"\bBloodForgedChampionsHighestRung\s*=\s*VolatileEvolutionHighestRung\s*;"),
+    ) if not re.search(pattern, text)]
+
+    assert not missing, (
+        f"{', '.join(missing)} is no longer declared as the constant that already means "
+        "that rung. Two rules meaning the same rung must not be able to drift apart; if "
+        "this rule is meant to start or stop somewhere else now, say why in "
+        "docs/DECISIONS.md.")

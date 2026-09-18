@@ -159,6 +159,10 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one where a disease passes from a corpse to its neighbour. Issues #1820, #41. */
 	const FName Epidemic(UCataclysmDungeonModifierEffects::EpidemicKey);
 
+	/** And the one where an Elite grows on the deaths around it. Issues #1820, #41. */
+	const FName BloodForgedChampions(
+		UCataclysmDungeonModifierEffects::BloodForgedChampionsKey);
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -726,6 +730,109 @@ namespace CataclysmDungeonModifierEffectsTest
 		const UAbilitySystemComponent* System =
 			UCataclysmTargeting::AbilitySystemOf(Who);
 		return System && Tag.IsValid() && System->HasMatchingGameplayTag(Tag);
+	}
+
+	/**
+	 * The floor every Blood-Forged Champions test starts from. Issues #1820 and #41.
+	 *
+	 * EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what stands on the floor is
+	 * what the test spawned and nothing else. `StartPlay` builds a floor AND populates
+	 * it; the Demon Prince tests record what that cost to learn.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheChampionsRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonModifiers = {BloodForgedChampions};
+		Mode->FloorNumber = 1;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString ChampionsPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(BloodForgedChampions);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/**
+	 * A creature at a rung of the rarity ladder, to be fed. Issues #1820 and #41.
+	 *
+	 * THE RUNG AFTER THE SPAWN AND NOTHING WRITTEN BEFORE IT, because `SetRarityStep`
+	 * ends in `ApplyStartingAttributes`, which refills both pools to the new maximums. A
+	 * health written first would be thrown away.
+	 *
+	 * AN IMP, WHICH CANNOT DODGE, because `SpawnImpWithHealth` sets its evasion to zero.
+	 * These creatures are not struck by anything in these tests, but a champion that
+	 * dodged a blow meant for something else would be a puzzle nobody wants to debug.
+	 */
+	ACataclysmEnemyCharacter* SpawnChampionAtRung(UWorld* World, const FVector& Where,
+												 int32 Rung)
+	{
+		ACataclysmEnemyCharacter* Champion = SpawnImpWithHealth(World, Where, 100.0f);
+		if (Champion)
+		{
+			Champion->SetRarityStep(Rung);
+		}
+		return Champion;
+	}
+
+	/**
+	 * Kill a creature with the player's own blow, which is a real announced death.
+	 *
+	 * A REAL DEATH AND NOT A HEALTH WRITE, because only a death that reaches
+	 * `HandleDeath` is announced, and an announced death is the only thing this rule
+	 * listens to.
+	 */
+	bool ThePlayerKills(FAutomationTestBase& Test, const FPossessedPlayer& Player,
+						ACataclysmEnemyCharacter* Victim)
+	{
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+		return Test.TestTrue(TEXT("the player's blow killed it"),
+							 UCataclysmSkillEffects::IsDead(Victim));
+	}
+
+	/**
+	 * Kill this many allies in a line, each a real announced death. Issues #1820, #41.
+	 *
+	 * TEN CENTIMETRES APART so no two stand in the same place, which is far closer than
+	 * the reach and so cannot change which champion is nearest.
+	 */
+	bool ThePlayerKillsAlliesAt(FAutomationTestBase& Test, UWorld* World,
+								const FPossessedPlayer& Player, float FirstX, int32 Many)
+	{
+		for (int32 Index = 0; Index < Many; ++Index)
+		{
+			ACataclysmEnemyCharacter* Ally = SpawnImpWithHealth(
+				World, FVector(FirstX + 10.0f * Index, 0.0f, 0.0f), 100.0f);
+			if (!Test.TestNotNull(TEXT("an ally to die beside the champion"), Ally)
+				|| !ThePlayerKills(Test, Player, Ally))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** Every living creature in the world, for telling what a death brought. */
@@ -10243,6 +10350,7 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	Rules.Add(RoyalGuard);
 	Rules.Add(DemonPrince);
 	Rules.Add(Epidemic);
+	Rules.Add(BloodForgedChampions);
 	Mode->DungeonModifiers = Rules;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
 	{
@@ -15493,6 +15601,640 @@ bool FCataclysmEpidemicFloorChangeTest::RunTest(const FString& Parameters)
 							  Effects::EpidemicSpreadsToKill,
 							  Effects::EpidemicPlagueLordsPerFloor));
 
+	return true;
+}
+
+// THE PLAINEST CASE THE ROW DESCRIBES: an ally dies beside an Elite and the Elite
+// takes it. One death is not a rung, which is the other half of what this shows.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsFeedTest,
+	"Cataclysm.DungeonModifierEffects.AnEliteBesideADyingAllyAbsorbsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsFeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Champion = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+	ACataclysmEnemyCharacter* Ally =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Elite to be fed"), Champion)
+		|| !TestNotNull(TEXT("an ally to die beside it"), Ally)
+		|| !ThePlayerKills(*this, Player, Ally))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the floor counted the death"), ChampionsPanelLine(Mode),
+			  FString(TEXT("1 death(s) absorbed, 0 rung(s) gained")));
+	TestEqual(TEXT("and one death alone is not a rung"), Champion->RarityStep,
+			  Effects::BloodForgedChampionsLowestRung);
+	return true;
+}
+
+// "ELITE ENEMIES ABSORB", AND A COMMON IS NOT ONE. The row names the rank, so the
+// rank is asked. Without this test the rule could feed every creature on the floor
+// and every other test here would still pass.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsCommonTest,
+	"Cataclysm.DungeonModifierEffects.ACommonBesideADyingAllyAbsorbsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsCommonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Common = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung - 1);
+	ACataclysmEnemyCharacter* Ally =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a Common standing by"), Common)
+		|| !TestNotNull(TEXT("an ally to die beside it"), Ally)
+		|| !TestEqual(TEXT("it really is below the rung that absorbs"), Common->RarityStep,
+					  Effects::BloodForgedChampionsLowestRung - 1)
+		|| !ThePlayerKills(*this, Player, Ally))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("nothing was absorbed"), ChampionsPanelLine(Mode),
+			  FString(TEXT("0 death(s) absorbed, 0 rung(s) gained")));
+	TestEqual(TEXT("and the Common stayed where it was"), Common->RarityStep,
+			  Effects::BloodForgedChampionsLowestRung - 1);
+	return true;
+}
+
+// "NEARBY DYING ALLIES", AND THIS ONE IS NOT NEARBY. The reach is a judgement rather
+// than the row's own figure, so the test asserts the distance it used as well as the
+// outcome.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsReachTest,
+	"Cataclysm.DungeonModifierEffects.AnEliteBeyondTheReachAbsorbsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsReachTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Champion = SpawnChampionAtRung(
+		World, FVector(1500.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+	ACataclysmEnemyCharacter* Ally =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Elite standing well away"), Champion)
+		|| !TestNotNull(TEXT("an ally to die"), Ally))
+	{
+		return false;
+	}
+
+	// THE DISTANCE IS READ OFF THE ACTORS AND CHECKED AGAINST THE FIGURE, so this cannot
+	// quietly become a test of two creatures that were inside the reach all along.
+	const float Away =
+		FVector::Dist(Champion->GetActorLocation(), Ally->GetActorLocation());
+	if (!TestTrue(FString::Printf(TEXT("the Elite really is beyond the reach: %.0f cm "
+									   "against a reach of %.0f"),
+								  Away, Effects::BloodForgedChampionsRadiusCm()),
+				  Away > Effects::BloodForgedChampionsRadiusCm())
+		|| !ThePlayerKills(*this, Player, Ally))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("nothing was absorbed"), ChampionsPanelLine(Mode),
+			  FString(TEXT("0 death(s) absorbed, 0 rung(s) gained")));
+	TestEqual(TEXT("and the Elite stayed where it was"), Champion->RarityStep,
+			  Effects::BloodForgedChampionsLowestRung);
+	return true;
+}
+
+// THE FIGURE ITSELF: three deaths and not one, and not two. The first assertion is
+// what stops a rule that raised a rung on every death from passing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsRungTest,
+	"Cataclysm.DungeonModifierEffects.ThreeDeathsRaiseOneRungAndOneDeathRaisesNone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsRungTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Champion = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+	if (!TestNotNull(TEXT("an Elite to be fed"), Champion)
+		|| !ThePlayerKillsAlliesAt(*this, World, Player, 700.0f, 1))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("one death moved no rung"), Champion->RarityStep,
+				   Effects::BloodForgedChampionsLowestRung)
+		|| !ThePlayerKillsAlliesAt(
+			*this, World, Player, 720.0f,
+			Effects::BloodForgedChampionsDeathsPerRung - 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the third death moved one rung"), Champion->RarityStep,
+			  Effects::BloodForgedChampionsLowestRung + 1);
+	TestEqual(TEXT("and the floor says what it took and what it bought"),
+			  ChampionsPanelLine(Mode),
+			  FString::Printf(TEXT("%d death(s) absorbed, 1 rung(s) gained"),
+							  Effects::BloodForgedChampionsDeathsPerRung));
+	return true;
+}
+
+// "POTENTIALLY TRANSFORMING INTO A MINI-BOSS", WHICH IS HERALD. Not a judgement:
+// `ACataclysmEnemyCharacter.h` says of the ladder that "Herald, at 3, is deliberately
+// below the line -- the Abyssal Warden's reference rarity is Herald and it is a
+// mini-boss".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsHeraldTest,
+	"Cataclysm.DungeonModifierEffects.AnEliteReachesHeraldAfterSixDeaths",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsHeraldTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Champion = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+
+	// SIX IS NOT A FIGURE OF ITS OWN. It is the two rungs between Elite and Herald at the
+	// deaths each rung costs, worked out here so the test moves when either figure does.
+	const int32 Rungs = Effects::BloodForgedChampionsHighestRung
+						- Effects::BloodForgedChampionsLowestRung;
+	const int32 Deaths = Rungs * Effects::BloodForgedChampionsDeathsPerRung;
+	if (!TestNotNull(TEXT("an Elite to be fed"), Champion)
+		|| !TestEqual(TEXT("which is six on today's figures"), Deaths, 6)
+		|| !ThePlayerKillsAlliesAt(*this, World, Player, 700.0f, Deaths))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the champion stands at the mini-boss rung"), Champion->RarityStep,
+			  Effects::BloodForgedChampionsHighestRung);
+	TestEqual(TEXT("and the floor counted every death and both rungs"),
+			  ChampionsPanelLine(Mode),
+			  FString::Printf(TEXT("%d death(s) absorbed, %d rung(s) gained"), Deaths,
+							  Rungs));
+	return true;
+}
+
+// A CREATURE AT THE CEILING IS REFUSED RATHER THAN FED AND THEN HELD. The count is
+// what says which: a rule that fed it and then found nowhere to rise would show the
+// deaths absorbed.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsCeilingTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureAtHeraldAbsorbsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsCeilingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Champion = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsHighestRung);
+	if (!TestNotNull(TEXT("a creature already at the ceiling"), Champion)
+		|| !TestEqual(TEXT("it really is at the ceiling"), Champion->RarityStep,
+					  Effects::BloodForgedChampionsHighestRung)
+		|| !ThePlayerKillsAlliesAt(*this, World, Player, 700.0f,
+								   Effects::BloodForgedChampionsDeathsPerRung))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("it absorbed none of them"), ChampionsPanelLine(Mode),
+			  FString(TEXT("0 death(s) absorbed, 0 rung(s) gained")));
+	TestEqual(TEXT("and it is still at the ceiling"), Champion->RarityStep,
+			  Effects::BloodForgedChampionsHighestRung);
+	return true;
+}
+
+// A CHAMPION DOES NOT HEAL ITSELF BY GROWING. `SetRarityStep` and
+// `DrawModifiersForRarity` both end in `ApplyStartingAttributes`, which refills both
+// pools to the new maximums, so without the rule putting them back a champion would
+// return to full in front of the player every third death. The same decision
+// `StepVolatileEvolution` makes, for the reason its header gives.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsPoolsTest,
+	"Cataclysm.DungeonModifierEffects.ARisingChampionKeepsTheHealthAndShieldItHad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsPoolsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// A DESIGNED MAXIMUM AND NOT ONE WRITTEN ONTO THE ATTRIBUTE. A rung scales the
+	// DESIGNED figure, so a creature whose maximum was written straight on has nothing to
+	// scale and this test would be reading a pool that never moved. `SpawnCreatureWoundedTo`
+	// carries that warning in its own comment.
+	ACataclysmEnemyCharacter* Champion = SpawnCreatureWoundedTo(
+		World, FVector(600.0f, 0.0f, 0.0f), /*DesignedMaxHealth=*/1000.0f,
+		/*ShieldFraction=*/0.5f, /*HealthNow=*/1000.0f, /*ShieldNow=*/0.0f);
+	if (!TestNotNull(TEXT("a creature with a designed stat block"), Champion))
+	{
+		return false;
+	}
+
+	// THE RUNG FIRST AND THE WOUND AFTER IT, because setting a rung refills both pools.
+	Champion->SetRarityStep(Effects::BloodForgedChampionsLowestRung);
+	const float MaxHealthBefore = MaxHealthOf(Champion);
+	const float MaxShieldBefore = MaxShieldOf(Champion);
+	if (!TestTrue(FString::Printf(TEXT("it has both pools to lose: %.1f health, %.1f "
+									   "shield"),
+								  MaxHealthBefore, MaxShieldBefore),
+				  MaxHealthBefore > 0.0f && MaxShieldBefore > 0.0f))
+	{
+		return false;
+	}
+
+	WoundCreatureTo(Champion, MaxHealthBefore * 0.25f, MaxShieldBefore * 0.25f);
+	const float HealthBefore = HealthOf(Champion);
+	const float ShieldBefore = ShieldOf(Champion);
+
+	if (!ThePlayerKillsAlliesAt(*this, World, Player, 700.0f,
+								Effects::BloodForgedChampionsDeathsPerRung))
+	{
+		return false;
+	}
+
+	// THE MAXIMUM HAS TO HAVE MOVED, OR THIS TEST SHOWS NOTHING. A pool that was never
+	// refilled would keep its amount whatever the rule did.
+	if (!TestEqual(TEXT("the champion rose a rung"), Champion->RarityStep,
+				   Effects::BloodForgedChampionsLowestRung + 1)
+		|| !TestTrue(FString::Printf(TEXT("and the rung really moved its maximum health: "
+										  "%.1f, was %.1f"),
+									 MaxHealthOf(Champion), MaxHealthBefore),
+					 MaxHealthOf(Champion) > MaxHealthBefore))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("it kept the health it had"), HealthOf(Champion), HealthBefore, 0.01f);
+	TestEqual(TEXT("and the energy shield it had"), ShieldOf(Champion), ShieldBefore,
+			  0.01f);
+	return true;
+}
+
+// THE ROW NAMES NO KILLER, AND THIS IS THE TEST THAT HOLDS IT THERE. The four
+// listeners beside this rule all ask whether the player did the killing, because
+// their rows say "when you kill". This row says "nearby dying allies". If somebody
+// adds that check here out of habit, this is what fails.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsAnyKillerTest,
+	"Cataclysm.DungeonModifierEffects.ADeathCausedByAnotherCreatureFeedsTheChampion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsAnyKillerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Champion = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+	ACataclysmEnemyCharacter* Slayer =
+		SpawnImpWithHealth(World, FVector(300.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Ally =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Elite to be fed"), Champion)
+		|| !TestNotNull(TEXT("a creature to do the killing"), Slayer)
+		|| !TestNotNull(TEXT("an ally for it to kill"), Ally))
+	{
+		return false;
+	}
+
+	// A BARE CREATURE HITS FOR NOTHING, so the killer is given damage and the figure is
+	// asserted rather than assumed.
+	const float SlayersDamage = GiveCreatureAttackDamage(Slayer, 100.0f);
+	if (!TestTrue(FString::Printf(TEXT("the killer hits for something: %.2f"),
+								  SlayersDamage),
+				  SlayersDamage > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Slayer, Ally, 100000.0f);
+	if (!TestTrue(TEXT("a creature's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Ally)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the champion took a death the player had no part in"),
+			  ChampionsPanelLine(Mode),
+			  FString(TEXT("1 death(s) absorbed, 0 rung(s) gained")));
+	return true;
+}
+
+// "A NEARBY ENEMY" IS ONE ENEMY. Both Elites are inside the reach, so this is what
+// says the rule feeds the nearest rather than every champion it can see. A rule that
+// fed both would raise two rungs on three deaths.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsNearestTest,
+	"Cataclysm.DungeonModifierEffects.TheNearestEliteIsTheOneFed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsNearestTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Nearer = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+	ACataclysmEnemyCharacter* Farther = SpawnChampionAtRung(
+		World, FVector(1100.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+	if (!TestNotNull(TEXT("an Elite close to the dying"), Nearer)
+		|| !TestNotNull(TEXT("and one further off"), Farther))
+	{
+		return false;
+	}
+
+	if (!ThePlayerKillsAlliesAt(*this, World, Player, 700.0f,
+								Effects::BloodForgedChampionsDeathsPerRung))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the nearer Elite took all three and rose"), Nearer->RarityStep,
+			  Effects::BloodForgedChampionsLowestRung + 1);
+	TestEqual(TEXT("and the further one took none"), Farther->RarityStep,
+			  Effects::BloodForgedChampionsLowestRung);
+	TestEqual(TEXT("three deaths bought exactly one rung on this floor"),
+			  ChampionsPanelLine(Mode),
+			  FString::Printf(TEXT("%d death(s) absorbed, 1 rung(s) gained"),
+							  Effects::BloodForgedChampionsDeathsPerRung));
+	return true;
+}
+
+// WHAT A PLAYER SEES. Both numbers are the floor's rather than one creature's,
+// because a floor may have several champions feeding at once and the panel gives a
+// row one line.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsPanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelCountsWhatWasAbsorbedAndGained",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Champion = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+	if (!TestNotNull(TEXT("an Elite to be fed"), Champion))
+	{
+		return false;
+	}
+
+	// THE WHOLE LINE IS WRITTEN OUT HERE RATHER THAN BUILT FROM THE SAME FORMAT THE PANEL
+	// USES. A test that printed the format again could not notice the format changing --
+	// it would compare a string with itself in a different order.
+	if (!TestEqual(TEXT("a floor just built has absorbed nothing"),
+				   ChampionsPanelLine(Mode),
+				   FString(TEXT("0 death(s) absorbed, 0 rung(s) gained")))
+		|| !ThePlayerKillsAlliesAt(*this, World, Player, 700.0f, 1))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("one death in"), ChampionsPanelLine(Mode),
+				   FString(TEXT("1 death(s) absorbed, 0 rung(s) gained")))
+		|| !ThePlayerKillsAlliesAt(*this, World, Player, 720.0f, 2))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("and three, with the rung they bought"), ChampionsPanelLine(Mode),
+			  FString(TEXT("3 death(s) absorbed, 1 rung(s) gained")));
+
+	// AND A FLOOR WITHOUT THE ROW HAS NO LINE OF ITS OWN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row says nothing"), ChampionsPanelLine(Mode),
+			  FString(TEXT("no line")));
+	return true;
+}
+
+// THE FLOOR'S COUNTS GO AND THE CHAMPION'S PROGRESS STAYS. Ruled under the project
+// owner's delegation, following the split the project already states above
+// `VolatileEvolutionMutated`: what a creature has earned is its own, and the counts
+// answer what happened on this floor.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChampionsFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeClearsTheFloorCountsAndKeepsTheRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChampionsFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheChampionsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Champion = SpawnChampionAtRung(
+		World, FVector(600.0f, 0.0f, 0.0f), Effects::BloodForgedChampionsLowestRung);
+
+	// ONE MORE DEATH THAN A RUNG COSTS, so the champion crosses the stairs part way to its
+	// next rung. That leftover is what the second half of this test measures.
+	const int32 Deaths = Effects::BloodForgedChampionsDeathsPerRung + 1;
+	if (!TestNotNull(TEXT("an Elite to be fed"), Champion)
+		|| !ThePlayerKillsAlliesAt(*this, World, Player, 700.0f, Deaths))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("it rose once and has one death in hand"), Champion->RarityStep,
+				   Effects::BloodForgedChampionsLowestRung + 1)
+		|| !TestEqual(TEXT("and the floor says so"), ChampionsPanelLine(Mode),
+					  FString::Printf(TEXT("%d death(s) absorbed, 1 rung(s) gained"),
+									  Deaths)))
+	{
+		return false;
+	}
+
+	// A HORDE DUNGEON'S CHANGE OF WAVE, which is the case the record above
+	// `VolatileEvolutionMutated` is written for: the creatures live through it.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	if (!TestTrue(TEXT("the champion lived through the change of wave"),
+				  IsValid(Champion)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the new floor has absorbed nothing"), ChampionsPanelLine(Mode),
+			  FString(TEXT("0 death(s) absorbed, 0 rung(s) gained")));
+	TestEqual(TEXT("and the champion kept the rung it had won"), Champion->RarityStep,
+			  Effects::BloodForgedChampionsLowestRung + 1);
+
+	// AND THE DEATH IT HAD IN HAND IS STILL IN HAND. Two more finish the rung; a champion
+	// whose tally had been cleared at the stairs would need three and would still be
+	// standing where it was.
+	if (!ThePlayerKillsAlliesAt(*this, World, Player, 700.0f,
+								Effects::BloodForgedChampionsDeathsPerRung - 1))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("two more deaths finished the rung it was part way through"),
+			  Champion->RarityStep, Effects::BloodForgedChampionsLowestRung + 2);
 	return true;
 }
 
