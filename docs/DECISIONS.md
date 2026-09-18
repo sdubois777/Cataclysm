@@ -2,6 +2,183 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — Radiant ground that hurts more the longer you stand in it, and pays for the standing with a better roll on the floor's boss
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the rules stepped every quarter
+second, the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp` (three lines at the one place a death
+rolls loot), `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation
+tests for these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks
+that hold each rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820),
+[#41](https://github.com/sdubois777/Cataclysm/issues/41),
+[#1701](https://github.com/sdubois777/Cataclysm/issues/1701),
+[#1924](https://github.com/sdubois777/Cataclysm/issues/1924) and
+[#1925](https://github.com/sdubois777/Cataclysm/issues/1925). **Applied.**
+
+### The row
+
+`Celestial_Judgment_Zones` in `game/Data/DungeonModifiers.csv`: "Radiant zones spawn for 20 seconds;
+standing inside ramps holy damage to players but increases boss loot quality if triggered 5+ times."
+No text in `docs/` says more.
+
+### "Holy damage" names no damage type this game has, and nothing had to rule on it
+
+The eight types are the eight Cataclysms, read off `CataclysmResistanceAttributeSet.h`: War, Demonic,
+Death, Pestilence, Famine, Celestial, Chaos and Void. There is no Holy.
+
+**THE FOUR BUILT ZONE RULES DO NOT WRITE A DAMAGE TYPE IN CODE. They read it off the row.**
+`StepInfernalRain` says why: "a row retyped in the workbook retypes its hazard with no code change. A
+constant here would be this file's opinion of the data." This row's own `CataclysmType` is Celestial,
+so using the same mechanism gives Celestial damage with nothing to decide.
+
+A ruling that "holy" should be read as Celestial was made and then **withdrawn as unnecessary** once
+that was measured. This is recorded as the mechanism answering the question, not as a judgement, and a
+Python check refuses a `TEXT("Celestial")` written into the rule.
+
+### The rule owns the damage and the trigger count, and the ground it lays carries neither
+
+A ground zone's damage is fixed when it is spawned and it ticks on its own second. The row's ramp is
+measured in how long the player has stood in one zone, and the reward is counted in how many times the
+damage fired on them. **Split between the rule and the zone, those would be two clocks for one figure
+and could disagree by up to a second** — so "five triggers" and "five seconds of damage" would not
+reliably be the same five.
+
+**Ruled under the project owner's delegation: the rule owns both.** The zone is spawned with no damage
+at all, which issue #1701 made possible so Singularity Wells could have a well that slows without
+damaging, and is the ground the player sees and stands in. A trigger IS a tick of this rule's damage,
+so the reward cannot disagree with what earned it — by construction rather than by care.
+
+**The five need not be consecutive.** The row says "5+ times" and not "in a row", so ticks anywhere on
+the floor count towards the same total. The ramp, which IS per zone, is set back by stepping out.
+
+### The figures
+
+| Figure | Where it comes from |
+| :-- | :-- |
+| a zone stands 20 seconds | **the row** |
+| five triggers earn the bonus | **the row** |
+| the reach, 300 cm | `WitheredGroundPatchRadiusCm`, shared by three rules |
+| how far from the player it falls, 1200 cm | `InfernalRainFallsWithinCm`, shared with Singularity Wells |
+| three zones at once | **a judgement**, following a vocabulary |
+| one every eight seconds | **a judgement** |
+| the ramp: 1% of maximum health, one more each second, stopping at 5% | **a judgement on a shape** |
+| twenty magic find on a boss kill | **a judgement**, and the least evidenced figure here |
+
+**THREE AT ONCE IS A VOCABULARY AND NOT ONE FIGURE.** `InfernalRainMostPatches` and
+`SingularityWellsMostWells` are both 3, written independently, so this rule writes 3 too and a Python
+check holds all three together — the treatment `HolyRepercussionsChancePercentOnHit` gets for the
+table's ten, rather than a tie.
+
+**EIGHT SECONDS, WITH THE ARITHMETIC.** A zone lasts 20 seconds and three may stand at once, so one
+every 8 reaches three at 16 seconds, just as the first is due to go. At five the ceiling would be
+reached at 10 seconds and the floor would sit at three for the rest of its life, which is a different
+rule from the one the row describes.
+
+**THE RAMP'S SHAPE IS THE ONLY THING HERE JUDGED FROM A SINGLE WORD.** The row says standing inside
+"ramps" the damage, so it grows; the two zone rules that damage are both flat, at 1.0 and 2.0 percent
+of maximum health per second. This starts at the lower and adds it again each second, stopping at five
+steps.
+
+**THAT THE CEILING AND THE TRIGGER COUNT ARE BOTH FIVE IS A CONSEQUENCE OF TWO JUDGEMENTS, NOT A
+DESIGN FACT.** The row states the five triggers; the ramp's step and ceiling were chosen separately.
+Moving either does not move the other, and a reader should not infer that one was derived from the
+other.
+
+### The magic find figure, and the unit that had to be measured first
+
+**The data files disagree on scale**, so the unit was read out of the code that consumes it:
+`UCataclysmDropRoll` multiplies by `(1 + MagicFind / 100)`, so the stat is a **percentage where 100
+means +100%**, and `MagicFindCeiling` stops the effective figure at 400. The gem table's fractions are
+that table's own convention and are not this unit.
+
+**Twenty, with the arithmetic:** one gear affix, `Stat_Flat_magic_find` in `game/Data/Affixes.csv`, is
+worth flat 10, so this is two affixes' worth. It is bought with five ticks of the ramp, which is
+1+2+3+4+5 = **15% of the player's maximum health**, and it is 5% of the 400 ceiling, so it cannot crowd
+out gear.
+
+**IT IS THE LEAST EVIDENCED FIGURE IN THE RULE AND THE CODE SAYS SO. No built floor rule writes magic
+find at all**; the six player stats a floor rule writes are max health, maximum energy shield, max
+mana, healing received, movement speed and health regeneration. An affix is a different kind of source
+from a floor, so the comparison is a reasoned one rather than a precedent.
+
+### One hop cannot be tested, and the arithmetic was split so the rest can be
+
+The bonus is added at the one place a death rolls loot, in `ACataclysmEnemyCharacter::HandleDeath`, and
+**the row says a boss**: `IsBoss()` is on the same object, so that is three lines and nothing shared
+widens.
+
+But the creature reaches its floor through `UWorld::GetAuthGameMode`, and **an automation world has no
+authority game mode** — `UWorld::AuthorityGameMode` is private and only a game instance sets it, and a
+world built by `UWorld::CreateWorld` has none. A game mode spawned into a test world is never found.
+`UCataclysmEnemyScore::FloorIn` carries the same gap for the floor number and says so at length.
+
+**So the arithmetic takes its inputs as arguments** — what the player carries, whether the creature was
+a boss, what the floor grants — the same split `UCataclysmEnemyScore::FloorFor` is written for. Tests
+reach that. **The hop from the floor rule to the drop roll is not covered by anything**, and this entry
+says so rather than leaving it to be discovered.
+
+### What the tests do
+
+Eleven automation tests in `Cataclysm.DungeonModifierEffects.`, taking that group from 160 registered
+to 171. They cover: ground appearing, laid clear of the player and carrying no damage of its own; never
+more than three standing and three reached; ground lasting the row's twenty seconds, asserted from both
+sides; the damage being met by the Celestial resistance and not another; the ramp climbing; the ramp
+stopping where it stops; leaving setting it back; four triggers earning nothing and five earning the
+bonus; the bonus added for a boss and not an ordinary kill; the panel; and a floor change clearing
+everything.
+
+**THE DAMAGE-TYPE TEST MEASURES THE TYPE AND NOT A STRING**, using the pair issue #1924 built: the same
+second of standing, measured once with the Celestial resistance raised and once with another, asserted
+to be met only by its own. The act steps the player out and back in first, so both measurements are the
+ramp's first second rather than one first and one second.
+
+**THE RAMP TESTS MEASURE RATIOS AND NOT SHARES OF MAXIMUM HEALTH**, because the damage is typed and a
+player's own resistance may take some of it. A test asserting the exact share would be asserting the
+resistance as well as the ramp.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, taking that file from 119 to
+123: the row's two stated figures; that the damage type is read off the row and not written down; that
+both distances are the shared constants; and that three at once still matches both precedents.
+
+### What the runs found, so far
+
+```
+python -m pytest tools/tests/test_dungeon_modifier_rules_are_the_rows.py
+123 passed in 0.28s          python -m ruff check .   ->   All checks passed!
+```
+
+Nine deliberate breaks through `tools/prove_guard.py`, run in a git-archive copy so no break could
+disturb the worktree, each predicted before it ran and each failing exactly its predicted check, every
+restored half back to 123 passed, ending `0 problem(s)`.
+
+**AN EXISTING CHECK NOBODY HAD MENTIONED CAUGHT THE ZONE SPAWN, AND IT WAS RIGHT TO.**
+`test_every_ground_zone_the_game_mode_places_is_owned_by_the_hazard_source` requires every function
+that spawns a zone to take its owner from `ACataclysmFloorHazardSource::ForFloor` in one exact form,
+because a same-arena floor change destroys a rule's zones **by their owner** — issue #1925 — so a zone
+owned by anything else would survive a Horde dungeon's next wave with no rule acting for it. The first
+version of this rule declared that owner across two lines and did not match. It is now one declaration
+in the required form with a comment saying why, and the ninth break above lays a zone in nobody's name
+and is caught by that same check, which is what says the repair is real.
+
+**And one of the new checks was wrong on its first run.** It refused the bare word "Celestial" anywhere
+in the rule's own function — where it appears in that function's comment, explaining what the row's
+type is. It now refuses the quoted literal, which is what writing the answer down looks like in code.
+
+### What the tests do not show
+
+- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
+  the eleven automation tests and the three guard proofs wait for this machine's next free window, and
+  this section will be replaced by what those runs print.
+- **That the floor's bonus reaches a real boss's drop roll.** The arithmetic is tested and the lookup
+  that feeds it cannot be, for the engine reason written above.
+- **What a floor of this is like to play.** Every test stands the player on ground deliberately; how
+  often a player is caught in it while fighting was not measured.
+
+---
+
 ## 2026-09-18 — Four conditions and two scale sources land ahead of their rows, and two sentences that looked like the same shape are not
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the stat
