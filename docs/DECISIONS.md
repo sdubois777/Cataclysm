@@ -141,6 +141,37 @@ honoured. Measured: no authored effect row has ever stated a seconds range for a
 value, so these would have been the first. Rewording the sentences to a single number is the
 owner's and is offered rather than done.
 
+### Three faults in that test, and none in the rows it guards
+
+**The fail-before half was run three times before it matched its registration**, and every
+fault was in the test's own setup. They are written out because two of the three are traps
+anybody writing a cost test here will meet, and the third is a lesson about measurement rather
+than about this game.
+
+**First run: five assertions failed where three were registered.**
+
+**A write to a pool lands clamped to the maximum.** The test wrote 500 into the mana pool and
+then asserted against 500 and 460. The character's maximum is smaller than that, so those
+assertions failed on the clamp and not on anything the rows do.
+
+**A skill cast twice on one character answers false to the second press.** It commits its
+cooldown on the first, so "the cast is allowed" failed for the cooldown rather than for the
+cost. The cost tests directly above this one in the same file use a SEPARATE FIGHTER PER CASE
+for exactly this reason. This test copied their shape and did not copy that.
+
+**Second run: four assertions failed where three were registered.**
+
+**A difference between two readings is sound only when both sit on the same side of a clamp.**
+Changing the assertions from absolute figures to differences looked like the answer to the
+first fault and was not. A character starts holding more mana than its maximum allows, and the
+clamp runs when a COST is taken rather than when the attribute is read -- so the reading before
+the cast answered the unclamped figure and the reading after answered the clamped one minus the
+cost. The gap between them was 884 against a cost of 40.
+
+**The repair is two casters, one cast each, and each caster's pool set to its own maximum
+before anything is read.** The third run failed exactly the three assertions registered for it,
+and the mana moved by exactly 40, which is what says both readings are now inside the clamp.
+
 ### The test
 
 `Cataclysm.Skills.TheWornRowForPayingHealthBelowHalfHealthChargesHealthAndHalvesIt` wears the
