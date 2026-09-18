@@ -2416,12 +2416,18 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND ROYAL GUARD, WHICH CALLS TWO MORE CREATURES TO A HURT ONE. Issues #1820, #41.
 	const bool bRoyalGuard = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::RoyalGuardKey));
+	// AND THE THIRD RULE THAT PLACES ACTORS ON THE FLOOR. Issues #1820, #41. It lays
+	// ground the way Infernal Rain does, and unlike Infernal Rain it deals the damage
+	// itself rather than leaving it to what it laid.
+	const bool bJudgmentZones = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::JudgmentZonesKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
-		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard)
+		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
+		&& !bJudgmentZones)
 	{
 		return;
 	}
@@ -2476,6 +2482,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bSingularityWells)
 	{
 		StepSingularityWells(Player, AbilitySystem);
+	}
+
+	// AND JUDGMENT ZONES, LAST OF THE THREE THAT PLACE ACTORS. It is here for the reason
+	// Infernal Rain is late -- a floor carrying both does its stat work in one pass first
+	// -- and after Singularity Wells because it does more on a beat than either: it lays
+	// ground, works out what the player standing in it owes, and takes it.
+	if (bJudgmentZones)
+	{
+		StepJudgmentZones(Player, AbilitySystem);
 	}
 
 	// AND WITHERED GROUND, WHICH ONLY READS. It spawns nothing on the beat, so
@@ -3575,6 +3590,183 @@ void ACataclysmDungeonGameMode::NoteDeathForEpidemic(
 	RefreshFloorModifierPanel();
 }
 
+float ACataclysmDungeonGameMode::JudgmentZonesMagicFindBonus() const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::JudgmentZonesKey))
+		|| !Effects::JudgmentZonesBonusIsEarned(JudgmentZonesTriggers))
+	{
+		return 0.0f;
+	}
+
+	return Effects::JudgmentZonesMagicFind;
+}
+
+float ACataclysmDungeonGameMode::JudgmentZonesMagicFindIn(const UObject* WorldContext)
+{
+	// THE HOP NO AUTOMATION TEST CAN TAKE. See the declaration: a world built for a test
+	// has no authority game mode, so this answers nothing there and the arithmetic it feeds
+	// is tested separately.
+	const UWorld* World = GEngine
+		? GEngine->GetWorldFromContextObject(WorldContext,
+											 EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+	if (!World)
+	{
+		return 0.0f;
+	}
+
+	const ACataclysmDungeonGameMode* Mode =
+		World->GetAuthGameMode<ACataclysmDungeonGameMode>();
+	return Mode ? Mode->JudgmentZonesMagicFindBonus() : 0.0f;
+}
+
+void ACataclysmDungeonGameMode::StepJudgmentZones(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// WHAT IS STILL STANDING, ASKED RATHER THAN REMEMBERED. A zone destroys itself when its
+	// life ends, so a weak pointer going invalid IS the expiry. `StepInfernalRain` keeps its
+	// patches the same way.
+	JudgmentZones.RemoveAll([](const TWeakObjectPtr<ACataclysmGroundZone>& Zone)
+	{
+		return !Zone.IsValid();
+	});
+
+	// THE TYPE COMES OUT OF THE ROW AND IS NOT WRITTEN HERE, which is what answers the
+	// row's "holy damage" -- a word naming no damage type this game has. The eight types
+	// are the eight Cataclysms and this row's own `CataclysmType` is Celestial.
+	// `StepInfernalRain` gives the reason at length: a row retyped in the workbook retypes
+	// its hazard with no code change.
+	const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+		UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+		FName(Effects::JudgmentZonesKey));
+	if (!Row)
+	{
+		return;
+	}
+
+	const float MaxHealth = AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+
+	// LAYING NEW GROUND FIRST, THEN WHAT THE PLAYER OWES FOR STANDING ON IT. The order
+	// matters only in that a zone laid this beat cannot be one the player is already inside:
+	// it is laid past its own radius from them, as Infernal Rain's is and for the reason
+	// Infernal Rain gives -- ground that damages the instant it appears is not ground to get
+	// off.
+	JudgmentZonesSecondsSinceLastZone += SecondsBetweenWaveChecks;
+	if (Effects::JudgmentZoneIsDue(JudgmentZonesSecondsSinceLastZone, JudgmentZones.Num()))
+	{
+		const FVector Centre = Player->GetActorLocation();
+		const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+		const float Away = FMath::FRandRange(Effects::JudgmentZonesRadiusCm + 1.0f,
+											 Effects::JudgmentZonesFallsWithinCm);
+		const FVector Where(Centre.X + Away * FMath::Cos(Angle),
+							Centre.Y + Away * FMath::Sin(Angle), Centre.Z);
+
+		if (ACataclysmFloorHazardSource* Source =
+				ACataclysmFloorHazardSource::ForFloor(World))
+		{
+			// SPAWNED WITH NO DAMAGE OF ITS OWN, AND THAT IS THE RULE'S SHAPE RATHER THAN AN
+			// OVERSIGHT. Issue #1701 made a zone that does not damage possible so Singularity
+			// Wells could have a well that slows without damaging. Here the zone is the ground
+			// the player sees and stands in, and this rule below deals the damage and counts
+			// the trigger in one place, so the reward cannot disagree with what earned it. Its
+			// own sweep is skipped, which is what a zone that neither damages nor applies an
+			// effect does.
+			if (ACataclysmGroundZone* Zone = ACataclysmGroundZone::Spawn(
+					Source, Where, Effects::JudgmentZonesRadiusCm,
+					Effects::JudgmentZonesSeconds, /*DamagePerTick=*/0.0f,
+					FName(*Row->CataclysmType)))
+			{
+				JudgmentZones.Add(Zone);
+				JudgmentZonesSecondsSinceLastZone = 0.0f;
+			}
+			// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again rather
+			// than waiting a whole cadence for ground that never existed.
+		}
+	}
+
+	// WHICH ZONE THE PLAYER IS IN, IF ANY. The first one found is the answer: zones may
+	// overlap, and a player inside two owes one ramp rather than two.
+	ACataclysmGroundZone* Inside = nullptr;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Weak : JudgmentZones)
+	{
+		ACataclysmGroundZone* Zone = Weak.Get();
+		if (IsValid(Zone)
+			&& FVector::Dist(Player->GetActorLocation(), Zone->GetActorLocation())
+				   <= Zone->RadiusCm)
+		{
+			Inside = Zone;
+			break;
+		}
+	}
+
+	// STEPPING OUT, OR INTO A DIFFERENT ONE, SETS THE RAMP BACK. The row says standing
+	// inside ramps the damage, so the ramp belongs to the zone stood in and not to the
+	// floor. The TRIGGER COUNT is not touched here: the row says "5+ times" and not "in a
+	// row", so ticks anywhere on the floor count towards the same total.
+	if (Inside != JudgmentZonesStandingIn.Get())
+	{
+		JudgmentZonesStandingIn = Inside;
+		JudgmentZonesSecondsInside = 0.0f;
+		JudgmentZonesTicksInThisZone = 0;
+	}
+
+	if (!Inside)
+	{
+		return;
+	}
+
+	// FOUR BEATS MAKE A SECOND, and the remainder is carried rather than dropped, so a
+	// player who steps in and out repeatedly is not charged less than one who stands.
+	JudgmentZonesSecondsInside += SecondsBetweenWaveChecks;
+
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	bool bCounted = false;
+	while (JudgmentZonesSecondsInside >= 1.0f)
+	{
+		JudgmentZonesSecondsInside -= 1.0f;
+
+		const float Damage =
+			Effects::JudgmentZonesDamageFor(MaxHealth, JudgmentZonesTicksInThisZone);
+		if (Damage <= 0.0f || !Source)
+		{
+			// A CHARACTER WITH NO MAXIMUM HEALTH OWES NOTHING AND IS TRIGGERED BY NOTHING.
+			// Counting a trigger for a tick that dealt nothing would let a floor pay its
+			// reward for damage the player never took.
+			break;
+		}
+
+		FCataclysmHitDelivery Delivery;
+		Delivery.bIsArea = true;
+		Delivery.DamageType = FName(*Row->CataclysmType);
+		UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Damage, Delivery);
+
+		++JudgmentZonesTicksInThisZone;
+		++JudgmentZonesTriggers;
+		bCounted = true;
+	}
+
+	if (bCounted)
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Judgment Zones: the player has taken %d tick(s) of %s damage, %d of %d "
+					"towards the floor's bonus"),
+			   JudgmentZonesTicksInThisZone, *Row->CataclysmType, JudgmentZonesTriggers,
+			   Effects::JudgmentZonesTriggersForTheBonus);
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::ApplyVengefulWraithFigures(
 	ACataclysmEnemyCharacter* Wraith)
 {
@@ -4318,6 +4510,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(Haunting, FString::Printf(TEXT("%d wraith(s) risen"),
 											   VengefulWraithsRisen));
+	}
+
+	// AND WHAT THE RADIANT GROUND HAS TAKEN, WITH WHAT IS STANDING. Two numbers because a
+	// player wants to know both how close the reward is and how much ground there is to
+	// avoid.
+	const FName Judging(Effects::JudgmentZonesKey);
+	if (FloorBrief.Modifiers.Contains(Judging))
+	{
+		Counting.Add(Judging,
+					 FString::Printf(TEXT("%d trigger(s) of %d, %d zone(s) standing"),
+									 JudgmentZonesTriggers,
+									 Effects::JudgmentZonesTriggersForTheBonus,
+									 JudgmentZones.Num()));
 	}
 
 	return Counting;
@@ -5971,6 +6176,17 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// Issues #1820 and #41. The count is this floor's; a wraith that lives through a
 		// Horde dungeon's change of wave is still a wraith and still keeps its figures.
 		VengefulWraithsRisen = 0;
+
+		// AND JUDGMENT ZONES FORGETS EVERYTHING, which is the whole of its state.
+		// Issues #1820 and #41. The zones themselves are actors on the floor being left
+		// and go the way every other actor on it goes; the clock, the ramp and the
+		// trigger count are all this floor's and none of them belongs to a creature.
+		JudgmentZones.Reset();
+		JudgmentZonesSecondsSinceLastZone = 0.0f;
+		JudgmentZonesStandingIn = nullptr;
+		JudgmentZonesSecondsInside = 0.0f;
+		JudgmentZonesTicksInThisZone = 0;
+		JudgmentZonesTriggers = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

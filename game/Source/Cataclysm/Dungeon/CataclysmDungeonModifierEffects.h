@@ -1145,6 +1145,39 @@ public:
 	static const TCHAR* VengefulWraithsKey;
 
 	/**
+	 * The row where radiant ground punishes standing still and pays for it. Issues #1820
+	 * and #41.
+	 *
+	 * A ZONE APPEARS EVERY `JudgmentZonesSecondsBetweenZones`, up to
+	 * `JudgmentZonesMostZones` at once, each lasting `JudgmentZonesSeconds` and reaching
+	 * `JudgmentZonesRadiusCm`. A player standing in one takes
+	 * `JudgmentZonesPercentPerSecond` of their maximum health for the first second and one
+	 * step more for each further second, never past `JudgmentZonesMostPercentPerSecond`.
+	 * Stepping out sets that back to nothing. At `JudgmentZonesTriggersForTheBonus` the
+	 * floor grants `JudgmentZonesMagicFind` on a boss kill for the rest of the floor.
+	 *
+	 * "HOLY DAMAGE" NAMES NO DAMAGE TYPE THIS GAME HAS -- the eight are the eight
+	 * Cataclysms -- AND NOTHING HAD TO RULE ON IT. The four built zone rules read the type
+	 * off the row rather than writing one, and `StepInfernalRain` says why: "a row retyped
+	 * in the workbook retypes its hazard with no code change. A constant here would be this
+	 * file's opinion of the data." This row's own `CataclysmType` is Celestial, so the
+	 * mechanism answers the question.
+	 *
+	 * THE RULE DEALS THE DAMAGE AND COUNTS THE TRIGGERS, AND THE ZONE CARRIES NEITHER.
+	 * A zone's damage is fixed when it is spawned and it ticks on its own second, so a rule
+	 * that owned the count while the zone owned the damage would have two clocks for one
+	 * figure and they could disagree by up to a second. The zone is spawned with no damage
+	 * -- which issue #1701 made possible so Singularity Wells could have a well that slows
+	 * without damaging -- and is the ground the player sees and stands in. So a trigger IS
+	 * a tick of this rule's damage, and "five triggers" and "five seconds of damage" are
+	 * the same five by construction. Ruled under the project owner's delegation.
+	 *
+	 * THE FIVE NEED NOT BE CONSECUTIVE. The row says "5+ times" and not "in a row", so
+	 * ticks anywhere on the floor count towards the same total.
+	 */
+	static const TCHAR* JudgmentZonesKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2665,6 +2698,119 @@ public:
 		"than what it rose from, or one that sees no further than its kind is not the "
 		"row.");
 
+	/**
+	 * How long a judgment zone stands.
+	 *
+	 * STATED BY THE ROW: "Radiant zones spawn for 20 seconds".
+	 */
+	static constexpr float JudgmentZonesSeconds = 20.0f;
+
+	/**
+	 * How many ticks of this rule's damage earn the floor's loot bonus.
+	 *
+	 * STATED BY THE ROW: "if triggered 5+ times". THE PLUS IS WHY THIS IS A FLOOR AND NOT
+	 * AN EXACT COUNT, and why the ticks need not be consecutive.
+	 */
+	static constexpr int32 JudgmentZonesTriggersForTheBonus = 5;
+
+	/**
+	 * How far a judgment zone reaches.
+	 *
+	 * DECLARED AS `WitheredGroundPatchRadiusCm` AND NOT AS 300. That is this project's
+	 * settled answer for a patch of ground, shared by Infernal Rain, Singularity Wells and
+	 * Withered Ground, and Spore Clouds already declares itself as it. The row states no
+	 * distance.
+	 */
+	static constexpr float JudgmentZonesRadiusCm = WitheredGroundPatchRadiusCm;
+
+	/**
+	 * How far from the player a zone may appear.
+	 *
+	 * DECLARED AS `InfernalRainFallsWithinCm` AND NOT AS 1200, for the same reason: it is
+	 * the settled answer for where a hazard laid near the player falls, shared with
+	 * Singularity Wells.
+	 */
+	static constexpr float JudgmentZonesFallsWithinCm = InfernalRainFallsWithinCm;
+
+	/**
+	 * How many judgment zones may stand at once.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation, WRITTEN AS A FIGURE AND NOT
+	 * TIED. Infernal Rain's `InfernalRainMostPatches` and Singularity Wells'
+	 * `SingularityWellsMostWells` are both 3, written independently. That makes three a
+	 * VOCABULARY rather than one design figure, so this follows it without naming either --
+	 * the same treatment `HolyRepercussionsChancePercentOnHit` gets for the table's ten.
+	 */
+	static constexpr int32 JudgmentZonesMostZones = 3;
+
+	/**
+	 * How long between one judgment zone appearing and the next.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation, and again a vocabulary
+	 * rather than a tie: Infernal Rain lays one every 5 seconds and Singularity Wells one
+	 * every 8.
+	 *
+	 * EIGHT, WITH THE ARITHMETIC: a zone lasts 20 seconds and three may stand at once, so
+	 * one every 8 seconds reaches three at 16 seconds, just as the first is due to go. At
+	 * five the ceiling would be reached at 10 seconds and the floor would sit at three for
+	 * the rest of its life, which is a different rule from the one the row describes.
+	 */
+	static constexpr float JudgmentZonesSecondsBetweenZones = 8.0f;
+
+	/**
+	 * What a first second inside a zone costs, and what each further second adds.
+	 *
+	 * A JUDGEMENT ON A SHAPE THE ROW ONLY HINTS AT, ruled under the project owner's
+	 * delegation. The row says standing inside "RAMPS" the damage, so it grows; the two
+	 * zone rules that damage are both flat, at `SingularityWellsPercentPerSecond` 1.0 and
+	 * `InfernalRainPercentPerSecond` 2.0. This starts at the lower of those and adds it
+	 * again for each further whole second in the same zone.
+	 */
+	static constexpr float JudgmentZonesPercentPerSecond = 1.0f;
+
+	/**
+	 * Where the ramp stops.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation. Five steps of one, so the
+	 * ceiling is reached at the fifth second.
+	 *
+	 * THAT IT LANDS ON THE SAME NUMBER AS `JudgmentZonesTriggersForTheBonus` IS A
+	 * CONSEQUENCE OF TWO JUDGEMENTS AND NOT A DESIGN FACT. The row states the five; the
+	 * ramp's step and ceiling were chosen separately. A reader should not infer that one
+	 * was derived from the other, and moving either does not move the other.
+	 */
+	static constexpr float JudgmentZonesMostPercentPerSecond = 5.0f;
+
+	/**
+	 * What the floor adds to the player's magic find on a boss kill, once earned.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation, AND THE LEAST EVIDENCED
+	 * FIGURE IN THIS RULE. No built floor rule writes magic find at all; the six player
+	 * stats a floor rule writes are max health, maximum energy shield, max mana, healing
+	 * received, movement speed and health regeneration.
+	 *
+	 * THE UNIT WAS MEASURED RATHER THAN ASSUMED, because the data files disagree.
+	 * `UCataclysmDropRoll` multiplies by `(1 + MagicFind / 100)`, so the stat is a
+	 * PERCENTAGE where 100 means +100%, and `MagicFindCeiling` stops the effective figure
+	 * at 400.
+	 *
+	 * TWENTY, WITH THE ARITHMETIC: one gear affix, `Stat_Flat_magic_find` in
+	 * `game/Data/Affixes.csv`, is worth flat 10, so this is two affixes' worth. It is
+	 * bought with five ticks of the ramp above, which is 1+2+3+4+5 = 15% of the player's
+	 * maximum health, and it is 5% of the 400 ceiling, so it cannot crowd out gear.
+	 */
+	static constexpr float JudgmentZonesMagicFind = 20.0f;
+
+	static_assert(
+		JudgmentZonesSeconds > 0.0f && JudgmentZonesTriggersForTheBonus > 0
+			&& JudgmentZonesMostZones > 0 && JudgmentZonesSecondsBetweenZones > 0.0f
+			&& JudgmentZonesPercentPerSecond > 0.0f
+			&& JudgmentZonesMostPercentPerSecond >= JudgmentZonesPercentPerSecond
+			&& JudgmentZonesMagicFind > 0.0f,
+		"A zone that does not stand, a bonus earned by nothing, no zones at all, a ramp "
+		"that does not climb or whose ceiling is below its first step, or a reward of "
+		"nothing is not the row.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -3501,6 +3647,39 @@ public:
 	 * three times.
 	 */
 	static float VengefulWraithsIncreased(float Base);
+
+	/** Whether another judgment zone is due, given the clock and how many stand now. */
+	static bool JudgmentZoneIsDue(float SecondsSinceLastZone, int32 StandingNow);
+
+	/**
+	 * What a share of maximum health this second in a zone costs, as a percentage.
+	 *
+	 * THE RAMP IS HERE AND NOWHERE ELSE, so there is one place its shape can be wrong.
+	 * `SecondsStoodIn` is how many ticks this rule has already dealt to the player in the
+	 * zone they are standing in, so the first tick asks with nothing stood.
+	 */
+	static float JudgmentZonesPercentAfter(int32 SecondsStoodIn);
+
+	/** What that share is of a real maximum health, or nothing for a character with none. */
+	static float JudgmentZonesDamageFor(float MaxHealth, int32 SecondsStoodIn);
+
+	/** Whether this many ticks have earned the floor's loot bonus. */
+	static bool JudgmentZonesBonusIsEarned(int32 Triggers);
+
+	/**
+	 * What magic find a drop roll should use, given who died and what the floor grants.
+	 *
+	 * **SPLIT OUT SO THE READING CAN BE TESTED AT ALL**, which is the same split
+	 * `UCataclysmEnemyScore::FloorFor` is written for and for the same reason. The caller
+	 * is `ACataclysmEnemyCharacter::HandleDeath`, which finds the floor's bonus through
+	 * `UWorld::GetAuthGameMode` -- and an automation world has no authority game mode, so
+	 * a test can reach this arithmetic and cannot reach that lookup.
+	 *
+	 * THE BONUS IS FOR A BOSS AND NOTHING ELSE, which is what the row says: "increases
+	 * BOSS loot quality".
+	 */
+	static float JudgmentZonesMagicFindFor(float PlayersMagicFind, bool bVictimIsBoss,
+										   float FloorBonus);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

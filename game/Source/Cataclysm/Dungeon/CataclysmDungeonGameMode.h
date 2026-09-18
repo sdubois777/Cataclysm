@@ -1732,6 +1732,45 @@ private:
 	void ApplyVengefulWraithFigures(ACataclysmEnemyCharacter* Wraith);
 
 	/**
+	 * Judgment Zones, on every beat: lay radiant ground, and punish standing in it.
+	 *
+	 * THIS RULE DEALS THE DAMAGE AND COUNTS THE TRIGGERS ITSELF, and the zones it lays
+	 * carry none. A zone's damage is fixed when it is spawned and it ticks on its own
+	 * second, so a rule that owned the count while the zone owned the damage would have
+	 * two clocks for one figure. Ruled under the project owner's delegation; issue #1701
+	 * is what made a zone that does not damage possible.
+	 */
+	void StepJudgmentZones(ACataclysmPlayerCharacter* Player,
+						   class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+public:
+	/**
+	 * What this floor adds to a boss's drop roll, or nothing when it has not been earned.
+	 *
+	 * READ BY `ACataclysmEnemyCharacter::HandleDeath` THROUGH THE STATIC BELOW.
+	 */
+	float JudgmentZonesMagicFindBonus() const;
+
+	/**
+	 * The same, found in a world rather than asked of a game mode in hand.
+	 *
+	 * **NOTHING IN AN AUTOMATION RUN CAN MAKE THIS ANSWER**, and that is a property of the
+	 * engine rather than of this rule. `UWorld::GetAuthGameMode` finds the authority game
+	 * mode, `UWorld::AuthorityGameMode` is private and only a game instance sets it, and a
+	 * world built by `UWorld::CreateWorld` has none -- so a game mode spawned into a test
+	 * world is never found. `UCataclysmEnemyScore::FloorIn` carries the same gap for the
+	 * floor number and the same note.
+	 *
+	 * SO THE ARITHMETIC LIVES WHERE A TEST CAN REACH IT:
+	 * `UCataclysmDungeonModifierEffects::JudgmentZonesMagicFindFor` takes the bonus as an
+	 * argument. This function is the hop that is not covered, and the decisions entry says
+	 * so beside the floor number's identical gap.
+	 */
+	static float JudgmentZonesMagicFindIn(const UObject* WorldContext);
+
+private:
+
+	/**
 	 * Brand of the Aggressor's stack, on a blow the PLAYER landed on a creature.
 	 * Issues #1820 and #41.
 	 *
@@ -2353,6 +2392,29 @@ private:
 	 */
 	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> VengefulWraiths;
 	int32 VengefulWraithsRisen = 0;
+
+	/**
+	 * Judgment Zones: the ground standing now, the clock that lays more, and what the
+	 * player has taken from it. Issues #1820 and #41.
+	 *
+	 * ALL OF IT IS THE FLOOR'S AND GOES AT THE STAIRS, unlike the records above. A zone is
+	 * an actor on this floor and a trigger is something that happened on this floor; there
+	 * is nothing here a creature carries with it.
+	 *
+	 * `JudgmentZonesStandingIn` IS WHAT MAKES LEAVING RESET THE RAMP. The ramp is per
+	 * zone, so stepping from one zone straight into another starts again -- which is what
+	 * "standing inside ramps" means, and is why the zone is remembered rather than just a
+	 * yes or no.
+	 *
+	 * `JudgmentZonesSecondsInside` CARRIES THE REMAINDER BETWEEN BEATS. The beat is a
+	 * quarter-second and the ramp is per second, so four beats make one tick.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> JudgmentZones;
+	float JudgmentZonesSecondsSinceLastZone = 0.0f;
+	TWeakObjectPtr<class ACataclysmGroundZone> JudgmentZonesStandingIn;
+	float JudgmentZonesSecondsInside = 0.0f;
+	int32 JudgmentZonesTicksInThisZone = 0;
+	int32 JudgmentZonesTriggers = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

@@ -71,6 +71,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::BloodForgedChampionsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::VengefulWraithsKey =
 	TEXT("Death_Vengful_Wraiths");
 
+const TCHAR* UCataclysmDungeonModifierEffects::JudgmentZonesKey =
+	TEXT("Celestial_Judgment_Zones");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -250,7 +253,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DemonPrinceKey)
 		|| RowKey == FName(EpidemicKey)
 		|| RowKey == FName(BloodForgedChampionsKey)
-		|| RowKey == FName(VengefulWraithsKey))
+		|| RowKey == FName(VengefulWraithsKey)
+		|| RowKey == FName(JudgmentZonesKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -414,6 +418,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(EpidemicKey),
 		FName(BloodForgedChampionsKey),
 		FName(VengefulWraithsKey),
+		FName(JudgmentZonesKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1379,6 +1384,58 @@ bool UCataclysmDungeonModifierEffects::VengefulWraithRises(float Roll)
 float UCataclysmDungeonModifierEffects::VengefulWraithsIncreased(float Base)
 {
 	return Base * (1.0f + VengefulWraithsIncreasePercent / 100.0f);
+}
+
+bool UCataclysmDungeonModifierEffects::JudgmentZoneIsDue(float SecondsSinceLastZone,
+																 int32 StandingNow)
+{
+	return StandingNow < JudgmentZonesMostZones
+		&& SecondsSinceLastZone >= JudgmentZonesSecondsBetweenZones;
+}
+
+float UCataclysmDungeonModifierEffects::JudgmentZonesPercentAfter(int32 SecondsStoodIn)
+{
+	// THE FIRST SECOND COSTS ONE STEP, so a player who steps in and out once pays the
+	// smallest figure rather than nothing. `SecondsStoodIn` is what this rule has ALREADY
+	// dealt them in the zone they are standing in.
+	const float Climbed =
+		JudgmentZonesPercentPerSecond * static_cast<float>(FMath::Max(0, SecondsStoodIn) + 1);
+
+	return FMath::Min(Climbed, JudgmentZonesMostPercentPerSecond);
+}
+
+float UCataclysmDungeonModifierEffects::JudgmentZonesDamageFor(float MaxHealth,
+																	   int32 SecondsStoodIn)
+{
+	// A CHARACTER WITH NO MAXIMUM TAKES NOTHING, rather than a share of nothing which is
+	// also nothing but reads as an answer. `StepInfernalRain` refuses to lay a patch at all
+	// on that reading, for the reason its comment gives.
+	if (MaxHealth <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	return MaxHealth * JudgmentZonesPercentAfter(SecondsStoodIn) / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::JudgmentZonesBonusIsEarned(int32 Triggers)
+{
+	return Triggers >= JudgmentZonesTriggersForTheBonus;
+}
+
+float UCataclysmDungeonModifierEffects::JudgmentZonesMagicFindFor(float PlayersMagicFind,
+																		  bool bVictimIsBoss,
+																		  float FloorBonus)
+{
+	if (!bVictimIsBoss || FloorBonus <= 0.0f)
+	{
+		return PlayersMagicFind;
+	}
+
+	// ADDED AND NOT MULTIPLIED, which is how the drop roll already treats the creature's
+	// own magic find: its comment says a rarer creature's "is added to the player's rather
+	// than multiplied by it".
+	return PlayersMagicFind + FloorBonus;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(
