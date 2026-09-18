@@ -21,6 +21,10 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+// For the keystone's own rows, read out of the imported effect table by
+// the test that grants nothing by hand. Issue #1515.
+#include "Character/CataclysmPassiveTree.h"
+#include "Data/CataclysmDataRows.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
@@ -2801,6 +2805,157 @@ bool FCataclysmVeilSkipsAMinionDrawingNobodyTest::RunTest(const FString&)
 				  "threat its type states and nothing else"),
 		UCataclysmCommand::MinionDrawingEnemyFrom(
 			Summoner.Actor, Hunting.Actor) == Imp);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilReadsItsOwnRowsTest,
+	"Cataclysm.Command.TheKeystonesOwnRowsDrawANearbyEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The keystone works from the rows the game loads, with nothing granted by hand.
+ *
+ * WHY THIS TEST EXISTS AND THE FOUR BESIDE IT ARE NOT ENOUGH. Every other test
+ * of this keystone calls `GiveBehindTheVeil`, which writes the two stats onto
+ * the character directly. **All of them pass with no row in the data at all**,
+ * so between them they cannot tell a working keystone from one the engine reads
+ * and nothing supplies. That is not hypothetical: the sibling keystone Conduit
+ * was read by the engine for a day before any row granted it, with every test
+ * passing throughout, and `Ritualist_capstone_200#3` granted nothing from the
+ * day it was written. This test is the one that notices.
+ *
+ * SO IT TAKES THE NUMBERS FROM THE ROWS AND STATES NONE OF ITS OWN. The reach
+ * and the count are read out of `game/Data/PassiveEffects.csv` through the
+ * imported asset, and the creature and the minions are placed using those
+ * figures. A workbook that moved either number would move this test with it
+ * rather than break it -- the node's sentence is what pins the numbers
+ * themselves, and `tools/tests/test_passive_effects_match_the_node_text.py`
+ * holds that.
+ *
+ * IT FAILS WHEN THE ROWS ARE ABSENT, which is the half of a guard proof that
+ * this whole change turns on, and which is measured across the asset rebuild.
+ */
+bool FCataclysmVeilReadsItsOwnRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	const UDataTable* Effects = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the passive effect table loads"),
+					 const_cast<UDataTable*>(Effects)))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// THE KEYSTONE'S OWN ROWS, BY NODE KEY. Two of them, one per number.
+	const TArray<const FCataclysmPassiveEffectRow*> Rows =
+		UCataclysmPassiveTree::EffectsFor(
+			Effects, FName(TEXT("Ritualist_keystone_spine_002")));
+	if (!TestEqual(TEXT("Behind the Veil carries two rows"), Rows.Num(), 2))
+	{
+		AddError(TEXT("The keystone's rows are missing from the data, so it "
+					  "grants nothing in play however the engine reads it. "
+					  "Author them in the Passive Effects sheet of "
+					  "docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+
+	float Metres = 0.0f;
+	float Minimum = 0.0f;
+	TMap<FName, FCataclysmStatInputs> FromTheRows;
+	for (const FCataclysmPassiveEffectRow* Row : Rows)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flat.Value = Row->ValuePerPoint;
+
+		FCataclysmStatInputs Line;
+		Line.Base = 0.0f;
+		Line.Modifiers.Add(Flat);
+		FromTheRows.Add(FName(*Row->Stat), Line);
+
+		if (Row->Stat == FString(TEXT("minions_draw_nearby_enemies_metres")))
+		{
+			Metres = Row->ValuePerPoint;
+		}
+		else if (Row->Stat
+				 == FString(TEXT("minions_draw_nearby_enemies_minimum")))
+		{
+			Minimum = Row->ValuePerPoint;
+		}
+	}
+
+	if (!TestTrue(FString::Printf(TEXT("the rows state a reach: %.1f"), Metres),
+				  Metres > 0.0f)
+		|| !TestTrue(FString::Printf(TEXT("and a count: %.1f"), Minimum),
+					 Minimum > 0.0f))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+
+	// PLACED BY THE ROWS' OWN FIGURES. Inside the reach, and nearer the creature
+	// than any minion is, so the search alone would answer the summoner.
+	FScopedCreature Hunting(World, FVector((Metres - 2.0f) * M, 0, 0));
+
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Summoner.Actor));
+	if (!TestNotNull(TEXT("the summoner has an ability system"), Theirs))
+	{
+		return false;
+	}
+	Theirs->SetStatInputs(MoveTemp(FromTheRows));
+
+	// AS MANY MINIONS AS THE ROW ASKS FOR, the last of them the one that draws
+	// most, and every one of them further from the creature than the summoner.
+	const int32 Wanted = FMath::RoundToInt(Minimum);
+	TArray<ACataclysmMinion*> Made;
+	for (int32 Index = 0; Index < Wanted; ++Index)
+	{
+		const bool bLast = Index == Wanted - 1;
+		ACataclysmMinion* One = SummonOfType(
+			*this, Summoner.Actor,
+			FVector((Metres + 2.0f + Index) * M, 0, 0),
+			bLast ? DrawsMost : DrawsLittle);
+		if (!One)
+		{
+			break;
+		}
+		Made.Add(One);
+	}
+	ON_SCOPE_EXIT
+	{
+		for (ACataclysmMinion* One : Made)
+		{
+			if (IsValid(One)) { One->Destroy(); }
+		}
+	};
+	if (!TestEqual(TEXT("the row's count of minions stands there"),
+				   Made.Num(), Wanted))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyController* Brain =
+		Cast<ACataclysmEnemyController>(Hunting.Actor->GetController());
+	if (!Brain)
+	{
+		AddError(TEXT("The hunting creature has no brain to drive."));
+		return false;
+	}
+
+	TestTrue(TEXT("the creature is drawn to the minion drawing most, from the "
+				  "keystone's own rows and nothing granted by hand"),
+		Brain->ChooseTarget() == Made.Last());
 
 	return true;
 }
