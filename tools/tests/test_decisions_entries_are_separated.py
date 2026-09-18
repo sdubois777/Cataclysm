@@ -79,6 +79,7 @@ defect with a different fix, and it is issue #1408.
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import re
 
@@ -317,3 +318,44 @@ def test_the_allowance_list_holds_nothing_that_is_now_correct(
         + "\n".join(f"  {heading}" for heading in stale)
         + f"\n\nDelete those lines from ALREADY_WRONG in {pathlib.Path(__file__).name}. "
         "The list is meant to shrink as the boundaries are repaired.")
+
+
+def test_no_entry_is_dated_later_than_today(decisions_entries):
+    """An entry heading is dated by the LOCAL date, so none can be in the future.
+
+    WHAT WENT WRONG. On 2026-09-17 an entry was headed 2026-09-18. This machine
+    runs six hours behind UTC, so a change written in the evening is already the
+    next day in UTC, and the heading took that date while all twenty entries
+    already in the file used the local one. Nothing failed: fifty checks read
+    this file and three of them parse headings, and not one looks at what the
+    date says. A person reading the diff caught it.
+
+    WHY TODAY IS THE ONLY LINE THIS FILE CAN DRAW BY ITSELF. The log cannot know
+    when a decision was made, and the commit that writes an entry is not visible
+    from here. What it can know is that a decision recorded today was not made
+    tomorrow.
+
+    IT DOES NOT GO STALE. A heading dated in the past stays in the past however
+    long this test lives, so nothing here needs revisiting as entries age.
+
+    IT READS THE LOCAL DATE ON PURPOSE. `date.today()` asks the machine's own
+    clock, which is the clock the convention follows; reading UTC here would
+    refuse a correctly dated entry for six hours of every day.
+    """
+    today = datetime.date.today()
+    ahead = []
+    for _index, heading in decisions_entries:
+        stated = heading[3:13]
+        try:
+            written = datetime.date.fromisoformat(stated)
+        except ValueError:
+            continue
+        if written > today:
+            ahead.append(heading)
+
+    assert not ahead, (
+        f"{len(ahead)} entry heading(s) in {DECISIONS.name} are dated after "
+        f"today ({today.isoformat()}):\n"
+        + "\n".join(f"  {heading}" for heading in ahead)
+        + "\n\nEntries are dated by the local date. A heading a day ahead is "
+        "usually a change written in the evening and dated in UTC.")

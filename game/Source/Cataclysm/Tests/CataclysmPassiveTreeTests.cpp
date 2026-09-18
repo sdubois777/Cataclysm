@@ -13072,4 +13072,74 @@ bool FCataclysmPassiveRitualFocusRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveConduitRowTest,
+	"Cataclysm.Passives.ConduitGrantsTheFlagThatMakesAMinionsHitItsSummonersOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_spine_003` Conduit, read out of the tables the game loads.
+ * Issue #1515.
+ *
+ * "Damage dealt by your minions counts as damage you dealt, for every effect of
+ * yours that asks."
+ *
+ * THE ENGINE READ THIS STAT BEFORE ANYTHING GRANTED IT, which is the reason this
+ * case exists rather than trusting the two that measure the crediting.
+ * `UCataclysmCombatEvents::NoteBlow` asked for `minion_hits_count_as_yours` from
+ * the morning of 2026-09-17; no row supplied it until this one, and both cases
+ * that measure the keystone put the stat on by hand. So the keystone was
+ * written, built and tested, and a player who took it got nothing. A case that
+ * reads the ROW is what would have caught that.
+ *
+ * A FLAG OF ONE, as `Every One Bursts` is: the crediting asks whether the stat
+ * stands above zero rather than how much of it there is.
+ *
+ * WHAT A CREDITED HIT THEN DOES is
+ * `Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner`
+ * and its partner for a summoner without the keystone; this reads the row.
+ */
+bool FCataclysmPassiveConduitRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmFourRowsReadTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FCataclysmPassiveEffectRow* Row = RowFor(
+		EffectTable, TEXT("Ritualist_keystone_spine_003"), 0,
+		TEXT("minion_hits_count_as_yours"));
+	if (!TestNotNull(TEXT("Conduit has the crediting flag"), Row))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("of one"), Row->ValuePerPoint, 1.0f);
+	TestEqual(TEXT("under no condition"), Row->Condition, FString());
+	TestEqual(TEXT("and on no scale"), Row->Scale, FString());
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Out;
+	const TArray<FCataclysmStatModifier>* Flag = Granted(
+		Out, NodeTable, EffectTable, TEXT("Ritualist_keystone_spine_003"), 1, 0,
+		TEXT("minion_hits_count_as_yours"));
+	if (!TestNotNull(TEXT("taking the keystone grants the flag"), Flag))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth one"),
+			  UCataclysmStatPipeline::Evaluate(0.0f, *Flag,
+											   FGameplayTagContainer()).Final,
+			  1.0f, 0.001f);
+	TestTrue(TEXT("and the engine records the stat, which has no attribute"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(TEXT("minion_hits_count_as_yours"))));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

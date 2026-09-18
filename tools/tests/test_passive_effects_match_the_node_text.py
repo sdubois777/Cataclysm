@@ -562,7 +562,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: FIRST REMOVAL ROW IN THIS SHEET -- twenty-five exist on the Enchantment
 #: Effects sheet, and none had gone through the passive-effects path
 #: before. Issue #1515.
-AUTHORED_ROWS = 285
+#:
+#: AND 286 SINCE THE CONDUIT KEYSTONE WAS GIVEN ITS ROW, on 2026-09-17:
+#: `Ritualist_keystone_spine_003` grants `minion_hits_count_as_yours` as a flag
+#: of one, which is what makes a minion's hit and kill count as its summoner's.
+#: The engine read that stat from the day before; until this row there was
+#: nothing in the data to grant it, so the keystone did nothing in play.
+AUTHORED_ROWS = 286
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -913,7 +919,12 @@ AUTHORED_ROWS = 285
 #: MEASURED PER TREE: the Ritualist is 66 of its 74 and the Ravager 65 of
 #: its 74. The Masochist is 74 of 74, the Bulwark 3, the Saboteur 1 and the
 #: Berserker none.
-AUTHORED_NODES = 209
+#:
+#: AND TO 210 LATER THE SAME DAY, when `Conduit`
+#: (`Ritualist_keystone_spine_003`) was given the row that grants
+#: `minion_hits_count_as_yours`. That node had none before, so this and the row
+#: count moved together again, and the Ritualist is 67 of its 74.
+AUTHORED_NODES = 210
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2295,6 +2306,15 @@ VALUE_IN_WORDS = {
         ("every minion explodes when it dies", 1.0),
     ("Ritualist_keystone_d_kB", "mana_cost"):
         ("cost no mana", 1.0),
+
+    # AND THE THIRD RITUALIST FLAG, `Conduit`, whose sentence holds no digit
+    # either. Issue #1515. The row grants one of `minion_hits_count_as_yours`
+    # and the engine asks only whether it stands above zero: with the keystone
+    # taken, a minion's hit and kill are credited to its summoner, and without
+    # it they are the minion's own. The phrase is the clause that says so, and
+    # it names no number because the rule is not a quantity.
+    ("Ritualist_keystone_spine_003", "minion_hits_count_as_yours"):
+        ("counts as damage you dealt", 1.0),
     ("Ravager_keystone_spine_003", "movement_speed_reduction_suppressed"):
         ("slowed", 1.0),
 
