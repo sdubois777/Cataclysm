@@ -63,6 +63,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::DemonPrinceKey =
 const TCHAR* UCataclysmDungeonModifierEffects::EpidemicKey =
 	TEXT("Pestilence_Epidemic");
 
+const TCHAR* UCataclysmDungeonModifierEffects::BloodForgedChampionsKey =
+	TEXT("War_Blood_Forged_Champions");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -240,7 +243,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(VolatileEvolutionKey)
 		|| RowKey == FName(RoyalGuardKey)
 		|| RowKey == FName(DemonPrinceKey)
-		|| RowKey == FName(EpidemicKey))
+		|| RowKey == FName(EpidemicKey)
+		|| RowKey == FName(BloodForgedChampionsKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -402,6 +406,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(RoyalGuardKey),
 		FName(DemonPrinceKey),
 		FName(EpidemicKey),
+		FName(BloodForgedChampionsKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1335,6 +1340,28 @@ bool UCataclysmDungeonModifierEffects::EpidemicChainIsComplete(int32 Spreads)
 float UCataclysmDungeonModifierEffects::EpidemicRadiusCm()
 {
 	return EpidemicRadiusMetres * UCataclysmContagion::CentimetresPerMetre;
+}
+
+bool UCataclysmDungeonModifierEffects::BloodForgedChampionsAbsorbs(int32 RarityStep)
+{
+	return RarityStep >= BloodForgedChampionsLowestRung
+		&& RarityStep < BloodForgedChampionsHighestRung;
+}
+
+bool UCataclysmDungeonModifierEffects::BloodForgedChampionsRungIsEarned(
+	int32 DeathsSinceItsLastRung)
+{
+	return DeathsSinceItsLastRung >= BloodForgedChampionsDeathsPerRung;
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodForgedChampionsRungAfter(int32 RarityStep)
+{
+	return FMath::Min(RarityStep + 1, BloodForgedChampionsHighestRung);
+}
+
+float UCataclysmDungeonModifierEffects::BloodForgedChampionsRadiusCm()
+{
+	return BloodForgedChampionsRadiusMetres * UCataclysmContagion::CentimetresPerMetre;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

@@ -1693,6 +1693,18 @@ private:
 							 ECataclysmDungeonCreature LastVictimsKind);
 
 	/**
+	 * Blood-Forged Champions, on any creature's death: feed the nearest Elite.
+	 *
+	 * IT ASKS FOR NO KILLER, AND THE ABSENCE IS THE RULE RATHER THAN AN OVERSIGHT. The
+	 * four death listeners above all ask "did the player do this", because their rows say
+	 * "when you kill" or "when you slay". This row says "nearby dying allies" and names
+	 * nobody, so a creature killed by another creature, by burning ground or by another
+	 * floor rule feeds a champion exactly as the player's own kill does. Ruled under the
+	 * project owner's delegation.
+	 */
+	void NoteDeathForBloodForgedChampions(const struct FCataclysmDeathNotice& Notice);
+
+	/**
 	 * Brand of the Aggressor's stack, on a blow the PLAYER landed on a creature.
 	 * Issues #1820 and #41.
 	 *
@@ -2275,6 +2287,26 @@ private:
 	int32 EpidemicChain = 0;
 	int32 EpidemicPlagueLordsRisen = 0;
 	bool bEpidemicKilling = false;
+
+	/**
+	 * Blood-Forged Champions: how many deaths each Elite has taken since its last rung,
+	 * and what this floor has seen. Issues #1820 and #41.
+	 *
+	 * THE TALLY OUTLIVES THE FLOOR AND THE TWO COUNTS DO NOT, which is the split stated
+	 * above `VolatileEvolutionMutated`. A creature's progress towards its next rung is
+	 * its own, in the way the rung it already reached is its own, so a champion that
+	 * lives through a Horde dungeon's change of wave does not lose two thirds of a rung
+	 * it had earned. The two counts answer what happened on THIS floor, which is what the
+	 * panel shows, so they go at the stairs. Ruled under the project owner's delegation.
+	 *
+	 * WEAK POINTERS, AND THE LISTENER DROPS THE STALE ONES, as Royal Guard's record does:
+	 * a creature that has died keeps its entry until the actor itself is destroyed, which
+	 * costs nothing, and a destroyed one leaves nothing behind that could be read as a
+	 * champion still standing.
+	 */
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, int32> BloodForgedChampionsFed;
+	int32 BloodForgedChampionsAbsorbed = 0;
+	int32 BloodForgedChampionsRungsGained = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;
