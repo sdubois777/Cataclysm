@@ -423,6 +423,29 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Within Seconds Of The Class Resource Emptying"),
 
 	/**
+	 * The character landed a blow on a Boss enemy within the last
+	 * `ConditionValue` seconds.
+	 *
+	 * "Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4
+	 * seconds after you strike one" is the row, at 4 seconds. THE PER-BLOW
+	 * CONDITION `TargetIsBoss` CANNOT SERVE IT: a cooldown counts down with
+	 * nobody being struck, so nothing fills a target for it to read. The
+	 * project owner chose a clock over a proximity check on 2026-09-18, with
+	 * the proximity shape that Path of Exile ships put to them and declined;
+	 * `docs/DECISIONS.md` carries the research and the cost of the other shape.
+	 *
+	 * AT OR WITHIN, BECAUSE "WITHIN" IS INCLUSIVE, the reading every clock
+	 * above takes of the same word.
+	 *
+	 * A NEGATIVE READING IS "NEITHER KNOWN NOR EVER" AND REFUSES. A character
+	 * that has never struck a Boss reads -1, which is at or within every
+	 * threshold a sheet may write, so the guard cannot be folded into the
+	 * comparison.
+	 */
+	WithinSecondsOfStrikingABoss
+		UMETA(DisplayName = "Within Seconds Of Striking A Boss"),
+
+	/**
 	 * The skill dealing this blow cost more than `ConditionValue` percent of
 	 * the character's maximum health. Issue #983.
 	 *
@@ -1799,6 +1822,19 @@ struct CATACLYSM_API FCataclysmStatConditions
 	float SecondsSinceClassResourceEmpty = -1.0f;
 
 	/**
+	 * Seconds since the character last landed a blow on a Boss enemy. Negative
+	 * means neither known nor ever, as above.
+	 *
+	 * THE ONLY ONE OF THESE CLOCKS THAT DEPENDS ON WHAT WAS STRUCK rather than
+	 * on what the character itself did. It is stamped only when a blow got
+	 * through to a Boss -- health, energy shield or mana -- and it is stamped
+	 * on whoever the blow belongs to, which for a minion's blow is the minion
+	 * unless its summoner holds the Ritualist keystone Conduit.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceStruckABoss = -1.0f;
+
+	/**
 	 * How much of the class resource the character is holding. Issue #980.
 	 *
 	 * NEGATIVE MEANS UNKNOWN, the same convention as the three readings above.
@@ -2872,7 +2908,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a forty-seventh, which is the drift that put the passive tree eight
+	 * adds a forty-eighth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -2881,7 +2917,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * NINETEEN OF THE FORTY-SIX COMPARE NOTHING. They are the case labels
+	 * NINETEEN OF THE FORTY-SEVEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

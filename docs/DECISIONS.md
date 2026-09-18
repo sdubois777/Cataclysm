@@ -2,6 +2,149 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — Striking a Boss opens a four second window, and whose blow a blow is now has one implementation
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the rule that
+decides whose blow a blow is moves out of the announcement function into a helper anything may ask),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (a clock recording
+when this character last landed a blow on a Boss, beside the twelve clocks that already exist),
+`game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the state field, the
+condition and its judgement), `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`
+(the one place the clock is stamped, where a blow has got through),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h` (a comment corrected, issue #2010),
+`tools/generate_datatables.py` (the condition a data sheet may name),
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (the condition listed as
+landed ahead of its row), and the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmCombatEventsTests.cpp`,
+`CataclysmStatPipelineTests.cpp` and `CataclysmAbilitySystemTests.cpp`. Issue
+[#2010](https://github.com/sdubois777/Cataclysm/issues/2010), which this closes.
+
+**Partial.** The Python suite has run. **The compile, the automation tests and the guard proofs have
+not.** No data row is written here; the row and its sentence need the design workbook, which another
+session holds.
+
+### The sentence, and why it had no mechanism
+
+`game/Data/EnchantmentsPositive.csv` carries "Your cooldowns reset 50%-100% faster when fighting Boss
+enemies". It was left unwritten when the three other Boss sentences were written, and the reason is
+narrow: **`target_is_boss` is answered from the character being struck, and a cooldown counts down
+with nobody being struck.** Nothing fills a target for it to read, so the condition that serves
+"Critical strike chance is increased by 20%-40% against Boss enemies" cannot serve this one.
+
+### What the genre does, and the part of it the owner declined
+
+| Game | What it does | Source |
+| :-- | :-- | :-- |
+| Path of Exile 1 | defines the word **Recently** as a fixed span: "(Recently refers to the past 4 seconds)" | [poedb.tw/us/Recently](https://poedb.tw/us/Recently) |
+| Path of Exile 2 | the same definition: "Recently refers to the past 4 seconds." | [poe2db.tw/us/Recently](https://poe2db.tw/us/Recently) |
+| Path of Exile 1 | ships almost exactly this enchantment and conditions it on **proximity**: an Eldritch implicit on boots reading "While a Unique Enemy is in your Presence, (27—29)% increased Cooldown Recovery Rate of Travel Skills" | [poedb.tw/us/Cooldown](https://poedb.tw/us/Cooldown) |
+| Path of Exile 2 | defines that radius: "Your Presence is an area around your character within which certain effects (such as many Auras) are applied. By default this has a 4 metre radius." | [poe2db.tw/us/Presence](https://poe2db.tw/us/Presence) |
+| Diablo 4 | has **no** such keyword. Its keywords are distances — "Close" is "within about 10 game feet" — and a duration is named per effect | [warcrafttavern.com/d4/glossary](https://www.warcrafttavern.com/d4/glossary/) |
+| Torchlight Infinite | uses "recently" in talent text with no definition on the page, and states explicit spans beside it, including "in the last 8s" | [tlidb.com/es/Talent](https://tlidb.com/es/Talent) |
+| Last Epoch | **not established.** Its wiki refuses automated reading and searches found no definition. A gap, not a confirmation | — |
+
+**THE PROXIMITY SHAPE WAS PUT TO THE PROJECT OWNER AND DECLINED**, on 2026-09-18. It is the genre's
+answer to this exact sentence and it is recorded here rather than dropped, with what it would have
+cost: `OpponentWithinMetres` reads **the blow's own distance** and is filled only while a blow is
+resolving on the defender, so it is not a standing "is a Boss near me" query. The proximity version
+needs a real proximity search running for a character with no blow in flight, which is new machinery
+and a cost on every lookup. The two also play differently: proximity keeps the bonus while a player
+circles a Boss without hitting it, and a clock does not.
+
+### Who decided what
+
+**The owner's:** the shape — a window after striking rather than proximity — and the sentence's new
+wording, approved verbatim on 2026-09-18:
+
+> Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4 seconds after you strike one
+
+**Judgements made under the owner's delegation of 2026-09-14**, marked as judgements:
+
+| The judgement | Why |
+| :-- | :-- |
+| four seconds | the only span the genre defines as a reusable number, in Path of Exile 1 and 2 both, in the games' own text; and it sits inside the 2, 3, 4 and 5 second windows this game's own rows already use |
+| the row is `flat` and not `increased` | an increase scales a base and cooldown reduction has none, which issue #2000 settled; a flat 50 divides by 1.5, which is the sentence's own "50% faster" |
+| one helper rather than a second copy of the whose-blow rule | below |
+
+**Nothing here is measured in play.** Whether four seconds feels right in a Boss fight is a tuning
+question, not a research one.
+
+### The whose-blow rule now has one implementation, and that is the largest part of this change
+
+`UCataclysmCombatEvents::NoteBlow` decided whose blow a blow is, inline, with a comment saying why it
+had to be decided in one place: a minion's blow is the minion's own unless its summoner holds the
+Ritualist keystone Conduit, and on-hit effects, on-kill effects, kill credit and four dungeon floor
+rules all read that answer.
+
+**The window needs the same answer, and working it out a second time is how the two would drift.** A
+Conduit summoner would have had its minions' kills credited and its cooldown window not, with nothing
+anywhere to say so. So the rule moved into `UCataclysmCombatEvents::AttackerOf`, which `NoteBlow` now
+calls and which the stamp calls too.
+
+### Where the clock is stamped, settled by reading
+
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, inside the block whose condition is
+`Outcome.DealtToHealth > 0 || Outcome.AbsorbedByShield > 0 || Outcome.AbsorbedByMana > 0`.
+
+- the character being struck is the owning actor, already cast there, and `IsBoss()` is the same
+  question `WithTargetState` asks to fill `bTargetIsBoss`;
+- the attacker comes from `AttackerOf`, not from the instigator;
+- **that block's condition is the meaning of "struck".** A blow that was evaded, or that armour and
+  resistance stopped completely, never reaches it. The energy shield's refill wait draws the same line
+  a few lines above, for the same reason: a blow a shield swallowed whole is still a blow that landed.
+
+### The clock also had to raise an action event, and that was not optional
+
+`ACTION_EVENT_PREFIX` is `seconds_after_` and `action_events()` in `tools/generate_datatables.py`
+builds the vocabulary an action row may name from every condition carrying that prefix — deliberately,
+so that "a clock added later cannot be missing here". **So adding the clock added `striking_a_boss` to
+that vocabulary whether or not anything raised it**, and a row naming an event nothing raises grants
+nothing and says so nowhere. `NoteStruckABoss` raises it, as the other ten stampers raise theirs.
+
+**The name reads oddly beside its neighbours and was chosen anyway.** The ten existing events are
+nouns — `block`, `basic_attack`, `summon`, `hit_taken`, `foreign_damage` — and `striking_a_boss` is a
+gerund. `boss_struck` was the noun alternative and was rejected: it can be read as "struck BY a boss",
+which is the opposite. The chosen name matches the owner's sentence, "after you strike one".
+
+### The condition is listed as landed ahead of its row, which is the check working
+
+`seconds_after_striking_a_boss` is named by no data row, because the row needs the design workbook and
+another session holds it. It is listed in `BUILT_AHEAD_OF_THEIR_ROWS` with that reason, which is what
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` exists to require. The
+name leaves that list when the row is written.
+
+**Two sentences in `CataclysmStatPipeline.h` that count the conditions moved with it**, from
+"NINETEEN OF THE FORTY-SIX COMPARE NOTHING" to FORTY-SEVEN and from "adds a forty-seventh" to a
+forty-eighth. `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py` reads both
+numbers out of the code and failed until they were corrected, which is the check doing its job:
+the Python run for this change was registered at no failures and came back with those two, and
+the prediction was wrong rather than the check.
+
+### A comment corrected, and it had already misled a reader
+
+`FCataclysmHitDelivery::bCannotLeech` in `CataclysmSkillEffects.h` explained itself with "a minion's
+damage is dealt in its summoner's name", in the present tense, which stopped being true on 2026-09-17
+when issue #1515 gave a minion its own instigator. **Reading it is what produced the first plan for
+this change, which added an exclusion the code does not need.** The implementation comment in
+`CataclysmMinion.cpp`, beside the line that sets the flag, said the opposite and is correct. The
+declaration now says what the implementation says, keeps the historical sentence marked as what was
+true before #1515, and names issue #2010, which this closes.
+
+### What the tests pin, and the two that would have caught the wrong plan
+
+| Test | What it holds |
+| :-- | :-- |
+| `Cataclysm.CombatEvents.AStrikeThatGetsThroughToABossOpensTheAttackersWindow` | striking a Boss opens the window and striking an ordinary creature does not, in one case, because either half alone passes on a broken build |
+| `Cataclysm.CombatEvents.AMinionsStrikeOnABossOpensTheMinionsWindowAndNotItsSummoners` | a minion's blow is the minion's own |
+| `Cataclysm.CombatEvents.TheConduitKeystoneOpensTheSummonersWindowWhenItsMinionStrikesABoss` | and the keystone turns the summoner's side of it back on |
+| `Cataclysm.StatPipeline.TheWindowAfterStrikingABossHoldsInsideItAndRefusesWithoutOne` | the window is inclusive at four seconds, shut past it, and **refuses a character that has struck no Boss** — the reading that would otherwise grant the bonus to everyone who has never seen a Boss |
+| `Cataclysm.Ability.ACooldownRowInTheBossWindowShortensOnlyAfterABossIsStruck` | a cooldown lookup builds a state that carries the clock, which the pipeline's own case cannot show |
+
+**The two minion cases are a pair and neither means anything alone.** A build reading the effect's
+instigator instead of `AttackerOf` passes the first and fails the second.
+
+---
+
 ## 2026-09-18 — A scale source no data row names is now noticed, in its own file rather than folded into the condition check
 
 **Affects:** `tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` (new: a

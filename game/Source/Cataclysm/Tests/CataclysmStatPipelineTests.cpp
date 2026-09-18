@@ -3522,4 +3522,62 @@ bool FCataclysmPipelinePointsThresholdTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossWindowConditionTest,
+	"Cataclysm.StatPipeline.TheWindowAfterStrikingABossHoldsInsideItAndRefusesWithoutOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `seconds_after_striking_a_boss` is a name this build knows, holds at or within
+ * its number of seconds, and refuses a character that has struck no Boss.
+ *
+ * THE REFUSAL IS THE HALF WORTH WRITING. A character that has never struck a
+ * Boss reads -1, which is at or within every threshold a sheet may write, so a
+ * comparison with no guard in front of it would grant the bonus to everybody who
+ * had never seen a Boss -- the opposite of the row.
+ */
+bool FCataclysmBossWindowConditionTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("seconds_after_striking_a_boss is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("seconds_after_striking_a_boss"), Named));
+	TestEqual(TEXT("and it is the window a Boss strike opens"),
+		static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::WithinSecondsOfStrikingABoss));
+
+	const auto StruckABoss = [](float Seconds)
+	{
+		FCataclysmStatConditions State;
+		State.SecondsSinceStruckABoss = Seconds;
+		return State;
+	};
+
+	// FOUR SECONDS IS THE ROW'S FIGURE: "Your cooldowns reset 50%-100% faster
+	// when fighting Boss enemies, for 4 seconds after you strike one".
+	const ECataclysmStatCondition Window =
+		ECataclysmStatCondition::WithinSecondsOfStrikingABoss;
+	TestTrue(TEXT("a character striking a Boss this instant is inside the window"),
+		FPipeline::ConditionHolds(Window, 4.0f, StruckABoss(0.0f)));
+	TestTrue(TEXT("and one that struck exactly four seconds ago is, because within is inclusive"),
+		FPipeline::ConditionHolds(Window, 4.0f, StruckABoss(4.0f)));
+	TestFalse(TEXT("and one a hair past four seconds is not"),
+		FPipeline::ConditionHolds(Window, 4.0f, StruckABoss(4.1f)));
+	TestFalse(TEXT("and one well past it is not"),
+		FPipeline::ConditionHolds(Window, 4.0f, StruckABoss(30.0f)));
+	TestFalse(TEXT("a character that has struck no Boss refuses rather than satisfying it"),
+		FPipeline::ConditionHolds(Window, 4.0f, StruckABoss(-1.0f)));
+
+	// AND IT READS ITS OWN FIELD AND NOT A NEIGHBOUR'S. A build that read the
+	// hit-taken clock would pass every line above on a character that had just
+	// been hit, which is the opposite of the row.
+	FCataclysmStatConditions HitTakenOnly;
+	HitTakenOnly.SecondsSinceHitTaken = 0.0f;
+	TestFalse(TEXT("being hit a moment ago is not striking a Boss"),
+		FPipeline::ConditionHolds(Window, 4.0f, HitTakenOnly));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

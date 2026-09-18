@@ -61,6 +61,44 @@ UCataclysmCombatEvents* UCataclysmCombatEvents::In(const UWorld* World)
 	return World ? World->GetSubsystem<UCataclysmCombatEvents>() : nullptr;
 }
 
+AActor* UCataclysmCombatEvents::AttackerOf(
+	const FGameplayEffectContextHandle& Context)
+{
+	AActor* Attacker = Context.GetInstigator();
+	AActor* DealtBy = CombatEventsDealtBy(Context);
+
+	// A MINION'S BLOW IS THE MINION'S OWN, UNLESS ITS SUMMONER HOLDS CONDUIT.
+	// Issue #1515. The project owner ruled on 2026-09-17 that a minion's blow
+	// carries only the minion's own stats and minion affixes, and that the
+	// Ritualist keystone Conduit is what turns the summoner's side of it back
+	// on: its on-hit and on-kill effects, its kill credit, and four dungeon
+	// floor rules all ask "was this hit mine" and read the answer from here.
+	//
+	// BOTH ANSWERS ARE STATED, AND THAT IS NOT VERBOSITY. This chose between the
+	// minion and the INSTIGATOR while a minion struck in its summoner's name, so
+	// leaving the instigator alone was the same as naming the summoner. The
+	// minion is its own instigator now, so the untouched case would name the
+	// minion twice and the keystone would quietly stop working.
+	// `Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner`
+	// is the case that fails if this is ever collapsed back to one branch.
+	//
+	// HERE, AND IN ONE PLACE, BECAUSE THIS IS WHERE A BLOW BECOMES A RECORD.
+	// `NoteDeath` reads the killer out of the record `NoteBlow` writes rather
+	// than working it out again, so a kill follows a hit without a second
+	// decision. IT LIVES IN ITS OWN FUNCTION SINCE `UCataclysmVitalAttributeSet`
+	// gained a second reason to ask -- the window a Boss strike opens on the
+	// attacker -- because a second copy is how the keystone would come to apply
+	// to the kill credit and not to the window, with nothing to say so.
+	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(DealtBy))
+	{
+		Attacker = ACataclysmMinion::HitsCountAsTheSummoners(Minion)
+					   ? Minion->Summoner.Get()
+					   : DealtBy;
+	}
+
+	return Attacker;
+}
+
 void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data,
 									  const FCataclysmIncomingHit& Hit,
 									  const FCataclysmDamageResult& Outcome,
@@ -92,33 +130,8 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	}
 
 	const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetContext();
-	AActor* Attacker = Context.GetInstigator();
+	AActor* Attacker = AttackerOf(Context);
 	AActor* DealtBy = CombatEventsDealtBy(Context);
-
-	// A MINION'S BLOW IS THE MINION'S OWN, UNLESS ITS SUMMONER HOLDS CONDUIT.
-	// Issue #1515. The project owner ruled on 2026-09-17 that a minion's blow
-	// carries only the minion's own stats and minion affixes, and that the
-	// Ritualist keystone Conduit is what turns the summoner's side of it back
-	// on: its on-hit and on-kill effects, its kill credit, and four dungeon
-	// floor rules all ask "was this hit mine" and read the answer from here.
-	//
-	// BOTH ANSWERS ARE STATED, AND THAT IS NOT VERBOSITY. This chose between the
-	// minion and the INSTIGATOR while a minion struck in its summoner's name, so
-	// leaving the instigator alone was the same as naming the summoner. The
-	// minion is its own instigator now, so the untouched case would name the
-	// minion twice and the keystone would quietly stop working.
-	// `Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner`
-	// is the case that fails if this is ever collapsed back to one branch.
-	//
-	// HERE, AND IN ONE PLACE, BECAUSE THIS IS WHERE A BLOW BECOMES A RECORD.
-	// `NoteDeath` reads the killer out of the record written below rather than
-	// working it out again, so a kill follows a hit without a second decision.
-	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(DealtBy))
-	{
-		Attacker = ACataclysmMinion::HitsCountAsTheSummoners(Minion)
-					   ? Minion->Summoner.Get()
-					   : DealtBy;
-	}
 
 	// WHAT A DAMAGE-OVER-TIME TICK GRANTS IS WHERE ITS AILMENT IS, and gathering
 	// it costs a container, so it is gathered only for a tick that is either

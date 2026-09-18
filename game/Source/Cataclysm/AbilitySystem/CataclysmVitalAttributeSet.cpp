@@ -944,6 +944,36 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 							+ Outcome.AbsorbedByMana);
 				}
 
+				// AND A BLOW THAT GOT THROUGH TO A BOSS OPENS THE ATTACKER'S
+				// COOLDOWN WINDOW. "Your cooldowns reset 50%-100% faster when
+				// fighting Boss enemies, for 4 seconds after you strike one" is
+				// the row it exists for, and a cooldown counts down with nobody
+				// being struck, so the per-blow condition `target_is_boss`
+				// cannot reach it.
+				//
+				// IN THIS BLOCK, SO "STRUCK" MEANS WHAT GOT THROUGH. A blow
+				// that was evaded, or that armour and resistance stopped
+				// completely, never reaches here -- the same line the energy
+				// shield's refill wait draws above.
+				//
+				// `AttackerOf` AND NOT THE INSTIGATOR, which is the whole
+				// reason that function exists. A minion's blow opens the
+				// MINION's window, and its summoner's only while the summoner
+				// holds the Ritualist keystone Conduit. Reading the instigator
+				// here would answer "the minion" always and the keystone would
+				// apply to the kill credit and not to this.
+				if (AsEnemy && AsEnemy->IsBoss())
+				{
+					if (UCataclysmAbilitySystemComponent* Striker =
+							Cast<UCataclysmAbilitySystemComponent>(
+								UCataclysmTargeting::AbilitySystemOf(
+									UCataclysmCombatEvents::AttackerOf(
+										Data.EffectSpec.GetContext()))))
+					{
+						Striker->NoteStruckABoss();
+					}
+				}
+
 				// AND THE DEFENDER DEALS ITS RETALIATION BACK. Issue #895: the
 				// `Retaliation` attribute existed, was clamped, was replicated,
 				// was given to the Masochist by its class line at 158, and no
