@@ -253,6 +253,89 @@ the ordinal from "a fortieth" to "a forty-second".
 
 ---
 
+## 2026-09-17 — A character's maximum energy shield is asked for rather than read, so the capstone that raises it per minion finally does
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`
+and `.cpp`, `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.h`
+and `.cpp`, `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.cpp`, and one
+test file. Issue [#1973](https://github.com/sdubois777/Cataclysm/issues/1973).
+
+**A shipped row granted nothing, and nothing said so.**
+`Ritualist_capstone_200#3` is the third row of Hollow Crown -- "Each minion you
+have grants you 4% more damage and 4% increased Maximum Energy Shield" -- and it
+scales `max_energy_shield` by `minions_held`. A scaled row is deliberately never
+folded into its gameplay attribute; it is worked out when something asks for it.
+Nothing asked. Its two sibling rows, on attack damage and spell damage, work,
+because those stats have per-skill lookups. So a Ritualist taking that capstone
+got the damage and none of the shield, and no error, warning or failing test
+mentioned it.
+
+### THE ROW IS RIGHT AND THE ENGINE WAS WHAT WAS MISSING
+
+The issue offered two ways out: give the stat a lookup, or rewrite the row so it
+does not scale. **The node's own sentence settles it** -- it says the shield
+grows with each minion held -- so the row stands and the engine gains the lookup.
+Judgement made under the project owner's delegation.
+
+### ONE FUNCTION ANSWERS, AND THE READERS THAT MEAN "THIS CHARACTER'S MAXIMUM" ASK IT
+
+`UCataclysmAbilitySystemComponent::MaximumEnergyShield` applies the stat to the
+figure the attribute holds. The three places `UCataclysmVitalAttributeSet` clamps
+a held shield against its maximum call it, and so does the overlay that draws the
+bar.
+
+**They have to agree or the fix is worse than the fault.** A bar drawn from the
+lookup while the clamp reads the attribute would show a shield the character can
+never fill, which looks fixed and is not.
+
+**It applies the stat to the attribute's figure rather than handing that figure
+to `StatForSkill` as a fallback**, and the difference is not a nicety. That
+function's third argument is used only when the character has no line for the
+stat; a Ritualist HAS a `max_energy_shield` class line, so the fallback would be
+ignored and the answer would be the class line's own base with its increases --
+losing everything written straight to the attribute, which is a restored save, an
+enemy archetype's shield, and the dungeon modifier that lessens it.
+
+### ONE READER DELIBERATELY STILL READS THE ATTRIBUTE, AND WHAT THAT COSTS
+
+`UCataclysmAbilitySystemComponent::CurrentConditions` gathers what is true of a
+character for a conditional row, and one of the things it gathers is the energy
+shield maximum. **It cannot ask the new lookup, because the lookup asks it.**
+`MaximumEnergyShield` calls `StatAppliedTo`, and `StatAppliedTo` ends by calling
+`CurrentConditions`. That is unbounded recursion rather than a slow path, and the
+alternative -- evaluating a stat while gathering the readings that stat depends
+on -- has no answer at all.
+
+**So a row conditioned on the shield being full compares against the unscaled
+maximum.** Exactly one shipped row does: `Ritualist_basic_c_a2` Cold Reading,
+"+2% increased Spell Damage per point while your Energy Shield is full". A
+Ritualist holding both that node and Hollow Crown, with minions out, reads full a
+little before the bar is. That is written at the line as well as here.
+
+**The save restore also writes the attribute and is left alone**, because it is
+restoring what was stored rather than asking what a character's maximum is now.
+
+### WHAT IT COSTS TO RUN
+
+Every clamp of a held shield now evaluates the stat pipeline. That is a judgement
+made under the owner's delegation, on a project whose owner parked performance
+work to move forward: the same shape already runs for the three regeneration
+rates on every regeneration step.
+
+### THE TEST MEASURES BOTH HALVES
+
+`Cataclysm.Passives.HollowCrownRaisesARealRitualistsMaximumEnergyShieldPerMinion`
+reads the row out of the table the game loads, spends the capstone point on a
+real Ritualist, summons **four real minions** so the reading is counted from the
+world, and asserts the maximum rises by a sixth and that a shield written far
+above the top lands exactly on the raised maximum.
+
+**Either half alone would pass a half-fix.** The maximum rising proves the
+lookup; the shield reaching it proves the clamp asks the same question. Before
+this change the case fails on both.
+
+---
+
 ## 2026-09-17 — A minion is the instigator of its own blow, and it takes the retaliation that blow provokes
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`,

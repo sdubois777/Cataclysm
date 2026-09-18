@@ -129,6 +129,26 @@ public:
 	FGameplayAttributeData MaxEnergyShield;
 	ATTRIBUTE_ACCESSORS(UCataclysmVitalAttributeSet, MaxEnergyShield)
 
+	/**
+	 * The maximum this set clamps the held shield against.
+	 *
+	 * NOT `GetMaxEnergyShield()`, AND THE DIFFERENCE IS A WHOLE CAPSTONE. Issue
+	 * #1973. A row that SCALES `max_energy_shield` -- Hollow Crown grants 4%
+	 * more for each minion held -- is never folded into the attribute, so the
+	 * attribute holds the unscaled figure and clamping against it would refuse
+	 * the shield the row grants. This forwards to
+	 * `UCataclysmAbilitySystemComponent::MaximumEnergyShield`, which asks for
+	 * the stat, and that one function is what the overlay drawing the bar asks
+	 * too, so the bar and the clamp cannot disagree.
+	 *
+	 * IT FORWARDS RATHER THAN ANSWERING, so there is one place that decides and
+	 * this is only how the attribute set reaches it.
+	 *
+	 * THE ATTRIBUTE IS THE ANSWER FOR AN ABILITY SYSTEM THAT IS NOT THIS
+	 * PROJECT'S, which a test may build and which has no stat lines to ask.
+	 */
+	float MaximumEnergyShieldAsked() const;
+
 	/** Points of health restored per second, before increases. */
 	UPROPERTY(BlueprintReadOnly, Category = "Recovery", ReplicatedUsing = OnRep_HealthRegen)
 	FGameplayAttributeData HealthRegen;

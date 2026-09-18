@@ -130,6 +130,16 @@ void UCataclysmVitalAttributeSet::GetLifetimeReplicatedProps(
 	// Damage is a meta attribute. It is never replicated.
 }
 
+float UCataclysmVitalAttributeSet::MaximumEnergyShieldAsked() const
+{
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(GetOwningAbilitySystemComponent()))
+	{
+		return Cataclysm->MaximumEnergyShield();
+	}
+	return GetMaxEnergyShield();
+}
+
 void UCataclysmVitalAttributeSet::PreAttributeChange(
 	const FGameplayAttribute& Attribute, float& NewValue)
 {
@@ -145,7 +155,11 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 	}
 	else if (Attribute == GetEnergyShieldAttribute())
 	{
-		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxEnergyShield());
+		// ASKED FOR RATHER THAN READ, since issue #1973. This is the clamp that
+		// decides whether a shield a scaled row grants can ever be filled: the
+		// attribute holds the unscaled figure, so clamping against it would
+		// refuse every point Hollow Crown adds.
+		NewValue = FMath::Clamp(NewValue, 0.0f, MaximumEnergyShieldAsked());
 	}
 	else if (Attribute == GetMaxHealthAttribute())
 	{
@@ -1006,7 +1020,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			{
 				SetEnergyShield(FMath::Clamp(
 					GetEnergyShield() - Outcome.AbsorbedByShield,
-					0.0f, GetMaxEnergyShield()));
+					0.0f, MaximumEnergyShieldAsked()));
 			}
 			// AND SOME OF IT MAY NOT REACH HEALTH AT ALL, ARRIVING AS BLEEDING
 			// INSTEAD. Issue #985, the Masochist's The Breaking Point. What is
@@ -1397,7 +1411,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 	}
 	else if (Data.EvaluatedData.Attribute == GetEnergyShieldAttribute())
 	{
-		SetEnergyShield(FMath::Clamp(GetEnergyShield(), 0.0f, GetMaxEnergyShield()));
+		SetEnergyShield(
+			FMath::Clamp(GetEnergyShield(), 0.0f, MaximumEnergyShieldAsked()));
 	}
 }
 
