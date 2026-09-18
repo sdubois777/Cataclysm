@@ -471,11 +471,17 @@ int32 ACataclysmSuccubusCharacter::PulseDominion()
 		return 0;
 	}
 
-	// ALLIES, NOT ENEMIES, AND THIS IS THE ONLY PLACE IN THE GAME THAT ASKS FOR
-	// THEM ON A CREATURE'S BEHALF. `FindAlliesInSphere` excludes the instigator
-	// itself, which is what the design wants: Dominion buffs "every allied enemy
-	// within 8 metres" and the Succubus is not its own ally. It also refuses
-	// corpses, so a dead ally is not buffed.
+	// ALLIES, NOT ENEMIES. `FindAlliesInSphere` excludes the instigator itself,
+	// which is what the design wants: Dominion buffs "every allied enemy within 8
+	// metres" and the Succubus is not its own ally. It also refuses corpses, so a
+	// dead ally is not buffed.
+	//
+	// THIS SAID IT WAS "THE ONLY PLACE IN THE GAME THAT ASKS FOR THEM ON A CREATURE'S
+	// BEHALF" UNTIL 2026-09-18, AND THAT WAS ALREADY FALSE WHEN IT WAS WRITTEN.
+	// `UCataclysmEnemyModifiers` asks four times, and the dungeon floor rule
+	// `War_Commander_s_Aura` now asks once for every creature that commands. Grep the
+	// callers rather than reading a claim here; a sentence that counts what it cannot
+	// see goes wrong without being touched and nothing reports it.
 	const TArray<AActor*> Inside = UCataclysmTargeting::FindAlliesInSphere(
 		World, this, GetActorLocation(), DominionRadiusCm);
 

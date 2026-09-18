@@ -77,6 +77,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::JudgmentZonesKey =
 const TCHAR* UCataclysmDungeonModifierEffects::MarchOfProgressKey =
 	TEXT("War_March_of_Progress");
 
+const TCHAR* UCataclysmDungeonModifierEffects::CommandersAuraKey =
+	TEXT("War_Commander_s_Aura");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -268,7 +271,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(BloodForgedChampionsKey)
 		|| RowKey == FName(VengefulWraithsKey)
 		|| RowKey == FName(JudgmentZonesKey)
-		|| RowKey == FName(MarchOfProgressKey))
+		|| RowKey == FName(MarchOfProgressKey)
+		|| RowKey == FName(CommandersAuraKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -434,6 +438,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(VengefulWraithsKey),
 		FName(JudgmentZonesKey),
 		FName(MarchOfProgressKey),
+		FName(CommandersAuraKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1494,6 +1499,14 @@ float UCataclysmDungeonModifierEffects::MarchOfProgressArmourMorePercentFor(
 {
 	return MarchOfProgressArmourPercentPerCommander
 		* static_cast<float>(FMath::Max(0, CommandersKilled));
+}
+
+bool UCataclysmDungeonModifierEffects::CommandersAuraCommandsAtRung(int32 RarityStep)
+{
+	// EVERY CREATURE AT ELITE OR ABOVE, WITH NO CEILING. The row says "certain elite
+	// enemies" and names no upper rung, so a Legendary, a Herald and a boss all command
+	// too -- refusing them would be a figure this row does not state.
+	return RarityStep >= CommandersAuraLowestRung;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

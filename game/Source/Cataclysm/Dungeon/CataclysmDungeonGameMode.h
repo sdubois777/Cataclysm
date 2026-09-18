@@ -1800,6 +1800,28 @@ private:
 	void StepMarchOfProgress(ACataclysmPlayerCharacter* Player,
 							 class UCataclysmAbilitySystemComponent* AbilitySystem);
 
+	/**
+	 * Commander's Aura, on every beat: every creature at Elite or above grants the
+	 * Commander buff to its nearby allies. Issues #1820 and #41.
+	 *
+	 * THE BUFF IS RE-APPLIED EVERY BEAT RATHER THAN TRACKED, which is
+	 * `Celestial_Hallowed_Groundfall`'s shape and its stated reason: the effect is a
+	 * single stack, so a second application refreshes the one already there rather than
+	 * adding another. A creature that stays beside its commander keeps it; one that walks
+	 * away loses it when the second runs out.
+	 *
+	 * NOTHING IS REMEMBERED BETWEEN BEATS EXCEPT THE COUNT THE PANEL SHOWS. There is no
+	 * list of who is buffed, because the buff expires on its own and re-applying is
+	 * cheaper than tracking. The Succubus tracks its own holders because it must take the
+	 * buff off the moment an ally leaves its aura; this rule does not, and the entry in
+	 * `docs/DECISIONS.md` records that as a judgement.
+	 *
+	 * A COMMANDER DOES NOT BUFF ITSELF. `UCataclysmTargeting::FindAlliesInSphere` excludes
+	 * the instigator, so passing the commanding creature as the instigator is the whole of
+	 * it. Ruled under the project owner's delegation.
+	 */
+	void StepCommandersAura(ACataclysmPlayerCharacter* Player);
+
 
 	/**
 	 * March of Progress' armour, on the death of the floor's Commander.
@@ -2526,6 +2548,21 @@ private:
 	bool bMarchOfProgressCommanderSlain = false;
 	int32 MarchOfProgressCommandersKilled = 0;
 	float MarchOfProgressArmourApplied = 0.0f;
+
+	/**
+	 * Commander's Aura: how many creatures on this floor commanded on the last beat.
+	 * Issues #1820 and #41.
+	 *
+	 * FOR THE FLOOR PANEL AND NOTHING ELSE. The rule itself needs no memory between
+	 * beats: it re-applies the buff every beat and the buff expires on its own, so this
+	 * count is written for the player to read rather than for the rule to act on.
+	 *
+	 * NOT THE SAME AS ANYTHING MARCH OF PROGRESS HOLDS, DESPITE THE WORD. That rule's
+	 * `MarchOfProgressCommander` is the ONE creature the player is asked to hunt; this is
+	 * how many creatures are buffing their neighbours. A floor can carry both rows, so
+	 * every identifier on either side names its own rule.
+	 */
+	int32 CommandersAuraCommanders = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

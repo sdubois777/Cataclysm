@@ -2519,13 +2519,17 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// rises with the commanders they have killed.
 	const bool bMarchOfProgress = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::MarchOfProgressKey));
+	// AND COMMANDER'S AURA, WHICH CHANGES CREATURES AND NEVER THE PLAYER. Issues #1820
+	// and #41. Every creature at Elite or above buffs its neighbours.
+	const bool bCommandersAura = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::CommandersAuraKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
-		&& !bJudgmentZones && !bMarchOfProgress)
+		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura)
 	{
 		return;
 	}
@@ -2700,6 +2704,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bMarchOfProgress)
 	{
 		StepMarchOfProgress(Player, AbilitySystem);
+	}
+
+	// AND COMMANDER'S AURA BESIDE IT, WHOSE POSITION IS FREE FOR THE SAME REASON. Issues
+	// #1820 and #41. It grants a status effect to creatures and writes no field any rule
+	// above it shares. It reads a creature's rung and its neighbours' positions, and no
+	// rule on this beat writes either.
+	if (bCommandersAura)
+	{
+		StepCommandersAura(Player);
 	}
 
 	// AND VOLATILE EVOLUTION BESIDE IT, WHOSE POSITION IS FREE FOR THE SAME REASON.
@@ -4135,6 +4148,81 @@ void ACataclysmDungeonGameMode::StepMarchOfProgress(
 	}
 }
 
+void ACataclysmDungeonGameMode::StepCommandersAura(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	// THE TAG IS LOOKED UP ONCE AND NOT ONCE PER CREATURE, and a missing tag says so once
+	// rather than failing silently. This is the route all four things that grant this buff
+	// take: `StatusTagFor` resolves the vocabulary in
+	// `game/Config/Tags/CataclysmTags.ini`.
+	const FGameplayTag Empowered =
+		UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+	if (!Empowered.IsValid())
+	{
+		UE_LOG(LogCataclysm, Warning,
+			TEXT("Commander's Aura cannot empower: there is no Status.Buff.Commander tag. "
+				 "See game/Config/Tags/CataclysmTags.ini and "
+				 "tools/generate_gameplay_tags.py."));
+		return;
+	}
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE AT ELITE OR ABOVE, WHEREVER IT CAME FROM.
+	// The sweep `StepRavenousHoard` and `StepMarchOfProgress` make, for their reasons:
+	// `IsHostileTo` also turns away the dead, and the player's minions are
+	// `ACataclysmMinion`, which this never iterates.
+	int32 Commanders = 0;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Commander = *It;
+		if (!IsValid(Commander)
+			|| !UCataclysmTargeting::IsHostileTo(Commander, Player)
+			|| !Effects::CommandersAuraCommandsAtRung(Commander->RarityStep))
+		{
+			continue;
+		}
+
+		++Commanders;
+
+		// ITS ALLIES AND NOT ITS ENEMIES, ASKED ON THE CREATURE'S BEHALF.
+		// `FindAlliesInSphere` decides sides from the INSTIGATOR it is given rather than
+		// from whoever calls it, so passing the commanding creature gives that creature's
+		// allies. It excludes the instigator, which is the whole of "a commander does not
+		// buff itself", and it refuses corpses, so a dead ally is not buffed.
+		const TArray<AActor*> Allies = UCataclysmTargeting::FindAlliesInSphere(
+			World, Commander, Commander->GetActorLocation(),
+			Effects::CommandersAuraRadiusCm);
+
+		for (AActor* Ally : Allies)
+		{
+			// REFRESHED RATHER THAN STACKED. `ApplyTagForDuration` keeps one effect per
+			// tag, so a creature standing between two commanders -- or in a Hallowed
+			// Groundfall crater as well -- is 20% faster and not 44%.
+			//
+			// THE COMMANDER IS THE FIRST ARGUMENT AND THE ALLY THE SECOND. The order is
+			// (Instigator, Target) and NOT (Target, Instigator); the two neighbouring
+			// grants of this same buff pass the same actor twice, so neither tells the
+			// order apart. `ACataclysmSuccubusCharacter::PulseDominion` is the one that
+			// does: it passes `this, Ally`. Written the other way round this buffs the
+			// commander and nothing else, which compiles and looks right.
+			UCataclysmSkillEffects::ApplyTagForDuration(
+				Commander, Ally, Empowered, Effects::CommandersAuraGrantSeconds);
+		}
+	}
+
+	if (Commanders != CommandersAuraCommanders)
+	{
+		CommandersAuraCommanders = Commanders;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::NoteDeathForMarchOfProgress(
 	const FCataclysmDeathNotice& Notice)
 {
@@ -4725,6 +4813,22 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(March, FString::Printf(
 			TEXT("enemies x%.1f, %s, %d slain this run"), Multiplier, Commander,
 			MarchOfProgressCommandersKilled));
+	}
+
+	// AND COMMANDER'S AURA, WHICH NAMES ITS OWN ROW IN THE LINE. Issues #1820 and #41.
+	// A floor can carry this row and March of Progress at once, and both use the word
+	// "Commander" for different things -- one creature the player must hunt, and every
+	// Elite buffing its neighbours. Saying which rule the count belongs to is what keeps
+	// the two lines apart on one panel.
+	//
+	// A COUNT WITH NO CEILING, like Volatile Evolution's. The row states no number of
+	// commanders; how many a floor has is its population's business and not this rule's.
+	const FName Aura(Effects::CommandersAuraKey);
+	if (FloorBrief.Modifiers.Contains(Aura))
+	{
+		Counting.Add(Aura, FString::Printf(
+			TEXT("%d commanders on this floor (Commander's Aura)"),
+			CommandersAuraCommanders));
 	}
 
 	// AND GRAVE TIDE'S WAVES SO FAR. Issues #1820 and #41.
@@ -6490,6 +6594,18 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// would be the one the population pass had just chosen -- every floor would have
 		// none. `PopulateFloor` forgets it before it places anything instead.
 		MarchOfProgressArmourApplied = 0.0f;
+
+		// AND COMMANDER'S AURA FORGETS ITS COUNT, WHICH IS THE WHOLE OF ITS STATE. Issues
+		// #1820 and #41. The count is what the panel shows about THIS floor, and the next
+		// beat writes it again from whatever is standing there.
+		//
+		// THE BUFF ITSELF IS NOT STRIPPED, AND THAT IS A JUDGEMENT RATHER THAN AN
+		// OVERSIGHT. It lasts one second and is re-applied four times a second, so a
+		// creature that lives through a Horde dungeon's change of wave loses it within a
+		// second on a floor that does not carry this row. Stripping it here would also
+		// take a Succubus's grant off its allies, because removing an effect by its tag
+		// cannot tell which rule granted it.
+		CommandersAuraCommanders = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

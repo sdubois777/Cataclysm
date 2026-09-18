@@ -1237,6 +1237,46 @@ public:
 	static const TCHAR* MarchOfProgressKey;
 
 	/**
+	 * Commander's Aura: "Certain elite enemies act as commanders, providing buffs (e.g.,
+	 * increased health, damage, or resistance) to nearby allies." Issues #1820 and #41.
+	 *
+	 * THE WORD "COMMANDER" NOW MEANS THREE DIFFERENT THINGS IN THIS GAME, AND A READER
+	 * MUST GO BY THE RULE KEY RATHER THAN BY THE WORD. They are:
+	 *
+	 *   the Commander gameplay tag        "buffed by a commander", never "is a
+	 *                                     commander". `CommanderMultiplier` makes
+	 *                                     whoever holds it 20% faster, and all four
+	 *                                     things that grant it give it to OTHERS.
+	 *   `War_March_of_Progress`           ONE creature a floor, chosen and hunted. It
+	 *                                     carries no tag and nothing on it changes.
+	 *   this row                          EVERY creature at Elite or above, each
+	 *                                     granting the tag to its neighbours.
+	 *
+	 * So a floor carrying both War rows has one creature the player must hunt and
+	 * several creatures buffing their neighbours, and neither is the other. Every
+	 * identifier here carries its rule's key for that reason, and the floor panel names
+	 * the rule beside its count. `docs/DECISIONS.md` records the three meanings.
+	 *
+	 * "CERTAIN ELITE ENEMIES" IS READ AS EVERY CREATURE AT ELITE OR ABOVE. The row names
+	 * no number, so "certain" is read as the rung and not as a count; ruled under the
+	 * project owner's delegation. `War_Royal_Guard`'s row was reworded by the owner to
+	 * "above Uncommon ranked" and this library reads that as Elite, the rung above
+	 * Common, so the same reading is used here rather than a second one.
+	 *
+	 * THE ROW'S OWN EXAMPLES ARE NOT FOLLOWED, AND THAT IS A JUDGEMENT WITH A MEASURED
+	 * REASON. It suggests "increased health, damage, or resistance"; the Commander tag
+	 * raises movement speed and attack speed. The project owner decided on 2026-08-20
+	 * which stats that tag covers, and excluded maximum health for a reason this row
+	 * would walk straight into: an enemy's attributes are BASE values and current health
+	 * does not rise with the maximum, so an ally walking in and out of an aura would lose
+	 * health permanently from an effect meant to help it. "e.g." states examples rather
+	 * than a requirement, and `ACataclysmEnemyCharacter` records that this tag "remains
+	 * the only thing in the game that makes a creature better", so using it is the one
+	 * reading that needs no new buff.
+	 */
+	static const TCHAR* CommandersAuraKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2654,8 +2694,13 @@ public:
 	 *
 	 * DECLARED AS `RoyalGuardLowestRungThatSummons` AND NOT AS 1. That constant already
 	 * carries this project's answer to "which creatures count as Elite", with the reading
-	 * of `game/Data/EnemyRarities.csv` that produced it. Two rules meaning the same rung
+	 * of `game/Data/EnemyRarities.csv` that produced it. Rules meaning the same rung
 	 * should not be able to drift apart.
+	 *
+	 * THIS SENTENCE COUNTED THE RULES UNTIL 2026-09-18 AND SAID "TWO". `Commander's Aura`
+	 * declares its own lowest rung the same way and made it three. Count the declarations
+	 * rather than reading a number here: a comment that counts what sits under it goes
+	 * wrong without being touched, and nothing reports it. Issue #1760 records the habit.
 	 */
 	static constexpr int32 BloodForgedChampionsLowestRung =
 		RoyalGuardLowestRungThatSummons;
@@ -3041,6 +3086,54 @@ public:
 		HallowedGroundfallEmpowerSeconds < HallowedGroundfallCraterSeconds,
 		"The empowerment now outlasts the crater that grants it, so a creature "
 		"would keep it after the ground it was standing on had gone.");
+
+	/**
+	 * How far a commander's aura reaches, for Commander's Aura. Issues #1820 and #41.
+	 *
+	 * THE SUCCUBUS'S OWN FIGURE, 800 cm, AND NOT A SECOND ONE. `Dominion` grants this
+	 * same tag to every ally within 8 metres, so a second distance for the same buff
+	 * would mean the game empowered creatures at two different ranges with no row asking
+	 * it to. Ruled under the project owner's delegation.
+	 *
+	 * WRITTEN HERE AND CHECKED AGAINST THE SUCCUBUS BY A PYTHON TEST rather than
+	 * included from that creature's header. This library holds figures for the tests and
+	 * the checks to read and does not include the creature classes; the check is what
+	 * stops the two drifting apart.
+	 */
+	static constexpr float CommandersAuraRadiusCm = 800.0f;
+
+	/**
+	 * How long the buff a commander grants lasts, for Commander's Aura.
+	 *
+	 * RE-APPLIED EVERY BEAT RATHER THAN TRACKED, WHICH IS WHY THIS IS SHORT.
+	 * `ApplyTagForDuration` keeps one effect per tag, so a second application refreshes
+	 * the first rather than stacking. A creature that stays beside its commander keeps
+	 * the buff; one that walks away loses it when this runs out, which is at most this
+	 * long and in practice within a beat.
+	 *
+	 * ONE SECOND, WHICH IS `HallowedGroundfallEmpowerSeconds`. That rule grants this same
+	 * tag from this same beat in exactly this shape, so its figure is used rather than a
+	 * new one. The beat is a quarter second, so the buff is refreshed four times over
+	 * before it could lapse.
+	 */
+	static constexpr float CommandersAuraGrantSeconds = HallowedGroundfallEmpowerSeconds;
+
+	/**
+	 * The lowest rung that commands: Elite, the rung above Common.
+	 *
+	 * DECLARED AS `RoyalGuardLowestRungThatSummons` AND NOT AS 1, for the reason
+	 * `BloodForgedChampionsLowestRung` is: that constant already carries this project's
+	 * answer to "which creatures count as Elite", with the reading of
+	 * `game/Data/EnemyRarities.csv` that produced it. Rules meaning the same rung should
+	 * not be able to drift apart.
+	 */
+	static constexpr int32 CommandersAuraLowestRung = RoyalGuardLowestRungThatSummons;
+
+	static_assert(
+		CommandersAuraRadiusCm > 0.0f && CommandersAuraGrantSeconds > 0.0f
+			&& CommandersAuraLowestRung > 0,
+		"An aura that reaches nowhere, a buff that lasts no time, or a rung that lets "
+		"every Common command is not the row.");
 
 	static_assert(
 		HallowedGroundfallCraters > 1,
@@ -3801,6 +3894,16 @@ public:
 	 *                         Below zero is read as none
 	 */
 	static float MarchOfProgressArmourMorePercentFor(int32 CommandersKilled);
+
+	/**
+	 * Whether a creature at this rung of the rarity ladder commands, for Commander's
+	 * Aura.
+	 *
+	 * A FUNCTION OF THE RUNG AND NOTHING ELSE, so the reading of "certain elite enemies"
+	 * can be checked by passing a number rather than by building a floor. Every creature
+	 * at Elite or above commands; the row states no count, so there is none.
+	 */
+	static bool CommandersAuraCommandsAtRung(int32 RarityStep);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
