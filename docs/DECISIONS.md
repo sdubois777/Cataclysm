@@ -492,6 +492,46 @@ particular call sites, so a pairing can be dead while its stat is asked. **Of th
 reading each asker down to the readings it carries, is its own piece of work,
 ruled at the same time as this one and reported before any fix.
 
+### THE JUDGEMENTS IN THIS ENTRY, AND WHO MADE THEM
+
+**The first two were ruled by the working session under the project owner's
+delegation of 2026-09-14, and are open to the owner's veto.** The third was ruled
+by the coordinating session.
+
+| Question | Answer | Why |
+|---|---|---|
+| Refuse a scaled row on a stat nothing asks for, or only warn about it? | **Refuse, at generation time** | A warning is read once and scrolled past, and the row it describes still ships, still grants nothing and still says nothing at run time. One such row is what issue [#1973](https://github.com/sdubois777/Cataclysm/issues/1973) was filed for |
+| Where should the set of stats something asks for live? | **By hand in `tools/generate_datatables.py`, held honest by an engine test** | The derivation from the engine's own call sites was measured wrong on three of eleven stats, every one in the refusing direction. A check that refuses authored data has to be right |
+| One probe per stat, or one per stat-and-scale pairing? | **One per stat now, with the 21 unmeasured pairings named** | Thirty-three probes is a different piece of work from twelve, and the stat-level promise is the one that catches the fault this change was filed for. Naming which pairings are unmeasured is what keeps the smaller promise honest |
+
+### WHAT THE FIRST MACHINE WINDOW COST
+
+**Recorded because the figures were registered in advance and not met.** The
+first window was registered as one build, one whole-suite run and one guard
+proof. It spent three builds and two whole-suite runs and never reached the
+proof. Nothing was wrong with the engine: all three faults were in the probes
+this change adds, and each is a way of writing a test that measures nothing while
+passing.
+
+| What the run showed | What was actually wrong |
+|---|---|
+| Ten of the twelve probes read the same figure before and after granting the row | Each probe recorded a stat line whose own base was nothing, then passed the subject's real figure as the third argument of `StatForSkill`. That argument is a fallback used only when no line is recorded, so with a line present the pipeline multiplied nothing |
+| The attack-speed probe read no change | Its scale counts stacks of Sanguine Momentum, and the call that notes one is refused unless a health cost was paid inside the stack's window. The probe now grants the stack directly |
+| The fervour-per-enemy-in-reach probe read no change | That reading is filled only when a modifier states a reach in metres, and only for a subject that is a character rather than a bare actor. The probe now states a reach and uses a spawned character with a hostile character one metre away |
+
+**No shipped data row was implicated in any of the three.** The refusal still
+rejects none of the 51 scaled rows.
+
+**The second window ran the change as registered.** The whole Unreal suite
+performed 2098 tests and failed none, which is where the two repaired probes were
+measured for the first time; and the guard proof, which removes the
+`max_energy_shield` line from the probe table, failed exactly
+`EveryStatTheDataScalesIsAskedForThroughThePipeline` with the line removed and
+passed with it restored, while the neighbouring test in that group passed both
+times. **That proof is confirmed at test level only**: the guard proof's restored
+run overwrites the engine log, so the error text the failing run printed was not
+captured.
+
 ---
 
 ## 2026-09-17 — Thirty-three enchantment rows are written, and ten approved sentences are held for four different reasons
