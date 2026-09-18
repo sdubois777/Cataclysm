@@ -590,4 +590,78 @@ bool FCataclysmFlatCooldownRowTest::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossWindowCooldownRowTest,
+	"Cataclysm.Ability.ACooldownRowInTheBossWindowShortensOnlyAfterABossIsStruck",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A cooldown row conditioned on the Boss window is worth nothing until a Boss is
+ * struck, and shortens the cooldown afterwards.
+ *
+ * THIS IS THE ONE THAT SAYS THE WINDOW REACHES A COOLDOWN AT ALL. The condition
+ * holding is one thing; a cooldown lookup building a state that carries the
+ * clock is another, and a build that filled every other field and not this one
+ * would pass the pipeline's own case and fail here.
+ *
+ * FLAT, NOT INCREASED, which is what issue #2000 settled: an increase scales a
+ * base and cooldown reduction has none, so an increased row alone is worth
+ * nothing. A flat fifty divides a four second cooldown by 1.5, which is the
+ * sentence's own "50% faster" -- one blow per four seconds becomes one per two
+ * and two thirds.
+ */
+bool FCataclysmBossWindowCooldownRowTest::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("an actor"), Actor))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+	AbilitySystem->AddAttributeSetSubobject(
+		NewObject<UCataclysmCombatAttributeSet>(Actor));
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	FCataclysmStatModifier InTheWindow;
+	InTheWindow.Bucket = ECataclysmStatBucket::Flat;
+	InTheWindow.Source = ECataclysmModifierSource::Enchantment;
+	InTheWindow.Value = 50.0f;
+	InTheWindow.Condition = ECataclysmStatCondition::WithinSecondsOfStrikingABoss;
+	InTheWindow.ConditionValue = 4.0f;
+
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Line =
+		Inputs.FindOrAdd(FName(TEXT("cooldown_reduction")));
+	Line.Base = 0.0f;
+	Line.Modifiers = {InTheWindow};
+	AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	// BEFORE ANY BOSS IS STRUCK the row grants nothing, so the cooldown is its
+	// stated length. A row recorded and refused reads exactly like a row that is
+	// not there, which is why the second half below is what makes this mean
+	// something.
+	TestEqual(TEXT("outside the window a four second cooldown is four seconds"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
+		4.0f, 0.001f);
+
+	AbilitySystem->NoteStruckABoss();
+
+	TestEqual(TEXT("and inside it a flat fifty divides it by 1.5"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
+		4.0f / 1.5f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

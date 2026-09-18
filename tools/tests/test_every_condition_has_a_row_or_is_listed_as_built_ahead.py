@@ -57,11 +57,25 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: `energy_shield_above_zero` each now have the row whose sentence asked for
 #: them. Measured on branch `data/thirteen-enchantment-rows`: 45 conditions,
 #: 43 named by a row, these two not.
+#: ONE JOINED ON 2026-09-18, `seconds_after_striking_a_boss`, the window a Boss
+#: strike opens: measured on branch `feat/a-boss-strike-opens-a-cooldown-window`,
+#: 47 conditions, 44 named by a row, these three not. The count rose by two and
+#: only one of them is the name above; the other is Set Against It's points
+#: threshold, which never passed through this list because its rows landed in
+#: the same change as the condition.
 BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the movement conditions for the dungeon-modifier work; the
     # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
     "not_attacked_for_seconds",
+    # THE WINDOW A BOSS STRIKE OPENS, landed ahead of its row for the usual
+    # reason: the mechanism needs only the engine, and the row needs the design
+    # workbook, which one session may edit at a time and which another session
+    # holds today. The row is
+    # "Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4
+    # seconds after you strike one", at 4 seconds, and the sentence's clause is
+    # the project owner's wording approved on 2026-09-18.
+    "seconds_after_striking_a_boss",
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",

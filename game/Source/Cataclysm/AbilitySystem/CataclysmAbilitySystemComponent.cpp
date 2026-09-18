@@ -617,6 +617,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceHitTaken = SecondsSinceHitTaken();
 	State.SecondsSinceClassResourceFull = SecondsSinceClassResourceFull();
 	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
+	State.SecondsSinceStruckABoss = SecondsSinceStruckABoss();
 
 	// AND HOW MUCH OF THE CLASS RESOURCE IS IN HAND. Issue #980. The Masochist's
 	// Reciprocity keystone grows with it: "Your Retaliation damage is increased
@@ -1985,6 +1986,33 @@ float UCataclysmAbilitySystemComponent::SecondsSinceClassResourceEmptied() const
 
 	return FMath::Max(
 		0.0f, World->GetTimeSeconds() - LastClassResourceEmptyAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteStruckABoss()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastStruckABossAtSeconds = World->GetTimeSeconds();
+	}
+
+	// AND THE ACTION EVENT FIRES, WHICH IS NOT OPTIONAL. `action_events()` in
+	// `tools/generate_datatables.py` builds the vocabulary an action row may
+	// name from every condition called `seconds_after_<event>`, so adding the
+	// clock added `striking_a_boss` to that vocabulary whether or not anything
+	// raised it. A row naming an event nothing raises grants nothing and says
+	// so nowhere, which is the silent failure that file warns about elsewhere.
+	ActOnEvent(FName(TEXT("striking_a_boss")));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceStruckABoss() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastStruckABossAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastStruckABossAtSeconds);
 }
 
 namespace

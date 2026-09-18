@@ -3391,6 +3391,21 @@ CONDITIONS = {
     # why the full condition refuses it.
     "seconds_after_resource_empty": (0.0, 60.0, "a number of seconds"),
 
+    # "Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4
+    # seconds after you strike one" is `seconds_after_striking_a_boss` with 4.
+    #
+    # THE ONLY CLOCK HERE THAT TURNS ON WHAT WAS STRUCK rather than on what the
+    # character did. `target_is_boss` cannot serve that sentence: it is answered
+    # from the character being struck, and a cooldown counts down with nobody
+    # being struck, so nothing fills a target for it to read.
+    #
+    # THE WINDOW IS THE OWNER'S, THE FOUR SECONDS ARE A JUDGEMENT. The project
+    # owner chose a window over a proximity check on 2026-09-18, with the
+    # proximity shape Path of Exile ships put to them and declined. Four is what
+    # Path of Exile 1 and 2 both define "Recently" as, and it sits inside the 2
+    # to 5 seconds this game's own rows already use.
+    "seconds_after_striking_a_boss": (0.0, 60.0, "a number of seconds"),
+
     # "a skill whose health cost is above 10% of your maximum health" is
     # `skill_health_cost_above` with 10. Issue #983.
     #

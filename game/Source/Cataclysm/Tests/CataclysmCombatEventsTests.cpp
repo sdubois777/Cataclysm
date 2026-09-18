@@ -2118,4 +2118,251 @@ bool FCataclysmSummonOpensOnlyItsOwnWindow::RunTest(const FString&)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossStrikeOpensAWindow,
+	"Cataclysm.CombatEvents.AStrikeThatGetsThroughToABossOpensTheAttackersWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Striking a Boss opens a window on the attacker; striking anything else does not.
+ *
+ * WHAT THE WINDOW IS FOR. "Your cooldowns reset 50%-100% faster when fighting
+ * Boss enemies, for 4 seconds after you strike one". A cooldown counts down with
+ * nobody being struck, so the per-blow condition `target_is_boss` cannot reach
+ * it and a clock can.
+ *
+ * BOTH HALVES IN ONE CASE, BECAUSE EITHER ALONE PASSES ON A BROKEN BUILD. A
+ * stamp that fired for every blow would pass the first half; a stamp that never
+ * fired would pass the second.
+ *
+ * THE ORDINARY CREATURE IS STRUCK FIRST, so the second half is measured on a
+ * character that has already landed a blow rather than on one that has done
+ * nothing.
+ */
+bool FCataclysmBossStrikeOpensAWindow::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FArmedActor Attacker = MakeArmed(World);
+	ACataclysmEnemyCharacter* Boss =
+		SpawnCreatureAt(World, FVector(2.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* Ordinary =
+		SpawnCreatureAt(World, FVector(-2.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("an attacker"), Attacker.Actor)
+		|| !TestNotNull(TEXT("with an ability system to hold the window"),
+						Attacker.AbilitySystem)
+		|| !TestNotNull(TEXT("a boss"), Boss)
+		|| !TestNotNull(TEXT("an ordinary creature"), Ordinary))
+	{
+		return false;
+	}
+
+	// THE RUNG FIRST AND THE EVASION AFTER IT. Every public setter on a creature
+	// ends in `ApplyStartingAttributes`, which rewrites the designed numbers and
+	// puts the evasion back, so zeroing it before the rung leaves the creature
+	// dodging and this case failing at random.
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	for (ACataclysmEnemyCharacter* Each : {Boss, Ordinary})
+	{
+		if (UCataclysmAbilitySystemComponent* System = SystemOf(Each))
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		}
+	}
+	if (!TestTrue(TEXT("the first boss rung is a boss"), Boss->IsBoss())
+		|| !TestFalse(TEXT("and an unset creature is not"), Ordinary->IsBoss()))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a character that has struck no Boss reads -1"),
+			  Attacker.AbilitySystem->SecondsSinceStruckABoss(), -1.0f, 0.001f);
+
+	// A DIFFERENCE IN HEALTH, NOT A FIGURE. A pool write lands clamped to the
+	// maximum, and the rung above rewrote both, so the only honest reading of
+	// "the blow got through" is that the health fell.
+	const float OrdinaryBefore = HealthOf(Ordinary);
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Ordinary, 100.0f,
+									 TagsNamed({TEXT("Type.Melee")}));
+	TestTrue(TEXT("the ordinary creature took the blow"),
+			 HealthOf(Ordinary) < OrdinaryBefore);
+	TestEqual(TEXT("and striking it opened no window"),
+			  Attacker.AbilitySystem->SecondsSinceStruckABoss(), -1.0f, 0.001f);
+
+	const float BossBefore = HealthOf(Boss);
+	UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Boss, 100.0f,
+									 TagsNamed({TEXT("Type.Melee")}));
+	TestTrue(TEXT("the boss took the blow"), HealthOf(Boss) < BossBefore);
+	TestTrue(TEXT("and striking it opened the window"),
+			 Attacker.AbilitySystem->SecondsSinceStruckABoss() >= 0.0f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionBossStrikeIsTheMinionsOwn,
+	"Cataclysm.CombatEvents.AMinionsStrikeOnABossOpensTheMinionsWindowAndNotItsSummoners",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion that strikes a Boss opens its OWN window, and its summoner's stays shut.
+ *
+ * THE OWNER RULED ON 2026-09-17 that a minion's blow is the minion's own, and
+ * `UCataclysmCombatEvents::AttackerOf` is the one place that answers it. This
+ * case and the Conduit one below are what hold the window to that answer rather
+ * than to the effect's instigator, which would name the minion whatever the
+ * summoner holds.
+ *
+ * `Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner`
+ * is the sibling that pins the same rule for the hit and kill credit.
+ */
+bool FCataclysmMinionBossStrikeIsTheMinionsOwn::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FArmedActor Summoner = MakeArmed(World);
+	ACataclysmEnemyCharacter* Boss =
+		SpawnCreatureAt(World, FVector(4.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("a summoner"), Summoner.Actor)
+		|| !TestNotNull(TEXT("with an ability system"), Summoner.AbilitySystem)
+		|| !TestNotNull(TEXT("a boss"), Boss))
+	{
+		return false;
+	}
+
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	if (UCataclysmAbilitySystemComponent* System = SystemOf(Boss))
+	{
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
+	if (!TestTrue(TEXT("the target is a boss"), Boss->IsBoss()))
+	{
+		return false;
+	}
+
+	// A REAL IMP, NAMED, for the reason the sibling case gives: a typeless
+	// minion deals nothing at all since issue #1515, so it would strike no one.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(3.0f * M, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("a minion"), Imp))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* ImpSystem =
+		Cast<UCataclysmAbilitySystemComponent>(Imp->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("the minion has an ability system of its own"), ImpSystem))
+	{
+		return false;
+	}
+
+	const float BossBefore = HealthOf(Boss);
+	Imp->AttackTarget(Boss);
+	if (!TestTrue(TEXT("the minion's blow got through"), HealthOf(Boss) < BossBefore))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the minion's own window is open"),
+			 ImpSystem->SecondsSinceStruckABoss() >= 0.0f);
+	TestEqual(TEXT("and the summoner's is not"),
+			  Summoner.AbilitySystem->SecondsSinceStruckABoss(), -1.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConduitMinionBossStrikeIsTheSummonersHitTest,
+	"Cataclysm.CombatEvents.TheConduitKeystoneOpensTheSummonersWindowWhenItsMinionStrikesABoss",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The same swing as the case above, by a summoner who holds Conduit.
+ *
+ * THE PAIR IS WHAT MAKES EITHER HALF MEAN ANYTHING. A build that read the
+ * effect's instigator instead of `UCataclysmCombatEvents::AttackerOf` would pass
+ * the case above and fail this one, and the keystone would apply to the kill
+ * credit and not to the window with nothing anywhere to say so.
+ *
+ * THE STAT IS PUT ON BY HAND rather than by taking the node, for the reason the
+ * kill-credit pair gives: it keeps the case about the crediting.
+ */
+bool FCataclysmConduitMinionBossStrikeIsTheSummonersHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FArmedActor Summoner = MakeArmed(World);
+	ACataclysmEnemyCharacter* Boss =
+		SpawnCreatureAt(World, FVector(4.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("a summoner"), Summoner.Actor)
+		|| !TestNotNull(TEXT("with an ability system to hold the keystone"),
+						Summoner.AbilitySystem)
+		|| !TestNotNull(TEXT("a boss"), Boss))
+	{
+		return false;
+	}
+
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	if (UCataclysmAbilitySystemComponent* System = SystemOf(Boss))
+	{
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+	}
+
+	FCataclysmStatModifier Held;
+	Held.Bucket = ECataclysmStatBucket::Flat;
+	Held.Source = ECataclysmModifierSource::PassiveKeystone;
+	Held.Value = 1.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(TEXT("minion_hits_count_as_yours"))).Modifiers = {Held};
+	Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(3.0f * M, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("a minion"), Imp))
+	{
+		return false;
+	}
+
+	const float BossBefore = HealthOf(Boss);
+	Imp->AttackTarget(Boss);
+	if (!TestTrue(TEXT("the minion's blow got through"), HealthOf(Boss) < BossBefore))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the summoner's window is open"),
+			 Summoner.AbilitySystem->SecondsSinceStruckABoss() >= 0.0f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
