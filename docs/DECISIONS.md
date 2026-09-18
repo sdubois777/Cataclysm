@@ -244,7 +244,102 @@ and that a delta must come from a diff — which is what the third line above is
 figures are not to be read as: they count one file's registration macros, not the group's total. The
 group's own total is measured in the window, on the base, before this branch is believed.
 
-### What the runs found, so far
+### What the runs found
+
+Measured 2026-09-18 under one editor lock.
+
+**THE BASE WAS MEASURED FIRST, AND THAT IS WHY 186 IS A MEASUREMENT.** The figure registered for this
+group came from counting registration macros in one file, which is a static count — and this project
+records three static methods giving 1,411, 1,564 and 1,726 against a measured 1,664. So the base
+commit `6c003d0e` was checked out with none of this work present and the group run there:
+
+```
+Build: Succeeded - 26 actions, 23 files compiled
+Tests: 171 tests performed, 171 succeeded, 0 failed
+Declared: 2118 tests in the tree at 6c003d0e
+```
+
+171 plus these fifteen is 186, which is what had been registered.
+
+**THE FIRST COMPILE FAILED, ON A TEST FILE, AND IT COST ONE CYCLE.**
+
+```
+CataclysmDungeonModifierEffectsTests.cpp(960,4): error C3861: 'DungeonRuleOn': identifier not found
+Build: Failed - 25 actions, 22 files compiled
+```
+
+A helper that reads how much armour this rule has put on the player was written above the helper it
+calls, and this file declares its helpers by defining them in order with no forward declarations. It
+was moved below the one it calls. **The three engine source files compiled in that same failed build**
+— only the test file failed, so the rule's own code was valid C++ on its first compile. The second
+compile succeeded with seven files compiled.
+
+**THE FIRST WHOLE-SUITE RUN FAILED FIVE OF THESE FIFTEEN TESTS**, and both causes were in one test
+helper rather than in the rule:
+
+```
+Tests: 2133 tests performed, 2128 succeeded, 5 failed:
+  ACommanderKilledByAnythingElsePaysNothing, AFloorChangePutsEveryCreaturesDamageBack,
+  ARungChangeKeepsTheFloorsRise, EachCommanderAddsItsTenAndTheyDoNotCompound,
+  EveryCreatureOnTheFloorHitsHarderForHowDeepItIs
+Declared: 2133 tests in the tree at 4b790843; 2133 performed, gap 0
+```
+
+**A creature spawned straight into the world has no attack damage.** It never goes through the floor's
+population pass, so `StartingAttackDamage` is unset, `WriteAttackDamage` skips its write and the
+attribute stays at zero. The run said so outright: "Expected 'the creatures have damage to raise' to
+be true". Three failures read a creature's damage and a fourth needed one creature to kill another.
+
+**And setting a rarity rung gives the creature its designed evasion back, which made these tests
+FLAKY rather than wrong.** `SpawnImpWithHealth` zeroes evasion and `SetRarityStep` ends in
+`ApplyStartingAttributes`, which writes the designed figure back; a blow is rolled against evasion. The
+evidence is inside the run: two tests killed an Elite by the same route, one passed and one failed on
+"the player's blow killed it". The one that passed could have failed on the next run.
+
+The helper now gives the creature a designed attack damage before the rung, zeroes the evasion again
+after it, and wounds it back to 100 health and no energy shield last.
+
+**TWO WHOLE-SUITE RUNS, AND THE SECOND IS THE FIGURE OF RECORD**, because the first was taken before
+that repair.
+
+| Whole suite | Head | What it printed |
+| :-- | :-- | :-- |
+| 1 of 2 | `4b790843` | 2133 performed, 2128 succeeded, **5 failed**, declared 2133, gap 0 |
+| 2 of 2, the run of record | `29c1e7b7` | 2133 performed, 2133 succeeded, 0 failed, declared 2133, gap 0 |
+
+```
+Tests: 2133 tests performed, 2133 succeeded, 0 failed
+Declared: 2133 tests in the tree at 29c1e7b7; 2133 performed, gap 0; every declared test was
+reported by the run.
+```
+
+39 tests reported skipping part of what they check in each run; all are art tests and a worktree has
+no Paragon content. The group printed 186 performed, 186 succeeded, 0 failed after the repair, and
+again as the restored half of all three guard proofs.
+
+### The three guard proofs
+
+All three printed `PROVED`, none crashed, every restored half 186 performed and 0 failed, and the
+working tree was checked clean after each.
+
+| Proof | What was broken | What failed | Predicted |
+| :-- | :-- | :-- | :-- |
+| 1 | the floor's multiplier removed from the one line a creature's damage is written | `EveryCreatureOnTheFloorHitsHarderForHowDeepItIs`, `TheFloorsRiseIsAddedEachFloorAndNotCompounded`, `ARungChangeKeepsTheFloorsRise`, `AFloorChangePutsEveryCreaturesDamageBack` | the same four |
+| 2 | each Commander's armour compounding instead of adding | `EachCommanderAddsItsTenAndTheyDoNotCompound`, `TheCommandersArmourReachesTheCharactersArmourStat` | the same two |
+| 3 | the check that the player struck the last blow removed | `ACommanderKilledByAnythingElsePaysNothing` | the same one |
+
+**PROOF 2 LEAVES THE ONE-COMMANDER TEST PASSING ON PURPOSE.** Adding and compounding agree exactly at
+nought commanders and at one, which is where `KillingTheCommanderPaysArmourAndOtherKillsDoNot`
+measures. That test still passing is what says the break changed the rule's READING rather than its
+wiring; had it failed too, the break would have been proving something coarser than intended.
+
+**PROOF 3'S BREAK HAD TO BE REPOINTED BEFORE IT WOULD MATCH.** It originally anchored on the line
+that follows the killer check, `bMarchOfProgressCommanderSlain = true;`. That line moved ABOVE the
+check when the rule was corrected so that a Commander killed by anything at all is gone from the
+floor, leaving only the payment behind it — so the anchor matched nothing and the proof would have
+tested nothing. Every anchor was re-checked to occur exactly once before any proof ran.
+
+### The Python side
 
 ```
 python -m pytest tools/tests/
@@ -261,9 +356,10 @@ dungeon-rule checks never reaches it.
 
 ### What the tests do not show
 
-- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the fifteen automation tests and the three guard proofs wait for this machine's next free window,
-  and this section will be replaced by what those runs print.
+- **That a creature placed by the floor itself, rather than by a test, carries the rise.** Every test
+  here places its own creatures, because that is the only way to decide which rung each one holds.
+  The one test that drives the real route a floor is reached by checks which creature is chosen as the
+  Commander and not what the floor's creatures deal.
 - **That a player can find the Commander.** Nothing marks it in play, the tests reach it by asking the
   game mode, and no test could show a player finding it. Issue #1997.
 - **What a deep floor of this is like to play.** The arithmetic is tested at floors 1, 10 and 50 and
