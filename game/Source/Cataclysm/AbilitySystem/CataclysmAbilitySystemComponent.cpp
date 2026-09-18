@@ -31,6 +31,7 @@
 #include "Cataclysm.h"
 // For the character the nearby enemies are measured from. Issue #1597.
 #include "Character/CataclysmCharacterBase.h"
+#include "Character/CataclysmEnemyCharacter.h"
 // For the nearby enemies a conditional or scaling bonus counts. Issue
 // #1597. The lists it keeps are the same ones a creature's target search
 // reads, so counting enemies near a character costs no second walk of the
@@ -980,6 +981,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// neither pays one walk of its own modifier list and nothing else.
 	bool bWantsAilments = false;
 	bool bWantsHealth = false;
+	bool bWantsBoss = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		switch (Modifier.Condition)
@@ -997,11 +999,19 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		case ECataclysmStatCondition::TargetHealthBelowPercent:
 			bWantsHealth = true;
 			break;
+		// AND WHETHER THE TARGET IS A BOSS, LISTED HERE FOR THE REASON THE
+		// AILMENT COMMENT ABOVE GIVES. Issue #1815. A condition missing from
+		// this switch is judged against a field nothing filled, answers false
+		// every time, and the row grants nothing with no error anywhere.
+		case ECataclysmStatCondition::TargetIsBoss:
+		case ECataclysmStatCondition::TargetIsNotBoss:
+			bWantsBoss = true;
+			break;
 		default:
 			break;
 		}
 
-		if (bWantsAilments && bWantsHealth)
+		if (bWantsAilments && bWantsHealth && bWantsBoss)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1013,7 +1023,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// negative percentage for the health. The two cases are not distinguished
 	// because nothing could do anything differently with the distinction: a
 	// lookup with no row asking has no condition to answer.
-	if (!Target || (!bWantsAilments && !bWantsHealth))
+	if (!Target || (!bWantsAilments && !bWantsHealth && !bWantsBoss))
 	{
 		return State;
 	}
@@ -1028,6 +1038,28 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	if (bWantsAilments)
 	{
 		State.TargetDebuffs = UCataclysmDebuffs::TagsOnActor(Target);
+	}
+
+	if (bWantsBoss)
+	{
+		// THE SAME TEST THE STUN RULE USES, so "a boss" means one thing in the
+		// game. `ACataclysmEnemyCharacter::IsBoss` derives it from the rarity the
+		// spawner set rather than from a flag or a tag. Issue #1815.
+		//
+		// ANYTHING THAT IS NOT AN ENEMY CHARACTER IS NOT A BOSS, which is
+		// ordinary rather than a fault: a patch of burning ground and a piece of
+		// terrain are both actors and neither is a boss. The cast failing leaves
+		// this false, which is the refusing direction.
+		if (const ACataclysmEnemyCharacter* Enemy =
+				Cast<const ACataclysmEnemyCharacter>(Target))
+		{
+			State.bTargetIsBoss = Enemy->IsBoss();
+		}
+
+		// AND THAT IT WAS LOOKED AT, WHICH BOTH HALVES OF THE PAIR ASK FIRST.
+		// Set even when the cast failed: "this is not an enemy character" is a
+		// read answer of "not a boss", not an absence of one. Issue #1815.
+		State.bTargetIsBossKnown = true;
 	}
 
 	if (bWantsHealth)

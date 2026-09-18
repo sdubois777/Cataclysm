@@ -58,6 +58,19 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",
+    # Both landed on 2026-09-17 with the attacker's half of the boss pair, issue
+    # #1815. Their rows are approved and wait only on the design workbook: "Deal
+    # 30%-50% more damage to Boss enemies" and "Deal 40%-80% increased damage to
+    # Boss enemies" for the first, and "You deal 20%-35% less damage to non-Boss
+    # enemies" for the second.
+    #
+    # THE MECHANISM LANDED FIRST ON PURPOSE AND NOT BY OVERSIGHT, which is the
+    # distinction this list exists to keep. `opponent_is_boss` already existed
+    # and answers the DEFENDER's question, so a row written before this change
+    # would have read a field nothing fills and granted nothing silently. The
+    # condition had to exist before its rows could be written correctly.
+    "target_is_boss",
+    "target_is_not_boss",
 }
 
 #: A condition several enchantment effect rows name. The control.

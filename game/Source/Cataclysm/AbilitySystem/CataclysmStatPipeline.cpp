@@ -89,6 +89,8 @@ namespace
 		{ TEXT("opponent_is_boss"),             ECataclysmStatCondition::OpponentIsBoss },
 		{ TEXT("opponent_is_staggered"),        ECataclysmStatCondition::OpponentIsStaggered },
 		{ TEXT("target_is_staggered"),          ECataclysmStatCondition::TargetIsStaggered },
+		{ TEXT("target_is_boss"),               ECataclysmStatCondition::TargetIsBoss },
+		{ TEXT("target_is_not_boss"),           ECataclysmStatCondition::TargetIsNotBoss },
 		{ TEXT("while_moving"),                 ECataclysmStatCondition::WhileMoving },
 		{ TEXT("while_stationary"),             ECataclysmStatCondition::WhileStationary },
 		{ TEXT("stationary_for_seconds"),       ECataclysmStatCondition::StationaryForSeconds },
@@ -221,6 +223,8 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::OpponentIsBoss:
 	case ECataclysmStatCondition::OpponentIsStaggered:
 	case ECataclysmStatCondition::TargetIsStaggered:
+	case ECataclysmStatCondition::TargetIsBoss:
+	case ECataclysmStatCondition::TargetIsNotBoss:
 	case ECataclysmStatCondition::WhileMoving:
 	case ECataclysmStatCondition::WhileStationary:
 	case ECataclysmStatCondition::TargetCarriesCripple:
@@ -229,7 +233,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::CanCrippleOrWeaken:
 	case ECataclysmStatCondition::OpponentCarriesWeaken:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the sixteen says
+		// nothing for a number to be compared against. Each of the eighteen says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -595,6 +599,34 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// character sheet built with no blow and no target answers false here, so
 		// a bonus conditioned on a staggered target is correctly withheld from it.
 		return State.bTargetIsStaggered;
+
+	case ECataclysmStatCondition::TargetIsBoss:
+		// THE MIRROR OF `OpponentIsBoss`, READING A DIFFERENT FIELD, for exactly
+		// the reason the staggered pair above gives. `Blow.bOpponentIsBoss` is
+		// filled from `Hit.bFromBoss` on the defender's damage taken lookup and
+		// answers "a boss hit me"; this one is filled from the target on the
+		// attacker's own lookup and answers "I am hitting a boss". A row carrying
+		// the wrong half of the pair reads a field nothing filled and grants
+		// nothing. Issue #1815.
+		//
+		// FALSE IS ALSO "NO TARGET IN HAND" OR "NOTHING ASKED", and all three
+		// meanings refuse together, which is the safe direction: a bonus meant
+		// for bosses that fails to read grants nothing rather than applying to
+		// every character in the game.
+		return State.bTargetIsBossKnown && State.bTargetIsBoss;
+
+	case ECataclysmStatCondition::TargetIsNotBoss:
+		// NOT THE PLAIN NEGATION OF THE CASE ABOVE, and that is deliberate.
+		// Issue #1815. Both halves ask `bTargetIsBossKnown` first, so both
+		// refuse when nothing read the target. Written as `!bTargetIsBoss`
+		// alone this would answer TRUE for a character sheet with no target in
+		// hand, and for every lookup whose rows asked about something else, so
+		// "you deal less damage to non-Boss enemies" would apply to bosses,
+		// to sheets, and to blows with no target at all.
+		//
+		// THREE STATES, NOT TWO: a boss, not a boss, and nothing looked at. One
+		// flag cannot carry three, which is why there are two.
+		return State.bTargetIsBossKnown && !State.bTargetIsBoss;
 
 	case ECataclysmStatCondition::TargetCarriesCripple:
 		// THE EXPLICIT TAG AND NOT AN IMPLIED PARENT. Issue #1515.

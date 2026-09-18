@@ -561,4 +561,150 @@ bool FCataclysmStaggeredTargetMinionTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTargetIsBossTest,
+	"Cataclysm.StaggeredTarget.AnAttackerReadsWhetherItsTargetIsABossAndTheOpponentHalfDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The attacker's half of the boss pair, and the control that pins it apart from
+ * the defender's half. Issue #1815.
+ *
+ * WHAT THIS IS FOR. `opponent_is_boss` has existed since issue #666 and answers
+ * "a boss hit me", because it reads the blow record, which is filled only on the
+ * defender's damage taken lookup. Nothing answered "I am hitting a boss", so
+ * three enchantment sentences about damage to bosses had nowhere to go -- and a
+ * row written with the wrong half passes every check in the project and grants
+ * nothing at all.
+ *
+ * THE CONTROL IS THE POINT OF THE TEST, NOT AN EXTRA. The same stat line, the
+ * same blow, the same boss, with `OpponentIsBoss` in place of `TargetIsBoss`,
+ * must grant NOTHING. Without that case a broken implementation that answered
+ * both halves from one field would pass.
+ *
+ * NOTHING HERE STATES BOSS-NESS TO THE PIPELINE. `SetRarityStep` puts it on a
+ * real creature and the game reads it back during the blow, which is the lesson
+ * the head of this file already carries: a test that supplies the missing step
+ * proves nothing.
+ *
+ * AND A LOOKUP WITH NO TARGET READS NEITHER HALF. That is the third state the
+ * flags carry -- a boss, not a boss, and nothing looked at -- and it is why
+ * `bTargetIsBossKnown` exists. A plain negation would answer true for a
+ * character sheet with no target in hand.
+ */
+bool FCataclysmTargetIsBossTest::RunTest(const FString&)
+{
+	using namespace CataclysmStaggeredTargetTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FStaggerArmedActor Attacker = MakeStaggerArmed(World);
+	ACataclysmEnemyCharacter* Boss = SpawnStaggerCreatureAt(
+		World, FVector(2.0f * StaggerM, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* Ordinary = SpawnStaggerCreatureAt(
+		World, FVector(0.0f, 2.0f * StaggerM, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("an attacker"), Attacker.Actor)
+		|| !TestNotNull(TEXT("a boss to strike"), Boss)
+		|| !TestNotNull(TEXT("an ordinary creature to strike"), Ordinary))
+	{
+		return false;
+	}
+
+	// ONE IS A BOSS AND THE OTHER IS ONE RUNG BELOW, which is the tightest pair
+	// the ladder allows. A creature far down the ladder would pass against an
+	// implementation that read any rarity at all.
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Ordinary->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	if (!TestTrue(TEXT("the boss is a boss"), Boss->IsBoss())
+		|| !TestFalse(TEXT("and the other one is not"), Ordinary->IsBoss()))
+	{
+		return false;
+	}
+
+	const auto Strike = [&](ACataclysmEnemyCharacter* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target, 100.0f,
+										 StaggerMelee(), StaggerNoCritical(),
+										 &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	/** An attack damage line carrying one conditioned increase and a plain one. */
+	const auto GiveLine = [&](ECataclysmStatCondition Condition)
+	{
+		FCataclysmStatModifier Conditional;
+		Conditional.Bucket = ECataclysmStatBucket::Increased;
+		Conditional.Source = ECataclysmModifierSource::Enchantment;
+		Conditional.Value = 20.0f;
+		Conditional.Condition = Condition;
+
+		FCataclysmStatModifier Always;
+		Always.Bucket = ECataclysmStatBucket::Increased;
+		Always.Source = ECataclysmModifierSource::Enchantment;
+		Always.Value = 30.0f;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line =
+			Inputs.FindOrAdd(FName(UCataclysmItemModifiers::AttackDamageStat));
+		Line.Base = 100.0f;
+		Line.Modifiers = {Conditional, Always};
+		Attacker.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	};
+
+	// THE ROW THE SENTENCES WANT: more damage when the target is a boss.
+	GiveLine(ECataclysmStatCondition::TargetIsBoss);
+	const float BossHit = Strike(Boss);
+	const float OrdinaryHit = Strike(Ordinary);
+	if (!TestTrue(TEXT("both blows landed"),
+				  BossHit > 0.0f && OrdinaryHit > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(*FString::Printf(
+				 TEXT("the boss takes more than the ordinary creature: "
+					  "%.2f against %.2f"),
+				 BossHit, OrdinaryHit),
+			 BossHit > OrdinaryHit + 0.01f);
+
+	// THE MIRROR ROW: less damage when the target is NOT a boss. It must reach
+	// the ordinary creature and leave the boss alone, which is the opposite
+	// pairing and catches an implementation that answered both from one field.
+	GiveLine(ECataclysmStatCondition::TargetIsNotBoss);
+	const float BossUnderNotBoss = Strike(Boss);
+	const float OrdinaryUnderNotBoss = Strike(Ordinary);
+	TestTrue(*FString::Printf(
+				 TEXT("the not-boss row reaches the ordinary creature and not "
+					  "the boss: %.2f against %.2f"),
+				 OrdinaryUnderNotBoss, BossUnderNotBoss),
+			 OrdinaryUnderNotBoss > BossUnderNotBoss + 0.01f);
+
+	// THE CONTROL, AND THE REASON THIS TEST EXISTS. The defender's half of the
+	// pair, on the attacker's own row, must grant NOTHING against a boss: it
+	// reads the blow record, which the attacker's lookup never fills.
+	GiveLine(ECataclysmStatCondition::OpponentIsBoss);
+	const float BossUnderOpponentHalf = Strike(Boss);
+	TestEqual(*FString::Printf(
+				  TEXT("the opponent half grants nothing on an attacker's row, "
+					   "so striking a boss deals the same as striking anything: "
+					   "%.2f against %.2f"),
+				  BossUnderOpponentHalf, OrdinaryHit),
+			  BossUnderOpponentHalf, OrdinaryHit, 0.01f);
+
+	// AND A LOOKUP WITH NO TARGET READS NEITHER HALF, which is the third state.
+	FCataclysmStatConditions Sheet;
+	TestFalse(TEXT("with nothing looked at, the target is not judged a boss"),
+			  UCataclysmStatPipeline::ConditionHolds(
+				  ECataclysmStatCondition::TargetIsBoss, 0.0f, Sheet));
+	TestFalse(TEXT("and it is not judged a non-boss either"),
+			  UCataclysmStatPipeline::ConditionHolds(
+				  ECataclysmStatCondition::TargetIsNotBoss, 0.0f, Sheet));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

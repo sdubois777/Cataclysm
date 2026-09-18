@@ -1583,6 +1583,12 @@ namespace CataclysmPassiveConditionTest
 			// whoever threw the blow is staggered and the other whether the
 			// character being hit is, and they read separate fields on purpose.
 			|| Name == TEXT("target_is_staggered")
+			// ISSUE #1815, THE MISSING HALF OF THE BOSS PAIR AND ITS NEGATION.
+			// `opponent_is_boss` above answers "a boss hit me"; these answer "I am
+			// hitting a boss" and "I am not". Each names a state rather than a
+			// threshold, so none of the three compares a value.
+			|| Name == TEXT("target_is_boss")
+			|| Name == TEXT("target_is_not_boss")
 			// ISSUE #41'S SLICE 2. The other three movement conditions compare
 			// a number, so they are deliberately absent.
 			|| Name == TEXT("while_moving")

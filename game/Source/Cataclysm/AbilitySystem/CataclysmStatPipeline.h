@@ -763,6 +763,50 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Target Is Staggered"),
 
 	/**
+	 * The character being HIT is a boss. Issue #1815.
+	 *
+	 * THE MISSING HALF OF A PAIR RATHER THAN A NEW IDEA. `OpponentIsBoss` has
+	 * existed since issue #666 and answers "the blow came FROM a boss", because
+	 * it reads `Blow.bOpponentIsBoss`, which `BlowContextFor` fills from
+	 * `Hit.bFromBoss` on the defender's damage taken lookup. Nothing answered
+	 * the other question -- "the character I am striking is a boss" -- so the
+	 * three enchantment sentences about damage to bosses had nowhere to go.
+	 *
+	 * A ROW CARRYING THE WRONG HALF OF THE PAIR READS A FIELD NOTHING FILLED AND
+	 * GRANTS NOTHING. That is the sentence `TargetIsStaggered` above gives for
+	 * its own pair, and it is why this one exists rather than callers being told
+	 * to use `OpponentIsBoss` from the attacking end. `opponent_is_boss` on an
+	 * attacker's row passes every check in the project and does nothing at all.
+	 *
+	 * FALSE MEANS NOT A BOSS OR NOT READ, and the two are deliberately not
+	 * distinguished. `CurrentConditions` reads the target only when some
+	 * modifier in that lookup asks about it, so a lookup with no such row leaves
+	 * this false -- and false is the safe direction, granting nothing rather
+	 * than granting a bonus against every character in the game.
+	 */
+	TargetIsBoss
+		UMETA(DisplayName = "Target Is Boss"),
+
+	/**
+	 * The character being HIT is NOT a boss. Issue #1815.
+	 *
+	 * "You deal 20%-35% less damage to non-Boss enemies" is the row, and it is
+	 * the reason this exists rather than a negation flag on the column: a
+	 * modifier carries exactly ONE condition, so the penalty cannot be written
+	 * as "not `TargetIsBoss`" anywhere. The project owner chose a second
+	 * condition over a negation flag on 2026-09-18.
+	 *
+	 * IT IS NOT THE PLAIN OPPOSITE OF `TargetIsBoss`, AND THAT IS THE WHOLE
+	 * CARE IN IT. Both halves refuse when nothing read the target --
+	 * `bTargetIsBossKnown` is what they ask first. A plain negation would answer
+	 * TRUE for a character sheet with no target in hand and for every lookup
+	 * that asked about something else, so a penalty meant for ordinary enemies
+	 * would apply to everything including bosses' own screens.
+	 */
+	TargetIsNotBoss
+		UMETA(DisplayName = "Target Is Not Boss"),
+
+	/**
 	 * At least `ConditionValue` enemies stand within the row's own `ReachMetres`.
 	 * Issue #1597.
 	 *
@@ -1937,6 +1981,42 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bTargetIsStaggered = false;
 
 	/**
+	 * Whether the character being hit is a boss. Issue #1815.
+	 *
+	 * FALSE MEANS NOT A BOSS OR NOT READ, and nothing distinguishes the two.
+	 * `CurrentConditions` inspects the target only when some modifier in that
+	 * lookup asks about its boss-ness, so an ordinary lookup leaves this false
+	 * without ever looking. False is the safe direction: a bonus meant for
+	 * bosses that fails to read grants nothing, where the other default would
+	 * grant it against every character in the game.
+	 *
+	 * NOT `Blow.bOpponentIsBoss`, WHICH IS THE OTHER END OF THE BLOW. That one
+	 * is filled from `Hit.bFromBoss` on the defender's damage taken lookup and
+	 * answers "a boss hit me". A row carrying the wrong half of the pair reads a
+	 * field nothing filled and grants nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsBoss = false;
+
+	/**
+	 * Whether the boss-ness above was actually read. Issue #1815.
+	 *
+	 * THE NEGATION IS WHY THIS EXISTS, AND IT IS NOT DECORATION. With one flag,
+	 * `TargetIsBoss` refuses when nothing was read, which is right -- but its
+	 * mirror `TargetIsNotBoss` would ANSWER TRUE for a lookup that never looked,
+	 * so a penalty meant for ordinary enemies would apply to a character sheet
+	 * with no target in hand, and to every lookup that asked about something
+	 * else entirely.
+	 *
+	 * SO BOTH HALVES ASK THIS FIRST and both refuse together when it is false.
+	 * That is the same rule the health reading states in its own words: unread
+	 * is what the conditions refuse on. A single flag cannot express three
+	 * states, and there are three: a boss, not a boss, and nothing looked at.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetIsBossKnown = false;
+
+	/**
 	 * How far away each hostile character near this one is, in metres. Empty
 	 * means either that nobody is near or that this lookup never asked. Issue
 	 * #1597.
@@ -2600,7 +2680,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a fortieth, which is the drift that put the passive tree eight
+	 * adds a forty-second, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -2609,7 +2689,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * SIXTEEN OF THE THIRTY-NINE COMPARE NOTHING. They are the case labels
+	 * EIGHTEEN OF THE FORTY-ONE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

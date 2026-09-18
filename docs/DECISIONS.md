@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — An attacker can ask whether its target is a boss, which only the defender could ask before
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two
+conditions, two state fields, the judgement, and two written counts),
+`CataclysmAbilitySystemComponent.cpp` (the lazy target read),
+`tools/generate_datatables.py` (the two names rows may use),
+`game/Source/Cataclysm/Tests/CataclysmStaggeredTargetTests.cpp` (one test) and
+`CataclysmPassiveTreeTests.cpp` (the third list of value-less conditions). Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### What was wrong
+
+**`opponent_is_boss` has existed since issue #666 and answers a different question from the
+one its name suggests to an attacker.** It reads `Blow.bOpponentIsBoss`, which
+`BlowContextFor` fills from `Hit.bFromBoss` — an INCOMING hit. It means "a boss hit me" and
+serves the character being attacked.
+
+**Nothing answered "the character I am hitting is a boss."** So the enchantment sentences
+about dealing more damage to bosses had no condition to use, and a row written with the
+obvious one would read a field nothing fills, grant nothing, and report no error. That is the
+same failure the code already documents for `opponent_is_staggered` and `target_is_staggered`:
+"a row carrying the wrong one of this pair reads a field nothing filled and grants nothing".
+
+**This is the missing half of a pair rather than a new idea.** Both halves existed for
+staggered; only one existed for boss-ness.
+
+### The two conditions
+
+| Name | Answers |
+| :-- | :-- |
+| `target_is_boss` | the character being hit is a boss |
+| `target_is_not_boss` | the character being hit is not a boss |
+
+**The negation is a second condition and not a flag on the column**, because a modifier
+carries exactly one condition, so "not `target_is_boss`" cannot be written anywhere. The
+project owner chose that shape on 2026-09-17.
+
+### Three states, not two, and that is the care in it
+
+**A plain negation would have shipped a bug.** The coordinating session's instruction was for
+`ConditionHolds` to return the negation. With one flag, "not a boss" answers TRUE whenever
+nothing read the target — on a character sheet with no target in hand, and on every lookup
+whose rows asked about something else — so a penalty meant for ordinary enemies would apply to
+bosses, to sheets, and to blows with no target at all.
+
+**There are three states: a boss, not a boss, and nothing looked at.** One flag cannot carry
+three. `bTargetIsBossKnown` records that the target was inspected, both halves ask it first,
+and both refuse when it is false. That is the rule the health reading already states in its
+own words: unread is what the conditions refuse on.
+
+**The reading is lazy, like the ailments and the health beside it.** `CurrentConditions` walks
+the modifiers first and inspects the target only when some row asks about its boss-ness, so no
+lookup pays for it otherwise. Boss-ness comes from `ACataclysmEnemyCharacter::IsBoss`, the
+same test the stun rule uses, so the word means one thing in the game.
+
+### What it unblocks, measured across all 373 unwritten sentences
+
+Seven enchantment sentences mention a boss. **Two are unblocked by this change** — "Deal
+30%-50% more damage to Boss enemies" and "Deal 40%-80% increased damage to Boss enemies" —
+because `UCataclysmSkillEffects::IncreasesForSkill` and `MoreForSkill` both receive the target
+and pass it through. **One more is unblocked once the negation has rows**: "You deal 20%-35%
+less damage to non-Boss enemies".
+
+The other four are not, and each for its own reason: the critical strike chance lookup is
+called WITHOUT a target, so a condition on it would grant nothing; a count of unique bosses
+defeated does not exist; the cooldown stat is read off its attribute and cannot honour a
+condition at all; and skill charges do not exist.
+
+### The test, and why its control is the point
+
+`Cataclysm.StaggeredTarget.AnAttackerReadsWhetherItsTargetIsABossAndTheOpponentHalfDoesNot`
+strikes a real boss and a real creature one rung below it on the rarity ladder — the tightest
+pair the ladder allows, so an implementation reading any rarity at all would fail. Nothing
+states boss-ness to the pipeline; `SetRarityStep` puts it on a creature and the game reads it
+back during the blow.
+
+**The control is the reason the test exists.** The same stat line with the DEFENDER's half of
+the pair, striking the same boss, must grant nothing. Without that case an implementation that
+answered both halves from one field would pass every other assertion. The test also asserts
+that a lookup with no target reads neither half, which is the third state.
+
+### Three lists hold these names, and two checks exist because of it
+
+`ConditionTakesAValue` in the pipeline source, the generator's condition map, and
+`ComparesNothing` in `CataclysmPassiveTreeTests.cpp` all list the conditions that compare no
+number. **The third was found only because the checks failed**:
+`test_condition_lists_agree_with_the_code.py` names the file and the missing entries, and
+`test_the_condition_count_sentences_agree_with_the_code.py` holds two written counts and an
+ordinal in prose. The counts moved from sixteen of thirty-nine to eighteen of forty-one, and
+the ordinal from "a fortieth" to "a forty-second".
+
+---
+
 ## 2026-09-17 — A minion is the instigator of its own blow, and it takes the retaliation that blow provokes
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`,
