@@ -92,19 +92,57 @@ three phrases the readings rest on, that the row states no number at all, that t
 contagion library's constant rather than a number, and that both ends of the ladder are the two
 constants that already mean those rungs.
 
-### What the runs found, so far
+### What the runs found
 
 Measured 2026-09-18 UTC, which is 2026-09-17 in this machine's local time; the entry headings use the
-local date.
+local date. All of it in one window under one editor lock, with ONE whole-suite run and no repair.
+
+**THE FIRST BUILD AND THE FIRST RUN WERE BOTH CLEAN**, which is said here because it is not the usual
+outcome and the contrast is the useful part: the rule merged earlier the same evening needed three
+test repairs inside its own window before its suite came back green.
 
 ```
-python -m pytest tools/tests/test_dungeon_modifier_rules_are_the_rows.py
-115 passed in 0.26s
+Build: Succeeded - 27 actions, 24 files compiled
+Tests: 2083 tests performed, 2083 succeeded, 0 failed
+Declared: 2083 tests in the tree at b87681f4; 2083 performed, gap 0
+wrapper exit: 0
 ```
 
-Seven deliberate breaks through `tools/prove_guard.py`, run in a git-archive copy so no break could
+That is exactly the figure registered before the run: 2072 measured on `development` plus these eleven
+by name. 39 tests reported skipping part of what they check; all are art tests and a worktree has no
+Paragon content.
+
+### The three guard proofs
+
+Each was registered before it ran with the test AND the assertion it had to fail, and the assertion was
+read out of `game/Saved/Logs/Cataclysm.log` between the two halves rather than assumed. All three
+printed `PROVED`, none crashed, and every restored half printed 149 performed, 149 succeeded, 0 failed.
+
+| Proof | What was removed | What failed | What the assertion printed |
+| :-- | :-- | :-- | :-- |
+| 1 | the Elite floor, so every rank below the ceiling absorbs | `ACommonBesideADyingAllyAbsorbsNothing` | Expected 'nothing was absorbed' to be "0 death(s) absorbed, 0 rung(s) gained", but it was "1 death(s) absorbed, 0 rung(s) gained" |
+| 2 | the reach, by handing the search 100000.0f | `AnEliteBeyondTheReachAbsorbsNothing` | the same two strings: an Elite 800 cm from the body was fed |
+| 3 | the ceiling, so a creature at Herald goes on absorbing | `ACreatureAtHeraldAbsorbsNothing` | Expected 'it absorbed none of them' to be "0 death(s) absorbed, 0 rung(s) gained", but it was "3 death(s) absorbed, 1 rung(s) gained" |
+
+**THE SECOND PROOF BREAKS THE SEARCH CALL AND NOT THE REACH FIGURE, ON PURPOSE.** That test asserts its
+own distance against `BloodForgedChampionsRadiusCm()` before it asserts the outcome, so a break in the
+figure would have failed the guard first and the test would never have reached the thing it exists to
+measure. That is the shape of dead proof which cost Epidemic two attempts the evening before, and it
+was avoided here by reading the test before choosing the break.
+
+### The Python side
+
+```
+python -m pytest
+5278 passed, 8 skipped in 312.57s (0:05:12)
+junit xml: tests=5286 failures=0 errors=0 skipped=8 -> passed=5278
+python -m ruff check .   ->   All checks passed!
+```
+
+The four checks that hold this rule to its row were proved separately, before the machine was free:
+seven deliberate breaks through `tools/prove_guard.py`, run in a git-archive copy so no break could
 disturb the worktree, each predicted before it ran and each failing exactly its predicted check, every
-restored half back to 115 passed, ending `0 problem(s)`: the row loses "Elite enemies"; loses "nearby";
+restored half back to 115 passed, ending `0 problem(s)`. The row loses "Elite enemies"; loses "nearby";
 ends at a boss rather than a mini-boss; gains a figure of its own; the reach becomes `6.0f`; the Elite
 floor becomes `1`; the Herald ceiling becomes `3`.
 
@@ -113,10 +151,6 @@ stronger" appears in two rows, this one and `Pestilence_Carrion_Feast`, so the b
 until it was lengthened to "growing stronger and potentially".
 
 ### What the tests do not show
-
-- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the eleven automation tests and the three guard proofs wait for this machine's next free window, and
-  this section will be replaced by what those runs print.
 - **What a floor of champions does to a fight.** Every test feeds one champion a handful of deaths on
   an emptied floor. How often three creatures die within six metres of the same Elite in real play was
   not measured.
