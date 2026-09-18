@@ -134,6 +134,21 @@ HOOKS = {
             "UCataclysmDropSpawner::PlayerLootStats",
             "UCataclysmEnemyScore::ScoreFor",
             "UCataclysmEnemyScore::FloorIn",
+            # A QUESTION AND NOT A JOB, for the same reason `PlayerLootStats` beside
+            # it is one: it answers what magic find the drop roll should use, given
+            # what the player carries, whether this creature was a boss and what the
+            # floor grants. The JOB is `SpawnDropsFor`, which is already listed.
+            #
+            # DELETING THIS CALL WOULD FAIL NO TEST, AND THAT IS NOT AN OVERSIGHT.
+            # Judgment Zones' bonus reaches this handler through
+            # `ACataclysmDungeonGameMode::JudgmentZonesMagicFindIn`, which finds the
+            # floor with `UWorld::GetAuthGameMode` -- and a world built by
+            # `UWorld::CreateWorld` has no authority game mode, so no automation test
+            # can make it answer. `UCataclysmEnemyScore::FloorIn` above carries the
+            # identical gap for the floor number. The arithmetic itself IS tested, by
+            # `Cataclysm.DungeonModifierEffects.TheBonusIsAddedForABossKillAndNot`
+            # `AnOrdinaryOne`, because it takes its inputs as arguments.
+            "UCataclysmDungeonModifierEffects::JudgmentZonesMagicFindFor",
         },
     },
     # A BUTTON'S CLICK HANDLER IS THE SAME KIND OF HOOK. Issue #1064. It is bound
