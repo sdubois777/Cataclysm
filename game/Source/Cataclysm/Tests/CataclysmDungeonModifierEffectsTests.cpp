@@ -929,13 +929,28 @@ namespace CataclysmDungeonModifierEffectsTest
 	 * THE RUNG AFTER THE SPAWN, because `SetRarityStep` ends in
 	 * `ApplyStartingAttributes`, which rewrites the creature's designed numbers.
 	 *
-	 * AND THE CREATURE IS WOUNDED BACK DOWN AFTERWARDS, WHICH IS WHAT KEEPS A TEST KILL
-	 * CERTAIN. `ApplyStartingAttributes` also refills both pools to the new maximums, so
-	 * a creature given a rung is holding its designed health rather than the 100 it was
-	 * spawned with -- and an Elite's is several times a Common's. Every test in this file
-	 * that kills a creature with the player's blow kills one holding 100 and no energy
-	 * shield, so this puts it back to that. `SpawnChampionAtRung` above does not need
-	 * this because nothing kills the creatures it makes.
+	 * IT IS GIVEN A DESIGNED ATTACK DAMAGE, AND WITHOUT THAT IT DEALS NOTHING. A creature
+	 * spawned straight into the world never goes through the floor's population pass, so
+	 * `StartingAttackDamage` is unset, `WriteAttackDamage` skips the write and the
+	 * attribute stays at zero. MEASURED: the first run of these tests failed
+	 * `EveryCreatureOnTheFloorHitsHarderForHowDeepItIs` on "the creatures have damage to
+	 * raise", and a creature with no damage also cannot kill another one, which is what
+	 * `ACommanderKilledByAnythingElsePaysNothing` needs. The figure itself does not matter:
+	 * every test here compares this creature's damage against its own earlier reading.
+	 *
+	 * AND ITS EVASION IS ZEROED AGAIN AFTER THE RUNG, WHICH IS WHAT MAKES A KILL CERTAIN.
+	 * `SpawnImpWithHealth` zeroes it and `SetRarityStep` puts the designed figure back, so
+	 * a creature given a rung can dodge. MEASURED: in the first run of these tests two
+	 * tests killed an Elite the same way and one of them failed, which is what a coin toss
+	 * looks like. `UCataclysmDamageCalculation` returns with nothing dealt when the roll
+	 * lands under the defender's evasion.
+	 *
+	 * AND IT IS WOUNDED BACK DOWN LAST. `ApplyStartingAttributes` also refills both pools
+	 * to the new maximums, so a creature given a rung holds its designed health rather than
+	 * the 100 it was spawned with -- and an Elite's is several times a Common's. Every test
+	 * in this file that kills a creature with the player's blow kills one holding 100 and
+	 * no energy shield, so this puts it back to that. `SpawnChampionAtRung` above needs
+	 * none of this because nothing kills or reads the damage of the creatures it makes.
 	 */
 	ACataclysmEnemyCharacter* PlaceCreatureAtRung(UWorld* World,
 												 ACataclysmDungeonGameMode* Mode,
@@ -947,7 +962,17 @@ namespace CataclysmDungeonModifierEffectsTest
 			return nullptr;
 		}
 
+		// BEFORE THE RUNG, so the rung's own damage scale multiplies it the way it
+		// multiplies a creature the floor placed.
+		Creature->SetAttackDamage(100.0f);
 		Creature->SetRarityStep(Rung);
+
+		if (UAbilitySystemComponent* System = Creature->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		}
+
 		WoundCreatureTo(Creature, 100.0f, 0.0f);
 		Mode->FloorEnemies.Add(Creature);
 		return Creature;
