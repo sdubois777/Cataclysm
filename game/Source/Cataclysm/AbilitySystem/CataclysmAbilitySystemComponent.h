@@ -584,6 +584,30 @@ public:
 	float MaximumEnergyShield() const;
 
 	/**
+	 * The character's maximum class resource, with any row that scales it.
+	 *
+	 * THE SAME SHAPE AS `MaximumEnergyShield` ABOVE AND FOR THE SAME REASON.
+	 * Issue #1515. `Ritualist_keystone_d_kC` Vessel reads "Your Maximum Mana also
+	 * grants maximum Fervour: 1 Fervour for every 20 maximum mana you have", and
+	 * a scaled row is never folded into a gameplay attribute -- so until this
+	 * existed nothing asked for `class_resource` through the pipeline and the row
+	 * would have been accepted, built, imported and dead.
+	 *
+	 * EVERY READER OF THE MAXIMUM SHOULD ASK THIS RATHER THAN THE ATTRIBUTE,
+	 * WITH ONE EXCEPTION. `UCataclysmAbilitySystemComponent::CurrentConditions`
+	 * fills `ClassResourceMaximum` and may NOT call this: the lookup asks
+	 * `StatAppliedTo`, which asks `CurrentConditions` for the readings a
+	 * conditional row needs, so the call would not return. The comment on that
+	 * line says so and says what it costs.
+	 *
+	 * ZERO WHEN THERE IS NO CLASS RESOURCE ATTRIBUTE SET, which is every enemy in
+	 * the game. Reading an attribute whose set the component does not hold raises
+	 * an engine ensure rather than answering zero.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
+	float MaximumClassResource() const;
+
+	/**
 	 * What is true of this character right now, for a conditional bonus.
 	 *
 	 * PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than

@@ -1574,6 +1574,30 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Point Of Maximum Mana"),
 
 	/**
+	 * Per whole step of the character's MAXIMUM health. Issue #1515.
+	 *
+	 * `Ravager_keystone_a_kC` Weight Bearing is the row: "Your Maximum Health
+	 * also grants Armor: 1 Armor for every 10 maximum health you have." The step
+	 * is the ten; the value is the one.
+	 *
+	 * THE MAXIMUM AND NOT THE HEALTH IN HAND, which is the whole point of it. A
+	 * character at half health has the same maximum and the same armour from
+	 * this; taking damage does not take the armour away. The three health scales
+	 * beside it all read how FULL the bar is and this one reads how BIG it is.
+	 *
+	 * IT TRACKS THE MAXIMUM AS IT MOVES, ruled under the project owner's
+	 * delegation on 2026-09-18 and recorded in `docs/DECISIONS.md` as a balance
+	 * statement: a scaled row is worked out when something asks, so gear and
+	 * passives that raise maximum health raise the armour this grants, and one
+	 * that lowers it lowers the armour.
+	 *
+	 * WHOLE STEPS, ROUNDED DOWN, the rule every per-point scale in this file
+	 * already follows.
+	 */
+	PerPointOfMaximumHealth
+		UMETA(DisplayName = "Per Point Of Maximum Health"),
+
+	/**
 	 * Multiplied by how many whole `ScaleStep` metres lie between the character
 	 * and what it is striking. Issue #1981.
 	 *
@@ -1936,6 +1960,23 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float MaximumMana = -1.0f;
+
+	/**
+	 * How much maximum health the character has. Issue #1515.
+	 *
+	 * NEGATIVE MEANS UNKNOWN: an ability system with no vital attribute set.
+	 *
+	 * THE MAXIMUM ITSELF, WHICH `HealthPercent` THROWS AWAY.
+	 * `FCataclysmStatConditions::FromHealth` divides the health in hand by this
+	 * and keeps only the share, so every existing health reading answers "how
+	 * full" and none of them answers "how big". Weight Bearing asks the second
+	 * question -- "1 Armor for every 10 maximum health you have" -- and no
+	 * arithmetic on a percentage can recover it.
+	 *
+	 * READ OFF THE ATTRIBUTE, FOR THE REASON `MaximumMana` GIVES beside it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float MaximumHealth = -1.0f;
 
 	/**
 	 * How many stacks of each kind the character is holding. Issues #1002,

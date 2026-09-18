@@ -391,6 +391,29 @@ float UCataclysmAbilitySystemComponent::MaximumEnergyShield() const
 						 FGameplayTagContainer(), GetNumericAttribute(Maximum));
 }
 
+float UCataclysmAbilitySystemComponent::MaximumClassResource() const
+{
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+
+	// THE ATTRIBUTE-SET CHECK IS NOT OPTIONAL, for the reason
+	// `MaximumEnergyShield` gives: reading an attribute whose set the component
+	// does not hold raises an engine ensure, and every enemy in the game has no
+	// class resource set.
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+
+	// APPLIED TO WHAT THE ATTRIBUTE HOLDS, so a scaled row reaches play and
+	// nothing written straight to the attribute is lost. `StatAppliedTo` and not
+	// `StatForSkill` for the reason the header gives on the shield's lookup: the
+	// figure in hand is the base, and the class line's own figure is what that
+	// figure already is.
+	return StatAppliedTo(FName(TEXT("class_resource")), FGameplayTagContainer(),
+						 GetNumericAttribute(Maximum));
+}
+
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
@@ -565,6 +588,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		State = FCataclysmStatConditions::FromHealth(Vitals->GetHealth(),
 													 Vitals->GetMaxHealth());
 
+		// AND THE MAXIMUM ITSELF, WHICH `FromHealth` DOES NOT KEEP. Issue
+		// #1515. It divides the health in hand by the maximum and stores the
+		// share, so a row asking how BIG the bar is -- Weight Bearing's "1 Armor
+		// for every 10 maximum health" -- has nothing to read without this.
+		//
+		// AFTER THE ASSIGNMENT ABOVE AND NOT BEFORE IT, for the reason the
+		// energy shield readings give: `FromHealth` returns a whole state and
+		// replaces every field, so a reading taken first would be discarded.
+		State.MaximumHealth = Vitals->GetMaxHealth();
+
 		// AND HOW MUCH ENERGY SHIELD IS IN HAND, WITH THE TOP OF THAT BAR.
 		// Issue #1515. Cold Reading asks for it: "+2% increased Spell Damage per
 		// point while your Energy Shield is full."
@@ -654,6 +687,23 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// is gone, so every character's pool has a real top again.
 		State.ClassResourceMaximum =
 			FMath::Max(0.0f, Resource->GetMaxClassResource());
+
+		// THE ATTRIBUTE, AND THIS IS THE ONE READER THAT MAY NOT ASK FOR IT.
+		// Issue #1515 gave the maximum a lookup, `MaximumClassResource` above,
+		// so a row that scales it reaches play, and every other reader in the
+		// game now goes through it. This line cannot: that lookup asks
+		// `StatAppliedTo`, which asks this very function for the readings a
+		// conditional row needs, so the call would not be slow, it would not
+		// return. It is the same exception the energy shield's maximum makes
+		// twenty lines up, for the same reason.
+		//
+		// WHAT IT COSTS, STATED RATHER THAN LEFT TO BE FOUND: a row conditioned
+		// on the class resource -- `class_resource_at_maximum`, or the share
+		// `class_resource_above` reads -- compares against the UNSCALED
+		// maximum. So a Ritualist holding Vessel with a large mana pool reads
+		// "at maximum" a little before its bar really is. The alternative is a
+		// stat worked out while working out that same stat, which is not an
+		// alternative.
 
 		// AND HOW MUCH HEALTH THE CHARACTER OWES, AS A SHARE OF ITS MAXIMUM.
 		// Issue #994. Compound Interest grows with it: "+1% increased damage per
