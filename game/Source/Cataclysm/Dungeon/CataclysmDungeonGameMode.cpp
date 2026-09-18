@@ -3608,17 +3608,31 @@ void ACataclysmDungeonGameMode::ApplyVengefulWraithFigures(
 	Abilities->SetNumericAttributeBase(Combat::GetDamageReductionMoreAttribute(),
 									   Effects::VengefulWraithsDamageReductionMore);
 
-	// AND THE ONE INCREASE THE ROW STATES, ON THE THREE STATS IT NAMES. Each is read and
-	// raised, so a wraith is 20% above ITS OWN rung's figure rather than above a fixed one:
-	// a wraith that is later raised a rung keeps the rung's gain and its own on top.
-	for (const FGameplayAttribute& Raised : {Combat::GetAttackDamageAttribute(),
-											 Combat::GetAttackSpeedAttribute(),
-											 Combat::GetMovementSpeedAttribute()})
-	{
-		Abilities->SetNumericAttributeBase(
-			Raised,
-			Effects::VengefulWraithsIncreased(Abilities->GetNumericAttribute(Raised)));
-	}
+	// AND THE ONE INCREASE THE ROW STATES, ON THE ONE STAT OF THE THREE THAT IS AN
+	// ATTRIBUTE. It is read and raised, so a wraith is the row's figure above ITS OWN
+	// rung's damage rather than above a fixed one: a wraith later raised a rung keeps the
+	// rung's gain and its own on top.
+	Abilities->SetNumericAttributeBase(
+		Combat::GetAttackDamageAttribute(),
+		Effects::VengefulWraithsIncreased(
+			Abilities->GetNumericAttribute(Combat::GetAttackDamageAttribute())));
+
+	// AND THE OTHER TWO STATS THE ROW NAMES ARE NOT ATTRIBUTES AT ALL, WHICH WAS MEASURED
+	// AND NOT ASSUMED. A creature's attack rate is its designed interval over
+	// `ACataclysmEnemyCharacter::SpeedMultiplier`, and its walk speed is its designed
+	// speed times the same; NEITHER reads `AttackSpeed` or `MovementSpeed`. Writing those
+	// two attributes here did nothing at all, and the automation test for the row's three
+	// stats is what found it: the attack speed attribute read 0.00 on a creature.
+	//
+	// SO THE TWO SPEEDS GO THROUGH THE CREATURE'S OWN MULTIPLIER, where `SpeedMultiplier`
+	// says an effect naming BOTH belongs. The flag is all this rule sets; the factor is
+	// read from this rule's own constant on the other side.
+	Wraith->bIsVengefulWraith = true;
+
+	// AND THE WALK SPEED IS PUT RIGHT NOW RATHER THAN NEXT FRAME. `RefreshWalkSpeed` runs
+	// every Tick anyway, so this only spares the creature one frame at its old speed --
+	// but it is also what lets a test read the speed without ticking the world.
+	Wraith->RefreshWalkSpeed();
 
 	// AND IT GOES ON SEEING THE WHOLE FLOOR. `SpawnPlacedCreature` set this when the wraith
 	// rose; it is written again here because a rung change is a good place to lose it and

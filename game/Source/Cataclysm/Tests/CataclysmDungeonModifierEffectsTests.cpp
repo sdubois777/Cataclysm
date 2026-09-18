@@ -35,6 +35,7 @@
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
 #include "GameplayTagsManager.h"
@@ -853,6 +854,18 @@ namespace CataclysmDungeonModifierEffectsTest
 		Mode->DungeonModifiers = {VengefulWraiths};
 		Mode->DungeonModifiers.Append(AlsoCarrying);
 		Mode->FloorNumber = 1;
+
+		// AND EVERY IMP IS A COMMON, WHICH IS NOT TIDINESS BUT A MEASURED FAULT.
+		// `ImpRarityStep` is -1 by default, meaning DRAW a rung, and the weights in
+		// `game/Data/EnemyRarities.csv` are Common 0.60, Elite 0.20, Legendary 0.15,
+		// Herald 0.04, Boss 0.01. A wraith rises as a creature of the slain one's kind
+		// and draws its own rung, so one wraith in twenty-five arrives at Herald --
+		// which is the ceiling every floor rule stops at, so nothing can raise it.
+		// MEASURED 2026-09-18: `AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound`
+		// failed on exactly that draw, "Expected 'the wraith rose a rung' to be 4, but
+		// it was 3". Pinned here rather than in that one test, because a drawn rung is
+		// a coin toss under every assertion in this group.
+		Mode->ImpRarityStep = 0;
 		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
 		{
 			return nullptr;
@@ -16531,33 +16544,51 @@ bool FCataclysmWraithIncreaseTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// EACH STAT IS READ WHERE THE GAME READS IT, AND THE THREE ARE NOT ALIKE. Measured in
+	// the window this rule was built in: attack damage IS an attribute, while a creature's
+	// attack rate is its designed interval over `SpeedMultiplier()` and its walk speed is
+	// the figure the movement component holds. The `AttackSpeed` and `MovementSpeed`
+	// attributes are read by nothing on a creature -- the first sat at 0.00 -- so a test
+	// reading them would pass for a rule that did nothing.
+	UCharacterMovementComponent* Movement = Wraith->GetCharacterMovement();
+	if (!TestNotNull(TEXT("the wraith has a movement component to read"), Movement))
+	{
+		return false;
+	}
+
 	const float Damage = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
-	const float Speed = CombatStatOf(Wraith, Combat::GetAttackSpeedAttribute());
-	const float Movement = CombatStatOf(Wraith, Combat::GetMovementSpeedAttribute());
+	const float Interval = Wraith->SecondsBetweenAttacks();
+	const float Walk = Movement->MaxWalkSpeed;
 
 	// WHAT ITS KIND WOULD HAVE, READ OFF THE SAME CREATURE. Setting the rung it already
-	// holds writes its whole stat block back from its kind's own figures, which is exactly
-	// the number the increase was applied to. A second creature would not serve: the rule
-	// spawns through the floor's own placer and a hand-spawned one has a different block.
+	// holds writes its whole stat block back from its kind's own figures, and clearing the
+	// flag takes the two speeds back to that kind's own. A second creature would not
+	// serve: the rule spawns through the floor's own placer and a hand-spawned one has a
+	// different block.
 	Wraith->SetRarityStep(Wraith->RarityStep);
+	Wraith->bIsVengefulWraith = false;
+	Wraith->RefreshWalkSpeed();
 	const float PlainDamage = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
-	const float PlainSpeed = CombatStatOf(Wraith, Combat::GetAttackSpeedAttribute());
-	const float PlainMovement = CombatStatOf(Wraith, Combat::GetMovementSpeedAttribute());
+	const float PlainInterval = Wraith->SecondsBetweenAttacks();
+	const float PlainWalk = Movement->MaxWalkSpeed;
 
 	if (!TestTrue(FString::Printf(TEXT("its kind has all three to raise: %.2f damage, "
-									   "%.2f attack speed, %.2f movement"),
-								  PlainDamage, PlainSpeed, PlainMovement),
-				  PlainDamage > 0.0f && PlainSpeed > 0.0f && PlainMovement > 0.0f))
+									   "%.2f seconds between attacks, %.2f walk speed"),
+								  PlainDamage, PlainInterval, PlainWalk),
+				  PlainDamage > 0.0f && PlainInterval > 0.0f && PlainWalk > 0.0f))
 	{
 		return false;
 	}
 
 	TestEqual(TEXT("the wraith hits harder by the row's one figure"), Damage,
 			  Effects::VengefulWraithsIncreased(PlainDamage), 0.01f);
-	TestEqual(TEXT("and swings faster by it"), Speed,
-			  Effects::VengefulWraithsIncreased(PlainSpeed), 0.01f);
-	TestEqual(TEXT("and moves faster by it"), Movement,
-			  Effects::VengefulWraithsIncreased(PlainMovement), 0.01f);
+
+	// AN INTERVAL IS DIVIDED AND NOT MULTIPLIED, which the creature class says at length:
+	// "20% more attack speed is 2.6 seconds becoming 2.167, not 3.12".
+	TestEqual(TEXT("and swings faster by it, which shortens the interval"), Interval,
+			  PlainInterval / (Effects::VengefulWraithsIncreased(1.0f)), 0.01f);
+	TestEqual(TEXT("and walks faster by it"), Walk,
+			  Effects::VengefulWraithsIncreased(PlainWalk), 0.01f);
 	return true;
 }
 
@@ -16897,6 +16928,13 @@ bool FCataclysmWraithRungTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("it still takes the row's share off every hit"),
 			  CombatStatOf(Wraith, Combat::GetDamageReductionMoreAttribute()),
 			  Effects::VengefulWraithsDamageReductionMore, 0.01f);
+
+	// AND IT IS STILL A WRAITH, WHICH NEEDED NO PUTTING BACK. The two speeds hang off this
+	// flag rather than off attributes, and `ApplyStartingAttributes` does not touch it, so
+	// a rung change cannot take them away. That is the difference between this and the two
+	// figures above, which a rung change DOES wipe.
+	TestTrue(TEXT("and it is still a wraith after the rung change"),
+			 Wraith->bIsVengefulWraith);
 
 	// AND THE INCREASE DID NOT HAPPEN TWICE. Reading the new rung's own figure back the
 	// same way the increase test does: the wraith must be the row's one increase above it,

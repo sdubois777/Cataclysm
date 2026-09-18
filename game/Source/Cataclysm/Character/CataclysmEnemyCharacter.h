@@ -915,8 +915,37 @@ public:
 	 */
 	float SpeedMultiplier() const
 	{
-		return CommanderMultiplier() * CrippleMultiplier();
+		return CommanderMultiplier() * CrippleMultiplier() * WraithMultiplier();
 	}
+
+	/**
+	 * Whether this creature stood back up under the Vengeful Wraiths floor rule.
+	 *
+	 * A FLAG AND NOT A TAG, WHICH IS THE OPPOSITE OF `CrippleMultiplier` BESIDE IT.
+	 * Cripple is granted by an effect for a row's own duration and the ability system
+	 * takes it away, so a tag is the single source of truth there and nothing has to be
+	 * told. Being a wraith is permanent, given by a floor rule at the moment the creature
+	 * is spawned: there is no effect to hang it on and nothing to take it away.
+	 *
+	 * IT SURVIVES A RUNG CHANGE BY ITSELF, which the wraith's other figures do not.
+	 * `ApplyStartingAttributes` writes attributes and does not touch this, so a wraith
+	 * raised a rung by Blood-Forged Champions or Volatile Evolution is still fast.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsVengefulWraith = false;
+
+	/**
+	 * What being a wraith does to this creature's movement and attack speed.
+	 *
+	 * HERE AND NOT WRITTEN ONTO TWO ATTRIBUTES, and that was measured rather than chosen.
+	 * A creature's attack rate is `DesignedSecondsBetweenAttacks()` over
+	 * `SpeedMultiplier()` and its walk speed is `DesignedWalkSpeedCmPerSecond` times the
+	 * same, so NEITHER reads the `AttackSpeed` or `MovementSpeed` attribute. A floor rule
+	 * writing those attributes on a creature does nothing at all, which is what the
+	 * automation test for the row's three stats found. `SpeedMultiplier` above states the
+	 * rule this follows: "anything naming BOTH stats belongs here".
+	 */
+	float WraithMultiplier() const;
 
 	/**
 	 * Seconds between this creature's attacks BEFORE any buff.
