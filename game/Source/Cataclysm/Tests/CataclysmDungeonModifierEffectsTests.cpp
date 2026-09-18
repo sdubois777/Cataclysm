@@ -19193,15 +19193,22 @@ bool FCataclysmAuraLapseTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// THE FLOOR STOPS CARRYING THE ROW AND THE WORLD CLOCK IS MOVED PAST THE GRANT.
-	// `Beat` moves the rule's clock and deliberately not the world's, and a gameplay
-	// effect's duration runs on the world clock -- so a test that only beat would watch
-	// an effect that never expires.
-	Mode->DungeonModifiers = {};
-	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
-	{
-		return false;
-	}
+	// NOTHING GRANTS THE BUFF ANY MORE: the Elite is destroyed where it stands and the
+	// ally is left alive, because the ally is what this test has to read afterwards.
+	//
+	// THE FLOOR IS NOT CHANGED TO ACHIEVE THAT, AND THE FIRST VERSION OF THIS TEST DID
+	// EXACTLY THAT AND FAILED. `GoToFloor` onto a floor that is not the same arena calls
+	// `ClearFloorEnemies`, which DESTROYS every creature standing there -- so the test
+	// dropped the row, changed floor, and then read a creature that change had just
+	// destroyed. A destroyed actor is not freed at once in this engine, so its ability
+	// system still held the effect and still answered 1.2; the run reported "Expected
+	// 'and the buff is gone once nothing grants it' to be 1.000000, but it was
+	// 1.200000". The rule was never in question.
+	//
+	// AND THE WORLD CLOCK IS MOVED RATHER THAN THE RULE'S. `Beat` moves the rule's clock
+	// and deliberately not the world's, and a gameplay effect's duration runs on the
+	// world clock -- so a test that only beat would watch an effect that never expires.
+	Commander->Destroy();
 	CataclysmTestWorld::RunClock(World, Effects::CommandersAuraGrantSeconds * 2.0f);
 
 	TestEqual(TEXT("and the buff is gone once nothing grants it"),
