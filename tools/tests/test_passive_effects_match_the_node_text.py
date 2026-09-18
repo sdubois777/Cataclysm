@@ -568,7 +568,16 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: of one, which is what makes a minion's hit and kill count as its summoner's.
 #: The engine read that stat from the day before; until this row there was
 #: nothing in the data to grant it, so the keystone did nothing in play.
-AUTHORED_ROWS = 286
+#:
+#: AND TO 288 ON 2026-09-18, when `Behind the Veil`
+#: (`Ritualist_keystone_spine_002`) was given its TWO rows:
+#: `minions_draw_nearby_enemies_metres` at 10 and
+#: `minions_draw_nearby_enemies_minimum` at 3. It is the same shape as the
+#: entry above and for the same reason -- the engine read both stats before any
+#: row granted them -- and it is two rows rather than one because the node
+#: states two numbers, a reach and a count, and a reader of the rows must see
+#: both.
+AUTHORED_ROWS = 288
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -924,7 +933,13 @@ AUTHORED_ROWS = 286
 #: (`Ritualist_keystone_spine_003`) was given the row that grants
 #: `minion_hits_count_as_yours`. That node had none before, so this and the row
 #: count moved together again, and the Ritualist is 67 of its 74.
-AUTHORED_NODES = 210
+#:
+#: AND TO 211 ON 2026-09-18, when `Behind the Veil`
+#: (`Ritualist_keystone_spine_002`) was given its two rows. That node had none
+#: before, so this moved with the row count for the third time, and the
+#: Ritualist is 68 of its 74. TWO ROWS RAISED THIS BY ONE, because it counts
+#: nodes and not rows.
+AUTHORED_NODES = 211
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1896,6 +1911,16 @@ VALUE_FORMS = {
 
     "health_debt_delay_extension": "{value:g} second",
 
+    # HOW FAR BEHIND THE VEIL DRAWS ENEMIES, IN METRES. Issue #1515. The node
+    # reads "Enemies within 10 metres attack your minions rather than you", so
+    # the number is followed by a unit of distance and not by a percent sign.
+    #
+    # THE NODE'S OTHER ROW IS NOT HERE, and that is the difference between the
+    # two mappings: this one says how a number is WRITTEN, and the count of
+    # minions is not written as a number at all -- the same sentence says
+    # "three or more minions" -- so it is exempted in `VALUE_IN_WORDS` instead.
+    "minions_draw_nearby_enemies_metres": "{value:g} metres",
+
     # A PLAIN COUNT OF FERVOUR, which is the last form issue #990 named and had
     # no entry for. Low Life reads "you gain 10 Fervour per second", so the
     # number is followed by the resource's name rather than by a percent sign or
@@ -2069,6 +2094,13 @@ VALUE_FORMS = {
 #:
 #: KEYED BY NODE AND STAT, so it exempts one row rather than a stat everywhere.
 VALUE_IN_WORDS = {
+    # AND THE COUNT OF MINIONS BEHIND THE VEIL ASKS FOR. Issue #1515. The node
+    # reads "while you have three or more minions", so the sheet's 3 has no
+    # digit to match in the sentence. Its OTHER row needs no entry: the same
+    # sentence says "within 10 metres", and 10 is written as a number there.
+    ("Ritualist_keystone_spine_002", "minions_draw_nearby_enemies_minimum"):
+        ("three or more", 3.0),
+
     ("Masochist_keystone_bt_kA", "deferred_health_cost_share"):
         ("never taken", 100.0),
     # THE PHRASE LOST THE WORD "ONLY" ON 2026-09-01, ISSUE #1122, and the
