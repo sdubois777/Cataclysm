@@ -21,6 +21,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
+#include "Interface/CataclysmCreaturePanel.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
@@ -4800,18 +4801,60 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		const float Multiplier = Effects::MarchOfProgressDamageMultiplierOnFloor(
 			FloorBrief.FloorNumber);
-		const TCHAR* Commander = TEXT("no Commander");
+
+		// THE CREATURE IS NAMED, AND THAT IS WHY THIS LINE CHANGED AFTER THE RULE MERGED.
+		// Issues #1820, #41 and #1997. A floor can carry this row and `War_Commander_s_Aura`
+		// at once, and both use the word "Commander" for different things: one creature the
+		// player must hunt, and every Elite buffing its neighbours. Saying WHICH creature is
+		// this rule's Commander is what keeps the two lines apart on one panel. It does not
+		// close issue #1997 -- a name in a panel is still not a way to pick a creature out
+		// of a crowd -- and that issue says what would be.
+		//
+		// FROM THE ARCHETYPE TABLE AND NOT FROM THE CLASS NAME, which is what
+		// `ArchetypeNameForRow` exists for: a creature renamed in the design workbook is
+		// renamed here with no C++ edited. It answers an empty string for a creature that
+		// names no row, which is every creature the sandbox spawns as a practice target, and
+		// `UnnamedCreature` is what the creature panel already says for those.
+		//
+		// THIS FILE'S FIRST INCLUDE FROM `Interface/`, AND IT IS A FUNCTION LIBRARY RATHER
+		// THAN A WIDGET: `UCataclysmCreaturePanel` is a `UBlueprintFunctionLibrary` whose
+		// header pulls in CoreMinimal, the library base and Box2D. Resolving the name here
+		// rather than passing the row key outward is what stops a second copy of the lookup
+		// existing.
+		// THE NAME IS TAKEN FIRST AND THE STATE IS DECIDED SECOND, and the order of those
+		// two questions is the whole of this block. A creature that has DIED keeps a valid
+		// weak pointer until its body is removed, so "is the pointer valid" does not answer
+		// "is it alive" -- only `bMarchOfProgressCommanderSlain` does. Asking the pointer
+		// first and calling that alive would print "alive" for the Commander the player had
+		// just killed, for as long as the body stood there.
+		FString Named;
+		if (const ACataclysmEnemyCharacter* Chosen = MarchOfProgressCommander.Get())
+		{
+			Named = UCataclysmCreaturePanel::ArchetypeNameForRow(
+				UCataclysmCreaturePanel::LoadEnemyArchetypeTable(), Chosen->ArchetypeRow);
+			if (Named.IsEmpty())
+			{
+				Named = UCataclysmCreaturePanel::UnnamedCreature;
+			}
+		}
+
+		// AND A SLAIN COMMANDER IS STILL NAMED WHEN ITS BODY IS STILL THERE. Once the body
+		// goes the pointer goes stale and there is no name left to print, which is why the
+		// slain wording has to read without one.
+		FString Commander(TEXT("no Commander"));
 		if (bMarchOfProgressCommanderSlain)
 		{
-			Commander = TEXT("Commander slain");
+			Commander = Named.IsEmpty()
+				? FString(TEXT("this floor's Commander, slain"))
+				: FString::Printf(TEXT("%s, this floor's Commander, slain"), *Named);
 		}
-		else if (MarchOfProgressCommander.IsValid())
+		else if (!Named.IsEmpty())
 		{
-			Commander = TEXT("Commander alive");
+			Commander = FString::Printf(TEXT("%s, this floor's Commander, alive"), *Named);
 		}
 
 		Counting.Add(March, FString::Printf(
-			TEXT("enemies x%.1f, %s, %d slain this run"), Multiplier, Commander,
+			TEXT("enemies x%.1f, %s, %d slain this run"), Multiplier, *Commander,
 			MarchOfProgressCommandersKilled));
 	}
 

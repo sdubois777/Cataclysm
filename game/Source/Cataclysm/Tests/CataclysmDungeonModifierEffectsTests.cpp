@@ -177,6 +177,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	const FName MarchOfProgress(UCataclysmDungeonModifierEffects::MarchOfProgressKey);
 
+	/** And the one where every Elite buffs the allies standing near it. Issues #1820, #41. */
+	const FName CommandersAura(UCataclysmDungeonModifierEffects::CommandersAuraKey);
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -914,6 +917,46 @@ namespace CataclysmDungeonModifierEffectsTest
 	{
 		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
 		const FString* Line = Counting.Find(MarchOfProgress);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/**
+	 * The floor every Commander's Aura test starts from. Issues #1820 and #41.
+	 *
+	 * EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so the only creatures on the
+	 * floor are the ones a test places -- which matters more here than for most rules,
+	 * because this one sweeps every creature in the world and any Elite the population
+	 * pass left standing would command as well.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheAuraRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		Mode->DungeonModifiers = {CommandersAura};
+		Mode->FloorNumber = 1;
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString AuraPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(CommandersAura);
 		return Line ? *Line : FString(TEXT("no line"));
 	}
 
@@ -18711,7 +18754,8 @@ bool FCataclysmMarchPanelTest::RunTest(const FString& Parameters)
 	// uses, so a change of wording cannot pass by comparing a string with itself.
 	if (!TestEqual(TEXT("the second floor, with its Commander still standing"),
 				   MarchPanelLine(Mode),
-				   FString(TEXT("enemies x1.2, Commander alive, 0 slain this run"))))
+				   FString(TEXT("enemies x1.2, Imp, this floor's Commander, alive, "
+							  "0 slain this run"))))
 	{
 		return false;
 	}
@@ -18721,7 +18765,8 @@ bool FCataclysmMarchPanelTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("and it says so as soon as the Commander falls"), MarchPanelLine(Mode),
-			  FString(TEXT("enemies x1.2, Commander slain, 1 slain this run")));
+			  FString(TEXT("enemies x1.2, Imp, this floor's Commander, slain, "
+						 "1 slain this run")));
 
 	// AND A FLOOR WITHOUT THE ROW HAS NO LINE OF ITS OWN.
 	Mode->DungeonModifiers = {};
@@ -18872,6 +18917,396 @@ bool FCataclysmMarchPopulateChoosesTest::RunTest(const FString& Parameters)
 	Beat(Mode, 4);
 	TestSamePtr(TEXT("and it is still the Commander four beats later"),
 				Mode->TheFloorsCommander(), Commander);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// War_Commander_s_Aura. Issues #1820 and #41.
+//
+// "Certain elite enemies act as commanders, providing buffs (e.g., increased health,
+// damage, or resistance) to nearby allies."
+//
+// THE BUFF IS READ BACK THROUGH `CommanderMultiplier`, WHICH IS WHAT THE TAG DOES. It
+// answers 1.2 for a creature holding the Commander tag and 1.0 for one that is not, so
+// every test here measures the thing the rule is for rather than the presence of a name.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraBuffsNeighboursTest,
+	"Cataclysm.DungeonModifierEffects.AnEliteBuffsTheAlliesStandingNearIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraBuffsNeighboursTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAuraRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Commander =
+		PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 1);
+	ACataclysmEnemyCharacter* Near =
+		PlaceCreatureAtRung(World, Mode, FVector(1400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("an Elite to command"), Commander)
+		|| !TestNotNull(TEXT("and a Common standing beside it"), Near))
+	{
+		return false;
+	}
+
+	// 400 cm APART, WELL INSIDE THE 800 THE RULE REACHES, and the figure is checked here
+	// rather than assumed so that a change to the reach fails this test honestly.
+	if (!TestTrue(TEXT("the two stand within the aura's reach"),
+				  FVector::Dist(Commander->GetActorLocation(), Near->GetActorLocation())
+					  < Effects::CommandersAuraRadiusCm))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("nobody is buffed before the first beat"),
+				   Near->CommanderMultiplier(), 1.0f, 0.001f))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("one beat buffs the ally standing beside the Elite"),
+			  Near->CommanderMultiplier(),
+			  1.0f + ACataclysmEnemyCharacter::CommanderIncreasePercent / 100.0f, 0.001f);
+
+	// AND THE COMMANDER DOES NOT BUFF ITSELF, which is the ruling and is what
+	// `FindAlliesInSphere` does by excluding the instigator it is given.
+	TestEqual(TEXT("and the Elite itself is not buffed"),
+			  Commander->CommanderMultiplier(), 1.0f, 0.001f);
+	return true;
+}
+
+// EVERY RUNG AT ELITE OR ABOVE COMMANDS, AND COMMON DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraRungTest,
+	"Cataclysm.DungeonModifierEffects.EveryRungAtEliteOrAboveCommandsAndCommonDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraRungTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ARITHMETIC FIRST, ACROSS THE WHOLE LADDER. `game/Data/EnemyRarities.csv` runs
+	// Common 0, Elite 1, Legendary 2, Herald 3, Boss 4, Cataclysm Boss 5. The row says
+	// "certain elite enemies" and names no ceiling, so everything above Elite commands
+	// too; refusing a Herald would be a figure the row does not state.
+	TestFalse(TEXT("a Common commands nobody"),
+			  Effects::CommandersAuraCommandsAtRung(0));
+	for (int32 Rung = 1; Rung <= 5; ++Rung)
+	{
+		TestTrue(FString::Printf(TEXT("rung %d commands"), Rung),
+				 Effects::CommandersAuraCommandsAtRung(Rung));
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAuraRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// TWO COMMONS SIDE BY SIDE, SO THE ONLY REASON NEITHER IS BUFFED IS THE RUNG.
+	ACataclysmEnemyCharacter* One =
+		PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Two =
+		PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a Common"), One) || !TestNotNull(TEXT("and another"), Two))
+	{
+		return false;
+	}
+
+	Beat(Mode, 4);
+	TestEqual(TEXT("a Common standing beside a Common buffs nothing"),
+			  One->CommanderMultiplier(), 1.0f, 0.001f);
+	TestEqual(TEXT("and is buffed by nothing"), Two->CommanderMultiplier(), 1.0f, 0.001f);
+	return true;
+}
+
+// THE REACH IS A REACH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraReachTest,
+	"Cataclysm.DungeonModifierEffects.AnAllyBeyondTheReachIsNotBuffed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraReachTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAuraRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// ONE INSIDE AND ONE OUTSIDE, BOTH PLACED FROM THE RULE'S OWN FIGURE rather than
+	// from numbers typed here, so a change to the reach moves both and the test still
+	// measures inside against outside.
+	const float Reach = Effects::CommandersAuraRadiusCm;
+	ACataclysmEnemyCharacter* Commander =
+		PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 1);
+	ACataclysmEnemyCharacter* Inside =
+		PlaceCreatureAtRung(World, Mode, FVector(1000.0f + Reach * 0.5f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Outside =
+		PlaceCreatureAtRung(World, Mode, FVector(1000.0f + Reach * 2.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("an Elite to command"), Commander)
+		|| !TestNotNull(TEXT("one ally within its reach"), Inside)
+		|| !TestNotNull(TEXT("and one well outside it"), Outside))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("the ally inside the reach is buffed"),
+			  Inside->CommanderMultiplier(),
+			  1.0f + ACataclysmEnemyCharacter::CommanderIncreasePercent / 100.0f, 0.001f);
+	TestEqual(TEXT("and the one outside it is not"),
+			  Outside->CommanderMultiplier(), 1.0f, 0.001f);
+	return true;
+}
+
+// TWO COMMANDERS ARE NOT TWICE THE BUFF.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraStackTest,
+	"Cataclysm.DungeonModifierEffects.StandingBetweenTwoCommandersIsNotTwiceTheBuff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraStackTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAuraRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE COMMON IS BETWEEN THE TWO ELITES AND WITHIN REACH OF BOTH.
+	ACataclysmEnemyCharacter* First =
+		PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 1);
+	ACataclysmEnemyCharacter* Between =
+		PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Second =
+		PlaceCreatureAtRung(World, Mode, FVector(1600.0f, 0.0f, 0.0f), 1);
+	if (!TestNotNull(TEXT("one Elite"), First)
+		|| !TestNotNull(TEXT("a Common between them"), Between)
+		|| !TestNotNull(TEXT("and a second Elite"), Second))
+	{
+		return false;
+	}
+
+	Beat(Mode, 4);
+
+	// 1.2 AND NOT 1.44. `ApplyTagForDuration` keeps one effect per tag, so the second
+	// commander refreshes the first one's grant rather than adding to it.
+	const float Once =
+		1.0f + ACataclysmEnemyCharacter::CommanderIncreasePercent / 100.0f;
+	TestEqual(TEXT("a creature between two commanders is buffed once"),
+			  Between->CommanderMultiplier(), Once, 0.001f);
+
+	// AND EACH ELITE IS BUFFED BY THE OTHER, because they are allies too and stand 600
+	// apart. That is the rule working rather than a special case: the row says nearby
+	// allies and names no exception for a creature that commands.
+	TestEqual(TEXT("and each Elite is buffed by the other"),
+			  First->CommanderMultiplier(), Once, 0.001f);
+	TestEqual(TEXT("both of them"), Second->CommanderMultiplier(), Once, 0.001f);
+	return true;
+}
+
+// THE BUFF LAPSES WHEN THE FLOOR STOPS GRANTING IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraLapseTest,
+	"Cataclysm.DungeonModifierEffects.TheBuffLapsesOnceNothingIsGrantingIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraLapseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAuraRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Commander =
+		PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 1);
+	ACataclysmEnemyCharacter* Near =
+		PlaceCreatureAtRung(World, Mode, FVector(1400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("an Elite to command"), Commander)
+		|| !TestNotNull(TEXT("and an ally beside it"), Near))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	const float Once =
+		1.0f + ACataclysmEnemyCharacter::CommanderIncreasePercent / 100.0f;
+	if (!TestEqual(TEXT("the ally is buffed"), Near->CommanderMultiplier(), Once, 0.001f))
+	{
+		return false;
+	}
+
+	// THE FLOOR STOPS CARRYING THE ROW AND THE WORLD CLOCK IS MOVED PAST THE GRANT.
+	// `Beat` moves the rule's clock and deliberately not the world's, and a gameplay
+	// effect's duration runs on the world clock -- so a test that only beat would watch
+	// an effect that never expires.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, Effects::CommandersAuraGrantSeconds * 2.0f);
+
+	TestEqual(TEXT("and the buff is gone once nothing grants it"),
+			  Near->CommanderMultiplier(), 1.0f, 0.001f);
+	return true;
+}
+
+// WHAT THE FLOOR PANEL SAYS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraPanelTest,
+	"Cataclysm.DungeonModifierEffects.ThePanelCountsTheCommandersAndNamesItsRule",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAuraRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE WHOLE LINE IS WRITTEN OUT rather than built from the format the panel uses, so
+	// a change of wording cannot pass by comparing a string with itself. It names its own
+	// rule because a floor can carry March of Progress too, and that rule's line uses the
+	// same word for one creature the player must hunt.
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("an empty floor has no commanders"), AuraPanelLine(Mode),
+				   FString(TEXT("0 commanders on this floor (Commander's Aura)"))))
+	{
+		return false;
+	}
+
+	PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 1);
+	PlaceCreatureAtRung(World, Mode, FVector(2400.0f, 0.0f, 0.0f), 2);
+	PlaceCreatureAtRung(World, Mode, FVector(3800.0f, 0.0f, 0.0f), 0);
+	Beat(Mode, 1);
+
+	TestEqual(TEXT("two of the three creatures command"), AuraPanelLine(Mode),
+			  FString(TEXT("2 commanders on this floor (Commander's Aura)")));
+
+	// AND A FLOOR WITHOUT THE ROW HAS NO LINE OF ITS OWN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row says nothing"), AuraPanelLine(Mode),
+			  FString(TEXT("no line")));
+	return true;
+}
+
+// A FLOOR CHANGE FORGETS THE COUNT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeForgetsHowManyCommanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAuraFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAuraRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 1);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("one creature commands"), AuraPanelLine(Mode),
+				   FString(TEXT("1 commanders on this floor (Commander's Aura)"))))
+	{
+		return false;
+	}
+
+	// THE SAME ARENA, SO THE CREATURE LIVES THROUGH THE CHANGE. A Horde dungeon's next
+	// wave shares the floor, which is the case where a count kept across the stairs would
+	// show the last floor's number.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	// THE COUNT IS BACK TO NOTHING AT ONCE, BEFORE ANY BEAT. The next beat writes it
+	// again from whatever is standing there; this asserts the floor change itself
+	// cleared it rather than a beat happening to overwrite it.
+	TestEqual(TEXT("the new floor starts its count again"), AuraPanelLine(Mode),
+			  FString(TEXT("0 commanders on this floor (Commander's Aura)")));
 	return true;
 }
 
