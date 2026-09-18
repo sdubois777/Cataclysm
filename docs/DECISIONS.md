@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-18 — A minion is the instigator of its own blow, and it takes the retaliation that blow provokes
+## 2026-09-17 — A minion is the instigator of its own blow, and it takes the retaliation that blow provokes
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`,
 `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.cpp`,
