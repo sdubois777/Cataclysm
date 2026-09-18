@@ -544,6 +544,46 @@ public:
 						float Figure) const;
 
 	/**
+	 * This character's maximum energy shield, asked for rather than read.
+	 *
+	 * WHY THIS EXISTS. Issue #1973. `Ritualist_capstone_200#3`, the third row of
+	 * Hollow Crown -- "Each minion you have grants you 4% more damage and 4%
+	 * increased Maximum Energy Shield" -- scales `max_energy_shield` by
+	 * `minions_held`, and a SCALED row is deliberately not folded into its
+	 * gameplay attribute: it is worked out when something asks for it.
+	 * `UCataclysmPlayerClassStats` says so in its own words. Nothing asked, so
+	 * the attribute held the unscaled figure and a Ritualist taking that capstone
+	 * got no shield from it however many minions it held. Its two sibling rows,
+	 * on attack damage and spell damage, work because their stats have per-skill
+	 * lookups.
+	 *
+	 * THE ATTRIBUTE IS THE FIGURE THE STAT IS APPLIED TO, which is the difference
+	 * between this and `StatForSkill`. That one takes a FALLBACK used only when
+	 * the character has no line for the stat, so a Ritualist -- which does have a
+	 * `max_energy_shield` class line -- would get the line's own base and lose
+	 * everything written straight to the attribute: a restored save, an enemy
+	 * archetype's shield, a dungeon modifier that lessens it. This applies the
+	 * increases to what the attribute holds, so nothing is dropped.
+	 *
+	 * WHO ASKS: the three places `UCataclysmVitalAttributeSet` clamps the held
+	 * shield against its maximum, and the overlay that draws the bar. They have
+	 * to agree, or a bar longer than the clamp allows could never be filled.
+	 *
+	 * WHO DELIBERATELY DOES NOT: `CurrentConditions` below, which reads the
+	 * attribute. It cannot call this, because this calls `StatAppliedTo`, which
+	 * calls `CurrentConditions` -- that is recursion rather than a slow path.
+	 * What it costs is that a row conditioned on the shield being full compares
+	 * against the unscaled maximum. One shipped row does: `Ritualist_basic_c_a2`
+	 * Cold Reading, "+2% increased Spell Damage per point while your Energy
+	 * Shield is full", which under Hollow Crown with minions out reads full a
+	 * little before the bar is.
+	 *
+	 * ZERO WHEN THERE IS NO SHIELD ATTRIBUTE AT ALL, which is every ability
+	 * system built without a vital attribute set.
+	 */
+	float MaximumEnergyShield() const;
+
+	/**
 	 * What is true of this character right now, for a conditional bonus.
 	 *
 	 * PUBLIC SO A CALLER THAT RUNS THE PIPELINE ITSELF CAN ASK, rather than

@@ -371,6 +371,26 @@ float UCataclysmAbilitySystemComponent::StatAppliedTo(
 		.Final;
 }
 
+float UCataclysmAbilitySystemComponent::MaximumEnergyShield() const
+{
+	const FGameplayAttribute Maximum =
+		UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute();
+
+	// THE ATTRIBUTE-SET CHECK IS NOT OPTIONAL. Reading an attribute whose set
+	// the component does not hold raises an engine ensure rather than answering
+	// zero, and plenty of ability systems in this game have no vital set.
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+
+	// APPLIED TO WHAT THE ATTRIBUTE HOLDS, so a scaled row reaches play and
+	// nothing written straight to the attribute is lost. The header says why
+	// this is `StatAppliedTo` and not `StatForSkill`, and who may call it.
+	return StatAppliedTo(FName(TEXT("max_energy_shield")),
+						 FGameplayTagContainer(), GetNumericAttribute(Maximum));
+}
+
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
@@ -568,6 +588,21 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// capping the held value here would hide a pool pushed above its top
 		// rather than answer "full" for it.
 		State.EnergyShieldHeld = FMath::Max(0.0f, Vitals->GetEnergyShield());
+
+		// THE ATTRIBUTE, AND THIS IS THE ONE READER THAT MAY NOT ASK FOR IT.
+		// Issue #1973 gave the maximum a lookup, `MaximumEnergyShield` above,
+		// so a row that scales it reaches play. This line cannot call it: that
+		// lookup asks `StatAppliedTo`, which asks this very function for the
+		// readings a conditional row needs, so the call would not be slow, it
+		// would not return.
+		//
+		// WHAT IT COSTS, STATED RATHER THAN LEFT TO BE FOUND: a row conditioned
+		// on the shield being full compares against the unscaled maximum. One
+		// shipped row does -- `Ritualist_basic_c_a2` Cold Reading, "+2%
+		// increased Spell Damage per point while your Energy Shield is full" --
+		// so a Ritualist holding Hollow Crown with minions out reads full a
+		// little before its bar is. The alternative is a stat evaluated while
+		// gathering the readings it depends on, which has no answer at all.
 		State.EnergyShieldMaximum =
 			FMath::Max(0.0f, Vitals->GetMaxEnergyShield());
 	}

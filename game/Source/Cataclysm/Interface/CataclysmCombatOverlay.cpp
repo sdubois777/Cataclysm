@@ -456,7 +456,14 @@ bool UCataclysmCombatOverlay::ShieldOf(const AActor* Actor, float& OutShield,
 	}
 
 	OutShield = Vitals->GetEnergyShield();
-	OutMaxShield = Vitals->GetMaxEnergyShield();
+
+	// THE MAXIMUM IS ASKED FOR RATHER THAN READ, since issue #1973. A row that
+	// SCALES max_energy_shield -- Hollow Crown grants 4% more for each minion
+	// held -- is never folded into the attribute, so a bar drawn from the
+	// attribute would be shorter than the shield the character can actually
+	// hold. The same one function answers the clamp in
+	// UCataclysmVitalAttributeSet, so the bar and the clamp cannot disagree.
+	OutMaxShield = Vitals->MaximumEnergyShieldAsked();
 	return true;
 }
 

@@ -51,6 +51,7 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 // For a minion dying beside its summoner, which Fed by the Fallen must not
 // count, and the ability system that kills it. Issue #1515.
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -8847,6 +8848,140 @@ bool FCataclysmPassiveDominionOnARealCharacterTest::RunTest(const FString&)
 	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
 	TestEqual(TEXT("and giving the point back takes it away again"),
 			  Player.AbilitySystem->GetNumericAttribute(Bonus), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveHollowCrownShieldTest,
+	"Cataclysm.Passives.HollowCrownRaisesARealRitualistsMaximumEnergyShieldPerMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_capstone_200` Hollow Crown on a real character. Issue #1973.
+ *
+ * "Each minion you have grants you 4% more damage and 4% increased Maximum
+ * Energy Shield."
+ *
+ * THIS ROW GRANTED NOTHING AT ALL UNTIL THIS CHANGE, and its two siblings
+ * always worked. All three scale by `minions_held`, and a scaled row is never
+ * folded into its gameplay attribute -- it is worked out when something asks.
+ * Attack damage and spell damage are asked for by their own per-skill lookups;
+ * the maximum energy shield was read straight off the attribute by every reader
+ * in the game, so the shield half of this capstone was absent in play and
+ * nothing errored or warned.
+ *
+ * IT MEASURES BOTH HALVES, BECAUSE EITHER ALONE WOULD BE A HALF-FIX. The
+ * maximum has to rise, and the shield has to be able to reach it: a bar drawn
+ * longer than the clamp allows would look fixed and never fill. The clamp and
+ * the bar both ask
+ * `UCataclysmAbilitySystemComponent::MaximumEnergyShield`, which is the one
+ * function that answers.
+ *
+ * THE MINIONS ARE REAL. The reading is how many things this character commands,
+ * counted from the world, so the case summons four rather than writing a number
+ * into a conditions struct that no character in the game would hold.
+ */
+bool FCataclysmPassiveHollowCrownShieldTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_capstone_200"));
+
+	// WHAT THE ROW IS AUTHORED AS, READ BEFORE ANYTHING IS SPENT, so a change to
+	// the sheet fails here by name rather than as a figure that no longer moves.
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	const FCataclysmPassiveEffectRow* Shield = nullptr;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		if (Row && Row->Stat == TEXT("max_energy_shield"))
+		{
+			Shield = Row;
+		}
+	}
+	if (!TestNotNull(TEXT("Hollow Crown has a maximum energy shield row"), Shield))
+	{
+		return false;
+	}
+	TestEqual(TEXT("stated as an increase"), Shield->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("of four a point"), Shield->ValuePerPoint, 4.0f);
+	TestEqual(TEXT("scaled by how many minions are held"), Shield->Scale,
+			  FString(TEXT("minions_held")));
+
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	const float Bare = Player.AbilitySystem->MaximumEnergyShield();
+
+	// THE RITUALIST IS THE ONE CLASS WITH A SHIELD AT ALL, and every figure below
+	// is a share of this one, so a zero here would make them all trivially equal.
+	if (!TestTrue(FString::Printf(TEXT("an unspent Ritualist has a shield to "
+									   "raise: %.2f"), Bare), Bare > 0.0f))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Allocation.SetChosenOption(Node, 2);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	TestEqual(TEXT("taking the capstone with no minions out changes nothing"),
+			  Player.AbilitySystem->MaximumEnergyShield(), Bare, 0.01f);
+
+	for (int32 Summoned = 0; Summoned < 4; ++Summoned)
+	{
+		ACataclysmMinion::Spawn(
+			Player.Character,
+			FVector(200.0f * static_cast<float>(Summoned + 1), 0.0f, 0.0f),
+			/*Lifetime=*/60.0f, /*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	}
+	if (!TestEqual(TEXT("four minions are held"),
+				   UCataclysmCommand::ThingsCommandedBy(Player.Character).Num(), 4))
+	{
+		return false;
+	}
+
+	// FOUR PER CENT EACH, SO SIXTEEN, and the figure is stated here rather than
+	// read back from the row: a test that computes its expectation from the
+	// thing it is testing passes whatever that thing does.
+	const float Raised = Player.AbilitySystem->MaximumEnergyShield();
+	TestEqual(FString::Printf(TEXT("and four minions raise the maximum by a "
+								   "sixth: %.2f against %.2f"), Raised, Bare),
+			  Raised, Bare * 1.16f, 0.01f);
+
+	// AND THE SHIELD CAN REACH IT, which the maximum alone does not show. The
+	// clamp in `UCataclysmVitalAttributeSet` asks the same function, so a write
+	// far above the top lands exactly on it.
+	Player.AbilitySystem->SetNumericAttributeBase(
+		Vital::GetEnergyShieldAttribute(), Raised + 1000.0f);
+	TestEqual(TEXT("and the shield fills to the raised maximum rather than the "
+				   "attribute's"),
+			  Player.AbilitySystem->GetNumericAttribute(
+				  Vital::GetEnergyShieldAttribute()),
+			  Raised, 0.01f);
 
 	return true;
 }
