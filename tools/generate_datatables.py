@@ -4890,6 +4890,73 @@ def stats_with_no_attribute() -> set[str]:
     return names
 
 
+#: The stats something asks for through the stat pipeline, which is the only
+#: place a SCALED row can reach play.
+#:
+#: WHY A SCALED ROW NEEDS THIS AND AN ORDINARY ONE DOES NOT. A scaled bonus is
+#: never folded into its gameplay attribute -- it would be stale the moment the
+#: reading moved -- so it is worked out when something asks for the stat. Where
+#: the consuming code reads the attribute instead, the row is discarded in
+#: silence: no error, no warning, and the node grants nothing.
+#: `Ritualist_capstone_200#3` scaled `max_energy_shield` that way and granted
+#: nothing at all from the day it was written. Issue #1973.
+#:
+#: WHY THIS IS A HAND LIST AND NOT DERIVED, which is the uncomfortable part.
+#: Deriving it from the engine's call sites was tried on 2026-09-17 and got THREE
+#: of the eleven wrong, every one in the refusing direction: a check built on it
+#: would have refused 23 shipped rows that work. Two of the three cannot be found
+#: by any search of call sites -- `attack_damage` has no lookup call at all,
+#: because its asker finds the stat line and runs the pipeline inline, and
+#: `health_regen` is asked through a lambda that takes the stat as a parameter.
+#:
+#: SO THE LIST IS HELD HONEST BY MEASUREMENT INSTEAD. Every name here has a probe
+#: in `Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline`
+#: that grants a scaled row, moves the reading and asserts the engine's answer
+#: changes, and `tools/tests/test_every_scaled_stat_has_an_asker.py` requires this
+#: list and that probe table to be equal. A name added to one without the other
+#: fails.
+STATS_WITH_AN_ASKER = frozenset({
+    "attack_damage",
+    "spell_damage",
+    "attack_speed",
+    "armor",
+    "damage_reduction",
+    "retaliation",
+    "health_regen",
+    "mana_regen",
+    "fervour_per_second",
+    "fervour_per_enemy_in_reach",
+    "fervour_from_minions",
+    "max_energy_shield",
+})
+
+
+def refuse_a_scale_nothing_asks_for(sheet: str, rows: list[dict]) -> list[str]:
+    """A row may only carry a Scale on a stat something asks for.
+
+    THE ROW IS ACCEPTED AND DEAD OTHERWISE, which is the whole reason this
+    exists: the generator writes it, the table builds, the asset imports, and the
+    player gets nothing. Refusing it here is the only moment anybody is looking.
+    """
+    problems = []
+    for row in rows:
+        scale = str(row.get("Scale") or "").strip()
+        if not scale:
+            continue
+        stat = row["Stat"]
+        if stat not in STATS_WITH_AN_ASKER:
+            problems.append(
+                f"{sheet}/{row['Name']}: scales {stat!r} by {scale!r}, and "
+                f"nothing asks for that stat through the stat pipeline. A "
+                f"scaled row is never folded into its gameplay attribute, so "
+                f"this row would grant NOTHING and say nothing -- which is what "
+                f"Ritualist_capstone_200#3 did until issue #1973. Give the stat "
+                f"a lookup where its value is used, and add it to "
+                f"STATS_WITH_AN_ASKER here and to the probe table in "
+                f"CataclysmStatExemptionTests.cpp; or take the scale off.")
+    return problems
+
+
 def validate_passive_effects(tables: dict[str, list[dict]],
                              known: set[str]) -> list[str]:
     """Every passive effect names a real node, a real stat and declared tags.
@@ -5017,6 +5084,11 @@ def validate_passive_effects(tables: dict[str, list[dict]],
                 f"the row names no option, so it would apply whichever of the "
                 f"three the player picked")
 
+    # AND A SCALE ONLY WHERE SOMETHING ASKS FOR THE STAT. Issue #1973: a
+    # scaled row on a stat nothing asks for is accepted, built, imported and
+    # dead, and this is the last moment anybody looks at it.
+    problems.extend(refuse_a_scale_nothing_asks_for("PassiveEffects", effects))
+
     return problems
 
 
@@ -5103,6 +5175,11 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
             if tag and tag not in known:
                 problems.append(
                     f"EnchantmentEffects/{row['Name']}: undefined tag {tag}")
+
+    # AND THE SAME REFUSAL AS THE PASSIVE SHEET, for the same reason: the two
+    # sheets share the scale vocabulary, so a dead scaled row is as easy to
+    # write here as there. Issue #1973.
+    problems.extend(refuse_a_scale_nothing_asks_for("EnchantmentEffects", effects))
 
     return problems
 
