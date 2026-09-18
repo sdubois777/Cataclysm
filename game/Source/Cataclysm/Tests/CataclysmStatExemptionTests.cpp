@@ -6,6 +6,17 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+// For the eleven probes that prove every scaled stat is asked for. #1973.
+#include "AbilitySystem/CataclysmBasicAttack.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmRetaliation.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmStacks.h"
+#include "Character/CataclysmPassiveTree.h"
+#include "Data/CataclysmDataRows.h"
+#include "Items/CataclysmItem.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
@@ -824,6 +835,608 @@ namespace CataclysmStatExemptionTest
 			FlaggedHit->GetLastBlow().Attacker == Flagged.Actor);
 	}
 
+	// ------------------------------------------------------------------
+	// THE SECOND PROMISE THIS FILE KEEPS, AND IT IS A DIFFERENT ONE. Issue
+	// #1973. Above: every stat with no gameplay attribute is read by bespoke
+	// code. Below: every stat the shipped data SCALES is asked for through the
+	// pipeline. A scaled row is never folded into its attribute -- it is worked
+	// out when something asks -- so a scaled row on a stat nothing asks for
+	// grants nothing, with no error and no warning. That is what
+	// `Ritualist_capstone_200#3` did for as long as it existed.
+	// ------------------------------------------------------------------
+
+	/** A modifier on `Stat` worth `Percent` per unit of `Scale`. */
+	void ScaledBy(AActor* Who, const FString& Stat, float Percent,
+				  ECataclysmStatScale Scale)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Who));
+		if (!System)
+		{
+			return;
+		}
+
+		// INCREASED RATHER THAN MORE, because that is the bucket every scaled
+		// row in the sheet uses but one, and a bucket a probe invented would
+		// measure a path no row takes.
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Increased;
+		Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+		Modifier.Value = Percent;
+		Modifier.Scale = Scale;
+		Modifier.ScaleStep = 1.0f;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(*Stat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Modifier};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** Two debuffs on a character, which is what `debuffs_carried` counts. */
+	void GiveTwoDebuffs(AActor* Who)
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Who, Who, UCataclysmDebuffs::BleedTag(), 30.0f);
+		UCataclysmSkillEffects::ApplyTagForDuration(
+			Who, Who, UCataclysmDebuffs::WeakenTag(), 30.0f);
+	}
+
+	/**
+	 * `attack_damage`, scaled by debuffs carried, asked by
+	 * `UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill`.
+	 *
+	 * FIVE SHIPPED ROWS PAIR THOSE TWO, which is why this probe uses that scale
+	 * rather than whichever is easiest to drive.
+	 */
+	void ProbeScaledAttackDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		ScaledBy(Attacker.Actor, TEXT("attack_damage"), 50.0f,
+				 ECataclysmStatScale::PerDebuffCarried);
+
+		const UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Attacker.Actor));
+		if (!Test.TestNotNull(TEXT("an ability system"),
+							  const_cast<UCataclysmAbilitySystemComponent*>(System)))
+		{
+			return;
+		}
+
+		const float Clean = System->AttackDamageIncreasesForSkill(
+			FGameplayTagContainer(), 0.0f, 0.0f, -1.0f, false, nullptr, 0);
+		GiveTwoDebuffs(Attacker.Actor);
+		const float Carrying = System->AttackDamageIncreasesForSkill(
+			FGameplayTagContainer(), 0.0f, 0.0f, -1.0f, false, nullptr, 0);
+
+		Test.TestTrue(
+			FString::Printf(TEXT("attack_damage is asked for, so two debuffs "
+								 "raise its increases: %.2f against %.2f"),
+							Carrying, Clean),
+			Carrying > Clean + 0.001f);
+	}
+
+	/**
+	 * `spell_damage`, scaled by debuffs carried, asked by
+	 * `UCataclysmSkillEffects::SpellDamageOf`. Five shipped rows pair them.
+	 */
+	void ProbeScaledSpellDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Caster(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Caster.Actor));
+		if (!Test.TestNotNull(TEXT("an ability system"), System))
+		{
+			return;
+		}
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetSpellDamageAttribute(), 100.0f);
+		ScaledBy(Caster.Actor, TEXT("spell_damage"), 50.0f,
+				 ECataclysmStatScale::PerDebuffCarried);
+
+		const float Clean = UCataclysmSkillEffects::SpellDamageOf(
+			System, FGameplayTagContainer());
+		GiveTwoDebuffs(Caster.Actor);
+		const float Carrying = UCataclysmSkillEffects::SpellDamageOf(
+			System, FGameplayTagContainer());
+
+		Test.TestTrue(
+			FString::Printf(TEXT("spell_damage is asked for, so two debuffs "
+								 "raise it: %.2f against %.2f"),
+							Carrying, Clean),
+			Carrying > Clean + 0.001f);
+	}
+
+	/**
+	 * `max_energy_shield`, scaled by minions held, asked by
+	 * `UCataclysmAbilitySystemComponent::MaximumEnergyShield`. Issue #1973: this
+	 * is the pairing that granted nothing until that lookup existed.
+	 */
+	void ProbeScaledMaximumEnergyShield(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner.Actor));
+		if (!Test.TestNotNull(TEXT("an ability system"), System))
+		{
+			return;
+		}
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 100.0f);
+		ScaledBy(Summoner.Actor, TEXT("max_energy_shield"), 25.0f,
+				 ECataclysmStatScale::PerMinionHeld);
+
+		const float Alone = System->MaximumEnergyShield();
+		ACataclysmMinion* Imp = SummonImp(Test, World, Summoner.Actor);
+		if (!Imp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		const float Holding = System->MaximumEnergyShield();
+
+		Test.TestTrue(
+			FString::Printf(TEXT("max_energy_shield is asked for, so a minion "
+								 "raises it: %.2f against %.2f"),
+							Holding, Alone),
+			Holding > Alone + 0.001f);
+	}
+
+	/**
+	 * `retaliation`, scaled by health missing, asked by `StatOfRetaliator` in
+	 * `CataclysmRetaliation.cpp` and reachable through `AmountFor`.
+	 */
+	void ProbeScaledRetaliation(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Defender.Actor));
+		if (!Test.TestNotNull(TEXT("an ability system"), System))
+		{
+			return;
+		}
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetRetaliationAttribute(), 10.0f);
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
+		ScaledBy(Defender.Actor, TEXT("retaliation"), 1.0f,
+				 ECataclysmStatScale::PerPercentOfMaximumHealthMissing);
+
+		const float Whole = UCataclysmRetaliation::AmountFor(System, 100.0f);
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 400.0f);
+		const float Hurt = UCataclysmRetaliation::AmountFor(System, 100.0f);
+
+		Test.TestTrue(
+			FString::Printf(TEXT("retaliation is asked for, so missing health "
+								 "raises it: %.2f against %.2f"), Hurt, Whole),
+			Hurt > Whole + 0.001f);
+	}
+
+	/**
+	 * `attack_speed`, scaled by momentum, asked by
+	 * `UCataclysmBasicAttack::SecondsBetweenSwingsFor`.
+	 *
+	 * THE ANSWER FALLS RATHER THAN RISES, because it is seconds between swings:
+	 * more attack speed is less time, so the assertion is the other way round
+	 * from every other probe here and says so.
+	 */
+	void ProbeScaledAttackSpeed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Swinger(World, /*AttackDamage=*/100.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Swinger.Actor));
+		if (!Test.TestNotNull(TEXT("an ability system"), System))
+		{
+			return;
+		}
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackSpeedAttribute(), 1.0f);
+		ScaledBy(Swinger.Actor, TEXT("attack_speed"), 50.0f,
+				 ECataclysmStatScale::PerStackOfSanguineMomentum);
+
+		const float Still = UCataclysmBasicAttack::SecondsBetweenSwingsFor(System);
+		UCataclysmStacks::NoteHealthCostPaid(System);
+		UCataclysmStacks::NoteHealthCostPaid(System);
+		const float Moving = UCataclysmBasicAttack::SecondsBetweenSwingsFor(System);
+
+		Test.TestTrue(
+			FString::Printf(TEXT("attack_speed is asked for, so momentum "
+								 "shortens the gap between swings: %.3f "
+								 "against %.3f"), Moving, Still),
+			Moving < Still - 0.0001f);
+	}
+
+	/** A character that can hold Fervour, which the three rate probes need. */
+	void GiveAFervourPool(FScopedFighter& Who)
+	{
+		Who.AbilitySystem->AddAttributeSetSubobject(
+			NewObject<UCataclysmClassResourceAttributeSet>(Who.Actor));
+		Who.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+			100.0f);
+		Who.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+	}
+
+	/**
+	 * `armor`, scaled by debuffs carried, asked by `DefenderStat` in
+	 * `CataclysmDamageCalculation.cpp` when a blow is worked out.
+	 *
+	 * A REAL HIT, BECAUSE THE ASKER IS FILE-LOCAL. Nothing outside that file can
+	 * call it, so the probe drives a blow and reads what reached health.
+	 */
+	void ProbeScaledArmour(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			Combat::GetArmorAttribute(), 800.0f);
+		ScaledBy(Defender.Actor, TEXT("armor"), 200.0f,
+				 ECataclysmStatScale::PerDebuffCarried);
+
+		const float Before = Defender.Health();
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer());
+		const float Clean = Before - Defender.Health();
+		if (!Test.TestTrue(TEXT("the unshielded blow landed"), Clean > 0.0f))
+		{
+			return;
+		}
+
+		GiveTwoDebuffs(Defender.Actor);
+		const float Middle = Defender.Health();
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer());
+		const float Carrying = Middle - Defender.Health();
+
+		Test.TestTrue(
+			FString::Printf(TEXT("armor is asked for, so debuffs raise it and "
+								 "less lands: %.2f against %.2f"),
+							Carrying, Clean),
+			Carrying < Clean - 0.001f);
+	}
+
+	/**
+	 * `damage_reduction`, scaled by debuffs carried, asked by the same
+	 * `DefenderStat` at a later step of the same blow.
+	 *
+	 * ITS OWN DEFENDER, NOT THE ARMOUR ONE. A single defender carrying both
+	 * scaled lines would still take less when only one of the two reads worked,
+	 * so each stat gets its own subject and its own assertion.
+	 */
+	void ProbeScaledDamageReduction(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			Combat::GetDamageReductionAttribute(), 10.0f);
+		ScaledBy(Defender.Actor, TEXT("damage_reduction"), 100.0f,
+				 ECataclysmStatScale::PerDebuffCarried);
+
+		const float Before = Defender.Health();
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer());
+		const float Clean = Before - Defender.Health();
+		if (!Test.TestTrue(TEXT("the blow landed"), Clean > 0.0f))
+		{
+			return;
+		}
+
+		GiveTwoDebuffs(Defender.Actor);
+		const float Middle = Defender.Health();
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer());
+		const float Carrying = Middle - Defender.Health();
+
+		Test.TestTrue(
+			FString::Printf(TEXT("damage_reduction is asked for, so debuffs "
+								 "raise it and less lands: %.2f against %.2f"),
+							Carrying, Clean),
+			Carrying < Clean - 0.001f);
+	}
+
+	/**
+	 * `health_regen`, scaled by debuffs carried, asked by `RateOf` inside
+	 * `UCataclysmRegeneration::ApplyStep`.
+	 *
+	 * THE CHARACTER STARTS HURT, or a full pool would hide the gain behind its
+	 * own maximum and both readings would be nothing.
+	 */
+	void ProbeScaledHealthRegen(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Hurt(World, /*AttackDamage=*/0.0f);
+		Hurt.AbilitySystem->SetNumericAttributeBase(
+			Vital::GetHealthRegenAttribute(), 10.0f);
+		Hurt.AbilitySystem->SetNumericAttributeBase(
+			Vital::GetHealthAttribute(), TargetHealthPool / 2.0f);
+		ScaledBy(Hurt.Actor, TEXT("health_regen"), 100.0f,
+				 ECataclysmStatScale::PerDebuffCarried);
+
+		const float Before = Hurt.Health();
+		UCataclysmRegeneration::ApplyStep(Hurt.Actor, 1.0f, 100.0f);
+		const float Clean = Hurt.Health() - Before;
+		if (!Test.TestTrue(TEXT("a hurt character regenerates something"),
+						   Clean > 0.0f))
+		{
+			return;
+		}
+
+		GiveTwoDebuffs(Hurt.Actor);
+		const float Middle = Hurt.Health();
+		UCataclysmRegeneration::ApplyStep(Hurt.Actor, 1.0f, 100.0f);
+		const float Carrying = Hurt.Health() - Middle;
+
+		Test.TestTrue(
+			FString::Printf(TEXT("health_regen is asked for, so debuffs raise "
+								 "what a step restores: %.3f against %.3f"),
+							Carrying, Clean),
+			Carrying > Clean + 0.0001f);
+	}
+
+	/**
+	 * `fervour_per_second`, scaled by debuffs carried, asked inside
+	 * `UCataclysmFervour::GainPerSecondStep`.
+	 */
+	void ProbeScaledFervourPerSecond(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Holder);
+		ScaledBy(Holder.Actor, TEXT("fervour_per_second"), 1.0f,
+				 ECataclysmStatScale::PerDebuffCarried);
+
+		const float Clean =
+			UCataclysmFervour::GainPerSecondStep(Holder.AbilitySystem, 1.0f);
+		GiveTwoDebuffs(Holder.Actor);
+		const float Carrying =
+			UCataclysmFervour::GainPerSecondStep(Holder.AbilitySystem, 1.0f);
+
+		Test.TestTrue(
+			FString::Printf(TEXT("fervour_per_second is asked for, so debuffs "
+								 "raise the step's gain: %.3f against %.3f"),
+							Carrying, Clean),
+			Carrying > Clean + 0.0001f);
+	}
+
+	/**
+	 * `fervour_from_minions`, scaled by minions held, asked in the same step.
+	 */
+	void ProbeScaledFervourFromMinions(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Summoner);
+		ScaledBy(Summoner.Actor, TEXT("fervour_from_minions"), 1.0f,
+				 ECataclysmStatScale::PerMinionHeld);
+
+		const float Alone =
+			UCataclysmFervour::GainPerSecondStep(Summoner.AbilitySystem, 1.0f);
+		ACataclysmMinion* Imp = SummonImp(Test, World, Summoner.Actor);
+		if (!Imp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+		const float Holding =
+			UCataclysmFervour::GainPerSecondStep(Summoner.AbilitySystem, 1.0f);
+
+		Test.TestTrue(
+			FString::Printf(TEXT("fervour_from_minions is asked for, so a "
+								 "minion raises the step's gain: %.3f against "
+								 "%.3f"), Holding, Alone),
+			Holding > Alone + 0.0001f);
+	}
+
+	/**
+	 * `fervour_per_enemy_in_reach`, scaled by enemies in reach, asked in the
+	 * same step.
+	 *
+	 * THE CREATURE STANDS WHERE THE CHARACTER DOES, because a bare actor has no
+	 * root component and cannot be moved off the origin; nothing here depends on
+	 * the distance beyond its being inside reach.
+	 */
+	void ProbeScaledFervourPerEnemyInReach(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
+		GiveAFervourPool(Holder);
+		ScaledBy(Holder.Actor, TEXT("fervour_per_enemy_in_reach"), 1.0f,
+				 ECataclysmStatScale::PerEnemyInReach);
+
+		const float Alone =
+			UCataclysmFervour::GainPerSecondStep(Holder.AbilitySystem, 1.0f);
+
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
+														FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("a creature to stand near"), Creature))
+		{
+			return;
+		}
+		Creature->SetGenericTeamId(
+			UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		ON_SCOPE_EXIT { if (IsValid(Creature)) { Creature->Destroy(); } };
+
+		const float Crowded =
+			UCataclysmFervour::GainPerSecondStep(Holder.AbilitySystem, 1.0f);
+
+		Test.TestTrue(
+			FString::Printf(TEXT("fervour_per_enemy_in_reach is asked for, so "
+								 "an enemy near raises the step's gain: %.3f "
+								 "against %.3f"), Crowded, Alone),
+			Crowded > Alone + 0.0001f);
+	}
+
+	/**
+	 * Every stat the shipped data scales, and the probe that proves the engine
+	 * asks for it.
+	 *
+	 * THE PYTHON SIDE READS THIS BLOCK. `tools/tests/` parses the literals here
+	 * and requires them to equal `STATS_WITH_AN_ASKER` in
+	 * `tools/generate_datatables.py`, so a stat added to one and not the other
+	 * fails. The parse is anchored on this table's opening line and raises if its
+	 * shape changes, rather than silently reading nothing.
+	 */
+	/**
+	 * `mana_regen`, scaled by maximum mana, asked by the same `RateOf` inside
+	 * `UCataclysmRegeneration::ApplyStep` that the health rate uses.
+	 *
+	 * IT ARRIVED WITH THE ENCHANTMENT ROWS OF 2026-09-18 and is the twelfth
+	 * stat the shipped data scales. This test found it by name on the first run
+	 * after that merge, which is what it is for.
+	 *
+	 * THE POOL STARTS HALF EMPTY, or a full one would hide the gain behind its
+	 * own maximum and both readings would be nothing.
+	 */
+	void ProbeScaledManaRegen(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Caster(World, /*AttackDamage=*/0.0f);
+		Caster.AbilitySystem->SetNumericAttributeBase(
+			Vital::GetManaRegenAttribute(), 10.0f);
+		Caster.AbilitySystem->SetNumericAttributeBase(
+			Vital::GetMaxManaAttribute(), 200.0f);
+		Caster.AbilitySystem->SetNumericAttributeBase(
+			Vital::GetManaAttribute(), 100.0f);
+		ScaledBy(Caster.Actor, TEXT("mana_regen"), 1.0f,
+				 ECataclysmStatScale::PerPointOfMaximumMana);
+
+		const auto ManaOf = [&Caster]()
+		{
+			return Caster.AbilitySystem->GetNumericAttribute(
+				Vital::GetManaAttribute());
+		};
+
+		const float Before = ManaOf();
+		UCataclysmRegeneration::ApplyStep(Caster.Actor, 1.0f, 100.0f);
+		const float Restored = ManaOf() - Before;
+
+		// THE SCALE IS ALREADY IN THE FIRST READING, because maximum mana is a
+		// standing figure rather than something a probe turns on. So this one
+		// compares against the SAME step with the scaled line taken away, which
+		// is the only way round for a reading no probe can set to nothing.
+		Caster.AbilitySystem->SetNumericAttributeBase(
+			Vital::GetManaAttribute(), Before);
+		Remove(Caster.Actor, TEXT("mana_regen"));
+		const float Middle = ManaOf();
+		UCataclysmRegeneration::ApplyStep(Caster.Actor, 1.0f, 100.0f);
+		const float Unscaled = ManaOf() - Middle;
+
+		Test.TestTrue(
+			FString::Printf(TEXT("mana_regen is asked for, so a line scaled by "
+								 "maximum mana restores more than none: %.3f "
+								 "against %.3f"), Restored, Unscaled),
+			Restored > Unscaled + 0.0001f);
+	}
+
+	const TMap<FString, FProbe>& ScaledProbes()
+	{
+		static const TMap<FString, FProbe> Made = {
+			{TEXT("attack_damage"),              &ProbeScaledAttackDamage},
+			{TEXT("spell_damage"),               &ProbeScaledSpellDamage},
+			{TEXT("attack_speed"),               &ProbeScaledAttackSpeed},
+			{TEXT("armor"),                      &ProbeScaledArmour},
+			{TEXT("damage_reduction"),           &ProbeScaledDamageReduction},
+			{TEXT("retaliation"),                &ProbeScaledRetaliation},
+			{TEXT("health_regen"),               &ProbeScaledHealthRegen},
+			{TEXT("fervour_per_second"),         &ProbeScaledFervourPerSecond},
+			{TEXT("fervour_from_minions"),       &ProbeScaledFervourFromMinions},
+			{TEXT("fervour_per_enemy_in_reach"), &ProbeScaledFervourPerEnemyInReach},
+			{TEXT("max_energy_shield"),          &ProbeScaledMaximumEnergyShield},
+			{TEXT("mana_regen"),                 &ProbeScaledManaRegen},
+		};
+		return Made;
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -899,6 +1512,117 @@ bool FCataclysmStatExemptionIsKeptTest::RunTest(const FString&)
 	AddInfo(FString::Printf(
 		TEXT("%d exempt stats, each with a probe that observes its reader"),
 		Exempt.Num()));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryScaledStatIsAskedForTest,
+	"Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Every stat the shipped data SCALES is asked for through the pipeline, and a
+ * scaled stat with no probe fails by name. Issue #1973.
+ *
+ * WHAT A SCALED ROW NEEDS THAT AN ORDINARY ONE DOES NOT. A scaled bonus is
+ * never folded into its gameplay attribute -- it would be stale the moment the
+ * reading moved -- so it reaches play ONLY where the consuming code asks for the
+ * stat through the pipeline. Where the code reads the attribute instead, the row
+ * is discarded in silence: nothing errors, nothing warns, and the node grants
+ * nothing. `Ritualist_capstone_200#3` did exactly that from the day it was
+ * written until the day this test's issue was filed.
+ *
+ * THE STAT SET COMES FROM THE DATA THE GAME LOADS, not from a list here. Every
+ * row of the passive effect table and the enchantment effect table carrying a
+ * scale contributes its stat, so a NEW scaled row on a stat nothing asks for
+ * fails this test by name on the next run, which is the whole point.
+ *
+ * WHY THE PROBES MEASURE BEHAVIOUR. A source search cannot answer "does anything
+ * ask for this stat": measured on 2026-09-17, deriving the answer from the
+ * engine's call sites got three of eleven wrong, and two of the three are
+ * unfollowable in principle -- one stat has no lookup call at all because its
+ * asker finds the stat line and runs the pipeline inline, and another is asked
+ * through a lambda that takes the stat as a parameter. So each probe grants a
+ * scaled row, moves the reading, and asserts the engine's own answer moves.
+ *
+ * EACH PROBE USES A SCALE THE SHIPPED DATA REALLY PAIRS WITH ITS STAT. A probe
+ * on a convenient reading no row uses could pass while every real row on that
+ * stat was dead.
+ *
+ * WHAT THIS DOES NOT MEASURE, SAID PLAINLY. The eleven stats are paired with
+ * fourteen scales in 31 combinations; this proves the STAT is asked, once per
+ * stat. A scale's reading also has to be one the asker's own conditions carry,
+ * and some readings are filled by a wrapper at particular call sites, so a
+ * pairing can be dead while its stat is asked. Surveying all 31 is its own work.
+ */
+bool FCataclysmEveryScaledStatIsAskedForTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	const UDataTable* Passives = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* Enchantments =
+		UCataclysmItemModifiers::LoadEnchantmentEffectTable();
+	if (!TestNotNull(TEXT("the passive effect table loads"),
+					 const_cast<UDataTable*>(Passives))
+		|| !TestNotNull(TEXT("the enchantment effect table loads"),
+						const_cast<UDataTable*>(Enchantments)))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	TSet<FString> Scaled;
+	Passives->ForeachRow<FCataclysmPassiveEffectRow>(
+		TEXT("EveryStatTheDataScales"),
+		[&Scaled](const FName&, const FCataclysmPassiveEffectRow& Row)
+		{
+			if (!Row.Scale.IsEmpty())
+			{
+				Scaled.Add(Row.Stat);
+			}
+		});
+	Enchantments->ForeachRow<FCataclysmEnchantmentEffectRow>(
+		TEXT("EveryStatTheDataScales"),
+		[&Scaled](const FName&, const FCataclysmEnchantmentEffectRow& Row)
+		{
+			if (!Row.Scale.IsEmpty())
+			{
+				Scaled.Add(Row.Stat);
+			}
+		});
+
+	// A TABLE THAT LOADED EMPTY WOULD PASS EVERY LOOP BELOW, which is what a
+	// stale or half-built asset looks like. Refused here rather than reported as
+	// a clean run over nothing.
+	if (!TestTrue(TEXT("the shipped data scales some stats"), Scaled.Num() > 0))
+	{
+		return false;
+	}
+
+	for (const FString& Stat : Scaled)
+	{
+		const FProbe* Probe = ScaledProbes().Find(Stat);
+		if (!Probe)
+		{
+			AddError(FString::Printf(
+				TEXT("a shipped row scales '%s' and no probe here proves the "
+					 "engine asks for it. A scaled row is never folded into a "
+					 "gameplay attribute, so a stat nothing asks for grants "
+					 "NOTHING and says nothing. Add a probe that grants the "
+					 "stat with a scale the data really pairs with it, moves "
+					 "the reading, and asserts the engine's answer changes -- "
+					 "or give the stat an asker. Issue #1973 is what one dead "
+					 "row cost."),
+				*Stat));
+			continue;
+		}
+		(*Probe)(*this);
+	}
+
+	// AND THE LIST THE GENERATOR REFUSES BY IS THE SAME SET, which one Python
+	// check holds: `tools/tests/` reads the probe table above and requires it to
+	// equal `STATS_WITH_AN_ASKER` in `tools/generate_datatables.py`. Stated here
+	// so a reader of this test knows where the refusal lives.
 	return true;
 }
 

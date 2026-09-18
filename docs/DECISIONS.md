@@ -411,6 +411,89 @@ control row halving it, and the recorded row answering instead of the attribute 
 
 ---
 
+## 2026-09-18 — A data row may only scale a stat something asks for, and twelve probes measure that it does
+
+**Affects:** `game/Source/Cataclysm/Tests/CataclysmStatExemptionTests.cpp`,
+`tools/generate_datatables.py`, and one new test file in `tools/tests/`. Issue
+[#1973](https://github.com/sdubois777/Cataclysm/issues/1973).
+
+**The second half of the dead capstone row.** The first gave
+`max_energy_shield` a lookup, so Hollow Crown's shield bonus reaches play. This
+half is the check that would have caught it when it was written, and the one that
+catches the next.
+
+### THE RULE
+
+A row carrying a `Scale` reaches play ONLY where the consuming code asks for its
+stat through the stat pipeline. A scaled bonus is never folded into a gameplay
+attribute -- it would be stale the moment the reading moved -- so where the code
+reads the attribute instead, the row is discarded in silence: no error, no
+warning, and the node grants nothing.
+
+`tools/generate_datatables.py` now refuses such a row at generation, by a list of
+the stats something asks for, and
+`Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline`
+measures that the list is true.
+
+### THE LIST IS BY HAND, AND THAT IS THE UNCOMFORTABLE PART
+
+**Deriving it from the engine's own call sites was tried first and rejected on
+measurement.** Collecting the stat argument of every pipeline lookup and
+resolving the named constants gave 76 call sites and 74 constants -- and got
+THREE of the eleven stats wrong, every one in the refusing direction. A check
+built on it would have refused 23 shipped rows that work. The three, chased down
+one at a time:
+
+| stat | why no search of call sites can see it |
+|---|---|
+| `attack_damage` | there is no lookup call at all; its asker finds the stat line and runs the pipeline inline |
+| `retaliation` | asked through a wrapper of its own, which is not one of the lookup names |
+| `health_regen` | asked through a local lambda taking the stat as a parameter, so the stat is not named at the call site |
+
+**Two of those three are unfollowable in principle**, not bugs in the script. A
+check that refuses authored data has to be right, and a text analysis of C++
+whose failures cannot be explained is not that.
+
+### SO THE LIST IS HELD HONEST BY MEASUREMENT
+
+Twelve probes, one per stat, each granting a scaled row, moving the reading and
+asserting the engine's own answer changes. **Each uses a scale the shipped data
+really pairs with that stat**: a probe on a convenient reading no row uses could
+pass while every real row on that stat was dead.
+
+`tools/tests/test_every_scaled_stat_has_an_asker.py` requires the generator's
+list and the engine's probe table to be the same set, so neither side can gain a
+stat without the other. **It reads the probe table by an anchored parse of one
+literal block and raises when that block's shape changes** -- which is what makes
+it safe where the rejected derivation was not: it reads one block, and follows no
+call anywhere.
+
+### MEASURED BEFORE IT LANDED
+
+On this base the shipped data carries **51 scaled rows across 12 stats and 14
+scales, in 33 stat-and-scale pairings**, and **the refusal rejects none of them**.
+Both effect sheets were checked, and a test in the new file re-measures it on
+every run: if a shipped row is ever refused, that is a dead row and a finding
+with rows attached, not a reason to widen the list.
+
+**The set moved twice while this change was being written.** It was eleven stats
+and 49 rows when the work began; the enchantment rows of 2026-09-18 brought
+`mana_regen`, scaled by maximum mana, which is why there are twelve probes and
+not eleven. The engine test found it by name, which is the behaviour the whole
+change exists for. That row is not dead: the mana rate is asked for by the same
+code that asks for the health rate.
+
+### WHAT IT DOES NOT MEASURE, SAID PLAINLY
+
+The probes prove the STAT is asked, once per stat. A scale's reading must also be
+one the asker's own conditions carry, and some readings are filled by a wrapper at
+particular call sites, so a pairing can be dead while its stat is asked. **Of the
+33 pairings, 12 are measured here and 21 are not.** Surveying all of them, by
+reading each asker down to the readings it carries, is its own piece of work,
+ruled at the same time as this one and reported before any fix.
+
+---
+
 ## 2026-09-17 — Thirty-three enchantment rows are written, and ten approved sentences are held for four different reasons
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet gains 33 rows; the
