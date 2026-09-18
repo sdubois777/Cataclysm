@@ -143,7 +143,69 @@ Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, taking
 123: the row's two stated figures; that the damage type is read off the row and not written down; that
 both distances are the shared constants; and that three at once still matches both precedents.
 
-### What the runs found, so far
+### What the runs found
+
+Measured 2026-09-18 under one editor lock.
+
+**THE BASE WAS MEASURED FIRST, AND THAT IS WHY 171 IS A MEASUREMENT.** The registered count
+for this group came from counting registrations in the test file, which is a static count, and
+this project records three static methods giving 1,411, 1,564 and 1,726 against a measured
+1,664. So the base commit `3aca989f` was checked out and the group run there with none of this
+work present: `160 tests performed, 160 succeeded, 0 failed`. 160 plus these eleven is 171.
+
+**TWO WHOLE-SUITE RUNS, ONE OVER THE OWNER'S FIGURE**, because the first found a fault.
+
+| Whole suite | Head | What it printed |
+| :-- | :-- | :-- |
+| 1 of 2 | `973c8fcf` | 2111 performed, 2110 succeeded, **1 failed**, declared 2111, gap 0 |
+| 2 of 2, the run of record | `e70193d8` | 2111 performed, 2111 succeeded, 0 failed, declared 2111, gap 0 |
+
+```
+Tests: 2111 tests performed, 2111 succeeded, 0 failed
+Declared: 2111 tests in the tree at e70193d8; 2111 performed, gap 0
+wrapper exit: 0
+```
+
+Each run also reported 39 tests skipping part of what they check; all are art tests and a
+worktree has no Paragon content.
+
+**THOSE TWO COMMITS ARE NOT ON THIS BRANCH ANY MORE.** It was rebased onto `1a06d8b8` after
+the window, which rewrote every commit on it. **The game tree did not move** -- `140e5fd5` both
+at the run of record and at the rebased head, checked rather than assumed -- so the run
+transfers. The shas are left as measured rather than swapped for their rebased twins, because a
+figure belongs to the tree it was taken on.
+
+**THE FAILURE WAS A TEST FAULT AND NOT THE RULE.** `AZoneGoesAfterTheRowsTwentySeconds` printed
+"Expected 'and it is gone a second after' to be false". A ground zone's life is set with
+`SetLifeSpan`, an engine timer on `UWorld`'s own clock, and the test had beaten the dungeon game
+mode eighty times -- which `Beat`'s own comment says does **not** move the world clock: "The two
+clocks are separate and that is what makes this useful." The repair uses
+`CataclysmTestWorld::RunClock`, which moves the clock and the timer manager together. No other
+test needed it: the only other one that could care asserts that three zones are never exceeded
+and are reached, which holds whether or not one runs out.
+
+The group printed 171 performed, 171 succeeded, 0 failed after the repair, and again as the
+restored half of all three guard proofs.
+
+### The three guard proofs
+
+All three printed `PROVED`, none crashed, every restored half 171 performed and 0 failed, and
+the working tree was checked clean after each. Every assertion was read out of
+`game/Saved/Logs/Cataclysm.log` between the two halves.
+
+| Proof | What was removed | What failed | What it printed |
+| :-- | :-- | :-- | :-- |
+| 1 | the damage's type read off the row | `StandingInAZoneCostsTheRowsOwnDamageTypeAndNotAnother` | "met by CelestialResistance and not by DemonicResistance: 4.4 against 2.2" |
+| 2 | the ramp's ceiling | `TheRampStopsAtItsCeiling` | "the last two seconds cost the same" to be 30.770477, but it was 26.374695 |
+| 3 | the boss test in the arithmetic | `TheBonusIsAddedForABossKillAndNotAnOrdinaryOne` | "an ordinary kill is rolled with what the player carries" to be 50, but it was 70 |
+
+**THE FIRST PROOF TYPES THE DAMAGE AS ANOTHER CATACLYSM RATHER THAN REMOVING ITS TYPE, ON
+PURPOSE.** Untyped damage meets neither resistance, so the two measurements come out about equal
+-- which that helper's own comment says lies between the right answer and both wrong ones. Typed
+as the other, the figure that should be about half is about twice, and the log shows it: 4.4
+against 2.2.
+
+### The Python side
 
 ```
 python -m pytest tools/tests/test_dungeon_modifier_rules_are_the_rows.py
@@ -169,9 +231,8 @@ type is. It now refuses the quoted literal, which is what writing the answer dow
 
 ### What the tests do not show
 
-- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the eleven automation tests and the three guard proofs wait for this machine's next free window, and
-  this section will be replaced by what those runs print.
+- **That a zone ever runs out in a real frame loop.** The test that measures its twenty seconds
+  moves the world clock by hand, because the rule's own beat does not.
 - **That the floor's bonus reaches a real boss's drop roll.** The arithmetic is tested and the lookup
   that feeds it cannot be, for the engine reason written above.
 - **What a floor of this is like to play.** Every test stands the player on ground deliberately; how
