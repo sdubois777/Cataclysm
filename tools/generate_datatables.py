@@ -5029,6 +5029,61 @@ def refuse_a_scale_nothing_asks_for(sheet: str, rows: list[dict]) -> list[str]:
     return problems
 
 
+#: The scales that count bodies standing inside a radius.
+#:
+#: EACH NEEDS THE ROW TO STATE THAT RADIUS, in a `Reach Metres` column, because
+#: the radius belongs to the row and not to the character:
+#: `UCataclysmAbilitySystemComponent::WithEnemiesInReach` walks the level only
+#: when some modifier states a reach above zero, and counts each row's entries
+#: inside the row's own reach.
+SCALES_THAT_COUNT_ENEMIES_IN_A_RADIUS = frozenset({
+    "enemies_in_reach",
+    "crippled_enemies_in_reach",
+})
+
+
+def refuse_a_reach_scale_a_row_cannot_state(sheet: str,
+                                            rows: list[dict]) -> list[str]:
+    """A row may only count enemies in a radius where it can state the radius.
+
+    THE TWO EFFECT SHEETS SHARE THE SCALE VOCABULARY AND NOT THE COLUMNS.
+    `_condition_and_scale` validates `Scale` for both, and accepts both names
+    above on either. Only the Passive Effects sheet has a `Reach Metres` column,
+    and only `validate_passive_effects` checks it.
+
+    SO SUCH A ROW ON THE OTHER SHEET IS ACCEPTED AND DEAD. Its modifier keeps
+    `ReachMetres` at -1, the level walk never happens, the distance list stays
+    empty, and the row multiplies by a count of nobody. Nothing errors and
+    nothing warns -- the same silent shape issue #1973 was filed for, one level
+    down: that check asks whether anything asks for the row's STAT, and a row
+    like this names a stat that is asked for. Issue #1987.
+
+    SCOPED BY WHETHER THE ROW CAN CARRY A REACH AT ALL, rather than by naming
+    the sheet here. A row built with a `ReachMetres` key is on a sheet with the
+    column and is `validate_passive_effects`'s business; a row without one could
+    not state a reach whatever its author intended. That also means this check
+    stops refusing by itself on the day the other sheet gains the column -- at
+    which point it needs the value rule the passive sheet already has, which
+    this does not supply.
+    """
+    problems = []
+    for row in rows:
+        if "ReachMetres" in row:
+            continue
+        scale = str(row.get("Scale") or "").strip().lower()
+        if scale in SCALES_THAT_COUNT_ENEMIES_IN_A_RADIUS:
+            problems.append(
+                f"{sheet}/{row['Name']}: scales by {scale!r}, which counts the "
+                f"enemies standing within a radius, and no row on this sheet "
+                f"can state one -- it has no 'Reach Metres' column. The "
+                f"modifier would keep a reach of -1, the engine would never "
+                f"walk the level for it, and the row would count nobody and "
+                f"grant NOTHING without saying so. Issue #1987. Use a scale "
+                f"this sheet can carry, or give the sheet the column and the "
+                f"rule that goes with it.")
+    return problems
+
+
 def validate_passive_effects(tables: dict[str, list[dict]],
                              known: set[str]) -> list[str]:
     """Every passive effect names a real node, a real stat and declared tags.
@@ -5252,6 +5307,13 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     # sheets share the scale vocabulary, so a dead scaled row is as easy to
     # write here as there. Issue #1973.
     problems.extend(refuse_a_scale_nothing_asks_for("EnchantmentEffects", effects))
+
+    # AND A SCALE THAT COUNTS ENEMIES IN A RADIUS THIS SHEET CANNOT STATE.
+    # Issue #1987. The refusal above asks whether anything asks for the row's
+    # STAT, so it passes a row scaling a live stat by a reach this sheet has no
+    # column for -- which is accepted, built, imported and dead.
+    problems.extend(
+        refuse_a_reach_scale_a_row_cannot_state("EnchantmentEffects", effects))
 
     return problems
 
