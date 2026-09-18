@@ -3754,6 +3754,53 @@ CONDITIONS = {
     # the same reason a future "while above 75 Fervour" does. That one is a
     # threshold and this one is not.
     "energy_shield_at_maximum": None,
+
+    # "Nearby enemies deal 10%-30% less damage to you" is
+    # `opponent_within_metres` with 5. Issue #1981.
+    #
+    # FIVE IS MEASURED AND NOT CHOSEN. Every row in the game that asks whether
+    # another character is close uses 5.0 -- the six on `target_within_metres`,
+    # and no other value appears in any table carrying a Condition column,
+    # measured 2026-09-18. The sentence says only "nearby", so the figure had to
+    # come from somewhere, and matching what is already shipped beats inventing.
+    #
+    # THE NEAR CASE OF THE BLOW'S OWN DISTANCE, where `opponent_beyond_metres` is
+    # the far one. Both read the blow the DEFENDER took, which is the half
+    # `target_within_metres` cannot answer: that one is the attacker's own
+    # lookup. A row about enemies hitting you needs this one.
+    #
+    # THE SAME 0 TO 100 METRE BOUND AS ITS TWIN, and for that judgement's reason:
+    # a threshold past 100 would be a row nothing could satisfy.
+    "opponent_within_metres": (0.0, 100.0, "a distance in metres"),
+
+    # "Strike skills deal 25%-40% less damage if you have moved in the last 2
+    # seconds" is `moved_within_seconds` with 2. Issue #1981.
+    #
+    # THE OTHER SIDE OF `stationary_for_seconds`, WHICH IS NOT ITS NEGATION. That
+    # one holds at AT LEAST the threshold and this at AT MOST it, so at exactly
+    # the threshold both hold. One instant wide, and said rather than hidden.
+    "moved_within_seconds": (0.0, 60.0, "a number of seconds"),
+
+    # "When your class resource is above 75%, all skills cost 20%-40% less mana"
+    # is `class_resource_above` with 75. Issue #1981.
+    #
+    # A SHARE AND NOT A COUNT OF POINTS. Classes do not share a maximum, so a row
+    # written in points would mean a different fraction of the bar for each of
+    # them. `class_resource_held` is the scale that reads the points themselves.
+    #
+    # STRICTLY ABOVE, the boundary `health_above` draws for the same word.
+    "class_resource_above": (0.0, 100.0, "a percentage of the maximum class resource"),
+
+    # "You take 10%-20% increased damage from all sources while your shield is
+    # active" is `energy_shield_above_zero`, and it takes NO VALUE. Issue #1981.
+    #
+    # "ACTIVE" IS HELD ABOVE ZERO, a judgement under the project owner's
+    # delegation of 2026-09-14, recorded in docs/DECISIONS.md. A shield at
+    # nothing absorbs nothing.
+    #
+    # NOT THE SAME QUESTION AS `energy_shield_at_maximum` ABOVE, which asks
+    # whether the bar is full. This asks whether there is any bar left at all.
+    "energy_shield_above_zero": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.
@@ -3937,6 +3984,31 @@ SCALES = {
     # (90, and 12 a level after the first); a step past 1,000 would be a bonus
     # a character reaches once, if at all, which is far likelier a mistake.
     "max_mana": (0.0, 1000.0, "an amount of maximum mana"),
+
+    # "Ranged skills deal 10%-20% bonus damage for each meter of distance to the
+    # target" is `metres_to_target` with a step of 1. Issue #1981.
+    #
+    # THE SAME READING `target_within_metres` TESTS, SIZED RATHER THAN COMPARED.
+    # That is the difference between a condition and a scale, and both are filled
+    # only on the attacker's own lookups -- which is where a ranged skill's
+    # damage is worked out.
+    #
+    # THE SAME 0 TO 100 METRE BOUND the two distance conditions use.
+    "metres_to_target": (0.0, 100.0, "a number of metres"),
+
+    # "All damage dealt is reduced by 15%-25% for each second you stand still" is
+    # `seconds_stationary` with a step of 1. Issue #1981.
+    #
+    # THE READING `stationary_for_seconds` TESTS, SIZED RATHER THAN COMPARED.
+    #
+    # ITS ROW STATES NO CAP AND NONE IS INVENTED, because it does not need one:
+    # the row is a MULTIPLYING reduction, and the pipeline floors one at -99%, so
+    # one per cent of the hit survives however long the character stands there.
+    # An increased row would have reached no damage at all. Measured and ruled on
+    # 2026-09-18.
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "seconds_stationary": (0.0, 60.0, "a number of seconds"),
 }
 
 
