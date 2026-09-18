@@ -12,6 +12,10 @@
 class ACataclysmCharacterBase;
 class UCataclysmAbilitySystemComponent;
 struct FGameplayEffectModCallbackData;
+// FOR `AttackerOf` BELOW. Declared rather than included, which is what
+// `CataclysmSkillEffects.h` does for the same type and for the same reason: a
+// const reference in a declaration needs the name and not the definition.
+struct FGameplayEffectContextHandle;
 
 /**
  * One blow, as the character it landed on resolved it. Issue #41, slice 4.
