@@ -1127,6 +1127,50 @@ namespace CataclysmStatExemptionTest
 	 * `UCataclysmAbilitySystemComponent::MaximumEnergyShield`. Issue #1973: this
 	 * is the pairing that granted nothing until that lookup existed.
 	 */
+	void ProbeScaledMaximumClassResource(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Caster(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Caster.Actor));
+		if (!Test.TestNotNull(TEXT("an ability system"), System))
+		{
+			return;
+		}
+
+		// A HUNDRED OF EACH: the bar this scales, and the mana it scales by.
+		// `Ritualist_keystone_d_kC` Vessel reads "1 Fervour for every 20 maximum
+		// mana", so a hundred mana is five steps.
+		System->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+			100.0f);
+		ScaledBy(Caster.Actor, TEXT("class_resource"), 1.0f,
+				 ECataclysmStatScale::PerPointOfMaximumMana, /*Base=*/100.0f);
+
+		// THE READING MOVES FROM NOTHING TO A HUNDRED, so the scale's own answer
+		// moves with it rather than the probe reading a figure that was always
+		// there.
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 0.0f);
+		const float Without = System->MaximumClassResource();
+		System->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 100.0f);
+		const float With = System->MaximumClassResource();
+
+		Test.TestTrue(
+			FString::Printf(TEXT("class_resource is asked for, so maximum mana "
+								 "raises the bar: %.2f against %.2f"),
+							With, Without),
+			With > Without);
+	}
+
 	void ProbeScaledMaximumEnergyShield(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -1633,6 +1677,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("fervour_per_second"),         &ProbeScaledFervourPerSecond},
 			{TEXT("fervour_from_minions"),       &ProbeScaledFervourFromMinions},
 			{TEXT("fervour_per_enemy_in_reach"), &ProbeScaledFervourPerEnemyInReach},
+			{TEXT("class_resource"),             &ProbeScaledMaximumClassResource},
 			{TEXT("max_energy_shield"),          &ProbeScaledMaximumEnergyShield},
 			{TEXT("mana_regen"),                 &ProbeScaledManaRegen},
 		};

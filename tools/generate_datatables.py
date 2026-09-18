@@ -5052,6 +5052,16 @@ STATS_WITH_AN_ASKER = frozenset({
     "fervour_per_enemy_in_reach",
     "fervour_from_minions",
     "max_energy_shield",
+    # ADDED 2026-09-18 FOR Ritualist_keystone_d_kC Vessel, and only
+    # because a probe measures the ask.
+    # UCataclysmAbilitySystemComponent::MaximumClassResource applies a
+    # scaled row to the maximum, thirteen of the fourteen readers of that
+    # maximum now go through it, and
+    # Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline
+    # moves maximum mana and watches the bar move with it. Before that
+    # lookup existed every reader took the attribute, and a scaled row on
+    # this stat would have been accepted, built, imported and dead.
+    "class_resource",
 })
 
 
