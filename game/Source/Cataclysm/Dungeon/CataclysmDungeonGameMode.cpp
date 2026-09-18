@@ -1322,6 +1322,22 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// Clearing them would delete the enemies the owner's rule deliberately
 	// leaves alive -- the next wave arrives at "10% or less remaining", and the
 	// remainder is meant to still be fighting.
+	// MARCH OF PROGRESS FORGETS THE LAST FLOOR'S COMMANDER FIRST, AND THIS IS THE ONLY
+	// PLACE IT IS FORGOTTEN. Issues #1820 and #41. Here rather than in
+	// `ApplyFloorRulesToPlayer` with the rest of that rule's per-floor state, because
+	// `GoToFloor` calls this function and then that one: a Commander cleared there would
+	// be the one chosen at the bottom of this function, and every floor would have none.
+	//
+	// BEFORE THE BRANCH BELOW AND NOT INSIDE IT, so a Horde dungeon's next wave chooses
+	// its own Commander. That wave is a level, the row pays for "the Commander in each
+	// level", and the survivors of the last wave are candidates for this one exactly as
+	// the creatures walking in are.
+	//
+	// THE RUN'S COUNT OF COMMANDERS KILLED IS NOT TOUCHED. That is what the row pays and
+	// nothing in the row takes it back; `LeaveEmpireDungeon` is where it ends.
+	MarchOfProgressCommander = nullptr;
+	bMarchOfProgressCommanderSlain = false;
+
 	if (!FloorBrief.bSameArenaAsLastFloor)
 	{
 		ClearFloorEnemies();
@@ -1392,6 +1408,13 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// After the loop rather than inside it, because the choice is the
 		// rarest creature and rarity is not known until each one has spawned.
 		ChooseTheFloorsMedic();
+
+		// AND ONE OF THEM IS THE FLOOR'S COMMANDER, if the floor carries THAT rule.
+		// Issues #1820 and #41. Here for the reason directly above: the choice is the
+		// highest rung and no rung is known until every creature has spawned. The two
+		// may be the same creature, which nothing forbids -- neither rule reads what the
+		// other wrote.
+		ChooseTheFloorsCommander();
 	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
@@ -1591,6 +1614,65 @@ void ACataclysmDungeonGameMode::ChooseTheFloorsMedic()
 		*Rarest->GetName(), Rarest->RarityStep);
 }
 
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::TheFloorsCommander() const
+{
+	return MarchOfProgressCommander.Get();
+}
+
+void ACataclysmDungeonGameMode::ChooseTheFloorsCommander()
+{
+	// ONLY A FLOOR CARRYING THE RULE HAS A COMMANDER, the same test and for the same
+	// reason `ChooseTheFloorsMedic` above makes it.
+	if (!FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::MarchOfProgressKey)))
+	{
+		return;
+	}
+
+	// ONE COMMANDER AT A TIME, AND ONE PAYMENT A FLOOR. A Horde dungeon's next wave
+	// arrives in the arena the player is standing in and calls this again, so both
+	// questions have to be asked: a Commander is still alive, or this floor's has already
+	// been killed and paid for. The row pays for "the Commander in each level" -- one of
+	// them. `PopulateFloor` forgets both before it places a new floor's creatures.
+	if (MarchOfProgressCommander.IsValid() || bMarchOfProgressCommanderSlain)
+	{
+		return;
+	}
+
+	ACataclysmEnemyCharacter* Highest = nullptr;
+	for (ACataclysmEnemyCharacter* Enemy : FloorEnemies)
+	{
+		if (!IsValid(Enemy))
+		{
+			continue;
+		}
+
+		if (Highest == nullptr || Enemy->RarityStep > Highest->RarityStep)
+		{
+			// STRICTLY GREATER, so a tie keeps the earlier creature, which is the rule
+			// the medic chooser above already follows and for its stated reason.
+			Highest = Enemy;
+		}
+	}
+
+	if (Highest == nullptr)
+	{
+		// AN EMPTY FLOOR HAS NO COMMANDER, and the rule does not fail. The floor's
+		// creatures still hit harder for its depth -- there are none -- and there is no
+		// armour to earn here. The panel says "no Commander".
+		return;
+	}
+
+	MarchOfProgressCommander = Highest;
+
+	// NOTHING IS WRITTEN ON THE CREATURE. It is an ordinary creature of its kind and
+	// rung, and this log line and the floor panel are the only places the choice shows.
+	// Issue #1997 is what a player would need in order to pick it out in play.
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("%s is this floor's Commander, at rarity step %d."),
+		*Highest->GetName(), Highest->RarityStep);
+}
+
 // ---------------------------------------------------------------------------
 // Waves, for a Horde dungeon. Issue #1467
 // ---------------------------------------------------------------------------
@@ -1641,6 +1723,10 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 		// choice is the rarest creature, and a wave that is still arriving may
 		// yet bring a rarer one.
 		ChooseTheFloorsMedic();
+
+		// AND THE COMMANDER WITH IT, for the same reason: a wave still arriving may yet
+		// bring a creature of a higher rung. Issues #1820 and #41.
+		ChooseTheFloorsCommander();
 	}
 
 	return Arrived;
@@ -2027,6 +2113,13 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	DungeonModifiers.Reset();
 	DungeonModifierPool.Reset();
 	FloorBrief = FCataclysmFloorBrief();
+
+	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR GOES WITH THE RUN. Issues #1820 and #41.
+	// It is the one thing a floor rule grants that outlives a floor change, because the
+	// row pays for "the Commander in each level" and never takes it back -- so this is
+	// the only place it can end. The call below takes it off the character: the brief is
+	// empty now, so the applier writes an armour modifier of nothing.
+	MarchOfProgressCommandersKilled = 0;
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -2421,13 +2514,18 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// itself rather than leaving it to what it laid.
 	const bool bJudgmentZones = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::JudgmentZonesKey));
+	// AND MARCH OF PROGRESS, WHICH CHANGES CREATURES AND THE PLAYER BOTH. Issues #1820
+	// and #41. Every creature's damage rises with the floor, and the player's armour
+	// rises with the commanders they have killed.
+	const bool bMarchOfProgress = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::MarchOfProgressKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
-		&& !bJudgmentZones)
+		&& !bJudgmentZones && !bMarchOfProgress)
 	{
 		return;
 	}
@@ -2593,6 +2691,15 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bRavenousHoard)
 	{
 		StepRavenousHoard(Player);
+	}
+
+	// AND MARCH OF PROGRESS BESIDE IT, WHOSE POSITION IS FREE FOR THE SAME REASON.
+	// Issues #1820 and #41. It writes a creature multiplier no other rule writes, and
+	// the only player field it touches is its own. It reads no creature's health and
+	// places nothing, so no rule above or below it is disturbed by where it sits.
+	if (bMarchOfProgress)
+	{
+		StepMarchOfProgress(Player, AbilitySystem);
 	}
 
 	// AND VOLATILE EVOLUTION BESIDE IT, WHOSE POSITION IS FREE FOR THE SAME REASON.
@@ -3340,6 +3447,19 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// never sets it, and nothing is what the effects already hold.
 	Effects.SkillsLockedValue = EdictOfSilenceLockApplied;
 
+	// AND THE ARMOUR MARCH OF PROGRESS HAS PAID THE PLAYER. Issues #1820 and #41. Read
+	// unconditionally like the rest: a player who has killed no commanders is owed
+	// nothing, and nothing is what the effects already hold.
+	//
+	// THE COUNT AND NOT THE APPLIED FIGURE, WHICH IS THE OPPOSITE OF EVERY LINE ABOVE.
+	// Those fields hold what is standing on the character because their rules work out a
+	// share on the beat. This one is worked out from a count that only a kill moves, so
+	// the count is the truth and `MarchOfProgressArmourApplied` only records what the
+	// last apply put on, so the beat can tell when the two differ.
+	Effects.ArmourMorePercent =
+		UCataclysmDungeonModifierEffects::MarchOfProgressArmourMorePercentFor(
+			MarchOfProgressCommandersKilled);
+
 	UCataclysmDungeonModifierEffects::ApplyToCharacter(Effects, AbilitySystem,
 													  Player->GetEquipment());
 }
@@ -3364,6 +3484,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForEpidemic(Notice);
 	NoteDeathForBloodForgedChampions(Notice);
 	NoteDeathForVengefulWraiths(Notice);
+	NoteDeathForMarchOfProgress(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
@@ -3960,6 +4081,107 @@ void ACataclysmDungeonGameMode::NoteDeathForVengefulWraiths(
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::StepMarchOfProgress(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+
+	// ONE FIGURE FOR THE WHOLE FLOOR, WORKED OUT ONCE. Every creature on the floor is
+	// given the same multiplier, which is what "each floor, enemies damage increases"
+	// says: it is a fact about the floor and not about any creature.
+	//
+	// THE BRIEF'S FLOOR NUMBER AND NOT `FloorNumber`, which is the number every other
+	// per-floor rule reads through `PlayerEffectsFor`. For a Horde dungeon the brief's
+	// number is the wave, so all of them agree about what a floor is rather than this
+	// one disagreeing.
+	const float Multiplier =
+		Effects::MarchOfProgressDamageMultiplierOnFloor(FloorBrief.FloorNumber);
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE, WHEREVER IT CAME FROM, which is the
+	// sweep `StepRavenousHoard` makes and for its reasons: `IsHostileTo` also turns away
+	// the dead, and the player's minions are `ACataclysmMinion`, which this never
+	// iterates.
+	//
+	// THE SETTER RETURNS AT ONCE WHEN THE MULTIPLIER HAS NOT CHANGED, so after the first
+	// beat of a floor this writes nothing and the sweep is the whole cost.
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || !UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			continue;
+		}
+
+		Creature->SetFloorDepthDamageMultiplier(Multiplier);
+	}
+
+	// AND THE ARMOUR THE PLAYER HAS EARNED, PUT ON ONLY WHEN IT HAS MOVED. The apply
+	// rewrites the character's whole standing stat line, so doing it four times a second
+	// for a figure that changes on a kill would be waste. Death's Embrace makes the same
+	// guard for the same reason.
+	const float Owed =
+		Effects::MarchOfProgressArmourMorePercentFor(MarchOfProgressCommandersKilled);
+	if (!FMath::IsNearlyEqual(Owed, MarchOfProgressArmourApplied))
+	{
+		MarchOfProgressArmourApplied = Owed;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForMarchOfProgress(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::MarchOfProgressKey)))
+	{
+		return;
+	}
+
+	// THE FLOOR'S COMMANDER AND NOBODY ELSE. A weak pointer that has gone invalid cannot
+	// match a victim, so a floor whose Commander was destroyed rather than killed pays
+	// nothing, which is right: the row pays for killing it.
+	if (bMarchOfProgressCommanderSlain || !MarchOfProgressCommander.IsValid()
+		|| Notice.Victim != MarchOfProgressCommander.Get())
+	{
+		return;
+	}
+
+	// THE PLAYER MUST HAVE STRUCK THE LAST BLOW. "Killing the Commander" is the row, so a
+	// Commander that burns to death on another rule's ground or is killed by another
+	// creature pays nothing. `NoteDeathForDemonPrince` and three other listeners ask the
+	// same question the same way, for rows that say "when you kill".
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Player || Notice.Killer != Player)
+	{
+		return;
+	}
+
+	bMarchOfProgressCommanderSlain = true;
+	++MarchOfProgressCommandersKilled;
+
+	UE_LOG(LogCataclysm, Verbose,
+		TEXT("The floor's Commander was slain; %d this run, armour %.0f%% more."),
+		MarchOfProgressCommandersKilled,
+		Effects::MarchOfProgressArmourMorePercentFor(MarchOfProgressCommandersKilled));
+
+	// THE PANEL AT ONCE AND THE ARMOUR ON THE NEXT BEAT. The armour goes on through
+	// `ApplyChangingFloorEffects`, which needs the player's ability system; the beat has
+	// it in hand and this does not, and a quarter of a second is what every other
+	// recorded-here-applied-there rule already waits.
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::NoteDeathForBloodForgedChampions(
 	const FCataclysmDeathNotice& Notice)
 {
@@ -4457,6 +4679,34 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Hoard, FString::Printf(TEXT("strongest %d of %d"),
 											RavenousHoardStrongest,
 											Effects::RavenousHoardMostStacks));
+	}
+
+	// AND MARCH OF PROGRESS, WHICH SAYS TWO THINGS AND NEITHER IS A COUNT OF N OF M.
+	// Issues #1820 and #41. What the floor is doing to the creatures is a multiplier, and
+	// what the player has to do about it is kill one particular creature -- so the line
+	// says the damage and then says whether that creature is still alive.
+	//
+	// IT DOES NOT SAY WHICH CREATURE. Nothing in the game does; that is issue #1997.
+	// This tells the player whether there is one left to kill, which is what the row's
+	// last sentence -- skipping commanders -- is about.
+	const FName March(Effects::MarchOfProgressKey);
+	if (FloorBrief.Modifiers.Contains(March))
+	{
+		const float Multiplier = Effects::MarchOfProgressDamageMultiplierOnFloor(
+			FloorBrief.FloorNumber);
+		const TCHAR* Commander = TEXT("no Commander");
+		if (bMarchOfProgressCommanderSlain)
+		{
+			Commander = TEXT("Commander slain");
+		}
+		else if (MarchOfProgressCommander.IsValid())
+		{
+			Commander = TEXT("Commander alive");
+		}
+
+		Counting.Add(March, FString::Printf(
+			TEXT("enemies x%.1f, %s, %d slain this run"), Multiplier, Commander,
+			MarchOfProgressCommandersKilled));
 	}
 
 	// AND GRAVE TIDE'S WAVES SO FAR. Issues #1820 and #41.
@@ -6145,6 +6395,12 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		{
 			It->SetTimeAliveDamageMultiplier(1.0f);
 			It->SetPlacedDamageMultiplier(1.0f);
+
+			// AND MARCH OF PROGRESS' MULTIPLIER WITH THEM. Issues #1820 and #41. A
+			// creature that lives through a Horde dungeon's change of wave would
+			// otherwise keep the last floor's figure, and the next floor may not carry
+			// the row at all. The next beat sets it again for a floor that does.
+			It->SetFloorDepthDamageMultiplier(1.0f);
 		}
 		RavenousHoardSecondsAlive.Empty();
 		RavenousHoardStrongest = 0;
@@ -6202,6 +6458,20 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		JudgmentZonesSecondsInside = 0.0f;
 		JudgmentZonesTicksInThisZone = 0;
 		JudgmentZonesTriggers = 0;
+
+		// AND MARCH OF PROGRESS FORGETS WHAT ARMOUR IS STANDING ON THE PLAYER, BECAUSE
+		// THE CALL ABOVE HAS ALREADY TAKEN IT OFF. Issues #1820 and #41. Leaving the
+		// figure would make the next beat believe the armour was still on and never put
+		// it back. Wasting Sickness above keeps its count and drops its applied figure
+		// for exactly this reason, and the count of commanders killed is kept here for
+		// exactly that reason too: the row pays it "in each level" and never takes it
+		// back, so only `LeaveEmpireDungeon` clears it.
+		//
+		// THIS FLOOR'S COMMANDER IS NOT FORGOTTEN HERE, AND THAT IS NOT AN OVERSIGHT.
+		// `GoToFloor` calls `PopulateFloor` and then this, so a Commander cleared here
+		// would be the one the population pass had just chosen -- every floor would have
+		// none. `PopulateFloor` forgets it before it places anything instead.
+		MarchOfProgressArmourApplied = 0.0f;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

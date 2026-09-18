@@ -632,6 +632,45 @@ public:
 	 */
 	void ChooseTheFloorsMedic();
 
+	/**
+	 * March of Progress' Commander, chosen as the floor is populated. Issues #1820, #41.
+	 *
+	 * THE HIGHEST RUNG, TIES TO THE FIRST PLACED, WHICH IS THE MEDIC'S RULE ABOVE AND FOR
+	 * ITS REASON: a strictly-greater comparison means the choice does not depend on how
+	 * the list happens to be ordered beyond the order the population pass placed them in.
+	 * Called from the same two places that one is, for the same reason -- a wave that is
+	 * still arriving may yet bring a creature of a higher rung.
+	 *
+	 * NOTHING ON THE CHOSEN CREATURE CHANGES, WHICH IS WHERE IT DIFFERS FROM THE MEDIC.
+	 * That one writes a flag the creature acts on; this rule only needs to know which
+	 * creature it is, and the Commander gameplay tag could not carry it: that tag means
+	 * "buffed by a commander" rather than "is a commander", which is what
+	 * `ACataclysmEnemyCharacter::CommanderMultiplier` does with it. Issue #1997 is what a
+	 * player would need in order to see which creature it is.
+	 *
+	 * ONE COMMANDER AT A TIME AND ONE PAYMENT A FLOOR. It returns early while one is
+	 * alive, and again once the player has killed this floor's, so a Horde dungeon's next
+	 * wave cannot be paid for a second Commander on a floor already paid for.
+	 * `PopulateFloor` forgets both before it places anything.
+	 *
+	 * PUBLIC FOR THE REASON THE MEDIC'S CHOOSER IS: a test that had to build a whole
+	 * dungeon to reach this would not get written, and a pure helper tested on its own
+	 * would not prove that anything calls it.
+	 */
+	void ChooseTheFloorsCommander();
+
+	/**
+	 * Which creature is this floor's Commander, or null when the floor has none.
+	 *
+	 * DEFINED IN THE CPP AND NOT HERE, because `ACataclysmEnemyCharacter` is only
+	 * forward-declared at the top of this header. `TWeakObjectPtr::Get` casts to the
+	 * pointed-at type, and doing that on an incomplete type is not worth relying on.
+	 */
+	ACataclysmEnemyCharacter* TheFloorsCommander() const;
+
+	/** How many commanders the player has killed in this run. */
+	int32 CommandersKilledThisRun() const { return MarchOfProgressCommandersKilled; }
+
 	// ----------------------------------------------------------------------
 	// Waves, for a Horde dungeon. Issue #1467
 	//
@@ -1743,6 +1782,39 @@ private:
 	void StepJudgmentZones(ACataclysmPlayerCharacter* Player,
 						   class UCataclysmAbilitySystemComponent* AbilitySystem);
 
+	/**
+	 * March of Progress, on every beat: make every creature on the floor hit harder for
+	 * how deep the floor is, and put the armour the player has earned on them.
+	 *
+	 * THE DAMAGE IS SET AND NOT ADDED, SO THE BEAT IS IDEMPOTENT. Every creature is given
+	 * the same multiplier, worked out from the floor number alone, so running this beat
+	 * twice leaves the floor exactly as running it once does.
+	 * `ACataclysmEnemyCharacter::SetFloorDepthDamageMultiplier` returns at once when the
+	 * value has not changed, so after the first beat of a floor this writes nothing.
+	 *
+	 * A SWEEP RATHER THAN A CALL AT POPULATION, because creatures arrive on a floor after
+	 * it is populated: Grave Tide's waves, Royal Guard's guards, Vengeful Wraiths' risen
+	 * and a Horde dungeon's next wave. A creature placed on this beat is given its
+	 * multiplier on the next one, which is the order every rule on the beat follows.
+	 */
+	void StepMarchOfProgress(ACataclysmPlayerCharacter* Player,
+							 class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+
+	/**
+	 * March of Progress' armour, on the death of the floor's Commander.
+	 *
+	 * THE PLAYER MUST HAVE STRUCK THE LAST BLOW. The row says "killing the Commander",
+	 * so a Commander that burns to death on another rule's ground, or is killed by
+	 * another creature, pays nothing. The four other listeners whose rows say "when you
+	 * kill" ask the same question the same way.
+	 *
+	 * IT PAYS ONCE. `bMarchOfProgressCommanderSlain` is what stops a second notice for
+	 * the same body paying twice, which matters because a floor has one Commander and
+	 * the count it feeds lasts the whole run.
+	 */
+	void NoteDeathForMarchOfProgress(const struct FCataclysmDeathNotice& Notice);
+
 public:
 	/**
 	 * What this floor adds to a boss's drop roll, or nothing when it has not been earned.
@@ -2415,6 +2487,38 @@ private:
 	float JudgmentZonesSecondsInside = 0.0f;
 	int32 JudgmentZonesTicksInThisZone = 0;
 	int32 JudgmentZonesTriggers = 0;
+
+	/**
+	 * March of Progress: which creature is this floor's Commander, whether one has been
+	 * chosen, whether the player has killed it, how many the player has killed in this
+	 * run, and how much armour is standing on the player for them.
+	 * Issues #1820 and #41.
+	 *
+	 * THE COUNT IS THE ONLY FIELD HERE THAT OUTLIVES THE FLOOR, and it is the one the row
+	 * asks to outlive it: the armour is paid "in each level" and nothing in the row takes
+	 * it back. `LeaveEmpireDungeon` clears it, which is where a run ends.
+	 *
+	 * `bMarchOfProgressCommanderSlain` IS WHAT STOPS A FLOOR PAYING TWICE. A Horde
+	 * dungeon's next wave arrives in the same arena and calls the chooser again, and the
+	 * weak pointer alone cannot answer whether this floor has already been paid: a
+	 * Commander that died and a Commander destroyed for any other reason both leave it
+	 * invalid. The chooser returns early on either the living pointer or this flag.
+	 *
+	 * BOTH ARE FORGOTTEN IN `PopulateFloor` AND NOT IN `ApplyFloorRulesToPlayer`, AND
+	 * THAT ORDER IS LOAD-BEARING. `GoToFloor` populates the floor and applies the floor
+	 * rules afterwards, so clearing them in the applier would wipe the Commander the
+	 * population pass had just chosen and every floor would have none.
+	 *
+	 * `MarchOfProgressArmourApplied` IS WHAT IS ON THE CHARACTER, NOT WHAT IS OWED.
+	 * `ApplyFloorRulesToPlayer` replaces the floor's modifiers wholesale on a floor
+	 * change, which takes the armour off, so that function sets this back to nothing and
+	 * the next beat notices the difference and puts the armour back. Issue #41's slice 2
+	 * built that shape for The Nihil's Embrace and its comment there says the same.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> MarchOfProgressCommander;
+	bool bMarchOfProgressCommanderSlain = false;
+	int32 MarchOfProgressCommandersKilled = 0;
+	float MarchOfProgressArmourApplied = 0.0f;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

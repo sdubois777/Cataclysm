@@ -74,6 +74,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::VengefulWraithsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::JudgmentZonesKey =
 	TEXT("Celestial_Judgment_Zones");
 
+const TCHAR* UCataclysmDungeonModifierEffects::MarchOfProgressKey =
+	TEXT("War_March_of_Progress");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -116,6 +119,16 @@ namespace
 		TEXT("healing_received_reduction");
 	const TCHAR* const DungeonModifierEffectsMovementSpeedStat =
 		TEXT("movement_speed");
+
+	/**
+	 * The stat armour is written under, for March of Progress.
+	 *
+	 * `armor` AND NOT `armour`, WHICH IS THE DATA'S SPELLING AND NOT THIS PROJECT'S
+	 * PROSE. `UCataclysmPlayerClassStats::StatToAttribute` holds it spelled this way,
+	 * `game/Data/ClassStats.csv` and `game/Data/Affixes.csv` both spell it this way, and
+	 * a modifier keyed by a name that map does not hold is written nowhere, silently.
+	 */
+	const TCHAR* const DungeonModifierEffectsArmourStat = TEXT("armor");
 
 	/**
 	 * The four stats Withered Ground's row calls "Health and Mana recovery
@@ -254,7 +267,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(EpidemicKey)
 		|| RowKey == FName(BloodForgedChampionsKey)
 		|| RowKey == FName(VengefulWraithsKey)
-		|| RowKey == FName(JudgmentZonesKey))
+		|| RowKey == FName(JudgmentZonesKey)
+		|| RowKey == FName(MarchOfProgressKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -419,6 +433,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(BloodForgedChampionsKey),
 		FName(VengefulWraithsKey),
 		FName(JudgmentZonesKey),
+		FName(MarchOfProgressKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -834,6 +849,20 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  DungeonModifierEffectsManaLeechStat,
 								  Effects.RecoveryLessPercent);
 
+	// AND MARCH OF PROGRESS, WHICH IS THE ONLY ENTRY IN THIS FUNCTION THAT RAISES A STAT
+	// THE PLAYER EARNED RATHER THAN LOWERING ONE THE FLOOR TOOK. Issues #1820 and #41.
+	// The Nihil's Embrace's reward is the nearest thing to it and is still a floor giving
+	// back what the same floor took.
+	//
+	// ONE MODIFIER CARRYING THE WHOLE FIGURE, AND THAT IS WHAT MAKES IT ADDITIVE.
+	// `UCataclysmStatPipeline` multiplies each source on its own rather than summing them
+	// first -- the Wasting Sickness comment above says so -- so three commanders written
+	// as three 10% modifiers would be x1.331. Written as one 30% modifier they are x1.3,
+	// which is what "10% per commander" means.
+	DungeonModifierEffectsAddMultiplier(Modifiers,
+									   FName(DungeonModifierEffectsArmourStat),
+									   Effects.ArmourMorePercent);
+
 	return Modifiers;
 }
 
@@ -1025,6 +1054,15 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 			TEXT("maximum health and mana %.0f%% less from wasting sickness"),
 			FMath::Max(Effects.SicknessMaxHealthLessPercent,
 					   Effects.SicknessMaxManaLessPercent)));
+	}
+
+	// AND THE ARMOUR MARCH OF PROGRESS PAID FOR, SAID AS MORE AND NOT AS LESS. Issues
+	// #1820 and #41. Every other clause here reports something taken off the player, so a
+	// reward printed in the same list has to say which way it goes.
+	if (Effects.ArmourMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("armour %.0f%% more from commanders slain"),
+									Effects.ArmourMorePercent));
 	}
 	return FString::Join(Clauses, TEXT(", "));
 }
@@ -1436,6 +1474,26 @@ float UCataclysmDungeonModifierEffects::JudgmentZonesMagicFindFor(float PlayersM
 	// own magic find: its comment says a rarer creature's "is added to the player's rather
 	// than multiplied by it".
 	return PlayersMagicFind + FloorBonus;
+}
+
+float UCataclysmDungeonModifierEffects::MarchOfProgressDamageMultiplierOnFloor(
+	int32 FloorNumber)
+{
+	// FLOOR 1 IS THE FLOOR OF RECORD FOR A NUMBER BELOW 1, rather than a multiplier of
+	// 1.0. `ACataclysmDungeonGameMode::FloorNumber` counts from 1 and `GoToFloor` clamps
+	// below 1 away, so a smaller number here is a caller asking wrongly rather than a
+	// floor that exists, and answering "the rule is off" would hide it.
+	const int32 Floor = FMath::Max(1, FloorNumber);
+
+	return 1.0f
+		+ MarchOfProgressEnemyDamagePercentPerFloor * static_cast<float>(Floor) / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::MarchOfProgressArmourMorePercentFor(
+	int32 CommandersKilled)
+{
+	return MarchOfProgressArmourPercentPerCommander
+		* static_cast<float>(FMath::Max(0, CommandersKilled));
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(
