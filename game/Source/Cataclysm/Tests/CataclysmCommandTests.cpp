@@ -2539,12 +2539,20 @@ bool FCataclysmVeilDrawsAnEnemyOffTest::RunTest(const FString&)
 	TestTrue(TEXT("with no keystone it attacks the summoner"),
 		Brain->ChooseTarget() == Summoner.Actor);
 
+	// ACROSS THE SUMMONER AND NOT BEHIND IT. The creature stands four metres
+	// away along one axis; putting the minions along the OTHER one leaves every
+	// one of them further from the creature than the summoner is -- the trap at
+	// about 6.4 metres, the mote at 8.1, the imp at 9.9, against the summoner's
+	// 4. Placing them beyond the creature on its own axis put the trap two
+	// metres away, nearer than the summoner, so the search answered the trap and
+	// the keystone never applied: it redirects a creature that would attack the
+	// CHARACTER. Three assertions failed and the run found it.
 	ACataclysmMinion* Trap =
-		SummonOfType(*this, Summoner.Actor, FVector(6 * M, 0, 0), DrawsNobody);
+		SummonOfType(*this, Summoner.Actor, FVector(0, 5 * M, 0), DrawsNobody);
 	ACataclysmMinion* Some =
-		SummonOfType(*this, Summoner.Actor, FVector(8 * M, 0, 0), DrawsSome);
+		SummonOfType(*this, Summoner.Actor, FVector(0, 7 * M, 0), DrawsSome);
 	ACataclysmMinion* Most =
-		SummonOfType(*this, Summoner.Actor, FVector(10 * M, 0, 0), DrawsMost);
+		SummonOfType(*this, Summoner.Actor, FVector(0, 9 * M, 0), DrawsMost);
 	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
 	ON_SCOPE_EXIT { if (IsValid(Some)) { Some->Destroy(); } };
 	ON_SCOPE_EXIT { if (IsValid(Most)) { Most->Destroy(); } };
@@ -2906,6 +2914,11 @@ bool FCataclysmVeilReadsItsOwnRowsTest::RunTest(const FString&)
 	// than any minion is, so the search alone would answer the summoner.
 	FScopedCreature Hunting(World, FVector((Metres - 2.0f) * M, 0, 0));
 
+	// THE MINIONS GO ACROSS THE SUMMONER, on the other axis, for the reason the
+	// behaviour test above gives: along this one they would stand nearer the
+	// creature than the summoner does and the search would answer a minion
+	// before the keystone was ever consulted.
+
 	UCataclysmAbilitySystemComponent* Theirs =
 		Cast<UCataclysmAbilitySystemComponent>(
 			UCataclysmTargeting::AbilitySystemOf(Summoner.Actor));
@@ -2924,7 +2937,7 @@ bool FCataclysmVeilReadsItsOwnRowsTest::RunTest(const FString&)
 		const bool bLast = Index == Wanted - 1;
 		ACataclysmMinion* One = SummonOfType(
 			*this, Summoner.Actor,
-			FVector((Metres + 2.0f + Index) * M, 0, 0),
+			FVector(0, (Metres + 2.0f + Index) * M, 0),
 			bLast ? DrawsMost : DrawsLittle);
 		if (!One)
 		{
