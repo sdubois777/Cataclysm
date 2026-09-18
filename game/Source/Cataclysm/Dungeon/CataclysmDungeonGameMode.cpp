@@ -3435,8 +3435,20 @@ void ACataclysmDungeonGameMode::NoteDeathForEpidemic(
 		return;
 	}
 
-	// NOT WHILE THIS RULE IS KILLING. The deaths it causes are real deaths and are
-	// announced, so without this they would come straight back here and roll again.
+	// NOT WHILE THIS RULE IS KILLING. The deaths the mass kill causes are real deaths and
+	// are announced, so one of them can come straight back here, roll again, and start a
+	// second chain inside the first.
+	//
+	// THE CASE THIS GUARDS IS NARROWER THAN IT LOOKS, measured on 2026-09-18 by reading
+	// `UCataclysmCombatEvents::NoteDeath` and `NoteBlow`. A death caused by writing health
+	// to zero carries no killer of its own: the notice's killer is read out of the dying
+	// creature's OWN last blow, and that record is written only for a blow that reached
+	// health. A creature the player never damaged dies anonymously and is refused by the
+	// killer check below with or without this flag. THE CASE THIS FLAG EXISTS FOR is a
+	// creature the player DAMAGED BUT DID NOT KILL, which the mass kill then finishes: its
+	// record names the player, so the death arrives here as the player's own kill.
+	// `Cataclysm.DungeonModifierEffects.TheMassKillDoesNotFeedItself` builds that case on
+	// purpose, and is the test that fails if this is removed.
 	if (bEpidemicKilling)
 	{
 		return;

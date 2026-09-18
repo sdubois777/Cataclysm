@@ -15148,9 +15148,14 @@ bool FCataclysmEpidemicNoSecondChainTest::RunTest(const FString& Parameters)
 	using namespace CataclysmDungeonModifierEffectsTest;
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	// THE DEATHS THE RULE CAUSES ARE REAL DEATHS AND ARE ANNOUNCED, so without a guard
-	// each one would come back to this listener, roll again, and start a second chain
-	// inside the first. The rule refuses to roll while it is killing.
+	// THE DEATHS THE RULE CAUSES ARE REAL DEATHS AND ARE ANNOUNCED, so one that names the
+	// player as its killer comes back to this listener, rolls again, and starts a second
+	// chain inside the first. The rule refuses to roll while it is killing.
+	//
+	// WHICH IS WHY THE PLAYER WOUNDS THE THREE CREATURES BEYOND THE CHAIN BELOW. Without
+	// those blows they die with no killer on record at all, the listener refuses them for
+	// that reason instead, and this test passes with the guard removed -- which is a test
+	// that cannot fail. The loop below says what was measured.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
 	{
@@ -15201,8 +15206,13 @@ bool FCataclysmEpidemicNoSecondChainTest::RunTest(const FString& Parameters)
 	TArray<ACataclysmEnemyCharacter*> Line;
 	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill + 3; ++Index)
 	{
+		// THE THREE BEYOND THE CHAIN ARE BUILT TO SURVIVE A BLOW. They have to take one
+		// from the player without dying, for the reason the next loop gives, so they get
+		// a health pool a single blow cannot empty.
+		const bool bBeyondTheChain = Index >= Effects::EpidemicSpreadsToKill;
 		ACataclysmEnemyCharacter* Creature = SpawnImpWithHealth(
-			World, FVector(600.0f + 100.0f * Index, 0.0f, 0.0f), 100.0f);
+			World, FVector(600.0f + 100.0f * Index, 0.0f, 0.0f),
+			bBeyondTheChain ? 100'000.0f : 100.0f);
 		if (!TestNotNull(TEXT("a creature in the line"), Creature)
 			|| !TestTrue(TEXT("carrying the disease"),
 						 GiveTheDebuff(Player.Character, Creature, Disease)))
@@ -15210,6 +15220,45 @@ bool FCataclysmEpidemicNoSecondChainTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		Line.Add(Creature);
+	}
+
+	// THE PLAYER WOUNDS THE THREE BEYOND THE CHAIN, AND THAT IS WHAT MAKES THIS TEST ABLE
+	// TO FAIL AT ALL. MEASURED 2026-09-18 by reading the two functions named below, before
+	// a guard proof was spent on this.
+	//
+	// A DEATH CAUSED BY WRITING HEALTH TO ZERO NAMES NO KILLER OF ITS OWN.
+	// `UCataclysmCombatEvents::NoteDeath` does not work out who killed the creature; it
+	// reads the creature's OWN last blow. `UCataclysmCombatEvents::NoteBlow` writes that
+	// record only for a blow that reached health -- "A blow that did not reach health
+	// cannot be the one that killed, so it leaves no record". A creature that was only
+	// given a debuff therefore dies anonymously, and `NoteDeathForEpidemic` refuses it at
+	// the killer check whether or not the guard is there.
+	//
+	// WITH THESE BLOWS their record names the player, so the mass kill's deaths arrive at
+	// the listener as the player's own kills and `bEpidemicKilling` is the only thing
+	// standing between them and a second chain inside the first.
+	for (int32 Index = Effects::EpidemicSpreadsToKill; Index < Line.Num(); ++Index)
+	{
+		const float HealthBefore = HealthOf(Line[Index]);
+		const float Landed =
+			UCataclysmSkillEffects::ApplyHit(Player.Character, Line[Index], 50.0f);
+		const UCataclysmAbilitySystemComponent* Record =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Line[Index]));
+
+		if (!TestTrue(FString::Printf(TEXT("the player's blow reached creature %d: %.2f "
+										   "dealt, %.2f health left of %.2f"),
+									  Index, Landed, HealthOf(Line[Index]), HealthBefore),
+					  Landed > 0.0f && HealthOf(Line[Index]) < HealthBefore)
+			|| !TestFalse(FString::Printf(TEXT("and creature %d is still alive"), Index),
+						  UCataclysmSkillEffects::IsDead(Line[Index]))
+			|| !TestTrue(FString::Printf(TEXT("the player is on record as creature %d's "
+											  "last blow"), Index),
+						 Record != nullptr && Record->GetLastBlow().IsOnRecord()
+							 && Record->GetLastBlow().Attacker.Get() == Player.Character))
+		{
+			return false;
+		}
 	}
 
 	const int32 Before = LivingCreatures(World).Num();
