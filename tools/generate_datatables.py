@@ -3486,6 +3486,29 @@ CONDITIONS = {
     # about enemies.
     "target_is_staggered": None,
 
+    # "Deal 30%-50% more damage to Boss enemies" is `target_is_boss`, and it
+    # takes no value. Issue #1815. It is the mirror of `opponent_is_boss` above:
+    # the same fact, asked from the other end of the blow.
+    #
+    # THE PAIR EXISTED WITH ONLY ONE HALF UNTIL NOW, which is what made this
+    # worth building. The engine filled `opponent_is_boss` from the incoming
+    # hit, so it answers "a boss hit me"; nothing answered "I am hitting a
+    # boss", and three enchantment sentences about damage to bosses had nowhere
+    # to go. A row carrying the wrong half of the pair reads a field nothing
+    # filled and grants nothing, exactly as the staggered pair above warns.
+    "target_is_boss": None,
+
+    # "You deal 20%-35% less damage to non-Boss enemies" is `target_is_not_boss`,
+    # and it takes no value. Issue #1815, the project owner's decision of
+    # 2026-09-18 to add a second condition rather than a negation flag on the
+    # column.
+    #
+    # NOT THE PLAIN OPPOSITE OF `target_is_boss`. A modifier carries exactly one
+    # condition, so the penalty cannot be written as "not target_is_boss"
+    # anywhere; and in the engine both halves refuse when nothing read the
+    # target, so neither fires on a character sheet with no target in hand.
+    "target_is_not_boss": None,
+
     # "While moving" is `while_moving` and "while stationary" is
     # `while_stationary`, and neither takes a value. Issue #41, slice 2.
     #
