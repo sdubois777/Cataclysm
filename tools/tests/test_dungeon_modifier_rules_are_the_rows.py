@@ -2522,3 +2522,95 @@ def test_demon_princes_rung_is_the_shared_ceiling_and_not_a_third_number():
         "DemonPrinceRung is no longer declared as VolatileEvolutionHighestRung. If this "
         "rule is meant to stop at a different rung now, say why in docs/DECISIONS.md and "
         "tie the new figure to the first boss rung as that one is.")
+
+
+def test_epidemic_row_still_states_its_two_figures():
+    """Two of this rule's figures are the row's own, not judgements.
+
+    "A 25% CHANCE" and "SPREADS 5 TIMES IN A SINGLE CHAIN". If either moves in the row and
+    not in the header, the rule stops being the row, and docs/DECISIONS.md stops being able
+    to call only the others judgements.
+    """
+    words = flat(rows()["Pestilence_Epidemic"]["Description"])
+    percent = re.findall(r"(\d+(?:\.\d+)?)\s*%", words)
+    counts = re.findall(r"spreads (\d+) times", words)
+
+    assert percent == ["25"], (
+        "The Pestilence Epidemic row no longer states a 25% chance. Check "
+        "EpidemicSpreadChancePercent against it and update docs/DECISIONS.md. " + words)
+    assert counts == ["5"], (
+        "The Pestilence Epidemic row no longer says the disease spreads 5 times in a "
+        "chain. Check EpidemicSpreadsToKill against it. " + words)
+
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+    missing = [name for name, pattern in (
+        ("EpidemicSpreadChancePercent", r"EpidemicSpreadChancePercent\s*=\s*25\.0f\s*;"),
+        ("EpidemicSpreadsToKill", r"EpidemicSpreadsToKill\s*=\s*5\s*;"),
+    ) if not re.search(pattern, text)]
+
+    assert not missing, (
+        f"{', '.join(missing)} no longer holds the figure the row states: a "
+        f"{percent[0]}% chance and a chain of {counts[0]}.")
+
+
+def test_epidemic_row_still_says_a_kill_you_made_spreads_a_disease():
+    """The four phrases the rule's readings rest on.
+
+    "WHEN YOU KILL" is why this asks who did the killing. "A DISEASED ENEMY" is why a
+    creature carrying nothing that could pass on is outside the rule and leaves the chain
+    alone. "ALL OF THE DEAD ENEMY'S REMAINING DEBUFFS" is why the rule asks the contagion
+    library for the whole list rather than for one. "PLAGUE LORD" is why a creature is
+    spawned at the end of a chain at all.
+    """
+    words = flat(rows()["Pestilence_Epidemic"]["Description"]).lower()
+
+    assert "when you kill" in words, (
+        "The Pestilence Epidemic row no longer says the player does the killing. The rule "
+        "asks whether the killer is the player because it did. " + words)
+    assert "diseased enemy" in words, (
+        "The Pestilence Epidemic row no longer says the enemy must be diseased. The rule "
+        "asks the corpse for a debuff that could pass on because it did. " + words)
+    assert "all of the dead enemy's remaining debuffs" in words, (
+        "The Pestilence Epidemic row no longer says ALL of the dead enemy's debuffs pass "
+        "on. The rule asks UCataclysmContagion::EverySpreadable for the whole list rather "
+        "than PickSpreadable for one because it did. " + words)
+    assert "plague lord" in words, (
+        "The Pestilence Epidemic row no longer ends a chain with a Plague Lord. " + words)
+
+
+def test_epidemics_reach_is_the_contagion_librarys_and_not_a_number_of_its_own():
+    """The reach is the one the spreading nodes already have, written as that constant.
+
+    THE ROW STATES NO DISTANCE -- "a nearby enemy", "all nearby enemies" -- so the figure
+    is judged, and the judgement was to take the reach the contagion library already uses
+    rather than to choose a second six. A number here would be the same design figure
+    written twice with nothing holding the two together.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    assert re.search(
+        r"\bEpidemicRadiusMetres\s*=\s*UCataclysmContagion::RadiusMetres\s*;", text), (
+        "EpidemicRadiusMetres is no longer declared as UCataclysmContagion::RadiusMetres. "
+        "If this rule is meant to reach further than the spreading nodes now, say why in "
+        "docs/DECISIONS.md.")
+
+    words = flat(rows()["Pestilence_Epidemic"]["Description"]).lower()
+    assert "nearby" in words, (
+        "The Pestilence Epidemic row no longer says the disease reaches a NEARBY enemy. "
+        "If it now states a distance, read it off the row instead of the library. " + words)
+
+
+def test_epidemics_plague_lord_rung_is_the_shared_ceiling():
+    """A fourth rule now stops below the first boss rung, and they say so in one place.
+
+    Only Volatile Evolution's constant is tied to
+    ACataclysmEnemyCharacter::FirstBossRarityStep, by the static_assert an earlier check
+    guards; Royal Guard's, Demon Prince's and this one are declared as that constant.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    assert re.search(
+        r"\bEpidemicPlagueLordRung\s*=\s*VolatileEvolutionHighestRung\s*;", text), (
+        "EpidemicPlagueLordRung is no longer declared as VolatileEvolutionHighestRung. If "
+        "a Plague Lord is meant to stand at a different rung now, say why in "
+        "docs/DECISIONS.md and tie the new figure to the first boss rung as that one is.")

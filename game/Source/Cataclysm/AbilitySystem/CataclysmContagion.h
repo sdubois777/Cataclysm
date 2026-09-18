@@ -121,6 +121,26 @@ public:
 	static FGameplayTag PickSpreadable(const UAbilitySystemComponent* Carrier,
 									   int32 PinnedIndex = -1);
 
+	/**
+	 * EVERY debuff this character carries that could be put on somebody else, in the
+	 * order the ability system holds them, or an empty list if it carries none.
+	 *
+	 * THE SAME FILTER `PickSpreadable` USES, AND THE ONLY COPY OF IT. That function now
+	 * chooses from this list, so a change to what counts as spreadable reaches both.
+	 *
+	 * WHAT ASKS FOR IT. The dungeon rule `Pestilence_Epidemic`: "applying all of the dead
+	 * enemy's remaining debuffs". Asking `PickSpreadable` for index 0, then 1, then 2
+	 * cannot answer that -- an index past the end falls back to a RANDOM candidate rather
+	 * than to nothing, so the walk would never end and would apply the same debuff again
+	 * and again. Issues #1820 and #41.
+	 *
+	 * THE ORDER IS THE ABILITY SYSTEM'S AND IS NOT PROMISED, which is what
+	 * `UCataclysmDebuffs::TagsOn` says about the container this reads. A caller wanting
+	 * one at random must still choose, which is what `PickSpreadable` does.
+	 */
+	static TArray<FGameplayTag> EverySpreadable(
+		const UAbilitySystemComponent* Carrier);
+
 	// --- Beacon of Despair ----------------------------------------------------
 
 	/**

@@ -91,19 +91,16 @@ bool UCataclysmContagion::SpreadOne(AActor* Instigator, AActor* Target,
 													   EffectTag, Duration);
 }
 
-FGameplayTag UCataclysmContagion::PickSpreadable(
-	const UAbilitySystemComponent* Carrier, int32 PinnedIndex)
+TArray<FGameplayTag> UCataclysmContagion::EverySpreadable(
+	const UAbilitySystemComponent* Carrier)
 {
-	const FGameplayTagContainer Carried = UCataclysmDebuffs::TagsOn(Carrier);
-	if (Carried.IsEmpty())
-	{
-		return FGameplayTag();
-	}
-
-	// THE ONES THAT COULD ACTUALLY LAND, GATHERED BEFORE THE ROLL. Rolling first
-	// and discarding afterwards would make a bleeding and stunned character
-	// spread nothing half the time, which the sentence does not say.
 	TArray<FGameplayTag> Candidates;
+
+	// THE ONES THAT COULD ACTUALLY LAND, GATHERED BEFORE ANY ROLL. This filter and its
+	// reason came from `PickSpreadable` below, moved rather than copied: rolling first
+	// and discarding afterwards would make a bleeding and stunned character spread
+	// nothing half the time, which neither sentence says.
+	const FGameplayTagContainer Carried = UCataclysmDebuffs::TagsOn(Carrier);
 	for (const FGameplayTag& Tag : Carried)
 	{
 		if (!UCataclysmSkillEffects::StatusEffectRowForTag(Tag).IsNone())
@@ -112,6 +109,13 @@ FGameplayTag UCataclysmContagion::PickSpreadable(
 		}
 	}
 
+	return Candidates;
+}
+
+FGameplayTag UCataclysmContagion::PickSpreadable(
+	const UAbilitySystemComponent* Carrier, int32 PinnedIndex)
+{
+	const TArray<FGameplayTag> Candidates = EverySpreadable(Carrier);
 	if (Candidates.IsEmpty())
 	{
 		return FGameplayTag();

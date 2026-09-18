@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmDungeonModifierEffects.generated.h"
@@ -1049,6 +1050,34 @@ public:
 	 * follow whatever that change decides.
 	 */
 	static const TCHAR* DemonPrinceKey;
+
+	/**
+	 * The row where a disease passes from a corpse to the creature beside it, and a chain
+	 * of them kills a whole group. Issues #1820 and #41.
+	 *
+	 * A KILL THE PLAYER MADE, ON A CREATURE CARRYING A DEBUFF THAT CAN SPREAD, HAS
+	 * `EpidemicSpreadChancePercent` of putting ALL of that creature's spreadable debuffs
+	 * on the nearest creature within `EpidemicRadiusMetres`. Each one that lands adds to
+	 * the floor's chain; a roll that misses sets the chain back to nothing.
+	 *
+	 * A CREATURE CARRYING NOTHING IS NOT DISEASED AND NOTHING IS ROLLED, so the chain is
+	 * left where it is rather than broken. That is a different case from a roll that
+	 * misses, and the two are ruled differently on purpose.
+	 *
+	 * AT `EpidemicSpreadsToKill` THE CHAIN ENDS ITSELF: every creature within the same
+	 * reach dies, one Plague Lord rises, and the chain goes back to nothing.
+	 *
+	 * THOSE ARE REAL DEATHS AND THEY PAY. The rule writes each creature's health to zero
+	 * and calls `HandleDeath`, which is the pair `UCataclysmHealthDebt` uses, so the loot
+	 * roll and the experience grant in the creature's own handler both run. Marking a
+	 * creature dead instead would announce the death and pay nothing.
+	 *
+	 * "PLAGUE LORD" NAMES NO CREATURE THIS GAME HAS, so it is a creature of the last
+	 * victim's kind at the same ceiling the other rules use, `EpidemicPlagueLordsPerFloor`
+	 * a floor, until the project owner names one. The reading Grave Tide's "undead",
+	 * Royal Guard's "Uncommon" and Demon Prince's "demonic prince" all needed.
+	 */
+	static const TCHAR* EpidemicKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -2395,6 +2424,46 @@ public:
 			&& DemonPrincesPerFloor > 0,
 		"A chance of nothing, or no creature allowed to rise at all, is not the row.");
 
+	/**
+	 * The chance a kill the player made passes the corpse's debuffs on.
+	 *
+	 * STATED BY THE ROW: "there is a 25% chance for the disease to spread". Not a
+	 * judgement, and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` reads the
+	 * row's own sentence for it.
+	 */
+	static constexpr float EpidemicSpreadChancePercent = 25.0f;
+
+	/**
+	 * How many spreads in a row end the chain by killing everything nearby.
+	 *
+	 * STATED BY THE ROW: "If the disease spreads 5 times in a single chain".
+	 */
+	static constexpr int32 EpidemicSpreadsToKill = 5;
+
+	/**
+	 * How far the disease reaches, and how far the killing at the end of a chain reaches.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation, and NOT A NUMBER OF ITS
+	 * OWN: it is the reach the two existing spreading nodes already have,
+	 * `UCataclysmContagion::RadiusMetres`. The row says "a nearby enemy" and "all nearby
+	 * enemies" and states no distance, and a second six in this file would be the same
+	 * design figure written twice.
+	 */
+	static constexpr float EpidemicRadiusMetres = UCataclysmContagion::RadiusMetres;
+
+	/** How many Plague Lords one floor may have. A JUDGEMENT: one, so a floor cannot fill. */
+	static constexpr int32 EpidemicPlagueLordsPerFloor = 1;
+
+	/** The rung a Plague Lord stands at: the ceiling the other rules share. */
+	static constexpr int32 EpidemicPlagueLordRung = VolatileEvolutionHighestRung;
+
+	static_assert(
+		EpidemicSpreadChancePercent > 0.0f && EpidemicSpreadChancePercent <= 100.0f
+			&& EpidemicSpreadsToKill > 0 && EpidemicRadiusMetres > 0.0f
+			&& EpidemicPlagueLordsPerFloor > 0,
+		"A chance of nothing, a chain that is over before it starts, no reach at all, or "
+		"no Plague Lord allowed is not the row.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -3188,6 +3257,19 @@ public:
 	 * THE CEILING IS HERE AND NOWHERE ELSE, so there is one place it can be wrong.
 	 */
 	static bool DemonPrinceMayRise(int32 RisenSoFar);
+
+	/** Whether a roll of 0 to 100 passes the corpse's debuffs on. */
+	static bool EpidemicSpreads(float Roll);
+
+	/**
+	 * Whether a chain of this many spreads is the one that kills everything nearby.
+	 *
+	 * THE CEILING IS HERE AND NOWHERE ELSE, so there is one place it can be wrong.
+	 */
+	static bool EpidemicChainIsComplete(int32 Spreads);
+
+	/** The reach, in the centimetres Unreal works in. */
+	static float EpidemicRadiusCm();
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
