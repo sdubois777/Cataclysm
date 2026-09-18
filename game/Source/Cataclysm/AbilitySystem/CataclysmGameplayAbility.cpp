@@ -411,7 +411,8 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 }
 
 float UCataclysmGameplayAbility::CooldownAfterReduction(
-	const UAbilitySystemComponent* AbilitySystem, float BaseCooldown)
+	const UAbilitySystemComponent* AbilitySystem, float BaseCooldown,
+	const FGameplayTagContainer& SkillTags)
 {
 	const FGameplayAttribute Reduction =
 		UCataclysmCombatAttributeSet::GetCooldownReductionAttribute();
@@ -420,13 +421,36 @@ float UCataclysmGameplayAbility::CooldownAfterReduction(
 		return BaseCooldown;
 	}
 
+	// THE CHARACTER'S OWN ROWS, ASKED WITH THIS SKILL'S TAGS. Issue #1981.
+	// `UCataclysmPlayerClassStats::ApplyTo` evaluates every attribute with an
+	// EMPTY tag container and the default conditions, so a `cooldown_reduction`
+	// row carrying RequiredTags, a Condition or a Scale was dropped before it
+	// reached the attribute this used to read. It keeps the whole list on the
+	// component for exactly this reason -- "KEPT SO A SKILL CAN WORK THIS OUT
+	// AGAIN WITH ITS OWN TAGS", issue #943 -- and this is the skill that does.
+	//
+	// THE WHOLE LIST RATHER THAN THE ATTRIBUTE PLUS THE SCOPED PART, for the
+	// reason `StatForSkill` gives: increases sum into one bracket, so two
+	// passes give a different answer from one. The attribute is not read on
+	// this route at all, so nothing is counted twice.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		const FName Stat(TEXT("cooldown_reduction"));
+		if (Cataclysm->GetStatInputs(Stat) != nullptr)
+		{
+			return Cataclysm->RateAppliedTo(Stat, SkillTags, BaseCooldown);
+		}
+	}
+
+	// NOTHING RECORDED, SO THE ATTRIBUTE IS STILL THE ANSWER. That is an
+	// ability system this project did not make, an enemy, a player before its
+	// first refresh, and a caller that writes the attribute by hand. A
+	// character with no rows has no scoped row to lose.
+	//
 	// A PERCENTAGE BECOMES A FRACTION HERE. The attribute holds 12 for a 12%
 	// affix and FinalCooldown wants 0.12, and this is the only place the two
 	// meet.
-	//
-	// NO "MORE" MULTIPLIER YET. Gems, passive nodes and enchantments are the
-	// only sources the design allows one from and none of them reaches an
-	// ability today, so 1.0 is the honest answer rather than a placeholder.
 	return UCataclysmCombatAttributeSet::FinalCooldown(
 		BaseCooldown, AbilitySystem->GetNumericAttribute(Reduction) / 100.0f);
 }
@@ -512,8 +536,8 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 	// LENGTH. UCataclysmCombatAttributeSet::FinalCooldown was written,
 	// documented and tested, and nothing called it, so every cooldown in the
 	// game waited its full time however much reduction the player was wearing.
-	const float Seconds =
-		CooldownAfterReduction(AbilitySystem, GetBaseCooldown());
+	const float Seconds = CooldownAfterReduction(
+		AbilitySystem, GetBaseCooldown(), SkillTagsForStats());
 	if (Seconds <= 0.0f)
 	{
 		return;
