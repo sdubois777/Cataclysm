@@ -953,13 +953,6 @@ namespace CataclysmDungeonModifierEffectsTest
 		return Creature;
 	}
 
-	/** What the one dungeon-rule modifier on the player's armour is worth, or nothing. */
-	float ArmourRuleOn(const FPossessedPlayer& Player)
-	{
-		const FCataclysmStatModifier* Modifier =
-			DungeonRuleOn(Player.AbilitySystem, TEXT("armor"));
-		return Modifier ? Modifier->Value : 0.0f;
-	}
 
 	/**
 	 * Beat until radiant ground appears, and answer the first of it. Issues #1820, #41.
@@ -1176,6 +1169,21 @@ namespace CataclysmDungeonModifierEffectsTest
 			}
 		}
 		return nullptr;
+	}
+
+	/**
+	 * What the one dungeon-rule modifier on the player's armour is worth, or nothing.
+	 *
+	 * HERE AND NOT BESIDE THE OTHER MARCH OF PROGRESS HELPERS, because it calls
+	 * `DungeonRuleOn` directly above and this file declares its helpers by defining them,
+	 * in order, with no forward declarations. Written further up, it failed the build with
+	 * "error C3861: 'DungeonRuleOn': identifier not found".
+	 */
+	float ArmourRuleOn(const FPossessedPlayer& Player)
+	{
+		const FCataclysmStatModifier* Modifier =
+			DungeonRuleOn(Player.AbilitySystem, TEXT("armor"));
+		return Modifier ? Modifier->Value : 0.0f;
 	}
 
 	/**
