@@ -674,6 +674,17 @@ namespace CataclysmDungeonModifierEffectsTest
 	/**
 	 * A debuff that can be passed on, and a second one, for Epidemic's tests.
 	 *
+	 * NEITHER IS DAMAGE OVER TIME, AND THAT IS THE POINT. Measured on 2026-09-18: a bleed
+	 * put on a creature is on it a moment later and is NOT on the corpse when the death is
+	 * announced, while a debuff that is not damage over time still is. A corpse given both
+	 * carried one, and the rule -- correctly, since the row says the dead enemy's REMAINING
+	 * debuffs -- passed on only that one. Tests of Epidemic therefore use debuffs that
+	 * survive the death they are testing.
+	 *
+	 * AND BOTH ROWS STATE A DURATION. `Debuff_Wither` states none, and a corpse given it
+	 * carried the other one only; `Debuff_Cripple` states four seconds and `Debuff_Weaken`
+	 * five, and both survive to the announcement.
+	 *
 	 * A TAG WITH A ROW IN `game/Data/StatusEffects.csv` IS WHAT "SPREADABLE" MEANS.
 	 * `UCataclysmContagion::EverySpreadable` keeps the ones whose tag names a row, so a
 	 * stun -- which names none -- is not something a corpse passes on. These two are the
@@ -682,19 +693,31 @@ namespace CataclysmDungeonModifierEffectsTest
 	FGameplayTag ADiseaseThatSpreads()
 	{
 		return UGameplayTagsManager::Get().RequestGameplayTag(
-			FName(TEXT("Status.DoT.Bleed")), /*ErrorIfNotFound=*/false);
+			FName(TEXT("Status.Debuff.Cripple")), /*ErrorIfNotFound=*/false);
 	}
 
 	FGameplayTag ASecondDiseaseThatSpreads()
 	{
 		return UGameplayTagsManager::Get().RequestGameplayTag(
-			FName(TEXT("Status.Debuff.Cripple")), /*ErrorIfNotFound=*/false);
+			FName(TEXT("Status.Debuff.Weaken")), /*ErrorIfNotFound=*/false);
 	}
 
-	/** Put a lasting debuff on a character, as anything else in the game would. */
+	/**
+	 * Put a lasting debuff on a character, as anything else in the game would, AND SAY
+	 * WHETHER IT IS STILL THERE AFTERWARDS.
+	 *
+	 * THE STRENGTH IS STATED AND NOT LEFT AT ZERO. Measured on 2026-09-18: a bleed applied
+	 * with no strength reported success and was not on the character a moment later, so a
+	 * corpse given two debuffs carried one and tests of "the disease passed on" failed with
+	 * nothing to pass. The caller checks what this returns, so a debuff that does not stick
+	 * fails the test that needed it rather than the rule under test.
+	 */
 	bool GiveTheDebuff(AActor* From, AActor* To, const FGameplayTag& Tag)
 	{
-		return UCataclysmSkillEffects::ApplyTagForDuration(From, To, Tag, 30.0f);
+		UCataclysmSkillEffects::ApplyTagForDuration(From, To, Tag, 30.0f,
+												   /*StatedStrength=*/10.0f);
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(To);
+		return System && Tag.IsValid() && System->HasMatchingGameplayTag(Tag);
 	}
 
 	/** Whether a character carries a debuff now. */
