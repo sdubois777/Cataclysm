@@ -341,7 +341,11 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
-			&& SkillsLockedValue <= 0.0f;
+			&& SkillsLockedValue <= 0.0f
+			// AND THE ONE FIELD HERE THAT IS A REWARD RATHER THAN A LOSS. Issues #1820
+			// and #41. March of Progress' armour is still something the floor is doing
+			// to the player, so a floor carrying it is not empty.
+			&& ArmourMorePercent <= 0.0f;
 	}
 };
 
