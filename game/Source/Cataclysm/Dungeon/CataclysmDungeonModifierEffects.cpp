@@ -66,6 +66,11 @@ const TCHAR* UCataclysmDungeonModifierEffects::EpidemicKey =
 const TCHAR* UCataclysmDungeonModifierEffects::BloodForgedChampionsKey =
 	TEXT("War_Blood_Forged_Champions");
 
+// THE ROW'S OWN SPELLING, WITHOUT THE SECOND `e` IN "Vengeful". The design data spells it
+// this way and the key must match the row exactly.
+const TCHAR* UCataclysmDungeonModifierEffects::VengefulWraithsKey =
+	TEXT("Death_Vengful_Wraiths");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -244,7 +249,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(RoyalGuardKey)
 		|| RowKey == FName(DemonPrinceKey)
 		|| RowKey == FName(EpidemicKey)
-		|| RowKey == FName(BloodForgedChampionsKey))
+		|| RowKey == FName(BloodForgedChampionsKey)
+		|| RowKey == FName(VengefulWraithsKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -407,6 +413,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DemonPrinceKey),
 		FName(EpidemicKey),
 		FName(BloodForgedChampionsKey),
+		FName(VengefulWraithsKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1362,6 +1369,16 @@ int32 UCataclysmDungeonModifierEffects::BloodForgedChampionsRungAfter(int32 Rari
 float UCataclysmDungeonModifierEffects::BloodForgedChampionsRadiusCm()
 {
 	return BloodForgedChampionsRadiusMetres * UCataclysmContagion::CentimetresPerMetre;
+}
+
+bool UCataclysmDungeonModifierEffects::VengefulWraithRises(float Roll)
+{
+	return Roll < VengefulWraithsChancePercent;
+}
+
+float UCataclysmDungeonModifierEffects::VengefulWraithsIncreased(float Base)
+{
+	return Base * (1.0f + VengefulWraithsIncreasePercent / 100.0f);
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

@@ -691,6 +691,19 @@ static TAutoConsoleVariable<float> CVarEpidemicRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * The roll Vengeful Wraiths offers a creature the player killed, pinned for tests.
+ *
+ * THE SAME SHAPE AS THE FOUR ABOVE, for the reason the first of them gives: a rule whose
+ * chance cannot be pinned can only be tested by running it until it happens.
+ */
+static TAutoConsoleVariable<float> CVarVengefulWraithRoll(
+	TEXT("Cataclysm.VengefulWraithRoll"),
+	-1.0f,
+	TEXT("Pin the roll Vengeful Wraiths offers a creature the player killed, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -767,6 +780,12 @@ namespace
 	float DungeonGameModeEpidemicRoll()
 	{
 		const float Pinned = CVarEpidemicRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeVengefulWraithRoll()
+	{
+		const float Pinned = CVarVengefulWraithRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -3329,6 +3348,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForDemonPrince(Notice);
 	NoteDeathForEpidemic(Notice);
 	NoteDeathForBloodForgedChampions(Notice);
+	NoteDeathForVengefulWraiths(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
@@ -3555,6 +3575,184 @@ void ACataclysmDungeonGameMode::NoteDeathForEpidemic(
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::ApplyVengefulWraithFigures(
+	ACataclysmEnemyCharacter* Wraith)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	if (!IsValid(Wraith) || !VengefulWraiths.Contains(Wraith))
+	{
+		return;
+	}
+
+	UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Wraith);
+	if (!Abilities)
+	{
+		return;
+	}
+
+	// WRITTEN STRAIGHT ONTO THE ATTRIBUTES, AND THAT IS NOT A SHORTCUT. There is no
+	// creature equivalent of `UCataclysmDungeonModifierEffects::PlayerEffectsFor`, which is
+	// how a floor rule gives the PLAYER a stat change; a creature has no such path, so this
+	// is the only way a rule reaches one. The cost is that anything writing the creature's
+	// stat block again wipes these, which is why the two rules that raise a living
+	// creature's rung both call this afterwards.
+	//
+	// THE ROW'S 90 GOES INTO THE MULTIPLICATIVE BUCKET, WHICH IS THE PROJECT OWNER'S
+	// DECISION. `UCataclysmDamageCalculation::DamageReductionCap` bounds the ADDITIVE pool
+	// at 75, so 90 written there would read as 75 and the row's number would not be what
+	// happens. `MoreDamageReductionCap` bounds one multiplicative source at 99, and the
+	// calculation reads this attribute as a percentage, clamps it and divides by 100 -- so
+	// a wraith takes a tenth of whatever the other layers leave, which is what the row says.
+	Abilities->SetNumericAttributeBase(Combat::GetDamageReductionMoreAttribute(),
+									   Effects::VengefulWraithsDamageReductionMore);
+
+	// AND THE ONE INCREASE THE ROW STATES, ON THE ONE STAT OF THE THREE THAT IS AN
+	// ATTRIBUTE. It is read and raised, so a wraith is the row's figure above ITS OWN
+	// rung's damage rather than above a fixed one: a wraith later raised a rung keeps the
+	// rung's gain and its own on top.
+	Abilities->SetNumericAttributeBase(
+		Combat::GetAttackDamageAttribute(),
+		Effects::VengefulWraithsIncreased(
+			Abilities->GetNumericAttribute(Combat::GetAttackDamageAttribute())));
+
+	// AND THE OTHER TWO STATS THE ROW NAMES ARE NOT ATTRIBUTES AT ALL, WHICH WAS MEASURED
+	// AND NOT ASSUMED. A creature's attack rate is its designed interval over
+	// `ACataclysmEnemyCharacter::SpeedMultiplier`, and its walk speed is its designed
+	// speed times the same; NEITHER reads `AttackSpeed` or `MovementSpeed`. Writing those
+	// two attributes here did nothing at all, and the automation test for the row's three
+	// stats is what found it: the attack speed attribute read 0.00 on a creature.
+	//
+	// SO THE TWO SPEEDS GO THROUGH THE CREATURE'S OWN MULTIPLIER, where `SpeedMultiplier`
+	// says an effect naming BOTH belongs. The flag is all this rule sets; the factor is
+	// read from this rule's own constant on the other side.
+	Wraith->bIsVengefulWraith = true;
+
+	// AND THE WALK SPEED IS PUT RIGHT NOW RATHER THAN NEXT FRAME. `RefreshWalkSpeed` runs
+	// every Tick anyway, so this only spares the creature one frame at its old speed --
+	// but it is also what lets a test read the speed without ticking the world.
+	Wraith->RefreshWalkSpeed();
+
+	// AND IT GOES ON SEEING THE WHOLE FLOOR. `SpawnPlacedCreature` set this when the wraith
+	// rose; it is written again here because a rung change is a good place to lose it and
+	// because a wraith that stopped hunting would be the row's last sentence undone.
+	Wraith->SightRadiusMultiplier = Effects::VengefulWraithsSightMultiplier;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForVengefulWraiths(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE FIGURE COVERS THE LONGEST LINE ON THE LARGEST FLOOR THIS GAME BUILDS. The
+	// multiplier scales each creature's OWN radius and the smallest of the seven is the
+	// Imp's 1000 cm, so it is sized against that one. 1.5 stands in for the square root of
+	// two, which is not available at compile time, and is on the safe side of it.
+	static_assert(
+		Effects::VengefulWraithsSightMultiplier * ACataclysmImpCharacter::ImpNoticeRadiusCm
+			>= FCataclysmFloorGenerator::MostFloorSide
+				   * FCataclysmFloorGenerator::CellSizeCm * 1.5f,
+		"A wraith can no longer see across the largest floor this game builds. Either the "
+		"floor grew or the multiplier shrank; the row says it hunts across the entire "
+		"dungeon.");
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::VengefulWraithsKey)))
+	{
+		return;
+	}
+
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Fallen)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// THE DESTROYED ARE FORGOTTEN, so the record does not grow from floor to floor. A
+	// creature that has died keeps its entry until the actor itself is destroyed, which
+	// costs nothing. Royal Guard's record is kept the same way.
+	for (auto Entry = VengefulWraiths.CreateIterator(); Entry; ++Entry)
+	{
+		if (Entry->IsStale())
+		{
+			Entry.RemoveCurrent();
+		}
+	}
+
+	// "THE ONE WHO KILLED THEM", WHICH IS ONE QUESTION. The killer on the notice is the
+	// player only when the player really killed it: a minion's kill is credited to the
+	// minion unless its summoner holds the Conduit keystone, which
+	// `UCataclysmCombatEvents::NoteBlow` decides in one place. Issue #1515.
+	//
+	// SO A MINION'S KILL RAISES NOTHING UNLESS THAT KEYSTONE IS HELD, and there is no
+	// second check on the actor that dealt the blow. A summoner who HAS taken it should
+	// raise a wraith from its minion's kill; one who has not should not, because the whole
+	// point of that change was that such a kill is the minion's own.
+	APlayerController* Controller = World->GetFirstPlayerController();
+	const ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Player || Notice.Killer != Player)
+	{
+		return;
+	}
+
+	if (!Effects::VengefulWraithRises(DungeonGameModeVengefulWraithRoll()))
+	{
+		return;
+	}
+
+	// ITS OWN KIND, WORKED OUT FROM ITS CLASS, and nothing rises from a creature that is
+	// none of the seven. Royal Guard, Demon Prince and Epidemic all make that refusal, for
+	// the reason the first of them gives: a kind guessed here would put a creature on the
+	// floor the floor's own populator would never place.
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
+	if (Kind == ECataclysmDungeonCreature::Count)
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Vengeful Wraiths: %s is none of the kinds this dungeon places, so "
+					"nothing rose from it"),
+			   *Fallen->GetName());
+		return;
+	}
+
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(Notice.Location);
+	Placement.Creature = Kind;
+
+	// THE SIGHT MULTIPLIER IS GIVEN AT THE SPAWN, not written afterwards, because that is
+	// the parameter `SpawnPlacedCreature` already takes and the floor's own creatures get
+	// theirs the same way.
+	ACataclysmEnemyCharacter* Wraith =
+		SpawnPlacedCreature(Placement, Effects::VengefulWraithsSightMultiplier);
+	if (!Wraith)
+	{
+		return;
+	}
+
+	FloorEnemies.Add(Wraith);
+	VengefulWraiths.Add(Wraith);
+
+	// THE FIGURES AFTER THE SPAWN, because the spawn gives the creature its kind's own and
+	// the increases raise what they read.
+	ApplyVengefulWraithFigures(Wraith);
+	++VengefulWraithsRisen;
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Vengeful Wraiths: the player's kill of %s (%s) left a wraith that takes "
+				"%.0f%% less from each hit and sees %.0f times as far"),
+		   *Fallen->GetName(), CataclysmDungeonCreatureName(Kind),
+		   Effects::VengefulWraithsDamageReductionMore,
+		   Effects::VengefulWraithsSightMultiplier);
+
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::NoteDeathForBloodForgedChampions(
 	const FCataclysmDeathNotice& Notice)
 {
@@ -3686,6 +3884,12 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodForgedChampions(
 		FMath::Min(Shield,
 				   Abilities->GetNumericAttribute(
 					   Vitals::GetMaxEnergyShieldAttribute())));
+
+	// AND IF IT IS A WRAITH, THE FIGURES THAT MAKE IT ONE GO BACK ON. The two calls above
+	// end in `ApplyStartingAttributes`, which has just written this creature's whole stat
+	// block over with its new rung's own. Without this a floor carrying both rows would
+	// strip a wraith of everything but its name the first time it was fed.
+	ApplyVengefulWraithFigures(Champion);
 
 	// AND ITS TALLY STARTS AGAIN, so the next rung costs the same as this one did.
 	BloodForgedChampionsFed[Champion] = 0;
@@ -4106,6 +4310,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 					 FString::Printf(TEXT("%d death(s) absorbed, %d rung(s) gained"),
 									 BloodForgedChampionsAbsorbed,
 									 BloodForgedChampionsRungsGained));
+	}
+
+	// AND HOW MANY OF THE PLAYER'S KILLS GOT BACK UP.
+	const FName Haunting(Effects::VengefulWraithsKey);
+	if (FloorBrief.Modifiers.Contains(Haunting))
+	{
+		Counting.Add(Haunting, FString::Printf(TEXT("%d wraith(s) risen"),
+											   VengefulWraithsRisen));
 	}
 
 	return Counting;
@@ -5284,6 +5496,11 @@ void ACataclysmDungeonGameMode::StepVolatileEvolution(ACataclysmPlayerCharacter*
 					   Abilities->GetNumericAttribute(
 						   Vitals::GetMaxEnergyShieldAttribute())));
 
+		// AND IF IT IS A WRAITH, THE FIGURES THAT MAKE IT ONE GO BACK ON, for the reason
+		// written where Blood-Forged Champions does the same: the two calls above have
+		// just written this creature's whole stat block over.
+		ApplyVengefulWraithFigures(Creature);
+
 		VolatileEvolutionMutated.Add(Creature);
 		++VolatileEvolutionMutations;
 
@@ -5749,6 +5966,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// next rung keeps that progress the way it keeps the rung it already reached.
 		BloodForgedChampionsAbsorbed = 0;
 		BloodForgedChampionsRungsGained = 0;
+
+		// AND VENGEFUL WRAITHS FORGETS HOW MANY ROSE AND NOT WHICH CREATURES ARE WRAITHS.
+		// Issues #1820 and #41. The count is this floor's; a wraith that lives through a
+		// Horde dungeon's change of wave is still a wraith and still keeps its figures.
+		VengefulWraithsRisen = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

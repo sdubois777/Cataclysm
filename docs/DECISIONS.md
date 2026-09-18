@@ -2,6 +2,280 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — A creature the player kills may stand back up as a wraith that takes nine tenths off every hit and hunts across the whole floor
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the rules told about a death,
+the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820),
+[#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+[#644](https://github.com/sdubois777/Cataclysm/issues/644). **Applied.**
+
+### The row
+
+`Death_Vengful_Wraiths` in `game/Data/DungeonModifiers.csv`: "Enemies have a 10% chance of turning
+into wraiths when killed. Wraiths have 90% damage reduction, 20% increased damage, movespeed, and
+attack speed. In their death they are fueled by rage towards the one who killed them and will hunt
+them across the entire dungeon." No text in `docs/` says more.
+
+**THE ROW'S KEY IS SPELT `Death_Vengful_Wraiths`, WITHOUT THE SECOND `e`.** That is the design data's
+spelling and the key matches it exactly; the constants are spelt properly.
+
+### The row states three of the four figures, which is unusual for these rows
+
+| From the row | The constant |
+| :-- | :-- |
+| "a 10% chance" | `VengefulWraithsChancePercent` |
+| "90% damage reduction" | `VengefulWraithsDamageReductionMore` |
+| "20% increased damage, movespeed, and attack speed" | `VengefulWraithsIncreasePercent` |
+| "across the entire dungeon" | a distance, which the row never states |
+| "the one who killed them" | the rule asks who did the killing |
+
+### The 90 is above the cap on the layer it looks like it belongs in
+
+This is the first row met that states a figure this project deliberately refused.
+`UCataclysmDamageCalculation::DamageReductionCap` is **75**, and its comment records why: this stat
+"was the one layer with nothing holding it... at 100 it was exact immunity", the design document's
+sentence that no combination of layers reaches immunity was not true of it, and — exactly on point —
+"Path of Exile caps the closest thing it ships at 90%, and that was deliberately not copied: its 90%
+covers physical damage alone where this covers all eight types." Issue #644.
+
+So 90 written into the additive pool reads as 75, and the row's number is not what happens in play.
+There is a second and separate bound, `MoreDamageReductionCap` at **99**, on one source in the
+multiplicative bucket.
+
+**THE PROJECT OWNER DECIDED, on 2026-09-17, that it goes into the multiplicative bucket**:
+`DamageReductionMore`, which the calculation reads as a percentage, clamps and divides by 100. A
+wraith therefore takes a tenth of whatever the other layers leave, which is what the row says, and the
+75 cap stands untouched.
+
+**THE COST, STATED PLAINLY: this is now the largest multiplicative reduction in the game.** That
+bound's own comment notes "the largest multiplicative node in any class tree is 3% per point over 8
+points, which is 24%". The owner's reason for allowing it here is that a wraith is one temporary
+creature the player is meant to hunt down, which is not the same kind of number as a permanent node on
+a passive tree. A Python check reads both bounds out of the calculation header and fails if the
+additive cap ever rises to meet the row, so this decision is revisitable rather than frozen.
+
+### "The one who killed them" decides whether a wraith rises, not whom it chases
+
+**THE RULE CANNOT GIVE A CREATURE A NAMED QUARRY.** The creature AI picks targets by sight and nothing
+in the module takes one, so a wraith does not hold a grudge against a particular actor. What the sight
+figure buys is that it notices a target from anywhere on the floor, which is what the row describes in
+play. The entry says this plainly so the test names are not read as implying a mechanism that does not
+exist.
+
+So the rule asks who killed the creature, and a kill that was not the player's raises nothing.
+
+**A MINION'S KILL RAISES NOTHING UNLESS THE SUMMONER HOLDS THE CONDUIT KEYSTONE**, and the
+coordinating session's first steer was the other way. `UCataclysmCombatEvents::NoteBlow` credits a
+minion's blow to the minion unless that keystone is held, which issue #1515 settled the same day.
+Reading a minion's kill as the summoner's here would have put back by hand the credit that change took
+away and left the keystone meaning nothing in this rule. The steer was withdrawn on that argument.
+
+### The sight figure is sized by measurement, not picked
+
+A judgement, ruled under the owner's delegation. The row says "across the entire dungeon" and states
+no distance.
+
+- `ACataclysmCharacterBase::NoticesFromCm` is `SightRadiusCm() * multiplier`, so the multiplier scales
+  **each creature's own radius**, not a shared base. Its comment records why it lives there: five of
+  the seven designed creatures override `SightRadiusCm` with their own constant and never read the
+  field.
+- The seven own radii are 1000 (Imp, Hellhound, Succubus, Brute, Abyssal Warden), 1400 (Corrupted
+  Sentinel, Gatekeeper) and 1500 (the plain enemy class). **The smallest is 1000**, so the figure is
+  sized against that one or a wraith of the wrong kind would see less than the row promises.
+- The largest floor is `FCataclysmFloorGenerator::MostFloorSide` of
+  `FCataclysmFloorGenerator::CellSizeCm`: 48 × 400 = 19,200 cm a side, about **27,153 cm** corner to
+  corner.
+
+**Thirty.** 30 × 1000 = 30,000 cm, which covers it. A `static_assert` in
+`CataclysmDungeonGameMode.cpp` holds the figure to that span and fails if the floor grows past 50
+cells a side; it is there rather than in the rule header because that file already includes the floor
+generator and the Imp and the header includes neither. It uses 1.5 in place of the square root of two,
+which is not available at compile time and is the safe side of 1.41421.
+
+### Two of the three stats the row names are not attributes at all
+
+This was planned wrongly and the machine found it. The rule was first written to put all four figures
+straight onto the spawned creature's attributes, because **there is no creature equivalent of
+`UCataclysmDungeonModifierEffects::PlayerEffectsFor`**, which is how a floor rule gives the PLAYER a
+stat change — searched for and not found.
+
+**MEASURED IN THE WINDOW: a creature's attack speed and walk speed never read the `AttackSpeed` and
+`MovementSpeed` attributes.** `ACataclysmEnemyCharacter::SecondsBetweenAttacks` is `final` and returns
+`DesignedSecondsBetweenAttacks()` over `SpeedMultiplier()`; the walk speed is
+`DesignedWalkSpeedCmPerSecond` times the same, written to the movement component by
+`RefreshWalkSpeed()` on every tick. So two of the row's three stats were being written where nothing
+on a creature reads them, and did nothing at all. **This is worth its own line, because any rule
+writing those two attributes on a creature has the same problem.**
+
+**The creature class already said where such an effect belongs.** `SpeedMultiplier` is "everything
+acting on this creature's movement and attack speed at once", with Commander's 1.2 and Cripple's 0.7
+as its factors, and its comment states the rule: "anything naming BOTH stats belongs here". This row
+names both.
+
+**Ruled under the owner's delegation:** `ACataclysmEnemyCharacter` gains a flag saying the creature is
+a wraith and a `WraithMultiplier()` returning the factor when it is set, multiplied into
+`SpeedMultiplier()` beside the other two. The factor is read from this rule's own
+`VengefulWraithsIncreased` rather than written as a second twenty in the creature class.
+
+### So the four figures reach a wraith by three different routes
+
+| Figure | How it is applied | What a rung change does to it |
+| :-- | :-- | :-- |
+| the multiplicative damage reduction | written onto the attribute | **nothing — it survives**, measured |
+| attack damage | written onto the attribute | **wiped**, so the rule puts it back |
+| attack speed and walk speed | the flag, through `SpeedMultiplier()` | **nothing — the flag survives** |
+
+**Exactly two rules raise a LIVING creature's rung** — Blood-Forged Champions and Volatile Evolution,
+measured by reading every `SetRarityStep` call in the game mode; the rest are fresh spawns — and both
+put a wraith's attributes back afterwards. **THE HELPER THAT DOES IT MULTIPLIES WHAT IT READS**, so
+calling it twice without a fresh stat block underneath would raise attack damage twice. Its comment
+says so and names the only two places it may be called.
+
+That middle row of the table is the one the third guard proof measured, and it is not what was
+registered. See below.
+
+### One design figure was already held somewhere else, and that was found by proving a check
+
+Proving the new Python checks could fail, one break also failed a check belonging to a rule merged
+weeks ago. Its docstring says why: `Death_Vengful_Wraiths` "IS THE ONLY ROW STATING A FIGURE FOR A
+CHANCE FIRED BY ANY ENEMY'S DEATH, measured across all 117 on 2026-09-14, and it says ten. That is the
+whole derivation for `SporeCloudsChancePercentOnDeath`."
+
+So this row's ten was already another rule's figure. Writing ten again would be one design figure held
+twice with nothing tying it — the thing this project's own standard forbids, and the standard the
+reach, the Elite floor and the Herald ceiling already follow.
+
+**Ruled: tie them.** `VengefulWraithsChancePercent` is declared as `SporeCloudsChancePercentOnDeath`.
+**The direction is forced by declaration order and not chosen**: the borrower should name the lender,
+but a static member can only name one declared before it and Spore Clouds' sits 765 lines above. Both
+comments carry the true direction of the borrowing.
+
+**A THIRD RULE HOLDS THE SAME TEN AND IS DELIBERATELY NOT TIED.**
+`HolyRepercussionsChancePercentOnHit` is also ten, and its check says in as many words: "NOT A
+COMPARISON OF A CONSTANT WITH ITSELF. Both are written as literals, independently, so the two can
+drift apart — which is what this notices." That distinction is right and is kept. Spore Clouds took
+its figure FROM this row, so those two are **one** figure; Holy Repercussions' row states its own
+chance for its own event and merely follows the same precedent, so those are **two** figures that
+agree, and a check is what should hold them.
+
+### What the tests do
+
+Eleven automation tests in `Cataclysm.DungeonModifierEffects.`, taking that group from 149 registered
+to 160. They cover: a kill leaving a wraith and a roll above the chance leaving none; the row's share
+taken off every hit with the additive pool left empty; the one increase on all three stats it names; a
+wraith noticing from further than the largest floor's longest span while its own kind does not; a kill
+by another creature; a minion's kill without the keystone and with it; a wraith raised a rung keeping
+its figures without the increase compounding; the panel; and a floor change clearing the count while
+the wraith stays a wraith.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, taking that file from 115 to
+119: the row's three stated figures and the tie above; the two phrases the readings rest on; that the
+row's 90 is above the additive cap and within the multiplicative bound; and that the compile-time
+check sizing a wraith's sight still reads all four things it needs.
+
+### What the runs found
+
+Measured 2026-09-18 UTC, which is the same date in this machine's local time, under one editor lock.
+
+**TWO WHOLE-SUITE RUNS, ONE OVER THE OWNER'S FIGURE**, because the first found a fault in the rule
+rather than in a test. Both are named here with their heads and their reasons.
+
+| Whole suite | Head | What it printed |
+| :-- | :-- | :-- |
+| 1 of 2 | `ff89c7c1` | 2096 performed, 2095 succeeded, **1 failed**, gap 0 |
+| 2 of 2, the run of record | `ed1a9a1e` | 2096 performed, 2096 succeeded, 0 failed, gap 0 |
+
+```
+Build: Succeeded - 7 actions, 4 files compiled
+Tests: 2096 tests performed, 2096 succeeded, 0 failed
+Declared: 2096 tests in the tree at ed1a9a1e; 2096 performed, gap 0
+wrapper exit: 0
+```
+
+That is exactly the registered figure: 2085 measured on `development` plus these eleven by name. Each
+run also reported 39 tests skipping part of what they check; all are art tests and a worktree has no
+Paragon content.
+
+**THE FIRST RUN'S FAILURE WAS THE RULE, NOT THE TEST.**
+
+```
+Tests: 2096 tests performed, 2095 succeeded, 1 failed:
+AWraithIsTwentyPercentAboveItsKindInAllThreeStats.
+Error: Expected 'its kind has all three to raise: 9.00 damage, 0.00 attack speed,
+4.80 movement' to be true.
+```
+
+The attack speed attribute read 0.00 on a creature, which is what exposed the section above. The
+repair is the flag and the multiplier; the tests now read each stat where the game reads it — the
+attribute for attack damage, `SecondsBetweenAttacks()` for the attack rate, the movement component's
+own figure for walking. **An interval is divided and not multiplied**, which the creature class says
+at length: "20% more attack speed is 2.6 seconds becoming 2.167, not 3.12".
+
+**A SECOND REPAIR FOLLOWED, AND IT WAS A COIN TOSS RATHER THAN A FAULT.** With the first in, the group
+printed `160 tests performed, 159 succeeded, 1 failed:
+AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound`, on "Expected 'the wraith rose a rung' to be 4,
+but it was 3". `ImpRarityStep` is -1 by default, meaning **draw** a rung, and the weights in
+`game/Data/EnemyRarities.csv` are Common 0.60, Elite 0.20, Legendary 0.15, Herald 0.04, Boss 0.01. A
+wraith rises as a creature of the slain one's kind and draws its own, so **one wraith in twenty-five
+arrives at Herald** — the ceiling every floor rule stops at, where nothing can raise it. That test
+would have passed 96% of the time. The rung is now pinned in the shared setup for the whole group,
+because a drawn rung sits under every assertion in it, and the comment carries the measured failure
+text so the pin is not removed later.
+
+The group `Cataclysm.DungeonModifierEffects.` printed 160 performed, 160 succeeded, 0 failed after
+both repairs, and again as the restored half of all three guard proofs.
+
+### The three guard proofs
+
+All three printed `PROVED`, none crashed, every restored half 160 performed and 0 failed. Each
+assertion was read out of `game/Saved/Logs/Cataclysm.log` between the two halves.
+
+| Proof | What was removed | What failed | What it printed |
+| :-- | :-- | :-- | :-- |
+| 1 | the test that the killer was the player | `ACreatureKilledByAnotherCreatureLeavesNoWraith` and `AKillDealtByAMinionLeavesNoWraithWithoutConduit` | both: expected "0 wraith(s) risen", was "1 wraith(s) risen" |
+| 2 | the 10% chance | `ARollAboveTheChanceLeavesNoWraith` | "Expected 'nothing stands on the floor' to be null" |
+| 3 | the figures put back after a rung change | `AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound` | "Expected 'the wraith is one increase above its new rung and not two' to be 15.120001, but it was 12.600000" |
+
+**THE THIRD PROOF'S ASSERTION WAS NOT THE ONE REGISTERED, AND THAT IS A MEASUREMENT WORTH KEEPING.**
+It was registered against "it still takes the row's share off every hit"; that assertion **passed**,
+and the test failed on the attack damage instead. So a rung change wipes attack damage — 15.12 falling
+back to the new rung's own 12.60 — and does **not** wipe the multiplicative damage reduction. The
+table above is written from that result rather than from the guess that preceded it.
+
+**The first proof's anchor carries this rule's own comment**, because the three lines that ask who
+killed the creature are identical in Demon Prince and Epidemic; a bare anchor would have changed all
+three and proved nothing about any of them. **Its break repoints the condition rather than deleting
+it**, because deleting would leave a variable unused and could fail the build, which proves nothing.
+
+### The Python side
+
+```
+python -m pytest
+python -m ruff check .   ->   All checks passed!
+```
+
+Eleven deliberate breaks through `tools/prove_guard.py`, run in a git-archive copy so no break could
+disturb the worktree, each predicted before it ran and each failing exactly its predicted check or
+checks, every restored half back to 119 passed, ending `0 problem(s)`.
+
+**Two of those predictions were wrong and are recorded rather than corrected quietly.** Changing the
+row's chance fails two checks, not one; moving the shared constant fails three, not two. The third was
+Holy Repercussions', and finding it is what produced the distinction written above.
+
+### What the tests do not show
+- **What a wraith is actually like to fight.** Taking a tenth of each hit is read off the attribute in
+  a test, not measured against a player's damage over a real fight.
+- **Whether a floor can fill with wraiths.** There is no ceiling on how many rise, because the row
+  states none and a 10% chance is its own limit. How that reads on a long floor was not measured.
+
+---
+
 ## 2026-09-17 — Thirty-three enchantment rows are written, and ten approved sentences are held for four different reasons
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet gains 33 rows; the

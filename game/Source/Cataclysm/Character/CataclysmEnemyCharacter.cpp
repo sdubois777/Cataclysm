@@ -27,6 +27,7 @@
 #include "Character/CataclysmEnemyRarity.h"
 // For what a kill drops. The rules live in the item module; this file
 // only says when they run and where the result lands.
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmDroppedItem.h"
@@ -594,6 +595,21 @@ float ACataclysmEnemyCharacter::CommanderMultiplier() const
 	}
 
 	return 1.0f + CommanderIncreasePercent / 100.0f;
+}
+
+float ACataclysmEnemyCharacter::WraithMultiplier() const
+{
+	if (!bIsVengefulWraith)
+	{
+		return 1.0f;
+	}
+
+	// THE DUNGEON RULE'S OWN FIGURE, READ FROM IT RATHER THAN WRITTEN AGAIN HERE.
+	// `VengefulWraithsIncreased` is the one place the row's "20% increased damage,
+	// movespeed, and attack speed" is turned into arithmetic, and applying it to one
+	// gives the multiplier this creature's two speeds want. A second twenty in this
+	// file would be the same design figure in two places.
+	return UCataclysmDungeonModifierEffects::VengefulWraithsIncreased(1.0f);
 }
 
 float ACataclysmEnemyCharacter::CrippleMultiplier() const
