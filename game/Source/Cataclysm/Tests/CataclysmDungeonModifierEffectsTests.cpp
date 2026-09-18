@@ -18527,6 +18527,15 @@ bool FCataclysmMarchOnlyThePlayersKillTest::RunTest(const FString& Parameters)
 	// AND THE FLOOR DOES NOT OFFER A SECOND COMMANDER. The player had their chance at
 	// this floor's; choosing another because the first was taken from them would pay for
 	// a kill the row did not ask for.
+	//
+	// THE BODY IS DESTROYED BY HAND FIRST, AND WITHOUT THAT THIS TEST PROVES NOTHING.
+	// A creature killed in a test world stays a valid weak pointer, because nothing runs
+	// the timer that removes its body -- so the chooser would return early on the pointer
+	// rather than on the flag, and the test would pass whether or not the rule works.
+	// Destroying it makes the pointer stale, so only the flag can refuse the second
+	// choice, and the creature still standing beside it is a candidate if the flag does
+	// not.
+	Commander->Destroy();
 	Mode->ChooseTheFloorsCommander();
 	TestNull(TEXT("and the floor has no Commander left to kill"),
 			 Mode->TheFloorsCommander());

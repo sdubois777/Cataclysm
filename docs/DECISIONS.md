@@ -177,6 +177,25 @@ that the armour is one modifier and the stat is spelled `armor`; that the choose
 the creature; that a floor change puts every creature's multiplier back while keeping the run's count;
 and the ordering check above.
 
+### A Commander killed by something else took two attempts to get right
+
+**THE FIRST VERSION RECORDED THAT THE FLOOR'S COMMANDER WAS GONE ONLY WHEN THE PLAYER KILLED IT.** A
+Commander that burned to death on another rule's ground paid nothing, which is right, and left the
+floor free to choose a second one, which is not: the row names "the Commander in each level", one
+creature a floor. The entry above already said the floor does not get another, so the code and this
+document disagreed.
+
+**IT IS NOW RECORDED BEFORE THE QUESTION OF WHO STRUCK THE BLOW.** The floor loses its Commander to any
+death; the player is paid only for their own.
+
+**THE TEST THAT COVERS IT COULD NOT HAVE CAUGHT IT, AND THAT IS THE PART WORTH KEEPING.** A creature
+killed in an automation world keeps a VALID weak pointer, because a body is removed by a timer that a
+test world's clock never runs. The chooser returns early both while the Commander's pointer is valid
+and when this flag is set, so with the body still standing the test passed either way — it was
+exercising the wrong guard. The test now destroys the body by hand first, which makes the pointer
+stale, so only the flag can refuse the second choice, and the creature still standing beside it is a
+candidate if the flag does not.
+
 ### Eight of those assertions would not have compiled, and the whole group was swept
 
 **`FAutomationTestBase::TestEqual` HAS NO GENERIC TEMPLATE BEHIND ITS OVERLOADS.** Eight assertions

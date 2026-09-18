@@ -4154,10 +4154,23 @@ void ACataclysmDungeonGameMode::NoteDeathForMarchOfProgress(
 		return;
 	}
 
-	// THE PLAYER MUST HAVE STRUCK THE LAST BLOW. "Killing the Commander" is the row, so a
-	// Commander that burns to death on another rule's ground or is killed by another
-	// creature pays nothing. `NoteDeathForDemonPrince` and three other listeners ask the
-	// same question the same way, for rows that say "when you kill".
+	// THIS FLOOR'S COMMANDER IS GONE, WHOEVER KILLED IT, AND THE FLOOR DOES NOT GET
+	// ANOTHER. The row names "the Commander in each level" -- one creature a floor -- so
+	// a Commander that burns to death on another rule's ground or is killed by another
+	// creature takes the floor's Commander with it. Recorded BEFORE the question of who
+	// struck the blow, because that question decides the payment and not whether the
+	// Commander is still there to kill.
+	//
+	// WITHOUT THIS THE FLOOR WOULD QUIETLY OFFER A SECOND ONE. The chooser also returns
+	// early while the pointer is still valid, and a creature killed in a test world stays
+	// valid because nothing runs the timer that removes its body -- so the fault would
+	// not show until real play, where the body does go.
+	bMarchOfProgressCommanderSlain = true;
+	RefreshFloorModifierPanel();
+
+	// AND THE PLAYER IS PAID ONLY IF THEY STRUCK THE LAST BLOW. "Killing the Commander"
+	// is the row. `NoteDeathForDemonPrince` and three other listeners ask the same
+	// question the same way, for rows that say "when you kill".
 	UWorld* World = GetWorld();
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 	ACataclysmPlayerCharacter* Player =
@@ -4167,7 +4180,6 @@ void ACataclysmDungeonGameMode::NoteDeathForMarchOfProgress(
 		return;
 	}
 
-	bMarchOfProgressCommanderSlain = true;
 	++MarchOfProgressCommandersKilled;
 
 	UE_LOG(LogCataclysm, Verbose,
@@ -4175,9 +4187,15 @@ void ACataclysmDungeonGameMode::NoteDeathForMarchOfProgress(
 		MarchOfProgressCommandersKilled,
 		Effects::MarchOfProgressArmourMorePercentFor(MarchOfProgressCommandersKilled));
 
-	// THE PANEL AT ONCE AND THE ARMOUR ON THE NEXT BEAT. The armour goes on through
-	// `ApplyChangingFloorEffects`, which needs the player's ability system; the beat has
-	// it in hand and this does not, and a quarter of a second is what every other
+	// THE PANEL IS REFRESHED A SECOND TIME, AND IT IS NOT A DUPLICATE. Its line carries
+	// two things this function can change: whether the floor's Commander is still standing,
+	// which the refresh above reports, and how many commanders the player has killed in
+	// this run, which only becomes true on the line above this one. Refreshing once, at
+	// either point, would leave one of the two a beat stale.
+	//
+	// AND THE ARMOUR ITSELF GOES ON AT THE NEXT BEAT rather than here. It is applied
+	// through `ApplyChangingFloorEffects`, which needs the player's ability system; the
+	// beat has it in hand and this does not, and a quarter of a second is what every other
 	// recorded-here-applied-there rule already waits.
 	RefreshFloorModifierPanel();
 }

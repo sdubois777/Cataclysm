@@ -1804,10 +1804,15 @@ private:
 	/**
 	 * March of Progress' armour, on the death of the floor's Commander.
 	 *
-	 * THE PLAYER MUST HAVE STRUCK THE LAST BLOW. The row says "killing the Commander",
-	 * so a Commander that burns to death on another rule's ground, or is killed by
-	 * another creature, pays nothing. The four other listeners whose rows say "when you
-	 * kill" ask the same question the same way.
+	 * THE PLAYER MUST HAVE STRUCK THE LAST BLOW TO BE PAID. The row says "killing the
+	 * Commander", so a Commander that burns to death on another rule's ground, or is
+	 * killed by another creature, pays nothing. The four other listeners whose rows say
+	 * "when you kill" ask the same question the same way.
+	 *
+	 * BUT THE FLOOR LOSES ITS COMMANDER EITHER WAY, and that is recorded before the
+	 * question of who struck the blow. The row names "the Commander in each level" --
+	 * one creature a floor -- so a floor whose Commander died to something else does not
+	 * get another, and the player who let that happen earns nothing there.
 	 *
 	 * IT PAYS ONCE. `bMarchOfProgressCommanderSlain` is what stops a second notice for
 	 * the same body paying twice, which matters because a floor has one Commander and
@@ -2498,11 +2503,13 @@ private:
 	 * asks to outlive it: the armour is paid "in each level" and nothing in the row takes
 	 * it back. `LeaveEmpireDungeon` clears it, which is where a run ends.
 	 *
-	 * `bMarchOfProgressCommanderSlain` IS WHAT STOPS A FLOOR PAYING TWICE. A Horde
-	 * dungeon's next wave arrives in the same arena and calls the chooser again, and the
-	 * weak pointer alone cannot answer whether this floor has already been paid: a
-	 * Commander that died and a Commander destroyed for any other reason both leave it
-	 * invalid. The chooser returns early on either the living pointer or this flag.
+	 * `bMarchOfProgressCommanderSlain` MEANS THIS FLOOR'S COMMANDER HAS DIED, WHOEVER
+	 * KILLED IT -- not that the player was paid for it. A Horde dungeon's next wave
+	 * arrives in the same arena and calls the chooser again, and the weak pointer alone
+	 * cannot answer whether this floor has already had its Commander: a creature that
+	 * died and one destroyed for any other reason both leave it invalid, and a creature
+	 * that has died but whose body is still standing leaves it VALID. The chooser returns
+	 * early on either the living pointer or this flag.
 	 *
 	 * BOTH ARE FORGOTTEN IN `PopulateFloor` AND NOT IN `ApplyFloorRulesToPlayer`, AND
 	 * THAT ORDER IS LOAD-BEARING. `GoToFloor` populates the floor and applies the floor
