@@ -331,11 +331,39 @@ a future row does want a per-Fervour-point grant, that is what it will mean.
 
 ### WHAT THIS CHANGE DOES NOT DO
 
-**The node still does nothing in play.** Its two rows and its reworded sentence
-are both authored in the design workbook, which another session holds, so they
-land in a later change together with the data asset rebuild — the order the
-Behind the Veil keystone used a few hours earlier. Until then the condition is
-listed in `tools/tests/` as one that landed ahead of its rows, with that reason.
+**The node still does nothing in play.** Its two effect rows are authored in the
+design workbook, which another session holds, so they land in a later change
+together with the data asset rebuild — the order the Behind the Veil keystone
+used a few hours earlier. Until then the condition is listed in `tools/tests/` as
+one that landed ahead of its rows, with that reason.
+
+**THE REWORDED SENTENCE IS NOT WAITING ON THE WORKBOOK, AND WE BOTH SAID IT
+WAS.** A node's name and description are not in that workbook at all: the
+generator builds `game/Data/PassiveNodes.csv` from `docs/<Tree>_Class_Tree_Final.json`,
+which are plain text files git can merge. **What keeps the sentence with the rows
+is window economics, not exclusivity**: both the node table and the effect table
+have imported engine assets, so landing the sentence alone would make one stale
+and cost a machine window of its own. Two changes would cost two windows where
+one costs one.
+
+### WHAT A DRY RUN MEASURED BEFORE ANY OF IT WAS WRITTEN
+
+The whole rows change was rehearsed in a throwaway copy of the tree — the
+repository taken with `git archive`, the sentence reworded, the rows added, the
+data regenerated and the Python suite run inside the copy. It moved **six**
+checks. **The reading beforehand predicted four of them**, and both misses were
+the project's own bookkeeping rather than anything about the node:
+
+- the list of conditions that land ahead of their rows works in BOTH directions,
+  so the change that adds the rows must **remove** the name the change that added
+  the condition put there;
+- every condition a row uses must also be tied to the WORDS of its node's
+  sentence, in the check that holds those two statements of one fact together.
+
+**A caveat on the method, recorded so a later reader does not miscount it:** a
+copy taken this way is not a git repository, so eleven further checks fail
+because they ask git whether a path is ignored. They are artefacts of the
+rehearsal and not findings.
 
 ---
 
