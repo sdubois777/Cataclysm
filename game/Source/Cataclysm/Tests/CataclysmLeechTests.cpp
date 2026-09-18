@@ -8,6 +8,9 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmLeech.h"
+// For the real minion whose blow leeches for nobody. Issue #1515.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -352,26 +355,34 @@ CATACLYSM_LEECH_TEST(FCataclysmMinionBlowLeechesNothingTest,
 	Summoner.Vitals->SetLifeLeech(10.0f);
 	Summoner.Vitals->SetHealth(5'000.0f);
 
-	// A MINION'S BLOW IS DEALT IN ITS SUMMONER'S NAME, so the attacker every
-	// part of the hit reads is the summoner. The design names leech among what
-	// a minion does not take from its summoner, so the blow carries the fourth
-	// of its four exclusions.
-	FCataclysmHitDelivery MinionBlow;
-	MinionBlow.bCannotCriticallyStrike = true;
-	MinionBlow.bCannotPenetrate = true;
-	MinionBlow.bCarriesNoWeaponSubType = true;
-	MinionBlow.bCannotLeech = true;
+	// A REAL MINION, NOT A DELIVERY BUILT BY HAND. This case used to set the
+	// four flags a minion's blow carries and strike with the summoner as the
+	// attacker, which measured the shape of a minion's blow rather than a
+	// minion's blow. Since issue #1515 the minion is the instigator of its own
+	// blow, so that simulation no longer matches what the game does.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("a minion"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
 
-	const float Dealt = UCataclysmSkillEffects::ApplyHit(
-		Summoner.Actor, Target.Actor, /*DamagePercent=*/100.0f,
-		FGameplayTagContainer(), MinionBlow);
+	const float TargetBefore = Target.Vitals->GetHealth();
+	Imp->AttackTarget(Target.Actor);
 
-	if (!TestTrue(FString::Printf(
-			TEXT("the minion's blow dealt damage (%.1f)"), Dealt), Dealt > 0.0f))
+	if (!TestTrue(FString::Printf(TEXT("the imp's blow dealt damage (%.2f)"),
+								  TargetBefore - Target.Vitals->GetHealth()),
+				  Target.Vitals->GetHealth() < TargetBefore))
 	{
 		return false;
 	}
 
+	// NOTHING FOR THE SUMMONER, which is the design's rule: leech is named among
+	// what a minion does not take from its summoner. It is true of its own
+	// accord now -- leech is read off whoever dealt the blow, and that is the
+	// minion -- and the delivery states it as well.
 	TestEqual(TEXT("a minion's blow leaves its summoner no leech to collect"),
 		Summoner.AbilitySystem->GetLeechPayments().Num(), 0);
 
@@ -380,16 +391,36 @@ CATACLYSM_LEECH_TEST(FCataclysmMinionBlowLeechesNothingTest,
 	TestEqual(TEXT("and the summoner gains no health from it"),
 		Summoner.Vitals->GetHealth(), Before, 0.001f);
 
-	// AND THE SAME BLOW WITHOUT THAT ONE FLAG DOES LEECH, which is what makes
-	// the check above evidence of the flag rather than of leech being broken.
-	FCataclysmHitDelivery OwnBlow = MinionBlow;
-	OwnBlow.bCannotLeech = false;
+	// AND NOTHING FOR THE MINION EITHER, which is the half that is new.
+	//
+	// THIS ONE CANNOT FAIL TODAY AND IS KEPT ANYWAY, which is said here rather
+	// than left for somebody to discover. A minion carries the figures leech is
+	// read from and they are all zero, and its blow is delivered with the leech
+	// exclusion set as well, so two separate things would have to change before
+	// this line could report anything. It is here because the first of those --
+	// a minion affix that grants leech -- is a thing issue #340 may add, and a
+	// reading of zero recorded now is what would catch the day it starts paying
+	// the wrong character.
+	if (UCataclysmAbilitySystemComponent* ImpSystem =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Imp)))
+	{
+		TestEqual(TEXT("and the minion itself collects none"),
+			ImpSystem->GetLeechPayments().Num(), 0);
+	}
+	else
+	{
+		AddError(TEXT("the minion has no ability system to read leech from."));
+	}
 
+	// AND THE SUMMONER'S OWN BLOW STILL LEECHES, which is what makes the
+	// readings above evidence about a minion's blow rather than about leech
+	// being broken for this character.
 	UCataclysmSkillEffects::ApplyHit(
 		Summoner.Actor, Target.Actor, /*DamagePercent=*/100.0f,
-		FGameplayTagContainer(), OwnBlow);
+		FGameplayTagContainer(), FCataclysmHitDelivery());
 
-	TestEqual(TEXT("the same blow struck in the character's own name does"),
+	TestEqual(TEXT("while a blow the summoner strikes itself does"),
 		Summoner.AbilitySystem->GetLeechPayments().Num(), 1);
 
 	return true;
