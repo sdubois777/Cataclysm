@@ -18139,15 +18139,15 @@ bool FCataclysmMarchCommanderChoiceTest::RunTest(const FString& Parameters)
 	}
 
 	Mode->ChooseTheFloorsCommander();
-	TestEqual(TEXT("the floor's Commander is the highest rung placed"),
-			  Mode->TheFloorsCommander(), Elite);
+	TestSamePtr(TEXT("the floor's Commander is the highest rung placed"),
+				Mode->TheFloorsCommander(), Elite);
 
 	// AND CHOOSING AGAIN KEEPS IT, which is what stops a Horde dungeon's next wave from
 	// quietly replacing a Commander the player is still hunting.
 	PlaceCreatureAtRung(World, Mode, FVector(1600.0f, 0.0f, 0.0f), 3);
 	Mode->ChooseTheFloorsCommander();
-	TestEqual(TEXT("a later creature of a higher rung does not take the title"),
-			  Mode->TheFloorsCommander(), Elite);
+	TestSamePtr(TEXT("a later creature of a higher rung does not take the title"),
+				Mode->TheFloorsCommander(), Elite);
 	return true;
 }
 
@@ -18185,8 +18185,8 @@ bool FCataclysmMarchCommanderTieTest::RunTest(const FString& Parameters)
 	}
 
 	Mode->ChooseTheFloorsCommander();
-	TestEqual(TEXT("a tie keeps the one the floor placed first"),
-			  Mode->TheFloorsCommander(), Earlier);
+	TestSamePtr(TEXT("a tie keeps the one the floor placed first"),
+				Mode->TheFloorsCommander(), Earlier);
 	return true;
 }
 
@@ -18228,7 +18228,8 @@ bool FCataclysmMarchCommanderUnmarkedTest::RunTest(const FString& Parameters)
 
 	Mode->ChooseTheFloorsCommander();
 	Beat(Mode, 4);
-	if (!TestEqual(TEXT("the first one was chosen"), Mode->TheFloorsCommander(), Chosen))
+	if (!TestSamePtr(TEXT("the first one was chosen"), Mode->TheFloorsCommander(),
+					 Chosen))
 	{
 		return false;
 	}
@@ -18343,8 +18344,8 @@ bool FCataclysmMarchKillPaysTest::RunTest(const FString& Parameters)
 	}
 
 	Mode->ChooseTheFloorsCommander();
-	if (!TestEqual(TEXT("the Elite is the Commander"), Mode->TheFloorsCommander(),
-				   Commander))
+	if (!TestSamePtr(TEXT("the Elite is the Commander"), Mode->TheFloorsCommander(),
+					 Commander))
 	{
 		return false;
 	}
@@ -18449,8 +18450,8 @@ bool FCataclysmMarchArmourStacksTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Mode->ChooseTheFloorsCommander();
-	if (!TestEqual(TEXT("the new floor chose its own Commander"),
-				   Mode->TheFloorsCommander(), Second))
+	if (!TestSamePtr(TEXT("the new floor chose its own Commander"),
+					 Mode->TheFloorsCommander(), Second))
 	{
 		return false;
 	}
@@ -18502,8 +18503,8 @@ bool FCataclysmMarchOnlyThePlayersKillTest::RunTest(const FString& Parameters)
 	}
 
 	Mode->ChooseTheFloorsCommander();
-	if (!TestEqual(TEXT("the Elite is the Commander"), Mode->TheFloorsCommander(),
-				   Commander))
+	if (!TestSamePtr(TEXT("the Elite is the Commander"), Mode->TheFloorsCommander(),
+					 Commander))
 	{
 		return false;
 	}
@@ -18827,8 +18828,8 @@ bool FCataclysmMarchPopulateChoosesTest::RunTest(const FString& Parameters)
 	// AND IT IS STILL THE FLOOR'S COMMANDER AFTER THE BEAT HAS RUN, which is what says
 	// nothing later in the frame or on the clock quietly takes it away.
 	Beat(Mode, 4);
-	TestEqual(TEXT("and it is still the Commander four beats later"),
-			  Mode->TheFloorsCommander(), Commander);
+	TestSamePtr(TEXT("and it is still the Commander four beats later"),
+				Mode->TheFloorsCommander(), Commander);
 	return true;
 }
 
