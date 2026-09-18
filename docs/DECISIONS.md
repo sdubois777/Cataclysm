@@ -54,6 +54,21 @@ still hides most of the vocabulary.** So this file also pins how many it should 
 
 `debuffs_carried`, named by fifteen rows, is the control.
 
+### Who decided what
+
+**Nothing here is a design decision.** Issue #1988 asked for the check and left one question open,
+which the shape of the file answers. **Three judgements in it are the author's, made under the project
+owner's delegation of 2026-09-14**, and are marked as judgements rather than as anything the issue or
+the design states:
+
+| The judgement | Why |
+| :-- | :-- |
+| two files, one per vocabulary, rather than one file reading both columns | the repository names a test file after the invariant it holds, a failure should name the vocabulary that is wrong without the reader working out which half fired, and the condition file carries a long comment history about conditions that folding scales in would put under one heading with a second history |
+| a fourth test the condition file does not have, pinning that the reader finds 16 of 16 | a reader that returns SOME names passes the control and still hides most of the vocabulary, so the control alone is not enough |
+| keeping the list-rot test although it is vacuous today | the hand list will not stay empty, and the test is what makes a later author take a name out again when its row arrives; the alternative, adding it when the list is first used, means the author who lands a name ahead of its row is the one who has to remember |
+
+The coordinating session ruled on all three under the same delegation before they were written.
+
 ### The proof, and the break is the situation the check exists for
 
 Run in a `git archive` copy so the real worktree was never touched. The break adds a scale source to
