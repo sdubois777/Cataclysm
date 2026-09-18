@@ -98,22 +98,47 @@ cells a side; it is there rather than in the rule header because that file alrea
 generator and the Imp and the header includes neither. It uses 1.5 in place of the square root of two,
 which is not available at compile time and is the safe side of 1.41421.
 
-### The wraith's figures are written straight onto its attributes, and two rules put them back
+### Two of the three stats the row names are not attributes at all
 
-**There is no creature equivalent of `UCataclysmDungeonModifierEffects::PlayerEffectsFor`**, which is
-how a floor rule gives the PLAYER a stat change. Searched for and not found. So the four figures are
-written straight onto the spawned creature's attributes, which is the only way a rule reaches one.
+This was planned wrongly and the machine found it. The rule was first written to put all four figures
+straight onto the spawned creature's attributes, because **there is no creature equivalent of
+`UCataclysmDungeonModifierEffects::PlayerEffectsFor`**, which is how a floor rule gives the PLAYER a
+stat change — searched for and not found.
 
-The cost is that anything writing the stat block again wipes them, because `SetRarityStep` and
-`DrawModifiersForRarity` both end in `ApplyStartingAttributes`. **Exactly two rules raise a LIVING
-creature's rung** — Blood-Forged Champions and Volatile Evolution, measured by reading every
-`SetRarityStep` call in the game mode; the rest are fresh spawns — and both now put a wraith's figures
-back afterwards. Ruled under the owner's delegation: the figures are what make the creature a wraith,
-and another floor rule must not silently strip them.
+**MEASURED IN THE WINDOW: a creature's attack speed and walk speed never read the `AttackSpeed` and
+`MovementSpeed` attributes.** `ACataclysmEnemyCharacter::SecondsBetweenAttacks` is `final` and returns
+`DesignedSecondsBetweenAttacks()` over `SpeedMultiplier()`; the walk speed is
+`DesignedWalkSpeedCmPerSecond` times the same, written to the movement component by
+`RefreshWalkSpeed()` on every tick. So two of the row's three stats were being written where nothing
+on a creature reads them, and did nothing at all. **This is worth its own line, because any rule
+writing those two attributes on a creature has the same problem.**
 
-**THE HELPER MULTIPLIES WHAT IT READS**, so calling it twice without a fresh stat block underneath
-would give a wraith 44% rather than 20%. Its comment says so and names the only two places it may be
-called. `AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound` is the test that measures both halves.
+**The creature class already said where such an effect belongs.** `SpeedMultiplier` is "everything
+acting on this creature's movement and attack speed at once", with Commander's 1.2 and Cripple's 0.7
+as its factors, and its comment states the rule: "anything naming BOTH stats belongs here". This row
+names both.
+
+**Ruled under the owner's delegation:** `ACataclysmEnemyCharacter` gains a flag saying the creature is
+a wraith and a `WraithMultiplier()` returning the factor when it is set, multiplied into
+`SpeedMultiplier()` beside the other two. The factor is read from this rule's own
+`VengefulWraithsIncreased` rather than written as a second twenty in the creature class.
+
+### So the four figures reach a wraith by three different routes
+
+| Figure | How it is applied | What a rung change does to it |
+| :-- | :-- | :-- |
+| the multiplicative damage reduction | written onto the attribute | **nothing — it survives**, measured |
+| attack damage | written onto the attribute | **wiped**, so the rule puts it back |
+| attack speed and walk speed | the flag, through `SpeedMultiplier()` | **nothing — the flag survives** |
+
+**Exactly two rules raise a LIVING creature's rung** — Blood-Forged Champions and Volatile Evolution,
+measured by reading every `SetRarityStep` call in the game mode; the rest are fresh spawns — and both
+put a wraith's attributes back afterwards. **THE HELPER THAT DOES IT MULTIPLIES WHAT IT READS**, so
+calling it twice without a fresh stat block underneath would raise attack damage twice. Its comment
+says so and names the only two places it may be called.
+
+That middle row of the table is the one the third guard proof measured, and it is not what was
+registered. See below.
 
 ### One design figure was already held somewhere else, and that was found by proving a check
 
@@ -154,11 +179,85 @@ Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, taking
 row's 90 is above the additive cap and within the multiplicative bound; and that the compile-time
 check sizing a wraith's sight still reads all four things it needs.
 
-### What the runs found, so far
+### What the runs found
+
+Measured 2026-09-18 UTC, which is the same date in this machine's local time, under one editor lock.
+
+**TWO WHOLE-SUITE RUNS, ONE OVER THE OWNER'S FIGURE**, because the first found a fault in the rule
+rather than in a test. Both are named here with their heads and their reasons.
+
+| Whole suite | Head | What it printed |
+| :-- | :-- | :-- |
+| 1 of 2 | `ff89c7c1` | 2096 performed, 2095 succeeded, **1 failed**, gap 0 |
+| 2 of 2, the run of record | `ed1a9a1e` | 2096 performed, 2096 succeeded, 0 failed, gap 0 |
 
 ```
-python -m pytest tools/tests/test_dungeon_modifier_rules_are_the_rows.py
-119 passed in 0.25s          python -m ruff check .   ->   All checks passed!
+Build: Succeeded - 7 actions, 4 files compiled
+Tests: 2096 tests performed, 2096 succeeded, 0 failed
+Declared: 2096 tests in the tree at ed1a9a1e; 2096 performed, gap 0
+wrapper exit: 0
+```
+
+That is exactly the registered figure: 2085 measured on `development` plus these eleven by name. Each
+run also reported 39 tests skipping part of what they check; all are art tests and a worktree has no
+Paragon content.
+
+**THE FIRST RUN'S FAILURE WAS THE RULE, NOT THE TEST.**
+
+```
+Tests: 2096 tests performed, 2095 succeeded, 1 failed:
+AWraithIsTwentyPercentAboveItsKindInAllThreeStats.
+Error: Expected 'its kind has all three to raise: 9.00 damage, 0.00 attack speed,
+4.80 movement' to be true.
+```
+
+The attack speed attribute read 0.00 on a creature, which is what exposed the section above. The
+repair is the flag and the multiplier; the tests now read each stat where the game reads it — the
+attribute for attack damage, `SecondsBetweenAttacks()` for the attack rate, the movement component's
+own figure for walking. **An interval is divided and not multiplied**, which the creature class says
+at length: "20% more attack speed is 2.6 seconds becoming 2.167, not 3.12".
+
+**A SECOND REPAIR FOLLOWED, AND IT WAS A COIN TOSS RATHER THAN A FAULT.** With the first in, the group
+printed `160 tests performed, 159 succeeded, 1 failed:
+AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound`, on "Expected 'the wraith rose a rung' to be 4,
+but it was 3". `ImpRarityStep` is -1 by default, meaning **draw** a rung, and the weights in
+`game/Data/EnemyRarities.csv` are Common 0.60, Elite 0.20, Legendary 0.15, Herald 0.04, Boss 0.01. A
+wraith rises as a creature of the slain one's kind and draws its own, so **one wraith in twenty-five
+arrives at Herald** — the ceiling every floor rule stops at, where nothing can raise it. That test
+would have passed 96% of the time. The rung is now pinned in the shared setup for the whole group,
+because a drawn rung sits under every assertion in it, and the comment carries the measured failure
+text so the pin is not removed later.
+
+The group `Cataclysm.DungeonModifierEffects.` printed 160 performed, 160 succeeded, 0 failed after
+both repairs, and again as the restored half of all three guard proofs.
+
+### The three guard proofs
+
+All three printed `PROVED`, none crashed, every restored half 160 performed and 0 failed. Each
+assertion was read out of `game/Saved/Logs/Cataclysm.log` between the two halves.
+
+| Proof | What was removed | What failed | What it printed |
+| :-- | :-- | :-- | :-- |
+| 1 | the test that the killer was the player | `ACreatureKilledByAnotherCreatureLeavesNoWraith` and `AKillDealtByAMinionLeavesNoWraithWithoutConduit` | both: expected "0 wraith(s) risen", was "1 wraith(s) risen" |
+| 2 | the 10% chance | `ARollAboveTheChanceLeavesNoWraith` | "Expected 'nothing stands on the floor' to be null" |
+| 3 | the figures put back after a rung change | `AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound` | "Expected 'the wraith is one increase above its new rung and not two' to be 15.120001, but it was 12.600000" |
+
+**THE THIRD PROOF'S ASSERTION WAS NOT THE ONE REGISTERED, AND THAT IS A MEASUREMENT WORTH KEEPING.**
+It was registered against "it still takes the row's share off every hit"; that assertion **passed**,
+and the test failed on the attack damage instead. So a rung change wipes attack damage — 15.12 falling
+back to the new rung's own 12.60 — and does **not** wipe the multiplicative damage reduction. The
+table above is written from that result rather than from the guess that preceded it.
+
+**The first proof's anchor carries this rule's own comment**, because the three lines that ask who
+killed the creature are identical in Demon Prince and Epidemic; a bare anchor would have changed all
+three and proved nothing about any of them. **Its break repoints the condition rather than deleting
+it**, because deleting would leave a variable unused and could fail the build, which proves nothing.
+
+### The Python side
+
+```
+python -m pytest
+python -m ruff check .   ->   All checks passed!
 ```
 
 Eleven deliberate breaks through `tools/prove_guard.py`, run in a git-archive copy so no break could
@@ -170,10 +269,6 @@ row's chance fails two checks, not one; moving the shared constant fails three, 
 Holy Repercussions', and finding it is what produced the distinction written above.
 
 ### What the tests do not show
-
-- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the eleven automation tests and the three guard proofs wait for this machine's next free window, and
-  this section will be replaced by what those runs print.
 - **What a wraith is actually like to fight.** Taking a tenth of each hit is read off the attribute in
   a test, not measured against a player's damage over a real fight.
 - **Whether a floor can fill with wraiths.** There is no ceiling on how many rise, because the row
