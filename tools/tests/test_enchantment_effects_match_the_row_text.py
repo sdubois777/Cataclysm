@@ -357,7 +357,10 @@ JUDGED_NUMBERS = {
 #: three that raise one, and one removal under `health_below` 50. The stat and
 #: its four readers were built in #1962; these are its first enchantment rows.
 #: AND 257 OVER 198 SINCE THE THIRTEEN ROWS ACROSS TEN SENTENCES that issues
-#: #1981, #1982 and #1988 unblocked, from 244 over 188. NO SENTENCE WAS ADDED
+#: #1981 and #1982 unblocked, from 244 over 188. #1988 WAS NAMED HERE TOO AND
+#: DOES NOT BELONG: it asks for a check that every scale source is named by a
+#: row or listed as landed ahead of it, and these rows add no check.
+#: NO SENTENCE WAS ADDED
 #: TO THE ENCHANTMENTS SHEET: the second number counts enchantments that have
 #: at least one effect row, and these ten already existed with none, so it
 #: moves by ten while the sheet itself gains nothing.
