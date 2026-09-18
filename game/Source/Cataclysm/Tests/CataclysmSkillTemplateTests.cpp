@@ -2630,7 +2630,21 @@ bool FCataclysmSummonCapTest::RunTest(const FString&)
 {
 	using namespace CataclysmSkillTest;
 
-	UWorld* World = MakeWorld();
+	// A WORLD THAT HAS BEGUN PLAY, WHICH THE MINION'S HEALTH NEEDS. Naming a
+	// minion kind in the parameters below, which issue #1515 made a summon
+	// state, sends `ACataclysmMinion::Spawn` down the branch that writes the
+	// minion's own maximum health and health. Those writes need the minion's
+	// attribute set, which an actor only gains once it has received BeginPlay,
+	// and `MakeWorld` above never begins play: the engine's gameplay ability
+	// plugin then reports "Unable to get attribute set for attribute MaxHealth"
+	// as a handled ensure, which the automation controller records as an error
+	// and fails the case on. A minion with no type row wrote no health at all,
+	// which is why this case did not need it before.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);

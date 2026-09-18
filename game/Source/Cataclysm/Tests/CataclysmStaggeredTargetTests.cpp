@@ -446,9 +446,15 @@ bool FCataclysmStaggeredTargetMinionTest::RunTest(const FString&)
 	GiveStaggerAttackLine(Summoner.AbilitySystem, /*ConditionalIncrease=*/20.0f,
 						  /*UnconditionalIncrease=*/0.0f);
 
+	// A REAL IMP, NAMED, SINCE ISSUE #1515. This case used to spawn a minion
+	// with no type row, which swung for 30% of its SUMMONER'S weapon damage.
+	// The project owner ruled that a bug on 2026-09-17 and the share is
+	// deleted, so a typeless minion now deals nothing and both readings below
+	// would be zero. The figure itself does not matter here -- the assertion is
+	// that two minions deal the SAME -- but it has to be a figure.
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
 		Summoner.Actor, FVector(1.0f * StaggerM, 0.0f, 0.0f), /*Lifetime=*/20.0f,
-		/*bBurns=*/false);
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
 
 	// PLACED APART ON DIFFERENT AXES so no spawn is displaced by another's
 	// collision. Nothing here depends on where they stand, but a displaced spawn
@@ -463,7 +469,8 @@ bool FCataclysmStaggeredTargetMinionTest::RunTest(const FString&)
 	FStaggerArmedActor Plain = MakeStaggerArmed(World);
 	ACataclysmMinion* PlainImp = Plain.Actor
 		? ACataclysmMinion::Spawn(Plain.Actor, FVector(0.0f, 1.0f * StaggerM, 0.0f),
-								  /*Lifetime=*/20.0f, /*bBurns=*/false)
+								  /*Lifetime=*/20.0f, /*bBurns=*/false,
+								  /*TypeName=*/TEXT("Imp"))
 		: nullptr;
 	ACataclysmEnemyCharacter* PlainStaggered = SpawnStaggerCreatureAt(
 		World, FVector(0.0f, 3.0f * StaggerM, 0.0f), 1'000'000.0f);

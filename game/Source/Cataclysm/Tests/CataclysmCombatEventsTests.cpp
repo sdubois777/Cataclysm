@@ -975,9 +975,15 @@ bool FCataclysmCombatEventsMinionKill::RunTest(const FString&)
 		return false;
 	}
 
+	// A REAL IMP, NAMED, SINCE ISSUE #1515. This case used to spawn a minion
+	// with no type row, which swung for 30% of its SUMMONER'S weapon damage.
+	// The project owner ruled that a bug on 2026-09-17 and the share is
+	// deleted, so a typeless minion deals nothing, sends no hit notice and
+	// kills nobody. The victim below has one point of health, so the imp's own
+	// figure is enough and this case still says nothing about how big it is.
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
 		Summoner.Actor, FVector(3.0f * M, 0.0f, 0.0f), /*Lifetime=*/20.0f,
-		/*bBurns=*/false);
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
 	if (!TestNotNull(TEXT("a minion"), Imp))
 	{
 		return false;

@@ -110,6 +110,47 @@ is as open as ever.
 every generator guard built on it would have failed on a missing figure rather
 than on the thing it guards.
 
+### THIS WINDOW USED TWO WHOLE UNREAL SUITE RUNS, WHERE THE FIGURE IS ONE
+
+**The second was not a repeat of the first.** The first run, against the
+rebuilt minion type asset, performed 2,055 tests and failed eight. Seven of
+them summoned a minion with no type row and expected its blow to deal a share
+of its summoner's weapon damage, which is the fallback this change deletes:
+
+- `Cataclysm.CombatEvents.AMinionsKillCreditsItsSummonerAndNamesTheMinion`
+- `Cataclysm.DamageType.AMinionDoesNotTakeItsSummonersPenetration`
+- `Cataclysm.DamageType.AMinionDoesNotTakeItsSummonersWeaponSubType`
+- `Cataclysm.StaggeredTarget.AMinionsBlowEarnsTheSummonersStaggerBonusNothingAtAll`
+- `Cataclysm.TargetAilment.AMinionsBlowEarnsTheSummonersAilmentBonusNothingAtAll`
+- `Cataclysm.TargetDistance.AMinionsBlowEarnsTheSummonersDistanceBonusNothingAtAll`
+- `Cataclysm.TargetHealth.AMinionsBlowEarnsTheSummonersHealthBonusNothingAtAll`
+
+Each summons a real Imp now. Five asserted only that two minions deal the same
+as each other, so no figure is involved in them. The two in
+`game/Source/Cataclysm/Tests/CataclysmDamageTypeTests.cpp` do assert figures,
+and state the Imp row's own -- one of them 35% of it, because 800 armour takes
+half and 30 resistance takes 30% of the rest.
+`UCataclysmDamageCalculation::ArmorReduction` reads the armour and the tier and
+nothing else, so that share does not move with the size of the blow; the second
+run is what measured it, and
+`Cataclysm.DamageType.AMinionDoesNotTakeItsSummonersPenetration` passed at it.
+
+**The eighth was this change's own test edit rather than anything in the
+engine change.** `Cataclysm.Skills.SummoningPastTheCapExplodesTheOldest` names
+`Imp` in its summon parameters, which sends `ACataclysmMinion::Spawn` down the
+branch that writes the minion's own maximum health and health. Those writes
+need an attribute set that an actor gains only once it has received
+`BeginPlay`, and that case's world was made without ever beginning play. The
+engine's gameplay ability plugin reported "Unable to get attribute set for
+attribute MaxHealth" as a handled ensure, which the automation controller
+records as an error and fails the case on. A minion with no type row wrote no
+health at all, which is why the case never needed a begun world before. It is
+given one now.
+
+**No engine file changed in the repair.** All eight are test files. The second
+run performed 2,055, succeeded 2,055 and failed none, and that engine warning
+does not appear in its log at all.
+
 ---
 
 ## 2026-09-17 — A creature of Elite rank or above that falls under 30% of its health gets one chance in two of calling two guards of its own kind, a rung above it and never past Herald
@@ -10755,6 +10796,16 @@ summoning skill's shape parameters name no minion kind, so a mis-authored row
 degrades to the old share rather than spawning a creature with no damage at
 all. No shipped skill row leaves it empty today, and
 `test_every_demonic_minion_skill_produces_a_type_the_table_defines` in `tools/tests/test_minion_stat_blocks.py` is what holds that.
+
+**THAT SENTENCE IS NO LONGER TRUE, AND THE SHARE IS DELETED**, on
+2026-09-17. The project owner ruled the fallback itself a bug: a minion's
+blow carries the minion's own numbers and none of its summoner's. So
+`ACataclysmMinion::DamagePercentOfSummoner` is gone, a minion summoned with
+no type row swings for nothing at all, and `tools/generate_datatables.py`
+refuses a summoning row that names no minion kind -- which closes the route
+this paragraph describes, rather than leaving a creature that cannot hurt
+anything. The entry dated 2026-09-17, "A minion's explosion is its own
+figure, and the share of its summoner's weapon is deleted", carries it.
 
 Three tests written before the minion type table also summon a typeless
 minion, and they check other things entirely — that an imp never turns on its summoner, that it cannot

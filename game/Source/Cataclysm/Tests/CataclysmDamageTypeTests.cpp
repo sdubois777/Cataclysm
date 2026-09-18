@@ -17,6 +17,8 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// For the level a minion's own damage is raised by. See ImpBlow below.
+#include "Character/CataclysmPlayerClassStats.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -65,6 +67,32 @@ namespace CataclysmDamageTypeTest
 		TEXT("War"), TEXT("Demonic"), TEXT("Death"), TEXT("Pestilence"),
 		TEXT("Famine"), TEXT("Celestial"), TEXT("Chaos"), TEXT("Void"),
 	};
+
+	// THE IMP ROW IN game/Data/MinionTypes.csv, COPIED RATHER THAN READ. The
+	// two cases below want a figure they did not get from the code they are
+	// testing, so they state the row's two numbers here. Four other test files
+	// state the same pair for the same reason.
+	constexpr float ImpBaseDamage = 10.5f;
+	constexpr float ImpDamagePerLevel = 10.5f;
+
+	/**
+	 * What one imp's blow is worth.
+	 *
+	 * ITS OWN, SINCE ISSUE #1515. The two cases below used to spawn a minion
+	 * with no type row and expect 30% of the SUMMONER'S weapon damage. The
+	 * project owner ruled that a bug on 2026-09-17 -- a minion's blow carries
+	 * the minion's own numbers -- so the share is deleted and they summon a real
+	 * Imp instead.
+	 *
+	 * THE LEVEL IS ASKED OF THE ENGINE AND NOTHING ELSE IS: a summoner built in
+	 * these tests has no player state, so the minion takes the level the class
+	 * stats are previewed at.
+	 */
+	float ImpBlow()
+	{
+		return ImpBaseDamage + ImpDamagePerLevel
+			* static_cast<float>(UCataclysmPlayerClassStats::ChosenLevel());
+	}
 
 	/**
 	 * Stops critical strikes for as long as it is in scope, then restores.
@@ -1329,18 +1357,25 @@ CATACLYSM_TEST(FCataclysmMinionTakesNoWeaponSubTypeTest,
 
 		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
 			Summoner.Actor, FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
-			/*bBurns=*/false);
+			/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
 		if (!TestNotNull(TEXT("an imp"), Imp))
 		{
 			World->DestroyWorld(false);
 			return false;
 		}
 
-		// An imp hits for 30% of its summoner's weapon damage, so 300 is swung and
-		// 300 lands. With the sub-type it would have been 330.
+		// AN IMP HITS FOR ITS OWN FIGURE, SINCE ISSUE #1515. It used to hit for
+		// 30% of its summoner's weapon damage, which was 300 here; the project
+		// owner ruled that a bug on 2026-09-17 and the share is deleted, so the
+		// figure comes from the Imp row and nothing of the sword's reaches it.
+		// With the sub-type it would have been a tenth more.
+		//
+		// THE DEFENDER HAS NEITHER ARMOUR NOR RESISTANCE IN THIS CASE, so what
+		// is swung is what lands and the reading is the blow itself.
 		Imp->AttackTarget(Defender.Actor);
 		TestEqual(TEXT("a minion's blow gets no slashing bonus"),
-			Defender.TakeDamageReading(), 300.0f, 1.0f);
+			Defender.TakeDamageReading(),
+			CataclysmDamageTypeTest::ImpBlow(), 0.1f);
 
 		// AND THE SUMMONER'S OWN BLOW STILL GETS IT, which is what makes the
 		// reading above a rule about minions rather than the weapon sub-type
@@ -1473,7 +1508,7 @@ CATACLYSM_TEST(FCataclysmMinionTakesNoPenetrationTest,
 
 		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
 			Summoner.Actor, FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
-			/*bBurns=*/false);
+			/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
 		if (!TestNotNull(TEXT("an imp"), Imp))
 		{
 			World->DestroyWorld(false);
@@ -1486,12 +1521,19 @@ CATACLYSM_TEST(FCataclysmMinionTakesNoPenetrationTest,
 		// about.
 		Imp->AttackTarget(Defender.Actor);
 
-		// An imp hits for 30% of its summoner's weapon damage, so 300 is swung.
-		// Half of it is taken by 800 armour and 30% of the remainder by the
-		// resistance: 105 lands. Before this was fixed the imp ignored all of both
-		// and dealt the whole 300.
+		// AN IMP HITS FOR ITS OWN FIGURE, SINCE ISSUE #1515, where it used to hit
+		// for 30% of its summoner's weapon damage and 300 was swung. Whatever is
+		// swung, half of it is taken by 800 armour and 30% of the remainder by the
+		// resistance, so 35% of it lands. Before this was fixed the imp ignored all
+		// of both and the whole blow landed.
+		//
+		// THE FRACTION DOES NOT DEPEND ON HOW BIG THE BLOW IS.
+		// `UCataclysmDamageCalculation::ArmorReduction` reads the armour and the
+		// tier and nothing else, so 35% is the same share of the imp's smaller
+		// figure as it was of 300.
 		TestEqual(TEXT("a minion's blow meets armour and resistance in full"),
-			Defender.TakeDamageReading(), 105.0f, 1.0f);
+			Defender.TakeDamageReading(),
+			CataclysmDamageTypeTest::ImpBlow() * 0.35f, 0.1f);
 
 		// AND THE SUMMONER'S OWN BLOW STILL PENETRATES, which is what makes the
 		// reading above a rule about minions rather than penetration being broken.
