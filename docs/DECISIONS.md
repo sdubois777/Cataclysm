@@ -2,6 +2,98 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — A scale source no data row names is now noticed, in its own file rather than folded into the condition check
+
+**Affects:** `tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py` (new: a
+Python check that every way of scaling a bonus that `tools/generate_datatables.py` knows is named by a
+row in `game/Data/EnchantmentEffects.csv` or `game/Data/PassiveEffects.csv`, or listed by hand as
+landed ahead of its row). Issue [#1988](https://github.com/sdubois777/Cataclysm/issues/1988), which
+this closes. **Applied.** The figure from the Python suite is in the commit that carries this entry,
+because adding it here after the run would mean the run no longer covered this file.
+
+### The gap, and what it cost
+
+A condition decides **whether** a bonus applies; a scale source decides **how big** it is. Both are
+read out of the same two tables by the same generator and both are cheap to land ahead of the data row
+that needs them. `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` has held
+the condition half since issue #1650. Nothing held this half.
+
+On 2026-09-18 two scale sources landed with no row naming them, `metres_to_target` and
+`seconds_stationary` — the first time the project had had any. Their rows followed the same day, so
+nothing shipped wrong. **That was a schedule and not a check**: the condition half of the very same
+change was caught by the existing check and had to list four names, and the scale half was noticed
+only because somebody looked.
+
+### Two files, not one, and the issue asked for that to be decided rather than assumed
+
+| Reason | |
+| :-- | :-- |
+| naming | this repository names a test file after the invariant it holds, and a failure should name the vocabulary that is wrong without the reader working out which half fired |
+| history | the condition file carries a long comment history of measurements about conditions; folding scales in would put two histories under one heading |
+| cost of not merging | about fifteen lines of reader, duplicated |
+
+### One of its tests does no work today, and the file says so
+
+`test_the_built_ahead_list_holds_nothing_a_row_now_names` runs over an empty list and passes without
+reading anything, because every scale source has a row today. It is there because the list will not
+stay empty: the moment somebody lands a scale source ahead of its row they add a name, and that test
+is what makes them take it out again when the row arrives. **The docstring says which test is doing
+work today and which is not**, rather than leaving a reader to assume both are.
+
+### A fourth test the condition file does not have
+
+The condition file keeps one control: a name rows do use must read as used, so a reader that finds
+nothing cannot make every name look unused. **A reader that finds SOME names passes that control and
+still hides most of the vocabulary.** So this file also pins how many it should find:
+
+```
+16 scale sources the generator knows
+16 named by a row          measured on origin/development at 0e606610
+ 0 named by no row
+```
+
+`debuffs_carried`, named by fifteen rows, is the control.
+
+### Who decided what
+
+**Nothing here is a design decision.** Issue #1988 asked for the check and left one question open,
+which the shape of the file answers. **Three judgements in it are the author's, made under the project
+owner's delegation of 2026-09-14**, and are marked as judgements rather than as anything the issue or
+the design states:
+
+| The judgement | Why |
+| :-- | :-- |
+| two files, one per vocabulary, rather than one file reading both columns | the repository names a test file after the invariant it holds, a failure should name the vocabulary that is wrong without the reader working out which half fired, and the condition file carries a long comment history about conditions that folding scales in would put under one heading with a second history |
+| a fourth test the condition file does not have, pinning that the reader finds 16 of 16 | a reader that returns SOME names passes the control and still hides most of the vocabulary, so the control alone is not enough |
+| keeping the list-rot test although it is vacuous today | the hand list will not stay empty, and the test is what makes a later author take a name out again when its row arrives; the alternative, adding it when the list is first used, means the author who lands a name ahead of its row is the one who has to remember |
+
+The coordinating session ruled on all three under the same delegation before they were written.
+
+### The proof, and the break is the situation the check exists for
+
+Run in a `git archive` copy so the real worktree was never touched. The break adds a scale source to
+**both** vocabularies — `SCALES` in `tools/generate_datatables.py` and the engine's `NamedStatScales`
+table in `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.cpp` — and writes no row naming
+it. That is exactly "a session landed a mechanism ahead of its row", and adding both halves keeps the
+check that holds the two vocabularies against each other green, so only the new test should notice.
+
+```
+PROVED: 1 failed, 59 passed in 0.68s | restored: 60 passed in 0.64s
+CRASHED: False
+named failures with the break in:
+  tools/tests/test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py::test_every_scale_source_is_named_by_a_row_or_listed_as_built_ahead
+restored half failed: ()
+files disturbed under the run: ()
+```
+
+**One named failure, and it is the test this change is for.** The other 59 in that set, including the
+check that holds the generator's names against the engine's, pass with the break in place.
+
+**A break that renamed a row's scale in `game/Data` was considered and not used.** It would edit a
+generated table, and it models a typo rather than the thing this check is for.
+
+---
+
 ## 2026-09-18 — Thirteen enchantment rows, two sentences lengthened rather than rewritten, and a fifth question every row must now answer
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the design workbook every generated table is built
