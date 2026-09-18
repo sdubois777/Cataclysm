@@ -845,9 +845,19 @@ namespace CataclysmStatExemptionTest
 	// `Ritualist_capstone_200#3` did for as long as it existed.
 	// ------------------------------------------------------------------
 
-	/** A modifier on `Stat` worth `Percent` per unit of `Scale`. */
+	/**
+	 * A modifier on `Stat` worth `Percent` per unit of `Scale`, over `Base`.
+	 *
+	 * THE BASE IS NOT OPTIONAL AND THAT COST A BUILD. `StatForSkill`'s third
+	 * argument is a FALLBACK, used only when the character has no line for the
+	 * stat; once a line exists the pipeline multiplies the LINE'S base. A line
+	 * recorded with a base of nothing therefore answers nothing however large
+	 * the increase, and every probe reading such a stat measured 0 against 0 --
+	 * ten of the twelve, on the first run of this test. Each probe passes the
+	 * figure its subject really holds.
+	 */
 	void ScaledBy(AActor* Who, const FString& Stat, float Percent,
-				  ECataclysmStatScale Scale)
+				  ECataclysmStatScale Scale, float Base)
 	{
 		UCataclysmAbilitySystemComponent* System =
 			Cast<UCataclysmAbilitySystemComponent>(
@@ -869,7 +879,7 @@ namespace CataclysmStatExemptionTest
 
 		TMap<FName, FCataclysmStatInputs> Inputs;
 		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(*Stat));
-		Line.Base = 0.0f;
+		Line.Base = Base;
 		Line.Modifiers = {Modifier};
 		System->SetStatInputs(MoveTemp(Inputs));
 	}
@@ -901,7 +911,7 @@ namespace CataclysmStatExemptionTest
 
 		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
 		ScaledBy(Attacker.Actor, TEXT("attack_damage"), 50.0f,
-				 ECataclysmStatScale::PerDebuffCarried);
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/1000.0f);
 
 		const UCataclysmAbilitySystemComponent* System =
 			Cast<UCataclysmAbilitySystemComponent>(
@@ -949,7 +959,7 @@ namespace CataclysmStatExemptionTest
 		System->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetSpellDamageAttribute(), 100.0f);
 		ScaledBy(Caster.Actor, TEXT("spell_damage"), 50.0f,
-				 ECataclysmStatScale::PerDebuffCarried);
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/100.0f);
 
 		const float Clean = UCataclysmSkillEffects::SpellDamageOf(
 			System, FGameplayTagContainer());
@@ -989,7 +999,7 @@ namespace CataclysmStatExemptionTest
 		System->SetNumericAttributeBase(
 			UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 100.0f);
 		ScaledBy(Summoner.Actor, TEXT("max_energy_shield"), 25.0f,
-				 ECataclysmStatScale::PerMinionHeld);
+				 ECataclysmStatScale::PerMinionHeld, /*Base=*/100.0f);
 
 		const float Alone = System->MaximumEnergyShield();
 		ACataclysmMinion* Imp = SummonImp(Test, World, Summoner.Actor);
@@ -1035,7 +1045,8 @@ namespace CataclysmStatExemptionTest
 		System->SetNumericAttributeBase(
 			UCataclysmVitalAttributeSet::GetHealthAttribute(), 1000.0f);
 		ScaledBy(Defender.Actor, TEXT("retaliation"), 1.0f,
-				 ECataclysmStatScale::PerPercentOfMaximumHealthMissing);
+				 ECataclysmStatScale::PerPercentOfMaximumHealthMissing,
+				 /*Base=*/10.0f);
 
 		const float Whole = UCataclysmRetaliation::AmountFor(System, 100.0f);
 		System->SetNumericAttributeBase(
@@ -1076,7 +1087,7 @@ namespace CataclysmStatExemptionTest
 		System->SetNumericAttributeBase(
 			UCataclysmCombatAttributeSet::GetAttackSpeedAttribute(), 1.0f);
 		ScaledBy(Swinger.Actor, TEXT("attack_speed"), 50.0f,
-				 ECataclysmStatScale::PerStackOfSanguineMomentum);
+				 ECataclysmStatScale::PerStackOfSanguineMomentum, /*Base=*/1.0f);
 
 		const float Still = UCataclysmBasicAttack::SecondsBetweenSwingsFor(System);
 		UCataclysmStacks::NoteHealthCostPaid(System);
@@ -1123,7 +1134,7 @@ namespace CataclysmStatExemptionTest
 		Defender.AbilitySystem->SetNumericAttributeBase(
 			Combat::GetArmorAttribute(), 800.0f);
 		ScaledBy(Defender.Actor, TEXT("armor"), 200.0f,
-				 ECataclysmStatScale::PerDebuffCarried);
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/800.0f);
 
 		const float Before = Defender.Health();
 		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
@@ -1169,7 +1180,7 @@ namespace CataclysmStatExemptionTest
 		Defender.AbilitySystem->SetNumericAttributeBase(
 			Combat::GetDamageReductionAttribute(), 10.0f);
 		ScaledBy(Defender.Actor, TEXT("damage_reduction"), 100.0f,
-				 ECataclysmStatScale::PerDebuffCarried);
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/10.0f);
 
 		const float Before = Defender.Health();
 		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
@@ -1215,7 +1226,7 @@ namespace CataclysmStatExemptionTest
 		Hurt.AbilitySystem->SetNumericAttributeBase(
 			Vital::GetHealthAttribute(), TargetHealthPool / 2.0f);
 		ScaledBy(Hurt.Actor, TEXT("health_regen"), 100.0f,
-				 ECataclysmStatScale::PerDebuffCarried);
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/10.0f);
 
 		const float Before = Hurt.Health();
 		UCataclysmRegeneration::ApplyStep(Hurt.Actor, 1.0f, 100.0f);
@@ -1254,7 +1265,7 @@ namespace CataclysmStatExemptionTest
 		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
 		GiveAFervourPool(Holder);
 		ScaledBy(Holder.Actor, TEXT("fervour_per_second"), 1.0f,
-				 ECataclysmStatScale::PerDebuffCarried);
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/1.0f);
 
 		const float Clean =
 			UCataclysmFervour::GainPerSecondStep(Holder.AbilitySystem, 1.0f);
@@ -1284,7 +1295,7 @@ namespace CataclysmStatExemptionTest
 		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
 		GiveAFervourPool(Summoner);
 		ScaledBy(Summoner.Actor, TEXT("fervour_from_minions"), 1.0f,
-				 ECataclysmStatScale::PerMinionHeld);
+				 ECataclysmStatScale::PerMinionHeld, /*Base=*/1.0f);
 
 		const float Alone =
 			UCataclysmFervour::GainPerSecondStep(Summoner.AbilitySystem, 1.0f);
@@ -1324,7 +1335,7 @@ namespace CataclysmStatExemptionTest
 		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
 		GiveAFervourPool(Holder);
 		ScaledBy(Holder.Actor, TEXT("fervour_per_enemy_in_reach"), 1.0f,
-				 ECataclysmStatScale::PerEnemyInReach);
+				 ECataclysmStatScale::PerEnemyInReach, /*Base=*/1.0f);
 
 		const float Alone =
 			UCataclysmFervour::GainPerSecondStep(Holder.AbilitySystem, 1.0f);
@@ -1388,7 +1399,7 @@ namespace CataclysmStatExemptionTest
 		Caster.AbilitySystem->SetNumericAttributeBase(
 			Vital::GetManaAttribute(), 100.0f);
 		ScaledBy(Caster.Actor, TEXT("mana_regen"), 1.0f,
-				 ECataclysmStatScale::PerPointOfMaximumMana);
+				 ECataclysmStatScale::PerPointOfMaximumMana, /*Base=*/10.0f);
 
 		const auto ManaOf = [&Caster]()
 		{
