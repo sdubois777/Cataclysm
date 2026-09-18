@@ -2738,4 +2738,71 @@ bool FCataclysmVeilBreaksATieByDistanceTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeilSkipsAMinionDrawingNobodyTest,
+	"Cataclysm.Command.AMinionDrawingNobodyIsNotEligibleAtAll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion whose type draws nobody is not eligible, rather than ranked last.
+ *
+ * WHY THIS IS ITS OWN TEST AND NOT AN ASSERTION IN THE ONES ABOVE. It was
+ * written because choosing a guard proof's break found the hole: attention is
+ * compared before distance, so in every case above a minion drawing nothing
+ * loses to one drawing something WHETHER OR NOT the rule excludes it. Breaking
+ * the exclusion failed nothing. The only case that separates the two readings is
+ * one where nothing else is eligible at all -- and then the answer is either
+ * "nobody" or "the one drawing nothing".
+ *
+ * THE CONTROL IS THE SAME SETUP WITH A MINION THAT DRAWS. Without it a test
+ * that answered "nobody" for some unrelated reason -- a count not met, a reach
+ * too short, no keystone -- would read as the exclusion working.
+ */
+bool FCataclysmVeilSkipsAMinionDrawingNobodyTest::RunTest(const FString&)
+{
+	using namespace CataclysmBehindTheVeilTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCreature Summoner(World, FVector::ZeroVector,
+							 ECataclysmTeam::Players);
+	FScopedCreature Hunting(World, FVector(4 * M, 0, 0));
+
+	// ONE MINION AND A ROW ASKING FOR ONE, so the count is met and the only
+	// thing left to decide the answer is whether that minion draws anybody.
+	ACataclysmMinion* Trap =
+		SummonOfType(*this, Summoner.Actor, FVector(5 * M, 0, 0), DrawsNobody);
+	ON_SCOPE_EXIT { if (IsValid(Trap)) { Trap->Destroy(); } };
+	if (!Trap)
+	{
+		return false;
+	}
+
+	GiveBehindTheVeil(Summoner.Actor, /*Metres=*/10.0f, /*Minimum=*/1.0f);
+
+	TestEqual(TEXT("the count the row asks for is met"),
+		UCataclysmCommand::ThingsCommandedBy(Summoner.Actor).Num(), 1);
+	TestNull(TEXT("and a minion that draws nobody draws nobody"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor));
+
+	// THE CONTROL: the same character, the same row, the same distance, and a
+	// minion whose type states a threat above zero.
+	Trap->Destroy();
+	ACataclysmMinion* Imp =
+		SummonOfType(*this, Summoner.Actor, FVector(5 * M, 0, 0), DrawsMost);
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+	if (!Imp)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("while one that draws is taken, so the difference is the "
+				  "threat its type states and nothing else"),
+		UCataclysmCommand::MinionDrawingEnemyFrom(
+			Summoner.Actor, Hunting.Actor) == Imp);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

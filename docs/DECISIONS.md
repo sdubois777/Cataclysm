@@ -435,6 +435,25 @@ keystone Conduit, read by the engine a day before any row granted it, with every
 test passing throughout. The test that closes that hole reads the row and lands
 with the rows.
 
+### ONE TEST EXISTS BECAUSE A GUARD PROOF COULD NOT HAVE FIRED
+
+**Choosing the breaks before asking for the machine found a rule nothing
+measured.** Three proofs were planned, one per mechanism, and the third -- making
+a minion that draws nobody eligible instead of skipped -- would have failed no
+test at all. Attention is compared before distance, so in every test written by
+then a minion drawing nothing loses to one drawing something **whether or not the
+rule excludes it**. The exclusion was untested and the proof would have been
+registered against nothing.
+
+The only case that tells the two readings apart is one where nothing else is
+eligible, so
+`Cataclysm.Command.AMinionDrawingNobodyIsNotEligibleAtAll` was written: one
+minion of the type that draws nobody and a row asking for one, answered nobody;
+then the same character, the same row and the same distance with a minion that
+draws, answered that minion. **Recorded because the finding belongs to the
+method, not to this keystone**: a break with no test to fail is a missing test,
+and it is found without a build.
+
 ---
 
 ## 2026-09-18 — Four conditions and two scale sources land ahead of their rows, and two sentences that looked like the same shape are not
