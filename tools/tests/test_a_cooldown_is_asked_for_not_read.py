@@ -120,15 +120,16 @@ def test_the_comment_stripper_actually_strips() -> None:
         "code_only left a comment in place, so every check below is vacuous")
 
 
-def test_the_cooldown_lookup_asks_the_rate_pipeline(ability_code: str) -> None:
+def test_the_cooldown_lookup_asks_for_the_reduction(ability_code: str) -> None:
+    """It asks, rather than reading the attribute. Issues #1981 and #2000."""
     body = body_of(ability_code,
                    "float UCataclysmGameplayAbility::CooldownAfterReduction(",
                    "CataclysmGameplayAbility.cpp")
-    assert "RateAppliedTo(" in body, (
-        "CooldownAfterReduction no longer calls RateAppliedTo, so a "
+    assert "StatForSkill(" in body, (
+        "CooldownAfterReduction no longer asks for the reduction, so a "
         "cooldown_reduction row carrying RequiredTags, a Condition or a Scale "
-        "is dropped again and six enchantment sentences stop working. Issue "
-        "#1981")
+        "is dropped again and four enchantment sentences stop working. "
+        "Issue #1981")
 
 
 def test_the_cooldown_lookup_still_reads_the_attribute_for_a_character_with_no_rows(
@@ -152,11 +153,22 @@ def test_the_one_caller_hands_over_the_skills_tags(ability_code: str) -> None:
         "is asked with an empty container and no scoped row reaches anything")
 
 
-def test_the_rate_lookup_divides_rather_than_multiplying(
-        component_code: str) -> None:
-    body = body_of(component_code,
-                   "float UCataclysmAbilitySystemComponent::RateAppliedTo(",
-                   "CataclysmAbilitySystemComponent.cpp")
-    assert "EvaluateRate(" in body, (
-        "RateAppliedTo no longer calls EvaluateRate. A rate DIVIDES; running it "
-        "through Evaluate would make cooldown reduction lengthen a cooldown")
+def test_the_asked_for_figure_is_divided_by_and_not_multiplied(
+        ability_code: str) -> None:
+    """A cooldown DIVIDES by its reduction. Issue #2000.
+
+    WHAT THIS REPLACED, AND WHY. It used to assert that a rate lookup on the
+    ability system called `EvaluateRate`. That lookup is gone: its divisor was
+    built from the INCREASES bucket, and the game's data puts cooldown
+    reduction in the FLAT bucket, so the `Haste` affix read as nothing.
+    Dividing now happens in `FinalCooldown`, which is where it happened before
+    any of this, and `CooldownDivisor` floors a negative there so a reduction
+    below nought lengthens nothing.
+    """
+    body = body_of(ability_code,
+                   "float UCataclysmGameplayAbility::CooldownAfterReduction(",
+                   "CataclysmGameplayAbility.cpp")
+    assert "FinalCooldown(" in body, (
+        "CooldownAfterReduction no longer divides through FinalCooldown, so "
+        "nothing guarantees that a cooldown divides by its reduction rather "
+        "than multiplying, and nothing floors a negative reduction")

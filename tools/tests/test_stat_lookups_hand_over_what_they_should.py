@@ -61,8 +61,12 @@ SOURCE_ROOT = REPO_ROOT / "game" / "Source"
 #: tree rather than a property of the design, so it is labelled with the tree.
 MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 
-#: How many call sites that commit held.
-CALL_SITES = 61
+#: How many call sites that commit held. THE INVENTORY BELOW HOLDS 63, and the
+#: two extra are dated rather than folded into the figure above: issue #2000
+#: replaced a rate lookup here with an asked-for reduction, and the Behind the
+#: Veil keystone added one of its own. A count describes a tree, so the label
+#: stays with the tree it was taken on and the movement is written out.
+CALL_SITES = 63
 
 #: A call site this file must find. THE CONTROL: if the reader breaks, every
 #: name looks unused, the inventory looks complete, and nothing below means
@@ -267,6 +271,12 @@ INVENTORY = {
      'FName(OnEnemyDeathNearbyStat), FGameplayTagContainer(), Resource->GetFervourOnEnemyDeathNearby()'):
         'class resource generation, asked on a timer with no blow, '
         'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(TEXT("cooldown_reduction")), SkillTags, AbilitySystem->GetNumericAttribute(Reduction)'):
+        'the cooldown reduction, asked with the tags of the skill so a row '
+        'scoped to a slot or a keyword reaches it; the attribute is the '
+        'fallback for a character with no recorded rows. Issue #2000 '
+        'replaced a rate lookup here that read the wrong bucket.',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
      'FName(TEXT("cooldown_skip_chance")), FGameplayTagContainer(), 0.0f'):
         'the chance a skill does not go on cooldown, asked of the '

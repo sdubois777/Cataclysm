@@ -421,38 +421,41 @@ float UCataclysmGameplayAbility::CooldownAfterReduction(
 		return BaseCooldown;
 	}
 
-	// THE CHARACTER'S OWN ROWS, ASKED WITH THIS SKILL'S TAGS. Issue #1981.
-	// `UCataclysmPlayerClassStats::ApplyTo` evaluates every attribute with an
-	// EMPTY tag container and the default conditions, so a `cooldown_reduction`
-	// row carrying RequiredTags, a Condition or a Scale was dropped before it
-	// reached the attribute this used to read. It keeps the whole list on the
-	// component for exactly this reason -- "KEPT SO A SKILL CAN WORK THIS OUT
-	// AGAIN WITH ITS OWN TAGS", issue #943 -- and this is the skill that does.
+	// THE REDUCTION IS ASKED FOR, AND THEN IT DIVIDES -- THE SAME TWO STEPS THE
+	// ATTRIBUTE ROUTE ALWAYS TOOK. Issue #2000. The first attempt at this, in
+	// issue #1981, worked the whole interval out in one go through
+	// `UCataclysmStatPipeline::EvaluateRate`, whose divisor is built from the
+	// INCREASES bucket. The game's data puts cooldown reduction in the FLAT
+	// bucket -- the `Haste` affix is `ValueKind` flat -- so the gear was read as
+	// nothing and the Efficacy attribute, which exists only to SCALE a base
+	// something else supplied, was read as the reduction itself.
 	//
-	// THE WHOLE LIST RATHER THAN THE ATTRIBUTE PLUS THE SCOPED PART, for the
-	// reason `StatForSkill` gives: increases sum into one bracket, so two
-	// passes give a different answer from one. The attribute is not read on
-	// this route at all, so nothing is counted twice.
-	if (const UCataclysmAbilitySystemComponent* Cataclysm =
-			Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem))
-	{
-		const FName Stat(TEXT("cooldown_reduction"));
-		if (Cataclysm->GetStatInputs(Stat) != nullptr)
-		{
-			return Cataclysm->RateAppliedTo(Stat, SkillTags, BaseCooldown);
-		}
-	}
+	// `StatForSkill` AND NOT `StatAppliedTo`, and the difference matters here in
+	// the opposite direction from usual. The third argument is a FALLBACK used
+	// only when nothing was recorded, so a character with rows is evaluated on
+	// its own recorded base -- which for this stat is nought, because no class
+	// line names it, and the flat rows ARE the value. A figure handed in as the
+	// base would be added to them.
+	//
+	// THE ATTRIBUTE IS THE FALLBACK, so an ability system with no recorded stat
+	// line -- every enemy, and a player before its first refresh -- reads exactly
+	// what it read before any of this.
+	//
+	// AND THE FLOOR COMES WITH `FinalCooldown`. `CooldownDivisor` clamps the
+	// increases at nought, so a negative reduction lengthens nothing. Issue
+	// #1995 wanted that guaranteed on both routes; routing through here is what
+	// guarantees it, rather than a second floor written somewhere else.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const float Percent = Cataclysm
+		? Cataclysm->StatForSkill(FName(TEXT("cooldown_reduction")), SkillTags,
+								  AbilitySystem->GetNumericAttribute(Reduction))
+		: AbilitySystem->GetNumericAttribute(Reduction);
 
-	// NOTHING RECORDED, SO THE ATTRIBUTE IS STILL THE ANSWER. That is an
-	// ability system this project did not make, an enemy, a player before its
-	// first refresh, and a caller that writes the attribute by hand. A
-	// character with no rows has no scoped row to lose.
-	//
-	// A PERCENTAGE BECOMES A FRACTION HERE. The attribute holds 12 for a 12%
-	// affix and FinalCooldown wants 0.12, and this is the only place the two
-	// meet.
-	return UCataclysmCombatAttributeSet::FinalCooldown(
-		BaseCooldown, AbilitySystem->GetNumericAttribute(Reduction) / 100.0f);
+	// A PERCENTAGE BECOMES A FRACTION HERE. The stat holds 12 for a 12% affix
+	// and FinalCooldown wants 0.12, and this is the only place the two meet.
+	return UCataclysmCombatAttributeSet::FinalCooldown(BaseCooldown,
+													  Percent / 100.0f);
 }
 
 bool UCataclysmGameplayAbility::CooldownIsSkipped(

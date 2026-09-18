@@ -368,6 +368,111 @@ dungeon-rule checks never reaches it.
 
 ---
 
+## 2026-09-18 — A cooldown reads the bucket the game's own data uses, after a change of mine read the other one and broke the Haste affix
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
+(the cooldown asks for its reduction and then divides by it),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(the rate lookup added four hours earlier is deleted, nothing having called it since),
+`game/Source/Cataclysm/Tests/CataclysmAbilitySystemTests.cpp` (one test corrected, one added),
+`tools/tests/test_a_cooldown_is_asked_for_not_read.py` (two assertions repointed) and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (the new call site recorded).
+Issue [#2000](https://github.com/sdubois777/Cataclysm/issues/2000), with
+[#1995](https://github.com/sdubois777/Cataclysm/issues/1995).
+
+**Partial.** The Python suite has run. **The Unreal compile, the two tests and the guard proof
+have not.**
+
+### What was broken, and it was live
+
+Since the change for issue #1981 merged as `47457b03`, a skill's cooldown was worked out through
+`UCataclysmStatPipeline::EvaluateRate`, whose divisor is built from the **increases** bucket. The
+game's data puts cooldown reduction in the **flat** bucket:
+
+- the `Haste` affix, `Stat_Flat_cooldown_reduction`, is `ValueKind` flat with a top value of 12,
+  a suffix on belts, boots, necklaces, relics and rings;
+- the Efficacy attribute contributes an **increase**, and `UCataclysmClassStats` states its
+  purpose in its own words: "An attribute point scales a base that something else supplied; it
+  never creates one."
+
+So the route read the gear as nothing and read the attribute as though it were the reduction
+itself. **Three outcomes, all wrong**: a character wearing Haste lost all of it; a character with
+Efficacy and no Haste gained a reduction that should not exist; a character with both got the
+attribute's figure in place of the gear's, scaled by nothing.
+
+### Why the whole suite passing said nothing about it
+
+**Nothing anywhere fed a flat modifier through that route.** The pre-existing cooldown test
+writes the attribute by hand and records no rows, so it took the other route entirely. The test
+added with #1981 records rows, but increased ones. `EvaluateRate`'s own tests feed an increase
+and a gem. 2112 of 2112 was true and empty.
+
+### How it was found, which is the part worth keeping
+
+**By specifying the data rows before writing them, and asking which bucket a cooldown row should
+use.** That question has no answer without reading both routes, and reading both is what exposed
+the disagreement.
+
+It was found about four hours after the change merged. **It would have been found before the
+machine window had the rows been specified first rather than after** — the specification was
+treated as preparation for a later step rather than as a check on the step already taken.
+
+### The repair, and why it is a deletion rather than a patch
+
+`UCataclysmGameplayAbility::CooldownAfterReduction` now **asks for the reduction and then divides
+by it**, which is the two-step shape the attribute route always had:
+
+- `StatForSkill` over the recorded rows with the skill's tags and the character's conditions,
+  falling back to the attribute when nothing is recorded;
+- then `UCataclysmCombatAttributeSet::FinalCooldown`, exactly as before.
+
+`UCataclysmAbilitySystemComponent::RateAppliedTo`, added four hours earlier, is **deleted**;
+nothing calls it. `EvaluateRate` keeps its meaning and its tests and is simply not what a cooldown
+uses.
+
+**`StatForSkill` and not `StatAppliedTo`, and here the usual trap runs backwards.** Its third
+argument is a fallback used only when nothing was recorded, so a character with rows is evaluated
+on its own recorded base — which for this stat is nought, because no class line names it, and the
+flat rows **are** the value. A figure handed in as a base would have been added to them.
+
+**The floor on negatives comes with it and needs no second copy.** `CooldownDivisor` clamps the
+increases at nought, so a negative reduction lengthens nothing on either route. That is the
+ruling issue #1995 carried, now guaranteed by where the arithmetic lives rather than by a rule
+written twice.
+
+### A consequence for the enchantment rows, decided here
+
+**An increase alone no longer shortens a cooldown, and never should have.** It scales a flat base
+and there is none. So the four cooldown sentences that issue #1981 unblocks are to be written as
+**flat** rows — which is also what makes their numbers legible: "reduced by 20%-40%" becomes a
+flat 20 to 40, the figure a reader sees in both places.
+
+The test that #1981 added has been corrected from increased rows to flat ones. Every one of its
+assertions holds unchanged at the same figures, because a flat row of 100 and an increased row of
+100 happened to give the same divisor under the old arithmetic.
+
+### What the tests now pin
+
+- **A flat row of 12 — the affix's own figure — divides a four second cooldown by 1.12.** This is
+  the assertion that failed before the repair, at 4.0, with the whole of the gear's reduction
+  lost.
+- **An increase of 30 alone leaves the cooldown alone.** Before the repair this read as a 30 per
+  cent reduction invented from nothing.
+- **Both together give 12 scaled by 30 per cent, 15.6**, and a four second cooldown divided by
+  1.156 — the gear-and-attribute case.
+- **A flat row of -50 leaves the cooldown at its stated length.**
+- **With nothing recorded the attribute still answers**, which is every enemy and a player before
+  its first refresh.
+
+### Two earlier entries this supersedes rather than corrects
+
+The 2026-09-18 entries "A skill's cooldown reduction is asked for with the skill's own tags,
+through a rate route nothing had ever called" and the one recording the enumerators both describe
+the rate route as the cooldown's. **They are merged and are left byte-identical**, because an
+entry is a dated record of what was decided then. This one is the later decision.
+
+---
+
 ## 2026-09-18 — Every place that asks for a stat is listed with what it hands over, because a call that stops early is wrong nowhere on the page
 
 **Affects:** `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (new; the

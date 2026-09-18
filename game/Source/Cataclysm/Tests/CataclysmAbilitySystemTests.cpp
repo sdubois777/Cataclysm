@@ -356,7 +356,7 @@ bool FCataclysmScopedCooldownRowTest::RunTest(const FString&)
 	// row: the row is dropped on the way to it.
 	{
 		FCataclysmStatModifier Scoped;
-		Scoped.Bucket = ECataclysmStatBucket::Increased;
+		Scoped.Bucket = ECataclysmStatBucket::Flat;
 		Scoped.Source = ECataclysmModifierSource::GearAffix;
 		Scoped.Value = 100.0f;
 		Scoped.RequiredTags = Ultimate;
@@ -391,7 +391,7 @@ bool FCataclysmScopedCooldownRowTest::RunTest(const FString&)
 	// the pipeline says so in its own words.
 	{
 		FCataclysmStatModifier WhileMoving;
-		WhileMoving.Bucket = ECataclysmStatBucket::Increased;
+		WhileMoving.Bucket = ECataclysmStatBucket::Flat;
 		WhileMoving.Source = ECataclysmModifierSource::GearAffix;
 		WhileMoving.Value = 100.0f;
 		WhileMoving.Condition = ECataclysmStatCondition::WhileMoving;
@@ -415,7 +415,7 @@ bool FCataclysmScopedCooldownRowTest::RunTest(const FString&)
 	// a row that could never apply for some other reason.
 	{
 		FCataclysmStatModifier Always;
-		Always.Bucket = ECataclysmStatBucket::Increased;
+		Always.Bucket = ECataclysmStatBucket::Flat;
 		Always.Source = ECataclysmModifierSource::GearAffix;
 		Always.Value = 100.0f;
 
@@ -442,7 +442,7 @@ bool FCataclysmScopedCooldownRowTest::RunTest(const FString&)
 	Combat->SetCooldownReduction(100.0f);
 	{
 		FCataclysmStatModifier Scoped;
-		Scoped.Bucket = ECataclysmStatBucket::Increased;
+		Scoped.Bucket = ECataclysmStatBucket::Flat;
 		Scoped.Source = ECataclysmModifierSource::GearAffix;
 		Scoped.Value = 100.0f;
 		Scoped.RequiredTags = Ultimate;
@@ -470,6 +470,122 @@ bool FCataclysmScopedCooldownRowTest::RunTest(const FString&)
 		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f,
 														  FGameplayTagContainer()),
 		2.0f, 0.001f);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+
+/**
+ * THE BUCKET THE GAME'S OWN DATA USES REACHES A COOLDOWN. Issue #2000.
+ *
+ * WHAT WAS WRONG, AND WHY EVERY TEST PASSED THROUGH IT. Issue #1981 routed a
+ * cooldown through a rate lookup whose divisor is built from the INCREASES
+ * bucket. The data puts cooldown reduction in the FLAT bucket: the `Haste`
+ * affix, `Stat_Flat_cooldown_reduction`, is `ValueKind` flat with a top value of
+ * 12. So a character wearing it got nothing, and the Efficacy attribute -- which
+ * contributes an INCREASE whose documented purpose is to scale a base something
+ * else supplied -- was read as though it were the reduction itself.
+ *
+ * NOTHING CAUGHT IT BECAUSE NOTHING FED A FLAT MODIFIER THROUGH THAT ROUTE. The
+ * test above writes the attribute by hand and records no rows; the test beside
+ * it records increased rows; the pipeline's own rate tests feed an increase and
+ * a gem. This test is the one that was missing, and it uses the affix's own
+ * figure so it reads as the gear case rather than as an invented one.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFlatCooldownRowTest,
+	"Cataclysm.Ability.AFlatCooldownReductionRowShortensACooldownAsTheAffixDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFlatCooldownRowTest::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("an actor"), Actor))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+	UCataclysmCombatAttributeSet* Combat =
+		NewObject<UCataclysmCombatAttributeSet>(Actor);
+	AbilitySystem->AddAttributeSetSubobject(Combat);
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	const FName Stat(TEXT("cooldown_reduction"));
+
+	/** A recorded line for the stat, with whatever modifiers are handed in. */
+	const auto Record = [&](const TArray<FCataclysmStatModifier>& Modifiers)
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(Stat);
+		Line.Base = 0.0f;
+		Line.Modifiers = Modifiers;
+		AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	};
+
+	const auto Modifier = [](ECataclysmStatBucket Bucket, float Value)
+	{
+		FCataclysmStatModifier Made;
+		Made.Bucket = Bucket;
+		Made.Source = ECataclysmModifierSource::GearAffix;
+		Made.Value = Value;
+		return Made;
+	};
+
+	// THE AFFIX'S OWN FIGURE, THROUGH THE ROWS. Twelve per cent divides a four
+	// second cooldown by 1.12. This is the assertion that failed before the
+	// repair, at 4.0 -- the whole of the gear's reduction lost.
+	Record({Modifier(ECataclysmStatBucket::Flat, 12.0f)});
+	TestEqual(TEXT("a flat row of twelve divides a four second cooldown by 1.12"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
+		4.0f / 1.12f, 0.001f);
+
+	// AN INCREASE ALONE IS WORTH NOTHING, AND THAT IS THE DESIGN RATHER THAN A
+	// FAULT. `UCataclysmClassStats` says so in its own words: an attribute point
+	// scales a base something else supplied and never creates one, which is why
+	// a stat with no base gains nothing from its attribute. Before the repair
+	// this line read as a 30% reduction, inventing one from nothing.
+	Record({Modifier(ECataclysmStatBucket::Increased, 30.0f)});
+	TestEqual(TEXT("an increase with no flat row under it leaves the cooldown alone"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
+		4.0f, 0.001f);
+
+	// AND TOGETHER THE INCREASE SCALES THE FLAT ROW, which is the gear-and-
+	// Efficacy case: twelve scaled by thirty per cent is 15.6, and a four second
+	// cooldown divided by 1.156.
+	Record({Modifier(ECataclysmStatBucket::Flat, 12.0f),
+			Modifier(ECataclysmStatBucket::Increased, 30.0f)});
+	TestEqual(TEXT("an increase scales the flat row rather than replacing it"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
+		4.0f / 1.156f, 0.001f);
+
+	// A NEGATIVE ROW LENGTHENS NOTHING, which is issue #1995's question and the
+	// project owner's ruling on it. `CooldownDivisor` floors the increases at
+	// nought, so this holds on the rows route because the rows route now ends in
+	// `FinalCooldown` -- not because a second floor was written anywhere.
+	Record({Modifier(ECataclysmStatBucket::Flat, -50.0f)});
+	TestEqual(TEXT("a flat row of minus fifty leaves the cooldown at its length"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
+		4.0f, 0.001f);
+
+	// AND THE ATTRIBUTE IS STILL THE ANSWER WITH NOTHING RECORDED, which is every
+	// enemy and a player before its first refresh.
+	AbilitySystem->SetStatInputs(TMap<FName, FCataclysmStatInputs>());
+	Combat->SetCooldownReduction(12.0f);
+	TestEqual(TEXT("with no rows the attribute gives the same twelve per cent"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
+		4.0f / 1.12f, 0.001f);
 
 	return true;
 }

@@ -544,34 +544,6 @@ public:
 						float Figure) const;
 
 	/**
-	 * A RATE stat's modifiers applied to an interval the caller supplies, with
-	 * the character's current conditions in hand. Issue #1981.
-	 *
-	 * WHY IT EXISTS BESIDE `StatAppliedTo`, WHICH IT OTHERWISE MIRRORS. That one
-	 * multiplies and a rate DIVIDES. `UCataclysmStatPipeline::EvaluateRate`
-	 * divides the interval by both buckets, which is why no amount of cooldown
-	 * reduction reaches zero and why the stat needs no cap. Sending a rate
-	 * through `StatAppliedTo` would make cooldown reduction LENGTHEN a cooldown.
-	 *
-	 * COOLDOWN REDUCTION IS THE ONLY RATE. `tools/generate_datatables.py` says
-	 * so in its own words: `RATE_STATS = frozenset({"cooldown_reduction"})`.
-	 *
-	 * THE WHOLE RECORDED LIST THROUGH ONE PASS, for the reason `StatForSkill`
-	 * gives: increases sum into a single bracket, so the scoped rows cannot be
-	 * applied on top of a finished attribute and give the same answer.
-	 *
-	 * A REMOVAL LEAVES THE BASE INTERVAL rather than an interval of no length,
-	 * which is `EvaluateRate`'s own rule from issue #1791.
-	 *
-	 * @param Base  the interval before any reduction, such as a skill's stated
-	 *              cooldown. It IS the base. Handed straight back when the
-	 *              character has no row for the stat, which is every enemy and
-	 *              a player before its first refresh.
-	 */
-	float RateAppliedTo(FName Stat, const FGameplayTagContainer& SkillTags,
-						float Base) const;
-
-	/**
 	 * This character's maximum energy shield, asked for rather than read.
 	 *
 	 * WHY THIS EXISTS. Issue #1973. `Ritualist_capstone_200#3`, the third row of
