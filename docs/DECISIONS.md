@@ -484,6 +484,101 @@ one knows it was argued and not measured.
 
 ---
 
+## 2026-09-18 — Both critical strike lookups are handed the character being struck, so a row about the target reaches them
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the two
+critical strike lookups in the damage path) and
+`game/Source/Cataclysm/Tests/CataclysmCriticalStrikeTests.cpp` (one test and a creature to
+strike). Issue [#1982](https://github.com/sdubois777/Cataclysm/issues/1982).
+
+**Partial.** The Python suite has run. **The Unreal compile, the new automation test and its
+guard proof have not.**
+
+### What was wrong
+
+Both critical strike stats are asked for through
+`UCataclysmAbilitySystemComponent::StatForSkill` on the **attacker's own** ability system, which
+is correct: a critical strike chance belongs to whoever is striking. But both calls passed
+**three arguments**, and `Target` is the **ninth**, defaulted to null. So
+`UCataclysmAbilitySystemComponent::WithTargetState` had nothing to read, and every target-side
+condition on a critical strike stat answered false.
+
+**A row written for it would have been accepted by every check, shipped, and granted nothing.**
+"Critical strike chance is increased by 20%-40% against Boss enemies" is the enchantment sentence
+that wanted it, and it is still unwritten, which is the only reason nothing shipped broken.
+
+**The three rows that DO work were checked first.** Issue #1815 wrote three boss rows on
+`attack_damage` and `spell_damage`, and those take a different route:
+`AttackDamageIncreasesForSkill` takes a target and its one non-test caller passes one. Had that
+route also passed null, three merged rows would have been granting nothing on `development`.
+
+### Why "the stat is asked for" was not enough to know
+
+Three things have to line up and knowing two of them feels like knowing all three: the condition
+enumerator has to exist, the stat has to be asked through the pipeline rather than read off an
+attribute, **and the call site has to hand over the state that condition reads**. A defaulted
+parameter makes the third invisible at the call site, because nothing is written there to be
+wrong. This is the third distinct shape of that fault recorded this week, after issue #1973's
+unasked attribute and issue #1981's unasked cooldown.
+
+### What it reaches, which is more than the sentence asked for
+
+`WithTargetState` fills the target's ailments, its health share and whether it is a boss, so
+passing the target reaches **six** conditions and not two, **and it reaches both lookups**: a
+row on the critical strike CHANCE or on the critical strike MULTIPLIER may now ask
+`target_carries_cripple`, `target_carries_cripple_and_weaken`,
+`target_carries_void_splinter`, `target_health_below`, `target_is_boss` or
+`target_is_not_boss`.
+
+**The distance to the target and whether it is staggered are still NOT passed, on either
+lookup**, because they are separate parameters rather than part of the target state. A row on
+either critical strike stat asking `target_within_metres` or `target_is_staggered` still grants
+nothing. Kept out of this change by a ruling under the owner's delegation, and stated in the code
+beside the change rather than left for the next author to find.
+
+**Issue [#1992](https://github.com/sdubois777/Cataclysm/issues/1992) carries what they would
+cost**, along with a third lookup in the same function this change does not touch:
+`armor_penetration` passes no target at all, so none of those six conditions reaches it either.
+The distance is already worked out a few hundred lines above as `Hit.OpponentDistanceMetres`, so
+passing it is one argument; the target's stagger is one call to the helper that already reads the
+attacker's. **Nothing is blocked by any of it today**: no shipped row and none of the 373
+surveyed sentences asks for a critical strike or armour penetration row scoped that way.
+
+### The struck character is this attribute set's owner
+
+The lookups sit in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, which runs on the
+**defender's** attribute set, so what the attacker is striking is `GetOwningActor()`. That is the
+same pairing `Hit.OpponentDistanceMetres` already uses a few hundred lines above, where the
+effect causer is the attacker and the owning actor is what it hit. Read out of the code rather
+than assumed.
+
+### The test, and why its control is the point
+
+`Cataclysm.Crit.ACriticalStrikeRowCanAskAboutTheCharacterBeingStruck` gives one attacker a
+critical strike chance of nothing plus fifty **against a boss**, and strikes a boss and the
+creature one rung below it. The boss's blow critically strikes and the other does not.
+
+**Nothing in it is probabilistic.** The roll is pinned at nought, where every chance above nought
+strikes critically and a chance of exactly nought cannot, because the calculation guards on a
+chance above zero. The pair of targets is the tightest the rarity ladder allows, so an
+implementation reading any rarity at all would fail rather than pass.
+
+**The control is the defender's half of the same question.** `opponent_is_boss` reads the blow
+record, which an attacker's own lookup never fills, so on the same row it must grant nothing
+against either target. Without it the test would pass against a build that answered every boss
+question from whichever field happened to be filled.
+
+**The multiplier is covered too**, because both lookups changed: with both blows critically
+striking, a conditioned `crit_multiplier` row reaches only the boss.
+
+### What has not run
+
+No Unreal compile, no automation test, no guard proof. Registered before the runs: one new test,
+so the suite goes from the 2100 `development` declares to 2101; one proof, putting the two
+lookups back to three arguments.
+
+---
+
 ## 2026-09-18 — A creature the player kills may stand back up as a wraith that takes nine tenths off every hit and hunts across the whole floor
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library

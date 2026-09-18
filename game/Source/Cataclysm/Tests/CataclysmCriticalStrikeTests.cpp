@@ -15,6 +15,11 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 // For the row-to-skill half of a skill's own critical strike chance. Issue #657.
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+// For a creature that can be a boss, which is what a target-side
+// condition asks about. Issue #1982.
+#include "AbilitySystem/CataclysmTeams.h"
+#include "Character/CataclysmEnemyCharacter.h"
+#include "Items/CataclysmItem.h"
 #include "AbilitySystemComponent.h"
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
@@ -90,6 +95,44 @@ namespace CataclysmCritTest
 		IConsoleVariable* Variable = nullptr;
 		float Previous = -1.0f;
 	};
+
+	/**
+	 * A creature on the monsters' side, to be struck. Issue #1982.
+	 *
+	 * ITS OWN NAME, because this module is built as a unity blob and a second
+	 * helper spelled the same as one in a neighbouring file would collide.
+	 *
+	 * AN ENEMY CHARACTER AND NOT A BARE ACTOR, because whether a target is a
+	 * boss is read off `ACataclysmEnemyCharacter::IsBoss`, so a plain actor
+	 * could never answer the question this test asks.
+	 */
+	ACataclysmEnemyCharacter* SpawnCritCreature(UWorld* World,
+											   const FVector& Where,
+											   float Health)
+	{
+		ACataclysmEnemyCharacter* Spawned =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where,
+													   FRotator::ZeroRotator);
+		if (Spawned)
+		{
+			Spawned->SetGenericTeamId(
+				UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Spawned->SetHealth(Health);
+
+			// EVASION TAKEN TO NOTHING, SAID OUTRIGHT RATHER THAN INHERITED.
+			// It already initialises to nought, so this changes no behaviour --
+			// it states that the test does not depend on that default. An
+			// evaded blow deals nothing, and a test comparing two blows would
+			// then turn on a die roll rather than on the stat it is about.
+			if (UAbilitySystemComponent* System =
+					Spawned->GetAbilitySystemComponent())
+			{
+				System->SetNumericAttributeBase(
+					UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			}
+		}
+		return Spawned;
+	}
 
 	/** A bare actor holding every attribute set, usable as either side. */
 	struct FScopedCombatant
@@ -982,6 +1025,178 @@ CATACLYSM_TEST(FCataclysmCritMultiplierFollowsASkillTagTest,
 				  Spell / Unscoped, 2.0f, 0.01f);
 	}
 	World->DestroyWorld(false);
+	return true;
+}
+
+
+// --------------------------------------------------------------------------
+// A critical strike row that asks about what is being struck
+// --------------------------------------------------------------------------
+
+/**
+ * A critical strike row conditioned on the TARGET reaches the target. Issue #1982.
+ *
+ * WHAT WAS WRONG. Both critical strike stats are asked for through
+ * `StatForSkill` on the attacker's own ability system, which is right, but with
+ * THREE arguments. `Target` is the ninth and defaults to null, so
+ * `WithTargetState` had nothing to read and every target-side condition on a
+ * critical strike stat answered false. "Critical strike chance is increased by
+ * 20%-40% against Boss enemies" is the enchantment sentence that wanted it; a
+ * row written for it would have been accepted by every check, shipped, and
+ * granted nothing.
+ *
+ * THE ROLL IS PINNED, so nothing here is probabilistic. At a pinned roll of
+ * nought every chance above nought strikes critically, and a chance of exactly
+ * nought cannot, because the calculation guards on `CritChance > 0`. So the two
+ * halves are decided by the stat rather than by chance.
+ *
+ * TWO TARGETS, ONE ATTACKER, AND THE TIGHTEST PAIR THE LADDER ALLOWS. A boss and
+ * the rung directly below it, so an implementation reading any rarity at all
+ * would fail rather than pass.
+ *
+ * THE CONTROL IS THE DEFENDER'S HALF OF THE SAME QUESTION. `opponent_is_boss`
+ * reads the blow record, which an attacker's own lookup never fills, so it must
+ * grant NOTHING here. Without it this test would pass against a build that
+ * answered every boss question from whichever field happened to be filled.
+ */
+CATACLYSM_TEST(FCataclysmCritAsksAboutTheTargetTest,
+	"Cataclysm.Crit.ACriticalStrikeRowCanAskAboutTheCharacterBeingStruck")
+{
+	using namespace CataclysmCritTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// EVERY HIT THAT HAS ANY CHANCE AT ALL STRIKES CRITICALLY.
+	const FScopedCritRoll Pinned(0.0f);
+
+	FScopedCombatant Attacker(World);
+
+	// ARMED, BECAUSE THIS HELPER DOES NOT ARM ITS OWN. A combatant built here
+	// carries every attribute set and no weapon damage, so without this every
+	// blow below would deal nothing and both halves would read the same.
+	Attacker.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmEnemyCharacter* Boss =
+		SpawnCritCreature(World, FVector(200.0f, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* Ordinary =
+		SpawnCritCreature(World, FVector(0.0f, 200.0f, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("a boss to strike"), Boss)
+		|| !TestNotNull(TEXT("an ordinary creature to strike"), Ordinary))
+	{
+		return false;
+	}
+
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Ordinary->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	if (!TestTrue(TEXT("the boss is a boss"), Boss->IsBoss())
+		|| !TestFalse(TEXT("and the other one is not"), Ordinary->IsBoss()))
+	{
+		return false;
+	}
+
+	const auto Strike = [&](ACataclysmEnemyCharacter* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target, 100.0f,
+										 FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Resolved);
+		return Resolved;
+	};
+
+	/** A stat line carrying one conditioned modifier and nothing else. */
+	const auto GiveLine = [&](const TCHAR* Stat, float Base,
+							  ECataclysmStatBucket Bucket, float Value,
+							  ECataclysmStatCondition Condition)
+	{
+		FCataclysmStatModifier Conditional;
+		Conditional.Bucket = Bucket;
+		Conditional.Source = ECataclysmModifierSource::Enchantment;
+		Conditional.Value = Value;
+		Conditional.Condition = Condition;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat));
+		Line.Base = Base;
+		Line.Modifiers = {Conditional};
+		Attacker.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	};
+
+	// THE CHANCE: nothing at all, plus fifty against a boss. A pinned roll of
+	// nought beats fifty and cannot beat nothing.
+	GiveLine(TEXT("crit_chance"), /*Base=*/0.0f, ECataclysmStatBucket::Flat,
+			 50.0f, ECataclysmStatCondition::TargetIsBoss);
+
+	const FCataclysmDamageResult AgainstBoss = Strike(Boss);
+	const FCataclysmDamageResult AgainstOrdinary = Strike(Ordinary);
+
+	TestTrue(TEXT("both blows landed"),
+			 AgainstBoss.DealtToHealth > 0.0f
+				 && AgainstOrdinary.DealtToHealth > 0.0f);
+	TestTrue(TEXT("the blow against the boss critically struck"),
+			 AgainstBoss.bWasCritical);
+	TestFalse(TEXT("and the blow against the ordinary creature did not"),
+			  AgainstOrdinary.bWasCritical);
+	TestTrue(*FString::Printf(
+				 TEXT("so the boss took more: %.2f against %.2f"),
+				 AgainstBoss.DealtToHealth, AgainstOrdinary.DealtToHealth),
+			 AgainstBoss.DealtToHealth > AgainstOrdinary.DealtToHealth + 0.01f);
+
+	// THE CONTROL. The defender's half of the same question on an attacker's own
+	// row reads a field this lookup never fills, so it must grant nothing and
+	// neither blow may critically strike.
+	GiveLine(TEXT("crit_chance"), /*Base=*/0.0f, ECataclysmStatBucket::Flat,
+			 50.0f, ECataclysmStatCondition::OpponentIsBoss);
+
+	TestFalse(TEXT("the opponent half grants no chance against a boss"),
+			  Strike(Boss).bWasCritical);
+	TestFalse(TEXT("nor against anything else"),
+			  Strike(Ordinary).bWasCritical);
+
+	// AND THE MULTIPLIER IS ASKED THE SAME WAY, which is the second lookup this
+	// change touches. Both blows critically strike here, so the only difference
+	// between them is the conditioned multiplier.
+	{
+		FCataclysmStatModifier Always;
+		Always.Bucket = ECataclysmStatBucket::Flat;
+		Always.Source = ECataclysmModifierSource::Enchantment;
+		Always.Value = 50.0f;
+
+		FCataclysmStatModifier AgainstABoss;
+		AgainstABoss.Bucket = ECataclysmStatBucket::Increased;
+		AgainstABoss.Source = ECataclysmModifierSource::Enchantment;
+		AgainstABoss.Value = 100.0f;
+		AgainstABoss.Condition = ECataclysmStatCondition::TargetIsBoss;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Chance =
+			Inputs.FindOrAdd(FName(TEXT("crit_chance")));
+		Chance.Base = 0.0f;
+		Chance.Modifiers = {Always};
+
+		FCataclysmStatInputs& Multiplier =
+			Inputs.FindOrAdd(FName(TEXT("crit_multiplier")));
+		Multiplier.Base = 150.0f;
+		Multiplier.Modifiers = {AgainstABoss};
+
+		Attacker.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	const FCataclysmDamageResult BossCritical = Strike(Boss);
+	const FCataclysmDamageResult OrdinaryCritical = Strike(Ordinary);
+	TestTrue(TEXT("both blows critically struck this time"),
+			 BossCritical.bWasCritical && OrdinaryCritical.bWasCritical);
+	TestTrue(*FString::Printf(
+				 TEXT("and the conditioned multiplier reached only the boss: "
+					  "%.2f against %.2f"),
+				 BossCritical.DealtToHealth, OrdinaryCritical.DealtToHealth),
+			 BossCritical.DealtToHealth > OrdinaryCritical.DealtToHealth + 0.01f);
+
 	return true;
 }
 
