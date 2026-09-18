@@ -71,6 +71,26 @@ log cannot know when a decision was made, and the commit that writes an entry is
 not visible from a test, but a decision recorded today was not made tomorrow. It
 cannot go stale either, because a heading dated in the past stays in the past.
 
+### THE ROW IS READ BY A CASE OF ITS OWN
+
+`Cataclysm.Passives.ConduitGrantsTheFlagThatMakesAMinionsHitItsSummonersOwn`
+loads the tables the game loads and reads the row back: flat, one per point,
+under no condition and on no scale, granted by taking the keystone, and the stat
+recorded in the engine's list of stats with no gameplay attribute. It is the
+shape the three rows of 2026-09-14 and the three of this morning each have.
+
+**It is what would have caught the gap this entry opens with.** Two cases already
+measured what a credited hit does, and both put the stat on by hand, so both
+passed for a whole day while no row granted it. A case that reads the row is the
+one that cannot pass while the data is missing.
+
+**Two more pinned counts moved than I expected**, and they are named here so the
+next person adding a row has the whole list rather than half of it: the Unreal
+data table test pins how many rows `PassiveEffects.csv` holds, and
+`docs/README.md` states the same figure in its sheet table. With the two in
+`tools/tests/test_passive_effects_match_the_node_text.py` that is four places one
+row moves, which the entry of 2026-09-14 recorded as three.
+
 ---
 
 ## 2026-09-17 — A minion is the instigator of its own blow, and it takes the retaliation that blow provokes

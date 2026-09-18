@@ -420,7 +420,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// something in play: the Ritualist's Dominion, Crowned and The Swarm, and
 	// the Ravager's Spreading Hurt. Issue #1718. Every stat and condition they
 	// name was built earlier; until these rows existed all four granted nothing.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        285)
+	// AND 286 SINCE LATER ON 2026-09-17, for the row that makes the Ritualist
+	// keystone Conduit do something in play: it grants
+	// minion_hits_count_as_yours, which UCataclysmCombatEvents::NoteBlow had
+	// been reading since that morning with nothing in the data supplying it,
+	// so the keystone granted nothing to a player who took it. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        286)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
