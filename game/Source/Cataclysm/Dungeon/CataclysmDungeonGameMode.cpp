@@ -3328,6 +3328,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForHellfire(Notice);
 	NoteDeathForDemonPrince(Notice);
 	NoteDeathForEpidemic(Notice);
+	NoteDeathForBloodForgedChampions(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
@@ -3550,6 +3551,151 @@ void ACataclysmDungeonGameMode::NoteDeathForEpidemic(
 	{
 		EpidemicEndTheChain(Notice.Location, DungeonGameModeKindOf(Slain));
 	}
+
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForBloodForgedChampions(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vitals = UCataclysmVitalAttributeSet;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::BloodForgedChampionsKey)))
+	{
+		return;
+	}
+
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Fallen)
+	{
+		return;
+	}
+
+	// NO KILLER IS ASKED FOR. The row says "nearby dying allies" and names nobody, so a
+	// creature killed by another creature, by burning ground or by another floor rule
+	// feeds a champion exactly as the player's own kill does. The four listeners above
+	// each ask `Notice.Killer != Player` because their rows say "when you kill"; a check
+	// here would be their habit carried into a row that does not have it.
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!World || !Player)
+	{
+		return;
+	}
+
+	// THE NEAREST CHAMPION WITHIN THE REACH, AND THE SEARCH IS MADE FROM THE PLAYER with
+	// the body's location as its centre. `UCataclysmTargeting::FindEnemiesInSphere` decides
+	// sides from the actor handed to it, so passing the corpse would find the player.
+	// `NoteDeathForEpidemic` above records the same trap.
+	ACataclysmEnemyCharacter* Champion = nullptr;
+	float NearestAway = TNumericLimits<float>::Max();
+	for (AActor* Found : UCataclysmTargeting::FindEnemiesInSphere(
+			 World, Player, Notice.Location, Effects::BloodForgedChampionsRadiusCm()))
+	{
+		ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Found);
+
+		// THE CREATURE THAT DIED IS NOT A CANDIDATE. It is still standing in the sphere at
+		// the moment its own death is announced.
+		if (!IsValid(Creature) || Creature == Fallen)
+		{
+			continue;
+		}
+
+		// ELITE OR ABOVE, AND NOT ALREADY AT THE CEILING. Both ends are asked in one place,
+		// `BloodForgedChampionsAbsorbs`, so a creature at Herald is refused here rather than
+		// fed and then found to have nowhere to rise.
+		if (!Effects::BloodForgedChampionsAbsorbs(Creature->RarityStep))
+		{
+			continue;
+		}
+
+		const float Away = FVector::Dist(Creature->GetActorLocation(), Notice.Location);
+		if (Away < NearestAway)
+		{
+			NearestAway = Away;
+			Champion = Creature;
+		}
+	}
+
+	// THE DESTROYED ARE FORGOTTEN, so the record does not grow from floor to floor. A
+	// creature that has died keeps its entry until the actor itself is destroyed, which
+	// costs nothing: a corpse feeds nobody and rises no further. Royal Guard's record is
+	// kept the same way.
+	for (auto Entry = BloodForgedChampionsFed.CreateIterator(); Entry; ++Entry)
+	{
+		if (Entry->Key.IsStale())
+		{
+			Entry.RemoveCurrent();
+		}
+	}
+
+	if (!Champion)
+	{
+		return;
+	}
+
+	const int32 Fed = BloodForgedChampionsFed.FindOrAdd(Champion) + 1;
+	BloodForgedChampionsFed[Champion] = Fed;
+	++BloodForgedChampionsAbsorbed;
+
+	if (!Effects::BloodForgedChampionsRungIsEarned(Fed))
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Blood-Forged Champions: %s died beside %s, which has taken %d of %d"),
+			   *Fallen->GetName(), *Champion->GetName(), Fed,
+			   Effects::BloodForgedChampionsDeathsPerRung);
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Champion);
+	if (!Abilities)
+	{
+		return;
+	}
+
+	const int32 Rung = Effects::BloodForgedChampionsRungAfter(Champion->RarityStep);
+
+	// WHAT IT HAD IN BOTH POOLS, READ BEFORE ANYTHING IS WRITTEN. `SetRarityStep` and
+	// `DrawModifiersForRarity` both end in `ApplyStartingAttributes`, which refills health
+	// and energy shield to the new maximums. THE SAME DECISION `StepVolatileEvolution`
+	// MAKES, and for the same reason its header gives: a champion that healed itself every
+	// third death would undo the work the player had already done on it.
+	const float Health = Abilities->GetNumericAttribute(Vitals::GetHealthAttribute());
+	const float Shield = Abilities->GetNumericAttribute(Vitals::GetEnergyShieldAttribute());
+
+	Champion->SetRarityStep(Rung);
+
+	// AND THE MODIFIERS THE NEW RUNG CARRIES. `DrawModifiersForRarity` draws only the
+	// shortfall and never draws one the creature already holds.
+	Champion->DrawModifiersForRarity();
+
+	// NOW PUT BOTH POOLS BACK, HELD TO THE NEW MAXIMUMS, which are read again because the
+	// rung is what moved them. A champion is therefore proportionally MORE wounded at its
+	// new rung than it was at its old one, which is what keeping the amount means.
+	Abilities->SetNumericAttributeBase(
+		Vitals::GetHealthAttribute(),
+		FMath::Min(Health,
+				   Abilities->GetNumericAttribute(Vitals::GetMaxHealthAttribute())));
+	Abilities->SetNumericAttributeBase(
+		Vitals::GetEnergyShieldAttribute(),
+		FMath::Min(Shield,
+				   Abilities->GetNumericAttribute(
+					   Vitals::GetMaxEnergyShieldAttribute())));
+
+	// AND ITS TALLY STARTS AGAIN, so the next rung costs the same as this one did.
+	BloodForgedChampionsFed[Champion] = 0;
+	++BloodForgedChampionsRungsGained;
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Blood-Forged Champions: %s took %d death(s) and rose to rarity step %d, "
+				"keeping %.1f health and %.1f energy shield"),
+		   *Champion->GetName(), Effects::BloodForgedChampionsDeathsPerRung, Rung, Health,
+		   Shield);
 
 	RefreshFloorModifierPanel();
 }
@@ -3948,6 +4094,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 									 Effects::EpidemicSpreadsToKill,
 									 EpidemicPlagueLordsRisen,
 									 Effects::EpidemicPlagueLordsPerFloor));
+	}
+
+	// AND WHAT THE CHAMPIONS HAVE TAKEN, WITH WHAT IT BOUGHT THEM. Both numbers are the
+	// floor's and not one creature's: a floor may have several champions feeding at once
+	// and the panel gives a row one line.
+	const FName Feeding(Effects::BloodForgedChampionsKey);
+	if (FloorBrief.Modifiers.Contains(Feeding))
+	{
+		Counting.Add(Feeding,
+					 FString::Printf(TEXT("%d death(s) absorbed, %d rung(s) gained"),
+									 BloodForgedChampionsAbsorbed,
+									 BloodForgedChampionsRungsGained));
 	}
 
 	return Counting;
@@ -5584,6 +5742,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// spreads in a row on one floor, and the next floor may have its own Plague Lord.
 		EpidemicChain = 0;
 		EpidemicPlagueLordsRisen = 0;
+
+		// AND BLOOD-FORGED CHAMPIONS FORGETS THE FLOOR'S TWO COUNTS AND NOT THE TALLIES.
+		// Issues #1820 and #41. The counts are what the panel shows about THIS floor. The
+		// tallies stay, for the reason written beside them: a champion part way to its
+		// next rung keeps that progress the way it keeps the rung it already reached.
+		BloodForgedChampionsAbsorbed = 0;
+		BloodForgedChampionsRungsGained = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

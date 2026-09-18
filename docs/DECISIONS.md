@@ -2,6 +2,164 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — An Elite grows a rung of the rarity ladder on every three deaths beside it, and stops at the mini-boss rung the other rules share
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the rules told about a death,
+the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.**
+
+### The row
+
+`War_Blood_Forged_Champions` in `game/Data/DungeonModifiers.csv`: "Elite enemies absorb the strength of
+nearby dying allies, growing stronger and potentially transforming into a mini-boss." No text in
+`docs/` says more.
+
+### The row states no number at all, and that is why every figure here is a judgement
+
+Not a distance, not a count of deaths, not a rank written as a number. A check in
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` holds the row to that, so if a figure ever
+appears in it the judgement it overtakes has to be re-read off the row rather than left standing.
+
+### What the row does settle
+
+| From the row | What it decides |
+| :-- | :-- |
+| "Elite enemies" | the rule asks the creature's rank |
+| "nearby dying allies" | the rule measures a distance, and asks NO killer |
+| "absorb the strength of" | what a death gives is strength, which in this project is a rung |
+| "growing stronger and potentially transforming into a mini-boss" | one ladder, with the mini-boss at the top of it |
+
+**"MINI-BOSS" IS NOT A JUDGEMENT, AND THAT IS WHY THIS ROW WAS CHOSEN NEXT.**
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` says of the rarity ladder that "Herald, at
+3, is deliberately below the line -- the Abyssal Warden's reference rarity is Herald and it is a
+mini-boss", and elsewhere that a floor rule may reach "Herald, so a floor rule cannot make a boss out
+of an ordinary creature". The Void Splinter reasoning in this log says the same: "a Herald at step 3
+is, by `CataclysmEnemyCharacter.h`'s own account, a mini-boss". So the row's last words land on the
+ceiling Volatile Evolution, Royal Guard, Demon Prince and Epidemic already share, and this rule needs
+no new meaning for any word.
+
+**STRENGTHENING IS A RUNG BECAUSE NOTHING ELSE IS AVAILABLE**, and that was measured rather than
+assumed. `CataclysmDungeonGameMode.cpp` was searched for a floor rule putting a stat modifier on a
+CREATURE and there is none: every rule that strengthens a creature moves its rarity rung. So the row's
+"absorb the strength" is a rung, and this rule adds no new way to change a creature.
+
+### The judgements
+
+Ruled by the coordinating session under the project owner's delegation.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| How far "nearby" reaches | **`UCataclysmContagion::RadiusMetres`, six metres**, written as that constant | Epidemic already uses it for the same word. A second six here would make "nearby" mean two distances in floor rules |
+| How many deaths raise a rung | **Three**, so an Elite needs six to reach Herald | The change is something a player watches happen rather than meets already finished |
+| Whether the killer matters | **No killer is asked for at all** | The row says "nearby dying allies" and names nobody. A creature killed by another creature, by burning ground or by another floor rule feeds a champion exactly as the player's own kill does |
+| What happens at the stairs | **The floor's two counts go; a champion's part-finished tally stays** | The split this project already states above `VolatileEvolutionMutated`: what a creature has earned is its own, while the counts answer what happened on this floor |
+
+**THE MISSING KILLER CHECK IS THE ONE TO WATCH.** The four death listeners beside this one all ask
+whether the player did the killing, because their rows say "when you kill" or "when you slay". A fifth
+listener written from habit would ask too, and nothing would look wrong. The comment says so in both
+files, and `ADeathCausedByAnotherCreatureFeedsTheChampion` is the test that fails if anybody adds it.
+
+### Growing does not heal, and that had to be written in on purpose
+
+`ACataclysmEnemyCharacter::SetRarityStep` and `DrawModifiersForRarity` both end by calling
+`ApplyStartingAttributes`, which refills health and energy shield to the new maximums. Written the
+obvious way, a champion would return to full in front of the player every third death.
+
+**`StepVolatileEvolution` had already solved this and this rule copies it exactly**: read both pools
+before the two calls, write them back afterwards held to the NEW maximums. A champion therefore keeps
+the AMOUNT it had and is proportionally more wounded at its new rung, because the maximum moved and the
+pool did not. The header for that rule gives the reason -- "a mutation that healed the creature would
+undo the work that wounded it" -- and this one points at it rather than restating it.
+
+### What the tests do
+
+Eleven automation tests in `Cataclysm.DungeonModifierEffects.`, which takes that group from 138
+registered to 149, and one existing test changed to carry this row among its rules. They cover: an
+Elite beside a dying ally taking it; a Common taking nothing; an Elite beyond the reach taking nothing;
+three deaths raising one rung where one raises none; six deaths reaching Herald; a creature at Herald
+taking nothing; a champion keeping the health and energy shield it had; a death caused by another
+creature feeding a champion; the nearest of two Elites being the one fed; the floor panel; and a floor
+change clearing the floor's counts while the champion keeps its rung and its leftover death.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` hold the rule to the row: the
+three phrases the readings rest on, that the row states no number at all, that the reach is the
+contagion library's constant rather than a number, and that both ends of the ladder are the two
+constants that already mean those rungs.
+
+### What the runs found
+
+Measured 2026-09-18 UTC, which is 2026-09-17 in this machine's local time; the entry headings use the
+local date. All of it in one window under one editor lock, with ONE whole-suite run and no repair.
+
+**THE FIRST BUILD AND THE FIRST RUN WERE BOTH CLEAN**, which is said here because it is not the usual
+outcome and the contrast is the useful part: the rule merged earlier the same evening needed three
+test repairs inside its own window before its suite came back green.
+
+```
+Build: Succeeded - 27 actions, 24 files compiled
+Tests: 2083 tests performed, 2083 succeeded, 0 failed
+Declared: 2083 tests in the tree at b87681f4; 2083 performed, gap 0
+wrapper exit: 0
+```
+
+That is exactly the figure registered before the run: 2072 measured on `development` plus these eleven
+by name. 39 tests reported skipping part of what they check; all are art tests and a worktree has no
+Paragon content.
+
+### The three guard proofs
+
+Each was registered before it ran with the test AND the assertion it had to fail, and the assertion was
+read out of `game/Saved/Logs/Cataclysm.log` between the two halves rather than assumed. All three
+printed `PROVED`, none crashed, and every restored half printed 149 performed, 149 succeeded, 0 failed.
+
+| Proof | What was removed | What failed | What the assertion printed |
+| :-- | :-- | :-- | :-- |
+| 1 | the Elite floor, so every rank below the ceiling absorbs | `ACommonBesideADyingAllyAbsorbsNothing` | Expected 'nothing was absorbed' to be "0 death(s) absorbed, 0 rung(s) gained", but it was "1 death(s) absorbed, 0 rung(s) gained" |
+| 2 | the reach, by handing the search 100000.0f | `AnEliteBeyondTheReachAbsorbsNothing` | the same two strings: an Elite 800 cm from the body was fed |
+| 3 | the ceiling, so a creature at Herald goes on absorbing | `ACreatureAtHeraldAbsorbsNothing` | Expected 'it absorbed none of them' to be "0 death(s) absorbed, 0 rung(s) gained", but it was "3 death(s) absorbed, 1 rung(s) gained" |
+
+**THE SECOND PROOF BREAKS THE SEARCH CALL AND NOT THE REACH FIGURE, ON PURPOSE.** That test asserts its
+own distance against `BloodForgedChampionsRadiusCm()` before it asserts the outcome, so a break in the
+figure would have failed the guard first and the test would never have reached the thing it exists to
+measure. That is the shape of dead proof which cost Epidemic two attempts the evening before, and it
+was avoided here by reading the test before choosing the break.
+
+### The Python side
+
+```
+python -m pytest
+5278 passed, 8 skipped in 312.57s (0:05:12)
+junit xml: tests=5286 failures=0 errors=0 skipped=8 -> passed=5278
+python -m ruff check .   ->   All checks passed!
+```
+
+The four checks that hold this rule to its row were proved separately, before the machine was free:
+seven deliberate breaks through `tools/prove_guard.py`, run in a git-archive copy so no break could
+disturb the worktree, each predicted before it ran and each failing exactly its predicted check, every
+restored half back to 115 passed, ending `0 problem(s)`. The row loses "Elite enemies"; loses "nearby";
+ends at a boss rather than a mini-boss; gains a figure of its own; the reach becomes `6.0f`; the Elite
+floor becomes `1`; the Herald ceiling becomes `3`.
+
+**One anchor was wrong on the first attempt**, and it is recorded rather than hidden: "growing
+stronger" appears in two rows, this one and `Pestilence_Carrion_Feast`, so the break refused to apply
+until it was lengthened to "growing stronger and potentially".
+
+### What the tests do not show
+- **What a floor of champions does to a fight.** Every test feeds one champion a handful of deaths on
+  an emptied floor. How often three creatures die within six metres of the same Elite in real play was
+  not measured.
+- **Whether a champion that rose is worth more when it dies.** It drops loot and pays experience by the
+  rung it holds at the moment it dies, from its own death handler, so a floor carrying this row is
+  worth more than one without it. That was read in the code and not counted in a test.
+
+---
+
 ## 2026-09-17 — An attacker can ask whether its target is a boss, which only the defender could ask before
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two

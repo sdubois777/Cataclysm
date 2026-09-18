@@ -1080,6 +1080,39 @@ public:
 	static const TCHAR* EpidemicKey;
 
 	/**
+	 * The row where an Elite grows on the deaths of the creatures around it. Issues
+	 * #1820 and #41.
+	 *
+	 * A CREATURE THAT DIES WITHIN `BloodForgedChampionsRadiusMetres` OF AN ELITE FEEDS
+	 * THE NEAREST ONE. At `BloodForgedChampionsDeathsPerRung` fed, that creature rises
+	 * one rung of the rarity ladder and its tally starts again. It rises from
+	 * `BloodForgedChampionsLowestRung` and never past `BloodForgedChampionsHighestRung`.
+	 *
+	 * "TRANSFORMING INTO A MINI-BOSS" IS NOT A JUDGEMENT HERE, WHICH IS WHY THIS ROW WAS
+	 * CHOSEN. `ACataclysmEnemyCharacter.h` says of the rarity ladder that "Herald, at 3,
+	 * is deliberately below the line -- the Abyssal Warden's reference rarity is Herald
+	 * and it is a mini-boss", and elsewhere that a floor rule may reach "Herald, so a
+	 * floor rule cannot make a boss out of an ordinary creature". So the row's own last
+	 * words land on the ceiling the other three rules already share, and this rule needs
+	 * no fifth meaning of any word.
+	 *
+	 * NO KILLER IS ASKED FOR, AND THAT IS DELIBERATE. Volatile Evolution, Royal Guard,
+	 * Demon Prince and Epidemic all ask "did the player do this". This row does not: it
+	 * says "nearby dying allies" and names no killer, so a creature killed by another
+	 * creature, by burning ground, or by another floor rule feeds a champion exactly as
+	 * the player's own kill does. Ruled under the project owner's delegation. A check on
+	 * `Notice.Killer` here would be a fifth rule's habit carried into a row that does not
+	 * have it.
+	 *
+	 * THE HEALTH AND ENERGY SHIELD IT HAD ARE PUT BACK AFTERWARDS, for the reason
+	 * `VolatileEvolutionKey` above gives at length: `SetRarityStep` and
+	 * `DrawModifiersForRarity` both end in `ApplyStartingAttributes`, which refills both
+	 * pools, and a champion that healed itself every third death would undo the work the
+	 * player had done on it.
+	 */
+	static const TCHAR* BloodForgedChampionsKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2464,6 +2497,55 @@ public:
 		"A chance of nothing, a chain that is over before it starts, no reach at all, or "
 		"no Plague Lord allowed is not the row.");
 
+	/**
+	 * How far a death has to be from an Elite to feed it.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation, and NOT A NUMBER OF ITS
+	 * OWN. The row says "nearby" and states no distance. This is the reach Epidemic
+	 * already uses for the same word, `UCataclysmContagion::RadiusMetres`, so "nearby" in
+	 * a floor rule means one distance rather than two.
+	 */
+	static constexpr float BloodForgedChampionsRadiusMetres =
+		UCataclysmContagion::RadiusMetres;
+
+	/**
+	 * How many deaths nearby raise a champion one rung.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation. The row says only that
+	 * Elites "absorb the strength of nearby dying allies, growing stronger". Three, so an
+	 * Elite needs six deaths to reach Herald and the change is something a player watches
+	 * happen rather than meets already finished.
+	 */
+	static constexpr int32 BloodForgedChampionsDeathsPerRung = 3;
+
+	/**
+	 * The lowest rung that absorbs anything: Elite, the rung above Common.
+	 *
+	 * DECLARED AS `RoyalGuardLowestRungThatSummons` AND NOT AS 1. That constant already
+	 * carries this project's answer to "which creatures count as Elite", with the reading
+	 * of `game/Data/EnemyRarities.csv` that produced it. Two rules meaning the same rung
+	 * should not be able to drift apart.
+	 */
+	static constexpr int32 BloodForgedChampionsLowestRung =
+		RoyalGuardLowestRungThatSummons;
+
+	/**
+	 * The rung a champion stops at, which is the mini-boss the row names.
+	 *
+	 * DECLARED AS `VolatileEvolutionHighestRung` AND NOT AS 3, for the reason Royal
+	 * Guard, Demon Prince and Epidemic all declare theirs that way: that constant is tied
+	 * to `ACataclysmEnemyCharacter::FirstBossRarityStep` by the `static_assert` beside it,
+	 * so no floor rule can make a boss out of an ordinary creature.
+	 */
+	static constexpr int32 BloodForgedChampionsHighestRung = VolatileEvolutionHighestRung;
+
+	static_assert(
+		BloodForgedChampionsRadiusMetres > 0.0f
+			&& BloodForgedChampionsDeathsPerRung > 0
+			&& BloodForgedChampionsLowestRung < BloodForgedChampionsHighestRung,
+		"No reach at all, a rung earned by no deaths, or a floor already at the ceiling "
+		"is not the row: an Elite has to be able to rise.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -3270,6 +3352,24 @@ public:
 
 	/** The reach, in the centimetres Unreal works in. */
 	static float EpidemicRadiusCm();
+
+	/** The reach a death has to be inside to feed a champion, in centimetres. */
+	static float BloodForgedChampionsRadiusCm();
+
+	/**
+	 * Whether a creature at this rung absorbs a death at all.
+	 *
+	 * BOTH ENDS ARE HERE AND NOWHERE ELSE, so there is one place either can be wrong. A
+	 * Common is below the floor and absorbs nothing; a creature already at the ceiling is
+	 * refused here rather than being fed and then found to have nowhere to rise.
+	 */
+	static bool BloodForgedChampionsAbsorbs(int32 RarityStep);
+
+	/** Whether the deaths fed since a champion's last rung have earned another. */
+	static bool BloodForgedChampionsRungIsEarned(int32 DeathsSinceItsLastRung);
+
+	/** The rung after this one, never past the ceiling. */
+	static int32 BloodForgedChampionsRungAfter(int32 RarityStep);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
