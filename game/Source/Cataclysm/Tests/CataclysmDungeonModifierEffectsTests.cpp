@@ -171,6 +171,12 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one where radiant ground punishes standing still. Issues #1820, #41. */
 	const FName JudgmentZones(UCataclysmDungeonModifierEffects::JudgmentZonesKey);
 
+	/**
+	 * And the one where every floor makes creatures hit harder and killing the floor's
+	 * Commander pays permanent armour. Issues #1820, #41.
+	 */
+	const FName MarchOfProgress(UCataclysmDungeonModifierEffects::MarchOfProgressKey);
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -859,6 +865,121 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 
 	/**
+	 * The floor every March of Progress test starts from, at the depth it asks for.
+	 * Issues #1820 and #41.
+	 *
+	 * EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so the only creatures on the
+	 * floor are the ones a test places -- and so the Commander the population pass chose
+	 * from them is gone with them. The floor is populated again below, which is what
+	 * chooses from what the test placed.
+	 *
+	 * EVERY IMP IS A COMMON UNLESS A TEST SAYS OTHERWISE, for the reason the Vengeful
+	 * Wraiths floor pins the same field: `ImpRarityStep` is -1 by default, meaning DRAW a
+	 * rung, and a drawn rung would make "the highest rung placed" a different creature
+	 * from run to run.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheMarchRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+		int32 Floor = 1)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonModifiers = {MarchOfProgress};
+		Mode->FloorNumber = Floor;
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString MarchPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(MarchOfProgress);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/**
+	 * A creature standing on the floor as one the population pass placed. Issues #1820,
+	 * #41.
+	 *
+	 * PUT INTO `FloorEnemies` BY HAND, because that list is what the Commander is chosen
+	 * from and a creature spawned into the world alone is not on it. That list is public
+	 * for exactly this: its own comment says a test that had to build a whole dungeon to
+	 * reach a rule would not get written.
+	 *
+	 * THE RUNG AFTER THE SPAWN, because `SetRarityStep` ends in
+	 * `ApplyStartingAttributes`, which rewrites the creature's designed numbers.
+	 *
+	 * IT IS GIVEN A DESIGNED ATTACK DAMAGE, AND WITHOUT THAT IT DEALS NOTHING. A creature
+	 * spawned straight into the world never goes through the floor's population pass, so
+	 * `StartingAttackDamage` is unset, `WriteAttackDamage` skips the write and the
+	 * attribute stays at zero. MEASURED: the first run of these tests failed
+	 * `EveryCreatureOnTheFloorHitsHarderForHowDeepItIs` on "the creatures have damage to
+	 * raise", and a creature with no damage also cannot kill another one, which is what
+	 * `ACommanderKilledByAnythingElsePaysNothing` needs. The figure itself does not matter:
+	 * every test here compares this creature's damage against its own earlier reading.
+	 *
+	 * AND ITS EVASION IS ZEROED AGAIN AFTER THE RUNG, WHICH IS WHAT MAKES A KILL CERTAIN.
+	 * `SpawnImpWithHealth` zeroes it and `SetRarityStep` puts the designed figure back, so
+	 * a creature given a rung can dodge. MEASURED: in the first run of these tests two
+	 * tests killed an Elite the same way and one of them failed, which is what a coin toss
+	 * looks like. `UCataclysmDamageCalculation` returns with nothing dealt when the roll
+	 * lands under the defender's evasion.
+	 *
+	 * AND IT IS WOUNDED BACK DOWN LAST. `ApplyStartingAttributes` also refills both pools
+	 * to the new maximums, so a creature given a rung holds its designed health rather than
+	 * the 100 it was spawned with -- and an Elite's is several times a Common's. Every test
+	 * in this file that kills a creature with the player's blow kills one holding 100 and
+	 * no energy shield, so this puts it back to that. `SpawnChampionAtRung` above needs
+	 * none of this because nothing kills or reads the damage of the creatures it makes.
+	 */
+	ACataclysmEnemyCharacter* PlaceCreatureAtRung(UWorld* World,
+												 ACataclysmDungeonGameMode* Mode,
+												 const FVector& Where, int32 Rung)
+	{
+		ACataclysmEnemyCharacter* Creature = SpawnImpWithHealth(World, Where, 100.0f);
+		if (!Creature)
+		{
+			return nullptr;
+		}
+
+		// BEFORE THE RUNG, so the rung's own damage scale multiplies it the way it
+		// multiplies a creature the floor placed.
+		Creature->SetAttackDamage(100.0f);
+		Creature->SetRarityStep(Rung);
+
+		if (UAbilitySystemComponent* System = Creature->GetAbilitySystemComponent())
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		}
+
+		WoundCreatureTo(Creature, 100.0f, 0.0f);
+		Mode->FloorEnemies.Add(Creature);
+		return Creature;
+	}
+
+
+	/**
 	 * Beat until radiant ground appears, and answer the first of it. Issues #1820, #41.
 	 *
 	 * BEATEN FOR RATHER THAN SPAWNED BY HAND, because the cadence is part of what is being
@@ -1073,6 +1194,21 @@ namespace CataclysmDungeonModifierEffectsTest
 			}
 		}
 		return nullptr;
+	}
+
+	/**
+	 * What the one dungeon-rule modifier on the player's armour is worth, or nothing.
+	 *
+	 * HERE AND NOT BESIDE THE OTHER MARCH OF PROGRESS HELPERS, because it calls
+	 * `DungeonRuleOn` directly above and this file declares its helpers by defining them,
+	 * in order, with no forward declarations. Written further up, it failed the build with
+	 * "error C3861: 'DungeonRuleOn': identifier not found".
+	 */
+	float ArmourRuleOn(const FPossessedPlayer& Player)
+	{
+		const FCataclysmStatModifier* Modifier =
+			DungeonRuleOn(Player.AbilitySystem, TEXT("armor"));
+		return Modifier ? Modifier->Value : 0.0f;
 	}
 
 	/**
@@ -17807,6 +17943,935 @@ bool FCataclysmJudgmentFloorChangeTest::RunTest(const FString& Parameters)
 			  FString(TEXT("0 trigger(s) of 5, 0 zone(s) standing")));
 	TestEqual(TEXT("and grants nothing until it is earned again"),
 			  Mode->JudgmentZonesMagicFindBonus(), 0.0f, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// War_March_of_Progress. Issues #1820 and #41.
+//
+// "Each floor, enemies damage increases by 10%. Killing the Commander in each level will
+// increase the player's armor by 10%. If the player skips killing too many commanders,
+// they may find they can't withstand the increasing damage."
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchDamageTest,
+	"Cataclysm.DungeonModifierEffects.EveryCreatureOnTheFloorHitsHarderForHowDeepItIs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchDamageTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player, 3);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* First =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Second =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature was placed"), First)
+		|| !TestNotNull(TEXT("and a second one"), Second))
+	{
+		return false;
+	}
+
+	// WHAT EACH DEALS BEFORE THE RULE HAS SEEN IT. A creature placed between beats has
+	// its own designed damage, because the sweep is what writes the multiplier.
+	const float FirstPlain = AttackDamageOf(First);
+	const float SecondPlain = AttackDamageOf(Second);
+	if (!TestTrue(TEXT("the creatures have damage to raise"), FirstPlain > 0.0f))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+
+	// FLOOR 3 IS 1 + 0.10 x 3 = 1.3, READ OFF THE RULE RATHER THAN WRITTEN HERE, so this
+	// measures that the floor number reaches the creature and not that 1.3 equals 1.3.
+	const float Expected = Effects::MarchOfProgressDamageMultiplierOnFloor(3);
+	TestEqual(TEXT("the third floor makes a creature hit 1.3 times as hard"),
+			  AttackDamageOf(First), FirstPlain * Expected, 0.01f);
+	TestEqual(TEXT("and every creature on the floor, not just one"),
+			  AttackDamageOf(Second), SecondPlain * Expected, 0.01f);
+
+	// AND BEATING AGAIN CHANGES NOTHING, which is what makes the sweep safe to run four
+	// times a second. The multiplier is SET from the floor number rather than added, so
+	// a second beat writes the same figure.
+	Beat(Mode, 8);
+	TestEqual(TEXT("eight more beats leave it exactly where it was"),
+			  AttackDamageOf(First), FirstPlain * Expected, 0.01f);
+	return true;
+}
+
+// THE READING OF THE ROW'S SENTENCE, MEASURED ON A REAL CREATURE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchAdditiveTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorsRiseIsAddedEachFloorAndNotCompounded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchAdditiveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ARITHMETIC FIRST, AT BOTH ENDS OF A DUNGEON. Compounded, floor 10 would be
+	// 2.594 and floor 50 would be 117 times, which is the reading this rule rejected.
+	TestEqual(TEXT("floor 1 already carries the rule"),
+			  Effects::MarchOfProgressDamageMultiplierOnFloor(1), 1.1f, 0.001f);
+	TestEqual(TEXT("floor 10 is twice and not 2.594 times"),
+			  Effects::MarchOfProgressDamageMultiplierOnFloor(10), 2.0f, 0.001f);
+	TestEqual(TEXT("floor 50 is six times and not 117 times"),
+			  Effects::MarchOfProgressDamageMultiplierOnFloor(50), 6.0f, 0.001f);
+
+	// A FLOOR NUMBER BELOW 1 IS READ AS FLOOR 1 rather than as the rule being off, which
+	// the declaration says is a caller asking wrongly rather than a floor that exists.
+	TestEqual(TEXT("floor 0 is read as floor 1"),
+			  Effects::MarchOfProgressDamageMultiplierOnFloor(0), 1.1f, 0.001f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player, 10);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature was placed"), Creature))
+	{
+		return false;
+	}
+
+	const float Plain = AttackDamageOf(Creature);
+	Beat(Mode, 1);
+
+	// TWICE AND NOT 2.594 TIMES, ON THE CREATURE ITSELF. 0.01 is far tighter than the
+	// gap between the two readings, which at floor 10 is about 59% of the plain damage.
+	TestEqual(TEXT("a creature on floor 10 hits exactly twice as hard"),
+			  AttackDamageOf(Creature), Plain * 2.0f, 0.01f);
+	return true;
+}
+
+// A RECOMPUTE MUST NOT DROP THE FLOOR'S RISE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchRecomputeTest,
+	"Cataclysm.DungeonModifierEffects.ARungChangeKeepsTheFloorsRise",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchRecomputeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player, 4);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Creature =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Control =
+		PlaceCreatureAtRung(World, Mode, FVector(900.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature was placed"), Creature)
+		|| !TestNotNull(TEXT("and one to compare it with"), Control))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	const float Raised = AttackDamageOf(Creature);
+
+	// A RUNG CHANGE RE-RUNS `ApplyStartingAttributes`, WHICH REWRITES THE DAMAGE FROM THE
+	// DESIGNED FIGURE. A rule that had written the attribute directly would be erased
+	// here; a multiplier the creature carries is not, because the same helper writes it.
+	Creature->SetRarityStep(1);
+	Control->SetRarityStep(1);
+
+	const float AfterRung = AttackDamageOf(Creature);
+	TestTrue(TEXT("the rung raised its damage"), AfterRung > Raised);
+
+	// THE CONTROL IS THE SAME CREATURE AT THE SAME RUNG, SO THE TWO MUST AGREE. Both
+	// carry the floor's multiplier -- the sweep gave it to both -- so this says the
+	// recompute kept it rather than that it was ever applied.
+	TestEqual(TEXT("and both creatures at the new rung deal the same"),
+			  AfterRung, AttackDamageOf(Control), 0.01f);
+
+	// AND THE FLOOR'S SHARE IS STILL IN IT, measured against a creature placed after the
+	// rung change and never beaten, which carries no multiplier at all.
+	ACataclysmEnemyCharacter* Fresh =
+		PlaceCreatureAtRung(World, Mode, FVector(1400.0f, 0.0f, 0.0f), 1);
+	if (!TestNotNull(TEXT("a fresh creature at the same rung"), Fresh))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the beaten creature still carries the floor's rise"),
+			  AfterRung,
+			  AttackDamageOf(Fresh) * Effects::MarchOfProgressDamageMultiplierOnFloor(4),
+			  0.01f);
+	return true;
+}
+
+// WHICH CREATURE THE FLOOR'S COMMANDER IS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchCommanderChoiceTest,
+	"Cataclysm.DungeonModifierEffects.TheCommanderIsTheHighestRungTheFloorPlaced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchCommanderChoiceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE HIGHEST RUNG IS PLACED IN THE MIDDLE, so neither "the first" nor "the last"
+	// would pass by accident.
+	PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Elite =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 2);
+	PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 1);
+	if (!TestNotNull(TEXT("a creature of the highest rung was placed"), Elite))
+	{
+		return false;
+	}
+
+	Mode->ChooseTheFloorsCommander();
+	TestSamePtr(TEXT("the floor's Commander is the highest rung placed"),
+				Mode->TheFloorsCommander(), Elite);
+
+	// AND CHOOSING AGAIN KEEPS IT, which is what stops a Horde dungeon's next wave from
+	// quietly replacing a Commander the player is still hunting.
+	PlaceCreatureAtRung(World, Mode, FVector(1600.0f, 0.0f, 0.0f), 3);
+	Mode->ChooseTheFloorsCommander();
+	TestSamePtr(TEXT("a later creature of a higher rung does not take the title"),
+				Mode->TheFloorsCommander(), Elite);
+	return true;
+}
+
+// A TIE IS DECIDED BY THE ORDER THE FLOOR PLACED THEM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchCommanderTieTest,
+	"Cataclysm.DungeonModifierEffects.ATieForTheHighestRungKeepsTheFirstPlaced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchCommanderTieTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Earlier =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 2);
+	ACataclysmEnemyCharacter* Later =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 2);
+	if (!TestNotNull(TEXT("two creatures of the same rung were placed"), Earlier)
+		|| !TestNotNull(TEXT("and the second of them"), Later))
+	{
+		return false;
+	}
+
+	Mode->ChooseTheFloorsCommander();
+	TestSamePtr(TEXT("a tie keeps the one the floor placed first"),
+				Mode->TheFloorsCommander(), Earlier);
+	return true;
+}
+
+// THE COMMANDER IS AN ORDINARY CREATURE, AND THAT IS THE RULING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchCommanderUnmarkedTest,
+	"Cataclysm.DungeonModifierEffects.NothingIsWrittenOnTheCreatureChosenAsCommander",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchCommanderUnmarkedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// TWO CREATURES OF THE SAME KIND AND RUNG. One becomes the Commander and the other
+	// does not, so every difference between them afterwards is this rule's doing.
+	ACataclysmEnemyCharacter* Chosen =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 2);
+	ACataclysmEnemyCharacter* Sibling =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 2);
+	if (!TestNotNull(TEXT("a creature to choose"), Chosen)
+		|| !TestNotNull(TEXT("and its twin"), Sibling))
+	{
+		return false;
+	}
+
+	Mode->ChooseTheFloorsCommander();
+	Beat(Mode, 4);
+	if (!TestSamePtr(TEXT("the first one was chosen"), Mode->TheFloorsCommander(),
+					 Chosen))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the Commander deals exactly what its twin deals"),
+			  AttackDamageOf(Chosen), AttackDamageOf(Sibling), 0.01f);
+	TestEqual(TEXT("and has exactly its twin's health"),
+			  Chosen->GetAbilitySystemComponent()->GetNumericAttribute(
+				  Vital::GetMaxHealthAttribute()),
+			  Sibling->GetAbilitySystemComponent()->GetNumericAttribute(
+				  Vital::GetMaxHealthAttribute()),
+			  0.01f);
+
+	// AND MOVES AND SWINGS AT ITS TWIN'S RATE. The Commander gameplay tag would have
+	// moved both of these: `CommanderMultiplier` makes whoever carries it 20% faster,
+	// which is why that tag could not be used to mean "is a commander".
+	TestEqual(TEXT("and swings at its twin's rate"),
+			  Chosen->SecondsBetweenAttacks(), Sibling->SecondsBetweenAttacks(), 0.001f);
+	TestEqual(TEXT("and walks at its twin's speed"),
+			  Chosen->SpeedMultiplier(), Sibling->SpeedMultiplier(), 0.001f);
+	return true;
+}
+
+// WHAT THE ARMOUR DOES TO A CHARACTER'S ARMOUR STAT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchArmourReachesTest,
+	"Cataclysm.DungeonModifierEffects.TheCommandersArmourReachesTheCharactersArmourStat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchArmourReachesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FModifierTestCharacter Character(World);
+	Character.Equipment->RefreshAttributes(Character.AbilitySystem);
+	const float BareArmour = Character.Read(Combat::GetArmorAttribute());
+
+	// THREE COMMANDERS KILLED, WHICH IS 30% MORE ARMOUR AND NOT 33.1%. One More
+	// multiplier carries the whole figure, because `UCataclysmStatPipeline` multiplies
+	// each source on its own rather than summing them first.
+	FCataclysmPlayerFloorEffects Effect;
+	Effect.ArmourMorePercent = Effects::MarchOfProgressArmourMorePercentFor(3);
+	TestEqual(TEXT("three commanders are worth 30"), Effect.ArmourMorePercent, 30.0f,
+			  0.001f);
+	TestTrue(TEXT("the rule reached the character"),
+			 Effects::ApplyToCharacter(Effect, Character.AbilitySystem,
+									   Character.Equipment));
+
+	// THE STORED MODIFIER IS CHECKED AS WELL AS THE ATTRIBUTE, for the reason the
+	// Starvation test checks the energy shield that way: a character whose class line
+	// grants no armour has a base of nothing, and 1.3 times nothing is nothing -- so the
+	// attribute alone could pass while the rule reached no stat at all.
+	const FCataclysmStatModifier* OnArmour =
+		DungeonRuleOn(Character.AbilitySystem, TEXT("armor"));
+	if (TestNotNull(TEXT("the armour's stat line carries the dungeon rule"), OnArmour))
+	{
+		TestEqual(TEXT("as 30% more"), OnArmour->Value, 30.0f, 0.001f);
+	}
+	TestEqual(TEXT("and the attribute is 1.3 times what it was"),
+			  Character.Read(Combat::GetArmorAttribute()), BareArmour * 1.3f, 0.01f);
+
+	// AND A PLAYER WHO HAS KILLED NO COMMANDER CARRIES NO MODIFIER AT ALL, rather than
+	// one worth nothing: the helper that builds these refuses a value of zero.
+	Effects::ApplyToCharacter(FCataclysmPlayerFloorEffects(), Character.AbilitySystem,
+							 Character.Equipment);
+	TestNull(TEXT("no commanders killed leaves no armour modifier"),
+			 DungeonRuleOn(Character.AbilitySystem, TEXT("armor")));
+	TestEqual(TEXT("and the armour is exactly what it was"),
+			  Character.Read(Combat::GetArmorAttribute()), BareArmour, 0.01f);
+	return true;
+}
+
+// KILLING THE COMMANDER PAYS, AND KILLING ANYTHING ELSE DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchKillPaysTest,
+	"Cataclysm.DungeonModifierEffects.KillingTheCommanderPaysArmourAndOtherKillsDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchKillPaysTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Commander =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 2);
+	ACataclysmEnemyCharacter* Ordinary =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a Commander to kill"), Commander)
+		|| !TestNotNull(TEXT("and an ordinary creature"), Ordinary))
+	{
+		return false;
+	}
+
+	Mode->ChooseTheFloorsCommander();
+	if (!TestSamePtr(TEXT("the Elite is the Commander"), Mode->TheFloorsCommander(),
+					 Commander))
+	{
+		return false;
+	}
+
+	// THE ORDINARY CREATURE FIRST, so a payment that arrived would be attributed to the
+	// wrong kill rather than hidden behind the right one.
+	if (!ThePlayerKills(*this, Player, Ordinary))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("killing an ordinary creature pays nothing"),
+			  Mode->CommandersKilledThisRun(), 0);
+	TestEqual(TEXT("and puts no armour on the player"), ArmourRuleOn(Player), 0.0f,
+			  0.001f);
+
+	if (!ThePlayerKills(*this, Player, Commander))
+	{
+		return false;
+	}
+	TestEqual(TEXT("killing the Commander is counted at once"),
+			  Mode->CommandersKilledThisRun(), 1);
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("and the next beat puts 10% more armour on the player"),
+			  ArmourRuleOn(Player), 10.0f, 0.001f);
+	return true;
+}
+
+// TWO COMMANDERS ARE 20% AND NOT 21%.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchArmourStacksTest,
+	"Cataclysm.DungeonModifierEffects.EachCommanderAddsItsTenAndTheyDoNotCompound",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchArmourStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ARITHMETIC, WHERE THE TWO READINGS DIFFER MOST PLAINLY. Ten commanders added is
+	// 100; compounded it would be 159.
+	TestEqual(TEXT("no commanders is nothing"),
+			  Effects::MarchOfProgressArmourMorePercentFor(0), 0.0f, 0.001f);
+	TestEqual(TEXT("two commanders are 20 and not 21"),
+			  Effects::MarchOfProgressArmourMorePercentFor(2), 20.0f, 0.001f);
+	TestEqual(TEXT("ten commanders are 100 and not 159"),
+			  Effects::MarchOfProgressArmourMorePercentFor(10), 100.0f, 0.001f);
+	TestEqual(TEXT("a count below zero is read as none"),
+			  Effects::MarchOfProgressArmourMorePercentFor(-3), 0.0f, 0.001f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* First =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 2);
+	if (!TestNotNull(TEXT("the first floor's Commander"), First))
+	{
+		return false;
+	}
+	Mode->ChooseTheFloorsCommander();
+	if (!ThePlayerKills(*this, Player, First))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("one commander is 10% more armour"), ArmourRuleOn(Player), 10.0f,
+				   0.001f))
+	{
+		return false;
+	}
+
+	// THE NEXT FLOOR, IN THE SAME ARENA, so the count is carried across a floor change
+	// rather than across a whole new world.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	// THE WAVE THAT ARRIVED IS CLEARED SO THIS TEST DECIDES WHO THE COMMANDER IS.
+	// `PopulateFloor` chooses one from whatever it placed, and a Commander chosen from a
+	// wave would make the assertion below depend on what the population pass happened to
+	// put down. Clearing destroys it, which leaves the weak pointer invalid and lets the
+	// chooser run again on the creature this test places.
+	Mode->ClearFloorEnemies();
+
+	ACataclysmEnemyCharacter* Second =
+		PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 2);
+	if (!TestNotNull(TEXT("the second floor's Commander"), Second))
+	{
+		return false;
+	}
+	Mode->ChooseTheFloorsCommander();
+	if (!TestSamePtr(TEXT("the new floor chose its own Commander"),
+					 Mode->TheFloorsCommander(), Second))
+	{
+		return false;
+	}
+	if (!ThePlayerKills(*this, Player, Second))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+
+	// 20 AND NOT 21. One More modifier carrying the whole figure is what makes this
+	// additive; two modifiers of 10 would have been 1.21 times the player's armour.
+	TestEqual(TEXT("two commanders are 20% more armour and not 21%"),
+			  ArmourRuleOn(Player), 20.0f, 0.001f);
+	TestEqual(TEXT("and the run has counted both"), Mode->CommandersKilledThisRun(), 2);
+	return true;
+}
+
+// THE ROW SAYS KILLING IT, SO SOMETHING ELSE KILLING IT PAYS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchOnlyThePlayersKillTest,
+	"Cataclysm.DungeonModifierEffects.ACommanderKilledByAnythingElsePaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchOnlyThePlayersKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Commander =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 2);
+	ACataclysmEnemyCharacter* Bystander =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a Commander"), Commander)
+		|| !TestNotNull(TEXT("and something else to kill it"), Bystander))
+	{
+		return false;
+	}
+
+	Mode->ChooseTheFloorsCommander();
+	if (!TestSamePtr(TEXT("the Elite is the Commander"), Mode->TheFloorsCommander(),
+					 Commander))
+	{
+		return false;
+	}
+
+	// ANOTHER CREATURE STRIKES THE LAST BLOW. The row pays for "killing the Commander",
+	// so a Commander that dies to another creature, to burning ground, or to another
+	// floor rule pays nothing.
+	UCataclysmSkillEffects::ApplyHit(Bystander, Commander, 100000.0f);
+	if (!TestTrue(TEXT("the Commander died"), UCataclysmSkillEffects::IsDead(Commander)))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("a kill that was not the player's pays nothing"),
+			  Mode->CommandersKilledThisRun(), 0);
+	TestEqual(TEXT("and no armour reaches the player"), ArmourRuleOn(Player), 0.0f,
+			  0.001f);
+
+	// AND THE FLOOR DOES NOT OFFER A SECOND COMMANDER. The player had their chance at
+	// this floor's; choosing another because the first was taken from them would pay for
+	// a kill the row did not ask for.
+	//
+	// THE BODY IS DESTROYED BY HAND FIRST, AND WITHOUT THAT THIS TEST PROVES NOTHING.
+	// A creature killed in a test world stays a valid weak pointer, because nothing runs
+	// the timer that removes its body -- so the chooser would return early on the pointer
+	// rather than on the flag, and the test would pass whether or not the rule works.
+	// Destroying it makes the pointer stale, so only the flag can refuse the second
+	// choice, and the creature still standing beside it is a candidate if the flag does
+	// not.
+	Commander->Destroy();
+	Mode->ChooseTheFloorsCommander();
+	TestNull(TEXT("and the floor has no Commander left to kill"),
+			 Mode->TheFloorsCommander());
+	return true;
+}
+
+// A FLOOR WITH NOTHING ON IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchEmptyFloorTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithNoCreatureHasNoCommanderAndDoesNotFail",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchEmptyFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player, 5);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	Mode->ChooseTheFloorsCommander();
+	TestNull(TEXT("an empty floor has no Commander"), Mode->TheFloorsCommander());
+
+	Beat(Mode, 4);
+	TestEqual(TEXT("and there is no armour to earn on it"),
+			  Mode->CommandersKilledThisRun(), 0);
+
+	// THE PANEL STILL SAYS WHAT THE FLOOR IS DOING TO CREATURES, because the damage half
+	// of the rule is in force whether or not there is anything to fight.
+	TestEqual(TEXT("and the panel says the floor has no Commander"), MarchPanelLine(Mode),
+			  FString(TEXT("enemies x1.5, no Commander, 0 slain this run")));
+	return true;
+}
+
+// THE ARMOUR OUTLIVES A FLOOR AND ENDS WITH THE RUN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchArmourOutlivesTest,
+	"Cataclysm.DungeonModifierEffects.TheArmourOutlivesAFloorAndGoesWhenTheRunEnds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchArmourOutlivesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Commander =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 2);
+	if (!TestNotNull(TEXT("a Commander to kill"), Commander))
+	{
+		return false;
+	}
+	Mode->ChooseTheFloorsCommander();
+	if (!ThePlayerKills(*this, Player, Commander))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("the armour was paid"), ArmourRuleOn(Player), 10.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// A FLOOR CHANGE TAKES EVERY FLOOR RULE'S MODIFIER OFF THE CHARACTER WHOLESALE, so
+	// this rule's armour comes off with them -- and the next beat has to put it back,
+	// because the count it is worked out from belongs to the run.
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the armour is back on the next floor"), ArmourRuleOn(Player), 10.0f,
+			  0.001f);
+	TestEqual(TEXT("and the run still counts the commander"),
+			  Mode->CommandersKilledThisRun(), 1);
+
+	// AND LEAVING THE DUNGEON ENDS IT. This is the only place the count is cleared, and
+	// `LeaveEmpireDungeon` applies the floor rules on its way out, so the armour is off
+	// the character without waiting for a beat.
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("leaving the dungeon forgets every commander killed"),
+			  Mode->CommandersKilledThisRun(), 0);
+	TestEqual(TEXT("and takes the armour off the player"), ArmourRuleOn(Player), 0.0f,
+			  0.001f);
+	return true;
+}
+
+// WHAT THE FLOOR PANEL SAYS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchPanelTest,
+	"Cataclysm.DungeonModifierEffects.ThePanelSaysTheDamageAndWhetherTheCommanderLives",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player, 2);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Commander =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 2);
+	if (!TestNotNull(TEXT("a Commander"), Commander))
+	{
+		return false;
+	}
+	Mode->ChooseTheFloorsCommander();
+
+	// THE WHOLE LINE IS WRITTEN OUT HERE rather than built from the format the panel
+	// uses, so a change of wording cannot pass by comparing a string with itself.
+	if (!TestEqual(TEXT("the second floor, with its Commander still standing"),
+				   MarchPanelLine(Mode),
+				   FString(TEXT("enemies x1.2, Commander alive, 0 slain this run"))))
+	{
+		return false;
+	}
+
+	if (!ThePlayerKills(*this, Player, Commander))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and it says so as soon as the Commander falls"), MarchPanelLine(Mode),
+			  FString(TEXT("enemies x1.2, Commander slain, 1 slain this run")));
+
+	// AND A FLOOR WITHOUT THE ROW HAS NO LINE OF ITS OWN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row says nothing"), MarchPanelLine(Mode),
+			  FString(TEXT("no line")));
+	return true;
+}
+
+// A CREATURE THAT LIVES THROUGH A CHANGE OF WAVE STOPS CARRYING THE LAST FLOOR'S RISE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangePutsEveryCreaturesDamageBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player, 6);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Survivor =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature that will live through the change"), Survivor))
+	{
+		return false;
+	}
+
+	const float Plain = AttackDamageOf(Survivor);
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("the sixth floor raised its damage"),
+				  AttackDamageOf(Survivor) > Plain * 1.5f))
+	{
+		return false;
+	}
+
+	// A HORDE DUNGEON'S NEXT WAVE SHARES THE ARENA, so this creature is still standing
+	// after the floor changes -- and the next floor does not carry the row at all.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(7)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the survivor deals exactly what its kind deals again"),
+			  AttackDamageOf(Survivor), Plain, 0.01f);
+
+	// AND BEATING ON A FLOOR WITHOUT THE ROW LEAVES IT THERE.
+	Beat(Mode, 4);
+	TestEqual(TEXT("and a floor without the row never raises it"),
+			  AttackDamageOf(Survivor), Plain, 0.01f);
+	return true;
+}
+
+// THE GAME ITSELF CHOOSES A COMMANDER, WITHOUT A TEST ASKING IT TO.
+//
+// WHY THIS EXISTS, PLAINLY. Every other test in this group places its own creatures and
+// calls `ChooseTheFloorsCommander` by hand, which is the right way to measure WHICH
+// creature is chosen and cannot measure whether anything in the game calls it at all.
+// This one drives `GoToFloor`, the way the game reaches a new floor, and touches nothing
+// else.
+//
+// IT IS ALSO WHAT CATCHES THE ORDERING. `GoToFloor` populates the floor -- which chooses
+// the Commander -- and applies the floor rules AFTERWARDS. A Commander cleared with the
+// rest of this rule's per-floor state would be wiped a moment after it was chosen, every
+// floor would have none, and no test that calls the chooser by hand would notice.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMarchPopulateChoosesTest,
+	"Cataclysm.DungeonModifierEffects.ReachingAFloorChoosesItsCommanderWithNothingAsking",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmMarchPopulateChoosesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {MarchOfProgress};
+	Mode->ImpRarityStep = 0;
+
+	// THE FLOOR IS REACHED THE WAY THE GAME REACHES ONE. `GoToFloor` builds the floor,
+	// populates it and applies the floor's rules, in that order.
+	if (!TestTrue(TEXT("the second floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the floor put creatures out to choose from"),
+				  Mode->FloorEnemies.Num() > 0))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Commander = Mode->TheFloorsCommander();
+	if (!TestNotNull(TEXT("reaching the floor chose a Commander, with nothing asking"),
+					 Commander))
+	{
+		return false;
+	}
+
+	// THE HIGHEST RUNG IS WORKED OUT HERE RATHER THAN ASSUMED, because a floor's
+	// population is not this test's to decide: it places whatever kinds and rungs the
+	// population pass chose. Pinning the imps to Common is not enough on its own.
+	int32 Highest = -1;
+	for (ACataclysmEnemyCharacter* Enemy : Mode->FloorEnemies)
+	{
+		if (IsValid(Enemy))
+		{
+			Highest = FMath::Max(Highest, Enemy->RarityStep);
+		}
+	}
+
+	TestTrue(TEXT("the Commander it chose is one of the floor's own creatures"),
+			 Mode->FloorEnemies.Contains(Commander));
+	TestEqual(TEXT("and it is at the highest rung the floor placed"),
+			  Commander->RarityStep, Highest);
+
+	// AND IT IS STILL THE FLOOR'S COMMANDER AFTER THE BEAT HAS RUN, which is what says
+	// nothing later in the frame or on the clock quietly takes it away.
+	Beat(Mode, 4);
+	TestSamePtr(TEXT("and it is still the Commander four beats later"),
+				Mode->TheFloorsCommander(), Commander);
 	return true;
 }
 

@@ -74,6 +74,35 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float MaxManaLessPercent = 0.0f;
 
 	/**
+	 * How much more armour the player carries for the commanders they have killed, in
+	 * percent. March of Progress. Issues #1820 and #41.
+	 *
+	 * ITS OWN FIELD, NOT A SHARE OF ONE ALREADY HERE. No other rule writes armour, so
+	 * nothing forced this; the reason is that a shared field is what makes two rules
+	 * silently overwrite each other, which is the hazard `SetPlacedDamageMultiplier`
+	 * carries the same warning about on the creature side. Adding a field costs nothing.
+	 *
+	 * IT SURVIVES A FLOOR CHANGE, ALONE AMONG THE FIELDS HERE. Every other value in this
+	 * struct is worked out from the floor being stood on or from where the player is
+	 * standing, so a new floor starts it again. This one is the run's count of commanders
+	 * killed, and `ACataclysmDungeonGameMode::LeaveEmpireDungeon` is the only thing that
+	 * clears it.
+	 *
+	 * A More MULTIPLIER ON `armor`, WHICH IS NOT THE SAME AS 10% LESS DAMAGE TAKEN.
+	 * `UCataclysmDamageCalculation::ArmorReduction` is 100 x Armor / (Armor + K) capped
+	 * at 75, so armour has diminishing returns of its own and 10% more armour is always
+	 * worth less than 10% of a hit. The row says "increase the player's armor by 10%",
+	 * which is what this does.
+	 *
+	 * IT IS WORTH NOTHING TO A CHARACTER WITH NO ARMOUR, and that is a real difference
+	 * between classes rather than a fault. `game/Data/ClassStats.csv` gives an armour
+	 * line to the Ravager and the Masochist and to no other class, so every other class
+	 * carries armour only from gear, and a More multiplying a base of nothing is nothing.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float ArmourMorePercent = 0.0f;
+
+	/**
 	 * How much less of every resistance, in percent. The Nihil's Embrace.
 	 * Issue #41, slice 2.
 	 *
@@ -312,7 +341,11 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
-			&& SkillsLockedValue <= 0.0f;
+			&& SkillsLockedValue <= 0.0f
+			// AND THE ONE FIELD HERE THAT IS A REWARD RATHER THAN A LOSS. Issues #1820
+			// and #41. March of Progress' armour is still something the floor is doing
+			// to the player, so a floor carrying it is not empty.
+			&& ArmourMorePercent <= 0.0f;
 	}
 };
 
@@ -1176,6 +1209,32 @@ public:
 	 * ticks anywhere on the floor count towards the same total.
 	 */
 	static const TCHAR* JudgmentZonesKey;
+
+	/**
+	 * March of Progress: "Each floor, enemies damage increases by 10%. Killing the
+	 * Commander in each level will increase the player's armor by 10%. If the player
+	 * skips killing too many commanders, they may find they can't withstand the
+	 * increasing damage." Issues #1820 and #41.
+	 *
+	 * THE ROW DESCRIBES A TRADE AND THE TRADE IS THE WHOLE RULE. The damage rises with
+	 * the floor whatever the player does; the armour rises only for the player who goes
+	 * and kills the floor's Commander. Its last sentence is the consequence of the two
+	 * and not a third mechanism: a player who skips commanders keeps the rising damage
+	 * and none of the armour.
+	 *
+	 * THE COMMANDER IS A CREATURE THIS RULE CHOOSES AND NOT A CREATURE THAT CARRIES THE
+	 * COMMANDER TAG. `ACataclysmEnemyCharacter::CommanderMultiplier` makes whoever
+	 * carries that tag 20% faster, and both granters give it to OTHERS, so the tag means
+	 * "buffed by a commander" rather than "is a commander". One tag with two meanings is
+	 * what that class's own comment forbids. The game mode holds this rule's Commander as
+	 * a weak pointer instead, chosen once when the floor is populated.
+	 *
+	 * NOTHING ON THE CHOSEN CREATURE CHANGES. It is an ordinary creature of its kind and
+	 * rung, and the floor panel is the only thing that says a Commander exists. What a
+	 * player would need in order to pick it out of a crowd is issue #1997, deliberately
+	 * not folded in here.
+	 */
+	static const TCHAR* MarchOfProgressKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -2811,6 +2870,29 @@ public:
 		"that does not climb or whose ceiling is below its first step, or a reward of "
 		"nothing is not the row.");
 
+	/**
+	 * What each floor adds to every creature's damage, and what killing the floor's
+	 * Commander adds to the player's armour. Issues #1820 and #41.
+	 *
+	 * BOTH ARE THE ROW'S OWN FIGURES, and it states the same 10% for each:
+	 * "enemies damage increases by 10%" and "increase the player's armor by 10%".
+	 * `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` fails if the row stops
+	 * saying either.
+	 *
+	 * TWO CONSTANTS AND NOT ONE, THOUGH THEY HOLD THE SAME NUMBER. They are two figures
+	 * in the row that happen to agree, on opposite sides of the trade, and tuning one
+	 * must not move the other. `JudgmentZonesMostPercentPerSecond` carries the same
+	 * warning about the same coincidence.
+	 */
+	static constexpr float MarchOfProgressEnemyDamagePercentPerFloor = 10.0f;
+	static constexpr float MarchOfProgressArmourPercentPerCommander = 10.0f;
+
+	static_assert(
+		MarchOfProgressEnemyDamagePercentPerFloor > 0.0f
+			&& MarchOfProgressArmourPercentPerCommander > 0.0f,
+		"A floor that makes creatures no stronger, or a Commander worth no armour, is "
+		"not the row.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -3680,6 +3762,45 @@ public:
 	 */
 	static float JudgmentZonesMagicFindFor(float PlayersMagicFind, bool bVictimIsBoss,
 										   float FloorBonus);
+
+	/**
+	 * What every creature on this floor multiplies its designed attack damage by.
+	 *
+	 * ADDITIVE AND NOT COMPOUNDING, WHICH IS A JUDGEMENT ON A SENTENCE THAT COULD BE
+	 * READ EITHER WAY. "Each floor, enemies damage increases by 10%" gives floor N a
+	 * multiplier of (1 + 0.10 x N), so the tenth floor is twice. Read as compounding it
+	 * would be 1.10^N, which is 2.59 times at ten floors and 117 times at fifty, and no
+	 * amount of armour answers that. `docs/DECISIONS.md` records the rejected reading.
+	 *
+	 * A MULTIPLIER RATHER THAN A SHARE, because that is what the creature takes.
+	 * `ACataclysmEnemyCharacter::SetFloorDepthDamageMultiplier` multiplies the creature's
+	 * DESIGNED damage, so 1.0 means a creature dealing exactly what its kind deals.
+	 *
+	 * FLOOR 1 IS ALREADY 10% AND THAT IS THE ROW AS WRITTEN. "Each floor" includes the
+	 * floor the rule is drawn on; a player who takes the row and sees nothing happen has
+	 * been told the rule is running and shown that it is not.
+	 *
+	 * @param FloorNumber which floor, counted from 1. Below 1 is read as 1
+	 */
+	static float MarchOfProgressDamageMultiplierOnFloor(int32 FloorNumber);
+
+	/**
+	 * How much more armour the player carries for the commanders they have killed, as a
+	 * percentage, or nothing for a player who has killed none.
+	 *
+	 * ONE FIGURE FOR THE WHOLE RUN AND NOT ONE PER FLOOR. The row pays for killing "the
+	 * Commander in each level" and says nothing about the payment ending, so the count is
+	 * cleared when the run ends and not when the floor changes.
+	 *
+	 * IT BECOMES ONE MODIFIER AND NOT ONE PER COMMANDER, which is what makes it additive.
+	 * `StatModifiersFor` writes a single More multiplier of this value, so three
+	 * commanders are x1.3; three separate 10% modifiers would have compounded to x1.331,
+	 * because `UCataclysmStatPipeline` multiplies each source on its own.
+	 *
+	 * @param CommandersKilled how many of this run's commanders the player has killed.
+	 *                         Below zero is read as none
+	 */
+	static float MarchOfProgressArmourMorePercentFor(int32 CommandersKilled);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

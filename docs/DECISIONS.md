@@ -2,6 +2,372 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — A floor that makes every creature hit harder the deeper you go, and one creature whose death pays permanent armour
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the rules stepped every quarter
+second, which creature is the floor's Commander, the per-floor reset and the floor panel's live
+counts), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a third named damage
+multiplier on a creature), `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the
+automation tests for these rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the
+Python checks that hold each rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820),
+[#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+[#1997](https://github.com/sdubois777/Cataclysm/issues/1997). **Applied.**
+
+### The row
+
+`War_March_of_Progress` in `game/Data/DungeonModifiers.csv`: "Each floor, enemies damage increases by
+10%. Killing the Commander in each level will increase the player's armor by 10%. If the player skips
+killing too many commanders, they may find they can't withstand the increasing damage." No text in
+`docs/` says more.
+
+The row's last sentence is the consequence of its first two rather than a third mechanism. A player
+who skips commanders keeps the rising damage and none of the armour; nothing extra had to be built for
+it.
+
+### The mechanism for the damage already existed, and the first plan did not use it
+
+**THE FIRST RULING WAS TO WRITE EACH CREATURE'S STAT INPUTS**, recording that this rule would be the
+first to do so and would therefore own them wholesale, so a later rule would have to merge. That was
+withdrawn before a line was written, because `ACataclysmEnemyCharacter` already carried two named
+damage multipliers and `WriteAttackDamage` already multiplied by both:
+
+| Multiplier | Whose it is |
+| :-- | :-- |
+| `PlacedDamageMultiplier` | `Death_Grave_Tide`, set by the wave that placed the creature |
+| `TimeAliveDamageMultiplier` | `Famine_Ravenous_Hoard`, written every beat for how long it has lived |
+
+That class's own header says why there are two and not one: "two rules can act on one creature and
+neither may overwrite the other". `SetStatInputs` replaces the whole recorded set, so the withdrawn
+route was exactly that hazard, built beside the thing that already solved it. The header also records
+that the second field was called `SetFloorRuleDamageMultiplier` until Grave Tide needed a second
+source, and was renamed because "a general name holding one of two sources is what misleads the next
+reader".
+
+**SO THIS RULE ADDS A THIRD, `SetFloorDepthDamageMultiplier`**, named for where it comes from as the
+other two are: the depth of the floor. Three further things the existing mechanism gets right that the
+stat-input route would not have. A multiplier on the creature's DESIGNED damage never compounds
+through the six public setters that recompute a creature. Setting one rewrites the attack damage alone
+rather than re-running `ApplyStartingAttributes`, which sets health and the energy shield to their
+maximums and would have healed a wounded creature every beat. And an illusion goes on dealing nothing.
+
+### The damage is added each floor and not compounded, which is a judgement on a sentence
+
+"Each floor, enemies damage increases by 10%" reads either way. **Ruled additive under the project
+owner's delegation:** floor N gives a multiplier of (1 + 0.10 x N).
+
+| Floor | Additive, as built | Compounded, rejected |
+| :-- | :-- | :-- |
+| 1 | x1.1 | x1.1 |
+| 10 | x2.0 | x2.59 |
+| 50 | x6.0 | x117 |
+
+The compounded reading is not survivable and no amount of armour answers it: the row's own remedy is
+worth 10% of armour per commander, and armour has diminishing returns. A Python check refuses a power
+in that arithmetic so the reading cannot change quietly.
+
+**FLOOR 1 ALREADY CARRIES THE RULE.** "Each floor" includes the floor the row is drawn on. A player
+who takes the row and sees nothing happen has been told a rule is running and shown that it is not.
+
+### The Commander is a creature this rule chooses, and the Commander TAG could not be used
+
+**THE COMMANDER GAMEPLAY TAG MEANS "BUFFED BY A COMMANDER" AND NOT "IS A COMMANDER".**
+`ACataclysmEnemyCharacter::CommanderMultiplier` makes whoever carries that tag 20% faster, and both
+things that grant it give it to OTHER creatures. One tag with two meanings is what that class's own
+comment forbids.
+
+**So the game mode holds a weak pointer**, chosen when the floor is populated: the highest-rung
+creature the floor placed, ties to the first placed. That is `ChooseTheFloorsMedic`'s rule and its
+reason — a strictly-greater comparison means the choice does not depend on how the list happens to be
+ordered beyond the order the population pass placed them in — and it is called from the same two
+places, because a wave that is still arriving may yet bring a creature of a higher rung.
+
+**NOTHING ON THE CHOSEN CREATURE CHANGES.** It is an ordinary creature of its kind and rung. **So a
+player cannot tell which creature it is**, and the floor panel saying "Commander alive" or "Commander
+slain" tells them only whether one is left. That gap is real and is filed as issue #1997, naming what
+a player would need rather than proposing a mechanism. It was deliberately not folded in: marking a
+creature in play is a different question from this rule's arithmetic and needs its own measurement.
+
+**ONE COMMANDER AT A TIME AND ONE PAYMENT A FLOOR.** The chooser returns early while one is alive, and
+again once this floor's has been killed, so a Horde dungeon's next wave in the same arena cannot be
+paid for a second Commander on a floor already paid for. A Commander killed by anything other than the
+player pays nothing and is not replaced: the player had their chance at this floor's.
+
+### The armour, and three things measured rather than assumed
+
++10% armour for each Commander the player has killed, kept for the whole run, cleared only in
+`LeaveEmpireDungeon`. It has its own field on `FCataclysmPlayerFloorEffects` — no other rule writes
+armour, so nothing forced a new field; the reason is that a shared field is what makes two rules
+silently overwrite each other.
+
+**ONE MODIFIER CARRIES THE WHOLE FIGURE, AND THAT IS WHAT MAKES IT ADDITIVE.** Every dungeon rule's
+stat modifier goes in the More bucket, and `UCataclysmStatPipeline` multiplies each source on its own
+rather than summing them first. Three commanders written as three 10% modifiers would be x1.331;
+written as one 30% modifier they are x1.3, which is what "10% per commander" means.
+
+**10% MORE ARMOUR IS NOT 10% LESS DAMAGE TAKEN, AND THE ROW DOES NOT SAY IT IS.**
+`UCataclysmDamageCalculation::ArmorReduction` is 100 x Armor / (Armor + K), capped at 75, so armour
+has diminishing returns of its own and this is always worth less than 10% of a hit. The row says
+"increase the player's armor by 10%", which is exactly what this writes.
+
+**IT IS WORTH NOTHING TO A CHARACTER WITH NO ARMOUR, AND THAT IS A DIFFERENCE BETWEEN CLASSES.**
+`game/Data/ClassStats.csv` gives an armour line to the Ravager and the Masochist and to no other
+class, so every other class carries armour only from gear, and a More multiplying a base of nothing is
+nothing. A Ravager gains most from this row. That is recorded as a fact about the rule rather than
+defended: it may want tuning against real play.
+
+### The ordering trap that would have made half the rule do nothing
+
+**EVERY OTHER PER-FLOOR FIELD A DUNGEON RULE HOLDS IS CLEARED IN `ApplyFloorRulesToPlayer`.** The
+Commander cannot be, and the reason is the order inside `GoToFloor`: it calls `PopulateFloor`, which
+chooses the Commander, and calls `ApplyFloorRulesToPlayer` **afterwards**. Clearing the Commander
+there wipes the one just chosen.
+
+**IT WOULD HAVE FAILED SILENTLY.** Every floor would have had no Commander, the player could never
+have been paid, and nothing would have reported it: the damage half still works, the panel still
+prints a line, and every test of the damage half still passes. It was found by reading `GoToFloor`
+before writing the reset rather than after a test failed.
+
+So the Commander is forgotten at the top of `PopulateFloor`, before it places anything, and that is
+the only place it is forgotten. A Python check holds both sides of it — that the clearing is in the
+population pass and is not in the applier — and also asserts the order inside `GoToFloor` itself, so
+that if the two calls are ever swapped the check says the clearing must move rather than silently
+becoming wrong.
+
+What `ApplyFloorRulesToPlayer` still does clear is how much of this rule's armour is standing on the
+character, because that call replaces the floor's modifiers wholesale and takes the armour off. The
+next beat sees the applied figure differ from the run's count and puts it back, within a quarter of a
+second. Issue #41's slice 2 built that shape for The Nihil's Embrace.
+
+### What the tests do
+
+Fifteen automation tests in `Cataclysm.DungeonModifierEffects.`, taking that group from 171
+registered to 186. They cover: every creature on the floor hitting harder for its depth and a second
+beat changing nothing; the rise being added rather than compounded, measured on a real creature at
+floor 10 and in the arithmetic at floors 1, 10 and 50; a rung change keeping the rise, measured
+against a creature placed afterwards that never carried it; the Commander being the highest rung
+placed, with the highest placed in the middle so neither "first" nor "last" passes by accident; a tie
+keeping the first placed; nothing being written on the chosen creature, measured against a twin of the
+same kind and rung on damage, health, attack rate and walk speed; the armour reaching the character's
+armour stat; a Commander's death paying and an ordinary creature's not; two commanders being 20% and
+not 21%; a kill that was not the player's paying nothing; an empty floor having no Commander and not
+failing; the armour outliving a floor change and going when the run ends; the panel; and a floor
+change putting every creature's damage back.
+
+**THE FIFTEENTH TEST EXISTS BECAUSE CHOOSING A GUARD-PROOF BREAK FOUND A GAP.** The other fourteen
+place their own creatures and call `ChooseTheFloorsCommander` by hand, which is the right way to
+measure WHICH creature is chosen and cannot measure whether anything in the game calls it at all. A
+break that moved the clearing into the applier — the ordering fault described above — would have
+failed none of them. So one test drives `GoToFloor`, the way the game reaches a new floor, touches
+nothing else, and asserts that a Commander was chosen, that it is one of the floor's own creatures, is
+at the highest rung the floor placed, and is still the Commander four beats later.
+
+**THE ARMOUR TEST CHECKS THE STORED MODIFIER AS WELL AS THE ATTRIBUTE**, for the reason the Starvation
+test checks the energy shield that way: a character whose class line grants no armour has a base of
+nothing, and 1.3 times nothing is nothing — so the attribute alone could pass while the rule reached
+no stat at all.
+
+Seven checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py`, taking that file from 123
+to 130: both of the row's 10% figures; that
+the damage arithmetic adds rather than raises to a power; that the write goes through the creature's
+named multiplier and not its stat inputs, and that `WriteAttackDamage` still multiplies by all three;
+that the armour is one modifier and the stat is spelled `armor`; that the chooser writes nothing on
+the creature; that a floor change puts every creature's multiplier back while keeping the run's count;
+and the ordering check above.
+
+### A Commander killed by something else took two attempts to get right
+
+**THE FIRST VERSION RECORDED THAT THE FLOOR'S COMMANDER WAS GONE ONLY WHEN THE PLAYER KILLED IT.** A
+Commander that burned to death on another rule's ground paid nothing, which is right, and left the
+floor free to choose a second one, which is not: the row names "the Commander in each level", one
+creature a floor. The entry above already said the floor does not get another, so the code and this
+document disagreed.
+
+**IT IS NOW RECORDED BEFORE THE QUESTION OF WHO STRUCK THE BLOW.** The floor loses its Commander to any
+death; the player is paid only for their own.
+
+**THE TEST THAT COVERS IT COULD NOT HAVE CAUGHT IT, AND THAT IS THE PART WORTH KEEPING.** A creature
+killed in an automation world keeps a VALID weak pointer, because a body is removed by a timer that a
+test world's clock never runs. The chooser returns early both while the Commander's pointer is valid
+and when this flag is set, so with the body still standing the test passed either way — it was
+exercising the wrong guard. The test now destroys the body by hand first, which makes the pointer
+stale, so only the flag can refuse the second choice, and the creature still standing beside it is a
+candidate if the flag does not.
+
+### Eight of those assertions would not have compiled, and the whole group was swept
+
+**`FAutomationTestBase::TestEqual` HAS NO GENERIC TEMPLATE BEHIND ITS OVERLOADS.** Eight assertions
+here compared two creature pointers with it, to say which creature the floor had chosen as its
+Commander. `Engine/Source/Runtime/Core/Public/Misc/AutomationTest.h` declares `TestEqual` for concrete
+types only — int32, int64, SIZE_T, float, double, FVector, FTransform, FRotator, FColor, FLinearColor,
+`const TCHAR*`, FStringView, FUtf8StringView, FString, FText, FName — and a pointer to a creature
+converts to none of them. Each of the eight was a compile error waiting for the next build. They use
+`TestSamePtr` now, which is the engine's own assertion for two pointers: it errors when they differ
+and warns separately when either is null.
+
+**THE WHOLE GROUP WAS SWEPT RATHER THAN THE EIGHT FIXED, AND THAT SWEEP IS A MEASUREMENT.** Every
+assertion these fifteen tests make was extracted with a balanced-parenthesis reader — a regular
+expression is not enough, because these calls wrap across lines — and each one's argument types were
+checked against that header:
+
+| Assertion | Uses | What they pass |
+| :-- | :-- | :-- |
+| `TestEqual` | 36 | two floats with a tolerance, two int32 values, or two FStrings |
+| `TestNotNull` | 33 | one pointer |
+| `TestTrue` | 12 | one bool |
+| `TestSamePtr` | 8 | two pointers |
+| `TestNull` | 3 | one pointer |
+
+Every one has an overload. No others were found.
+
+**IT WAS FOUND BY READING THE ENGINE HEADER, NOT BY A BUILD**, while this branch waited for a machine
+window. A build takes minutes, the machine is shared between sessions, and a compile error found there
+costs a window rather than a command.
+
+### The count above was wrong twice before it was measured
+
+**THIS ENTRY SAID THIRTEEN AND THEN FOURTEEN, AND THE ANSWER IS FIFTEEN.** Both wrong figures came
+from counting the tests in my own prose rather than from counting the file. The measurement:
+
+```
+git show 2b380425:...CataclysmDungeonModifierEffectsTests.cpp | grep -c IMPLEMENT_SIMPLE_AUTOMATION_TEST   171
+grep -c IMPLEMENT_SIMPLE_AUTOMATION_TEST ...CataclysmDungeonModifierEffectsTests.cpp                       186
+git diff 2b380425 -- ...CataclysmDungeonModifierEffectsTests.cpp | grep "^+" | grep -c IMPLEMENT_...         15
+```
+
+**THE TWO COMMIT MESSAGES ON THIS BRANCH STILL SAY THIRTEEN AND FOURTEEN.** They were pushed before the
+count was measured and are not being rewritten; this paragraph is the correction, and the design log is
+the record that has to be right. `CLAUDE.md` already says no static count of the Unreal suite is exact
+and that a delta must come from a diff — which is what the third line above is, and what the first two
+figures are not to be read as: they count one file's registration macros, not the group's total. The
+group's own total is measured in the window, on the base, before this branch is believed.
+
+### What the runs found
+
+Measured 2026-09-18 under one editor lock.
+
+**THE BASE WAS MEASURED FIRST, AND THAT IS WHY 186 IS A MEASUREMENT.** The figure registered for this
+group came from counting registration macros in one file, which is a static count — and this project
+records three static methods giving 1,411, 1,564 and 1,726 against a measured 1,664. So the base
+commit `6c003d0e` was checked out with none of this work present and the group run there:
+
+```
+Build: Succeeded - 26 actions, 23 files compiled
+Tests: 171 tests performed, 171 succeeded, 0 failed
+Declared: 2118 tests in the tree at 6c003d0e
+```
+
+171 plus these fifteen is 186, which is what had been registered.
+
+**THE FIRST COMPILE FAILED, ON A TEST FILE, AND IT COST ONE CYCLE.**
+
+```
+CataclysmDungeonModifierEffectsTests.cpp(960,4): error C3861: 'DungeonRuleOn': identifier not found
+Build: Failed - 25 actions, 22 files compiled
+```
+
+A helper that reads how much armour this rule has put on the player was written above the helper it
+calls, and this file declares its helpers by defining them in order with no forward declarations. It
+was moved below the one it calls. **The three engine source files compiled in that same failed build**
+— only the test file failed, so the rule's own code was valid C++ on its first compile. The second
+compile succeeded with seven files compiled.
+
+**THE FIRST WHOLE-SUITE RUN FAILED FIVE OF THESE FIFTEEN TESTS**, and both causes were in one test
+helper rather than in the rule:
+
+```
+Tests: 2133 tests performed, 2128 succeeded, 5 failed:
+  ACommanderKilledByAnythingElsePaysNothing, AFloorChangePutsEveryCreaturesDamageBack,
+  ARungChangeKeepsTheFloorsRise, EachCommanderAddsItsTenAndTheyDoNotCompound,
+  EveryCreatureOnTheFloorHitsHarderForHowDeepItIs
+Declared: 2133 tests in the tree at 4b790843; 2133 performed, gap 0
+```
+
+**A creature spawned straight into the world has no attack damage.** It never goes through the floor's
+population pass, so `StartingAttackDamage` is unset, `WriteAttackDamage` skips its write and the
+attribute stays at zero. The run said so outright: "Expected 'the creatures have damage to raise' to
+be true". Three failures read a creature's damage and a fourth needed one creature to kill another.
+
+**And setting a rarity rung gives the creature its designed evasion back, which made these tests
+FLAKY rather than wrong.** `SpawnImpWithHealth` zeroes evasion and `SetRarityStep` ends in
+`ApplyStartingAttributes`, which writes the designed figure back; a blow is rolled against evasion. The
+evidence is inside the run: two tests killed an Elite by the same route, one passed and one failed on
+"the player's blow killed it". The one that passed could have failed on the next run.
+
+The helper now gives the creature a designed attack damage before the rung, zeroes the evasion again
+after it, and wounds it back to 100 health and no energy shield last.
+
+**TWO WHOLE-SUITE RUNS, AND THE SECOND IS THE FIGURE OF RECORD**, because the first was taken before
+that repair.
+
+| Whole suite | Head | What it printed |
+| :-- | :-- | :-- |
+| 1 of 2 | `4b790843` | 2133 performed, 2128 succeeded, **5 failed**, declared 2133, gap 0 |
+| 2 of 2, the run of record | `29c1e7b7` | 2133 performed, 2133 succeeded, 0 failed, declared 2133, gap 0 |
+
+```
+Tests: 2133 tests performed, 2133 succeeded, 0 failed
+Declared: 2133 tests in the tree at 29c1e7b7; 2133 performed, gap 0; every declared test was
+reported by the run.
+```
+
+39 tests reported skipping part of what they check in each run; all are art tests and a worktree has
+no Paragon content. The group printed 186 performed, 186 succeeded, 0 failed after the repair, and
+again as the restored half of all three guard proofs.
+
+### The three guard proofs
+
+All three printed `PROVED`, none crashed, every restored half 186 performed and 0 failed, and the
+working tree was checked clean after each.
+
+| Proof | What was broken | What failed | Predicted |
+| :-- | :-- | :-- | :-- |
+| 1 | the floor's multiplier removed from the one line a creature's damage is written | `EveryCreatureOnTheFloorHitsHarderForHowDeepItIs`, `TheFloorsRiseIsAddedEachFloorAndNotCompounded`, `ARungChangeKeepsTheFloorsRise`, `AFloorChangePutsEveryCreaturesDamageBack` | the same four |
+| 2 | each Commander's armour compounding instead of adding | `EachCommanderAddsItsTenAndTheyDoNotCompound`, `TheCommandersArmourReachesTheCharactersArmourStat` | the same two |
+| 3 | the check that the player struck the last blow removed | `ACommanderKilledByAnythingElsePaysNothing` | the same one |
+
+**PROOF 2 LEAVES THE ONE-COMMANDER TEST PASSING ON PURPOSE.** Adding and compounding agree exactly at
+nought commanders and at one, which is where `KillingTheCommanderPaysArmourAndOtherKillsDoNot`
+measures. That test still passing is what says the break changed the rule's READING rather than its
+wiring; had it failed too, the break would have been proving something coarser than intended.
+
+**PROOF 3'S BREAK HAD TO BE REPOINTED BEFORE IT WOULD MATCH.** It originally anchored on the line
+that follows the killer check, `bMarchOfProgressCommanderSlain = true;`. That line moved ABOVE the
+check when the rule was corrected so that a Commander killed by anything at all is gone from the
+floor, leaving only the payment behind it — so the anchor matched nothing and the proof would have
+tested nothing. Every anchor was re-checked to occur exactly once before any proof ran.
+
+### The Python side
+
+```
+python -m pytest tools/tests/
+3493 passed, 8 skipped in 35.02s
+```
+
+**AND A CHECK NOBODY HAD MENTIONED CAUGHT A REAL OMISSION.**
+`tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py` holds every field of
+`FCataclysmPlayerFloorEffects` to being named by both `IsEmpty` and `Describe`, each of which is
+hand-written field by field. The new armour field was in `Describe` and not in `IsEmpty`, so a floor
+on which the player carried armour from commanders would have reported itself as empty. That check is
+named after the invariant it defends rather than after any rule, which is why narrowing a run to the
+dungeon-rule checks never reaches it.
+
+### What the tests do not show
+
+- **That a creature placed by the floor itself, rather than by a test, carries the rise.** Every test
+  here places its own creatures, because that is the only way to decide which rung each one holds.
+  The one test that drives the real route a floor is reached by checks which creature is chosen as the
+  Commander and not what the floor's creatures deal.
+- **That a player can find the Commander.** Nothing marks it in play, the tests reach it by asking the
+  game mode, and no test could show a player finding it. Issue #1997.
+- **What a deep floor of this is like to play.** The arithmetic is tested at floors 1, 10 and 50 and
+  nothing here measures whether floor 30 of a March of Progress dungeon is survivable for a class with
+  no armour line.
+
+---
+
 ## 2026-09-18 — Every place that asks for a stat is listed with what it hands over, because a call that stops early is wrong nowhere on the page
 
 **Affects:** `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (new; the

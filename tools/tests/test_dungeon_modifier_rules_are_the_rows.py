@@ -2926,3 +2926,250 @@ def test_judgment_zones_three_at_once_follows_both_precedents():
         f"Infernal Rain {rain}, Singularity Wells {wells}. Three was followed as the "
         "figure this library already uses; if one of them is meant to differ now, say "
         "which and why in docs/DECISIONS.md.")
+
+
+def test_march_of_progress_row_still_states_both_of_its_ten_per_cents():
+    """Both of this rule's figures are the row's own, and it is the whole rule.
+
+    "ENEMIES DAMAGE INCREASES BY 10%" and "INCREASE THE PLAYER'S ARMOR BY 10%". Nothing
+    else in this rule is a number: how the damage accumulates is a reading of a sentence,
+    and who the Commander is is a choice, but both quantities came off the row.
+
+    TWO CONSTANTS HOLD ONE NUMBER, AND THAT IS DELIBERATE. They are opposite sides of the
+    row's trade and tuning one must not move the other, so this check reads each against
+    its own half of the sentence rather than checking that they agree with each other.
+    """
+    words = flat(rows()["War_March_of_Progress"]["Description"])
+    lowered = words.lower()
+
+    assert "enemies damage increases by 10%" in lowered, (
+        "The War March of Progress row no longer says enemies' damage increases by 10% a "
+        "floor. Check MarchOfProgressEnemyDamagePercentPerFloor against it. " + words)
+    assert "armor by 10%" in lowered, (
+        "The War March of Progress row no longer says the player's armor increases by "
+        "10%. Check MarchOfProgressArmourPercentPerCommander against it. " + words)
+
+    assert constant("MarchOfProgressEnemyDamagePercentPerFloor") == 10.0, (
+        "MarchOfProgressEnemyDamagePercentPerFloor no longer holds the 10% the row "
+        "states for enemies' damage.")
+    assert constant("MarchOfProgressArmourPercentPerCommander") == 10.0, (
+        "MarchOfProgressArmourPercentPerCommander no longer holds the 10% the row states "
+        "for the player's armor.")
+
+
+def test_march_of_progress_damage_is_additive_and_not_compounded():
+    """"Each floor, enemies damage increases by 10%" is read as adding, not compounding.
+
+    A JUDGEMENT ON A SENTENCE THAT COULD BE READ EITHER WAY, and the reading is what makes
+    the rule survivable. Additive, the tenth floor is twice; compounded it is 2.59 times,
+    and the fiftieth floor of a fifty-floor dungeon is 117 times, which no amount of
+    armour answers. docs/DECISIONS.md records the rejected reading.
+
+    THE ARITHMETIC IS CHECKED AND NOT THE COMMENT. A compounded rule would be written with
+    a power, so this refuses one and requires the multiplication that makes it additive.
+    """
+    source = EFFECTS_SOURCE.read_text(encoding="utf-8")
+    body = body_of(
+        source,
+        "float UCataclysmDungeonModifierEffects::MarchOfProgressDamageMultiplierOnFloor(")
+
+    assert "MarchOfProgressEnemyDamagePercentPerFloor" in body, (
+        "MarchOfProgressDamageMultiplierOnFloor no longer uses the row's own per-floor "
+        "figure, so the 10% the row states reaches nothing.")
+    assert not re.search(r"\bFMath::Pow\b|\bpowf?\s*\(", body), (
+        "MarchOfProgressDamageMultiplierOnFloor now raises something to a power, which is "
+        "the compounded reading this rule deliberately rejected. At fifty floors that is "
+        "117 times the creature's damage. Say in docs/DECISIONS.md if the reading has "
+        "changed.")
+    assert re.search(r"1\.0f\s*\+", body), (
+        "MarchOfProgressDamageMultiplierOnFloor no longer adds to 1, so it is no longer a "
+        "multiplier on the creature's designed damage.")
+
+
+def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_inputs():
+    """The floor's damage rise goes through the creature's own third named multiplier.
+
+    THE MECHANISM EXISTED BEFORE THIS RULE AND THIS RULE WAS FIRST WRITTEN WITHOUT IT.
+    `ACataclysmEnemyCharacter` already carried two named damage multipliers, one for the
+    wave that placed a creature (Death_Grave_Tide) and one for how long it has lived
+    (Famine_Ravenous_Hoard), with its header saying why there are two and not one: "two
+    rules can act on one creature and neither may overwrite the other". This rule adds a
+    third rather than writing the creature's stat inputs, which are replaced wholesale and
+    would have been exactly that hazard.
+
+    THE CHECK IS ON THE WRITE AND NOT ON THE COMMENT, so deleting the call fails it.
+    """
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    step = body_of(game_mode, "void ACataclysmDungeonGameMode::StepMarchOfProgress(")
+
+    assert "SetFloorDepthDamageMultiplier" in step, (
+        "StepMarchOfProgress no longer sets the creature's floor-depth damage multiplier, "
+        "so the floor's damage increase reaches no creature.")
+    assert "SetStatInputs" not in step, (
+        "StepMarchOfProgress now writes a creature's stat inputs. SetStatInputs replaces "
+        "the whole recorded set, so a later rule writing one stat would silently drop "
+        "this one. The creature's named multipliers exist so that cannot happen.")
+
+    creature = (
+        REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+        / "CataclysmEnemyCharacter.cpp").read_text(encoding="utf-8")
+    write = body_of(creature, "void ACataclysmEnemyCharacter::WriteAttackDamage(")
+
+    missing = [name for name in ("PlacedDamageMultiplier", "TimeAliveDamageMultiplier",
+                                 "FloorDepthDamageMultiplier") if name not in write]
+    assert not missing, (
+        f"WriteAttackDamage no longer multiplies by {', '.join(missing)}. Every floor "
+        "rule that changes a creature's damage owns one of these, and a rule whose "
+        "multiplier is dropped here does nothing at all, silently.")
+
+
+def test_march_of_progress_armour_is_one_modifier_and_not_one_per_commander():
+    """Three commanders are 1.3 times the armour, not 1.331 times.
+
+    EVERY DUNGEON RULE'S STAT MODIFIER GOES IN THE "MORE" BUCKET, and
+    `UCataclysmStatPipeline` multiplies each source on its own rather than summing them
+    first. So the whole figure has to be carried by ONE modifier: three separate 10%
+    modifiers would compound, and "10% per commander" would stop meaning what it says.
+
+    THE ARITHMETIC MULTIPLIES THE COUNT, which is what makes one modifier enough.
+    """
+    source = EFFECTS_SOURCE.read_text(encoding="utf-8")
+    body = body_of(
+        source,
+        "float UCataclysmDungeonModifierEffects::MarchOfProgressArmourMorePercentFor(")
+
+    assert "MarchOfProgressArmourPercentPerCommander" in body, (
+        "MarchOfProgressArmourMorePercentFor no longer uses the row's own per-commander "
+        "figure, so the 10% the row states reaches nothing.")
+    assert "CommandersKilled" in body, (
+        "MarchOfProgressArmourMorePercentFor no longer reads how many commanders were "
+        "killed, so every count pays the same.")
+
+    modifiers = body_of(
+        source,
+        "TMap<FName, TArray<FCataclysmStatModifier>> "
+        "UCataclysmDungeonModifierEffects::StatModifiersFor(")
+    writes = modifiers.count("Effects.ArmourMorePercent")
+
+    assert writes == 1, (
+        f"StatModifiersFor writes the March of Progress armour {writes} times rather than "
+        "once. Each write is a separate More multiplier and the pipeline multiplies them "
+        "separately, so more than one compounds: three 10% modifiers are 1.331 times "
+        "rather than the 1.3 the row means.")
+
+    assert 'DungeonModifierEffectsArmourStat = TEXT("armor")' in source, (
+        "The armour stat is no longer spelled armor. UCataclysmPlayerClassStats::"
+        "StatToAttribute holds that spelling, and a modifier keyed by a name it does not "
+        "hold is written nowhere, silently.")
+
+
+def test_march_of_progress_commander_is_chosen_and_marks_the_creature_with_nothing():
+    """The floor's Commander is a creature this rule remembers, not one carrying a tag.
+
+    THE COMMANDER GAMEPLAY TAG MEANS "BUFFED BY A COMMANDER" AND NOT "IS A COMMANDER".
+    `ACataclysmEnemyCharacter::CommanderMultiplier` makes whoever carries it 20% faster,
+    and both things that grant it give it to OTHER creatures. One tag with two meanings is
+    what that class's own comment forbids, so this rule holds a weak pointer instead and
+    writes nothing on the creature it chooses.
+
+    WHAT A PLAYER WOULD NEED IN ORDER TO SEE WHICH CREATURE IT IS IS ISSUE #1997, filed
+    rather than folded into this rule.
+    """
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    chooser = body_of(game_mode, "void ACataclysmDungeonGameMode::ChooseTheFloorsCommander(")
+
+    assert "MarchOfProgressCommander = " in chooser, (
+        "ChooseTheFloorsCommander no longer records which creature it chose, so nothing "
+        "can pay the player for killing it.")
+    assert "RarityStep" in chooser, (
+        "ChooseTheFloorsCommander no longer compares rungs, so the Commander is no longer "
+        "the highest-rung creature the floor placed.")
+
+    forbidden = [name for name in ("AddLooseGameplayTag", "CommanderTag", "SetRarityStep",
+                                  "SetAttackDamage", "SetHealth")
+                 if name in chooser]
+    assert not forbidden, (
+        f"ChooseTheFloorsCommander now changes the creature it chooses: {forbidden}. The "
+        "ruling is that nothing on it changes -- the Commander tag already means 'buffed "
+        "by a commander', and marking the creature in play is issue #1997.")
+
+
+def test_march_of_progress_puts_every_creatures_damage_back_on_a_floor_change():
+    """A creature that lives through a change of floor stops carrying the last one's rise.
+
+    A HORDE DUNGEON'S WAVES SHARE ONE ARENA, so a creature can live through the floor
+    change, and the next floor may not carry this row at all. The two multipliers already
+    on the creature are put back to 1.0 in one loop over every creature in the world, for
+    exactly this reason; this rule's has to go in the same loop.
+
+    THE COUNT OF COMMANDERS KILLED MUST NOT BE IN THAT RESET. The row pays it "in each
+    level" and never takes it back, so it ends with the run and not with the floor.
+    """
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    floor_change = body_of(game_mode,
+                           "void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer(")
+
+    assert "SetFloorDepthDamageMultiplier(1.0f)" in floor_change, (
+        "A floor change no longer puts every creature's floor-depth damage multiplier "
+        "back. A creature that lives through a Horde dungeon's change of wave would keep "
+        "the last floor's damage rise on a floor that may not carry the row.")
+    assert "MarchOfProgressArmourApplied = 0.0f" in floor_change, (
+        "A floor change no longer forgets how much March of Progress armour was applied. "
+        "The apply replaces the floor's modifiers wholesale, so the armour comes off the "
+        "character and the next beat would believe it was still on.")
+    assert "MarchOfProgressCommandersKilled = 0" not in floor_change, (
+        "A floor change now clears how many commanders the player has killed. The row "
+        "pays for the Commander 'in each level' and never takes it back, so that count "
+        "ends with the run -- in LeaveEmpireDungeon -- and not at the stairs.")
+
+    leaving = body_of(game_mode, "void ACataclysmDungeonGameMode::LeaveEmpireDungeon(")
+    assert "MarchOfProgressCommandersKilled = 0" in leaving, (
+        "Leaving the dungeon no longer clears how many commanders were killed, so the "
+        "armour earned in one run would still be on the player in the next.")
+
+
+def test_march_of_progress_forgets_its_commander_before_the_floor_is_populated():
+    """The floor's Commander is forgotten where the floor's creatures are decided.
+
+    THIS IS AN ORDERING TRAP AND IT WAS HIT WHILE BUILDING THE RULE. Every other per-floor
+    field this rule holds is cleared in ApplyFloorRulesToPlayer with the rest of the
+    dungeon rules' per-floor state. The Commander cannot be, because GoToFloor calls
+    PopulateFloor -- which chooses the Commander -- and calls ApplyFloorRulesToPlayer
+    AFTERWARDS. Clearing it there wipes the Commander that was just chosen, so every floor
+    has none, the player can never be paid, and nothing fails: the damage half of the rule
+    still works and the panel still prints a line.
+
+    SO THE CHECK IS ON BOTH SIDES. It has to be forgotten in PopulateFloor and it must not
+    be forgotten in the applier.
+    """
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    populate = body_of(game_mode, "int32 ACataclysmDungeonGameMode::PopulateFloor(")
+    applier = body_of(game_mode,
+                      "void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer(")
+
+    assert "MarchOfProgressCommander = nullptr" in populate, (
+        "PopulateFloor no longer forgets the last floor's Commander, so a floor whose "
+        "Commander is still alive keeps it and the new floor's creatures are never "
+        "considered.")
+    assert "bMarchOfProgressCommanderSlain = false" in populate, (
+        "PopulateFloor no longer forgets that the last floor's Commander was killed, so "
+        "the chooser returns early for ever and no later floor has a Commander at all.")
+
+    assert "MarchOfProgressCommander = nullptr" not in applier, (
+        "ApplyFloorRulesToPlayer now clears the floor's Commander. GoToFloor populates "
+        "the floor first and applies the floor rules afterwards, so this wipes the "
+        "Commander the population pass just chose: every floor would have none and no "
+        "test of the damage half would notice.")
+    assert "bMarchOfProgressCommanderSlain = false" not in applier, (
+        "ApplyFloorRulesToPlayer now clears whether the Commander was slain, which runs "
+        "after the population pass chose one. Forget it in PopulateFloor instead.")
+
+    # THE ORDER ITSELF, SO THE REASON ABOVE CANNOT QUIETLY STOP BEING TRUE. If GoToFloor
+    # is ever rearranged to apply the floor rules before populating, the two assertions
+    # above become the wrong way round and this is what says so.
+    go = body_of(game_mode, "bool ACataclysmDungeonGameMode::GoToFloor(")
+    assert go.index("PopulateFloor()") < go.index("ApplyFloorRulesToPlayer()"), (
+        "GoToFloor now applies the floor rules before populating the floor. March of "
+        "Progress forgets its Commander in PopulateFloor precisely because that ran "
+        "first; with the order swapped, the Commander must be forgotten in the applier "
+        "instead. Check docs/DECISIONS.md and move it.")

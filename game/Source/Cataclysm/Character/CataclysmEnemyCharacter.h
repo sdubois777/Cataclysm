@@ -528,6 +528,33 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetTimeAliveDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies this creature's attack damage for a rule that reads how deep the floor
+	 * is. `War_March_of_Progress`. Issues #1820 and #41.
+	 *
+	 * NAMED FOR WHERE IT COMES FROM, like the two above, and for the reason the middle
+	 * one records: a general name holding one of several sources is what misleads the
+	 * next reader. This one comes from the floor's depth and from nothing else.
+	 *
+	 * THREE MULTIPLIERS NOW, AND THE REASON IS THE ONE THE FIRST OF THEM GIVES. Three
+	 * rules can act on one creature and none may overwrite another: a Horde wave sets
+	 * the placed one, Ravenous Hoard writes the time-alive one every beat, and March of
+	 * Progress writes this one every beat. `WriteAttackDamage` multiplies by all three.
+	 *
+	 * ITS VALUE IS THE SAME FOR EVERY CREATURE ON THE FLOOR, unlike the other two, which
+	 * differ per creature. It is still held per creature rather than once on the game
+	 * mode, because that is what makes it survive a recompute: `ApplyStartingAttributes`
+	 * rewrites the damage from the designed figure and would drop a multiplier the
+	 * creature did not carry.
+	 *
+	 * Everything the two setters above say about the route, the designed figure, the
+	 * illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetFloorDepthDamageMultiplier(float NewMultiplier);
+
 	//~ Dying. Issue #522.
 
 	/**
@@ -1355,10 +1382,10 @@ protected:
 	 * decided and writes the damage through that helper, and SIX PUBLIC SETTERS
 	 * re-run it -- `SetHealth`, `SetAttackDamage`, `SetArmour`, `SetRarityStep`,
 	 * `SetEnergyShieldFraction` and `DrawModifiersForRarity` -- each recomputing
-	 * the attack damage from `StartingAttackDamage`, the rarity's damage scale and the
-	 * two floor-rule multipliers. `SetPlacedDamageMultiplier` and
-	 * `SetTimeAliveDamageMultiplier` write it through the helper too. A zero written
-	 * once is undone by any of them.
+	 * the attack damage from `StartingAttackDamage`, the rarity's damage scale and every
+	 * floor-rule multiplier. `SetPlacedDamageMultiplier`,
+	 * `SetTimeAliveDamageMultiplier` and `SetFloorDepthDamageMultiplier` write it through
+	 * the helper too. A zero written once is undone by any of them.
 	 *
 	 * TODAY NOTHING CALLS ONE AFTER A FLOOR IS POPULATED, measured 2026-09-14
 	 * across `game/Source` outside the tests: the only caller of any of the six
@@ -1395,6 +1422,16 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	float TimeAliveDamageMultiplier = 1.0f;
+
+	/**
+	 * What a rule reading the floor's depth multiplies this creature's attack damage by.
+	 * 1.0 is the creature's own damage. `War_March_of_Progress`. Issues #1820 and #41.
+	 *
+	 * A THIRD FIELD FOR A THIRD SOURCE, for the reason the pair above gives: three rules
+	 * can act on one creature and none may overwrite another.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	float FloorDepthDamageMultiplier = 1.0f;
 
 	/**
 	 * What SetArmour was last asked for. Zero means no armour.

@@ -1145,6 +1145,18 @@ void ACataclysmEnemyCharacter::SetTimeAliveDamageMultiplier(float NewMultiplier)
 	RewriteAttackDamage();
 }
 
+void ACataclysmEnemyCharacter::SetFloorDepthDamageMultiplier(float NewMultiplier)
+{
+	const float Wanted = FMath::Max(0.0f, NewMultiplier);
+	if (FloorDepthDamageMultiplier == Wanted)
+	{
+		return;
+	}
+
+	FloorDepthDamageMultiplier = Wanted;
+	RewriteAttackDamage();
+}
+
 void ACataclysmEnemyCharacter::RewriteAttackDamage()
 {
 	// THE DAMAGE ALONE, AND NOT `ApplyStartingAttributes`, which sets health and the
@@ -1516,10 +1528,15 @@ void ACataclysmEnemyCharacter::WriteAttackDamage(float DamageScale)
 	// what uncovered it and because a public setter documented as working should
 	// work.
 	//
-	// AND A DUNGEON FLOOR'S RULES MULTIPLY THE SCALED FIGURE, `Famine_Ravenous_Hoard`
-	// for time alive and `Death_Grave_Tide` for the wave that placed the creature. Both,
-	// so neither rule's figure is lost when the other writes. See
-	// `SetPlacedDamageMultiplier`.
+	// AND A DUNGEON FLOOR'S RULES MULTIPLY THE SCALED FIGURE: `Famine_Ravenous_Hoard`
+	// for time alive, `Death_Grave_Tide` for the wave that placed the creature, and
+	// `War_March_of_Progress` for how deep the floor is. All three, so no rule's figure
+	// is lost when another writes. See `SetPlacedDamageMultiplier`.
+	//
+	// COUNT THE FACTORS RATHER THAN READING A NUMBER HERE. This comment named two rules
+	// and said "both" until March of Progress made it three, which is the trap issue
+	// #1760 records: a comment that counts what is under it goes wrong without being
+	// touched and nothing reports it.
 	if (StartingAttackDamage >= 0.0f
 		&& AbilitySystemComponent->HasAttributeSetForAttribute(Damage))
 	{
@@ -1527,7 +1544,7 @@ void ACataclysmEnemyCharacter::WriteAttackDamage(float DamageScale)
 			Damage, bIsAnIllusion
 				? 0.0f
 				: StartingAttackDamage * DamageScale * PlacedDamageMultiplier
-					  * TimeAliveDamageMultiplier);
+					  * TimeAliveDamageMultiplier * FloorDepthDamageMultiplier);
 	}
 }
 
