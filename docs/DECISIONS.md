@@ -228,18 +228,96 @@ Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` hold th
 two stated figures against the constants, the four phrases the readings rest on, the reach being the
 contagion library's constant rather than a number, and the lord's rung being the shared ceiling.
 
+**The test for the mass kill not feeding itself had to be built so that it could fail, and that took
+two goes.** The proofs below say what each one was for and what was read to find it.
+
+### What the runs found
+
+Measured 2026-09-18 UTC, which is 2026-09-17 in this machine's local time; the engine log stamps UTC
+and the entry headings use the local date. All of it under one editor lock.
+
+**THREE WHOLE-SUITE RUNS, TWO MORE THAN THE ONE FIGURE THE OWNER SET**, because a test-only repair
+followed each of the first two. They are named here with their heads and their reasons rather than
+reduced to the last one.
+
+| Whole suite | Head | Why it ran | What it printed |
+| :-- | :-- | :-- | :-- |
+| 1 of 3 | `271c15ca` | after the debuff repair below | 2070 performed, 2070 succeeded, 0 failed, gap 0 |
+| 2 of 3 | `75324d41` | after the wounding blows below | 2070 performed, 2070 succeeded, 0 failed, gap 0 |
+| 3 of 3, **the run of record** | `f4a7c7e2` | after the creature beyond the reach | 2070 performed, 2070 succeeded, 0 failed, gap 0 |
+
+Each run also reported 39 tests skipping part of what they check. All are art tests, and a worktree has
+no Paragon content. The group `Cataclysm.DungeonModifierEffects.` printed 138 performed, 138 succeeded,
+0 failed at `75324d41` and again at `f4a7c7e2`.
+
+**The first run failed nine of the eleven new tests, and it was the tests that were wrong.** Every
+failure said no disease spread, and the engine log named the cause: a corpse given TWO debuffs carried
+one. `Status.DoT.Bleed` is on a LIVING creature and is NOT on the corpse when the death is announced,
+so the tests had nothing left to pass on. That is the rule reading the row correctly, since the row
+says the dead enemy's REMAINING debuffs, so the tests changed and the rule did not. They now use
+`Status.Debuff.Cripple` and `Status.Debuff.Weaken`, which state four and five seconds in
+`game/Data/StatusEffects.csv`, and the helper that applies one states a strength and returns whether
+the tag is really on the character rather than whether the call reported success.
+`Status.Debuff.Wither` was tried first and dropped: its row states no duration.
+
+### The three guard proofs
+
+| Proof | What was removed | What failed |
+| :-- | :-- | :-- |
+| 1 | the 25% chance, so every roll spreads | `ARollAboveTheChanceSpreadsNothingAndBreaksTheChain` |
+| 2 | the ceiling that ends a chain at five | `AChainOfFiveKillsEveryCreatureNearbyAndBringsOneLord` and `TheMassKillDoesNotFeedItself` |
+| 3 | the check on `bEpidemicKilling` | `TheMassKillDoesNotFeedItself`, on one named assertion |
+
+All three printed `PROVED`, none crashed, and each restored half printed 138 performed, 138 succeeded,
+0 failed. Proof 1 was measured at `271c15ca`, before the two test commits; its predicted test is
+untouched by them and its restored half is re-established by the run of record. Proofs 2 and 3 were
+measured at `f4a7c7e2`.
+
+**Proof 2 was registered as one failing test and measured two.** The correction was made before the
+run rather than after it: `TheMassKillDoesNotFeedItself` also drives a chain of five and then reads the
+floor panel, so it sees the same chain that never completes.
+
+**Proof 3 could not fire at all as the test was first written**, and that was found by reading the code
+rather than by spending four builds on it. **A death caused by writing health to zero carries as its
+killer whoever last DAMAGED the creature, and nobody at all if nothing did.**
+`UCataclysmCombatEvents::NoteDeath` does not work out who killed a creature; it reads the creature's
+own last blow. `UCataclysmCombatEvents::NoteBlow` writes that record only for a blow that reached
+health -- "A blow that did not reach health cannot be the one that killed, so it leaves no record". The
+creatures the mass kill takes had only been given a debuff, so they died anonymously and the listener
+refused them at its killer check whether or not the flag was there. **The first repair** was therefore
+to have the player wound those three creatures before the chain, so their record names the player.
+
+**A second reading showed those blows were necessary and not sufficient.** A chain that fed itself
+would still leave the floor panel reading exactly what it reads now, because `NoteDeathForEpidemic`
+raises the chain and THEN calls `EpidemicEndTheChain`, which ends by setting the chain back to nothing,
+and because the ceiling of one Plague Lord a floor is reached on either path.
+
+**What a second chain changes is reach**, since the end-of-chain kill is centred on the creature whose
+death completed the chain. The first is centred on the corpse at 1000 and reaches 600 cm, to 1600. A
+chain feeding itself re-centres on the farthest corpse, at 1300, and reaches to 1900. **The second
+repair** stands one creature at 1850, outside the first reach and inside the second, and asserts it was
+not killed. That assertion was registered in these words before the proof ran, and is the only one that
+failed:
+
+```
+Error: Expected 'the creature standing beyond the mass kill's reach was not killed' to be false.
+```
+
+The floor panel assertion in the same test did not fail, exactly as predicted, and it now carries a
+comment saying it reads the same on both paths and so checks the ordinary behaviour rather than the
+flag.
+
+**The flag is kept.** Its comment names the case it guards -- a creature the player damaged but did not
+kill, which the mass kill then finishes -- and names the test that measures it.
+
 ### What the tests do not show
 
-- **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the automation run and the three guard proofs wait for this machine's next free window.
-- **One of the three proofs may not fire, and that is known before it runs.** The proof that removes the
-  flag stopping the mass kill feeding itself only means something if those deaths reach the listener
-  with the player recorded as their killer. If the run shows the proof failing nothing, the honest
-  outcomes are to keep the flag as defensive and say it is unproved, or to drop it; the entry will be
-  corrected with whichever the measurement supports rather than claiming a proof that did not happen.
 - **How often this fires in real play.** Every test pins the roll.
 - **What a chain does to a fight**, and what the mass kill actually pays: the loot roll and the
   experience grant were read in the code, not counted in a test.
+- **How deep a chain would feed itself without the flag.** The test measures that it does not feed
+  itself at all with the flag in place, and the proof measures that one nested chain reaches further.
+  Anything beyond that was reasoned from the code and not counted.
 
 ---
 
