@@ -1817,6 +1817,13 @@ public:
 	 * `Chaos_Wild_Magic`, `Death_Vengful_Wraiths`, `Chaos_Unstable_Portal`,
 	 * `Pestilence_Epidemic` and `War_Royal_Guard`. Ten is inside that vocabulary
 	 * rather than a new number.
+	 *
+	 * THE ROW IT WAS DERIVED FROM NOW HAS A RULE OF ITS OWN, and that rule's
+	 * `VengefulWraithsChancePercent` is declared as THIS constant rather than
+	 * writing ten a second time. Two rules holding one design figure must not be
+	 * able to drift apart. The tie is written that way round only because a
+	 * static member can name only one declared before it, and this one is first;
+	 * the borrowing here still runs the other way, from Spore Clouds to the row.
 	 */
 	static constexpr float SporeCloudsChancePercentOnDeath = 10.0f;
 
@@ -2582,8 +2589,21 @@ public:
 	 * The chance a creature the player kills leaves a wraith.
 	 *
 	 * STATED BY THE ROW: "Enemies have a 10% chance of turning into wraiths when killed".
+	 *
+	 * DECLARED AS `SporeCloudsChancePercentOnDeath` AND NOT AS TEN, AND THAT READS
+	 * BACKWARDS UNTIL YOU KNOW WHY. That constant was DERIVED FROM THIS ROW on 2026-09-14,
+	 * as the comment above it says at length: this is the only row in the table stating a
+	 * figure for a chance fired by ANY enemy's death. So the two are one design figure,
+	 * and the rule this project follows everywhere else -- the reach, the Elite floor and
+	 * the Herald ceiling all name an existing constant rather than repeat its number --
+	 * says they must not be able to drift apart.
+	 *
+	 * THE DIRECTION IS FORCED BY DECLARATION ORDER, not chosen. A static member can only
+	 * name one declared before it, and Spore Clouds' sits 765 lines above this. The
+	 * comment on that one points back here so a reader coming from either end finds the
+	 * other. Ruled under the project owner's delegation.
 	 */
-	static constexpr float VengefulWraithsChancePercent = 10.0f;
+	static constexpr float VengefulWraithsChancePercent = SporeCloudsChancePercentOnDeath;
 
 	/**
 	 * What a wraith takes off every hit, as ONE multiplicative source.

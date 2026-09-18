@@ -34,6 +34,7 @@
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorGenerator.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
 #include "GameplayTagsManager.h"
@@ -162,6 +163,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one where an Elite grows on the deaths around it. Issues #1820, #41. */
 	const FName BloodForgedChampions(
 		UCataclysmDungeonModifierEffects::BloodForgedChampionsKey);
+
+	/** And the one where a kill of the player's stands back up. Issues #1820, #41. */
+	const FName VengefulWraiths(UCataclysmDungeonModifierEffects::VengefulWraithsKey);
 
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
@@ -811,6 +815,83 @@ namespace CataclysmDungeonModifierEffectsTest
 		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
 		return Test.TestTrue(TEXT("the player's blow killed it"),
 							 UCataclysmSkillEffects::IsDead(Victim));
+	}
+
+	/** Any combat stat of a creature, read off the attribute rather than worked out. */
+	float CombatStatOf(const AActor* Who, const FGameplayAttribute& Which)
+	{
+		const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Who);
+		return Theirs ? Theirs->GetNumericAttribute(Which) : -1.0f;
+	}
+
+	/**
+	 * The floor every Vengeful Wraiths test starts from, carrying any other rows a test
+	 * needs beside it. Issues #1820 and #41.
+	 *
+	 * EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so the only creature on the floor
+	 * afterwards is the one a wraith rose from.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheWraithsRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+		const TArray<FName>& AlsoCarrying = {})
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonModifiers = {VengefulWraiths};
+		Mode->DungeonModifiers.Append(AlsoCarrying);
+		Mode->FloorNumber = 1;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString WraithsPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(VengefulWraiths);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/**
+	 * The one creature the floor holds, which is the wraith when one has risen.
+	 *
+	 * THE FLOOR'S LIST AND NOT THE WORLD'S, because a test spawns the creature it kills
+	 * itself and that one is never in `FloorEnemies`. A wraith is put there by the rule,
+	 * the way every creature the floor places is.
+	 */
+	ACataclysmEnemyCharacter* TheOnlyWraith(ACataclysmDungeonGameMode* Mode)
+	{
+		ACataclysmEnemyCharacter* Found = nullptr;
+		for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			if (IsValid(Creature))
+			{
+				if (Found)
+				{
+					return nullptr;
+				}
+				Found = Creature;
+			}
+		}
+		return Found;
 	}
 
 	/**
@@ -16235,6 +16316,736 @@ bool FCataclysmChampionsFloorChangeTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("two more deaths finished the rung it was part way through"),
 			  Champion->RarityStep, Effects::BloodForgedChampionsLowestRung + 2);
+	return true;
+}
+
+// THE PLAINEST CASE THE ROW DESCRIBES: the player kills something and it gets back up.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithRisesTest,
+	"Cataclysm.DungeonModifierEffects.APlayersKillMayLeaveAWraith",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithRisesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Wraith = TheOnlyWraith(Mode);
+	if (!TestNotNull(TEXT("exactly one creature stands on the floor afterwards"), Wraith))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("and it is alive"), !UCataclysmSkillEffects::IsDead(Wraith));
+	TestEqual(TEXT("the floor counted it"), WraithsPanelLine(Mode),
+			  FString(TEXT("1 wraith(s) risen")));
+	return true;
+}
+
+// "A 10% CHANCE", SO MOST KILLS LEAVE NOTHING. Without this the rule could raise a
+// wraith from every kill and every other test here would still pass.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithMissedRollTest,
+	"Cataclysm.DungeonModifierEffects.ARollAboveTheChanceLeavesNoWraith",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithMissedRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("100"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	TestNull(TEXT("nothing stands on the floor"), TheOnlyWraith(Mode));
+	TestEqual(TEXT("and the floor counted none"), WraithsPanelLine(Mode),
+			  FString(TEXT("0 wraith(s) risen")));
+	return true;
+}
+
+// "WRAITHS HAVE 90% DAMAGE REDUCTION", AND WHICH LAYER IT GOES IN IS THE WHOLE
+// QUESTION. The additive pool is capped at 75 and the row asks for 90, so the figure
+// is written into the multiplicative bucket, whose bound is 99. This test reads both
+// stats so a change of layer cannot pass unnoticed.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithReductionTest,
+	"Cataclysm.DungeonModifierEffects.AWraithTakesNinetyPercentLessFromEachHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithReductionTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Wraith = TheOnlyWraith(Mode);
+	if (!TestNotNull(TEXT("a wraith rose"), Wraith))
+	{
+		return false;
+	}
+
+	// THE MULTIPLICATIVE STAT AND NOT THE ADDITIVE ONE, which is the project owner's
+	// decision and the whole reason this rule needed one. 90 written into the additive pool
+	// would read as 75, because `UCataclysmDamageCalculation::DamageReductionCap` bounds
+	// that pool, and the row's number would not be what happens in play.
+	TestEqual(TEXT("the wraith takes the row's share off every hit"),
+			  CombatStatOf(Wraith, Combat::GetDamageReductionMoreAttribute()),
+			  Effects::VengefulWraithsDamageReductionMore, 0.01f);
+
+	TestEqual(TEXT("and nothing was put in the additive pool, which caps below the row"),
+			  CombatStatOf(Wraith, Combat::GetDamageReductionAttribute()), 0.0f, 0.01f);
+
+	TestTrue(FString::Printf(TEXT("the row's figure is under the bound on one "
+								  "multiplicative source: %.0f against %.0f"),
+							 Effects::VengefulWraithsDamageReductionMore,
+							 UCataclysmDamageCalculation::MoreDamageReductionCap),
+			 Effects::VengefulWraithsDamageReductionMore
+				 <= UCataclysmDamageCalculation::MoreDamageReductionCap);
+	return true;
+}
+
+// "20% INCREASED DAMAGE, MOVESPEED, AND ATTACK SPEED": one figure, three stats, and
+// all three are read. A rule that raised only the first would pass a test that read
+// only the first.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithIncreaseTest,
+	"Cataclysm.DungeonModifierEffects.AWraithIsTwentyPercentAboveItsKindInAllThreeStats",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithIncreaseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Wraith = TheOnlyWraith(Mode);
+	if (!TestNotNull(TEXT("a wraith rose"), Wraith))
+	{
+		return false;
+	}
+
+	const float Damage = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
+	const float Speed = CombatStatOf(Wraith, Combat::GetAttackSpeedAttribute());
+	const float Movement = CombatStatOf(Wraith, Combat::GetMovementSpeedAttribute());
+
+	// WHAT ITS KIND WOULD HAVE, READ OFF THE SAME CREATURE. Setting the rung it already
+	// holds writes its whole stat block back from its kind's own figures, which is exactly
+	// the number the increase was applied to. A second creature would not serve: the rule
+	// spawns through the floor's own placer and a hand-spawned one has a different block.
+	Wraith->SetRarityStep(Wraith->RarityStep);
+	const float PlainDamage = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
+	const float PlainSpeed = CombatStatOf(Wraith, Combat::GetAttackSpeedAttribute());
+	const float PlainMovement = CombatStatOf(Wraith, Combat::GetMovementSpeedAttribute());
+
+	if (!TestTrue(FString::Printf(TEXT("its kind has all three to raise: %.2f damage, "
+									   "%.2f attack speed, %.2f movement"),
+								  PlainDamage, PlainSpeed, PlainMovement),
+				  PlainDamage > 0.0f && PlainSpeed > 0.0f && PlainMovement > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the wraith hits harder by the row's one figure"), Damage,
+			  Effects::VengefulWraithsIncreased(PlainDamage), 0.01f);
+	TestEqual(TEXT("and swings faster by it"), Speed,
+			  Effects::VengefulWraithsIncreased(PlainSpeed), 0.01f);
+	TestEqual(TEXT("and moves faster by it"), Movement,
+			  Effects::VengefulWraithsIncreased(PlainMovement), 0.01f);
+	return true;
+}
+
+// "HUNT THEM ACROSS THE ENTIRE DUNGEON". The rule cannot give a creature a named
+// quarry -- the AI picks targets by sight and nothing takes one -- so what makes a
+// wraith a hunter is that it notices a target from anywhere on the floor.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithSightTest,
+	"Cataclysm.DungeonModifierEffects.AWraithNoticesFromFurtherThanTheFloorsLongestSpan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithSightTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Wraith = TheOnlyWraith(Mode);
+	if (!TestNotNull(TEXT("a wraith rose"), Wraith))
+	{
+		return false;
+	}
+
+	// THE LONGEST STRAIGHT LINE ON THE LARGEST FLOOR THIS GAME BUILDS, worked out here from
+	// the generator's own two figures rather than written as a number, so this test moves
+	// when the floor does.
+	const float LongestSpanCm =
+		FMath::Sqrt(2.0f) * FCataclysmFloorGenerator::MostFloorSide
+		* FCataclysmFloorGenerator::CellSizeCm;
+
+	TestTrue(FString::Printf(TEXT("a wraith notices from %.0f cm, and the largest floor "
+								  "is %.0f cm corner to corner"),
+							 Wraith->NoticesFromCm(), LongestSpanCm),
+			 Wraith->NoticesFromCm() >= LongestSpanCm);
+
+	// AND THE CREATURE IT ROSE FROM WOULD NOT HAVE. Without this the test would pass for a
+	// creature whose own sight already covered the floor, and the multiplier would be doing
+	// nothing.
+	TestTrue(FString::Printf(TEXT("its own kind notices from only %.0f cm"),
+							 Wraith->SightRadiusCm()),
+			 Wraith->SightRadiusCm() < LongestSpanCm);
+	return true;
+}
+
+// "THE ONE WHO KILLED THEM" NEEDS A KILLER, and the roll is pinned to always succeed,
+// so this fails for a rule that stopped asking who did it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithOtherKillerTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureKilledByAnotherCreatureLeavesNoWraith",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithOtherKillerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slayer =
+		SpawnImpWithHealth(World, FVector(300.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature to do the killing"), Slayer)
+		|| !TestNotNull(TEXT("an Imp for it to kill"), Slain))
+	{
+		return false;
+	}
+
+	// A BARE CREATURE HITS FOR NOTHING, so the killer is given damage and the figure is
+	// asserted rather than assumed.
+	const float SlayersDamage = GiveCreatureAttackDamage(Slayer, 100.0f);
+	if (!TestTrue(FString::Printf(TEXT("the killer hits for something: %.2f"),
+								  SlayersDamage),
+				  SlayersDamage > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Slayer, Slain, 100000.0f);
+	if (!TestTrue(TEXT("a creature's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a death the player had no part in leaves nothing"),
+			  WraithsPanelLine(Mode), FString(TEXT("0 wraith(s) risen")));
+	return true;
+}
+
+// A MINION'S KILL IS THE MINION'S OWN. `UCataclysmCombatEvents::NoteBlow` credits it
+// that way unless the summoner holds the Conduit keystone, issue #1515, so this rule
+// asks one question and gets the right answer without a second check. Reading a
+// minion's kill as the summoner's here would put back the credit that change removed.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithMinionKillTest,
+	"Cataclysm.DungeonModifierEffects.AKillDealtByAMinionLeavesNoWraithWithoutConduit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithMinionKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Player.Character, FVector(400.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a summoned minion"), Minion)
+		|| !TestNotNull(TEXT("an Imp to be killed"), Slain))
+	{
+		return false;
+	}
+
+	// THE EMPTY TAG CONTAINER IS THE FOURTH ARGUMENT AND THE DELIVERY THE FIFTH.
+	FCataclysmHitDelivery Delivery;
+	Delivery.DealtBy = Minion;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f,
+									 FGameplayTagContainer(), Delivery);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a kill dealt by a minion leaves nothing"), WraithsPanelLine(Mode),
+			  FString(TEXT("0 wraith(s) risen")));
+	return true;
+}
+
+// AND THE OTHER HALF OF THAT PAIR. A summoner who bought the keystone should raise a
+// wraith from its minion's kill. This is the test that fails if a check on the actor
+// that DEALT the blow is ever added beside the one on the killer.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithConduitKillTest,
+	"Cataclysm.DungeonModifierEffects.AKillDealtByAMinionUnderConduitLeavesAWraith",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithConduitKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	// THE KEYSTONE, AS THE ONE STAT IT GRANTS. `SetStatInputs` replaces the character's
+	// stat lines rather than adding to them, which is harmless here because this player
+	// takes no other row.
+	FCataclysmStatModifier Held;
+	Held.Bucket = ECataclysmStatBucket::Flat;
+	Held.Source = ECataclysmModifierSource::PassiveKeystone;
+	Held.Value = 1.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(TEXT("minion_hits_count_as_yours"))).Modifiers = {Held};
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Player.Character, FVector(400.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a summoned minion"), Minion)
+		|| !TestNotNull(TEXT("an Imp to be killed"), Slain))
+	{
+		return false;
+	}
+
+	FCataclysmHitDelivery Delivery;
+	Delivery.DealtBy = Minion;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f,
+									 FGameplayTagContainer(), Delivery);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a summoner who holds the keystone raises one"), WraithsPanelLine(Mode),
+			  FString(TEXT("1 wraith(s) risen")));
+	return true;
+}
+
+// A RUNG CHANGE WIPES A CREATURE'S WHOLE STAT BLOCK, so the rule puts the wraith's
+// figures back. Ruled under the project owner's delegation: the figures are what make
+// the creature a wraith and another floor rule must not silently strip them.
+//
+// THE SECOND HALF IS WHAT STOPS THE CURE BEING WORSE. The three increases multiply
+// what they read, so a re-application without a fresh stat block underneath would give
+// a wraith 44% rather than 20%.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithRungTest,
+	"Cataclysm.DungeonModifierEffects.AWraithRaisedARungKeepsItsFiguresAndDoesNotCompound",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithRungTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode =
+		AFloorCarryingTheWraithsRow(*this, World, Player, {VolatileEvolution});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Wraith = TheOnlyWraith(Mode);
+	if (!TestNotNull(TEXT("a wraith rose"), Wraith))
+	{
+		return false;
+	}
+
+	const int32 RungBefore = Wraith->RarityStep;
+	const float DamageBefore = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
+
+	// WOUNDED AND ROLLED INTO A MUTATION. Volatile Evolution raises a wounded creature's
+	// rung, which ends in `ApplyStartingAttributes` and writes the whole stat block over.
+	// That is the case the wraith's figures have to survive.
+	FScopedConsoleString Mutating(TEXT("Cataclysm.VolatileEvolutionRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the mutation roll can be pinned"), Mutating.Variable))
+	{
+		return false;
+	}
+	WoundCreatureTo(Wraith, MaxHealthOf(Wraith) * 0.1f, 0.0f);
+	Beat(Mode, 1);
+
+	if (!TestEqual(TEXT("the wraith rose a rung"), Wraith->RarityStep, RungBefore + 1))
+	{
+		return false;
+	}
+
+	// ITS FIGURES ARE STILL ON IT.
+	TestEqual(TEXT("it still takes the row's share off every hit"),
+			  CombatStatOf(Wraith, Combat::GetDamageReductionMoreAttribute()),
+			  Effects::VengefulWraithsDamageReductionMore, 0.01f);
+
+	// AND THE INCREASE DID NOT HAPPEN TWICE. Reading the new rung's own figure back the
+	// same way the increase test does: the wraith must be the row's one increase above it,
+	// not the increase applied twice.
+	const float RaisedDamage = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
+	Wraith->SetRarityStep(Wraith->RarityStep);
+	const float PlainAtNewRung = CombatStatOf(Wraith, Combat::GetAttackDamageAttribute());
+
+	TestEqual(TEXT("the wraith is one increase above its new rung and not two"),
+			  RaisedDamage, Effects::VengefulWraithsIncreased(PlainAtNewRung), 0.01f);
+	TestTrue(FString::Printf(TEXT("and the rung really moved its damage: %.2f, was %.2f"),
+							 RaisedDamage, DamageBefore),
+			 RaisedDamage > DamageBefore);
+	return true;
+}
+
+// WHAT A PLAYER SEES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithPanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelCountsTheWraiths",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	// THE WHOLE LINE IS WRITTEN OUT HERE rather than built from the format the panel uses,
+	// so a change of wording cannot pass by comparing a string with itself.
+	if (!TestEqual(TEXT("a floor just built has raised none"), WraithsPanelLine(Mode),
+				   FString(TEXT("0 wraith(s) risen"))))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("one risen"), WraithsPanelLine(Mode),
+				   FString(TEXT("1 wraith(s) risen"))))
+	{
+		return false;
+	}
+
+	// AND A FLOOR WITHOUT THE ROW HAS NO LINE OF ITS OWN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row says nothing"), WraithsPanelLine(Mode),
+			  FString(TEXT("no line")));
+	return true;
+}
+
+// THE COUNT IS THE FLOOR'S AND THE WRAITH IS ITS OWN. A wraith that lived through a
+// change of wave is still a wraith; the count answers what happened on this floor.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeClearsTheCountAndKeepsTheWraith",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Wraith = TheOnlyWraith(Mode);
+	if (!TestNotNull(TEXT("a wraith rose"), Wraith)
+		|| !TestEqual(TEXT("and the floor counted it"), WraithsPanelLine(Mode),
+					  FString(TEXT("1 wraith(s) risen"))))
+	{
+		return false;
+	}
+
+	const float ReductionBefore =
+		CombatStatOf(Wraith, Combat::GetDamageReductionMoreAttribute());
+
+	// A HORDE DUNGEON'S CHANGE OF WAVE, which is the case the record of which creatures are
+	// wraiths is written for: the creatures live through it.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the wraith lived through the change of wave"), IsValid(Wraith)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the new floor has raised none"), WraithsPanelLine(Mode),
+			  FString(TEXT("0 wraith(s) risen")));
+	TestEqual(TEXT("and the wraith is still a wraith"),
+			  CombatStatOf(Wraith, Combat::GetDamageReductionMoreAttribute()),
+			  ReductionBefore, 0.01f);
 	return true;
 }
 

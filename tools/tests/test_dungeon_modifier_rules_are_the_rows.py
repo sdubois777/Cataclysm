@@ -2692,3 +2692,125 @@ def test_blood_forged_champions_rungs_are_the_two_constants_that_already_mean_th
         "that rung. Two rules meaning the same rung must not be able to drift apart; if "
         "this rule is meant to start or stop somewhere else now, say why in "
         "docs/DECISIONS.md.")
+
+
+def test_vengeful_wraiths_row_still_states_its_three_figures():
+    """Three of this rule's four figures are the row's own, not judgements.
+
+    "A 10% CHANCE", "90% DAMAGE REDUCTION" and "20% INCREASED DAMAGE, MOVESPEED, AND
+    ATTACK SPEED". If any of them moves in the row and not in the header, the rule stops
+    being the row, and docs/DECISIONS.md stops being able to call only the fourth a
+    judgement.
+    """
+    words = flat(rows()["Death_Vengful_Wraiths"]["Description"])
+    percents = re.findall(r"(\d+(?:\.\d+)?)\s*%", words)
+
+    assert percents == ["10", "90", "20"], (
+        "The Death Vengeful Wraiths row no longer states a 10% chance, 90% damage "
+        "reduction and a 20% increase, in that order. Read the new figures off the row "
+        f"and correct docs/DECISIONS.md. Found {percents} in: {words}")
+
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+    missing = [name for name, pattern in (
+        # THE CHANCE IS HELD IN TWO PLACES ON PURPOSE. Spore Clouds' constant was derived
+        # from this row weeks before the row had a rule, so the row's ten lives there and
+        # this rule's constant names it rather than writing ten again. The check below
+        # reads both: the figure against the row, and the tie between the two rules.
+        ("SporeCloudsChancePercentOnDeath",
+         r"SporeCloudsChancePercentOnDeath\s*=\s*10\.0f\s*;"),
+        ("VengefulWraithsChancePercent",
+         r"VengefulWraithsChancePercent\s*=\s*SporeCloudsChancePercentOnDeath\s*;"),
+        ("VengefulWraithsDamageReductionMore",
+         r"VengefulWraithsDamageReductionMore\s*=\s*90\.0f\s*;"),
+        ("VengefulWraithsIncreasePercent",
+         r"VengefulWraithsIncreasePercent\s*=\s*20\.0f\s*;"),
+    ) if not re.search(pattern, text)]
+
+    assert not missing, (
+        f"{', '.join(missing)} no longer holds the figure the row states: a "
+        f"{percents[0]}% chance, {percents[1]}% damage reduction and a {percents[2]}% "
+        "increase.")
+
+
+def test_vengeful_wraiths_row_still_says_who_killed_them_and_how_far():
+    """The two phrases the rule's readings rest on.
+
+    "THE ONE WHO KILLED THEM" is why the rule asks who did the killing, and therefore why
+    a kill by another creature, or by a minion whose summoner has not bought the Conduit
+    keystone, raises nothing. "ACROSS THE ENTIRE DUNGEON" is why a wraith is spawned with
+    a sight multiplier at all.
+    """
+    words = flat(rows()["Death_Vengful_Wraiths"]["Description"]).lower()
+
+    assert "the one who killed them" in words, (
+        "The Death Vengeful Wraiths row no longer says the wraith is roused by THE ONE "
+        "WHO KILLED THEM. The rule asks whether the killer was the player because it "
+        "did. " + words)
+    assert "across the entire dungeon" in words, (
+        "The Death Vengeful Wraiths row no longer says a wraith hunts ACROSS THE ENTIRE "
+        "DUNGEON. The sight multiplier exists because it did. " + words)
+
+
+def test_vengeful_wraiths_ninety_is_above_the_additive_cap_and_goes_in_the_other_layer():
+    """WHY THE ROW'S 90 IS NOT WRITTEN WHERE IT LOOKS LIKE IT SHOULD BE.
+
+    UCataclysmDamageCalculation::DamageReductionCap bounds the ADDITIVE pool, and the row
+    asks for more than it allows, so 90 written there would read as the cap and the row's
+    number would not be what happens in play. The project owner decided on 2026-09-17 that
+    it goes into the multiplicative bucket instead, whose bound is MoreDamageReductionCap.
+
+    THIS CHECK FAILS IF THE CAP EVER RISES TO MEET THE ROW, because the decision would
+    then have been overtaken and the simpler layer would be available again.
+    """
+    calculation = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "AbilitySystem"
+                   / "CataclysmDamageCalculation.h").read_text(encoding="utf-8")
+
+    additive = re.search(r"DamageReductionCap\s*=\s*(\d+(?:\.\d+)?)f\s*;", calculation)
+    multiplicative = re.search(
+        r"MoreDamageReductionCap\s*=\s*(\d+(?:\.\d+)?)f\s*;", calculation)
+    assert additive and multiplicative, (
+        "CataclysmDamageCalculation.h no longer states both damage reduction bounds by "
+        "the names this check reads. Find what replaced them before trusting this rule's "
+        "figure.")
+
+    figure = constant("VengefulWraithsDamageReductionMore")
+    assert figure > float(additive.group(1)), (
+        f"The additive damage reduction cap is now {additive.group(1)}, which is no "
+        f"longer below this rule's {figure}. The owner's decision to write the row's "
+        "figure into the multiplicative bucket was made because the additive pool could "
+        "not carry it; that reason is gone, so revisit it in docs/DECISIONS.md.")
+    assert figure <= float(multiplicative.group(1)), (
+        f"This rule's {figure} is above the bound on one multiplicative source, "
+        f"{multiplicative.group(1)}, so the calculation would clamp it and the row's "
+        "number would not be what happens.")
+
+    header = EFFECTS_HEADER.read_text(encoding="utf-8")
+    assert "VengefulWraithsDamageReductionMore" in header, (
+        "The constant is no longer named for the layer it is written into. The name is "
+        "what tells a reader which of the two bounds applies.")
+
+
+def test_vengeful_wraiths_sight_is_held_to_the_floors_own_span():
+    """The sight figure is a judgement, and it is sized against the floor rather than picked.
+
+    The row says "across the entire dungeon" and states no distance. The static_assert
+    that holds the figure to the largest floor lives in CataclysmDungeonGameMode.cpp, not
+    in the rule header, because that file already includes the floor generator and the Imp
+    and the header includes neither. THIS CHECK IS WHAT NOTICES IF IT IS DELETED: a figure
+    with nothing holding it is a figure that goes stale the next time the floor grows.
+    """
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+
+    for wanted in ("VengefulWraithsSightMultiplier",
+                   "ImpNoticeRadiusCm",
+                   "FCataclysmFloorGenerator::MostFloorSide",
+                   "FCataclysmFloorGenerator::CellSizeCm"):
+        assert wanted in game_mode, (
+            f"CataclysmDungeonGameMode.cpp no longer names {wanted}. The compile-time "
+            "check that a wraith can see across the largest floor this game builds reads "
+            "all four; without it the sight figure is a number nothing holds.")
+
+    assert re.search(r"static_assert\(\s*Effects::VengefulWraithsSightMultiplier",
+                     game_mode), (
+        "The static_assert sizing the wraith's sight against the floor is gone. Put it "
+        "back or say in docs/DECISIONS.md what holds the figure instead.")
