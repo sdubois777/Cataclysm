@@ -3672,8 +3672,20 @@ void ACataclysmDungeonGameMode::StepJudgmentZones(
 		const FVector Where(Centre.X + Away * FMath::Cos(Angle),
 							Centre.Y + Away * FMath::Sin(Angle), Centre.Z);
 
-		if (ACataclysmFloorHazardSource* Source =
-				ACataclysmFloorHazardSource::ForFloor(World))
+		// THE SOURCE IS MADE LAST, because `ForFloor` spawns one when the floor has none
+		// and everything that could refuse has now been asked. `StepInfernalRain` gives
+		// the reason: asking first and then finding a reason not to lay ground would
+		// leave an actor on the floor that nothing uses.
+		//
+		// DECLARED IN ONE LINE AND IN THIS EXACT FORM ON PURPOSE.
+		// `test_every_ground_zone_the_game_mode_places_is_owned_by_the_hazard_source`
+		// reads this file and requires every function that spawns a zone to take its
+		// owner from `ForFloor` in the same function, because a same-arena floor change
+		// destroys a rule's zones BY THEIR OWNER (issue #1925). A zone owned by anything
+		// else would survive a Horde dungeon's next wave with no rule acting for it.
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(
+			World);
+		if (Source)
 		{
 			// SPAWNED WITH NO DAMAGE OF ITS OWN, AND THAT IS THE RULE'S SHAPE RATHER THAN AN
 			// OVERSIGHT. Issue #1701 made a zone that does not damage possible so Singularity
@@ -3730,7 +3742,10 @@ void ACataclysmDungeonGameMode::StepJudgmentZones(
 	// player who steps in and out repeatedly is not charged less than one who stands.
 	JudgmentZonesSecondsInside += SecondsBetweenWaveChecks;
 
-	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	// THE SAME OWNER THE GROUND WAS LAID IN THE NAME OF, so the damage a zone's ground
+	// does is dealt by the actor that owns it.
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(
+		World);
 	bool bCounted = false;
 	while (JudgmentZonesSecondsInside >= 1.0f)
 	{

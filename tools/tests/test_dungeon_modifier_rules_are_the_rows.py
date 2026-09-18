@@ -2814,3 +2814,115 @@ def test_vengeful_wraiths_sight_is_held_to_the_floors_own_span():
                      game_mode), (
         "The static_assert sizing the wraith's sight against the floor is gone. Put it "
         "back or say in docs/DECISIONS.md what holds the figure instead.")
+
+
+def test_judgment_zones_row_still_states_its_two_figures():
+    """Two of this rule's figures are the row's own, not judgements.
+
+    "SPAWN FOR 20 SECONDS" and "IF TRIGGERED 5+ TIMES". Everything else about this rule --
+    how often ground appears, how many stand at once, how hard it ramps and how far, and
+    what the loot bonus is worth -- was judged, and docs/DECISIONS.md can only call them
+    judgements while these two are read off the row.
+    """
+    words = flat(rows()["Celestial_Judgment_Zones"]["Description"])
+    seconds = re.findall(r"(\d+)\s*seconds", words)
+    times = re.findall(r"(\d+)\+?\s*times", words)
+
+    assert seconds == ["20"], (
+        "The Celestial Judgment Zones row no longer says its zones stand for 20 seconds. "
+        "Check JudgmentZonesSeconds against it. " + words)
+    assert times == ["5"], (
+        "The Celestial Judgment Zones row no longer says five triggers. Check "
+        "JudgmentZonesTriggersForTheBonus against it. " + words)
+
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+    missing = [name for name, pattern in (
+        ("JudgmentZonesSeconds", r"JudgmentZonesSeconds\s*=\s*20\.0f\s*;"),
+        ("JudgmentZonesTriggersForTheBonus",
+         r"JudgmentZonesTriggersForTheBonus\s*=\s*5\s*;"),
+    ) if not re.search(pattern, text)]
+
+    assert not missing, (
+        f"{', '.join(missing)} no longer holds the figure the row states: "
+        f"{seconds[0]} seconds and {times[0]} triggers.")
+
+
+def test_judgment_zones_damage_type_is_read_off_the_row_and_not_written():
+    """"HOLY DAMAGE" NAMES NO DAMAGE TYPE THIS GAME HAS, and nothing rules on it.
+
+    The eight types are the eight Cataclysms. The four built zone rules read the type off
+    the row rather than writing one, and StepInfernalRain says why: "a row retyped in the
+    workbook retypes its hazard with no code change. A constant here would be this file's
+    opinion of the data." This row's CataclysmType is Celestial, so the mechanism answers
+    the question -- and this check is what notices if somebody later writes the answer down.
+    """
+    words = flat(rows()["Celestial_Judgment_Zones"]["Description"]).lower()
+    assert "holy damage" in words, (
+        "The Celestial Judgment Zones row no longer says HOLY DAMAGE. If it now names a "
+        "type this game has, read it off the row instead of the row's Cataclysm. " + words)
+
+    assert rows()["Celestial_Judgment_Zones"]["CataclysmType"].strip() == "Celestial", (
+        "The Celestial Judgment Zones row is no longer a Celestial row, so the damage its "
+        "ground deals has changed type with it. That is the mechanism working; check "
+        "docs/DECISIONS.md still describes what the rule does.")
+
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    step = body_of(game_mode, "void ACataclysmDungeonGameMode::StepJudgmentZones(")
+
+    assert "Row->CataclysmType" in step, (
+        "StepJudgmentZones no longer reads the damage type off the row. A type written "
+        "here is this file's opinion of the data, and a row retyped in the workbook would "
+        "stop retyping its hazard.")
+    # THE LITERAL AND NOT THE WORD. The function's own comments explain that the row's
+    # CataclysmType is Celestial, and a check on the bare word would fail on that prose --
+    # it did, the first time this was run. What "writing the answer down" looks like in
+    # code is a quoted literal, so that is what this refuses.
+    assert 'TEXT("Celestial")' not in step, (
+        "StepJudgmentZones now writes Celestial as a literal. The row's own CataclysmType "
+        "is what types this rule's damage; writing it down here is what the four other "
+        "zone rules deliberately do not do.")
+
+
+def test_judgment_zones_reach_and_fall_are_the_shared_constants():
+    """Neither distance in this rule is a number of its own.
+
+    The row states no distance at all. The reach is the 300 cm that Infernal Rain,
+    Singularity Wells and Withered Ground all use for a patch of ground, and how far a zone
+    falls from the player is the 1200 Infernal Rain and Singularity Wells share.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    missing = [name for name, pattern in (
+        ("JudgmentZonesRadiusCm",
+         r"\bJudgmentZonesRadiusCm\s*=\s*WitheredGroundPatchRadiusCm\s*;"),
+        ("JudgmentZonesFallsWithinCm",
+         r"\bJudgmentZonesFallsWithinCm\s*=\s*InfernalRainFallsWithinCm\s*;"),
+    ) if not re.search(pattern, text)]
+
+    assert not missing, (
+        f"{', '.join(missing)} is no longer declared as the constant that already means "
+        "that distance. If radiant ground is meant to be a different size from every other "
+        "patch this game lays, say why in docs/DECISIONS.md.")
+
+
+def test_judgment_zones_three_at_once_follows_both_precedents():
+    """Three is a vocabulary, so it is written as a figure and held to its precedents.
+
+    Infernal Rain's InfernalRainMostPatches and Singularity Wells' SingularityWellsMostWells
+    are both 3, written independently. That makes three what the table already says about
+    how much ground may stand at once, rather than one design figure with two names, so
+    this rule follows it WITHOUT being tied to either.
+
+    NOT A COMPARISON OF A CONSTANT WITH ITSELF. All three are literals, so they can drift
+    apart -- which is what this notices. The same treatment
+    HolyRepercussionsChancePercentOnHit gets for the table's ten.
+    """
+    mine = whole_number("JudgmentZonesMostZones")
+    rain = whole_number("InfernalRainMostPatches")
+    wells = whole_number("SingularityWellsMostWells")
+
+    assert mine == rain == wells, (
+        f"How much ground may stand at once no longer agrees: Judgment Zones {mine}, "
+        f"Infernal Rain {rain}, Singularity Wells {wells}. Three was followed as the "
+        "figure this library already uses; if one of them is meant to differ now, say "
+        "which and why in docs/DECISIONS.md.")

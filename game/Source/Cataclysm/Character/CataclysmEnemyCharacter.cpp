@@ -27,6 +27,7 @@
 #include "Character/CataclysmEnemyRarity.h"
 // For what a kill drops. The rules live in the item module; this file
 // only says when they run and where the result lands.
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmEnemyScore.h"
 #include "Items/CataclysmDropRoll.h"
@@ -262,6 +263,21 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		float MagicFind = 0.0f;
 		float LootQuantity = UCataclysmDropRoll::BaselineLootQuantity;
 		UCataclysmDropSpawner::PlayerLootStats(World, MagicFind, LootQuantity);
+
+		// AND THE FLOOR'S OWN BONUS, FOR A BOSS AND NOTHING ELSE. Judgment Zones pays
+		// for the damage its radiant ground did: once the player has taken the row's
+		// five ticks, a boss on that floor drops as though they carried more magic
+		// find. The row says "increases BOSS loot quality", so this asks IsBoss().
+		//
+		// THE ARITHMETIC IS IN THE RULE LIBRARY AND THE LOOKUP IS NOT, which is the
+		// same split `UCataclysmEnemyScore::FloorFor` above is written for.
+		// `JudgmentZonesMagicFindIn` finds the floor through `GetAuthGameMode`, and an
+		// automation world has no authority game mode, so a test reaches the
+		// arithmetic and cannot reach the lookup. A floor without the row, or one that
+		// has not been earned, answers nothing and this line changes no roll.
+		MagicFind = UCataclysmDungeonModifierEffects::JudgmentZonesMagicFindFor(
+			MagicFind, IsBoss(),
+			ACataclysmDungeonGameMode::JudgmentZonesMagicFindIn(World));
 
 		FRandomStream Stream(GetUniqueID()
 			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
