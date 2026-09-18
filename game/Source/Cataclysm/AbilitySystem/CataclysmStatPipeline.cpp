@@ -109,6 +109,10 @@ namespace
 		{ TEXT("target_health_below"),          ECataclysmStatCondition::TargetHealthBelowPercent },
 		{ TEXT("energy_shield_at_maximum"),     ECataclysmStatCondition::EnergyShieldAtMaximum },
 		{ TEXT("enemies_hit_at_least"),         ECataclysmStatCondition::EnemiesStruckTogetherAtLeast },
+		{ TEXT("opponent_within_metres"),       ECataclysmStatCondition::OpponentWithinMetres },
+		{ TEXT("moved_within_seconds"),         ECataclysmStatCondition::MovedWithinSeconds },
+		{ TEXT("class_resource_above"),         ECataclysmStatCondition::ClassResourceAbovePercent },
+		{ TEXT("energy_shield_above_zero"),     ECataclysmStatCondition::EnergyShieldAboveZero },
 	};
 
 	struct FNamedStatScale
@@ -132,6 +136,8 @@ namespace
 		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
 		{ TEXT("damage_reduction"),    ECataclysmStatScale::PerPercentOfDamageReduction },
 		{ TEXT("max_mana"),            ECataclysmStatScale::PerPointOfMaximumMana },
+		{ TEXT("metres_to_target"),    ECataclysmStatScale::PerMetreToTarget },
+		{ TEXT("seconds_stationary"),  ECataclysmStatScale::PerSecondStationary },
 	};
 
 	/**
@@ -232,8 +238,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesVoidSplinter:
 	case ECataclysmStatCondition::CanCrippleOrWeaken:
 	case ECataclysmStatCondition::OpponentCarriesWeaken:
+	case ECataclysmStatCondition::EnergyShieldAboveZero:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the eighteen says
+		// nothing for a number to be compared against. Each of the nineteen says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -494,7 +501,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// otherwise compare -1 against -1 and answer yes, handing every enemy in
 		// the game a bonus written for a full Masochist.
 		//
-		// THE POOLS THAT ASK IT ARE THIS ONE AND `EnergyShieldAtMaximum` BELOW.
+		// THE POOLS THAT ASK IT ARE THIS ONE, `ClassResourceAbovePercent` AND
+		// `EnergyShieldAtMaximum` BELOW. `EnergyShieldAboveZero` deliberately
+		// does NOT: its threshold is a fixed zero rather than one a sheet
+		// writes, so an unknown reading of -1 refuses by the comparison itself
+		// and a separate clause would be dead code. Its own comment says so.
 		// A third belongs on that list rather than in a fresh claim about which
 		// place is the only one. This sentence read "this is the one place"
 		// while that was true, and adding the second pool is what made it false
@@ -814,6 +825,84 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// least nought enemies" would hold for every blow in the game.
 		return Value >= 1.0f && State.EnemiesStruckTogether >= 0
 			&& static_cast<float>(State.EnemiesStruckTogether) >= Value;
+
+	case ECataclysmStatCondition::OpponentWithinMetres:
+		// AT OR WITHIN, BECAUSE "WITHIN" IS INCLUSIVE. Issue #1981. "Nearby
+		// enemies deal 10%-30% less damage to you" is the row, at 5 metres --
+		// the one figure every near row in the game already uses, measured
+		// rather than chosen. `TargetWithinMetres` draws the same boundary from
+		// the same word, and `OpponentBeyondMetres` directly below reads THIS
+		// SAME FIELD with the opposite one, because its node writes "more than".
+		//
+		// THE BLOW'S DISTANCE AND NOT THE ATTACKER-SIDE ONE. The blow context is
+		// filled only on the defender's damage taken lookup, which is where a
+		// row about enemies hitting you is asked, and `TargetDistanceMetres`
+		// only on the attacker's own. A row using the wrong one reads -1 and
+		// grants nothing rather than a plausible number from the wrong end.
+		//
+		// A NEGATIVE READING IS "NOT KNOWN" AND REFUSES, and zero is a real
+		// distance because two characters can stand on one spot. The guard
+		// cannot be folded into the comparison: -1 is at or within every
+		// threshold a sheet may write, so folding it would let every blow that
+		// knew nothing satisfy the row -- the trap `TargetWithinMetres` spells
+		// out, and it is worse on this side of the pair than on the other.
+		return State.Blow.OpponentDistanceMetres >= 0.0f
+			&& State.Blow.OpponentDistanceMetres <= Value;
+
+	case ECataclysmStatCondition::MovedWithinSeconds:
+		// AT OR WITHIN THE LAST `Value` SECONDS. Issue #1981. "Strike skills
+		// deal 25%-40% less damage if you have moved in the last 2 seconds" is
+		// the row.
+		//
+		// THE SAME FIELD `StationaryForSeconds` READS, COMPARED THE OTHER WAY,
+		// and at exactly the threshold BOTH HOLD. A character whose last
+		// movement was two seconds ago has been stationary for two seconds and
+		// has moved within the last two; both readings of the English are right
+		// and the overlap is one instant wide. Said here rather than left for
+		// somebody to find in play.
+		//
+		// A NEGATIVE READING MEANS NO MOVEMENT SAMPLE HAS LOOKED AT THIS
+		// CHARACTER AND REFUSES. It has not moved recently in any sense a row
+		// means. The guard is separate for the reason the distance above gives:
+		// -1 is at or within every threshold a sheet may write.
+		return State.SecondsSinceMoved >= 0.0f
+			&& State.SecondsSinceMoved <= Value;
+
+	case ECataclysmStatCondition::ClassResourceAbovePercent:
+		// STRICTLY ABOVE, the boundary `HealthAbovePercent` draws for the same
+		// word. Issue #1981. "When your class resource is above 75%, all skills
+		// cost 20%-40% less mana" is the row.
+		//
+		// THE SAME THREE CLAUSES AS `ClassResourceAtMaximum` ABOVE, IN THE SAME
+		// ORDER AND FOR ITS REASONS. The reading has to be known, the bar has to
+		// be able to hold something, and only then is the share worth working
+		// out. An unknown pair would compare -1 against -1 and hand every enemy
+		// a bonus written for a Masochist; a maximum of nothing would divide by
+		// it.
+		//
+		// A SHARE AND NOT A COUNT OF POINTS, unlike the scale that reads the
+		// same pool. Classes do not share a maximum, so "above 75%" is the only
+		// way to mean the same thing for each of them.
+		return State.ClassResourceHeld >= 0.0f
+			&& State.ClassResourceMaximum > 0.0f
+			&& (State.ClassResourceHeld / State.ClassResourceMaximum) * 100.0f
+				   > Value;
+
+	case ECataclysmStatCondition::EnergyShieldAboveZero:
+		// NO THRESHOLD, SO `Value` IS NOT READ. Issue #1981. "You take 10%-20%
+		// increased damage from all sources while your shield is active" is the
+		// row, and "active" was read as held above zero -- a judgement under the
+		// project owner's delegation, recorded in `docs/DECISIONS.md`. A shield
+		// at nothing absorbs nothing.
+		//
+		// THE ONLY READING HERE THAT FOLDS ITS GUARD INTO THE COMPARISON, and it
+		// is safe only because the threshold is a fixed zero rather than one a
+		// sheet writes: an unknown reading of -1 is not above zero, so it
+		// refuses on purpose rather than by luck. Every neighbour keeps its
+		// guard separate because a sheet could write a negative threshold that
+		// -1 would satisfy. Which of those two a condition is in is the thing
+		// worth stating, and the pair above shows both.
+		return State.EnergyShieldHeld > 0.0f;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -993,6 +1082,48 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 		// maximum mana is one step.
 		const float Steps =
 			FMath::FloorToFloat(State.MaximumMana / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerMetreToTarget:
+	{
+		// THE SAME TWO REFUSALS AGAIN. Issue #1981. Negative for a lookup with
+		// no target in hand -- a damage over time tick, a minion's blow, and
+		// every lookup made with no blow at all -- and a step of nothing would
+		// divide by it. A bonus for being far away must not be handed to a
+		// caller that does not know how far away anything is.
+		if (State.TargetDistanceMetres < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// WHOLE STEPS, ROUNDED DOWN, as every reading here is. "For each meter
+		// of distance to the target" with a step of one makes 4.9 metres four.
+		const float Steps =
+			FMath::FloorToFloat(State.TargetDistanceMetres / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerSecondStationary:
+	{
+		// THE SAME TWO REFUSALS. Issue #1981. Negative means no movement sample
+		// has looked at this character, which is not the same as its having
+		// stood still for ever, and a step of nothing would divide by it.
+		if (State.SecondsSinceMoved < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		// WHOLE STEPS, ROUNDED DOWN. "For each second you stand still" with a
+		// step of one makes 1.9 seconds one.
+		//
+		// NOTHING CAPS IT HERE AND NOTHING NEEDS TO. Its row is a MULTIPLYING
+		// reduction, and `LessMultiplierFloor` stops one at -99%, so one per
+		// cent of the hit survives however long the character stands there. An
+		// increased row would have had no such floor. Measured and ruled on
+		// 2026-09-18; `docs/DECISIONS.md` carries both halves.
+		const float Steps =
+			FMath::FloorToFloat(State.SecondsSinceMoved / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 

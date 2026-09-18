@@ -1616,7 +1616,12 @@ namespace CataclysmPassiveConditionTest
 			// ISSUE #1515, THE SECOND POOL ASKED WHETHER IT IS FULL. "Full"
 			// names the top of the bar rather than a number, the same as
 			// `class_resource_at_maximum` above.
-			|| Name == TEXT("energy_shield_at_maximum");
+			|| Name == TEXT("energy_shield_at_maximum")
+			// ISSUE #1981, THE SAME POOL ASKED A DIFFERENT QUESTION. "Active"
+			// means held above zero rather than full, so it is not the name
+			// above under another spelling: one asks whether the bar is full and
+			// this asks whether any of it is left. Neither states a number.
+			|| Name == TEXT("energy_shield_above_zero");
 	}
 }
 

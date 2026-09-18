@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — Four conditions and two scale sources land ahead of their rows, and two sentences that looked like the same shape are not
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the stat
+pipeline: six new enumerators, their name tables, their judgements and readings, and three count or
+uniqueness sentences corrected), `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (the
+third list of conditions that state no number), `tools/generate_datatables.py` (the names a sheet may
+write, with their bounds) and
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (four names recorded as
+landed ahead of their rows). Issue
+[#1981](https://github.com/sdubois777/Cataclysm/issues/1981), its follow-on.
+
+**Partial.** The Python suite and the checks that police the condition vocabulary have run. **The
+Unreal compile, the two new automation tests and the two C++ guard proofs have not.**
+
+### What these are for
+
+The survey of the 373 unwritten enchantment sentences (issue #1815) recorded, for each, the
+mechanism it needs. Grouping those by the mechanism found a cheapest class: sentences that need only
+**a new name reading a field the stat pipeline's state already carries and already fills**. That is
+the shape issue #1976 shipped in one window, and no new state is tracked.
+
+**The group was eight and it is six.** Two sentences were grouped from the survey's note about the
+NEAREST EXISTING mechanism rather than from the sentence's own words, and reading the words dropped
+them:
+
+- **"Charge skills deal 30%-60% bonus damage proportional to distance traveled."** A per-metre scale
+  on `MetresMovedBeforeBlow` looks right and is not. That field's own documentation says the distance
+  "is counted since the character's own last attack and **copied onto the blow when the skill is paid
+  for**". A charge travels after it is paid for, so the field does not hold the charge's own
+  distance. The sentence needs a measurement taken at the end of the charge, which is a different
+  change.
+- **"Your damage is reduced by 3%-5% for every second you spend out of combat, up to 10 stacks."**
+  Out of combat is a state nothing in `game/Source/Cataclysm` tracks, and the ten-stack cap is a
+  second missing piece. `SecondsSinceOwnAttack` was the nearest field, not what the sentence asks
+  for.
+
+**That is the third time in this survey that a note naming the nearest mechanism was not the same as
+what the sentence needs.** The others were "a nearby attacker cannot be asked about", which was
+wrong because the distance was already in hand, and the critical strike lookup, which reads the right
+stat through the right pipeline but is called without a target (issue #1982).
+
+### The four conditions
+
+Each reads a field already in `FCataclysmStatConditions` and already filled on the lookup its
+sentence needs. None of them tracks anything new.
+
+| Name a sheet writes | What it asks | The field, and which lookup fills it |
+| :-- | :-- | :-- |
+| `opponent_within_metres` | the blow came from at or within N metres | `Blow.OpponentDistanceMetres`, the defender's damage-taken lookup |
+| `moved_within_seconds` | the character moved within the last N seconds | `SecondsSinceMoved`, on the character |
+| `class_resource_above` | the class resource is strictly above N per cent of its maximum | `ClassResourceHeld` and `ClassResourceMaximum` |
+| `energy_shield_above_zero` | the character is holding some energy shield | `EnergyShieldHeld` |
+
+**`opponent_within_metres` is the first defender-side condition to ask the NEAR question.**
+`opponent_beyond_metres` had that field to itself and asks the far one. The pair reads the blow the
+defender took; `target_within_metres` is the attacker's own lookup and cannot answer a sentence about
+enemies hitting you.
+
+**A JUDGEMENT, under the project owner's delegation of 2026-09-14: "nearby" is 5 metres.** The
+sentence states no distance and the Condition Value column carries one number, so a figure had to
+come from somewhere. Measured 2026-09-18 across every table under `game/Data` carrying a Condition
+column: **six rows use `target_within_metres` and every one of them is 5.0**, and no other value
+appears anywhere. Matching what is already shipped was preferred to inventing a figure. Also
+measured: `opponent_beyond_metres` is named by **no row at all**; the only 6-metre figure in the
+codebase is inside that condition's own comment, quoting a node that has never been written.
+
+**A JUDGEMENT, same delegation: "while your shield is active" means held above zero.** A shield at
+nothing absorbs nothing, so it is not active in any sense the sentence means. This is **not**
+`energy_shield_at_maximum` under another spelling: that asks whether the bar is full and this asks
+whether any of it is left.
+
+**Two boundaries worth stating rather than leaving to be found.**
+
+- `moved_within_seconds` holds at AT MOST its threshold and `stationary_for_seconds` at AT LEAST
+  its own, both reading `SecondsSinceMoved`. **At exactly the threshold both hold.** A character
+  whose last movement was two seconds ago has been stationary for two seconds and has moved within
+  the last two; both readings of the English are right and the overlap is one instant wide.
+- `class_resource_above` compares STRICTLY above, the boundary `health_above` draws for the same
+  word.
+
+**One of the four folds its "is this known" guard into its comparison, and only one.** Every
+neighbouring reading keeps that clause separate, because a threshold a sheet writes could be negative
+and an unknown reading of -1 would satisfy it by accident. `energy_shield_above_zero` compares
+against a fixed zero and nothing else ever, so -1 refuses on purpose rather than by luck. Which of
+those two cases a condition is in is the thing worth stating, and the code says so at both.
+
+### The two scale sources
+
+| Name a sheet writes | What it multiplies by | The field |
+| :-- | :-- | :-- |
+| `metres_to_target` | whole steps of distance to what is being struck | `TargetDistanceMetres` |
+| `seconds_stationary` | whole steps of time stood still | `SecondsSinceMoved` |
+
+**A JUDGEMENT, same delegation: the standing-still row is written as a MULTIPLYING reduction, and no
+cap is invented.** Its sentence, "All damage dealt is reduced by 15%-25% for each second you stand
+still", states none. Measured before choosing: `UCataclysmStatPipeline::LessMultiplierFloor` is
+-99.0f, and the clamp is applied per modifier to the value AFTER the scale is worked out. So a
+multiplying reduction of 15% a second reaches -105% at seven seconds, is clamped to -99%, and leaves
+one per cent of the hit — at any number of seconds, and with any number of such rows, since 0.01 to
+any power is still above zero. **An increased row would have behaved differently**: that bucket has
+no floor in the pipeline at all, and its caller clamps a sum of increases at zero, so the same
+sentence would have reached NO DAMAGE at seven seconds. The row-text check permits either bucket,
+because "reduced" appears in both of its word lists, so the bucket was a decision rather than a
+constraint.
+
+**A side effect found while measuring that, and not fixed here:** the clamp logs a warning written
+for data that asks the impossible, and it tests the value after scaling, so this row will log one on
+every hit once the floor is reached — four seconds of standing still at the harsh end of its range,
+seven at the mild end. Issue
+[#1984](https://github.com/sdubois777/Cataclysm/issues/1984) carries it.
+
+### What moved, and what still has no guard
+
+Conditions go from 41 to 45 and scale sources from 14 to 16. The conditions that state no number go
+from eighteen to nineteen, and that count appears in **three** places that must agree — the header's
+sentence, the comment in `ConditionTakesAValue`, and a list in the passive tree's tests — plus an
+ordinal sentence naming the next condition, which moves from "forty-second" to "forty-sixth". Every
+one of those was found by a check failing, not by reading.
+
+**A claim in the code became false and was corrected.** A comment named which conditions ask a pool
+whether both of its readings are known, and said in its own words that a third belongs on the list
+rather than in a fresh claim. `class_resource_above` is that third. `energy_shield_above_zero` is
+deliberately NOT on it, for the folded-guard reason above, and the comment now says so.
+
+**All four conditions are recorded as landed ahead of their rows**, in
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`, each with the sentence
+that asked for it. The rows need the design workbook, which one session may hold at a time; the
+mechanisms need only the engine.
+
+**THE SAME GUARD DOES NOT EXIST FOR A SCALE SOURCE, and this change adds two that no row names.**
+Nothing would notice if their rows never followed. That is the gap issue #1650 closed for conditions,
+still open on the other half, and it is recorded here rather than widened into this change.
+
+### What has not run
+
+No Unreal compile, no automation test and no guard proof. Registered before the runs: two new tests,
+so the suite goes from the 2098 `development` declares to 2100; two proofs, one inverting the shared
+condition judgement and one making a scale read a fixed value instead of its field.
+
+---
+
 ## 2026-09-18 — A creature the player kills may stand back up as a wraith that takes nine tenths off every hit and hunts across the whole floor
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library

@@ -1104,6 +1104,110 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	EnemiesStruckTogetherAtLeast
 		UMETA(DisplayName = "Enemies Struck Together At Least"),
+
+	/**
+	 * The blow being taken came from AT OR WITHIN that many metres. Issue #1981.
+	 *
+	 * "Nearby enemies deal 10%-30% less damage to you" is the row, at 5 metres.
+	 * `ConditionValue` IS METRES and the comparison is at or within.
+	 *
+	 * FIVE IS THE FIGURE EVERY NEAR ROW IN THE GAME ALREADY USES, which is why
+	 * the sentence's "nearby" was settled there rather than invented: the six
+	 * rows on `TargetWithinMetres` are all 5.0 and no other value appears.
+	 * Measured 2026-09-18 across every table carrying a Condition column.
+	 *
+	 * THE MIRROR OF `OpponentBeyondMetres`, READING THE SAME FIELD. That one is
+	 * the far case and writes "more than"; this is the near case and writes
+	 * "within", so the boundaries are opposite on purpose -- the same pairing
+	 * `TargetWithinMetres` and `OpponentBeyondMetres` already carry, and the
+	 * same reason `health_at_or_below` and `health_below` are kept apart.
+	 *
+	 * IT READS THE BLOW AND NOT THE ATTACKER-SIDE DISTANCE, which is the whole
+	 * difference from `TargetWithinMetres`. `FCataclysmBlowContext` is filled
+	 * only on the defender's damage taken lookup and `TargetDistanceMetres` only
+	 * on the attacker's own, so a row using the wrong one of the two reads -1
+	 * and grants nothing rather than reading a plausible number from the wrong
+	 * end of the blow. THIS IS THE FIRST DEFENDER-SIDE DISTANCE CONDITION THAT
+	 * ASKS THE NEAR QUESTION; `OpponentBeyondMetres` had the field to itself.
+	 *
+	 * A NEGATIVE READING IS "NOT KNOWN" AND REFUSES, and zero is a real distance
+	 * because two characters can stand on one spot. The guard cannot be folded
+	 * into the comparison, for the reason `TargetWithinMetres` gives: -1 is at
+	 * or within every threshold a sheet may write, so folding it would let every
+	 * blow that knew nothing satisfy the row.
+	 */
+	OpponentWithinMetres
+		UMETA(DisplayName = "Opponent Within Metres"),
+
+	/**
+	 * The character moved WITHIN the last that many seconds. Issue #1981.
+	 *
+	 * "Strike skills deal 25%-40% less damage if you have moved in the last 2
+	 * seconds" is the row. `ConditionValue` IS SECONDS and the comparison is at
+	 * or within, because "within" is inclusive -- the reading
+	 * `TargetWithinMetres` takes of the same word.
+	 *
+	 * THE SAME FIELD `StationaryForSeconds` READS, COMPARED THE OTHER WAY.
+	 * That one holds at AT LEAST the threshold and this at AT MOST it, so at
+	 * exactly the threshold BOTH HOLD. That is stated rather than left to be
+	 * found: a character whose last movement was exactly two seconds ago has
+	 * been stationary for two seconds and has moved within the last two, and
+	 * both readings of the English are right. The overlap is one instant wide
+	 * and no row pair in the game today writes the same number on both.
+	 *
+	 * A NEGATIVE READING MEANS NO MOVEMENT SAMPLE HAS LOOKED AT THIS CHARACTER,
+	 * and refuses. A character nothing has sampled has not moved recently in any
+	 * sense a row means, and the guard is stated separately rather than folded
+	 * in, because -1 is at or within every threshold a sheet may write.
+	 */
+	MovedWithinSeconds
+		UMETA(DisplayName = "Moved Within Seconds"),
+
+	/**
+	 * The class resource is STRICTLY ABOVE that share of its maximum. Issue
+	 * #1981.
+	 *
+	 * "When your class resource is above 75%, all skills cost 20%-40% less mana"
+	 * is the row. `ConditionValue` IS A PERCENTAGE of the maximum and the
+	 * comparison is strictly above, the boundary `HealthAbovePercent` draws for
+	 * the same word.
+	 *
+	 * THE SAME THREE CLAUSES AS `ClassResourceAtMaximum`, IN THE SAME ORDER, and
+	 * for its reasons: the reading has to be known, the bar has to be able to
+	 * hold something, and only then is the share worth working out. An unknown
+	 * pair would otherwise compare -1 against -1 and hand every enemy in the game
+	 * a bonus written for a Masochist.
+	 *
+	 * A PERCENTAGE AND NOT A COUNT OF POINTS, unlike `PerPointOfClassResourceHeld`
+	 * which scales by the points themselves. Classes do not share a maximum, so a
+	 * row written in points would mean a different fraction of the bar for each.
+	 */
+	ClassResourceAbovePercent
+		UMETA(DisplayName = "Class Resource Above Percent"),
+
+	/**
+	 * The character is holding some energy shield. Issue #1981.
+	 *
+	 * "You take 10%-20% increased damage from all sources while your shield is
+	 * active" is the row. NO THRESHOLD, SO `ConditionValue` IS NOT READ: "active"
+	 * names a state rather than a number, and the tool refuses a value on a row
+	 * carrying this.
+	 *
+	 * "ACTIVE" IS READ AS HELD ABOVE ZERO, a judgement made under the project
+	 * owner's delegation of 2026-09-14 and recorded in `docs/DECISIONS.md`. A
+	 * shield at nothing absorbs nothing, so it is not active in any sense the
+	 * sentence means.
+	 *
+	 * THE GUARD IS FOLDED INTO THE COMPARISON HERE, AND ONLY HERE, BECAUSE THE
+	 * THRESHOLD IS FIXED. Every other reading keeps its "is this known" clause
+	 * separate, because a threshold a sheet writes could be negative and -1 would
+	 * then satisfy it by accident. This one compares against zero and nothing
+	 * else ever, so an unknown reading of -1 refuses by the same comparison, on
+	 * purpose rather than by luck. Saying which of the two cases a condition is
+	 * in is what keeps the next one correct.
+	 */
+	EnergyShieldAboveZero
+		UMETA(DisplayName = "Energy Shield Above Zero"),
 };
 
 /**
@@ -1399,6 +1503,49 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerPointOfMaximumMana
 		UMETA(DisplayName = "Per Point Of Maximum Mana"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` metres lie between the character
+	 * and what it is striking. Issue #1981.
+	 *
+	 * "Ranged skills deal 10%-20% bonus damage for each meter of distance to the
+	 * target" is the row, with a step of 1.
+	 *
+	 * THE SAME FIELD `TargetWithinMetres` READS, AND THE SAME SIDE OF THE BLOW.
+	 * It is filled only on the attacker's own lookups, which is where a ranged
+	 * skill's damage is worked out, and six shipped rows already prove the field
+	 * arrives there. A lookup with no target in hand reads -1.
+	 *
+	 * A NEGATIVE READING GRANTS NOTHING, the way every count does: a damage over
+	 * time tick, a minion's blow and every lookup made with no target carry no
+	 * distance, and a bonus for being far away must not be handed to them.
+	 */
+	PerMetreToTarget
+		UMETA(DisplayName = "Per Metre To Target"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` seconds the character has stood
+	 * still. Issue #1981.
+	 *
+	 * "All damage dealt is reduced by 15%-25% for each second you stand still"
+	 * is the row, with a step of 1.
+	 *
+	 * THE SAME FIELD `StationaryForSeconds` AND `MovedWithinSeconds` READ. Those
+	 * two ask whether a threshold is met; this one asks how large the reading is,
+	 * which is the difference between a condition and a scale.
+	 *
+	 * THE SENTENCE STATES NO CAP AND NONE IS INVENTED. Its row is written as a
+	 * MULTIPLYING reduction on purpose, because `LessMultiplierFloor` stops one
+	 * at -99% and so keeps one per cent of the hit however long the character
+	 * stands there. An increased row would have had no such floor: the caller
+	 * clamps a sum of increases at zero, so it would have reached no damage at
+	 * all. Measured and ruled on 2026-09-18; `docs/DECISIONS.md` carries both.
+	 *
+	 * A NEGATIVE READING GRANTS NOTHING. No movement sample has looked at the
+	 * character, which is not the same as its having stood still for ever.
+	 */
+	PerSecondStationary
+		UMETA(DisplayName = "Per Second Stationary"),
 };
 
 /**
@@ -2680,7 +2827,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a forty-second, which is the drift that put the passive tree eight
+	 * adds a forty-sixth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -2689,7 +2836,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * EIGHTEEN OF THE FORTY-ONE COMPARE NOTHING. They are the case labels
+	 * NINETEEN OF THE FORTY-FIVE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

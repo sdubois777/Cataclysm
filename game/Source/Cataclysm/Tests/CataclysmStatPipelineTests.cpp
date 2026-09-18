@@ -3193,4 +3193,258 @@ bool FCataclysmPipelineMaximumManaScaleTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineNewConditionsTest,
+	"Cataclysm.StatPipeline.FourNewConditionsHoldOnTheirReadingAndRefuseWithoutOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The four conditions added for issue #1981's follow-on, each at its boundary
+ * and each refusing when it knows nothing.
+ *
+ * THE REFUSING HALF IS THE POINT. A condition that always held would pass a test
+ * that only checked the cases it is meant to hold in, and would hand every row
+ * written on it to every character in the game. Each of the four is asked once
+ * where it must hold and once where it must not.
+ *
+ * NONE OF THEM TRACKS ANYTHING NEW. Every field read here was already in
+ * `FCataclysmStatConditions` and already filled on the lookup the row's sentence
+ * needs; these are judgements over readings the pipeline already had.
+ */
+bool FCataclysmPipelineNewConditionsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	const auto Moved = [](float Seconds)
+	{
+		FCataclysmStatConditions State;
+		State.SecondsSinceMoved = Seconds;
+		return State;
+	};
+	const auto Resource = [](float Held, float Maximum)
+	{
+		FCataclysmStatConditions State;
+		State.ClassResourceHeld = Held;
+		State.ClassResourceMaximum = Maximum;
+		return State;
+	};
+	const auto Shield = [](float Held)
+	{
+		FCataclysmStatConditions State;
+		State.EnergyShieldHeld = Held;
+		return State;
+	};
+
+	// THE NAMES A SHEET WRITES REACH THESE CONDITIONS. A name the generator
+	// accepts and the engine does not know is a row that grants nothing.
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("opponent_within_metres is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("opponent_within_metres"), Named));
+	TestEqual(TEXT("and it is the near reading of the blow's distance"),
+		static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::OpponentWithinMetres));
+	TestTrue(TEXT("moved_within_seconds is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("moved_within_seconds"), Named));
+	TestEqual(TEXT("and it is the recent-movement reading"),
+		static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::MovedWithinSeconds));
+	TestTrue(TEXT("class_resource_above is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("class_resource_above"), Named));
+	TestEqual(TEXT("and it is the share of the class resource bar"),
+		static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::ClassResourceAbovePercent));
+	TestTrue(TEXT("energy_shield_above_zero is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("energy_shield_above_zero"), Named));
+	TestEqual(TEXT("and it is the shield-is-holding-something reading"),
+		static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::EnergyShieldAboveZero));
+
+	// AT OR WITHIN, THE OPPOSITE BOUNDARY FROM ITS FAR TWIN. Five metres is the
+	// figure every near row in the game already uses.
+	const ECataclysmStatCondition Within =
+		ECataclysmStatCondition::OpponentWithinMetres;
+	TestTrue(TEXT("a blow from exactly five metres is within five"),
+		FPipeline::ConditionHolds(Within, 5.0f, StruckFrom(5.0f)));
+	TestFalse(TEXT("and one from a hair further is not"),
+		FPipeline::ConditionHolds(Within, 5.0f, StruckFrom(5.1f)));
+	TestTrue(TEXT("and one from a hair nearer is"),
+		FPipeline::ConditionHolds(Within, 5.0f, StruckFrom(4.9f)));
+
+	// ZERO IS A REAL DISTANCE AND -1 IS NOT A DISTANCE AT ALL. Two characters
+	// can stand on one spot, so the unknown reading has to be told apart from
+	// the nearest real one -- and an unknown reading is at or within every
+	// threshold a sheet may write, which is why it must refuse.
+	TestTrue(TEXT("nought metres is a real reading and is within five"),
+		FPipeline::ConditionHolds(Within, 5.0f, StruckFrom(0.0f)));
+	TestFalse(TEXT("an unknown distance refuses rather than satisfying it"),
+		FPipeline::ConditionHolds(Within, 5.0f, StruckFrom(-1.0f)));
+
+	// IT READS THE BLOW AND NOT THE ATTACKER-SIDE DISTANCE. A row that used the
+	// wrong half of the pair must grant nothing rather than read a plausible
+	// number from the wrong end.
+	TestFalse(TEXT("the attacker's own target distance does not satisfy it"),
+		FPipeline::ConditionHolds(Within, 5.0f, TargetAt(1.0f)));
+
+	// WITHIN IS INCLUSIVE HERE TOO.
+	const ECataclysmStatCondition Recently =
+		ECataclysmStatCondition::MovedWithinSeconds;
+	TestTrue(TEXT("a character moving this instant has moved within two seconds"),
+		FPipeline::ConditionHolds(Recently, 2.0f, Moved(0.0f)));
+	TestTrue(TEXT("and one that moved exactly two seconds ago has"),
+		FPipeline::ConditionHolds(Recently, 2.0f, Moved(2.0f)));
+	TestFalse(TEXT("and one a hair past that has not"),
+		FPipeline::ConditionHolds(Recently, 2.0f, Moved(2.1f)));
+	TestFalse(TEXT("a character no movement sample has looked at refuses"),
+		FPipeline::ConditionHolds(Recently, 2.0f, Moved(-1.0f)));
+
+	// THE OVERLAP WITH `StationaryForSeconds`, PINNED RATHER THAN DISCOVERED.
+	// At exactly the threshold both readings of the same field hold: two
+	// seconds since moving is two seconds stood still AND movement within the
+	// last two. One instant wide, and stated so nobody reads it as a fault.
+	TestTrue(TEXT("at exactly the threshold the stationary reading holds too"),
+		FPipeline::ConditionHolds(ECataclysmStatCondition::StationaryForSeconds,
+								  2.0f, Moved(2.0f)));
+
+	// STRICTLY ABOVE, AND A SHARE RATHER THAN A COUNT OF POINTS.
+	const ECataclysmStatCondition Above =
+		ECataclysmStatCondition::ClassResourceAbovePercent;
+	TestTrue(TEXT("76 points of 100 is above 75 per cent"),
+		FPipeline::ConditionHolds(Above, 75.0f, Resource(76.0f, 100.0f)));
+	TestFalse(TEXT("and exactly 75 of 100 is not above it"),
+		FPipeline::ConditionHolds(Above, 75.0f, Resource(75.0f, 100.0f)));
+	TestTrue(TEXT("8 of 10 is the same share and holds, so it reads a share"),
+		FPipeline::ConditionHolds(Above, 75.0f, Resource(8.0f, 10.0f)));
+
+	// THE TWO REFUSALS THE FULL-BAR READINGS ALREADY MAKE. An unknown pair would
+	// compare -1 against -1; a bar that can hold nothing would be divided by.
+	TestFalse(TEXT("a character with no class resource at all refuses"),
+		FPipeline::ConditionHolds(Above, 75.0f, Resource(-1.0f, -1.0f)));
+	TestFalse(TEXT("and a bar that cannot hold anything refuses"),
+		FPipeline::ConditionHolds(Above, 75.0f, Resource(0.0f, 0.0f)));
+
+	// HELD ABOVE ZERO, WHICH IS NOT THE SAME QUESTION AS "IS IT FULL".
+	const ECataclysmStatCondition Live =
+		ECataclysmStatCondition::EnergyShieldAboveZero;
+	TestTrue(TEXT("a shield holding anything at all is active"),
+		FPipeline::ConditionHolds(Live, 0.0f, Shield(1.0f)));
+	TestFalse(TEXT("a shield at nothing is not"),
+		FPipeline::ConditionHolds(Live, 0.0f, Shield(0.0f)));
+	TestFalse(TEXT("and an unknown reading refuses"),
+		FPipeline::ConditionHolds(Live, 0.0f, Shield(-1.0f)));
+
+	// IT STATES NO THRESHOLD, SO THE VALUE IS NOT READ. Both lines below would
+	// change answer if it were.
+	TestTrue(TEXT("a value on the row changes nothing when a shield is held"),
+		FPipeline::ConditionHolds(Live, 999.0f, Shield(1.0f)));
+	TestFalse(TEXT("and changes nothing when the reading is unknown"),
+		FPipeline::ConditionHolds(Live, -5.0f, Shield(-1.0f)));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineNewScalesTest,
+	"Cataclysm.StatPipeline.ABonusCanGrowWithMetresToTheTargetOrSecondsStoodStill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The two scale sources added for issue #1981's follow-on.
+ *
+ * TWO DIFFERENT READINGS EACH, so a scale stuck on one value fails rather than
+ * passing the single case it was written against.
+ *
+ * AND THE FLOOR, MEASURED HERE RATHER THAN ASSERTED IN PROSE. "All damage dealt
+ * is reduced by 15%-25% for each second you stand still" states no cap, and its
+ * row is a MULTIPLYING reduction on purpose: `LessMultiplierFloor` stops one at
+ * -99%, so one per cent of the hit survives however long the character stands
+ * there. `docs/DECISIONS.md` carries why an increased row would not have.
+ */
+bool FCataclysmPipelineNewScalesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmStatTest;
+
+	const auto Moved = [](float Seconds)
+	{
+		FCataclysmStatConditions State;
+		State.SecondsSinceMoved = Seconds;
+		return State;
+	};
+
+	ECataclysmStatScale Named = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("the sheet's name metres_to_target is known"),
+		FPipeline::ScaleNamed(TEXT("metres_to_target"), Named));
+	TestEqual(TEXT("and it is the distance to what is being struck"),
+		static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatScale::PerMetreToTarget));
+	TestTrue(TEXT("the sheet's name seconds_stationary is known"),
+		FPipeline::ScaleNamed(TEXT("seconds_stationary"), Named));
+	TestEqual(TEXT("and it is the time stood still"),
+		static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatScale::PerSecondStationary));
+
+	FCataclysmStatModifier PerMetre = Increased(1.0f);
+	PerMetre.Scale = ECataclysmStatScale::PerMetreToTarget;
+	PerMetre.ScaleStep = 1.0f;
+	const TArray<FCataclysmStatModifier> Ranged = { PerMetre };
+
+	TestEqual(TEXT("a target on the same spot is worth nothing"),
+		FPipeline::Evaluate(100.0f, Ranged, NoTags, TargetAt(0.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("4.9 metres is four whole steps and not five"),
+		FPipeline::Evaluate(100.0f, Ranged, NoTags, TargetAt(4.9f)).Final,
+		104.0f, 0.01f);
+	TestEqual(TEXT("and ten metres is ten"),
+		FPipeline::Evaluate(100.0f, Ranged, NoTags, TargetAt(10.0f)).Final,
+		110.0f, 0.01f);
+
+	// A LOOKUP WITH NO TARGET IN HAND IS WORTH NOTHING, and the defender-side
+	// distance is a different field that must not feed it.
+	TestEqual(TEXT("a caller with no target in hand gets nothing"),
+		FPipeline::Evaluate(100.0f, Ranged, NoTags).Final, 100.0f, 0.01f);
+	TestEqual(TEXT("and the blow's own distance does not feed this scale"),
+		FPipeline::Evaluate(100.0f, Ranged, NoTags, StruckFrom(10.0f)).Final,
+		100.0f, 0.01f);
+
+	FCataclysmStatModifier PerSecond = Increased(2.0f);
+	PerSecond.Scale = ECataclysmStatScale::PerSecondStationary;
+	PerSecond.ScaleStep = 1.0f;
+	const TArray<FCataclysmStatModifier> Waiting = { PerSecond };
+
+	TestEqual(TEXT("a character that has just moved has stood still for nothing"),
+		FPipeline::Evaluate(100.0f, Waiting, NoTags, Moved(0.0f)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("1.9 seconds is one whole step"),
+		FPipeline::Evaluate(100.0f, Waiting, NoTags, Moved(1.9f)).Final,
+		102.0f, 0.01f);
+	TestEqual(TEXT("and five seconds is five"),
+		FPipeline::Evaluate(100.0f, Waiting, NoTags, Moved(5.0f)).Final,
+		110.0f, 0.01f);
+	TestEqual(TEXT("a character no movement sample has looked at gets nothing"),
+		FPipeline::Evaluate(100.0f, Waiting, NoTags, Moved(-1.0f)).Final,
+		100.0f, 0.01f);
+
+	// THE UNCAPPED DRAWBACK, AND WHY IT NEEDS NO CAP. Fifteen per cent a second
+	// asks for -105% at seven seconds; the floor stops it at -99%, so a hundred
+	// damage becomes one rather than none or a negative.
+	FCataclysmStatModifier PerSecondLess = MoreFromGem(-15.0f);
+	PerSecondLess.Scale = ECataclysmStatScale::PerSecondStationary;
+	PerSecondLess.ScaleStep = 1.0f;
+	const TArray<FCataclysmStatModifier> StandingStill = { PerSecondLess };
+
+	TestEqual(TEXT("four seconds standing still takes sixty per cent of the hit"),
+		FPipeline::Evaluate(100.0f, StandingStill, NoTags, Moved(4.0f)).Final,
+		40.0f, 0.01f);
+	TestEqual(TEXT("seven seconds asks for more than all of it and leaves one"),
+		FPipeline::Evaluate(100.0f, StandingStill, NoTags, Moved(7.0f)).Final,
+		1.0f, 0.01f);
+	TestTrue(TEXT("and no length of standing still reaches nothing"),
+		FPipeline::Evaluate(100.0f, StandingStill, NoTags, Moved(600.0f)).Final
+			> 0.0f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
