@@ -857,7 +857,8 @@ namespace CataclysmStatExemptionTest
 	 * figure its subject really holds.
 	 */
 	void ScaledBy(AActor* Who, const FString& Stat, float Percent,
-				  ECataclysmStatScale Scale, float Base)
+				  ECataclysmStatScale Scale, float Base,
+				  float ReachMetres = -1.0f)
 	{
 		UCataclysmAbilitySystemComponent* System =
 			Cast<UCataclysmAbilitySystemComponent>(
@@ -876,6 +877,12 @@ namespace CataclysmStatExemptionTest
 		Modifier.Value = Percent;
 		Modifier.Scale = Scale;
 		Modifier.ScaleStep = 1.0f;
+
+		// AND HOW FAR IT LOOKS, WHICH IS NOT DECORATION FOR ONE OF THESE.
+		// `WithEnemiesInReach` walks the world only for a modifier that states
+		// a reach; one that states none counts nobody, and the probe reading
+		// enemies nearby measured 1.000 against 1.000 until this was passed.
+		Modifier.ReachMetres = ReachMetres;
 
 		TMap<FName, FCataclysmStatInputs> Inputs;
 		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(*Stat));
@@ -1090,8 +1097,22 @@ namespace CataclysmStatExemptionTest
 				 ECataclysmStatScale::PerStackOfSanguineMomentum, /*Base=*/1.0f);
 
 		const float Still = UCataclysmBasicAttack::SecondsBetweenSwingsFor(System);
-		UCataclysmStacks::NoteHealthCostPaid(System);
-		UCataclysmStacks::NoteHealthCostPaid(System);
+
+		// THE STACK IS GRANTED DIRECTLY, NOT THROUGH THE EVENT THAT USUALLY
+		// GRANTS IT. `UCataclysmStacks::NoteHealthCostPaid` refuses unless the
+		// character paid a health cost within the stack's own window, which a
+		// probe has not: it returned false twice here and the reading never
+		// moved. What this case is about is whether the SWING GAP asks for the
+		// stat, not how a Masochist earns momentum.
+		System->GrantStack(
+			ECataclysmStackKind::SanguineMomentum,
+			UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::SanguineMomentum),
+			UCataclysmStacks::CapFor(ECataclysmStackKind::SanguineMomentum));
+		System->GrantStack(
+			ECataclysmStackKind::SanguineMomentum,
+			UCataclysmStacks::WindowSecondsFor(ECataclysmStackKind::SanguineMomentum),
+			UCataclysmStacks::CapFor(ECataclysmStackKind::SanguineMomentum));
+
 		const float Moving = UCataclysmBasicAttack::SecondsBetweenSwingsFor(System);
 
 		Test.TestTrue(
@@ -1332,18 +1353,48 @@ namespace CataclysmStatExemptionTest
 		}
 		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
 
-		FScopedFighter Holder(World, /*AttackDamage=*/0.0f);
-		GiveAFervourPool(Holder);
-		ScaledBy(Holder.Actor, TEXT("fervour_per_enemy_in_reach"), 1.0f,
-				 ECataclysmStatScale::PerEnemyInReach, /*Base=*/1.0f);
-
-		const float Alone =
-			UCataclysmFervour::GainPerSecondStep(Holder.AbilitySystem, 1.0f);
-
-		ACataclysmEnemyCharacter* Creature =
+		// A REAL CHARACTER HOLDS THE LINE, NOT A BARE ACTOR. The walk that counts
+		// nearby enemies measures from the avatar and refuses anything that is
+		// not an `ACataclysmCharacterBase`, so a bare actor counts nobody however
+		// many creatures stand on it. That is why this probe alone builds its
+		// subject as a character.
+		ACataclysmEnemyCharacter* Holder =
 			World->SpawnActor<ACataclysmEnemyCharacter>(FVector::ZeroVector,
 														FRotator::ZeroRotator);
-		if (!Test.TestNotNull(TEXT("a creature to stand near"), Creature))
+		if (!Test.TestNotNull(TEXT("a character to hold the line"), Holder))
+		{
+			return;
+		}
+		Holder->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		ON_SCOPE_EXIT { if (IsValid(Holder)) { Holder->Destroy(); } };
+
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				Holder->GetAbilitySystemComponent());
+		if (!Test.TestNotNull(TEXT("with an ability system"), System))
+		{
+			return;
+		}
+		System->AddAttributeSetSubobject(
+			NewObject<UCataclysmClassResourceAttributeSet>(Holder));
+		System->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute(),
+			100.0f);
+		System->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(), 0.0f);
+
+		// FIVE METRES, WHICH IS A REACH THE SHIPPED ROWS STATE. A modifier with
+		// no reach is skipped by the walk entirely.
+		ScaledBy(Holder, TEXT("fervour_per_enemy_in_reach"), 1.0f,
+				 ECataclysmStatScale::PerEnemyInReach, /*Base=*/1.0f,
+				 /*ReachMetres=*/5.0f);
+
+		const float Alone = UCataclysmFervour::GainPerSecondStep(System, 1.0f);
+
+		ACataclysmEnemyCharacter* Creature =
+			World->SpawnActor<ACataclysmEnemyCharacter>(FVector(1 * M, 0, 0),
+														FRotator::ZeroRotator);
+		if (!Test.TestNotNull(TEXT("a hostile creature to stand near"), Creature))
 		{
 			return;
 		}
@@ -1351,8 +1402,7 @@ namespace CataclysmStatExemptionTest
 			UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
 		ON_SCOPE_EXIT { if (IsValid(Creature)) { Creature->Destroy(); } };
 
-		const float Crowded =
-			UCataclysmFervour::GainPerSecondStep(Holder.AbilitySystem, 1.0f);
+		const float Crowded = UCataclysmFervour::GainPerSecondStep(System, 1.0f);
 
 		Test.TestTrue(
 			FString::Printf(TEXT("fervour_per_enemy_in_reach is asked for, so "
