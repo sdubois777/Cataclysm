@@ -2,6 +2,77 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — The Conduit keystone grants the stat the engine already reads, so it does something in play
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (one row on the Passive Effects
+sheet), `game/Data/PassiveEffects.csv`, `game/Content/Data/DT_PassiveEffects.uasset`,
+and two test files. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+**The engine read this stat a day before anything granted it.** The change of
+2026-09-17 made a minion's hit and kill the minion's own unless its summoner
+holds the Ritualist keystone `Ritualist_keystone_spine_003`, Conduit: "Damage
+dealt by your minions counts as damage you dealt, for every effect of yours that
+asks." `UCataclysmCombatEvents::NoteBlow` asked for
+`minion_hits_count_as_yours` from that day, `game/Data/PassiveEffects.csv` held
+no row granting it, and both tests that measure the keystone put the stat on by
+hand. So the keystone was written, built and tested, and a player taking it got
+nothing. This is the row.
+
+### ONE ROW, AND NO STAT DECLARATION ANYWHERE
+
+| Node | Stat | Kind | Per point |
+|---|---|---|---|
+| `Ritualist_keystone_spine_003` | `minion_hits_count_as_yours` | flat | 1 |
+
+Every other cell is empty: no tags, no condition, no scale, no option. It is the
+shape `Ritualist_keystone_b_kB` (Every One Bursts) uses to grant
+`minion_explodes_on_death`, and for the same reason -- a keystone turning a
+behaviour on rather than granting a quantity.
+
+**There is no stats sheet to declare the stat in, and it needs none.** The
+workbook has 27 sheets and none of them is a stat vocabulary. A stat counts as
+real to `tools/generate_datatables.py` when it appears in Class Stats, in
+Attributes, on an item base, in `ENGINE_SUPPLIED_BASES`, or in the engine's own
+list of stats that deliberately have no gameplay attribute -- and this stat is in
+that last list, which the generator reads out of `CataclysmPlayerClassStats.cpp`
+rather than restating. **A Class Stats row would have been wrong twice over**: it
+is a flag a keystone grants rather than a figure a class carries by level, and it
+has no attribute for a class line to fill.
+
+### TWO PINNED COUNTS MOVE WITH IT
+
+`tools/tests/test_passive_effects_match_the_node_text.py` pins how much of the
+passive trees is authored, so both figures move by one and say why: the authored
+rows from 285 to 286, and the nodes with any authored effect from 209 to 210,
+which makes the Ritualist 67 of its 74.
+
+**And the row's value is tied to the node's own words.** That file requires every
+granted figure to appear in the sentence the player reads, and exempts the rows
+whose sentence states the rule in words instead. This is the third Ritualist flag
+of the day with no digit anywhere in its sentence, and the phrase recorded for it
+is "counts as damage you dealt".
+
+### A CHECK THAT WOULD HAVE CAUGHT A MISTAKE MADE EARLIER THE SAME DAY
+
+`tools/tests/test_decisions_entries_are_separated.py` gains
+`test_no_entry_is_dated_later_than_today`: no entry heading in this file may be
+dated after the local date when the test runs.
+
+**The mistake it catches was made in this file, hours earlier.** An entry was
+headed 2026-09-18 because this machine runs six hours behind UTC, so a change
+written in the evening is already the next day there, while every entry in the
+log uses the local date. Fifty checks read this file and three of them parse
+headings; not one looked at what a date said, and a person reading the diff
+caught it.
+
+**Today is the only line this file can draw by itself**, and it is enough: the
+log cannot know when a decision was made, and the commit that writes an entry is
+not visible from a test, but a decision recorded today was not made tomorrow. It
+cannot go stale either, because a heading dated in the past stays in the past.
+
+---
+
 ## 2026-09-17 — A minion is the instigator of its own blow, and it takes the retaliation that blow provokes
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`,
