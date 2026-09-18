@@ -15261,6 +15261,25 @@ bool FCataclysmEpidemicNoSecondChainTest::RunTest(const FString& Parameters)
 		}
 	}
 
+	// AND ONE CREATURE STANDING BEYOND THE MASS KILL'S REACH, WHICH IS WHAT THE FAILING
+	// ASSERTION READS. MEASURED 2026-09-18 by reading the code path: the wounding blows
+	// above are necessary and are NOT sufficient. A chain that fed itself would leave the
+	// panel line below reading exactly the same, because `NoteDeathForEpidemic` raises the
+	// chain and THEN calls `EpidemicEndTheChain`, which ends by setting the chain back to
+	// nothing, and because the ceiling of one Plague Lord a floor is reached either way.
+	//
+	// WHAT A SECOND CHAIN CHANGES IS HOW FAR THE KILLING REACHES. `EpidemicEndTheChain` is
+	// centred on the creature whose death completed the chain. The first is centred on the
+	// corpse at 1000 and reaches to 1600, which is why the three above die. A chain feeding
+	// itself re-centres on the corpse at 1300 and reaches to 1900. This creature stands at
+	// 1850: outside the first reach, inside the second.
+	ACataclysmEnemyCharacter* Witness = SpawnImpWithHealth(
+		World, FVector(1850.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature standing beyond the reach"), Witness))
+	{
+		return false;
+	}
+
 	const int32 Before = LivingCreatures(World).Num();
 	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill; ++Index)
 	{
@@ -15272,8 +15291,15 @@ bool FCataclysmEpidemicNoSecondChainTest::RunTest(const FString& Parameters)
 								 "after it; the panel says %s"),
 							Before, After, *PanelLine()));
 
-	// THE CHAIN IS BACK AT NOTHING AND EXACTLY ONE LORD CAME. A chain that fed itself
-	// would climb again inside the same kill and the panel would not read this.
+	// THE CREATURE BEYOND THE REACH WAS NOT KILLED. THIS IS THE ASSERTION THAT FAILS WHEN
+	// THE GUARD IS REMOVED, and the comment on the spawn above says why it and not the
+	// panel line.
+	TestFalse(TEXT("the creature standing beyond the mass kill's reach was not killed"),
+			  UCataclysmSkillEffects::IsDead(Witness));
+
+	// AND THE CHAIN IS BACK AT NOTHING WITH EXACTLY ONE LORD. This reads the same whether
+	// or not the chain fed itself, so it is a check on the ordinary path and not on the
+	// guard.
 	TestEqual(TEXT("the chain is back at nothing and one lord came"), PanelLine(),
 			  FString::Printf(TEXT("chain 0 of %d, lord 1 of %d"),
 							  Effects::EpidemicSpreadsToKill,
