@@ -3,6 +3,9 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the one question this file asks about a minion: whether its summoner
+// holds the keystone that makes its blows the summoner's. See NoteBlow.
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystemComponent.h"
@@ -91,6 +94,32 @@ void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data
 	const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetContext();
 	AActor* Attacker = Context.GetInstigator();
 	AActor* DealtBy = CombatEventsDealtBy(Context);
+
+	// A MINION'S BLOW IS THE MINION'S OWN, UNLESS ITS SUMMONER HOLDS CONDUIT.
+	// Issue #1515. A minion strikes with its summoner as the instigator, so
+	// without this line every rule that asks "was this hit mine" answers yes for
+	// a minion's blow -- the player's on-hit and on-kill effects, its kill
+	// credit, and four dungeon floor rules. The project owner ruled on
+	// 2026-09-17 that a minion's blow carries only the minion's own stats and
+	// minion affixes, and that the Ritualist keystone Conduit is what turns the
+	// summoner's side of it back on.
+	//
+	// HERE, AND IN ONE LINE, BECAUSE THIS IS WHERE A BLOW BECOMES A RECORD.
+	// `NoteDeath` reads the killer out of the record written below rather than
+	// working it out again, and the nine places that ask whether a hit or a kill
+	// was the player's read the notice. So they all follow this, and none of
+	// them needed a check of its own.
+	//
+	// THE INSTIGATOR IS NOT CHANGED, only who the blow is credited to. Eight
+	// places in `UCataclysmVitalAttributeSet` read the causer to decide how a
+	// blow resolves, and this is announcement rather than resolution.
+	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(DealtBy))
+	{
+		if (!ACataclysmMinion::HitsCountAsTheSummoners(Minion))
+		{
+			Attacker = DealtBy;
+		}
+	}
 
 	// WHAT A DAMAGE-OVER-TIME TICK GRANTS IS WHERE ITS AILMENT IS, and gathering
 	// it costs a container, so it is gathered only for a tick that is either

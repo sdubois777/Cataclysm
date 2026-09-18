@@ -179,9 +179,14 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 *
 	 * FOR A SUMMONED MINION, and the only one of its six exclusions that
 	 * protects the summoner rather than the target. Retaliation is dealt back to
-	 * whoever the hit was credited to, and a minion's blow is credited to its
-	 * summoner, so without this a Ritualist standing at range would take damage
-	 * every time one of its imps struck a retaliating enemy.
+	 * the effect's CAUSER, which is the summoner for a minion's blow, so without
+	 * this a Ritualist standing at range would take damage every time one of its
+	 * imps struck a retaliating enemy.
+	 *
+	 * THE CAUSER AND NOT WHO THE BLOW IS CREDITED TO. Since issue #1515 a
+	 * minion's hit is credited to the minion unless its summoner holds the
+	 * Conduit keystone, while the causer stays the summoner either way, so this
+	 * exclusion is needed whatever the keystone says.
 	 *
 	 * BLOCKED BY THE DESIGN'S GENERAL RULE, the same one that blocks the weapon
 	 * sub-type: "A minion reaches its summoner through exactly three channels,

@@ -946,16 +946,23 @@ bool FCataclysmCombatEventsDeathNotice::RunTest(const FString&)
 // ---------------------------------------------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsMinionKill,
-	"Cataclysm.CombatEvents.AMinionsKillCreditsItsSummonerAndNamesTheMinion",
+	"Cataclysm.CombatEvents.AMinionsHitKillAndBurnAreItsOwnWithoutConduit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FCataclysmCombatEventsMinionKill::RunTest(const FString&)
 {
 	using namespace CataclysmCombatEventsTest;
 
-	// THE KILL IS THE SUMMONER'S AND THE MINION IS NAMED, under today's
-	// placeholder minion model, issue #340. The minion is recorded as the
-	// effect's source object and the causer stays the summoner, so nothing that
+	// THE HIT AND THE KILL ARE THE MINION'S OWN, SINCE ISSUE #1515. They were
+	// the summoner's until 2026-09-17, because a minion strikes with its
+	// summoner as the instigator and the notice read the attacker from there.
+	// The project owner ruled that a minion's blow carries only the minion's
+	// own numbers unless the summoner holds the Conduit keystone, and
+	// `Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner`
+	// is the other half of this pair: the same swing, with the keystone.
+	//
+	// THE CAUSER IS STILL THE SUMMONER, which is what makes this a change to
+	// who a blow is credited to rather than to how one resolves. Nothing that
 	// works out damage sees anything different.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
@@ -999,7 +1006,11 @@ bool FCataclysmCombatEventsMinionKill::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestTrue(TEXT("credited to the summoner"), Heard.Hits[0].Attacker == Summoner.Actor);
+	// TWO FIELDS FROM TWO LINES, AND BOTH ARE WORTH ASSERTING. The attacker is
+	// decided by the Conduit lookup in `UCataclysmCombatEvents::NoteBlow`; the
+	// dealer is the effect's source object, set where the blow is delivered. A
+	// build that stopped setting either would fail exactly one of these.
+	TestTrue(TEXT("credited to the minion"), Heard.Hits[0].Attacker == Imp);
 	TestTrue(TEXT("and dealt by the minion"), Heard.Hits[0].DealtBy == Imp);
 	TestEqual(TEXT("and the distance is the minion's, not the summoner's"),
 			  Heard.Hits[0].DistanceMetres, 1.0f, 0.05f);
@@ -1010,8 +1021,8 @@ bool FCataclysmCombatEventsMinionKill::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestTrue(TEXT("the kill is credited to the summoner"),
-			 Heard.Deaths[0].Killer == Summoner.Actor);
+	TestTrue(TEXT("the kill is credited to the minion"),
+			 Heard.Deaths[0].Killer == Imp);
 	TestTrue(TEXT("and names the minion as what dealt it"),
 			 Heard.Deaths[0].KillingCauser == Imp);
 
@@ -1042,10 +1053,114 @@ bool FCataclysmCombatEventsMinionKill::RunTest(const FString&)
 		return false;
 	}
 	TestTrue(TEXT("the tick is damage over time"), Heard.Hits.Last().bDamageOverTime);
-	TestTrue(TEXT("credited to the summoner"),
-			 Heard.Hits.Last().Attacker == Summoner.Actor);
+
+	// AND THE TICK IS CREDITED THE SAME WAY THE SWING IS. A burn set by a minion
+	// carries the minion as the effect's source object, so the one lookup in
+	// `NoteBlow` reaches a tick as surely as a blow, and a burn that killed
+	// would not be the summoner's kill either.
+	TestTrue(TEXT("credited to the minion"),
+			 Heard.Hits.Last().Attacker == Burner);
 	TestTrue(TEXT("and dealt by the minion that set the fire"),
 			 Heard.Hits.Last().DealtBy == Burner);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsConduitKill,
+	"Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The same swing as the case above, by a summoner who holds the keystone.
+ *
+ * WHAT THE KEYSTONE SAYS. `Ritualist_keystone_spine_003` Conduit: "Damage dealt
+ * by your minions counts as damage you dealt, for every effect of yours that
+ * asks." The project owner ruled on 2026-09-17 that this is what turns the
+ * summoner's on-hit and on-kill effects, its kill credit and its damage bonuses
+ * back on for a minion's blow, and that without it a minion's blow is the
+ * minion's own.
+ *
+ * THE PAIR IS WHAT MAKES EITHER HALF MEAN ANYTHING. A build that credited the
+ * summoner for every minion's blow, the way the game did until this change,
+ * would pass this case and fail its partner; a build that credited the minion
+ * whatever the summoner holds would pass the partner and fail this one.
+ *
+ * THE STAT IS PUT ON BY HAND RATHER THAN BY TAKING THE NODE. `SetStatInputs`
+ * replaces the character's stat lines, which is harmless here because this
+ * summoner has none, and it keeps the case about the crediting rather than
+ * about the passive tree. The row that grants it lives in the Passive Effects
+ * sheet of the design workbook, and
+ * `Cataclysm.PassiveTree.` is where a node's own row is measured.
+ */
+bool FCataclysmCombatEventsConduitKill::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	FArmedActor Summoner = MakeArmed(World);
+	ACataclysmEnemyCharacter* Victim =
+		SpawnCreatureAt(World, FVector(4.0f * M, 0.0f, 0.0f), 1.0f);
+	if (!TestNotNull(TEXT("the notices subsystem"), Events)
+		|| !TestNotNull(TEXT("a summoner"), Summoner.Actor)
+		|| !TestNotNull(TEXT("with an ability system to hold the keystone"),
+						Summoner.AbilitySystem)
+		|| !TestNotNull(TEXT("a victim"), Victim))
+	{
+		return false;
+	}
+
+	// THE KEYSTONE, AS THE ONE STAT IT GRANTS, AND BEFORE THE SUMMONING. The
+	// flag is read at the blow rather than at the spawn, so the order does not
+	// matter to the engine; it is stated first because that is the order the
+	// sentence reads in.
+	FCataclysmStatModifier Held;
+	Held.Bucket = ECataclysmStatBucket::Flat;
+	Held.Source = ECataclysmModifierSource::PassiveKeystone;
+	Held.Value = 1.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(TEXT("minion_hits_count_as_yours"))).Modifiers = {Held};
+	Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(3.0f * M, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("a minion"), Imp))
+	{
+		return false;
+	}
+
+	FHeard Heard;
+	ListenTo(Events, Heard);
+	ON_SCOPE_EXIT { StopListening(Events, Heard); };
+
+	Imp->AttackTarget(Victim);
+
+	if (!TestEqual(TEXT("the minion's blow sends one hit notice"), Heard.Hits.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("credited to the summoner, because it holds the keystone"),
+			 Heard.Hits[0].Attacker == Summoner.Actor);
+	TestTrue(TEXT("and still dealt by the minion"), Heard.Hits[0].DealtBy == Imp);
+
+	TestTrue(TEXT("the blow killed the victim"), UCataclysmSkillEffects::IsDead(Victim));
+	if (!TestEqual(TEXT("and sent one death notice"), Heard.Deaths.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the kill is the summoner's"),
+			 Heard.Deaths[0].Killer == Summoner.Actor);
+	TestTrue(TEXT("and still names the minion as what dealt it"),
+			 Heard.Deaths[0].KillingCauser == Imp);
 
 	return true;
 }

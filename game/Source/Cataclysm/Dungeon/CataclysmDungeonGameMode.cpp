@@ -3338,19 +3338,22 @@ void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
 		return;
 	}
 
-	// "WHEN YOU SLAY AN ENEMY", WHICH IS TWO QUESTIONS. The killer is the blow's
-	// instigator and a minion's blow is credited to its summoner, so the killer alone
-	// would count a minion's kill as the player's. The dealer is the minion itself for a
-	// minion's blow, and the instigator for every other, so the pair says what the row
-	// says. The header above this function records the ruling and what may move it.
+	// "WHEN YOU SLAY AN ENEMY", WHICH IS NOW ONE QUESTION. The killer on the notice
+	// is the player only when the player really killed it: a minion's kill is credited
+	// to the minion unless its summoner holds the Conduit keystone, which
+	// `UCataclysmCombatEvents::NoteBlow` decides in one place. Issue #1515.
+	//
+	// THIS USED TO ASK TWICE, and the second question was written pending exactly that
+	// correction. A minion's blow was credited to its summoner, so the killer alone
+	// counted a minion's kill as the player's, and a second check on the actor that
+	// dealt the blow refused it. That check is gone with this change, because a minion's
+	// kill now fails the first question by itself -- and a summoner who HAS taken the
+	// keystone should bring a prince from its minion's kill, which the second check
+	// would have gone on refusing.
 	APlayerController* Controller = World->GetFirstPlayerController();
 	const ACataclysmPlayerCharacter* Player =
 		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
 	if (!Player || Notice.Killer != Player)
-	{
-		return;
-	}
-	if (Cast<ACataclysmMinion>(Notice.KillingCauser))
 	{
 		return;
 	}
@@ -3914,8 +3917,13 @@ void ACataclysmDungeonGameMode::NoteDeathForLeechSpores(
 	// the killing, and the design log's Mortal Decay entry records what that means
 	// for a listener on this notice: `NoteDeathForMortalDecay` asks the same for
 	// "reaping enemies". A creature whose death names anyone else as its killer,
-	// or nobody, leaves no cloud. A minion's kill still leaves one, because
-	// `FCataclysmDeathNotice::Killer` credits the summoner.
+	// or nobody, leaves no cloud.
+	//
+	// A MINION'S KILL LEAVES ONE ONLY WITH THE CONDUIT KEYSTONE, since issue
+	// #1515. It used to leave one always, because the killer on the notice was
+	// the summoner for a minion's blow; the project owner ruled on 2026-09-17
+	// that a minion's kill is the minion's unless that keystone says otherwise,
+	// and `UCataclysmCombatEvents::NoteBlow` is where that is decided.
 	//
 	// THE SAME ROUTE TO THE PLAYER THE BEAT TAKES, so the two cannot disagree
 	// about whose floor this is.

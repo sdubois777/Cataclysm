@@ -143,12 +143,43 @@ public:
 	float DeployedHealthPercent = 0.0f;
 
 	/**
-	 * Whose it is. Its side is this actor's, and its blows are dealt in this
-	 * actor's name, so credit for what it kills stays with this actor. Its
-	 * DAMAGE is its own, from its type row -- see `AttackTarget`.
+	 * Whose it is. Its side is this actor's and its blows are dealt in this
+	 * actor's name, but credit for what it hits and kills is the MINION'S
+	 * unless this actor holds the Conduit keystone -- see
+	 * `HitsCountAsTheSummoners`. Its DAMAGE is its own, from its type row --
+	 * see `AttackTarget`.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	TObjectPtr<AActor> Summoner;
+
+	/**
+	 * Whether this minion's hits and kills are credited to its summoner.
+	 *
+	 * FALSE UNLESS THE SUMMONER HOLDS THE CONDUIT KEYSTONE, which is the
+	 * Ritualist node `Ritualist_keystone_spine_003`: "Damage dealt by your
+	 * minions counts as damage you dealt, for every effect of yours that asks."
+	 * The project owner ruled on 2026-09-17 that a minion's blow carries only
+	 * the minion's own stats and minion affixes, and that this keystone is what
+	 * turns the summoner's on-hit and on-kill effects, kill credit and damage
+	 * bonuses back on for it.
+	 *
+	 * IT IS A FLAG AND NOT A MULTIPLIER, so the stat
+	 * `minion_hits_count_as_yours` is read for whether it stands above zero, in
+	 * the same way `minion_explodes_on_death` is.
+	 *
+	 * THE ONE CALLER IS `UCataclysmCombatEvents::NoteBlow`, which is where a
+	 * blow is turned into a notice and a record of who last hit whom. Everything
+	 * that asks "was this mine" -- nine places at the time of writing, in
+	 * `CataclysmPlayerCharacter.cpp` and `CataclysmDungeonGameMode.cpp` --
+	 * reads what that one line decided and needs no check of its own.
+	 *
+	 * WHAT THIS DOES NOT TOUCH: a minion still never critically strikes,
+	 * penetrates, leeches, carries a weapon sub-type or rolls its summoner's
+	 * ailment chances, with or without the keystone. Those are the flags on
+	 * `FCataclysmHitDelivery` that `MinionDelivery` sets, and the ruling leaves
+	 * them where they are.
+	 */
+	static bool HitsCountAsTheSummoners(const ACataclysmMinion* Minion);
 
 	/** Whether what it hits is set alight. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")

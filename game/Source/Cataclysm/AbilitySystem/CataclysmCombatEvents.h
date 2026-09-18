@@ -28,9 +28,15 @@ struct FGameplayEffectModCallbackData;
 struct CATACLYSM_API FCataclysmHitNotice
 {
 	/**
-	 * The character the blow is credited to, which is the effect's instigator.
-	 * A minion's blow is credited to its summoner. Null for damage with no
-	 * instigator.
+	 * The character the blow is credited to, which is the effect's instigator
+	 * for every blow but a minion's. Null for damage with no instigator.
+	 *
+	 * A MINION'S BLOW IS CREDITED TO THE MINION, since issue #1515, unless its
+	 * summoner holds the Conduit keystone. The minion strikes with its summoner
+	 * as the instigator, so `UCataclysmCombatEvents::NoteBlow` puts the minion
+	 * here instead; `ACataclysmMinion::HitsCountAsTheSummoners` is the question
+	 * it asks. Everything that gates on "was this mine" reads this field, so
+	 * that one line is what decides all of them.
 	 */
 	AActor* Attacker = nullptr;
 
@@ -132,9 +138,14 @@ struct CATACLYSM_API FCataclysmDeathNotice
 	AActor* Killer = nullptr;
 
 	/**
-	 * The actor that dealt the last blow on record. A minion for a minion's kill
-	 * -- which credits its SUMMONER as `Killer`, under today's placeholder minion
-	 * model, issue #340 -- and otherwise the same actor as `Killer`.
+	 * The actor that dealt the last blow on record. A minion for a minion's
+	 * kill, and otherwise the same actor as `Killer`.
+	 *
+	 * IT IS NO LONGER THE ONLY WAY TO TELL A MINION'S KILL APART. Until issue
+	 * #1515 a minion's kill named the SUMMONER as `Killer`, so a rule that had
+	 * to refuse one read this field; now `Killer` is the minion itself unless
+	 * the summoner holds the Conduit keystone. This field still says what
+	 * swung, which is what a rule naming the minion in a message wants.
 	 */
 	AActor* KillingCauser = nullptr;
 
