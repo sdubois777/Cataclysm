@@ -3173,3 +3173,123 @@ def test_march_of_progress_forgets_its_commander_before_the_floor_is_populated()
         "Progress forgets its Commander in PopulateFloor precisely because that ran "
         "first; with the order swapped, the Commander must be forgotten in the applier "
         "instead. Check docs/DECISIONS.md and move it.")
+
+
+def test_commanders_aura_row_still_says_elite_and_still_only_suggests_its_buffs():
+    """This rule reads one word of its row as a rank and declines the row's examples.
+
+    "CERTAIN ELITE ENEMIES" IS THE WHOLE OF WHAT THE ROW SAYS ABOUT WHO COMMANDS. It
+    states no number, so "certain" is read as the rank and not as a count, and every
+    creature at Elite or above commands.
+
+    AND THE ROW ONLY SUGGESTS ITS BUFFS. It says "e.g., increased health, damage, or
+    resistance"; the rule grants the Commander tag, which raises movement speed and
+    attack speed. That is defensible only while the row's wording stays an example rather
+    than a requirement, so this check reads the "e.g." as well as the word "elite". If
+    the row is ever reworded to require those stats, this fails and docs/DECISIONS.md has
+    to be revisited -- in particular the measured reason maximum health was excluded from
+    that tag on 2026-08-20.
+    """
+    words = flat(rows()["War_Commander_s_Aura"]["Description"])
+    lowered = words.lower()
+
+    assert "elite" in lowered, (
+        "The War Commander's Aura row no longer says which enemies command. Check "
+        "CommandersAuraLowestRung against whatever it says now. " + words)
+    assert "e.g." in lowered, (
+        "The War Commander's Aura row no longer offers its buffs as examples. The rule "
+        "grants movement and attack speed instead of the health, damage and resistance "
+        "the row names, and that reading depended on the 'e.g.'. " + words)
+    assert "nearby allies" in lowered, (
+        "The War Commander's Aura row no longer says the buff goes to nearby allies, "
+        "which is what CommandersAuraRadiusCm measures. " + words)
+
+
+def test_commanders_aura_borrows_both_of_its_figures_rather_than_inventing_them():
+    """Neither the reach nor the buff's length is a number of this rule's own.
+
+    THE REACH IS THE SUCCUBUS'S. `ACataclysmSuccubusCharacter` grants this same buff to
+    every ally within 800 cm, so a second distance for the same buff would mean the game
+    empowered creatures at two ranges with no row asking for it. The figure is written in
+    the rule library and checked against the creature here, because that library does not
+    include the creature classes.
+
+    THE LENGTH IS HALLOWED GROUNDFALL'S, and it is DECLARED as that constant rather than
+    copied, so this check reads the declaration rather than the number.
+    """
+    succubus = "game/Source/Cataclysm/Character/CataclysmSuccubusCharacter.h"
+    mine = constant("CommandersAuraRadiusCm")
+    theirs = constant("DominionRadiusCm", succubus)
+
+    assert mine == theirs, (
+        f"Commander's Aura reaches {mine} cm and the Succubus's Dominion reaches "
+        f"{theirs} cm. Both grant the same buff to a creature's nearby allies, so the "
+        "game would empower at two ranges with no row asking it to. If one is meant to "
+        "differ now, say which and why in docs/DECISIONS.md.")
+
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+    assert re.search(
+        r"CommandersAuraGrantSeconds\s*=\s*HallowedGroundfallEmpowerSeconds\s*;", text), (
+        "CommandersAuraGrantSeconds no longer names HallowedGroundfallEmpowerSeconds. "
+        "Both grant this buff from the same quarter-second beat in the same shape; a "
+        "copied number can drift from the one it was copied from.")
+    assert re.search(
+        r"CommandersAuraLowestRung\s*=\s*RoyalGuardLowestRungThatSummons\s*;", text), (
+        "CommandersAuraLowestRung no longer names RoyalGuardLowestRungThatSummons. That "
+        "constant carries this project's answer to which creatures count as Elite, with "
+        "the reading of game/Data/EnemyRarities.csv that produced it.")
+
+
+def test_commanders_aura_passes_the_commander_as_the_instigator_and_the_ally_as_target():
+    """The grant's arguments are (Instigator, Target), and this was written backwards.
+
+    THE TWO NEIGHBOURING GRANTS OF THIS BUFF CANNOT TELL THE ORDER APART, because both
+    pass the same actor twice: Hallowed Groundfall grants to a creature standing in its
+    crater with that creature as instigator, and the enemy modifiers do the same.
+    `ACataclysmSuccubusCharacter::PulseDominion` is the one that distinguishes them, and
+    it passes `this, Ally`.
+
+    WRITTEN THE OTHER WAY ROUND THE RULE BUFFS THE COMMANDER AND NOTHING ELSE, which
+    compiles and reads correctly. It was written that way first. This check is what
+    notices if it happens again.
+    """
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    step = body_of(game_mode, "void ACataclysmDungeonGameMode::StepCommandersAura(")
+
+    assert "ApplyTagForDuration" in step, (
+        "StepCommandersAura no longer grants the buff, so no ally is ever empowered.")
+    assert re.search(r"ApplyTagForDuration\(\s*\n?\s*Commander,\s*Ally,", step), (
+        "StepCommandersAura no longer passes the commanding creature first and the ally "
+        "second. The order is (Instigator, Target): reversed, the rule buffs the "
+        "commander and nothing else, and it compiles.")
+    assert "FindAlliesInSphere" in step, (
+        "StepCommandersAura no longer asks for the commander's allies. That function is "
+        "also what excludes the instigator, which is the whole of 'a commander does not "
+        "buff itself'.")
+
+
+def test_the_two_war_rules_name_their_own_rule_on_the_floor_panel():
+    """One floor can carry both War rules and both use the word "Commander".
+
+    THE WORD MEANS THREE THINGS: the gameplay tag means "buffed by a commander";
+    `War_March_of_Progress` means the one creature a floor that the player hunts;
+    `War_Commander_s_Aura` means every Elite buffing its neighbours. A player reading one
+    panel needs to be able to tell the two lines apart, which is why the Aura's line names
+    its rule and March of Progress's line names the creature.
+    """
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    panel = body_of(game_mode,
+                    "TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor(")
+
+    assert "(Commander's Aura)" in panel, (
+        "The floor panel line for Commander's Aura no longer names its own rule. A floor "
+        "carrying March of Progress as well would show two lines using the word "
+        "Commander for different things with nothing to tell them apart.")
+    assert "this floor's Commander" in panel, (
+        "The floor panel line for March of Progress no longer says which creature is "
+        "that rule's Commander. Naming it is what keeps it apart from the Aura's "
+        "commanders; see issue #1997 for what a player would still need beyond a name.")
+    assert "ArchetypeNameForRow" in panel, (
+        "The floor panel no longer reads the creature's name out of the archetype table. "
+        "A name written in C++ stops matching the design workbook the first time a "
+        "creature is renamed there.")
