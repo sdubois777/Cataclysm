@@ -217,29 +217,51 @@ namespace
 		// `ACataclysmMinion::HitsCountAsTheSummoners`, and credits the summoner
 		// only when it holds the Conduit keystone.
 		Delivery.DealtBy = Minion;
+
+		// THESE THREE ARE NO LONGER THE ONLY THING STOPPING A SUMMONER'S NUMBERS.
+		// Issue #1515. Until 2026-09-17 a minion struck in its summoner's name,
+		// so a critical strike chance, a penetration figure and a weapon
+		// sub-type were all read off the summoner unless a flag said otherwise,
+		// and a reading added later crossed to every minion in the game until
+		// somebody remembered to add a flag for it. The minion is its own
+		// instigator now: it carries no combat attribute set and no weapon, so
+		// those readings find nothing of its own. The flags are kept because
+		// they state the rule rather than leaving it to what a minion happens
+		// not to have, and because issue #340 may one day give a minion figures
+		// of its own -- at which point "a minion never critically strikes" has
+		// to go on being true.
 		Delivery.bCannotCriticallyStrike = true;
 		Delivery.bCannotPenetrate = true;
 		Delivery.bCarriesNoWeaponSubType = true;
 
-		// AND NO LEECH, the fourth of the seven. Leech is read off the attacker
-		// when a hit lands and a minion's blow is dealt in its summoner's name,
-		// so without this a Ravager's imps would heal the Ravager with every
-		// blow. The design names leech among what does not cross. Issue #895.
+		// AND NO LEECH, WHICH IS NOW A DIFFERENT QUESTION FROM THE THREE ABOVE.
+		// Leech is read off the attacker's VITAL attribute set, and a minion has
+		// one -- its leech figures exist and are zero -- so "a minion does not
+		// take its summoner's leech" is true of its own accord since the
+		// instigator changed. What this flag now forbids is a minion leeching
+		// from figures of ITS OWN, which the design does not ask for and no data
+		// can produce today. It is kept so that this change moves no behaviour,
+		// and the decision to keep it is recorded rather than assumed. Issue
+		// #895.
 		Delivery.bCannotLeech = true;
 
-		// AND IT PROVOKES NO RETALIATION, which is the fifth and the only one
-		// that protects the SUMMONER rather than the target. Retaliation is
-		// dealt back to the effect's CAUSER, which stays the summoner for a
-		// minion's blow whatever the notice credits, so without this a Ritualist
-		// standing at range would take damage every time one of its imps struck
-		// a retaliating enemy. Issue #895.
-		Delivery.bCannotBeRetaliatedAgainst = true;
+		// THE RETALIATION EXCLUSION IS GONE, AND THAT IS A DECISION RATHER THAN
+		// AN OVERSIGHT. The project owner decided on 2026-09-18 that a minion
+		// takes the retaliation its own blow provokes, as the thing that swung
+		// would in any other case. The exclusion existed to stop a summoner
+		// standing well away from the fight taking damage for its minion's blow,
+		// and that reason went with the instigator: retaliation is paid back to
+		// whoever dealt the blow, and a minion now deals its own. Minion builds
+		// lose minions to reflecting enemies, which the owner accepted.
+		// `Cataclysm.Retaliation.AMinionTakesTheRetaliationItsOwnBlowProvokes`
+		// is the case that holds it.
 
-		// AND IT CARRIES NO CHANCE TO APPLY AN AILMENT, the sixth. The chances
-		// are worked out from the attacker when the blow is built, and a
-		// minion's attacker is its summoner, so without this every imp would
-		// carry its summoner's chance to bleed from gear. The design names
-		// "chance to apply an ailment" among what does not cross. Issue #899.
+		// AND IT CARRIES NO CHANCE TO APPLY AN AILMENT. The chances are worked
+		// out from the attacker when the blow is built, so this stopped a
+		// summoner's chance to bleed from gear reaching every imp. The design
+		// names "chance to apply an ailment" among what does not cross, and the
+		// flag says so rather than resting on a minion having no such chances of
+		// its own. Issue #899.
 		Delivery.bCarriesNoAilmentChance = true;
 
 		// AND IT REPORTS NO DISTANCE TO ITS TARGET, the seventh. Issue #1596.
@@ -659,8 +681,15 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		const float Damage = OwnDamagePerHit
 			* SummonerMultiplierFor(Summoner, TEXT("minion_damage"));
 
+		// THE MINION IS THE INSTIGATOR OF ITS OWN BLOW, SINCE ISSUE #1515. It
+		// was the summoner until 2026-09-17, which is why everything read off
+		// "the attacker" while a blow resolves had to be blocked by name. A
+		// minion carries no combat attribute set and no weapon, so the same
+		// readings now find nothing of its own rather than everything of its
+		// summoner's, and a reading added later is blocked because it finds
+		// nothing rather than because somebody remembered the list.
 		UCataclysmSkillEffects::ApplyDirectDamage(
-			Summoner, Target, Damage,
+			this, Target, Damage,
 			MinionDelivery(this, /*bIsArea=*/false), &Resolved);
 		Dealt = Damage;
 	}
@@ -687,7 +716,11 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 	// here and would be worth nothing there.
 	if (bBurnsWhatItHits && !Resolved.bEvaded)
 	{
-		UCataclysmSkillEffects::ApplyBurn(Summoner, Target, Dealt,
+		// THE MINION SETS THE FIRE, AS IT DEALT THE BLOW. Ruled on 2026-09-17
+		// under the project owner's delegation, with the instigator change
+		// above: a burn a minion's swing applies is the minion's, or a minion's
+		// swing and the fire it starts would belong to different characters.
+		UCataclysmSkillEffects::ApplyBurn(this, Target, Dealt,
 										  /*bScalesWithInstigator=*/false,
 										  /*bBurnIsDesigned=*/true, /*DealtBy=*/this);
 	}
@@ -799,9 +832,14 @@ void ACataclysmMinion::Explode()
 			// and is exactly what a minion's blow must not use. `ApplyDirectDamage`
 			// takes the figure as it stands, which is how `AttackTarget` deals a
 			// typed minion's swing.
+			//
+			// AND THE MINION IS THE INSTIGATOR HERE TOO, for the reason its
+			// swing gives above: an explosion is the minion's, not its
+			// summoner's, and the summoner's own numbers must not be what the
+			// blow is resolved against.
 			float Dealt = 0.0f;
 			UCataclysmSkillEffects::ApplyDirectDamage(
-				Summoner, Target, Scaled,
+				this, Target, Scaled,
 				MinionDelivery(this, /*bIsArea=*/true));
 			Dealt = Scaled;
 			// Designed, for the reason the melee attack above records.
@@ -814,7 +852,7 @@ void ACataclysmMinion::Explode()
 			if (bBurnsWhatItHits)
 			{
 				UCataclysmSkillEffects::ApplyBurn(
-					Summoner, Target, Dealt,
+					this, Target, Dealt,
 					/*bScalesWithInstigator=*/false,
 					/*bBurnIsDesigned=*/true, /*DealtBy=*/this);
 			}

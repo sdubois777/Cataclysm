@@ -8,6 +8,8 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+// For the real minion whose summoner holds the keystone. Issue #1515.
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -348,26 +350,26 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionBlowStillEvadableTest,
 /**
  * A summoner's keystone does not cross to its minions. Issue #1515.
  *
- * WHY THIS TEST EXISTS AT ALL. A minion's damage is dealt in its summoner's
- * NAME, so the attacker whose attributes are read when the blow is assembled is
- * the player. Four other things are blocked from crossing that way by name --
- * `MinionDelivery` in `CataclysmMinion.cpp` sets `bCannotCriticallyStrike`,
- * `bCannotPenetrate`, `bCarriesNoWeaponSubType` and `bCannotLeech`. This one is
- * blocked by the melee gate instead, because a minion's blow carries no melee
- * tag: both delivery calls in that file pass an empty tag container.
+ * WHY THIS ONE MATTERS MORE THAN THE FOUR BESIDE IT. Four capabilities are kept
+ * from crossing to a minion's blow by name, in `MinionDelivery` in
+ * `CataclysmMinion.cpp`: critical strike, penetration, weapon sub-type and
+ * leech. THIS ONE IS NAMED NOWHERE. Nothing sets a flag for it, and until issue
+ * #1515 it was blocked only by an accident of delivery -- a minion's blow
+ * carries no melee tag, and the suppression is read only for a melee blow. This
+ * case's own comment said so, and warned that giving a minion's blow a melee tag
+ * would break the rule while this test went on passing.
  *
- * SO THE EXCLUSION IS TRUE TODAY BY HOW MINION DAMAGE IS DELIVERED, NOT BY
- * ANYTHING STATING IT, and that is exactly why it is asserted rather than
- * trusted. The design's rule is "a minion reaches its summoner through exactly
- * three channels, and nothing else crosses".
+ * IT IS STRUCTURAL NOW, WHICH IS WHAT THE CASE MEASURES. Since 2026-09-17 the
+ * minion is the instigator of its own blow, so the suppression is looked for on
+ * the MINION, which has no combat attribute set to hold it. A summoner's
+ * keystone cannot reach a minion's blow whatever tags that blow carries, and a
+ * capability added later is blocked for the same reason rather than by somebody
+ * remembering to add a flag. The design's rule is "a minion reaches its summoner
+ * through exactly three channels, and nothing else crosses".
  *
- * WHAT THIS TEST IS AND IS NOT. It sends the blow the way a minion's is sent --
- * from the summoner, with an empty tag container -- rather than spawning a
- * minion and driving its brain. That is a stand-in, and it is named as one: it
- * proves the melee gate holds for the shape a minion's blow has. If somebody
- * ever gives a minion's blow a melee tag, this test keeps passing and the rule
- * breaks, so the comment in `CataclysmVitalAttributeSet.cpp` at the set site
- * carries the warning as well.
+ * SO IT SUMMONS A REAL IMP AND TELLS IT TO ATTACK, rather than sending a blow
+ * shaped like a minion's from the summoner. The stand-in it used to be could not
+ * have caught the fault it warned about.
  */
 bool FCataclysmMinionBlowStillEvadableTest::RunTest(const FString&)
 {
@@ -382,6 +384,7 @@ bool FCataclysmMinionBlowStillEvadableTest::RunTest(const FString&)
 
 	const FScopedFighter Summoner(World);
 	const FScopedFighter Defender(World);
+	const FScopedFighter Unready(World);
 
 	Defender.Write(Combat::GetEvasionAttribute(), AlwaysEvades);
 	Summoner.Write(Combat::GetMeleeEvasionSuppressedAttribute(), 1.0f);
@@ -395,12 +398,33 @@ bool FCataclysmMinionBlowStillEvadableTest::RunTest(const FString&)
 		return false;
 	}
 
-	// AND THE BLOW SENT THE WAY A MINION'S IS SENT DOES NOT.
-	Defender.Heal();
-	Effects::ApplyHit(Summoner.Actor, Defender.Actor, FullSwing, NoTags());
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("a minion of its own"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
 
-	TestEqual(TEXT("a blow carrying no tags, which is how a minion's damage is "
-				   "delivered, is still evaded"),
+	// THE IMP'S BLOW LANDS ON A DEFENDER THAT DOES NOT EVADE, which is the
+	// control this case needs: without it, a minion that dealt nothing at all
+	// would pass the reading below and look like the rule holding.
+	const float UnreadyBefore = Unready.HealthLost();
+	Imp->AttackTarget(Unready.Actor);
+	if (!TestTrue(TEXT("the imp's blow lands on a defender with no evasion"),
+				  Unready.HealthLost() > UnreadyBefore))
+	{
+		return false;
+	}
+
+	// AND IT IS EVADED BY THE ONE THAT EVADES EVERYTHING, although its summoner
+	// holds the keystone that would stop exactly that.
+	Defender.Heal();
+	Imp->AttackTarget(Defender.Actor);
+
+	TestEqual(TEXT("the imp's blow is still evaded, so its summoner's keystone "
+				   "did not reach it"),
 			  Defender.HealthLost(), 0.0f, 0.01f);
 
 	return true;

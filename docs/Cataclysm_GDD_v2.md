@@ -1205,7 +1205,7 @@ Retaliation deals damage back to whatever lands a hit on the character. Only the
 
 
 
-**A minion's blow provokes none.** A minion's blow is dealt in its summoner's name -- retaliation is paid back to whoever the blow was dealt by, and that is the summoner -- so retaliation would otherwise be dealt to a summoner standing well away from the fight. That is the same rule that stops a minion taking its summoner's critical strikes, penetration, weapon sub-type and leech.
+**A minion's blow provokes it, and the minion takes it.** Retaliation is paid back to whoever dealt the blow, and a minion deals its own blow rather than dealing it in its summoner's name, so the creature that swung takes what comes back and a summoner standing well away from the fight takes nothing. That a minion takes neither its summoner's critical strikes, penetration, weapon sub-type nor leech is the same rule read the other way: those four do not reach a minion's blow, and what a minion's blow provokes does not reach the summoner.
 
 
 

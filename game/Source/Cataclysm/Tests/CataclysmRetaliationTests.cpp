@@ -5,6 +5,9 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the real minion that takes the retaliation its own blow provokes.
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -276,7 +279,7 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationIsNotAHitTest,
 }
 
 CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationExclusionsTest,
-	"Cataclysm.Retaliation.NeitherADamageOverTimeTickNorAMinionsBlowProvokesIt")
+	"Cataclysm.Retaliation.ADamageOverTimeTickProvokesNoneWhileAnOrdinaryBlowDoes")
 {
 	using namespace CataclysmRetaliationTest;
 
@@ -309,41 +312,91 @@ CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationExclusionsTest,
 	TestEqual(TEXT("a damage over time tick provokes no retaliation"),
 		Attacker.Vitals->GetHealth(), Before, 0.001f);
 
-	// AND A MINION'S BLOW PROVOKES NONE EITHER. It is credited to its summoner,
-	// so without this a Ritualist standing at range would take retaliation every
-	// time one of its imps struck a retaliating enemy.
-	FCataclysmHitDelivery MinionBlow;
-	MinionBlow.bCannotCriticallyStrike = true;
-	MinionBlow.bCannotPenetrate = true;
-	MinionBlow.bCarriesNoWeaponSubType = true;
-	MinionBlow.bCannotLeech = true;
-	MinionBlow.bCannotBeRetaliatedAgainst = true;
-
+	// AND AN ORDINARY BLOW FROM THE SAME ATTACKER DOES PROVOKE ONE, which is what
+	// makes the reading above evidence about ticks rather than about retaliation
+	// being broken for this pair of characters.
 	Before = Attacker.Vitals->GetHealth();
-	const float Dealt = UCataclysmSkillEffects::ApplyHit(
+	UCataclysmSkillEffects::ApplyHit(
 		Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
-		FGameplayTagContainer(), MinionBlow);
+		FGameplayTagContainer(), FCataclysmHitDelivery());
+	TestEqual(TEXT("while the same blow that is not a tick does"),
+		Before - Attacker.Vitals->GetHealth(), 100.0f, 0.01f);
 
-	if (!TestTrue(FString::Printf(
-			TEXT("the minion's blow landed (%.1f)"), Dealt), Dealt > 0.0f))
+	return true;
+}
+
+CATACLYSM_RETALIATION_TEST(FCataclysmRetaliationMinionTest,
+	"Cataclysm.Retaliation.AMinionTakesTheRetaliationItsOwnBlowProvokes")
+{
+	using namespace CataclysmRetaliationTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	// THE MINION TAKES IT, NOT THE SUMMONER, and this case replaces one that
+	// asserted the opposite. Until 2026-09-17 a minion struck in its summoner's
+	// name, retaliation is paid back to whoever dealt the blow, and a summoner
+	// standing well away from the fight would have taken damage for every blow
+	// its minions landed -- so a minion's blow was excluded from provoking any.
+	// The minion deals its own blow now, and the project owner decided on
+	// 2026-09-18 that it takes what comes back, as the thing that swung would in
+	// any other case. Issue #1515.
+	//
+	// THE OLD CASE BUILT A DELIVERY BY HAND. It set the five flags a minion's
+	// blow used to carry and struck with the summoner as the attacker, so it
+	// measured a shape rather than a minion. This one summons a real Imp and
+	// tells it to attack, so it measures what the game does.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FRetaliator Summoner(World);
+	FRetaliator Defender(World, FVector(300.0f, 0.0f, 0.0f));
+
+	Summoner.Combat->SetAttackDamage(500.0f);
+	Defender.Combat->SetRetaliation(20.0f);
+
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(200.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("a minion"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	UCataclysmAbilitySystemComponent* ImpSystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Imp));
+	if (!TestNotNull(TEXT("with an ability system of its own"), ImpSystem))
 	{
 		return false;
 	}
 
-	TestEqual(TEXT("a minion's blow provokes no retaliation on its summoner"),
-		Attacker.Vitals->GetHealth(), Before, 0.001f);
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float ImpBefore = ImpSystem->GetNumericAttribute(Health);
+	const float SummonerBefore = Summoner.Vitals->GetHealth();
+	const float DefenderBefore = Defender.Vitals->GetHealth();
 
-	// AND THE SAME BLOW WITHOUT THAT ONE FLAG DOES, which is what makes the
-	// check above evidence of the flag rather than of retaliation being broken.
-	FCataclysmHitDelivery OwnBlow = MinionBlow;
-	OwnBlow.bCannotBeRetaliatedAgainst = false;
+	Imp->AttackTarget(Defender.Actor);
 
-	Before = Attacker.Vitals->GetHealth();
-	UCataclysmSkillEffects::ApplyHit(
-		Attacker.Actor, Defender.Actor, /*DamagePercent=*/100.0f,
-		FGameplayTagContainer(), OwnBlow);
-	TestEqual(TEXT("the same blow struck in the attacker's own name does"),
-		Before - Attacker.Vitals->GetHealth(), 100.0f, 0.01f);
+	// THE BLOW HAS TO HAVE LANDED FIRST, or a minion that hurt nothing would
+	// pass every reading below for the wrong reason.
+	if (!TestTrue(FString::Printf(TEXT("the imp's blow landed: %.2f"),
+								  DefenderBefore - Defender.Vitals->GetHealth()),
+				  Defender.Vitals->GetHealth() < DefenderBefore))
+	{
+		return false;
+	}
+
+	TestTrue(FString::Printf(TEXT("and the imp took what came back: %.2f"),
+							 ImpBefore - ImpSystem->GetNumericAttribute(Health)),
+			 ImpSystem->GetNumericAttribute(Health) < ImpBefore);
+
+	TestEqual(TEXT("while its summoner, standing apart from the fight, took nothing"),
+			  Summoner.Vitals->GetHealth(), SummonerBefore, 0.001f);
 
 	return true;
 }

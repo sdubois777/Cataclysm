@@ -2,6 +2,118 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — A minion is the instigator of its own blow, and it takes the retaliation that blow provokes
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.cpp`,
+`docs/Cataclysm_GDD_v2.md`, and three test files. Issues
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515) and
+[#340](https://github.com/sdubois777/Cataclysm/issues/340).
+
+**The last of three changes correcting what a minion's blow carries.** The first
+made a minion's explosion its own figure and deleted the share of its summoner's
+weapon. The second made a minion's hit and kill its own, with the Conduit
+keystone turning the summoner's side back on. This one changes who the engine
+thinks struck.
+
+### WHAT MOVED
+
+`ACataclysmMinion::AttackTarget` and `::Explode` passed the SUMMONER to
+`UCataclysmSkillEffects::ApplyDirectDamage`, which made the summoner both the
+instigator and the causer of the effect. They pass the minion now, and so does
+the burn a minion's swing applies -- ruled on 2026-09-17 under the project
+owner's delegation, because a minion's swing and the fire it starts must belong
+to the same character.
+
+### WHAT IT IS WORTH, MEASURED RATHER THAN ASSUMED
+
+**Almost no behaviour moves today, and the reason is worth stating.** Everything
+read off the attacker while a blow resolves -- critical strike chance, maximum
+critical chance, critical multiplier, resistance penetration, armour
+penetration, melee evasion suppression, bleed on critical -- lives on a combat
+attribute set, and `ACataclysmMinion` creates only an ability system component
+and a vital attribute set. It has no combat attribute set, no resistance set and
+no weapon component. So those readings now find nothing of the minion's own
+where they used to find everything of its summoner's, and the answers happen to
+be the same, because four of them were blocked by name and the rest were zero.
+
+**What changes is where the protection comes from.** Four capabilities were
+stopped by name in `MinionDelivery`. A fifth was stopped by nothing at all: the
+Ravager keystone "your melee attacks cannot be evaded" is read for a melee blow,
+and a minion's blow was evaded only because it carried no melee tag. The test
+that covered it said so itself -- "THE EXCLUSION IS TRUE TODAY BY HOW MINION
+DAMAGE IS DELIVERED, NOT BY ANYTHING STATING IT" -- and warned that giving a
+minion's blow a melee tag would break the rule while the test went on passing.
+**So the by-name list was never the only thing between a summoner's stats and a
+minion's blow; it was the only thing anybody was maintaining.** A capability
+added later is now blocked because a minion has nothing to read, rather than
+because somebody remembered the list.
+
+### THE OWNER'S DECISION: A MINION TAKES THE RETALIATION ITS OWN BLOW PROVOKES
+
+Decided by the project owner on 2026-09-18, chosen from three options. A
+minion's blow provoked no retaliation at all, because retaliation is paid back
+to whoever dealt the blow and that was the summoner -- a Ritualist standing at
+range would have taken damage for every blow its imps landed. The minion deals
+its own blow now, so the reason is gone, and the owner ruled that the creature
+that swung takes what comes back. `bCannotBeRetaliatedAgainst` is deleted from
+`MinionDelivery`.
+
+> **This is a play change the owner accepted when deciding it: minion builds lose
+> minions to reflecting enemies.**
+
+`docs/Cataclysm_GDD_v2.md` states the new rule where it stated the old one.
+
+### THE THREE FLAGS THAT STAY, AND THE ONE THAT IS NOW A DIFFERENT QUESTION
+
+Critical strike, penetration and weapon sub-type are kept, although a minion has
+nothing for those readings to find: they state the rule rather than leaving it to
+what a minion happens not to carry, and issue #340 may give a minion figures of
+its own, at which point "a minion never critically strikes" still has to be true.
+
+**Leech is kept, and the decision to keep it is recorded rather than assumed.**
+Leech is read off the attacker's VITAL attribute set, which a minion HAS, holding
+leech figures that are zero. So "a minion does not take its summoner's leech" is
+now true of its own accord, and what the flag still forbids is a minion leeching
+from figures of its OWN. The design does not ask for that and no data can produce
+it today. It was kept so this change moves no behaviour, and because dropping it
+would settle a question about future minion affixes that belongs to whoever
+writes them.
+
+### THE CREDITING HAD TO BECOME A TWO-WAY CHOICE
+
+`UCataclysmCombatEvents::NoteBlow` chose between the minion and the instigator
+while a minion struck in its summoner's name, so leaving the instigator alone was
+the same as naming the summoner. With the minion as its own instigator, the
+untouched case names the minion twice and the Conduit keystone quietly stops
+working. Both answers are stated now.
+`Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner`
+is the case that fails if anyone collapses it back to one branch, and it is the
+reason that case was written as a pair a day earlier.
+
+### WHAT MOVED IN THE TESTS
+
+- `Cataclysm.Retaliation.NeitherADamageOverTimeTickNorAMinionsBlowProvokesIt`
+  becomes `Cataclysm.Retaliation.ADamageOverTimeTickProvokesNoneWhileAnOrdinaryBlowDoes`
+  and keeps only the half about ticks, with an ordinary blow as its control.
+- New: `Cataclysm.Retaliation.AMinionTakesTheRetaliationItsOwnBlowProvokes`,
+  which summons a real Imp and reads the health of the imp, the summoner and the
+  target.
+- `Cataclysm.Leech.AMinionsBlowLeechesNothingForItsSummoner` keeps its name and
+  summons a real Imp instead of building a delivery by hand. It now asserts that
+  the minion collects nothing either.
+- `Cataclysm.ForbiddenDefence.AMinionsBlowIsStillEvadableWhileItsSummonerHoldsEverySwingLands`
+  keeps its name and summons a real Imp, with a defender that does not evade as
+  the control. It was a stand-in that could not have caught the fault its own
+  comment warned about.
+
+**All three had built a delivery by hand and struck with the summoner as the
+attacker.** That simulation stopped matching the game the moment the instigator
+changed, and a test that simulates what it is measuring goes on passing after
+the thing it measures has gone.
+
+---
+
 ## 2026-09-17 — Six mana cost sentences are written, and the count in the entry that named them was wrong
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet, six rows),
