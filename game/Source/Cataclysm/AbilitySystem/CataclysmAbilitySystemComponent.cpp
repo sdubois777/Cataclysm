@@ -371,28 +371,6 @@ float UCataclysmAbilitySystemComponent::StatAppliedTo(
 		.Final;
 }
 
-float UCataclysmAbilitySystemComponent::RateAppliedTo(
-	FName Stat, const FGameplayTagContainer& SkillTags, float Base) const
-{
-	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
-	if (!Inputs)
-	{
-		// NOTHING RECORDED FOR THIS STAT, so the interval stands as it came in.
-		// That is every enemy, and a player before its first refresh.
-		return Base;
-	}
-
-	// THE RATE ROUTE AND NOT `Evaluate`, because this stat divides. The header
-	// says why the two cannot share one function.
-	//
-	// `Inputs->Base` IS DELIBERATELY NOT ADDED, for the reason `StatAppliedTo`
-	// gives: the recorded base belongs to a stat the character holds, and this
-	// asks about an interval the caller holds.
-	return UCataclysmStatPipeline::EvaluateRate(Base, Inputs->Modifiers,
-												SkillTags, CurrentConditions())
-		.Final;
-}
-
 float UCataclysmAbilitySystemComponent::MaximumEnergyShield() const
 {
 	const FGameplayAttribute Maximum =

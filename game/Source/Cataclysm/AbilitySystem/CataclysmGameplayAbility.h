@@ -159,8 +159,19 @@ public:
 	 * EMPTY tag container and the default conditions, so a `cooldown_reduction`
 	 * row carrying RequiredTags, a Condition or a Scale never reached it and
 	 * changed no cooldown in play. The rows are kept on the component for
-	 * exactly this, and `UCataclysmAbilitySystemComponent::RateAppliedTo` is
+	 * exactly this, and `UCataclysmAbilitySystemComponent::StatForSkill` is
 	 * the lookup that reads them.
+	 *
+	 * THE ASKED-FOR FIGURE IS THE REDUCTION, NOT THE INTERVAL, and that is the
+	 * correction issue #2000 made. The first attempt worked the whole interval
+	 * out in one go through a rate route whose divisor is built from the
+	 * INCREASES bucket, while the game's data puts cooldown reduction in the
+	 * FLAT bucket: the `Haste` affix is `ValueKind` flat, and the Efficacy
+	 * attribute contributes an increase whose purpose is to SCALE a base
+	 * something else supplied. So the gear read as nothing and the attribute
+	 * read as the reduction itself. Asking for the figure and dividing by it
+	 * here is what the attribute route always did, with the skill's tags and
+	 * conditions now honoured.
 	 *
 	 * @param AbilitySystem  whose cooldown it is, or null for the base length
 	 * @param SkillTags      what this skill is, so a scoped row reaches only the
