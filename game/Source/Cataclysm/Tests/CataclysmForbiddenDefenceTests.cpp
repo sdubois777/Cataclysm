@@ -10,6 +10,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the real minion whose summoner holds the keystone. Issue #1515.
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -426,6 +427,27 @@ bool FCataclysmMinionBlowStillEvadableTest::RunTest(const FString&)
 	TestEqual(TEXT("the imp's blow is still evaded, so its summoner's keystone "
 				   "did not reach it"),
 			  Defender.HealthLost(), 0.0f, 0.01f);
+
+	// AND THE REASON IS ASSERTED, NOT ONLY THE OUTCOME, because the outcome
+	// alone cannot tell the new reason from the old one. A minion's blow carries
+	// no melee tag, so it would be evaded here even if the summoner were still
+	// the instigator -- which is exactly the weakness the comment above records.
+	// What is new is that the suppression is looked for on the MINION, and a
+	// minion has no combat attribute set for it to live on. If somebody gives a
+	// minion one, this line fails and the case above has to be rethought rather
+	// than quietly going on passing.
+	if (const UAbilitySystemComponent* ImpSystem =
+			UCataclysmTargeting::AbilitySystemOf(Imp))
+	{
+		TestFalse(TEXT("and the imp has no combat attribute set for a melee "
+					   "evasion suppression to be read from at all"),
+				  ImpSystem->HasAttributeSetForAttribute(
+					  Combat::GetMeleeEvasionSuppressedAttribute()));
+	}
+	else
+	{
+		AddError(TEXT("the imp has no ability system to ask."));
+	}
 
 	return true;
 }

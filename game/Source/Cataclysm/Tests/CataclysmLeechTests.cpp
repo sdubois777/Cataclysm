@@ -391,9 +391,16 @@ CATACLYSM_LEECH_TEST(FCataclysmMinionBlowLeechesNothingTest,
 	TestEqual(TEXT("and the summoner gains no health from it"),
 		Summoner.Vitals->GetHealth(), Before, 0.001f);
 
-	// AND NOTHING FOR THE MINION EITHER, which is the half that is new. A minion
-	// carries the figures leech is read from and they are zero, and its blow is
-	// delivered with the leech exclusion set as well, so neither route pays.
+	// AND NOTHING FOR THE MINION EITHER, which is the half that is new.
+	//
+	// THIS ONE CANNOT FAIL TODAY AND IS KEPT ANYWAY, which is said here rather
+	// than left for somebody to discover. A minion carries the figures leech is
+	// read from and they are all zero, and its blow is delivered with the leech
+	// exclusion set as well, so two separate things would have to change before
+	// this line could report anything. It is here because the first of those --
+	// a minion affix that grants leech -- is a thing issue #340 may add, and a
+	// reading of zero recorded now is what would catch the day it starts paying
+	// the wrong character.
 	if (UCataclysmAbilitySystemComponent* ImpSystem =
 			Cast<UCataclysmAbilitySystemComponent>(
 				UCataclysmTargeting::AbilitySystemOf(Imp)))
