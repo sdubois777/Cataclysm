@@ -761,6 +761,69 @@ namespace CataclysmStatExemptionTest
 					   Base * 0.5f, 0.01f);
 	}
 
+	void ProbeHitsCountAsYours(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		// TWO SUMMONERS, ONE HOLDING THE KEYSTONE FLAG, each with its own imp
+		// and its own target, so neither reading can be the other's.
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter PlainTarget(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Flagged(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter FlaggedTarget(World, /*AttackDamage=*/0.0f);
+		GrantFlat(Flagged.Actor, TEXT("minion_hits_count_as_yours"), 1.0f);
+
+		ACataclysmMinion* PlainImp = SummonImp(Test, World, Plain.Actor);
+		ACataclysmMinion* FlaggedImp = SummonImp(Test, World, Flagged.Actor);
+		if (!PlainImp || !FlaggedImp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(PlainImp)) { PlainImp->Destroy(); } };
+		ON_SCOPE_EXIT { if (IsValid(FlaggedImp)) { FlaggedImp->Destroy(); } };
+
+		PlainImp->AttackTarget(PlainTarget.Actor);
+		FlaggedImp->AttackTarget(FlaggedTarget.Actor);
+
+		// THE RECORD THE TARGET KEEPS IS THE READING, rather than a listener:
+		// `UCataclysmCombatEvents::NoteBlow` writes the same attacker into the
+		// target's last blow as it puts on the notice, and a death reads the
+		// killer out of that record.
+		UCataclysmAbilitySystemComponent* PlainHit =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(PlainTarget.Actor));
+		UCataclysmAbilitySystemComponent* FlaggedHit =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(FlaggedTarget.Actor));
+		if (!Test.TestNotNull(TEXT("the plain target records what hit it"), PlainHit)
+			|| !Test.TestNotNull(TEXT("and so does the other"), FlaggedHit))
+		{
+			return;
+		}
+
+		// A BLOW MUST HAVE LANDED FIRST, or both readings below would be null
+		// and the comparison would hold for the wrong reason.
+		if (!Test.TestTrue(TEXT("the plain imp's blow was recorded"),
+						   PlainHit->GetLastBlow().DealtBy == PlainImp))
+		{
+			return;
+		}
+
+		Test.TestTrue(
+			TEXT("a minion's blow is credited to the minion by default"),
+			PlainHit->GetLastBlow().Attacker == PlainImp);
+		Test.TestTrue(
+			TEXT("and to the summoner that holds the flag, so "
+				 "UCataclysmCombatEvents::NoteBlow really reads "
+				 "minion_hits_count_as_yours"),
+			FlaggedHit->GetLastBlow().Attacker == Flagged.Actor);
+	}
+
 	const TMap<FString, FProbe>& Probes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -771,6 +834,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},
 			{TEXT("minion_explosion_damage"),  &ProbeExplosionDamage},
+			{TEXT("minion_hits_count_as_yours"), &ProbeHitsCountAsYours},
 		};
 		return Made;
 	}

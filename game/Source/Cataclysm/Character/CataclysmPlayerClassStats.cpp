@@ -195,12 +195,16 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 	// is nothing to look up and nothing that has to be ready first.
 	//
 	// THE ORDER IS THE ORDER A READER MEETS THEM: damage, then health, then
-	// attack speed, then the two an exploding minion needs, then mana on hit,
-	// which is not a minion's and arrived with issue #1791. Nothing depends on it; it is stated so that a diff adding a
-	// name is obviously an addition rather than a reshuffle.
+	// attack speed, then the two an exploding minion needs, then the one that
+	// says whose a minion's hits are, then mana on hit, which is not a minion's
+	// and arrived with issue #1791, and last what a skill costs. Nothing depends
+	// on the order; it is stated so that a diff adding a name is obviously an
+	// addition rather than a reshuffle.
 	//
-	// EACH LINE SAYS WHAT READS IT AND WHAT IT READS, because the four are not
-	// read for the same thing.
+	// EACH LINE SAYS WHAT READS IT AND WHAT IT READS, because they are not all
+	// read for the same thing. This comment named a count of them until
+	// 2026-09-17, by which time the count was three short: a list that grows is
+	// not a list to count in prose.
 	static const TArray<FString> Stats = {
 		// Increases, read by ACataclysmMinion::AttackTarget at the blow.
 		TEXT("minion_damage"),
@@ -214,6 +218,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Increases, read by ACataclysmMinion::Explode, for both the summon
 		// cap destroying the oldest and a death under the flag above.
 		TEXT("minion_explosion_damage"),
+		// Whether a minion's hits and kills are credited to its summoner, read
+		// by ACataclysmMinion::HitsCountAsTheSummoners for
+		// UCataclysmCombatEvents::NoteBlow. A flag: the Conduit keystone sets
+		// it to one, and without it a minion's blow is the minion's own.
+		TEXT("minion_hits_count_as_yours"),
 		// Whether it is removed, read by UCataclysmSkillTemplate::ApplyManaOnHit.
 		TEXT("mana_on_hit"),
 		// What a skill costs, read by UCataclysmGameplayAbility::ManaCostFor,

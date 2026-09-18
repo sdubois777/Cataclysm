@@ -205,12 +205,17 @@ namespace
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = bIsArea;
 
-		// AND THE MINION IS NAMED AS WHAT DEALT IT, though the blow stays the
-		// summoner's. Issue #41, slice 4. It goes on the effect as the source
-		// object, which the hit and death notices read to say a minion struck
-		// and which none of the rules that work out damage reads, so every
-		// exclusion below works exactly as it did. Credit for a kill stays
-		// with the summoner, under today's placeholder minion model, #340.
+		// AND THE MINION IS NAMED AS WHAT DEALT IT. Issue #41, slice 4. It goes
+		// on the effect as the source object, which the hit and death notices
+		// read to say a minion struck and which none of the rules that work out
+		// damage reads, so every exclusion below works exactly as it did.
+		//
+		// AND SINCE ISSUE #1515 IT DECIDES WHOSE THE BLOW IS. The notice's
+		// attacker used to be the instigator for every blow, which made a
+		// minion's hit and kill the summoner's; `UCataclysmCombatEvents::
+		// NoteBlow` now reads this field, asks
+		// `ACataclysmMinion::HitsCountAsTheSummoners`, and credits the summoner
+		// only when it holds the Conduit keystone.
 		Delivery.DealtBy = Minion;
 		Delivery.bCannotCriticallyStrike = true;
 		Delivery.bCannotPenetrate = true;
@@ -224,9 +229,10 @@ namespace
 
 		// AND IT PROVOKES NO RETALIATION, which is the fifth and the only one
 		// that protects the SUMMONER rather than the target. Retaliation is
-		// dealt back to whoever the hit was credited to, so without this a
-		// Ritualist standing at range would take damage every time one of its
-		// imps struck a retaliating enemy. Issue #895.
+		// dealt back to the effect's CAUSER, which stays the summoner for a
+		// minion's blow whatever the notice credits, so without this a Ritualist
+		// standing at range would take damage every time one of its imps struck
+		// a retaliating enemy. Issue #895.
 		Delivery.bCannotBeRetaliatedAgainst = true;
 
 		// AND IT CARRIES NO CHANCE TO APPLY AN AILMENT, the sixth. The chances
@@ -327,6 +333,16 @@ const FCataclysmMinionTypeRow* ACataclysmMinion::FindType(
 		});
 
 	return Found;
+}
+
+bool ACataclysmMinion::HitsCountAsTheSummoners(const ACataclysmMinion* Minion)
+{
+	// THE SUMMONER IS ASKED, NOT THE MINION, because the keystone is the
+	// summoner's and a minion carries no passive tree of its own. The header
+	// says what the flag means and what it leaves alone.
+	return IsValid(Minion)
+		&& SummonerStat(Minion->Summoner,
+						TEXT("minion_hits_count_as_yours")) > 0.0f;
 }
 
 ACataclysmMinion::ACataclysmMinion()

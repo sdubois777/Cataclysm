@@ -13692,14 +13692,26 @@ bool FCataclysmDemonPrinceMinionKillTest::RunTest(const FString& Parameters)
 	// A MINION'S KILL IS NOT THE PLAYER'S, under the project owner's decision that a
 	// minion's hits are the minion's own.
 	//
-	// WHY THIS NEEDS TWO TESTS IN THE RULE AND NOT ONE. A minion's blow is CREDITED to its
-	// summoner -- `FCataclysmHitNotice::Attacker` says so -- so the killer on the notice is
-	// the player here. What tells them apart is the actor that dealt it, which
-	// `ACataclysmMinion` sets to the minion on the delivery. This test builds the same
-	// delivery that class builds rather than driving a minion's own attack.
+	// HOW THE RULE REFUSES IT, SINCE ISSUE #1515. The killer on the notice is the minion:
+	// `UCataclysmCombatEvents::NoteBlow` credits a blow dealt by a minion to that minion
+	// unless its summoner holds the Conduit keystone. So the rule's own check that the
+	// killer is the player is what turns this kill away, and the second check it used to
+	// carry -- on the actor that dealt the blow -- is gone with this change.
 	//
-	// IF THE CONDUIT KEYSTONE LATER MAKES A MINION'S KILL THE PLAYER'S, this test is what
-	// will fail, and it should: the decision behind it will have changed.
+	// WHAT THIS TEST USED TO SAY, AND WHY IT IS WORTH RECORDING. Until 2026-09-17 a
+	// minion's blow was credited to its summoner, the killer here WAS the player, and only
+	// that second check told them apart. The comment then said this case would fail when
+	// Conduit made a minion's kill the player's. It did not fail: the default moved the
+	// other way, and
+	// `Cataclysm.DungeonModifierEffects.AKillDealtByAMinionUnderConduitBringsOne` is the
+	// case that now holds the keystone's half.
+	//
+	// THE DELIVERY IS BUILT BY HAND rather than by driving a minion's own attack, so the
+	// blow lands for a stated figure and the case is about the crediting.
+	//
+	// AND THE SUMMONER HERE HOLDS NOTHING, which is what makes this the keystone's absent
+	// half rather than a case about a player with no passive tree: the paired case below
+	// puts the one stat Conduit grants on this same player and measures the other answer.
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
 	{
@@ -13769,6 +13781,127 @@ bool FCataclysmDemonPrinceMinionKillTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("a kill dealt by a minion brings nothing"),
 			  LivingCreatures(World).Num(), Before - 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonPrinceConduitKillTest,
+	"Cataclysm.DungeonModifierEffects.AKillDealtByAMinionUnderConduitBringsOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDemonPrinceConduitKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE SAME KILL AS THE CASE ABOVE, BY A PLAYER WHO HOLDS CONDUIT. The keystone
+	// `Ritualist_keystone_spine_003` says "Damage dealt by your minions counts as damage
+	// you dealt, for every effect of yours that asks", and this floor rule asks: it fires
+	// when the player slays an enemy. The project owner ruled on 2026-09-17 that the
+	// keystone turns the summoner's on-kill effects back on for a minion's blow.
+	//
+	// THIS IS WHY THE RULE'S SECOND CHECK HAD TO GO. Until this change
+	// `NoteDeathForDemonPrince` refused any kill whose dealing actor was a minion,
+	// whatever the summoner held, so this case could not have passed however the keystone
+	// was written.
+	//
+	// ONE PLACE DECIDES IT, AND THAT IS THE POINT OF THE PAIR. Neither case touches the
+	// floor rule itself; both change only what the summoner holds, and the answer moves.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DemonPrinceRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the prince roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {DemonPrince};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED FOR THE REASON THE CASE ABOVE GIVES: StartPlay populates floor one, and
+	// what is left here is what this test spawns.
+	Mode->ClearFloorEnemies();
+
+	// THE KEYSTONE, AS THE ONE STAT IT GRANTS. `SetStatInputs` replaces the character's
+	// stat lines rather than adding to them, which is harmless here because this player
+	// takes no other row.
+	FCataclysmStatModifier Held;
+	Held.Bucket = ECataclysmStatBucket::Flat;
+	Held.Source = ECataclysmModifierSource::PassiveKeystone;
+	Held.Value = 1.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(TEXT("minion_hits_count_as_yours"))).Modifiers = {Held};
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Player.Character, FVector(400.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a summoned minion"), Minion)
+		|| !TestNotNull(TEXT("an Imp to be killed"), Slain))
+	{
+		return false;
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Before = LivingCreatures(World);
+
+	FCataclysmHitDelivery Delivery;
+	Delivery.DealtBy = Minion;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f,
+									 FGameplayTagContainer(), Delivery);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Risen;
+	for (ACataclysmEnemyCharacter* Creature : LivingCreatures(World))
+	{
+		if (!Before.Contains(Creature))
+		{
+			Risen.Add(Creature);
+		}
+	}
+
+	AddInfo(FString::Printf(
+		TEXT("Demon Prince: a minion's kill under Conduit brought %d creature(s)"),
+		Risen.Num()));
+
+	if (!TestEqual(TEXT("one creature rose from the corpse the minion made"),
+				   Risen.Num(), 1))
+	{
+		return false;
+	}
+	TestTrue(FString::Printf(TEXT("of the slain creature's own kind: %s against %s"),
+							 *Risen[0]->GetClass()->GetName(),
+							 *Slain->GetClass()->GetName()),
+			 Risen[0]->GetClass() == Slain->GetClass());
+	TestEqual(TEXT("at the rung the rule states"), Risen[0]->RarityStep,
+			  Effects::DemonPrinceRung);
 
 	return true;
 }

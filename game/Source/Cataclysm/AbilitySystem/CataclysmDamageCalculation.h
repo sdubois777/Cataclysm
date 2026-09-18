@@ -759,10 +759,14 @@ public:
 	 *
 	 * THE FIFTH EXCLUSION A SUMMONED MINION CARRIES, and the only one of the
 	 * five that protects the summoner rather than the target. Retaliation is
-	 * dealt back to whoever the hit was credited to, and a minion's blow is
-	 * credited to its summoner, so without this a caster standing well away
-	 * from the fight would take damage every time one of its imps struck a
-	 * retaliating enemy.
+	 * dealt back to the effect's CAUSER, which is the summoner for a minion's
+	 * blow, so without this a caster standing well away from the fight would
+	 * take damage every time one of its imps struck a retaliating enemy.
+	 *
+	 * THE CAUSER AND NOT WHO THE BLOW IS CREDITED TO, and the two parted company
+	 * in issue #1515: a minion's hit is now credited to the minion unless its
+	 * summoner holds the Conduit keystone, while the causer stays the summoner
+	 * either way. This exclusion is needed whatever the keystone says.
 	 */
 	static FGameplayTag NoRetaliationTag();
 

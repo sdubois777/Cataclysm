@@ -2,6 +2,144 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — A minion's hit and kill are the minion's own, and the Conduit keystone is what makes them the summoner's
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.cpp` and
+`.h`, `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` and `.h`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp`,
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.h`, and three test
+files. Issues [#1515](https://github.com/sdubois777/Cataclysm/issues/1515) and
+[#340](https://github.com/sdubois777/Cataclysm/issues/340).
+
+**The second of three changes correcting what a minion's blow carries.** The
+first deleted the two places a minion's DAMAGE was read off its summoner. This
+one is about who a minion's blow belongs to. The third, still to come, makes the
+minion the instigator rather than the summoner.
+
+### WHAT THE OWNER RULED
+
+Relayed on 2026-09-17 by the coordinating session as the project owner's
+decision, in these words: by default a minion's blow carries only the minion's
+stats and minion affixes; with Conduit, the summoner's on-hit and on-kill
+effects, kill credit and damage bonuses apply to minion blows; minions still
+never critically strike, penetrate, leech, carry a weapon sub-type or roll the
+summoner's ailment chances.
+
+`Ritualist_keystone_spine_003` Conduit says: "Damage dealt by your minions counts
+as damage you dealt, for every effect of yours that asks." It had a node row in
+`game/Data/PassiveNodes.csv` and no row at all in `game/Data/PassiveEffects.csv`,
+so nothing in the game read it.
+
+### THE DEFAULT WAS THE OPPOSITE, AND THAT IS WHY THIS IS A CHANGE AND NOT AN ADDITION
+
+A minion strikes with its summoner as the effect's instigator, and
+`UCataclysmCombatEvents::NoteBlow` read the notice's attacker straight from the
+instigator. So a minion's hit and a minion's kill already counted as the
+player's, everywhere, and the keystone would have granted what the game gave for
+free. Nine places gate on being the credited one, and this change moves every one
+of them without touching any:
+
+| Where | What it does | Before | After, without Conduit |
+|---|---|---|---|
+| `ACataclysmPlayerCharacter::OnSomethingWasHit` | fires the `hit_dealt` and `critical_strike` stat events | a minion's hit fired them | it does not |
+| `ACataclysmPlayerCharacter::OnSomethingDied` | fires the `kill` stat event | a minion's kill fired it | it does not |
+| the same, Long Hold | `Ravager_capstone_50`: killing restores 5% of maximum health | a minion's kill restored it | it does not |
+| the same, Wrung Out | ends crowd control and restores health on a kill | a minion's kill paid | it does not |
+| `ACataclysmDungeonGameMode::NoteDeathForDemonPrince` | a kill may bring a Herald, once a floor | refused a minion's kill by a SECOND check | refused by the first check, and the second is deleted |
+| `NoteHitForBrandOfTheAggressor` | stacks on the player's landed hits | a minion's hit stacked it | it does not |
+| `NoteDeathForLeechSpores` | the player's kill leaves a cloud | a minion's kill left one | it does not |
+| `NoteHitForHolyRepercussions` | answers the player's landed hits | a minion's hit answered | it does not |
+| `NoteDeathForMortalDecay` | the player's kill holds the slow | a minion's kill held it | it does not |
+
+With Conduit taken, every row of that table reads as the "before" column again.
+That is the keystone's whole effect, and it is why it is worth a keystone.
+
+### ONE LOOKUP, IN THE ONE PLACE A BLOW BECOMES A RECORD
+
+`NoteBlow` now asks, for a blow whose dealer is a minion, whether that minion's
+summoner holds the flag, and credits the minion when it does not.
+`UCataclysmCombatEvents::NoteDeath` needed no change, because it reads the killer
+out of the record `NoteBlow` writes. The nine readers above needed no change
+either.
+
+**The alternative was a check at each of the nine, and it was rejected.** Nine
+call sites, no single mechanism, and one missed is a wrong answer nothing
+reports. This is the same argument the damage pipeline's three buckets rest on:
+one place that decides, many that read.
+
+**The instigator is not touched.** Eight places in `UCataclysmVitalAttributeSet`
+read the effect's causer to decide how a blow resolves, and this change is about
+announcement rather than resolution. Retaliation is one of them: it is paid back
+to the causer, which stays the summoner, so the exclusion that protects a
+summoner from its own minion's retaliation is still needed and still there. Three
+comments that explained that exclusion by saying a minion's blow "is credited to
+its summoner" now say "the causer", because the two have parted company.
+
+**It costs a stat lookup for every blow a minion lands.** That is a judgement
+made under the owner's delegation: correctness first, on a project whose owner
+parked performance work to move forward. The lookup is the same one
+`minion_explodes_on_death` uses at every minion death.
+
+### THE STAT
+
+`minion_hits_count_as_yours`, a flag a passive row sets to one, read through
+`ACataclysmMinion::HitsCountAsTheSummoners`. It has no gameplay attribute and is
+named in `UCataclysmPlayerClassStats::StatsWithNoAttribute`, with a probe in
+`Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` that grants it
+to one of two summoners and reads back which actor each target recorded as what
+hit it.
+
+**The name was measured before it was chosen**, because a stat name that contains
+another is a search that lies. The sentence would suggest
+`minion_damage_counts_as_yours`, and `minion_damage` is an existing stat that
+name contains. `minion_hits` appears nowhere in `game/Data/`, `game/Source/` or
+`tools/` -- zero occurrences -- and no existing stat name is a substring of the
+chosen one.
+
+### WHAT IS NOT IN THIS CHANGE
+
+**The row that grants it.** The Stats sheet entry and the Passive Effects row for
+`Ritualist_keystone_spine_003` are authored in `docs/All_Things_Cataclysm.xlsx`,
+which another session held when this was written. Until that turn the keystone
+grants nothing in play and the engine reads a stat no row supplies, which is
+exactly the state the tests below drive by hand.
+
+### WHAT MOVED IN THE TESTS
+
+- `Cataclysm.CombatEvents.AMinionsKillCreditsItsSummonerAndNamesTheMinion`
+  becomes `Cataclysm.CombatEvents.AMinionsHitKillAndBurnAreItsOwnWithoutConduit`
+  and expects the minion, for the swing, the kill and a burn tick alike.
+- New: `Cataclysm.CombatEvents.TheConduitKeystoneCreditsAMinionsHitAndKillToItsSummoner`,
+  the same swing by a summoner holding the flag.
+- `Cataclysm.DungeonModifierEffects.AKillDealtByASummonedMinionBringsNoPrince`
+  keeps its name and its answer and changes its reason: the rule's own check on
+  the killer is what refuses it now.
+- New: `Cataclysm.DungeonModifierEffects.AKillDealtByAMinionUnderConduitBringsOne`,
+  which could not have passed before, because the deleted second check refused
+  every minion's kill whatever the summoner held.
+
+**The pair is the point in both cases.** A build that credited the summoner for
+every minion's blow, which is what the game did until this change, passes one
+half of each pair and fails the other.
+
+### ONE SENTENCE OF THE DESIGN DOCUMENT IS CORRECTED WITH IT
+
+`docs/Cataclysm_GDD_v2.md`, in the retaliation section, explained why a
+minion's blow provokes no retaliation by saying that "a minion's damage is
+credited to its summoner". That reason stopped being true with this change,
+while the rule it justifies did not: retaliation is paid back to whoever the
+blow was dealt by, which is still the summoner, so the exclusion is still
+needed and the paragraph now says so.
+
+**Change 3 revisits that paragraph.** Making the minion the instigator of its
+own blow would pay retaliation back to the minion, so whether the exclusion is
+needed at all is a question for that change and not this one.
+
+---
+
 ## 2026-09-17 — A minion's explosion is its own figure, and the share of its summoner's weapon is deleted
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/MinionTypes.csv` (one

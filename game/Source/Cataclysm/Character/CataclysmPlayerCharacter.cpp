@@ -968,8 +968,15 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 
 		// AND LONG HOLD, BEFORE WRUNG OUT BELOW CAN BUY ANYTHING. Issue #1515.
 		// `Ravager_capstone_50`'s third option: "Killing an enemy restores 5% of
-		// your maximum health." A kill is this character's kill as above,
-		// minions' and damage over time's included.
+		// your maximum health." A kill is this character's kill as above, its
+		// damage over time's included.
+		//
+		// A MINION'S KILL IS NOT ONE OF THEM UNLESS CONDUIT IS TAKEN, since
+		// 2026-09-17. It was until then, because a minion's blow was credited to
+		// its summoner; the keystone `Ritualist_keystone_spine_003` is now what
+		// makes a minion's kill the summoner's, and
+		// `UCataclysmCombatEvents::NoteBlow` is the one place that decides it.
+		// This line needs no check of its own either way.
 		//
 		// HERE AND NOT BESIDE WRUNG OUT AT THE END, because this block runs first.
 		// Ruled 2026-09-17 under the project owner's delegation: the restoration
