@@ -236,6 +236,175 @@ that carries the rebuilt assets.
 
 ---
 
+## 2026-09-18 — A class-resource threshold is written in POINTS, because one character's own bar moves
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `tools/generate_datatables.py`, and one list in `tools/tests/`. For the
+Ravager node Set Against It (`Ravager_basic_a_b1`), from issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+**The node's sentence, approved verbatim by the project owner on 2026-09-17:**
+"While you have 50 or more Fervour, you gain +2% increased Damage Reduction and
++3% increased Attack Damage per point."
+
+### THE RULE
+
+`class_resource_points_at_least` is true when the character holds at or above
+that many POINTS of its class resource. It is the fourth condition to read that
+pool and the first to read it as a count.
+
+### WHY POINTS, WHEN THE NEIGHBOUR SAYS PERCENTAGE
+
+`class_resource_above`, written the day before, compares the same pool as a share
+and its comment argues the case plainly: **classes do not share a maximum**, so a
+row in points would mean a different fraction of the bar for each of them.
+
+**That argument is true and it is not the reason here.** This node is in the
+Ravager tree and only a Ravager will ever take it, so there is no disagreement
+between classes to point at. **The first reason offered for choosing points — that
+the Ritualist's maximum is 150 where every other class's is 100 — does not apply
+to a node only one class can take, and it was withdrawn.**
+
+**The reason that survives was measured.** On 2026-09-18:
+
+| What was measured | Figure |
+|---|---|
+| Class resource stated in `game/Data/ClassStats.csv` | 100 for every class, 150 for the Ritualist |
+| What either gains per level | **nothing**; both rows state a per-level gain of zero |
+| Sources that raise it anyway | an affix worth up to 7, on four equipment slots; enchantments worth +20% to +40% increased, and a negative one; and **fourteen** passive effect rows |
+
+So a player who invests in maximum Fervour carries a bar above 100, and **a
+threshold written as a percentage would demand more Fervour the more of it they
+could hold**. The owner's sentence says fifty Fervour. Points keep it saying that.
+
+**It is the same shape of argument `EnergyShieldAtMaximum` makes, landing
+elsewhere.** That bar moves over a character's LIFETIME, because the shield gains
+per level. This one moves over a character's BUILD, because the pool gains
+nothing per level and rises with what the player chooses.
+
+### WHAT THE CHOICE COSTS, SAID PLAINLY
+
+**A count of points means a different fraction of the bar to two classes**: fifty
+is a third of a Ritualist's and half of everyone else's. **So a row using this
+condition is unambiguous only on a node in one class's tree.** Every row using it
+today is, and that is a property of today's data rather than of the condition.
+
+### THE BOUNDARY, AND THE NEIGHBOUR IT DISAGREES WITH
+
+At or above, for "or more" — the boundary `HealthAtOrAbovePercent` draws for the
+same words. **At exactly fifty this holds and a strictly-above row written at
+fifty does not**, which is recorded beside both rather than left to be found in
+play, the way the two movement conditions already record the instant where both
+of them hold.
+
+### TWO MEASUREMENTS ABOUT "PER POINT", BECAUSE THE WORDS ALONE DO NOT SETTLE IT
+
+**"Per point" in a node's sentence means per PASSIVE point spent on the node**,
+and such a row carries no scale at all. Three nodes show it — an armour node, a
+health-regeneration node and a trap node — each with the sentence's own number as
+its value. The precedent this node copies exactly is the Masochist's
+`Masochist_basic_ll_a1`: "While at or below 20% health, +3% increased Critical
+Strike Chance per point", written as a condition, a condition value and a
+per-point value, with no scale.
+
+**So Set Against It is two rows of 2 and 3 per point, conditioned, and no scale.**
+Read the other way — as a grant per FERVOUR point — it would have given 100%
+increased damage reduction and 150% increased attack damage at fifty Fervour, and
+double that at a full bar. Nobody approved that, and only the measurement
+separates the two readings.
+
+**And for the record, since it was measured while settling this:** the scale
+`PerPointOfClassResourceHeld` counts EVERY point held, rounded down by its step,
+with an empty bar answering zero through the arithmetic rather than refusing. If
+a future row does want a per-Fervour-point grant, that is what it will mean.
+
+### THE JUDGEMENTS, AND WHO MADE THEM
+
+**Ruled by the coordinating session under the project owner's delegation of
+2026-09-14, and open to the owner's veto.**
+
+| Question | Answer | Why |
+|---|---|---|
+| Points or a percentage? | **Points** | The measured reason above. The first reason given for it was wrong and is recorded as withdrawn |
+| What to call it? | **`class_resource_points_at_least`**, with the unit in the name | Its neighbour reads the same pool as a percentage, and a bare name would read as the same unit family. That is the likelier mistake of the two |
+| What bound should the generator enforce? | **0 to 1000** | The largest bar in the data is 150, and a bound there would refuse a row written for a bar that investment has already made bigger. A thousand refuses nothing worth refusing |
+
+### AND THE ROWS, WHICH ARRIVED IN THE SAME CHANGE AFTER ALL
+
+**The node works in play.** The design workbook reached this session before the
+condition had been pushed, so the sentence, the rows and the mechanism land
+together rather than in two changes.
+
+| What landed | Where |
+|---|---|
+| The owner's sentence, verbatim | `docs/Ravager_Class_Tree_Final.json` |
+| Two rows: 2 and 3 per point, conditioned at 50, **no scale** | the Passive Effects sheet of the design workbook |
+| The regenerated data | `game/Data/PassiveEffects.csv`, 288 rows to **290**, nodes carrying a row 211 to **212** |
+
+**The condition is no longer listed as one that landed ahead of its rows.** That
+list works in both directions, and the change that gives a condition its rows
+takes the name off — one of the two moves the rehearsal found and the reading
+missed.
+
+**One test reads the rows rather than granting the two stats by hand**, because a
+test that writes the modifiers itself passes with no row in the data at all. It
+takes the node's rows out of the imported table, states no figures of its own
+beyond what they carry, and moves the character ACROSS the threshold the rows
+name: one Fervour short, neither bonus is there; at it, both are, worth the row's
+own figure for every point spent. **It reads them through the pipeline and not
+off an attribute**, because both rows are conditioned and a conditioned modifier
+is never folded into a gameplay attribute.
+
+### WHAT THE MACHINE MEASURED
+
+| Step | Registered before it ran | What it printed |
+|---|---|---|
+| The group holding the row-reading test, BEFORE the assets were rebuilt | one named failure; the count measured here rather than predicted | 119 performed, 118 succeeded, 1 failed — that test |
+| The asset rebuild | two tables | "rebuilt 2 DataTable assets and left 27 already current, 3008 rows in total" |
+| The same group, AFTER | clean, at the same count | 119 performed, 119 succeeded, 0 failed |
+| The whole Unreal suite | 2136 performed, 0 failed | 2136 performed, 2136 succeeded, 0 failed |
+| Turning "50 or more" into "more than 50" | fails one named test | that test alone; restored, 38 of 38 passed |
+
+**The first three lines are the point.** The test that reads this node's rows
+fails before the assets are rebuilt and passes after, on the same tree in the
+same window, so it is the ROWS that make the node work rather than anything a
+test handed it. **The count is the same on both sides**, which is what says the
+test ran both times rather than disappearing from one.
+
+**The prefixed count of 119 was measured in the window and quoted**, not
+registered in advance. There was no sound way to predict it, and saying so at
+registration was better than inventing a figure and being right by luck.
+
+**THE REWORDED SENTENCE IS NOT WAITING ON THE WORKBOOK, AND WE BOTH SAID IT
+WAS.** A node's name and description are not in that workbook at all: the
+generator builds `game/Data/PassiveNodes.csv` from `docs/<Tree>_Class_Tree_Final.json`,
+which are plain text files git can merge. **What keeps the sentence with the rows
+is window economics, not exclusivity**: both the node table and the effect table
+have imported engine assets, so landing the sentence alone would make one stale
+and cost a machine window of its own. Two changes would cost two windows where
+one costs one.
+
+### WHAT A DRY RUN MEASURED BEFORE ANY OF IT WAS WRITTEN
+
+The whole rows change was rehearsed in a throwaway copy of the tree — the
+repository taken with `git archive`, the sentence reworded, the rows added, the
+data regenerated and the Python suite run inside the copy. It moved **six**
+checks. **The reading beforehand predicted four of them**, and both misses were
+the project's own bookkeeping rather than anything about the node:
+
+- the list of conditions that land ahead of their rows works in BOTH directions,
+  so the change that adds the rows must **remove** the name the change that added
+  the condition put there;
+- every condition a row uses must also be tied to the WORDS of its node's
+  sentence, in the check that holds those two statements of one fact together.
+
+**A caveat on the method, recorded so a later reader does not miscount it:** a
+copy taken this way is not a git repository, so eleven further checks fail
+because they ask git whether a path is ignored. They are artefacts of the
+rehearsal and not findings.
+
+---
+
 ## 2026-09-18 — A floor that makes every creature hit harder the deeper you go, and one creature whose death pays permanent armour
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
@@ -1452,6 +1621,17 @@ one knows it was argued and not measured.
 - One Python guard proof, run in a copy of the tree: misspelling one name in the
   set the rule matches against failed exactly the three tests registered for it
   and left the other eight passing; restored, all eleven passed.
+
+**Corrected 2026-09-18.** The sentence above says "two of the three lookups";
+there were FOUR — `StatForSkill`, the attack-damage askers, `StatAppliedTo` and
+`RateAppliedTo` — of which two carried every call-site reading and two carried
+none. The arithmetic broke when the survey was compressed into prose; the survey
+itself counted four. **And `RateAppliedTo` was deleted the same day by the
+cooldown repair**, so a reader measuring this against the code now will find
+three lookups, two carrying all and one carrying none. **The pairing counts in
+this entry are unaffected**: they were measured per stat and per scale, from the
+data and from each asker's own conditions, and the lookup tally was a summary of
+that same evidence rather than an input to it.
 
 ---
 

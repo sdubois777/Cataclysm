@@ -577,7 +577,14 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: row granted them -- and it is two rows rather than one because the node
 #: states two numbers, a reach and a count, and a reader of the rows must see
 #: both.
-AUTHORED_ROWS = 288
+#:
+#: AND TO 290 ON 2026-09-18, when `Set Against It` (`Ravager_basic_a_b1`) was
+#: given its two rows: +2% increased damage reduction and +3% increased attack
+#: damage per point, both conditioned on holding 50 or more Fervour. Two rows
+#: because the node states two bonuses, and no scale on either: "per point" in a
+#: node's sentence means per PASSIVE point spent, which is what the three
+#: unscaled rows above and the Masochist's low-life nodes already show.
+AUTHORED_ROWS = 290
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -939,7 +946,11 @@ AUTHORED_ROWS = 288
 #: before, so this moved with the row count for the third time, and the
 #: Ritualist is 68 of its 74. TWO ROWS RAISED THIS BY ONE, because it counts
 #: nodes and not rows.
-AUTHORED_NODES = 211
+#:
+#: AND TO 212 ON 2026-09-18, when `Set Against It` (`Ravager_basic_a_b1`) was
+#: given the two rows above. That node had none before, so this moved with the
+#: row count for the fourth time, and the Ravager is 56 of its 74.
+AUTHORED_NODES = 212
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1298,6 +1309,20 @@ CONDITION_WORDS = {
     # maximum". Requiring that wording is what refuses the other seventeen, in
     # the same way `health_at_or_below` refuses a node that says "dropping
     # below".
+    # THE ONE CONDITION HERE THAT COUNTS POINTS RATHER THAN A SHARE. Issue
+    # #1515. Set Against It reads "While you have 50 or more Fervour", so the
+    # fragment carries the pool's NAME as the design writes it -- the sheet's
+    # `class_resource` is called Fervour in every Ravager and Masochist
+    # sentence -- and the value is written plainly, with no percent sign,
+    # because the number is a count.
+    #
+    # NO ENTRY IN `CONDITION_WORDS_MUST_NOT_SAY` FOR IT. That guard exists for a
+    # predicate confusable with a neighbour's words, and the only neighbour
+    # reading this pool as a share, `class_resource_above`, is used by no
+    # passive row at all, so there is nothing yet to be confused with. Give it
+    # one on the day a node uses that condition.
+    "class_resource_points_at_least": ("or more fervour", "{value:g}"),
+
     "class_resource_at_maximum": ("fervour is at maximum", None),
 
     # THE FIVE MOVEMENT CONDITIONS. Issue #41, slice 2. No row in

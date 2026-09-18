@@ -313,7 +313,7 @@ Ravager_basic_a_a0,Ravager,basic_a_a0,basic,Plated,+1.5% increased Armor per poi
 Ravager_basic_a_a1,Ravager,basic_a_a1,basic,Thick Blood,+1% increased Life Leech per point.,10,0,-600.0,-408.0,,,,,,
 Ravager_basic_a_a2,Ravager,basic_a_a2,basic,Slow to Fall,+2% increased Health Regeneration per point.,8,0,-600.0,-540.0,,,,,,
 Ravager_basic_a_b0,Ravager,basic_a_b0,basic,Braced,+1% increased Damage Reduction per point.,8,0,-450.0,-276.0,,,,,,
-Ravager_basic_a_b1,Ravager,basic_a_b1,basic,Set Against It,"You may brace while at 50 Fervour or more. While braced, Fervour drains at 6 per second and you gain +2% increased Damage Reduction and +3% increased Attack Damage per point. Bracing ends when Fervour reaches 0.",8,0,-450.0,-408.0,,,,,,
+Ravager_basic_a_b1,Ravager,basic_a_b1,basic,Set Against It,"While you have 50 or more Fervour, you gain +2% increased Damage Reduction and +3% increased Attack Damage per point.",8,0,-450.0,-408.0,,,,,,
 Ravager_basic_a_b2,Ravager,basic_a_b2,basic,Second Wind,+2% increased Health Regeneration per point.,8,0,-450.0,-540.0,,,,,,
 Ravager_basic_a_c0,Ravager,basic_a_c0,basic,Stubborn,+3% increased Crowd Control Resistance per point.,6,0,-300.0,-408.0,,,,,,
 Ravager_basic_a_c1,Ravager,basic_a_c1,basic,Deep Wells,+2% increased maximum Fervour per point.,6,0,-300.0,-540.0,,,,,,

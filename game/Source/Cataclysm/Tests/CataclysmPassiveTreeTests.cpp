@@ -13288,4 +13288,145 @@ bool FCataclysmPassiveConduitRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSetAgainstItTest,
+	"Cataclysm.Passives.SetAgainstItsOwnRowsTurnOnAtFiftyFervour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Set Against It works from the rows the game loads, at the Fervour they name.
+ *
+ * WHY IT DOES NOT READ AN ATTRIBUTE, unlike the armour test above. Both of this
+ * node's rows are CONDITIONED, and a conditioned modifier is never folded into a
+ * gameplay attribute -- it would be stale the moment the reading moved. So the
+ * bonus exists only where something asks for the stat through the pipeline, and
+ * that is what this asks.
+ *
+ * AND WHY IT READS THE ROWS RATHER THAN GRANTING THE STATS BY HAND. A test that
+ * writes the two modifiers itself passes with no row in the data at all, which
+ * is how `Ritualist_capstone_200#3` granted nothing from the day it was written
+ * and how the Conduit keystone was read by the engine for a day before any row
+ * supplied it. This one takes the node's rows out of the imported table, states
+ * no figures of its own beyond what they carry, and fails with a message naming
+ * the regeneration command when they are absent.
+ *
+ * THE THRESHOLD IS MOVED ACROSS, NOT JUST SATISFIED. One Fervour below the row's
+ * own number the bonuses are absent; at it they are there. A condition stuck on
+ * "true" passes the second half alone. Issue #1515.
+ */
+bool FCataclysmSetAgainstItTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	if (!TestNotNull(TEXT("a possessed player character"), Character))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerState* State =
+		Character->GetPlayerState<ACataclysmPlayerState>();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!State || !Equipment || !AbilitySystem)
+	{
+		AddError(TEXT("The spawned character is missing a component."));
+		return false;
+	}
+
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the effect table loads"),
+					 const_cast<UDataTable*>(EffectTable)))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// THE NODE'S OWN ROWS. Two of them, one per bonus the sentence promises.
+	const FName Node(TEXT("Ravager_basic_a_b1"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+	if (!TestEqual(TEXT("Set Against It carries two rows"), Effects.Num(), 2))
+	{
+		AddError(TEXT("The node's rows are missing from the data, so it grants "
+					  "nothing in play however the condition behaves. Author "
+					  "them in the Passive Effects sheet of "
+					  "docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+
+	// THE FIGURES COME FROM THE ROWS AND NOT FROM HERE.
+	float Threshold = -1.0f;
+	float ReductionPerPoint = 0.0f;
+	float DamagePerPoint = 0.0f;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		TestEqual(*FString::Printf(TEXT("%s is conditioned"), *Row->Stat),
+				  Row->Condition,
+				  FString(TEXT("class_resource_points_at_least")));
+		Threshold = Row->ConditionValue;
+		if (Row->Stat == FString(TEXT("damage_reduction")))
+		{
+			ReductionPerPoint = Row->ValuePerPoint;
+		}
+		else if (Row->Stat == FString(TEXT("attack_damage")))
+		{
+			DamagePerPoint = Row->ValuePerPoint;
+		}
+	}
+	if (!TestTrue(*FString::Printf(TEXT("the rows state a threshold: %.0f"),
+								   Threshold), Threshold > 0.0f)
+		|| !TestTrue(TEXT("and both bonuses"),
+					 ReductionPerPoint > 0.0f && DamagePerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	constexpr int32 Points = 3;
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, Points);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const auto HoldFervour = [AbilitySystem](float Amount)
+	{
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmClassResourceAttributeSet::GetClassResourceAttribute(),
+			Amount);
+	};
+	const auto IncreaseIn = [AbilitySystem](const TCHAR* Stat)
+	{
+		return AbilitySystem->IncreasesForStat(FName(Stat),
+											   FGameplayTagContainer());
+	};
+
+	// ONE SHORT OF WHAT THE ROW ASKS FOR: neither bonus is there.
+	HoldFervour(Threshold - 1.0f);
+	TestEqual(*FString::Printf(
+				  TEXT("at %.0f Fervour there is no damage reduction bonus"),
+				  Threshold - 1.0f),
+			  IncreaseIn(TEXT("damage_reduction")), 0.0f, 0.0001f);
+	TestEqual(*FString::Printf(
+				  TEXT("and no attack damage bonus at %.0f"), Threshold - 1.0f),
+			  IncreaseIn(TEXT("attack_damage")), 0.0f, 0.0001f);
+
+	// AT IT: both, worth the row's own figure for every point spent.
+	HoldFervour(Threshold);
+	TestEqual(*FString::Printf(
+				  TEXT("at %.0f Fervour the damage reduction bonus is there"),
+				  Threshold),
+			  IncreaseIn(TEXT("damage_reduction")),
+			  ReductionPerPoint * Points / 100.0f, 0.0001f);
+	TestEqual(*FString::Printf(TEXT("and the attack damage bonus at %.0f"),
+							   Threshold),
+			  IncreaseIn(TEXT("attack_damage")),
+			  DamagePerPoint * Points / 100.0f, 0.0001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

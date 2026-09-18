@@ -432,7 +432,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// ruled into the data rather than into code. The same shape as the entry
 	// above: UCataclysmCommand::MinionDrawingEnemyFrom read both stats before any
 	// row supplied them, so the keystone granted nothing. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        288)
+	// AND 290 SINCE LATER ON 2026-09-18, for the two rows that make the
+	// Ravager node Set Against It do something in play: increased damage
+	// reduction and increased attack damage, both conditioned on holding 50
+	// or more Fervour. The condition they name was built the same day and
+	// could reach nothing until these rows existed. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        290)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

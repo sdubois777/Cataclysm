@@ -3791,6 +3791,27 @@ CONDITIONS = {
     # STRICTLY ABOVE, the boundary `health_above` draws for the same word.
     "class_resource_above": (0.0, 100.0, "a percentage of the maximum class resource"),
 
+    # "While you have 50 or more Fervour, you gain +2% increased Damage Reduction
+    # and +3% increased Attack Damage per point" is the Ravager's Set Against It.
+    # Issue #1515.
+    #
+    # A COUNT OF POINTS, WHICH IS THE OPPOSITE OF THE ENTRY ABOVE, and the reason
+    # is measured rather than argued. That one says classes do not share a
+    # maximum; true, and not the reason here, because this node is in the Ravager
+    # tree and only a Ravager takes it. The reason is that ONE character's own
+    # bar moves: `class_resource` gains nothing per level, and is raised by an
+    # affix, by enchantments and by fourteen passive rows, so a threshold written
+    # as a percentage would demand more Fervour the more of it a player could
+    # hold. The sentence says fifty Fervour.
+    #
+    # THE BOUND IS WIDE ON PURPOSE. The largest bar in the data today is 150, and
+    # a bound there would refuse a row written for a bar that investment has
+    # already made bigger. A thousand refuses nothing worth refusing and still
+    # catches a percentage typed into a points column by mistake only if it is
+    # absurd -- which is the honest limit of what a bound can do here.
+    "class_resource_points_at_least": (0.0, 1000.0,
+                                       "a count of class resource points"),
+
     # "You take 10%-20% increased damage from all sources while your shield is
     # active" is `energy_shield_above_zero`, and it takes NO VALUE. Issue #1981.
     #

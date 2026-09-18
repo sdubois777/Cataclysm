@@ -112,6 +112,8 @@ namespace
 		{ TEXT("opponent_within_metres"),       ECataclysmStatCondition::OpponentWithinMetres },
 		{ TEXT("moved_within_seconds"),         ECataclysmStatCondition::MovedWithinSeconds },
 		{ TEXT("class_resource_above"),         ECataclysmStatCondition::ClassResourceAbovePercent },
+		{ TEXT("class_resource_points_at_least"),
+										ECataclysmStatCondition::ClassResourcePointsAtLeast },
 		{ TEXT("energy_shield_above_zero"),     ECataclysmStatCondition::EnergyShieldAboveZero },
 	};
 
@@ -887,6 +889,24 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 			&& State.ClassResourceMaximum > 0.0f
 			&& (State.ClassResourceHeld / State.ClassResourceMaximum) * 100.0f
 				   > Value;
+
+	case ECataclysmStatCondition::ClassResourcePointsAtLeast:
+		// AT OR ABOVE, for "50 or more" -- the boundary `HealthAtOrAbovePercent`
+		// draws for the same words, and the opposite of the strictly-above
+		// neighbour that reads the same pool. Issue #1515. At exactly fifty this
+		// holds and a strictly-above row written at fifty does not; that is what
+		// "or more" asks for, and it is said here rather than left for somebody
+		// to find in play.
+		//
+		// TWO CLAUSES AND NOT THE NEIGHBOUR'S THREE. A count of points needs no
+		// maximum, so there is no bar-of-nothing to refuse and nothing to divide
+		// by. What survives is the first clause, and it is the important one: an
+		// ability system with no class resource attribute set -- every enemy in
+		// the game -- leaves the reading at -1, and without this guard a
+		// threshold of zero written by a sheet would hand all of them a bonus
+		// meant for a Ravager.
+		return State.ClassResourceHeld >= 0.0f
+			&& State.ClassResourceHeld >= Value;
 
 	case ECataclysmStatCondition::EnergyShieldAboveZero:
 		// NO THRESHOLD, SO `Value` IS NOT READ. Issue #1981. "You take 10%-20%
