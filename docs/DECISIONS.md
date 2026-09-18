@@ -124,6 +124,9 @@ exactly the state the tests below drive by hand.
 **The pair is the point in both cases.** A build that credited the summoner for
 every minion's blow, which is what the game did until this change, passes one
 half of each pair and fails the other.
+
+---
+
 ## 2026-09-17 — A minion's explosion is its own figure, and the share of its summoner's weapon is deleted
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` and `game/Data/MinionTypes.csv` (one
