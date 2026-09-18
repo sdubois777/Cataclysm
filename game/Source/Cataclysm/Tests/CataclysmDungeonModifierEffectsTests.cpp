@@ -168,6 +168,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one where a kill of the player's stands back up. Issues #1820, #41. */
 	const FName VengefulWraiths(UCataclysmDungeonModifierEffects::VengefulWraithsKey);
 
+	/** And the one where radiant ground punishes standing still. Issues #1820, #41. */
+	const FName JudgmentZones(UCataclysmDungeonModifierEffects::JudgmentZonesKey);
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -816,6 +819,95 @@ namespace CataclysmDungeonModifierEffectsTest
 		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
 		return Test.TestTrue(TEXT("the player's blow killed it"),
 							 UCataclysmSkillEffects::IsDead(Victim));
+	}
+
+	/**
+	 * The floor every Judgment Zones test starts from. Issues #1820 and #41.
+	 *
+	 * EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so nothing on the floor is fighting
+	 * the player while a test measures what radiant ground took off them.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheJudgmentRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		Mode->DungeonModifiers = {JudgmentZones};
+		Mode->FloorNumber = 1;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString JudgmentPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(JudgmentZones);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/**
+	 * Beat until radiant ground appears, and answer the first of it. Issues #1820, #41.
+	 *
+	 * BEATEN FOR RATHER THAN SPAWNED BY HAND, because the cadence is part of what is being
+	 * tested everywhere else and a zone laid by a test would not be on the rule's own list.
+	 * Twice the cadence is the patience: one cadence should be enough and a second says the
+	 * failure is the rule rather than a beat landing on the wrong side of the clock.
+	 */
+	ACataclysmGroundZone* BeatUntilAZoneAppears(FAutomationTestBase& Test,
+											   ACataclysmDungeonGameMode* Mode,
+											   UWorld* World)
+	{
+		const int32 Patience = BeatsFor(
+			2.0f * UCataclysmDungeonModifierEffects::JudgmentZonesSecondsBetweenZones);
+		for (int32 Tick = 0; Tick < Patience; ++Tick)
+		{
+			Beat(Mode, 1);
+			if (ACataclysmGroundZone* Zone = AnyZone(World))
+			{
+				return Zone;
+			}
+		}
+		Test.AddError(TEXT("no judgment zone appeared within two cadences"));
+		return nullptr;
+	}
+
+	/** Put the player in the middle of a zone, or well outside every zone. */
+	void StandOn(const FPossessedPlayer& Player, const ACataclysmGroundZone* Zone)
+	{
+		Player.Character->SetActorLocation(Zone->GetActorLocation());
+	}
+
+	void StandWellAway(const FPossessedPlayer& Player)
+	{
+		// FURTHER THAN A ZONE CAN BE LAID FROM THE PLAYER, so this is outside every zone
+		// there is and not merely outside the one being measured.
+		Player.Character->SetActorLocation(
+			FVector(10.0f * UCataclysmDungeonModifierEffects::JudgmentZonesFallsWithinCm,
+					0.0f, 0.0f));
+	}
+
+	/** What one more second of standing takes off the player, in health. */
+	float HealthLostOverASecond(ACataclysmDungeonGameMode* Mode,
+								const FPossessedPlayer& Player)
+	{
+		const FGameplayAttribute Health =
+			UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Before = Player.Read(Health);
+		Beat(Mode, BeatsFor(1.0f));
+		return Before - Player.Read(Health);
 	}
 
 	/** Any combat stat of a creature, read off the attribute rather than worked out. */
@@ -17084,6 +17176,637 @@ bool FCataclysmWraithFloorChangeTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and the wraith is still a wraith"),
 			  CombatStatOf(Wraith, Combat::GetDamageReductionMoreAttribute()),
 			  ReductionBefore, 0.01f);
+	return true;
+}
+
+// "RADIANT ZONES SPAWN", and a floor that carries the row lays them on its own beat.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentZoneAppearsTest,
+	"Cataclysm.DungeonModifierEffects.AZoneAppearsOnAFloorCarryingTheRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentZoneAppearsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("a floor just built has no radiant ground"),
+				   ZonesOnTheFloor(World), 0))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("it reaches the radius the patch rules share"), Zone->RadiusCm,
+			  Effects::JudgmentZonesRadiusCm, 0.01f);
+
+	// AND IT CARRIES NO DAMAGE OF ITS OWN, which is this rule's shape rather than an
+	// oversight: the rule deals the damage and counts the trigger in one place, so the
+	// reward cannot disagree with what earned it.
+	TestEqual(TEXT("and no damage of its own, because this rule deals it"),
+			  Zone->DamagePerTick, 0.0f, 0.001f);
+
+	// AND IT IS LAID PAST ITS OWN RADIUS FROM THE PLAYER, so ground cannot damage the
+	// instant it appears. The same reasoning Infernal Rain's comment gives at length.
+	TestTrue(FString::Printf(TEXT("laid clear of the player: %.0f cm away, radius %.0f"),
+							 FVector::Dist(Player.Character->GetActorLocation(),
+										   Zone->GetActorLocation()),
+							 Zone->RadiusCm),
+			 FVector::Dist(Player.Character->GetActorLocation(),
+						   Zone->GetActorLocation()) > Zone->RadiusCm);
+	return true;
+}
+
+// THE CEILING IS A JUDGEMENT AND BOTH HALVES ARE ASSERTED: never more than three, and
+// three actually reached.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentCeilingTest,
+	"Cataclysm.DungeonModifierEffects.NoMoreThanThreeZonesStandAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentCeilingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// FIVE CADENCES, which is long enough for the ceiling to be reached and for zones to
+	// start expiring under it: a zone stands 20 seconds and one is laid every 8.
+	StandWellAway(Player);
+	int32 Most = 0;
+	for (int32 Tick = 0;
+		 Tick < BeatsFor(5.0f * Effects::JudgmentZonesSecondsBetweenZones); ++Tick)
+	{
+		Beat(Mode, 1);
+		const int32 Standing = ZonesOnTheFloor(World);
+		Most = FMath::Max(Most, Standing);
+		if (!TestTrue(FString::Printf(TEXT("never more than the ceiling: %d standing"),
+									  Standing),
+					  Standing <= Effects::JudgmentZonesMostZones))
+		{
+			return false;
+		}
+	}
+
+	// AND IT REALLY REACHED THE CEILING. Without this the test would pass for a rule that
+	// laid one zone and stopped.
+	TestEqual(TEXT("and the ceiling was reached"), Most, Effects::JudgmentZonesMostZones);
+	return true;
+}
+
+// "SPAWN FOR 20 SECONDS", asserted from both sides so it measures the length rather
+// than the fact that ground expires.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentZoneGoesTest,
+	"Cataclysm.DungeonModifierEffects.AZoneGoesAfterTheRowsTwentySeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentZoneGoesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	StandWellAway(Player);
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+
+	// THE WORLD CLOCK AND NOT THE RULE'S BEAT, WHICH IS WHAT THIS TEST GOT WRONG FIRST.
+	// MEASURED 2026-09-18: beating the game mode 80 times left the ground standing, because
+	// `ACataclysmGroundZone::SpawnAlong` ends in `SetLifeSpan`, and an actor's lifespan is
+	// an engine timer on `UWorld`'s own clock. `Beat` moves the rule's clock and says so in
+	// its comment -- "WITHOUT moving the world clock" -- so the two have to be driven apart
+	// here. `CataclysmTestWorld::RunClock` moves the clock and the timer manager together,
+	// which is what makes a lifespan run out.
+	CataclysmTestWorld::RunClock(World, Effects::JudgmentZonesSeconds - 1.0f);
+	if (!TestTrue(TEXT("it is still standing a second before its life is up"),
+				  IsValid(Zone)))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	TestFalse(TEXT("and it is gone a second after"), IsValid(Zone));
+	return true;
+}
+
+// "HOLY DAMAGE" NAMES NO DAMAGE TYPE THIS GAME HAS, and nothing here rules on it: the
+// rule reads the type off the row, whose own CataclysmType is Celestial. This measures
+// that the damage really is met by the Celestial resistance and not by another, which
+// is the only way to tell a typed hit from an untyped one from the outside. The shape
+// issue #1924 established.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentTypeTest,
+	"Cataclysm.DungeonModifierEffects.StandingInAZoneCostsTheRowsOwnDamageTypeAndNotAnother",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentTypeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+	StandOn(Player, Zone);
+
+	// THE SAME SECOND OF STANDING, MEASURED ONCE WITH EACH RESISTANCE RAISED. The act
+	// steps the player out and back in first, so both measurements are the ramp's FIRST
+	// second and not one first and one second.
+	const auto AFirstSecondInside = [&]() -> bool
+	{
+		StandWellAway(Player);
+		Beat(Mode, BeatsFor(1.0f));
+		StandOn(Player, Zone);
+		Beat(Mode, BeatsFor(1.0f));
+		return true;
+	};
+
+	const TOptional<float> WithItsOwn = LostWithResistanceRaised(
+		*this, Player, UCataclysmResistanceAttributeSet::GetCelestialResistanceAttribute(),
+		AFirstSecondInside);
+	const TOptional<float> WithAnother = LostWithResistanceRaised(
+		*this, Player, UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+		AFirstSecondInside);
+
+	if (!TestTrue(TEXT("both measurements were taken"),
+				  WithItsOwn.IsSet() && WithAnother.IsSet()))
+	{
+		return false;
+	}
+
+	ExpectMetOnlyByItsOwnResistance(
+		*this, TEXT("a second in a judgment zone"),
+		UCataclysmResistanceAttributeSet::GetCelestialResistanceAttribute(),
+		WithItsOwn.GetValue(),
+		UCataclysmResistanceAttributeSet::GetDemonicResistanceAttribute(),
+		WithAnother.GetValue());
+	return true;
+}
+
+// "STANDING INSIDE RAMPS" THE DAMAGE, which is the one figure in this rule whose SHAPE
+// was judged rather than read: the two zone rules that damage are both flat.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentRampTest,
+	"Cataclysm.DungeonModifierEffects.TheDamageRampsWithEachSecondStoodIn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentRampTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+	StandOn(Player, Zone);
+
+	// MEASURED AS RATIOS AND NOT AS SHARES OF MAXIMUM HEALTH, on purpose. The damage is
+	// typed, so a player's own resistance may take some of it; a test asserting the exact
+	// share would be asserting the resistance as well as the ramp.
+	const float First = HealthLostOverASecond(Mode, Player);
+	const float Second = HealthLostOverASecond(Mode, Player);
+	const float Third = HealthLostOverASecond(Mode, Player);
+
+	if (!TestTrue(FString::Printf(TEXT("the first second cost something: %.2f"), First),
+				  First > 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the second second costs twice the first"), Second, First * 2.0f,
+			  First * 0.05f);
+	TestEqual(TEXT("and the third three times it"), Third, First * 3.0f, First * 0.05f);
+	return true;
+}
+
+// THE RAMP STOPS, AND WHERE IT STOPS IS A JUDGEMENT. Both halves are asserted: that it
+// stops climbing, and that it stopped at the figure rather than anywhere.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentRampCeilingTest,
+	"Cataclysm.DungeonModifierEffects.TheRampStopsAtItsCeiling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentRampCeilingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+	StandOn(Player, Zone);
+
+	TArray<float> Seconds;
+	const int32 Many = FMath::CeilToInt(Effects::JudgmentZonesMostPercentPerSecond
+										/ Effects::JudgmentZonesPercentPerSecond) + 2;
+	for (int32 Index = 0; Index < Many; ++Index)
+	{
+		Seconds.Add(HealthLostOverASecond(Mode, Player));
+	}
+
+	if (!TestTrue(FString::Printf(TEXT("the first second cost something: %.2f"),
+								  Seconds[0]),
+				  Seconds[0] > 0.0f))
+	{
+		return false;
+	}
+
+	// THE LAST TWO ARE THE SAME, which is what a ceiling means, AND THEY ARE THE CEILING'S
+	// OWN MULTIPLE OF THE FIRST, which is what says the ramp stopped in the right place
+	// rather than merely stopping.
+	const float Ceiling = Seconds.Last();
+	TestEqual(TEXT("the last two seconds cost the same"), Seconds[Seconds.Num() - 2],
+			  Ceiling, Seconds[0] * 0.05f);
+	TestEqual(TEXT("and that is the ceiling's multiple of the first second"), Ceiling,
+			  Seconds[0] * Effects::JudgmentZonesMostPercentPerSecond
+				  / Effects::JudgmentZonesPercentPerSecond,
+			  Seconds[0] * 0.05f);
+	return true;
+}
+
+// THE RAMP BELONGS TO THE ZONE STOOD IN, NOT TO THE FLOOR. Stepping out sets it back,
+// which is what makes the ground something to get off rather than a timer.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentLeavingTest,
+	"Cataclysm.DungeonModifierEffects.LeavingAZoneResetsTheRamp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentLeavingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+	StandOn(Player, Zone);
+
+	const float First = HealthLostOverASecond(Mode, Player);
+	HealthLostOverASecond(Mode, Player);
+	const float Third = HealthLostOverASecond(Mode, Player);
+
+	if (!TestTrue(FString::Printf(TEXT("the ramp had climbed: %.2f then %.2f"), First,
+								  Third),
+				  Third > First))
+	{
+		return false;
+	}
+
+	// OUT, AND BACK IN.
+	StandWellAway(Player);
+	const float Outside = HealthLostOverASecond(Mode, Player);
+	if (!TestEqual(TEXT("standing outside costs nothing"), Outside, 0.0f, 0.01f))
+	{
+		return false;
+	}
+
+	StandOn(Player, Zone);
+	const float Again = HealthLostOverASecond(Mode, Player);
+	TestEqual(TEXT("and stepping back in starts the ramp again"), Again, First,
+			  First * 0.05f);
+	return true;
+}
+
+// "IF TRIGGERED 5+ TIMES". The four-then-five pair is what stops a rule that paid on
+// the first tick from passing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentBonusEarnedTest,
+	"Cataclysm.DungeonModifierEffects.FiveTriggersEarnTheBonusAndFourDoNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentBonusEarnedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+	StandOn(Player, Zone);
+
+	if (!TestEqual(TEXT("a floor that has taken nothing grants nothing"),
+				   Mode->JudgmentZonesMagicFindBonus(), 0.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// ONE SHORT OF THE ROW'S FIGURE.
+	for (int32 Tick = 0; Tick < Effects::JudgmentZonesTriggersForTheBonus - 1; ++Tick)
+	{
+		HealthLostOverASecond(Mode, Player);
+	}
+	if (!TestEqual(TEXT("one short of the row's five grants nothing"),
+				   Mode->JudgmentZonesMagicFindBonus(), 0.0f, 0.01f))
+	{
+		return false;
+	}
+
+	HealthLostOverASecond(Mode, Player);
+	TestEqual(TEXT("and the fifth earns the floor's bonus"),
+			  Mode->JudgmentZonesMagicFindBonus(), Effects::JudgmentZonesMagicFind, 0.01f);
+	return true;
+}
+
+// "INCREASES BOSS LOOT QUALITY", so the bonus is added for a boss and nothing else.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentBossOnlyTest,
+	"Cataclysm.DungeonModifierEffects.TheBonusIsAddedForABossKillAndNotAnOrdinaryOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentBossOnlyTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE ARITHMETIC AND NOT THE LOOKUP, WHICH IS THE ONLY HALF A TEST CAN REACH. The
+	// creature that dies finds its floor through `UWorld::GetAuthGameMode`, and a world
+	// built for a test has no authority game mode -- so the hop from the floor rule to the
+	// drop roll is uncovered here, exactly as the floor number's is in
+	// `UCataclysmEnemyScore::FloorIn`. The decisions entry says so.
+	constexpr float Carried = 50.0f;
+	constexpr float Granted = 20.0f;
+
+	TestEqual(TEXT("a boss kill is rolled with the floor's bonus added"),
+			  Effects::JudgmentZonesMagicFindFor(Carried, /*bVictimIsBoss=*/true, Granted),
+			  Carried + Granted, 0.01f);
+	TestEqual(TEXT("an ordinary kill is rolled with what the player carries"),
+			  Effects::JudgmentZonesMagicFindFor(Carried, /*bVictimIsBoss=*/false, Granted),
+			  Carried, 0.01f);
+	TestEqual(TEXT("and a floor granting nothing changes no roll"),
+			  Effects::JudgmentZonesMagicFindFor(Carried, /*bVictimIsBoss=*/true, 0.0f),
+			  Carried, 0.01f);
+
+	// AND "BOSS" IS THE GAME'S OWN NOTION OF ONE, not a bool this test invented. A creature
+	// at the first boss rung answers yes and one below it answers no, so the caller's
+	// `IsBoss()` really does separate the two cases the assertions above describe.
+	ACataclysmEnemyCharacter* Creature =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature to ask"), Creature))
+	{
+		return false;
+	}
+
+	Creature->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	TestTrue(TEXT("a creature at the first boss rung is a boss"), Creature->IsBoss());
+	Creature->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep - 1);
+	TestFalse(TEXT("and one below it is not"), Creature->IsBoss());
+	return true;
+}
+
+// WHAT A PLAYER SEES: how close the reward is, and how much ground there is to avoid.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentPanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelCountsTheTriggers",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE WHOLE LINE IS WRITTEN OUT HERE rather than built from the format the panel uses,
+	// so a change of wording cannot pass by comparing a string with itself.
+	if (!TestEqual(TEXT("a floor just built has taken nothing and laid nothing"),
+				   JudgmentPanelLine(Mode),
+				   FString(TEXT("0 trigger(s) of 5, 0 zone(s) standing"))))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+	StandOn(Player, Zone);
+
+	HealthLostOverASecond(Mode, Player);
+	TestEqual(TEXT("one trigger in, with the ground that dealt it standing"),
+			  JudgmentPanelLine(Mode),
+			  FString(TEXT("1 trigger(s) of 5, 1 zone(s) standing")));
+
+	// AND A FLOOR WITHOUT THE ROW HAS NO LINE OF ITS OWN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row says nothing"), JudgmentPanelLine(Mode),
+			  FString(TEXT("no line")));
+	return true;
+}
+
+// THE WHOLE OF THIS RULE'S STATE IS THE FLOOR'S AND GOES AT THE STAIRS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmJudgmentFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeClearsTheTriggersAndTheZones",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmJudgmentFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheJudgmentRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("radiant ground appeared"), Zone))
+	{
+		return false;
+	}
+	StandOn(Player, Zone);
+
+	HealthLostOverASecond(Mode, Player);
+	HealthLostOverASecond(Mode, Player);
+	if (!TestEqual(TEXT("two triggers in"), JudgmentPanelLine(Mode),
+				   FString(TEXT("2 trigger(s) of 5, 1 zone(s) standing"))))
+	{
+		return false;
+	}
+
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	// EVERYTHING THIS RULE HOLDS IS THE FLOOR'S, unlike the records the two rules above it
+	// keep: a zone is an actor on the floor being left and a trigger is something that
+	// happened on it, so none of it follows the player down.
+	TestEqual(TEXT("the new floor has taken nothing and laid nothing"),
+			  JudgmentPanelLine(Mode),
+			  FString(TEXT("0 trigger(s) of 5, 0 zone(s) standing")));
+	TestEqual(TEXT("and grants nothing until it is earned again"),
+			  Mode->JudgmentZonesMagicFindBonus(), 0.0f, 0.01f);
 	return true;
 }
 
