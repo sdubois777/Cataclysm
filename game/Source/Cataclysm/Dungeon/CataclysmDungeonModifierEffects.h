@@ -1113,6 +1113,38 @@ public:
 	static const TCHAR* BloodForgedChampionsKey;
 
 	/**
+	 * The row where a kill of the player's may stand back up as something that hunts it.
+	 * Issues #1820 and #41.
+	 *
+	 * A CREATURE THE PLAYER KILLS HAS `VengefulWraithsChancePercent` OF LEAVING A WRAITH
+	 * of its own kind where it fell. A wraith takes
+	 * `VengefulWraithsDamageReductionMore` off every hit as ONE multiplicative source,
+	 * carries `VengefulWraithsIncreasePercent` more attack damage, attack speed and
+	 * movement speed than its kind would, and notices a target from
+	 * `VengefulWraithsSightMultiplier` times its own sight.
+	 *
+	 * THE ROW'S KEY IS SPELT `Death_Vengful_Wraiths`, WITHOUT THE SECOND `e`. That is the
+	 * design data's spelling and the key has to match it exactly; the constants here are
+	 * spelt properly. `test_every_row_key_the_rules_name_is_a_row_of_the_table` is what
+	 * catches the two drifting apart.
+	 *
+	 * "THE ONE WHO KILLED THEM" DECIDES WHETHER A WRAITH RISES, NOT WHOM IT CHASES. The
+	 * creature AI picks targets by sight and nothing in the module takes a named quarry,
+	 * so a wraith does not hold a grudge against a particular actor. What the sight
+	 * multiplier buys is that it notices a target from anywhere on the floor, which is
+	 * what the row describes in play. So the rule asks who killed the creature, and a
+	 * kill that was not the player's raises nothing at all.
+	 *
+	 * A MINION'S KILL WITHOUT THE CONDUIT KEYSTONE RAISES NOTHING, and that is deliberate
+	 * rather than an oversight. `UCataclysmCombatEvents::NoteBlow` credits a minion's
+	 * blow to the minion unless its summoner holds Conduit, issue #1515, so asking
+	 * `Notice.Killer` is already the whole question. Reading a minion's kill as the
+	 * summoner's here would put back by hand the credit that change took away and would
+	 * leave the keystone meaning nothing in this rule.
+	 */
+	static const TCHAR* VengefulWraithsKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -2546,6 +2578,73 @@ public:
 		"No reach at all, a rung earned by no deaths, or a floor already at the ceiling "
 		"is not the row: an Elite has to be able to rise.");
 
+	/**
+	 * The chance a creature the player kills leaves a wraith.
+	 *
+	 * STATED BY THE ROW: "Enemies have a 10% chance of turning into wraiths when killed".
+	 */
+	static constexpr float VengefulWraithsChancePercent = 10.0f;
+
+	/**
+	 * What a wraith takes off every hit, as ONE multiplicative source.
+	 *
+	 * STATED BY THE ROW: "Wraiths have 90% damage reduction". **WHICH LAYER IT IS WRITTEN
+	 * INTO IS THE PROJECT OWNER'S DECISION OF 2026-09-17**, and it had to be made because
+	 * 90 IS ABOVE THE CAP ON THE ADDITIVE LAYER. `UCataclysmDamageCalculation::
+	 * DamageReductionCap` is 75 and its comment records that Path of Exile's 90% "was
+	 * deliberately not copied", because that 90% covers physical damage alone where this
+	 * covers all eight types. Issue #644.
+	 *
+	 * SO IT IS WRITTEN INTO `DamageReductionMore`, the multiplicative bucket, whose bound
+	 * is `MoreDamageReductionCap` at 99. A wraith therefore takes a tenth of whatever the
+	 * other layers leave, which is what the row's number says, and the 75 cap on the
+	 * additive pool is untouched.
+	 *
+	 * THIS IS THE LARGEST MULTIPLICATIVE REDUCTION IN THE GAME, and the entry says so.
+	 * That bound's own comment notes "the largest multiplicative node in any class tree
+	 * is 3% per point over 8 points, which is 24%". The owner's reason for allowing it
+	 * here: a wraith is one temporary creature the player is meant to hunt down, which is
+	 * not the same kind of number as a permanent node on a passive tree.
+	 */
+	static constexpr float VengefulWraithsDamageReductionMore = 90.0f;
+
+	/**
+	 * How much more attack damage, attack speed and movement speed a wraith has.
+	 *
+	 * STATED BY THE ROW: "20% increased damage, movespeed, and attack speed". ONE FIGURE
+	 * FOR ALL THREE, because the row states one.
+	 */
+	static constexpr float VengefulWraithsIncreasePercent = 20.0f;
+
+	/**
+	 * What a wraith multiplies its own sight by, so it hunts across the whole floor.
+	 *
+	 * A JUDGEMENT, ruled under the project owner's delegation, and SIZED BY MEASUREMENT
+	 * rather than picked. The row says "across the entire dungeon" and states no
+	 * distance.
+	 *
+	 * THE MULTIPLIER SCALES EACH CREATURE'S OWN RADIUS, not a shared base --
+	 * `ACataclysmCharacterBase::NoticesFromCm` is `SightRadiusCm() * multiplier` -- and
+	 * the smallest of the seven designed creatures' own radii is 1000 cm. The largest
+	 * floor is `FCataclysmFloorGenerator::MostFloorSide` of
+	 * `FCataclysmFloorGenerator::CellSizeCm`, so 48 x 400 = 19,200 cm a side and about
+	 * 27,153 cm corner to corner. Thirty times 1000 is 30,000, which covers it.
+	 *
+	 * `CataclysmDungeonGameMode.cpp` carries the `static_assert` that holds this figure to
+	 * that span; it is there rather than here because that file already includes the floor
+	 * generator and the Imp, and this one includes neither.
+	 */
+	static constexpr float VengefulWraithsSightMultiplier = 30.0f;
+
+	static_assert(
+		VengefulWraithsChancePercent > 0.0f && VengefulWraithsChancePercent <= 100.0f
+			&& VengefulWraithsDamageReductionMore > 0.0f
+			&& VengefulWraithsIncreasePercent > 0.0f
+			&& VengefulWraithsSightMultiplier > 1.0f,
+		"A chance of nothing, a wraith that takes no less damage, a wraith no stronger "
+		"than what it rose from, or one that sees no further than its kind is not the "
+		"row.");
+
 	static_assert(
 		HolyRepercussionsChancePercentOnHit > 0.0f
 			&& HolyRepercussionsChancePercentOnHit < 100.0f,
@@ -3370,6 +3469,18 @@ public:
 
 	/** The rung after this one, never past the ceiling. */
 	static int32 BloodForgedChampionsRungAfter(int32 RarityStep);
+
+	/** Whether a roll of 0 to 100 leaves a wraith where a creature fell. */
+	static bool VengefulWraithRises(float Roll);
+
+	/**
+	 * A figure raised by the row's one increase.
+	 *
+	 * ONE FUNCTION FOR ALL THREE STATS, because the row states one figure for all three
+	 * and three call sites reading the same constant would be the same arithmetic written
+	 * three times.
+	 */
+	static float VengefulWraithsIncreased(float Base);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when

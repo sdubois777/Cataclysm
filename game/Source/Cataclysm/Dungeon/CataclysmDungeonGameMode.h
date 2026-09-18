@@ -1705,6 +1705,33 @@ private:
 	void NoteDeathForBloodForgedChampions(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Vengeful Wraiths, on a creature the PLAYER killed: it may stand back up as a wraith.
+	 *
+	 * IT ASKS WHO KILLED, AND THE ROW IS WHY. "The one who killed them" needs a killer, so
+	 * a kill by another creature or by burning ground raises nothing. A minion's kill
+	 * without the Conduit keystone raises nothing either, because
+	 * `UCataclysmCombatEvents::NoteBlow` credits that blow to the minion -- issue #1515 --
+	 * and reading it as the summoner's here would put back by hand the credit that change
+	 * took away.
+	 *
+	 * WHAT IT ASKS DECIDES WHETHER A WRAITH RISES, NOT WHOM IT CHASES. The creature AI
+	 * picks targets by sight and takes no named quarry, so what makes a wraith a hunter is
+	 * the sight multiplier it is spawned with.
+	 */
+	void NoteDeathForVengefulWraiths(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Give a wraith the four figures that make it one, and put them back when they go.
+	 *
+	 * CALL THIS ONLY WHERE THE CREATURE'S STAT BLOCK HAS JUST BEEN WRITTEN, because the
+	 * three increases MULTIPLY WHAT THEY READ. Twice in a row without a fresh block in
+	 * between would give a wraith 44% rather than 20%. There are two such places and no
+	 * more: the spawn below, and immediately after a rung change, where
+	 * `ApplyStartingAttributes` has just put the new rung's own figures on.
+	 */
+	void ApplyVengefulWraithFigures(ACataclysmEnemyCharacter* Wraith);
+
+	/**
 	 * Brand of the Aggressor's stack, on a blow the PLAYER landed on a creature.
 	 * Issues #1820 and #41.
 	 *
@@ -2307,6 +2334,25 @@ private:
 	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, int32> BloodForgedChampionsFed;
 	int32 BloodForgedChampionsAbsorbed = 0;
 	int32 BloodForgedChampionsRungsGained = 0;
+
+	/**
+	 * Vengeful Wraiths: which creatures are wraiths, and how many rose on this floor.
+	 * Issues #1820 and #41.
+	 *
+	 * THE MEMBERSHIP OUTLIVES THE FLOOR AND THE COUNT DOES NOT, the split stated above
+	 * `VolatileEvolutionMutated`. A wraith is a wraith wherever it goes, and a Horde
+	 * dungeon's change of wave does not make it an ordinary creature again; the count
+	 * answers what happened on THIS floor, which is what the panel shows.
+	 *
+	 * THE SET IS WHAT LETS A RUNG CHANGE PUT THE FIGURES BACK. Blood-Forged Champions and
+	 * Volatile Evolution both raise a living creature's rung, and both end in
+	 * `ApplyStartingAttributes`, which writes the whole stat block over. Without this set
+	 * neither rule could tell a wraith from anything else it had just strengthened.
+	 *
+	 * WEAK POINTERS, AND THE LISTENER DROPS THE STALE ONES, as Royal Guard's record does.
+	 */
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> VengefulWraiths;
+	int32 VengefulWraithsRisen = 0;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;
