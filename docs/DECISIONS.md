@@ -177,6 +177,36 @@ that the armour is one modifier and the stat is spelled `armor`; that the choose
 the creature; that a floor change puts every creature's multiplier back while keeping the run's count;
 and the ordering check above.
 
+### Eight of those assertions would not have compiled, and the whole group was swept
+
+**`FAutomationTestBase::TestEqual` HAS NO GENERIC TEMPLATE BEHIND ITS OVERLOADS.** Eight assertions
+here compared two creature pointers with it, to say which creature the floor had chosen as its
+Commander. `Engine/Source/Runtime/Core/Public/Misc/AutomationTest.h` declares `TestEqual` for concrete
+types only — int32, int64, SIZE_T, float, double, FVector, FTransform, FRotator, FColor, FLinearColor,
+`const TCHAR*`, FStringView, FUtf8StringView, FString, FText, FName — and a pointer to a creature
+converts to none of them. Each of the eight was a compile error waiting for the next build. They use
+`TestSamePtr` now, which is the engine's own assertion for two pointers: it errors when they differ
+and warns separately when either is null.
+
+**THE WHOLE GROUP WAS SWEPT RATHER THAN THE EIGHT FIXED, AND THAT SWEEP IS A MEASUREMENT.** Every
+assertion these fifteen tests make was extracted with a balanced-parenthesis reader — a regular
+expression is not enough, because these calls wrap across lines — and each one's argument types were
+checked against that header:
+
+| Assertion | Uses | What they pass |
+| :-- | :-- | :-- |
+| `TestEqual` | 36 | two floats with a tolerance, two int32 values, or two FStrings |
+| `TestNotNull` | 33 | one pointer |
+| `TestTrue` | 12 | one bool |
+| `TestSamePtr` | 8 | two pointers |
+| `TestNull` | 3 | one pointer |
+
+Every one has an overload. No others were found.
+
+**IT WAS FOUND BY READING THE ENGINE HEADER, NOT BY A BUILD**, while this branch waited for a machine
+window. A build takes minutes, the machine is shared between sessions, and a compile error found there
+costs a window rather than a command.
+
 ### The count above was wrong twice before it was measured
 
 **THIS ENTRY SAID THIRTEEN AND THEN FOURTEEN, AND THE ANSWER IS FIFTEEN.** Both wrong figures came
