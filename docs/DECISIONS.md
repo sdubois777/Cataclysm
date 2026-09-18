@@ -143,8 +143,8 @@ second. Issue #41's slice 2 built that shape for The Nihil's Embrace.
 
 ### What the tests do
 
-Fourteen automation tests in `Cataclysm.DungeonModifierEffects.`, taking that group from 171
-registered to 185. They cover: every creature on the floor hitting harder for its depth and a second
+Fifteen automation tests in `Cataclysm.DungeonModifierEffects.`, taking that group from 171
+registered to 186. They cover: every creature on the floor hitting harder for its depth and a second
 beat changing nothing; the rise being added rather than compounded, measured on a real creature at
 floor 10 and in the arithmetic at floors 1, 10 and 50; a rung change keeping the rise, measured
 against a creature placed afterwards that never carried it; the Commander being the highest rung
@@ -156,7 +156,7 @@ not 21%; a kill that was not the player's paying nothing; an empty floor having 
 failing; the armour outliving a floor change and going when the run ends; the panel; and a floor
 change putting every creature's damage back.
 
-**THE FOURTEENTH TEST EXISTS BECAUSE CHOOSING A GUARD-PROOF BREAK FOUND A GAP.** The other thirteen
+**THE FIFTEENTH TEST EXISTS BECAUSE CHOOSING A GUARD-PROOF BREAK FOUND A GAP.** The other fourteen
 place their own creatures and call `ChooseTheFloorsCommander` by hand, which is the right way to
 measure WHICH creature is chosen and cannot measure whether anything in the game calls it at all. A
 break that moved the clearing into the applier — the ordering fault described above — would have
@@ -177,6 +177,24 @@ that the armour is one modifier and the stat is spelled `armor`; that the choose
 the creature; that a floor change puts every creature's multiplier back while keeping the run's count;
 and the ordering check above.
 
+### The count above was wrong twice before it was measured
+
+**THIS ENTRY SAID THIRTEEN AND THEN FOURTEEN, AND THE ANSWER IS FIFTEEN.** Both wrong figures came
+from counting the tests in my own prose rather than from counting the file. The measurement:
+
+```
+git show 2b380425:...CataclysmDungeonModifierEffectsTests.cpp | grep -c IMPLEMENT_SIMPLE_AUTOMATION_TEST   171
+grep -c IMPLEMENT_SIMPLE_AUTOMATION_TEST ...CataclysmDungeonModifierEffectsTests.cpp                       186
+git diff 2b380425 -- ...CataclysmDungeonModifierEffectsTests.cpp | grep "^+" | grep -c IMPLEMENT_...         15
+```
+
+**THE TWO COMMIT MESSAGES ON THIS BRANCH STILL SAY THIRTEEN AND FOURTEEN.** They were pushed before the
+count was measured and are not being rewritten; this paragraph is the correction, and the design log is
+the record that has to be right. `CLAUDE.md` already says no static count of the Unreal suite is exact
+and that a delta must come from a diff — which is what the third line above is, and what the first two
+figures are not to be read as: they count one file's registration macros, not the group's total. The
+group's own total is measured in the window, on the base, before this branch is believed.
+
 ### What the runs found, so far
 
 ```
@@ -195,7 +213,7 @@ dungeon-rule checks never reaches it.
 ### What the tests do not show
 
 - **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
-  the fourteen automation tests and the three guard proofs wait for this machine's next free window,
+  the fifteen automation tests and the three guard proofs wait for this machine's next free window,
   and this section will be replaced by what those runs print.
 - **That a player can find the Commander.** Nothing marks it in play, the tests reach it by asking the
   game mode, and no test could show a player finding it. Issue #1997.
