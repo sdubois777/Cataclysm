@@ -3420,6 +3420,37 @@ break that trips two, "2 failed, 97 passed".
 - **Nothing here has been built or run in Unreal yet.** The C++ is written and committed; the compile,
   the automation run and the three guard proofs wait for this machine's next free window. Until then no
   claim in this section about what the automation tests measure has been measured.
+
+  **CORRECTED 2026-09-18. THE SENTENCE ABOVE IS LEFT AS WRITTEN AND IS NO LONGER TRUE.** It was
+  written before this rule's machine window and never replaced, so a merged entry in this log
+  went on saying nothing had been run while the rule had been built, run and merged. Found on
+  2026-09-18 while checking a different entry. The lines above are untouched on purpose: a
+  rewrap of a merged entry reads as a removal and fails this log's own merge controls, so the
+  measurements are appended here instead.
+
+  **What the window measured**, read out of the run logs it left behind rather than from
+  memory:
+
+  - `Build: Succeeded - 27 actions, 24 files compiled`
+  - `Tests: 2024 tests performed, 2024 succeeded, 0 failed`, and
+    `Declared: 2024 tests in the tree at 899e6c73; 2024 performed, gap 0`, wrapper exit 0.
+    39 tests reported skipping part of what they check; all are art tests, and a worktree has
+    no Paragon content.
+  - The group `Cataclysm.DungeonModifierEffects.` at **109 performed, 109 succeeded, 0 failed**,
+    taken from the restored half of each of the three guard proofs.
+  - All three guard proofs printed `PROVED`, and each failed exactly the tests it had
+    registered: the first
+    `ACreatureMutatesOnlyOnceHoweverLongTheFightLasts` and
+    `AWoundedCreatureRisesARungAndKeepsTheHealthAndShieldItHad`; the second
+    `NoMutationMakesABossOutOfAHeraldHoweverLongTheFightLasts`; the third those two of the
+    first's plus `AFloorChangeClearsTheCountAndAMutatedCreatureIsNotOfferedAnother` and
+    `TheFloorPanelCountsTheCreaturesThatMutated`. No proof log records a wrong prediction.
+
+  **NOT RECOVERABLE.** This window is remembered as having had test failures before the clean
+  run above, and the assertion text of each proof's broken half. Only one whole-suite log
+  survives in the scratchpad and it is the clean one, and no engine log from a failing run was
+  kept, so neither the count nor the wording of those failures can be quoted. They are left
+  unstated rather than reconstructed.
 - **How often a creature actually mutates in play.** Every test pins the roll. Ten percent a beat is
   four rolls a second, so a creature that stays wounded mutates quickly; whether that is right is a
   tuning question for play, not something a test can answer.
