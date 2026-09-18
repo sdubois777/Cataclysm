@@ -112,6 +112,22 @@ attacker.** That simulation stopped matching the game the moment the instigator
 changed, and a test that simulates what it is measuring goes on passing after
 the thing it measures has gone.
 
+### WHAT THIS CHANGE DID NOT PROVE
+
+**The burn's instigator has no test that could fail if it were reverted**, and
+that is recorded here rather than left to be assumed from the tests that do
+exist. A minion's swing sets its target alight through a separate call, which
+now names the minion as the burn's instigator as well. Reverting that line to
+the summoner changes nothing any test can see: the burn's damage is not scaled
+by its instigator, the minion is named separately as what dealt the tick so the
+crediting is unchanged either way, and a tick provokes no retaliation. The one
+honest way to hold it would be a case reading the burn effect's own instigator
+back off the target, and whether the test harness can do that at all is unknown.
+
+**So the line is a consistency change**, made because a minion's swing and the
+fire it starts belonging to different characters is the kind of split this
+correction exists to remove, and it is not covered by the three guard proofs.
+
 ---
 
 ## 2026-09-17 — Six mana cost sentences are written, and the count in the entry that named them was wrong
