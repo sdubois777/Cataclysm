@@ -22,6 +22,25 @@ generated table's row count). Issues
 [#1982](https://github.com/sdubois777/Cataclysm/issues/1982) and
 [#1988](https://github.com/sdubois777/Cataclysm/issues/1988), which this closes.
 
+**CORRECTION, appended 2026-09-18 after this entry merged. THIS CHANGE CLOSES NO ISSUE, and the line
+above is wrong about all three numbers it names.**
+
+| Issue | What is actually true |
+| :-- | :-- |
+| [#1981](https://github.com/sdubois777/Cataclysm/issues/1981) | closed at 07:29Z, hours before these rows were written, by the engine change that made a cooldown ask for its reduction through the pipeline. These rows are three of the ones it unblocked |
+| [#1982](https://github.com/sdubois777/Cataclysm/issues/1982) | closed at 16:24Z on the engine change that hands the struck character to both critical strike lookups. It also asked for the row, and this change wrote that row, but the issue was already closed |
+| [#1988](https://github.com/sdubois777/Cataclysm/issues/1988) | **not addressed here at all.** It asks for a Python check that every scale source the generator knows is named by a row or listed by hand as landed ahead of its row, mirroring the check that exists for conditions. These rows name the two scale sources that had none, which removes today's instance and adds no check. The issue had already said so in its own words: the rows were scheduled, and "the check is for the author after that one" |
+
+**#1988 was closed against this merge and reopened minutes later**, with the reason written on the
+issue. The number was carried from a draft of this entry and the issue was not re-read before it was
+closed. The check it asks for is still unwritten, and measured on `origin/development` at `0e606610`
+the hand list it needs would start empty: 16 scale sources, 16 named by a row, none unnamed.
+
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` carries the same wrong list of three issue
+numbers in the comment above its pinned row count. It is a C++ comment, so correcting it needs a
+compile; it rides the next change of mine that takes the build machine rather than taking one for a
+comment.
+
 **Applied.** The Python suite, the DataTable asset rebuild and the Unreal automation tests have all
 run, on one tree inside one editor lock. The figures are at the end of this entry.
 
