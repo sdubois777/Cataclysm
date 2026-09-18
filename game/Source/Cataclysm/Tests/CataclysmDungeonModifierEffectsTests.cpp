@@ -17319,16 +17319,21 @@ bool FCataclysmJudgmentZoneGoesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// A LITTLE SHORT OF ITS LIFE, so the test says the zone lasts rather than merely that
-	// it goes eventually.
-	Beat(Mode, BeatsFor(Effects::JudgmentZonesSeconds - 1.0f));
+	// THE WORLD CLOCK AND NOT THE RULE'S BEAT, WHICH IS WHAT THIS TEST GOT WRONG FIRST.
+	// MEASURED 2026-09-18: beating the game mode 80 times left the ground standing, because
+	// `ACataclysmGroundZone::SpawnAlong` ends in `SetLifeSpan`, and an actor's lifespan is
+	// an engine timer on `UWorld`'s own clock. `Beat` moves the rule's clock and says so in
+	// its comment -- "WITHOUT moving the world clock" -- so the two have to be driven apart
+	// here. `CataclysmTestWorld::RunClock` moves the clock and the timer manager together,
+	// which is what makes a lifespan run out.
+	CataclysmTestWorld::RunClock(World, Effects::JudgmentZonesSeconds - 1.0f);
 	if (!TestTrue(TEXT("it is still standing a second before its life is up"),
 				  IsValid(Zone)))
 	{
 		return false;
 	}
 
-	Beat(Mode, BeatsFor(2.0f));
+	CataclysmTestWorld::RunClock(World, 2.0f);
 	TestFalse(TEXT("and it is gone a second after"), IsValid(Zone));
 	return true;
 }
