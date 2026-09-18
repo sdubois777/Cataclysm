@@ -419,6 +419,13 @@ treated as preparation for a later step rather than as a check on the step alrea
 
 ### The repair, and why it is a deletion rather than a patch
 
+**Three judgements here, all made under the project owner's delegation of 2026-09-14 and
+relayed through the coordinating session**: that the flat bucket is the reduction on both
+routes and the floor on negatives comes from `CooldownDivisor` rather than a second rule;
+that the lookup added four hours earlier is deleted rather than patched; and that the test
+which used increased rows is corrected to flat ones rather than kept passing. None of the
+three is mine to make, and the entry said so nowhere until this line.
+
 `UCataclysmGameplayAbility::CooldownAfterReduction` now **asks for the reduction and then divides
 by it**, which is the two-step shape the attribute route always had:
 
@@ -441,6 +448,9 @@ ruling issue #1995 carried, now guaranteed by where the arithmetic lives rather 
 written twice.
 
 ### A consequence for the enchantment rows, decided here
+
+**Decided under the same delegation**, and it changes data rather than code, so it is the
+one of the four that reaches a player through a sheet rather than through a build.
 
 **An increase alone no longer shortens a cooldown, and never should have.** It scales a flat base
 and there is none. So the four cooldown sentences that issue #1981 unblocks are to be written as
