@@ -329,13 +329,31 @@ a future row does want a per-Fervour-point grant, that is what it will mean.
 | What to call it? | **`class_resource_points_at_least`**, with the unit in the name | Its neighbour reads the same pool as a percentage, and a bare name would read as the same unit family. That is the likelier mistake of the two |
 | What bound should the generator enforce? | **0 to 1000** | The largest bar in the data is 150, and a bound there would refuse a row written for a bar that investment has already made bigger. A thousand refuses nothing worth refusing |
 
-### WHAT THIS CHANGE DOES NOT DO
+### AND THE ROWS, WHICH ARRIVED IN THE SAME CHANGE AFTER ALL
 
-**The node still does nothing in play.** Its two effect rows are authored in the
-design workbook, which another session holds, so they land in a later change
-together with the data asset rebuild — the order the Behind the Veil keystone
-used a few hours earlier. Until then the condition is listed in `tools/tests/` as
-one that landed ahead of its rows, with that reason.
+**The node works in play.** The design workbook reached this session before the
+condition had been pushed, so the sentence, the rows and the mechanism land
+together rather than in two changes.
+
+| What landed | Where |
+|---|---|
+| The owner's sentence, verbatim | `docs/Ravager_Class_Tree_Final.json` |
+| Two rows: 2 and 3 per point, conditioned at 50, **no scale** | the Passive Effects sheet of the design workbook |
+| The regenerated data | `game/Data/PassiveEffects.csv`, 288 rows to **290**, nodes carrying a row 211 to **212** |
+
+**The condition is no longer listed as one that landed ahead of its rows.** That
+list works in both directions, and the change that gives a condition its rows
+takes the name off — one of the two moves the rehearsal found and the reading
+missed.
+
+**One test reads the rows rather than granting the two stats by hand**, because a
+test that writes the modifiers itself passes with no row in the data at all. It
+takes the node's rows out of the imported table, states no figures of its own
+beyond what they carry, and moves the character ACROSS the threshold the rows
+name: one Fervour short, neither bonus is there; at it, both are, worth the row's
+own figure for every point spent. **It reads them through the pipeline and not
+off an attribute**, because both rows are conditioned and a conditioned modifier
+is never folded into a gameplay attribute.
 
 **THE REWORDED SENTENCE IS NOT WAITING ON THE WORKBOOK, AND WE BOTH SAID IT
 WAS.** A node's name and description are not in that workbook at all: the

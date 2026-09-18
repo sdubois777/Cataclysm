@@ -287,3 +287,5 @@ Ritualist_keystone_d_kB#1,Ritualist_keystone_d_kB,mana_cost,removed,1.0,,while_s
 Ritualist_keystone_spine_003#1,Ritualist_keystone_spine_003,minion_hits_count_as_yours,flat,1.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_spine_002#1,Ritualist_keystone_spine_002,minions_draw_nearby_enemies_metres,flat,10.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_spine_002#2,Ritualist_keystone_spine_002,minions_draw_nearby_enemies_minimum,flat,3.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_a_b1#1,Ravager_basic_a_b1,damage_reduction,increased,2.0,,class_resource_points_at_least,50.0,,0.0,0,-1.0
+Ravager_basic_a_b1#2,Ravager_basic_a_b1,attack_damage,increased,3.0,,class_resource_points_at_least,50.0,,0.0,0,-1.0

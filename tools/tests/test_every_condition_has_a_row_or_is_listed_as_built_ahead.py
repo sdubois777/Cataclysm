@@ -58,13 +58,6 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: them. Measured on branch `data/thirteen-enchantment-rows`: 45 conditions,
 #: 43 named by a row, these two not.
 BUILT_AHEAD_OF_THEIR_ROWS = {
-    # The Ravager's Set Against It: "While you have 50 or more Fervour, you gain
-    # +2% increased Damage Reduction and +3% increased Attack Damage per point."
-    # Issue #1515. Its two rows AND the node's reworded sentence both need the
-    # design workbook, which another session holds, so the condition and its
-    # tests land first and the rows follow -- the shape the Behind the Veil
-    # keystone used a few hours earlier.
-    "class_resource_points_at_least",
     # Landed with the movement conditions for the dungeon-modifier work; the
     # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
