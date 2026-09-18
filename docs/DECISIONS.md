@@ -143,6 +143,109 @@ condition judgement and one making a scale read a fixed value instead of its fie
 
 ---
 
+## 2026-09-18 — A row may only count enemies in a radius where it can state that radius, and all 33 scaled pairings were read to find out which rows can
+
+**Affects:** `tools/generate_datatables.py` and one new test file in
+`tools/tests/`. Issue
+[#1987](https://github.com/sdubois777/Cataclysm/issues/1987), found while
+surveying the pairings left unmeasured by
+[#1973](https://github.com/sdubois777/Cataclysm/issues/1973).
+
+### THE RULE
+
+A row may carry a scale that counts enemies inside a radius **only where the row
+can state that radius**. The radius belongs to the row and not to the character:
+the engine walks the level only when some modifier states a reach above zero, and
+counts each row's entries inside that row's own reach.
+
+The Passive Effects sheet has a `Reach Metres` column and a rule that refuses a
+row naming such a scale with the column empty. The Enchantment Effects sheet has
+no such column, so a row there naming one of those scales is now refused
+outright, with the reason.
+
+### WHY IT COULD BE WRITTEN AT ALL
+
+**The two effect sheets share the scale vocabulary and not the columns.** One
+helper validates `Scale` for both, and it accepts every name in the vocabulary on
+either sheet. The rule that makes two of those names work lives beside the column
+one sheet has.
+
+Such a row was accepted, built and imported, and would grant nothing: its
+modifier keeps a reach of -1, the level walk never happens, the distance list
+stays empty, and the row multiplies by a count of nobody. **Nothing errors and
+nothing warns**, which is the same silent shape #1973 was filed for, one level
+down.
+
+**The check added for #1973 does not catch it**, and that is not an oversight in
+it: that check asks whether anything asks for the row's STAT, and a row scaling
+`attack_damage` by a count of nearby enemies names a stat plenty asks for. The
+fault is in the scale-and-sheet combination.
+
+### THE SURVEY THAT FOUND IT
+
+#1973 left 21 of 33 stat-and-scale pairings measured by nobody. Reading each
+asker down to the readings its conditions carry gives:
+
+| | |
+|---|---|
+| pairings the shipped data carries | **33**, across 51 scaled rows, 12 stats and 14 scales |
+| pairings that carry their scale's reading | **33** |
+| dead pairings | **none** |
+| measured by a probe | 12 |
+| established by reading the code only | 21 |
+
+**Eleven of the fourteen scales read a field the character's own conditions
+always fill**, so any asker that reaches those conditions carries them. Three do
+not, and those three are where a pairing can die:
+
+| scale | what it needs beyond the ordinary conditions |
+|---|---|
+| per enemy in reach | a wrapper that walks the level, which runs only when a modifier states a reach and the subject is a character |
+| per crippled enemy in reach | the same wrapper, on its own filtered list |
+| per enemy struck together beyond the first | a count passed down the call chain from the attack; the default grants nothing |
+
+Two of the three lookups carry all of this and two carry none of it. **The only
+shipped stat asked through a lookup that carries none is `max_energy_shield`, and
+its one scale needs none of the three**, so nothing is lost there.
+
+### WHAT THE SURVEY DID NOT MEASURE, SAID PLAINLY
+
+**Twenty-one of the 33 are a reading of the code, not a measurement.** Two of
+those have a mechanism no test exercises at all:
+
+- attack damage scaled by enemies struck together, which travels five steps from
+  the attack that counts its targets to the conditions the row is judged against;
+- fervour per enemy in reach scaled by CRIPPLED enemies in reach, which is a
+  separate branch of the level walk.
+
+**They stay as reading.** Ruled by the coordinating session: measure them only if
+a row on them is ever found wrong. Recorded here so that the next person to doubt
+one knows it was argued and not measured.
+
+### THE JUDGEMENTS, AND WHO MADE THEM
+
+**Ruled by the working session under the project owner's delegation of
+2026-09-14, and open to the owner's veto.**
+
+| Question | Answer | Why |
+|---|---|---|
+| Refuse the row, or give the Enchantment Effects sheet a `Reach Metres` column? | **Refuse** | No approved enchantment sentence counts nearby enemies as a scale. A column added before a row needs it is a column with no rule attached, and the sheet already carries the shape of fault this entry is about |
+| Scope the refusal by naming the sheet, or by whether the row can carry a reach at all? | **By whether the row can carry one** | A row built with the column is the other sheet's rule's business, and reporting one fault twice is worse than reporting it once. It also means this rule stops refusing by itself on the day the other sheet gains the column — at which point it needs the value rule the passive sheet already has, which this does not supply |
+
+### MEASURED BEFORE IT LANDED
+
+- 244 shipped enchantment rows, **0 refused**; 286 shipped passive rows, **0
+  refused**, because they carry the column and are the other rule's business.
+- An invented enchantment row scaling `attack_damage` by a count of nearby
+  enemies **is refused**, and the older stat-based refusal **passes that same
+  row** — which is what makes this a second rule rather than a second spelling of
+  the first.
+- One Python guard proof, run in a copy of the tree: misspelling one name in the
+  set the rule matches against failed exactly the three tests registered for it
+  and left the other eight passing; restored, all eleven passed.
+
+---
+
 ## 2026-09-18 — A creature the player kills may stand back up as a wraith that takes nine tenths off every hit and hunts across the whole floor
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
