@@ -10,7 +10,7 @@ Negative_Your_spells_mana_costs_are_quadrupled,Your spells mana costs are quadru
 Negative_You_no_longer_regenerate_mana,You no longer regenerate mana,Generic,2.0,Stat.Resource.Mana,True
 Negative_You_have_no_resistances,You have no resistances.,Generic,1.0,Stat.Defense.Resist,True
 Negative_You_have_20_less_hp,You have 20% less hp.,Generic,3.0,Stat.Defense.Life,True
-Negative_All_damage_dealt_is_reduced_by_15_25_for_each,All damage dealt is reduced by 15%-25% for each second you stand still,Generic,3.0,Stat.Offense.Global,True
+Negative_All_damage_dealt_is_reduced_by_15_25_for_each,"All damage dealt is reduced by 15%-25% for each second you stand still, less damage the longer you stand",Generic,3.0,Stat.Offense.Global,True
 Negative_You_take_20_35_more_damage,You take 20%-35% more damage,Generic,2.0,Stat.Defense.Global,True
 Negative_Channel_skills_drain_8_15_of_your_maximum_HP_p,Channel skills drain 8%-15% of your maximum HP per second while active,Generic,3.0,"Type.Channel, Stat.Defense.Life",True
 Negative_You_can_only_have_1_persistent_AOE_effect_active,You can only have 1 persistent AOE effect active at a time,Generic,3.0,Type.AOE.Persistent,True

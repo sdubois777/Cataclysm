@@ -86,7 +86,13 @@ MULTIPLIER = re.compile(
 #: is no weaker than it was.
 INCREASE = re.compile(
     r"\b(increase|increases|increased|reduce|reduces|reduced|faster|slower|longer"
-    r"|larger|gain|lose)\b",
+    r"|larger|gain|lose)\b"
+    # AND "bonus", BUT NEVER THE SET LABEL. Measured 2026-09-18: 13
+    # sentences use it as an effect word, 39 carry it ONLY inside
+    # "(N-Piece Bonus)" where it names a set and claims nothing about a
+    # number, and 3 carry both. A plain word match would let a set label
+    # satisfy this rule.
+    r'|(?<!-Piece )\bbonus\b',
     re.IGNORECASE)
 
 #: A sentence that takes something away, which is where a negative value goes.
@@ -350,8 +356,16 @@ JUDGED_NUMBERS = {
 #: character holds but the cost the skill itself states: two that reduce a cost,
 #: three that raise one, and one removal under `health_below` 50. The stat and
 #: its four readers were built in #1962; these are its first enchantment rows.
-AUTHORED_ROWS = 244
-AUTHORED_ENCHANTMENTS = 188
+#: AND 257 OVER 198 SINCE THE THIRTEEN ROWS ACROSS TEN SENTENCES that issues
+#: #1981, #1982 and #1988 unblocked, from 244 over 188. NO SENTENCE WAS ADDED
+#: TO THE ENCHANTMENTS SHEET: the second number counts enchantments that have
+#: at least one effect row, and these ten already existed with none, so it
+#: moves by ten while the sheet itself gains nothing.
+#: Three shorten a cooldown as flat rows, because an increase scales a base and
+#: cooldown reduction has none; three sentences take two rows each, one for
+#: attack damage and one for spell damage; the rest are one row each.
+AUTHORED_ROWS = 257
+AUTHORED_ENCHANTMENTS = 198
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — Thirteen enchantment rows, two sentences lengthened rather than rewritten, and a fifth question every row must now answer
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the design workbook every generated table is built
+from: the Enchantment Effects sheet gains 13 rows and two sentences on the Enchantments sheet gain a
+clause at the end), `game/Data/EnchantmentEffects.csv`, `game/Data/EnchantmentsPositive.csv` and
+`game/Data/EnchantmentsNegative.csv` (the generated text tables, regenerated),
+`game/Content/Data/DT_EnchantmentEffects.uasset`, `DT_EnchantmentsPositive.uasset` and
+`DT_EnchantmentsNegative.uasset` (the compiled DataTable assets a packaged build actually loads,
+which are rebuilt in the editor window that follows this commit and are not in it), `tools/tests/test_enchantment_effects_match_the_row_text.py` (the Python
+check that holds every enchantment row against the words of its own sentence: one word admitted and
+two pinned counts moved), `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`
+(the Python check that every condition the generator knows is either named by a row or listed with
+the reason it landed first: four names leave that list), `docs/README.md` (the document describing
+each sheet of the workbook and how many rows it holds) and
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (the Unreal automation tests that pin each
+generated table's row count). Issues
+[#1981](https://github.com/sdubois777/Cataclysm/issues/1981),
+[#1982](https://github.com/sdubois777/Cataclysm/issues/1982) and
+[#1988](https://github.com/sdubois777/Cataclysm/issues/1988), which this closes.
+
+**Partial.** The Python suite has run. **The DataTable asset rebuild and the Unreal automation tests
+have not.** One automation test and one Python test are expected to fail until the assets are rebuilt,
+and both are named at the end of this entry.
+
+### What the rows are
+
+Thirteen rows across ten sentences. Every mechanism they use was built and proved in an earlier
+change this day; these are the data those changes were for.
+
+| Sentence | Rows |
+| :-- | :-- |
+| the ultimate, support and summon cooldown reductions | `cooldown_reduction` flat, scoped by slot or keyword |
+| enemies striking from within 5 metres | `damage_taken` more, on the new near-distance condition |
+| strike skills after moving | both damage stats, more, on the new recent-movement condition |
+| skills costing less while the class resource is high | `mana_cost` more, on the new class-resource condition |
+| taking more damage while a shield is up | `damage_taken` increased, on the new shield condition |
+| ranged skills by distance to the target | both damage stats, increased, on the new per-metre scale |
+| less damage the longer you stand still | both damage stats, more, on the new per-second scale |
+| critical strike chance against bosses | `crit_chance` increased, on the target-is-boss condition |
+
+**The cooldown rows are flat, not increased.** An increase scales a base and there is none, which the
+repair earlier today settled; flat is also what makes them legible, since "reduced by 20%-40%" becomes
+a flat 20 to 40 and a reader sees one number in both places.
+
+### A fifth question, and it is the one that caught everything
+
+Three times this day a sentence was reported writable and was not. The test had four parts — does the
+stat exist; is it asked through the pipeline rather than read off an attribute; does the row's kind
+reach the arithmetic; does the call site hand over the state the condition needs — and all four held
+for three sentences that were still refused.
+
+**The fifth is: does the sentence's own wording admit the row's bucket, its sign and its condition
+number?** `tools/tests/test_enchantment_effects_match_the_row_text.py` enforces it, and it is the part
+a mechanism-minded reading skips.
+
+### Two sentences gained a clause; two proposed rewrites were withdrawn
+
+Both sentences needed words they did not have — one had no distance to put in a condition, one used a
+word its bucket does not accept. **The first pair of rewrites proposed for them replaced the opening
+of each sentence, and were withdrawn before the workbook was touched.**
+
+**An enchantment's row name is built from the first 48 characters of its sentence, and a dropped item
+stores that row name.** Rewriting inside those characters renames the row and orphans every saved item
+carrying it. `tools/tests/test_a_reword_must_not_rename_a_row.py` refuses it, and this file already
+records a reword held for that reason on 2026-09-14. Measured on a copy, the withdrawn pair produced
+exactly that: "2 enchantment row name(s) are gone and 2 are new".
+
+**So both sentences were lengthened instead.** Each new wording was checked against the old for an
+identical row name **before** it was written anywhere, and the script that wrote them refused to write
+unless the two names matched.
+
+**One of the two survives on two characters, which is worth knowing before the next one is written.**
+"Nearby enemies deal 10%-30% less damage to you" is 46 characters, so its appended clause does enter
+the 48-character window. The name survives only because the two characters that enter are a comma and
+a space, and the name builder turns any run of non-alphanumeric characters into an underscore and then
+strips a trailing one. A clause beginning with a letter would have renamed the row. The rule to carry
+forward is not "append and you are safe" but "append, then rebuild the name and compare it".
+
+### One word admitted, and narrowed on a measurement
+
+"Bonus damage" is this genre's ordinary statement of an increase, and one sentence uses it. The word
+was admitted to the increase list — **but not as a plain word match.** Measured 2026-09-18 across both
+enchantment sheets, and re-measured after these rows were written with the same result:
+
+| How "bonus" is used | Sentences |
+| --: | :-- |
+| only inside "(N-Piece Bonus)", naming an item set | 39 |
+| as an effect word | 13 |
+| both in one sentence | 3 |
+
+A plain match would let a set label satisfy the increase rule for 39 sentences where the word claims
+nothing about a number. The pattern excludes the label form.
+
+### A control that changed what the failures meant
+
+Running every check on the copy reported **16 failures**, which read as a wall. Running the same checks
+on an **untouched** copy of the same commit reported **11**, identical: those shell out to git, and an
+extracted archive is not a repository.
+
+**So the change's real cost was the five-failure difference**, and every one of the five asked for a
+count to move, a name to leave a list, or an asset to be rebuilt: the row count in `docs/README.md`,
+the two pinned counts in the row-text check, the pinned count in `CataclysmDataTableTests.cpp`, four
+condition names leaving the built-ahead list, and the DataTable assets.
+
+**Without the control this entry would have claimed sixteen problems where there are five.** A count of
+failures means nothing until the same count is taken with the change absent.
+
+### A count predicted wrong, and the check that caught it
+
+`tools/tests/test_enchantment_effects_match_the_row_text.py` pins two numbers together: how many effect
+rows exist, and how many enchantments have at least one. The first was registered correctly as moving
+from 244 to 257. **The second was registered as not moving at all**, on the reasoning that no sentence
+was being added to the Enchantments sheet — which is true, and is not what that number counts. It
+counts enchantments that have a row, and these ten had none, so it moves from 188 to 198. The check
+failed on exactly that and named both figures. The comment beside the pin now says which of the two
+the sheet's own contents govern.
+
+### What is to prove the rows reached the game, and it has not run yet
+
+No guard proof was invented. **These rows carry no new C++**, and every mechanism they use was proved in
+its own window with its own break; a proof here would break something already proved and measure
+nothing.
+
+What is to be proved instead is that the rows reach **the compiled asset a packaged build loads**,
+rather than stopping at the generated text file. **A data change that stops at the generated text file
+passes every text check and ships nothing.** Two automation tests carry this change and they do
+different jobs:
+
+| Test | What it reads | What it does here |
+| :-- | :-- | :-- |
+| `Cataclysm.Data.EveryGeneratedTableImports` | the generated text tables under `game/Data/` | its pinned row count for the enchantment effect table moves from 244 to 257; it passes on this tree whether or not the assets have been rebuilt |
+| `Cataclysm.Data.EveryGeneratedTableHasAnAssetThatMatchesIt` | the compiled assets under `game/Content/Data/`, compared against those text tables | this is the one that fails before the rebuild and passes after it |
+
+**Both were registered as failing before the rebuild, and that was corrected before the run rather
+than after it.** Reading the `CHECK_TABLE` macro settled it: it loads each CSV from the project's
+`Data` directory and compares the row count with the pin beside it, and never opens an asset. So the
+registered claim is now that **one** test fails before the rebuild and passes after, on one tree
+inside one editor lock. The figures are appended to this entry once that run has happened.
+
+One Python check fails on this commit for the same reason and is expected to:
+`tools/tests/test_datatable_assets_are_current.py`, which compares each generated text table against
+the hash recorded when its asset was last built, names
+`EnchantmentEffects.csv`, `EnchantmentsNegative.csv` and `EnchantmentsPositive.csv` as changed since.
+It passes once the assets are rebuilt in the same window.
+
+---
+
 ## 2026-09-18 — A floor that makes every creature hit harder the deeper you go, and one creature whose death pays permanent armour
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library

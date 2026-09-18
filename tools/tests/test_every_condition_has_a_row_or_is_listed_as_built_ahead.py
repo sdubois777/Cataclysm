@@ -52,27 +52,16 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: `metres_moved_before_attack` left on 2026-09-16, when Headlong's second
 #: clause took a row: measured on branch `feat/ravager-fervour-per-enemy-hit`,
 #: 39 conditions, 37 named by a row, these two not.
+#: FOUR LEFT ON 2026-09-18, when the thirteen enchantment rows were written:
+#: `opponent_within_metres`, `moved_within_seconds`, `class_resource_above` and
+#: `energy_shield_above_zero` each now have the row whose sentence asked for
+#: them. Measured on branch `data/thirteen-enchantment-rows`: 45 conditions,
+#: 43 named by a row, these two not.
 BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the movement conditions for the dungeon-modifier work; the
     # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
     "not_attacked_for_seconds",
-    # THE FOUR BELOW LANDED TOGETHER FOR ISSUE #1981's FOLLOW-ON, each with the
-    # enchantment sentence that asked for it. The rows are written in a later
-    # change because they need the design workbook, which one session may hold
-    # at a time; the mechanisms need only the engine, so they go first.
-    #
-    # "Nearby enemies deal 10%-30% less damage to you", at 5 metres.
-    "opponent_within_metres",
-    # "Strike skills deal 25%-40% less damage if you have moved in the last 2
-    # seconds".
-    "moved_within_seconds",
-    # "When your class resource is above 75%, all skills cost 20%-40% less
-    # mana".
-    "class_resource_above",
-    # "You take 10%-20% increased damage from all sources while your shield is
-    # active".
-    "energy_shield_above_zero",
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",

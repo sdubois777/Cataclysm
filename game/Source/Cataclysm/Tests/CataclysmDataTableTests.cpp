@@ -500,7 +500,20 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// #1815. Ten more sentences were approved and held: three belong to item
 	// sets, one needs a base no class supplies, and five are held on the words
 	// their sentences use. docs/DECISIONS.md carries each reason.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    244)
+	//
+	// AND 257 SINCE THE THIRTEEN ROWS ACROSS TEN SENTENCES that issues #1981,
+	// #1982 and #1988 unblocked, from 244. NO SENTENCE WAS ADDED to the
+	// Enchantments sheet: all ten were already there with no effect row, so
+	// EnchantmentsPositive.csv and EnchantmentsNegative.csv keep their counts
+	// and only this table grows. Three shorten a
+	// cooldown and are FLAT rows, because an increase scales a base and
+	// cooldown reduction has none -- issue #2000 settled that. Three sentences
+	// take two rows each, one for attack damage and one for spell damage. Two
+	// of the ten could not state their row in the words they already had, and
+	// each gained a clause at the END of its sentence rather than a rewrite:
+	// the first 48 characters of a sentence are its row name and a dropped item
+	// stores that name, so rewriting inside them orphans saved items.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    257)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
