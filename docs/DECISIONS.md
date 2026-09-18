@@ -2,6 +2,159 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — Thirty-three enchantment rows are written, and ten approved sentences are held for four different reasons
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet gains 33 rows; the
+Enchantments sheet loses one sentence and has one reworded), `game/Data/EnchantmentEffects.csv`
+and `EnchantmentsPositive.csv` (regenerated),
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (four word-rule widenings, a flag
+stat, three pinned counts),
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` (two names leave
+the list) and `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (one test). Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+244 rows over 188 enchantments, from 211 over 169. Removals 31, from 26.
+
+### Forty-three approved, thirty-three written
+
+| Step | Rows |
+| :-- | --: |
+| approved after the survey | 43 |
+| less three sentences belonging to item sets | 39 |
+| less one multiplying row with no base | 38 |
+| less five held on their wording | **33** |
+
+**Every one of those subtractions was found by the dry run**, which ran the whole generator on
+a `git archive` copy before the workbook was touched. Nothing shared was edited while any of
+them was wrong.
+
+### The two faults in my own work that the dry run caught
+
+**A range must be written in the order its sentence states it, whatever the sign.** "Your
+minions have 20%-50% less hp" is -20 to -50, not -50 to -20. The generator checks the order
+against the words and names the row. It caught one; a sweep of every range I had written
+caught the second before the generator reached it.
+
+**Set membership is in the Weight column, not in the sentence.** The highest ordinary weight is
+4 and anything above it is a set identifier. 56 enchantments belong to a set; **42 say "Piece
+Bonus" in their text and 14 do not.** My survey excluded sets by searching the text, so it
+found the 42 and missed the 14 — and three of the missed ones reached the approved list. A set
+is written whole or not at all, so the generator refused the first with its own words: half a
+set is "a bonus with no cost, or a cost with no bonus".
+
+### Four widenings of the word rules, each labelled
+
+The row-text check holds a row's bucket and sign against its sentence's own words. Four
+sentences needed words it did not have. Each was ruled on 2026-09-17 under the project owner's
+delegation and each is labelled by what it widens, because this file already distinguishes the
+two:
+
+| Kind | Change | Why |
+| :-- | :-- | :-- |
+| **TENSE** | `increases` joins the increase words | the file's own precedent: it widened tense once for "reduces" and missed this word the same way. "increase" and "increased" were there; the word boundary refused the "s" |
+| **MEANING** | `ignore` and `ignores` join both the multiplying words and the taking words | "ignores 20%-40% of your armor" is this genre's ordinary statement of a multiplicative reduction. Three sentences, ten rows, and it forces no bucket |
+| **IDIOM** | `does not` joins the removal words beside "no" | "Your class resource does not decay out of combat" is a removal and none of no, cannot, can't or zero reaches it |
+| **FLAG** | `mana_pool_becomes_health` joins `FLAG_STATS` | its value is a yes or no rather than a quantity, exactly what that list is for. `test_every_flag_stat_row_states_one` keeps the exemption from growing to cover a magnitude |
+
+### Ten sentences held, for four different reasons
+
+**Three belong to item sets** and need their set's first bonus written at the same time:
+"Melee damage is reduced by 50%", "Your own ultimate ability is disabled", and "All of your
+life regeneration effects are reduced by 50%".
+
+**One has no base for a multiplying row.** "Your class resource decays twice as fast" is a
+`more` row, and the validator's rule is that a non-removal row multiplying a stat needs that
+stat supplied by a class line, an attribute, an item base, an engine base, or a flat row in the
+same sheet. `fervour_decay_per_second` has none of those: **its only source is the passive node
+`Ravager_basic_spine_000`, and a passive is not on that list.** A "more" row would multiply
+zero for everyone who has not taken that node. The **removal** on the same stat is written and
+is fine, because the validator says in its own words that a removal needs no base. The sentence
+counts in the survey's "needs a mechanism" group.
+
+**Five are held on their wording**, rather than widening the vocabulary a third and fourth time
+in one change: "Your maximum HP cannot exceed 40%-60% of its normal value", "Minus 2-4 to your
+max minion count", "Every hit you take deals an additional 5%-10% of your maximum HP as bonus
+damage", and the two below.
+
+**"Your minions have 20%-50% less hp" is not a wording problem at all.** The engine reads only
+the increases bucket for a minion stat — `SummonerMultiplierFor` returns `1 + IncreasesForStat`
+— so the bucket the engine forces contradicts the multiplying word its own sentence uses. That
+is a minion-stat question and it is recorded for the owner rather than excused in the check.
+
+**"Gain 20%-50% increased movespeed after taking damage" is held for a reason worth stating**:
+its condition needs a window in seconds and the sentence states none. **There is no exemption
+for a condition value a sentence does not state.** `FLAG_STATS` covers a flag's 1 and
+`JUDGED_NUMBERS` covers a sentence stating no number at all, but
+`test_every_condition_value_appears_in_the_words_too` has no exemption list of any kind. The
+window was ruled to **3 seconds** — the only authored rows on that condition use 3 — and that
+ruling is recorded here against the day the sentence gains a number.
+
+### Two sentence edits, neither of them a row
+
+**Reworded, the project owner's decision:** "Each hit you take increases your retaliation
+damage by 5%-10% for 5 seconds, stacking up to 5 times." It said ten; the stack it reads is
+capped at five, and its five-second window already matches. Only the number changed, so the
+generated key is unchanged — the reword falls past the 48 characters the key is cut from.
+
+### The sentence that could not be dropped, and what stopped it
+
+**"Your HP regeneration continues at 50% effectiveness during combat" was ruled dropped and is
+still in the table.** It presupposes that regeneration stops in combat. It never does, and no
+in-combat state exists, so as written the positive enchantment could only ever halve
+regeneration. That is why the owner wanted it gone.
+
+**TWO COSTS OF REMOVING IT WERE FOUND BY RUNNING THE SUITE, AND NEITHER WAS IN FRONT OF THE
+OWNER WHEN THEY RULED.**
+
+**Removing a sentence renumbers every sentence after it, and the design log quotes those
+positions.** The codes are positional -- "the Nth data row of `EnchantmentsPositive.csv`" --
+and seven quoted in merged entries broke at once: P224, P253, P254, P255, P268, P293 and P307.
+`test_the_decisions_log_enchantment_codes_resolve.py` names each one and prints the sentence
+the log quotes beside the sentence now standing there.
+
+**Removing a sentence orphans it on saved items.** An enchantment's name is built from the
+first 48 characters of its sentence and a dropped item stores that name, so every saved item
+carrying it would point at nothing. `test_a_reword_must_not_rename_a_row.py` refuses it, and
+issue #1799 already holds the question of whether existing saves matter.
+
+**A weight of zero was then chosen instead, and the generator refuses that too.**
+`validate_weights` requires `0 < weight <= 100` -- strictly above zero. Its message says the
+weight "is outside 0 to 100", which is misleading for exactly this case: zero is inside that
+range as anybody reads it, and is refused anyway.
+
+**So the fallback the owner accepted stands: the sentence is left exactly as it is**, weight 3,
+still rolling, still with no effect row. Nothing else changes, no code shifts, and no saved
+item is orphaned.
+
+**Two measurements that would let it be dropped later, recorded so nobody repeats the search.**
+The roll itself would honour a zero: `UCataclysmDropRoll::EnchantmentDrawWeight` returns 0 for
+any weight outside a whole 1 to 4, and `EnchantmentCandidatesFor` only adds a row whose draw
+weight is above zero, so a zero-weight row is never a candidate. Only the generator's own
+validator stands in the way, and it is one comparison.
+
+### The two lockout sentences, and a range that is not honoured
+
+"After blocking you cannot block again for 1-2 seconds" and its dodging twin are written at
+**2 seconds**, the harsher end, which is the safe direction for a drawback. **The Condition
+Value column carries one number and has no high**, so the sentences' 1-2 second range is not
+honoured. Measured: no authored effect row has ever stated a seconds range for a condition
+value, so these would have been the first. Rewording the sentences to a single number is the
+owner's and is offered rather than done.
+
+### The test
+
+`Cataclysm.Skills.TheWornRowForPayingHealthBelowHalfHealthChargesHealthAndHalvesIt` wears the
+pair out of the table the game loads and drives the owner's reading end to end: above half
+health the skill costs its stated 40 and it comes out of mana; below half health the cost is
+halved to 20 and the 20 comes out of **health**, with the mana pool untouched.
+
+**Both rows are checked together because either alone would pass a weaker test**: the swap
+alone would charge full health, and the halving alone would charge half mana. Only the pair
+gives half the cost, out of health. The mana pool is left full on purpose, so that a failed
+swap would be caught by which pool paid rather than by the cast being refused.
+
+---
+
 ## 2026-09-17 — An Elite grows a rung of the rarity ladder on every three deaths beside it, and stops at the mini-boss rung the other rules share
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library

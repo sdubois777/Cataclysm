@@ -72,7 +72,7 @@ MULTIPLYING_WORDS = {"double": 100.0, "doubled": 100.0, "twice": 100.0,
 
 #: A sentence worded as a multiplier, which is what the `more` bucket is for.
 MULTIPLIER = re.compile(
-    r"\b(more|less|double|doubled|twice|triple|tripled|quadrupled|halved|slowed)\b",
+    r"\b(more|less|double|doubled|twice|triple|tripled|quadrupled|halved|slowed|ignore|ignores)\b",
     re.IGNORECASE)
 
 #: A sentence worded as an increase, which is the `increased` bucket.
@@ -85,7 +85,7 @@ MULTIPLIER = re.compile(
 #: one form is admitted by the others for exactly the same reason, so the check
 #: is no weaker than it was.
 INCREASE = re.compile(
-    r"\b(increase|increased|reduce|reduces|reduced|faster|slower|longer"
+    r"\b(increase|increases|increased|reduce|reduces|reduced|faster|slower|longer"
     r"|larger|gain|lose)\b",
     re.IGNORECASE)
 
@@ -102,7 +102,7 @@ INCREASE = re.compile(
 #: that will be negative on a sentence using it.
 TAKING = re.compile(
     r"\b(less|reduce|reduces|reduced|lose|slower|shorter|halved|slowed"
-    r"|drain|drains|drained)\b",
+    r"|drain|drains|drained|ignore|ignores)\b",
     re.IGNORECASE)
 
 #: WORDS ADDED ON 2026-09-11 FOR THE RANGED ROWS, a labelled judgement recorded
@@ -129,7 +129,7 @@ LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
 #: WHOLE WORDS, so that "Nobody" and "cannon" do not read as a removal.
 #: `test_a_removal_is_read_from_whole_words_only` holds that on made-up
 #: sentences.
-REMOVING = re.compile(r"\b(no|cannot|can't|zero)\b", re.IGNORECASE)
+REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not)\b", re.IGNORECASE)
 
 #: Stats whose value is a yes or a no rather than a quantity, so the sentence
 #: states no number for it and should not. `skill_locked` above zero means the
@@ -145,7 +145,7 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero)\b", re.IGNORECASE)
 #: `test_every_flag_stat_row_states_one` keeps this honest: a row on one of these
 #: stats states 1 and nothing else, so the exemption cannot grow to cover a
 #: magnitude nobody wrote down.
-FLAG_STATS = {"skill_locked"}
+FLAG_STATS = {"skill_locked", "mana_pool_becomes_health"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -350,8 +350,8 @@ JUDGED_NUMBERS = {
 #: character holds but the cost the skill itself states: two that reduce a cost,
 #: three that raise one, and one removal under `health_below` 50. The stat and
 #: its four readers were built in #1962; these are its first enchantment rows.
-AUTHORED_ROWS = 211
-AUTHORED_ENCHANTMENTS = 169
+AUTHORED_ROWS = 244
+AUTHORED_ENCHANTMENTS = 188
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -363,7 +363,7 @@ AUTHORED_ENCHANTMENTS = 169
 #: #1815: the first removal on the enchantment side whose base is a figure the
 #: caller supplies rather than one the character holds. Ritual Focus, the
 #: passive node added in #1966, is the same shape on the passive side.
-REMOVED_ROWS = 26
+REMOVED_ROWS = 31
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's

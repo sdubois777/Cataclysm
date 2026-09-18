@@ -15232,4 +15232,114 @@ bool FCataclysmManaCostWornRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaPoolBecomesHealthRowTest,
+	"Cataclysm.Skills.TheWornRowForPayingHealthBelowHalfHealthChargesHealthAndHalvesIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE OWNER'S READING, DRIVEN END TO END FROM THE TABLE THE GAME LOADS.
+ * Issue #1815.
+ *
+ * "While below 50% HP, all skills cost HP instead of mana and cost 50% less" is
+ * TWO rows, both under `health_below` 50: `mana_pool_becomes_health` flat 1, and
+ * `mana_cost` more -50. The project owner ruled on 2026-09-17 that the 50% comes
+ * off the HEALTH cost, and these two rows deliver exactly that with nothing new
+ * built -- because `UCataclysmGameplayAbility::CostPool` converts the POOL and
+ * not the price ("THE SAME NUMBER OUT OF A DIFFERENT POOL"), so halving the mana
+ * cost halves the health paid.
+ *
+ * THAT IS WHY BOTH ROWS ARE CHECKED TOGETHER AND NOT SEPARATELY. Either alone
+ * would pass a weaker test: the swap alone would charge full health, and the
+ * halving alone would charge half mana. Only the pair gives half the cost, out
+ * of health.
+ *
+ * BOTH SIDES OF THE BOUNDARY, because a conditioned row that never applies reads
+ * exactly like one that always applies if only one side is asked.
+ *
+ * THE MANA POOL IS LEFT FULL ON PURPOSE. If the swap failed the cast would still
+ * succeed by paying mana, and only the pools tell the two apart -- so the test
+ * asserts what each pool holds afterwards rather than that the cast was allowed.
+ */
+bool FCataclysmManaPoolBecomesHealthRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Who(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Skill = GrantCosting(Who, 40.0f);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	UCataclysmEquipmentComponent* Equipment =
+		NewObject<UCataclysmEquipmentComponent>(Who.Actor);
+	Equipment->RegisterComponent();
+
+	FCataclysmItem Helm;
+	Helm.Base = FName(TEXT("Head_Helm"));
+	FCataclysmRolledEnchantment Rolled;
+	Rolled.Positive =
+		FName(TEXT("Positive_While_below_50_HP_all_skills_cost_HP_instead_o"));
+	Rolled.Negative = FName(TEXT("Negative_Can_t_use_a_basic_attack"));
+	Helm.Enchantments.Add(Rolled);
+	Helm.EnchantmentCount = 1;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(Who.AbilitySystem);
+
+	const float PoolMax = Who.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the worn helm leaves a maximum health to halve"),
+				  PoolMax > 0.0f))
+	{
+		return false;
+	}
+
+	const auto SetPools = [&](float HealthShare)
+	{
+		Who.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(),
+			PoolMax * HealthShare);
+		Who.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetManaAttribute(), 500.0f);
+	};
+
+	// ABOVE HALF HEALTH NEITHER ROW REACHES THE SKILL: it costs its stated 40
+	// and that 40 comes out of MANA.
+	SetPools(0.6f);
+	const float HealthBefore = Who.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	TestEqual(TEXT("above half health the skill costs what it states"),
+		Skill->ManaCostFor(Who.AbilitySystem), 40.0f, 0.01f);
+	TestTrue(TEXT("and the cast is allowed"), Activate(Who, Skill));
+	TestEqual(TEXT("and it was paid out of mana"), Who.Mana(), 460.0f, 0.01f);
+	TestEqual(TEXT("leaving the health alone"),
+		Who.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute()),
+		HealthBefore, 0.01f);
+
+	// BELOW HALF HEALTH BOTH ROWS REACH IT. The cost halves to 20, and the 20
+	// comes out of HEALTH while the mana pool is untouched.
+	SetPools(0.4f);
+	const float HealthBeforeSwap = Who.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	TestEqual(TEXT("below half health the cost is halved"),
+		Skill->ManaCostFor(Who.AbilitySystem), 20.0f, 0.01f);
+	TestTrue(TEXT("and the cast is allowed"), Activate(Who, Skill));
+	TestEqual(TEXT("and the mana pool is untouched"), Who.Mana(), 500.0f, 0.01f);
+	TestEqual(TEXT("because the halved cost came out of health"),
+		Who.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute()),
+		HealthBeforeSwap - 20.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
