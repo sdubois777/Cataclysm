@@ -15267,77 +15267,125 @@ bool FCataclysmManaPoolBecomesHealthRowTest::RunTest(const FString&)
 	UWorld* World = MakeWorld();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
-	FScopedFighter Who(World, FVector::ZeroVector);
-	UCataclysmStrikeSkill* Skill = GrantCosting(Who, 40.0f);
-	if (!Skill)
+	// TWO CASTERS, ONE CAST EACH, BECAUSE A SKILL CANNOT BE CAST TWICE. It
+	// commits its cooldown on the first press, so a second Activate on the same
+	// character answers false whatever the cost is -- which would read as the
+	// rows failing. The cost tests above this one use a separate fighter per
+	// case for the same reason.
+	FScopedFighter Above(World, FVector::ZeroVector);
+	FScopedFighter Below(World, FVector(10 * M, 0, 0));
+
+	UCataclysmStrikeSkill* AboveSkill = GrantCosting(Above, 40.0f);
+	UCataclysmStrikeSkill* BelowSkill = GrantCosting(Below, 40.0f);
+	if (!AboveSkill || !BelowSkill)
 	{
-		AddError(TEXT("Could not grant the skill."));
+		AddError(TEXT("Could not grant the skills."));
 		return false;
 	}
 
-	UCataclysmEquipmentComponent* Equipment =
-		NewObject<UCataclysmEquipmentComponent>(Who.Actor);
-	Equipment->RegisterComponent();
-
-	FCataclysmItem Helm;
-	Helm.Base = FName(TEXT("Head_Helm"));
-	FCataclysmRolledEnchantment Rolled;
-	Rolled.Positive =
-		FName(TEXT("Positive_While_below_50_HP_all_skills_cost_HP_instead_o"));
-	Rolled.Negative = FName(TEXT("Negative_Can_t_use_a_basic_attack"));
-	Helm.Enchantments.Add(Rolled);
-	Helm.EnchantmentCount = 1;
-
-	FCataclysmItem Removed;
-	FCataclysmItem AlsoRemoved;
-	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
-	Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
-	Equipment->RefreshAttributes(Who.AbilitySystem);
-
-	const float PoolMax = Who.AbilitySystem->GetNumericAttribute(
-		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
-	if (!TestTrue(TEXT("the worn helm leaves a maximum health to halve"),
-				  PoolMax > 0.0f))
+	/** Wears the helm carrying the sentence's pair, and answers its maximum health. */
+	const auto WearTheHelm = [](FScopedFighter& Who) -> float
 	{
-		return false;
-	}
+		UCataclysmEquipmentComponent* Equipment =
+			NewObject<UCataclysmEquipmentComponent>(Who.Actor);
+		Equipment->RegisterComponent();
 
-	const auto SetPools = [&](float HealthShare)
-	{
-		Who.AbilitySystem->SetNumericAttributeBase(
-			UCataclysmVitalAttributeSet::GetHealthAttribute(),
-			PoolMax * HealthShare);
-		Who.AbilitySystem->SetNumericAttributeBase(
-			UCataclysmVitalAttributeSet::GetManaAttribute(), 500.0f);
+		FCataclysmItem Helm;
+		Helm.Base = FName(TEXT("Head_Helm"));
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = FName(
+			TEXT("Positive_While_below_50_HP_all_skills_cost_HP_instead_o"));
+		Rolled.Negative = FName(TEXT("Negative_Can_t_use_a_basic_attack"));
+		Helm.Enchantments.Add(Rolled);
+		Helm.EnchantmentCount = 1;
+
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+		Equipment->RefreshAttributes(Who.AbilitySystem);
+
+		// READ AFTER THE HELM IS WORN. RefreshAttributes recomputes maximum
+		// health from the gear, so a half worked out before equipping would be
+		// a half of a pool that no longer exists.
+		return Who.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
 	};
 
+	const float AboveMax = WearTheHelm(Above);
+	const float BelowMax = WearTheHelm(Below);
+	if (!TestTrue(TEXT("both worn helms leave a maximum health to halve"),
+				  AboveMax > 0.0f && BelowMax > 0.0f))
+	{
+		return false;
+	}
+
+	/** Health and mana as they stand, read rather than assumed. */
+	const auto HealthOf = [](FScopedFighter& Who)
+	{
+		return Who.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+
+	// THE POOLS ARE READ AND COMPARED AS DIFFERENCES, NEVER AS ABSOLUTE
+	// FIGURES. Writing 500 into the mana pool does not put 500 there: the
+	// attribute set clamps a write to the character's maximum, which is smaller
+	// than that, so an assertion naming 500 fails on the clamp rather than on
+	// anything this test is about.
+	Above.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), AboveMax * 0.6f);
+	Below.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), BelowMax * 0.4f);
+
+	// THE MANA POOL IS SET TO THE CHARACTER'S OWN MAXIMUM FIRST, and that is not
+	// tidiness. A character starts holding more mana than its maximum allows,
+	// and the clamp runs when a COST is taken rather than when the attribute is
+	// read, so a reading taken before the first cast answers the unclamped
+	// figure and the reading after it answers the clamped one minus the cost.
+	// A difference between those two is not the cost; measured here, it was 884
+	// against a cost of 40. Setting the pool to its own maximum puts it inside
+	// the clamp before anything reads it.
+	const auto FillManaToItsMaximum = [](FScopedFighter& Who)
+	{
+		Who.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetManaAttribute(),
+			Who.AbilitySystem->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetMaxManaAttribute()));
+	};
+	FillManaToItsMaximum(Above);
+	FillManaToItsMaximum(Below);
+
+	const float AboveManaBefore = Above.Mana();
+	const float BelowManaBefore = Below.Mana();
+	const float AboveHealthBefore = HealthOf(Above);
+	const float BelowHealthBefore = HealthOf(Below);
+	if (!TestTrue(TEXT("both casters hold enough mana to pay the stated cost"),
+				  AboveManaBefore >= 40.0f && BelowManaBefore >= 40.0f))
+	{
+		return false;
+	}
+
 	// ABOVE HALF HEALTH NEITHER ROW REACHES THE SKILL: it costs its stated 40
-	// and that 40 comes out of MANA.
-	SetPools(0.6f);
-	const float HealthBefore = Who.AbilitySystem->GetNumericAttribute(
-		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	// and the 40 comes out of MANA.
 	TestEqual(TEXT("above half health the skill costs what it states"),
-		Skill->ManaCostFor(Who.AbilitySystem), 40.0f, 0.01f);
-	TestTrue(TEXT("and the cast is allowed"), Activate(Who, Skill));
-	TestEqual(TEXT("and it was paid out of mana"), Who.Mana(), 460.0f, 0.01f);
+		AboveSkill->ManaCostFor(Above.AbilitySystem), 40.0f, 0.01f);
+	TestTrue(TEXT("and the cast is allowed"), Activate(Above, AboveSkill));
+	TestEqual(TEXT("and forty came out of mana"),
+		Above.Mana(), AboveManaBefore - 40.0f, 0.01f);
 	TestEqual(TEXT("leaving the health alone"),
-		Who.AbilitySystem->GetNumericAttribute(
-			UCataclysmVitalAttributeSet::GetHealthAttribute()),
-		HealthBefore, 0.01f);
+		HealthOf(Above), AboveHealthBefore, 0.01f);
 
 	// BELOW HALF HEALTH BOTH ROWS REACH IT. The cost halves to 20, and the 20
-	// comes out of HEALTH while the mana pool is untouched.
-	SetPools(0.4f);
-	const float HealthBeforeSwap = Who.AbilitySystem->GetNumericAttribute(
-		UCataclysmVitalAttributeSet::GetHealthAttribute());
+	// comes out of HEALTH while the mana pool is untouched. That pairing is the
+	// owner's reading: the swap converts the pool and not the price, so halving
+	// the mana cost halves the health paid.
 	TestEqual(TEXT("below half health the cost is halved"),
-		Skill->ManaCostFor(Who.AbilitySystem), 20.0f, 0.01f);
-	TestTrue(TEXT("and the cast is allowed"), Activate(Who, Skill));
-	TestEqual(TEXT("and the mana pool is untouched"), Who.Mana(), 500.0f, 0.01f);
+		BelowSkill->ManaCostFor(Below.AbilitySystem), 20.0f, 0.01f);
+	TestTrue(TEXT("and that cast is allowed too"), Activate(Below, BelowSkill));
+	TestEqual(TEXT("and the mana pool is untouched"),
+		Below.Mana(), BelowManaBefore, 0.01f);
 	TestEqual(TEXT("because the halved cost came out of health"),
-		Who.AbilitySystem->GetNumericAttribute(
-			UCataclysmVitalAttributeSet::GetHealthAttribute()),
-		HealthBeforeSwap - 20.0f, 0.01f);
+		HealthOf(Below), BelowHealthBefore - 20.0f, 0.01f);
 
 	return true;
 }
