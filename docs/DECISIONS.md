@@ -435,6 +435,46 @@ keystone Conduit, read by the engine a day before any row granted it, with every
 test passing throughout. The test that closes that hole reads the row and lands
 with the rows.
 
+### WHAT THE MACHINE MEASURED
+
+**The rows landed, and the pair that proves it ran in one window on one tree.**
+
+| Step | Registered before the run | What the run printed |
+|---|---|---|
+| The group `Cataclysm.Command.`, before the asset was rebuilt | 19 performed, exactly `TheKeystonesOwnRowsDrawANearbyEnemy` failing | 19 performed, 18 succeeded, 1 failed, that test |
+| The whole Unreal suite, after the rebuild | 2118 performed, 0 failed | 2118 performed, 0 failed, 0 refused |
+| Removing the redirect from the creature's target choice | fails three named tests | those three, difference none |
+| Deleting the exemption that lets a boss ignore it | fails one named test | that one, difference none |
+| Ranking a minion that draws nobody instead of skipping it | fails one named test | that one, difference none |
+
+**The first two lines are the point.** The test that reads the keystone's rows
+fails before the asset is rebuilt and passes after it, on the same tree in the
+same window. That is what says the ROWS make the keystone work, rather than
+anything a test granted by hand — the check Conduit did not have.
+
+### A FAULT THE FIRST RUN FOUND, IN THE TESTS AND NOT THE ENGINE
+
+The first pass of the group failed **two** tests where one was registered. The
+extra one was `AMinionDrawsANearbyEnemyOffItsSummoner`, on three of its
+assertions.
+
+**Two tests had placed the minions along the same axis as the hunting creature
+and beyond it**, so the nearest minion stood two metres away while the summoner
+stood four. The creature's own search then answered a minion, and the keystone
+redirects a creature that would attack the CHARACTER — so it was never consulted.
+**Those two tests were not measuring the keystone at all.** One of them carried a
+comment asserting the opposite, that every minion stood further away than the
+summoner, which was false as the actors were placed.
+
+The repair is the arrangement the boss test already used and which passed
+throughout: the creature on one axis and the minions on the other, which puts the
+trap about 6.4 metres from the creature, the mote 8.1 and the imp 9.9, against
+the summoner's 4. **Recorded because the lesson is general**: when a test's
+premise is that one actor is the nearest, the distances have to be computed
+rather than read off the order the coordinates were typed, and a comment stating
+a geometry nobody computed is worse than no comment. It cost one build and one
+test pass inside the window.
+
 ### ONE TEST EXISTS BECAUSE A GUARD PROOF COULD NOT HAVE FIRED
 
 **Choosing the breaks before asking for the machine found a rule nothing
