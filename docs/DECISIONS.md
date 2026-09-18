@@ -355,6 +355,26 @@ own figure for every point spent. **It reads them through the pipeline and not
 off an attribute**, because both rows are conditioned and a conditioned modifier
 is never folded into a gameplay attribute.
 
+### WHAT THE MACHINE MEASURED
+
+| Step | Registered before it ran | What it printed |
+|---|---|---|
+| The group holding the row-reading test, BEFORE the assets were rebuilt | one named failure; the count measured here rather than predicted | 119 performed, 118 succeeded, 1 failed — that test |
+| The asset rebuild | two tables | "rebuilt 2 DataTable assets and left 27 already current, 3008 rows in total" |
+| The same group, AFTER | clean, at the same count | 119 performed, 119 succeeded, 0 failed |
+| The whole Unreal suite | 2136 performed, 0 failed | 2136 performed, 2136 succeeded, 0 failed |
+| Turning "50 or more" into "more than 50" | fails one named test | that test alone; restored, 38 of 38 passed |
+
+**The first three lines are the point.** The test that reads this node's rows
+fails before the assets are rebuilt and passes after, on the same tree in the
+same window, so it is the ROWS that make the node work rather than anything a
+test handed it. **The count is the same on both sides**, which is what says the
+test ran both times rather than disappearing from one.
+
+**The prefixed count of 119 was measured in the window and quoted**, not
+registered in advance. There was no sound way to predict it, and saying so at
+registration was better than inventing a figure and being right by luck.
+
 **THE REWORDED SENTENCE IS NOT WAITING ON THE WORKBOOK, AND WE BOTH SAID IT
 WAS.** A node's name and description are not in that workbook at all: the
 generator builds `game/Data/PassiveNodes.csv` from `docs/<Tree>_Class_Tree_Final.json`,
