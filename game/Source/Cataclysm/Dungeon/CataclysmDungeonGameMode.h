@@ -1668,6 +1668,31 @@ private:
 	void NoteDeathForDemonPrince(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Epidemic: pass a dead creature's debuffs to the creature beside it, and end a chain
+	 * of five by killing everything within the same reach. Issues #1820 and #41.
+	 *
+	 * THE KILL MUST BE THE PLAYER'S OWN, which is ONE question since issue #1515: the
+	 * killer on the notice is the player only when the player really killed it, and a
+	 * minion's kill is credited to the minion unless its summoner holds the Conduit
+	 * keystone. A summoner who holds it spreads the disease from its minion's kill.
+	 *
+	 * IT REFUSES TO ROLL WHILE ITS OWN MASS KILL IS RUNNING. Those deaths are real --
+	 * health to zero and `HandleDeath`, so the loot and the experience are paid -- and a
+	 * real death is announced, so without the guard each one would come back here, roll
+	 * again, and the five-spread event would feed itself.
+	 */
+	void NoteDeathForEpidemic(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Kill every creature within Epidemic's reach of a point, and bring one Plague Lord.
+	 *
+	 * SEPARATE FROM THE LISTENER SO THE GUARD IS ONE PLACE. It sets the flag, kills, and
+	 * clears it, and the listener above never has to remember to.
+	 */
+	void EpidemicEndTheChain(const FVector& Where,
+							 ECataclysmDungeonCreature LastVictimsKind);
+
+	/**
 	 * Brand of the Aggressor's stack, on a blow the PLAYER landed on a creature.
 	 * Issues #1820 and #41.
 	 *
@@ -2233,6 +2258,23 @@ private:
 	 * again -- so there is nothing to remember about anybody. It goes at the stairs.
 	 */
 	int32 DemonPrincesRisen = 0;
+
+	/**
+	 * Epidemic: how many spreads in a row this floor has had, how many Plague Lords have
+	 * risen on it, and whether the rule is carrying out its own mass kill right now.
+	 * Issues #1820 and #41.
+	 *
+	 * THE CHAIN IS THE FLOOR'S AND NOT A CREATURE'S. It counts consecutive spreads, is
+	 * set back to nothing by a kill that rolls and does not spread, and goes at the
+	 * stairs. A kill of a creature carrying no spreadable debuff rolls nothing at all and
+	 * leaves it where it is: not being diseased is not the same as a disease failing to
+	 * pass on.
+	 *
+	 * THE FLAG IS WHAT STOPS THE CHAIN FEEDING ITSELF. See `EpidemicEndTheChain`.
+	 */
+	int32 EpidemicChain = 0;
+	int32 EpidemicPlagueLordsRisen = 0;
+	bool bEpidemicKilling = false;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

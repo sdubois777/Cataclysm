@@ -130,6 +130,197 @@ correction exists to remove, and it is not covered by the three guard proofs.
 
 ---
 
+## 2026-09-17 — A disease passes from a corpse the player made to the creature beside it, and five spreads in a row clear the ground and bring a Plague Lord
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: each row's key, its figures and its arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the rules told about a death,
+the per-floor reset and the floor panel's live counts),
+`game/Source/Cataclysm/AbilitySystem/CataclysmContagion.h` and `.cpp` (the Masochist's spreading
+nodes — one function added, no behaviour changed),
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` (the automation tests for these
+rules) and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (the Python checks that hold each
+rule to its design row). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820),
+[#41](https://github.com/sdubois777/Cataclysm/issues/41) and
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515). **Applied.**
+
+### The row
+
+`Pestilence_Epidemic` in `game/Data/DungeonModifiers.csv`: "When you kill a diseased enemy, there is a
+25% chance for the disease to spread to a nearby enemy, applying all of the dead enemy's remaining
+debuffs. If the disease spreads 5 times in a single chain, all nearby enemies are instantly killed, but
+a powerful \"Plague Lord\" will spawn to attack you." No text in `docs/` says more.
+
+### What the row decides, and the two figures it states
+
+| From the row | The constant |
+| :-- | :-- |
+| "a 25% chance" | `EpidemicSpreadChancePercent` |
+| "spreads 5 times in a single chain" | `EpidemicSpreadsToKill` |
+| "when you kill" | the rule asks whether the killer is the player |
+| "a diseased enemy" | the rule asks the corpse for a debuff that could pass on |
+| "all of the dead enemy's remaining debuffs" | the rule takes the whole list, not one |
+| "a nearby enemy" / "all nearby enemies" | a reach, which the row never states |
+
+### The judgements
+
+Ruled by the coordinating session under the owner's delegation, and flagged to the owner by it.
+
+| Question | Answer | Why |
+| :-- | :-- | :-- |
+| How far "nearby" reaches | **`UCataclysmContagion::RadiusMetres`, six metres**, written as that constant | It is the reach both existing spreading nodes have. A second six here would be one design figure written twice |
+| How many creatures catch it | **One, the nearest** | "To a nearby enemy", singular |
+| What a chain is | **Consecutive spreads, counted on the floor.** A roll that misses puts it back to nothing | "In a single chain" |
+| A creature carrying nothing | **No roll at all, and the chain is left where it stands** | The row's sentence is about killing a DISEASED enemy. Not being diseased is not the same as a disease failing to pass on, and the two are written separately in the code |
+| The Plague Lord | **One a floor, of the last victim's kind, at the rung the other rules share** | "Plague Lord" names no creature this game has — the reading Grave Tide's "undead", Royal Guard's "Uncommon" and Demon Prince's "demonic prince" all needed |
+
+### The mass kill is made of real deaths, and that is a choice
+
+There are two ways to kill a creature here. `UCataclysmSkillEffects::MarkDead` marks it and announces the
+death, but does not run `ACataclysmEnemyCharacter::HandleDeath`, which is where the loot roll and the
+experience grant live. The other way, which `UCataclysmHealthDebt` uses, writes the health attribute to
+zero and then calls `HandleDeath`.
+
+**Ruled: real deaths.** So a chain that completes pays the player every creature's own loot and
+experience, and then puts a Herald-rung creature on the floor, which pays more again. **The alternative
+was a mass kill that pays nothing**, which is defensible — the disease did the killing, not the player
+— and it is named here because the payout is large and the owner may prefer it.
+
+**Because those deaths are announced, the rule refuses to roll while it is killing.** Without that
+flag each death would come back to the same listener and start a second chain inside the first.
+
+### "When you kill" is one question, not two
+
+Demon Prince, merged the day before, asked twice: was the killer the player, and was the blow dealt by
+something other than a minion. Issue #1515 landed between that rule and this one and made a minion's
+kill the minion's own unless its summoner holds the Conduit keystone, decided in one place in
+`UCataclysmCombatEvents::NoteBlow`, and deleted that second check. **This rule never had it**, and must
+not: a summoner who holds the keystone should spread a disease from a minion's kill, and a check on the
+dealing actor would refuse it. Two tests cover the pair.
+
+### One function added to the contagion library, and why it had to be
+
+The row says "applying all of the dead enemy's remaining debuffs", and nothing answered "all of them".
+`UCataclysmContagion::PickSpreadable` chooses one. **Measured: it cannot be walked.** Its pinned index
+falls back to a RANDOM candidate when the index is past the end —
+`(PinnedIndex >= 0 && PinnedIndex < Candidates.Num()) ? PinnedIndex : FMath::RandRange(...)` — so a
+caller asking for index 0, then 1, then 2 would never reach an end and would apply the same debuff
+repeatedly. An earlier version of this plan said that walk was deterministic; it is deterministic only
+inside the list, which is what a caller enumerating cannot know.
+
+**Ruled: add `EverySpreadable`, returning the candidate list, and have `PickSpreadable` choose from
+it.** One filter, two callers. The alternative was for the dungeon rule to rebuild the filter itself,
+which is a copy that drifts the day the library's idea of "spreadable" changes. `PickSpreadable`'s
+behaviour does not change, and the tests in `CataclysmContagionTests.cpp` that cover it are what guard
+that.
+
+### What the tests do
+
+Eleven automation tests in `Cataclysm.DungeonModifierEffects.`, and one existing test changed to carry
+this row among its rules. They cover: the nearest creature catching it and a farther one not; a corpse
+carrying two debuffs passing both; a roll above the chance breaking the chain; a creature carrying
+nothing leaving the chain alone; a kill by another creature; a minion's kill without the Conduit
+keystone and with it; a chain of five killing everything in reach and bringing one lord; the mass kill
+not feeding itself; the panel; and a floor change clearing both counts.
+
+Four checks in `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` hold the rule to the row: its
+two stated figures against the constants, the four phrases the readings rest on, the reach being the
+contagion library's constant rather than a number, and the lord's rung being the shared ceiling.
+
+**The test for the mass kill not feeding itself had to be built so that it could fail, and that took
+two goes.** The proofs below say what each one was for and what was read to find it.
+
+### What the runs found
+
+Measured 2026-09-18 UTC, which is 2026-09-17 in this machine's local time; the engine log stamps UTC
+and the entry headings use the local date. All of it under one editor lock.
+
+**THREE WHOLE-SUITE RUNS, TWO MORE THAN THE ONE FIGURE THE OWNER SET**, because a test-only repair
+followed each of the first two. They are named here with their heads and their reasons rather than
+reduced to the last one.
+
+| Whole suite | Head | Why it ran | What it printed |
+| :-- | :-- | :-- | :-- |
+| 1 of 3 | `271c15ca` | after the debuff repair below | 2070 performed, 2070 succeeded, 0 failed, gap 0 |
+| 2 of 3 | `75324d41` | after the wounding blows below | 2070 performed, 2070 succeeded, 0 failed, gap 0 |
+| 3 of 3, **the run of record** | `f4a7c7e2` | after the creature beyond the reach | 2070 performed, 2070 succeeded, 0 failed, gap 0 |
+
+Each run also reported 39 tests skipping part of what they check. All are art tests, and a worktree has
+no Paragon content. The group `Cataclysm.DungeonModifierEffects.` printed 138 performed, 138 succeeded,
+0 failed at `75324d41` and again at `f4a7c7e2`.
+
+**The first run failed nine of the eleven new tests, and it was the tests that were wrong.** Every
+failure said no disease spread, and the engine log named the cause: a corpse given TWO debuffs carried
+one. `Status.DoT.Bleed` is on a LIVING creature and is NOT on the corpse when the death is announced,
+so the tests had nothing left to pass on. That is the rule reading the row correctly, since the row
+says the dead enemy's REMAINING debuffs, so the tests changed and the rule did not. They now use
+`Status.Debuff.Cripple` and `Status.Debuff.Weaken`, which state four and five seconds in
+`game/Data/StatusEffects.csv`, and the helper that applies one states a strength and returns whether
+the tag is really on the character rather than whether the call reported success.
+`Status.Debuff.Wither` was tried first and dropped: its row states no duration.
+
+### The three guard proofs
+
+| Proof | What was removed | What failed |
+| :-- | :-- | :-- |
+| 1 | the 25% chance, so every roll spreads | `ARollAboveTheChanceSpreadsNothingAndBreaksTheChain` |
+| 2 | the ceiling that ends a chain at five | `AChainOfFiveKillsEveryCreatureNearbyAndBringsOneLord` and `TheMassKillDoesNotFeedItself` |
+| 3 | the check on `bEpidemicKilling` | `TheMassKillDoesNotFeedItself`, on one named assertion |
+
+All three printed `PROVED`, none crashed, and each restored half printed 138 performed, 138 succeeded,
+0 failed. Proof 1 was measured at `271c15ca`, before the two test commits; its predicted test is
+untouched by them and its restored half is re-established by the run of record. Proofs 2 and 3 were
+measured at `f4a7c7e2`.
+
+**Proof 2 was registered as one failing test and measured two.** The correction was made before the
+run rather than after it: `TheMassKillDoesNotFeedItself` also drives a chain of five and then reads the
+floor panel, so it sees the same chain that never completes.
+
+**Proof 3 could not fire at all as the test was first written**, and that was found by reading the code
+rather than by spending four builds on it. **A death caused by writing health to zero carries as its
+killer whoever last DAMAGED the creature, and nobody at all if nothing did.**
+`UCataclysmCombatEvents::NoteDeath` does not work out who killed a creature; it reads the creature's
+own last blow. `UCataclysmCombatEvents::NoteBlow` writes that record only for a blow that reached
+health -- "A blow that did not reach health cannot be the one that killed, so it leaves no record". The
+creatures the mass kill takes had only been given a debuff, so they died anonymously and the listener
+refused them at its killer check whether or not the flag was there. **The first repair** was therefore
+to have the player wound those three creatures before the chain, so their record names the player.
+
+**A second reading showed those blows were necessary and not sufficient.** A chain that fed itself
+would still leave the floor panel reading exactly what it reads now, because `NoteDeathForEpidemic`
+raises the chain and THEN calls `EpidemicEndTheChain`, which ends by setting the chain back to nothing,
+and because the ceiling of one Plague Lord a floor is reached on either path.
+
+**What a second chain changes is reach**, since the end-of-chain kill is centred on the creature whose
+death completed the chain. The first is centred on the corpse at 1000 and reaches 600 cm, to 1600. A
+chain feeding itself re-centres on the farthest corpse, at 1300, and reaches to 1900. **The second
+repair** stands one creature at 1850, outside the first reach and inside the second, and asserts it was
+not killed. That assertion was registered in these words before the proof ran, and is the only one that
+failed:
+
+```
+Error: Expected 'the creature standing beyond the mass kill's reach was not killed' to be false.
+```
+
+The floor panel assertion in the same test did not fail, exactly as predicted, and it now carries a
+comment saying it reads the same on both paths and so checks the ordinary behaviour rather than the
+flag.
+
+**The flag is kept.** Its comment names the case it guards -- a creature the player damaged but did not
+kill, which the mass kill then finishes -- and names the test that measures it.
+
+### What the tests do not show
+
+- **How often this fires in real play.** Every test pins the roll.
+- **What a chain does to a fight**, and what the mass kill actually pays: the loot roll and the
+  experience grant were read in the code, not counted in a test.
+- **How deep a chain would feed itself without the flag.** The test measures that it does not feed
+  itself at all with the flag in place, and the proof measures that one nested chain reaches further.
+  Anything beyond that was reasoned from the code and not counted.
+
+---
+
 ## 2026-09-17 — Six mana cost sentences are written, and the count in the entry that named them was wrong
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet, six rows),

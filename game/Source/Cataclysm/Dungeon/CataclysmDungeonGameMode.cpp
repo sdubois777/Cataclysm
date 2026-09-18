@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmContagion.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -678,6 +679,18 @@ static TAutoConsoleVariable<float> CVarDemonPrinceRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * Pins the roll a diseased corpse passes its debuffs on with, so a test can assert what a
+ * death spread. Issues #1820 and #41. Its own variable, for the reason
+ * `Cataclysm.GraspingTentaclesRoll` gives.
+ */
+static TAutoConsoleVariable<float> CVarEpidemicRoll(
+	TEXT("Cataclysm.EpidemicRoll"),
+	-1.0f,
+	TEXT("Pin the roll Epidemic offers a diseased corpse, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -747,6 +760,13 @@ namespace
 	float DungeonGameModeDemonPrinceRoll()
 	{
 		const float Pinned = CVarDemonPrinceRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	/** The roll a diseased corpse's spread is decided by: pinned, or drawn. */
+	float DungeonGameModeEpidemicRoll()
+	{
+		const float Pinned = CVarEpidemicRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -3307,6 +3327,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForSporeClouds(Notice);
 	NoteDeathForHellfire(Notice);
 	NoteDeathForDemonPrince(Notice);
+	NoteDeathForEpidemic(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
@@ -3402,6 +3423,209 @@ void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
 		   Effects::DemonPrinceRung);
 
 	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForEpidemic(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::EpidemicKey)))
+	{
+		return;
+	}
+
+	// NOT WHILE THIS RULE IS KILLING. The deaths the mass kill causes are real deaths and
+	// are announced, so one of them can come straight back here, roll again, and start a
+	// second chain inside the first.
+	//
+	// THE CASE THIS GUARDS IS NARROWER THAN IT LOOKS, measured on 2026-09-18 by reading
+	// `UCataclysmCombatEvents::NoteDeath` and `NoteBlow`. A death caused by writing health
+	// to zero carries no killer of its own: the notice's killer is read out of the dying
+	// creature's OWN last blow, and that record is written only for a blow that reached
+	// health. A creature the player never damaged dies anonymously and is refused by the
+	// killer check below with or without this flag. THE CASE THIS FLAG EXISTS FOR is a
+	// creature the player DAMAGED BUT DID NOT KILL, which the mass kill then finishes: its
+	// record names the player, so the death arrives here as the player's own kill.
+	// `Cataclysm.DungeonModifierEffects.TheMassKillDoesNotFeedItself` builds that case on
+	// purpose, and is the test that fails if this is removed.
+	if (bEpidemicKilling)
+	{
+		return;
+	}
+
+	ACataclysmEnemyCharacter* Slain = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Slain)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// "WHEN YOU KILL", WHICH IS ONE QUESTION. The killer on the notice is the player only
+	// when the player really killed it: a minion's kill is credited to the minion unless
+	// its summoner holds the Conduit keystone, which `UCataclysmCombatEvents::NoteBlow`
+	// decides in one place. Issue #1515, and `NoteDeathForDemonPrince` above says the same.
+	//
+	// SO THERE IS NO SECOND CHECK ON THE ACTOR THAT DEALT THE BLOW, and there must not be:
+	// a summoner who HAS taken that keystone should spread a disease from its minion's
+	// kill, and a check on the dealer would go on refusing it.
+	APlayerController* Controller = World->GetFirstPlayerController();
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Player || Notice.Killer != Player)
+	{
+		return;
+	}
+
+	// "A DISEASED ENEMY", WHICH IS ASKED OF THE CORPSE ITSELF. A creature carrying
+	// nothing that could pass on is not diseased: no roll happens and the chain is left
+	// where it is. That is not the same as a roll that misses, which breaks it.
+	const TArray<FGameplayTag> Passing = UCataclysmContagion::EverySpreadable(
+		UCataclysmTargeting::AbilitySystemOf(Slain));
+	if (Passing.IsEmpty())
+	{
+		return;
+	}
+
+	if (!Effects::EpidemicSpreads(DungeonGameModeEpidemicRoll()))
+	{
+		// A ROLL THAT MISSES BREAKS THE CHAIN, which is what "in a single chain" means.
+		EpidemicChain = 0;
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	// THE NEAREST CREATURE WITHIN THE REACH, and the search is made FROM THE PLAYER with
+	// the body's location as its centre, for the reason `UCataclysmContagion::
+	// SpreadOnDeath` gives: the search decides sides from the actor passed to it, so
+	// passing the corpse would find the player.
+	ACataclysmEnemyCharacter* Nearest = nullptr;
+	float NearestAway = TNumericLimits<float>::Max();
+	for (AActor* Found : UCataclysmTargeting::FindEnemiesInSphere(
+			 World, Player, Notice.Location, Effects::EpidemicRadiusCm()))
+	{
+		ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Found);
+		if (!IsValid(Creature) || Creature == Slain)
+		{
+			continue;
+		}
+		const float Away = FVector::Dist(Creature->GetActorLocation(), Notice.Location);
+		if (Away < NearestAway)
+		{
+			NearestAway = Away;
+			Nearest = Creature;
+		}
+	}
+
+	if (!Nearest)
+	{
+		// NOBODY TO CATCH IT. The roll was spent and nothing landed, so the chain breaks
+		// the way a missed roll breaks it: a chain is spreads in a row.
+		EpidemicChain = 0;
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	// ALL OF THEM, WHICH IS WHAT THE ROW SAYS. `EverySpreadable` is the list
+	// `PickSpreadable` chooses one from; this rule wants the whole of it.
+	int32 Landed = 0;
+	for (const FGameplayTag& Tag : Passing)
+	{
+		Landed += UCataclysmContagion::SpreadOne(Player, Nearest, Tag) ? 1 : 0;
+	}
+
+	++EpidemicChain;
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Epidemic: %s died carrying %d debuff(s), %d landed on %s, chain %d of %d"),
+		   *Slain->GetName(), Passing.Num(), Landed, *Nearest->GetName(), EpidemicChain,
+		   Effects::EpidemicSpreadsToKill);
+
+	if (Effects::EpidemicChainIsComplete(EpidemicChain))
+	{
+		EpidemicEndTheChain(Notice.Location, DungeonGameModeKindOf(Slain));
+	}
+
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::EpidemicEndTheChain(
+	const FVector& Where, ECataclysmDungeonCreature LastVictimsKind)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!World || !Player)
+	{
+		return;
+	}
+
+	// THE FLAG IS SET FOR THE WHOLE OF THIS, deaths and spawn together, because every
+	// death below is announced and would otherwise come back to the listener.
+	bEpidemicKilling = true;
+
+	int32 Killed = 0;
+	for (AActor* Found : UCataclysmTargeting::FindEnemiesInSphere(
+			 World, Player, Where, Effects::EpidemicRadiusCm()))
+	{
+		ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Found);
+		if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature))
+		{
+			continue;
+		}
+
+		// HEALTH TO ZERO AND THEN `HandleDeath`, WHICH IS A REAL DEATH. That pair is what
+		// `UCataclysmHealthDebt` uses, and it is what makes the loot roll and the
+		// experience grant in the creature's own handler run. Marking it dead instead
+		// would announce the death and pay nothing.
+		if (UAbilitySystemComponent* Abilities =
+				UCataclysmTargeting::AbilitySystemOf(Creature))
+		{
+			Abilities->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+		}
+		Creature->HandleDeath();
+		++Killed;
+	}
+
+	// AND ONE PLAGUE LORD, OF THE LAST VICTIM'S KIND, ONCE A FLOOR. A creature of no kind
+	// brings none, which is the refusal Royal Guard and Demon Prince both make.
+	int32 Risen = 0;
+	if (EpidemicPlagueLordsRisen < Effects::EpidemicPlagueLordsPerFloor
+		&& LastVictimsKind != ECataclysmDungeonCreature::Count
+		&& CurrentFloor && CurrentFloor->IsBuilt())
+	{
+		FCataclysmEnemyPlacement Placement;
+		Placement.Cell = CurrentFloor->CellOfWorld(Where);
+		Placement.Creature = LastVictimsKind;
+
+		if (ACataclysmEnemyCharacter* Lord =
+				SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier))
+		{
+			Lord->SetRarityStep(Effects::EpidemicPlagueLordRung);
+			Lord->DrawModifiersForRarity();
+			FloorEnemies.Add(Lord);
+			++EpidemicPlagueLordsRisen;
+			Risen = 1;
+		}
+	}
+
+	// AND THE CHAIN IS OVER. It starts again from nothing, so a floor may have another.
+	EpidemicChain = 0;
+	bEpidemicKilling = false;
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Epidemic: a chain of %d killed %d creature(s) within %.0f cm and brought "
+				"%d Plague Lord(s)"),
+		   Effects::EpidemicSpreadsToKill, Killed, Effects::EpidemicRadiusCm(), Risen);
 }
 
 void ACataclysmDungeonGameMode::OnSomethingWasHit(
@@ -3712,6 +3936,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(Prince, FString::Printf(TEXT("prince %d of %d"), DemonPrincesRisen,
 											 Effects::DemonPrincesPerFloor));
+	}
+
+	// AND THE CHAIN, WITH THE LORD BESIDE IT. Two numbers on one line because the row has
+	// two things a player would want to know and the panel gives a row one line.
+	const FName Spreading(Effects::EpidemicKey);
+	if (FloorBrief.Modifiers.Contains(Spreading))
+	{
+		Counting.Add(Spreading,
+					 FString::Printf(TEXT("chain %d of %d, lord %d of %d"), EpidemicChain,
+									 Effects::EpidemicSpreadsToKill,
+									 EpidemicPlagueLordsRisen,
+									 Effects::EpidemicPlagueLordsPerFloor));
 	}
 
 	return Counting;
@@ -5343,6 +5579,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// one a floor, so the next floor may have its own; the creature that rose is in
 		// `FloorEnemies` and goes the way every other creature on the floor goes.
 		DemonPrincesRisen = 0;
+
+		// AND EPIDEMIC FORGETS ITS CHAIN AND ITS LORD. Issues #1820 and #41. A chain is
+		// spreads in a row on one floor, and the next floor may have its own Plague Lord.
+		EpidemicChain = 0;
+		EpidemicPlagueLordsRisen = 0;
 
 		// AND FUNGAL OVERGROWTH FORGETS ITS MUSHROOMS AND BOTH OF ITS FIGURES.
 		// Issues #1820 and #41. Four lines and no clock, Withered Ground's shape

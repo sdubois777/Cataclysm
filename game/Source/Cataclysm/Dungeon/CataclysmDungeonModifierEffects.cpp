@@ -60,6 +60,8 @@ const TCHAR* UCataclysmDungeonModifierEffects::RoyalGuardKey =
 	TEXT("War_Royal_Guard");
 const TCHAR* UCataclysmDungeonModifierEffects::DemonPrinceKey =
 	TEXT("Demonic_Demon_Prince");
+const TCHAR* UCataclysmDungeonModifierEffects::EpidemicKey =
+	TEXT("Pestilence_Epidemic");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -237,7 +239,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GraveTideKey)
 		|| RowKey == FName(VolatileEvolutionKey)
 		|| RowKey == FName(RoyalGuardKey)
-		|| RowKey == FName(DemonPrinceKey))
+		|| RowKey == FName(DemonPrinceKey)
+		|| RowKey == FName(EpidemicKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -398,6 +401,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(VolatileEvolutionKey),
 		FName(RoyalGuardKey),
 		FName(DemonPrinceKey),
+		FName(EpidemicKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1316,6 +1320,21 @@ bool UCataclysmDungeonModifierEffects::DemonPrinceRises(float Roll)
 bool UCataclysmDungeonModifierEffects::DemonPrinceMayRise(int32 RisenSoFar)
 {
 	return RisenSoFar < DemonPrincesPerFloor;
+}
+
+bool UCataclysmDungeonModifierEffects::EpidemicSpreads(float Roll)
+{
+	return Roll < EpidemicSpreadChancePercent;
+}
+
+bool UCataclysmDungeonModifierEffects::EpidemicChainIsComplete(int32 Spreads)
+{
+	return Spreads >= EpidemicSpreadsToKill;
+}
+
+float UCataclysmDungeonModifierEffects::EpidemicRadiusCm()
+{
+	return EpidemicRadiusMetres * UCataclysmContagion::CentimetresPerMetre;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

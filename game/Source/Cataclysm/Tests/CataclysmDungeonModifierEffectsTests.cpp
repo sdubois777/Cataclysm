@@ -156,6 +156,9 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** And the one where the player's kill brings a greater creature. Issues #1820, #41. */
 	const FName DemonPrince(UCataclysmDungeonModifierEffects::DemonPrinceKey);
 
+	/** And the one where a disease passes from a corpse to its neighbour. Issues #1820, #41. */
+	const FName Epidemic(UCataclysmDungeonModifierEffects::EpidemicKey);
+
 	/** What a creature's attacks are worth right now, read off the attribute. */
 	float AttackDamageOf(const ACataclysmEnemyCharacter* Creature)
 	{
@@ -666,6 +669,63 @@ namespace CataclysmDungeonModifierEffectsTest
 		}
 		Imp->SetActorLocation(Where);
 		return Imp;
+	}
+
+	/**
+	 * A debuff that can be passed on, and a second one, for Epidemic's tests.
+	 *
+	 * NEITHER IS DAMAGE OVER TIME, AND THAT IS THE POINT. Measured on 2026-09-18: a bleed
+	 * put on a creature is on it a moment later and is NOT on the corpse when the death is
+	 * announced, while a debuff that is not damage over time still is. A corpse given both
+	 * carried one, and the rule -- correctly, since the row says the dead enemy's REMAINING
+	 * debuffs -- passed on only that one. Tests of Epidemic therefore use debuffs that
+	 * survive the death they are testing.
+	 *
+	 * AND BOTH ROWS STATE A DURATION. `Debuff_Wither` states none, and a corpse given it
+	 * carried the other one only; `Debuff_Cripple` states four seconds and `Debuff_Weaken`
+	 * five, and both survive to the announcement.
+	 *
+	 * A TAG WITH A ROW IN `game/Data/StatusEffects.csv` IS WHAT "SPREADABLE" MEANS.
+	 * `UCataclysmContagion::EverySpreadable` keeps the ones whose tag names a row, so a
+	 * stun -- which names none -- is not something a corpse passes on. These two are the
+	 * ones `CataclysmContagionTests.cpp` uses for the same purpose.
+	 */
+	FGameplayTag ADiseaseThatSpreads()
+	{
+		return UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(TEXT("Status.Debuff.Cripple")), /*ErrorIfNotFound=*/false);
+	}
+
+	FGameplayTag ASecondDiseaseThatSpreads()
+	{
+		return UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(TEXT("Status.Debuff.Weaken")), /*ErrorIfNotFound=*/false);
+	}
+
+	/**
+	 * Put a lasting debuff on a character, as anything else in the game would, AND SAY
+	 * WHETHER IT IS STILL THERE AFTERWARDS.
+	 *
+	 * THE STRENGTH IS STATED AND NOT LEFT AT ZERO. Measured on 2026-09-18: a bleed applied
+	 * with no strength reported success and was not on the character a moment later, so a
+	 * corpse given two debuffs carried one and tests of "the disease passed on" failed with
+	 * nothing to pass. The caller checks what this returns, so a debuff that does not stick
+	 * fails the test that needed it rather than the rule under test.
+	 */
+	bool GiveTheDebuff(AActor* From, AActor* To, const FGameplayTag& Tag)
+	{
+		UCataclysmSkillEffects::ApplyTagForDuration(From, To, Tag, 30.0f,
+												   /*StatedStrength=*/10.0f);
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(To);
+		return System && Tag.IsValid() && System->HasMatchingGameplayTag(Tag);
+	}
+
+	/** Whether a character carries a debuff now. */
+	bool Carries(const AActor* Who, const FGameplayTag& Tag)
+	{
+		const UAbilitySystemComponent* System =
+			UCataclysmTargeting::AbilitySystemOf(Who);
+		return System && Tag.IsValid() && System->HasMatchingGameplayTag(Tag);
 	}
 
 	/** Every living creature in the world, for telling what a death brought. */
@@ -10182,6 +10242,7 @@ bool FCataclysmSameArenaZonesTest::RunTest(const FString& Parameters)
 	Rules.Add(VolatileEvolution);
 	Rules.Add(RoyalGuard);
 	Rules.Add(DemonPrince);
+	Rules.Add(Epidemic);
 	Mode->DungeonModifiers = Rules;
 	if (!TestTrue(TEXT("the first floor was reached"), Mode->GoToFloor(1)))
 	{
@@ -14262,6 +14323,1175 @@ bool FCataclysmDemonPrincePanelTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("a floor without the row has no line of its own"), PanelLine(),
 			  FString(TEXT("no line")));
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Epidemic: "When you kill a diseased enemy, there is a 25% chance for the
+// disease to spread to a nearby enemy, applying all of the dead enemy's remaining debuffs.
+// If the disease spreads 5 times in a single chain, all nearby enemies are instantly
+// killed, but a powerful \"Plague Lord\" will spawn to attack you." Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicSpreadTest,
+	"Cataclysm.DungeonModifierEffects.KillingADiseasedCreaturePassesItsDebuffsToTheNearestCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicSpreadTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// "TO A NEARBY ENEMY", SINGULAR, AND THE NEAREST ONE. Two creatures are in reach and
+	// only the closer catches it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	if (!TestTrue(TEXT("the disease tag exists"), Disease.IsValid()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Nearer =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Farther =
+		SpawnImpWithHealth(World, FVector(1100.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature to slay"), Slain)
+		|| !TestNotNull(TEXT("one standing nearer"), Nearer)
+		|| !TestNotNull(TEXT("one standing farther"), Farther))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the one to be slain is diseased"),
+				  GiveTheDebuff(Player.Character, Slain, Disease)))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+	if (!TestTrue(TEXT("the player's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("Epidemic: the nearer carries the disease: %s; the "
+								 "farther: %s; the panel says %s"),
+							Carries(Nearer, Disease) ? TEXT("yes") : TEXT("no"),
+							Carries(Farther, Disease) ? TEXT("yes") : TEXT("no"),
+							*PanelLine()));
+
+	TestTrue(TEXT("the nearest creature caught it"), Carries(Nearer, Disease));
+	TestFalse(TEXT("and the one standing farther did not"), Carries(Farther, Disease));
+	TestEqual(TEXT("and the floor counts one spread"), PanelLine(),
+			  FString::Printf(TEXT("chain 1 of %d, lord 0 of %d"),
+							  Effects::EpidemicSpreadsToKill,
+							  Effects::EpidemicPlagueLordsPerFloor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicTwoDebuffsTest,
+	"Cataclysm.DungeonModifierEffects.ACorpseCarryingTwoDebuffsPassesBoth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicTwoDebuffsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// "APPLYING ALL OF THE DEAD ENEMY'S REMAINING DEBUFFS", which is why the rule asks
+	// `UCataclysmContagion::EverySpreadable` for the whole list rather than asking
+	// `PickSpreadable` for one. Asking that function for index 0, then 1, then 2 cannot
+	// enumerate: an index past the end falls back to a random candidate.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag First = ADiseaseThatSpreads();
+	const FGameplayTag Second = ASecondDiseaseThatSpreads();
+	if (!TestTrue(TEXT("both disease tags exist"), First.IsValid() && Second.IsValid()))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Catcher =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature to slay"), Slain)
+		|| !TestNotNull(TEXT("one to catch it"), Catcher))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("it carries the first"),
+				  GiveTheDebuff(Player.Character, Slain, First))
+		|| !TestTrue(TEXT("and the second"),
+					 GiveTheDebuff(Player.Character, Slain, Second)))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+	if (!TestTrue(TEXT("the player's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the first debuff passed on"), Carries(Catcher, First));
+	TestTrue(TEXT("and so did the second"), Carries(Catcher, Second));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicMissedRollTest,
+	"Cataclysm.DungeonModifierEffects.ARollAboveTheChanceSpreadsNothingAndBreaksTheChain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicMissedRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW'S OWN FIGURE AND WHAT A MISS DOES: a chain is spreads in a row, so a roll
+	// that misses puts it back to nothing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	ACataclysmEnemyCharacter* First =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Catcher =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Second =
+		SpawnImpWithHealth(World, FVector(900.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature to slay"), First)
+		|| !TestNotNull(TEXT("one to catch it"), Catcher)
+		|| !TestNotNull(TEXT("a second to slay"), Second)
+		|| !TestTrue(TEXT("both to be slain are diseased"),
+					 GiveTheDebuff(Player.Character, First, Disease)
+						 && GiveTheDebuff(Player.Character, Second, Disease)))
+	{
+		return false;
+	}
+
+	{
+		FScopedConsoleString Hit(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+		if (!TestNotNull(TEXT("the spread roll can be pinned"), Hit.Variable))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, First, 100000.0f);
+		if (!TestEqual(TEXT("the first kill spread and the chain counts one"), PanelLine(),
+					   FString::Printf(TEXT("chain 1 of %d, lord 0 of %d"),
+									   Effects::EpidemicSpreadsToKill,
+									   Effects::EpidemicPlagueLordsPerFloor)))
+		{
+			return false;
+		}
+	}
+
+	{
+		FScopedConsoleString Miss(TEXT("Cataclysm.EpidemicRoll"), TEXT("100"));
+		if (!TestNotNull(TEXT("the spread roll can be pinned again"), Miss.Variable))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Second, 100000.0f);
+		if (!TestTrue(TEXT("the second blow killed it"),
+					  UCataclysmSkillEffects::IsDead(Second)))
+		{
+			return false;
+		}
+		TestEqual(TEXT("a missed roll puts the chain back to nothing"), PanelLine(),
+				  FString::Printf(TEXT("chain 0 of %d, lord 0 of %d"),
+								  Effects::EpidemicSpreadsToKill,
+								  Effects::EpidemicPlagueLordsPerFloor));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicNotDiseasedTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureCarryingNothingSpreadableLeavesTheChainAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicNotDiseasedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// NOT BEING DISEASED IS NOT THE SAME AS A DISEASE FAILING TO PASS ON. The row's
+	// sentence starts "when you kill a diseased enemy", so a creature carrying nothing is
+	// outside it: no roll happens and the chain is left where it stands.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	ACataclysmEnemyCharacter* Diseased =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Catcher =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Clean =
+		SpawnImpWithHealth(World, FVector(2000.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a diseased creature"), Diseased)
+		|| !TestNotNull(TEXT("one to catch it"), Catcher)
+		|| !TestNotNull(TEXT("a creature carrying nothing"), Clean)
+		|| !TestTrue(TEXT("the first is diseased"),
+					 GiveTheDebuff(Player.Character, Diseased, Disease)))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Diseased, 100000.0f);
+	if (!TestEqual(TEXT("the chain counts one"), PanelLine(),
+				   FString::Printf(TEXT("chain 1 of %d, lord 0 of %d"),
+								   Effects::EpidemicSpreadsToKill,
+								   Effects::EpidemicPlagueLordsPerFloor)))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Clean, 100000.0f);
+	if (!TestTrue(TEXT("the second blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Clean)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("killing a creature that carries nothing leaves the chain alone"),
+			  PanelLine(),
+			  FString::Printf(TEXT("chain 1 of %d, lord 0 of %d"),
+							  Effects::EpidemicSpreadsToKill,
+							  Effects::EpidemicPlagueLordsPerFloor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicOtherKillerTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureKilledByAnotherCreatureSpreadsNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicOtherKillerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// "WHEN YOU KILL". A death the player did not cause spreads nothing.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	ACataclysmEnemyCharacter* Slayer =
+		SpawnImpWithHealth(World, FVector(300.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Catcher =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature to do the killing"), Slayer)
+		|| !TestNotNull(TEXT("a diseased creature"), Slain)
+		|| !TestNotNull(TEXT("one that could catch it"), Catcher)
+		|| !TestTrue(TEXT("the victim is diseased"),
+					 GiveTheDebuff(Player.Character, Slain, Disease)))
+	{
+		return false;
+	}
+
+	const float SlayersDamage = GiveCreatureAttackDamage(Slayer, 100.0f);
+	if (!TestTrue(FString::Printf(TEXT("the killer hits for something: %.2f"),
+								  SlayersDamage),
+				  SlayersDamage > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Slayer, Slain, 100000.0f);
+	if (!TestTrue(TEXT("a creature's blow killed it"),
+				  UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("nothing passed to the creature beside it"),
+			  Carries(Catcher, Disease));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicMinionKillTest,
+	"Cataclysm.DungeonModifierEffects.AKillDealtByAMinionSpreadsNothingWithoutConduit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicMinionKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// A MINION'S KILL IS THE MINION'S OWN, since issue #1515. The killer on the notice is
+	// the minion unless its summoner holds the Conduit keystone, so this rule's single
+	// question refuses it without any check of its own on the actor that dealt the blow.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Player.Character, FVector(400.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Catcher =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a summoned minion"), Minion)
+		|| !TestNotNull(TEXT("a diseased creature"), Slain)
+		|| !TestNotNull(TEXT("one that could catch it"), Catcher)
+		|| !TestTrue(TEXT("the victim is diseased"),
+					 GiveTheDebuff(Player.Character, Slain, Disease)))
+	{
+		return false;
+	}
+
+	FCataclysmHitDelivery Delivery;
+	Delivery.DealtBy = Minion;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f,
+									 FGameplayTagContainer(), Delivery);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("a minion's kill spreads nothing without the keystone"),
+			  Carries(Catcher, Disease));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicConduitKillTest,
+	"Cataclysm.DungeonModifierEffects.AKillDealtByAMinionUnderConduitSpreads",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicConduitKillTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// AND WITH THE KEYSTONE IT IS THE PLAYER'S. This is the half a check on the dealing
+	// actor would have gone on refusing, which is why issue #1515 deleted that check from
+	// the rule beside this one and why this rule never had it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier Held;
+	Held.Bucket = ECataclysmStatBucket::Flat;
+	Held.Source = ECataclysmModifierSource::PassiveKeystone;
+	Held.Value = 1.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(TEXT("minion_hits_count_as_yours"))).Modifiers = {Held};
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Player.Character, FVector(400.0f, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false);
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Catcher =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a summoned minion"), Minion)
+		|| !TestNotNull(TEXT("a diseased creature"), Slain)
+		|| !TestNotNull(TEXT("one to catch it"), Catcher)
+		|| !TestTrue(TEXT("the victim is diseased"),
+					 GiveTheDebuff(Player.Character, Slain, Disease)))
+	{
+		return false;
+	}
+
+	FCataclysmHitDelivery Delivery;
+	Delivery.DealtBy = Minion;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f,
+									 FGameplayTagContainer(), Delivery);
+	if (!TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("with the keystone the minion's kill spreads"),
+			 Carries(Catcher, Disease));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicChainTest,
+	"Cataclysm.DungeonModifierEffects.AChainOfFiveKillsEveryCreatureNearbyAndBringsOneLord",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicChainTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE SECOND FIGURE THE ROW STATES, AND WHAT IT BUYS: five spreads in a row kill
+	// everything within the same reach and bring one Plague Lord.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	TArray<ACataclysmEnemyCharacter*> Line;
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill + 2; ++Index)
+	{
+		ACataclysmEnemyCharacter* Creature = SpawnImpWithHealth(
+			World, FVector(600.0f + 100.0f * Index, 0.0f, 0.0f), 100.0f);
+		if (!TestNotNull(TEXT("a creature in the line"), Creature)
+			|| !TestTrue(TEXT("carrying the disease"),
+						 GiveTheDebuff(Player.Character, Creature, Disease)))
+		{
+			return false;
+		}
+		Line.Add(Creature);
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Before = LivingCreatures(World);
+
+	// FIVE KILLS, EACH WITH SOMEBODY BESIDE IT TO CATCH THE DISEASE.
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill; ++Index)
+	{
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Line[Index], 100000.0f);
+		if (!TestTrue(TEXT("the player's blow killed it"),
+					  UCataclysmSkillEffects::IsDead(Line[Index])))
+		{
+			return false;
+		}
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Risen;
+	for (ACataclysmEnemyCharacter* Creature : LivingCreatures(World))
+	{
+		if (!Before.Contains(Creature))
+		{
+			Risen.Add(Creature);
+		}
+	}
+
+	AddInfo(FString::Printf(TEXT("Epidemic: after five spreads %d creature(s) rose and the "
+								 "panel says %s"),
+							Risen.Num(), *PanelLine()));
+
+	if (!TestEqual(TEXT("one Plague Lord rose"), Risen.Num(),
+				   Effects::EpidemicPlagueLordsPerFloor))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at the rung the other rules share"), Risen[0]->RarityStep,
+			  Effects::EpidemicPlagueLordRung);
+	TestTrue(TEXT("and the floor holds it"), Mode->FloorEnemies.Contains(Risen[0]));
+
+	int32 StillStanding = 0;
+	for (ACataclysmEnemyCharacter* Creature : Line)
+	{
+		StillStanding += (IsValid(Creature)
+						  && !UCataclysmSkillEffects::IsDead(Creature)) ? 1 : 0;
+	}
+	TestEqual(FString::Printf(TEXT("every creature of the line within reach is dead: %d "
+								   "still standing"), StillStanding),
+			  StillStanding, 0);
+
+	TestEqual(TEXT("and the chain starts again from nothing"), PanelLine(),
+			  FString::Printf(TEXT("chain 0 of %d, lord 1 of %d"),
+							  Effects::EpidemicSpreadsToKill,
+							  Effects::EpidemicPlagueLordsPerFloor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicNoSecondChainTest,
+	"Cataclysm.DungeonModifierEffects.TheMassKillDoesNotFeedItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicNoSecondChainTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE DEATHS THE RULE CAUSES ARE REAL DEATHS AND ARE ANNOUNCED, so one that names the
+	// player as its killer comes back to this listener, rolls again, and starts a second
+	// chain inside the first. The rule refuses to roll while it is killing.
+	//
+	// WHICH IS WHY THE PLAYER WOUNDS THE THREE CREATURES BEYOND THE CHAIN BELOW. Without
+	// those blows they die with no killer on record at all, the listener refuses them for
+	// that reason instead, and this test passes with the guard removed -- which is a test
+	// that cannot fail. The loop below says what was measured.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	TArray<ACataclysmEnemyCharacter*> Line;
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill + 3; ++Index)
+	{
+		// THE THREE BEYOND THE CHAIN ARE BUILT TO SURVIVE A BLOW. They have to take one
+		// from the player without dying, for the reason the next loop gives, so they get
+		// a health pool a single blow cannot empty.
+		const bool bBeyondTheChain = Index >= Effects::EpidemicSpreadsToKill;
+		ACataclysmEnemyCharacter* Creature = SpawnImpWithHealth(
+			World, FVector(600.0f + 100.0f * Index, 0.0f, 0.0f),
+			bBeyondTheChain ? 100'000.0f : 100.0f);
+		if (!TestNotNull(TEXT("a creature in the line"), Creature)
+			|| !TestTrue(TEXT("carrying the disease"),
+						 GiveTheDebuff(Player.Character, Creature, Disease)))
+		{
+			return false;
+		}
+		Line.Add(Creature);
+	}
+
+	// THE PLAYER WOUNDS THE THREE BEYOND THE CHAIN, AND THAT IS WHAT MAKES THIS TEST ABLE
+	// TO FAIL AT ALL. MEASURED 2026-09-18 by reading the two functions named below, before
+	// a guard proof was spent on this.
+	//
+	// A DEATH CAUSED BY WRITING HEALTH TO ZERO NAMES NO KILLER OF ITS OWN.
+	// `UCataclysmCombatEvents::NoteDeath` does not work out who killed the creature; it
+	// reads the creature's OWN last blow. `UCataclysmCombatEvents::NoteBlow` writes that
+	// record only for a blow that reached health -- "A blow that did not reach health
+	// cannot be the one that killed, so it leaves no record". A creature that was only
+	// given a debuff therefore dies anonymously, and `NoteDeathForEpidemic` refuses it at
+	// the killer check whether or not the guard is there.
+	//
+	// WITH THESE BLOWS their record names the player, so the mass kill's deaths arrive at
+	// the listener as the player's own kills and `bEpidemicKilling` is the only thing
+	// standing between them and a second chain inside the first.
+	for (int32 Index = Effects::EpidemicSpreadsToKill; Index < Line.Num(); ++Index)
+	{
+		const float HealthBefore = HealthOf(Line[Index]);
+		const float Landed =
+			UCataclysmSkillEffects::ApplyHit(Player.Character, Line[Index], 50.0f);
+		const UCataclysmAbilitySystemComponent* Record =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Line[Index]));
+
+		if (!TestTrue(FString::Printf(TEXT("the player's blow reached creature %d: %.2f "
+										   "dealt, %.2f health left of %.2f"),
+									  Index, Landed, HealthOf(Line[Index]), HealthBefore),
+					  Landed > 0.0f && HealthOf(Line[Index]) < HealthBefore)
+			|| !TestFalse(FString::Printf(TEXT("and creature %d is still alive"), Index),
+						  UCataclysmSkillEffects::IsDead(Line[Index]))
+			|| !TestTrue(FString::Printf(TEXT("the player is on record as creature %d's "
+											  "last blow"), Index),
+						 Record != nullptr && Record->GetLastBlow().IsOnRecord()
+							 && Record->GetLastBlow().Attacker.Get() == Player.Character))
+		{
+			return false;
+		}
+	}
+
+	// AND ONE CREATURE STANDING BEYOND THE MASS KILL'S REACH, WHICH IS WHAT THE FAILING
+	// ASSERTION READS. MEASURED 2026-09-18 by reading the code path: the wounding blows
+	// above are necessary and are NOT sufficient. A chain that fed itself would leave the
+	// panel line below reading exactly the same, because `NoteDeathForEpidemic` raises the
+	// chain and THEN calls `EpidemicEndTheChain`, which ends by setting the chain back to
+	// nothing, and because the ceiling of one Plague Lord a floor is reached either way.
+	//
+	// WHAT A SECOND CHAIN CHANGES IS HOW FAR THE KILLING REACHES. `EpidemicEndTheChain` is
+	// centred on the creature whose death completed the chain. The first is centred on the
+	// corpse at 1000 and reaches to 1600, which is why the three above die. A chain feeding
+	// itself re-centres on the corpse at 1300 and reaches to 1900. This creature stands at
+	// 1850: outside the first reach, inside the second.
+	ACataclysmEnemyCharacter* Witness = SpawnImpWithHealth(
+		World, FVector(1850.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a creature standing beyond the reach"), Witness))
+	{
+		return false;
+	}
+
+	const int32 Before = LivingCreatures(World).Num();
+	for (int32 Index = 0; Index < Effects::EpidemicSpreadsToKill; ++Index)
+	{
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Line[Index], 100000.0f);
+	}
+
+	const int32 After = LivingCreatures(World).Num();
+	AddInfo(FString::Printf(TEXT("Epidemic: %d creature(s) stood before the chain and %d "
+								 "after it; the panel says %s"),
+							Before, After, *PanelLine()));
+
+	// THE CREATURE BEYOND THE REACH WAS NOT KILLED. THIS IS THE ASSERTION THAT FAILS WHEN
+	// THE GUARD IS REMOVED, and the comment on the spawn above says why it and not the
+	// panel line.
+	TestFalse(TEXT("the creature standing beyond the mass kill's reach was not killed"),
+			  UCataclysmSkillEffects::IsDead(Witness));
+
+	// AND THE CHAIN IS BACK AT NOTHING WITH EXACTLY ONE LORD. This reads the same whether
+	// or not the chain fed itself, so it is a check on the ordinary path and not on the
+	// guard.
+	TestEqual(TEXT("the chain is back at nothing and one lord came"), PanelLine(),
+			  FString::Printf(TEXT("chain 0 of %d, lord 1 of %d"),
+							  Effects::EpidemicSpreadsToKill,
+							  Effects::EpidemicPlagueLordsPerFloor));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicPanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelCountsTheChainAndTheLord",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// WHAT THE PLAYER IS TOLD: how far the chain has come, and whether the floor's one
+	// Plague Lord has arrived.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a floor just built has had no spread"), PanelLine(),
+			  FString::Printf(TEXT("chain 0 of %d, lord 0 of %d"),
+							  Effects::EpidemicSpreadsToKill,
+							  Effects::EpidemicPlagueLordsPerFloor));
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Catcher =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a diseased creature"), Slain)
+		|| !TestNotNull(TEXT("one to catch it"), Catcher)
+		|| !TestTrue(TEXT("it is diseased"),
+					 GiveTheDebuff(Player.Character, Slain, Disease)))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+	TestEqual(TEXT("one spread in"), PanelLine(),
+			  FString::Printf(TEXT("chain 1 of %d, lord 0 of %d"),
+							  Effects::EpidemicSpreadsToKill,
+							  Effects::EpidemicPlagueLordsPerFloor));
+
+	// AND A FLOOR WITHOUT THE ROW SAYS NOTHING OF CHAINS.
+	Mode->DungeonModifiers = {DeathsEmbrace};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row has no line of its own"), PanelLine(),
+			  FString(TEXT("no line")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEpidemicFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeClearsTheChainAndTheLord",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEpidemicFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A CHAIN IS SPREADS IN A ROW ON ONE FLOOR, and the next floor may have its own
+	// Plague Lord. A Horde dungeon's next wave is used, because there a creature lives
+	// through the change.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"),
+					 Player.IsUsable()))
+	{
+		return false;
+	}
+
+	Mode->StartPlay();
+	if (!TestNotNull(TEXT("the world announces deaths"),
+					 UCataclysmCombatEvents::In(World)))
+	{
+		return false;
+	}
+
+	const auto PanelLine = [Mode]()
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Epidemic);
+		return Line ? *Line : FString(TEXT("no line"));
+	};
+
+	Mode->DungeonModifiers = {Epidemic};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	// EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, so what is in the world is what
+	// this test spawned. The Demon Prince tests above say what that cost to learn.
+	Mode->ClearFloorEnemies();
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.EpidemicRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the spread roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FGameplayTag Disease = ADiseaseThatSpreads();
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Catcher =
+		SpawnImpWithHealth(World, FVector(700.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("a diseased creature"), Slain)
+		|| !TestNotNull(TEXT("one to catch it"), Catcher)
+		|| !TestTrue(TEXT("it is diseased"),
+					 GiveTheDebuff(Player.Character, Slain, Disease)))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+	if (!TestEqual(TEXT("the chain counts one"), PanelLine(),
+				   FString::Printf(TEXT("chain 1 of %d, lord 0 of %d"),
+								   Effects::EpidemicSpreadsToKill,
+								   Effects::EpidemicPlagueLordsPerFloor)))
+	{
+		return false;
+	}
+
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	TestEqual(TEXT("the new floor starts from nothing"), PanelLine(),
+			  FString::Printf(TEXT("chain 0 of %d, lord 0 of %d"),
+							  Effects::EpidemicSpreadsToKill,
+							  Effects::EpidemicPlagueLordsPerFloor));
 
 	return true;
 }
