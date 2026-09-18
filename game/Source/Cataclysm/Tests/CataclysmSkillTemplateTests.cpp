@@ -65,6 +65,8 @@
 #include "GameFramework/Actor.h"
 // For the test that the bar, the check and the payment agree on a skill's cost.
 #include "Interface/CataclysmSkillBar.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmItem.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
 #include "Misc/ScopeExit.h"
 // For pinning the critical strike roll in the one test whose subject it is.
@@ -15106,6 +15108,126 @@ bool FCataclysmManaCostAuraUpkeepTest::RunTest(const FString&)
 	Aura->Pulse();
 	TestEqual(TEXT("and under a row halving the cost it drains half of it"),
 		Caster.Mana(), BeforeHalved - PerPulse * 0.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmManaCostWornRowTest,
+	"Cataclysm.Skills.TheWornRowForNoManaBelowHalfHealthCostsNothingAndTheBarAgrees",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * THE ROW OUT OF THE TABLE THE GAME LOADS, not one built in code. Issue #1815.
+ *
+ * `Positive_While_below_50_HP_your_skills_cost_no_mana` is written on the
+ * Enchantment Effects sheet as `mana_cost`, the removal kind, value 1, under
+ * `health_below` 50. Every other test of this stat grants its row by hand, so
+ * none of them would notice the authored row being wrong, missing, or scoped to
+ * something it should not reach.
+ *
+ * BOTH SIDES OF THE BOUNDARY ARE MEASURED. A conditioned removal that never
+ * applies and one that always applies read the same if only one side is asked,
+ * which is the trap issue #1791 records for removals generally.
+ *
+ * THE MAXIMUM IS READ AFTER THE HELM IS WORN. `RefreshAttributes` recomputes
+ * maximum health from the gear, so a half worked out from the figure set before
+ * equipping would be a half of a pool that no longer exists.
+ *
+ * THE BAR AND THE CAST CHECK ARE ASKED TOO, because a cost nothing charges is
+ * still wrong if the box shows a number or the check refuses the cast. The pool
+ * is emptied on purpose so that "the cast is allowed" can only mean the cost
+ * really is nothing.
+ */
+bool FCataclysmManaCostWornRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmManaCostTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Who(World, FVector::ZeroVector);
+	UCataclysmStrikeSkill* Skill = GrantCosting(Who, 40.0f);
+	if (!Skill)
+	{
+		AddError(TEXT("Could not grant the skill."));
+		return false;
+	}
+
+	UCataclysmEquipmentComponent* Equipment =
+		NewObject<UCataclysmEquipmentComponent>(Who.Actor);
+	Equipment->RegisterComponent();
+
+	const auto BoxCost = [this, &Who]() -> float
+	{
+		const TArray<FCataclysmSkillBarSlot> Bar =
+			UCataclysmSkillBar::Read(Who.Actor);
+		const FCataclysmSkillBarSlot* Box = Bar.FindByPredicate(
+			[](const FCataclysmSkillBarSlot& One)
+			{
+				return One.Slot == ECataclysmAbilitySlot::Heavy;
+			});
+		if (!Box)
+		{
+			AddError(TEXT("The bar drew no box for the skill."));
+			return -1.0f;
+		}
+		return Box->ManaCost;
+	};
+
+	// WEARING NOTHING, THE SKILL COSTS WHAT IT STATES. The control: without it
+	// a lookup answering 40 for every character would pass the "above half"
+	// half below and say nothing.
+	Equipment->RefreshAttributes(Who.AbilitySystem);
+	TestEqual(TEXT("wearing nothing, the skill costs what it states"),
+		Skill->ManaCostFor(Who.AbilitySystem), 40.0f, 0.01f);
+
+	// THE HELM CARRIES THE ROW AS ITS BENEFIT, paired with a drawback that has
+	// no effect row at all, so the removal is the only thing this item changes.
+	FCataclysmItem Helm;
+	Helm.Base = FName(TEXT("Head_Helm"));
+	FCataclysmRolledEnchantment Rolled;
+	Rolled.Positive = FName(TEXT("Positive_While_below_50_HP_your_skills_cost_no_mana"));
+	Rolled.Negative = FName(TEXT("Negative_Can_t_use_a_basic_attack"));
+	Helm.Enchantments.Add(Rolled);
+	Helm.EnchantmentCount = 1;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+	Equipment->RefreshAttributes(Who.AbilitySystem);
+
+	const float PoolMax = Who.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+	if (!TestTrue(TEXT("the worn helm leaves a maximum health to halve"),
+				  PoolMax > 0.0f))
+	{
+		return false;
+	}
+
+	// ABOVE HALF HEALTH THE ROW DOES NOT REACH IT, and the pool is full so the
+	// cast is refused for the cost rather than for anything else.
+	Who.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax * 0.6f);
+	Who.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetManaAttribute(), 0.0f);
+
+	TestEqual(TEXT("above half health the worn row leaves the cost alone"),
+		Skill->ManaCostFor(Who.AbilitySystem), 40.0f, 0.01f);
+	TestEqual(TEXT("and the bar shows the full cost"), BoxCost(), 40.0f, 0.01f);
+	TestFalse(TEXT("and an empty pool cannot pay it"), Activate(Who, Skill));
+
+	// ONE STEP OVER THE BOUNDARY AND THE ROW REACHES IT. Nothing is equipped or
+	// removed between the two readings; the health is the whole difference.
+	Who.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), PoolMax * 0.4f);
+
+	TestEqual(TEXT("below half health the worn row takes the cost to nothing"),
+		Skill->ManaCostFor(Who.AbilitySystem), 0.0f, 0.01f);
+	TestEqual(TEXT("and the bar says so"), BoxCost(), 0.0f, 0.01f);
+	TestTrue(TEXT("and an empty pool pays a cost of nothing"),
+			 Activate(Who, Skill));
+	TestEqual(TEXT("taking nothing out of it"), Who.Mana(), 0.0f, 0.01f);
 
 	return true;
 }

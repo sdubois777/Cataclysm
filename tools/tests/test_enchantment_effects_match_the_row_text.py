@@ -345,8 +345,13 @@ JUDGED_NUMBERS = {
 #: crowd control resistance under health_below 30, which is immunity because at
 #: 100 AfterCrowdControlResistance lets nothing land. It was held until a
 #: knockdown read that stat, in #1954.
-AUTHORED_ROWS = 205
-AUTHORED_ENCHANTMENTS = 163
+#: AND 211 OVER 169 SINCE THE SIX MANA COST SENTENCES, from 205 over 163,
+#: issue #1815. ONE ROW EACH on `mana_cost`, whose base is not a figure the
+#: character holds but the cost the skill itself states: two that reduce a cost,
+#: three that raise one, and one removal under `health_below` 50. The stat and
+#: its four readers were built in #1962; these are its first enchantment rows.
+AUTHORED_ROWS = 211
+AUTHORED_ENCHANTMENTS = 169
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -354,7 +359,11 @@ AUTHORED_ENCHANTMENTS = 163
 #: all, which is what a table built before the rows existed looks like.
 #: AND 25 SINCE THE THREE MELEE REMOVALS, from 22, issue #1815: the first
 #: removals with a condition, which take the stat away from a melee blow alone.
-REMOVED_ROWS = 25
+#: AND 26 SINCE "While below 50% HP your skills cost no mana", from 25, issue
+#: #1815: the first removal on the enchantment side whose base is a figure the
+#: caller supplies rather than one the character holds. Ritual Focus, the
+#: passive node added in #1966, is the same shape on the passive side.
+REMOVED_ROWS = 26
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's

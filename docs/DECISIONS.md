@@ -2,6 +2,111 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-17 — Six mana cost sentences are written, and the count in the entry that named them was wrong
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet, six rows),
+`game/Data/EnchantmentEffects.csv` (regenerated), `docs/README.md` (the sheet's row count),
+`tools/tests/test_enchantment_effects_match_the_row_text.py` (three pinned counts),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` (the table's pinned size) and
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp` (one test). Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815). **Applied.**
+
+### The six rows
+
+All on `mana_cost`, the stat added in [#1962](https://github.com/sdubois777/Cataclysm/pull/1962),
+whose base is not a figure the character holds but the cost the skill itself states.
+
+| Sentence | Row |
+| :-- | :-- |
+| Your spells cost 10%-20% less mana | more -10 to -20, `Type.Spell` |
+| Your aura costs 30%-50% less mana per second | more -30 to -50, `Slot.Aura` |
+| Skills cost 50%-75% more mana | more 50 to 75, no tags |
+| Your spells mana costs are quadrupled | more 300, `Type.Spell` |
+| Your auras cost 100%-200% increased mana per second | increased 100 to 200, `Slot.Aura` |
+| While below 50% HP your skills cost no mana | removed 1, under `health_below` 50 |
+
+211 rows over 169 enchantments, from 205 over 163. Removals 26, from 25.
+
+**The two aura rows pull opposite ways on one stat and one tag, and sit in different
+buckets.** "Less" is a multiplier and "increased" is an increase, so one is a More below zero
+and the other an Increase above it. That is the three-bucket vocabulary doing its job rather
+than an inconsistency, and it is recorded here so the next reader does not try to make them
+match.
+
+**The tags are measured, not assumed.** 403 skills; 8 sit in the Aura slot, all 8 carry
+`Slot.Aura`, and no skill outside that slot carries it, so it scopes both aura rows exactly.
+9 skills carry `Type.Spell`. Both tags were already in use in the sheet's Required Tags
+column, `Type.Spell` 7 times and `Slot.Aura` 4.
+
+**No new word rule was needed**, and that was checked by reading the check rather than
+assumed: "quadrupled" is in `MULTIPLYING_WORDS` as 300, "increased" is in the `INCREASE`
+pattern, "less" is in both `MULTIPLIER` and `TAKING`, "more" is in `MULTIPLIER`, "cost no
+mana" satisfies the removal wording, and "While below 50% HP" states the 50 the condition
+needs.
+
+### The count in the entry that named these sentences was wrong
+
+**The entry of 2026-09-17 that built the stat says it "serves six sentences". It serves
+seven.** The missed one is "Your auras cost 100%-200% increased mana per second". That entry's
+sentence is left where it is, byte for byte, with a correction added under it, so a reader who
+finds the wrong number finds the correction in the same place.
+
+**How it happened, which matters more than the row.** The original list was built by searching
+the enchantment text for the phrasings expected -- "less mana", "more mana", "no mana". The
+missed sentence says "increased mana", which none of those patterns reach. **Then the list
+hardened**: planning this turn, the count was taken from that entry's own prose rather than
+from the data, and a merged entry reads like a measurement.
+
+**The rule this gives: count from the data, never from your own prose, and say how a published
+list was found.** This turn's list was built by reading every enchantment sentence containing
+the word "mana" -- 33 of them -- rather than by searching for expected shapes. A bare count
+cannot be audited; "found by reading every sentence containing X" can.
+
+### The dry run earned its place
+
+**The whole generator was run on a `git archive` copy before the workbook was touched**, which
+is the rule for the first rows of a new kind, because the sheet's own tests never reach the
+whole-table validators.
+
+**It caught a defect in the writing script rather than in the rows.** The script took the
+first free row from inside its loop, and writing a cell makes the sheet grow, so each row
+landed further down than the last: 21 rows added instead of 6, six wanted and fifteen blank.
+The script now takes the first free row once, refuses unless the row count grew by exactly
+six, and refuses if any blank row was written. **Nothing shared was touched while it was
+wrong.**
+
+The write to the real workbook then reported: 6 rows added, 40 cells written, and **zero cells
+that already held a value touched**. The backup was compared to the workbook before writing
+and matched byte for byte.
+
+### Still held, and why
+
+**"When your class resource is above 75%, all skills cost 20%-40% less mana."** No condition
+reads a class resource above a share; `class_resource_at_maximum` is the only one, and a
+threshold condition is its own change.
+
+**"While below 50% HP, all skills cost HP instead of mana and cost 50% less."** The project
+owner ruled on 2026-09-17 that the 50% comes off the HEALTH cost: below half health a skill
+pays health equal to half its mana cost. It needs a way to pay health in place of mana, which
+this stat is not. An issue records the reading.
+
+**Four sentences are not this stat's work at all**: Mana Weaver's 10-piece bonus doubles a
+cost per use and resets each dungeon, and the two Spellblade's Will rows and Null Emperor's
+6-piece bonus all count stacks. Each needs a carried counter.
+
+### The test
+
+`Cataclysm.Skills.TheWornRowForNoManaBelowHalfHealthCostsNothingAndTheBarAgrees` wears the
+removal out of the table the game loads, rather than granting a row in code as the stat's other
+tests do, so it is the only one that would notice the authored row being wrong, missing or
+mis-scoped. It reads both sides of the boundary, because a conditioned removal that never
+applies reads exactly like one that always applies if only one side is asked. It empties the
+mana pool on purpose, so "the cast is allowed" can only mean the cost really is nothing, and
+it asks the skill bar as well, because a cost nothing charges is still wrong if the box shows
+a number.
+
+---
+
 ## 2026-09-17 — A minion's hit and kill are the minion's own, and the Conduit keystone is what makes them the summoner's
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.cpp` and
@@ -1021,6 +1126,12 @@ The stat serves six sentences in the enchantment tables: the two that reduce a s
 every skill's cost, the one that reduces an aura's per second, the two that raise a cost, and
 "While below 50% HP your skills cost no mana". They are written in a workbook turn of their
 own.
+**Corrected 2026-09-17: seven sentences, not six.** The one missed is "Your auras cost
+100%-200% increased mana per second", a plain row on this stat needing no new mechanism. It
+was missed because the count was carried from prose rather than from the data: the six were
+found by searching for the phrasings expected -- "less mana", "more mana", "no mana" -- and
+that sentence says "increased mana", which none of them reach. Six of the seven are written
+in the workbook turn; the class-resource one is still held.
 
 **Ritual Focus**, `Ritualist_keystone_d_kB`, "Skills you cast while standing still cost no
 mana", is a row on this stat with `while_stationary` and the removal kind. It belongs to the

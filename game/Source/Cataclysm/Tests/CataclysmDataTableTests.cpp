@@ -479,7 +479,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// The sentence states NO DURATION, which is what makes
 	// `class_resource_at_maximum` the honest reading; its neighbour saying "for
 	// 3 seconds" is deliberately still unwritten.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    205)
+	//
+	// AND 211 SINCE THE SIX MANA COST SENTENCES, issue #1815. ONE ROW EACH on
+	// `mana_cost`, the stat added in #1962, whose base is the cost the skill
+	// itself states rather than a figure the character holds: two reduce a
+	// cost, three raise one, and one removes it below half health.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    211)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
