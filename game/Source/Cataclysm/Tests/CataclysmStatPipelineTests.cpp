@@ -3447,4 +3447,79 @@ bool FCataclysmPipelineNewScalesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelinePointsThresholdTest,
+	"Cataclysm.StatPipeline.AClassResourceThresholdInPointsIsNotAShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `ClassResourcePointsAtLeast` counts POINTS, and the two readings are
+ * separated in BOTH directions rather than in one.
+ *
+ * WHY BOTH DIRECTIONS. A test that only showed points holding where a share
+ * refuses would pass for a condition that always held; one that only showed a
+ * share refusing where points hold would pass for a condition that always
+ * refused. The pair below has one case each way, on the same threshold of fifty:
+ * fifty of a hundred and fifty is a THIRD of the bar and holds, and forty of
+ * sixty is TWO THIRDS of the bar and does not. A share reading at fifty answers
+ * the opposite for both.
+ *
+ * AND THE BOUNDARY AGAINST ITS NEIGHBOUR, which reads the same pool as a share
+ * and strictly above. At exactly fifty of a hundred this holds and that one does
+ * not: "50 or more" against "above 50%". Pinned here so the difference is a
+ * measured fact rather than a sentence in a comment. Issue #1515.
+ */
+bool FCataclysmPipelinePointsThresholdTest::RunTest(const FString&)
+{
+	using FPipeline = UCataclysmStatPipeline;
+
+	const auto Resource = [](float Held, float Maximum)
+	{
+		FCataclysmStatConditions State;
+		State.ClassResourceHeld = Held;
+		State.ClassResourceMaximum = Maximum;
+		return State;
+	};
+
+	const ECataclysmStatCondition AtLeast =
+		ECataclysmStatCondition::ClassResourcePointsAtLeast;
+
+	// "50 OR MORE", SO FIFTY ITSELF HOLDS.
+	TestTrue(TEXT("exactly fifty points of a hundred holds"),
+		FPipeline::ConditionHolds(AtLeast, 50.0f, Resource(50.0f, 100.0f)));
+	TestFalse(TEXT("and forty-nine does not"),
+		FPipeline::ConditionHolds(AtLeast, 50.0f, Resource(49.0f, 100.0f)));
+	TestTrue(TEXT("and fifty-one does"),
+		FPipeline::ConditionHolds(AtLeast, 50.0f, Resource(51.0f, 100.0f)));
+
+	// THE UNIT, SEPARATED IN BOTH DIRECTIONS ON ONE THRESHOLD.
+	TestTrue(TEXT("fifty of a hundred and fifty holds, though it is a third of "
+				  "the bar, so it counts points"),
+		FPipeline::ConditionHolds(AtLeast, 50.0f, Resource(50.0f, 150.0f)));
+	TestFalse(TEXT("and forty of sixty refuses, though it is two thirds of the "
+				   "bar, so it is not reading a share"),
+		FPipeline::ConditionHolds(AtLeast, 50.0f, Resource(40.0f, 60.0f)));
+
+	// THE MAXIMUM IS NOT READ AT ALL, which is why this has two clauses where
+	// its neighbour has three: there is no bar-of-nothing to refuse.
+	TestTrue(TEXT("fifty points holds even when the bar's top is unknown"),
+		FPipeline::ConditionHolds(AtLeast, 50.0f, Resource(50.0f, -1.0f)));
+
+	// AN UNKNOWN READING REFUSES. Every enemy in the game has no class resource
+	// attribute set and reads -1; without this a threshold of zero would hand
+	// them all a bonus written for a Ravager.
+	TestFalse(TEXT("a character with no class resource at all refuses"),
+		FPipeline::ConditionHolds(AtLeast, 50.0f, Resource(-1.0f, -1.0f)));
+	TestFalse(TEXT("and refuses even against a threshold of nothing"),
+		FPipeline::ConditionHolds(AtLeast, 0.0f, Resource(-1.0f, 100.0f)));
+
+	// THE BOUNDARY ITS NEIGHBOUR DRAWS THE OTHER WAY.
+	TestFalse(TEXT("at fifty of a hundred the strictly-above share condition "
+				   "does not hold"),
+		FPipeline::ConditionHolds(
+			ECataclysmStatCondition::ClassResourceAbovePercent, 50.0f,
+			Resource(50.0f, 100.0f)));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
