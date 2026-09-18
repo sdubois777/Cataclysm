@@ -349,6 +349,94 @@ type is. It now refuses the quoted literal, which is what writing the answer dow
 
 ---
 
+## 2026-09-18 — A minion draws a nearby enemy off its summoner, a boss ignores it, and it is not crowd control
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and
+`.cpp`, `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` and two test
+files. The keystone is `Ritualist_keystone_spine_002`, Behind the Veil, from
+issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+**The node's sentence, unchanged:** "Enemies within 10 metres attack your minions
+rather than you, while you have three or more minions."
+
+### WHAT IT DOES
+
+A creature that would attack a character attacks one of that character's minions
+instead, when the character has the keystone, commands at least the stated
+number, and the creature stands within the stated reach. It is decided in
+`ACataclysmEnemyController::ChooseTarget`, after the order a commander may have
+given and after the search for the nearest hostile, so a creature that found
+nobody or found somebody else is left alone.
+
+### WHAT THE GENRE SETTLED, AND WHAT IT DID NOT
+
+Both shipped games express "attack this instead" by naming one creature to
+attack rather than by changing damage, which is the shape used here.
+
+| Game | Its wording | Read from |
+|---|---|---|
+| Path of Exile | "Enemies you Taunt can only target you, and deal 10% less damage to anyone else. Taunt lasts for 3 seconds", ending if the taunter dies | `poedb.tw/us/Taunt` |
+| Diablo 4 | Taunt forces the target to attack the source for a duration, is classed as crowd control, and has no effect on bosses | Icy Veins and the Fextralife wiki; that wiki's own Taunt page returned 404 |
+| Last Epoch | no developer statement found; players report that enemies attack the character rather than minions almost always | the official forum, community posts |
+
+**What it did not settle:** this node is a standing property of the character
+with a radius and a minion count, not a timed effect a skill applies. Its reach,
+its count and its exemptions are specific to this game.
+
+### THE OWNER'S DECISIONS, 2026-09-18
+
+**A BOSS IGNORES IT.** Every rank below boss is redirected. It reads the rank the
+spawner set, the same way `UCataclysmSkillEffects::ApplyStun` reads stun immunity
+and the subjugation rule reads "bosses cannot be taken" — as that rule's own
+comment asks, so the three cannot drift apart. **This game already refuses twice
+to let a boss have its behaviour taken over**, which is a stronger reason than
+the genre one: it is the house rule, and Diablo 4 agrees with it.
+
+**IT IS NOT CROWD CONTROL** and no resistance shortens or refuses it. **This goes
+against Diablo 4 on purpose**, which classes its Taunt as crowd control. The
+reason is what the resistance would have to do here:
+`UCataclysmSkillEffects::AfterCrowdControlResistance` scales an amount — in
+practice a duration — and removes the effect at 100. **This rule has no duration
+to scale**, because it is re-decided on every thinking pass for as long as the
+character stands there. Treating it as crowd control would mean building a second
+kind of resistance, which is a different piece of work from this node. If
+creatures should ever shrug it off, the shape is a named exemption per creature
+type, not the resistance stat.
+
+### THE JUDGEMENTS, RULED UNDER THE OWNER'S DELEGATION OF 2026-09-14
+
+| Question | Answer | Why |
+|---|---|---|
+| Ten metres from whom? | **From the character** | The sentence is about enemies near you, and it is what makes the keystone legible in play |
+| Which minion? | **The one drawing most attention**, ties to whichever stands nearest the creature | `ThreatPercent` on the minion type row is the number the design already states |
+| A minion drawing nothing? | **Not eligible at all**, rather than ranked last | That column's own comment says a turret sits near zero and an imp at 100, "which is how a decoy and a turret are one number rather than two behaviours". Sending enemies at a turret would contradict the number the data states |
+| No eligible minion in reach? | **The creature chooses as it does today** | The sentence promises a redirection, not a protection |
+| Where do the ten and the three live? | **In rows on the node**, not as constants in code | Every other node's numbers live in the data, and a reader of the row must see them |
+| Does a subjugated enemy count towards the three? | **Yes** | It is commanded, `UCataclysmCommand::ThingsCommandedBy` already counts it, and the target choice says outright that a thrall is part of the army. It is ELIGIBLE to be attacked only if its own type row states a threat above zero, and none does |
+
+### TWO STATS AND NO FLAG
+
+`minions_draw_nearby_enemies_metres` carries the reach and
+`minions_draw_nearby_enemies_minimum` the count. Neither has a gameplay
+attribute: the base is zero and the node's flat row is the whole of the answer.
+**A reach above zero IS the keystone being present**, so there is no third stat
+holding a flag — a character without the node has no row, the lookup answers
+zero, and the rule stops before asking anything else.
+
+### WHAT THIS CHANGE DOES NOT DO, SAID PLAINLY
+
+**The two rows are not written yet, so the keystone still grants nothing in
+play.** The rows are authored in the design workbook, which another session
+holds; they arrive with the regenerated data and the rebuilt asset. Until then
+every test here grants the two stats by hand, **and a test that grants a stat by
+hand passes with no row at all** — which is exactly what happened to the sibling
+keystone Conduit, read by the engine a day before any row granted it, with every
+test passing throughout. The test that closes that hole reads the row and lands
+with the rows.
+
+---
+
 ## 2026-09-18 — Four conditions and two scale sources land ahead of their rows, and two sentences that looked like the same shape are not
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the stat

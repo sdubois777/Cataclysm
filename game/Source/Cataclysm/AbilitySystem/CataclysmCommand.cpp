@@ -12,6 +12,9 @@
 #include "Cataclysm.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
+// For a minion type row's ThreatPercent, which decides which minion
+// draws a nearby enemy off its summoner. Issue #1515.
+#include "Data/CataclysmDataRows.h"
 #include "AbilitySystemComponent.h"
 // Cast<AController> in CommanderOf needs the whole type, not the forward
 // declaration Pawn.h carries.
@@ -282,6 +285,137 @@ AActor* UCataclysmCommand::OrderedTargetFor(const AActor* Follower)
 	// ASKED OF THE COMMANDER'S MARK, so one lookup answers for every creature
 	// that character commands and the answer cannot differ between two of them.
 	return QuarryOf(CommanderOf(Follower));
+}
+
+namespace
+{
+	/**
+	 * What a character's own stat line says, or zero when it says nothing.
+	 *
+	 * ASKED THROUGH THE PIPELINE RATHER THAN OFF AN ATTRIBUTE, the shape
+	 * `ACataclysmMinion::HitsCountAsTheSummoners` uses for the sibling keystone.
+	 * Neither stat this is called for has an attribute behind it, so the base is
+	 * zero and the node's flat row is the whole of the answer: a character
+	 * without the node is answered zero and every caller below stops there.
+	 *
+	 * THE SPELLING MUST MATCH `UCataclysmPlayerClassStats::StatsWithNoAttribute`.
+	 * A name that does not match falls back in silence and reads as a character
+	 * without the keystone rather than as a fault; what catches it is
+	 * `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, which
+	 * fails when a stat on that list is read by nothing.
+	 */
+	float KeystoneStat(const AActor* Who, const TCHAR* Stat)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Who));
+		return Theirs
+			? Theirs->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f)
+			: 0.0f;
+	}
+
+	/**
+	 * How much attention a commanded thing draws, from its own type row.
+	 *
+	 * ZERO FOR ANYTHING THAT IS NOT A MINION WITH A TYPE, which is a subjugated
+	 * enemy and a minion summoned without one. Neither has a row stating a threat
+	 * and this does not invent one for them.
+	 */
+	float ThreatDrawnBy(const AActor* Thing)
+	{
+		const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Thing);
+		if (!Minion || Minion->TypeName.IsEmpty())
+		{
+			return 0.0f;
+		}
+
+		const FCataclysmMinionTypeRow* Row = ACataclysmMinion::FindType(
+			ACataclysmMinion::LoadTypeTable(), Minion->TypeName);
+		return Row ? Row->ThreatPercent : 0.0f;
+	}
+}
+
+AActor* UCataclysmCommand::MinionDrawingEnemyFrom(const AActor* Defender,
+												  const AActor* Deciding)
+{
+	if (!IsValid(Defender) || !IsValid(Deciding))
+	{
+		return nullptr;
+	}
+
+	// A BOSS CHOOSES FOR ITSELF. Ruled by the project owner on 2026-09-18, and
+	// read off the rarity the spawner set, the same way `ApplyStun` reads boss
+	// immunity and `Take` reads "bosses cannot be taken", so the three cannot
+	// drift apart.
+	if (const ACataclysmEnemyCharacter* AsEnemy =
+			Cast<ACataclysmEnemyCharacter>(Deciding))
+	{
+		if (AsEnemy->IsBoss())
+		{
+			return nullptr;
+		}
+	}
+
+	// THE REACH IS THE KEYSTONE'S PRESENCE, and the count is refused when it is
+	// not stated. An unread reading refuses, which is the rule every condition in
+	// the stat pipeline already follows.
+	const float Metres = KeystoneStat(
+		Defender, TEXT("minions_draw_nearby_enemies_metres"));
+	const float Minimum = KeystoneStat(
+		Defender, TEXT("minions_draw_nearby_enemies_minimum"));
+	if (Metres <= 0.0f || Minimum <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	// MEASURED TO THE CHARACTER AND NOT TO THE MINION. The sentence is about
+	// enemies near YOU, and that is also what makes the keystone legible in play:
+	// the bubble is around the character the player is looking at.
+	const float Away = UCataclysmTargeting::MetresBetween(Deciding, Defender);
+	if (Away < 0.0f || Away > Metres)
+	{
+		return nullptr;
+	}
+
+	// EVERYTHING COMMANDED COUNTS TOWARDS THE THREE, a subjugated enemy included,
+	// ruled on 2026-09-18. `ThingsCommandedBy` already counts it, and the target
+	// choice this feeds says outright that a thrall is part of the army.
+	const TArray<AActor*> Commanded = ThingsCommandedBy(Defender);
+	if (Commanded.Num() < FMath::RoundToInt(Minimum))
+	{
+		return nullptr;
+	}
+
+	// AND THE ONE DRAWING MOST ATTENTION TAKES THE BLOW, ties to whichever stands
+	// nearest the creature deciding. A thing drawing nothing is skipped rather
+	// than ranked last, so a turret never becomes the army's shield.
+	AActor* Drawing = nullptr;
+	float MostThreat = 0.0f;
+	float NearestMetres = 0.0f;
+	for (AActor* Thing : Commanded)
+	{
+		const float Threat = ThreatDrawnBy(Thing);
+		if (Threat <= 0.0f)
+		{
+			continue;
+		}
+
+		const float Distance = UCataclysmTargeting::MetresBetween(Deciding, Thing);
+		if (Distance < 0.0f)
+		{
+			continue;
+		}
+
+		if (!Drawing || Threat > MostThreat
+			|| (Threat == MostThreat && Distance < NearestMetres))
+		{
+			Drawing = Thing;
+			MostThreat = Threat;
+			NearestMetres = Distance;
+		}
+	}
+
+	return Drawing;
 }
 
 namespace

@@ -231,17 +231,37 @@ AActor* ACataclysmEnemyController::ChooseTarget() const
 	// `Exclusive/GameThread/EnemyTargetSearch`, the figure the sphere was measured
 	// by, so captures from before and after the change compare directly.
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(EnemyTargetSearch);
+	AActor* Nearest = nullptr;
 	if (UCataclysmTargetCandidates* Candidates = UCataclysmTargetCandidates::In(GetWorld()))
 	{
-		return Candidates->NearestHostile(Driven, Driven->GetActorLocation(), Sight);
+		Nearest = Candidates->NearestHostile(Driven, Driven->GetActorLocation(), Sight);
+	}
+	else
+	{
+		// A WORLD WITH NO SUBSYSTEMS -- a preview, never the game or a test's world --
+		// asks the sphere, which answers the same question more slowly.
+		const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
+			GetWorld(), Driven, Driven->GetActorLocation(), Sight, /*MaxTargets=*/1);
+
+		Nearest = Nearby.IsEmpty() ? nullptr : Nearby[0];
 	}
 
-	// A WORLD WITH NO SUBSYSTEMS -- a preview, never the game or a test's world --
-	// asks the sphere, which answers the same question more slowly.
-	const TArray<AActor*> Nearby = UCataclysmTargeting::FindEnemiesInSphere(
-		GetWorld(), Driven, Driven->GetActorLocation(), Sight, /*MaxTargets=*/1);
+	// AND A MINION MAY DRAW THIS CREATURE OFF WHAT IT FOUND. Behind the Veil:
+	// "Enemies within 10 metres attack your minions rather than you, while you
+	// have three or more minions." Issue #1515.
+	//
+	// AFTER THE SEARCH AND NOT INSTEAD OF IT, because the keystone redirects a
+	// creature that would attack the character; one that found nobody, or found
+	// somebody else, is left alone. `MinionDrawingEnemyFrom` answers null for
+	// every character without the node, which is all of them but a Ritualist's.
+	//
+	// ON BOTH ROUTES ABOVE, so a world with no subsystems behaves the same way.
+	if (AActor* Drawn = UCataclysmCommand::MinionDrawingEnemyFrom(Nearest, Driven))
+	{
+		return Drawn;
+	}
 
-	return Nearby.IsEmpty() ? nullptr : Nearby[0];
+	return Nearest;
 }
 
 ECataclysmBrainAction ACataclysmEnemyController::Think()

@@ -223,6 +223,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmCombatEvents::NoteBlow. A flag: the Conduit keystone sets
 		// it to one, and without it a minion's blow is the minion's own.
 		TEXT("minion_hits_count_as_yours"),
+		// How far a Ritualist's minions draw nearby enemies off their summoner,
+		// and how many minions that takes. Both read by
+		// UCataclysmCommand::MinionDrawingEnemyFrom for the Behind the Veil
+		// keystone. A reach above zero IS the keystone being present, so there is
+		// no third stat holding a flag.
+		TEXT("minions_draw_nearby_enemies_metres"),
+		TEXT("minions_draw_nearby_enemies_minimum"),
 		// Whether it is removed, read by UCataclysmSkillTemplate::ApplyManaOnHit.
 		TEXT("mana_on_hit"),
 		// What a skill costs, read by UCataclysmGameplayAbility::ManaCostFor,

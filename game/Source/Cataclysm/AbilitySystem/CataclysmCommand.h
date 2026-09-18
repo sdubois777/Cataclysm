@@ -99,6 +99,44 @@ public:
 	static AActor* OrderedTargetFor(const AActor* Follower);
 
 	/**
+	 * The minion that draws this creature off the character it would otherwise
+	 * attack, or null when nothing changes.
+	 *
+	 * BEHIND THE VEIL, the Ritualist keystone `Ritualist_keystone_spine_002`:
+	 * "Enemies within 10 metres attack your minions rather than you, while you
+	 * have three or more minions."
+	 *
+	 * THE TEN AND THE THREE ARE ROWS ON THE NODE, not numbers here, ruled on
+	 * 2026-09-18: every other node's numbers live in the data and a reader of the
+	 * rows must see them. `minions_draw_nearby_enemies_metres` carries the reach
+	 * and `minions_draw_nearby_enemies_minimum` the count, and neither has an
+	 * attribute behind it.
+	 *
+	 * A REACH ABOVE ZERO IS THE KEYSTONE BEING PRESENT, so there is no separate
+	 * flag. A character without the node has no row, the lookup answers zero, and
+	 * this returns null before asking anything else.
+	 *
+	 * A BOSS IGNORES IT, ruled by the project owner on 2026-09-18. It reads the
+	 * rarity the way `UCataclysmSkillEffects::ApplyStun` reads stun immunity and
+	 * the subjugation rule reads "bosses cannot be taken", as that rule's own
+	 * comment asks, so the three cannot drift apart.
+	 *
+	 * IT IS NOT CROWD CONTROL and no resistance shortens or refuses it, ruled at
+	 * the same time. The resistance machinery scales a duration and this has none.
+	 *
+	 * WHICH MINION: the eligible one drawing most attention, by `ThreatPercent`
+	 * on its own minion type row, ties broken by whichever stands nearest this
+	 * creature. A minion whose type states zero draws nobody -- that is what makes
+	 * a turret and a decoy one number rather than two behaviours -- so it is not
+	 * eligible. A subjugated enemy COUNTS towards the three, because it is
+	 * commanded, and is eligible only if its own type row states a threat above
+	 * zero.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Command")
+	static AActor* MinionDrawingEnemyFrom(const AActor* Defender,
+										  const AActor* Deciding);
+
+	/**
 	 * What to multiply this creature's attack interval by, right now.
 	 *
 	 * ONE THING CHANGES IT: attacking its commander's quarry. Quarry grants "30%
