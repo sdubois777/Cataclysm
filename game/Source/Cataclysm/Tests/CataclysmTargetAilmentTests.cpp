@@ -490,9 +490,15 @@ bool FCataclysmTargetAilmentMinionTest::RunTest(const FString&)
 						  /*ConditionalIncrease=*/16.0f,
 						  /*UnconditionalIncrease=*/0.0f);
 
+	// A REAL IMP, NAMED, SINCE ISSUE #1515. This case used to spawn a minion
+	// with no type row, which swung for 30% of its SUMMONER'S weapon damage.
+	// The project owner ruled that a bug on 2026-09-17 and the share is
+	// deleted, so a typeless minion now deals nothing and neither blow below
+	// would land. What the figure is does not matter here; that there is one
+	// does.
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
 		Summoner.Actor, FVector(1.0f * AilmentM, 0.0f, 0.0f), /*Lifetime=*/20.0f,
-		/*bBurns=*/false);
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
 
 	// PLACED APART ON DIFFERENT AXES so no spawn is displaced by another's
 	// collision.

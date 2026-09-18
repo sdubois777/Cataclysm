@@ -1093,6 +1093,20 @@ struct FCataclysmMinionTypeRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
 	float DamagePerLevel = 0.0f;
 
+	/**
+	 * What this kind's death explodes for, as a share of its own blow.
+	 *
+	 * THE OWNER'S FIGURE OF 2026-09-17, three of the minion's own blows for
+	 * every type. Until then an explosion was 150% of the SUMMONER'S weapon
+	 * damage, through the Special slot, which the owner ruled a bug: a
+	 * minion's blow carries the minion's own numbers and not its summoner's.
+	 *
+	 * ZERO MEANS THIS KIND LEAVES NO EXPLOSION. `ACataclysmMinion::Explode`
+	 * refuses a damage of nothing, so a type saying zero simply never bursts.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
+	float ExplosionPercentOfOwnDamage = 0.0f;
+
 	/** Seconds between this minion's attacks. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Minion Types")
 	float AttackIntervalSeconds = 0.0f;

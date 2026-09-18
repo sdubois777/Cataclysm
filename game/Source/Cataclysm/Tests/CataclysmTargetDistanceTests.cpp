@@ -496,9 +496,14 @@ bool FCataclysmTargetDistanceMinionTest::RunTest(const FString&)
 	// THE TARGET STANDS TWO METRES FROM THE SUMMONER, so the condition WOULD hold
 	// if a minion's blow were allowed to read it. Placing it far away instead
 	// would make the test pass for the wrong reason.
+	// A REAL IMP, NAMED, SINCE ISSUE #1515. This case used to spawn a minion
+	// with no type row, which swung for 30% of its SUMMONER'S weapon damage.
+	// The project owner ruled that a bug on 2026-09-17 and the share is
+	// deleted, so a typeless minion now deals nothing and the blow below would
+	// not land. What the figure is does not matter here; that there is one does.
 	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
 		Summoner.Actor, FVector(1.0f * M, 0.0f, 0.0f), /*Lifetime=*/20.0f,
-		/*bBurns=*/false);
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
 	// TWO METRES AWAY ON DIFFERENT AXES, NOT THE SAME SPOT. Both are two metres
 	// from the summoner at the origin, which is what the test needs, and putting
 	// them on one spot would risk a spawn being displaced by the other's collision
@@ -530,7 +535,8 @@ bool FCataclysmTargetDistanceMinionTest::RunTest(const FString&)
 	FArmedActor Plain = MakeArmed(World);
 	ACataclysmMinion* PlainImp = Plain.Actor
 		? ACataclysmMinion::Spawn(Plain.Actor, FVector(0.0f, 1.0f * M, 0.0f),
-								  /*Lifetime=*/20.0f, /*bBurns=*/false)
+								  /*Lifetime=*/20.0f, /*bBurns=*/false,
+								  /*TypeName=*/TEXT("Imp"))
 		: nullptr;
 	ACataclysmEnemyCharacter* PlainStruck =
 		SpawnCreatureAt(World, FVector(0.0f, 3.0f * M, 0.0f), 1'000'000.0f);

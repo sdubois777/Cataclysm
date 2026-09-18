@@ -1880,9 +1880,36 @@ namespace CataclysmMinionDeathTest
 	using Combat = UCataclysmCombatAttributeSet;
 	using Resource = UCataclysmClassResourceAttributeSet;
 
-	/** What a summoning skill states, as Summon Imp's own sentence does. */
+	/** The radius a summoning skill states, as Summon Imp's sentence does. */
 	constexpr float ExplosionRadiusCm = 300.0f;
-	constexpr float ExplosionDamagePercent = 50.0f;
+
+	//~ THE IMP'S AUTHORED FIGURES, from `game/Data/MinionTypes.csv`, written
+	//~ out rather than read back so these cases state their own arithmetic.
+	//~ `Cataclysm.DataTable` pins the table, so a row changed underneath them
+	//~ is caught there and named rather than failing obscurely here.
+	constexpr float ImpBaseDamage = 10.5f;
+	constexpr float ImpDamagePerLevel = 10.5f;
+	constexpr float ImpExplosionPercentOfOwnDamage = 300.0f;
+
+	/**
+	 * What one imp's explosion deals here.
+	 *
+	 * ITS OWN BLOW TIMES ITS OWN SHARE, SINCE ISSUE #1515. Until then an
+	 * explosion was the summoning skill's percentage of the SUMMONER'S weapon
+	 * damage, which the owner ruled a bug: nothing on a minion's blow reads
+	 * the summoner's weapon.
+	 *
+	 * THE LEVEL IS ASKED OF THE ENGINE AND THE REST IS NOT. A summoner built
+	 * here has no player state, so a minion takes the level the class stats
+	 * are previewed at -- the path every non-player summoner takes -- and it
+	 * is not a figure this file can state.
+	 */
+	float ImpExplosionDamage()
+	{
+		const float Blow = ImpBaseDamage + ImpDamagePerLevel
+			* static_cast<float>(UCataclysmPlayerClassStats::ChosenLevel());
+		return Blow * ImpExplosionPercentOfOwnDamage / 100.0f;
+	}
 
 	/** A stat a summoner carries, and the bucket it arrives in. */
 	struct FStatLine
@@ -1964,7 +1991,14 @@ namespace CataclysmMinionDeathTest
 			/ CataclysmCommandTest::M;
 	}
 
-	/** An imp told what its summoning skill says its explosion is. */
+	/**
+	 * An imp told the radius its summoning skill states.
+	 *
+	 * THE RADIUS IS ALL THE SKILL TELLS IT NOW. What the explosion is worth
+	 * comes from the Imp row of `game/Data/MinionTypes.csv` at the summoning,
+	 * so a case that wanted a different figure would change the type rather
+	 * than the call.
+	 */
 	ACataclysmMinion* SummonTold(CataclysmCommandTest::FScopedCaster& Summoner,
 								 const FVector& Where)
 	{
@@ -1973,7 +2007,7 @@ namespace CataclysmMinionDeathTest
 			TEXT("Imp"));
 		if (Imp)
 		{
-			Imp->RecordExplosion(ExplosionRadiusCm, ExplosionDamagePercent);
+			Imp->RecordExplosionRadius(ExplosionRadiusCm);
 		}
 		return Imp;
 	}
@@ -2171,10 +2205,13 @@ bool FCataclysmMinionDeathExplosionDamageTest::RunTest(const FString&)
 	Kill(PlainImp);
 	Kill(RaisedImp);
 
-	TestEqual(TEXT("the control explosion deals 50% of 1000"),
-			  PlainBefore - HealthOf(PlainTarget), 500.0f, 0.1f);
-	TestEqual(TEXT("and +50% explosion damage deals 750"),
-			  RaisedBefore - HealthOf(RaisedTarget), 750.0f, 0.1f);
+	// THE IMP'S OWN BLOW TIMES ITS OWN SHARE, and half as much again under the
+	// stat. Neither figure is the summoner's weapon any more.
+	TestEqual(TEXT("the control explosion deals the imp's own figure"),
+			  PlainBefore - HealthOf(PlainTarget), ImpExplosionDamage(), 0.1f);
+	TestEqual(TEXT("and +50% explosion damage deals half as much again"),
+			  RaisedBefore - HealthOf(RaisedTarget),
+			  ImpExplosionDamage() * 1.5f, 0.1f);
 	return true;
 }
 
@@ -2231,13 +2268,14 @@ bool FCataclysmMinionCapExplosionDamageTest::RunTest(const FString&)
 	const float PlainBefore = HealthOf(PlainTarget);
 	const float RaisedBefore = HealthOf(RaisedTarget);
 
-	PlainImp->Explode(ExplosionRadiusCm, ExplosionDamagePercent);
-	RaisedImp->Explode(ExplosionRadiusCm, ExplosionDamagePercent);
+	PlainImp->Explode();
+	RaisedImp->Explode();
 
-	TestEqual(TEXT("the control explosion deals 50% of 1000"),
-			  PlainBefore - HealthOf(PlainTarget), 500.0f, 0.1f);
-	TestEqual(TEXT("and +50% explosion damage deals 750"),
-			  RaisedBefore - HealthOf(RaisedTarget), 750.0f, 0.1f);
+	TestEqual(TEXT("the control explosion deals the imp's own figure"),
+			  PlainBefore - HealthOf(PlainTarget), ImpExplosionDamage(), 0.1f);
+	TestEqual(TEXT("and +50% explosion damage deals half as much again"),
+			  RaisedBefore - HealthOf(RaisedTarget),
+			  ImpExplosionDamage() * 1.5f, 0.1f);
 	TestFalse(TEXT("an explosion destroys the minion whatever set it off"),
 			  IsValid(PlainImp));
 	return true;
@@ -2374,8 +2412,13 @@ bool FCataclysmSummonTellsItsMinionTest::RunTest(const FString&)
 
 	TestEqual(TEXT("it was told the skill's three metre radius"),
 			  Imp->ExplosionRadiusCm, 300.0f, 0.001f);
-	TestEqual(TEXT("and the damage the skill states"),
-			  Imp->ExplosionDamagePercent, 50.0f, 0.001f);
+
+	// AND THE SHARE CAME FROM THE TYPE ROW RATHER THAN THE SKILL, which is the
+	// half of this that moved for issue #1515: the skill states how wide the
+	// explosion is, and the minion states what it is worth.
+	TestEqual(TEXT("and its own row said what an explosion of its is worth"),
+			  Imp->ExplosionPercentOfOwnDamage,
+			  ImpExplosionPercentOfOwnDamage, 0.001f);
 	return true;
 }
 

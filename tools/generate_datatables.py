@@ -2573,6 +2573,24 @@ def minion_types(book) -> list[dict]:
             raise DataError(
                 f"Minion Types row {index}: {name} draws {threat}% attention")
 
+        # WHAT ITS DEATH IS WORTH, AS A SHARE OF ITS OWN BLOW. Issue #1515.
+        # The project owner's figure of 2026-09-17: three of the minion's
+        # own blows, for every type, machines included, so the Ritualist
+        # keystone "Every minion explodes when it dies" stays true of all
+        # of them. It replaces the Special slot's 150% of the SUMMONER'S
+        # weapon damage, which is what a minion's explosion took until now
+        # and what the owner ruled a bug.
+        #
+        # ZERO IS ALLOWED AND MEANS NO EXPLOSION, which is a type saying so
+        # rather than a figure left out: the engine refuses an explosion of
+        # nothing anyway.
+        explosion = number(_cell(raw, headers, "Explosion Percent Of Own Damage"),
+                           "Explosion Percent Of Own Damage", index)
+        if explosion < 0:
+            raise DataError(
+                f"Minion Types row {index}: {name} explodes for {explosion}% "
+                "of its own damage, which is less than nothing")
+
         out.append({
             "Name": name,
             "Family": family,
@@ -2582,6 +2600,7 @@ def minion_types(book) -> list[dict]:
             "BaseDamage": damage,
             "DamagePerLevel": number(_cell(raw, headers, "Damage Per Level"),
                                      "Damage Per Level", index),
+            "ExplosionPercentOfOwnDamage": explosion,
             "AttackIntervalSeconds": interval,
             "MoveSpeed": number(_cell(raw, headers, "Move Speed"),
                                 "Move Speed", index),
@@ -5586,7 +5605,32 @@ def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
         where = f"WeaponSkills/{row['Name']}"
         params = parse_shape_params(row["ShapeParams"], row["Shape"], where)
         written = params.get("Minions")
+        if not written and row["Shape"] not in SHAPES_THAT_SUMMON:
+            # EVERY OTHER SHAPE NAMES NO MINIONS AND SHOULD NOT. A strike, a
+            # projectile, an aura and the rest have nothing to summon.
+            continue
+        if not written and params.get("Possess") == "1":
+            # AND A SUMMON THAT TAKES RATHER THAN MAKES NAMES NONE EITHER.
+            # The Staff's Subjugate is a Summon shape that summons nothing:
+            # it drives your will into an enemy and keeps the creature that
+            # was already there, which has its own stat block. The engine
+            # branches on the same flag at `UCataclysmSummonSkill::Possess`.
+            continue
         if not written:
+            # A SUMMON THAT NAMES NO MINION TYPE IS REFUSED HERE. Issue
+            # #1515. It used to be allowed, and the engine gave whatever it
+            # produced 30% of the SUMMONER'S weapon damage -- the fallback
+            # the owner ruled a bug on 2026-09-17, now deleted. A minion
+            # with no type has no damage of its own and would swing for
+            # nothing, so the row is a mistake rather than a shape, and it
+            # is caught here instead of shipping silently.
+            #
+            # NO SHIPPED ROW LEAVES IT EMPTY, measured 2026-09-17, so this
+            # refuses nothing that exists today.
+            problems.append(
+                f"{where}: is a {row['Shape']} and names no Minions, so it'd "
+                "summon something with no stat block of its own. Name a type "
+                "from the Minion Types sheet.")
             continue
 
         produced = parse_minions(written, where)
@@ -5605,6 +5649,15 @@ def validate_minion_references(tables: dict[str, list[dict]]) -> list[str]:
                     "of the two is wrong, and nothing would notice at runtime.")
     return problems
 
+
+#: The two shapes that put a creature of their own in the world. Issue #1515.
+#:
+#: READ OFF THE DATA RATHER THAN GUESSED: `Summon` is Summon Imp and Open the
+#: Rift, `Deployable` is Bolt Turret, Ballista and Iron Fortress, and every
+#: other shape in `game/Data/WeaponSkills.csv` names no minions at all. A row
+#: of one of these two with no `Minions` parameter is the mistake the check
+#: below refuses.
+SHAPES_THAT_SUMMON = frozenset({"Summon", "Deployable"})
 
 #: Which shapes find who they hit with the row's `Radius`, and when.
 #:
