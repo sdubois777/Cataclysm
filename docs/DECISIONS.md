@@ -276,6 +276,141 @@ Holy Repercussions', and finding it is what produced the distinction written abo
 
 ---
 
+## 2026-09-18 — A skill's cooldown reduction is asked for with the skill's own tags, through a rate route nothing had ever called
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(a new lookup, `RateAppliedTo`), `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h`
+and `.cpp` (`CooldownAfterReduction` takes the skill's tags and asks the character's recorded
+rows; its one caller hands them over),
+`game/Source/Cataclysm/Tests/CataclysmAbilitySystemTests.cpp` (one test) and
+`tools/tests/test_a_cooldown_is_asked_for_not_read.py` (new). Issue
+[#1981](https://github.com/sdubois777/Cataclysm/issues/1981).
+
+**Partial.** The Python suite and both proofs of the new Python check have run. **The Unreal
+compile, the new automation test and the C++ guard proof have not**, and the registration at the
+end of this entry is a prediction made before the run rather than a result.
+
+### What was wrong
+
+`UCataclysmGameplayAbility::CooldownAfterReduction` read the `CooldownReduction` gameplay
+attribute. `UCataclysmPlayerClassStats::ApplyTo` writes every attribute with an **empty tag
+container and the default conditions**, so a `cooldown_reduction` row carrying RequiredTags, a
+Condition or a Scale was discarded on the way to that attribute. Such a row passed every check,
+shipped in the table, and changed no cooldown in play. Only a wholly unscoped row worked.
+
+### The judgement, made under the project owner's delegation of 2026-09-14
+
+**A rate divides, so this is not a `StatForSkill` call**, and the obvious repair would have been
+wrong in a way that passes a careless test. `StatForSkill` returns
+`(base + flat) x (1 + increases/100) x more`. Applied to a cooldown that multiplies, so cooldown
+reduction would have made cooldowns **longer**.
+
+The correct arithmetic already existed. `UCataclysmStatPipeline::EvaluateRate` divides the
+interval by both buckets, which is why no amount of reduction reaches zero and why the stat needs
+no cap, and a **removal** on it leaves the base interval rather than an interval of no length --
+the rule issue #1791 set. `tools/generate_datatables.py` names the same fact from the data side:
+`RATE_STATS = frozenset({"cooldown_reduction"})`.
+
+So the change is a **third per-skill entry point**, `UCataclysmAbilitySystemComponent::RateAppliedTo`,
+a mirror of `StatAppliedTo` that calls `EvaluateRate` instead of `Evaluate`. `StatAppliedTo` is
+the precedent for adding one rather than overloading the first: it was added by issue #1973 for
+this same class of fault, a row deliberately not folded into an attribute with nothing asking for
+it.
+
+### The measurement that decided the shape
+
+**`EvaluateRate` had no non-test caller anywhere in the game.** Measured 2026-09-18: every
+reference to it under `game/Source` outside `CataclysmStatPipelineTests.cpp` is its own
+definition, its declaration, or a comment about it. The pipeline knew how to work a rate out
+correctly and the game never asked it to. That is the same shape as issue #895, recorded in this
+file, where `FinalCooldown` was written, documented and tested and nothing called it.
+
+### Two findings settled before the change could be called safe
+
+**The recorded rows are a COMPLETE source, so the rate route reads no attribute and counts
+nothing twice.** `ApplyTo` keeps the whole modifier list on the component, the scoped rows
+included, in its own words "KEPT SO A SKILL CAN WORK THIS OUT AGAIN WITH ITS OWN TAGS", issue
+#943. And it is the **only non-test writer of the attribute**; the only other write is
+`InitCooldownReduction(0.0f)`. So gear and the Efficacy attribute both reach the row list, and
+running the rate pipeline over that list loses nothing. This was checked before the change was
+written, because had Efficacy reached the attribute by some other route the change would have
+silently thrown it away.
+
+**The whole list through ONE pass, and not the attribute with the scoped part applied on top.**
+Increases have to sum into a single bracket, the reason `StatForSkill` gives: a base carrying an
+unscoped +50% and a scoped +50% is one answer through one pass and a different one through two.
+
+**Once a character has recorded rows, the attribute is no longer consulted for cooldowns.** That
+is the change's one behavioural surprise and it is pinned in the automation test rather than left
+to be discovered. In play the two agree, because `ApplyTo` writes the attribute from those same
+rows and nothing else writes it. A figure put straight onto the attribute beside a recorded row
+is a test doing it, and the rows now win. A character with **no** recorded rows still reads the
+attribute, which is every enemy, a player before its first refresh, and the existing cooldown
+test, whose assertions are unchanged.
+
+### What it unblocks
+
+Six enchantment sentences, each an ordinary row once a cooldown row can be scoped:
+
+- "Your ultimate ability cooldown is reduced by 20%-40%"
+- "Your support ability cooldown is reduced by 20%-40%"
+- "Summon skills have 30%-60% reduced cooldown"
+- "Ultimate cooldowns increased by 100%-500%"
+- "Movement abilities have 50% increased cooldown"
+- "Your cooldowns reset 50%-100% faster when fighting Boss enemies" -- its second blocker is
+  already gone, since `target_is_boss` shipped for issue #1976
+
+**Two more need this and one thing beside it**, an event route into a running cooldown, which
+does not exist: "Your special ability cooldown is reset when you kill an enemy" and "When your
+class resource hits zero, all skill cooldowns are reduced by 2-4 seconds".
+
+The rows themselves are a later change; this one is the engine only, and no data file moves.
+
+### One comment removed rather than kept
+
+`CooldownAfterReduction` carried "NO 'MORE' MULTIPLIER YET ... none of them reaches an ability
+today". `EvaluateRate` applies the More bucket, so the sentence would have contradicted the code
+it sat in.
+
+### The checks, and which of them have run
+
+**A new Python check**, `tools/tests/test_a_cooldown_is_asked_for_not_read.py`, five tests. It
+reads the C++ with comments and string literals stripped, and asserts the **call** rather than a
+mention -- necessary here, because every comment in this codebase names the functions it is
+about, so "the body contains the word" would be satisfied by a comment alone. One of its five
+tests checks that the stripping happened at all, so the other four cannot go vacuous.
+
+**Proved twice, both in a `git archive` copy** so that no other test read a broken C++ file:
+
+- **The call deleted and the attribute read put back.**
+  `PROVED: 1 failed, 4 passed in 0.10s` with the break in, `restored: 5 passed in 0.05s` with it
+  out.
+- **The call deleted, but a comment naming `RateAppliedTo` and a `TEXT("RateAppliedTo(")` string
+  literal left in the same body.** `PROVED` again, the same single named failure.
+
+Both named `test_the_cooldown_lookup_asks_the_rate_pipeline`. The second is the one that matters:
+it shows the check reads code and not the words around it.
+
+**The Python suite at this head:** 5283 passed, 8 skipped in 305.21s, and the second count that
+no flag can silence gives tests 5291, failures 0, errors 0, skipped 8, so 5283 passed. Against
+5278 passed and 5286 tests on the base that is exactly +5, which is exactly what the new file
+adds. `ruff check .` reports all checks passed.
+
+**The C++ guard proof is REGISTERED AND NOT RUN.** Predicted before the run, so that the result
+cannot be fitted to it afterwards: breaking `CooldownAfterReduction` by putting the attribute read
+back in place of the `RateAppliedTo` call makes **exactly one test fail**, short name
+`ACooldownRowScopedToASkillTagShortensOnlyThatSkill`, and leaves
+`CooldownReductionOnTheCharacterShortensItsCooldowns` passing, because that one drives the
+attribute route only.
+
+**At test level on purpose.** `prove_cpp_guard`'s restored run overwrites
+`game/Saved/Logs/Cataclysm.log`, so an assertion-level prediction cannot be checked afterwards.
+Stated as reasoning rather than as a registration: three of the new test's seven assertions
+should fail under that break -- the scoped row halving an ultimate's cooldown, the unconditioned
+control row halving it, and the recorded row answering instead of the attribute beside it.
+
+---
+
 ## 2026-09-17 — Thirty-three enchantment rows are written, and ten approved sentences are held for four different reasons
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet gains 33 rows; the

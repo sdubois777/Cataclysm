@@ -7,9 +7,11 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Misc/ScopeExit.h"
 #include "GameplayEffect.h"
+#include "GameplayTagContainer.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 
@@ -278,6 +280,196 @@ bool FCataclysmCooldownReductionReachesASkillTest::RunTest(const FString&)
 	TestEqual(TEXT("a negative reduction leaves the cooldown alone"),
 		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
 		4.0f, 0.001f);
+
+	return true;
+}
+
+
+// ---------------------------------------------------------------------------
+
+/**
+ * A COOLDOWN ROW SCOPED TO A SKILL TAG SHORTENS ONLY THAT SKILL. Issue #1981.
+ *
+ * WHAT WAS WRONG. `UCataclysmGameplayAbility::CooldownAfterReduction` read the
+ * `CooldownReduction` gameplay attribute, and
+ * `UCataclysmPlayerClassStats::ApplyTo` writes every attribute with an EMPTY
+ * tag container and the default conditions. So a `cooldown_reduction` row
+ * carrying RequiredTags, a Condition or a Scale was discarded before it reached
+ * the attribute, and changed no cooldown in play. Six enchantment sentences
+ * need exactly that, "Summon skills have 30%-60% reduced cooldown" among them.
+ *
+ * IT DIVIDES, so a row of +100% increased turns four seconds into two rather
+ * than into nothing. `UCataclysmStatPipeline::EvaluateRate` is the arithmetic,
+ * and until this change nothing in the game called it.
+ *
+ * THE ROWS ARE PUT ON BY HAND. This proves the LOOKUP honours scoping, not
+ * that any shipped data row exists; the row-text checks in `tools/tests` cover
+ * the data. `Slot.Ultimate` is used because shipped enchantment rows already
+ * carry it, so it is certainly a real tag in this build -- and the test says so
+ * outright rather than trusting it, because a tag this build did not know would
+ * leave the container empty and every assertion below would pass for the wrong
+ * reason.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScopedCooldownRowTest,
+	"Cataclysm.Ability.ACooldownRowScopedToASkillTagShortensOnlyThatSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmScopedCooldownRowTest::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("an actor"), Actor))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		NewObject<UCataclysmAbilitySystemComponent>(Actor);
+	AbilitySystem->RegisterComponent();
+
+	// A raw pointer on purpose, for the reason the test above gives.
+	UCataclysmCombatAttributeSet* Combat =
+		NewObject<UCataclysmCombatAttributeSet>(Actor);
+	AbilitySystem->AddAttributeSetSubobject(Combat);
+	AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+
+	FGameplayTagContainer Ultimate;
+	Ultimate.AddTag(FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Slot.Ultimate")), /*ErrorIfNotFound=*/false));
+	if (!TestEqual(TEXT("the tag this build is asked about is a real one"),
+				   Ultimate.Num(), 1))
+	{
+		return false;
+	}
+
+	const FName Stat(TEXT("cooldown_reduction"));
+
+	// A ROW WORTH +100% INCREASED, SCOPED TO THE ULTIMATE SLOT. The attribute is
+	// left at nothing, which is what ApplyTo really leaves it at for a scoped
+	// row: the row is dropped on the way to it.
+	{
+		FCataclysmStatModifier Scoped;
+		Scoped.Bucket = ECataclysmStatBucket::Increased;
+		Scoped.Source = ECataclysmModifierSource::GearAffix;
+		Scoped.Value = 100.0f;
+		Scoped.RequiredTags = Ultimate;
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(Scoped);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(Stat, Inputs);
+		AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	// THE SKILL THE ROW NAMES. Four seconds divided by two. This is the
+	// assertion that failed before the change, at 4.0, because the row never
+	// reached the attribute.
+	TestEqual(TEXT("a row scoped to the ultimate slot halves an ultimate's cooldown"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f,
+														  Ultimate),
+		2.0f, 0.001f);
+
+	// AND EVERY OTHER SKILL IS LEFT ALONE. Without this the test would pass on a
+	// row that applied to everything, which is the other way of getting it
+	// wrong and is what an unscoped row already does.
+	TestEqual(TEXT("and leaves a skill the row does not name at its full length"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f,
+														  FGameplayTagContainer()),
+		4.0f, 0.001f);
+
+	// A CONDITION THAT DOES NOT HOLD GRANTS NOTHING. `WhileMoving` reads a
+	// character's movement and a bare component has none, so it is refused --
+	// the pipeline says so in its own words.
+	{
+		FCataclysmStatModifier WhileMoving;
+		WhileMoving.Bucket = ECataclysmStatBucket::Increased;
+		WhileMoving.Source = ECataclysmModifierSource::GearAffix;
+		WhileMoving.Value = 100.0f;
+		WhileMoving.Condition = ECataclysmStatCondition::WhileMoving;
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(WhileMoving);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(Stat, Inputs);
+		AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	TestEqual(TEXT("a row under a condition that does not hold shortens nothing"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f,
+														  FGameplayTagContainer()),
+		4.0f, 0.001f);
+
+	// THE CONTROL FOR THAT ONE, and it is not optional: the same row with no
+	// condition on it must shorten, or the assertion above would be satisfied by
+	// a row that could never apply for some other reason.
+	{
+		FCataclysmStatModifier Always;
+		Always.Bucket = ECataclysmStatBucket::Increased;
+		Always.Source = ECataclysmModifierSource::GearAffix;
+		Always.Value = 100.0f;
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(Always);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(Stat, Inputs);
+		AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	TestEqual(TEXT("the same row with no condition on it does halve the cooldown"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f,
+														  FGameplayTagContainer()),
+		2.0f, 0.001f);
+
+	// ONCE A CHARACTER HAS ROWS, THE ATTRIBUTE IS NOT CONSULTED. This is the
+	// change's one behavioural surprise and it is pinned rather than left to be
+	// discovered. In play the two agree, because `ApplyTo` writes the attribute
+	// from these same rows and is the only thing that writes it; a figure put
+	// straight onto the attribute beside a recorded row is a test doing it, and
+	// the rows win.
+	Combat->SetCooldownReduction(100.0f);
+	{
+		FCataclysmStatModifier Scoped;
+		Scoped.Bucket = ECataclysmStatBucket::Increased;
+		Scoped.Source = ECataclysmModifierSource::GearAffix;
+		Scoped.Value = 100.0f;
+		Scoped.RequiredTags = Ultimate;
+
+		FCataclysmStatInputs Inputs;
+		Inputs.Base = 0.0f;
+		Inputs.Modifiers.Add(Scoped);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(Stat, Inputs);
+		AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	TestEqual(TEXT("a recorded row answers instead of the attribute beside it"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f,
+														  FGameplayTagContainer()),
+		4.0f, 0.001f);
+
+	// AND A CHARACTER WITH NO ROWS AT ALL STILL READS THE ATTRIBUTE, which is
+	// every enemy and a player before its first refresh. The test above this one
+	// covers that route in full, so one assertion is enough to say the fall
+	// through is still there.
+	AbilitySystem->SetStatInputs(TMap<FName, FCataclysmStatInputs>());
+	TestEqual(TEXT("with nothing recorded the attribute is still the answer"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f,
+														  FGameplayTagContainer()),
+		2.0f, 0.001f);
 
 	return true;
 }

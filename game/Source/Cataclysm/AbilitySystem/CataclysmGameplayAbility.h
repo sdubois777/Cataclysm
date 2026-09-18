@@ -154,10 +154,22 @@ public:
 	 * takes a fraction. This is where the two meet, and it is the only place
 	 * that conversion happens.
 	 *
+	 * THE CHARACTER'S ROWS WHEN IT HAS ANY, AND THE ATTRIBUTE OTHERWISE. Issue
+	 * #1981. `UCataclysmPlayerClassStats::ApplyTo` writes the attribute with an
+	 * EMPTY tag container and the default conditions, so a `cooldown_reduction`
+	 * row carrying RequiredTags, a Condition or a Scale never reached it and
+	 * changed no cooldown in play. The rows are kept on the component for
+	 * exactly this, and `UCataclysmAbilitySystemComponent::RateAppliedTo` is
+	 * the lookup that reads them.
+	 *
 	 * @param AbilitySystem  whose cooldown it is, or null for the base length
+	 * @param SkillTags      what this skill is, so a scoped row reaches only the
+	 *                       skills it names. Empty means every unscoped row
+	 *                       applies and no scoped one does
 	 */
 	static float CooldownAfterReduction(
-		const UAbilitySystemComponent* AbilitySystem, float BaseCooldown);
+		const UAbilitySystemComponent* AbilitySystem, float BaseCooldown,
+		const FGameplayTagContainer& SkillTags = FGameplayTagContainer());
 
 	/** Mana one use costs for the character holding it, at their level. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
