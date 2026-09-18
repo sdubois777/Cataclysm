@@ -2,6 +2,115 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-18 — Every place that asks for a stat is listed with what it hands over, because a call that stops early is wrong nowhere on the page
+
+**Affects:** `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (new; the
+only file this change touches). Issue
+[#1992](https://github.com/sdubois777/Cataclysm/issues/1992). **Applied.** No engine
+file changes, so no Unreal run is needed; the Python suite and both guard proofs
+have run.
+
+### What goes wrong, and why nothing caught it three times
+
+`UCataclysmAbilitySystemComponent::StatForSkill` takes the state a condition may
+read as **positional parameters with defaults** — the target is the ninth, the
+distance to it the seventh, whether it is staggered the eighth. A call that stops
+early supplies nothing for the rest, **and nothing at that call site is written
+down to be wrong.** The condition then reads a field nobody filled, answers false
+every time, and the row grants nothing, with no error anywhere.
+
+It has happened three times: issue #1973 (an attribute read rather than asked
+for), #1981 (a cooldown read rather than asked for), and #1982 (a critical strike
+lookup asked for correctly and handed no target). Each was found by a person
+reading the code for another reason.
+
+### A judgement, under the project owner's delegation of 2026-09-14
+
+**The check does not try to find the faults, because nothing can.** Measured on
+`af715829`: of the **61** call sites, **54** pass three arguments and supply no
+state at all — and nearly all of those are **correct**, because there is no blow,
+no target and no skill in hand at a regeneration tick or a resource generator.
+Fifteen are in `CataclysmFervour.cpp` alone.
+
+**A check that flagged every short call would report dozens of problems, be wrong
+about almost all of them, and be switched off.** That failure mode was named
+before the check was written rather than discovered after.
+
+**So it makes the decision visible instead.** Two parts, and only two:
+
+1. **An inventory**, held both ways: every call site with what it hands over and
+   **one short reason each**. A new call site, a changed one, or one that has gone
+   all fail it. The reason is the point — it records a three-argument call at a
+   regeneration tick as **correct**, not as tolerated, so the list is a record of
+   decisions rather than a list of exceptions.
+2. **One assertion**: a call that hands over a target must hand over the distance
+   and the stagger too, or be listed by name with the reason.
+
+**Nothing is asserted about the 54 short calls beyond their being listed.** That
+is deliberate and is the whole reason the check is usable.
+
+**The two names on the exemption list are this project's own most recent change.**
+The critical strike lookups from #1982 hand over a target and leave both others at
+their defaults, by a ruling that kept them out of that change. So the check catches
+the work that prompted it, which is the strongest thing that can be said for it.
+
+### The key, and the two keys rejected before it
+
+A call site has to be identified by something that survives ordinary editing.
+Three candidates were measured on `af715829`:
+
+| Key | Result |
+| :-- | :-- |
+| the line number | **rejected without measuring**: it goes stale on any edit above it |
+| the file and the stat's name | **rejected**: only **11** of the 61 name their stat literally; the other 50 pass a variable |
+| the file and the first argument | **rejected**: it **collides**, on two calls in `CataclysmRegeneration.cpp` sitting in different lambdas of one function with the same first argument |
+| **the file and the whole argument list** | **chosen**: 61 distinct keys for 61 calls, none colliding — the two above differ in their third argument |
+
+**The cost of that choice is stated rather than hidden:** because the key is the
+whole list, a changed argument reads as one key appearing and another vanishing,
+so a changed call fails **two** of the inventory's tests rather than one. A key
+that did not notice a changed argument would be worse.
+
+### The counts are labelled with the tree they were measured on
+
+`MEASURED_AT` holds the full `af715829` commit and `CALL_SITES` holds 61, because
+**a count is a measurement of a tree rather than a property of the design**. The
+next author to add a lookup moves it, and the label says what it was true of.
+
+### It reports its own scope, in the file and in its failures
+
+Parsed by **matching parentheses** over comment-stripped and string-stripped
+source — not by splitting on commas, because `FCataclysmBlowContext()` and
+`AbilitySystem->GetNumericAttribute(Speed)` carry commas and brackets of their
+own. The function's own definition is skipped. Only `game/Source` is read, and
+anything under a `Tests` directory is excluded. Each failure message repeats that,
+so a reader knows what the check did and did not look at.
+
+### Proved twice, and the second proof is the one that matters
+
+Both ran in a `git archive` copy, because the breaks are in C++ and 110 Python
+test files read C++ source as text.
+
+- **One call site's argument count changed**, in `CataclysmBasicAttack.cpp`:
+  `PROVED: 2 failed, 4 passed in 1.43s | restored: 6 passed in 0.99s`. The two are
+  the inventory's own pair.
+- **The one call that hands over the whole blow, made to keep its target and drop
+  the distance and the stagger**: `PROVED: 3 failed, 3 passed | restored: 6
+  passed`. The third is the assertion.
+
+**The second was not asked for and is why the assertion is not merely asserted.**
+The first proof exercises the inventory and leaves the assertion untouched; only
+the second reaches it. Two halves that are separately load-bearing need two
+proofs, or one of them is a claim.
+
+### What it cost
+
+`5308 passed, 8 skipped` against `development`'s 5302, which is the six tests this
+file adds and nothing else. The second count, from the machine-readable report:
+5316 tests, 0 failures, 0 errors, 8 skipped.
+
+---
+
 ## 2026-09-18 — Radiant ground that hurts more the longer you stand in it, and pays for the standing with a better roll on the floor's boss
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
