@@ -125,6 +125,19 @@ exactly the state the tests below drive by hand.
 every minion's blow, which is what the game did until this change, passes one
 half of each pair and fails the other.
 
+### ONE SENTENCE OF THE DESIGN DOCUMENT IS CORRECTED WITH IT
+
+`docs/Cataclysm_GDD_v2.md`, in the retaliation section, explained why a
+minion's blow provokes no retaliation by saying that "a minion's damage is
+credited to its summoner". That reason stopped being true with this change,
+while the rule it justifies did not: retaliation is paid back to whoever the
+blow was dealt by, which is still the summoner, so the exclusion is still
+needed and the paragraph now says so.
+
+**Change 3 revisits that paragraph.** Making the minion the instigator of its
+own blow would pay retaliation back to the minion, so whether the exclusion is
+needed at all is a question for that change and not this one.
+
 ---
 
 ## 2026-09-17 — A minion's explosion is its own figure, and the share of its summoner's weapon is deleted
