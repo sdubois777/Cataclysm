@@ -501,13 +501,18 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// `mana_cost`, the stat added in #1962, whose base is the cost the skill
 	// itself states rather than a figure the character holds: two reduce a
 	// cost, three raise one, and one removes it below half health.
-		// AND 244 SINCE THE THIRTY-THREE ROWS OF THE ENCHANTMENT SURVEY, issue
+	// AND 244 SINCE THE THIRTY-THREE ROWS OF THE ENCHANTMENT SURVEY, issue
 	// #1815. Ten more sentences were approved and held: three belong to item
 	// sets, one needs a base no class supplies, and five are held on the words
 	// their sentences use. docs/DECISIONS.md carries each reason.
 	//
-	// AND 257 SINCE THE THIRTEEN ROWS ACROSS TEN SENTENCES that issues #1981,
-	// #1982 and #1988 unblocked, from 244. NO SENTENCE WAS ADDED to the
+	// AND 257 SINCE THE THIRTEEN ROWS ACROSS TEN SENTENCES that three pieces of
+	// engine work unblocked, from 244: issue #1981's cooldown lookup as issue
+	// #2000 repaired it (three rows), issue #1982's critical strike lookup
+	// against the character struck (one row), and pull request #1989's four
+	// conditions and two scale sources (nine rows). Issue #1988, which this
+	// sentence named until issue #2004, unblocked nothing: it asked for a
+	// check, and these rows closed it. NO SENTENCE WAS ADDED to the
 	// Enchantments sheet: all ten were already there with no effect row, so
 	// EnchantmentsPositive.csv and EnchantmentsNegative.csv keep their counts
 	// and only this table grows. Three shorten a

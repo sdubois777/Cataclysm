@@ -424,8 +424,8 @@ float UCataclysmGameplayAbility::CooldownAfterReduction(
 	// THE REDUCTION IS ASKED FOR, AND THEN IT DIVIDES -- THE SAME TWO STEPS THE
 	// ATTRIBUTE ROUTE ALWAYS TOOK. Issue #2000. The first attempt at this, in
 	// issue #1981, worked the whole interval out in one go through
-	// `UCataclysmStatPipeline::EvaluateRate`, whose divisor is built from the
-	// INCREASES bucket. The game's data puts cooldown reduction in the FLAT
+	// `UCataclysmStatPipeline::EvaluateRate` (deleted by issue #2004), whose
+	// divisor was built from the INCREASES bucket. The game's data puts cooldown reduction in the FLAT
 	// bucket -- the `Haste` affix is `ValueKind` flat -- so the gear was read as
 	// nothing and the Efficacy attribute, which exists only to SCALE a base
 	// something else supplied, was read as the reduction itself.

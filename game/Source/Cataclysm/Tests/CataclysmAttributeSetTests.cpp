@@ -819,6 +819,17 @@ CATACLYSM_TEST(FCataclysmCooldownDivisionTest,
 	TestTrue(TEXT("One hundred Efficacy halves a cooldown"),
 		FMath::IsNearlyEqual(FCombat::FinalCooldown(4.0f, 1.0f), 2.0f, 0.001f));
 
+	// A More multiplier divides as well, so a cooldown reduction gem shortens
+	// the cooldown rather than lengthening it: four seconds at a third of
+	// increases and a 1.2 More is 2.5 seconds, shown as 37.5%. Issue #2004 moved
+	// these two here from the stat pipeline's rate test, deleted with the
+	// function it tested.
+	TestTrue(TEXT("A 1.2 More on top of a third of increases makes four seconds 2.5"),
+		FMath::IsNearlyEqual(FCombat::FinalCooldown(4.0f, 1.0f / 3.0f, 1.2f), 2.5f, 0.001f));
+	TestTrue(TEXT("And the same character is shown 37.5 percent"),
+		FMath::IsNearlyEqual(FCombat::DisplayedCooldownReduction(1.0f / 3.0f, 1.2f),
+							 37.5f, 0.01f));
+
 	// And it can never reach zero, which is why no cap is needed.
 	for (const float Increases : { 1.0f, 10.0f, 1000.0f, 100000.0f })
 	{
