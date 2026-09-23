@@ -178,6 +178,39 @@ namespace
 	}
 
 	/**
+	 * `SummonerMultiplierFor` against the character a minion is striking, with
+	 * the "more" bucket. Issue #1515, Set Upon and Set the Pack On, whose rows
+	 * ask about the enemy struck. Only minion damage asks this: health and
+	 * duration are settled at the summoning, with no enemy in hand.
+	 *
+	 * ON THE SUMMONER'S COMPONENT AND NEVER THE MINION'S, which is what keeps
+	 * `seconds_after_summon` holding here: a minion's own clock is never
+	 * stamped by a summon.
+	 *
+	 * A "MORE" ROW IS A SEPARATE MULTIPLIER, WHICH THE COMMENT ABOVE SAYS THE
+	 * DESIGN FORBIDS, AND IT DOES NOT CONTRADICT IT. That rule is that an
+	 * attribute's increases and an affix's increases add; they still do, in
+	 * the one sum. Set the Pack On is a capstone option whose sentence says
+	 * "more", and no shipped row put "more" on minion damage before it,
+	 * measured 2026-09-23.
+	 */
+	float SummonerMultiplierAgainst(const AActor* Summoner, const TCHAR* Stat,
+									const AActor* Target)
+	{
+		const UCataclysmAbilitySystemComponent* Theirs =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner));
+		if (!Theirs)
+		{
+			// NO STAT LINE, for the reason `SummonerMultiplierFor` gives.
+			return 1.0f;
+		}
+
+		return Theirs->MultiplierForStatAgainst(
+			FName(Stat), FGameplayTagContainer(), Target);
+	}
+
+	/**
 	 * What one of the summoner's stats stands at, or nothing.
 	 *
 	 * THE SIBLING OF `SummonerMultiplierFor` ABOVE, and it reads a flag rather
@@ -695,8 +728,12 @@ void ACataclysmMinion::AttackTarget(AActor* Target)
 		// multiplier of zero must not send a typed minion down the typeless
 		// fallback below, which deals a share of the summoner's weapon and is a
 		// different rule entirely.
+		//
+		// AND AGAINST THE CHARACTER STRUCK, SINCE ISSUE #1515, so a row asking
+		// whether the summoner damaged it recently -- Set Upon, Set the Pack
+		// On -- can hold, and a "more" row counts.
 		const float Damage = OwnDamagePerHit
-			* SummonerMultiplierFor(Summoner, TEXT("minion_damage"));
+			* SummonerMultiplierAgainst(Summoner, TEXT("minion_damage"), Target);
 
 		// THE MINION IS THE INSTIGATOR OF ITS OWN BLOW, SINCE ISSUE #1515. It
 		// was the summoner until 2026-09-17, which is why everything read off

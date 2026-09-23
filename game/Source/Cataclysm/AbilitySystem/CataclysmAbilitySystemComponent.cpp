@@ -525,6 +525,33 @@ bool UCataclysmAbilitySystemComponent::IsStatRemoved(
 			   .RemovedCount > 0;
 }
 
+float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
+	FName Stat, const FGameplayTagContainer& Tags, const AActor* Target) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		// NOTHING RECORDED, SO NOTHING CHANGES, for the reason
+		// `IncreasesForStat` gives.
+		return 1.0f;
+	}
+
+	// THE STATE `IncreasesForStat` BUILDS, WITH THE TARGET ADDED, nested the
+	// way `AttackDamageMoreForSkill` nests it. `WithTargetState` only adds the
+	// target's readings, so every other condition is judged as it is there.
+	const FCataclysmStatBreakdown Result = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, Tags,
+		WithEnemiesInReach(
+			Inputs->Modifiers,
+			WithTargetState(Inputs->Modifiers, Target, CurrentConditions())));
+
+	// NOTHING IS FOLDED INTO AN ATTRIBUTE FOR A STAT THAT HAS NONE, so the
+	// "more" product is the whole of it and is divided by nothing, unlike
+	// `AttackDamageMoreForSkill`.
+	return FMath::Max(0.0f, 1.0f + Result.SumOfIncreases / 100.0f)
+		* Result.MoreMultiplier;
+}
+
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,
@@ -1178,6 +1205,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			break;
 		case ECataclysmStatCondition::TargetNotYetStruckByYou:
 		case ECataclysmStatCondition::TargetNotYetCritByYou:
+		// AND HOW LONG AGO, from the same record. Issue #1515, Set Upon.
+		case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
 			bWantsHistory = true;
 			break;
 		default:
@@ -1224,6 +1253,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			State.bTargetStruckByYou = Struck->WasStruckBy(State.AskingAbilitySystem);
 			State.bTargetCritByYou =
 				Struck->WasCriticallyStruckBy(State.AskingAbilitySystem);
+			State.SecondsSinceStruckByYou =
+				Struck->SecondsSinceStruckBy(State.AskingAbilitySystem);
 			State.bTargetStrikeHistoryKnown = true;
 		}
 	}
@@ -2362,7 +2393,10 @@ void UCataclysmAbilitySystemComponent::NoteStruckBy(
 	{
 		return;
 	}
-	StruckBy.Add(Striker);
+	// WITH THE TIME, which Set Upon reads. Issue #1515. A later blow from the
+	// same striker overwrites it, so the entry is always the most recent.
+	const UWorld* World = GetWorld();
+	StruckBy.Add(Striker, World ? World->GetTimeSeconds() : -1.0f);
 	if (bCritical)
 	{
 		CriticallyStruckBy.Add(Striker);
@@ -2379,6 +2413,19 @@ bool UCataclysmAbilitySystemComponent::WasCriticallyStruckBy(
 	const UAbilitySystemComponent* Striker) const
 {
 	return Striker && CriticallyStruckBy.Contains(Striker);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceStruckBy(
+	const UAbilitySystemComponent* Striker) const
+{
+	const UWorld* World = GetWorld();
+	const float* At = Striker ? StruckBy.Find(Striker) : nullptr;
+	if (!World || !At || *At < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - *At);
 }
 
 void UCataclysmAbilitySystemComponent::NoteSupportSkillUsed()

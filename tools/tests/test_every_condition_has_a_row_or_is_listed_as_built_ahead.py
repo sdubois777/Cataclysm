@@ -72,6 +72,10 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",
+    # Landed with the engine half of Set Upon and Set the Pack On, issue #1515.
+    # Their two passive rows wait on the design workbook; it leaves this list
+    # when they are written.
+    "target_damaged_by_you_within_seconds",
 }
 
 #: A condition several enchantment effect rows name. The control.

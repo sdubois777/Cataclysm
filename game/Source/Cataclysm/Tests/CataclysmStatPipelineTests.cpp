@@ -4013,4 +4013,66 @@ bool FCataclysmPipelineTwoHandedTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamagedByYouConditionTest,
+	"Cataclysm.StatPipeline.DamagedByYouHoldsWithinItsSecondsInclusiveAndRefusesAnUnreadOrUnstruckTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `target_damaged_by_you_within_seconds`, the condition Set Upon and Set the
+ * Pack On ask: "enemies you have damaged in the last 2 seconds". Issue #1515.
+ *
+ * THE REFUSALS ARE THE HALF WORTH WRITING. A target nobody read and a target
+ * never struck both carry -1 or nothing, and a comparison with no guard in
+ * front of it would hand the bonus to every enemy in the game.
+ */
+bool FCataclysmDamagedByYouConditionTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("target_damaged_by_you_within_seconds is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("target_damaged_by_you_within_seconds"), Named)
+			&& Named == ECataclysmStatCondition::TargetDamagedByYouWithinSeconds);
+	TestTrue(TEXT("and it compares a number of seconds"),
+		FPipeline::ConditionTakesAValue(
+			ECataclysmStatCondition::TargetDamagedByYouWithinSeconds));
+
+	const ECataclysmStatCondition Window =
+		ECataclysmStatCondition::TargetDamagedByYouWithinSeconds;
+	const auto Read = [](float Seconds)
+	{
+		FCataclysmStatConditions State;
+		State.bTargetStrikeHistoryKnown = true;
+		State.SecondsSinceStruckByYou = Seconds;
+		return State;
+	};
+
+	// TWO SECONDS IS THE ROWS' FIGURE.
+	TestTrue(TEXT("a target you struck this instant is inside the window"),
+		FPipeline::ConditionHolds(Window, 2.0f, Read(0.0f)));
+	TestTrue(TEXT("and one struck exactly two seconds ago is, because within is inclusive"),
+		FPipeline::ConditionHolds(Window, 2.0f, Read(2.0f)));
+	TestFalse(TEXT("and one struck 2.1 seconds ago is not"),
+		FPipeline::ConditionHolds(Window, 2.0f, Read(2.1f)));
+	TestFalse(TEXT("a target you never struck refuses"),
+		FPipeline::ConditionHolds(Window, 2.0f, Read(-1.0f)));
+
+	// AND AN UNREAD TARGET REFUSES EVEN WITH A READING IN THE FIELD, which is
+	// the guard the known flag exists for: a lookup with no target in hand must
+	// not answer from a field nobody filled.
+	FCataclysmStatConditions Unread;
+	Unread.SecondsSinceStruckByYou = 0.5f;
+	TestFalse(TEXT("an unread target refuses whatever the field holds"),
+		FPipeline::ConditionHolds(Window, 2.0f, Unread));
+
+	// AND IT READS ITS OWN FIELD, NOT THE FIRST-HIT FLAG BESIDE IT. A build
+	// reading `bTargetStruckByYou` would hold here, for a blow of any age.
+	FCataclysmStatConditions StruckLongAgo = Read(-1.0f);
+	StruckLongAgo.bTargetStruckByYou = true;
+	TestFalse(TEXT("being on the record at all is not being struck within the window"),
+		FPipeline::ConditionHolds(Window, 2.0f, StruckLongAgo));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

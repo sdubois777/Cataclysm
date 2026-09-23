@@ -3617,6 +3617,12 @@ CONDITIONS = {
     "target_carries_any_debuff": None,
     "target_carries_a_dot": None,
 
+    # "Enemies you have damaged in the last 2 seconds" is
+    # `target_damaged_by_you_within_seconds` with 2, for Set Upon and Set the
+    # Pack On. Issue #1515. It reads the record `target_not_yet_struck_by_you`
+    # reads, with the time kept, so "damaged" and "a hit" mean one thing.
+    "target_damaged_by_you_within_seconds": (0.0, 60.0, "a number of seconds"),
+
     # "While moving" is `while_moving` and "while stationary" is
     # `while_stationary`, and neither takes a value. Issue #41, slice 2.
     #

@@ -14888,4 +14888,326 @@ bool FCataclysmPassiveTwoHandsOnARealCharacterTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Set Upon and Set the Pack On, from their rows. Issue #1515.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDamagedByYouRowTest
+{
+	/** A bare actor with an ability system: something the record can live on. */
+	struct FScopedEnemy
+	{
+		explicit FScopedEnemy(UWorld* World)
+		{
+			Actor = World->SpawnActor<AActor>();
+			check(Actor);
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+		}
+
+		~FScopedEnemy()
+		{
+			if (IsValid(Actor))
+			{
+				Actor->Destroy();
+			}
+		}
+
+		AActor* Actor = nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	};
+
+	/**
+	 * Fill the Ritualist tree to a capstone's threshold, skipping the capstone
+	 * and Set Upon. Set Upon is skipped so the one row under the window in the
+	 * spend is the option's own, and the struck and unstruck readings differ
+	 * by that row alone.
+	 */
+	int32 FillRitualistTreeToOpen(const UDataTable* NodeTable, const FName& Capstone,
+								  const FName& Skip,
+								  FCataclysmPassiveAllocation& Allocation,
+								  int32& OutFilled)
+	{
+		OutFilled = 0;
+		if (!NodeTable)
+		{
+			return 0;
+		}
+
+		int32 Threshold = 0;
+		for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+		{
+			if (Pair.Key == Capstone)
+			{
+				Threshold = reinterpret_cast<const FCataclysmPassiveNodeRow*>(
+					Pair.Value)->Threshold;
+			}
+		}
+		if (Threshold <= 0)
+		{
+			return 0;
+		}
+
+		for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+		{
+			if (OutFilled >= Threshold)
+			{
+				break;
+			}
+			const auto* Row =
+				reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+			if (Row->Tree != TEXT("Ritualist") || Pair.Key == Capstone
+				|| Pair.Key == Skip || Row->MaxPoints <= 0)
+			{
+				continue;
+			}
+			const int32 Take = FMath::Min(Row->MaxPoints, Threshold - OutFilled);
+			Allocation.Add(Pair.Key, Take);
+			OutFilled += Take;
+		}
+		return Threshold;
+	}
+
+	/** The rows a node grants under one option, 0 meaning the node's own. */
+	TArray<const FCataclysmPassiveEffectRow*> RowsOf(const UDataTable* EffectTable,
+													 const FName& Node, int32 Option)
+	{
+		TArray<const FCataclysmPassiveEffectRow*> Mine;
+		for (const FCataclysmPassiveEffectRow* Row :
+			 UCataclysmPassiveTree::EffectsFor(EffectTable, Node))
+		{
+			if (Row->Option == Option)
+			{
+				Mine.Add(Row);
+			}
+		}
+		return Mine;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSetUponRowTest,
+	"Cataclysm.Passives.SetUponRaisesARealRitualistsMinionDamageOnlyAgainstAnEnemyItDamagedWithinTwoSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_a_b0` Set Upon, from its row, on a real Ritualist. Issue
+ * #1515. "+2% increased Minion Damage per point against enemies you have
+ * damaged in the last 2 seconds."
+ *
+ * READ FROM THE ROW AND SPENT THROUGH THE PLAYER STATE, so this fails while the
+ * row is missing; every other test grants the stat by hand. Two enemies, one
+ * the character struck a moment ago and one it never struck, and the same
+ * enemy again after the window.
+ */
+bool FCataclysmPassiveSetUponRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmDamagedByYouRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	ACataclysmPlayerState* State =
+		Character ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	UCataclysmEquipmentComponent* Equipment =
+		Character ? Character->GetEquipment() : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!State || !Equipment || !AbilitySystem
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("A possessed Ritualist with an effect table was not built. "
+					  "If the table is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_basic_a_b0"));
+	const TArray<const FCataclysmPassiveEffectRow*> Rows =
+		RowsOf(EffectTable, Node, 0);
+	if (!TestEqual(TEXT("Set Upon carries one row"), Rows.Num(), 1))
+	{
+		AddError(TEXT("The node's row is missing from the data, so it grants "
+					  "nothing in play. Author it in the Passive Effects sheet "
+					  "of docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+	const FCataclysmPassiveEffectRow* Row = Rows[0];
+	TestEqual(TEXT("on minion damage"), Row->Stat, FString(TEXT("minion_damage")));
+	TestEqual(TEXT("in the increases"), Row->ValueKind, FString(TEXT("increased")));
+	TestEqual(TEXT("against enemies you damaged"), Row->Condition,
+			  FString(TEXT("target_damaged_by_you_within_seconds")));
+	TestEqual(TEXT("in the last 2 seconds"), Row->ConditionValue, 2.0f, 0.001f);
+	if (!TestTrue(*FString::Printf(TEXT("of a figure above nothing: %.1f"),
+								   Row->ValuePerPoint),
+				  Row->ValuePerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	FScopedEnemy Struck(World);
+	FScopedEnemy Untouched(World);
+	Struck.AbilitySystem->NoteStruckBy(AbilitySystem, /*bCritical=*/false);
+
+	const FGameplayTagContainer NoTags;
+	const auto Multiplier = [&](const FScopedEnemy& Enemy)
+	{
+		return AbilitySystem->MultiplierForStatAgainst(
+			FName(TEXT("minion_damage")), NoTags, Enemy.Actor);
+	};
+
+	const float Unstruck = Multiplier(Untouched);
+	TestEqual(*FString::Printf(TEXT("one point adds %.1f%% against an enemy "
+									"struck a moment ago"),
+							   Row->ValuePerPoint),
+			  Multiplier(Struck) - Unstruck, Row->ValuePerPoint / 100.0f, 0.0001f);
+
+	World->TimeSeconds += 2.5f;
+	TestEqual(TEXT("and nothing once 2.5 seconds have passed"),
+			  Multiplier(Struck), Unstruck, 0.0001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveSetThePackOnRowTest,
+	"Cataclysm.Passives.SetThePackOnMultipliesARealRitualistsMinionDamageAgainstAnEnemyItDamagedWithinTwoSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_capstone_100` option 1, Set the Pack On, from its row, on a real
+ * Ritualist. Issue #1515. "Enemies you have damaged in the last 2 seconds take
+ * 25% more damage from your minions."
+ *
+ * A HUNDRED POINTS FIRST, because that is when the capstone opens, placed
+ * everywhere in the tree except Set Upon, so the one row under the window is
+ * this option's and the struck reading is the unstruck one times its "more".
+ */
+bool FCataclysmPassiveSetThePackOnRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmDamagedByYouRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+	ACataclysmPlayerState* State =
+		Character ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	UCataclysmEquipmentComponent* Equipment =
+		Character ? Character->GetEquipment() : nullptr;
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!State || !Equipment || !AbilitySystem
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable)
+		|| !TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		AddError(TEXT("A possessed Ritualist with both passive tables was not "
+					  "built. If a table is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_capstone_100"));
+	const TArray<const FCataclysmPassiveEffectRow*> Rows =
+		RowsOf(EffectTable, Node, 1);
+	if (!TestEqual(TEXT("Set the Pack On carries one row"), Rows.Num(), 1))
+	{
+		AddError(TEXT("The option's row is missing from the data, so it grants "
+					  "nothing in play. Author it in the Passive Effects sheet "
+					  "of docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+	const FCataclysmPassiveEffectRow* Row = Rows[0];
+	TestEqual(TEXT("on minion damage"), Row->Stat, FString(TEXT("minion_damage")));
+	TestEqual(TEXT("as a multiplier of its own"), Row->ValueKind,
+			  FString(TEXT("more")));
+	TestEqual(TEXT("against enemies you damaged"), Row->Condition,
+			  FString(TEXT("target_damaged_by_you_within_seconds")));
+	TestEqual(TEXT("in the last 2 seconds"), Row->ConditionValue, 2.0f, 0.001f);
+	if (!TestTrue(*FString::Printf(TEXT("of a figure above nothing: %.1f"),
+								   Row->ValuePerPoint),
+				  Row->ValuePerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	int32 Filled = 0;
+	const int32 Threshold = FillRitualistTreeToOpen(
+		NodeTable, Node, FName(TEXT("Ritualist_basic_a_b0")), Allocation, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(*FString::Printf(
+			   TEXT("the tree can hold the %d points it opens at"), Threshold),
+			   Filled, Threshold))
+	{
+		return false;
+	}
+	Allocation.Add(Node, 1);
+	State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	FScopedEnemy Struck(World);
+	FScopedEnemy Untouched(World);
+	Struck.AbilitySystem->NoteStruckBy(AbilitySystem, /*bCritical=*/false);
+
+	const FGameplayTagContainer NoTags;
+	const auto Multiplier = [&](const FScopedEnemy& Enemy)
+	{
+		return AbilitySystem->MultiplierForStatAgainst(
+			FName(TEXT("minion_damage")), NoTags, Enemy.Actor);
+	};
+
+	// NOTHING BEFORE THE OPTION IS CHOSEN, which is the control: the points in
+	// the node alone must not grant an option's row.
+	TestEqual(TEXT("with no option chosen, a struck enemy is no different"),
+			  Multiplier(Struck), Multiplier(Untouched), 0.0001f);
+
+	FString Refusal;
+	if (!TestTrue(TEXT("the first option can be chosen"),
+				  State->ChoosePassiveOption(Node, 1, Refusal)))
+	{
+		AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+		return false;
+	}
+	Equipment->RefreshAttributes(AbilitySystem);
+
+	const float Unstruck = Multiplier(Untouched);
+	TestEqual(*FString::Printf(TEXT("against an enemy struck a moment ago, %.0f%% more"),
+							   Row->ValuePerPoint),
+			  Multiplier(Struck), Unstruck * (1.0f + Row->ValuePerPoint / 100.0f),
+			  0.0001f);
+
+	World->TimeSeconds += 2.5f;
+	TestEqual(TEXT("and no more once 2.5 seconds have passed"),
+			  Multiplier(Struck), Unstruck, 0.0001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
