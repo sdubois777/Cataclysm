@@ -106,6 +106,69 @@ death handler gates both payments on the mark while Vengeful Wraiths sets it.
 
 ---
 
+## 2026-09-23 — The first hit against each enemy is remembered, and three attacker-side lookups hand over the whole blow
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two conditions,
+the state they read, and who is asking), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`
+and `.cpp` (the record, kept on the character struck, of who has got a blow and a critical strike through
+to it; filled into the state when a row asks), `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`
+(the record is written beside the Boss clock, and the critical strike and armour penetration lookups
+hand over the distance, the target's stagger and the target), `tools/generate_datatables.py` (the two
+names a sheet may write), `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (the three
+changed call sites, and the exemption list now empty),
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`, and tests in
+`CataclysmCriticalStrikeTests.cpp`, `CataclysmStatPipelineTests.cpp` and `CataclysmPassiveTreeTests.cpp`.
+Issue [#1992](https://github.com/sdubois777/Cataclysm/issues/1992), which this closes, and issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
+
+**Partial.** The engine half is written. The rows need the design workbook and are added to this change
+before its machine window. Nothing has been compiled.
+
+### Issue #1992: three lookups now hand over the whole blow
+
+`UCataclysmAbilitySystemComponent::StatForSkill` takes the state a condition may read as positional
+parameters with defaults, so a call that stops early supplies nothing for the rest. In
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, `crit_chance` and `crit_multiplier` passed the
+character struck but not the distance or its stagger, and `armor_penetration` passed none of the three.
+A row on those stats asking `target_within_metres` or `target_is_staggered`, or on armour penetration
+asking any target condition, granted nothing.
+
+All three now pass `Hit.OpponentDistanceMetres` (the same physical distance, already computed in that
+function), `UCataclysmSkillEffects::IsStaggered(GetOwningActor())` (the struck character's own stagger)
+and `GetOwningActor()`. The call-site inventory's exemption list, which excused the two critical strike
+calls, is empty.
+
+**No shipped row changes value**, measured on development `802ad193` and again on `46a9b9d0`: 10 shipped
+rows sit on those three stats, none carries a scale, and 1 carries a target-side condition,
+"Critical strike chance is increased by 20%-40% against Boss enemies" (`target_is_boss`), whose lookup
+already passed the target. `target_is_boss` reads only the target, so the distance and the stagger cannot
+move it.
+
+### Issue #1815: the first hit against each enemy
+
+Two conditions: `target_not_yet_struck_by_you` and `target_not_yet_crit_by_you`. Neither takes a value.
+The character struck keeps a record of whose blows and whose critical strikes have got through to it,
+keyed on the striker's ability system rather than its actor, because a player's ability system lives on
+its player state. The state a lookup builds carries which ability system is asking, so the record can be
+asked about "you" without any caller changing.
+
+**Judgements made under the owner's delegation, ruled by the coordinating session on 2026-09-23:**
+
+| The judgement | Why |
+| :-- | :-- |
+| "a hit" is a blow that got through: health, shield or mana absorbed it | an evaded blow is not a hit and does not use up the first one; a blow a shield absorbed whole is. The record is written where the Boss clock is stamped, so both read "got through" at the same site |
+| "ignores all armor" is `armor_penetration` flat 100 | the engine clamps armour penetration at 100 (`CataclysmDamageCalculation.cpp`), so 100 is all of it; "all" is read as 100 for that stat alone, as "immune" is 100 for crowd control resistance |
+| the record is on the character struck, keyed on `AttackerOf` | a minion's blow is the minion's own unless its summoner holds Conduit, the same rule every other kind of credit follows |
+
+**Read while the blow resolves and written after it lands**, so the first blow is judged against a record
+that does not yet hold it. A revived character's record is cleared.
+
+**Held: "Your first hit against each enemy in a combat ignores all resistances".** It waits on two things:
+the combat state (group 4's A1), and the `penetration` lookup, which still passes three arguments and no
+target.
+
+---
+
 ## 2026-09-23 — Deeper Hurt lengthens a Cripple or a Weaken where it is applied, and a spread copy keeps the row's duration
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp` (the stat's name

@@ -6,6 +6,8 @@
 #include "GameplayTagContainer.h"
 #include "CataclysmStatPipeline.generated.h"
 
+class UAbilitySystemComponent;
+
 /**
  * Which of the three buckets a modifier enters, or whether it removes the stat.
  *
@@ -1352,6 +1354,37 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	ManaBelowPercent
 		UMETA(DisplayName = "Mana Below Percent"),
+
+	/**
+	 * No blow of the asking character's has yet got through to the target.
+	 * Issue #1815: "Your first hit against each enemy deals 100%-300% bonus
+	 * damage" and "Your first hit against each enemy ignores all armor".
+	 *
+	 * NO THRESHOLD, SO `ConditionValue` IS NOT READ.
+	 *
+	 * "A HIT" IS A BLOW THAT GOT THROUGH, ruled under the owner's delegation on
+	 * 2026-09-23: health, shield or mana absorbed it. An evaded blow is not a
+	 * hit and does not use up the first one; a blow a shield absorbed whole is.
+	 * The record is written where the Boss clock is stamped, so both read "got
+	 * through" at the same site.
+	 *
+	 * READ WHILE THE BLOW RESOLVES AND WRITTEN AFTER IT LANDS, so the first blow
+	 * is judged against a record that does not yet hold it.
+	 *
+	 * AN UNREAD TARGET REFUSES, as every target condition does:
+	 * `bTargetStrikeHistoryKnown` is asked first.
+	 */
+	TargetNotYetStruckByYou
+		UMETA(DisplayName = "Target Not Yet Struck By You"),
+
+	/**
+	 * No critical strike of the asking character's has yet got through to the
+	 * target. Issue #1815: "Your first critical strike against each enemy deals
+	 * an additional 50%-100% bonus damage". The same record and the same rules
+	 * as the condition above, counting only critical strikes.
+	 */
+	TargetNotYetCritByYou
+		UMETA(DisplayName = "Target Not Yet Crit By You"),
 };
 
 /**
@@ -2466,6 +2499,32 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bTargetIsBossKnown = false;
 
 	/**
+	 * Whose question this is: the ability system asking for the stat. Issue
+	 * #1815. Filled by `UCataclysmAbilitySystemComponent::CurrentConditions`,
+	 * which every lookup builds its state through, so the target-side record
+	 * of who has struck it can be asked about "you" without each caller passing
+	 * itself. Not a property: it is a pointer to the asker for the length of
+	 * one lookup, and nothing keeps it.
+	 */
+	const UAbilitySystemComponent* AskingAbilitySystem = nullptr;
+
+	/**
+	 * Whether the target's record of who has struck it was read. Issue #1815.
+	 * The two first-hit conditions ask this first, so a lookup with no target in
+	 * hand refuses rather than calling every enemy unstruck.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetStrikeHistoryKnown = false;
+
+	/** Whether a blow of the asker's has got through to the target. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetStruckByYou = false;
+
+	/** Whether a critical strike of the asker's has got through to the target. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bTargetCritByYou = false;
+
+	/**
 	 * How far away each hostile character near this one is, in metres. Empty
 	 * means either that nobody is near or that this lookup never asked. Issue
 	 * #1597.
@@ -3106,7 +3165,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a fifty-fourth, which is the drift that put the passive tree eight
+	 * adds a fifty-sixth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -3115,7 +3174,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * NINETEEN OF THE FIFTY-THREE COMPARE NOTHING. They are the case labels
+	 * TWENTY-ONE OF THE FIFTY-FIVE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

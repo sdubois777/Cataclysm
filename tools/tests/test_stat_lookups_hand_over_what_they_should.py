@@ -25,9 +25,9 @@ adds or edits a lookup to write down what state it passes.
 AND ONE THING IS ASSERTED OUTRIGHT. A call that hands over a target must hand
 over the distance and the stagger too, or be listed by name in
 `TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER` with the reason. That is issue
-#1992's own finding, and it catches the change made for #1982, which passes a
-target and leaves both at their defaults -- the two entries in that list are
-exactly those.
+#1992's own finding. It caught the change made for #1982, which passed a target
+and left both at their defaults; those two lookups were that list's only entries,
+and the list emptied when #1992 handed them the distance and the stagger.
 
 HOW IT READS THE SOURCE, said here because a check should report its own scope.
 Comments and string literals are blanked first, so a name in prose or inside
@@ -384,20 +384,20 @@ INVENTORY = {
      'FName(TEXT("penetration")), AssetTags, Offence->GetPenetration()'):
         'a defender reading with no blow in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
-     'FName(TEXT("armor_penetration")), AssetTags, Offence->GetArmorPenetration(), -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, nullptr, EnemiesStruckTogether'):
-        'armour penetration, handed the count of enemies struck '
-        'together but no target; issue #1992 carries whether it should '
-        'have one',
+     'FName(TEXT("armor_penetration")), AssetTags, Offence->GetArmorPenetration(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor(), EnemiesStruckTogether'):
+        'armour penetration, handed the whole blow since issue #1992: '
+        'the character struck, the distance to it, its stagger and '
+        'the count of enemies struck together',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
-     'FName(TEXT("crit_chance")), AssetTags, Offence->GetCritChance(), -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, GetOwningActor()'):
-        'a critical strike stat, handed the character being struck by '
-        'issue #1982; the distance and the stagger are deliberately not '
-        'passed, which issue #1992 carries',
+     'FName(TEXT("crit_chance")), AssetTags, Offence->GetCritChance(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered( GetOwningActor()), GetOwningActor()'):
+        'a critical strike stat, handed the whole blow since issue '
+        '#1992: the character struck (issue #1982), the distance to '
+        'it and its stagger',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
-     'FName(TEXT("crit_multiplier")), AssetTags, Offence->GetCritMultiplier(), -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, GetOwningActor()'):
-        'a critical strike stat, handed the character being struck by '
-        'issue #1982; the distance and the stagger are deliberately not '
-        'passed, which issue #1992 carries',
+     'FName(TEXT("crit_multiplier")), AssetTags, Offence->GetCritMultiplier(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered( GetOwningActor()), GetOwningActor()'):
+        'a critical strike stat, handed the whole blow since issue '
+        '#1992: the character struck (issue #1982), the distance to '
+        'it and its stagger',
     ('game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp',
      'FName(CrowdControlEndsWhenItsApplierDiesStat), FGameplayTagContainer(), Cataclysm->GetNumericAttribute( UCataclysmCombatAttributeSet:: GetCrowdControlEndsWhenItsApplierDiesAttribute())'):
         'a character sheet reading, which has no skill or target in '
@@ -415,20 +415,9 @@ INVENTORY = {
         'what the skill bar shows, which has no blow in hand',
 }
 
-TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER = {
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
-     'FName(TEXT("crit_chance")), AssetTags, Offence->GetCritChance(), -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, GetOwningActor()'):
-        'a critical strike stat: issue #1982 handed it the struck '
-        "character and a ruling under the owner's delegation kept the "
-        'distance and the stagger out of that change. Issue #1992 '
-        'carries what they cost.',
-    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
-     'FName(TEXT("crit_multiplier")), AssetTags, Offence->GetCritMultiplier(), -1.0f, FCataclysmBlowContext(), -1.0f, -1.0f, false, GetOwningActor()'):
-        'a critical strike stat: issue #1982 handed it the struck '
-        "character and a ruling under the owner's delegation kept the "
-        'distance and the stagger out of that change. Issue #1992 '
-        'carries what they cost.',
-}
+#: EMPTY SINCE ISSUE #1992. The two critical strike lookups were its only
+#: entries, and both now hand over the distance and the stagger.
+TARGET_WITHOUT_THE_DISTANCE_OR_THE_STAGGER: dict[tuple[str, str], str] = {}
 
 
 def test_the_reader_finds_the_call_sites_it_is_meant_to() -> None:

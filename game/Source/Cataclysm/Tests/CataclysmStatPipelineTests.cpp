@@ -3614,6 +3614,64 @@ bool FCataclysmPipelineManaBelowTest::RunTest(const FString&)
 	Modifier.ConditionValue = 150.0f;
 	TestFalse(TEXT("and one of 150% is refused"),
 		FPipeline::ValidateModifier(Modifier).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstHitConditionsTest,
+	"Cataclysm.StatPipeline.TheFirstHitConditionsRefuseAnUnreadTargetAndHoldOnlyBeforeTheFirstHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `target_not_yet_struck_by_you` and `target_not_yet_crit_by_you` hold only
+ * while the target's record was read and does not hold the asker. Issue #1815.
+ *
+ * THE FIRST CASE IS THE ONE A PLAIN NEGATION GETS WRONG. A lookup with no target
+ * leaves the record unread, and "not struck" must refuse there rather than call
+ * everything unstruck -- a character sheet would otherwise show the first-hit
+ * bonus permanently.
+ */
+bool FCataclysmFirstHitConditionsTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("target_not_yet_struck_by_you is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("target_not_yet_struck_by_you"), Named)
+			&& Named == ECataclysmStatCondition::TargetNotYetStruckByYou);
+	TestTrue(TEXT("and so is target_not_yet_crit_by_you"),
+		FPipeline::ConditionNamed(TEXT("target_not_yet_crit_by_you"), Named)
+			&& Named == ECataclysmStatCondition::TargetNotYetCritByYou);
+	TestFalse(TEXT("neither compares a value"),
+		FPipeline::ConditionTakesAValue(ECataclysmStatCondition::TargetNotYetStruckByYou)
+			|| FPipeline::ConditionTakesAValue(ECataclysmStatCondition::TargetNotYetCritByYou));
+
+	const ECataclysmStatCondition Struck = ECataclysmStatCondition::TargetNotYetStruckByYou;
+	const ECataclysmStatCondition Crit = ECataclysmStatCondition::TargetNotYetCritByYou;
+
+	FCataclysmStatConditions Unread;
+	TestFalse(TEXT("an unread target is not called unstruck"),
+		FPipeline::ConditionHolds(Struck, 0.0f, Unread));
+	TestFalse(TEXT("nor un-crit"), FPipeline::ConditionHolds(Crit, 0.0f, Unread));
+
+	FCataclysmStatConditions Fresh;
+	Fresh.bTargetStrikeHistoryKnown = true;
+	TestTrue(TEXT("a target nobody has struck is not yet struck by you"),
+		FPipeline::ConditionHolds(Struck, 0.0f, Fresh));
+	TestTrue(TEXT("nor crit by you"), FPipeline::ConditionHolds(Crit, 0.0f, Fresh));
+
+	FCataclysmStatConditions HitOnce = Fresh;
+	HitOnce.bTargetStruckByYou = true;
+	TestFalse(TEXT("once struck, the first-hit condition refuses"),
+		FPipeline::ConditionHolds(Struck, 0.0f, HitOnce));
+	TestTrue(TEXT("while the first-crit one still holds, as no crit landed"),
+		FPipeline::ConditionHolds(Crit, 0.0f, HitOnce));
+
+	FCataclysmStatConditions CritOnce = HitOnce;
+	CritOnce.bTargetCritByYou = true;
+	TestFalse(TEXT("and once crit, the first-crit condition refuses too"),
+		FPipeline::ConditionHolds(Crit, 0.0f, CritOnce));
+
 	return true;
 }
 
