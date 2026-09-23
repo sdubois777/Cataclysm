@@ -312,6 +312,94 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	}
 }
 
+ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
+	ECataclysmStatCondition Condition)
+{
+	using EOn = ECataclysmConditionDependsOn;
+	using C = ECataclysmStatCondition;
+
+	// NO DEFAULT, ON PURPOSE. Every condition is named once below, and
+	// `tools/tests/test_every_condition_says_what_it_depends_on.py` reads this
+	// body and fails if one is missing or named twice.
+	switch (Condition)
+	{
+	case C::Always:
+		return EOn::Nothing;
+
+	case C::HealthAtOrBelowPercent:
+	case C::HealthBelowPercent:
+	case C::HealthAbovePercent:
+	case C::HealthAtOrAbovePercent:
+		return EOn::Health;
+
+	case C::ClassResourceAtMaximum:
+	case C::ClassResourceAbovePercent:
+	case C::ClassResourcePointsAtLeast:
+		return EOn::ClassResource;
+
+	case C::EnergyShieldAtMaximum:
+	case C::EnergyShieldAboveZero:
+	case C::CanCrippleOrWeaken:
+		return EOn::OtherAttributes;
+
+	// EVERY WINDOW AFTER AN EVENT, and the three that measure how long
+	// something has or has not happened. Bleeding is here too: it ends when
+	// the ailment wears off, and nothing is written to the character then.
+	case C::WithinSecondsOfHealthCost:
+	case C::WithinSecondsOfForeignDamage:
+	case C::WithinSecondsOfChargeSkill:
+	case C::WithinSecondsOfBasicAttack:
+	case C::WithinSecondsOfBlock:
+	case C::WithinSecondsOfSummon:
+	case C::WithinSecondsOfEvade:
+	case C::WithinSecondsOfHitTaken:
+	case C::WithinSecondsOfClassResourceFull:
+	case C::WithinSecondsOfClassResourceEmpty:
+	case C::WithinSecondsOfStrikingABoss:
+	case C::StationaryForSeconds:
+	case C::NotAttackedForSeconds:
+	case C::MovedWithinSeconds:
+	case C::WhileBleeding:
+		return EOn::Time;
+
+	case C::WhileMoving:
+	case C::WhileStationary:
+		return EOn::Motion;
+
+	case C::EnemiesInReachAtLeast:
+		return EOn::Surroundings;
+
+	case C::SkillHealthCostAbovePercent:
+	case C::HitIsMeleeAttack:
+	case C::HitIsRangedAttack:
+	case C::HitIsSpell:
+	case C::OpponentIsBoss:
+	case C::MetresMovedBeforeAttack:
+	case C::OpponentBeyondMetres:
+	case C::TargetWithinMetres:
+	case C::OpponentIsStaggered:
+	case C::TargetIsStaggered:
+	case C::TargetIsBoss:
+	case C::TargetIsNotBoss:
+	case C::TargetCarriesCripple:
+	case C::TargetCarriesCrippleAndWeaken:
+	case C::TargetCarriesVoidSplinter:
+	case C::OpponentCarriesWeaken:
+	case C::TargetHealthBelowPercent:
+	case C::EnemiesStruckTogetherAtLeast:
+	case C::OpponentWithinMetres:
+		return EOn::TheBlowOrSkill;
+	}
+
+	// ONLY A CONDITION MISSING ABOVE GETS HERE. `Time` makes a caching reader
+	// ask again on its timer, which is late rather than never.
+	UE_LOG(LogCataclysm, Error,
+		   TEXT("WhatConditionDependsOn: condition %d is not classified; "
+				"treating it as depending on time."),
+		   static_cast<int32>(Condition));
+	return EOn::Time;
+}
+
 bool UCataclysmStatPipeline::ScaleNamed(const FString& Name,
 										ECataclysmStatScale& OutScale)
 {

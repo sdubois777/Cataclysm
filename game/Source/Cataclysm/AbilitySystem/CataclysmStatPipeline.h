@@ -1280,6 +1280,61 @@ enum class ECataclysmStatCondition : uint8
 };
 
 /**
+ * What a condition's answer depends on. Issue #1821.
+ *
+ * FOR A READER THAT CACHES A STAT AND HAS TO KNOW WHEN TO ASK AGAIN. Most stats
+ * are asked for at the moment they matter, so a condition that changed a
+ * second ago is simply read as it is now. Movement speed is not: it is written
+ * onto the movement component and kept, and `ACataclysmPlayerCharacter` asks
+ * again only when something tells it to. A condition whose answer can change
+ * with nothing telling it -- a timer running out, an enemy walking closer --
+ * then goes unread. This says which conditions those are.
+ *
+ * `UCataclysmStatPipeline::WhatConditionDependsOn` ANSWERS IT FOR EVERY
+ * CONDITION, with no default, and
+ * `tools/tests/test_every_condition_says_what_it_depends_on.py` fails when a
+ * condition is missing from it. So a new condition cannot reach a cached stat
+ * without somebody saying what it reads.
+ */
+enum class ECataclysmConditionDependsOn : uint8
+{
+	/** Nothing: `Always`. */
+	Nothing,
+
+	/** The character's health, which is written to an attribute. */
+	Health,
+
+	/** The character's class resource or its maximum, both attributes. */
+	ClassResource,
+
+	/**
+	 * Another attribute of the character: its energy shield, or the chances
+	 * that decide whether it can cripple or weaken.
+	 */
+	OtherAttributes,
+
+	/**
+	 * Time passing: a window after an event, how long the character has stood
+	 * still or gone unattacked, or an ailment that wears off.
+	 */
+	Time,
+
+	/** Whether the character is moving. */
+	Motion,
+
+	/** Where other bodies are: how many enemies are within reach. */
+	Surroundings,
+
+	/**
+	 * The blow or skill being asked about: the attack's kind, the opponent, the
+	 * target, the distance, the health a skill costs. Such a condition has no
+	 * answer outside a blow or a skill, so it cannot change under a stat read
+	 * with neither in hand.
+	 */
+	TheBlowOrSkill,
+};
+
+/**
  * A state of the character a modifier's SIZE can be made to grow with. #968.
  *
  * NOT THE SAME QUESTION AS `ECataclysmStatCondition`, and they are two axes
@@ -2964,6 +3019,18 @@ public:
 	 * would make a predicate judge a number it was never meant to have.
 	 */
 	static bool ConditionTakesAValue(ECataclysmStatCondition Condition);
+
+	/**
+	 * What a condition's answer depends on. Issue #1821. See
+	 * `ECataclysmConditionDependsOn` for why a reader needs to know.
+	 *
+	 * EVERY CONDITION IS LISTED, AND THERE IS NO DEFAULT. A condition missing
+	 * here falls to the end, which logs an error and answers `Time`, the answer
+	 * that makes a caching reader ask more often rather than never; and the
+	 * Python check named on the enum fails before that can happen in play.
+	 */
+	static ECataclysmConditionDependsOn WhatConditionDependsOn(
+		ECataclysmStatCondition Condition);
 
 	/**
 	 * The scale a data sheet names, or false for a name this build does not

@@ -2,6 +2,121 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Movement speed is asked for again as time passes, which also corrects the Ravager keystone Unstoppable
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (what each
+condition's answer depends on, one function over every condition),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (every action event
+is announced), `game/Source/Cataclysm/Character/CataclysmCharacterBase.h` and `.cpp` (a call at the end
+of the quarter-second regeneration step), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h`
+and `.cpp` (the player asks for its speed again on that step and on every action event, but only when
+a speed row could have changed), three automation tests in
+`game/Source/Cataclysm/Tests/CataclysmPlayerMovementTests.cpp`, and a new
+`tools/tests/test_every_condition_says_what_it_depends_on.py`. Issue
+[#1821](https://github.com/sdubois777/Cataclysm/issues/1821), which this closes.
+
+**Applied.** The Python suite, the compile, the automation tests and the three guard proofs have run,
+the Unreal steps inside one editor lock. The figures are at the end of this entry.
+
+### What was wrong
+
+Movement speed is written onto the movement component and kept. The player asked for it again on four
+events only: its speed attribute changing, its class resource changing, its health changing, and its
+setup. **A condition that changes with none of those** (a timer running out, an enemy walking closer,
+the character stopping) was read late or never.
+
+**This was a defect in shipped behaviour, not only a limit on future rows.** It was found by reading
+the callers, and this change's first test is written to show it on the code before the change. Measured
+over the shipped data: 18 rows sit on `movement_speed` and `movement_speed_reduction_suppressed`. Three
+carry a condition an event already announces: `health_below`, `class_resource_at_maximum` and
+`health_at_or_below`. **One carries a condition nothing announced:** `Ravager_keystone_spine_003#2`, the
+Ravager keystone Unstoppable's "nothing may lower your movement speed while an enemy is within 4
+metres" (`enemies_in_reach_at_least`). It took effect only when the player's health next changed, and
+it stayed on after the enemy left until the same happened again. No shipped speed row is scaled.
+
+The existing test of that clause calls the refresh by hand after placing each enemy, so it proved the
+clause is judged correctly and could not see whether the game ever asks.
+
+### What it does now
+
+Ruled on issue #1821 on 2026-09-23 by the coordinating session, under the owner's delegation, from the
+three options the issue listed:
+
+- **On every regeneration step, a quarter of a second apart**, the player asks for its speed again,
+  **but only while a speed row could have changed with no event**: a row whose condition depends on
+  time, motion, surroundings, or an attribute the player does not listen to, or a row scaled by
+  anything. A character with no such row pays two map lookups a step, and a test counts that it asks
+  nothing.
+- **On every action event**, the same gated question. Every `seconds_after_*` clock is stamped by a
+  function that raises an action event immediately afterwards, so a window opens on the frame of its
+  event. Only a closing edge, or a body walking in or out of reach, can be up to a quarter of a second
+  late.
+
+`UCataclysmStatPipeline::WhatConditionDependsOn` says what each of the 48 enumerators of
+`ECataclysmStatCondition` reads (`Always` and the 47 a sheet may name), with no default. The new Python check fails when a condition is missing from it. Its control: in a
+`git archive` copy of the tree, a fake condition added to the enumeration with no classification made
+`test_every_condition_is_classified` fail by name (1 failed, 3 passed), and the unedited copy passed
+(4 passed).
+
+### Judgements made under the owner's delegation, marked as judgements
+
+| The judgement | Why |
+| :-- | :-- |
+| the step rather than a refresh scheduled for each window's end | a scheduled refresh reaches only the clocks; Unstoppable's condition is about where enemies are, and no stamp marks that changing |
+| the step rather than reading the speed on demand in a movement component | that component does not exist, it would run the pipeline on every movement tick, and it moves the speed into client prediction, which nothing here can test |
+| a quarter of a second late on a closing edge is acceptable | the health debt on the same step takes the same allowance, for the reason its comment gives: a fraction of a second is not something a player can perceive |
+| a scaled row counts as able to change | every scale source measures something that moves by itself (seconds stood still, distance, how much of a pool is spent) |
+| every action event, not only clock events, asks the gated question | telling them apart would need a list of clock events kept in step with the component's; the gate makes an event with nothing to change cost two map lookups |
+
+### Out of scope
+
+**Client prediction of movement speed.** On a networked client, the clocks are stamped by server code,
+so a client may disagree with the server about a timed speed row. No option would make that worse than
+it is today, and nothing in this project tests with a client.
+
+### What this unblocks
+
+Seven enchantment sentences that change movement speed for a window after an event, held since
+2026-09-14 for this reason, "Using your support ability grants you 10%-20% increased movement speed for
+3 seconds" among them. Each still needs its own new clock, on the pattern of pull request #2013.
+
+### Figures
+
+**The Unreal window**, one editor lock from 18:06:41Z to 18:15:46Z on 2026-09-23, every line as printed:
+
+| Step | What it printed |
+| :-- | :-- |
+| the first test alone on unchanged engine code, commit `afde6d11`, prefix `Cataclysm.Player.` | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 16 tests performed, 15 succeeded, 1 failed: AnEnemyWalkingIntoReachDropsTheReductionWithNoHealthChange` |
+| this change, head `5396fd89` (game tree `af098b1d`), the whole suite, the run of record | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 2169 tests performed, 2169 succeeded, 0 failed`; `Declared: 2169 tests in the tree at 5396fd89; 2169 performed, gap 0` (18 in `Cataclysm.Player.`, counted from the test log) |
+
+**The defect, shown on the code before the change.** The one failure before the change was the
+registered assertion: "Expected 'with an enemy within four metres and nothing else happening, the
+reduction is dropped' to be 460.000000, but it was 230.000000". It was the only error in that test's
+log. So the health check before it passed, and the speed stayed halved for half a second with an enemy
+two metres away and nothing else happening. 39 tests of the whole suite reported skipping part of what
+they check: the art-pack ones a git worktree cannot run in full.
+
+**The guard proofs**, at prefix `Cataclysm.Player.`, run detached, each with the SHA-256 of the file it
+broke taken before the break and after the restore:
+
+| The break | With it in | Restored |
+| :-- | :-- | :-- |
+| P1: the gate removed, `if (!MovementSpeedCanChangeUnannounced())` becomes `if (false)` | 18 performed, 17 succeeded, 1 failed: `ASpeedLineWithNothingToWatchCostsTheStepNothing` | 18 of 18 |
+| P2: the step's call to `AfterRegenerationStep` replaced with nothing | 18 performed, 15 succeeded, 3 failed: `AnEnemyWalkingIntoReachDropsTheReductionWithNoHealthChange`, `ASpeedLineWithNothingToWatchCostsTheStepNothing`, `ATimedSpeedRowOpensOnItsEventAndClosesWithinAStep` | 18 of 18 |
+| P3: the action event no longer announced | 18 performed, 17 succeeded, 1 failed: `ATimedSpeedRowOpensOnItsEventAndClosesWithinAStep` | 18 of 18 |
+
+All three printed `PROVED True CRASHED False`, and each file's hash was the same before and after. The
+tests each proof failed are the ones registered. Which assertion inside each failed was not read,
+because the restored run overwrites the test log.
+
+**Python**, on `5396fd89` before the window, registered at 5342 collected: `5334 passed, 8 skipped in
+389.43s (0:06:29)`, exit 0; results file tests=5342, failures=0, errors=0, skipped=8. ruff:
+`All checks passed!`
+
+---
+
+---
+
 ## 2026-09-23 — A second stat makes a cooldown longer, and six cooldown rows are written: the five drawbacks and the Boss window
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillSlots.h` and `.cpp` (the stat's name),

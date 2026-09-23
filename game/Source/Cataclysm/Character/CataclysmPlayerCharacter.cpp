@@ -1208,6 +1208,95 @@ void ACataclysmPlayerCharacter::RefreshMovementSpeed()
 					   * More);
 }
 
+bool ACataclysmPlayerCharacter::MovementSpeedCanChangeUnannounced() const
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (!Cataclysm)
+	{
+		return false;
+	}
+
+	// BOTH STATS `RefreshMovementSpeed` ASKS FOR, because a row on either moves
+	// the answer: Unstoppable's condition sits on the suppression flag, not on
+	// the speed.
+	const TCHAR* const Stats[] = {TEXT("movement_speed"),
+								  MovementSpeedReductionSuppressedStat};
+	for (const TCHAR* Stat : Stats)
+	{
+		const FCataclysmStatInputs* Inputs = Cataclysm->GetStatInputs(FName(Stat));
+		if (!Inputs)
+		{
+			continue;
+		}
+
+		for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+		{
+			// A SCALED ROW MOVES WITH WHAT IT IS SCALED BY, and every scale
+			// source measures something -- seconds stood still, distance, how
+			// much of a pool is spent -- that changes without an event here.
+			if (Modifier.Scale != ECataclysmStatScale::Fixed)
+			{
+				return true;
+			}
+
+			// THE THREE ANSWERS THIS CHARACTER ALREADY LISTENS FOR ARE LEFT
+			// OUT, and so is the blow or skill, which a speed read has neither
+			// of. Everything else can change with nothing written to health, the
+			// class resource or the speed attribute.
+			switch (UCataclysmStatPipeline::WhatConditionDependsOn(
+				Modifier.Condition))
+			{
+			case ECataclysmConditionDependsOn::Nothing:
+			case ECataclysmConditionDependsOn::Health:
+			case ECataclysmConditionDependsOn::ClassResource:
+			case ECataclysmConditionDependsOn::TheBlowOrSkill:
+				break;
+			case ECataclysmConditionDependsOn::OtherAttributes:
+			case ECataclysmConditionDependsOn::Time:
+			case ECataclysmConditionDependsOn::Motion:
+			case ECataclysmConditionDependsOn::Surroundings:
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+void ACataclysmPlayerCharacter::RefreshMovementSpeedIfItCanChangeUnannounced()
+{
+	// THE GATE IS THE WHOLE COST ARGUMENT. Without it every player would run the
+	// pipeline four times a second for nothing; with it, a character holding no
+	// such row pays two map lookups a step.
+	if (!MovementSpeedCanChangeUnannounced())
+	{
+		return;
+	}
+
+	++UnannouncedSpeedRefreshCount;
+	RefreshMovementSpeed();
+}
+
+void ACataclysmPlayerCharacter::AfterRegenerationStep()
+{
+	Super::AfterRegenerationStep();
+
+	// A QUARTER OF A SECOND LATE AT WORST, on the closing edge of a window and
+	// on a body walking in or out of reach. Issue #1821. The health debt on the
+	// same step takes the same allowance, for the reason it gives: a fraction
+	// of a second is not something a player can perceive.
+	RefreshMovementSpeedIfItCanChangeUnannounced();
+}
+
+void ACataclysmPlayerCharacter::OnActionEvent(FName Event)
+{
+	// EVERY EVENT, NOT ONLY THE ONES WITH A CLOCK. Telling them apart would
+	// need a list of clock events kept here in step with the component's; the
+	// gate above already makes an event with nothing to change cost two map
+	// lookups.
+	RefreshMovementSpeedIfItCanChangeUnannounced();
+}
+
 void ACataclysmPlayerCharacter::HealthChanged()
 {
 	Super::HealthChanged();
@@ -2011,6 +2100,15 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	ResourceMaximumChanged.Remove(MaxClassResourceChangedHandle);
 	MaxClassResourceChangedHandle = ResourceMaximumChanged.AddUObject(
 		this, &ACataclysmPlayerCharacter::OnClassResourceChanged);
+
+	// AND EVERY EVENT, SO A TIMED WINDOW OPENS ON ITS OWN FRAME. Issue #1821.
+	// Every `seconds_after_*` clock is stamped by a `NoteX()` that raises this
+	// straight after the stamp. The quarter-second step below would reach the
+	// same speed up to a quarter of a second later; this is the edge a player
+	// causes and would notice. Replaced rather than added, as above.
+	ASC->OnActionEvent.Remove(ActionEventHandle);
+	ActionEventHandle = ASC->OnActionEvent.AddUObject(
+		this, &ACataclysmPlayerCharacter::OnActionEvent);
 
 	// AND A DEATH ANYWHERE REACHES NOTHING MOVES YOU. Issue #1515. Bound here
 	// with the attribute delegates because it is the same kind of thing: an

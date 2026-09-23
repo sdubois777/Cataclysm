@@ -309,6 +309,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// IT KEEPS NO CLOCK OF ITS OWN. The sample only says what it saw; the
 	// character's ability system component stamps the clocks from the world.
 	UCataclysmMovement::SampleStep(this);
+
+	// AND WHATEVER A SUBCLASS KEEPS THAT MUST BE ASKED FOR AGAIN AS TIME PASSES.
+	// Issue #1821. LAST, so it sees this step's movement sample and every write
+	// the jobs above made.
+	AfterRegenerationStep();
 }
 
 void ACataclysmCharacterBase::NoteDamageTaken()

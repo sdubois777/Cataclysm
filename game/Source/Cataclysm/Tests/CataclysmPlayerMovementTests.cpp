@@ -1192,6 +1192,319 @@ bool FCataclysmPlayerSpeedIgnoresAReductionOnlyWhileCrowded::RunTest(const FStri
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsAnEnemyIntoReachUnprompted,
+	"Cataclysm.Player.AnEnemyWalkingIntoReachDropsTheReductionWithNoHealthChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Ravager keystone Unstoppable's movement clause takes effect when an enemy
+ * comes within four metres, without anything else happening. Issue #1821.
+ *
+ * THE TEST ABOVE CALLS `RefreshMovementSpeed` BY HAND after each body is
+ * placed, so it proves the clause is judged correctly and cannot see whether
+ * the game ever asks. Until issue #1821 the game asked only when the
+ * character's health, class resource or speed attribute changed: an enemy
+ * walking into reach changes none of those, so the reduction stayed on until
+ * the player next took damage, and stayed off after the enemy left.
+ *
+ * NOTHING HERE CALLS THE REFRESH. The game clock runs, and the speed has to
+ * follow on its own. The character's health is checked unchanged across both
+ * readings, because a blow landing in between would refresh the speed through
+ * the health route and the test would pass for the wrong reason.
+ */
+bool FCataclysmPlayerSpeedFollowsAnEnemyIntoReachUnprompted::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// THE SAME TWO LINES AS THE TEST ABOVE: a hazard halving the speed, and the
+	// flag granted only while an enemy is within four metres.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Always(ECataclysmStatBucket::More, -50.0f));
+
+	FCataclysmStatInputs Flag;
+	Flag.Base = 0.0f;
+	Flag.Modifiers.Add(Row(ECataclysmStatBucket::Flat, 1.0f,
+						   ECataclysmStatCondition::EnemiesInReachAtLeast, 1.0f,
+						   FourMetres));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Speed);
+	Stats.Add(FName(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat),
+			  Flag);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+	const auto Health = [AbilitySystem]()
+	{
+		return AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+
+	// ALONE, THE REDUCTION STANDS. This reading comes from the setup's own
+	// refresh, so it is the control for the one below.
+	if (!TestEqual(TEXT("alone, the reduction halves the speed"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// AN ENEMY TWO METRES AWAY, AND HALF A SECOND OF GAME TIME: two steps of
+	// the quarter-second regeneration timer.
+	const float HealthBefore = Health();
+	ACataclysmEnemyCharacter* Enemy =
+		SpawnHostile(World, FVector(0.0f, 2.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("an enemy within four metres"), Enemy))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 0.5f);
+
+	if (!TestEqual(TEXT("the character's health did not change, so nothing but "
+						"the enemy's arrival can have moved the speed"),
+				   Health(), HealthBefore, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with an enemy within four metres and nothing else "
+				   "happening, the reduction is dropped"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// AND IT COMES BACK WHEN THE ENEMY IS GONE, which is the half a refresh on
+	// arrival alone would never give.
+	Enemy->Destroy();
+	CataclysmTestWorld::RunClock(World, 0.5f);
+
+	TestEqual(TEXT("with the enemy gone and nothing else happening, the "
+				   "reduction is back"),
+			  Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f);
+
+	return true;
+}
+
+namespace CataclysmPlayerMovementTest
+{
+	/**
+	 * A player whose recorded movement speed line is `Speed`, on a Ravager's
+	 * base, spawned and possessed so that its own setup has asked for the speed
+	 * once. For the two tests below. Issue #1821.
+	 */
+	static ACataclysmPlayerCharacter* SpawnPlayerWithSpeedLine(
+		UWorld* World, const FCataclysmStatInputs& Speed,
+		UCataclysmAbilitySystemComponent*& OutAbilitySystem)
+	{
+		OutAbilitySystem = nullptr;
+		ACataclysmPlayerState* PlayerState =
+			World->SpawnActor<ACataclysmPlayerState>();
+		UCataclysmAbilitySystemComponent* AbilitySystem =
+			PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent()
+						: nullptr;
+		if (!AbilitySystem)
+		{
+			return nullptr;
+		}
+
+		AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+			RavagerMetresPerSecond);
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		Stats.Add(FName(TEXT("movement_speed")), Speed);
+		AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+														 FRotator::ZeroRotator);
+		if (!Character)
+		{
+			return nullptr;
+		}
+		Character->SetPlayerState(PlayerState);
+		Character->OnRep_PlayerState();
+		OutAbilitySystem = AbilitySystem;
+		return Character;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerTimedSpeedRowOpensAndCloses,
+	"Cataclysm.Player.ATimedSpeedRowOpensOnItsEventAndClosesWithinAStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A movement speed row under a window after an event takes effect on the
+ * event's own frame and ends within a quarter of a second of the window
+ * closing. Issue #1821.
+ *
+ * THE SHAPE OF THE SEVEN SENTENCES #1821 WAS HOLDING, "Using your support
+ * ability grants you 10%-20% increased movement speed for 3 seconds" among
+ * them. The window here is the block clock's, because it exists today; the new
+ * clocks those sentences need are the same shape.
+ *
+ * TWO EDGES, TWO MECHANISMS. The opening is read with no game time passing at
+ * all, so only the refresh on the event can produce it. The closing needs time
+ * to pass with no event, so only the refresh on the step can.
+ */
+bool FCataclysmPlayerTimedSpeedRowOpensAndCloses::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// +50% FOR THREE SECONDS AFTER A BLOCK.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Row(ECataclysmStatBucket::Increased, 50.0f,
+							ECataclysmStatCondition::WithinSecondsOfBlock, 3.0f,
+							/*ReachMetres=*/-1.0f));
+
+	UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	ACataclysmPlayerCharacter* Character =
+		SpawnPlayerWithSpeedLine(World, Speed, AbilitySystem);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement)
+		|| !TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+
+	if (!TestEqual(TEXT("before any block, the speed is plain"),
+				   Movement->MaxWalkSpeed, Plain, 0.01f))
+	{
+		return false;
+	}
+
+	// THE OPENING EDGE, WITH NO TIME PASSING.
+	AbilitySystem->NoteBlocked();
+	TestEqual(TEXT("on the block's own frame the speed is half as much again"),
+			  Movement->MaxWalkSpeed, Plain * 1.5f, 0.01f);
+
+	// STILL INSIDE THE WINDOW, so the step must not have turned it off.
+	CataclysmTestWorld::RunClock(World, 2.8f);
+	TestEqual(TEXT("2.8 seconds after the block the speed is still raised"),
+			  Movement->MaxWalkSpeed, Plain * 1.5f, 0.01f);
+
+	// AND THE CLOSING EDGE, 0.3 SECONDS AFTER THE WINDOW ENDS: more than the
+	// quarter-second step, so one step has run since it closed.
+	CataclysmTestWorld::RunClock(World, 0.5f);
+	TestEqual(TEXT("3.3 seconds after the block, with nothing else happening, "
+				   "the speed is plain again"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedWithNothingToWatchCostsNothing,
+	"Cataclysm.Player.ASpeedLineWithNothingToWatchCostsTheStepNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A character whose speed rows depend only on what it already listens for is
+ * never asked for its speed by the step or by an event. Issue #1821.
+ *
+ * A COUNT, BECAUSE A SPEED CANNOT SHOW IT. Asking again for a speed that has
+ * not moved gives the same speed, so every reading of `MaxWalkSpeed` would pass
+ * whether or not the pipeline ran four times a second.
+ *
+ * THE SECOND HALF IS THE CONTROL. The same character, given one row under a
+ * timed window, is counted: without it, a count that never moved for any reason
+ * would pass the first half.
+ */
+bool FCataclysmPlayerSpeedWithNothingToWatchCostsNothing::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// A ROW THAT ALWAYS HOLDS, AND ONE UNDER A HEALTH THRESHOLD: both answered
+	// by events this character already listens for.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Always(ECataclysmStatBucket::More, -20.0f));
+	Speed.Modifiers.Add(Row(ECataclysmStatBucket::Increased, 30.0f,
+							ECataclysmStatCondition::HealthBelowPercent, 35.0f,
+							/*ReachMetres=*/-1.0f));
+
+	UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+	ACataclysmPlayerCharacter* Character =
+		SpawnPlayerWithSpeedLine(World, Speed, AbilitySystem);
+	if (!TestNotNull(TEXT("player"), Character)
+		|| !TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	// TWO SECONDS OF STEPS, AND AN EVENT.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	AbilitySystem->NoteBlocked();
+	TestEqual(TEXT("eight steps and a block later, nothing asked for the speed"),
+			  Character->GetUnannouncedSpeedRefreshCount(), 0);
+
+	// THE CONTROL: one row under a timed window, and the same two seconds.
+	Speed.Modifiers.Add(Row(ECataclysmStatBucket::Increased, 10.0f,
+							ECataclysmStatCondition::WithinSecondsOfBlock, 3.0f,
+							/*ReachMetres=*/-1.0f));
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Speed);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	const int32 Counted = Character->GetUnannouncedSpeedRefreshCount();
+	TestTrue(FString::Printf(TEXT("with a timed row, the steps asked: %d times "
+								  "in two seconds"), Counted),
+			 Counted >= 7);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmMovementSuppressionStatNameIsKnown,
 	"Cataclysm.Player.TheMovementSuppressionStatNameIsTheOneTheMapKnows",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

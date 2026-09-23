@@ -531,6 +531,16 @@ protected:
 	/** One step of regeneration. Driven by RegenerationTimer. */
 	void RegenerationStep();
 
+	/**
+	 * Called at the end of every `RegenerationStep`. Issue #1821.
+	 *
+	 * EMPTY HERE. `ACataclysmPlayerCharacter` asks for its movement speed again
+	 * from it, because a speed row can depend on time passing or on where other
+	 * bodies are, and neither announces itself. A quarter of a second late is
+	 * the same allowance the health debt on this step takes.
+	 */
+	virtual void AfterRegenerationStep() {}
+
 	/** Fires every UCataclysmRegeneration::StepSeconds while alive. */
 	FTimerHandle RegenerationTimer;
 
