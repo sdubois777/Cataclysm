@@ -2,6 +2,126 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Below 10% mana a cast costs 5% of current health instead, and a general "mana below" condition exists
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the new condition
+`mana_below`, its reading of the mana in hand, its bound and the two sentences that count conditions),
+`game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (the mana reading filled in
+beside the health reading), `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp`
+(which casts pay in health, decided once when the cost is paid),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (the health taken with every other
+health cost), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the new stat on the
+character's stat line), `game/Source/Cataclysm/Interface/CataclysmSkillBar.cpp` (a skill paid in health
+is not greyed out), `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the
+rule), `tools/generate_datatables.py` (the condition a data sheet may name), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, `CataclysmStatPipelineTests.cpp`,
+`CataclysmDungeonModifierEffectsTests.cpp` and `CataclysmStatExemptionTests.cpp`, and the Python checks
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Famine_Desperate_Measures` in `game/Data/DungeonModifiers.csv`, weight 10: "When your Mana falls below
+10%, your skills cost 5% of your current Health to cast instead of Mana." Both figures are the row's
+own. No text in `docs/` mentions the row. ("Desperate Measures" is also the name of a Masochist passive
+node in `docs/Masochist_Class_Tree_Final.json`; that is a different thing with the same name.)
+
+### Why this row was built next
+
+Of the rows without a rule, it adds the most play for the smallest change to the engine, measured
+against the two others considered on 2026-09-23:
+
+- `Celestial_Eternal_Chorus` asks the player to destroy the source of a hymn, and nothing on a floor can
+  be destroyed today: a player can only target something with pawn collision, an ability system, a
+  hostile team and health, and no object other than a creature has all four.
+- `Pestilence_The_Plaguebearer` needs a creature that flees the player, which no creature does, and a
+  fourth creature damage multiplier, which would start the refactor of the three multipliers into one
+  map that was ruled on 2026-09-17.
+- This row needed one new condition. Both costs it touches were already asked for with the character's
+  conditions at the moment of the cast.
+
+### What the rule does
+
+On a floor carrying the row, while the player's mana is strictly below 10% of its maximum, a cast that
+would have taken mana takes none and takes 5% of the player's CURRENT health instead. At 10% or above it
+pays mana as usual. The floor panel shows the row's own sentence, and the skill bar does not grey out a
+skill the rule has made payable.
+
+### The condition, and it is general on purpose
+
+**`mana_below`** is true while the mana in hand is strictly below the given share of the maximum. A
+character with no maximum mana reads as unknown and is never below anything: it has no mana to run low
+on. It is written as a general threshold because the enchantment "Take 10%-40% more damage when on low
+mana" is to reuse it. **That later batch should use `mana_below`**, with whatever share "low" is ruled to
+mean. It is listed as landed ahead of its first row.
+
+### Rulings
+
+**ONE, by the coordinating session under the owner's delegation on 2026-09-23: only a cast that would
+have cost mana pays.** "Instead of Mana" replaces a cost and does not add one, so a skill that costs no
+mana pays no health either.
+
+**What decides "would have cost mana" is the skill's cost AFTER the character's own reductions, not the
+row's base cost.** The two differ when gear has removed a skill's cost: its slot still states 20 mana,
+and the character pays none. That skill would not have cost mana, so it pays nothing here; reading the
+base cost instead would charge health for a cast the player had already made free. The test
+`ASkillThatCostsNoManaPaysNoHealthBelowTenPercent` pins it with a cost removed by a modifier.
+
+Measured before writing it: all 117 designed weapon skills take their slot's cost, and only the basic
+attack's slot costs nothing, so today the zero-cost case arises only from the basic attack and from
+modifiers that remove a cost.
+
+**TWO, under the owner's delegation: a character whose costs are already paid from health is not
+affected.** The Masochist option that turns the mana pool into health leaves no maximum mana, so the
+condition never holds for it, and the rule also checks the pool. Its casts would not have cost mana.
+
+**THREE, under the owner's delegation: an aura's upkeep is not a cast.** Switching a toggled aura on is a
+cast and pays in health below 10%; each second of upkeep afterwards still drains mana, and the aura
+switches off when mana cannot cover it. The row says "to cast", and an upkeep paid in health would let
+an aura run for ever at low mana.
+
+**FOUR, under the owner's delegation: this health cost is a health cost like any other.** It is taken
+with the other shares of current health in `PayHealthCost`, never leaves less than 1 health, fills
+Fervour, opens the window after paying a health cost, and is cancelled by anything that makes skills
+cost no health.
+
+**FIVE, found while writing it: the answer is decided once, when the cost is paid.** Paying mana moves
+the mana, so asking again afterwards would change the answer. A cast from 11% mana that takes the
+player to 9% pays mana and no health. The test
+`ACastThatTakesManaBelowTenPercentIsNotAlsoChargedHealth` pins it.
+
+**No live line on the floor panel,** which the plan offered. The panel already shows the row's sentence
+under its name, and a live "active now" line would be redrawn only when the panel refreshes, so it would
+often be wrong.
+
+### Tests
+
+Eight automation tests:
+`Cataclysm.Skills.BelowTenPercentManaACastPaysFivePercentOfCurrentHealthInstead`,
+`Cataclysm.Skills.AtExactlyTenPercentManaACastStillPaysMana`,
+`Cataclysm.Skills.ACastThatTakesManaBelowTenPercentIsNotAlsoChargedHealth`,
+`Cataclysm.Skills.ASkillThatCostsNoManaPaysNoHealthBelowTenPercent`,
+`Cataclysm.Skills.ABasicAttackBelowTenPercentManaPaysNoHealth`,
+`Cataclysm.Skills.BelowTenPercentManaAnAurasUpkeepStillDrainsMana`,
+`Cataclysm.StatPipeline.ManaBelowIsStrictAndRefusesACharacterWithNoPool` and
+`Cataclysm.DungeonModifierEffects.DesperateMeasuresPutsItsRowOnThePlayerUnderTheLowManaCondition`.
+The existing `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead` gains a probe for the new
+stat.
+
+One Python check, `test_desperate_measures_row_still_states_its_two_figures`, seen to fail with the
+threshold changed and to pass once restored.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — Five windows for the movement speed rows, and the Boss window now closes on a respawn
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (five
@@ -141,6 +261,7 @@ assertion inside each failing test failed was not read, because the restored run
 **Python**, before the window on `a82905ba`, registered at 5344 collected with the one stale-asset failure:
 `1 failed, 5335 passed, 8 skipped in 329.29s (0:05:29)`. That run predates two C++ commits, and Python
 tests read C++ source, so the run of record is the one after the window, reported with the pull request.
+
 ---
 
 ## 2026-09-23 — Attrition is two rows, now that an ailment chance is asked for with the skill's tags

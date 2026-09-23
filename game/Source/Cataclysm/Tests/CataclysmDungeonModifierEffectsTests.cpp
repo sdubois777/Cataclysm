@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -20085,6 +20086,76 @@ bool FCataclysmCommanderOnHoverNoRowTest::RunTest(const FString& Parameters)
 	Mode->ChooseTheFloorsCommander();
 	TestNull(TEXT("a floor without the row has no Commander"), Mode->TheFloorsCommander());
 	TestFalse(TEXT("so no creature on it is named"), Mode->IsTheFloorsCommander(Elite));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Famine_Desperate_Measures. Issues #1820 and #41.
+//
+// "When your Mana falls below 10%, your skills cost 5% of your current Health to
+// cast instead of Mana." What a cast then pays is tested on the cast path, in
+// `CataclysmSkillTemplateTests.cpp`; this test walks the floor's half of the chain
+// to the player's stat line, which is where those tests pick it up.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresOnTheFloorTest,
+	"Cataclysm.DungeonModifierEffects.DesperateMeasuresPutsItsRowOnThePlayerUnderTheLowManaCondition",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDesperateMeasuresOnTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const TCHAR* const Stat = UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+
+	// A FLOOR WITHOUT THE ROW FIRST, so the reading after it cannot be something
+	// that was already there.
+	Mode->DungeonModifiers = {};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("a floor without the row was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Mode->ApplyFloorRulesToPlayer();
+	TestNull(TEXT("a floor without the row puts nothing on the stat"),
+			 DungeonRuleOn(Player.AbilitySystem, Stat));
+
+	Mode->DungeonModifiers = {FName(Effects::DesperateMeasuresKey)};
+	if (!TestTrue(TEXT("the next floor, carrying the row, was reached"),
+				  Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const FCataclysmStatModifier* Row = DungeonRuleOn(Player.AbilitySystem, Stat);
+	if (!TestNotNull(TEXT("a floor carrying the row puts it on the player's stat line"),
+					 Row))
+	{
+		return false;
+	}
+
+	// THE ROW'S TWO FIGURES, written out rather than read from the constants, so a
+	// change to either cannot pass by comparing a constant with itself.
+	TestEqual(TEXT("worth 5% of current health"), Row->Value, 5.0f, 0.001f);
+	TestTrue(TEXT("as a flat addition"), Row->Bucket == ECataclysmStatBucket::Flat);
+	TestTrue(TEXT("holding only while mana is below a share"),
+			 Row->Condition == ECataclysmStatCondition::ManaBelowPercent);
+	TestEqual(TEXT("and that share is 10%"), Row->ConditionValue, 10.0f, 0.001f);
 	return true;
 }
 
