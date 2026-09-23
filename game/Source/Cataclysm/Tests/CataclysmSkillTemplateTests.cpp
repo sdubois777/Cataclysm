@@ -15675,14 +15675,19 @@ bool FCataclysmDesperateMeasuresBasicAttackTest::RunTest(const FString&)
 			  Swing->ManaCostFor(Caster.AbilitySystem), 0.0f, 0.001f);
 	TestTrue(TEXT("it swings at 5% mana"),
 			 UCataclysmBasicAttack::Swing(Caster.AbilitySystem));
-	// NO MANA TAKEN, WHICH IS NOT THE SAME AS MANA UNCHANGED. A basic attack that
-	// lands pays MANA ON HIT back to the attacker -- 6 for the Basic slot in
-	// game/Data/SkillSlots.csv -- so mana can rise here. MEASURED: the first run of
-	// this test asserted exactly 50 and read 56, because the swing hit the target
-	// two metres away. What the rule must not do is take mana or health for it.
-	TestTrue(FString::Printf(TEXT("and takes no mana (it may pay mana on hit): %.1f"),
-							 Caster.Mana()),
-			 Caster.Mana() >= 50.0f);
+	// NO MANA TAKEN, AND THE SWING'S OWN MANA ON HIT PAID BACK, EXACTLY. A basic
+	// attack that lands pays mana on hit to the attacker, read here from the
+	// imported Skill Slots table rather than written as a number. MEASURED: the
+	// first run of this test asserted exactly 50 and read 56, because the swing hit
+	// the target two metres away and the Basic slot pays 6.
+	//
+	// EXACT AND NOT "AT LEAST 50", ruled by the coordinating session: a cast that
+	// wrongly took 5 mana and then gained 6 would read 51 and pass a floor.
+	const float ManaOnHit = Swing->GetManaOnHit();
+	TestTrue(FString::Printf(TEXT("the basic attack pays mana on hit: %.1f"), ManaOnHit),
+			 ManaOnHit > 0.0f);
+	TestEqual(TEXT("and takes no mana, paying back only its mana on hit"), Caster.Mana(),
+			  50.0f + ManaOnHit, 0.01f);
 	TestEqual(TEXT("and no health"), Caster.Health(), DesperateMaxHealth, 0.01f);
 	return true;
 }
