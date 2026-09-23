@@ -23,8 +23,9 @@ length is worked out asks for the stat), four automation tests in
 [#1994](https://github.com/sdubois777/Cataclysm/issues/1994), which this closes, and the Boss window row
 whose engine half merged as pull request #2013.
 
-**Partial.** The Python suite has run. The compile, the DataTable asset rebuild, the automation tests
-and the guard proofs wait for a machine window.
+**Applied.** The Python suite, the compile, the DataTable asset rebuild, the automation tests and both
+guard proofs have run, the Unreal steps inside one editor lock. The figures are at the end of this
+entry.
 
 ### What it does
 
@@ -101,6 +102,44 @@ up to date."
 
 **The counts** move from 257 rows over 198 enchantments to 263 over 204, measured on `2df271ab`
 before the edit.
+
+### Figures
+
+**The Unreal window**, one editor lock from 17:26:30Z to 17:37:31Z on 2026-09-23, on head `caa0585c`
+(game tree `0f094a7d`, on development `f965eb52`), every line as printed:
+
+| Step | What it printed |
+| :-- | :-- |
+| the base, development `f965eb52`, four groups | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 71 tests performed, 71 succeeded, 0 failed` (from the test log: `Cataclysm.Ability.` 4, `Cataclysm.Data.` 7, `Cataclysm.Enchantments.` 58, `Cataclysm.StatExemption.` 2) |
+| this tree's build | `Build: Succeeded - 27 actions, 24 files compiled` |
+| before the asset rebuild, `Cataclysm.Enchantments.+Cataclysm.Data.`, nothing compiled | `Tests: 67 tests performed, 64 succeeded, 3 failed: EveryGeneratedTableHasAnAssetThatMatchesIt, TheBossCooldownRowShortensACooldownOnlyAfterABossIsStruck, TheMovementCooldownDrawbackLengthensOnlyMovementSkills` |
+| the asset rebuild | `rebuilt 2 DataTable assets and left 27 already current, 3016 rows in total across /Game/Data`: `DT_EnchantmentEffects` with 263 rows and `DT_EnchantmentsPositive` with 379, each "its source changed"; three files changed, the two assets and `game/Data/datatable_asset_sources.json` |
+| after it, the same groups, nothing compiled | `Tests: 67 tests performed, 67 succeeded, 0 failed` |
+| the whole suite, the run of record | `Tests: 2166 tests performed, 2166 succeeded, 0 failed`; `Declared: 2166 tests in the tree at caa0585c; 2166 performed, gap 0` (from the test log: `Cataclysm.Ability.` 8, `Cataclysm.Enchantments.` 60, `Cataclysm.Data.` 7, `Cataclysm.StatExemption.` 2) |
+
+**The three failures before the rebuild failed on the registered assertions**, read from the test log:
+the stale asset had "6 row(s) only in the CSV" for `DT_EnchantmentEffects` and a first difference at
+line 171 for `DT_EnchantmentsPositive`; the Boss row read 4.000000 where 2 was expected, and the
+movement row read 4.000000 where 6 was expected. The rebuild was the only change between the two runs,
+and neither run compiled anything. 39 tests reported skipping part of what they check: the art-pack
+ones a git worktree cannot run in full.
+
+**The guard proofs**, at prefix `Cataclysm.Ability.`, run detached, each with the SHA-256 of the file
+it broke taken before the break and after the restore:
+
+| The break | With it in | Restored |
+| :-- | :-- | :-- |
+| P1: the lookup asks for `ManaCostStat`, which no row names, instead of `CooldownLengtheningStat` | 8 performed, 5 succeeded, 3 failed: `ACooldownLengtheningRowMultipliesACooldownByTheSentencesOwnNumber`, `ACooldownLengtheningRowScopedToASlotLengthensOnlyThatSlot`, `ALengtheningAndAReductionAreTwoSeparateFactors` | 8 performed, 8 succeeded, 0 failed |
+| P2: `CooldownLengthFactor` loses its floor at nought | 8 performed, 7 succeeded, 1 failed: `ANegativeCooldownLengtheningRowShortensNothing` | 8 performed, 8 succeeded, 0 failed |
+
+Both printed `PROVED True CRASHED False`, and each file's hash was the same before and after. The tests
+each proof failed are the ones registered; which assertions inside them failed was not read, because
+the restored run overwrites the test log.
+
+**Python**, on `caa0585c` before the window, registered at 5338 collected with one failure:
+`1 failed, 5329 passed, 8 skipped in 310.39s (0:05:10)`, the failure being the asset-freshness check
+naming `EnchantmentEffects.csv` and `EnchantmentsPositive.csv`, which the rebuild resolves. ruff:
+`All checks passed!`
 
 ---
 
