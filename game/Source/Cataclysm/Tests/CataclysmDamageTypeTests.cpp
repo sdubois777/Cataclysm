@@ -8,6 +8,7 @@
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 // For the minion that must not take its summoner's penetration. Issue #659.
 #include "AbilitySystem/CataclysmMinion.h"
@@ -721,8 +722,19 @@ CATACLYSM_TEST(FCataclysmAreaDamageIsStillMitigatedTest,
 }
 
 CATACLYSM_TEST(FCataclysmDamageOverTimeBypassesTheShieldTest,
-	"Cataclysm.DamageType.AnEnergyShieldDoesNotAbsorbDamageOverTime")
+	"Cataclysm.DamageType.AnEnergyShieldAbsorbsEveryTickButABleed")
 {
+	/**
+	 * The project owner, 2026-09-18: "every DoT except bleed reaches ES."
+	 * Issue #2014. Until then this case asserted the opposite, that every tick
+	 * went straight past a full shield.
+	 *
+	 * THROUGH THE ROUTE PLAY USES, NOT A HAND-BUILT HIT. A real burn and a real
+	 * bleed are applied with `ApplyDamageOverTime` and one tick of each is run.
+	 * That is what proves the bleed is recognised where the hit is built -- from
+	 * the tag the effect GRANTS -- rather than only by a calculation handed a
+	 * hit already marked.
+	 */
 	UWorld* World = CataclysmDamageTypeTest::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a world"), World))
 	{
@@ -746,15 +758,41 @@ CATACLYSM_TEST(FCataclysmDamageOverTimeBypassesTheShieldTest,
 		TestEqual(TEXT("a direct hit is absorbed by the shield"),
 			Defender.TakeDamageReading(), 0.0f, 1.0f);
 
-		// DAMAGE OVER TIME GOES STRAIGHT PAST IT. That is what makes an energy
-		// shield a distinct defence rather than a second health bar, and it is the
-		// design's answer to shield stacking.
+		// A TICK WITH NO AILMENT IS ABSORBED TOO, as a ground zone's is.
 		FCataclysmHitDelivery OverTime;
 		OverTime.bIsDamageOverTime = true;
 		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f,
 										 FGameplayTagContainer(), OverTime);
-		TestEqual(TEXT("damage over time reaches health through a full shield"),
+		TestEqual(TEXT("a tick with no ailment is absorbed by the shield"),
+			Defender.TakeDamageReading(), 0.0f, 1.0f);
+
+		// A REAL BURN, ONE TICK: absorbed, and the shield pays for it.
+		const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+		const float ShieldBeforeBurn = Defender.Vitals->GetEnergyShield();
+		TestTrue(TEXT("a burn is applied"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(
+				Attacker, Defender.Actor, /*DamagePerTick=*/1000.0f,
+				/*DurationSeconds=*/4.0f, Burn, /*bScalesWithInstigator=*/false));
+		TestEqual(TEXT("and one burn tick runs"),
+			Defender.AbilitySystem->ExecutePeriodicEffectsGrantingForTests(Burn), 1);
+		TestEqual(TEXT("a burn tick is absorbed by the shield"),
+			Defender.TakeDamageReading(), 0.0f, 1.0f);
+		TestEqual(TEXT("and the shield pays for the burn tick"),
+			ShieldBeforeBurn - Defender.Vitals->GetEnergyShield(), 1000.0f, 1.0f);
+
+		// A REAL BLEED, ONE TICK: straight past the shield to health.
+		const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+		const float ShieldBeforeBleed = Defender.Vitals->GetEnergyShield();
+		TestTrue(TEXT("a bleed is applied"),
+			UCataclysmSkillEffects::ApplyDamageOverTime(
+				Attacker, Defender.Actor, /*DamagePerTick=*/1000.0f,
+				/*DurationSeconds=*/4.0f, Bleed, /*bScalesWithInstigator=*/false));
+		TestEqual(TEXT("and one bleed tick runs"),
+			Defender.AbilitySystem->ExecutePeriodicEffectsGrantingForTests(Bleed), 1);
+		TestEqual(TEXT("a bleed tick reaches health through a full shield"),
 			Defender.TakeDamageReading(), 1000.0f, 1.0f);
+		TestEqual(TEXT("and the shield pays nothing for it"),
+			ShieldBeforeBleed - Defender.Vitals->GetEnergyShield(), 0.0f, 1.0f);
 
 		Attacker->Destroy();
 	}

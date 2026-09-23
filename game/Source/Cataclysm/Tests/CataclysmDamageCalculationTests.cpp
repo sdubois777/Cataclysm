@@ -303,7 +303,7 @@ CATACLYSM_TEST(FCataclysmBlockTest, "Cataclysm.Damage.BlockRemovesHalfAndApplies
 }
 
 CATACLYSM_TEST(FCataclysmEnergyShieldTest,
-	"Cataclysm.Damage.EnergyShieldAbsorbsBeforeHealthButNotDamageOverTime")
+	"Cataclysm.Damage.EnergyShieldAbsorbsBeforeHealthAndEveryTickButABleed")
 {
 	UWorld* World = CataclysmDamageTest::MakeWorld();
 	{
@@ -315,17 +315,26 @@ CATACLYSM_TEST(FCataclysmEnergyShieldTest,
 		TestEqual(TEXT("The shield absorbs what it can"), Ordinary.AbsorbedByShield, 400.0f);
 		TestEqual(TEXT("Health takes the rest"), Ordinary.DealtToHealth, 600.0f);
 
-		// Damage over time passes straight through. This is what makes energy
-		// shield a distinct defence rather than a second health bar, and it is
-		// proven by a negative enchantment that removes the immunity.
+		// A TICK THAT IS NOT A BLEED IS ABSORBED LIKE A HIT. The project owner,
+		// 2026-09-18: "every DoT except bleed reaches ES." Issue #2014. Until
+		// then every tick passed straight through, and this case asserted it.
 		FCataclysmIncomingHit Dot;
 		Dot.Damage = 1000.0f;
 		Dot.bIsDamageOverTime = true;
 		const FCataclysmDamageResult OverTime = D.Resolve(Dot);
-		TestEqual(TEXT("The shield absorbs no damage over time"),
-			OverTime.AbsorbedByShield, 0.0f);
-		TestEqual(TEXT("Damage over time reaches health in full"),
-			OverTime.DealtToHealth, 1000.0f);
+		TestEqual(TEXT("The shield absorbs what it can of a tick that is not a bleed"),
+			OverTime.AbsorbedByShield, 400.0f);
+		TestEqual(TEXT("and health takes the rest of it"),
+			OverTime.DealtToHealth, 600.0f);
+
+		// A BLEED STILL PASSES STRAIGHT THROUGH, to a defender with no flag.
+		FCataclysmIncomingHit Bleed = Dot;
+		Bleed.bIsBleed = true;
+		const FCataclysmDamageResult Bled = D.Resolve(Bleed);
+		TestEqual(TEXT("The shield absorbs none of a bleed"),
+			Bled.AbsorbedByShield, 0.0f);
+		TestEqual(TEXT("and a bleed reaches health in full"),
+			Bled.DealtToHealth, 1000.0f);
 	}
 	World->DestroyWorld(false);
 	return true;

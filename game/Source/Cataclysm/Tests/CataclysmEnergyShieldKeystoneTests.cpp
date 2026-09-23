@@ -47,9 +47,10 @@
  * `Cataclysm.Regeneration.AnEnergyShieldDoesNotRefillWhileTheWaitIsRunning` is
  * Ablative's: without the node the shield stays put for three seconds, and that
  * has to remain true.
- * `Cataclysm.Damage.EnergyShieldAbsorbsBeforeHealthButNotDamageOverTime` is
- * Warded's. Neither is modified here, and both still pass, because every
- * character in them reads zero for all three flags.
+ * `Cataclysm.Damage.EnergyShieldAbsorbsBeforeHealthAndEveryTickButABleed` is
+ * Warded's: without the flag a bleed passes the shield. Every character in
+ * them reads zero for all three flags. (Warded's control was
+ * `...ButNotDamageOverTime` until issue #2014 let every other tick in.)
  */
 namespace CataclysmShieldKeystoneTest
 {
@@ -144,13 +145,18 @@ namespace CataclysmShieldKeystoneTest
 										  SecondsSinceLastDamage);
 	}
 
-	/** A tick of damage over time, which an ordinary shield ignores. */
-	static FCataclysmDamageResult ResolveDamageOverTime(AActor* Actor,
-													   float Damage)
+	/**
+	 * A tick of BLEED, the one kind of damage over time an ordinary shield
+	 * ignores. Issue #2014: since the project owner's rule of 2026-09-18 every
+	 * other kind reaches the shield anyway, so a bleed is the only tick on
+	 * which Warded's flag still decides anything.
+	 */
+	static FCataclysmDamageResult ResolveBleed(AActor* Actor, float Damage)
 	{
 		FCataclysmIncomingHit Tick;
 		Tick.Damage = Damage;
 		Tick.bIsDamageOverTime = true;
+		Tick.bIsBleed = true;
 		return UCataclysmDamageCalculation::Resolve(
 			Tick, SystemOf(Actor), /*Tier=*/1,
 			/*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f);
@@ -158,16 +164,19 @@ namespace CataclysmShieldKeystoneTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWardedAbsorbsDamageOverTimeTest,
-	"Cataclysm.ShieldKeystones.WardedAbsorbsDamageOverTimeIntoTheShield",
+	"Cataclysm.ShieldKeystones.WardedAbsorbsABleedIntoTheShield",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * `Ritualist_keystone_c_kA` Warded. Issue #1515.
  *
- * THE READING WITHOUT THE NODE IS HALF THE TEST. An energy shield stopping hits
- * and not ticks is the rule for every character in the game, and this test would
+ * THE READING WITHOUT THE NODE IS HALF THE TEST. An energy shield letting a
+ * bleed through is the rule for every character in the game, and this test would
  * pass against a build that simply always absorbed if it only checked the half
  * with the flag on.
+ *
+ * A BLEED SINCE ISSUE #2014. Every other tick now reaches the shield with or
+ * without the node, so Warded adds only bleed, and only a bleed can show it.
  */
 bool FCataclysmWardedAbsorbsDamageOverTimeTest::RunTest(const FString&)
 {
@@ -191,18 +200,18 @@ bool FCataclysmWardedAbsorbsDamageOverTimeTest::RunTest(const FString&)
 	Write(Player, Vital::GetMaxEnergyShieldAttribute(), 400.0f);
 	Write(Player, Vital::GetEnergyShieldAttribute(), 400.0f);
 
-	// WITHOUT THE KEYSTONE, A TICK GOES STRAIGHT PAST THE SHIELD.
-	const FCataclysmDamageResult Ordinary = ResolveDamageOverTime(Player, 1000.0f);
-	TestEqual(TEXT("without Warded the shield absorbs no damage over time"),
+	// WITHOUT THE KEYSTONE, A BLEED GOES STRAIGHT PAST THE SHIELD.
+	const FCataclysmDamageResult Ordinary = ResolveBleed(Player, 1000.0f);
+	TestEqual(TEXT("without Warded the shield absorbs none of a bleed"),
 			  Ordinary.AbsorbedByShield, 0.0f);
-	TestEqual(TEXT("and the tick reaches health in full"),
+	TestEqual(TEXT("and the bleed reaches health in full"),
 			  Ordinary.DealtToHealth, 1000.0f);
 
-	// WITH IT, THE TICK IS ABSORBED LIKE A HIT.
+	// WITH IT, THE BLEED IS ABSORBED LIKE A HIT.
 	Write(Player, Combat::GetShieldAbsorbsDamageOverTimeAttribute(), 1.0f);
 
-	const FCataclysmDamageResult Warded = ResolveDamageOverTime(Player, 1000.0f);
-	TestEqual(TEXT("with Warded the shield absorbs what it can of a tick"),
+	const FCataclysmDamageResult Warded = ResolveBleed(Player, 1000.0f);
+	TestEqual(TEXT("with Warded the shield absorbs what it can of a bleed"),
 			  Warded.AbsorbedByShield, 400.0f);
 	TestEqual(TEXT("and only the remainder reaches health"),
 			  Warded.DealtToHealth, 600.0f);
@@ -212,7 +221,7 @@ bool FCataclysmWardedAbsorbsDamageOverTimeTest::RunTest(const FString&)
 	Write(Player, Combat::GetShieldAbsorbsDamageOverTimeAttribute(), 0.0f);
 	Write(Player, Vital::GetEnergyShieldAttribute(), 400.0f);
 
-	const FCataclysmDamageResult Again = ResolveDamageOverTime(Player, 1000.0f);
+	const FCataclysmDamageResult Again = ResolveBleed(Player, 1000.0f);
 	TestEqual(TEXT("and without it again the shield absorbs nothing"),
 			  Again.AbsorbedByShield, 0.0f);
 
@@ -409,8 +418,8 @@ bool FCataclysmShieldKeystonesAreDistinctTest::RunTest(const FString&)
 	OnlyThisOne(Absorbs);
 
 	Write(Player, Shield, 400.0f);
-	TestEqual(TEXT("Warded alone absorbs a tick into the shield"),
-			  ResolveDamageOverTime(Player, 1000.0f).AbsorbedByShield, 400.0f);
+	TestEqual(TEXT("Warded alone absorbs a bleed into the shield"),
+			  ResolveBleed(Player, 1000.0f).AbsorbedByShield, 400.0f);
 
 	Write(Player, Shield, 0.0f);
 	RunOneSecond(Player, JustHurt);
@@ -422,8 +431,8 @@ bool FCataclysmShieldKeystonesAreDistinctTest::RunTest(const FString&)
 	OnlyThisOne(Recharges);
 
 	Write(Player, Shield, 400.0f);
-	TestEqual(TEXT("Ablative alone absorbs no damage over time"),
-			  ResolveDamageOverTime(Player, 1000.0f).AbsorbedByShield, 0.0f);
+	TestEqual(TEXT("Ablative alone absorbs none of a bleed"),
+			  ResolveBleed(Player, 1000.0f).AbsorbedByShield, 0.0f);
 
 	Write(Player, Shield, 0.0f);
 	RunOneSecond(Player, JustHurt);
@@ -435,8 +444,8 @@ bool FCataclysmShieldKeystonesAreDistinctTest::RunTest(const FString&)
 	OnlyThisOne(FromMana);
 
 	Write(Player, Shield, 400.0f);
-	TestEqual(TEXT("The Long Game alone absorbs no damage over time"),
-			  ResolveDamageOverTime(Player, 1000.0f).AbsorbedByShield, 0.0f);
+	TestEqual(TEXT("The Long Game alone absorbs none of a bleed"),
+			  ResolveBleed(Player, 1000.0f).AbsorbedByShield, 0.0f);
 
 	Write(Player, Shield, 0.0f);
 	RunOneSecond(Player, JustHurt);
