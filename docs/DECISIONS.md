@@ -50,6 +50,9 @@ ailment.
 **Counts:** 294 passive effect rows from 292, and 215 of 441 nodes with an authored effect from
 214. Measured then, the Ravager is 68 of its 74 nodes.
 
+**The machine window** was shared with the energy-shield change of the same day; its entry
+carries the printed figures, including this node's test and its guard proof.
+
 ---
 
 ## 2026-09-23 — Movement speed is asked for again as time passes, which also corrects the Ravager keystone Unstoppable
@@ -229,6 +232,27 @@ they can veto it.
 Four tests stated the old rule and now state the new one, including one that applies a real burn
 and a real bleed by the route play uses and runs one tick of each. That one is what proves the bleed
 is recognised from the granted tag rather than only by a calculation handed a hit already marked.
+
+### THE MACHINE WINDOW, 2026-09-23, SHARED WITH ATTRITION
+
+One window for this change and Attrition's two rows, run from worktree `jovial-bouman-9ada36` on
+head `f07f0bc3` (development `54d781b9`), the editor lock held from the first build to the last
+proof. Every figure below matched its registration.
+
+| Step | Printed |
+|---|---|
+| Build, then nine tests before the asset rebuild | `9 tests performed, 7 succeeded, 2 failed: TheBleedDrawbackLetsABleedIntoItsWearersShield, AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll` -- each for the registered reason, its row absent from the old asset |
+| Asset rebuild | `rebuilt 2 DataTable assets and left 27 already current, 3019 rows in total across /Game/Data`: EnchantmentEffects 263 to 264, PassiveEffects 292 to 294; committed as `aefbdb47` |
+| The whole suite, once | `2171 tests performed, 2171 succeeded, 0 failed` |
+
+| Proof | Printed |
+|---|---|
+| Step 8 back to the old rule, no tick reaching the shield | `7 tests performed, 5 succeeded, 2 failed: EnergyShieldAbsorbsBeforeHealthAndEveryTickButABleed, AnEnergyShieldAbsorbsEveryTickButABleed`; restored 7 of 7 |
+| The bleed marker read from the burn tag | `1 tests performed, 0 succeeded, 1 failed: AnEnergyShieldAbsorbsEveryTickButABleed`; restored 1 of 1 |
+| An ailment chance asked with no skill tags (Attrition's) | `2 tests performed, 0 succeeded, 2 failed: AChanceIsAskedForWithTheSkillsOwnTags, AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll`; restored 2 of 2 |
+
+All three printed `PROVED: True CRASHED: False`, with the broken file's SHA-256 the same before and
+after. **Only tests are measured, not assertions:** the restored run overwrites the log.
 
 ---
 
