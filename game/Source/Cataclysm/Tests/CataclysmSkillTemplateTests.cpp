@@ -15763,8 +15763,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffsHeldCountTest,
  * `ActiveCount`, and `FGameplayAbilitySpec::IsActive` is `ActiveCount > 0`
  * (GameplayAbilityTypes.cpp line 204). `UCataclysmSelfBuffSkill::EndAbility`
  * clears its timers and calls the engine's directly. The death test
- * `Cataclysm.Death` for Burning Wrath observes an ended buff the same way,
- * straight after `Revive`.
+ * `Cataclysm.Death.ARespawnEndsASelfBuffThatWasStillRunning` observes an
+ * ended buff the same way, straight after `Revive`.
  */
 bool FCataclysmBuffsHeldCountTest::RunTest(const FString&)
 {
