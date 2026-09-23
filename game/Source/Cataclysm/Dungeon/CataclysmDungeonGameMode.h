@@ -1822,6 +1822,23 @@ private:
 	 */
 	void StepCommandersAura(ACataclysmPlayerCharacter* Player);
 
+	/**
+	 * Anti-Magic Zones, on every beat: lay ground that refuses spells, and lock the
+	 * player's spells while they stand in it. Issues #1820 and #41.
+	 *
+	 * THE LOCK FIRST, FROM WHAT IS STANDING, AND THEN THE LAYING. The beat a player walks
+	 * out of a zone is a beat on which nothing is laid, so a lock decided inside the
+	 * laying branch would follow them around the floor. `StepSingularityWells` has the
+	 * same order for the same reason.
+	 *
+	 * THE ZONE ITSELF DOES NOTHING. It is spawned with no damage and no effect, so its own
+	 * sweep is skipped; it is the ground the player sees and the circle this rule asks
+	 * `Covers` of. The lock is this rule's, written through the shared applier, so a zone
+	 * expiring and a player stepping out end it the same way.
+	 */
+	void StepAntiMagicZones(ACataclysmPlayerCharacter* Player,
+							class UCataclysmAbilitySystemComponent* AbilitySystem);
+
 
 	/**
 	 * March of Progress' armour, on the death of the floor's Commander.
@@ -2563,6 +2580,25 @@ private:
 	 * every identifier on either side names its own rule.
 	 */
 	int32 CommandersAuraCommanders = 0;
+
+	/**
+	 * Anti-Magic Zones: the zones standing now, the clock that lays more, and the spell
+	 * lock this rule last put on the player. Issues #1820 and #41.
+	 *
+	 * ALL OF IT IS THE FLOOR'S AND GOES AT THE STAIRS, in Singularity Wells' shape. A
+	 * zone is an actor on this floor, and the floor change's own apply has already taken
+	 * the lock off the character.
+	 *
+	 * NO TEST CAN SEE THE RESET OF `AntiMagicZonesLockApplied`, AND THAT WAS MEASURED BY
+	 * READING, NOT ASSUMED. A stale value would be corrected on the first beat after the
+	 * stairs: no zone can stand on a new floor for its first eight seconds, so the player
+	 * is outside every zone on that beat, the lock wanted is nothing, and it differs from
+	 * the stale one, so the apply runs. The reset is kept so the field never holds a
+	 * figure that is not on the character, which is what every field beside it means.
+	 */
+	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> AntiMagicZones;
+	float AntiMagicZonesSecondsSinceLastZone = 0.0f;
+	float AntiMagicZonesLockApplied = 0.0f;
 
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthBoostMushrooms;
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> FungalOvergrowthSlowMushrooms;

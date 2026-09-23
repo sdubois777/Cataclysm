@@ -3293,3 +3293,168 @@ def test_the_two_war_rules_name_their_own_rule_on_the_floor_panel():
         "The floor panel no longer reads the creature's name out of the archetype table. "
         "A name written in C++ stops matching the design workbook the first time a "
         "creature is renamed there.")
+
+
+
+def test_anti_magic_zones_row_still_sets_magical_against_physical():
+    """This rule reads "magical abilities" as the skills tagged `Type.Spell`.
+
+    Ruled under the project owner's delegation: the row sets "magical abilities" against
+    "physical skills", and `Type.Spell` is the one tag the skill data uses for that split.
+    If the row is reworded so that it no longer draws that line, the reading has to be
+    made again rather than quietly outlived.
+    """
+    row = rows()["Void_Anti_Magic_Zones"]
+    words = flat(row["Description"]).lower()
+
+    assert "magical abilities" in words and "physical skills" in words, (
+        "The Void Anti-Magic Zones row no longer sets magical abilities against physical "
+        "skills, which is the whole reason the rule locks only skills tagged Type.Spell. "
+        "Read the new sentence and say in docs/DECISIONS.md what it now locks. " + words)
+    assert row["CataclysmType"].strip() == "Void", (
+        "The Anti-Magic Zones row is no longer a Void row. Its zones are drawn in the "
+        "row's own type, so that is the mechanism working; check docs/DECISIONS.md still "
+        "describes the rule.")
+    assert not re.search(r"\d", words), (
+        "The Anti-Magic Zones row now states a figure. Every figure of this rule is a "
+        "shared constant copied because the row stated none; hold the rule to the row's "
+        "own number instead. " + words)
+
+
+def test_anti_magic_zones_figures_are_the_shared_constants():
+    """None of this rule's figures is a number of its own.
+
+    The row states no figure. Each is declared AS the constant it copies -- Judgment Zones'
+    three zones, eight seconds and twenty seconds, the shared patch radius and fall
+    distance, and the Edict of Silence's lock value -- so a reading of the declarations is
+    the check. A static_assert beside them could never fail, because `X = Y` makes
+    `X == Y` true by construction.
+    """
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    missing = [name for name, copied in (
+        ("AntiMagicZonesMostZones", "JudgmentZonesMostZones"),
+        ("AntiMagicZonesSecondsBetweenZones", "JudgmentZonesSecondsBetweenZones"),
+        ("AntiMagicZonesSeconds", "JudgmentZonesSeconds"),
+        ("AntiMagicZonesRadiusCm", "WitheredGroundPatchRadiusCm"),
+        ("AntiMagicZonesFallsWithinCm", "InfernalRainFallsWithinCm"),
+        ("AntiMagicZonesLockValue", "EdictOfSilenceLockValue"),
+    ) if not re.search(rf"\b{name}\s*=\s*{copied}\s*;", text)]
+
+    assert not missing, (
+        f"{', '.join(missing)} is no longer declared as the constant it copies. The row "
+        "states no figure, so each was taken from the rule it resembles; if one is meant "
+        "to differ now, say which and why in docs/DECISIONS.md.")
+
+
+def without_comment_lines(text: str) -> str:
+    """The text with every line that opens as a comment removed.
+
+    A LINE OPENING WITH `*` IS TREATED AS A COMMENT, which is the convention every other
+    check in this file uses; none of the functions read below wraps a product onto a line
+    opening with `*`, and the checks name exact code lines rather than bare identifiers.
+    """
+    return "\n".join(line for line in text.splitlines()
+                     if not line.lstrip().startswith(("//", "/*", "*")))
+
+
+def test_anti_magic_zones_lock_is_scoped_to_the_spell_tag():
+    """The lock reaches spells only, and an unresolved tag locks nothing rather than all.
+
+    THREE THINGS, EACH OF WHICH ALONE WOULD LET THE RULE BECOME THE EDICT OF SILENCE.
+    `StatModifiersFor` writes the rule's field through the TAG-SCOPED helper with the
+    spell tag; that helper puts the tags on the modifier's `RequiredTags`; and it writes
+    nothing for an empty scope, because a modifier with no required tags reaches every
+    skill. The untagged helper beside it is checked unchanged, because every other rule
+    calling it means "every skill".
+    """
+    code = without_comment_lines(EFFECTS_SOURCE.read_text(encoding="utf-8"))
+
+    fold = body_of(code, "UCataclysmDungeonModifierEffects::StatModifiersFor(")
+    assert re.search(
+        r"DungeonModifierEffectsAddFlatForTags\(\s*Modifiers\s*,\s*"
+        r"UCataclysmSkillSlots::LockedStat\s*,\s*Effects\.SpellsLockedValue\s*,\s*"
+        r"Spells\s*\)", fold), (
+        "StatModifiersFor no longer writes SpellsLockedValue onto skill_locked through the "
+        "tag-scoped helper. Written through the untagged one, the anti-magic lock would "
+        "refuse every skill, which is the Edict of Silence and not this row.")
+    assert "UCataclysmSkillEffects::SpellTag()" in fold, (
+        "StatModifiersFor no longer builds the anti-magic scope from "
+        "UCataclysmSkillEffects::SpellTag(), the same tag IsSpell reads.")
+
+    scoped = body_of(code, "void DungeonModifierEffectsAddFlatForTags(")
+    assert "Modifier.RequiredTags = Tags;" in scoped, (
+        "The tag-scoped helper no longer puts its tags on the modifier's RequiredTags, "
+        "so what it writes reaches every skill.")
+    assert re.search(r"if\s*\(\s*Value\s*<=\s*0\.0f\s*\|\|\s*Tags\.IsEmpty\(\)\s*\)",
+                     scoped), (
+        "The tag-scoped helper no longer refuses an empty scope. A tag the vocabulary has "
+        "lost resolves to an invalid tag, the container stays empty, and the modifier "
+        "would then lock every skill.")
+
+    untagged = body_of(code, "void DungeonModifierEffectsAddFlat(")
+    assert "RequiredTags" not in untagged, (
+        "The untagged flat helper now sets RequiredTags. Every rule calling it means every "
+        "skill; the scoped variant beside it exists so this one does not change.")
+
+
+def test_a_dungeon_rule_modifiers_required_tags_reach_the_stat_line():
+    """The fold: a dungeon rule's scoped modifier arrives at the cast with its scope.
+
+    MEASURED BEFORE THE ANTI-MAGIC RULE WAS WRITTEN, AND HELD HERE. A scope is only as
+    good as every hop that carries it, and a hop copying fields out of the modifier
+    rather than the modifier whole would drop `RequiredTags` and turn a spell lock into
+    a lock on everything, with no compile error and no C++ test on the hop itself:
+
+      1. `UCataclysmDungeonModifierEffects::ApplyToCharacter` hands the whole map to the
+         ability system (`SetDungeonStatModifiers`);
+      2. `UCataclysmEquipmentComponent` appends each stat's modifiers WHOLE to the
+         character's own map on every refresh;
+      3. `UCataclysmPlayerClassStats` records the WHOLE list as the stat's inputs, which
+         is what `StatForSkill` reads;
+      4. `UCataclysmStatPipeline::ModifierApplies` judges every required tag with
+         `HasTag`, so a parent tag reaches its children;
+      5. `UCataclysmSkillTemplate` asks `StatForSkill` for `skill_locked` with the
+         skill's OWN tags before it lets a press through.
+    """
+    source_root = REPO_ROOT / "game" / "Source" / "Cataclysm"
+
+    def code(relative: str) -> str:
+        return without_comment_lines((source_root / relative).read_text(encoding="utf-8"))
+
+    apply = body_of(code("Dungeon/CataclysmDungeonModifierEffects.cpp"),
+                    "bool UCataclysmDungeonModifierEffects::ApplyToCharacter(")
+    assert "AbilitySystem->SetDungeonStatModifiers(StatModifiersFor(Effects));" in apply, (
+        "Hop 1: ApplyToCharacter no longer hands the rule's modifiers to the ability "
+        "system whole.")
+
+    equipment = code("Items/CataclysmEquipmentComponent.cpp")
+    assert re.search(
+        r"Cataclysm->GetDungeonStatModifiers\(\)\)\s*\{\s*"
+        r"Modifiers\.FindOrAdd\(Stat\.Key\)\.Append\(Stat\.Value\);", equipment), (
+        "Hop 2: the equipment refresh no longer appends a dungeon rule's modifiers whole. "
+        "Copying fields out of them would drop RequiredTags.")
+
+    class_stats = code("Character/CataclysmPlayerClassStats.cpp")
+    assert "ForStat = *Found;" in class_stats, (
+        "Hop 3: the class stats no longer take a stat's whole modifier list.")
+    assert "Recorded.Modifiers = ForStat;" in class_stats, (
+        "Hop 3: the class stats no longer record that whole list as the inputs "
+        "StatForSkill reads.")
+
+    applies = body_of(code("AbilitySystem/CataclysmStatPipeline.cpp"),
+                      "bool UCataclysmStatPipeline::ModifierApplies(")
+    assert re.search(
+        r"for\s*\(\s*const FGameplayTag& Required\s*:\s*Modifier\.RequiredTags\s*\)",
+        applies), (
+        "Hop 4: ModifierApplies no longer walks every required tag of the modifier.")
+    assert "if (!SkillTags.HasTag(Required))" in applies, (
+        "Hop 4: ModifierApplies no longer refuses a modifier whose required tag the skill "
+        "does not carry, judged with HasTag.")
+
+    template = code("AbilitySystem/CataclysmSkillTemplate.cpp")
+    assert re.search(
+        r"StatForSkill\(FName\(UCataclysmSkillSlots::LockedStat\),\s*SkillTags,\s*0\.0f\)",
+        template), (
+        "Hop 5: the skill template no longer asks for skill_locked with the skill's own "
+        "tags, so a scoped lock could not tell one skill from another.")

@@ -2524,13 +2524,18 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// and #41. Every creature at Elite or above buffs its neighbours.
 	const bool bCommandersAura = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::CommandersAuraKey));
+	// AND ANTI-MAGIC ZONES, WHICH LAYS GROUND AND LOCKS THE PLAYER'S SPELLS ON IT. Issues
+	// #1820 and #41.
+	const bool bAntiMagicZones = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::AntiMagicZonesKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
-		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura)
+		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
+		&& !bAntiMagicZones)
 	{
 		return;
 	}
@@ -2594,6 +2599,14 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bJudgmentZones)
 	{
 		StepJudgmentZones(Player, AbilitySystem);
+	}
+
+	// AND ANTI-MAGIC ZONES BESIDE IT, the fourth rule that places actors, for the same
+	// reason: a floor carrying a stat rule above does its stat work first. It is after
+	// Judgment Zones only because it was written after it; the two share no field.
+	if (bAntiMagicZones)
+	{
+		StepAntiMagicZones(Player, AbilitySystem);
 	}
 
 	// AND WITHERED GROUND, WHICH ONLY READS. It spawns nothing on the beat, so
@@ -3461,6 +3474,12 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// never sets it, and nothing is what the effects already hold.
 	Effects.SkillsLockedValue = EdictOfSilenceLockApplied;
 
+	// AND WHETHER AN ANTI-MAGIC ZONE HAS THE PLAYER'S SPELLS LOCKED. Issues #1820 and #41.
+	// Read unconditionally like the rest. ITS OWN FIELD AND NOT `SkillsLockedValue`: the
+	// Edict's lock reaches every skill and this one reaches spells, so sharing a field
+	// would let whichever rule wrote second decide the scope for both. Issue #1765.
+	Effects.SpellsLockedValue = AntiMagicZonesLockApplied;
+
 	// AND THE ARMOUR MARCH OF PROGRESS HAS PAID THE PLAYER. Issues #1820 and #41. Read
 	// unconditionally like the rest: a player who has killed no commanders is owed
 	// nothing, and nothing is what the effects already hold.
@@ -4224,6 +4243,110 @@ void ACataclysmDungeonGameMode::StepCommandersAura(ACataclysmPlayerCharacter* Pl
 	}
 }
 
+void ACataclysmDungeonGameMode::StepAntiMagicZones(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	// WHAT IS STILL STANDING, ASKED RATHER THAN REMEMBERED. A zone destroys itself when
+	// its life ends, so a weak pointer going invalid IS the expiry. The count before and
+	// after is what tells the floor panel to say so.
+	const int32 StandingBefore = AntiMagicZones.Num();
+	AntiMagicZones.RemoveAll([](const TWeakObjectPtr<ACataclysmGroundZone>& Zone)
+	{
+		return !Zone.IsValid();
+	});
+
+	// THE LOCK FIRST, FROM WHAT EXISTS, ON EVERY BEAT. See the declaration: a lock decided
+	// only when ground is laid would follow the player off it.
+	//
+	// EACH ZONE IS ASKED WHETHER IT COVERS THE PLAYER, the same question
+	// `StepSingularityWells` asks, so the ground the player sees and the ground that
+	// locks cannot disagree about where it is. ONE ZONE OR THREE MAKE NO DIFFERENCE: a
+	// spell is refused or it is not.
+	const FVector Feet = Player->GetActorLocation();
+	bool bInsideAZone = false;
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Zone : AntiMagicZones)
+	{
+		if (Zone.IsValid() && Zone->Covers(Feet))
+		{
+			bInsideAZone = true;
+			break;
+		}
+	}
+
+	// ONLY WHEN SOMETHING CHANGED, the guard every beat-driven rule here keeps: the apply
+	// rewrites the character's whole standing stat line.
+	const float Wanted = Effects::SpellsLockedWhile(bInsideAZone);
+	if (!FMath::IsNearlyEqual(Wanted, AntiMagicZonesLockApplied))
+	{
+		AntiMagicZonesLockApplied = Wanted;
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Anti-Magic Zones: the player's spells are %s."),
+			   bInsideAZone ? TEXT("locked, standing in a zone")
+							: TEXT("usable again, standing in no zone"));
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	// AND NOW WHETHER TO LAY ANOTHER. The cap is asked inside the predicate, before its
+	// clock, so a floor at its limit does not swallow the count.
+	AntiMagicZonesSecondsSinceLastZone += SecondsBetweenWaveChecks;
+	if (Effects::AntiMagicZoneIsDue(AntiMagicZonesSecondsSinceLastZone,
+									AntiMagicZones.Num()))
+	{
+		// THE ZONE IS DRAWN IN THE ROW'S OWN TYPE, read off the row rather than written
+		// here, for the reason `StepInfernalRain` gives: a row retyped in the workbook
+		// retypes its ground with no code change. An unreadable table lays nothing.
+		const FCataclysmDungeonModifierRow* Row = UCataclysmDungeonModifierTable::FindRow(
+			UCataclysmDungeonModifierTable::LoadDungeonModifierTable(),
+			FName(Effects::AntiMagicZonesKey));
+		if (Row)
+		{
+			// NEAR THE PLAYER AND PAST ITS OWN RADIUS, as Judgment Zones lays its ground:
+			// near, or nobody meets it; past the radius, because ground that refuses a
+			// spell the instant it appears under the player is not ground to walk out of.
+			const FVector Centre = Player->GetActorLocation();
+			const float Angle = FMath::FRandRange(0.0f, 2.0f * PI);
+			const float Away = FMath::FRandRange(Effects::AntiMagicZonesRadiusCm + 1.0f,
+												 Effects::AntiMagicZonesFallsWithinCm);
+			const FVector Where(Centre.X + Away * FMath::Cos(Angle),
+								Centre.Y + Away * FMath::Sin(Angle), Centre.Z);
+
+			// THE SOURCE IS MADE LAST, because `ForFloor` spawns one when the floor has
+			// none. Declared in this exact form for
+			// `test_every_ground_zone_the_game_mode_places_is_owned_by_the_hazard_source`:
+			// a floor change destroys a rule's zones BY THEIR OWNER (issue #1925).
+			ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(
+				World);
+			if (Source)
+			{
+				// NO DAMAGE, which issue #1701 made possible so Singularity Wells could
+				// have a well that slows without damaging.
+				if (ACataclysmGroundZone* Zone = ACataclysmGroundZone::Spawn(
+						Source, Where, Effects::AntiMagicZonesRadiusCm,
+						Effects::AntiMagicZonesSeconds, /*DamagePerTick=*/0.0f,
+						FName(*Row->CataclysmType)))
+				{
+					AntiMagicZones.Add(Zone);
+					AntiMagicZonesSecondsSinceLastZone = 0.0f;
+				}
+				// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again.
+			}
+		}
+	}
+
+	if (AntiMagicZones.Num() != StandingBefore)
+	{
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::NoteDeathForMarchOfProgress(
 	const FCataclysmDeathNotice& Notice)
 {
@@ -4872,6 +4995,25 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Aura, FString::Printf(
 			TEXT("%d commanders on this floor (Commander's Aura)"),
 			CommandersAuraCommanders));
+	}
+
+	// AND HOW MANY ANTI-MAGIC ZONES ARE STANDING. Issues #1820 and #41. The number is all
+	// the panel says. Which spells are refused is the skill bar's to show, and it does:
+	// it marks each slot whose own skill `skill_locked` reaches (issue #1810, built in
+	// #1819).
+	//
+	// COUNTED AS WHAT IS STILL THERE, not as the list's length. The list is pruned on the
+	// beat, so between a zone expiring and the next beat it holds a pointer to nothing.
+	const FName AntiMagic(Effects::AntiMagicZonesKey);
+	if (FloorBrief.Modifiers.Contains(AntiMagic))
+	{
+		int32 Standing = 0;
+		for (const TWeakObjectPtr<ACataclysmGroundZone>& Zone : AntiMagicZones)
+		{
+			Standing += Zone.IsValid() ? 1 : 0;
+		}
+		Counting.Add(AntiMagic,
+					 FString::Printf(TEXT("anti-magic zone: %d standing"), Standing));
 	}
 
 	// AND GRAVE TIDE'S WAVES SO FAR. Issues #1820 and #41.
@@ -6623,6 +6765,18 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		JudgmentZonesSecondsInside = 0.0f;
 		JudgmentZonesTicksInThisZone = 0;
 		JudgmentZonesTriggers = 0;
+
+		// AND ANTI-MAGIC ZONES FORGETS ITS ZONES, ITS CLOCK AND ITS LOCK. Issues #1820
+		// and #41. Singularity Wells' three: the list because those zones are already
+		// destroyed -- see the top of this function; the clock so the first zone of a floor
+		// does not arrive carrying the last floor's wait; the lock because the call above
+		// has already taken it off the character. The list and the lock would also be put
+		// right by the next beat, which prunes dead zones before counting and finds the
+		// player outside every zone -- the declaration says why no test can see those two
+		// -- so they are cleared here so the fields never describe a floor that is gone.
+		AntiMagicZones.Reset();
+		AntiMagicZonesSecondsSinceLastZone = 0.0f;
+		AntiMagicZonesLockApplied = 0.0f;
 
 		// AND MARCH OF PROGRESS FORGETS WHAT ARMOUR IS STANDING ON THE PLAYER, BECAUSE
 		// THE CALL ABOVE HAS ALREADY TAKEN IT OFF. Issues #1820 and #41. Leaving the

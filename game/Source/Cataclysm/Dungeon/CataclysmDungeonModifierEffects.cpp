@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "Items/CataclysmItem.h"
 
@@ -79,6 +80,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::MarchOfProgressKey =
 
 const TCHAR* UCataclysmDungeonModifierEffects::CommandersAuraKey =
 	TEXT("War_Commander_s_Aura");
+
+const TCHAR* UCataclysmDungeonModifierEffects::AntiMagicZonesKey =
+	TEXT("Void_Anti_Magic_Zones");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -221,6 +225,45 @@ namespace
 
 		Into.FindOrAdd(FName(Stat)).Add(Modifier);
 	}
+
+	/**
+	 * The same flat addition, reaching only the skills that carry every one of `Tags`.
+	 * Anti-Magic Zones. Issues #1820 and #41.
+	 *
+	 * BESIDE THE ONE ABOVE AND NOT A CHANGE TO IT. Every rule that calls that one means
+	 * "every skill", and a default argument added there would be one more thing each of
+	 * those calls could get wrong.
+	 *
+	 * THE SCOPE IS `RequiredTags` AND NOTHING ELSE HERE KNOWS ABOUT SKILLS. The stat
+	 * pipeline judges a modifier's required tags against the skill being asked about,
+	 * with `HasTag`, so a parent tag reaches its children. The character's stat line
+	 * keeps the modifier whole: `UCataclysmEquipmentComponent` appends this map's entries
+	 * to the character's own without copying fields out of them, which
+	 * `test_a_dungeon_rule_modifiers_required_tags_reach_the_stat_line` holds.
+	 *
+	 * AN EMPTY SCOPE WRITES NOTHING, AND THAT IS THE WHOLE POINT OF THE CHECK. A modifier
+	 * with no required tags reaches EVERY skill, so a scoped rule whose tag failed to
+	 * resolve -- a tag renamed in the design workbook, which `RequestGameplayTag` answers
+	 * with an invalid tag rather than an error -- would silently become the Edict of
+	 * Silence. Locking nothing is the smaller fault of the two.
+	 */
+	void DungeonModifierEffectsAddFlatForTags(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float Value, const FGameplayTagContainer& Tags)
+	{
+		if (Value <= 0.0f || Tags.IsEmpty())
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = Value;
+		Modifier.RequiredTags = Tags;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
 }
 
 ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName RowKey)
@@ -272,7 +315,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(VengefulWraithsKey)
 		|| RowKey == FName(JudgmentZonesKey)
 		|| RowKey == FName(MarchOfProgressKey)
-		|| RowKey == FName(CommandersAuraKey))
+		|| RowKey == FName(CommandersAuraKey)
+		|| RowKey == FName(AntiMagicZonesKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -439,6 +483,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(JudgmentZonesKey),
 		FName(MarchOfProgressKey),
 		FName(CommandersAuraKey),
+		FName(AntiMagicZonesKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -766,6 +811,26 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddFlat(Modifiers, UCataclysmSkillSlots::LockedStat,
 								  Effects.SkillsLockedValue);
 
+	// AND ANTI-MAGIC ZONES, ON THE SAME STAT AND SCOPED TO SPELLS. Issues #1820 and #41.
+	//
+	// SCOPED, WHICH IS THE WHOLE DIFFERENCE FROM THE LINE ABOVE. The row nullifies
+	// "magical abilities" and leaves the player "their physical skills", so the lock
+	// carries `Type.Spell` as a required tag and reaches only skills tagged with it.
+	// The helper writes nothing if the tag does not resolve, rather than a lock on
+	// everything; its comment says why.
+	//
+	// A SECOND ENTRY ON `skill_locked` WHEN BOTH ROWS ARE ON ONE FLOOR, not a larger
+	// version of the first. The Edict's reaches every skill and this reaches spells, and
+	// a skill asks whether what reaches IT sums above zero.
+	FGameplayTagContainer Spells;
+	const FGameplayTag Spell = UCataclysmSkillEffects::SpellTag();
+	if (Spell.IsValid())
+	{
+		Spells.AddTag(Spell);
+	}
+	DungeonModifierEffectsAddFlatForTags(Modifiers, UCataclysmSkillSlots::LockedStat,
+										 Effects.SpellsLockedValue, Spells);
+
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
 	//
@@ -1046,10 +1111,22 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	// THIS SENTENCE IS NOT WHAT FIXES THE SILENCE PROBLEM, and saying so here
 	// stops it being mistaken for the fix. `Describe` has one caller today -- the
 	// per-floor log line -- so this reaches a log rather than a player mid-fight.
-	// Issue #1810 is that nothing in the interface reads the lock at all.
+	// What the player sees is the skill bar: since issue #1810 (closed by #1819) it
+	// marks each slot whose own skill is locked, and the heads-up display names a lock
+	// on every skill. This comment said nothing in the interface read the lock, which
+	// stopped being true when #1819 merged; corrected while building
+	// `Void_Anti_Magic_Zones`.
 	if (Effects.SkillsLockedValue > 0.0f)
 	{
 		Clauses.Add(TEXT("skills silenced, basic attacks only"));
+	}
+
+	// AND ANTI-MAGIC ZONES, SAID THE SAME WAY: what is refused, in the player's words.
+	// Issues #1820 and #41. Like the clause above, this reaches the per-floor log; the
+	// skill bar is what marks each refused spell for the player mid-fight.
+	if (Effects.SpellsLockedValue > 0.0f)
+	{
+		Clauses.Add(TEXT("spells refused inside an anti-magic zone"));
 	}
 
 	if (Effects.SicknessMaxHealthLessPercent > 0.0f
@@ -1507,6 +1584,21 @@ bool UCataclysmDungeonModifierEffects::CommandersAuraCommandsAtRung(int32 Rarity
 	// enemies" and names no upper rung, so a Legendary, a Herald and a boss all command
 	// too -- refusing them would be a figure this row does not state.
 	return RarityStep >= CommandersAuraLowestRung;
+}
+
+bool UCataclysmDungeonModifierEffects::AntiMagicZoneIsDue(float SecondsSinceLastZone,
+														   int32 StandingNow)
+{
+	// THE CAP IS ASKED BEFORE THE CLOCK, so a floor at its limit does not swallow the
+	// count: the clock keeps running and the next zone comes as soon as one goes, which
+	// is `JudgmentZoneIsDue`'s shape.
+	return StandingNow < AntiMagicZonesMostZones
+		&& SecondsSinceLastZone >= AntiMagicZonesSecondsBetweenZones;
+}
+
+float UCataclysmDungeonModifierEffects::SpellsLockedWhile(bool bInsideAZone)
+{
+	return bInsideAZone ? AntiMagicZonesLockValue : 0.0f;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

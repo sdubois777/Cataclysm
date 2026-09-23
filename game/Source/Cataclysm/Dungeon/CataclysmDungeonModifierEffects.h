@@ -326,6 +326,23 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float SkillsLockedValue = 0.0f;
 
+	/**
+	 * Whether the player's SPELLS are locked, and by how much. Anti-Magic Zones. Issues
+	 * #1820 and #41.
+	 *
+	 * THE SAME STAT AS `SkillsLockedValue` AND A FIELD OF ITS OWN, because the two differ
+	 * in what they reach. That one is written UNSCOPED and reaches every skill; this one
+	 * is written with `RequiredTags` set to `Type.Spell` and reaches only spells. Sharing
+	 * a field would mean whichever rule wrote second decided the scope for both, which is
+	 * issue #1765's fault in another shape. A floor carrying both rows gives
+	 * `skill_locked` two entries, and a skill asks whether their sum is above zero.
+	 *
+	 * NOT A PERCENTAGE, for the reason `SkillsLockedValue` gives: it is the VALUE of
+	 * `skill_locked`. ON AND OFF AS THE PLAYER WALKS IN AND OUT OF A ZONE.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float SpellsLockedValue = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
@@ -342,6 +359,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
 			&& SkillsLockedValue <= 0.0f
+			&& SpellsLockedValue <= 0.0f
 			// AND THE ONE FIELD HERE THAT IS A REWARD RATHER THAN A LOSS. Issues #1820
 			// and #41. March of Progress' armour is still something the floor is doing
 			// to the player, so a floor carrying it is not empty.
@@ -1275,6 +1293,44 @@ public:
 	 * reading that needs no new buff.
 	 */
 	static const TCHAR* CommandersAuraKey;
+
+	/**
+	 * The row where patches of ground refuse the player's spells. Issues #1820 and #41.
+	 *
+	 * A ZONE APPEARS EVERY `AntiMagicZonesSecondsBetweenZones`, up to
+	 * `AntiMagicZonesMostZones` at once, each lasting `AntiMagicZonesSeconds` and reaching
+	 * `AntiMagicZonesRadiusCm`. While the player stands in one, every skill they carry
+	 * that is tagged `Type.Spell` is refused when pressed; stepping out gives them back.
+	 *
+	 * "MAGICAL ABILITIES" IS READ AS THE SKILLS TAGGED `Type.Spell`, AND NOTHING ELSE IS
+	 * LOCKED. Ruled under the project owner's delegation. The row sets "magical" against
+	 * "physical", and `Type.Spell` is the one tag this game's skill data uses for that
+	 * split: `UCataclysmSkillEffects::IsSpell` reads it to decide whether spell damage
+	 * reaches a blow. So the lock is a `skill_locked` modifier SCOPED BY `RequiredTags`
+	 * to that tag, and `UCataclysmStatPipeline` judges a modifier's required tags against
+	 * the skill being pressed -- the same scoping the enchantment row "your own ultimate
+	 * ability is disabled" uses for `Slot.Ultimate`.
+	 *
+	 * WHAT THAT REACHES TODAY, MEASURED ON `game/Data/WeaponSkills.csv`. Nine skills
+	 * carry `Type.Spell`, all of them Demonic wand and staff skills. The tenth designed
+	 * wand or staff skill, the Demonic Staff's "Summon Imp", is untagged and stays usable
+	 * in a zone: a summon is not a spell, which is the project owner's decision of
+	 * 2026-09-23. The wand and staff slots of the other six Cataclysms are undesigned
+	 * placeholders today, with no skill name, so no player casts them (issue #2012).
+	 *
+	 * A BASIC ATTACK IS NEVER LOCKED, AND NOTHING HERE HAS TO SAY SO.
+	 * `UCataclysmSkillTemplate::CanActivateAbility` skips the lock check for the basic
+	 * attack's slot unconditionally, for the Edict of Silence's "Only basic attacks
+	 * function during this period".
+	 *
+	 * THE LOCK IS SHOWN SLOT BY SLOT WITH NOTHING ADDED HERE. The skill bar marks a slot
+	 * locked by asking `skill_locked` with that slot's own skill tags (issue #1810, built
+	 * in #1819), so inside a zone each spell's slot is marked and every other slot is not.
+	 * The heads-up display's "skills locked" line needs EVERY filled slot locked, and a
+	 * Demonic caster's Aura is not a spell, so it does not appear -- which is accurate.
+	 * The floor panel says how many zones are standing.
+	 */
+	static const TCHAR* AntiMagicZonesKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -3135,6 +3191,60 @@ public:
 		"An aura that reaches nowhere, a buff that lasts no time, or a rung that lets "
 		"every Common command is not the row.");
 
+	/**
+	 * How many anti-magic zones may stand at once.
+	 *
+	 * THE ROW STATES NO FIGURE, SO NONE IS INVENTED. Every figure of this rule is the
+	 * shared constant it copies, ruled under the project owner's delegation: Judgment
+	 * Zones is the one built rule that lays timed ground near the player for a rule of
+	 * its own to act on, and this rule has that shape exactly. So its three, its eight
+	 * seconds and its twenty are used rather than a second set of the same kind.
+	 */
+	static constexpr int32 AntiMagicZonesMostZones = JudgmentZonesMostZones;
+
+	/** How long between one anti-magic zone appearing and the next. Judgment Zones' own. */
+	static constexpr float AntiMagicZonesSecondsBetweenZones =
+		JudgmentZonesSecondsBetweenZones;
+
+	/** How long an anti-magic zone stands. Judgment Zones' own. */
+	static constexpr float AntiMagicZonesSeconds = JudgmentZonesSeconds;
+
+	/**
+	 * How far an anti-magic zone reaches.
+	 *
+	 * DECLARED AS `WitheredGroundPatchRadiusCm`, this project's settled answer for a
+	 * patch of ground, which Judgment Zones and Spore Clouds declare themselves as too.
+	 */
+	static constexpr float AntiMagicZonesRadiusCm = WitheredGroundPatchRadiusCm;
+
+	/**
+	 * How far from the player a zone may appear.
+	 *
+	 * DECLARED AS `InfernalRainFallsWithinCm`, the settled answer for where ground laid
+	 * near the player falls, shared with Singularity Wells and Judgment Zones.
+	 */
+	static constexpr float AntiMagicZonesFallsWithinCm = InfernalRainFallsWithinCm;
+
+	/**
+	 * What `skill_locked` is set to while the player stands in a zone.
+	 *
+	 * DECLARED AS `EdictOfSilenceLockValue`, because every reader of that stat asks only
+	 * whether it is above zero, and one value meaning "locked" is enough for the game.
+	 */
+	static constexpr float AntiMagicZonesLockValue = EdictOfSilenceLockValue;
+
+	// NO static_assert COMPARES THESE WITH WHAT THEY COPY, because each is declared AS
+	// the other, and `X = Y` beside `X == Y` could never fail. The Python check
+	// `test_anti_magic_zones_figures_are_the_shared_constants` reads the declarations
+	// instead. This one asks something the declarations do not say.
+	static_assert(
+		AntiMagicZonesMostZones > 0 && AntiMagicZonesSecondsBetweenZones > 0.0f
+			&& AntiMagicZonesSeconds > 0.0f && AntiMagicZonesRadiusCm > 0.0f
+			&& AntiMagicZonesFallsWithinCm > AntiMagicZonesRadiusCm
+			&& AntiMagicZonesLockValue > 0.0f,
+		"No zones, zones that never come or never stand, zones of no size, zones that "
+		"cannot be laid clear of the player, or a lock of nothing is not the row.");
+
 	static_assert(
 		HallowedGroundfallCraters > 1,
 		"The row says the artillery bombards AREAS, plural. One crater is not a "
@@ -3904,6 +4014,15 @@ public:
 	 * at Elite or above commands; the row states no count, so there is none.
 	 */
 	static bool CommandersAuraCommandsAtRung(int32 RarityStep);
+
+	/** Whether another anti-magic zone is due, given the clock and how many stand now. */
+	static bool AntiMagicZoneIsDue(float SecondsSinceLastZone, int32 StandingNow);
+
+	/**
+	 * What `skill_locked` on the player's spells should be, given whether they stand in
+	 * an anti-magic zone: `AntiMagicZonesLockValue` inside, nothing outside.
+	 */
+	static float SpellsLockedWhile(bool bInsideAZone);
 
 	/**
 	 * What a grab takes off the character's speed, in percent, or nothing when
