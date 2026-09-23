@@ -2,6 +2,93 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — The stairs stay sealed until the player has slain half the floor, and open once nothing is left standing
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its share and the arithmetic), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and
+`.cpp` (the stairs handler refusing while sealed, the death listener, the floor panel line and the
+per-floor reset), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Demonic_Blood_Gates` in `game/Data/DungeonModifiers.csv`, weight 10: "Doors leading to the next level
+in a dungeon are sealed shut until the player has slain enough enemies to open them." It gives no
+figure.
+
+### What the rule does
+
+On a floor carrying the row, stepping onto the stairs does nothing until the player has slain half of the
+creatures the floor counts as placed, rounded up. `ACataclysmDungeonStairs::ArriveAt` stops the stairs'
+watch before it announces, so a refusal starts the watch again; a player standing on the stairs goes
+down on the first look after the gate opens. The floor panel says `blood gates: N of M slain, open at K`
+while sealed and `blood gates: open` after. Each floor starts sealed again.
+
+**The stairs themselves show nothing, and nothing else can.** Measured: `ACataclysmDungeonStairs` has no
+feedback of its own, and no class in `game/Source/Cataclysm/Interface` shows the player a message; the
+combat overlay draws damage numbers, health bars, the player's own pools and rarity names, and
+nothing else. So the floor panel line is this
+rule's basic interface, and a player who steps onto sealed stairs is told only there.
+
+**It does nothing on a Horde dungeon**, which has no stairs: `PlaceStairs` is skipped when
+`FloorBrief.bWaveWalksIn`, because the way to the next floor is beating the wave.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-09-23:**
+
+- **Half, rounded up, counted at each arrival.** `BloodGatesSlainPercent` is 50, Divine Resurgence's
+  share, so the two rules that count a floor's dead count it the same way. "Enough" is less than all;
+  `Celestial_Lightforged_Walls` is the row that forces a full clear. A floor that placed nothing is open.
+- **"The player has slain"** is the killer on the death notice, as Vengeful Wraiths reads it. A minion's
+  kill counts only when its summoner holds the Conduit keystone, which `UCataclysmCombatEvents::NoteBlow`
+  decides (#1515).
+- **A marked creature**, one brought back from the dead, is neither placed nor, when killed, slain.
+  Creatures that arrive during the floor are unmarked and count as placed, so the target can rise while
+  the player plays; the panel shows the current one.
+- **The last floor is not sealed.** Its stairs lead out of the dungeon (`GoDownOneFloor` calls
+  `ClearEmpireDungeon` there), and the row seals "doors leading to the next level".
+
+**A correction to the first of those rulings, made by the coordinating session before any code used
+it.** As first ruled, "placed" was every unmarked death, whoever the killer, plus the unmarked standing.
+That can leave the player on a floor with no way down. Six placed, so three are needed; the player slays
+two; the other four die to something else -- a creature's blow, a maddened creature, a hazard. Nothing
+stands, placed is still six, and the player has two of the three: the stairs never open, and the stairs
+are the only way off a floor. **"Placed" is instead the player's kills plus the unmarked still
+standing**, so a creature that dies to anything but the player leaves both the count and the target.
+The property the tests hold: **once no unmarked creature stands, the gate is open.** The target can
+therefore also fall during a floor.
+
+### Tests
+
+Five automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor`: sealed at none and at one of four, the
+  stairs watching again after a refusal, and open at two.
+- `ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget`: a creature's kill leaves `0 of 3`, not
+  `1 of 4` and not `0 of 4`.
+- `OnceNoUnmarkedCreatureStandsTheStairsAreOpen`: the six-creature case above opens, and so does a floor
+  every creature of which died to something else.
+- `AMarkedCreatureIsNeitherPlacedNorSlainForTheGate`.
+- `TheLastFloorsWayOutIsNotSealed`: on a two-floor empire dungeon one standing creature seals floor 1
+  and does not seal floor 2, and taking floor 2's stairs clears the dungeon.
+
+One Python check: the row still says "sealed", "the next level", "the player has slain" and "enough",
+with no figure. It was seen to fail with the row changed to "until enough enemies have been slain", and
+with "slain 50% of enemies", in a copy of the repository.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — Five comments corrected to what the code does, and one of them finds that the Ravager now spends Fervour
 
 **Affects:** comments only, in `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h`,
