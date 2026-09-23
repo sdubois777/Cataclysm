@@ -42,9 +42,10 @@ enum class ECataclysmStatBucket : uint8
 	 * THE SAME SOURCES THAT MAY GRANT A MORE MULTIPLIER MAY REMOVE A STAT, and
 	 * no others: `UCataclysmStatPipeline::CanGrantMore` decides both.
 	 *
-	 * ON A RATE IT REMOVES THE REDUCTION, NOT THE INTERVAL. `EvaluateRate`
-	 * returns the base interval when one applies: "you have no cooldown
-	 * reduction", not a cooldown of no length.
+	 * ON COOLDOWN REDUCTION IT REMOVES THE REDUCTION, NOT THE INTERVAL. The
+	 * reduction is taken to nothing, and a reduction of nothing leaves every
+	 * cooldown at its base length: "you have no cooldown reduction", not a
+	 * cooldown of no length.
 	 */
 	Removed		UMETA(DisplayName = "Removed"),
 };
@@ -2683,9 +2684,6 @@ struct CATACLYSM_API FCataclysmStatBreakdown
 	 * `UCataclysmAbilitySystemComponent::IsStatRemoved` can answer for a
 	 * consumer that reads no stat through the pipeline.
 	 *
-	 * `EvaluateRate` READS IT TOO, and there it leaves the base interval rather
-	 * than nothing, because what a rate removes is its reduction.
-	 *
 	 * A REMOVAL FROM A SOURCE THAT MAY NOT GRANT ONE IS NOT COUNTED. It is
 	 * ignored and logged, the way a refused More multiplier is.
 	 */
@@ -2847,38 +2845,18 @@ public:
 											const FCataclysmStatConditions& State =
 												FCataclysmStatConditions());
 
-	/**
-	 * The same three buckets, for a stat that is a rate rather than a quantity.
-	 *
-	 *     Final = base / ((1 + sum of increases) x more1 x more2 x ...)
-	 *
-	 * Cooldown reduction is the only one. An increase makes the interval
-	 * shorter, so it divides; a More source has to divide for the same reason,
-	 * or a cooldown reduction gem would make the cooldown longer. Because both
-	 * buckets divide, no number of them reaches zero, which is why the stat
-	 * needs no cap.
-	 *
-	 * A REMOVAL LEAVES THE BASE. Issue #1791. What a rate divides by is its
-	 * reduction, so removing it means no reduction at all, whatever increases
-	 * and More multipliers reached it: "you have no cooldown reduction". The
-	 * game reaches the same answer through the attribute, which `Evaluate`
-	 * takes to nothing.
+	/*
+	 * NO RATE EVALUATION IS HERE, AND THAT IS DELIBERATE. Issue #2004. An
+	 * `EvaluateRate` once worked a cooldown out in one go, dividing the base by
+	 * the INCREASES bucket, with `DisplayedRateReduction` beside it. Issue #1981
+	 * wired it into the game and issue #2000 found the result wrong: the game's
+	 * data puts cooldown reduction in the FLAT bucket, and an attribute point
+	 * only scales it. The game asks `Evaluate` for the reduction, through
+	 * `UCataclysmAbilitySystemComponent::StatForSkill`, and divides with
+	 * `UCataclysmCombatAttributeSet::FinalCooldown`, which floors a negative.
+	 * Nothing called either function after that, so both were deleted rather
+	 * than left for the next reader to wire up. Git keeps them.
 	 */
-	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
-	static FCataclysmStatBreakdown EvaluateRate(float Base,
-												const TArray<FCataclysmStatModifier>& Modifiers,
-												const FGameplayTagContainer& SkillTags,
-												const FCataclysmStatConditions& State =
-													FCataclysmStatConditions());
-
-	/**
-	 * What a player is shown, as a percentage. Never reaches 100.
-	 *
-	 * AND 0 WHEN A REMOVAL REACHED THE RATE, because `EvaluateRate` then
-	 * applies no reduction. Issue #1791.
-	 */
-	UFUNCTION(BlueprintPure, Category = "Cataclysm|Stats")
-	static float DisplayedRateReduction(const FCataclysmStatBreakdown& Breakdown);
 
 	/**
 	 * The condition a data sheet names, or false for a name this build does not
@@ -2954,7 +2932,7 @@ public:
 	static bool ScaleNamed(const FString& Name, ECataclysmStatScale& OutScale);
 
 private:
-	/** Shared by Evaluate and EvaluateRate; they differ only in the last step. */
+	/** The three buckets, before `Evaluate` combines them. */
 	static FCataclysmStatBreakdown Accumulate(float Base,
 											  const TArray<FCataclysmStatModifier>& Modifiers,
 											  const FGameplayTagContainer& SkillTags,

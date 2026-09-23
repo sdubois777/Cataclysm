@@ -6105,14 +6105,6 @@ def validate_hybrid_parts(tables: dict[str, list[dict]]) -> list[str]:
     return problems
 
 
-#: Stats whose base is not a quantity a class holds.
-#:
-#: Cooldown reduction is the accumulated sum of increases rather than a value:
-#: a skill's cooldown is its own base divided by one plus this. A class base of
-#: zero is correct for it, so it is not worth reporting.
-RATE_STATS = frozenset({"cooldown_reduction"})
-
-
 def validate_stat_names(tables: dict[str, list[dict]]) -> list[str]:
     """Report attribute effects whose stat no class supplies a base for.
 
@@ -6129,6 +6121,12 @@ def validate_stat_names(tables: dict[str, list[dict]]) -> list[str]:
     The two sheets are checked against each other rather than against a
     hard-coded list of the 33 stats, so adding a stat to the character sheet
     needs no change here.
+
+    NO STAT IS EXEMPT. Cooldown reduction was, as a "rate" whose class base of
+    zero was said to be correct, until issue #2000 found that gear supplies it
+    as a flat value and the Efficacy attribute only scales that. It is then
+    exactly the case this reports, like block chance and evasion, and issue
+    #2004 removed the exemption.
     """
     class_rows = tables.get("ClassStats")
     attribute_rows = tables.get("Attributes")
@@ -6140,7 +6138,7 @@ def validate_stat_names(tables: dict[str, list[dict]]) -> list[str]:
 
     return [f"{stat!r} is scaled by an attribute, and no class supplies its "
             f"base. It does nothing until gear, a weapon or a skill does."
-            for stat in sorted(from_attributes - from_classes - RATE_STATS)]
+            for stat in sorted(from_attributes - from_classes)]
 
 
 def validate_element_visuals(tables: dict[str, list[dict]],

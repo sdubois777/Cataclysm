@@ -2,6 +2,108 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — The rate lookup for cooldowns is deleted, and cooldown reduction is no longer exempt from the generator's note
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the functions
+`EvaluateRate` and `DisplayedRateReduction` deleted, and three comments that described them
+corrected), `game/Source/Cataclysm/Tests/CataclysmStatPipelineTests.cpp` (the test
+`Cataclysm.StatPipeline.ARateDividesByBothBucketsAndNeverReachesZero` deleted, and the last
+paragraph of `ARemovedStatResolvesToZeroWhateverElseReachesIt`, which called `EvaluateRate`),
+`game/Source/Cataclysm/Tests/CataclysmAttributeSetTests.cpp` (two assertions moved in),
+`tools/generate_datatables.py` (`RATE_STATS` deleted), a new
+`tools/tests/test_a_stat_only_an_attribute_scales_is_reported.py`, and comments in
+`CataclysmGameplayAbility.cpp`, `CataclysmAbilitySystemTests.cpp`, `CataclysmDataTableTests.cpp` and
+`tools/tests/test_a_cooldown_is_asked_for_not_read.py`. Issue
+[#2004](https://github.com/sdubois777/Cataclysm/issues/2004), which this closes. It also records
+issue [#1980](https://github.com/sdubois777/Cataclysm/issues/1980), below.
+
+**Applied.** The Python suite, the compile, the automation tests and the guard proof have all run, the
+Unreal ones inside one editor lock. The figures are at the end of this entry.
+
+### What was deleted, and why
+
+Issue #2000 found that cooldown reduction is not a "rate" worked out from the increases bucket: the
+game's data puts it in the flat bucket (the `Haste` affix) and the Efficacy attribute only scales it.
+Pull request #2003 repaired the game's route. Two things written for the old reading were left:
+
+| What | What it did | What happened to it |
+| :-- | :-- | :-- |
+| `UCataclysmStatPipeline::EvaluateRate` | divided a base by the increases and More buckets | deleted; no game code called it, only its own tests |
+| `UCataclysmStatPipeline::DisplayedRateReduction` | the percentage a player would be shown for `EvaluateRate`'s result | deleted; no game code called it either. Not named in issue #2004; deleted because it only describes `EvaluateRate`'s result |
+| `RATE_STATS` in `tools/generate_datatables.py` | kept `cooldown_reduction` out of the generator's note about a stat an attribute scales and no class supplies | deleted, so the note now prints for cooldown reduction, which is the case it describes |
+
+**Judgements made under the owner's delegation of 2026-09-14**, marked as judgements:
+
+| The judgement | Why |
+| :-- | :-- |
+| delete `EvaluateRate` rather than make it floor negatives or add a warning comment | issue #2004's recommendation: nothing calls it, git keeps it, and a design needing a rate can write the one line again |
+| delete `DisplayedRateReduction` with it | its only meaning is "the reduction `EvaluateRate` applied"; the game shows cooldown reduction through `UCataclysmCombatAttributeSet::DisplayedCooldownReduction` |
+| keep the two More-multiplier assertions from the deleted test, in `Cataclysm.Attributes.CooldownReductionDividesAndNeverReachesZero` | they were the only test of `UCataclysmCombatAttributeSet::FinalCooldown`'s third argument, which the deleted test also checked |
+
+**Measured, not asserted:** on the shipped `ClassStats.csv` and `Attributes.csv`, the generator's note
+listed four stats before this change (block chance, critical strike chance, evasion, magic find) and
+lists five after it; the fifth is cooldown reduction.
+
+### A comment corrected in passing
+
+The comment above the enchantment effect row count in `CataclysmDataTableTests.cpp` said issues
+#1981, #1982 and #1988 unblocked the thirteen rows that took the count from 244 to 257. Issue #1988
+asked for a check and unblocked nothing; those rows closed it. The comment now names the three pieces
+of engine work that did unblock them (issue #1981's cooldown lookup as issue #2000 repaired it, three
+rows; issue #1982's critical strike lookup, one row; pull request #1989's conditions and scale sources,
+nine rows), counted from the shipped `EnchantmentEffects.csv`.
+
+### Recorded here: a drawback that costs nothing is kept, with no row (issue #1980)
+
+"When you die all your buffs are removed", in `game/Data/EnchantmentsNegative.csv`, stays exactly as
+written and gets no row in `EnchantmentEffects.csv`. **It states what the engine already does to every
+character**: `UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` clears every buff when a dead
+character stands back up, and the design document's section "What Dying Does at the Moment It
+Happens" says the same. So the drawback changes no number in play.
+
+It was ruled on 2026-09-23 by the coordinating session, under the owner's delegation, and issue #1980
+is closed. It cannot be dropped: removing a sentence renumbers the positional codes quoted in this log
+and orphans saved items, and a weight of 0 is refused (the 2026-09-17 entry "Thirty-three enchantment
+rows..." records all three). It cannot be reworded either: the whole sentence is shorter than 48
+characters, so any change renames the row saved items store. The same entry records "Your HP
+regeneration continues at 50% effectiveness during combat", a positive enchantment, ruled dropped
+and still in the table for the same reasons. **Whether a drawback that costs nothing should roll at
+weight 4 is a balance question**, left to the next balance pass over drawback weights.
+
+### Figures
+
+The automation test total falls by one, from 2148 to 2147: one test is deleted and none is added. The
+Python total rises by two, the new file's two tests.
+
+**The Unreal window**, one editor lock from 16:06:07Z to 16:14:04Z on 2026-09-23, on head `303750d5`
+(game tree `eb0beb59`), every line as printed:
+
+| Step | What it printed |
+| :-- | :-- |
+| the base, development `5bbdd994`, groups `Cataclysm.Attributes.` and `Cataclysm.StatPipeline.` | `Build: Succeeded - 52 actions, 45 files compiled`; `Tests: 59 tests performed, 59 succeeded, 0 failed` (20 and 39, counted from the test log) |
+| this tree, the whole suite, the run of record | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 2147 tests performed, 2147 succeeded, 0 failed`; `Declared: 2147 tests in the tree at 303750d5; 2147 performed, gap 0` (20 and 38 in the two groups, counted from the test log) |
+
+39 tests reported skipping part of what they check: the art-pack ones a git worktree cannot run in
+full, none in either group above. The build and the run each ran once; nothing extra ran.
+
+**The guard proof**, at prefix `Cataclysm.Attributes.`, run detached, with the SHA-256 of
+`CataclysmCombatAttributeSet.cpp` taken before the break and after the restore:
+
+| The break | With it in | Restored |
+| :-- | :-- | :-- |
+| `CooldownDivisor` divides by the More multiplier instead of multiplying by it (`return (1.0f + Increases) * More;`, which occurs once, becomes `/ More`) | 20 performed, 19 succeeded, 1 failed: `CooldownReductionDividesAndNeverReachesZero` | 20 performed, 20 succeeded, 0 failed |
+
+It printed `PROVED True CRASHED False`, and the hash was `d35d5746...` before and after. **Only the
+test is measured, not the assertion.** The registration said the two assertions moved into that test
+would be the ones to fail, because every other caller passes a More multiplier of 1. The restored run
+overwrites the test log, so which assertions failed was not read.
+
+**Python**, on `303750d5` before the window, registered at 5325 passed, 8 skipped, 5333 in the
+results file: `5325 passed, 8 skipped in 397.99s (0:06:37)`, exit 0; results file tests=5333,
+failures=0, errors=0, skipped=8. ruff: `All checks passed!`
+
+---
+
 ## 2026-09-18 — Striking a Boss opens a four second window, and whose blow a blow is now has one implementation
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the rule that

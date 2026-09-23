@@ -1,4 +1,4 @@
-"""A skill's cooldown is ASKED FOR through the rate pipeline, not read off an attribute.
+"""A skill's cooldown reduction is ASKED FOR through the stat pipeline, not read off an attribute.
 
 WHY THIS EXISTS. Issue #1981. `UCataclysmGameplayAbility::CooldownAfterReduction`
 read the `CooldownReduction` gameplay attribute, and
@@ -8,12 +8,14 @@ RequiredTags, a Condition or a Scale was dropped before it reached the attribute
 and changed no cooldown in play. Six enchantment sentences need exactly that,
 "Summon skills have 30%-60% reduced cooldown" among them.
 
-WHY IT IS THE RATE ROUTE AND NOT `StatForSkill`. Cooldown reduction is a rate: it
-DIVIDES. `tools/generate_datatables.py` names it as the only one --
-`RATE_STATS = frozenset({"cooldown_reduction"})` -- and
-`UCataclysmStatPipeline::EvaluateRate` is the arithmetic. Sending a rate through
-the multiplying pipeline would make cooldown reduction lengthen a cooldown, so
-this file pins the route and not merely the fact that something is asked.
+THE REDUCTION IS ASKED FOR, AND THEN IT DIVIDES. Issue #2000. The reduction is
+an ordinary stat asked through `StatForSkill`, whose gear rows are FLAT, and
+`FinalCooldown` divides the skill's base cooldown by one plus it. Multiplying
+instead would make cooldown reduction lengthen a cooldown, so this file pins
+both steps and not merely the fact that something is asked. Issue #1981 first
+did this through `UCataclysmStatPipeline::EvaluateRate`, which read the
+INCREASES bucket; issue #2004 deleted it, and `RATE_STATS` in
+`tools/generate_datatables.py` with it.
 
 WHY IN PYTHON RATHER THAN IN THE AUTOMATION SUITE. Continuous integration runs
 `python -m pytest` and nothing else, so nothing under `game/Source/Cataclysm/

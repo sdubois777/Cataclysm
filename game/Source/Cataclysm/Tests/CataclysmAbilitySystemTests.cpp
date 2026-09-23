@@ -298,9 +298,11 @@ bool FCataclysmCooldownReductionReachesASkillTest::RunTest(const FString&)
  * the attribute, and changed no cooldown in play. Six enchantment sentences
  * need exactly that, "Summon skills have 30%-60% reduced cooldown" among them.
  *
- * IT DIVIDES, so a row of +100% increased turns four seconds into two rather
- * than into nothing. `UCataclysmStatPipeline::EvaluateRate` is the arithmetic,
- * and until this change nothing in the game called it.
+ * IT DIVIDES, so a flat row of 100 turns four seconds into two rather than
+ * into nothing. The rows are FLAT because the game's data is. Issue #1981
+ * first divided through `UCataclysmStatPipeline::EvaluateRate`, which read the
+ * INCREASES bucket; issue #2000 found that wrong, and issue #2004 deleted the
+ * function once nothing called it.
  *
  * THE ROWS ARE PUT ON BY HAND. This proves the LOOKUP honours scoping, not
  * that any shipped data row exists; the row-text checks in `tools/tests` cover
@@ -351,7 +353,7 @@ bool FCataclysmScopedCooldownRowTest::RunTest(const FString&)
 
 	const FName Stat(TEXT("cooldown_reduction"));
 
-	// A ROW WORTH +100% INCREASED, SCOPED TO THE ULTIMATE SLOT. The attribute is
+	// A FLAT ROW WORTH 100, SCOPED TO THE ULTIMATE SLOT. The attribute is
 	// left at nothing, which is what ApplyTo really leaves it at for a scoped
 	// row: the row is dropped on the way to it.
 	{
@@ -490,8 +492,8 @@ bool FCataclysmScopedCooldownRowTest::RunTest(const FString&)
  *
  * NOTHING CAUGHT IT BECAUSE NOTHING FED A FLAT MODIFIER THROUGH THAT ROUTE. The
  * test above writes the attribute by hand and records no rows; the test beside
- * it records increased rows; the pipeline's own rate tests feed an increase and
- * a gem. This test is the one that was missing, and it uses the affix's own
+ * it records increased rows; the pipeline's own rate tests, deleted with the
+ * rate lookup by issue #2004, fed an increase and a gem. This test is the one that was missing, and it uses the affix's own
  * figure so it reads as the gear case rather than as an invented one.
  */
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFlatCooldownRowTest,
