@@ -540,7 +540,11 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 264 SINCE ISSUE #2014: one flag row on "Energy shield can now be
 	// effected by bleed", granting `shield_absorbs_damage_over_time`, which
 	// since that issue lets a bleed into the wearer's energy shield.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    264)
+	//
+	// AND 270 SINCE GROUP B OF ISSUE #1815, from 264: the five movement speed windows' rows and the one lengthened to three seconds.
+	// One sentence was lengthened after its first 48 characters, so
+	// EnchantmentsPositive.csv keeps its count.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    270)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

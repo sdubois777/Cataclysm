@@ -18,8 +18,10 @@ in `CataclysmCombatEventsTests.cpp`, `CataclysmStatPipelineTests.cpp` and `Catac
 Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815), the movement rows that issue
 [#1821](https://github.com/sdubois777/Cataclysm/issues/1821) unblocked.
 
-**Partial.** The engine half is written. The six rows need the design workbook, which another session
-holds, and are added to this change before its machine window. Nothing has been compiled.
+**Partial.** The engine half and the six rows are written; the rows are in `docs/All_Things_Cataclysm.xlsx`
+and the regenerated `game/Data/EnchantmentEffects.csv` and `EnchantmentsPositive.csv`, with a test that
+reads the support ability row from the imported table. The compile, the DataTable asset rebuild, the
+automation tests and the guard proofs wait for a machine window.
 
 ### The five windows
 
@@ -49,6 +51,36 @@ Ruled by the coordinating session on 2026-09-23.
 | the crowd control window is opened on `AttackerOf` the instigator | a minion's stun is the minion's own unless its summoner holds Conduit, the same rule every other kind of credit follows; `AttackerOf` gained an actor form so the rule is still written once |
 | "Gain 20%-50% increased movespeed after taking damage" is lengthened, not held | it states no window, and a row's condition value must appear in its words; the clause ", for 3 seconds" is appended after its first 48 characters so its row name holds, and 3 seconds matches four of the five sibling sentences. **Made under the owner's delegation, which the owner may veto.** It uses the existing `seconds_after_hit_taken` |
 | "Every 10 seconds your movement speed is increased by 30%-50% for 3 seconds" is left out | it repeats on a timer rather than following an event, so a clock cannot express it; it stays with "Every 20 seconds your damage is halved for 5 seconds" |
+
+### The six rows
+
+| Enchantment | Row |
+| :-- | :-- |
+| Applying a CC effect grants 10%-20% increased movement speed for 3 seconds | `movement_speed` increased 10 to 20, `seconds_after_crowd_control` 3 |
+| Using your support ability grants you 10%-20% increased movement speed for 3 seconds | `movement_speed` increased 10 to 20, `seconds_after_support_skill` 3 |
+| Casting a spell grants 5%-10% increased movement speed for 3 seconds | `movement_speed` increased 5 to 10, `seconds_after_spell` 3 |
+| After being hit by a melee attack you gain 10%-20% increased movement speed for 2 seconds | `movement_speed` increased 10 to 20, `seconds_after_melee_hit_taken` 2 |
+| After you use a movement ability you lose 50% movespeed for 3 seconds | `movement_speed` increased -50, `seconds_after_movement_skill` 3 |
+| Gain 20%-50% increased movespeed after taking damage, for 3 seconds | `movement_speed` increased 20 to 50, `seconds_after_hit_taken` 3 |
+
+**Increased, not more**, following the shipped "You lose 10%-20% movespeed", which is `increased` -10 to
+-20. **The reworded sentence keeps its row name**: `row_name("Positive", text[:48])` is
+`Positive_Gain_20_50_increased_movespeed_after_taking_da` for both the old and the new sentence, measured
+before the edit.
+
+**Rehearsed first, then applied.** The same two scripts (one edits the workbook, one moves the count pins
+and takes the five conditions off the built-ahead list) were run on a `git archive` copy with an unedited
+copy as the control, through the whole generator. The copies differed in one test only,
+`test_every_csv_still_hashes_to_what_was_recorded`, which names the two changed CSVs until the assets are
+rebuilt. The real edit was then applied to the workbook as it stood at development `802ad193`, and its
+changed CSV lines are the rehearsal's exactly: six rows added to `EnchantmentEffects.csv` and one line of
+`EnchantmentsPositive.csv` changed. The counts move from 264 rows over 205 enchantments to 270 over 211,
+measured on `802ad193` before the edit.
+
+**A seventh row was tried and refused.** "Each active minion reduces your maximum HP by 3%-6%", as
+`max_health` increased -3 to -6 scaled by `minions_held`, stopped the generator: nothing asks for
+`max_health` through the stat pipeline, so a scaled row on it would grant nothing. It moves to a later
+change with a lookup for that stat.
 
 ### A defect found in passing: the Boss window survived a respawn
 

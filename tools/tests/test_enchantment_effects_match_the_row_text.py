@@ -384,8 +384,10 @@ JUDGED_NUMBERS = {
 #: "Energy shield can now be effected by bleed", an enchantment that had none.
 #: It grants `shield_absorbs_damage_over_time`, which since that issue lets a
 #: bleed into the wearer's energy shield.
-AUTHORED_ROWS = 264
-AUTHORED_ENCHANTMENTS = 205
+#: AND 270 OVER 211 SINCE GROUP B OF ISSUE #1815, from 264
+#: over 205: one row each on 6 enchantments that had none -- the five movement speed windows' rows and the one lengthened to three seconds.
+AUTHORED_ROWS = 270
+AUTHORED_ENCHANTMENTS = 211
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
