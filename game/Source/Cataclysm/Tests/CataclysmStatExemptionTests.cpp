@@ -1123,9 +1123,10 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
-	 * `max_energy_shield`, scaled by minions held, asked by
-	 * `UCataclysmAbilitySystemComponent::MaximumEnergyShield`. Issue #1973: this
-	 * is the pairing that granted nothing until that lookup existed.
+	 * `class_resource`, scaled by maximum mana, asked by
+	 * `UCataclysmAbilitySystemComponent::MaximumClassResource`. Issue #1515:
+	 * `Ritualist_keystone_d_kC` Vessel is the pairing, and it granted nothing
+	 * until that lookup existed.
 	 */
 	void ProbeScaledMaximumClassResource(FAutomationTestBase& Test)
 	{
@@ -1144,6 +1145,14 @@ namespace CataclysmStatExemptionTest
 		{
 			return;
 		}
+
+		// A CLASS RESOURCE SET FIRST, which the fighter does not carry: only a
+		// player class has a bar. Without it the write below is refused with an
+		// engine error and the lookup answers nothing both times -- which is how
+		// this probe failed the first time it ran, on 2026-09-23, five days after
+		// it was written.
+		System->AddAttributeSetSubobject(
+			NewObject<UCataclysmClassResourceAttributeSet>(Caster.Actor));
 
 		// A HUNDRED OF EACH: the bar this scales, and the mana it scales by.
 		// `Ritualist_keystone_d_kC` Vessel reads "1 Fervour for every 20 maximum
@@ -1171,6 +1180,11 @@ namespace CataclysmStatExemptionTest
 			With > Without);
 	}
 
+	/**
+	 * `max_energy_shield`, scaled by minions held, asked by
+	 * `UCataclysmAbilitySystemComponent::MaximumEnergyShield`. Issue #1973: this
+	 * is the pairing that granted nothing until that lookup existed.
+	 */
 	void ProbeScaledMaximumEnergyShield(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
