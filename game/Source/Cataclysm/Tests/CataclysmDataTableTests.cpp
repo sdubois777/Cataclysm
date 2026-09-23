@@ -554,7 +554,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// damage" is one row for attack damage and one for spell damage; "ignores
 	// all armor" and the first critical strike are one row each. No sentence
 	// changed, so both Enchantments CSVs keep their counts.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    274)
+	//
+	// AND 280 SINCE THE COMBAT STATE, issue #1815, from 274: six rows on five
+	// sentences that had none, one of them two rows for the two damage types.
+	// One sentence was lengthened after its first 48 characters, so
+	// EnchantmentsNegative.csv keeps its count.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    280)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

@@ -3825,4 +3825,176 @@ bool FCataclysmFirstHitArmourRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDisabledRegenerationRowTest,
+	"Cataclysm.Enchantments.TheDisabledRegenerationRowRemovesItOnlyInCombat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "HP regeneration is disabled during combat", worn, removes health
+ * regeneration while the wearer is in combat and not otherwise. Issue #1815.
+ *
+ * THE ROW IS READ, NOT WRITTEN BY HAND: the item carrying the enchantment is
+ * equipped, so this fails until the row exists in the imported table.
+ */
+bool FCataclysmDisabledRegenerationRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_HP_regeneration_is_disabled_during_combat")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Regen(TEXT("health_regen"));
+	TestFalse(TEXT("out of combat, regeneration is not removed"),
+		ASC->IsStatRemoved(Regen, FGameplayTagContainer()));
+
+	ASC->NoteHitTaken();
+	TestTrue(TEXT("a hit taken puts the wearer in combat, and it is removed"),
+		ASC->IsStatRemoved(Regen, FGameplayTagContainer()));
+
+	World->TimeSeconds += UCataclysmAbilitySystemComponent::CombatLapseSeconds + 0.5f;
+	TestFalse(TEXT("and once combat lapses it is back"),
+		ASC->IsStatRemoved(Regen, FGameplayTagContainer()));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSecondsInCombatRowTest,
+	"Cataclysm.Enchantments.TheDamageTakenPerSecondInCombatRowStopsAtTenStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You take 10%-20% increased damage for each second you have been in combat,
+ * up to 10 stacks", worn, grows with the seconds of the current combat and
+ * stops at ten. Issue #1815.
+ *
+ * A WORN ITEM ROLLS THE TOP OF ITS RANGE BY DEFAULT, so each second is 20%.
+ * Five seconds are 100% more of the figure; twenty-five are capped at ten
+ * steps, 200%, where an uncapped row would give 500%.
+ *
+ * THE COMBAT IS KEPT GOING by a hit every two seconds, inside the lapse.
+ */
+bool FCataclysmSecondsInCombatRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_You_take_10_20_increased_damage_for_each_secon")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Taken(TEXT("damage_taken"));
+	const auto TakenNow = [&]()
+	{
+		return ASC->StatAppliedTo(Taken, FGameplayTagContainer(), 100.0f);
+	};
+
+	TestEqual(TEXT("out of combat, nothing is added"), TakenNow(), 100.0f, 0.01f);
+
+	ASC->NoteHitTaken();
+	World->TimeSeconds += 2.0f;
+	ASC->NoteHitTaken();
+	World->TimeSeconds += 2.0f;
+	ASC->NoteHitTaken();
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("five seconds into a combat is five stacks, 100% more"),
+		TakenNow(), 200.0f, 0.01f);
+
+	for (int32 Beat = 0; Beat < 10; ++Beat)
+	{
+		World->TimeSeconds += 2.0f;
+		ASC->NoteHitTaken();
+	}
+	TestEqual(TEXT("twenty-five seconds in stops at ten stacks, 200% more"),
+		TakenNow(), 300.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSecondsOutOfCombatRowTest,
+	"Cataclysm.Enchantments.TheDamagePerSecondOutOfCombatRowStopsAtTenStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your damage is reduced by 3%-5% for every second you spend out of combat, up
+ * to 10 stacks, less damage the longer you are out of combat", worn, lowers the
+ * wearer's damage for each second since combat lapsed, down to ten stacks.
+ * Issue #1815.
+ *
+ * A WORN ITEM ROLLS THE TOP OF ITS RANGE, so each second is 5% less. Two whole
+ * seconds out of combat are 10% less; thirty are capped at ten steps, 50% less,
+ * where an uncapped row would reach the pipeline's floor of 99% less.
+ */
+bool FCataclysmSecondsOutOfCombatRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Your_damage_is_reduced_by_3_5_for_every_second")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Damage(TEXT("attack_damage"));
+	const auto DamageNow = [&]()
+	{
+		return ASC->StatAppliedTo(Damage, FGameplayTagContainer(), 1000.0f);
+	};
+
+	ASC->NoteHitTaken();
+	TestEqual(TEXT("in combat, nothing is taken away"), DamageNow(), 1000.0f, 0.01f);
+
+	World->TimeSeconds += UCataclysmAbilitySystemComponent::CombatLapseSeconds + 2.5f;
+	TestEqual(TEXT("two whole seconds out of combat are 10% less"),
+		DamageNow(), 900.0f, 0.01f);
+
+	World->TimeSeconds += 30.0f;
+	TestEqual(TEXT("thirty more stop at ten stacks, 50% less"),
+		DamageNow(), 500.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

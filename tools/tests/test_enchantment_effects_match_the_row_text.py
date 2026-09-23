@@ -135,7 +135,13 @@ LONGER = re.compile(r"\blonger\b", re.IGNORECASE)
 #: WHOLE WORDS, so that "Nobody" and "cannon" do not read as a removal.
 #: `test_a_removal_is_read_from_whole_words_only` holds that on made-up
 #: sentences.
-REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not)\b", re.IGNORECASE)
+#:
+#: `disabled` ADDED ON 2026-09-23, a labelled judgement made under the owner's
+#: delegation, with the `drain` widening of 2026-09-14 as its precedent. It widens
+#: the MEANING by one word that says a thing is gone: "HP regeneration is disabled
+#: during combat". Swept first: two sentences use it, both removals -- that one,
+#: and "Your own ultimate ability is disabled", which has no row.
+REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled)\b", re.IGNORECASE)
 
 #: Stats whose value is a yes or a no rather than a quantity, so the sentence
 #: states no number for it and should not. `skill_locked` above zero means the
@@ -396,8 +402,12 @@ JUDGED_NUMBERS = {
 #: 270 over 211: four rows on three enchantments that had none. "Deals
 #: 100%-300% bonus damage" is an attack damage row and a spell damage row;
 #: "ignores all armor" and the first critical strike are one row each.
-AUTHORED_ROWS = 274
-AUTHORED_ENCHANTMENTS = 214
+#: AND 280 OVER 219 SINCE THE COMBAT STATE, issue #1815, from 274 over 214: six
+#: rows on five enchantments that had none. "Your damage is reduced ... out of
+#: combat" is an attack damage row and a spell damage row; the rest are one row
+#: each. One sentence was lengthened after its first 48 characters.
+AUTHORED_ROWS = 280
+AUTHORED_ENCHANTMENTS = 219
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -409,7 +419,9 @@ AUTHORED_ENCHANTMENTS = 214
 #: #1815: the first removal on the enchantment side whose base is a figure the
 #: caller supplies rather than one the character holds. Ritual Focus, the
 #: passive node added in #1966, is the same shape on the passive side.
-REMOVED_ROWS = 31
+#: AND 32 SINCE "HP regeneration is disabled during combat", from 31, issue
+#: #1815: a removal under `in_combat`.
+REMOVED_ROWS = 32
 
 #: The named sets whose rows are written, by the identifier their Weight column
 #: carries: Archon's Aegis (5), Mana Weaver (8), Brute's Heart (9), Demon King's

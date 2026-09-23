@@ -943,6 +943,8 @@ namespace
 				return false;
 			}
 			Out.ScaleStep = Effect.ScaleStep;
+			// AND ITS CAP. Issue #1815.
+			Out.ScaleMaxSteps = Effect.ScaleMaxSteps;
 		}
 
 		return true;

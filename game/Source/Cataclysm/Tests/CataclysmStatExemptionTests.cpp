@@ -1619,6 +1619,54 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `damage_taken`, scaled by debuffs carried, asked by `DefenderStat` in
+	 * `UCataclysmDamageCalculation` on every blow the defender takes. Issue
+	 * #1815: "You take 10%-20% increased damage for each second you have been
+	 * in combat, up to 10 stacks" is the first scaled row on this stat.
+	 *
+	 * DEBUFFS AND NOT SECONDS IN COMBAT, because this probe measures the ask
+	 * and not the reading, and debuffs are the reading the probes beside it
+	 * already know how to move.
+	 */
+	void ProbeScaledDamageTaken(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			Combat::GetDamageTakenAttribute(), 100.0f);
+		ScaledBy(Defender.Actor, TEXT("damage_taken"), 100.0f,
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/100.0f);
+
+		const float Before = Defender.Health();
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer());
+		const float Clean = Before - Defender.Health();
+		if (!Test.TestTrue(TEXT("the blow landed"), Clean > 0.0f))
+		{
+			return;
+		}
+
+		GiveTwoDebuffs(Defender.Actor);
+		const float Middle = Defender.Health();
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer());
+		const float Carrying = Middle - Defender.Health();
+
+		Test.TestTrue(
+			FString::Printf(TEXT("damage_taken is asked for, so debuffs raise it "
+								 "and more lands: %.2f against %.2f"),
+							Carrying, Clean),
+			Carrying > Clean + 0.001f);
+	}
+
+	/**
 	 * `health_regen`, scaled by debuffs carried, asked by `RateOf` inside
 	 * `UCataclysmRegeneration::ApplyStep`.
 	 *
@@ -1880,6 +1928,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("attack_speed"),               &ProbeScaledAttackSpeed},
 			{TEXT("armor"),                      &ProbeScaledArmour},
 			{TEXT("damage_reduction"),           &ProbeScaledDamageReduction},
+			{TEXT("damage_taken"),               &ProbeScaledDamageTaken},
 			{TEXT("retaliation"),                &ProbeScaledRetaliation},
 			{TEXT("health_regen"),               &ProbeScaledHealthRegen},
 			{TEXT("fervour_per_second"),         &ProbeScaledFervourPerSecond},

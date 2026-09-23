@@ -758,8 +758,38 @@ built-ahead lists in `tools/tests/`, and tests in `CataclysmStatPipelineTests.cp
 `CataclysmConditionalDamageTests.cpp` and `CataclysmCombatEventsTests.cpp`. Issue
 [#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
 
-**Partial.** The engine half is written. The five rows and the workbook's cap column need the design
-workbook, and are added to this change before its machine window. Nothing has been compiled.
+**The rows are written**: six rows on five sentences that had none, in the design workbook's Enchantment
+Effects sheet and `game/Data/EnchantmentEffects.csv` (274 rows to 280, and 214 enchantments with a row to
+219), with the sheet's new `Scale Max Steps` column. They are listed under "The sentences" below. Dry-run
+first on a `git archive` copy against an unedited control: `EnchantmentEffects.csv` and one sentence of
+`EnchantmentsNegative.csv` changed and nothing else, the tools tests failed exactly as the control's did,
+and the real run matched the dry run byte for byte. Nothing has been compiled.
+
+**The cap reaches the game** through `FCataclysmEnchantmentEffectRow::ScaleMaxSteps`, copied onto the
+modifier where an enchantment's row becomes one (`CataclysmItem.cpp`). The generator reads the column on the
+Enchantment Effects sheet only, refuses a cap with no scale or one that is not a whole number of steps from
+1 to 100, and refuses the column outright on the Passive Effects sheet, whose rows never carry a cap.
+
+**`damage_taken` joins the stats asked for through the pipeline.** The generator refused both "damage taken
+per second in combat" rows, because the stat was not in `STATS_WITH_AN_ASKER`. The engine does ask for it:
+`DefenderStat` in `CataclysmDamageCalculation.cpp` calls `StatForSkill` on the defender for every blow, which
+is how its conditioned rows already work. What was missing was the probe the list requires, now
+`ProbeScaledDamageTaken` in `CataclysmStatExemptionTests.cpp`.
+
+**A reword, made under the owner's delegation, which the owner may veto.** "Your damage is reduced by
+3%-5% for every second you spend out of combat, up to 10 stacks" gained the clause ", less damage the
+longer you are out of combat" after its first 48 characters, as the ruled stationary sentence gained ", less
+damage the longer you stand". Its row is a multiplier, and the text check requires a multiplier's sentence
+to say so. The row name, `row_name(kind, text[:48])`, is the same before and after, so saved items hold.
+
+**"Disabled" is a removal word**, a labelled judgement made under the owner's delegation with the `drain`
+widening of 2026-09-14 as its precedent, for "HP regeneration is disabled during combat". Swept first, every
+enchantment and passive sentence: two say "disabled", and both take something away entirely:
+
+| Sentence | A removal? |
+| :-- | :-- |
+| "HP regeneration is disabled during combat" | yes: this row, `health_regen` removed under `in_combat` |
+| "Your own ultimate ability is disabled" | yes: it takes the ability away; it has no row |
 
 ### What "in combat" means
 
@@ -812,7 +842,7 @@ Nine enchantment sentences mention combat. **Five are written by this change:**
 | "HP regeneration is disabled during combat" | `health_regen`, removed, `in_combat` |
 | "You take 10%-20% increased damage for each second you have been in combat, up to 10 stacks" | `damage_taken`, increased 10-20, `seconds_in_combat`, step 1, cap 10 |
 | "You take 3%-5% increased damage for every 10 seconds spent in combat, up to 60 seconds" | `damage_taken`, increased 3-5, `seconds_in_combat`, step 10, cap 6 |
-| "Your damage is reduced by 3%-5% for every second you spend out of combat, up to 10 stacks" | `attack_damage` and `spell_damage`, more -3 to -5, `seconds_out_of_combat`, step 1, cap 10; "more", as the ruled row "All damage dealt is reduced by 15%-25% for each second you stand still" is |
+| "Your damage is reduced by 3%-5% for every second you spend out of combat, up to 10 stacks, less damage the longer you are out of combat" | `attack_damage` and `spell_damage`, more -3 to -5, `seconds_out_of_combat`, step 1, cap 10; "more", as the ruled row "All damage dealt is reduced by 15%-25% for each second you stand still" is |
 
 **The first does not contradict the entry "Health regeneration runs at its full rate during combat"**
 (2026-09-12). That entry rules that the base game has no out-of-combat bonus and treats the two
