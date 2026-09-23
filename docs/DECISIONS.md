@@ -213,12 +213,28 @@ rows on a node collide when they share ANY string either could be satisfied by.
 That is the right direction for a check whose whole purpose is catching two rows
 satisfied by the same words.
 
-### WHAT THIS DOES NOT YET DO
+### EACH NODE HAS A TEST THAT READS ITS ROW
 
-**Neither node has a test that reads its ROW.** Every test in this change would
-pass with no row in the data at all, which is exactly how the two earlier nodes
-named above came to grant nothing. Those two tests, and the data asset rebuild
-that lets them pass, land before this merges.
+**Every other test in this change puts the scaled modifier on by hand**, and
+would pass with no row in the data at all, which is exactly how the two earlier
+nodes named above came to grant nothing. So two more cases in
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` take each node's row
+out of the imported table, spend the point through the player state, and grant
+nothing by hand:
+
+| Node | Test | What it asks, and how |
+|---|---|---|
+| Weight Bearing | `Cataclysm.Passives.WeightBearingsRowGrantsArmourThatFollowsMaximumHealth` | armour, the way a blow asks the defender for it |
+| Vessel | `Cataclysm.Passives.VesselsRowGrantsMaximumFervourThatFollowsMaximumMana` | the Fervour maximum, through the lookup thirteen readers use |
+
+**Each moves the maximum up and back down and watches the grant follow**, which
+is the first ruling above measured rather than stated. The first maximum written
+is 37.6 steps, where rounding down, rounding to nearest and not rounding give
+three different answers, so only the second ruling's arithmetic passes. Every
+grant is a difference from the same character with the point given back, so the
+only figures the tests use are the row's value and step. Both need the
+PassiveEffects data asset rebuilt from the regenerated table before they can
+pass.
 
 ---
 
