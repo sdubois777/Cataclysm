@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 // For the eleven probes that prove every scaled stat is asked for. #1973.
 #include "AbilitySystem/CataclysmBasicAttack.h"
@@ -34,6 +35,7 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
+#include "GameplayTagsManager.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -326,6 +328,103 @@ namespace CataclysmStatExemptionTest
 			TEXT("minion_health raises a minion's maximum health, so "
 				 "ACataclysmMinion::Spawn really reads it"),
 			MaxHealthOf(GearedImp) > MaxHealthOf(PlainImp) + 0.001f);
+	}
+
+	/**
+	 * `minion_duration`, read by `ACataclysmMinion::Spawn` on the lifetime the
+	 * summoning states. Issue #1515, the Kept Longer node.
+	 *
+	 * TWO SUMMONERS, for the reason health gives: the lifetime is set once, at
+	 * the summoning. A test world's clock does not move, so a fresh minion's
+	 * remaining lifespan is the whole of what it was given.
+	 */
+	void ProbeDuration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Geared(World, /*AttackDamage=*/0.0f);
+		Grant(Geared.Actor, TEXT("minion_duration"), IncreasePercent);
+
+		ACataclysmMinion* PlainImp = SummonImp(Test, World, Plain.Actor);
+		ACataclysmMinion* GearedImp = SummonImp(Test, World, Geared.Actor);
+		if (!PlainImp || !GearedImp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(PlainImp)) { PlainImp->Destroy(); } };
+		ON_SCOPE_EXIT { if (IsValid(GearedImp)) { GearedImp->Destroy(); } };
+
+		Test.TestTrue(TEXT("the plain imp has a lifespan at all"),
+					  PlainImp->GetLifeSpan() > 0.0f);
+		Test.TestTrue(
+			TEXT("minion_duration lengthens a minion's lifespan, so "
+				 "ACataclysmMinion::Spawn really reads it"),
+			GearedImp->GetLifeSpan() > PlainImp->GetLifeSpan() + 0.001f);
+	}
+
+	/**
+	 * `cripple_and_weaken_duration`, read by `UCataclysmAilments::Apply` where
+	 * a Cripple or a Weaken is created. Issue #1515, the Deeper Hurt node.
+	 *
+	 * THE SAME CRIPPLE FROM TWO APPLIERS, one granted the stat, each on its own
+	 * target, and the time left on each compared. A test world's clock does not
+	 * move, so a fresh debuff's time left is the whole of what it was given.
+	 */
+	void ProbeCrippleAndWeakenDuration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmAilmentKind* Cripple =
+			UCataclysmAilments::KindNamed(TEXT("Cripple"));
+		if (!Test.TestNotNull(TEXT("Cripple is an ailment"), Cripple))
+		{
+			return;
+		}
+		const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(Cripple->TagName), /*ErrorIfNotFound=*/false);
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Geared(World, /*AttackDamage=*/0.0f);
+		Grant(Geared.Actor, UCataclysmAilments::CrippleAndWeakenDurationStat,
+			  IncreasePercent);
+		FScopedFighter PlainTarget(World, /*AttackDamage=*/0.0f);
+		FScopedFighter GearedTarget(World, /*AttackDamage=*/0.0f);
+
+		UCataclysmAilments::Apply(Plain.Actor, PlainTarget.Actor, *Cripple,
+								  /*Magnitude=*/1.0f);
+		UCataclysmAilments::Apply(Geared.Actor, GearedTarget.Actor, *Cripple,
+								  /*Magnitude=*/1.0f);
+
+		const auto SecondsLeftOn = [&Tag](const FScopedFighter& Target)
+		{
+			float Longest = 0.0f;
+			for (const float Seconds :
+				 Target.AbilitySystem->GetActiveEffectsTimeRemaining(
+					 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+						 FGameplayTagContainer(Tag))))
+			{
+				Longest = FMath::Max(Longest, Seconds);
+			}
+			return Longest;
+		};
+
+		Test.TestTrue(TEXT("the plain applier's Cripple lasts at all"),
+					  SecondsLeftOn(PlainTarget) > 0.0f);
+		Test.TestTrue(
+			TEXT("cripple_and_weaken_duration lengthens a Cripple its holder "
+				 "applies, so UCataclysmAilments::Apply really reads it"),
+			SecondsLeftOn(GearedTarget) > SecondsLeftOn(PlainTarget) + 0.001f);
 	}
 
 	/**
@@ -1799,6 +1898,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_attack_speed"), &ProbeAttackSpeed},
 			{TEXT("minion_damage"),       &ProbeDamage},
 			{TEXT("minion_health"),       &ProbeHealth},
+			{TEXT("minion_duration"),     &ProbeDuration},
+			{TEXT("cripple_and_weaken_duration"), &ProbeCrippleAndWeakenDuration},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},
@@ -1986,6 +2087,57 @@ bool FCataclysmEveryScaledStatIsAskedForTest::RunTest(const FString&)
 	// check holds: `tools/tests/` reads the probe table above and requires it to
 	// equal `STATS_WITH_AN_ASKER` in `tools/generate_datatables.py`. Stated here
 	// so a reader of this test knows where the refusal lives.
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionDurationFloorTest,
+	"Cataclysm.StatExemption.AMinionDurationCutByAHundredPerCentKeepsTheStatedLifetime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A summoner whose `minion_duration` stands at -100% summons a minion that
+ * still expires. Issue #1515.
+ *
+ * WHY THIS GUARD HAS ITS OWN TEST. `ACataclysmMinion::Spawn` multiplies the
+ * stated lifetime by one plus the summoner's increases, and at -100% that is
+ * nothing. `SetLifeSpan(0)` means "never expires", so without the guard a
+ * minion would stay for ever. The guard keeps the stated lifetime instead. No
+ * shipped row reduces the duration, which is exactly why nothing else would
+ * notice the guard going missing.
+ *
+ * AND -150% TOO, because the multiplier is floored at zero before it is used:
+ * a larger cut must land on the same guard rather than on a negative lifespan.
+ */
+bool FCataclysmMinionDurationFloorTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatExemptionTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	for (const float Cut : {-100.0f, -150.0f})
+	{
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		Grant(Summoner.Actor, TEXT("minion_duration"), Cut);
+
+		ACataclysmMinion* Imp = SummonImp(*this, World, Summoner.Actor);
+		if (!Imp)
+		{
+			return false;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+		// THE SAME TWENTY `SummonImp` STATES, and not zero, which would be a
+		// minion that never leaves.
+		TestEqual(*FString::Printf(
+					  TEXT("at %.0f%% duration the imp keeps the stated lifetime"),
+					  Cut),
+				  Imp->GetLifeSpan(), 20.0f, 0.01f);
+	}
 	return true;
 }
 

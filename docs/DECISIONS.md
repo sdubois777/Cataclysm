@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Deeper Hurt lengthens a Cripple or a Weaken where it is applied, and a spread copy keeps the row's duration
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp` (the stat's name
+and its reader), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (a new stat with
+no attribute), the design workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (one
+row), two test files, and the counts in `tools/tests/test_passive_effects_match_the_node_text.py`,
+`CataclysmDataTableTests.cpp` and `docs/README.md`. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ravager_basic_c_stem2` Deeper Hurt: "+3% increased duration of Cripple and Weaken you apply per
+point." One row: `cripple_and_weaken_duration`, increased, 3 per point. One stat for both, because
+the node's one sentence names both.
+
+### WHERE IT IS READ
+
+**`UCataclysmAilments::Apply`, in its Cripple and Weaken branches, and nowhere else.** That is the
+one place a character CREATES either debuff: the chance roll on a landed blow, which the two
+chance affixes, several Ravager nodes, Attrition and Never Lets Go all feed. The row's duration is
+multiplied by one plus the applier's increases, asked with the skill's own tags as the chances are.
+
+**The multiplier is floored at nothing, with no further guard.** Both functions that put the debuff
+on refuse a duration of nothing, so a cut of a hundred per cent applies no debuff rather than a
+permanent one. That is the difference from Kept Longer's minion lifetime, where nothing means
+"never expires".
+
+### THE RULING: A SPREAD COPY KEEPS THE ROW'S DURATION
+
+**Ruled by the coordinating session on 2026-09-23 under the project owner's delegation, open to the
+owner's veto.** Four paths copy an existing Cripple or Weaken to another enemy: `CopyDebuffsTo`
+(the projectile curse spread and Anathema), Contagion's `SpreadOne` and `SpreadOnDeath`, and the
+Epidemic floor rule. A copy is **not** "Cripple and Weaken you apply":
+
+- a copy is not a fresh application;
+- the copy paths already ignore the applier's other Cripple and Weaken stats, their magnitude and
+  strength overflow, so reading this one there would make the rules disagree;
+- a read on copies would lengthen the debuff every time it passed from enemy to enemy.
+
+### TESTS
+
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: a Cripple from an
+  applier granted the stat outlasts one from a plain applier.
+- `Cataclysm.Passives.DeeperHurtLengthensTheCrippleAndWeakenARealRavagerApplies`: a real Ravager
+  holding Attrition, with 0, then 5, then 0 points of Deeper Hurt. Both debuffs last `1 + 5 × row/100`
+  times as long, measured as ratios so the target's own duration rule cancels. **The ruling above
+  is its copy control:** with the points still spent, a Cripple and a Weaken copied by
+  `UCataclysmContagion::SpreadOne` last what an unspent character's did.
+
+**Counts:** 296 passive effect rows from 295, and 217 of 441 nodes with an authored effect from 216.
+Measured then, the Ravager is 69 of its 74 nodes.
+
+**What "217 of 441" counts:** every row of `game/Data/PassiveNodes.csv`, a capstone counted once,
+that has at least one row in `PassiveEffects.csv`, **across all six trees**: Berserker 0 of 71,
+Bulwark 3 of 74, Masochist 74 of 74, Ravager 69 of 74, Ritualist 70 of 74, Saboteur 1 of 74. The
+three Demonic trees are 213 of 222.
+
+### THE MACHINE WINDOW, 2026-09-23, SHARED WITH KEPT LONGER
+
+One window for both nodes, run from worktree `jovial-bouman-9ada36` on head `e9e4142a` (development
+`7e0c793f`), with the editor lock held from the first build to the last proof. Every figure below
+matched its registration.
+
+| Step | Printed |
+|---|---|
+| Build, then six tests before the asset rebuild | `Build: Succeeded - 27 actions, 24 files compiled`; `6 tests performed, 4 succeeded, 2 failed: DeeperHurtLengthensTheCrippleAndWeakenARealRavagerApplies, KeptLongerLengthensWhatARealRitualistSummons`, each because its node's row was absent from the old asset |
+| Asset rebuild | `rebuilt 1 DataTable assets and left 28 already current, 3027 rows in total across /Game/Data`: PassiveEffects 294 to 296; committed as `8a7cb574` |
+| The whole suite, once | `2192 tests performed, 2192 succeeded, 0 failed` |
+
+| Proof | Printed |
+|---|---|
+| Kept Longer's multiplier dropped | `4 tests performed, 2 succeeded, 2 failed: KeptLongerLengthensWhatARealRitualistSummons, EveryStatWithNoAttributeIsActuallyRead`; restored 4 of 4 |
+| The guard that stops a minion never expiring, removed | `1 tests performed, 0 succeeded, 1 failed: AMinionDurationCutByAHundredPerCentKeepsTheStatedLifetime`; restored 1 of 1 |
+| Deeper Hurt's multiplier dropped | `2 tests performed, 0 succeeded, 2 failed: DeeperHurtLengthensTheCrippleAndWeakenARealRavagerApplies, EveryStatWithNoAttributeIsActuallyRead`; restored 2 of 2 |
+
+All three printed `PROVED: True CRASHED: False`, with the broken file's SHA-256 the same before and
+after. **Only tests are measured, not assertions:** the restored run overwrites the log.
+
+---
+
+---
+
+## 2026-09-23 — Kept Longer lengthens what a character summons, fixed at the summoning
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (a new stat with no
+attribute), `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (its reader), the design
+workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (one row), two test files, and
+the counts in `tools/tests/test_passive_effects_match_the_node_text.py`,
+`CataclysmDataTableTests.cpp` and `docs/README.md`. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ritualist_basic_b_c0` Kept Longer: "+3% increased duration of what you summon per point." One row:
+`minion_duration`, increased, 3 per point.
+
+### THE STAT, AND WHERE IT IS READ
+
+**`minion_duration` is a stat with no attribute**, listed beside `minion_health` in
+`UCataclysmPlayerClassStats::StatsWithNoAttribute`. The entry of 2026-09-13 named "the duration of
+what you summon" among quantities with no stat yet, each needing its own decision: a base from a
+flat row, a new attribute, or that exemption. **The exemption**, because the two minion figures
+nearest to this one, health and explosion damage, both chose it.
+
+**`ACataclysmMinion::Spawn` reads it**, on the lifetime the summoning skill states: that lifetime
+times one plus the summoner's increases. Everything a character summons comes through `Spawn`, a
+deployed machine as well as a summoned minion.
+
+### THREE QUESTIONS SETTLED BY PRECEDENT, AND ONE GUARD
+
+**Recorded as settled rather than ruled; the coordinating session agreed on 2026-09-23.**
+
+| Question | Answer | Precedent |
+|---|---|---|
+| A new attribute, or the exemption? | **The exemption** | `minion_health`, `minion_explosion_damage` |
+| Does the lifetime follow a later passive or gear change? | **No: it is fixed at the summoning** | Health is, under the deferral this log recorded on 2026-09-13 ("Minions update live rather than snapshotting") |
+| Does a deployed machine count as "what you summon"? | **Yes** | Both go through `Spawn`, and the stat belongs to the summoner |
+
+**A multiplier of nothing or less keeps the stated lifetime.** `SetLifeSpan(0)` means "never
+expires", so a cut of a hundred per cent would otherwise make a minion permanent. No shipped row
+reduces the duration, which is why the guard has its own test:
+`Cataclysm.StatExemption.AMinionDurationCutByAHundredPerCentKeepsTheStatedLifetime`, at -100% and
+-150%.
+
+### TESTS
+
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: a summoner granted
+  the stat summons an imp with a longer lifespan than a plain summoner's.
+- `Cataclysm.Passives.KeptLongerLengthensWhatARealRitualistSummons` reads the row on a real
+  Ritualist: the stated lifetime unspent, raised by five times the row's figure at five points, and
+  the stated lifetime again with the points given back.
+
+**Counts:** 295 passive effect rows from 294, and 216 of 441 nodes with an authored effect from 215.
+Measured then, the Ritualist is 70 of its 74 nodes. The 441 is every node of all six trees, not the
+three Demonic ones; Deeper Hurt's entry of the same day lists them.
+
+**The machine window** was shared with Deeper Hurt; its entry carries the printed figures,
+including this node's test and its two guard proofs.
+
+---
+
 ## 2026-09-23 — Below 10% mana a cast costs 5% of current health instead, and a general "mana below" condition exists
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the new condition
@@ -15806,6 +15947,9 @@ characterised from a search result.
 
 **A per-swing read is live by construction**, so this constrains health, which is
 set once at spawn, and not a stat asked for at the moment of a blow.
+
+**A second figure it covers, since 2026-09-23:** a minion's lifetime, which Kept Longer's
+`minion_duration` lengthens at the summoning. See that day's entry on Kept Longer.
 
 ### The green health bar
 

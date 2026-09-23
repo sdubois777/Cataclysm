@@ -573,7 +573,24 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	// and ownership alone cannot say that.
 	Minion->SetGenericTeamId(UCataclysmTeams::TeamOf(InSummoner));
 
-	Minion->SetLifeSpan(Lifetime);
+	// THE LIFETIME THE SKILL STATES, RAISED BY THE SUMMONER'S `minion_duration`.
+	// Issue #1515: `Ritualist_basic_b_c0` Kept Longer, "+3% increased duration of
+	// what you summon per point". Everything summoned comes through here, a
+	// deployed machine as well as a summoned minion, and the stat belongs to the
+	// summoner, so both are "what you summon".
+	//
+	// FIXED AT THE SUMMONING, like health above and for the reason given there:
+	// the owner's ruling that minions follow later gear and passive changes is
+	// recorded as not built, and this is a second figure it covers.
+	//
+	// A MULTIPLIER OF ZERO OR LESS KEEPS THE STATED LIFETIME, and this guard is
+	// not the one health has for the same case. `SetLifeSpan(0)` means "never
+	// expires", so a reduction of a hundred per cent would otherwise make a
+	// minion permanent. No shipped row reduces the duration; this says what
+	// would happen rather than leaving it to the engine's meaning of zero.
+	const float Duration =
+		Lifetime * SummonerMultiplierFor(InSummoner, TEXT("minion_duration"));
+	Minion->SetLifeSpan(Duration > 0.0f ? Duration : Lifetime);
 
 	return Minion;
 }
