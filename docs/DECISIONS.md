@@ -281,6 +281,47 @@ Weight Bearing or Vessel need the PassiveEffects data asset rebuilt from the
 regenerated table before they can pass; the shield case reads only rows the
 asset already holds.
 
+### THE MACHINE WINDOW, 2026-09-23, INCLUDING THE ONE THING THAT DID NOT MATCH
+
+Run from the worktree `jovial-bouman-9ada36` on head `dd121a79`, rebased onto
+development `5217d1a0`, with the editor lock held from the first build to the last
+proof.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build, then the four new tests and the import test before the asset rebuild | 5 performed, 2 succeeded, 3 failed | `Tests: 5 tests performed, 2 succeeded, 3 failed: AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased, VesselsRowGrantsMaximumFervourThatFollowsMaximumMana, WeightBearingsRowGrantsArmourThatFollowsMaximumHealth` |
+| Asset rebuild | PassiveEffects only | `rebuilt 1 DataTable assets and left 28 already current, 3010 rows in total across /Game/Data`; committed as `cd9cb4c9` |
+| The whole suite, once | 2151 performed, 0 failed | `Tests: 2151 tests performed, 2150 succeeded, 1 failed: EveryStatTheDataScalesIsAskedForThroughThePipeline` |
+
+**THE ONE FAILURE WAS THIS CHANGE'S OWN.** The log said
+`FActiveGameplayEffectsContainer::SetAttributeBaseValue: Unable to get attribute
+set for attribute MaxClassResource`, from the probe this change added on
+2026-09-18 for the Fervour maximum. That probe had never run in Unreal before this
+window. The stand-in fighter it borrows carries no class resource set, so the
+write was refused and the lookup answered nothing both times. **Corrected in
+`15c3407a`**: the probe adds the set before writing.
+
+**THE WHOLE SUITE WAS NOT RUN AGAIN, by the coordinating session's ruling under
+the owner's delegation.** `15c3407a` differs from the head the suite ran on only
+in that one test file, so the step above already covered every other test on the
+same game source. Instead the correction was built (the one extra build, flagged)
+and the file's whole group was run: registered at 2 performed and 0 failed,
+printed `Tests: 2 tests performed, 2 succeeded, 0 failed`.
+
+**The third proof's registration had assumed that probe passed**, so it was wrong
+until the correction, and right after it.
+
+| Proof, on `15c3407a` | Registered | Printed |
+|---|---|---|
+| The helper put back to the plain lookup | 3 performed, 2 failed | `3 tests performed, 1 succeeded, 2 failed: AMaximumEnergyShieldRowIsCountedOnce, AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased`; restored 3 of 3 |
+| The maximum-health reading never filled | 1 performed, 1 failed | `1 tests performed, 0 succeeded, 1 failed: WeightBearingsRowGrantsArmourThatFollowsMaximumHealth`; restored 1 of 1 |
+| The Fervour lookup answers the bare attribute | 3 performed, 3 failed | `3 tests performed, 0 succeeded, 3 failed: AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased, VesselsRowGrantsMaximumFervourThatFollowsMaximumMana, EveryStatTheDataScalesIsAskedForThroughThePipeline`; restored 3 of 3 |
+
+All three printed `PROVED: True CRASHED: False`. The SHA-256 of
+`CataclysmAbilitySystemComponent.cpp` was `529f1078...` before and after each.
+**Only the tests are measured, not the assertions:** the restored run overwrites
+the log, so which assertions failed was not read.
+
 ---
 
 ## 2026-09-18 — Striking a Boss opens a four second window, and whose blow a blow is now has one implementation
