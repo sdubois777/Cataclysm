@@ -4998,8 +4998,9 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	}
 
 	// AND HOW MANY ANTI-MAGIC ZONES ARE STANDING. Issues #1820 and #41. The number is all
-	// the panel says: that the player's spells are refused inside one is not shown
-	// anywhere, which is issue #1810 and is the Edict of Silence's gap too.
+	// the panel says. Which spells are refused is the skill bar's to show, and it does:
+	// it marks each slot whose own skill `skill_locked` reaches (issue #1810, built in
+	// #1819).
 	//
 	// COUNTED AS WHAT IS STILL THERE, not as the list's length. The list is pruned on the
 	// beat, so between a zone expiring and the next beat it holds a pointer to nothing.

@@ -472,11 +472,11 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	// none before its first refresh; refusing those would take every skill away
 	// from them.
 	//
-	// THREE THINGS TURN THIS ON. This said "NOTHING TURNS THIS ON YET, AND THAT
+	// WHAT TURNS THIS ON. This said "NOTHING TURNS THIS ON YET, AND THAT
 	// IS DELIBERATE RATHER THAN UNFINISHED ... Issue #1628 carries that row, the
 	// `RequiredTags=Slot.Ultimate` scoping it needs", which was true when it was
-	// written, was already false when issue #1764 recorded it, and is now false
-	// three times over. #1628 is closed. What exists on this branch:
+	// written, was already false when issue #1764 recorded it, and is false
+	// today. #1628 is closed. What exists on this branch:
 	//
 	//   game/Data/EnchantmentEffects.csv   `Slot.Movement`, under the condition
 	//                                      `stationary_for_seconds` 2.0
@@ -484,20 +484,24 @@ bool UCataclysmSkillTemplate::CanActivateAbility(
 	//                                      `health_at_or_above` 50.0
 	//   the dungeon modifier               `Celestial_Edict_of_Silence`, UNSCOPED,
 	//                                      for 15 seconds every 90
+	//   the dungeon modifier               `Void_Anti_Magic_Zones`, scoped to
+	//                                      `Type.Spell`, while the player stands
+	//                                      in one of its zones
 	//
-	// THE THIRD IS THE ONE THAT MAKES THIS BRANCH MATTER, AND IT IS UNLIKE THE
-	// OTHER TWO. Both enchantments lock ONE slot under a condition the player
-	// controls; the dungeon modifier locks EVERY slot but this one, on a clock,
-	// with nothing the player can do about it. That is why the exemption above is
-	// unconditional rather than a courtesy: the row's own words are "Only basic
-	// attacks function during this period".
+	// THE EDICT IS THE ONE THAT MAKES THIS BRANCH MATTER, AND IT IS UNLIKE THE
+	// OTHERS. The enchantments lock ONE slot under a condition the player
+	// controls, and Anti-Magic Zones locks spells only; the Edict locks EVERY slot
+	// but this one, on a clock, with nothing the player can do about it. That is
+	// why the exemption above is unconditional rather than a courtesy: the row's
+	// own words are "Only basic attacks function during this period".
 	//
-	// A PLAYER IS STILL TOLD NOTHING WHEN A SKILL REFUSES HERE, which is issue
-	// #1810 and is deliberately not fixed on this branch. It was tolerable while
-	// the two enchantments were the only sources -- one slot, a condition the
-	// player set off themselves -- and it is not tolerable for fifteen seconds of
-	// total silence. The refusal returns before `Super::` precisely so the player
-	// is not told the wrong reason; nothing yet gives them the right one.
+	// THE PLAYER IS TOLD WHEN A SKILL REFUSES HERE, SINCE ISSUE #1810 (BUILT IN
+	// #1819). `UCataclysmSkillBar` asks this same stat with each slot's own skill
+	// tags and marks the slot locked, and the heads-up display names a lock on
+	// every skill. This comment said the player was told nothing; that stopped
+	// being true when #1819 merged, and it was corrected while building
+	// `Void_Anti_Magic_Zones`. The refusal still returns before `Super::`, so the
+	// engine's own checks never give the player a different reason.
 	if (Slot != ECataclysmAbilitySlot::BasicAttack)
 	{
 		if (const UCataclysmAbilitySystemComponent* Cataclysm =

@@ -1323,9 +1323,12 @@ public:
 	 * attack's slot unconditionally, for the Edict of Silence's "Only basic attacks
 	 * function during this period".
 	 *
-	 * THE LOCK IS ENFORCED AND NOT SHOWN, WHICH IS ISSUE #1810 AND NOT FIXED HERE. A
-	 * refused press tells the player nothing, exactly as the Edict of Silence's does. The
-	 * floor panel says how many zones are standing.
+	 * THE LOCK IS SHOWN SLOT BY SLOT WITH NOTHING ADDED HERE. The skill bar marks a slot
+	 * locked by asking `skill_locked` with that slot's own skill tags (issue #1810, built
+	 * in #1819), so inside a zone each spell's slot is marked and every other slot is not.
+	 * The heads-up display's "skills locked" line needs EVERY filled slot locked, and a
+	 * Demonic caster's Aura is not a spell, so it does not appear -- which is accurate.
+	 * The floor panel says how many zones are standing.
 	 */
 	static const TCHAR* AntiMagicZonesKey;
 

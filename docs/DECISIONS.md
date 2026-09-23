@@ -324,6 +324,147 @@ the log, so which assertions failed was not read.
 
 ---
 
+## 2026-09-23 — Anti-magic zones refuse the player's spells while they stand in one, and "magical" means the skills tagged as spells
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library
+of dungeon rules: the row key, six figures, a tag-scoped flat helper beside the untagged one, a new
+floor-effects field and the fold that writes it), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (the rule stepped every quarter second, the per-floor reset and the floor panel's live
+count), `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (one comment corrected),
+the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`,
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (four checks) and
+`tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py` (the new field recorded as not
+a percentage). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Void_Anti_Magic_Zones` in `game/Data/DungeonModifiers.csv`, weight 10: "Certain areas in the Void
+dungeons nullify magical abilities, forcing players to rely on their physical skills and adapt to the
+environment." It states no figure.
+
+### What the rule does
+
+Up to three zones stand at once. One is laid every 8 seconds near the player and clear of them, and
+each stands for 20 seconds with a radius of 300 cm. While the player stands in any zone, every skill
+they carry that is tagged `Type.Spell` is refused when pressed. Stepping out, or the zone expiring,
+gives the spells back on the next quarter-second beat. The zone itself deals no damage. The floor panel
+says `anti-magic zone: N standing`. A floor change forgets the zones, the clock and the lock.
+
+### Rulings, each under the project owner's delegation unless marked otherwise
+
+**ONE. Only spells are nullified, and a spell is a skill tagged `Type.Spell`.** The row sets "magical
+abilities" against "physical skills", and `Type.Spell` is the one tag the skill data uses for that
+split: `UCataclysmSkillEffects::IsSpell` reads it to decide whether spell damage reaches a blow. The
+lock is a `skill_locked` modifier whose `RequiredTags` holds `Type.Spell`, written through
+`DungeonModifierEffectsAddFlatForTags`, a new helper beside `DungeonModifierEffectsAddFlat` (which is
+unchanged). `UCataclysmSkillTemplate::CanActivateAbility` already refuses a press while `skill_locked`
+answers above zero for the skill's own tags, so nothing new enforces the lock.
+
+**The scope survives the fold, measured before the rule was written.** `ApplyToCharacter` hands the
+modifiers to the ability system whole; `UCataclysmEquipmentComponent` appends each stat's modifiers
+whole to the character's own map on every refresh; `UCataclysmPlayerClassStats` records the whole list
+as the stat's inputs; `UCataclysmStatPipeline::ModifierApplies` judges every required tag with
+`HasTag`; and the skill template asks with the skill's own tags. The Python check
+`test_a_dungeon_rule_modifiers_required_tags_reach_the_stat_line` holds all five hops.
+
+**An empty scope writes nothing.** If `Type.Spell` ever failed to resolve, the container would be
+empty, and a modifier with no required tags reaches every skill: the rule would silently become the
+Edict of Silence. The helper refuses an empty scope, so the fault would be a rule that locks nothing.
+
+**TWO. The lock is shown slot by slot, and nothing new was needed to show it.** The brief for this
+rule said the lock would be enforced and not shown, as issue
+[#1810](https://github.com/sdubois777/Cataclysm/issues/1810) described. That issue was closed on
+2026-09-14 by pull request #1819: `UCataclysmSkillBar` marks each slot locked by asking `skill_locked`
+with that slot's own skill tags, so inside a zone each spell's slot is marked and the others are not.
+The heads-up display's line "SKILLS LOCKED -- BASIC ATTACKS STILL WORK" appears only when every filled
+slot is locked; a Demonic wand or staff wielder's Aura (`Demonic_All_Aura`) is not a spell, so that
+line does not appear in a zone, which is accurate. The master session agreed this reading on
+2026-09-23. The floor panel says `anti-magic zone: N standing`.
+
+**Two comments that said the player is told nothing were corrected in this change**, because a change
+must not ship a statement that contradicts what it builds:
+
+- `UCataclysmSkillTemplate::CanActivateAbility` in
+  `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp`, which also now lists this rule
+  among the things that set a lock, without a count;
+- the Edict of Silence's clause in `UCataclysmDungeonModifierEffects::Describe` in
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.cpp`.
+
+No Python check reads the wording of either (searched `tools/tests` for "told nothing" and "#1810").
+
+**THREE. Every figure is a shared constant it copies, because the row states none.** Declared as, not
+equal to, so a Python check reads the declarations (`test_anti_magic_zones_figures_are_the_shared_constants`):
+
+| Figure | Value | Declared as |
+| :-- | --: | :-- |
+| zones standing at once | 3 | `JudgmentZonesMostZones` |
+| seconds between zones | 8 | `JudgmentZonesSecondsBetweenZones` |
+| seconds a zone stands | 20 | `JudgmentZonesSeconds` |
+| radius | 300 cm | `WitheredGroundPatchRadiusCm` |
+| how far from the player a zone may be laid | 1200 cm | `InfernalRainFallsWithinCm` |
+| the value of `skill_locked` while locked | 1 | `EdictOfSilenceLockValue` |
+
+Judgment Zones is the one built rule that lays timed ground near the player for a rule of its own to
+act on, which is this rule's shape exactly, so its three figures are used rather than a second set of
+the same kind.
+
+**FOUR. What the rule reaches today**, measured on `game/Data/WeaponSkills.csv` at development
+5bbdd994 with Python's csv module: 70 wand and staff rows across the seven Cataclysms; 9 carry
+`Type.Spell`, all of them Demonic.
+
+- **The rule reaches the nine tagged Demonic wand and staff skills.**
+- **The tenth designed wand or staff skill, "Summon Imp" (`Demonic_Staff_Special`), is untagged and
+  stays usable in a zone. A summon is not a spell: that is the project owner's decision of 2026-09-23,
+  not a judgement under the delegation.** The test
+  `SummonImpIsNotASpellAndStaysUsableInAnAntiMagicZone` pins it.
+- **The other six Cataclysms' wand and staff slots are undesigned placeholders today.** Each of those
+  60 rows has no skill name, no shape and figures of -1, and `UCataclysmWeaponSkills::SkillsFor` skips
+  a row with no skill name, so no player casts any of them. Issue
+  [#2012](https://github.com/sdubois777/Cataclysm/issues/2012) carries that measurement.
+
+**The basic attack is never locked.** Its slot is exempt from every lock in
+`CanActivateAbility`, and the tags a weapon's basic attack is given (its slot tag, the melee tag for a
+strike, and the element when it is granted) carry no `Type.Spell`, so the lock does not reach them
+either.
+
+**FIVE. The lock is decided from what is standing on every beat, before any zone is laid.** A lock
+decided only when ground is laid would follow the player off it; Singularity Wells has the same order.
+
+**SIX. A floor carrying the Edict of Silence as well gets two entries on `skill_locked`**, one unscoped
+and one scoped to spells, each in its own floor-effects field (`SkillsLockedValue`,
+`SpellsLockedValue`), so neither rule's write decides the other's scope. This is the shape issue #1765
+asks for.
+
+### Two rows counted as unbuildable
+
+`Famine_Hard_Mode` and `Famine_Recession` cannot be built until potions exist (issue
+[#806](https://github.com/sdubois777/Cataclysm/issues/806)), so they are counted among the rows with
+no possible rule today.
+
+### Tests
+
+Nine automation tests in `CataclysmDungeonModifierEffectsTests.cpp`, every skill read from the shipped
+tables through `UCataclysmWeaponSkills`: AnAntiMagicZoneIsLaidClearOfThePlayerAndDealsNoDamage;
+NoMoreThanThreeAntiMagicZonesStandAtOnce; StandingInAnAntiMagicZoneLocksATaggedDemonicSpell;
+SteppingOutOfAnAntiMagicZoneGivesTheSpellBack; ABasicAttackIsNeverLockedInAnAntiMagicZone;
+SummonImpIsNotASpellAndStaysUsableInAnAntiMagicZone; AnAntiMagicZoneExpiringLiftsTheLock;
+TheFloorPanelCountsTheAntiMagicZonesStanding; AFloorChangeForgetsTheAntiMagicZonesAndItsLock.
+
+Four Python checks in `test_dungeon_modifier_rules_are_the_rows.py`, each seen to fail when the thing
+it guards was broken by hand and to pass once restored: the row still sets magical against physical;
+the figures are the shared constants; the lock is scoped to the spell tag and an empty scope writes
+nothing; the fold carries the scope to the cast.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-18 — Striking a Boss opens a four second window, and whose blow a blow is now has one implementation
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the rule that

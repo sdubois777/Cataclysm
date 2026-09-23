@@ -17,6 +17,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmImpCharacter.h"
@@ -1079,6 +1080,143 @@ namespace CataclysmDungeonModifierEffectsTest
 	{
 		const UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Who);
 		return Theirs ? Theirs->GetNumericAttribute(Which) : -1.0f;
+	}
+
+	/** And the one where ground refuses the player's spells. Issues #1820, #41. */
+	const FName AntiMagicZones(UCataclysmDungeonModifierEffects::AntiMagicZonesKey);
+
+	/**
+	 * The floor every Anti-Magic Zones test starts from. Issues #1820 and #41.
+	 *
+	 * EMPTIED OF THE CREATURES STARTING PLAY PUT THERE, as Judgment Zones' floor is, so
+	 * nothing on the floor is fighting the player while a test reads their lock.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheAntiMagicRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		Mode->DungeonModifiers = {AntiMagicZones};
+		Mode->FloorNumber = 1;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString AntiMagicPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(AntiMagicZones);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/**
+	 * Beat until an anti-magic zone appears, and answer the first of it.
+	 *
+	 * TWICE THE CADENCE IS THE PATIENCE, for the reason `BeatUntilAZoneAppears` gives. A
+	 * separate helper and not that one, because that one waits on Judgment Zones' own
+	 * cadence and the two figures are only equal because one copies the other today.
+	 */
+	ACataclysmGroundZone* BeatUntilAnAntiMagicZoneAppears(FAutomationTestBase& Test,
+														 ACataclysmDungeonGameMode* Mode,
+														 UWorld* World)
+	{
+		const int32 Patience = BeatsFor(
+			2.0f * UCataclysmDungeonModifierEffects::AntiMagicZonesSecondsBetweenZones);
+		for (int32 Tick = 0; Tick < Patience; ++Tick)
+		{
+			Beat(Mode, 1);
+			if (ACataclysmGroundZone* Zone = AnyZone(World))
+			{
+				return Zone;
+			}
+		}
+		Test.AddError(TEXT("no anti-magic zone appeared within two cadences"));
+		return nullptr;
+	}
+
+	/**
+	 * A skill a player can really be given, read from the SHIPPED weapon skill table.
+	 *
+	 * THROUGH `SkillsFor`, THE FUNCTION THAT DECIDES WHAT A WEAPON GRANTS, and not off the
+	 * table's raw rows. `SkillsFor` skips a row with no skill name, so a skill found here
+	 * is one a player can press -- which is what makes a test of it a test of play rather
+	 * than of a tag container this file wrote.
+	 */
+	FCataclysmWeaponSkill ShippedSkill(FAutomationTestBase& Test, const TCHAR* Weapon,
+									   const TCHAR* DamageType, ECataclysmAbilitySlot Slot)
+	{
+		const UDataTable* Table = UCataclysmWeaponSkills::LoadGeneratedTable();
+		if (!Test.TestNotNull(TEXT("the weapon skill table loads"), Table))
+		{
+			return FCataclysmWeaponSkill();
+		}
+		for (const FCataclysmWeaponSkill& Skill :
+			 UCataclysmWeaponSkills::SkillsFor(Table, Weapon, DamageType))
+		{
+			if (Skill.Slot == Slot)
+			{
+				return Skill;
+			}
+		}
+		Test.AddError(FString::Printf(TEXT("the %s %s grants no skill in that slot"),
+									  DamageType, Weapon));
+		return FCataclysmWeaponSkill();
+	}
+
+	/**
+	 * The Demonic Wand's Heavy skill, "Malefice": a shipped skill tagged `Type.Spell`.
+	 * One of the nine that carry the tag, all of them Demonic wand or staff skills.
+	 */
+	FCataclysmWeaponSkill ATaggedDemonicSpell(FAutomationTestBase& Test)
+	{
+		return ShippedSkill(Test, TEXT("Wand"), TEXT("Demonic"),
+							ECataclysmAbilitySlot::Heavy);
+	}
+
+	/**
+	 * Whether the player's `skill_locked` is above zero for a skill carrying these tags.
+	 *
+	 * THE QUESTION `UCataclysmSkillTemplate::CanActivateAbility` ASKS before it lets a
+	 * press through, with the same stat, the same tags and the same fallback, so the
+	 * answer here is the answer at the cast.
+	 */
+	bool IsLockedFor(const FPossessedPlayer& Player, const FGameplayTagContainer& Tags)
+	{
+		return Player.AbilitySystem->StatForSkill(
+				   FName(UCataclysmSkillSlots::LockedStat), Tags, 0.0f)
+			> 0.0f;
+	}
+
+	/**
+	 * Beat until a zone appears, put the player in the middle of it, and beat once more
+	 * so the rule sees them there. Answers the zone, or null with the reason logged.
+	 */
+	ACataclysmGroundZone* StandInAnAntiMagicZone(FAutomationTestBase& Test,
+												ACataclysmDungeonGameMode* Mode,
+												UWorld* World,
+												const FPossessedPlayer& Player)
+	{
+		ACataclysmGroundZone* Zone = BeatUntilAnAntiMagicZoneAppears(Test, Mode, World);
+		if (!Zone)
+		{
+			return nullptr;
+		}
+		Player.Character->SetActorLocation(Zone->GetActorLocation());
+		Beat(Mode, 1);
+		return Zone;
 	}
 
 	/**
@@ -19314,6 +19452,467 @@ bool FCataclysmAuraFloorChangeTest::RunTest(const FString& Parameters)
 	// cleared it rather than a beat happening to overwrite it.
 	TestEqual(TEXT("the new floor starts its count again"), AuraPanelLine(Mode),
 			  FString(TEXT("0 commanders on this floor (Commander's Aura)")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Void_Anti_Magic_Zones. Issues #1820 and #41.
+//
+// "Certain areas in the Void dungeons nullify magical abilities, forcing players to rely
+// on their physical skills and adapt to the environment."
+//
+// EVERY SKILL IN THESE TESTS IS A SHIPPED ONE, read through `UCataclysmWeaponSkills`. A
+// test that tagged its own skill `Type.Spell` would pass while the rule reached nothing in
+// play, because the tag is only on nine shipped skills.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicZoneLaidTest,
+	"Cataclysm.DungeonModifierEffects.AnAntiMagicZoneIsLaidClearOfThePlayerAndDealsNoDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicZoneLaidTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("a floor just built has no anti-magic ground"),
+				   ZonesOnTheFloor(World), 0))
+	{
+		return false;
+	}
+
+	ACataclysmGroundZone* Zone = BeatUntilAnAntiMagicZoneAppears(*this, Mode, World);
+	if (!TestNotNull(TEXT("anti-magic ground appeared"), Zone))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("it reaches the radius the patch rules share"), Zone->RadiusCm,
+			  Effects::AntiMagicZonesRadiusCm, 0.01f);
+	TestEqual(TEXT("and deals no damage of its own"), Zone->DamagePerTick, 0.0f, 0.001f);
+
+	// LAID PAST ITS OWN RADIUS FROM THE PLAYER, so a spell is never refused by ground
+	// that appeared under the player's feet.
+	const float Away = FVector::Dist(Player.Character->GetActorLocation(),
+									 Zone->GetActorLocation());
+	TestTrue(FString::Printf(TEXT("laid clear of the player: %.0f cm away, radius %.0f"),
+							 Away, Zone->RadiusCm),
+			 Away > Zone->RadiusCm);
+
+	// AND SO NOTHING IS LOCKED YET: the player is not standing in it.
+	const FCataclysmWeaponSkill Spell = ATaggedDemonicSpell(*this);
+	TestFalse(TEXT("a spell is not locked while the player stands outside every zone"),
+			  IsLockedFor(Player, Spell.Tags));
+	return true;
+}
+
+// THE CEILING, BOTH HALVES: never more than three, and three actually reached.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicCeilingTest,
+	"Cataclysm.DungeonModifierEffects.NoMoreThanThreeAntiMagicZonesStandAtOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicCeilingTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// FIVE CADENCES, long enough to reach the ceiling. The world clock is not moved, so no
+	// zone expires and the ceiling is what holds the count.
+	StandWellAway(Player);
+	int32 Most = 0;
+	for (int32 Tick = 0;
+		 Tick < BeatsFor(5.0f * Effects::AntiMagicZonesSecondsBetweenZones); ++Tick)
+	{
+		Beat(Mode, 1);
+		const int32 Standing = ZonesOnTheFloor(World);
+		Most = FMath::Max(Most, Standing);
+		if (!TestTrue(FString::Printf(TEXT("never more than the ceiling: %d standing"),
+									  Standing),
+					  Standing <= Effects::AntiMagicZonesMostZones))
+		{
+			return false;
+		}
+	}
+
+	TestEqual(TEXT("and the ceiling was reached"), Most, Effects::AntiMagicZonesMostZones);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicLocksASpellTest,
+	"Cataclysm.DungeonModifierEffects.StandingInAnAntiMagicZoneLocksATaggedDemonicSpell",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicLocksASpellTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE SHIPPED SKILL REALLY IS A SPELL, asserted first, so a lock below is evidence of
+	// the rule and not of a skill that happened to be locked for another reason.
+	const FCataclysmWeaponSkill Malefice = ATaggedDemonicSpell(*this);
+	if (!TestTrue(TEXT("the Demonic Wand's Heavy skill is tagged Type.Spell"),
+				  UCataclysmSkillEffects::IsSpell(Malefice.Tags)))
+	{
+		return false;
+	}
+
+	StandWellAway(Player);
+	Beat(Mode, 1);
+	if (!TestFalse(TEXT("the spell is usable before the player stands in a zone"),
+				   IsLockedFor(Player, Malefice.Tags)))
+	{
+		return false;
+	}
+
+	if (!TestNotNull(TEXT("the player stands in an anti-magic zone"),
+					 StandInAnAntiMagicZone(*this, Mode, World, Player)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the spell is refused there"), IsLockedFor(Player, Malefice.Tags));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicStepOutTest,
+	"Cataclysm.DungeonModifierEffects.SteppingOutOfAnAntiMagicZoneGivesTheSpellBack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicStepOutTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const FCataclysmWeaponSkill Malefice = ATaggedDemonicSpell(*this);
+	ACataclysmGroundZone* Zone = StandInAnAntiMagicZone(*this, Mode, World, Player);
+	if (!TestNotNull(TEXT("the player stands in an anti-magic zone"), Zone)
+		|| !TestTrue(TEXT("the spell is refused there"),
+					 IsLockedFor(Player, Malefice.Tags)))
+	{
+		return false;
+	}
+
+	// THE ZONE IS STILL STANDING, asserted, so what gives the spell back is the step and
+	// not the zone expiring.
+	StandWellAway(Player);
+	Beat(Mode, 1);
+	TestTrue(TEXT("the zone is still standing"), IsValid(Zone));
+	TestFalse(TEXT("and one step out of it gives the spell back"),
+			  IsLockedFor(Player, Malefice.Tags));
+	return true;
+}
+
+// "RELY ON THEIR PHYSICAL SKILLS": the basic attack is the one skill every weapon has, and
+// it must stay usable. Its SLOT is exempt from every lock in
+// `UCataclysmSkillTemplate::CanActivateAbility`, which
+// `Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill` covers; this test covers the
+// other half, that this rule's lock does not reach its TAGS either, so it stays usable
+// even if that exemption were ever narrowed.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicBasicAttackTest,
+	"Cataclysm.DungeonModifierEffects.ABasicAttackIsNeverLockedInAnAntiMagicZone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicBasicAttackTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE WAND'S OWN BASIC ATTACK, from the item base table the game grants it from. A
+	// wand is the weapon whose other skills are spells, so it is the basic attack most
+	// likely to be caught by a lock scoped to them.
+	const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+	if (!TestNotNull(TEXT("the item base table loads"), Bases))
+	{
+		return false;
+	}
+	const FCataclysmWeaponSkill Swing =
+		UCataclysmWeaponSkills::BasicAttackFor(Bases, TEXT("Wand"));
+	if (!TestTrue(TEXT("a Wand grants a basic attack"),
+				  Swing.Slot == ECataclysmAbilitySlot::BasicAttack))
+	{
+		return false;
+	}
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE CONTROL: the lock really is on for a spell, so the basic attack's answer below
+	// is evidence of the scope and not of a lock that was never applied.
+	const FCataclysmWeaponSkill Malefice = ATaggedDemonicSpell(*this);
+	if (!TestNotNull(TEXT("the player stands in an anti-magic zone"),
+					 StandInAnAntiMagicZone(*this, Mode, World, Player))
+		|| !TestTrue(TEXT("a spell is refused there"),
+					 IsLockedFor(Player, Malefice.Tags)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("but the wand's basic attack is not"), IsLockedFor(Player, Swing.Tags));
+	return true;
+}
+
+// THE ONE DESIGNED WAND OR STAFF SKILL THAT IS NOT A SPELL. "Summon Imp", the Demonic
+// Staff's Special skill, carries no `Type.Spell`: a summon is not a spell, which is the
+// project owner's decision of 2026-09-23. So this designed caster skill stays usable in a
+// zone, and this test pins that decided behaviour.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicSummonTest,
+	"Cataclysm.DungeonModifierEffects.SummonImpIsNotASpellAndStaysUsableInAnAntiMagicZone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicSummonTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCataclysmWeaponSkill Summon = ShippedSkill(*this, TEXT("Staff"),
+													  TEXT("Demonic"),
+													  ECataclysmAbilitySlot::Special);
+	if (!TestEqual(TEXT("the Demonic Staff's Special skill is Summon Imp"), Summon.Name,
+				   FString(TEXT("Summon Imp"))))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and it is not tagged Type.Spell"),
+			  UCataclysmSkillEffects::IsSpell(Summon.Tags));
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const FCataclysmWeaponSkill Malefice = ATaggedDemonicSpell(*this);
+	if (!TestNotNull(TEXT("the player stands in an anti-magic zone"),
+					 StandInAnAntiMagicZone(*this, Mode, World, Player))
+		|| !TestTrue(TEXT("a spell is refused there"),
+					 IsLockedFor(Player, Malefice.Tags)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("but Summon Imp is not"), IsLockedFor(Player, Summon.Tags));
+	return true;
+}
+
+// A ZONE'S LIFE IS AN ENGINE TIMER ON THE WORLD CLOCK, so the clock is moved rather than
+// the rule beaten -- the fault `AZoneGoesAfterTheRowsTwentySeconds` hit first.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicExpiryTest,
+	"Cataclysm.DungeonModifierEffects.AnAntiMagicZoneExpiringLiftsTheLock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicExpiryTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const FCataclysmWeaponSkill Malefice = ATaggedDemonicSpell(*this);
+	ACataclysmGroundZone* Zone = StandInAnAntiMagicZone(*this, Mode, World, Player);
+	if (!TestNotNull(TEXT("the player stands in an anti-magic zone"), Zone)
+		|| !TestTrue(TEXT("the spell is refused there"),
+					 IsLockedFor(Player, Malefice.Tags)))
+	{
+		return false;
+	}
+
+	// THE PLAYER DOES NOT MOVE. Any zone laid while the clock runs is laid past its own
+	// radius from where they stand, so only the one they are in can cover them.
+	CataclysmTestWorld::RunClock(World, Effects::AntiMagicZonesSeconds + 1.0f);
+	Beat(Mode, 1);
+	TestFalse(TEXT("the zone is gone after its twenty seconds"), IsValid(Zone));
+	TestFalse(TEXT("and with it the lock, though the player never moved"),
+			  IsLockedFor(Player, Malefice.Tags));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicPanelTest,
+	"Cataclysm.DungeonModifierEffects.TheFloorPanelCountsTheAntiMagicZonesStanding",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicPanelTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE WHOLE LINE IS WRITTEN OUT HERE rather than built from the format the panel uses,
+	// so a change of wording cannot pass by comparing a string with itself.
+	if (!TestEqual(TEXT("a floor just built has laid nothing"), AntiMagicPanelLine(Mode),
+				   FString(TEXT("anti-magic zone: 0 standing"))))
+	{
+		return false;
+	}
+
+	if (!TestNotNull(TEXT("anti-magic ground appeared"),
+					 BeatUntilAnAntiMagicZoneAppears(*this, Mode, World)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one zone standing"), AntiMagicPanelLine(Mode),
+			  FString(TEXT("anti-magic zone: 1 standing")));
+
+	// AND A FLOOR WITHOUT THE ROW HAS NO LINE OF ITS OWN.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("the next floor was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a floor without the row says nothing"), AntiMagicPanelLine(Mode),
+			  FString(TEXT("no line")));
+	return true;
+}
+
+// THE WHOLE OF THIS RULE'S STATE IS THE FLOOR'S AND GOES AT THE STAIRS -- including the
+// lock it last applied, which is the part that can go wrong without anything failing on
+// the floor change itself. The floor change's own apply takes the lock off the character;
+// a rule that still believed it was on would never put it back on the next floor.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicFloorChangeTest,
+	"Cataclysm.DungeonModifierEffects.AFloorChangeForgetsTheAntiMagicZonesAndItsLock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmAntiMagicFloorChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheAntiMagicRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const FCataclysmWeaponSkill Malefice = ATaggedDemonicSpell(*this);
+	if (!TestNotNull(TEXT("the player stands in an anti-magic zone"),
+					 StandInAnAntiMagicZone(*this, Mode, World, Player))
+		|| !TestTrue(TEXT("the spell is refused there"),
+					 IsLockedFor(Player, Malefice.Tags)))
+	{
+		return false;
+	}
+
+	// A HORDE DUNGEON'S NEXT WAVE, so the arena and the player stay and the floor still
+	// carries the row.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the new floor has laid nothing"), AntiMagicPanelLine(Mode),
+			  FString(TEXT("anti-magic zone: 0 standing")));
+	TestFalse(TEXT("and the spell is usable again"), IsLockedFor(Player, Malefice.Tags));
+
+	// AND A ZONE ON THE NEW FLOOR LOCKS IT AGAIN, which is what a lock remembered across
+	// the stairs would stop.
+	if (!TestNotNull(TEXT("the player stands in a zone on the new floor"),
+					 StandInAnAntiMagicZone(*this, Mode, World, Player)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the spell is refused there too"),
+			 IsLockedFor(Player, Malefice.Tags));
 	return true;
 }
 

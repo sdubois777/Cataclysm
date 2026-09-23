@@ -1111,15 +1111,19 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	// THIS SENTENCE IS NOT WHAT FIXES THE SILENCE PROBLEM, and saying so here
 	// stops it being mistaken for the fix. `Describe` has one caller today -- the
 	// per-floor log line -- so this reaches a log rather than a player mid-fight.
-	// Issue #1810 is that nothing in the interface reads the lock at all.
+	// What the player sees is the skill bar: since issue #1810 (closed by #1819) it
+	// marks each slot whose own skill is locked, and the heads-up display names a lock
+	// on every skill. This comment said nothing in the interface read the lock, which
+	// stopped being true when #1819 merged; corrected while building
+	// `Void_Anti_Magic_Zones`.
 	if (Effects.SkillsLockedValue > 0.0f)
 	{
 		Clauses.Add(TEXT("skills silenced, basic attacks only"));
 	}
 
 	// AND ANTI-MAGIC ZONES, SAID THE SAME WAY: what is refused, in the player's words.
-	// Issues #1820 and #41. Like the clause above, this reaches the per-floor log and
-	// not a player mid-fight; issue #1810 is still that nothing on screen reads the lock.
+	// Issues #1820 and #41. Like the clause above, this reaches the per-floor log; the
+	// skill bar is what marks each refused spell for the player mid-fight.
 	if (Effects.SpellsLockedValue > 0.0f)
 	{
 		Clauses.Add(TEXT("spells refused inside an anti-magic zone"));
