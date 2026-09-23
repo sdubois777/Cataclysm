@@ -608,7 +608,6 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// condition because one of them cannot be read would shut a window that is
 	// genuinely open.
 	FCataclysmStatConditions State;
-	State.AskingAbilitySystem = this;
 
 	if (const UCataclysmVitalAttributeSet* Vitals =
 			GetSet<UCataclysmVitalAttributeSet>())
@@ -986,6 +985,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// target" and "touching" would otherwise be the same reading. A bool has no
 	// such collision: "not staggered" and "no target" both mean no bonus.
 	State.bTargetIsStaggered = bTargetIsStaggered;
+
+	// WHO IS ASKING, SET LAST. Issue #1815. `FromHealth` near the top of this
+	// function replaces the whole struct, so a field set before it is lost:
+	// that is how the first A2 build left this null for every character with a
+	// vital set, and both first-hit conditions refused for everyone. Only the
+	// strike-history fill in `WithTargetState` reads it.
+	State.AskingAbilitySystem = this;
 
 	return State;
 }
