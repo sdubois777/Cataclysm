@@ -1394,6 +1394,25 @@ public:
 	static const TCHAR* DivineResurgenceKey;
 
 	/**
+	 * The row where a killed creature may get up again. Issues #1820 and #41.
+	 *
+	 * "Enemies have a chance to revive after being killed." The row gives no figure, so
+	 * the chance is `DeadRisingChancePercent`, the ten this table already uses for a
+	 * chance fired by a death.
+	 *
+	 * RULED UNDER THE PROJECT OWNER'S DELEGATION ON 2026-09-23:
+	 * - EVERY DEATH ROLLS, WHOEVER DEALT IT. The row says "after being killed" and names
+	 *   no killer, where Vengeful Wraiths says "the one who killed them".
+	 * - AT ONCE, in the same death notice, where it fell.
+	 * - AT THE KIND AND RUNG IT DIED AT, AND AT FULL HEALTH. "Revive" with no reduction
+	 *   stated is the creature as it was placed; Divine Resurgence's half is that row's
+	 *   own figure.
+	 * - MARKED, so its second death pays no loot and no experience (the owner's decision
+	 *   of 2026-09-17), and A MARKED CREATURE NEVER ROLLS: one extra life at most.
+	 */
+	static const TCHAR* DeadRisingKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3347,6 +3366,18 @@ public:
 		"A creature rising with no health, or a revival that no number of deaths or "
 		"none at all brings on, is not the row.");
 
+	/**
+	 * The chance a killed creature gets up again. THE ROW SAYS "a chance" AND GIVES NO
+	 * FIGURE, so it is declared as `SporeCloudsChancePercentOnDeath`, the ten that
+	 * constant's comment derives from the one row stating a chance on a death, rather
+	 * than writing ten a third time. Ruled under the owner's delegation, 2026-09-23.
+	 */
+	static constexpr float DeadRisingChancePercent = SporeCloudsChancePercentOnDeath;
+
+	static_assert(
+		DeadRisingChancePercent > 0.0f && DeadRisingChancePercent < 100.0f,
+		"A chance of nothing is not the row, and a certainty is not a chance.");
+
 	static_assert(
 		HallowedGroundfallCraters > 1,
 		"The row says the artillery bombards AREAS, plural. One crater is not a "
@@ -4129,6 +4160,9 @@ public:
 
 	/** The health a creature rises with: `DivineResurgenceHealthPercent` of its maximum. */
 	static float DivineResurgenceHealthFor(float MaxHealth);
+
+	/** Whether a roll of 0 to 100 gets a killed creature up again under Dead Rising. */
+	static bool DeadRisingRevives(float Roll);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in
