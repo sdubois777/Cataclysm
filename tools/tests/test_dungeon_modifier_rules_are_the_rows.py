@@ -3636,3 +3636,24 @@ def test_suffering_aura_beats_every_classs_base_regeneration():
             f"{rate_name} is {rate:g}% a second, and {who} regenerates {highest:.3f}% of its "
             f"maximum {pool} a second from its base alone. The owner asked on 2026-09-23 for a "
             "drain that beats every class's base regeneration; re-measure and move the rate.")
+
+
+def test_blood_gates_row_still_seals_the_next_level_for_the_players_kills():
+    """The four phrases the rule's readings rest on.
+
+    "Doors leading to the next level in a dungeon are sealed shut until the player has
+    slain enough enemies to open them." SEALED is the rule; THE NEXT LEVEL is why the last
+    floor's way out is not sealed; THE PLAYER HAS SLAIN is why only the player's kills
+    count; and ENOUGH gives no figure, which is why the half is a ruling. If any of them
+    changes, the reading built on it must be revisited.
+    """
+    words = flat(rows()["Demonic_Blood_Gates"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("sealed", "the next level", "the player has slain", "enough"):
+        assert phrase in lower, (
+            f"Demonic_Blood_Gates no longer says {phrase.upper()!r}. A reading of the rule "
+            "rests on it; see BloodGatesKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert "%" not in words, (
+        "Demonic_Blood_Gates now states a percentage. The half was a ruling because the row "
+        "gave none; use the row's figure. " + words)

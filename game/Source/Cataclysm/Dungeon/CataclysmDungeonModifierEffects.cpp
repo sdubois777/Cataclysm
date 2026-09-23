@@ -97,6 +97,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::DeadRisingKey =
 const TCHAR* UCataclysmDungeonModifierEffects::SufferingAuraKey =
 	TEXT("Famine_Suffering_Aura");
 
+const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
+	TEXT("Demonic_Blood_Gates");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -361,7 +364,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DesperateMeasuresKey)
 		|| RowKey == FName(DivineResurgenceKey)
 		|| RowKey == FName(DeadRisingKey)
-		|| RowKey == FName(SufferingAuraKey))
+		|| RowKey == FName(SufferingAuraKey)
+		|| RowKey == FName(BloodGatesKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -533,6 +537,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DivineResurgenceKey),
 		FName(DeadRisingKey),
 		FName(SufferingAuraKey),
+		FName(BloodGatesKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1697,6 +1702,23 @@ float UCataclysmDungeonModifierEffects::DivineResurgenceHealthFor(float MaxHealt
 bool UCataclysmDungeonModifierEffects::DeadRisingRevives(float Roll)
 {
 	return Roll < DeadRisingChancePercent;
+}
+
+int32 UCataclysmDungeonModifierEffects::BloodGatesOpenAt(int32 Placed)
+{
+	// PLACED x THE SHARE, ROUNDED UP, in 64 bits so no floor size overflows it: of five
+	// at half, (250 + 99) / 100 = 3; of four, (200 + 99) / 100 = 2.
+	if (Placed <= 0)
+	{
+		return 0;
+	}
+	return static_cast<int32>(
+		(static_cast<int64>(Placed) * BloodGatesSlainPercent + 99) / 100);
+}
+
+bool UCataclysmDungeonModifierEffects::BloodGatesAreOpen(int32 Slain, int32 Placed)
+{
+	return Slain >= BloodGatesOpenAt(Placed);
 }
 
 float UCataclysmDungeonModifierEffects::SufferingAuraLossFor(float Maximum,

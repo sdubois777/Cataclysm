@@ -1434,6 +1434,30 @@ public:
 	static const TCHAR* SufferingAuraKey;
 
 	/**
+	 * The row where the stairs stay sealed until the player has killed enough. Issues
+	 * #1820 and #41.
+	 *
+	 * "Doors leading to the next level in a dungeon are sealed shut until the player has
+	 * slain enough enemies to open them." Taking the stairs does nothing until the player
+	 * has slain `BloodGatesSlainPercent` of the creatures the floor placed, rounded up.
+	 *
+	 * RULED UNDER THE PROJECT OWNER'S DELEGATION ON 2026-09-23:
+	 * - "PLACED" IS THE PLAYER'S KILLS PLUS THE UNMARKED CREATURES STILL STANDING, counted
+	 *   at each arrival. A creature that dies to anything but the player leaves both the
+	 *   count and the target. SO ONCE NO UNMARKED CREATURE STANDS, THE GATE IS OPEN: a
+	 *   count that kept the other deaths could leave a player on a floor they could never
+	 *   leave, which is why this reading replaced it.
+	 * - "THE PLAYER HAS SLAIN" is the killer on the death notice, and a minion's kill
+	 *   counts only when its summoner holds the Conduit keystone, as Vengeful Wraiths
+	 *   reads it.
+	 * - A MARKED CREATURE (one brought back from the dead) is neither placed nor slain.
+	 * - THE LAST FLOOR IS NOT SEALED: its stairs lead out, not to a next level.
+	 *
+	 * A HORDE DUNGEON HAS NO STAIRS, so on one this row does nothing.
+	 */
+	static const TCHAR* BloodGatesKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3556,6 +3580,20 @@ public:
 		"A drain of a whole pool each second is not slow.");
 
 	/**
+	 * The share of the creatures the floor placed that the player must slay before the
+	 * stairs open. THE ROW SAYS "enough" AND GIVES NO FIGURE. Ruled under the owner's
+	 * delegation on 2026-09-23 as half, rounded up -- Divine Resurgence's share, so the
+	 * two rules that count a floor's dead count it the same way. Less than all, because
+	 * `Celestial_Lightforged_Walls` is the row that forces a full clear.
+	 */
+	static constexpr int32 BloodGatesSlainPercent = 50;
+
+	static_assert(
+		BloodGatesSlainPercent > 0 && BloodGatesSlainPercent < 100,
+		"Stairs that open with nothing slain are not sealed, and stairs that need every "
+		"creature slain are Lightforged Walls rather than this row.");
+
+	/**
 	 * How much of what this row says has been built.
 	 *
 	 * NOT BUILT FOR EVERY KEY THIS FILE DOES NOT NAME, a key that is not a row
@@ -4216,6 +4254,16 @@ public:
 	 * none or less.
 	 */
 	static float SufferingAuraLossFor(float Maximum, float PercentPerSecond, float Seconds);
+
+	/**
+	 * How many of `Placed` the player must have slain for the stairs to open:
+	 * `BloodGatesSlainPercent` of them, rounded UP, in whole numbers. Nothing when nothing
+	 * was placed.
+	 */
+	static int32 BloodGatesOpenAt(int32 Placed);
+
+	/** Whether the stairs are open: `Slain` has reached `BloodGatesOpenAt(Placed)`. */
+	static bool BloodGatesAreOpen(int32 Slain, int32 Placed);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in
