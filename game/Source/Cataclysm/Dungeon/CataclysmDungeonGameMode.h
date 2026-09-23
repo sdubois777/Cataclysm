@@ -668,6 +668,29 @@ public:
 	 */
 	ACataclysmEnemyCharacter* TheFloorsCommander() const;
 
+	/**
+	 * Whether this creature is this floor's Commander and still alive. Issue #1997.
+	 *
+	 * FALSE FOR ONE THAT HAS DIED, and not by asking the weak pointer: a killed creature
+	 * keeps a valid weak pointer until its body is removed, so the floor's own
+	 * `bMarchOfProgressCommanderSlain` and the creature's dead mark are asked as well.
+	 * Ruled under the project owner's delegation: the hover panel names a living
+	 * Commander only.
+	 */
+	bool IsTheFloorsCommander(const AActor* Creature) const;
+
+	/**
+	 * The same, found in a world rather than asked of a game mode in hand. Read by
+	 * `ACataclysmHUD::DrawCreaturePanel`.
+	 *
+	 * **NOTHING IN AN AUTOMATION RUN CAN MAKE THIS ANSWER TRUE**, for the reason
+	 * `JudgmentZonesMagicFindIn` gives: it finds the game mode through
+	 * `UWorld::GetAuthGameMode`, and a world built for a test has none. So the member
+	 * above and `UCataclysmCreaturePanel::LinesUnderTheHealthBar` are tested, and this hop
+	 * is held by a Python check that reads the heads-up display's code.
+	 */
+	static bool IsTheFloorsCommanderIn(const UObject* WorldContext, const AActor* Creature);
+
 	/** How many commanders the player has killed in this run. */
 	int32 CommandersKilledThisRun() const { return MarchOfProgressCommandersKilled; }
 
