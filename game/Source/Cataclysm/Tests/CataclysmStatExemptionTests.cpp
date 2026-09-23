@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 // For the eleven probes that prove every scaled stat is asked for. #1973.
 #include "AbilitySystem/CataclysmBasicAttack.h"
@@ -34,6 +35,7 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
+#include "GameplayTagsManager.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -364,6 +366,65 @@ namespace CataclysmStatExemptionTest
 			TEXT("minion_duration lengthens a minion's lifespan, so "
 				 "ACataclysmMinion::Spawn really reads it"),
 			GearedImp->GetLifeSpan() > PlainImp->GetLifeSpan() + 0.001f);
+	}
+
+	/**
+	 * `cripple_and_weaken_duration`, read by `UCataclysmAilments::Apply` where
+	 * a Cripple or a Weaken is created. Issue #1515, the Deeper Hurt node.
+	 *
+	 * THE SAME CRIPPLE FROM TWO APPLIERS, one granted the stat, each on its own
+	 * target, and the time left on each compared. A test world's clock does not
+	 * move, so a fresh debuff's time left is the whole of what it was given.
+	 */
+	void ProbeCrippleAndWeakenDuration(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FCataclysmAilmentKind* Cripple =
+			UCataclysmAilments::KindNamed(TEXT("Cripple"));
+		if (!Test.TestNotNull(TEXT("Cripple is an ailment"), Cripple))
+		{
+			return;
+		}
+		const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(Cripple->TagName), /*ErrorIfNotFound=*/false);
+
+		FScopedFighter Plain(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Geared(World, /*AttackDamage=*/0.0f);
+		Grant(Geared.Actor, UCataclysmAilments::CrippleAndWeakenDurationStat,
+			  IncreasePercent);
+		FScopedFighter PlainTarget(World, /*AttackDamage=*/0.0f);
+		FScopedFighter GearedTarget(World, /*AttackDamage=*/0.0f);
+
+		UCataclysmAilments::Apply(Plain.Actor, PlainTarget.Actor, *Cripple,
+								  /*Magnitude=*/1.0f);
+		UCataclysmAilments::Apply(Geared.Actor, GearedTarget.Actor, *Cripple,
+								  /*Magnitude=*/1.0f);
+
+		const auto SecondsLeftOn = [&Tag](const FScopedFighter& Target)
+		{
+			float Longest = 0.0f;
+			for (const float Seconds :
+				 Target.AbilitySystem->GetActiveEffectsTimeRemaining(
+					 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+						 FGameplayTagContainer(Tag))))
+			{
+				Longest = FMath::Max(Longest, Seconds);
+			}
+			return Longest;
+		};
+
+		Test.TestTrue(TEXT("the plain applier's Cripple lasts at all"),
+					  SecondsLeftOn(PlainTarget) > 0.0f);
+		Test.TestTrue(
+			TEXT("cripple_and_weaken_duration lengthens a Cripple its holder "
+				 "applies, so UCataclysmAilments::Apply really reads it"),
+			SecondsLeftOn(GearedTarget) > SecondsLeftOn(PlainTarget) + 0.001f);
 	}
 
 	/**
@@ -1838,6 +1899,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_damage"),       &ProbeDamage},
 			{TEXT("minion_health"),       &ProbeHealth},
 			{TEXT("minion_duration"),     &ProbeDuration},
+			{TEXT("cripple_and_weaken_duration"), &ProbeCrippleAndWeakenDuration},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},

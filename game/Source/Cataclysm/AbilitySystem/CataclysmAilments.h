@@ -185,6 +185,14 @@ public:
 	static constexpr float ChanceCap = 100.0f;
 
 	/**
+	 * The stat that lengthens a Cripple or a Weaken its holder applies, in the
+	 * increases bucket. Issue #1515, the Deeper Hurt node. Read only by `Apply`,
+	 * where a character creates one; a spread that copies one keeps the status
+	 * row's duration. `UCataclysmPlayerClassStats::StatsWithNoAttribute` lists it.
+	 */
+	static const TCHAR* CrippleAndWeakenDurationStat;
+
+	/**
 	 * What a magnitude stat holds for a character with none of it, in per cent.
 	 *
 	 * A HUNDRED MEANS UNCHANGED, following `UCataclysmDebuffs::NormalDuration`,

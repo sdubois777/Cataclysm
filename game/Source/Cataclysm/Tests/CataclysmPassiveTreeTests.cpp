@@ -19,6 +19,7 @@
 // below read off an authored row.
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmAilments.h"
+#include "AbilitySystem/CataclysmContagion.h"
 // For putting health back the way the game itself does, rather than reading the
 // rate off a gameplay attribute a scaled bonus never reaches. Issue #1038.
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -14283,6 +14284,229 @@ bool FCataclysmPassiveKeptLongerOnARealCharacterTest::RunTest(const FString&)
 	Spend(0);
 	TestEqual(TEXT("and with the points given back, the lifetime stated again"),
 			  LifespanOfOneSummoned(), Stated, 0.01f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Deeper Hurt, from its row. Issue #1515.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveDeeperHurtOnARealCharacterTest,
+	"Cataclysm.Passives.DeeperHurtLengthensTheCrippleAndWeakenARealRavagerApplies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_c_stem2` Deeper Hurt, from its row, on a real Ravager.
+ *
+ * "+3% increased duration of Cripple and Weaken you apply per point."
+ *
+ * ATTRITION IS HELD THROUGHOUT, so every melee blow over a tenth of the
+ * target's maximum health Cripples and Weakens, and Deeper Hurt is the only
+ * thing that changes between the readings. Both nodes are spent through the
+ * player state; nothing is granted by hand, so this fails while the row is
+ * missing.
+ *
+ * RATIOS, NOT SECONDS. What a debuff lasts on the target also passes through
+ * the target's own `DurationOn`; the same kind of enemy is struck each time, so
+ * that cancels and only the applier's figure is left.
+ *
+ * AND A SPREAD COPY KEEPS THE ROW'S DURATION, by a ruling of 2026-09-23 under
+ * the project owner's delegation: a debuff copied to another enemy is not
+ * "Cripple and Weaken you apply". With the points still spent, a Cripple and a
+ * Weaken copied by `UCataclysmContagion::SpreadOne` last what the unspent
+ * character's did.
+ */
+bool FCataclysmPassiveDeeperHurtOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmEnemiesStruckRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_basic_c_stem2"));
+	const FName Attrition(TEXT("Ravager_keystone_c_kA"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Deeper Hurt carries one row"), Effects.Num(), 1))
+	{
+		AddError(TEXT("The node's row is missing from the data, so it grants "
+					  "nothing in play. Author it in the Passive Effects sheet "
+					  "of docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+	const FCataclysmPassiveEffectRow* Row = Effects[0];
+	TestEqual(TEXT("on the duration of a Cripple and a Weaken applied"),
+			  Row->Stat, FString(UCataclysmAilments::CrippleAndWeakenDurationStat));
+	TestEqual(TEXT("stated as an increase"), Row->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("under no condition"), Row->Condition, FString());
+	TestEqual(TEXT("for every skill"), Row->RequiredTags, FString());
+	if (!TestTrue(*FString::Printf(TEXT("of a figure above nothing: %.1f"),
+								   Row->ValuePerPoint),
+				  Row->ValuePerPoint > 0.0f)
+		|| !TestEqual(TEXT("and Attrition still carries its two rows"),
+					  UCataclysmPassiveTree::EffectsFor(Player.EffectTable,
+													   Attrition).Num(), 2))
+	{
+		return false;
+	}
+
+	const FGameplayTagContainer Melee = MeleeTags();
+	const FGameplayTag CrippleTag = UCataclysmDebuffs::CrippleTag();
+	const FGameplayTag WeakenTag = UCataclysmDebuffs::WeakenTag();
+	if (!TestEqual(TEXT("the melee tag exists"), Melee.Num(), 1)
+		|| !TestTrue(TEXT("and both debuff tags"),
+					 CrippleTag.IsValid() && WeakenTag.IsValid()))
+	{
+		return false;
+	}
+
+	const auto Spend = [&Player, Node, Attrition](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		Allocation.Add(Attrition, 1);
+		if (Points > 0)
+		{
+			Allocation.Add(Node, Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+		// A WEAPON'S WORTH OF DAMAGE, AFTER THE REFRESH. A test player has none.
+		Player.AbilitySystem->SetNumericAttributeBase(
+			Combat::GetAttackDamageAttribute(), 1000.0f);
+	};
+
+	const auto SecondsLeftOn = [](const UAbilitySystemComponent* System,
+								  const FGameplayTag& Tag)
+	{
+		float Longest = 0.0f;
+		for (const float Seconds : System->GetActiveEffectsTimeRemaining(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+					 FGameplayTagContainer(Tag))))
+		{
+			Longest = FMath::Max(Longest, Seconds);
+		}
+		return Longest;
+	};
+
+	// A FRESH, UNDEFENDED ENEMY WITH A POOL A 1000 BLOW TAKES A QUARTER OF.
+	const auto FreshEnemy = [&]() -> ACataclysmEnemyCharacter*
+	{
+		ACataclysmEnemyCharacter* Enemy = SpawnUndefendedEnemy(World);
+		UAbilitySystemComponent* System =
+			Enemy ? Enemy->GetAbilitySystemComponent() : nullptr;
+		if (!System)
+		{
+			AddError(TEXT("An enemy could not be spawned."));
+			return nullptr;
+		}
+		System->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 4000.0f);
+		System->SetNumericAttributeBase(Vital::GetHealthAttribute(), 4000.0f);
+		return Enemy;
+	};
+
+	struct FLasting
+	{
+		float Cripple = 0.0f;
+		float Weaken = 0.0f;
+	};
+
+	// ONE MELEE BLOW, and how long each debuff it applied lasts.
+	const auto Strike = [&]()
+	{
+		FLasting Out;
+		ACataclysmEnemyCharacter* Enemy = FreshEnemy();
+		if (!Enemy)
+		{
+			return Out;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy,
+										 /*DamagePercent=*/100.0f, Melee);
+		const UAbilitySystemComponent* System = Enemy->GetAbilitySystemComponent();
+		Out.Cripple = SecondsLeftOn(System, CrippleTag);
+		Out.Weaken = SecondsLeftOn(System, WeakenTag);
+		Enemy->Destroy();
+		return Out;
+	};
+
+	// ATTRITION'S CHANCE IS THE WHOLE ROLL; PINNED AT NOUGHT all the same, so
+	// the roll is never what this test is about.
+	const CataclysmTestWorld::FScopedAilmentRoll Always(0.0f);
+
+	constexpr int32 Points = 5;
+	const float Longer = 1.0f + Row->ValuePerPoint * Points / 100.0f;
+
+	Spend(0);
+	const FLasting Unspent = Strike();
+	if (!TestTrue(*FString::Printf(
+					  TEXT("with Attrition alone the blow Cripples and Weakens: "
+						   "%.2f and %.2f seconds"),
+					  Unspent.Cripple, Unspent.Weaken),
+				  Unspent.Cripple > 0.0f && Unspent.Weaken > 0.0f))
+	{
+		return false;
+	}
+
+	Spend(Points);
+	const FLasting Spent = Strike();
+	TestEqual(*FString::Printf(TEXT("with %d points of Deeper Hurt the Cripple "
+									"lasts %.2f times as long"),
+							   Points, Longer),
+			  Spent.Cripple / Unspent.Cripple, Longer, 0.001f);
+	TestEqual(TEXT("and so does the Weaken"),
+			  Spent.Weaken / Unspent.Weaken, Longer, 0.001f);
+
+	// A SPREAD COPY, with the points still spent: the status row's duration.
+	for (const TPair<FGameplayTag, float>& Copied :
+		 {TPair<FGameplayTag, float>(CrippleTag, Unspent.Cripple),
+		  TPair<FGameplayTag, float>(WeakenTag, Unspent.Weaken)})
+	{
+		ACataclysmEnemyCharacter* Enemy = FreshEnemy();
+		if (!Enemy)
+		{
+			return false;
+		}
+		TestTrue(*FString::Printf(TEXT("%s is copied to a fresh enemy"),
+								  *Copied.Key.ToString()),
+				 UCataclysmContagion::SpreadOne(Player.Character, Enemy,
+												Copied.Key));
+		TestEqual(*FString::Printf(TEXT("and the copy of %s lasts what an "
+										"unspent character's does"),
+								   *Copied.Key.ToString()),
+				  SecondsLeftOn(Enemy->GetAbilitySystemComponent(), Copied.Key),
+				  Copied.Value, 0.01f);
+		Enemy->Destroy();
+	}
+
+	// AND THE POINTS GIVEN BACK, the row's own duration again.
+	Spend(0);
+	const FLasting Back = Strike();
+	TestEqual(TEXT("with the points given back the Cripple lasts as it did"),
+			  Back.Cripple, Unspent.Cripple, 0.01f);
 
 	return true;
 }

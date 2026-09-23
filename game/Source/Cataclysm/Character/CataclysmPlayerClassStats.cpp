@@ -214,6 +214,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// lifetime the summoning skill states. Issue #1515, the Kept Longer node:
 		// "+3% increased duration of what you summon per point".
 		TEXT("minion_duration"),
+		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
+		// Weaken is created, and not where a spread copies one. Issue #1515,
+		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken
+		// you apply per point".
+		TEXT("cripple_and_weaken_duration"),
 		// Increases, read by UCataclysmCommand::AttackIntervalScaleFor.
 		TEXT("minion_attack_speed"),
 		// Whether a minion explodes when it dies, read by

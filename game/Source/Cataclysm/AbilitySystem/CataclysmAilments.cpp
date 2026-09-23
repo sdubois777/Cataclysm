@@ -4,6 +4,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -386,6 +387,57 @@ namespace
 	}
 }
 
+const TCHAR* UCataclysmAilments::CrippleAndWeakenDurationStat =
+	TEXT("cripple_and_weaken_duration");
+
+namespace
+{
+	/**
+	 * How much longer the applier makes a Cripple or a Weaken it applies.
+	 * Issue #1515: `Ravager_basic_c_stem2` Deeper Hurt, "+3% increased duration
+	 * of Cripple and Weaken you apply per point".
+	 *
+	 * ONE PLUS THE APPLIER'S INCREASES, FLOORED AT NOTHING, the shape a minion's
+	 * stats take from its summoner. A floor of nothing is safe here, unlike a
+	 * minion's lifetime: `ApplyTagForDuration` and `ApplyNamedEffect` refuse a
+	 * duration of nothing, so a cut of a hundred per cent applies no debuff
+	 * rather than a permanent one.
+	 *
+	 * ASKED WITH THE SKILL'S OWN TAGS, as `ChancesFor` asks the chances that
+	 * rolled this ailment, so a row scoped to a keyword reaches the skills it
+	 * names. No skill in hand, or one of the base class, gives no tags, and an
+	 * unscoped row still applies.
+	 *
+	 * READ HERE AND NOWHERE ELSE, by a ruling of 2026-09-23 under the project
+	 * owner's delegation. This is the one place a character CREATES a Cripple or
+	 * a Weaken. A spread that copies one to another enemy -- `CopyDebuffsTo`,
+	 * `UCataclysmContagion::SpreadOne` -- keeps the status row's duration: a copy
+	 * is not a fresh application, those paths already ignore the applier's
+	 * other Cripple and Weaken stats, and a read there would lengthen the debuff
+	 * each time it spread.
+	 */
+	float AppliedDurationMultiplier(AActor* Instigator,
+									const UGameplayAbility* Skill)
+	{
+		const UCataclysmAbilitySystemComponent* Applier =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Instigator));
+		if (!Applier)
+		{
+			return 1.0f;
+		}
+
+		const UCataclysmGameplayAbility* Cataclysm =
+			Cast<const UCataclysmGameplayAbility>(Skill);
+		const FGameplayTagContainer NoTags;
+		const FGameplayTagContainer& Tags =
+			Cataclysm ? Cataclysm->SkillTagsForStats() : NoTags;
+
+		return FMath::Max(0.0f, 1.0f + Applier->IncreasesForStat(
+			FName(UCataclysmAilments::CrippleAndWeakenDurationStat), Tags));
+	}
+}
+
 bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 							   const FCataclysmAilmentKind& Kind, float Magnitude,
 							   const UGameplayAbility* Skill, FName DamageType)
@@ -449,7 +501,9 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 		// row naming an ordinary stat does not use it.
 		const FCapThenExtend Split = CapThenExtend(Row, Scale);
 		return UCataclysmSkillEffects::ApplyNamedEffect(Instigator, Target, Tag,
-			Row.DurationSeconds * Split.Longer, Split.Strength, NAME_None);
+			Row.DurationSeconds * Split.Longer
+				* AppliedDurationMultiplier(Instigator, Skill),
+			Split.Strength, NAME_None);
 	}
 
 	case EShape::StrongerThenLongerWithMagnitude:
@@ -472,7 +526,10 @@ bool UCataclysmAilments::Apply(AActor* Instigator, AActor* Target,
 		// `CapThenExtend` rule. Which of the two an effect wants is decided by
 		// whether a reader exists, not by the shape of its number.
 		return UCataclysmSkillEffects::ApplyTagForDuration(Instigator, Target,
-			Tag, Row.DurationSeconds * Split.Longer, Split.Strength);
+			Tag,
+			Row.DurationSeconds * Split.Longer
+				* AppliedDurationMultiplier(Instigator, Skill),
+			Split.Strength);
 	}
 
 	case EShape::ShareOfCurrentHealth:
