@@ -14,11 +14,17 @@ alone (`UCataclysmSkillShapes::TagsFromCell(Row.Tags)`), and
 Nothing adds a tag from the `DamageType` column. So the `Tags` column is the
 whole of what `ElementTag` reads, and it is what this file checks.
 
-WHAT THE SHEET HOLDS, measured the same day over all 403 rows: 142 carry one
-element tag and 261 carry none. **The 261 are the rows with no skill name and no
-shape** -- placeholder cells of the weapon-against-damage-type matrix, granted as
-the undesigned placeholder ability, which reads no element. Every row with a
-skill name carries exactly one, and it names the row's own damage type.
+WHAT THE SHEET HOLDS, measured the same day over all 403 rows:
+
+| Rows | Skill name | Element tags |
+|--:|---|--:|
+| 117 | yes | 1, naming the row's own `DamageType` |
+| 25 | no | 1 |
+| 261 | no | 0 |
+
+**None of the 286 rows without a skill name has a shape.** Each is granted as
+`UCataclysmUndesignedSkill`, which is not a `UCataclysmSkillTemplate`, so it has
+no `ElementTag` to call and no tags are stamped on it.
 
 SO TWO RULES, AND NEITHER IS "EXACTLY ONE ON EVERY ROW", which the old comment
 said and the sheet does not hold:
@@ -76,7 +82,7 @@ def shipped_rows() -> list[dict[str, str]]:
 
 def test_the_sheet_has_named_rows_to_check():
     """The control. A reader that found no named rows would pass the check
-    below by checking nothing; 142 named rows were measured on 2026-09-23."""
+    below by checking nothing; 117 named rows were measured on 2026-09-23."""
     named = [row for row in shipped_rows() if row["SkillName"].strip()]
     assert len(named) >= 100, (
         f"only {len(named)} named rows were read from {WEAPON_SKILLS_CSV}")
