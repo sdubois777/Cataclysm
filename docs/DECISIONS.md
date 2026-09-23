@@ -12,8 +12,8 @@ per-floor reset), the automation tests in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -73,10 +73,23 @@ declared as the table's figure for a death. Each Python check was seen to fail w
 copy of the repository: the tie replaced by `10.0f`, the row given "a 20% chance", and the row given
 "by the player".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (38089da3) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "212 tests performed, 212 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 7f98c1e5:** "Build: Succeeded - 14 actions, 11 files compiled" and "2209 tests
+  performed, 2209 succeeded, 0 failed", as registered (2205 + the four named tests), with every declared
+  test reported. In that run's `game/Saved/Logs/Cataclysm.log` the group's 216 all succeeded, the four
+  named above among them.
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing 1 of 216 with
+  the break in and 0 of 216 restored, exactly as registered:
+  - a marked creature allowed to roll (`!Fallen->PaysForItsDeath()` removed, in
+    `CataclysmDungeonGameMode.cpp`) failed `ACreatureThatGotUpNeverRollsAgain`;
+  - a roll of exactly ten counted as a hit (`<` made `<=`, in `CataclysmDungeonModifierEffects.cpp`)
+    failed `ARollOfTenLeavesTheDeadDead`;
+  - a creature brought back at a freshly drawn rung (`Fallen->RarityStep` not passed) failed
+    `AKilledCreatureOnTheRollGetsUpAtOnceAtFullHealthAndItsRung`.
 
 ---
 
