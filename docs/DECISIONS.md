@@ -2,6 +2,84 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — A killed creature has a one-in-ten chance to get back up at once, whoever killed it
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its chance and the roll), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`
+(the death listener, a console variable that pins the roll for tests, the floor panel line and the
+per-floor reset), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Death_Dead_Rising` in `game/Data/DungeonModifiers.csv`, weight 10: "Enemies have a chance to revive
+after being killed."
+
+### What the rule does
+
+Each creature that dies on a floor carrying the row rolls once, unless it is already marked as risen.
+On a roll below `DeadRisingChancePercent` the same kind is put back where it fell, at once, at the rung
+it died at, at full health, and marked. The floor panel says `dead rising: N got back up`, and the
+stairs reset that count.
+
+### Settled by the documents
+
+- **The chance is ten percent.** The row says "a chance" and gives no figure, and the entry "Ten
+  percent, derived from the table rather than chosen" names this row among the eight written that way.
+  `DeadRisingChancePercent` is declared as `SporeCloudsChancePercentOnDeath`, as Vengeful Wraiths'
+  chance is, so three rules hold one figure.
+- **A risen creature's second death pays nothing**, the owner's decision of 2026-09-17. The mark and
+  the two suppressions were built with Divine Resurgence (entry of 2026-09-23, "The floor's dead rise
+  once..."), and this rule sets the mark.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-09-23:**
+
+- **Full health at its rung.** "Revive" with no reduction stated is the creature as it was placed.
+  Divine Resurgence's half is that row's own figure.
+- **At once**, in the same death notice. No delay figure exists anywhere to cite.
+- **Every death rolls, whoever dealt it.** The row says "after being killed" and names no killer.
+  Vengeful Wraiths says "the one who killed them" and so asks for the player.
+- **A marked creature never rolls**, so no creature gets more than one extra life from this row. A
+  Vengeful Wraith and a creature Divine Resurgence raised are marked too, and are refused the same way.
+- **This row and Divine Resurgence on one floor are allowed to both act on one death, and that is a
+  play-test point.** Measured first, as the ruling asked: a floor CAN carry a Celestial row and a
+  Death row together. `UCataclysmDungeonModifierRules::PoolFor` builds a dungeon's pool from every
+  Cataclysm active in the run, not only the dungeon's own: `if (Active.Contains(Modifier.Cataclysm))`.
+  So a creature whose first death Dead Rising answers is also recorded by Divine Resurgence, and at that
+  revival the floor holds two of it. Vengeful Wraiths already behaves this way. The other way needs one
+  listener to read the other's result, a coupling neither existing rule has. No test is written for it.
+
+**Under the owner's delegation, made while writing it:**
+
+- **Dead Rising listens before Divine Resurgence**, so a creature this same death put back is already
+  standing and marked when that rule counts the floor.
+- **A creature of none of the seven kinds this dungeon places does not get up**, because nothing can
+  put it back. Vengeful Wraiths and Divine Resurgence make the same refusal.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+`AKilledCreatureOnTheRollGetsUpAtOnceAtFullHealthAndItsRung`, `ARollOfTenLeavesTheDeadDead`,
+`ACreatureKilledByAnotherCreatureAlsoGetsUp` and `ACreatureThatGotUpNeverRollsAgain`. Two Python
+checks: the row still says "a chance" with no figure and names no killer, and the chance is still
+declared as the table's figure for a death. Each Python check was seen to fail with its break in, in a
+copy of the repository: the tie replaced by `10.0f`, the row given "a 20% chance", and the row given
+"by the player".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — The floor's dead rise once, at half health, when half the floor has fallen
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the revival mark,
