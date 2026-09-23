@@ -1334,18 +1334,26 @@ CATACLYSM_TEST(FCataclysmCritAsksDistanceAndStaggerTest,
 }
 
 /**
- * An armour penetration row can ask about the character being struck. Issue
+ * An armour penetration row can ask how far away the character struck is. Issue
  * #1992.
  *
- * WHAT WAS WRONG. The armour penetration lookup handed over no target at all, so
- * every target-side condition on it granted nothing.
+ * WHAT WAS WRONG. The armour penetration lookup handed over no target, no
+ * distance and no stagger, so every row asking about the other end of the blow
+ * granted nothing.
+ *
+ * THIS MEASURES THE DISTANCE HAND-OVER AND NOT THE TARGET. `target_within_metres`
+ * reads the distance the lookup is given, so this test still passes with the
+ * target broken: the first machine window's proof of the target hand-over was
+ * "NOT A PROOF" against it. `...CanAskWhetherTheCharacterStruckIsABoss` below
+ * measures the target. Renamed from `...CanAskAboutTheCharacterBeingStruck`,
+ * which claimed both.
  *
  * TWO CREATURES WITH THE SAME HEAVY ARMOUR, two and six metres away. The row
  * ignores all of it within three metres, so the near creature takes more. The
  * roll is pinned so no blow strikes critically.
  */
 CATACLYSM_TEST(FCataclysmArmourPenetrationAsksAboutTheTargetTest,
-	"Cataclysm.ConditionalDamage.AnArmourPenetrationRowCanAskAboutTheCharacterBeingStruck")
+	"Cataclysm.ConditionalDamage.AnArmourPenetrationRowCanAskHowFarAwayTheCharacterStruckIs")
 {
 	using namespace CataclysmCritTest;
 
@@ -1395,6 +1403,90 @@ CATACLYSM_TEST(FCataclysmArmourPenetrationAsksAboutTheTargetTest,
 					  "%.2f against %.2f"),
 				 AtNear.DealtToHealth, AtFar.DealtToHealth),
 			 AtNear.DealtToHealth > AtFar.DealtToHealth + 0.01f);
+
+	return true;
+}
+
+/**
+ * An armour penetration row can ask whether the character struck is a Boss.
+ * Issue #1992, the target hand-over at the armour penetration site.
+ *
+ * `target_is_boss` READS ONLY THE TARGET, so this is the test that fails when
+ * the lookup is handed no target -- unlike the distance test above.
+ *
+ * EACH CREATURE IS STRUCK BEFORE THE ROW AND AFTER IT, and compared with itself,
+ * because a Boss's rarity can bring modifiers of its own: the Boss takes more
+ * once the row ignores its armour, and the ordinary creature takes the same.
+ */
+CATACLYSM_TEST(FCataclysmArmourPenetrationAsksIfTheTargetIsABossTest,
+	"Cataclysm.ConditionalDamage.AnArmourPenetrationRowCanAskWhetherTheCharacterStruckIsABoss")
+{
+	using namespace CataclysmCritTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedCombatant Attacker(World);
+	Attacker.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmEnemyCharacter* Boss =
+		SpawnCritCreature(World, FVector(2.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* Plain =
+		SpawnCritCreature(World, FVector(0.0f, 2.0f * M, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("a creature to make a Boss"), Boss)
+		|| !TestNotNull(TEXT("and an ordinary one"), Plain))
+	{
+		return false;
+	}
+	Boss->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	if (!TestTrue(TEXT("one creature is a Boss"), Boss->IsBoss())
+		|| !TestFalse(TEXT("and the other is not"), Plain->IsBoss()))
+	{
+		return false;
+	}
+
+	// THE ARMOUR IS SET AFTER THE RARITY, which may write the starting
+	// attributes again.
+	for (ACataclysmEnemyCharacter* Creature : {Boss, Plain})
+	{
+		Creature->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetArmorAttribute(), 5000.0f);
+	}
+
+	const FCataclysmDamageResult BossBefore = StrikeOnce(Attacker.Actor, Boss);
+	const FCataclysmDamageResult PlainBefore = StrikeOnce(Attacker.Actor, Plain);
+
+	TMap<FName, FCataclysmStatInputs> Lines;
+	FCataclysmStatInputs& Penetration =
+		Lines.FindOrAdd(FName(TEXT("armor_penetration")));
+	Penetration.Base = 0.0f;
+	Penetration.Modifiers = {Conditioned(ECataclysmStatBucket::Flat, 100.0f,
+										 ECataclysmStatCondition::TargetIsBoss)};
+	GiveLines(Attacker.AbilitySystem, MoveTemp(Lines));
+
+	const FCataclysmDamageResult BossAfter = StrikeOnce(Attacker.Actor, Boss);
+	const FCataclysmDamageResult PlainAfter = StrikeOnce(Attacker.Actor, Plain);
+
+	if (!TestTrue(TEXT("all four blows landed"),
+				  BossBefore.DealtToHealth > 0.0f && PlainBefore.DealtToHealth > 0.0f
+					  && BossAfter.DealtToHealth > 0.0f && PlainAfter.DealtToHealth > 0.0f))
+	{
+		return false;
+	}
+	TestTrue(*FString::Printf(
+				 TEXT("the Boss's armour was ignored, so it took more than before: "
+					  "%.2f against %.2f"),
+				 BossAfter.DealtToHealth, BossBefore.DealtToHealth),
+			 BossAfter.DealtToHealth > BossBefore.DealtToHealth + 0.01f);
+	TestEqual(TEXT("and the ordinary creature took what it took before"),
+			  PlainAfter.DealtToHealth, PlainBefore.DealtToHealth, 0.01f);
 
 	return true;
 }
