@@ -1821,6 +1821,16 @@ private:
 	 */
 	void NoteDeathForDeadRising(const struct FCataclysmDeathNotice& Notice);
 
+	/**
+	 * Demonic Blood Gates, on every death. Issues #1820 and #41.
+	 *
+	 * COUNTS THE PLAYER'S KILLS OF UNMARKED CREATURES, and nothing else: a death to any
+	 * other cause changes nothing here, and is seen only because the creature stops
+	 * standing, which lowers `BloodGatesPlacedCount`. Refreshes the panel on every death
+	 * on a floor carrying the row, because either kind of death can move its figures.
+	 */
+	void NoteDeathForBloodGates(const struct FCataclysmDeathNotice& Notice);
+
 public:
 	/**
 	 * Divine Resurgence's state, for the floor panel and for tests. How many unmarked
@@ -1833,6 +1843,16 @@ public:
 
 	/** How many creatures Dead Rising has put back on this floor, for the panel and tests. */
 	int32 DeadRisingRisenCount() const { return DeadRisingRisen; }
+
+	/**
+	 * Blood Gates' state, for the floor panel, the stairs and tests. How many unmarked
+	 * creatures the player has slain on this floor; how many the floor counts as placed
+	 * (those kills plus the unmarked still standing); and whether the stairs are sealed
+	 * right now, which is false on a floor without the row and on the last floor.
+	 */
+	int32 BloodGatesSlainCount() const { return BloodGatesSlain; }
+	int32 BloodGatesPlacedCount() const;
+	bool BloodGatesSealTheStairs() const;
 
 private:
 
@@ -2610,6 +2630,9 @@ private:
 
 	/** How many creatures Dead Rising has put back on this floor. Goes at the stairs. */
 	int32 DeadRisingRisen = 0;
+
+	/** How many unmarked creatures the player has slain on this floor. Goes at the stairs. */
+	int32 BloodGatesSlain = 0;
 
 	/**
 	 * Judgment Zones: the ground standing now, the clock that lays more, and what the

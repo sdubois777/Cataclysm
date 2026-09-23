@@ -1942,7 +1942,75 @@ ACataclysmDungeonStairs* ACataclysmDungeonGameMode::PlaceStairs()
 
 void ACataclysmDungeonGameMode::HandleStairsTaken()
 {
+	// BLOOD GATES: SEALED, SO NOTHING HAPPENS, AND THE STAIRS WATCH AGAIN. Issues #1820
+	// and #41. `ACataclysmDungeonStairs::ArriveAt` stops its watch before announcing, so
+	// a refusal that did not start it again would leave stairs that never answer, even
+	// once the gate had opened. A player standing on them goes down on the first look
+	// after it opens. THE STAIRS THEMSELVES SHOW NOTHING: no system in the interface
+	// shows the player a message, so the floor panel's line is this rule's interface.
+	if (BloodGatesSealTheStairs())
+	{
+		if (Stairs)
+		{
+			Stairs->StartWatching();
+		}
+		RefreshFloorModifierPanel();
+		return;
+	}
+
 	GoDownOneFloor();
+}
+
+int32 ACataclysmDungeonGameMode::BloodGatesPlacedCount() const
+{
+	// THE PLAYER'S KILLS PLUS THE UNMARKED STILL STANDING, and not every death: a
+	// creature that died to anything but the player leaves both this count and the
+	// target, so once none stands the gate is open. See `BloodGatesKey`.
+	int32 Standing = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+			&& Enemy->PaysForItsDeath())
+		{
+			++Standing;
+		}
+	}
+	return BloodGatesSlain + Standing;
+}
+
+bool ACataclysmDungeonGameMode::BloodGatesSealTheStairs() const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE LAST FLOOR IS NOT SEALED: its stairs lead out of the dungeon, and the row
+	// seals "doors leading to the next level". Ruled under the owner's delegation.
+	return FloorBrief.Modifiers.Contains(FName(Effects::BloodGatesKey))
+		&& !IsOnTheLastFloor()
+		&& !Effects::BloodGatesAreOpen(BloodGatesSlain, BloodGatesPlacedCount());
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForBloodGates(
+	const FCataclysmDeathNotice& Notice)
+{
+	if (!FloorBrief.Modifiers.Contains(FName(UCataclysmDungeonModifierEffects::BloodGatesKey)))
+	{
+		return;
+	}
+
+	// "THE PLAYER HAS SLAIN": the killer on the notice, the question Vengeful Wraiths
+	// asks. A minion's kill is the minion's unless its summoner holds Conduit, which
+	// `UCataclysmCombatEvents::NoteBlow` decides in one place (issue #1515). A MARKED
+	// creature is the floor's dead brought back, and is not counted.
+	const ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (Fallen && Fallen->PaysForItsDeath() && Player && Notice.Killer == Player)
+	{
+		++BloodGatesSlain;
+	}
+
+	RefreshFloorModifierPanel();
 }
 
 bool ACataclysmDungeonGameMode::GoDownOneFloor(APawn* PawnToMove)
@@ -3612,6 +3680,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
 	NoteDeathForDeadRising(Notice);
+	NoteDeathForBloodGates(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -5287,6 +5356,21 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 										   DivineResurgenceRisen)
 						 : FString::Printf(TEXT("holy revival: %d of %d fallen, comes at %d"),
 										   DivineResurgenceFallen, Placed, ComesAt));
+	}
+
+	// AND HOW FAR THE PLAYER IS FROM OPENING THE STAIRS. Issues #1820 and #41. The target
+	// is the current one: it rises when creatures arrive and falls when one dies to
+	// anything but the player.
+	const FName Gates(Effects::BloodGatesKey);
+	if (FloorBrief.Modifiers.Contains(Gates))
+	{
+		const int32 Placed = BloodGatesPlacedCount();
+		Counting.Add(Gates,
+					 BloodGatesSealTheStairs()
+						 ? FString::Printf(TEXT("blood gates: %d of %d slain, open at %d"),
+										   BloodGatesSlain, Placed,
+										   Effects::BloodGatesOpenAt(Placed))
+						 : FString(TEXT("blood gates: open")));
 	}
 
 	// AND HOW MANY OF THE FLOOR'S DEAD GOT BACK UP. Issues #1820 and #41.
@@ -7068,6 +7152,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// put back that lives through a Horde dungeon's change of wave keeps its mark, so
 		// it never rolls again on the next floor either.
 		DeadRisingRisen = 0;
+
+		// AND BLOOD GATES FORGETS THE PLAYER'S KILLS: each floor's stairs are sealed
+		// afresh. Issues #1820 and #41.
+		BloodGatesSlain = 0;
 
 		// AND JUDGMENT ZONES FORGETS EVERYTHING, which is the whole of its state.
 		// Issues #1820 and #41. The zones themselves are actors on the floor being left

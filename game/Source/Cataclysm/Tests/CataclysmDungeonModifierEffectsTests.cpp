@@ -35,6 +35,8 @@
 #include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Dungeon/CataclysmDungeonModifierTable.h"
+#include "Dungeon/CataclysmDungeonStairs.h"
+#include "Empire/CataclysmEmpireRun.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -21115,6 +21117,425 @@ bool FCataclysmSufferingAuraWithDecayTest::RunTest(const FString& Parameters)
 			  OneBeatOf(MaxHealth, Effects::SufferingAuraHealthPercentPerSecond)
 				  + OneBeatOf(MaxHealth, DecayRate),
 			  0.001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Blood_Gates. Issues #1820 and #41.
+//
+// "Doors leading to the next level in a dungeon are sealed shut until the player has
+// slain enough enemies to open them." Half of the creatures the floor placed, rounded
+// up, where "placed" is the player's kills plus the unmarked still standing: so once no
+// unmarked creature stands, the gate is open. The last floor is not sealed. Rulings
+// under the owner's delegation, 2026-09-23.
+//
+// THE STAIRS ARE TAKEN THE WAY THE GAME TAKES THEM: `ArriveAt` at their own position,
+// which stops their watch and announces, and the game mode's handler decides.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where the stairs stay sealed. Issues #1820, #41. */
+	const FName BloodGates(UCataclysmDungeonModifierEffects::BloodGatesKey);
+
+	/**
+	 * A floor carrying the row, reached with `GoToFloor` so that it has stairs -- building
+	 * a floor alone places none -- and then emptied, with every Imp a Common.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheBloodGatesRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonModifiers = {BloodGates};
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestTrue(TEXT("floor 1 was reached"), Mode->GoToFloor(1))
+			|| !Test.TestNotNull(TEXT("and it has stairs"), Mode->Stairs.Get())
+			|| !Test.TestTrue(TEXT("carrying the row"),
+							  Mode->FloorBrief.Modifiers.Contains(BloodGates)))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString GatesPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(BloodGates);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** Step onto the stairs, and answer the floor the player then stands on. */
+	int32 TakeTheStairs(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode)
+	{
+		ACataclysmDungeonStairs* Stairs = Mode->Stairs.Get();
+		Test.TestTrue(TEXT("the stairs were reached"),
+					  Stairs && Stairs->ArriveAt(Stairs->GetActorLocation()));
+		return Mode->ChooseFloorNumber();
+	}
+
+	/** Kill a creature with another creature's blow, so the player had no part in it. */
+	bool ACreatureKills(FAutomationTestBase& Test, UWorld* World,
+						ACataclysmEnemyCharacter* Victim)
+	{
+		ACataclysmEnemyCharacter* Slayer =
+			SpawnImpWithHealth(World, FVector(-600.0f, 0.0f, 0.0f), 100.0f);
+		if (!Test.TestNotNull(TEXT("a creature to do the killing"), Slayer))
+		{
+			return false;
+		}
+		// A BARE CREATURE HITS FOR NOTHING, so it is given damage and that is asserted.
+		if (!Test.TestTrue(TEXT("the killer hits for something"),
+						   GiveCreatureAttackDamage(Slayer, 100.0f) > 0.0f))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Slayer, Victim, 100000.0f);
+		return Test.TestTrue(TEXT("a creature's blow killed it"),
+							 UCataclysmSkillEffects::IsDead(Victim));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesSealedTest,
+	"Cataclysm.DungeonModifierEffects.TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodGatesSealedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheBloodGatesRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(
+			World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0));
+		if (!TestNotNull(TEXT("a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("four placed, and two open the stairs"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 0 of 4 slain, open at 2")));
+
+	// SEALED: the floor does not change, and the stairs are watching again.
+	TestEqual(TEXT("with nothing slain the stairs lead nowhere"), TakeTheStairs(*this, Mode), 1);
+	TestTrue(TEXT("and they watch for the player again"), Mode->Stairs->IsWatching());
+
+	if (!ThePlayerKills(*this, Player, Placed[0]))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one of two"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 1 of 4 slain, open at 2")));
+	TestEqual(TEXT("one slain is not enough"), TakeTheStairs(*this, Mode), 1);
+
+	if (!ThePlayerKills(*this, Player, Placed[1]))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two slain open them"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: open")));
+	TestEqual(TEXT("and the stairs lead down"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
+// A DEATH THE PLAYER HAD NO PART IN IS NOT COUNTED, AND LOWERS THE TARGET: the creature
+// stops standing, so it leaves "placed" too.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesOtherKillerTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodGatesOtherKillerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheBloodGatesRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(
+			World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0));
+		if (!TestNotNull(TEXT("a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+
+	if (!ACreatureKills(*this, World, Placed[0]))
+	{
+		return false;
+	}
+	TestEqual(TEXT("not slain by the player, and three are left to count"),
+			  GatesPanelLine(Mode), FString(TEXT("blood gates: 0 of 3 slain, open at 2")));
+
+	if (!ThePlayerKills(*this, Player, Placed[1]))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the player's own kill is counted"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 1 of 3 slain, open at 2")));
+	TestEqual(TEXT("and one of three is still sealed"), TakeTheStairs(*this, Mode), 1);
+	return true;
+}
+
+// ONCE NO UNMARKED CREATURE STANDS, THE GATE IS OPEN, however the floor was emptied: the
+// property that keeps a player from being left on a floor with no way down.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesEmptiedTest,
+	"Cataclysm.DungeonModifierEffects.OnceNoUnmarkedCreatureStandsTheStairsAreOpen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodGatesEmptiedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheBloodGatesRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE CASE THAT WOULD HAVE TRAPPED THE PLAYER: six placed, the player slays two, and
+	// the other four die to something else.
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < 6; ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(
+			World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0));
+		if (!TestNotNull(TEXT("a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+	if (!ThePlayerKills(*this, Player, Placed[0]) || !ThePlayerKills(*this, Player, Placed[1]))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two of six is not yet half"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 2 of 6 slain, open at 3")));
+	for (int32 Index = 2; Index < 6; ++Index)
+	{
+		if (!ACreatureKills(*this, World, Placed[Index]))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("with nothing left standing the stairs are open"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: open")));
+	TestEqual(TEXT("and they lead down"), TakeTheStairs(*this, Mode), 2);
+
+	// AND A FLOOR WHOSE EVERY CREATURE DIED TO SOMETHING ELSE, with nothing slain at all:
+	// the next floor, emptied, given two creatures a creature then kills.
+	Mode->ClearFloorEnemies();
+	ACataclysmEnemyCharacter* A = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* B = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("A"), A) || !TestNotNull(TEXT("B"), B))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the new floor starts sealed"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 0 of 2 slain, open at 1")));
+	if (!ACreatureKills(*this, World, A) || !ACreatureKills(*this, World, B))
+	{
+		return false;
+	}
+	TestEqual(TEXT("emptied by others with none slain, it is open"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: open")));
+	TestEqual(TEXT("and leads down"), TakeTheStairs(*this, Mode), 3);
+	return true;
+}
+
+// A MARKED CREATURE IS THE FLOOR'S DEAD BROUGHT BACK: neither placed nor, when killed,
+// slain.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesMarkedTest,
+	"Cataclysm.DungeonModifierEffects.AMarkedCreatureIsNeitherPlacedNorSlainForTheGate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodGatesMarkedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheBloodGatesRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Marked =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* A = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* B = PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 0);
+	PlaceCreatureAtRung(World, Mode, FVector(1600.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("the marked creature"), Marked) || !TestNotNull(TEXT("A"), A)
+		|| !TestNotNull(TEXT("B"), B))
+	{
+		return false;
+	}
+	Marked->bRisenFromTheDead = true;
+
+	TestEqual(TEXT("three are placed, not four"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 0 of 3 slain, open at 2")));
+
+	if (!ThePlayerKills(*this, Player, Marked))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and killing the marked one slays nothing"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 0 of 3 slain, open at 2")));
+
+	if (!ThePlayerKills(*this, Player, A) || !ThePlayerKills(*this, Player, B))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two of three open them"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: open")));
+	return true;
+}
+
+// THE LAST FLOOR IS NOT SEALED: its stairs lead out of the dungeon. The control is the
+// floor above it, sealed by the same single standing creature.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodGatesLastFloorTest,
+	"Cataclysm.DungeonModifierEffects.TheLastFloorsWayOutIsNotSealed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodGatesLastFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+	// NOT THE COW LEVEL, which the run treats apart; the first other dungeon.
+	int32 Chosen = INDEX_NONE;
+	for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+	{
+		if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel)
+		{
+			Chosen = Index;
+		}
+	}
+	if (!TestTrue(TEXT("the run has an ordinary dungeon"), Chosen != INDEX_NONE))
+	{
+		return false;
+	}
+
+	// TWO FLOORS, AN ORDINARY SUB-TYPE AND THIS ROW ALONE, so the dungeon has stairs on
+	// both floors and nothing else decides what happens on them.
+	FCataclysmDungeon& Dungeon = Run->Dungeons[Chosen];
+	Dungeon.Floors = 2;
+	Dungeon.SubType = ECataclysmDungeonSubType::None;
+	Dungeon.Modifiers = {BloodGates};
+	const int32 DungeonId = Dungeon.DungeonId;
+	if (!TestTrue(TEXT("the dungeon was entered"), Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// THE CONTROL: one creature standing seals the first floor's stairs.
+	if (!TestNotNull(TEXT("a creature stands on floor 1"),
+					 PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("floor 1 is not the last"), Mode->IsOnTheLastFloor());
+	TestTrue(TEXT("and its stairs are sealed"), Mode->BloodGatesSealTheStairs());
+
+	Mode->GoDownOneFloor();
+	Mode->ClearFloorEnemies();
+	if (!TestNotNull(TEXT("a creature stands on floor 2"),
+					 PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("floor 2 is the last"), Mode->IsOnTheLastFloor())
+		|| !TestTrue(TEXT("and carries the row"), Mode->FloorBrief.Modifiers.Contains(BloodGates)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the same one creature does not seal the way out"),
+			  Mode->BloodGatesSealTheStairs());
+
+	// AND TAKING THEM BEATS THE DUNGEON: it leaves the run's list.
+	Mode->HandleStairsTaken();
+	bool bStillStanding = false;
+	for (const FCataclysmDungeon& Standing : Run->Dungeons)
+	{
+		bStillStanding |= Standing.DungeonId == DungeonId;
+	}
+	TestFalse(TEXT("the way out was taken and the dungeon is cleared"), bStillStanding);
 	return true;
 }
 
