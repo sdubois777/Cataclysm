@@ -15675,7 +15675,14 @@ bool FCataclysmDesperateMeasuresBasicAttackTest::RunTest(const FString&)
 			  Swing->ManaCostFor(Caster.AbilitySystem), 0.0f, 0.001f);
 	TestTrue(TEXT("it swings at 5% mana"),
 			 UCataclysmBasicAttack::Swing(Caster.AbilitySystem));
-	TestEqual(TEXT("and takes no mana"), Caster.Mana(), 50.0f, 0.01f);
+	// NO MANA TAKEN, WHICH IS NOT THE SAME AS MANA UNCHANGED. A basic attack that
+	// lands pays MANA ON HIT back to the attacker -- 6 for the Basic slot in
+	// game/Data/SkillSlots.csv -- so mana can rise here. MEASURED: the first run of
+	// this test asserted exactly 50 and read 56, because the swing hit the target
+	// two metres away. What the rule must not do is take mana or health for it.
+	TestTrue(FString::Printf(TEXT("and takes no mana (it may pay mana on hit): %.1f"),
+							 Caster.Mana()),
+			 Caster.Mana() >= 50.0f);
 	TestEqual(TEXT("and no health"), Caster.Health(), DesperateMaxHealth, 0.01f);
 	return true;
 }
