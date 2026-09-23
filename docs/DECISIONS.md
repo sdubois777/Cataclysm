@@ -179,8 +179,8 @@ floor's Commander, asked of a game mode and found in a world), the automation te
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_the_creature_under_the_cursor_is_described.py` (two checks). Issue
 [#1997](https://github.com/sdubois777/Cataclysm/issues/1997), which this closes FOR THE HOVER PANEL
-ONLY. **Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the
-figures are added at the end of this entry when they have.
+ONLY. **Applied.** The Python suite, the compile, the automation tests and the three guard proofs have
+all run; the figures are at the end of this entry.
 
 ### What was missing
 
@@ -240,10 +240,33 @@ Two Python checks in `test_the_creature_under_the_cursor_is_described.py`:
 `test_the_panel_names_the_floors_commander` and
 `test_the_two_panels_name_the_floors_commander_in_the_same_words`.
 
-### Not yet run
+### Evidence
 
-The compile, the automation tests, the whole-suite figure and the guard proofs. They run in one editor
-window when the build machine is granted.
+From one editor window in worktree `lucid-hodgkin-26d23e`, lock taken 19:06:54Z and released
+19:20:21Z on 2026-09-23. The game tree is `90e36475` throughout; only this entry changed after the
+runs.
+
+- The groups `Cataclysm.CreaturePanel.+Cataclysm.DungeonModifierEffects.` measured on development
+  `802ad193` first: "Build: Succeeded - 27 actions, 24 files compiled"; "Tests: 209 tests performed,
+  209 succeeded, 0 failed".
+- The change's own compile, first attempt: "Build: Succeeded - 13 actions, 10 files compiled".
+- The whole suite, once: "Tests: 2175 tests performed, 2175 succeeded, 0 failed"; "Declared: 2175
+  tests in the tree at 43d1ece4; 2175 performed, gap 0". Registered 2175 (development 2171 + the four
+  above). 39 tests skipped part of what they check, as on development.
+- Three guard proofs at that prefix, each registered with the tests it fails and the tests that keep
+  passing; each matched exactly, each restored to "213 tests performed, 213 succeeded, 0 failed", and
+  the source hash was the same before and after each:
+  - the check no longer asking which creature was chosen: "213 performed, 212 succeeded, 1 failed:
+    TheHoverPanelNamesTheFloorsCommanderAndNoOtherCreature";
+  - a killed Commander still named (the slain flag and the dead mark both bypassed): "213 performed,
+    212 succeeded, 1 failed: TheHoverPanelStopsNamingTheCommanderOnceItIsKilled";
+  - the line's condition inverted: "213 performed, 211 succeeded, 2 failed:
+    TheFloorsCommanderIsNamedFirstAndOnlyForTheCommander,
+    TheHoverPanelNamesTheFloorsCommanderAndNoOtherCreature".
+- Python on `43d1ece4`: "5336 passed, 8 skipped in 394.54s"; JUnit tests=5344, failures=0,
+  errors=0 (registered 5344). ruff "All checks passed!". An earlier run on the same head was cut off
+  by a machine shutdown at about 30% and gave no figure; this is the re-run.
+- No fail-before run and no asset rebuild: nothing under `game/Data` or `game/Content` changed.
 
 ---
 
