@@ -2437,6 +2437,31 @@ float UCataclysmSkillTemplate::AreaOfEffectMultiplier() const
 		FName(UCataclysmItemModifiers::AreaOfEffectStat), SkillTags);
 }
 
+const TCHAR* UCataclysmSkillTemplate::MeleeReachMetresStat =
+	TEXT("melee_reach_metres");
+
+float UCataclysmSkillTemplate::MeleeReachBonusCm() const
+{
+	if (Shape() != ECataclysmSkillShape::Strike)
+	{
+		return 0.0f;
+	}
+
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(
+			GetAbilitySystemComponentFromActorInfo());
+	if (!Mine)
+	{
+		return 0.0f;
+	}
+
+	// METRES IN THE ROW, CENTIMETRES HERE, and never below nothing: a row that
+	// shortened a reach would be a different sentence from this one.
+	return FMath::Max(0.0f, Mine->StatForSkill(FName(MeleeReachMetresStat),
+											   SkillTags, 0.0f))
+		* 100.0f;
+}
+
 float UCataclysmSkillTemplate::ScaledRadiusCm() const
 {
 	// ANYTHING CARRYING AN AREA TAG, which is the project owner's rule of
@@ -2475,11 +2500,16 @@ float UCataclysmSkillTemplate::ScaledRadiusCm() const
 			return Params.RadiusCm;
 		}
 
+		// AND A MELEE STRIKE'S FLAT REACH LAST, after the range increase.
+		// Issue #1515, Overreach.
 		return Params.RadiusCm
-			* (1.0f + HeldRangeIncreasePercent(Avatar()) / 100.0f);
+			* (1.0f + HeldRangeIncreasePercent(Avatar()) / 100.0f)
+			+ MeleeReachBonusCm();
 	}
 
-	return Params.RadiusCm * AreaOfEffectMultiplier();
+	// AND AFTER AREA OF EFFECT TOO, for a melee strike that also carries an area
+	// tag -- Backswing, Molten Cleave. Issue #1515, Overreach.
+	return Params.RadiusCm * AreaOfEffectMultiplier() + MeleeReachBonusCm();
 }
 
 float UCataclysmSkillTemplate::ScaledGroundRadiusCm() const

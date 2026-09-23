@@ -15802,4 +15802,142 @@ bool FCataclysmBuffsHeldCountTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Overreach: a melee strike reaches further. Issue #1515.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmOverreachTest
+{
+	/** `melee_reach_metres` flat, scoped to melee, the shape the row takes. */
+	void GiveMeleeReach(CataclysmSkillTest::FScopedFighter& Caster, float Metres)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flat.Value = Metres;
+		Flat.RequiredTags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		FCataclysmStatInputs& Line =
+			Stats.FindOrAdd(FName(UCataclysmSkillTemplate::MeleeReachMetresStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverreachStrikeTest,
+	"Cataclysm.Skills.OverreachLengthensOnlyAMeleeStrikeAndAfterEveryMultiplier",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `melee_reach_metres`, granted as Overreach's row grants it: flat 2, melee
+ * only. Issue #1515.
+ *
+ * FOUR SKILLS ON ONE CHARACTER, ruled 2026-09-23 under the owner's delegation:
+ * a melee strike reaches exactly 2 m further; a strike without `Type.Melee` does
+ * not; a melee strike that is also an area, with area of effect at 150%, is 2 m
+ * past its SCALED radius rather than scaled after the 2 m; and a melee Charge,
+ * whose radius is the width of its path, is left alone.
+ */
+bool FCataclysmOverreachStrikeTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmOverreachTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	GiveMeleeReach(Caster, 2.0f);
+	Caster.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAreaOfEffectAttribute(), 150.0f);
+
+	UCataclysmSkillTemplate* Melee = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=1.8"),
+		TEXT("Melee Strike"), TEXT("Type.Melee"));
+	UCataclysmSkillTemplate* Plain = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=1.8"),
+		TEXT("Plain Strike"));
+	UCataclysmSkillTemplate* MeleeArea = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Support, TEXT("Radius=2"),
+		TEXT("Melee Area Strike"), TEXT("Type.Melee, Type.AOE"));
+	UCataclysmSkillTemplate* Charge = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Charge; Range=14; Radius=3"), TEXT("Melee Charge"),
+		TEXT("Type.Melee"));
+	if (!Melee || !Plain || !MeleeArea || !Charge)
+	{
+		AddError(TEXT("Could not grant the four skills."));
+		return false;
+	}
+
+	TestEqual(TEXT("a melee strike of 1.8 m reaches 3.8 m"),
+			  Melee->ScaledRadiusCm(), 380.0f, 0.01f);
+	TestEqual(TEXT("a strike without the melee tag still reaches 1.8 m"),
+			  Plain->ScaledRadiusCm(), 180.0f, 0.01f);
+	TestEqual(TEXT("a melee area strike of 2 m at 150% area reaches 3 m plus 2, "
+				   "not 4 m times 1.5"),
+			  MeleeArea->ScaledRadiusCm(), 500.0f, 0.01f);
+	TestEqual(TEXT("and a melee Charge's path keeps its 3 m width"),
+			  Charge->ScaledRadiusCm(), 300.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOverreachBasicAttackTest,
+	"Cataclysm.BasicAttack.OverreachMovesWhereTheBasicAttackReachesAndSwingsAlike",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The basic attack under Overreach. Issue #1515.
+ *
+ * TWO READS OF ONE REACH. The swing asks `ScaledRadiusCm`; the walk into reach,
+ * and whether a click may swing at all, ask `UCataclysmBasicAttack::ReachCmOf`.
+ * Ruled 2026-09-23: both gain the 2 m, so the character stops walking where its
+ * swing reaches. A second character without the stat is the control.
+ */
+bool FCataclysmOverreachBasicAttackTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmOverreachTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Held(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 10 * M, 0));
+	GiveMeleeReach(Held, 2.0f);
+
+	UCataclysmSkillTemplate* HeldSwing = GrantSkill<UCataclysmStrikeSkill>(
+		Held, ECataclysmAbilitySlot::BasicAttack, TEXT("Radius=1.8"),
+		TEXT("Basic Attack"), TEXT("Type.Melee"));
+	UCataclysmSkillTemplate* PlainSwing = GrantSkill<UCataclysmStrikeSkill>(
+		Plain, ECataclysmAbilitySlot::BasicAttack, TEXT("Radius=1.8"),
+		TEXT("Basic Attack"), TEXT("Type.Melee"));
+	if (!HeldSwing || !PlainSwing)
+	{
+		AddError(TEXT("Could not grant the basic attacks."));
+		return false;
+	}
+
+	TestEqual(TEXT("with the stat, the walk stops at 3.8 m"),
+			  UCataclysmBasicAttack::ReachCmOf(Held.AbilitySystem), 380.0f, 0.01f);
+	TestEqual(TEXT("and the swing reaches the same 3.8 m"),
+			  HeldSwing->ScaledRadiusCm(),
+			  UCataclysmBasicAttack::ReachCmOf(Held.AbilitySystem), 0.01f);
+	TestEqual(TEXT("without it, both stay at 1.8 m"),
+			  UCataclysmBasicAttack::ReachCmOf(Plain.AbilitySystem), 180.0f, 0.01f);
+	TestEqual(TEXT("and agree there too"), PlainSwing->ScaledRadiusCm(),
+			  UCataclysmBasicAttack::ReachCmOf(Plain.AbilitySystem), 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

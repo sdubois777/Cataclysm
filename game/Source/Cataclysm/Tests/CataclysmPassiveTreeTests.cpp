@@ -62,6 +62,7 @@
 #include "Interface/CataclysmPassiveTreeLayout.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 // For the item base table, which says which weapon types a character may begin
 // holding. Issue #1055.
 #include "Items/CataclysmItem.h"
@@ -14520,6 +14521,112 @@ bool FCataclysmPassiveDeeperHurtOnARealCharacterTest::RunTest(const FString&)
 	TestEqual(TEXT("with the points given back the Cripple lasts as it did"),
 			  Back.Cripple, Unspent.Cripple, 0.01f);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Overreach, from its row. Issue #1515.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveOverreachOnARealCharacterTest,
+	"Cataclysm.Passives.OverreachLengthensARealRavagersBasicAttackReach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_b_kC` Overreach, from its row, on a real Ravager.
+ *
+ * "Your melee attacks reach 2 metres further than the skill states."
+ *
+ * THE REAL BASIC ATTACK OF A REAL SWORD, equipped on the character's own weapon
+ * slots, whose reach comes from the item base table. Read from the row and
+ * spent through the player state, so this fails while the row is missing. The
+ * reach gained is a difference from the same character with no point spent, so
+ * the only figure it states is the row's own.
+ */
+bool FCataclysmPassiveOverreachOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	UCataclysmWeaponSlotsComponent* Slots = Player.Character
+		? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>()
+		: nullptr;
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete())
+		|| !TestNotNull(TEXT("and weapon slots"), Slots))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_b_kC"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Overreach carries one row"), Effects.Num(), 1))
+	{
+		AddError(TEXT("The node's row is missing from the data, so it grants "
+					  "nothing in play. Author it in the Passive Effects sheet "
+					  "of docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+	const FCataclysmPassiveEffectRow* Row = Effects[0];
+	TestEqual(TEXT("on melee reach, in metres"), Row->Stat,
+			  FString(UCataclysmSkillTemplate::MeleeReachMetresStat));
+	TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+	TestEqual(TEXT("for melee attacks only"), Row->RequiredTags,
+			  FString(TEXT("Type.Melee")));
+	if (!TestTrue(*FString::Printf(TEXT("of a figure above nothing: %.1f"),
+								   Row->ValuePerPoint),
+				  Row->ValuePerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	const auto Spend = [&Player, Node](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(Node, Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	};
+
+	Slots->EquipWeaponType(TEXT("Sword"));
+
+	Spend(0);
+	const float Unspent = UCataclysmBasicAttack::ReachCmOf(Player.AbilitySystem);
+	if (!TestTrue(*FString::Printf(TEXT("a Sword's basic attack reaches: %.0f cm"),
+								   Unspent),
+				  Unspent > 0.0f))
+	{
+		return false;
+	}
+
+	Spend(1);
+	TestEqual(*FString::Printf(TEXT("with Overreach it reaches %.1f m further"),
+							   Row->ValuePerPoint),
+			  UCataclysmBasicAttack::ReachCmOf(Player.AbilitySystem) - Unspent,
+			  Row->ValuePerPoint * 100.0f, 0.01f);
+
+	Spend(0);
+	TestEqual(TEXT("and with the point given back, no further"),
+			  UCataclysmBasicAttack::ReachCmOf(Player.AbilitySystem), Unspent,
+			  0.01f);
 	return true;
 }
 

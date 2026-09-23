@@ -1339,6 +1339,71 @@ hand-made row that breaks it. The comment in `ElementTag` now states these rules
 
 ---
 
+## 2026-09-23 — Overreach adds 2 metres to a melee strike's reach, after every multiplier, and to where the basic attack starts swinging
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp` (the stat and
+the swing's reach), `CataclysmBasicAttack.cpp` (the walk into reach),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (a stat with no attribute), three
+test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ravager_keystone_b_kC` Overreach: "Your melee attacks reach 2 metres further than the skill
+states." One row, to be written: `melee_reach_metres`, flat 2, required tag `Type.Melee`.
+
+### A NEW STAT, BY THE EARLIER RULING'S OWN CONDITION
+
+The section "Attack range can be increased, and it is not a new stat", in the entry of 2026-09-02,
+chose no stat for reach because
+"no affix, no node and no enemy modifier mentions reach". **A node now does.** So `melee_reach_metres`
+is a stat with no attribute, read with the skill's own tags, so the row's `Type.Melee` scope decides
+which skills it reaches. The self buff's percentage range increase is left as it was.
+
+### TWO READS OF ONE REACH, KEPT IN AGREEMENT
+
+A strike's radius is how far it reaches, decided in `UCataclysmSkillTemplate::ScaledRadiusCm`. **The
+basic attack has a second read**, `UCataclysmBasicAttack::ReachCmOf`, which decides where the
+character stops walking toward a clicked enemy and whether a click may swing at all. Both now add
+`UCataclysmSkillTemplate::MeleeReachBonusCm`, so the walk stops where the swing reaches; with only the
+first, the character would walk to the old reach.
+
+### SIX RULINGS UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto.**
+
+| Question | Answer |
+|---|---|
+| Charges and the Flicker? | **Left out: Strikes, and the basic attack, only.** A Charge's radius is the width of its path and its range how far it travels; a Flicker has no reach |
+| Before or after area of effect, for a melee strike that is also an area (Backswing, Molten Cleave)? | **After.** The final reach is exactly 2 m longer, not 2 m that grows with area |
+| Before or after the self buff's range increase? | **After**, for the same reason |
+| The basic attack? | **Included**; it is a melee attack and carries `Type.Melee`, and `ReachCmOf` agrees with the swing |
+| Strike-shaped rows without `Type.Melee`? | **Left out.** The tag decides melee everywhere else |
+| A new stat, against the earlier ruling? | **Yes**, by that ruling's own condition, quoted above |
+
+### THE STRIKES THIS DOES NOT REACH, FOR THE WEAPON SKILLS SHEET
+
+**Ten Strike-shaped rows of `game/Data/WeaponSkills.csv` carry no `Type.Melee`**, measured
+2026-09-23, so Overreach does not lengthen them: Extinction and Touch Off (Sword), The Whole Weight
+and Buried Fire (Greatsword), Pyroclasm (Greataxe), Anathema (Wand), The Gathering (Whip), Break the
+World and Upthrust (Warhammer), and Thicket (Spear). All are Demonic. **Whether each should carry the
+tag is a question for the Weapon Skills sheet**, recorded here with its evidence rather than decided
+by this node.
+
+### TESTS
+
+- `Cataclysm.Skills.OverreachLengthensOnlyAMeleeStrikeAndAfterEveryMultiplier`: a melee strike of
+  1.8 m reaches 3.8; a strike without the tag stays 1.8; a melee area strike of 2 m at 150% area
+  reaches 5, not 6; a melee Charge keeps its 3 m path.
+- `Cataclysm.BasicAttack.OverreachMovesWhereTheBasicAttackReachesAndSwingsAlike`: `ReachCmOf` and the
+  swing agree, with the stat and without.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- `Cataclysm.Passives.OverreachLengthensARealRavagersBasicAttackReach` reads the row on a real Ravager
+  holding a Sword. **Every other test grants the stat by hand**, so this is the one that fails while
+  the row is missing; the row needs the design workbook.
+
+---
+
 ## 2026-09-23 — A killed creature has a one-in-ten chance to get back up at once, whoever killed it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
