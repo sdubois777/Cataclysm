@@ -2032,4 +2032,158 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageGrowsWithMaximumManaTest,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// The combat state. Issue #1815.
+//
+// WHY THESE GO THROUGH A REAL HIT. Both halves of "in combat" are stamped in
+// `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, the hit taken on the
+// character struck and the hit dealt on `AttackerOf`. A test that set the
+// clock by hand would go on passing with either stamp deleted.
+// --------------------------------------------------------------------------
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmOneBlowPutsBothSidesInCombatTest,
+	"Cataclysm.ConditionalDamage.OneBlowPutsBothSidesInCombatEvadedOrNot")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// AN EVADED BLOW AND ONE THAT LANDS, because the ruling is that both sides
+	// enter combat on a blow whatever became of it.
+	const float Evasions[] = {100.0f, 0.0f};
+	for (const float Evasion : Evasions)
+	{
+		const FString What = Evasion > 0.0f ? TEXT("an evaded blow") : TEXT("a blow that lands");
+
+		FCaster Defender(World);
+		MakeReachable(Defender);
+		Defender.Combat->SetEvasion(Evasion);
+
+		ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+		UCataclysmAbilitySystemComponent* AttackerSystem = Attacker
+			? Cast<UCataclysmAbilitySystemComponent>(Attacker->GetAbilitySystemComponent())
+			: nullptr;
+		if (!TestNotNull(FString::Printf(TEXT("%s: an attacker with an ability "
+											   "system"), *What), AttackerSystem))
+		{
+			continue;
+		}
+
+		// NEITHER IS IN COMBAT BEFORE THE BLOW, AND BOTH CAN BE READ. Without
+		// this every assertion below would pass for clocks that start in combat.
+		if (!TestEqual(FString::Printf(TEXT("%s: the defender starts out of combat"), *What),
+					   Defender.AbilitySystem->SecondsInCombat(), -1.0f, 0.001f)
+			|| !TestTrue(FString::Printf(TEXT("%s: and its time out of combat can be read"), *What),
+						 Defender.AbilitySystem->SecondsOutOfCombat() >= 0.0f)
+			|| !TestEqual(FString::Printf(TEXT("%s: the attacker starts out of combat"), *What),
+						  AttackerSystem->SecondsInCombat(), -1.0f, 0.001f))
+		{
+			continue;
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor,
+										 /*DamagePercent=*/100.0f);
+
+		TestEqual(FString::Printf(TEXT("%s puts the defender in combat"), *What),
+				  Defender.AbilitySystem->SecondsInCombat(), 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s puts the attacker in combat"), *What),
+				  AttackerSystem->SecondsInCombat(), 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: the defender is no longer out of combat"), *What),
+				  Defender.AbilitySystem->SecondsOutOfCombat(), -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: nor is the attacker"), *What),
+				  AttackerSystem->SecondsOutOfCombat(), -1.0f, 0.001f);
+
+		// AND THE PIPELINE IS TOLD, which is the join between the clock and the
+		// rows that read it.
+		const FCataclysmStatConditions State =
+			Defender.AbilitySystem->CurrentConditions();
+		TestEqual(FString::Printf(TEXT("%s: the pipeline is told the defender is "
+									   "in combat"), *What),
+				  State.SecondsInCombat, 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s: and not out of it"), *What),
+				  State.SecondsOutOfCombat, -1.0f, 0.001f);
+	}
+
+	return true;
+}
+
+CATACLYSM_CONDITIONAL_TEST(FCataclysmCombatRestartsAfterALapseTest,
+	"Cataclysm.ConditionalDamage.ACombatRestartsAfterItLapsesAndOutOfCombatCountsFromTheLapse")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	CataclysmTestWorld::SilenceCriticalStrikes();
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to fight in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Defender(World);
+	MakeReachable(Defender);
+	ACataclysmEnemyCharacter* Attacker = SpawnAttacker(World, TEXT("War"));
+	if (!TestNotNull(TEXT("an attacker"), Attacker))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* Clock = Defender.AbilitySystem;
+	const float Lapse = UCataclysmAbilitySystemComponent::CombatLapseSeconds;
+	const auto Strike = [&]()
+	{
+		UCataclysmSkillEffects::ApplyHit(Attacker, Defender.Actor, 100.0f);
+	};
+
+	Strike();
+	World->TimeSeconds += 2.0f;
+	Strike();
+	TestEqual(TEXT("a second blow inside the lapse continues the same combat"),
+			  Clock->SecondsInCombat(), 2.0f, 0.001f);
+
+	// EXACTLY THE LAPSE AFTER THE LAST BLOW IS STILL IN COMBAT, the boundary
+	// the constant's own sentence draws: "within the last 3 seconds".
+	World->TimeSeconds += Lapse;
+	TestEqual(TEXT("exactly the lapse after the last blow is still in combat"),
+			  Clock->SecondsInCombat(), 2.0f + Lapse, 0.001f);
+
+	World->TimeSeconds += 0.5f;
+	TestEqual(TEXT("half a second past the lapse is out of combat"),
+			  Clock->SecondsInCombat(), -1.0f, 0.001f);
+	TestEqual(TEXT("counted from the lapse, not from the last blow"),
+			  Clock->SecondsOutOfCombat(), 0.5f, 0.001f);
+
+	World->TimeSeconds += 1.5f;
+	TestEqual(TEXT("and it goes on counting"),
+			  Clock->SecondsOutOfCombat(), 2.0f, 0.001f);
+
+	// THE CASE A CLOCK THAT NEVER RESTARTS GETS WRONG: it would answer the
+	// whole 9 seconds since the first blow.
+	Strike();
+	TestEqual(TEXT("a blow after the lapse starts a new combat from nothing"),
+			  Clock->SecondsInCombat(), 0.0f, 0.001f);
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("and the new combat is counted from that blow"),
+			  Clock->SecondsInCombat(), 1.0f, 0.001f);
+
+	// A REVIVED CHARACTER STARTS OUT OF COMBAT, counted from its revival.
+	Clock->ClearWhatDeathEnds();
+	TestEqual(TEXT("a revived character is not in combat"),
+			  Clock->SecondsInCombat(), -1.0f, 0.001f);
+	TestEqual(TEXT("and has been out of it since the revival"),
+			  Clock->SecondsOutOfCombat(), 0.0f, 0.001f);
+	World->TimeSeconds += 1.0f;
+	TestEqual(TEXT("which it counts from"),
+			  Clock->SecondsOutOfCombat(), 1.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

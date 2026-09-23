@@ -747,6 +747,97 @@ death handler gates both payments on the mark while Vengeful Wraiths sets it.
 
 ---
 
+## 2026-09-23 — "In combat" means a hit dealt or taken within the last 3 seconds, and a scaled value can be capped
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two conditions, two
+scales, the two readings they take, and a cap on scaled values), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`
+and `.cpp` (the combat clock, its 3-second constant, and its reset on revival),
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (whoever dealt a blow is stamped
+beside the character struck), `tools/generate_datatables.py` (the four names a sheet may write), the two
+built-ahead lists in `tools/tests/`, and tests in `CataclysmStatPipelineTests.cpp`,
+`CataclysmConditionalDamageTests.cpp` and `CataclysmCombatEventsTests.cpp`. Issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
+
+**Partial.** The engine half is written. The five rows and the workbook's cap column need the design
+workbook, and are added to this change before its machine window. Nothing has been compiled.
+
+### What "in combat" means
+
+**A character is in combat when it dealt a hit, or took one, within the last 3 seconds.** One meaning for
+the whole game: `in_combat` and `out_of_combat` take no value, and the 3 is
+`UCataclysmAbilitySystemComponent::CombatLapseSeconds`. Exactly 3 seconds after the last hit is still
+in combat.
+
+**Research.** What each game says, and where it was read:
+
+| Game | What was found | Source |
+| :-- | :-- | :-- |
+| Diablo IV | "After five seconds out of combat, your Fortify value will rapidly deplete". The page does not say which acts count as combat | `diablo4.wiki.fextralife.com/Fortify` |
+| Path of Exile | "Recently refers to the past 4 seconds". This is its general window for recent events; it has no in-combat state by that name | `poedb.tw/us/Recently` |
+| Torchlight Infinite | No general combat state. Each talent states its own window, such as "in the last 8s" | `tlidb.com/es/Talent` |
+| Last Epoch | **Could not be read.** `lastepoch.fandom.com` refuses automated reading, and Maxroll and the official forum gave no definition. This is not a finding that Last Epoch has none | — |
+
+**What the research settles:** the genre uses a short window, 3 to 5 seconds. **What it does not settle:**
+the figure. **Judgement under the owner's delegation, ruled by the coordinating session on 2026-09-23:
+3 seconds**, because this game's design document already says the Berserker's Fervour "decays at 10 per
+second after 3 seconds out of combat", and one game should have one meaning of out of combat. The
+constant's comment says the Berserker's decay should read it when the Berserker is built.
+
+**Judgements made under the owner's delegation, ruled by the coordinating session on 2026-09-23:**
+
+| The judgement | Why |
+| :-- | :-- |
+| A hit is what `NoteHitTaken` counts, evaded and blocked blows included, and the one who dealt it is stamped at the same place, on `AttackerOf` | both sides of one blow enter combat together. Stamped where the first-hit record is written instead, an attacker whose every blow was evaded would stay out of combat while its target was in it |
+| `out_of_combat` is its own reading rather than "not `in_combat`" | a lookup with no character in hand refuses both, so a character sheet does not show an out-of-combat bonus for nobody |
+| Time out of combat counts from the moment combat lapsed (the last hit plus 3 seconds), or from the character's spawn or revival when it has had no hit since | a character that has never fought is out of combat, and has been for as long as it has existed |
+| A revived character starts out of combat | the same rule every other clock follows on revival |
+| `ScaleMaxSteps` counts whole steps, and 0 means no cap | "up to N stacks" is how the sentences put it; "for every 10 seconds, up to 60 seconds" is a step of 10 and a cap of 6. It sits on the Enchantment Effects sheet only, and the generator refuses a nonzero cap from any sheet without the column |
+
+**Three consequences, recorded so nobody reads them as faults:**
+
+- **Damage over time is not a hit.** A character burning with nothing striking it leaves combat 3 seconds
+  after the last hit.
+- **A minion's hit is the minion's own**, by the owner's ruling of 2026-09-17, so a summoner standing
+  back while its minions fight is out of combat, unless it holds Conduit.
+- **The opening blow meets the full out-of-combat reduction** of "Your damage is reduced by 3%-5% for
+  every second you spend out of combat, up to 10 stacks". That is what the sentence says.
+
+### The sentences
+
+Nine enchantment sentences mention combat. **Five are written by this change:**
+
+| Sentence | Row |
+| :-- | :-- |
+| "HP regeneration is doubled while out of combat" | `health_regen`, more +100, `out_of_combat` |
+| "HP regeneration is disabled during combat" | `health_regen`, removed, `in_combat` |
+| "You take 10%-20% increased damage for each second you have been in combat, up to 10 stacks" | `damage_taken`, increased 10-20, `seconds_in_combat`, step 1, cap 10 |
+| "You take 3%-5% increased damage for every 10 seconds spent in combat, up to 60 seconds" | `damage_taken`, increased 3-5, `seconds_in_combat`, step 10, cap 6 |
+| "Your damage is reduced by 3%-5% for every second you spend out of combat, up to 10 stacks" | `attack_damage` and `spell_damage`, more -3 to -5, `seconds_out_of_combat`, step 1, cap 10; "more", as the ruled row "All damage dealt is reduced by 15%-25% for each second you stand still" is |
+
+**The first does not contradict the entry "Health regeneration runs at its full rate during combat"**
+(2026-09-12). That entry rules that the base game has no out-of-combat bonus and treats the two
+enchantment rows as modifiers on top of that base, so an enchantment that grants the bonus is what it
+describes.
+
+**Four are left out:**
+
+- "Your HP regeneration continues at 50% effectiveness during combat": the 2026-09-12 entry rules it
+  grants nothing and must be replaced, which is not row work.
+- "After 10 seconds in combat you begin losing 2%-4% of your maximum HP per second": a drain, held out
+  by the coordinating session's ruling.
+- "Your class resource does not decay out of combat": a decay rule, not a stat row. The only decay built
+  today, the Ravager's Fervour, waits on no enemy within 4 metres rather than on combat.
+- "Your first hit against each enemy in a combat ignores all resistances": it needs the first-hit record
+  to reset when combat lapses, and the `penetration` lookup still passes no target.
+
+The two Bulwark passive sentences that mention combat stay out under the owner's ruling that no War work
+is done while the Demonic trees are unfinished.
+
+**A later user of the cap:** "Gadgets deal 5%-10% increased damage for each second they have been active,
+up to 30 seconds". It needs a scale for how long a gadget has been active, which is not written here.
+
+---
+
 ## 2026-09-23 — The first hit against each enemy is remembered, and three attacker-side lookups hand over the whole blow
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two conditions,

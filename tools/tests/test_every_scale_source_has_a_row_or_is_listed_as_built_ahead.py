@@ -38,6 +38,9 @@ the moment somebody lands a scale source ahead of its row they add a name, and
 that test is what makes them take it out again when the row arrives. The test
 that is doing work today is
 `test_every_scale_source_is_named_by_a_row_or_listed_as_built_ahead`.
+
+IT DID NOT STAY EMPTY. On 2026-09-23 the two combat clocks of issue #1815 were
+listed, so that test reads two names until their rows land.
 """
 
 from __future__ import annotations
@@ -61,7 +64,14 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: 16 scale sources, 16 named by a row, none unnamed. The two that had no row
 #: earlier that day, `metres_to_target` and `seconds_stationary`, gained theirs
 #: with the thirteen enchantment rows.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#:
+#: TWO JOINED ON 2026-09-23, the combat clocks for issue #1815. Their rows need
+#: the design workbook, which another session holds, and land in the same change
+#: as the workbook's cap column; they leave this list then.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {
+    "seconds_in_combat",
+    "seconds_out_of_combat",
+}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

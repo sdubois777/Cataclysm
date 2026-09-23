@@ -3547,6 +3547,14 @@ CONDITIONS = {
     "target_not_yet_struck_by_you": None,
     "target_not_yet_crit_by_you": None,
 
+    # "HP regeneration is disabled during combat" is `in_combat`, and "HP
+    # regeneration is doubled while out of combat" is `out_of_combat`. Issue
+    # #1815. Neither takes a value: one meaning of "in combat" for the whole
+    # game, a hit dealt or taken within the engine's
+    # `CombatLapseSeconds` (3), ruled under the owner's delegation on 2026-09-23.
+    "in_combat": None,
+    "out_of_combat": None,
+
     # "While moving" is `while_moving` and "while stationary" is
     # `while_stationary`, and neither takes a value. Issue #41, slice 2.
     #
@@ -4093,6 +4101,17 @@ SCALES = {
     #
     # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
     "seconds_stationary": (0.0, 60.0, "a number of seconds"),
+
+    # "You take 10%-20% increased damage for each second you have been in
+    # combat, up to 10 stacks" is `seconds_in_combat` with a step of 1, and
+    # "Your damage is reduced by 3%-5% for every second you spend out of combat,
+    # up to 10 stacks" is `seconds_out_of_combat` with a step of 1. Issue #1815.
+    # Each grants nothing on the other side of the line, so neither needs a
+    # condition beside it.
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "seconds_in_combat": (0.0, 60.0, "a number of seconds"),
+    "seconds_out_of_combat": (0.0, 60.0, "a number of seconds"),
 }
 
 

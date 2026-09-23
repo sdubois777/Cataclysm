@@ -1546,6 +1546,42 @@ public:
 	bool WasCriticallyStruckBy(const UAbilitySystemComponent* Striker) const;
 
 	/**
+	 * How long after its last hit, dealt or taken, a character stays in combat.
+	 * Issue #1815.
+	 *
+	 * ONE MEANING OF "IN COMBAT" FOR THE WHOLE GAME. The design document
+	 * already says "after 3 seconds out of combat" for the Berserker's Fervour,
+	 * and the genre's windows run from 3 to 5 seconds (Path of Exile's
+	 * "recently" is 4, Diablo IV's Fortify decays "after five seconds out of
+	 * combat"). Ruled under the owner's delegation on 2026-09-23.
+	 *
+	 * THE BERSERKER'S FERVOUR DECAY SHOULD READ THIS when the Berserker is
+	 * built, rather than a 3 of its own.
+	 */
+	static constexpr float CombatLapseSeconds = 3.0f;
+
+	/**
+	 * Record that a blow of this character's has just reached another, whatever
+	 * became of it. Issue #1815. Stamped beside the struck character's
+	 * `NoteHitTaken`, on `AttackerOf`, so both sides of one blow enter combat
+	 * together, evaded and blocked blows included.
+	 */
+	void NoteHitDealt();
+
+	/**
+	 * How long the current combat has lasted, in seconds, or -1 when the
+	 * character is out of combat or there is no world. Issue #1815.
+	 */
+	float SecondsInCombat() const;
+
+	/**
+	 * How long the character has been out of combat, in seconds, or -1 when it
+	 * is in combat or cannot be read. Issue #1815. With no combat event since
+	 * its spawn or revival, it counts from that.
+	 */
+	float SecondsOutOfCombat() const;
+
+	/**
 	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -1895,6 +1931,21 @@ protected:
 	 * Negative means never, as above.
 	 */
 	float LastStruckABossAtSeconds = -1.0f;
+
+	/**
+	 * The combat clock, in world seconds. Issue #1815. Negative means none since
+	 * spawn or revival. `CombatStartedAtSeconds` is the first event of the
+	 * current combat, restarted when an event comes more than
+	 * `CombatLapseSeconds` after the one before.
+	 */
+	float LastCombatEventAtSeconds = -1.0f;
+	float CombatStartedAtSeconds = -1.0f;
+
+	/** When the character was last revived, in world seconds, or -1. */
+	float RevivedAtSeconds = -1.0f;
+
+	/** Both combat notes pass through here. */
+	void NoteCombatEvent();
 
 	/** Who has got a blow, and a critical strike, through to this character. */
 	TSet<TWeakObjectPtr<const UAbilitySystemComponent>> StruckBy;

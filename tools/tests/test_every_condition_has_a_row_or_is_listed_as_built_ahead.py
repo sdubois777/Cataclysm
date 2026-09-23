@@ -69,6 +69,10 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
     "not_attacked_for_seconds",
+    # IN AND OUT OF COMBAT, issue #1815, landed ahead of their rows because the
+    # rows need the design workbook. They leave this list when the rows land.
+    "in_combat",
+    "out_of_combat",
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",

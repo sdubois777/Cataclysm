@@ -2610,4 +2610,86 @@ bool FCataclysmCombatEventsCrowdControlWindow::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionBlowPutsTheMinionInCombat,
+	"Cataclysm.CombatEvents.AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A minion that strikes a creature enters combat itself, and its summoner does
+ * not. Issue #1815, on the owner's 2026-09-17 ruling that a minion's blow is the
+ * minion's own unless its summoner holds Conduit.
+ *
+ * THE SAME SETUP AS THE BOSS-WINDOW CASE ABOVE, which pins that rule for the
+ * Boss clock. The creature is not a Boss here: combat does not ask.
+ */
+bool FCataclysmMinionBlowPutsTheMinionInCombat::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FArmedActor Summoner = MakeArmed(World);
+	ACataclysmEnemyCharacter* Creature =
+		SpawnCreatureAt(World, FVector(4.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("a summoner"), Summoner.Actor)
+		|| !TestNotNull(TEXT("with an ability system"), Summoner.AbilitySystem)
+		|| !TestNotNull(TEXT("a creature"), Creature))
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* CreatureSystem = SystemOf(Creature);
+	if (!TestNotNull(TEXT("the creature has an ability system"), CreatureSystem))
+	{
+		return false;
+	}
+	CreatureSystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	CreatureSystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+
+	// A REAL IMP, NAMED, for the reason the Boss case gives: a typeless minion
+	// deals nothing at all since issue #1515.
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Summoner.Actor, FVector(3.0f * M, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+		/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	if (!TestNotNull(TEXT("a minion"), Imp))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* ImpSystem =
+		Cast<UCataclysmAbilitySystemComponent>(Imp->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("the minion has an ability system of its own"), ImpSystem))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("the minion starts out of combat"),
+				   ImpSystem->SecondsInCombat(), -1.0f, 0.001f))
+	{
+		return false;
+	}
+
+	const float Before = HealthOf(Creature);
+	Imp->AttackTarget(Creature);
+	if (!TestTrue(TEXT("the minion's blow got through"), HealthOf(Creature) < Before))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the minion is in combat"),
+			  ImpSystem->SecondsInCombat(), 0.0f, 0.001f);
+	TestEqual(TEXT("and so is the creature it struck"),
+			  CreatureSystem->SecondsInCombat(), 0.0f, 0.001f);
+	TestEqual(TEXT("and the summoner is not"),
+			  Summoner.AbilitySystem->SecondsInCombat(), -1.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
