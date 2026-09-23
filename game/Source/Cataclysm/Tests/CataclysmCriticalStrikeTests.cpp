@@ -1200,6 +1200,205 @@ CATACLYSM_TEST(FCataclysmCritAsksAboutTheTargetTest,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// Issue #1992: the attacker-side lookups hand over the whole blow
+// --------------------------------------------------------------------------
+
+namespace CataclysmCritTest
+{
+	/** A stat line per name, each carrying the modifiers given, on `System`. */
+	static void GiveLines(UCataclysmAbilitySystemComponent* System,
+						  TMap<FName, FCataclysmStatInputs>&& Lines)
+	{
+		System->SetStatInputs(MoveTemp(Lines));
+	}
+
+	static FCataclysmStatModifier Conditioned(ECataclysmStatBucket Bucket, float Value,
+											  ECataclysmStatCondition Condition,
+											  float ConditionValue = 0.0f)
+	{
+		FCataclysmStatModifier Made;
+		Made.Bucket = Bucket;
+		Made.Source = ECataclysmModifierSource::Enchantment;
+		Made.Value = Value;
+		Made.Condition = Condition;
+		Made.ConditionValue = ConditionValue;
+		return Made;
+	}
+
+	static FCataclysmDamageResult StrikeOnce(AActor* Attacker, AActor* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Attacker, Target, 100.0f,
+										 FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Resolved);
+		return Resolved;
+	}
+}
+
+/**
+ * A critical strike row can ask how far away the target is and whether it is
+ * staggered. Issue #1992.
+ *
+ * WHAT WAS WRONG. Both critical strike lookups handed over the character being
+ * struck (issue #1982) and left the distance at -1 and the stagger at false, so
+ * `target_within_metres` and `target_is_staggered` on either stat granted
+ * nothing, with every check passing.
+ *
+ * THE ROLL IS PINNED AT NOUGHT, so any chance above nought strikes critically
+ * and a chance of nought cannot. The attacker is a bare actor, which stands at
+ * the origin, so the two creatures are two and six metres from it.
+ */
+CATACLYSM_TEST(FCataclysmCritAsksDistanceAndStaggerTest,
+	"Cataclysm.Crit.ACriticalStrikeRowCanAskHowFarAwayTheTargetIsAndWhetherItIsStaggered")
+{
+	using namespace CataclysmCritTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FScopedCritRoll Pinned(0.0f);
+
+	FScopedCombatant Attacker(World);
+	Attacker.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmEnemyCharacter* Near =
+		SpawnCritCreature(World, FVector(2.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* Far =
+		SpawnCritCreature(World, FVector(0.0f, 6.0f * M, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("a creature two metres away"), Near)
+		|| !TestNotNull(TEXT("and one six metres away"), Far))
+	{
+		return false;
+	}
+
+	// THE CHANCE: nothing, plus fifty within three metres.
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatInputs& Chance = Lines.FindOrAdd(FName(TEXT("crit_chance")));
+		Chance.Base = 0.0f;
+		Chance.Modifiers = {Conditioned(ECataclysmStatBucket::Flat, 50.0f,
+										ECataclysmStatCondition::TargetWithinMetres,
+										3.0f)};
+		GiveLines(Attacker.AbilitySystem, MoveTemp(Lines));
+	}
+
+	const FCataclysmDamageResult AtNear = StrikeOnce(Attacker.Actor, Near);
+	const FCataclysmDamageResult AtFar = StrikeOnce(Attacker.Actor, Far);
+	TestTrue(TEXT("both blows landed"),
+			 AtNear.DealtToHealth > 0.0f && AtFar.DealtToHealth > 0.0f);
+	TestTrue(TEXT("the blow two metres away critically struck"), AtNear.bWasCritical);
+	TestFalse(TEXT("and the blow six metres away did not"), AtFar.bWasCritical);
+
+	// THE MULTIPLIER: every blow strikes critically, and the multiplier is
+	// doubled against a staggered target. Only the near creature is staggered.
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatInputs& Chance = Lines.FindOrAdd(FName(TEXT("crit_chance")));
+		Chance.Base = 0.0f;
+		Chance.Modifiers = {Conditioned(ECataclysmStatBucket::Flat, 50.0f,
+										ECataclysmStatCondition::Always)};
+		FCataclysmStatInputs& Multiplier =
+			Lines.FindOrAdd(FName(TEXT("crit_multiplier")));
+		Multiplier.Base = 150.0f;
+		Multiplier.Modifiers = {Conditioned(ECataclysmStatBucket::Increased, 100.0f,
+											ECataclysmStatCondition::TargetIsStaggered)};
+		GiveLines(Attacker.AbilitySystem, MoveTemp(Lines));
+	}
+
+	if (!TestTrue(TEXT("the near creature is staggered"),
+				  UCataclysmSkillEffects::ApplyStagger(Attacker.Actor, Near)
+					  && UCataclysmSkillEffects::IsStaggered(Near))
+		|| !TestFalse(TEXT("and the far one is not"),
+					  UCataclysmSkillEffects::IsStaggered(Far)))
+	{
+		return false;
+	}
+
+	const FCataclysmDamageResult Staggered = StrikeOnce(Attacker.Actor, Near);
+	const FCataclysmDamageResult Steady = StrikeOnce(Attacker.Actor, Far);
+	TestTrue(TEXT("both blows critically struck this time"),
+			 Staggered.bWasCritical && Steady.bWasCritical);
+	TestTrue(*FString::Printf(
+				 TEXT("and the doubled multiplier reached only the staggered one: "
+					  "%.2f against %.2f"),
+				 Staggered.DealtToHealth, Steady.DealtToHealth),
+			 Staggered.DealtToHealth > Steady.DealtToHealth + 0.01f);
+
+	return true;
+}
+
+/**
+ * An armour penetration row can ask about the character being struck. Issue
+ * #1992.
+ *
+ * WHAT WAS WRONG. The armour penetration lookup handed over no target at all, so
+ * every target-side condition on it granted nothing.
+ *
+ * TWO CREATURES WITH THE SAME HEAVY ARMOUR, two and six metres away. The row
+ * ignores all of it within three metres, so the near creature takes more. The
+ * roll is pinned so no blow strikes critically.
+ */
+CATACLYSM_TEST(FCataclysmArmourPenetrationAsksAboutTheTargetTest,
+	"Cataclysm.ConditionalDamage.AnArmourPenetrationRowCanAskAboutTheCharacterBeingStruck")
+{
+	using namespace CataclysmCritTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FScopedCritRoll NeverCritical(100.0f);
+
+	FScopedCombatant Attacker(World);
+	Attacker.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmEnemyCharacter* Near =
+		SpawnCritCreature(World, FVector(2.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* Far =
+		SpawnCritCreature(World, FVector(0.0f, 6.0f * M, 0.0f), 1'000'000.0f);
+	if (!TestNotNull(TEXT("a creature two metres away"), Near)
+		|| !TestNotNull(TEXT("and one six metres away"), Far))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Creature : {Near, Far})
+	{
+		Creature->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetArmorAttribute(), 5000.0f);
+	}
+
+	TMap<FName, FCataclysmStatInputs> Lines;
+	FCataclysmStatInputs& Penetration =
+		Lines.FindOrAdd(FName(TEXT("armor_penetration")));
+	Penetration.Base = 0.0f;
+	Penetration.Modifiers = {Conditioned(ECataclysmStatBucket::Flat, 100.0f,
+										 ECataclysmStatCondition::TargetWithinMetres,
+										 3.0f)};
+	GiveLines(Attacker.AbilitySystem, MoveTemp(Lines));
+
+	const FCataclysmDamageResult AtNear = StrikeOnce(Attacker.Actor, Near);
+	const FCataclysmDamageResult AtFar = StrikeOnce(Attacker.Actor, Far);
+	TestTrue(TEXT("both blows landed"),
+			 AtNear.DealtToHealth > 0.0f && AtFar.DealtToHealth > 0.0f);
+	TestTrue(*FString::Printf(
+				 TEXT("the near creature's armour was ignored, so it took more: "
+					  "%.2f against %.2f"),
+				 AtNear.DealtToHealth, AtFar.DealtToHealth),
+			 AtNear.DealtToHealth > AtFar.DealtToHealth + 0.01f);
+
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif  // WITH_AUTOMATION_TESTS
