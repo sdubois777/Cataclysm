@@ -10,6 +10,8 @@
 // For hearing a death and for which side a creature is on, in the one test that
 // wears an authored row on a real player character and kills with it.
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
+#include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
@@ -3993,6 +3995,163 @@ bool FCataclysmSecondsOutOfCombatRowTest::RunTest(const FString&)
 	World->TimeSeconds += 30.0f;
 	TestEqual(TEXT("thirty more stop at ten stacks, 50% less"),
 		DamageNow(), 500.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLowManaRowTest,
+	"Cataclysm.Enchantments.TheLowManaRowRaisesDamageTakenOnlyBelow35PercentMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Take 10%-40% more damage when on low mana", worn, raises the damage the
+ * wearer takes only while its mana is below 35% of its maximum. Issue #1815;
+ * low mana is below 35%, ruled under the owner's delegation on 2026-09-23.
+ *
+ * THE BOUNDARY IS STRICT: exactly 35% is not low, the reading `mana_below`
+ * takes. A worn item rolls the top of its range, so the row is 40% more.
+ */
+bool FCataclysmLowManaRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Take_10_40_more_damage_when_on_low_mana")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	using Vital = UCataclysmVitalAttributeSet;
+	ASC->SetNumericAttributeBase(Vital::GetMaxManaAttribute(), 1000.0f);
+	const FName Taken(TEXT("damage_taken"));
+	const auto TakenAt = [&](float Mana)
+	{
+		ASC->SetNumericAttributeBase(Vital::GetManaAttribute(), Mana);
+		return ASC->StatAppliedTo(Taken, FGameplayTagContainer(), 100.0f);
+	};
+
+	TestEqual(TEXT("at full mana nothing is added"), TakenAt(1000.0f), 100.0f, 0.01f);
+	TestEqual(TEXT("at exactly 35% mana nothing is added"), TakenAt(350.0f), 100.0f, 0.01f);
+	TestEqual(TEXT("at 30% mana the wearer takes 40% more"), TakenAt(300.0f), 140.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeAgainstADotRowTest,
+	"Cataclysm.Enchantments.TheStrikeAgainstADotRowReachesOnlyAStrikeOnAnEnemyWithADot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Strike skills deal 20%-40% increased damage against enemies affected by a
+ * DoT", worn, adds 40% to a Strike skill's damage against a bleeding enemy and
+ * to nothing else. Issue #1815.
+ *
+ * TWO REFUSALS BESIDE THE ONE CASE THAT GRANTS: the same Strike against a clean
+ * enemy, and a skill that is not a Strike against the bleeding one.
+ */
+bool FCataclysmStrikeAgainstADotRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	FWearer Bleeding(World);
+	FWearer Clean(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	Bleeding.AbilitySystem->AddLooseGameplayTag(UCataclysmDebuffs::BleedTag());
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"),
+				 TEXT("Positive_Strike_skills_deal_20_40_increased_damage_agai"),
+				 DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	FGameplayTagContainer Strike;
+	Strike.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Type.Strike")), /*ErrorIfNotFound=*/false));
+	const auto Increases = [&](const FGameplayTagContainer& Tags, const AActor* Target)
+	{
+		return ASC->AttackDamageIncreasesForSkill(Tags, -1.0f, -1.0f, -1.0f, false, Target);
+	};
+
+	TestEqual(TEXT("a Strike on a bleeding enemy gains 40%"),
+		Increases(Strike, Bleeding.Actor) - Increases(Strike, Clean.Actor), 0.40f, 0.001f);
+	TestEqual(TEXT("a skill that is not a Strike gains nothing on the same enemy"),
+		Increases(FGameplayTagContainer(), Bleeding.Actor)
+			- Increases(FGameplayTagContainer(), Clean.Actor), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurrentManaRowTest,
+	"Cataclysm.Enchantments.TheCurrentManaRowAddsAShareOfTheManaHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your skills deal 10%-30% of your current mana as more damage", worn, adds
+ * 30% of the mana held to the wearer's damage as a flat amount. Issue #1815.
+ *
+ * THE ROW CARRIES 10 TO 30, THE SENTENCE'S OWN RANGE, and the scale reads it
+ * as a percentage of the mana held: 500 mana is 150 more damage.
+ */
+bool FCataclysmCurrentManaRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"),
+				 TEXT("Positive_Your_skills_deal_10_30_of_your_current_mana_as"),
+				 DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	using Vital = UCataclysmVitalAttributeSet;
+	ASC->SetNumericAttributeBase(Vital::GetMaxManaAttribute(), 1000.0f);
+	const FName Damage(TEXT("attack_damage"));
+	const auto DamageAt = [&](float Mana)
+	{
+		ASC->SetNumericAttributeBase(Vital::GetManaAttribute(), Mana);
+		return ASC->StatAppliedTo(Damage, FGameplayTagContainer(), 1000.0f);
+	};
+
+	TestEqual(TEXT("with no mana nothing is added"), DamageAt(0.0f), 1000.0f, 0.01f);
+	TestEqual(TEXT("with 500 mana, 30% of it is added"), DamageAt(500.0f), 1150.0f, 0.01f);
 
 	return true;
 }

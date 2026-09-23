@@ -36,6 +36,8 @@
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
 #include "GameplayTagsManager.h"
+#include "HAL/IConsoleManager.h"
+#include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -1667,6 +1669,62 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `crit_chance`, scaled by debuffs carried, asked through `StatForSkill` at
+	 * the critical strike site in `UCataclysmVitalAttributeSet` on every blow.
+	 * Issue #1815: "Each unique debuff on an enemy increases your crit chance
+	 * against them by 5%-10%" is the first scaled row on this stat.
+	 *
+	 * THE ROLL IS PINNED AT 30, set at the console's own priority and restored
+	 * after, so a chance of 20 misses and one of 60 lands. The chance is 20 with
+	 * no debuff and 60 with two, at 100% increased a debuff.
+	 */
+	void ProbeScaledCritChance(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		IConsoleVariable* Roll =
+			IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+		if (!Test.TestNotNull(TEXT("the critical strike roll can be pinned"), Roll))
+		{
+			return;
+		}
+		const float PreviousRoll = Roll->GetFloat();
+		Roll->Set(30.0f, ECVF_SetByConsole);
+		ON_SCOPE_EXIT { Roll->Set(PreviousRoll, ECVF_SetByConsole); };
+
+		FScopedFighter Attacker(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		ScaledBy(Attacker.Actor, TEXT("crit_chance"), 100.0f,
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/20.0f);
+
+		FCataclysmDamageResult Clean;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Clean);
+		GiveTwoDebuffs(Attacker.Actor);
+		FCataclysmDamageResult Carrying;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Carrying);
+
+		if (!Test.TestTrue(TEXT("both blows landed"),
+						   Clean.DealtToHealth > 0.0f && Carrying.DealtToHealth > 0.0f))
+		{
+			return;
+		}
+		Test.TestFalse(TEXT("at 20% the pinned roll of 30 is not a critical strike"),
+					   Clean.bWasCritical);
+		Test.TestTrue(TEXT("crit_chance is asked for, so two debuffs raise it to 60% "
+						   "and the same roll is"),
+					  Carrying.bWasCritical);
+	}
+
+	/**
 	 * `health_regen`, scaled by debuffs carried, asked by `RateOf` inside
 	 * `UCataclysmRegeneration::ApplyStep`.
 	 *
@@ -1929,6 +1987,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("armor"),                      &ProbeScaledArmour},
 			{TEXT("damage_reduction"),           &ProbeScaledDamageReduction},
 			{TEXT("damage_taken"),               &ProbeScaledDamageTaken},
+			{TEXT("crit_chance"),                &ProbeScaledCritChance},
 			{TEXT("retaliation"),                &ProbeScaledRetaliation},
 			{TEXT("health_regen"),               &ProbeScaledHealthRegen},
 			{TEXT("fervour_per_second"),         &ProbeScaledFervourPerSecond},

@@ -279,3 +279,16 @@ Negative_You_take_10_20_increased_damage_for_each_secon#1,Negative_You_take_10_2
 Negative_You_take_3_5_increased_damage_for_every_10_sec#1,Negative_You_take_3_5_increased_damage_for_every_10_sec,damage_taken,increased,3.0,5.0,,,0.0,seconds_in_combat,10.0,,,,6
 Negative_Your_damage_is_reduced_by_3_5_for_every_second#1,Negative_Your_damage_is_reduced_by_3_5_for_every_second,attack_damage,more,-3.0,-5.0,,,0.0,seconds_out_of_combat,1.0,,,,10
 Negative_Your_damage_is_reduced_by_3_5_for_every_second#2,Negative_Your_damage_is_reduced_by_3_5_for_every_second,spell_damage,more,-3.0,-5.0,,,0.0,seconds_out_of_combat,1.0,,,,10
+Negative_Take_10_40_more_damage_when_on_low_mana#1,Negative_Take_10_40_more_damage_when_on_low_mana,damage_taken,more,10.0,40.0,,mana_below,35.0,,0.0,,,,0
+Positive_Debuffed_enemies_take_10_20_increased_damage_f#1,Positive_Debuffed_enemies_take_10_20_increased_damage_f,attack_damage,increased,10.0,20.0,,target_carries_any_debuff,0.0,,0.0,,,,0
+Positive_Debuffed_enemies_take_10_20_increased_damage_f#2,Positive_Debuffed_enemies_take_10_20_increased_damage_f,spell_damage,increased,10.0,20.0,,target_carries_any_debuff,0.0,,0.0,,,,0
+Positive_Strike_skills_deal_20_40_increased_damage_agai#1,Positive_Strike_skills_deal_20_40_increased_damage_agai,attack_damage,increased,20.0,40.0,Type.Strike,target_carries_a_dot,0.0,,0.0,,,,0
+Positive_Strike_skills_deal_20_40_increased_damage_agai#2,Positive_Strike_skills_deal_20_40_increased_damage_agai,spell_damage,increased,20.0,40.0,Type.Strike,target_carries_a_dot,0.0,,0.0,,,,0
+Positive_Each_unique_debuff_on_an_enemy_increases_your_cr#1,Positive_Each_unique_debuff_on_an_enemy_increases_your_cr,crit_chance,increased,5.0,10.0,,,0.0,target_debuffs,1.0,,,,0
+Positive_Each_unique_debuff_you_apply_to_an_enemy_increas#1,Positive_Each_unique_debuff_you_apply_to_an_enemy_increas,attack_damage,increased,5.0,10.0,,,0.0,target_debuffs,1.0,,,,0
+Positive_Each_unique_debuff_you_apply_to_an_enemy_increas#2,Positive_Each_unique_debuff_you_apply_to_an_enemy_increas,spell_damage,increased,5.0,10.0,,,0.0,target_debuffs,1.0,,,,0
+Positive_Your_skills_deal_10_30_of_your_current_mana_as#1,Positive_Your_skills_deal_10_30_of_your_current_mana_as,attack_damage,flat,10.0,30.0,,,0.0,mana_held_percent,1.0,,,,0
+Positive_Your_skills_deal_10_30_of_your_current_mana_as#2,Positive_Your_skills_deal_10_30_of_your_current_mana_as,spell_damage,flat,10.0,30.0,,,0.0,mana_held_percent,1.0,,,,0
+Positive_Each_active_buff_on_you_increases_your_damage_by#1,Positive_Each_active_buff_on_you_increases_your_damage_by,attack_damage,increased,5.0,10.0,,,0.0,buffs_held,1.0,,,,0
+Positive_Each_active_buff_on_you_increases_your_damage_by#2,Positive_Each_active_buff_on_you_increases_your_damage_by,spell_damage,increased,5.0,10.0,,,0.0,buffs_held,1.0,,,,0
+Positive_Spells_deal_10_20_bonus_damage_for_each_active#1,Positive_Spells_deal_10_20_bonus_damage_for_each_active,spell_damage,increased,10.0,20.0,Type.Spell,,0.0,buffs_held,1.0,,,,0

@@ -69,17 +69,9 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
     "not_attacked_for_seconds",
-    # THE TARGET'S DEBUFFS, issue #1815, landed ahead of their rows because the
-    # rows need the design workbook. They leave this list when the rows land.
-    "target_carries_any_debuff",
-    "target_carries_a_dot",
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",
-    # Landed with the dungeon floor rule `Famine_Desperate_Measures`, which asks
-    # it from C++ rather than through a row. The enchantment "Take 10%-40% more
-    # damage when on low mana" is to take a row on it; it leaves this list then.
-    "mana_below",
 }
 
 #: A condition several enchantment effect rows name. The control.

@@ -1025,8 +1025,27 @@ time parent tag), `tools/generate_datatables.py` (the five names a sheet may wri
 lists in `tools/tests/`, and tests in `CataclysmStatPipelineTests.cpp`, `CataclysmCriticalStrikeTests.cpp`
 and `CataclysmSkillTemplateTests.cpp`. Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
 
-**Partial.** The engine half is written. The eight rows need the design workbook, and are added to this
-change before its machine window. Nothing has been compiled.
+**The rows are written**: thirteen rows on eight sentences that had none, in the design workbook's
+Enchantment Effects sheet and `game/Data/EnchantmentEffects.csv` (280 rows to 293, and 219 enchantments with
+a row to 227), listed under "The sentences" below. Dry-run first on a `git archive` copy against an unedited
+control: only that CSV changed, the tools tests failed exactly as the control's did with one more passing,
+and the real run matched the dry run byte for byte. Nothing has been compiled.
+
+**"Low mana" states 35 on `mana_below`**, a labelled judgement tied to the ruling below that low mana is
+below 35%. "Take 10%-40% more damage when on low mana" states no number, and the text check requires a
+condition's value to appear in its sentence. Appending one is not possible: the sentence is 41 characters,
+so a clause would enter the 48 its row name is built from, and `row_name` gives
+`Negative_Take_10_40_more_damage_when_on_low_mana_below` in place of
+`Negative_Take_10_40_more_damage_when_on_low_mana`, which saved items store. So the check learns the phrase
+instead, in `CONDITION_VALUE_STATED_BY_WORD`, the condition-keyed sibling of `STATED_BY_WORD`. Its control,
+`test_the_low_mana_row_is_refused_without_its_word`, empties the map and asserts the row is named; a
+`prove_guard` run with the entry removed failed exactly
+`test_every_condition_value_appears_in_the_words_too`, and passed 26 of 26 restored.
+
+**`crit_chance` joins the stats asked for through the pipeline**, as `damage_taken` did in the combat
+state's change: the critical strike site in `CataclysmVitalAttributeSet.cpp` asks it through `StatForSkill`
+on every blow, and `ProbeScaledCritChance` in `CataclysmStatExemptionTests.cpp` pins the crit roll at 30 and
+shows a chance scaled by debuffs carried turning the same blow critical.
 
 ### What is new
 

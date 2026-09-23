@@ -406,8 +406,13 @@ JUDGED_NUMBERS = {
 #: rows on five enchantments that had none. "Your damage is reduced ... out of
 #: combat" is an attack damage row and a spell damage row; the rest are one row
 #: each. One sentence was lengthened after its first 48 characters.
-AUTHORED_ROWS = 280
-AUTHORED_ENCHANTMENTS = 219
+#: AND 293 OVER 227 SINCE ISSUE #1815'S SECTION C, from 280 over 219: thirteen
+#: rows on eight enchantments that had none. Five sentences are about the
+#: wearer's damage and take an attack damage row and a spell damage row each;
+#: the low mana drawback, the critical strike chance and the Spells-only buff
+#: row are one row each.
+AUTHORED_ROWS = 293
+AUTHORED_ENCHANTMENTS = 227
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -660,14 +665,50 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
         "gives for the stat: " + "; ".join(wrong))
 
 
+#: Words that state a CONDITION's value without a number, per condition. Issue
+#: #1815. The sibling of `STATED_BY_WORD`, which is keyed by stat and covers a
+#: row's value; this is keyed by condition and covers its condition value, and
+#: `test_every_condition_value_appears_in_the_words_too` alone reads it.
+#:
+#: "LOW MANA" IS 35 ON `mana_below`, a labelled judgement tied to the ruling of
+#: 2026-09-23 under the owner's delegation that low mana is below 35% of maximum
+#: mana (Path of Exile 2's Low Mana is 35%, and this game's own Low Life keystone
+#: is 35%). "Take 10%-40% more damage when on low mana" is 41 characters, so a
+#: clause stating the number could not be appended without renaming its row.
+#: `test_the_low_mana_row_is_refused_without_its_word` is the control.
+CONDITION_VALUE_STATED_BY_WORD: dict[str, dict[str, float]] = {
+    "mana_below": {"low mana": 35.0},
+}
+
+
+def condition_values_not_stated(effects, enchantments, word_map) -> list[str]:
+    """The rows whose condition value is neither a number in their sentence nor
+    stated by a phrase `word_map` gives their condition."""
+    wrong = []
+    for r in effects:
+        value = float(r["ConditionValue"])
+        if not value:
+            continue
+        words = words_of(r, enchantments)
+        by_word = {amount for phrase, amount in word_map.get(r["Condition"], {}).items()
+                   if re.search(rf"\b{re.escape(phrase)}\b", words, re.IGNORECASE)}
+        if value not in numbers_in(words) | by_word:
+            wrong.append(f"{r['Name']}: {r['ConditionValue']} against {words!r}")
+    return wrong
+
+
 def test_every_condition_value_appears_in_the_words_too(effects, enchantments):
-    wrong = [f"{r['Name']}: {r['ConditionValue']} against "
-             f"{words_of(r, enchantments)!r}"
-             for r in effects
-             if float(r["ConditionValue"])
-             and float(r["ConditionValue"])
-             not in numbers_in(words_of(r, enchantments))]
+    wrong = condition_values_not_stated(effects, enchantments,
+                                        CONDITION_VALUE_STATED_BY_WORD)
     assert not wrong, "; ".join(wrong)
+
+
+def test_the_low_mana_row_is_refused_without_its_word(effects, enchantments):
+    """The control for the word map above: with it emptied, the low mana row is
+    named, so the map is what lets it through and the check can still fail."""
+    wrong = condition_values_not_stated(effects, enchantments, {})
+    assert any(line.startswith("Negative_Take_10_40_more_damage_when_on_low_mana#1:")
+               for line in wrong), wrong
 
 
 def test_a_more_row_is_worded_as_a_multiplier(effects, enchantments):

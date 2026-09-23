@@ -5175,6 +5175,11 @@ STATS_WITH_AN_ASKER = frozenset({
     # lookup existed every reader took the attribute, and a scaled row on
     # this stat would have been accepted, built, imported and dead.
     "class_resource",
+    # ADDED 2026-09-23 FOR "Each unique debuff on an enemy increases your crit
+    # chance against them by 5%-10%", issue #1815. The critical strike site in
+    # CataclysmVitalAttributeSet.cpp asks it through `StatForSkill` on every
+    # blow; `ProbeScaledCritChance` measures that.
+    "crit_chance",
 })
 
 
