@@ -18,10 +18,13 @@ in `CataclysmCombatEventsTests.cpp`, `CataclysmStatPipelineTests.cpp` and `Catac
 Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815), the movement rows that issue
 [#1821](https://github.com/sdubois777/Cataclysm/issues/1821) unblocked.
 
-**Partial.** The engine half and the six rows are written; the rows are in `docs/All_Things_Cataclysm.xlsx`
+The engine half and the six rows are written; the rows are in `docs/All_Things_Cataclysm.xlsx`
 and the regenerated `game/Data/EnchantmentEffects.csv` and `EnchantmentsPositive.csv`, with a test that
-reads the support ability row from the imported table. The compile, the DataTable asset rebuild, the
-automation tests and the guard proofs wait for a machine window.
+reads the support ability row from the imported table.
+
+**Applied.** The Python suite, the compile, the DataTable asset rebuild, the automation tests and the
+three guard proofs have run, the Unreal steps inside one editor lock. The figures are at the end of this
+entry, including two build failures and one void run, each recorded below.
 
 ### The five windows
 
@@ -92,6 +95,52 @@ The Boss window is now in the list with the five new ones, and a new test,
 `Cataclysm.Death.ARespawnClosesEveryWindowAnEventOpened`, opens all sixteen windows through the calls the
 game makes and checks each by name after a respawn.
 
+
+### Figures
+
+**The Unreal window**, one editor lock from 19:30:38Z to 19:46:49Z on 2026-09-23, every line as printed.
+Each test run after the first failure was started only if the build printed "Build: Succeeded".
+
+| Step | What it printed |
+| :-- | :-- |
+| the respawn test alone on development's code, commit `cc3d9f45`, prefix `Cataclysm.Death.` | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 29 tests performed, 28 succeeded, 1 failed: ARespawnClosesEveryWindowAnEventOpened`, its one error "Expected 'after the respawn, striking a Boss no longer counts' to be true" |
+| the change, commit `a82905ba` | `Build: Failed - 27 actions, 24 files compiled`: three `error C3861: 'CataclysmSkillEffectsNoteCrowdControl': identifier not found`, at the knockback, pull and launch appliers |
+| a void run | the stale-asset run started without waiting for the build result, so it measured the binaries built from `cc3d9f45`; it printed `68 tests performed, 66 succeeded, 2 failed` and is not evidence of anything in this change |
+| the correction, commit `9866d02d` (the helper moved above its first caller, 28 lines out and 28 in) | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.3.cpp` -- one build more than registered |
+| before the asset rebuild, `Cataclysm.Enchantments.+Cataclysm.Data.`, nothing compiled | `Tests: 69 tests performed, 67 succeeded, 2 failed: EveryGeneratedTableHasAnAssetThatMatchesIt, TheSupportAbilitySpeedRowRaisesSpeedOnlyAfterTheSupportSkill`; the stale asset had "6 row(s) only in the CSV" and a first difference at line 317 of `EnchantmentsPositive.csv`, and the support row read 4.600000 where 5.520000 was expected |
+| the asset rebuild | `rebuilt 2 DataTable assets and left 27 already current, 3025 rows in total across /Game/Data`: `DT_EnchantmentEffects` with 270 rows and `DT_EnchantmentsPositive` with 379, each "its source changed"; three files changed |
+| after it, the same groups | `Tests: 69 tests performed, 69 succeeded, 0 failed` |
+| the whole suite on `9866d02d`, the run of record | `Tests: 2181 tests performed, 2181 succeeded, 0 failed`; `Declared: 2181 tests in the tree at 9866d02d; 2181 performed, gap 0` (from the test log: `Cataclysm.CombatEvents.` 23, `Cataclysm.StatPipeline.` 39, `Cataclysm.Death.` 29, `Cataclysm.Enchantments.` 62, `Cataclysm.Data.` 7) |
+| a failed proof attempt, no verdict | the first run of P1 stopped when both of its builds failed: `CataclysmEnemyBehaviourTests.cpp(92,25): error C2653: 'UCataclysmPlayerClassStats': is not a class or namespace name`. No test ran, and the source was restored to the same hash |
+| the include, commit `53ebd8aa` | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.15.cpp` -- a second build more than registered |
+
+**The first failure was a fault in this change.** The crowd control helper was placed above the first
+function edited rather than above the first caller, and nothing compiled it before the window.
+
+**The second was a latent defect on development**, not in this change. `CataclysmEnemyBehaviourTests.cpp`
+calls `UCataclysmPlayerClassStats::ChosenLevel()` in `ImpBlow()`, added by commit `a2e848a1` (#1515), and
+never included that header: it compiled because another file compiled in the same unity group supplied
+it. A proof's edit to `CataclysmSkillTemplate.cpp` moved that file out of the group, the group was rebuilt
+without the header, and the build failed. The include was added as its own commit, under the owner's
+delegation. The coordinating session is filing the wider question of which other files rely on a
+neighbour for a header. **The whole-suite run above is on `9866d02d`, one include line short of the final
+game tree**; the include adds no behaviour, and every proof below rebuilt with it in place.
+
+**The guard proofs**, on `53ebd8aa`, run detached, each with the SHA-256 of the file it broke taken before
+the break and after the restore:
+
+| The break | Prefix | With it in | Restored |
+| :-- | :-- | :-- | :-- |
+| P1: the support window stamped on the Special slot instead of the Support slot | `Cataclysm.CombatEvents.` | 23 performed, 22 succeeded, 1 failed: `TheSupportMovementAndSpellWindowsOpenOnlyForTheirOwnSkills` | 23 of 23 |
+| P2: a melee hit stamps the movement window instead of the melee-hit window | `Cataclysm.CombatEvents.` | 23 performed, 22 succeeded, 1 failed: `AMeleeHitOpensTheMeleeWindowAndARangedOneDoesNot` | 23 of 23 |
+| P3: the crowd control condition reads the spell clock | `Cataclysm.StatPipeline.` | 39 performed, 38 succeeded, 1 failed: `TheFiveMovementRowWindowsHoldInsideThemAndRefuseWithoutThem` | 39 of 39 |
+
+All three printed `PROVED True CRASHED False`, and each file's hash was the same before and after. Which
+assertion inside each failing test failed was not read, because the restored run overwrites the test log.
+
+**Python**, before the window on `a82905ba`, registered at 5344 collected with the one stale-asset failure:
+`1 failed, 5335 passed, 8 skipped in 329.29s (0:05:29)`. That run predates two C++ commits, and Python
+tests read C++ source, so the run of record is the one after the window, reported with the pull request.
 ---
 
 ## 2026-09-23 — Attrition is two rows, now that an ailment chance is asked for with the skill's tags
