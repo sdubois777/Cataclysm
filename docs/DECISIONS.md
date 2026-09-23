@@ -121,8 +121,22 @@ changed call sites, and the exemption list now empty),
 Issue [#1992](https://github.com/sdubois777/Cataclysm/issues/1992), which this closes, and issue
 [#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
 
-**Partial.** The engine half is written. The rows need the design workbook and are added to this change
-before its machine window. Nothing has been compiled.
+**The rows are written**, four of them on three sentences that had none, in the design workbook's
+Enchantment Effects sheet and `game/Data/EnchantmentEffects.csv` (270 rows to 274, and 211 enchantments
+with a row to 214):
+
+| Sentence | Row |
+| :-- | :-- |
+| "Your first hit against each enemy deals 100%-300% bonus damage" | `attack_damage` and `spell_damage`, increased 100-300, `target_not_yet_struck_by_you` |
+| "Your first hit against each enemy ignores all armor" | `armor_penetration`, flat 100, `target_not_yet_struck_by_you` |
+| "Your first critical strike against each enemy deals an additional 50%-100% bonus damage" | `crit_multiplier`, flat 50-100, `target_not_yet_crit_by_you` |
+
+Dry-run first on a `git archive` copy against an unedited control: the generator changed that one CSV
+and nothing else, and the real run matched the dry run byte for byte. `tools/tests/test_enchantment_effects_match_the_row_text.py`
+learns that "all" is 100 on `armor_penetration`. Nothing has been compiled.
+
+**Not written here: "Your first hit against each enemy has a 50%-100% chance to stagger them".** It
+reads the same condition, but no ruling covers a stagger chance on a hit, so it waits for one.
 
 ### Issue #1992: three lookups now hand over the whole blow
 

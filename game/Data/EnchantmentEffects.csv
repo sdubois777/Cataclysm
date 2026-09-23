@@ -269,3 +269,7 @@ Positive_Casting_a_spell_grants_5_10_increased_movement#1,Positive_Casting_a_spe
 Positive_After_being_hit_by_a_melee_attack_you_gain_10_2#1,Positive_After_being_hit_by_a_melee_attack_you_gain_10_2,movement_speed,increased,10.0,20.0,,seconds_after_melee_hit_taken,2.0,,0.0,,,
 Negative_After_you_use_a_movement_ability_you_lose_50_mo#1,Negative_After_you_use_a_movement_ability_you_lose_50_mo,movement_speed,increased,-50.0,-50.0,,seconds_after_movement_skill,3.0,,0.0,,,
 Positive_Gain_20_50_increased_movespeed_after_taking_da#1,Positive_Gain_20_50_increased_movespeed_after_taking_da,movement_speed,increased,20.0,50.0,,seconds_after_hit_taken,3.0,,0.0,,,
+Positive_Your_first_hit_against_each_enemy_deals_100_300#1,Positive_Your_first_hit_against_each_enemy_deals_100_300,attack_damage,increased,100.0,300.0,,target_not_yet_struck_by_you,0.0,,0.0,,,
+Positive_Your_first_hit_against_each_enemy_deals_100_300#2,Positive_Your_first_hit_against_each_enemy_deals_100_300,spell_damage,increased,100.0,300.0,,target_not_yet_struck_by_you,0.0,,0.0,,,
+Positive_Your_first_hit_against_each_enemy_ignores_all_ar#1,Positive_Your_first_hit_against_each_enemy_ignores_all_ar,armor_penetration,flat,100.0,100.0,,target_not_yet_struck_by_you,0.0,,0.0,,,
+Positive_Your_first_critical_strike_against_each_enemy_de#1,Positive_Your_first_critical_strike_against_each_enemy_de,crit_multiplier,flat,50.0,100.0,,target_not_yet_crit_by_you,0.0,,0.0,,,

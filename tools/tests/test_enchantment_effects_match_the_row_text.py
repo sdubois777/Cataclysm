@@ -205,8 +205,14 @@ COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction"}
 #: different number, or none, on another stat. The sentence also states a number,
 #: 30, which is its condition value, so `JUDGED_NUMBERS` cannot excuse it: that
 #: list is for sentences that state no number at all.
+#:
+#: "ALL" IS 100 ON `armor_penetration`, ruled 2026-09-23 under the owner's
+#: delegation for "Your first hit against each enemy ignores all armor". The
+#: engine clamps armour penetration at 100 (`CataclysmDamageCalculation.cpp`),
+#: so 100 is all of it. The same reasoning as "immune" above, on one stat.
 STATED_BY_WORD: dict[str, dict[str, float]] = {
     "crowd_control_resistance": {"immune": 100.0},
+    "armor_penetration": {"all": 100.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -386,8 +392,12 @@ JUDGED_NUMBERS = {
 #: bleed into the wearer's energy shield.
 #: AND 270 OVER 211 SINCE GROUP B OF ISSUE #1815, from 264
 #: over 205: one row each on 6 enchantments that had none -- the five movement speed windows' rows and the one lengthened to three seconds.
-AUTHORED_ROWS = 270
-AUTHORED_ENCHANTMENTS = 211
+#: AND 274 OVER 214 SINCE THE FIRST HIT AGAINST EACH ENEMY, issue #1815, from
+#: 270 over 211: four rows on three enchantments that had none. "Deals
+#: 100%-300% bonus damage" is an attack damage row and a spell damage row;
+#: "ignores all armor" and the first critical strike are one row each.
+AUTHORED_ROWS = 274
+AUTHORED_ENCHANTMENTS = 214
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

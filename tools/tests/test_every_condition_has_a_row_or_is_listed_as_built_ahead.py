@@ -69,12 +69,6 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # enchantment rows that want it are among the 388 counted in issue #1815
     # and wait on the workbook.
     "not_attacked_for_seconds",
-    # THE FIRST HIT AND THE FIRST CRITICAL STRIKE AGAINST EACH ENEMY, issue
-    # #1815, landed ahead of their rows because the rows need the design
-    # workbook, which another session holds. They leave this list when the rows
-    # land in the same change.
-    "target_not_yet_struck_by_you",
-    "target_not_yet_crit_by_you",
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",
