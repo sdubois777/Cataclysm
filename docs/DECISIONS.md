@@ -14,8 +14,8 @@ panel and the per-floor reset), the automation tests in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -88,10 +88,21 @@ Six automation tests: `TheRevivalIsDueAtHalfTheFloorRoundedUp`,
 in `Cataclysm.DungeonModifierEffects.`. Two Python checks: the row still states its two figures, and the
 death handler gates both payments on the mark while Vengeful Wraiths sets it.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (18248496) first:** `Cataclysm.DungeonModifierEffects.` printed "206 tests
+  performed, 206 succeeded, 0 failed".
+- **The whole suite on 4df3362c:** "Build: Succeeded - 27 actions, 24 files compiled" and "2198 tests
+  performed, 2198 succeeded, 0 failed", as registered (2192 + the six named tests), with every declared
+  test reported. Of those, the group's 212 all succeeded, the six named above among them.
+- **Three guard proofs** in `CataclysmDungeonGameMode.cpp` on the prefix `Cataclysm.DungeonModifierEffects.`,
+  each failing 1 of 212 with the break in and 0 of 212 restored, exactly as registered:
+  - counting a marked death (`!Fallen->PaysForItsDeath()` removed) failed
+    `AMarkedCreatureIsNeitherCountedNorRaised`;
+  - a second revival (`|| bDivineResurgenceDone` removed) failed
+    `TheRevivalComesOnceAndLaterDeathsStayDead`;
+  - a risen creature at a freshly drawn rung (`Grave.RarityStep` not passed) failed
+    `HalfTheFloorFallenRaisesEveryDeathAtHalfHealthAndItsRung`.
 
 ---
 
