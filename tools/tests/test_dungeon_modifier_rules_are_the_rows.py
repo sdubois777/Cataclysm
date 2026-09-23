@@ -3488,3 +3488,59 @@ def test_desperate_measures_row_still_states_its_two_figures():
         "DesperateMeasuresManaBelowPercent no longer holds the row's 10.")
     assert constant("DesperateMeasuresHealthPercent") == 5.0, (
         "DesperateMeasuresHealthPercent no longer holds the row's 5.")
+
+
+def test_divine_resurgence_row_still_states_its_two_figures():
+    """"Once per floor" and "half health" are the row's own; the trigger is a ruling.
+
+    "Once per floor, all defeated enemies on that floor resurrect at half health in a
+    sudden holy revival." DivineResurgenceHealthPercent is the half. If the row changes
+    either, the rule must follow; if it stops saying ALL, the uncapped revival does not
+    hold.
+    """
+    words = flat(rows()["Celestial_Divine_Resurgence"]["Description"])
+    assert "Once per floor" in words, (
+        "The Divine Resurgence row no longer says ONCE PER FLOOR. The rule raises one "
+        "revival a floor and forgets it at the stairs. " + words)
+    assert "all defeated enemies" in words, (
+        "The row no longer says ALL defeated enemies. The rule raises every recorded "
+        "death with no cap, ruled on that word. " + words)
+    assert "half health" in words, (
+        "The row no longer says HALF health. Check DivineResurgenceHealthPercent. "
+        + words)
+    assert constant("DivineResurgenceHealthPercent") == 50.0, (
+        "DivineResurgenceHealthPercent no longer holds the row's half.")
+
+
+def test_a_risen_creature_pays_nothing_and_a_wraith_is_risen():
+    """The owner's decision of 2026-09-17, read out of the code no automation test drives.
+
+    "A creature that is revived or resurrected is marked, and its second death drops no
+    loot and grants no experience." The drop roll and the experience grant sit in
+    `ACataclysmEnemyCharacter::HandleDeath`, which needs a possessed player, a loot table
+    and an enemy score before it reaches them, so no automation test reaches the two
+    payments. This reads the handler with its comments removed and requires each payment
+    to be gated on the mark; and requires Vengeful Wraiths, ruled a revival on
+    2026-09-23, to set the mark.
+    """
+    enemy = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+             / "CataclysmEnemyCharacter.cpp").read_text(encoding="utf-8")
+    handler = "\n".join(
+        line for line in body_of(enemy, "void ACataclysmEnemyCharacter::HandleDeath(")
+        .splitlines() if not line.lstrip().startswith("//"))
+
+    assert re.search(r"const bool bPays\s*=\s*PaysForItsDeath\(\);", handler), (
+        "HandleDeath no longer asks PaysForItsDeath, so a creature brought back pays "
+        "loot and experience a second time.")
+    assert re.search(r"if\s*\(\s*bPays\s*\)\s*\{\s*UCataclysmDropSpawner::SpawnDropsFor\(",
+                     handler), (
+        "The drop roll in HandleDeath is no longer gated on bPays.")
+    assert re.search(r"if\s*\(\s*State\s*&&\s*bPays\s*\)\s*\{\s*State->GrantExperience\(",
+                     handler), (
+        "The experience grant in HandleDeath is no longer gated on bPays.")
+
+    game_mode = (EFFECTS_DIR / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    wraith = body_of(game_mode, "void ACataclysmDungeonGameMode::ApplyVengefulWraithFigures(")
+    assert "Wraith->bRisenFromTheDead = true;" in "\n".join(
+        line for line in wraith.splitlines() if not line.lstrip().startswith("//")), (
+        "A Vengeful Wraith is no longer marked as risen, so it pays twice for one kill.")

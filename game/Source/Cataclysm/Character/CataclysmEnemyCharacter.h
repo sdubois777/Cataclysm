@@ -962,6 +962,33 @@ public:
 	bool bIsVengefulWraith = false;
 
 	/**
+	 * Whether this creature is one that already died and was brought back. Issues
+	 * #1820 and #41.
+	 *
+	 * THE PROJECT OWNER'S DECISION OF 2026-09-17: "a creature that is revived or
+	 * resurrected is marked, and its second death drops no loot and grants no
+	 * experience." So one kill is paid for once. Set by the Celestial Divine
+	 * Resurgence floor rule on every creature it raises, and by Vengeful Wraiths on
+	 * every wraith: that row's own words are that the kill "stands back up", which
+	 * was ruled under the owner's delegation on 2026-09-23 to be a revival.
+	 *
+	 * A GUARD, AN ARRIVING WAVE OR ANY OTHER NEW CREATURE IS NOT MARKED. It never
+	 * died, so its first death pays in full -- the owner's own example.
+	 *
+	 * PERMANENT, FOR THE REASON `bIsVengefulWraith` GIVES: nothing takes it away, and
+	 * a rung change does not touch it.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bRisenFromTheDead = false;
+
+	/**
+	 * Whether this creature's death pays the player loot and experience. False for a
+	 * creature `bRisenFromTheDead` marks. Asked by `HandleDeath`, and nothing else
+	 * about a death changes: the notice is still sent and every rule still hears it.
+	 */
+	bool PaysForItsDeath() const { return !bRisenFromTheDead; }
+
+	/**
 	 * What being a wraith does to this creature's movement and attack speed.
 	 *
 	 * HERE AND NOT WRITTEN ONTO TWO ATTRIBUTES, and that was measured rather than chosen.

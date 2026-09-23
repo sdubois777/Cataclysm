@@ -88,6 +88,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::AntiMagicZonesKey =
 const TCHAR* UCataclysmDungeonModifierEffects::DesperateMeasuresKey =
 	TEXT("Famine_Desperate_Measures");
 
+const TCHAR* UCataclysmDungeonModifierEffects::DivineResurgenceKey =
+	TEXT("Celestial_Divine_Resurgence");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -349,7 +352,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(MarchOfProgressKey)
 		|| RowKey == FName(CommandersAuraKey)
 		|| RowKey == FName(AntiMagicZonesKey)
-		|| RowKey == FName(DesperateMeasuresKey))
+		|| RowKey == FName(DesperateMeasuresKey)
+		|| RowKey == FName(DivineResurgenceKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -518,6 +522,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(CommandersAuraKey),
 		FName(AntiMagicZonesKey),
 		FName(DesperateMeasuresKey),
+		FName(DivineResurgenceKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1662,6 +1667,21 @@ bool UCataclysmDungeonModifierEffects::AntiMagicZoneIsDue(float SecondsSinceLast
 float UCataclysmDungeonModifierEffects::SpellsLockedWhile(bool bInsideAZone)
 {
 	return bInsideAZone ? AntiMagicZonesLockValue : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::DivineResurgenceIsDue(int32 Fallen, int32 Placed)
+{
+	// FALLEN x 100 AGAINST PLACED x THE SHARE, which is "at least the share, rounded
+	// up" in whole numbers: of five placed at half, 3 x 100 = 300 >= 250 and
+	// 2 x 100 = 200 < 250. Nothing placed means nothing is due.
+	return Placed > 0 && Fallen > 0
+		&& static_cast<int64>(Fallen) * 100
+			   >= static_cast<int64>(Placed) * DivineResurgenceFallenPercent;
+}
+
+float UCataclysmDungeonModifierEffects::DivineResurgenceHealthFor(float MaxHealth)
+{
+	return FMath::Max(0.0f, MaxHealth) * DivineResurgenceHealthPercent / 100.0f;
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(

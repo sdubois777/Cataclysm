@@ -279,11 +279,20 @@ void ACataclysmEnemyCharacter::HandleDeath()
 			MagicFind, IsBoss(),
 			ACataclysmDungeonGameMode::JudgmentZonesMagicFindIn(World));
 
+		// A CREATURE BROUGHT BACK PAYS NOTHING A SECOND TIME, the project owner's
+		// decision of 2026-09-17: its first death already paid. Issues #1820 and #41.
+		// See `bRisenFromTheDead`. The drop roll and the experience below are the two
+		// payments, and both ask this; nothing else on this path changes.
+		const bool bPays = PaysForItsDeath();
+
 		FRandomStream Stream(GetUniqueID()
 			^ static_cast<int32>(World->GetTimeSeconds() * 1000.0f));
-		UCataclysmDropSpawner::SpawnDropsFor(
-			World, RarityStep, MagicFind, LootQuantity, GetActorLocation(),
-			Stream);
+		if (bPays)
+		{
+			UCataclysmDropSpawner::SpawnDropsFor(
+				World, RarityStep, MagicFind, LootQuantity, GetActorLocation(),
+				Stream);
+		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.
 		// `docs/Cataclysm_GDD_v2.md` section XII: "An enemy's Enemy Score IS the
@@ -308,8 +317,9 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		// creature were awarding experience to itself.
 		if (APlayerController* Watching = World->GetFirstPlayerController())
 		{
-			if (ACataclysmPlayerState* State =
-					Watching->GetPlayerState<ACataclysmPlayerState>())
+			ACataclysmPlayerState* State =
+				Watching->GetPlayerState<ACataclysmPlayerState>();
+			if (State && bPays)
 			{
 				State->GrantExperience(UCataclysmEnemyScore::ScoreFor(
 					UCataclysmEnemyScore::FloorIn(World), RarityStep));

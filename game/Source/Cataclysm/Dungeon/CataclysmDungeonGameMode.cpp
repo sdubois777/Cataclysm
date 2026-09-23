@@ -1200,8 +1200,17 @@ TSubclassOf<ACataclysmEnemyCharacter> ACataclysmDungeonGameMode::ClassFor(
 }
 
 void ACataclysmDungeonGameMode::ApplyDesignedStats(
-	ACataclysmEnemyCharacter* Enemy, ECataclysmDungeonCreature Creature) const
+	ACataclysmEnemyCharacter* Enemy, ECataclysmDungeonCreature Creature,
+	int32 FixedRung) const
 {
+	// A FIXED RUNG WINS OVER EVERY KIND'S OWN SETTING. See `SpawnPlacedCreature`: only
+	// Divine Resurgence passes one, and `RarityStepFor` returns any setting that is not
+	// `RollTheRarity` unchanged.
+	const auto Setting = [FixedRung](int32 KindsOwn)
+	{
+		return FixedRung >= 0 ? FixedRung : KindsOwn;
+	};
+
 	if (!Enemy)
 	{
 		return;
@@ -1214,7 +1223,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetAttackDamage(ImpAttackDamage);
 		// NO SetArmour CALL. See the header: this creature's designed armour
 		// share is exactly zero and it is the only one in the roster with none.
-		Enemy->SetRarityStep(RarityStepFor(ImpRarityStep, Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(ImpRarityStep), Enemy));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1222,7 +1231,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(HellhoundHealth);
 		Enemy->SetArmour(HellhoundArmour);
 		Enemy->SetAttackDamage(HellhoundAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(HellhoundRarityStep, Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(HellhoundRarityStep), Enemy));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1230,7 +1239,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(BruteHealth);
 		Enemy->SetArmour(BruteArmour);
 		Enemy->SetAttackDamage(BruteAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(BruteRarityStep, Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(BruteRarityStep), Enemy));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1238,7 +1247,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(AbyssalWardenHealth);
 		Enemy->SetArmour(AbyssalWardenArmour);
 		Enemy->SetAttackDamage(AbyssalWardenAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(AbyssalWardenRarityStep, Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(AbyssalWardenRarityStep), Enemy));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1246,7 +1255,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(CorruptedSentinelHealth);
 		Enemy->SetArmour(CorruptedSentinelArmour);
 		Enemy->SetAttackDamage(CorruptedSentinelAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(CorruptedSentinelRarityStep, Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(CorruptedSentinelRarityStep), Enemy));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1254,7 +1263,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(SuccubusHealth);
 		Enemy->SetArmour(SuccubusArmour);
 		Enemy->SetAttackDamage(SuccubusAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(SuccubusRarityStep, Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(SuccubusRarityStep), Enemy));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1266,7 +1275,7 @@ void ACataclysmDungeonGameMode::ApplyDesignedStats(
 		Enemy->SetHealth(GatekeeperHealth);
 		Enemy->SetArmour(GatekeeperArmour);
 		Enemy->SetAttackDamage(GatekeeperAttackDamage);
-		Enemy->SetRarityStep(RarityStepFor(GatekeeperRarityStep, Enemy));
+		Enemy->SetRarityStep(RarityStepFor(Setting(GatekeeperRarityStep), Enemy));
 		Enemy->DrawModifiersForRarity();
 		break;
 
@@ -1469,7 +1478,8 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 }
 
 ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
-	const FCataclysmEnemyPlacement& Placement, float SightRadiusMultiplier)
+	const FCataclysmEnemyPlacement& Placement, float SightRadiusMultiplier,
+	int32 FixedRung)
 {
 	UWorld* World = GetWorld();
 	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
@@ -1511,7 +1521,7 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnPlacedCreature(
 		return nullptr;
 	}
 
-	ApplyDesignedStats(Enemy, Placement.Creature);
+	ApplyDesignedStats(Enemy, Placement.Creature, FixedRung);
 
 	// AND SOME OF THEM ARE ILLUSIONS. `Chaos_Illusory_Enemies`. Issues #1820 and
 	// #41. This is the only rule in this file that changes a creature as it is
@@ -3545,6 +3555,9 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForBloodForgedChampions(Notice);
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForMarchOfProgress(Notice);
+	// LAST, so a wraith this same death raised is already standing and already marked
+	// when the floor's creatures are counted. Issues #1820 and #41.
+	NoteDeathForDivineResurgence(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForDemonPrince(
@@ -4017,6 +4030,13 @@ void ACataclysmDungeonGameMode::ApplyVengefulWraithFigures(
 	// read from this rule's own constant on the other side.
 	Wraith->bIsVengefulWraith = true;
 
+	// AND IT IS MARKED AS BROUGHT BACK, SO ITS DEATH PAYS NOTHING. Issues #1820 and #41.
+	// The kill it stood up from already paid, and the owner's decision of 2026-09-17 is
+	// that one kill pays once. Ruled under the owner's delegation on 2026-09-23 that a
+	// wraith is a revival -- the row says the kill "stands back up" -- and the owner may
+	// veto it. See `ACataclysmEnemyCharacter::bRisenFromTheDead`.
+	Wraith->bRisenFromTheDead = true;
+
 	// AND THE WALK SPEED IS PUT RIGHT NOW RATHER THAN NEXT FRAME. `RefreshWalkSpeed` runs
 	// every Tick anyway, so this only spares the creature one frame at its old speed --
 	// but it is also what lets a test read the speed without ticking the world.
@@ -4138,6 +4158,114 @@ void ACataclysmDungeonGameMode::NoteDeathForVengefulWraiths(
 		   Effects::VengefulWraithsDamageReductionMore,
 		   Effects::VengefulWraithsSightMultiplier);
 
+	RefreshFloorModifierPanel();
+}
+
+int32 ACataclysmDungeonGameMode::DivineResurgencePlacedCount() const
+{
+	// THE FALLEN PLUS THE UNMARKED STILL STANDING, and not `FloorEnemies.Num()`. The list
+	// keeps an entry per creature added, but a destroyed creature's entry can be emptied
+	// by the engine at any time afterwards, so its length drifts; this count does not.
+	// A MARKED creature is neither: it is one of the floor's dead brought back.
+	int32 Standing = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+			&& Enemy->PaysForItsDeath())
+		{
+			++Standing;
+		}
+	}
+	return DivineResurgenceFallen + Standing;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForDivineResurgence(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::DivineResurgenceKey))
+		|| bDivineResurgenceDone)
+	{
+		return;
+	}
+
+	// A MARKED CREATURE IS NOT THE FLOOR'S TO COUNT OR TO RAISE. See the declaration.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Fallen || !Fallen->PaysForItsDeath())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// COUNTED WHATEVER KILLED IT: the row says "all defeated enemies", not the player's
+	// kills. RECORDED only if it is one of the kinds this dungeon places, because
+	// nothing else can be put back; the sandbox's plain creature is counted and not
+	// recorded, the same answer Vengeful Wraiths gives it.
+	++DivineResurgenceFallen;
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
+	if (Kind != ECataclysmDungeonCreature::Count)
+	{
+		FDivineResurgenceGrave Grave;
+		Grave.Location = Notice.Location;
+		Grave.Kind = Kind;
+		Grave.RarityStep = Fallen->RarityStep;
+		DivineResurgenceGraves.Add(Grave);
+	}
+
+	const int32 Placed = DivineResurgencePlacedCount();
+	if (!Effects::DivineResurgenceIsDue(DivineResurgenceFallen, Placed))
+	{
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	// ONCE: decided before anything is raised, so a creature raised below that died at
+	// once could not bring on a second revival from inside this one.
+	bDivineResurgenceDone = true;
+
+	for (const FDivineResurgenceGrave& Grave : DivineResurgenceGraves)
+	{
+		FCataclysmEnemyPlacement Placement;
+		Placement.Cell = CurrentFloor->CellOfWorld(Grave.Location);
+		Placement.Creature = Grave.Kind;
+
+		// AT THE RUNG IT DIED AT, set before its modifiers are drawn; see
+		// `SpawnPlacedCreature`. Its modifiers are drawn afresh for that rung: which
+		// ones it carried before is not recorded, a judgement under the owner's
+		// delegation written in the decisions entry.
+		ACataclysmEnemyCharacter* Risen = SpawnPlacedCreature(
+			Placement, FloorBrief.SightRadiusMultiplier, Grave.RarityStep);
+		if (!Risen)
+		{
+			continue;
+		}
+		Risen->bRisenFromTheDead = true;
+		FloorEnemies.Add(Risen);
+
+		// "AT HALF HEALTH": half of its maximum, written after the rung, because setting
+		// a rung refills health. Its energy shield is left as its rung gives it; the
+		// row names health only.
+		if (UAbilitySystemComponent* Abilities = Risen->GetAbilitySystemComponent())
+		{
+			Abilities->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				Effects::DivineResurgenceHealthFor(Abilities->GetNumericAttribute(
+					UCataclysmVitalAttributeSet::GetMaxHealthAttribute())));
+		}
+		++DivineResurgenceRisen;
+	}
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Divine Resurgence: %d of %d fell, and %d rose at %.0f%% health"),
+		   DivineResurgenceFallen, Placed, DivineResurgenceRisen,
+		   Effects::DivineResurgenceHealthPercent);
+	DivineResurgenceGraves.Reset();
 	RefreshFloorModifierPanel();
 }
 
@@ -5022,6 +5150,22 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Aura, FString::Printf(
 			TEXT("%d commanders on this floor (Commander's Aura)"),
 			CommandersAuraCommanders));
+	}
+
+	// AND HOW CLOSE THE HOLY REVIVAL IS, OR HOW MANY IT RAISED. Issues #1820 and #41. The
+	// count it comes at is shown because it is a count the player moves: every creature
+	// they kill brings it one nearer.
+	const FName Resurgence(Effects::DivineResurgenceKey);
+	if (FloorBrief.Modifiers.Contains(Resurgence))
+	{
+		const int32 Placed = DivineResurgencePlacedCount();
+		const int32 ComesAt = (Placed * Effects::DivineResurgenceFallenPercent + 99) / 100;
+		Counting.Add(Resurgence,
+					 bDivineResurgenceDone
+						 ? FString::Printf(TEXT("holy revival: %d risen"),
+										   DivineResurgenceRisen)
+						 : FString::Printf(TEXT("holy revival: %d of %d fallen, comes at %d"),
+										   DivineResurgenceFallen, Placed, ComesAt));
 	}
 
 	// AND HOW MANY ANTI-MAGIC ZONES ARE STANDING. Issues #1820 and #41. The number is all
@@ -6781,6 +6925,15 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// Issues #1820 and #41. The count is this floor's; a wraith that lives through a
 		// Horde dungeon's change of wave is still a wraith and still keeps its figures.
 		VengefulWraithsRisen = 0;
+
+		// AND DIVINE RESURGENCE FORGETS EVERYTHING, ONCE PER FLOOR BEING THE ROW'S OWN
+		// WORDS. Issues #1820 and #41. A creature it raised that lives through a Horde
+		// dungeon's change of wave keeps its mark, so the next floor neither counts it
+		// as placed nor raises it again.
+		DivineResurgenceGraves.Reset();
+		DivineResurgenceFallen = 0;
+		bDivineResurgenceDone = false;
+		DivineResurgenceRisen = 0;
 
 		// AND JUDGMENT ZONES FORGETS EVERYTHING, which is the whole of its state.
 		// Issues #1820 and #41. The zones themselves are actors on the floor being left

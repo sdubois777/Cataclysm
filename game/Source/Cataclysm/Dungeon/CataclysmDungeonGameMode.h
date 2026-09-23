@@ -1013,7 +1013,8 @@ public:
 	 * Imp spawner says the same thing.
 	 */
 	void ApplyDesignedStats(ACataclysmEnemyCharacter* Enemy,
-							ECataclysmDungeonCreature Creature) const;
+							ECataclysmDungeonCreature Creature,
+							int32 FixedRung = -1) const;
 
 private:
 	/**
@@ -1783,6 +1784,35 @@ private:
 	void NoteDeathForVengefulWraiths(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Celestial Divine Resurgence, on every death. Issues #1820 and #41.
+	 *
+	 * RECORDS WHERE, WHAT AND AT WHICH RUNG the creature died, then asks whether enough
+	 * of the floor has fallen; when it has, raises every recorded death at once, marked
+	 * and at half health, and never again on this floor.
+	 *
+	 * A MARKED CREATURE IS SKIPPED ENTIRELY: not counted as placed or fallen, and not
+	 * recorded. That is what keeps a risen creature, or a wraith, from rising again and
+	 * from bringing the revival on sooner.
+	 *
+	 * THE RECORD IS NEEDED BECAUSE BODIES DO NOT LAST. A creature is destroyed once its
+	 * death animation ends, often on the next tick, so nothing would be left to raise by
+	 * the time half the floor had fallen.
+	 */
+	void NoteDeathForDivineResurgence(const struct FCataclysmDeathNotice& Notice);
+
+public:
+	/**
+	 * Divine Resurgence's state, for the floor panel and for tests. How many unmarked
+	 * creatures have fallen on this floor, how many the floor has placed that are not
+	 * marked (the fallen plus the unmarked still standing), and how many rose.
+	 */
+	int32 DivineResurgenceFallenCount() const { return DivineResurgenceFallen; }
+	int32 DivineResurgencePlacedCount() const;
+	int32 DivineResurgenceRisenCount() const { return DivineResurgenceRisen; }
+
+private:
+
+	/**
 	 * Give a wraith the four figures that make it one, and put them back when they go.
 	 *
 	 * CALL THIS ONLY WHERE THE CREATURE'S STAT BLOCK HAS JUST BEEN WRITTEN, because the
@@ -2533,6 +2563,28 @@ private:
 	int32 VengefulWraithsRisen = 0;
 
 	/**
+	 * One death Divine Resurgence may raise: where it happened, which kind and at which
+	 * rung. Issues #1820 and #41. Copied at the death notice, while the creature still
+	 * exists, because the body is gone moments later.
+	 */
+	struct FDivineResurgenceGrave
+	{
+		FVector Location = FVector::ZeroVector;
+		ECataclysmDungeonCreature Kind = ECataclysmDungeonCreature::Count;
+		int32 RarityStep = 0;
+	};
+
+	/**
+	 * Divine Resurgence: the graves waiting to rise, how many unmarked creatures have
+	 * fallen, whether the floor's one revival has come, and how many rose in it. All of
+	 * it is the floor's and goes at the stairs.
+	 */
+	TArray<FDivineResurgenceGrave> DivineResurgenceGraves;
+	int32 DivineResurgenceFallen = 0;
+	bool bDivineResurgenceDone = false;
+	int32 DivineResurgenceRisen = 0;
+
+	/**
 	 * Judgment Zones: the ground standing now, the clock that lays more, and what the
 	 * player has taken from it. Issues #1820 and #41.
 	 *
@@ -2673,9 +2725,17 @@ private:
 	 *
 	 * ONE FUNCTION FOR BOTH WAYS A CREATURE ARRIVES -- all of an ordinary floor
 	 * at once, and a wave a few at a time -- so the two cannot drift apart.
+	 *
+	 * `FixedRung` PUTS IT ON A RUNG RATHER THAN DRAWING ONE, and nothing passes it but
+	 * Celestial Divine Resurgence, which brings each creature back at the rung it died
+	 * at. It is passed down to `ApplyDesignedStats` so the rung is set BEFORE the
+	 * creature's modifiers are drawn: setting it afterwards would leave the modifiers
+	 * of whatever rung was drawn first, because drawing only ever adds. Issues #1820
+	 * and #41. Left at `RollTheRarity`, every other caller's behaviour is unchanged.
 	 */
 	ACataclysmEnemyCharacter* SpawnPlacedCreature(
-		const FCataclysmEnemyPlacement& Placement, float SightRadiusMultiplier);
+		const FCataclysmEnemyPlacement& Placement, float SightRadiusMultiplier,
+		int32 FixedRung = -1);
 
 	// ----------------------------------------------------------------------
 	// Reaching the empire from a dungeon, issue #1092
