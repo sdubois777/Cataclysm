@@ -384,11 +384,13 @@ float UCataclysmAbilitySystemComponent::MaximumEnergyShield() const
 		return 0.0f;
 	}
 
-	// APPLIED TO WHAT THE ATTRIBUTE HOLDS, so a scaled row reaches play and
-	// nothing written straight to the attribute is lost. The header says why
-	// this is `StatAppliedTo` and not `StatForSkill`, and who may call it.
-	return StatAppliedTo(FName(TEXT("max_energy_shield")),
-						 FGameplayTagContainer(), GetNumericAttribute(Maximum));
+	// THE ATTRIBUTE PLUS WHAT THE REFRESH COULD NOT FOLD INTO IT, so a scaled
+	// row reaches play, nothing written straight to the attribute is lost, and
+	// no unconditioned row is counted twice. Until 2026-09-23 this ran every row
+	// over the attribute through `StatAppliedTo`, which applied the flat rows and
+	// increases already inside it a second time. The helper's header says how.
+	return AttributePlusWhatWasNotFolded(FName(TEXT("max_energy_shield")),
+										 GetNumericAttribute(Maximum));
 }
 
 float UCataclysmAbilitySystemComponent::MaximumClassResource() const
@@ -405,13 +407,38 @@ float UCataclysmAbilitySystemComponent::MaximumClassResource() const
 		return 0.0f;
 	}
 
-	// APPLIED TO WHAT THE ATTRIBUTE HOLDS, so a scaled row reaches play and
-	// nothing written straight to the attribute is lost. `StatAppliedTo` and not
-	// `StatForSkill` for the reason the header gives on the shield's lookup: the
-	// figure in hand is the base, and the class line's own figure is what that
-	// figure already is.
-	return StatAppliedTo(FName(TEXT("class_resource")), FGameplayTagContainer(),
-						 GetNumericAttribute(Maximum));
+	// THE SAME HELPER AS THE SHIELD'S LOOKUP ABOVE, for its reasons. Room for
+	// One More's flat +30 and the increased-maximum-Fervour points are already
+	// inside the attribute; Vessel's scaled row is not, and is all this adds.
+	return AttributePlusWhatWasNotFolded(FName(TEXT("class_resource")),
+										 GetNumericAttribute(Maximum));
+}
+
+float UCataclysmAbilitySystemComponent::AttributePlusWhatWasNotFolded(
+	FName Stat, float Attribute) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		// NOTHING RECORDED, SO THE ATTRIBUTE IS THE WHOLE ANSWER.
+		return Attribute;
+	}
+
+	// WHAT THE REFRESH WROTE, WORKED OUT AGAIN RATHER THAN REMEMBERED: the same
+	// line, no skill tags and a default reading, which is exactly the call
+	// `UCataclysmPlayerClassStats::ApplyTo` makes. Taken from the same list as
+	// the figure below, so a character whose rows are all unconditioned gets a
+	// difference of exactly nothing.
+	const float Folded = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+		FCataclysmStatConditions()).Final;
+
+	// AND WHAT THE LINE COMES TO WITH THE CHARACTER'S READINGS NOW.
+	const float Now = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+		CurrentConditions()).Final;
+
+	return Attribute + (Now - Folded);
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
@@ -625,9 +652,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// THE ATTRIBUTE, AND THIS IS THE ONE READER THAT MAY NOT ASK FOR IT.
 		// Issue #1973 gave the maximum a lookup, `MaximumEnergyShield` above,
 		// so a row that scales it reaches play. This line cannot call it: that
-		// lookup asks `StatAppliedTo`, which asks this very function for the
-		// readings a conditional row needs, so the call would not be slow, it
-		// would not return.
+		// lookup asks `AttributePlusWhatWasNotFolded`, which asks this very
+		// function for the readings a conditional row needs, so the call would
+		// not be slow, it would not return.
 		//
 		// WHAT IT COSTS, STATED RATHER THAN LEFT TO BE FOUND: a row conditioned
 		// on the shield being full compares against the unscaled maximum. One
@@ -692,10 +719,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// Issue #1515 gave the maximum a lookup, `MaximumClassResource` above,
 		// so a row that scales it reaches play, and every other reader in the
 		// game now goes through it. This line cannot: that lookup asks
-		// `StatAppliedTo`, which asks this very function for the readings a
-		// conditional row needs, so the call would not be slow, it would not
-		// return. It is the same exception the energy shield's maximum makes
-		// twenty lines up, for the same reason.
+		// `AttributePlusWhatWasNotFolded`, which asks this very function for
+		// the readings a conditional row needs, so the call would not be slow,
+		// it would not return. It is the same exception the energy shield's
+		// maximum makes twenty lines up, for the same reason.
 		//
 		// WHAT IT COSTS, STATED RATHER THAN LEFT TO BE FOUND: a row conditioned
 		// on the class resource -- `class_resource_at_maximum`, or the share

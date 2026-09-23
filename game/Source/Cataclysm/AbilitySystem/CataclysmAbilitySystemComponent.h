@@ -562,16 +562,23 @@ public:
 	 * the character has no line for the stat, so a Ritualist -- which does have a
 	 * `max_energy_shield` class line -- would get the line's own base and lose
 	 * everything written straight to the attribute: a restored save, an enemy
-	 * archetype's shield, a dungeon modifier that lessens it. This applies the
-	 * increases to what the attribute holds, so nothing is dropped.
+	 * archetype's shield, a dungeon modifier that lessens it. This starts from
+	 * what the attribute holds, so nothing is dropped.
+	 *
+	 * AND IT ADDS ONLY WHAT THE ATTRIBUTE LACKS. Until 2026-09-23 it ran every
+	 * row on the stat over the attribute through `StatAppliedTo`, and the
+	 * attribute already held every unconditioned row, so a flat shield row or an
+	 * increase counted twice. `AttributePlusWhatWasNotFolded` says how it is
+	 * done now. Issue #1515, which found it.
 	 *
 	 * WHO ASKS: the three places `UCataclysmVitalAttributeSet` clamps the held
 	 * shield against its maximum, and the overlay that draws the bar. They have
 	 * to agree, or a bar longer than the clamp allows could never be filled.
 	 *
 	 * WHO DELIBERATELY DOES NOT: `CurrentConditions` below, which reads the
-	 * attribute. It cannot call this, because this calls `StatAppliedTo`, which
-	 * calls `CurrentConditions` -- that is recursion rather than a slow path.
+	 * attribute. It cannot call this, because this calls
+	 * `AttributePlusWhatWasNotFolded`, which calls `CurrentConditions` -- that
+	 * is recursion rather than a slow path.
 	 * What it costs is that a row conditioned on the shield being full compares
 	 * against the unscaled maximum. One shipped row does: `Ritualist_basic_c_a2`
 	 * Cold Reading, "+2% increased Spell Damage per point while your Energy
@@ -596,9 +603,9 @@ public:
 	 * EVERY READER OF THE MAXIMUM SHOULD ASK THIS RATHER THAN THE ATTRIBUTE,
 	 * WITH ONE EXCEPTION. `UCataclysmAbilitySystemComponent::CurrentConditions`
 	 * fills `ClassResourceMaximum` and may NOT call this: the lookup asks
-	 * `StatAppliedTo`, which asks `CurrentConditions` for the readings a
-	 * conditional row needs, so the call would not return. The comment on that
-	 * line says so and says what it costs.
+	 * `AttributePlusWhatWasNotFolded`, which asks `CurrentConditions` for the
+	 * readings a conditional row needs, so the call would not return. The
+	 * comment on that line says so and says what it costs.
 	 *
 	 * ZERO WHEN THERE IS NO CLASS RESOURCE ATTRIBUTE SET, which is every enemy in
 	 * the game. Reading an attribute whose set the component does not hold raises
@@ -1611,6 +1618,32 @@ protected:
 	 * replicated attribute. A hit is resolved on the authority.
 	 */
 	TMap<FName, FCataclysmStatInputs> StatInputs;
+
+	/**
+	 * A maximum's attribute, plus what the refresh could not fold into it.
+	 * Issue #1515.
+	 *
+	 * WHAT `MaximumEnergyShield` AND `MaximumClassResource` BOTH ASK. The
+	 * refresh writes each maximum's attribute from every row on the stat, judged
+	 * with no skill in hand and nothing known about the character, so an
+	 * unconditioned flat row or increase is ALREADY INSIDE the attribute. What is
+	 * missing is only what that judgement could not see: a scaled row, whose
+	 * reading was unknown, and a conditioned one.
+	 *
+	 * SO THIS ADDS THE DIFFERENCE, NOT THE ROWS. It works the stat out twice from
+	 * the recorded line -- once with the character's readings, once exactly as
+	 * the refresh did -- and adds what separates them to the attribute. The rule
+	 * `AttackDamageMoreForSkill` follows for the "more" bucket, applied to the
+	 * whole figure. Running every row over the attribute instead, which both
+	 * lookups did until 2026-09-23, counted each unconditioned row twice.
+	 *
+	 * THE ATTRIBUTE STAYS THE STARTING POINT, so anything written straight to it
+	 * -- a restored save, a dungeon floor, a test -- is kept.
+	 *
+	 * THE ATTRIBUTE ITSELF WHEN NOTHING IS RECORDED for the stat, which is every
+	 * enemy and a player before its first refresh.
+	 */
+	float AttributePlusWhatWasNotFolded(FName Stat, float Attribute) const;
 
 	/** What the worn items do when an event happens. See `SetPoolActions`. */
 	TArray<FCataclysmPoolAction> PoolActions;

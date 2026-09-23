@@ -213,28 +213,73 @@ rows on a node collide when they share ANY string either could be satisfied by.
 That is the right direction for a check whose whole purpose is catching two rows
 satisfied by the same words.
 
+### BOTH MAXIMUM LOOKUPS COUNTED EVERY UNCONDITIONED ROW TWICE, AND NO LONGER DO
+
+**Found while writing this change's tests, by reading; ruled by the coordinating
+session under the owner's delegation to be corrected here, both halves.**
+
+The refresh writes each maximum's attribute from EVERY row on the stat, judged
+with no skill in hand and nothing known about the character. So a flat row or an
+increase with no condition is already inside the attribute. Both lookups then ran
+every row over that attribute a second time:
+
+| Lookup | Since | Who asks it | What a doubled row did |
+|---|---|---|---|
+| `MaximumEnergyShield` | issue [#1973](https://github.com/sdubois777/Cataclysm/issues/1973) merged | the three shield clamps and the overlay bar | every unconditioned `max_energy_shield` row, on gear or a passive node, raised the bar twice |
+| `MaximumClassResource` | this change, before this correction | thirteen readers of the Fervour maximum | Room for One More's +30 and the increased-maximum-Fervour points raised the bar twice |
+
+**Worked through for one Ritualist** holding Room for One More and one point of
++2% increased maximum Fervour: the attribute holds (150 + 30) × 1.02 = 183.6, and
+the lookup answered (183.6 + 30) × 1.02 = 217.9.
+
+**The rule now, in one private helper both lookups use:** the attribute, plus the
+difference between the stat worked out with the character's readings and the
+stat worked out exactly as the refresh did. For the shield, that difference is
+Hollow Crown's scaled increase; for Fervour, Vessel's scaled grant. An
+unconditioned row gives a difference of exactly nothing. **It is the rule
+`AttackDamageMoreForSkill` already follows** for the "more" bucket (what applies
+now, divided by what was folded in), applied to the whole figure. The attribute
+stays the starting point, so a restored save or a dungeon floor written straight
+to it is kept.
+
+**One consequence worth stating:** Vessel's grant is flat, so the pipeline adds
+it before the increases multiply, and a Ritualist holding Wider Circle gets the
+grant raised by that increase. The same order every flat row has.
+
+**The one other caller of the function both lookups used** is a skill's mana
+cost (`UCataclysmGameplayAbility::ManaCostFor`). It passes the skill's own
+stated cost, which no row was ever folded into, so it never had the fault.
+
+**Why the earlier tests could not see it:** the Hollow Crown and Vessel cases
+each spend only a scaled row, which the refresh folds as nothing, so there was
+nothing to double. Two cases now spend unconditioned rows and require the lookup
+to equal the attribute; each fails on the code before this correction.
+
 ### EACH NODE HAS A TEST THAT READS ITS ROW
 
 **Every other test in this change puts the scaled modifier on by hand**, and
 would pass with no row in the data at all, which is exactly how the two earlier
-nodes named above came to grant nothing. So two more cases in
+nodes named above came to grant nothing. So four more cases in
 `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` take each node's row
-out of the imported table, spend the point through the player state, and grant
-nothing by hand:
+out of the imported table, spend the points through the player state, and grant
+nothing by hand. The last two are the double count's, described above:
 
 | Node | Test | What it asks, and how |
 |---|---|---|
 | Weight Bearing | `Cataclysm.Passives.WeightBearingsRowGrantsArmourThatFollowsMaximumHealth` | armour, the way a blow asks the defender for it |
 | Vessel | `Cataclysm.Passives.VesselsRowGrantsMaximumFervourThatFollowsMaximumMana` | the Fervour maximum, through the lookup thirteen readers use |
+| Room for One More, Wider Circle and Vessel | `Cataclysm.Passives.AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased` | the Fervour maximum equals its attribute, then Vessel adds its grant times the increase |
+| Second Sight | `Cataclysm.Passives.AMaximumEnergyShieldRowIsCountedOnce` | the shield maximum equals its attribute |
 
-**Each moves the maximum up and back down and watches the grant follow**, which
+**The first two move the maximum up and back down and watch the grant follow**, which
 is the first ruling above measured rather than stated. The first maximum written
 is 37.6 steps, where rounding down, rounding to nearest and not rounding give
 three different answers, so only the second ruling's arithmetic passes. Every
 grant is a difference from the same character with the point given back, so the
-only figures the tests use are the row's value and step. Both need the
-PassiveEffects data asset rebuilt from the regenerated table before they can
-pass.
+only figures the tests use are the row's value and step. The three that spend
+Weight Bearing or Vessel need the PassiveEffects data asset rebuilt from the
+regenerated table before they can pass; the shield case reads only rows the
+asset already holds.
 
 ---
 
