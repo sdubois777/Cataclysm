@@ -6767,12 +6767,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		JudgmentZonesTriggers = 0;
 
 		// AND ANTI-MAGIC ZONES FORGETS ITS ZONES, ITS CLOCK AND ITS LOCK. Issues #1820
-		// and #41. Singularity Wells' three, for Singularity Wells' reasons: the zones are
-		// already destroyed -- see the top of this function -- and a stale list would count
-		// them against the cap; the clock so the first zone of a floor does not arrive
-		// carrying the last floor's wait; the lock because the call above has already
-		// taken it off the character, and a figure left here would make the next beat
-		// believe it was still on.
+		// and #41. Singularity Wells' three: the list because those zones are already
+		// destroyed -- see the top of this function; the clock so the first zone of a floor
+		// does not arrive carrying the last floor's wait; the lock because the call above
+		// has already taken it off the character. The list and the lock would also be put
+		// right by the next beat, which prunes dead zones before counting and finds the
+		// player outside every zone -- the declaration says why no test can see those two
+		// -- so they are cleared here so the fields never describe a floor that is gone.
 		AntiMagicZones.Reset();
 		AntiMagicZonesSecondsSinceLastZone = 0.0f;
 		AntiMagicZonesLockApplied = 0.0f;

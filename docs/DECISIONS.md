@@ -433,6 +433,12 @@ either.
 **FIVE. The lock is decided from what is standing on every beat, before any zone is laid.** A lock
 decided only when ground is laid would follow the player off it; Singularity Wells has the same order.
 
+**The floor change's reset of the remembered lock is kept and cannot be tested, measured by reading.**
+A stale remembered lock would be corrected on the first beat after the stairs, because no zone can
+stand on a new floor for its first eight seconds and the player is outside every zone on that beat. So
+`AFloorChangeForgetsTheAntiMagicZonesAndItsLock` checks what the player sees after the stairs and does
+not claim to guard that reset, and no guard proof is spent on it.
+
 **SIX. A floor carrying the Edict of Silence as well gets two entries on `skill_locked`**, one unscoped
 and one scoped to spells, each in its own floor-effects field (`SkillsLockedValue`,
 `SpellsLockedValue`), so neither rule's write decides the other's scope. This is the shape issue #1765

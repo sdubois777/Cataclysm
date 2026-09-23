@@ -19513,7 +19513,11 @@ bool FCataclysmAntiMagicZoneLaidTest::RunTest(const FString& Parameters)
 							 Away, Zone->RadiusCm),
 			 Away > Zone->RadiusCm);
 
-	// AND SO NOTHING IS LOCKED YET: the player is not standing in it.
+	// AND SO NOTHING IS LOCKED: the player is not standing in it. ONE MORE BEAT FIRST,
+	// because the rule decides the lock before it lays ground, so the beat that laid this
+	// zone never looked at it. Without this beat, a rule that locked spells whenever any
+	// zone stood would pass here.
+	Beat(Mode, 1);
 	const FCataclysmWeaponSkill Spell = ATaggedDemonicSpell(*this);
 	TestFalse(TEXT("a spell is not locked while the player stands outside every zone"),
 			  IsLockedFor(Player, Spell.Tags));
@@ -19857,10 +19861,15 @@ bool FCataclysmAntiMagicPanelTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// THE WHOLE OF THIS RULE'S STATE IS THE FLOOR'S AND GOES AT THE STAIRS -- including the
-// lock it last applied, which is the part that can go wrong without anything failing on
-// the floor change itself. The floor change's own apply takes the lock off the character;
-// a rule that still believed it was on would never put it back on the next floor.
+// WHAT A FLOOR CHANGE DOES TO THIS RULE, SEEN FROM THE PLAYER: the zones go, the spell is
+// usable again, and ground on the new floor locks it again.
+//
+// WHAT THIS DOES NOT PROVE, SAID SO NOBODY RELIES ON IT: that the game mode's per-floor
+// reset of this rule's three fields is needed. The zones are destroyed by their owner and
+// the lock is taken off by the floor change's own apply, whatever those fields hold; and a
+// stale remembered lock corrects itself on the first beat after the stairs, because no
+// zone can stand on a new floor for its first eight seconds, so the player is outside
+// every zone on that beat. The reset is kept because Singularity Wells has the same one.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAntiMagicFloorChangeTest,
 	"Cataclysm.DungeonModifierEffects.AFloorChangeForgetsTheAntiMagicZonesAndItsLock",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -19904,8 +19913,7 @@ bool FCataclysmAntiMagicFloorChangeTest::RunTest(const FString& Parameters)
 			  FString(TEXT("anti-magic zone: 0 standing")));
 	TestFalse(TEXT("and the spell is usable again"), IsLockedFor(Player, Malefice.Tags));
 
-	// AND A ZONE ON THE NEW FLOOR LOCKS IT AGAIN, which is what a lock remembered across
-	// the stairs would stop.
+	// AND A ZONE ON THE NEW FLOOR LOCKS IT AGAIN, so the rule still works after the stairs.
 	if (!TestNotNull(TEXT("the player stands in a zone on the new floor"),
 					 StandInAnAntiMagicZone(*this, Mode, World, Player)))
 	{
