@@ -584,7 +584,13 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: because the node states two bonuses, and no scale on either: "per point" in a
 #: node's sentence means per PASSIVE point spent, which is what the three
 #: unscaled rows above and the Masochist's low-life nodes already show.
-AUTHORED_ROWS = 290
+#:
+#: AND TO 292 ON 2026-09-18, for the two keystones that turn one pool into
+#: another: `Ravager_keystone_a_kC` Weight Bearing, 1 armour for every 10
+#: maximum health, and `Ritualist_keystone_d_kC` Vessel, 1 Fervour for every 20
+#: maximum mana. One row each, both flat and both scaled, and both nodes had
+#: none before.
+AUTHORED_ROWS = 292
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -950,7 +956,11 @@ AUTHORED_ROWS = 290
 #: AND TO 212 ON 2026-09-18, when `Set Against It` (`Ravager_basic_a_b1`) was
 #: given the two rows above. That node had none before, so this moved with the
 #: row count for the fourth time, and the Ravager is 56 of its 74.
-AUTHORED_NODES = 212
+#:
+#: AND TO 214 ON 2026-09-18, for the two keystones above. Neither had a row, so
+#: this moved with the row count for the fifth time, and the Ravager is 67 of
+#: its 74 with the Ritualist 69 of its 74.
+AUTHORED_NODES = 214
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1811,7 +1821,21 @@ SCALE_WORDS = {
     # number, because a bare "200" is a digit a sentence could hold for
     # another reason; "full" is required because it is what makes the steps
     # whole.
-    "max_mana": (("for every full", "maximum mana"), "{value:g} maximum mana", None),
+    # WIDENED FROM "for every full" ON 2026-09-18. Two nodes now scale by this
+    # pool and they word it differently: Drawn Deep says "for every full 200
+    # maximum mana you have" and Vessel says "for every 20 maximum mana you
+    # have". Every fragment here must appear, so the narrower phrase would have
+    # failed a correct row. "for every" and the pool's name still hold the check
+    # together, and the step form below still requires the number beside the
+    # pool, so nothing is given up but the word "full".
+    "max_mana": (("for every", "maximum mana"), "{value:g} maximum mana", None),
+
+    # THE MAXIMUM ITSELF, WHICH IS NOT ANY OF THE THREE HEALTH SCALES ABOVE.
+    # Issue #1515. Weight Bearing reads "1 Armor for every 10 maximum health you
+    # have": the others read how FULL the bar is, and this reads how BIG it is,
+    # so naming the pool is what keeps this row off a node about missing health.
+    "max_health": (("for every", "maximum health"), "{value:g} maximum health",
+                   None),
 }
 
 
@@ -1999,7 +2023,24 @@ VALUE_FORMS = {
     # Room for One More is the first `flat` one: "+30 maximum Fervour, which is
     # 30 more for your minions to reserve". A flat maximum on a resource with
     # another name would need its own form, and should get one.
-    "class_resource": "{value:g} maximum Fervour",
+    # TWO WORDINGS FOR ONE STAT, WHICH IS WHY THIS ENTRY IS A PAIR. Issue
+    # #1515. Ritualist_keystone_spine_001 says "+30 maximum Fervour" and Vessel
+    # says "1 Fervour for every 20 maximum mana you have" -- the same stat,
+    # granted flat, written two ways. A single form fails one of them whichever
+    # is chosen, and the sentences are the design's rather than this file's to
+    # arrange.
+    #
+    # ANY ONE OF THEM MAY MATCH, the shape `CONDITION_WORDS` already uses for
+    # the same reason. It does not weaken the check: each alternative still has
+    # to appear in the sentence with the row's own number in it.
+    "class_resource": ("{value:g} maximum Fervour", "{value:g} Fervour"),
+
+    # A FLAT AMOUNT OF ARMOUR, WHICH ONLY ONE NODE GRANTS. Issue #1515. Weight
+    # Bearing reads "1 Armor for every 10 maximum health you have", so the
+    # number is followed by the stat's name as a player sees it. Every other
+    # armour row is an INCREASE and is read as a percentage, which this entry
+    # does not touch: a form here is consulted for `flat` rows only.
+    "armor": "{value:g} Armor",
 
     # THE THREE RATES ON THE MASOCHIST'S FIRST SPINE NODE, which are the rows
     # issue #990 was opened about. Each is a COUNT OF FERVOUR PER ONE PER CENT OF
@@ -2523,9 +2564,21 @@ def test_every_value_appears_in_the_nodes_own_description(
         # increase together, which is what uncovered it.
         form = (VALUE_FORMS.get(row["Stat"], "{value:g}%")
                 if row["ValueKind"] == "flat" else "{value:g}%")
-        printed = form.format(value=abs(value))
-        assert printed in described, (
-            f"{row['Node']}: the workbook grants {printed} of "
+
+        # ONE FORM OR SEVERAL, AND SEVERAL MEANS "ANY OF THESE WILL DO". Issue
+        # #1515. One stat can be granted flat by two nodes that word the grant
+        # differently -- "+30 maximum Fervour" against "1 Fervour for every 20
+        # maximum mana" -- and a single form fails one of them whichever is
+        # chosen. The sentences belong to the design and not to this file.
+        #
+        # IT DOES NOT WEAKEN THE CHECK. Every alternative still has to appear in
+        # the sentence carrying the row's own number, so a row whose description
+        # writes none of them fails exactly as before. This is the same shape
+        # `CONDITION_WORDS` takes for its fragments, and for the same reason.
+        allowed = (form,) if isinstance(form, str) else tuple(form)
+        printed = [one.format(value=abs(value)) for one in allowed]
+        assert any(one in described for one in printed), (
+            f"{row['Node']}: the workbook grants {' or '.join(printed)} of "
             f"{row['Stat']} per point, and the node says:\n"
             f"    {described}\n"
             "The two have to agree. Either the workbook is stale or the tree "
@@ -2533,13 +2586,23 @@ def test_every_value_appears_in_the_nodes_own_description(
         )
 
 
-def text_the_check_looks_for(row: dict) -> str:
-    """The exact string `test_every_value_appears_in_the_nodes_own_description`
-    searches the description for. Shared so the test below cannot drift from the
-    one above it."""
+def text_the_check_looks_for(row: dict) -> tuple[str, ...]:
+    """Every string `test_every_value_appears_in_the_nodes_own_description`
+    would accept. Shared so the test below cannot drift from the one above it.
+
+    A TUPLE AND NOT A STRING SINCE 2026-09-18, because a stat granted flat by
+    two nodes that word it differently carries several forms and any one of them
+    may match. Issue #1515. The test below reads every form rather than one, so
+    two rows collide when they share ANY of the strings either could be
+    satisfied by -- which is stricter than comparing one form each, and is the
+    right way round for a check that exists to catch two rows satisfied by the
+    same words.
+    """
     form = (VALUE_FORMS.get(row["Stat"], "{value:g}%")
             if row["ValueKind"] == "flat" else "{value:g}%")
-    return form.format(value=abs(float(row["ValuePerPoint"])))
+    allowed = (form,) if isinstance(form, str) else tuple(form)
+    return tuple(one.format(value=abs(float(row["ValuePerPoint"])))
+                 for one in allowed)
 
 
 def test_no_two_flat_rows_on_one_node_look_for_the_same_text(effects):
@@ -2585,7 +2648,8 @@ def test_no_two_flat_rows_on_one_node_look_for_the_same_text(effects):
             continue
         if (row["Node"], row["Stat"]) in VALUE_IN_WORDS:
             continue
-        by_node[row["Node"]].append((text_the_check_looks_for(row), row["Stat"]))
+        for printed in text_the_check_looks_for(row):
+            by_node[row["Node"]].append((printed, row["Stat"]))
 
     assert by_node, (
         "no flat row reaches this check at all, so it compares nothing. Either "

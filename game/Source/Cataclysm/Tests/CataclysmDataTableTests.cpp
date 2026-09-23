@@ -437,7 +437,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// reduction and increased attack damage, both conditioned on holding 50
 	// or more Fervour. The condition they name was built the same day and
 	// could reach nothing until these rows existed. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        290)
+	// AND 292 SINCE LATER ON 2026-09-18, for the two keystones that turn one
+	// pool into another: Weight Bearing, 1 armour for every 10 maximum
+	// health, and Vessel, 1 Fervour for every 20 maximum mana. Each is one
+	// flat row carrying a scale, and each needed a half that did not exist:
+	// a reading of how BIG a health bar is, and something that asks for the
+	// maximum class resource through the pipeline. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        292)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

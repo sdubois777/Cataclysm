@@ -69,7 +69,12 @@ KNOWN_USED = "debuffs_carried"
 #: What the control expects to find, so a reader that returns a handful of names
 #: rather than all of them is caught as well as one that returns none.
 #: Measured with the figures above: 16 of 16 named.
-EXPECTED_NAMED_BY_A_ROW = 16
+#:
+#: AND 17 OF 17 ON 2026-09-18, when `max_health` was added for
+#: `Ravager_keystone_a_kC` Weight Bearing -- "1 Armor for every 10 maximum
+#: health you have". It is named by that node's row in the same change that adds
+#: it, so it never needed a place on the built-ahead list.
+EXPECTED_NAMED_BY_A_ROW = 17
 
 
 def scales_named_by_a_row() -> set[str]:
