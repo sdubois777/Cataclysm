@@ -13429,4 +13429,522 @@ bool FCataclysmSetAgainstItTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A maximum of one pool granting another, read out of the rows. Issue #1515.
+//
+// WHY THESE TWO EXIST. Every other test of Weight Bearing and Vessel puts the
+// scaled modifier on by hand, and so would pass with no row in
+// `game/Data/PassiveEffects.csv` at all -- which is how
+// `Ritualist_capstone_200#3` and the Conduit keystone each came to grant nothing
+// in play. These take the node's row out of the imported table, spend the point
+// through the player state as the passive screen does, and state no figure of
+// their own beyond the row's value and step.
+//
+// THE MAXIMUM IS MOVED, NOT JUST READ. The owner's delegation ruled that the
+// grant tracks the maximum as it moves (docs/DECISIONS.md, 2026-09-23), so each
+// test writes two maxima and watches the grant follow. The first is 37.6 steps,
+// where rounding down (37), rounding to nearest (38) and not rounding at all
+// (37.6) give three different answers, so only the ruled arithmetic passes.
+//
+// EACH GRANT IS A DIFFERENCE from the same character with the point given back,
+// at the same maximum, so the class line's own figure never enters an assertion.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmMaximumGrantTest
+{
+	/** The node's one row, checked for the kind, stat and scale it must carry. */
+	const FCataclysmPassiveEffectRow* OneScaledRow(
+		FAutomationTestBase& Test, const UDataTable* EffectTable, FName Node,
+		const TCHAR* Stat, const TCHAR* Scale)
+	{
+		const TArray<const FCataclysmPassiveEffectRow*> Effects =
+			UCataclysmPassiveTree::EffectsFor(EffectTable, Node);
+		if (!Test.TestEqual(*FString::Printf(TEXT("%s carries one row"),
+											 *Node.ToString()),
+							Effects.Num(), 1))
+		{
+			Test.AddError(TEXT("The node's row is missing from the data, so it "
+							   "grants nothing in play. Author it in the Passive "
+							   "Effects sheet of docs/All_Things_Cataclysm.xlsx and "
+							   "regenerate."));
+			return nullptr;
+		}
+		const FCataclysmPassiveEffectRow* Row = Effects[0];
+		Test.TestEqual(TEXT("the row grants the stat"), Row->Stat, FString(Stat));
+		Test.TestEqual(TEXT("stated flat"), Row->ValueKind, FString(TEXT("flat")));
+		Test.TestEqual(TEXT("under no condition"), Row->Condition, FString());
+		Test.TestEqual(TEXT("on the maximum's scale"), Row->Scale, FString(Scale));
+		if (!Test.TestTrue(*FString::Printf(
+								TEXT("the row states a value and a step: %.2f per %.2f"),
+								Row->ValuePerPoint, Row->ScaleStep),
+							Row->ValuePerPoint > 0.0f && Row->ScaleStep > 0.0f))
+		{
+			return nullptr;
+		}
+		return Row;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWeightBearingRowTest,
+	"Cataclysm.Passives.WeightBearingsRowGrantsArmourThatFollowsMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_a_kC` Weight Bearing, from its row, on a real Ravager.
+ * Issue #1515.
+ *
+ * "Your Maximum Health also grants Armor: 1 Armor for every 10 maximum health you
+ * have."
+ *
+ * THE ARMOUR IS ASKED FOR THE WAY A BLOW ASKS FOR IT. A scaled row is never
+ * folded into the armour attribute, so reading the attribute would read no grant
+ * whatever the row said. `UCataclysmDamageCalculation` asks
+ * `StatForSkill("armor", ..., the attribute)` of the defender, and so does this.
+ */
+bool FCataclysmPassiveWeightBearingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_a_kC"));
+	const FCataclysmPassiveEffectRow* Row = CataclysmMaximumGrantTest::OneScaledRow(
+		*this, Player.EffectTable, Node, TEXT("armor"), TEXT("max_health"));
+	if (!Row)
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem = Player.AbilitySystem;
+
+	// WRITTEN AFTER EVERY SPEND, because spending refreshes the class line and
+	// the refresh writes the maximum back. Read back, so a clamp on the write
+	// shows as its own failure rather than as a wrong grant.
+	const auto HoldMaximum = [this, AbilitySystem](float Maximum)
+	{
+		AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+											   Maximum);
+		TestEqual(*FString::Printf(TEXT("the maximum holds %.1f"), Maximum),
+				  AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+				  Maximum, 0.001f);
+	};
+	const auto ArmourAsABlowMeetsIt = [AbilitySystem]()
+	{
+		return AbilitySystem->StatForSkill(
+			FName(TEXT("armor")), FGameplayTagContainer(),
+			AbilitySystem->GetNumericAttribute(Combat::GetArmorAttribute()));
+	};
+	const auto Spend = [&Player, Node](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(Node, Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	};
+
+	const float Step = Row->ScaleStep;
+	const float Smaller = Step * 37.6f;
+	const float Larger = Step * 52.2f;
+
+	// THE SAME CHARACTER WITHOUT THE NODE, at each maximum: the figure every
+	// grant below is measured from.
+	Spend(0);
+	HoldMaximum(Smaller);
+	const float UnspentAtSmaller = ArmourAsABlowMeetsIt();
+	HoldMaximum(Larger);
+	const float UnspentAtLarger = ArmourAsABlowMeetsIt();
+	TestEqual(TEXT("without the node, the maximum does not move the armour"),
+			  UnspentAtLarger, UnspentAtSmaller, 0.001f);
+
+	Spend(1);
+	HoldMaximum(Smaller);
+	TestEqual(*FString::Printf(
+				  TEXT("at %.1f maximum health the node grants %.0f whole steps "
+					   "of armour, rounded down"), Smaller, 37.0f),
+			  ArmourAsABlowMeetsIt() - UnspentAtSmaller,
+			  Row->ValuePerPoint * 37.0f, 0.001f);
+
+	// AND IT FOLLOWS THE MAXIMUM UP, with no refresh in between.
+	HoldMaximum(Larger);
+	TestEqual(*FString::Printf(
+				  TEXT("raise the maximum to %.1f and the grant is %.0f steps"),
+				  Larger, 52.0f),
+			  ArmourAsABlowMeetsIt() - UnspentAtLarger,
+			  Row->ValuePerPoint * 52.0f, 0.001f);
+
+	// AND DOWN AGAIN.
+	HoldMaximum(Smaller);
+	TestEqual(TEXT("lower it back and the grant falls back"),
+			  ArmourAsABlowMeetsIt() - UnspentAtSmaller,
+			  Row->ValuePerPoint * 37.0f, 0.001f);
+
+	// GIVING THE POINT BACK takes the grant away, which a build that granted it
+	// once and never worked it out again would not.
+	Spend(0);
+	HoldMaximum(Larger);
+	TestEqual(TEXT("and giving the point back takes the armour away"),
+			  ArmourAsABlowMeetsIt() - UnspentAtLarger, 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveVesselRowTest,
+	"Cataclysm.Passives.VesselsRowGrantsMaximumFervourThatFollowsMaximumMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_d_kC` Vessel, from its row, on a real Ritualist.
+ * Issue #1515.
+ *
+ * "Your Maximum Mana also grants maximum Fervour: 1 Fervour for every 20 maximum
+ * mana you have."
+ *
+ * THE MAXIMUM IS ASKED FOR THROUGH `MaximumClassResource`, which thirteen of the
+ * fourteen readers of the Fervour maximum use. The attribute never holds a scaled
+ * row, so reading it would read no grant whatever the row said.
+ */
+bool FCataclysmPassiveVesselRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_keystone_d_kC"));
+	const FCataclysmPassiveEffectRow* Row = CataclysmMaximumGrantTest::OneScaledRow(
+		*this, Player.EffectTable, Node, TEXT("class_resource"),
+		TEXT("max_mana"));
+	if (!Row)
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem = Player.AbilitySystem;
+
+	const auto HoldMaximum = [this, AbilitySystem](float Maximum)
+	{
+		AbilitySystem->SetNumericAttributeBase(Vital::GetMaxManaAttribute(),
+											   Maximum);
+		TestEqual(*FString::Printf(TEXT("the maximum mana holds %.1f"), Maximum),
+				  AbilitySystem->GetNumericAttribute(Vital::GetMaxManaAttribute()),
+				  Maximum, 0.001f);
+	};
+	const auto Spend = [&Player, Node](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(Node, Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	};
+
+	const float Step = Row->ScaleStep;
+	const float Smaller = Step * 37.6f;
+	const float Larger = Step * 52.2f;
+
+	Spend(0);
+	HoldMaximum(Smaller);
+	const float UnspentAtSmaller = AbilitySystem->MaximumClassResource();
+	HoldMaximum(Larger);
+	const float UnspentAtLarger = AbilitySystem->MaximumClassResource();
+	TestEqual(TEXT("without the node, maximum mana does not move maximum Fervour"),
+			  UnspentAtLarger, UnspentAtSmaller, 0.001f);
+
+	Spend(1);
+	HoldMaximum(Smaller);
+	TestEqual(*FString::Printf(
+				  TEXT("at %.1f maximum mana the node grants %.0f whole steps of "
+					   "maximum Fervour, rounded down"), Smaller, 37.0f),
+			  AbilitySystem->MaximumClassResource() - UnspentAtSmaller,
+			  Row->ValuePerPoint * 37.0f, 0.001f);
+
+	HoldMaximum(Larger);
+	TestEqual(*FString::Printf(
+				  TEXT("raise maximum mana to %.1f and the grant is %.0f steps"),
+				  Larger, 52.0f),
+			  AbilitySystem->MaximumClassResource() - UnspentAtLarger,
+			  Row->ValuePerPoint * 52.0f, 0.001f);
+
+	HoldMaximum(Smaller);
+	TestEqual(TEXT("lower it back and the grant falls back"),
+			  AbilitySystem->MaximumClassResource() - UnspentAtSmaller,
+			  Row->ValuePerPoint * 37.0f, 0.001f);
+
+	Spend(0);
+	HoldMaximum(Larger);
+	TestEqual(TEXT("and giving the point back takes the maximum Fervour away"),
+			  AbilitySystem->MaximumClassResource() - UnspentAtLarger, 0.0f,
+			  0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A maximum's lookup counts an unconditioned row once. Issue #1515.
+//
+// THE FAULT THESE TWO GUARD, found while writing the two cases above. The
+// refresh writes a maximum's attribute from every row on the stat, so a flat row
+// or an increase is already inside it. Both lookups then ran every row over that
+// attribute a second time, so a Ritualist holding Room for One More and points
+// in Wider Circle had a larger Fervour bar than its attribute, and one holding
+// Second Sight a larger shield bar. Neither case above could see it: Vessel's
+// one row is scaled, and a scaled row is folded as nothing.
+//
+// EACH ALSO CHECKS THAT THE ROWS REACHED THE ATTRIBUTE AT ALL. Without that, the
+// lookup equalling the attribute would pass just as well for a character whose
+// rows had been dropped.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveMaximumFervourCountedOnceTest,
+	"Cataclysm.Passives.AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Room for One More, Wider Circle and Vessel, from their rows, on a real
+ * Ritualist.
+ *
+ * `Ritualist_keystone_spine_001` Room for One More: "+30 maximum Fervour".
+ * `Ritualist_basic_spine_001` Wider Circle: "+2% increased maximum Fervour per
+ * point". Both unconditioned, so both are inside the attribute, and the lookup
+ * must add nothing for them.
+ *
+ * THEN VESSEL, whose grant is the one thing the attribute lacks. It is a flat
+ * row, so the pipeline adds it before the increases multiply: the lookup must
+ * add the grant times Wider Circle's increase, and not the bare grant.
+ */
+bool FCataclysmPassiveMaximumFervourCountedOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Resource = UCataclysmClassResourceAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Flat(TEXT("Ritualist_keystone_spine_001"));
+	const FName Increase(TEXT("Ritualist_basic_spine_001"));
+	const FName Vessel(TEXT("Ritualist_keystone_d_kC"));
+
+	const TArray<const FCataclysmPassiveEffectRow*> IncreaseRows =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Increase);
+	if (!TestEqual(TEXT("Wider Circle carries one row"), IncreaseRows.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("on maximum Fervour"), IncreaseRows[0]->Stat,
+			  FString(TEXT("class_resource")));
+	TestEqual(TEXT("stated as an increase"), IncreaseRows[0]->ValueKind,
+			  FString(TEXT("increased")));
+	const TArray<const FCataclysmPassiveEffectRow*> FlatRows =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Flat);
+	if (!TestEqual(TEXT("Room for One More carries one row"), FlatRows.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("on maximum Fervour, too"), FlatRows[0]->Stat,
+			  FString(TEXT("class_resource")));
+	TestEqual(TEXT("stated flat"), FlatRows[0]->ValueKind, FString(TEXT("flat")));
+
+	const FCataclysmPassiveEffectRow* VesselRow =
+		CataclysmMaximumGrantTest::OneScaledRow(
+			*this, Player.EffectTable, Vessel, TEXT("class_resource"),
+			TEXT("max_mana"));
+	if (!VesselRow)
+	{
+		return false;
+	}
+
+	UCataclysmAbilitySystemComponent* AbilitySystem = Player.AbilitySystem;
+	const auto Attribute = [AbilitySystem]()
+	{
+		return AbilitySystem->GetNumericAttribute(
+			Resource::GetMaxClassResourceAttribute());
+	};
+	const auto Spend = [&Player](const FCataclysmPassiveAllocation& Allocation)
+	{
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	};
+
+	constexpr int32 IncreasePoints = 5;
+
+	Spend(FCataclysmPassiveAllocation());
+	const float Unspent = Attribute();
+
+	FCataclysmPassiveAllocation TwoNodes;
+	TwoNodes.Add(Flat, 1);
+	TwoNodes.Add(Increase, IncreasePoints);
+	Spend(TwoNodes);
+
+	// THE ROWS REACHED THE ATTRIBUTE, so the equality below is about something.
+	TestTrue(*FString::Printf(TEXT("the two nodes raise the attribute: %.2f to %.2f"),
+							  Unspent, Attribute()),
+			 Attribute() > Unspent);
+	TestEqual(TEXT("and the lookup is the attribute, not the rows applied twice"),
+			  AbilitySystem->MaximumClassResource(), Attribute(), 0.001f);
+
+	// AND VESSEL BESIDE THEM, at a maximum mana where rounding matters.
+	FCataclysmPassiveAllocation ThreeNodes = TwoNodes;
+	ThreeNodes.Add(Vessel, 1);
+	Spend(ThreeNodes);
+	const float Maximum = VesselRow->ScaleStep * 37.6f;
+	AbilitySystem->SetNumericAttributeBase(Vital::GetMaxManaAttribute(), Maximum);
+	TestEqual(TEXT("the maximum mana holds what was written"),
+			  AbilitySystem->GetNumericAttribute(Vital::GetMaxManaAttribute()),
+			  Maximum, 0.001f);
+
+	const float Increased =
+		1.0f + IncreaseRows[0]->ValuePerPoint * IncreasePoints / 100.0f;
+	TestEqual(*FString::Printf(
+				  TEXT("Vessel adds 37 whole steps, raised by Wider Circle's "
+					   "%.0f%%, and nothing else"),
+				  (Increased - 1.0f) * 100.0f),
+			  AbilitySystem->MaximumClassResource() - Attribute(),
+			  VesselRow->ValuePerPoint * 37.0f * Increased, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveMaximumShieldCountedOnceTest,
+	"Cataclysm.Passives.AMaximumEnergyShieldRowIsCountedOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_spine_004` Second Sight, from its row, on a real Ritualist.
+ *
+ * An unconditioned increase to maximum energy shield. It is inside the
+ * attribute, so `MaximumEnergyShield` -- which the three shield clamps and the
+ * overlay bar ask -- must answer the attribute. From issue #1973 until this
+ * change it answered the attribute raised by the increase a second time.
+ */
+bool FCataclysmPassiveMaximumShieldCountedOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_basic_spine_004"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Second Sight carries one row"), Effects.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("on maximum energy shield"), Effects[0]->Stat,
+			  FString(TEXT("max_energy_shield")));
+	TestEqual(TEXT("stated as an increase"), Effects[0]->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("under no condition"), Effects[0]->Condition, FString());
+	TestEqual(TEXT("and on no scale"), Effects[0]->Scale, FString());
+
+	UCataclysmAbilitySystemComponent* AbilitySystem = Player.AbilitySystem;
+	const auto Attribute = [AbilitySystem]()
+	{
+		return AbilitySystem->GetNumericAttribute(
+			Vital::GetMaxEnergyShieldAttribute());
+	};
+
+	Player.State->SetPassiveAllocation(FCataclysmPassiveAllocation(),
+									   TArray<FName>());
+	Player.Equipment->RefreshAttributes(AbilitySystem);
+	const float Unspent = Attribute();
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 5);
+	Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+	Player.Equipment->RefreshAttributes(AbilitySystem);
+
+	TestTrue(*FString::Printf(TEXT("five points raise the attribute: %.2f to %.2f"),
+							  Unspent, Attribute()),
+			 Attribute() > Unspent);
+	TestEqual(TEXT("and the lookup is the attribute, not the increase applied "
+				   "twice"),
+			  AbilitySystem->MaximumEnergyShield(), Attribute(), 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

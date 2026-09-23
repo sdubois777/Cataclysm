@@ -509,7 +509,7 @@ bool UCataclysmCombatOverlay::FervourOf(const AActor* Actor, float& OutFervour,
 	}
 
 	OutFervour = Resource->GetClassResource();
-	OutMaxFervour = Resource->GetMaxClassResource();
+	OutMaxFervour = Resource->MaximumClassResourceAsked();
 	return true;
 }
 

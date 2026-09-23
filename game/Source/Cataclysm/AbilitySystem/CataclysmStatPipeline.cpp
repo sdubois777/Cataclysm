@@ -139,6 +139,7 @@ namespace
 		{ TEXT("enemies_hit_beyond_the_first"), ECataclysmStatScale::PerEnemyStruckTogetherBeyondTheFirst },
 		{ TEXT("damage_reduction"),    ECataclysmStatScale::PerPercentOfDamageReduction },
 		{ TEXT("max_mana"),            ECataclysmStatScale::PerPointOfMaximumMana },
+		{ TEXT("max_health"),          ECataclysmStatScale::PerPointOfMaximumHealth },
 		{ TEXT("metres_to_target"),    ECataclysmStatScale::PerMetreToTarget },
 		{ TEXT("seconds_stationary"),  ECataclysmStatScale::PerSecondStationary },
 	};
@@ -1163,6 +1164,25 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 	// THE THREE STACK COUNTS SHARE ONE PIECE OF ARITHMETIC, because a stack is
 	// already a whole thing: there is no reading to divide and nothing to round.
 	// Issues #1002, #1003 and #1004.
+	case ECataclysmStatScale::PerPointOfMaximumHealth:
+	{
+		// THE SAME TWO REFUSALS AND THE SAME ARITHMETIC AS THE MAXIMUM MANA
+		// SCALE ABOVE, and for its reasons: an unknown reading refuses, and a
+		// step of nothing would divide by zero.
+		//
+		// A MAXIMUM OF ZERO IS NOT A REFUSAL. It falls through and answers zero
+		// by the arithmetic, which is the honest answer for a character whose
+		// bar can hold nothing rather than a special case.
+		if (State.MaximumHealth < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		const float Steps =
+			FMath::FloorToFloat(State.MaximumHealth / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
 	case ECataclysmStatScale::PerStackOfSanguineMomentum:
 		return StackedValue(Modifier, State.SanguineMomentumStacks);
 

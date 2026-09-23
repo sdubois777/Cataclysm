@@ -104,6 +104,226 @@ failures=0, errors=0, skipped=8. ruff: `All checks passed!`
 
 ---
 
+## 2026-09-23 — A maximum of one pool may grant another, and each half was missing for a different reason
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and
+`.cpp`, `CataclysmAbilitySystemComponent.h` and `.cpp`,
+`CataclysmClassResourceAttributeSet.h` and `.cpp`, `CataclysmFervour.cpp`,
+`CataclysmCombatOverlay.cpp`, `tools/generate_datatables.py`, the design
+workbook, and four test files. For two keystones from issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+**The measurements in this entry were taken on 2026-09-18** and the change was
+finished on the 23rd; a usage outage sat between the two. The dates in the code
+comments are the days the figures were measured, not the day they were committed.
+
+### THE TWO NODES, WHICH ARE ONE IDEA TWICE
+
+| Node | Its sentence |
+|---|---|
+| `Ravager_keystone_a_kC` Weight Bearing | "Your Maximum Health also grants Armor: 1 Armor for every 10 maximum health you have." |
+| `Ritualist_keystone_d_kC` Vessel | "Your Maximum Mana also grants maximum Fervour: 1 Fervour for every 20 maximum mana you have." |
+
+Both were in the game with no effect row, granting nothing. They are one change
+because the second is nearly free once the first exists, and one argument is
+better written once.
+
+### EACH NEEDED A DIFFERENT HALF, AND NEITHER EXISTED
+
+**NOTHING COULD READ HOW BIG A HEALTH BAR IS.** The character's readings carried
+the share missing, the share owed and the share in hand;
+`FCataclysmStatConditions::FromHealth` divides health by its maximum and keeps
+only that share. **Every health reading answered "how full" and none answered
+"how big"**, and no arithmetic on a percentage recovers it. So the readings gain
+the maximum itself, filled beside the share, and the vocabulary gains a scale
+that counts whole steps of it.
+
+**NOTHING ASKED FOR THE MAXIMUM CLASS RESOURCE.** Fourteen places read it
+straight off the attribute. A scaled row is never folded into a gameplay
+attribute, so Vessel's row would have been accepted, built, imported and dead —
+**the third time this shape has appeared**, after `Ritualist_capstone_200#3` and
+the Hollow Crown keystone. A lookup now applies a scaled row to that maximum and
+**thirteen of the fourteen readers go through it**.
+
+### THE FOURTEENTH MAY NOT ASK, AND WHAT THAT COSTS
+
+The function that gathers a character's readings fills the maximum class
+resource. It cannot call the lookup: the lookup asks for the readings a
+conditional row needs, which is that same function, so the call would not return.
+
+**It keeps reading the attribute, and the cost is stated rather than left to be
+found:** a row conditioned on the class resource being full, or above a share of
+it, compares against the UNSCALED maximum. A Ritualist holding Vessel with a
+large mana pool therefore reads "at maximum" a little before its bar really is.
+**This is the same exception the energy shield's maximum already makes**, twenty
+lines above it, for the same reason. A judgement under the project owner's
+delegation of 2026-09-14.
+
+### THE JUDGEMENTS, AND WHO MADE THEM
+
+**Ruled by the coordinating session under the owner's delegation, and open to the
+owner's veto.**
+
+| Question | Answer | Why |
+|---|---|---|
+| Does the grant track the maximum as it moves in play? | **Yes** | A scaled row is worked out when something asks, so gear and passives that raise a maximum raise the grant, and one that lowers it lowers the grant. Recorded here as a balance statement rather than an implementation detail |
+| How does a part-step count? | **Whole steps, floored** | Every per-point scale in the pipeline already does this |
+| One change or two? | **One** | The second node is nearly free once the first scale exists |
+| What bound does the generator enforce on the new scale's step? | **0 to 1000** | Measured: `game/Data/ClassStats.csv` gives the Masochist the largest bar, 2,526 maximum health at level 100 before gear, and the Ravager 2,110. A step past a thousand is far likelier a number typed into the wrong column |
+
+### A REHEARSAL WITH A CONTROL COPY, AND WHAT ONLY THE CONTROL COULD SAY
+
+The whole change was run first in a throwaway copy of the tree, **with a second
+untouched copy beside it**, and the Python suite run in both.
+
+| | |
+|---|---|
+| Failing in BOTH copies | **11** — a copy taken this way is not a git repository, so every check that asks git about a path fails there. Artefacts, not findings |
+| Differing between them | **7** — these are the change |
+| Predicted by reading beforehand | **5** |
+
+**The control reported one thing no reading could:** the branch was already
+failing the check that every scale source be named by a row, because the new
+scale had none yet. The rows are what fix it, and that count moves from 16 to 17
+with no built-ahead entry needed.
+
+**A previous rehearsal named its artefacts by reading their error text instead of
+running a control.** That worked and could have been fooled by a message that
+merely looked plausible. The control cannot be.
+
+### TWO OF THE SEVEN WERE NOT BOOKKEEPING
+
+**A scale must be tied to the WORDS of its node's sentence, and two nodes now
+word the same pool differently.** The maximum-mana scale required the phrase "for
+every full", which Drawn Deep writes and Vessel does not — and every fragment must
+appear, so the narrower phrase failed a correct row. It is widened to "for every"
+plus the pool's name. Nothing is given up but the word "full": the step form still
+requires the number beside the pool.
+
+**A flat value must appear in its node's sentence in the stat's own units, and one
+stat is now granted flat by two nodes that word it two ways** — "+30 maximum
+Fervour" and "1 Fervour for every 20 maximum mana". A single expected form fails
+one of them whichever is chosen, **and those sentences belong to the design rather
+than to a test**. So a form may now be several, any of which may match — the shape
+the condition check already uses for its fragments.
+
+**That widening broke a third check, and it was made STRICTER rather than
+looser.** The helper it shares now returns every form rather than one, so two flat
+rows on a node collide when they share ANY string either could be satisfied by.
+That is the right direction for a check whose whole purpose is catching two rows
+satisfied by the same words.
+
+### BOTH MAXIMUM LOOKUPS COUNTED EVERY UNCONDITIONED ROW TWICE, AND NO LONGER DO
+
+**Found while writing this change's tests, by reading; ruled by the coordinating
+session under the owner's delegation to be corrected here, both halves.**
+
+The refresh writes each maximum's attribute from EVERY row on the stat, judged
+with no skill in hand and nothing known about the character. So a flat row or an
+increase with no condition is already inside the attribute. Both lookups then ran
+every row over that attribute a second time:
+
+| Lookup | Since | Who asks it | What a doubled row did |
+|---|---|---|---|
+| `MaximumEnergyShield` | issue [#1973](https://github.com/sdubois777/Cataclysm/issues/1973) merged | the three shield clamps and the overlay bar | every unconditioned `max_energy_shield` row, on gear or a passive node, raised the bar twice |
+| `MaximumClassResource` | this change, before this correction | thirteen readers of the Fervour maximum | Room for One More's +30 and the increased-maximum-Fervour points raised the bar twice |
+
+**Worked through for one Ritualist** holding Room for One More and one point of
++2% increased maximum Fervour: the attribute holds (150 + 30) × 1.02 = 183.6, and
+the lookup answered (183.6 + 30) × 1.02 = 217.9.
+
+**The rule now, in one private helper both lookups use:** the attribute, plus the
+difference between the stat worked out with the character's readings and the
+stat worked out exactly as the refresh did. For the shield, that difference is
+Hollow Crown's scaled increase; for Fervour, Vessel's scaled grant. An
+unconditioned row gives a difference of exactly nothing. **It is the rule
+`AttackDamageMoreForSkill` already follows** for the "more" bucket (what applies
+now, divided by what was folded in), applied to the whole figure. The attribute
+stays the starting point, so a restored save or a dungeon floor written straight
+to it is kept.
+
+**One consequence worth stating:** Vessel's grant is flat, so the pipeline adds
+it before the increases multiply, and a Ritualist holding Wider Circle gets the
+grant raised by that increase. The same order every flat row has.
+
+**The one other caller of the function both lookups used** is a skill's mana
+cost (`UCataclysmGameplayAbility::ManaCostFor`). It passes the skill's own
+stated cost, which no row was ever folded into, so it never had the fault.
+
+**Why the earlier tests could not see it:** the Hollow Crown and Vessel cases
+each spend only a scaled row, which the refresh folds as nothing, so there was
+nothing to double. Two cases now spend unconditioned rows and require the lookup
+to equal the attribute; each fails on the code before this correction.
+
+### EACH NODE HAS A TEST THAT READS ITS ROW
+
+**Every other test in this change puts the scaled modifier on by hand**, and
+would pass with no row in the data at all, which is exactly how the two earlier
+nodes named above came to grant nothing. So four more cases in
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` take each node's row
+out of the imported table, spend the points through the player state, and grant
+nothing by hand. The last two are the double count's, described above:
+
+| Node | Test | What it asks, and how |
+|---|---|---|
+| Weight Bearing | `Cataclysm.Passives.WeightBearingsRowGrantsArmourThatFollowsMaximumHealth` | armour, the way a blow asks the defender for it |
+| Vessel | `Cataclysm.Passives.VesselsRowGrantsMaximumFervourThatFollowsMaximumMana` | the Fervour maximum, through the lookup thirteen readers use |
+| Room for One More, Wider Circle and Vessel | `Cataclysm.Passives.AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased` | the Fervour maximum equals its attribute, then Vessel adds its grant times the increase |
+| Second Sight | `Cataclysm.Passives.AMaximumEnergyShieldRowIsCountedOnce` | the shield maximum equals its attribute |
+
+**The first two move the maximum up and back down and watch the grant follow**, which
+is the first ruling above measured rather than stated. The first maximum written
+is 37.6 steps, where rounding down, rounding to nearest and not rounding give
+three different answers, so only the second ruling's arithmetic passes. Every
+grant is a difference from the same character with the point given back, so the
+only figures the tests use are the row's value and step. The three that spend
+Weight Bearing or Vessel need the PassiveEffects data asset rebuilt from the
+regenerated table before they can pass; the shield case reads only rows the
+asset already holds.
+
+### THE MACHINE WINDOW, 2026-09-23, INCLUDING THE ONE THING THAT DID NOT MATCH
+
+Run from the worktree `jovial-bouman-9ada36` on head `dd121a79`, rebased onto
+development `5217d1a0`, with the editor lock held from the first build to the last
+proof.
+
+| Step | Registered | Printed |
+|---|---|---|
+| Build, then the four new tests and the import test before the asset rebuild | 5 performed, 2 succeeded, 3 failed | `Tests: 5 tests performed, 2 succeeded, 3 failed: AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased, VesselsRowGrantsMaximumFervourThatFollowsMaximumMana, WeightBearingsRowGrantsArmourThatFollowsMaximumHealth` |
+| Asset rebuild | PassiveEffects only | `rebuilt 1 DataTable assets and left 28 already current, 3010 rows in total across /Game/Data`; committed as `cd9cb4c9` |
+| The whole suite, once | 2151 performed, 0 failed | `Tests: 2151 tests performed, 2150 succeeded, 1 failed: EveryStatTheDataScalesIsAskedForThroughThePipeline` |
+
+**THE ONE FAILURE WAS THIS CHANGE'S OWN.** The log said
+`FActiveGameplayEffectsContainer::SetAttributeBaseValue: Unable to get attribute
+set for attribute MaxClassResource`, from the probe this change added on
+2026-09-18 for the Fervour maximum. That probe had never run in Unreal before this
+window. The stand-in fighter it borrows carries no class resource set, so the
+write was refused and the lookup answered nothing both times. **Corrected in
+`15c3407a`**: the probe adds the set before writing.
+
+**THE WHOLE SUITE WAS NOT RUN AGAIN, by the coordinating session's ruling under
+the owner's delegation.** `15c3407a` differs from the head the suite ran on only
+in that one test file, so the step above already covered every other test on the
+same game source. Instead the correction was built (the one extra build, flagged)
+and the file's whole group was run: registered at 2 performed and 0 failed,
+printed `Tests: 2 tests performed, 2 succeeded, 0 failed`.
+
+**The third proof's registration had assumed that probe passed**, so it was wrong
+until the correction, and right after it.
+
+| Proof, on `15c3407a` | Registered | Printed |
+|---|---|---|
+| The helper put back to the plain lookup | 3 performed, 2 failed | `3 tests performed, 1 succeeded, 2 failed: AMaximumEnergyShieldRowIsCountedOnce, AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased`; restored 3 of 3 |
+| The maximum-health reading never filled | 1 performed, 1 failed | `1 tests performed, 0 succeeded, 1 failed: WeightBearingsRowGrantsArmourThatFollowsMaximumHealth`; restored 1 of 1 |
+| The Fervour lookup answers the bare attribute | 3 performed, 3 failed | `3 tests performed, 0 succeeded, 3 failed: AMaximumFervourRowIsCountedOnceAndVesselsGrantIsIncreased, VesselsRowGrantsMaximumFervourThatFollowsMaximumMana, EveryStatTheDataScalesIsAskedForThroughThePipeline`; restored 3 of 3 |
+
+All three printed `PROVED: True CRASHED: False`. The SHA-256 of
+`CataclysmAbilitySystemComponent.cpp` was `529f1078...` before and after each.
+**Only the tests are measured, not the assertions:** the restored run overwrites
+the log, so which assertions failed was not read.
+
+---
+
 ## 2026-09-18 — Striking a Boss opens a four second window, and whose blow a blow is now has one implementation
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (the rule that

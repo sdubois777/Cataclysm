@@ -1,6 +1,9 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+// For the lookup that applies a scaled row to the maximum, which the
+// forwarder below asks instead of reading the attribute. Issue #1515.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "GameplayEffectExtension.h"
 #include "Net/UnrealNetwork.h"
 
@@ -121,6 +124,17 @@ void UCataclysmClassResourceAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmClassResourceAttributeSet, CarnageHasNoMaximum);
 }
 
+float UCataclysmClassResourceAttributeSet::MaximumClassResourceAsked() const
+{
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(
+				GetOwningAbilitySystemComponent()))
+	{
+		return Cataclysm->MaximumClassResource();
+	}
+	return GetMaxClassResource();
+}
+
 void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 	const FGameplayAttribute& Attribute, float& NewValue)
 {
@@ -132,7 +146,7 @@ void UCataclysmClassResourceAttributeSet::PreAttributeChange(
 		// thing that ever lifted the ceiling: The Final Vow's second option,
 		// Apotheosis, said "Your Fervour has no maximum", and all twelve
 		// Masochist capstone options were rewritten without it.
-		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxClassResource());
+		NewValue = FMath::Clamp(NewValue, 0.0f, MaximumClassResourceAsked());
 	}
 	else if (Attribute == GetDeferredHealthCostShareAttribute())
 	{
@@ -226,7 +240,7 @@ void UCataclysmClassResourceAttributeSet::PostGameplayEffectExecute(
 		// honouring one site and not the other would let the pool pass its
 		// maximum by one route and not another.
 		SetClassResource(
-			FMath::Clamp(GetClassResource(), 0.0f, GetMaxClassResource()));
+			FMath::Clamp(GetClassResource(), 0.0f, MaximumClassResourceAsked()));
 	}
 }
 

@@ -384,11 +384,61 @@ float UCataclysmAbilitySystemComponent::MaximumEnergyShield() const
 		return 0.0f;
 	}
 
-	// APPLIED TO WHAT THE ATTRIBUTE HOLDS, so a scaled row reaches play and
-	// nothing written straight to the attribute is lost. The header says why
-	// this is `StatAppliedTo` and not `StatForSkill`, and who may call it.
-	return StatAppliedTo(FName(TEXT("max_energy_shield")),
-						 FGameplayTagContainer(), GetNumericAttribute(Maximum));
+	// THE ATTRIBUTE PLUS WHAT THE REFRESH COULD NOT FOLD INTO IT, so a scaled
+	// row reaches play, nothing written straight to the attribute is lost, and
+	// no unconditioned row is counted twice. Until 2026-09-23 this ran every row
+	// over the attribute through `StatAppliedTo`, which applied the flat rows and
+	// increases already inside it a second time. The helper's header says how.
+	return AttributePlusWhatWasNotFolded(FName(TEXT("max_energy_shield")),
+										 GetNumericAttribute(Maximum));
+}
+
+float UCataclysmAbilitySystemComponent::MaximumClassResource() const
+{
+	const FGameplayAttribute Maximum =
+		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute();
+
+	// THE ATTRIBUTE-SET CHECK IS NOT OPTIONAL, for the reason
+	// `MaximumEnergyShield` gives: reading an attribute whose set the component
+	// does not hold raises an engine ensure, and every enemy in the game has no
+	// class resource set.
+	if (!HasAttributeSetForAttribute(Maximum))
+	{
+		return 0.0f;
+	}
+
+	// THE SAME HELPER AS THE SHIELD'S LOOKUP ABOVE, for its reasons. Room for
+	// One More's flat +30 and the increased-maximum-Fervour points are already
+	// inside the attribute; Vessel's scaled row is not, and is all this adds.
+	return AttributePlusWhatWasNotFolded(FName(TEXT("class_resource")),
+										 GetNumericAttribute(Maximum));
+}
+
+float UCataclysmAbilitySystemComponent::AttributePlusWhatWasNotFolded(
+	FName Stat, float Attribute) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs)
+	{
+		// NOTHING RECORDED, SO THE ATTRIBUTE IS THE WHOLE ANSWER.
+		return Attribute;
+	}
+
+	// WHAT THE REFRESH WROTE, WORKED OUT AGAIN RATHER THAN REMEMBERED: the same
+	// line, no skill tags and a default reading, which is exactly the call
+	// `UCataclysmPlayerClassStats::ApplyTo` makes. Taken from the same list as
+	// the figure below, so a character whose rows are all unconditioned gets a
+	// difference of exactly nothing.
+	const float Folded = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+		FCataclysmStatConditions()).Final;
+
+	// AND WHAT THE LINE COMES TO WITH THE CHARACTER'S READINGS NOW.
+	const float Now = UCataclysmStatPipeline::Evaluate(
+		Inputs->Base, Inputs->Modifiers, FGameplayTagContainer(),
+		CurrentConditions()).Final;
+
+	return Attribute + (Now - Folded);
 }
 
 float UCataclysmAbilitySystemComponent::AttackDamageIncreasesForSkill(
@@ -565,6 +615,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		State = FCataclysmStatConditions::FromHealth(Vitals->GetHealth(),
 													 Vitals->GetMaxHealth());
 
+		// AND THE MAXIMUM ITSELF, WHICH `FromHealth` DOES NOT KEEP. Issue
+		// #1515. It divides the health in hand by the maximum and stores the
+		// share, so a row asking how BIG the bar is -- Weight Bearing's "1 Armor
+		// for every 10 maximum health" -- has nothing to read without this.
+		//
+		// AFTER THE ASSIGNMENT ABOVE AND NOT BEFORE IT, for the reason the
+		// energy shield readings give: `FromHealth` returns a whole state and
+		// replaces every field, so a reading taken first would be discarded.
+		State.MaximumHealth = Vitals->GetMaxHealth();
+
 		// AND HOW MUCH ENERGY SHIELD IS IN HAND, WITH THE TOP OF THAT BAR.
 		// Issue #1515. Cold Reading asks for it: "+2% increased Spell Damage per
 		// point while your Energy Shield is full."
@@ -592,9 +652,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// THE ATTRIBUTE, AND THIS IS THE ONE READER THAT MAY NOT ASK FOR IT.
 		// Issue #1973 gave the maximum a lookup, `MaximumEnergyShield` above,
 		// so a row that scales it reaches play. This line cannot call it: that
-		// lookup asks `StatAppliedTo`, which asks this very function for the
-		// readings a conditional row needs, so the call would not be slow, it
-		// would not return.
+		// lookup asks `AttributePlusWhatWasNotFolded`, which asks this very
+		// function for the readings a conditional row needs, so the call would
+		// not be slow, it would not return.
 		//
 		// WHAT IT COSTS, STATED RATHER THAN LEFT TO BE FOUND: a row conditioned
 		// on the shield being full compares against the unscaled maximum. One
@@ -654,6 +714,23 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		// is gone, so every character's pool has a real top again.
 		State.ClassResourceMaximum =
 			FMath::Max(0.0f, Resource->GetMaxClassResource());
+
+		// THE ATTRIBUTE, AND THIS IS THE ONE READER THAT MAY NOT ASK FOR IT.
+		// Issue #1515 gave the maximum a lookup, `MaximumClassResource` above,
+		// so a row that scales it reaches play, and every other reader in the
+		// game now goes through it. This line cannot: that lookup asks
+		// `AttributePlusWhatWasNotFolded`, which asks this very function for
+		// the readings a conditional row needs, so the call would not be slow,
+		// it would not return. It is the same exception the energy shield's
+		// maximum makes twenty lines up, for the same reason.
+		//
+		// WHAT IT COSTS, STATED RATHER THAN LEFT TO BE FOUND: a row conditioned
+		// on the class resource -- `class_resource_at_maximum`, or the share
+		// `class_resource_above` reads -- compares against the UNSCALED
+		// maximum. So a Ritualist holding Vessel with a large mana pool reads
+		// "at maximum" a little before its bar really is. The alternative is a
+		// stat worked out while working out that same stat, which is not an
+		// alternative.
 
 		// AND HOW MUCH HEALTH THE CHARACTER OWES, AS A SHARE OF ITS MAXIMUM.
 		// Issue #994. Compound Interest grows with it: "+1% increased damage per

@@ -278,7 +278,7 @@ float UCataclysmFervour::Move(UAbilitySystemComponent* AbilitySystem,
 	// options and that one no longer exists, so the maximum is simply the
 	// maximum again.
 	const float Wanted = FMath::Clamp(Before + Sign * Amount, 0.0f,
-									  Resource->GetMaxClassResource());
+									  Resource->MaximumClassResourceAsked());
 	const float Change = Wanted - Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -400,7 +400,7 @@ float UCataclysmFervour::GainPerSecondStep(
 	// that reaches `PreAttributeChange` depends on whether an aggregator happens
 	// to exist for the attribute.
 	const float Change =
-		FMath::Clamp(Before + Wanted, 0.0f, Resource->GetMaxClassResource())
+		FMath::Clamp(Before + Wanted, 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -503,7 +503,7 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 	// aggregator happens to exist for the attribute.
 	const float Change =
 		FMath::Clamp(Before - PerSecond * SecondsInStep,
-					 0.0f, Resource->GetMaxClassResource())
+					 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -558,7 +558,7 @@ float UCataclysmFervour::GainForCast(UAbilitySystemComponent* AbilitySystem)
 	// `ApplyModToAttribute` writes a base value and whether that reaches
 	// `PreAttributeChange` depends on whether an aggregator happens to exist.
 	const float Change =
-		FMath::Clamp(Before + PerCast, 0.0f, Resource->GetMaxClassResource())
+		FMath::Clamp(Before + PerCast, 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -615,7 +615,7 @@ float UCataclysmFervour::GainOnDroppingLow(UAbilitySystemComponent* AbilitySyste
 	// CLAMPED BEFORE IT IS WRITTEN, the rule every other write to the pool in
 	// this file follows and for the reason they give.
 	const float Change =
-		FMath::Clamp(Before + OnDropping, 0.0f, Resource->GetMaxClassResource())
+		FMath::Clamp(Before + OnDropping, 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -683,7 +683,7 @@ float UCataclysmFervour::RestoreHealthOnKill(UAbilitySystemComponent* AbilitySys
 	// every write to the pool in this file is clamped, for the reason `Move`
 	// gives.
 	const float Spend =
-		FMath::Clamp(Held - KillRestoreCost, 0.0f, Resource->GetMaxClassResource())
+		FMath::Clamp(Held - KillRestoreCost, 0.0f, Resource->MaximumClassResourceAsked())
 		- Held;
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Spend);
 
@@ -788,7 +788,7 @@ float UCataclysmFervour::BuyDamageForEnemiesStruckTogether(
 	// PAID BEFORE ANY BLOW, and clamped the way every write to the pool in this
 	// file is clamped, for the reason `Move` gives.
 	const float Spend =
-		FMath::Clamp(Held - Cost, 0.0f, Resource->GetMaxClassResource()) - Held;
+		FMath::Clamp(Held - Cost, 0.0f, Resource->MaximumClassResourceAsked()) - Held;
 	AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, Spend);
 
 	return PercentPerEnemy * static_cast<float>(Beyond);
@@ -833,7 +833,7 @@ float UCataclysmFervour::GainForEnemiesHit(UAbilitySystemComponent* AbilitySyste
 	// follows; `GainForCast` gives the reason.
 	const float Change =
 		FMath::Clamp(Before + PerEnemy * static_cast<float>(EnemiesHit), 0.0f,
-					 Resource->GetMaxClassResource())
+					 Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -893,7 +893,7 @@ float UCataclysmFervour::GainOnMinionDeath(UAbilitySystemComponent* AbilitySyste
 	// CLAMPED BEFORE IT IS WRITTEN, the rule every other write to the pool in
 	// this file follows and for the reason they give.
 	const float Change =
-		FMath::Clamp(Before + OnDeath, 0.0f, Resource->GetMaxClassResource())
+		FMath::Clamp(Before + OnDeath, 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{
@@ -942,7 +942,7 @@ float UCataclysmFervour::GainOnEnemyDeathNearby(UAbilitySystemComponent* Ability
 	// CLAMPED BEFORE IT IS WRITTEN, the rule every write to the pool in this
 	// file follows.
 	const float Change =
-		FMath::Clamp(Before + OnDeath, 0.0f, Resource->GetMaxClassResource())
+		FMath::Clamp(Before + OnDeath, 0.0f, Resource->MaximumClassResourceAsked())
 		- Before;
 	if (FMath::IsNearlyZero(Change))
 	{

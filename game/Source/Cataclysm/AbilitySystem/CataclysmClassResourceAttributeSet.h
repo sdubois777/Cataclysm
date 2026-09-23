@@ -67,6 +67,21 @@ public:
 	FGameplayAttributeData MaxClassResource;
 	ATTRIBUTE_ACCESSORS(UCataclysmClassResourceAttributeSet, MaxClassResource)
 
+	/**
+	 * The maximum, with any row that scales it. Issue #1515.
+	 *
+	 * THE SAME SHAPE AS `UCataclysmVitalAttributeSet::MaximumEnergyShieldAsked`
+	 * AND FOR THE SAME REASON: a scaled row is never folded into a gameplay
+	 * attribute, so a reader that takes `GetMaxClassResource()` sees the class
+	 * line's figure and never the row. `Ritualist_keystone_d_kC` Vessel is the
+	 * row -- "1 Fervour for every 20 maximum mana you have".
+	 *
+	 * FALLS BACK TO THE ATTRIBUTE when the owning component is not this project's
+	 * own, which is how nothing changes for an ability system this game did not
+	 * make.
+	 */
+	float MaximumClassResourceAsked() const;
+
 	//~ The three rates that move the pool. Issue #954.
 	//
 	// ALL THREE ARE FERVOUR PER 1% OF MAXIMUM HEALTH, and all three start at

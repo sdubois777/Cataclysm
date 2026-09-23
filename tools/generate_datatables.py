@@ -4021,6 +4021,22 @@ SCALES = {
     # a character reaches once, if at all, which is far likelier a mistake.
     "max_mana": (0.0, 1000.0, "an amount of maximum mana"),
 
+    # "Your Maximum Health also grants Armor: 1 Armor for every 10 maximum
+    # health you have" is `Ravager_keystone_a_kC` Weight Bearing, where the step
+    # is 10. Issue #1515.
+    #
+    # THE MAXIMUM AND NOT THE HEALTH IN HAND, so taking damage does not take the
+    # armour away. The three health scales beside it read how FULL the bar is;
+    # this one reads how BIG it is, and no arithmetic on a share recovers that.
+    #
+    # THE UPPER BOUND IS THE SAME JUDGEMENT THE ENTRY ABOVE MAKES, on measured
+    # figures: `game/Data/ClassStats.csv` gives the Masochist the largest bar,
+    # 150 with 24 a level after the first, so 2,526 at level 100 before gear and
+    # passives, and the Ravager 2,110. A step past 1,000 would be a bonus worth
+    # one or two of itself at the very end of a character's life, which is far
+    # likelier a number typed into the wrong column.
+    "max_health": (0.0, 1000.0, "an amount of maximum health"),
+
     # "Ranged skills deal 10%-20% bonus damage for each meter of distance to the
     # target" is `metres_to_target` with a step of 1. Issue #1981.
     #
@@ -5036,6 +5052,16 @@ STATS_WITH_AN_ASKER = frozenset({
     "fervour_per_enemy_in_reach",
     "fervour_from_minions",
     "max_energy_shield",
+    # ADDED 2026-09-18 FOR Ritualist_keystone_d_kC Vessel, and only
+    # because a probe measures the ask.
+    # UCataclysmAbilitySystemComponent::MaximumClassResource applies a
+    # scaled row to the maximum, thirteen of the fourteen readers of that
+    # maximum now go through it, and
+    # Cataclysm.StatExemption.EveryStatTheDataScalesIsAskedForThroughThePipeline
+    # moves maximum mana and watches the bar move with it. Before that
+    # lookup existed every reader took the attribute, and a scaled row on
+    # this stat would have been accepted, built, imported and dead.
+    "class_resource",
 })
 
 
