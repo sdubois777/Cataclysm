@@ -2161,6 +2161,48 @@ float UCataclysmAbilitySystemComponent::SecondsInCombat() const
 	return FMath::Max(0.0f, Now - CombatStartedAtSeconds);
 }
 
+void UCataclysmAbilitySystemComponent::RefreshLiveMaximumHealth()
+{
+	const FName Stat(TEXT("max_health"));
+	const FGameplayAttribute MaxHealth =
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	if (!StatInputs.Contains(Stat) || !HasAttributeSetForAttribute(MaxHealth))
+	{
+		return;
+	}
+
+	// THE WHOLE LINE WITH THE STATE NOW, which the fold could not do, and the
+	// converted mana on top, which the stat line does not know about.
+	const float Live =
+		StatForSkill(Stat, FGameplayTagContainer(), GetNumericAttributeBase(MaxHealth))
+		+ ConvertedManaToHealth;
+
+	// ONLY A CHANGE IS WRITTEN, so a step that finds nothing new sends nothing.
+	if (!FMath::IsNearlyEqual(Live, GetNumericAttributeBase(MaxHealth), 0.001f))
+	{
+		SetNumericAttributeBase(MaxHealth, Live);
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::MaximumHealthMovesWithState() const
+{
+	const FCataclysmStatInputs* Line = StatInputs.Find(FName(TEXT("max_health")));
+	if (!Line)
+	{
+		return false;
+	}
+
+	for (const FCataclysmStatModifier& Modifier : Line->Modifiers)
+	{
+		if (Modifier.Scale != ECataclysmStatScale::Fixed
+			|| Modifier.Condition != ECataclysmStatCondition::Always)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 float UCataclysmAbilitySystemComponent::SecondsOutOfCombat() const
 {
 	const UWorld* World = GetWorld();

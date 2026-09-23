@@ -1007,6 +1007,77 @@ copy of the repository: the tie replaced by `10.0f`, the row given "a 20% chance
 
 ---
 
+## 2026-09-23 — Maximum health is worked out again with the character's state, so a row can lower it for each minion
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(`RefreshLiveMaximumHealth`, `MaximumHealthMovesWithState`, and the Water to Blood amount it adds back),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (`ApplyTo` hands over the converted
+mana and refreshes before the pools fill), `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp`
+(each step refreshes a character whose `max_health` line moves with its state),
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (the new lookup), and tests in
+`CataclysmPlayerClassStatsTests.cpp`. Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
+
+**Partial.** The engine half is written. The row, "Each active minion reduces your maximum HP by 3%-6%"
+(`max_health`, more -3 to -6, `minions_held`, step 1), needs the design workbook and is added to this
+change before its machine window. Nothing has been compiled.
+
+### Why a row could not lower maximum health before
+
+`UCataclysmPlayerClassStats::ApplyTo` folds every stat with `UCataclysmStatPipeline::Evaluate(Base, ForStat,
+FGameplayTagContainer())`, which passes no character state. A row sized by the minions held is worth nothing
+there, and nothing asked for `max_health` afterwards, so the row would have been accepted and done nothing.
+
+### What happens now
+
+`RefreshLiveMaximumHealth` asks for `max_health` with the character's state now, through `StatForSkill`, so
+every bucket and every condition reaches the attribute. It adds back the maximum mana Water to Blood turned
+into health, which the stat line does not know about. It writes only a change.
+
+It is called at the end of `ApplyTo`, before the early return and before the pools fill, so a helmet swapped
+with minions out never shows the unreduced maximum and a character arriving fills to the live one. It is
+also called from each regeneration step (every 0.25 seconds) for a character whose `max_health` line holds a
+conditioned or scaled row. **The step and not events**, because no event marks a minion arriving or leaving:
+`UCataclysmCommand::ThingsCommandedBy` walks the actors each time it is asked, and a missed spawn or death
+site, such as a subjugated thrall's, would leave the maximum wrong with no error. The step is at most a
+quarter of a second behind.
+
+**Every conditioned or scaled `max_health` row is now live rather than folded at the default state.**
+Measured on development `7e0c793f`: no `max_health` row in `PassiveEffects.csv` or `EnchantmentEffects.csv`
+carries a condition or a scale, so no shipped row changes value. The minion row is the first.
+
+### Every writer of maximum health, measured before writing
+
+`RefreshLiveMaximumHealth` replaces the attribute's base with the pipeline's answer, so any other writer
+would be overwritten. Every mention of `GetMaxHealthAttribute`, `SetMaxHealth` and `InitMaxHealth` outside
+the tests on development `7e0c793f` was read:
+
+| Writer | Whose maximum | Covered |
+| :-- | :-- | :-- |
+| `ApplyTo`'s stat fold, pass two | a player's | yes: the refresh re-asks the same line |
+| Water to Blood, in `ApplyTo` | a player's | yes: the converted amount is handed over and added back |
+| `ACataclysmEnemyCharacter`'s starting attributes | a creature's | not touched: only `ApplyTo` records stat inputs, and only players run it, so a creature has no `max_health` line and the refresh does nothing |
+| `FCataclysmSaveApply::MaximumsInto` | a creature's (its only caller is `CreatureInto`) | not touched, for the same reason |
+| `ACataclysmMinion::Spawn` | a minion's | not touched, for the same reason |
+| `UCataclysmVitalAttributeSet`'s `InitMaxHealth(100)` | everyone's starting value | before any stat line exists |
+
+Every other mention reads the attribute. No runtime gameplay effect modifies it: the three status effects
+that move a stat move two resistances and attack damage. A gameplay effect that did would still apply,
+because the refresh writes the base value and an effect modifies on top of it.
+
+### Judgements made under the owner's delegation, ruled by the coordinating session on 2026-09-23
+
+| The judgement | Why |
+| :-- | :-- |
+| Current health is not clamped when the live maximum falls | it is how every pool behaves today, for every cause: the vital set clamps health only when health is written, and issue #1757 ruled that "a shield already raised is not taken away by a lowered ceiling" |
+| A minion leaving raises the maximum and does not refill health | nothing gains health by summoning and dismissing |
+
+**A play-test point.** The coordinating session notes that the genre usually clamps: a lowered maximum caps
+current life at once. That was not confirmed from a source here (`poe2db.tw/us/Life` does not say). This game
+does not clamp today for any cause. If summoning at full health reads as costing nothing, one clamp rule
+should be made for every cause together, not for this row alone.
+
+---
+
 ## 2026-09-23 — The floor's dead rise once, at half health, when half the floor has fallen
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the revival mark,

@@ -1409,6 +1409,7 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 	// and "no longer have a mana pool" is not ninety-nine per cent less. A
 	// removal can reach zero since issue #1791, and is not used here: the
 	// conversion needs the resolved maximum in hand before it is zeroed.
+	float ConvertedToHealth = 0.0f;
 	if (UCataclysmSkillTemplate::ManaPoolBecomesHealth(AbilitySystem))
 	{
 		const FGameplayAttribute MaxHealth =
@@ -1426,6 +1427,7 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 					MaxHealth,
 					AbilitySystem->GetNumericAttribute(MaxHealth) + Converted);
 				AbilitySystem->SetNumericAttributeBase(MaxMana, 0.0f);
+				ConvertedToHealth = Converted;
 
 				// AND THE MANA THE CHARACTER WAS STANDING ON GOES WITH IT,
 				// whether or not the pools are about to be filled. A character
@@ -1466,6 +1468,23 @@ int32 UCataclysmPlayerClassStats::ApplyTo(
 		{
 			AbilitySystem->SetNumericAttributeBase(Mana, 0.0f);
 		}
+	}
+
+	// AND MAXIMUM HEALTH IS WORKED OUT AGAIN WITH THE CHARACTER'S STATE. Issue
+	// #1815: "Each active minion reduces your maximum HP by 3%-6%". The fold in
+	// pass two had no state, so a row sized by the minions held was worth
+	// nothing there. `RefreshLiveMaximumHealth` asks the whole line again and
+	// adds back what Water to Blood converted, which is why that amount is
+	// handed over first.
+	//
+	// BEFORE THE EARLY RETURN, so a helmet swapped with minions out never shows
+	// the unreduced maximum, and before the pools fill, so a character arriving
+	// fills to the live one.
+	if (UCataclysmAbilitySystemComponent* Live =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Live->SetConvertedManaToHealth(ConvertedToHealth);
+		Live->RefreshLiveMaximumHealth();
 	}
 
 	// A CHARACTER ALREADY IN PLAY KEEPS ITS POOLS WHERE THEY ARE. Filling

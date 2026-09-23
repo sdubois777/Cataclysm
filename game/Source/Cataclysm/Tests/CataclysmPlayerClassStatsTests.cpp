@@ -5,6 +5,10 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
@@ -1628,6 +1632,262 @@ CATACLYSM_TEST(FCataclysmAskedStatsMatchTheAttributeWithoutAScopedRow,
 	// rather than a silent pass. Counted from the list above, not incremented.
 	TestEqual(TEXT("every stat listed was checked"),
 			  static_cast<int32>(UE_ARRAY_COUNT(Cases)), 15);
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Maximum health read live. Issue #1815: "Each active minion reduces your
+// maximum HP by 3%-6%".
+//
+// WHY THESE GO THROUGH `ApplyTo` AND REAL MINIONS. `ApplyTo` folds each stat
+// with no character state, so a row sized by the minions held is worth nothing
+// in the fold. What makes it reach the attribute is the refresh, called from
+// `ApplyTo` and from the regeneration step, and a test that wrote the attribute
+// by hand would pass with either call deleted.
+// --------------------------------------------------------------------------
+
+namespace CataclysmPlayerClassStatsTest
+{
+	/** "Each active minion reduces your maximum HP by 5%", as a stat row. */
+	static FCataclysmStatModifier FivePercentPerMinion()
+	{
+		FCataclysmStatModifier PerMinion;
+		PerMinion.Bucket = ECataclysmStatBucket::More;
+		PerMinion.Source = ECataclysmModifierSource::Enchantment;
+		PerMinion.Value = -5.0f;
+		PerMinion.Scale = ECataclysmStatScale::PerMinionHeld;
+		PerMinion.ScaleStep = 1.0f;
+		return PerMinion;
+	}
+
+	/** A real imp, named, commanded by `Summoner`. */
+	static ACataclysmMinion* SpawnImp(AActor* Summoner, float Metres)
+	{
+		return ACataclysmMinion::Spawn(
+			Summoner, FVector(Metres * 100.0f, 0.0f, 0.0f), /*Lifetime=*/60.0f,
+			/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+	}
+}
+
+CATACLYSM_TEST(FCataclysmMinionsLowerLiveMaximumHealth,
+	"Cataclysm.PlayerStats.EachMinionLowersTheLiveMaximumHealthAndHealthIsLeftAlone")
+{
+	using namespace CataclysmPlayerClassStatsTest;
+
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_ClassStats does not exist."));
+		return false;
+	}
+
+	// A WORLD THAT HAS BEGUN PLAY, because a named minion writes its own health
+	// when it spawns.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedCharacter Character(World);
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers;
+	Modifiers.Add(FName(TEXT("max_health")), {FivePercentPerMinion()});
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName, /*Level=*/20, &Modifiers);
+
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Unreduced = Character.Read(MaxHealth);
+	if (!TestTrue(TEXT("the character has a maximum to reduce"), Unreduced > 1.0f))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* First = SpawnImp(Character.Actor, 3.0f);
+	ACataclysmMinion* Second = SpawnImp(Character.Actor, 4.0f);
+	if (!TestNotNull(TEXT("a first imp"), First) || !TestNotNull(TEXT("and a second"), Second)
+		|| !TestEqual(TEXT("both are commanded by the character"),
+					  UCataclysmCommand::ThingsCommandedBy(Character.Actor).Num(), 2))
+	{
+		return false;
+	}
+
+	// HALF HEALTH, SO A CLAMP OR A REFILL WOULD EACH SHOW.
+	Character.AbilitySystem->SetNumericAttributeBase(Health, Unreduced * 0.5f);
+
+	Character.AbilitySystem->RefreshLiveMaximumHealth();
+	TestEqual(TEXT("two minions take 10% off the maximum"),
+		Character.Read(MaxHealth), Unreduced * 0.90f, 0.5f);
+
+	First->Destroy();
+	if (!TestEqual(TEXT("one imp is left"),
+				   UCataclysmCommand::ThingsCommandedBy(Character.Actor).Num(), 1))
+	{
+		return false;
+	}
+	Character.AbilitySystem->RefreshLiveMaximumHealth();
+	TestEqual(TEXT("one minion takes 5% off"),
+		Character.Read(MaxHealth), Unreduced * 0.95f, 0.5f);
+	TestEqual(TEXT("and health moved with neither change"),
+		Character.Read(Health), Unreduced * 0.5f, 0.5f);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmStatRefreshKeepsLiveMaximumHealth,
+	"Cataclysm.PlayerStats.AStatRefreshWithMinionsOutKeepsTheLiveMaximumHealth")
+{
+	using namespace CataclysmPlayerClassStatsTest;
+
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_ClassStats does not exist."));
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedCharacter Character(World);
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers;
+	Modifiers.Add(FName(TEXT("max_health")), {FivePercentPerMinion()});
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName, /*Level=*/20, &Modifiers);
+
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Unreduced = Character.Read(MaxHealth);
+
+	if (!TestNotNull(TEXT("a first imp"), SpawnImp(Character.Actor, 3.0f))
+		|| !TestNotNull(TEXT("and a second"), SpawnImp(Character.Actor, 4.0f)))
+	{
+		return false;
+	}
+
+	// A HELMET SWAPPED WITH THE MINIONS OUT, and no refresh called by hand. The
+	// fold alone would put the unreduced maximum back.
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName, /*Level=*/20, &Modifiers,
+		ECataclysmPoolFill::LeaveAsTheyAre);
+	TestEqual(TEXT("the stat refresh leaves the two minions' reduction on"),
+		Character.Read(MaxHealth), Unreduced * 0.90f, 0.5f);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmWaterToBloodSurvivesLiveMaximumHealth,
+	"Cataclysm.PlayerStats.WaterToBloodSurvivesTheLiveMaximumHealthRefresh")
+{
+	using namespace CataclysmPlayerClassStatsTest;
+
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_ClassStats does not exist."));
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedCharacter Character(World);
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+
+	// THE MAXIMUM WITH NOTHING, THEN WITH THE MANA CONVERTED, so the converted
+	// amount is measured rather than assumed.
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table, UCataclysmClassStats::DefaultClassName, 20);
+	const float Plain = Character.Read(MaxHealth);
+
+	FCataclysmStatModifier Traded;
+	Traded.Bucket = ECataclysmStatBucket::Flat;
+	Traded.Source = ECataclysmModifierSource::PassiveKeystone;
+	Traded.Value = 1.0f;
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers;
+	Modifiers.Add(FName(UCataclysmSkillTemplate::ManaPoolBecomesHealthStat), {Traded});
+	Modifiers.Add(FName(TEXT("max_health")), {FivePercentPerMinion()});
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName, /*Level=*/20, &Modifiers);
+	const float WithConverted = Character.Read(MaxHealth);
+	if (!TestTrue(TEXT("the mana was converted into health"), WithConverted > Plain + 1.0f))
+	{
+		return false;
+	}
+
+	// THE REFRESH RAN AT THE END OF `ApplyTo` WITH NO MINION OUT, and left the
+	// converted health where it was. Losing it is the failure this exists for.
+	Character.AbilitySystem->RefreshLiveMaximumHealth();
+	TestEqual(TEXT("with no minion, the refresh keeps the converted health"),
+		Character.Read(MaxHealth), WithConverted, 0.5f);
+
+	if (!TestNotNull(TEXT("a first imp"), SpawnImp(Character.Actor, 3.0f))
+		|| !TestNotNull(TEXT("and a second"), SpawnImp(Character.Actor, 4.0f)))
+	{
+		return false;
+	}
+	Character.AbilitySystem->RefreshLiveMaximumHealth();
+	TestEqual(TEXT("and two minions reduce the stat, not the converted mana"),
+		Character.Read(MaxHealth), Plain * 0.90f + (WithConverted - Plain), 0.5f);
+
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmRegenerationStepRefreshesMaximumHealth,
+	"Cataclysm.PlayerStats.TheRegenerationStepAppliesTheLiveMaximumHealth")
+{
+	using namespace CataclysmPlayerClassStatsTest;
+
+	const UDataTable* Table = UCataclysmPlayerClassStats::LoadTable();
+	if (!Table)
+	{
+		AddError(TEXT("DT_ClassStats does not exist."));
+		return false;
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FScopedCharacter Character(World);
+	TMap<FName, TArray<FCataclysmStatModifier>> Modifiers;
+	Modifiers.Add(FName(TEXT("max_health")), {FivePercentPerMinion()});
+	UCataclysmPlayerClassStats::ApplyTo(
+		Character.AbilitySystem, Table,
+		UCataclysmClassStats::DefaultClassName, /*Level=*/20, &Modifiers);
+
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Unreduced = Character.Read(MaxHealth);
+
+	if (!TestNotNull(TEXT("an imp"), SpawnImp(Character.Actor, 3.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("nothing has asked yet, so the maximum has not moved"),
+		Character.Read(MaxHealth), Unreduced, 0.5f);
+
+	// ONE STEP, CALLED AS `ACataclysmCharacterBase::RegenerationStep` CALLS IT.
+	UCataclysmRegeneration::ApplyStep(Character.Actor, UCataclysmRegeneration::StepSeconds,
+									  /*SecondsSinceLastDamage=*/100.0f);
+	TestEqual(TEXT("one regeneration step applies the minion's reduction"),
+		Character.Read(MaxHealth), Unreduced * 0.95f, 0.5f);
+
 	return true;
 }
 
