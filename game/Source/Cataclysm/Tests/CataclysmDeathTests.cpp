@@ -1448,6 +1448,15 @@ bool FCataclysmDeathClosesEveryEventWindow::RunTest(const FString&)
 			 &FSystem::SecondsSinceClassResourceEmptied},
 			{TEXT("striking a Boss"), &FSystem::NoteStruckABoss,
 			 &FSystem::SecondsSinceStruckABoss},
+			{TEXT("a support skill"), &FSystem::NoteSupportSkillUsed,
+			 &FSystem::SecondsSinceSupportSkillUsed},
+			{TEXT("a movement skill"), &FSystem::NoteMovementSkillUsed,
+			 &FSystem::SecondsSinceMovementSkillUsed},
+			{TEXT("a spell"), &FSystem::NoteSpellCast, &FSystem::SecondsSinceSpellCast},
+			{TEXT("a melee hit taken"), &FSystem::NoteMeleeHitTaken,
+			 &FSystem::SecondsSinceMeleeHitTaken},
+			{TEXT("crowd control applied"), &FSystem::NoteCrowdControlApplied,
+			 &FSystem::SecondsSinceCrowdControlApplied},
 		};
 
 		// OPENED ON THE CORPSE, for the reason the test above gives.

@@ -1523,6 +1523,76 @@ public:
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceStruckABoss() const;
 
+	/**
+	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "Using your support ability grants you 10%-20% increased movement speed for 3 seconds". Raises the action event `support_skill`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_support_skill`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteSupportSkillUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceSupportSkillUsed() const;
+
+	/**
+	 * Record that this character has just used the skill in its Movement slot. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "After you use a movement ability you lose 50% movespeed for 3 seconds". Raises the action event `movement_skill`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_movement_skill`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteMovementSkillUsed();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceMovementSkillUsed() const;
+
+	/**
+	 * Record that this character has just used a skill carrying `Type.Spell`. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "Casting a spell grants 5%-10% increased movement speed for 3 seconds". Raises the action event `spell`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_spell`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteSpellCast();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceSpellCast() const;
+
+	/**
+	 * Record that this character has just was hit by a melee attack. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "After being hit by a melee attack you gain 10%-20% increased movement speed for 2 seconds". Raises the action event `melee_hit_taken`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_melee_hit_taken`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteMeleeHitTaken();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceMeleeHitTaken() const;
+
+	/**
+	 * Record that this character has just stunned, knocked down or displaced a character. Issue #1815, for the
+	 * movement rows issue #1821 unblocked.
+	 *
+	 * THE ROW IS "Applying a CC effect grants 10%-20% increased movement speed for 3 seconds". Raises the action event `crowd_control`, which
+	 * `action_events()` in `tools/generate_datatables.py` derives from the
+	 * condition `seconds_after_crowd_control`, and which asks the player's movement speed again on
+	 * the frame of the event.
+	 */
+	void NoteCrowdControlApplied();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceCrowdControlApplied() const;
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -1803,6 +1873,21 @@ protected:
 	 * Negative means never, as above.
 	 */
 	float LastStruckABossAtSeconds = -1.0f;
+
+	/** When this character last used the skill in its Support slot, in world seconds; negative means never. */
+	float LastSupportSkillAtSeconds = -1.0f;
+
+	/** When this character last used the skill in its Movement slot, in world seconds; negative means never. */
+	float LastMovementSkillAtSeconds = -1.0f;
+
+	/** When this character last used a skill carrying `Type.Spell`, in world seconds; negative means never. */
+	float LastSpellAtSeconds = -1.0f;
+
+	/** When this character last was hit by a melee attack, in world seconds; negative means never. */
+	float LastMeleeHitTakenAtSeconds = -1.0f;
+
+	/** When this character last stunned, knocked down or displaced a character, in world seconds; negative means never. */
+	float LastCrowdControlAtSeconds = -1.0f;
 
 	/**
 	 * When this character last evaded a blow, in world seconds. Issue #1815.

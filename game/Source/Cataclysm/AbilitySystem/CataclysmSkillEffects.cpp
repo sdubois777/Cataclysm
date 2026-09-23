@@ -2336,6 +2336,7 @@ bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
 	// answer of 2026-09-11. A shove an immunity refused, or one crowd control
 	// resistance took to nothing, returned above and staggers nothing.
 	ApplyStagger(Instigator, Target);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
 	return true;
 }
 
@@ -2378,6 +2379,7 @@ bool UCataclysmSkillEffects::ApplyPull(AActor* Instigator, AActor* Target,
 	// three verbs the owner named. A drag is this function applied after the
 	// caster has moved, so it staggers too.
 	ApplyStagger(Instigator, Target);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
 	return true;
 }
 
@@ -2394,7 +2396,13 @@ bool UCataclysmSkillEffects::ApplyLaunch(AActor* Instigator, AActor* Target,
 	// into the air, so the direction is the world's up and not a line between two
 	// actors. The instigator is still required, so that a launch with no source
 	// is refused the same way every other displacement here is.
-	return CataclysmDisplace(Target, FVector(0.0f, 0.0f, DistanceCm));
+	if (!CataclysmDisplace(Target, FVector(0.0f, 0.0f, DistanceCm)))
+	{
+		return false;
+	}
+
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	return true;
 }
 
 FGameplayTag UCataclysmSkillEffects::DeadTag()
@@ -2586,6 +2594,34 @@ float UCataclysmSkillEffects::AfterCrowdControlResistance(const AActor* Target,
 	return Amount * (1.0f - Resisted / 100.0f);
 }
 
+namespace
+{
+	/**
+	 * Opens the crowd control window on whoever the act belongs to. Issue
+	 * #1815: "Applying a CC effect grants 10%-20% increased movement speed for
+	 * 3 seconds".
+	 *
+	 * CROWD CONTROL IS WHAT `crowd_control_resistance` SHORTENS, ruled under the
+	 * owner's delegation on 2026-09-23: a stun, a knockdown and a displacement
+	 * (knockback, pull, launch). Stagger, pin and the cripple slow are not. Each
+	 * of those five appliers calls this once it has succeeded, so a refused or
+	 * fully resisted one opens nothing.
+	 *
+	 * ON `UCataclysmCombatEvents::AttackerOf`, so a minion's stun opens its own
+	 * window, and its summoner's only under the Ritualist keystone Conduit.
+	 */
+	void CataclysmSkillEffectsNoteCrowdControl(AActor* Instigator)
+	{
+		AActor* Owner = UCataclysmCombatEvents::AttackerOf(Instigator);
+		if (UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Owner)))
+		{
+			Cataclysm->NoteCrowdControlApplied();
+		}
+	}
+}
+
 bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 									   float DurationSeconds, float DamageDealt,
 									   bool bStunIsDesigned)
@@ -2700,6 +2736,7 @@ bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 	ApplyTagForDuration(Instigator, Target, StunImmuneTag(),
 						StunImmunityWindowSeconds);
 
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
 	return true;
 }
 
@@ -2810,6 +2847,7 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 	// stagger is a separate question from what the knockdown refuses.
 	ApplyStagger(Instigator, Target);
 
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
 	return true;
 }
 

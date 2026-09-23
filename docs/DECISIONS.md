@@ -2,6 +2,66 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Five windows for the movement speed rows, and the Boss window now closes on a respawn
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (five
+clocks, each with a function that records the event and one that says how long ago it was, and all
+sixteen event windows reset on a respawn), `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`
+and `.cpp` (five conditions, their judgements and their classification as depending on time),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (three of the stamps, where a skill is
+used), `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the melee hit stamp),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (the crowd control stamp, in five
+appliers), `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (whose act an act is,
+now answerable for an actor as well as for an effect), `tools/generate_datatables.py` (the five names a
+sheet may write), `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`, and tests
+in `CataclysmCombatEventsTests.cpp`, `CataclysmStatPipelineTests.cpp` and `CataclysmDeathTests.cpp`.
+Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815), the movement rows that issue
+[#1821](https://github.com/sdubois777/Cataclysm/issues/1821) unblocked.
+
+**Partial.** The engine half is written. The six rows need the design workbook, which another session
+holds, and are added to this change before its machine window. Nothing has been compiled.
+
+### The five windows
+
+| Condition | Opens when | Stamped in | On whom |
+| :-- | :-- | :-- | :-- |
+| `seconds_after_support_skill` | a skill in the Support slot is used | `UCataclysmSkillTemplate::CommitAndBegin`, past the commit | the caster |
+| `seconds_after_movement_skill` | a skill in the Movement slot is used | the same place | the caster |
+| `seconds_after_spell` | a skill carrying `Type.Spell` is used | the same place | the caster |
+| `seconds_after_melee_hit_taken` | a blow tagged melee reaches the character | `UCataclysmVitalAttributeSet`, beside the hit-taken stamp | the character hit |
+| `seconds_after_crowd_control` | a stun, a knockdown, a knockback, a pull or a launch succeeds | the five appliers in `UCataclysmSkillEffects` | whoever the act belongs to, by `UCataclysmCombatEvents::AttackerOf` |
+
+Each raises an action event of the same name without its `seconds_after_` prefix, so the refresh added by
+issue #1821 asks for the movement speed again on the frame of the event.
+
+**`seconds_after_spell` reaches nine skills today, all Demonic.** `Type.Spell` is on 9 of the 403
+weapon skills, and the other six Cataclysms' caster skills are untagged, which is issue #2012. The window
+opens only for those nine until they are tagged.
+
+### Judgements made under the owner's delegation, marked as judgements
+
+Ruled by the coordinating session on 2026-09-23.
+
+| The judgement | Why |
+| :-- | :-- |
+| "a CC effect" is a stun, a knockdown or a displacement (knockback, pull, launch) | those are exactly what the game's own `crowd_control_resistance` shortens (`AfterCrowdControlResistance` is called in `ApplyStun`, `ApplyKnockdown` and the shared displacement helper); stagger, pin and the cripple slow are left out |
+| a melee hit follows the hit-taken reading | every blow that reaches that point counts as a hit, evaded and blocked ones included, which is what the hit-taken stamp beside it already records |
+| the crowd control window is opened on `AttackerOf` the instigator | a minion's stun is the minion's own unless its summoner holds Conduit, the same rule every other kind of credit follows; `AttackerOf` gained an actor form so the rule is still written once |
+| "Gain 20%-50% increased movespeed after taking damage" is lengthened, not held | it states no window, and a row's condition value must appear in its words; the clause ", for 3 seconds" is appended after its first 48 characters so its row name holds, and 3 seconds matches four of the five sibling sentences. **Made under the owner's delegation, which the owner may veto.** It uses the existing `seconds_after_hit_taken` |
+| "Every 10 seconds your movement speed is increased by 30%-50% for 3 seconds" is left out | it repeats on a timer rather than following an event, so a clock cannot express it; it stays with "Every 20 seconds your damage is halved for 5 seconds" |
+
+### A defect found in passing: the Boss window survived a respawn
+
+`UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` puts every window a recent event opened back to
+"never", because such a window is a temporary bonus by another name. Issue #2010 added the Boss window
+(`seconds_after_striking_a_boss`) without adding it to that list, so a window opened by striking a Boss
+survived the character's respawn. The only respawn test opened two of the windows, so nothing noticed.
+The Boss window is now in the list with the five new ones, and a new test,
+`Cataclysm.Death.ARespawnClosesEveryWindowAnEventOpened`, opens all sixteen windows through the calls the
+game makes and checks each by name after a respawn.
+
+---
+
 ## 2026-09-23 — Attrition is two rows, now that an ailment chance is asked for with the skill's tags
 
 **Affects:** the design workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (two

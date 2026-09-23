@@ -89,14 +89,26 @@ AActor* UCataclysmCombatEvents::AttackerOf(
 	// gained a second reason to ask -- the window a Boss strike opens on the
 	// attacker -- because a second copy is how the keystone would come to apply
 	// to the kill credit and not to the window, with nothing to say so.
-	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(DealtBy))
+	// THE MINION RULE LIVES IN THE ACTOR VERSION BELOW, and only a minion
+	// changes the answer, so anything else keeps the effect's instigator.
+	if (Cast<ACataclysmMinion>(DealtBy))
 	{
-		Attacker = ACataclysmMinion::HitsCountAsTheSummoners(Minion)
-					   ? Minion->Summoner.Get()
-					   : DealtBy;
+		Attacker = AttackerOf(DealtBy);
 	}
 
 	return Attacker;
+}
+
+AActor* UCataclysmCombatEvents::AttackerOf(AActor* DealtBy)
+{
+	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(DealtBy))
+	{
+		return ACataclysmMinion::HitsCountAsTheSummoners(Minion)
+				   ? Minion->Summoner.Get()
+				   : DealtBy;
+	}
+
+	return DealtBy;
 }
 
 void UCataclysmCombatEvents::NoteBlow(const FGameplayEffectModCallbackData& Data,
