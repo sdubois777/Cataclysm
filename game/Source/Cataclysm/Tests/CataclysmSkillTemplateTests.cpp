@@ -15752,6 +15752,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffsHeldCountTest,
  * AN ACTIVE BUFF IS A RUNNING SELF-BUFF SKILL, ruled under the owner's
  * delegation on 2026-09-23. The few-second windows enchantments open are not
  * counted.
+ *
+ * THE ENDED BUFF IS READ AT ONCE, AND THAT IS NOT AN ASSUMPTION. Read in the
+ * Unreal Engine 5.8 source on 2026-09-23: `CancelAbilityHandle` calls
+ * `CancelAbilitySpec` (AbilitySystemComponent_Abilities.cpp, lines 1316 and
+ * 1350), which calls the instance's `CancelAbility`. That defers only while the
+ * ability's own `ScopeLockCount` is above nought (GameplayAbility.cpp line 745),
+ * and so does `EndAbility` (line 806); nothing here holds that lock. `EndAbility`
+ * then calls `NotifyAbilityEnded` (line 894), which lowers the spec's
+ * `ActiveCount`, and `FGameplayAbilitySpec::IsActive` is `ActiveCount > 0`
+ * (GameplayAbilityTypes.cpp line 204). `UCataclysmSelfBuffSkill::EndAbility`
+ * clears its timers and calls the engine's directly. The death test
+ * `Cataclysm.Death` for Burning Wrath observes an ended buff the same way,
+ * straight after `Revive`.
  */
 bool FCataclysmBuffsHeldCountTest::RunTest(const FString&)
 {
