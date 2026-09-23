@@ -26,6 +26,7 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyController.h"
+#include "Character/CataclysmPlayerClassStats.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"

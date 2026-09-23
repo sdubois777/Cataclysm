@@ -211,6 +211,37 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		{
 			Cataclysm->NoteSummonUsed();
 		}
+
+		// AND THREE WINDOWS FOR THE MOVEMENT ROWS. Issue #1815, the rows issue
+		// #1821 unblocked: "Using your support ability grants you 10%-20%
+		// increased movement speed for 3 seconds", "After you use a movement
+		// ability you lose 50% movespeed for 3 seconds" and "Casting a spell
+		// grants 5%-10% increased movement speed for 3 seconds".
+		//
+		// THE SLOT FOR TWO AND A TAG FOR THE THIRD, for the reason the charge
+		// and basic attack stamps above differ: "your support ability" and "a
+		// movement ability" name slots, and "a spell" names a kind of skill.
+		//
+		// `Type.Spell` IS ON NINE SKILLS TODAY, ALL DEMONIC. Issue #2012. The
+		// other six Cataclysms' caster skills are untagged, so this window opens
+		// only for those nine until they are tagged.
+		if (Slot == ECataclysmAbilitySlot::Support)
+		{
+			Cataclysm->NoteSupportSkillUsed();
+		}
+
+		if (Slot == ECataclysmAbilitySlot::Movement)
+		{
+			Cataclysm->NoteMovementSkillUsed();
+		}
+
+		const FGameplayTag SpellTag = FGameplayTag::RequestGameplayTag(
+			TEXT("Type.Spell"), /*ErrorIfNotFound=*/false);
+
+		if (SpellTag.IsValid() && SkillTags.HasTag(SpellTag))
+		{
+			Cataclysm->NoteSpellCast();
+		}
 	}
 	else
 	{

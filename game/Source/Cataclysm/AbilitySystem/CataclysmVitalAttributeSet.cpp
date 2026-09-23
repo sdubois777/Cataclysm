@@ -1284,6 +1284,16 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 
 				Cataclysm->NoteHitTaken();
+
+				// AND A MELEE ONE OPENS ITS OWN WINDOW. Issue #1815: "After being
+				// hit by a melee attack you gain 10%-20% increased movement speed
+				// for 2 seconds". The same reading as `NoteHitTaken` beside it,
+				// evaded and blocked blows included, narrowed to the blows the
+				// resolved hit already calls melee.
+				if (Hit.bIsMelee)
+				{
+					Cataclysm->NoteMeleeHitTaken();
+				}
 			}
 
 			// AND ANY HIT THAT REACHED THE CHARACTER BUILDS A STACK. Issue

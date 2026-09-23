@@ -678,6 +678,11 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceClassResourceFull = SecondsSinceClassResourceFull();
 	State.SecondsSinceClassResourceEmpty = SecondsSinceClassResourceEmptied();
 	State.SecondsSinceStruckABoss = SecondsSinceStruckABoss();
+	State.SecondsSinceSupportSkill = SecondsSinceSupportSkillUsed();
+	State.SecondsSinceMovementSkill = SecondsSinceMovementSkillUsed();
+	State.SecondsSinceSpell = SecondsSinceSpellCast();
+	State.SecondsSinceMeleeHitTaken = SecondsSinceMeleeHitTaken();
+	State.SecondsSinceCrowdControl = SecondsSinceCrowdControlApplied();
 
 	// AND HOW MUCH OF THE CLASS RESOURCE IS IN HAND. Issue #980. The Masochist's
 	// Reciprocity keystone grows with it: "Your Retaliation damage is increased
@@ -1809,6 +1814,15 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	LastHitTakenAtSeconds = -1.0f;
 	LastClassResourceFullAtSeconds = -1.0f;
 	LastClassResourceEmptyAtSeconds = -1.0f;
+	// THE BOSS WINDOW TOO, which issue #2010 added without adding it here, so a
+	// window opened by striking a Boss survived the character's revival. Found
+	// while adding the five below; the respawn test now opens every window.
+	LastStruckABossAtSeconds = -1.0f;
+	LastSupportSkillAtSeconds = -1.0f;
+	LastMovementSkillAtSeconds = -1.0f;
+	LastSpellAtSeconds = -1.0f;
+	LastMeleeHitTakenAtSeconds = -1.0f;
+	LastCrowdControlAtSeconds = -1.0f;
 	DamageToBleedingUntilSeconds = -1.0f;
 	DisplacementCount = 0;
 	LastDisplacedAtSeconds = -1.0f;
@@ -2090,6 +2104,111 @@ float UCataclysmAbilitySystemComponent::SecondsSinceStruckABoss() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastStruckABossAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteSupportSkillUsed()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastSupportSkillAtSeconds = World->GetTimeSeconds();
+	}
+
+	ActOnEvent(FName(TEXT("support_skill")));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceSupportSkillUsed() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastSupportSkillAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastSupportSkillAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteMovementSkillUsed()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastMovementSkillAtSeconds = World->GetTimeSeconds();
+	}
+
+	ActOnEvent(FName(TEXT("movement_skill")));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceMovementSkillUsed() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastMovementSkillAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMovementSkillAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteSpellCast()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastSpellAtSeconds = World->GetTimeSeconds();
+	}
+
+	ActOnEvent(FName(TEXT("spell")));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceSpellCast() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastSpellAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastSpellAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteMeleeHitTaken()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastMeleeHitTakenAtSeconds = World->GetTimeSeconds();
+	}
+
+	ActOnEvent(FName(TEXT("melee_hit_taken")));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceMeleeHitTaken() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastMeleeHitTakenAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastMeleeHitTakenAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteCrowdControlApplied()
+{
+	if (const UWorld* World = GetWorld())
+	{
+		LastCrowdControlAtSeconds = World->GetTimeSeconds();
+	}
+
+	ActOnEvent(FName(TEXT("crowd_control")));
+}
+
+float UCataclysmAbilitySystemComponent::SecondsSinceCrowdControlApplied() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastCrowdControlAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, World->GetTimeSeconds() - LastCrowdControlAtSeconds);
 }
 
 namespace

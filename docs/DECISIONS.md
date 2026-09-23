@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Five windows for the movement speed rows, and the Boss window now closes on a respawn
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (five
+clocks, each with a function that records the event and one that says how long ago it was, and all
+sixteen event windows reset on a respawn), `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h`
+and `.cpp` (five conditions, their judgements and their classification as depending on time),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (three of the stamps, where a skill is
+used), `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (the melee hit stamp),
+`game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` (the crowd control stamp, in five
+appliers), `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (whose act an act is,
+now answerable for an actor as well as for an effect), `tools/generate_datatables.py` (the five names a
+sheet may write), `tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`, and tests
+in `CataclysmCombatEventsTests.cpp`, `CataclysmStatPipelineTests.cpp` and `CataclysmDeathTests.cpp`.
+Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815), the movement rows that issue
+[#1821](https://github.com/sdubois777/Cataclysm/issues/1821) unblocked.
+
+The engine half and the six rows are written; the rows are in `docs/All_Things_Cataclysm.xlsx`
+and the regenerated `game/Data/EnchantmentEffects.csv` and `EnchantmentsPositive.csv`, with a test that
+reads the support ability row from the imported table.
+
+**Applied.** The Python suite, the compile, the DataTable asset rebuild, the automation tests and the
+three guard proofs have run, the Unreal steps inside one editor lock. The figures are at the end of this
+entry, including two build failures and one void run, each recorded below.
+
+### The five windows
+
+| Condition | Opens when | Stamped in | On whom |
+| :-- | :-- | :-- | :-- |
+| `seconds_after_support_skill` | a skill in the Support slot is used | `UCataclysmSkillTemplate::CommitAndBegin`, past the commit | the caster |
+| `seconds_after_movement_skill` | a skill in the Movement slot is used | the same place | the caster |
+| `seconds_after_spell` | a skill carrying `Type.Spell` is used | the same place | the caster |
+| `seconds_after_melee_hit_taken` | a blow tagged melee reaches the character | `UCataclysmVitalAttributeSet`, beside the hit-taken stamp | the character hit |
+| `seconds_after_crowd_control` | a stun, a knockdown, a knockback, a pull or a launch succeeds | the five appliers in `UCataclysmSkillEffects` | whoever the act belongs to, by `UCataclysmCombatEvents::AttackerOf` |
+
+Each raises an action event of the same name without its `seconds_after_` prefix, so the refresh added by
+issue #1821 asks for the movement speed again on the frame of the event.
+
+**`seconds_after_spell` reaches nine skills today, all Demonic.** `Type.Spell` is on 9 of the 403
+weapon skills, and the other six Cataclysms' caster skills are untagged, which is issue #2012. The window
+opens only for those nine until they are tagged.
+
+### Judgements made under the owner's delegation, marked as judgements
+
+Ruled by the coordinating session on 2026-09-23.
+
+| The judgement | Why |
+| :-- | :-- |
+| "a CC effect" is a stun, a knockdown or a displacement (knockback, pull, launch) | those are exactly what the game's own `crowd_control_resistance` shortens (`AfterCrowdControlResistance` is called in `ApplyStun`, `ApplyKnockdown` and the shared displacement helper); stagger, pin and the cripple slow are left out |
+| a melee hit follows the hit-taken reading | every blow that reaches that point counts as a hit, evaded and blocked ones included, which is what the hit-taken stamp beside it already records |
+| the crowd control window is opened on `AttackerOf` the instigator | a minion's stun is the minion's own unless its summoner holds Conduit, the same rule every other kind of credit follows; `AttackerOf` gained an actor form so the rule is still written once |
+| "Gain 20%-50% increased movespeed after taking damage" is lengthened, not held | it states no window, and a row's condition value must appear in its words; the clause ", for 3 seconds" is appended after its first 48 characters so its row name holds, and 3 seconds matches four of the five sibling sentences. **Made under the owner's delegation, which the owner may veto.** It uses the existing `seconds_after_hit_taken` |
+| "Every 10 seconds your movement speed is increased by 30%-50% for 3 seconds" is left out | it repeats on a timer rather than following an event, so a clock cannot express it; it stays with "Every 20 seconds your damage is halved for 5 seconds" |
+
+### The six rows
+
+| Enchantment | Row |
+| :-- | :-- |
+| Applying a CC effect grants 10%-20% increased movement speed for 3 seconds | `movement_speed` increased 10 to 20, `seconds_after_crowd_control` 3 |
+| Using your support ability grants you 10%-20% increased movement speed for 3 seconds | `movement_speed` increased 10 to 20, `seconds_after_support_skill` 3 |
+| Casting a spell grants 5%-10% increased movement speed for 3 seconds | `movement_speed` increased 5 to 10, `seconds_after_spell` 3 |
+| After being hit by a melee attack you gain 10%-20% increased movement speed for 2 seconds | `movement_speed` increased 10 to 20, `seconds_after_melee_hit_taken` 2 |
+| After you use a movement ability you lose 50% movespeed for 3 seconds | `movement_speed` increased -50, `seconds_after_movement_skill` 3 |
+| Gain 20%-50% increased movespeed after taking damage, for 3 seconds | `movement_speed` increased 20 to 50, `seconds_after_hit_taken` 3 |
+
+**Increased, not more**, following the shipped "You lose 10%-20% movespeed", which is `increased` -10 to
+-20. **The reworded sentence keeps its row name**: `row_name("Positive", text[:48])` is
+`Positive_Gain_20_50_increased_movespeed_after_taking_da` for both the old and the new sentence, measured
+before the edit.
+
+**Rehearsed first, then applied.** The same two scripts (one edits the workbook, one moves the count pins
+and takes the five conditions off the built-ahead list) were run on a `git archive` copy with an unedited
+copy as the control, through the whole generator. The copies differed in one test only,
+`test_every_csv_still_hashes_to_what_was_recorded`, which names the two changed CSVs until the assets are
+rebuilt. The real edit was then applied to the workbook as it stood at development `802ad193`, and its
+changed CSV lines are the rehearsal's exactly: six rows added to `EnchantmentEffects.csv` and one line of
+`EnchantmentsPositive.csv` changed. The counts move from 264 rows over 205 enchantments to 270 over 211,
+measured on `802ad193` before the edit.
+
+**A seventh row was tried and refused.** "Each active minion reduces your maximum HP by 3%-6%", as
+`max_health` increased -3 to -6 scaled by `minions_held`, stopped the generator: nothing asks for
+`max_health` through the stat pipeline, so a scaled row on it would grant nothing. It moves to a later
+change with a lookup for that stat.
+
+### A defect found in passing: the Boss window survived a respawn
+
+`UCataclysmAbilitySystemComponent::ClearWhatDeathEnds` puts every window a recent event opened back to
+"never", because such a window is a temporary bonus by another name. Issue #2010 added the Boss window
+(`seconds_after_striking_a_boss`) without adding it to that list, so a window opened by striking a Boss
+survived the character's respawn. The only respawn test opened two of the windows, so nothing noticed.
+The Boss window is now in the list with the five new ones, and a new test,
+`Cataclysm.Death.ARespawnClosesEveryWindowAnEventOpened`, opens all sixteen windows through the calls the
+game makes and checks each by name after a respawn.
+
+
+### Figures
+
+**The Unreal window**, one editor lock from 19:30:38Z to 19:46:49Z on 2026-09-23, every line as printed.
+Each test run after the first failure was started only if the build printed "Build: Succeeded".
+
+| Step | What it printed |
+| :-- | :-- |
+| the respawn test alone on development's code, commit `cc3d9f45`, prefix `Cataclysm.Death.` | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 29 tests performed, 28 succeeded, 1 failed: ARespawnClosesEveryWindowAnEventOpened`, its one error "Expected 'after the respawn, striking a Boss no longer counts' to be true" |
+| the change, commit `a82905ba` | `Build: Failed - 27 actions, 24 files compiled`: three `error C3861: 'CataclysmSkillEffectsNoteCrowdControl': identifier not found`, at the knockback, pull and launch appliers |
+| a void run | the stale-asset run started without waiting for the build result, so it measured the binaries built from `cc3d9f45`; it printed `68 tests performed, 66 succeeded, 2 failed` and is not evidence of anything in this change |
+| the correction, commit `9866d02d` (the helper moved above its first caller, 28 lines out and 28 in) | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.3.cpp` -- one build more than registered |
+| before the asset rebuild, `Cataclysm.Enchantments.+Cataclysm.Data.`, nothing compiled | `Tests: 69 tests performed, 67 succeeded, 2 failed: EveryGeneratedTableHasAnAssetThatMatchesIt, TheSupportAbilitySpeedRowRaisesSpeedOnlyAfterTheSupportSkill`; the stale asset had "6 row(s) only in the CSV" and a first difference at line 317 of `EnchantmentsPositive.csv`, and the support row read 4.600000 where 5.520000 was expected |
+| the asset rebuild | `rebuilt 2 DataTable assets and left 27 already current, 3025 rows in total across /Game/Data`: `DT_EnchantmentEffects` with 270 rows and `DT_EnchantmentsPositive` with 379, each "its source changed"; three files changed |
+| after it, the same groups | `Tests: 69 tests performed, 69 succeeded, 0 failed` |
+| the whole suite on `9866d02d`, the run of record | `Tests: 2181 tests performed, 2181 succeeded, 0 failed`; `Declared: 2181 tests in the tree at 9866d02d; 2181 performed, gap 0` (from the test log: `Cataclysm.CombatEvents.` 23, `Cataclysm.StatPipeline.` 39, `Cataclysm.Death.` 29, `Cataclysm.Enchantments.` 62, `Cataclysm.Data.` 7) |
+| a failed proof attempt, no verdict | the first run of P1 stopped when both of its builds failed: `CataclysmEnemyBehaviourTests.cpp(92,25): error C2653: 'UCataclysmPlayerClassStats': is not a class or namespace name`. No test ran, and the source was restored to the same hash |
+| the include, commit `53ebd8aa` | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.15.cpp` -- a second build more than registered |
+
+**The first failure was a fault in this change.** The crowd control helper was placed above the first
+function edited rather than above the first caller, and nothing compiled it before the window.
+
+**The second was a latent defect on development**, not in this change. `CataclysmEnemyBehaviourTests.cpp`
+calls `UCataclysmPlayerClassStats::ChosenLevel()` in `ImpBlow()`, added by commit `a2e848a1` (#1515), and
+never included that header: it compiled because another file compiled in the same unity group supplied
+it. A proof's edit to `CataclysmSkillTemplate.cpp` moved that file out of the group, the group was rebuilt
+without the header, and the build failed. The include was added as its own commit, under the owner's
+delegation. The coordinating session is filing the wider question of which other files rely on a
+neighbour for a header. **The whole-suite run above is on `9866d02d`, one include line short of the final
+game tree**; the include adds no behaviour, and every proof below rebuilt with it in place.
+
+**The guard proofs**, on `53ebd8aa`, run detached, each with the SHA-256 of the file it broke taken before
+the break and after the restore:
+
+| The break | Prefix | With it in | Restored |
+| :-- | :-- | :-- | :-- |
+| P1: the support window stamped on the Special slot instead of the Support slot | `Cataclysm.CombatEvents.` | 23 performed, 22 succeeded, 1 failed: `TheSupportMovementAndSpellWindowsOpenOnlyForTheirOwnSkills` | 23 of 23 |
+| P2: a melee hit stamps the movement window instead of the melee-hit window | `Cataclysm.CombatEvents.` | 23 performed, 22 succeeded, 1 failed: `AMeleeHitOpensTheMeleeWindowAndARangedOneDoesNot` | 23 of 23 |
+| P3: the crowd control condition reads the spell clock | `Cataclysm.StatPipeline.` | 39 performed, 38 succeeded, 1 failed: `TheFiveMovementRowWindowsHoldInsideThemAndRefuseWithoutThem` | 39 of 39 |
+
+All three printed `PROVED True CRASHED False`, and each file's hash was the same before and after. Which
+assertion inside each failing test failed was not read, because the restored run overwrites the test log.
+
+**Python**, before the window on `a82905ba`, registered at 5344 collected with the one stale-asset failure:
+`1 failed, 5335 passed, 8 skipped in 329.29s (0:05:29)`. That run predates two C++ commits, and Python
+tests read C++ source, so the run of record is the one after the window, reported with the pull request.
+---
+
 ## 2026-09-23 — Attrition is two rows, now that an ailment chance is asked for with the skill's tags
 
 **Affects:** the design workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (two

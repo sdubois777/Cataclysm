@@ -3476,4 +3476,87 @@ bool FCataclysmBossWindowConditionTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFiveMovementWindowsConditionTest,
+	"Cataclysm.StatPipeline.TheFiveMovementRowWindowsHoldInsideThemAndRefuseWithoutThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The five windows the movement rows read -- after using the support skill,
+ * after using the movement skill, after casting a spell, after a melee hit
+ * taken, after applying crowd control -- each hold inside their window and
+ * refuse outside it, with no event at all, and on another window's clock.
+ * Issue #1815.
+ *
+ * THE LAST CASE IS WHAT CATCHES A JUDGEMENT READING THE WRONG FIELD. Every
+ * window is judged with only the NEXT one's clock set, so a case written
+ * against its neighbour's field passes the first four assertions and fails
+ * there.
+ */
+bool FCataclysmFiveMovementWindowsConditionTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	struct FCase
+	{
+		const TCHAR* Name;
+		ECataclysmStatCondition Condition;
+		float FCataclysmStatConditions::* Clock;
+	};
+
+	const FCase Cases[] = {
+		{TEXT("seconds_after_support_skill"),
+		 ECataclysmStatCondition::WithinSecondsOfSupportSkill,
+		 &FCataclysmStatConditions::SecondsSinceSupportSkill},
+		{TEXT("seconds_after_movement_skill"),
+		 ECataclysmStatCondition::WithinSecondsOfMovementSkill,
+		 &FCataclysmStatConditions::SecondsSinceMovementSkill},
+		{TEXT("seconds_after_spell"),
+		 ECataclysmStatCondition::WithinSecondsOfSpell,
+		 &FCataclysmStatConditions::SecondsSinceSpell},
+		{TEXT("seconds_after_melee_hit_taken"),
+		 ECataclysmStatCondition::WithinSecondsOfMeleeHitTaken,
+		 &FCataclysmStatConditions::SecondsSinceMeleeHitTaken},
+		{TEXT("seconds_after_crowd_control"),
+		 ECataclysmStatCondition::WithinSecondsOfCrowdControl,
+		 &FCataclysmStatConditions::SecondsSinceCrowdControl},
+	};
+	const int32 Count = UE_ARRAY_COUNT(Cases);
+
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const FCase& Case = Cases[Index];
+
+		ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+		TestTrue(FString::Printf(TEXT("%s is a name this build knows"), Case.Name),
+			FPipeline::ConditionNamed(Case.Name, Named));
+		TestEqual(FString::Printf(TEXT("and %s names its own window"), Case.Name),
+			static_cast<int32>(Named), static_cast<int32>(Case.Condition));
+
+		const auto At = [&Case](float Seconds)
+		{
+			FCataclysmStatConditions State;
+			State.*(Case.Clock) = Seconds;
+			return State;
+		};
+
+		TestTrue(FString::Printf(TEXT("%s holds on the instant"), Case.Name),
+			FPipeline::ConditionHolds(Case.Condition, 3.0f, At(0.0f)));
+		TestTrue(FString::Printf(TEXT("%s holds at exactly three seconds"), Case.Name),
+			FPipeline::ConditionHolds(Case.Condition, 3.0f, At(3.0f)));
+		TestFalse(FString::Printf(TEXT("%s refuses a hair past three"), Case.Name),
+			FPipeline::ConditionHolds(Case.Condition, 3.0f, At(3.1f)));
+		TestFalse(FString::Printf(TEXT("%s refuses a character it never happened to"),
+								  Case.Name),
+			FPipeline::ConditionHolds(Case.Condition, 3.0f, At(-1.0f)));
+
+		FCataclysmStatConditions Neighbour;
+		Neighbour.*(Cases[(Index + 1) % Count].Clock) = 0.0f;
+		TestFalse(FString::Printf(TEXT("%s refuses when only %s's clock is open"),
+								  Case.Name, Cases[(Index + 1) % Count].Name),
+			FPipeline::ConditionHolds(Case.Condition, 3.0f, Neighbour));
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -3701,4 +3701,63 @@ bool FCataclysmBleedDrawbackReachesTheShieldTest::RunTest(const FString&)
 
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSupportSpeedRowTest,
+	"Cataclysm.Enchantments.TheSupportAbilitySpeedRowRaisesSpeedOnlyAfterTheSupportSkill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Using your support ability grants you 10%-20% increased movement speed for 3
+ * seconds", worn, raises the wearer's movement speed only after the support
+ * skill is used. Issue #1815, one of the movement rows #1821 unblocked.
+ *
+ * THE ROW IS READ, NOT WRITTEN BY HAND: the item carrying the enchantment is
+ * equipped, so this fails until the row exists in the imported table.
+ *
+ * A WORN ITEM ROLLS THE TOP OF ITS RANGE BY DEFAULT, so the row gives 20: the
+ * speed after the support skill is 1.2 times the speed before it. The speed
+ * before it is checked to be above nothing first, or 1.2 times nothing would
+ * pass as nothing.
+ */
+bool FCataclysmSupportSpeedRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"),
+				 TEXT("Positive_Using_your_support_ability_grants_you_10_20_in"),
+				 DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Speed(TEXT("movement_speed"));
+	const float Before = ASC->StatForSkill(Speed, FGameplayTagContainer(), 0.0f);
+	if (!TestTrue(FString::Printf(TEXT("the wearer has a speed to raise: %.3f"),
+								  Before),
+				  Before > 0.0f))
+	{
+		return false;
+	}
+
+	ASC->NoteSupportSkillUsed();
+	TestEqual(TEXT("just after the support skill, the speed is 1.2 times what it was"),
+		ASC->StatForSkill(Speed, FGameplayTagContainer(), 0.0f), Before * 1.2f,
+		0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

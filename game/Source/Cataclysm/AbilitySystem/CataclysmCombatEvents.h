@@ -305,6 +305,17 @@ public:
 	static AActor* AttackerOf(const FGameplayEffectContextHandle& Context);
 
 	/**
+	 * The same rule for something done by an actor rather than by a gameplay
+	 * effect: a minion's act is the minion's own unless its summoner holds
+	 * Conduit, and anything else's act is its own. Issue #1815.
+	 *
+	 * FOR THE CROWD CONTROL WINDOW, whose appliers are handed the actor that
+	 * did it rather than an effect context. The version above asks this one, so
+	 * the rule is still written once.
+	 */
+	static AActor* AttackerOf(AActor* DealtBy);
+
+	/**
 	 * Announces a blow that has just resolved, and keeps it as the victim's last
 	 * blow. Called by `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
 	 * once the damage result is known, for evaded and blocked blows as well.

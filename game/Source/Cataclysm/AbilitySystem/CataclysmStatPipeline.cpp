@@ -81,6 +81,11 @@ namespace
 		{ TEXT("seconds_after_resource_full"),  ECataclysmStatCondition::WithinSecondsOfClassResourceFull },
 		{ TEXT("seconds_after_resource_empty"), ECataclysmStatCondition::WithinSecondsOfClassResourceEmpty },
 		{ TEXT("seconds_after_striking_a_boss"), ECataclysmStatCondition::WithinSecondsOfStrikingABoss },
+		{ TEXT("seconds_after_support_skill"), ECataclysmStatCondition::WithinSecondsOfSupportSkill },
+		{ TEXT("seconds_after_movement_skill"), ECataclysmStatCondition::WithinSecondsOfMovementSkill },
+		{ TEXT("seconds_after_spell"), ECataclysmStatCondition::WithinSecondsOfSpell },
+		{ TEXT("seconds_after_melee_hit_taken"), ECataclysmStatCondition::WithinSecondsOfMeleeHitTaken },
+		{ TEXT("seconds_after_crowd_control"), ECataclysmStatCondition::WithinSecondsOfCrowdControl },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -356,6 +361,11 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::WithinSecondsOfClassResourceFull:
 	case C::WithinSecondsOfClassResourceEmpty:
 	case C::WithinSecondsOfStrikingABoss:
+	case C::WithinSecondsOfSupportSkill:
+	case C::WithinSecondsOfMovementSkill:
+	case C::WithinSecondsOfSpell:
+	case C::WithinSecondsOfMeleeHitTaken:
+	case C::WithinSecondsOfCrowdControl:
 	case C::StationaryForSeconds:
 	case C::NotAttackedForSeconds:
 	case C::MovedWithinSeconds:
@@ -558,6 +568,31 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// so nothing in this file has to know about minions or Conduit.
 		return State.SecondsSinceStruckABoss >= 0.0f
 			&& State.SecondsSinceStruckABoss <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfSupportSkill:
+		// The same two rules as every clock. Issue #1815.
+		return State.SecondsSinceSupportSkill >= 0.0f
+			&& State.SecondsSinceSupportSkill <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfMovementSkill:
+		// The same two rules as every clock. Issue #1815.
+		return State.SecondsSinceMovementSkill >= 0.0f
+			&& State.SecondsSinceMovementSkill <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfSpell:
+		// The same two rules as every clock. Issue #1815.
+		return State.SecondsSinceSpell >= 0.0f
+			&& State.SecondsSinceSpell <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfMeleeHitTaken:
+		// The same two rules as every clock. Issue #1815.
+		return State.SecondsSinceMeleeHitTaken >= 0.0f
+			&& State.SecondsSinceMeleeHitTaken <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfCrowdControl:
+		// The same two rules as every clock. Issue #1815.
+		return State.SecondsSinceCrowdControl >= 0.0f
+			&& State.SecondsSinceCrowdControl <= Value;
 
 	case ECataclysmStatCondition::SkillHealthCostAbovePercent:
 		// STRICTLY ABOVE, WHICH IS THE OPPOSITE BOUNDARY FROM EVERY OTHER

@@ -314,7 +314,7 @@ Positive_Gain_5_10_attack_speed_on_basic_attack_for_4_s,Gain 5%-10% attack speed
 Positive_Teleport_to_a_random_location_within_4_meters_wh,Teleport to a random location within 4 meters when hit,Generic,4.0,"Slot.Movement, Trigger.OnHit",False
 Positive_Gain_50_100_increased_damage_while_under_the_e,Gain 50%-100% increased damage while under the effect of a DoT,Generic,3.0,Keyword.DoT.Generic,False
 Positive_Regenerate_5_10_of_your_maximum_mana_per_secon,Regenerate 5%-10% of your maximum mana per second,Generic,3.0,"Stat.Resource.Mana, Stat.Recovery.Regen",False
-Positive_Gain_20_50_increased_movespeed_after_taking_da,Gain 20%-50% increased movespeed after taking damage,Generic,4.0,"Stat.Utility.Movespeed, Trigger.OnHit",False
+Positive_Gain_20_50_increased_movespeed_after_taking_da,"Gain 20%-50% increased movespeed after taking damage, for 3 seconds",Generic,4.0,"Stat.Utility.Movespeed, Trigger.OnHit",False
 Positive_When_you_evade_a_ranged_attack_throw_an_attack,"When you evade a ranged attack, throw an attack dealing 20-70% of your attack damage at that enemy",Generic,4.0,"Stat.Defense.Evasion, Type.Projectile",False
 Positive_25_50_of_damage_taken_is_dealt_over_4_8_second,25%-50% of damage taken is dealt over 4-8 seconds,Generic,3.0,Keyword.DoT.Generic,False
 Positive_Traps_arm_30_60_faster,Traps arm 30%-60% faster,Generic,4.0,Type.Trap,False

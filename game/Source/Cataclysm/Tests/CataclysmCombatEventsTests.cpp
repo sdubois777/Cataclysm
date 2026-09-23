@@ -2365,4 +2365,249 @@ bool FCataclysmConduitMinionBossStrikeIsTheSummonersHitTest::RunTest(const FStri
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsSlotAndSpellWindows,
+	"Cataclysm.CombatEvents.TheSupportMovementAndSpellWindowsOpenOnlyForTheirOwnSkills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Using a skill opens the support window only from the Support slot, the
+ * movement window only from the Movement slot, and the spell window only for a
+ * skill carrying `Type.Spell`. Issue #1815, the movement rows #1821 unblocked.
+ *
+ * FOUR SKILLS, AND EACH OPENS AT MOST ONE OF THE THREE. The fourth opens none,
+ * so a stamp wired to every skill use would fail there and nowhere else.
+ */
+bool FCataclysmCombatEventsSlotAndSpellWindows::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	struct FCase
+	{
+		const TCHAR* Name;
+		ECataclysmAbilitySlot Slot;
+		const TCHAR* Tags;
+		bool bSupport;
+		bool bMovement;
+		bool bSpell;
+	};
+
+	const FCase Cases[] = {
+		{TEXT("a support skill"), ECataclysmAbilitySlot::Support,
+		 TEXT("Item.Weapon.Sword, Element.Demonic"), true, false, false},
+		{TEXT("a movement skill"), ECataclysmAbilitySlot::Movement,
+		 TEXT("Item.Weapon.Sword, Element.Demonic"), false, true, false},
+		{TEXT("a spell in the Special slot"), ECataclysmAbilitySlot::Special,
+		 TEXT("Item.Weapon.Staff, Element.Demonic, Type.Spell"), false, false, true},
+		{TEXT("a strike in the Special slot"), ECataclysmAbilitySlot::Special,
+		 TEXT("Item.Weapon.Sword, Element.Demonic, Type.Strike"), false, false, false},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FArmedActor Caster = MakeArmed(World);
+		FGameplayAbilitySpecHandle Handle;
+		UCataclysmStrikeSkill* Skill = GrantNamedSkill<UCataclysmStrikeSkill>(
+			Caster, Case.Slot, Case.Name, Case.Tags,
+			TEXT("Radius=2.4; Angle=120; MaxTargets=1"), Handle);
+		if (!TestNotNull(FString::Printf(TEXT("%s was granted"), Case.Name), Skill))
+		{
+			continue;
+		}
+
+		UCataclysmAbilitySystemComponent* System = Caster.AbilitySystem;
+		if (!TestEqual(FString::Printf(TEXT("%s: no window open yet"), Case.Name),
+					   System->SecondsSinceSupportSkillUsed()
+						   + System->SecondsSinceMovementSkillUsed()
+						   + System->SecondsSinceSpellCast(),
+					   -3.0f, 0.001f))
+		{
+			continue;
+		}
+
+		if (!TestTrue(FString::Printf(TEXT("%s started"), Case.Name),
+					  System->TryActivateAbility(
+						  Handle, /*bAllowRemoteActivation=*/false)))
+		{
+			continue;
+		}
+
+		TestEqual(FString::Printf(TEXT("%s and the support window"), Case.Name),
+				  System->SecondsSinceSupportSkillUsed(),
+				  Case.bSupport ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the movement window"), Case.Name),
+				  System->SecondsSinceMovementSkillUsed(),
+				  Case.bMovement ? 0.0f : -1.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the spell window"), Case.Name),
+				  System->SecondsSinceSpellCast(),
+				  Case.bSpell ? 0.0f : -1.0f, 0.001f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsMeleeHitWindow,
+	"Cataclysm.CombatEvents.AMeleeHitOpensTheMeleeWindowAndARangedOneDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A blow carrying `Type.Melee` opens the melee-hit window on the character it
+ * hit, and a ranged blow does not. Issue #1815: "After being hit by a melee
+ * attack you gain 10%-20% increased movement speed for 2 seconds".
+ *
+ * THE RANGED BLOW OPENS THE PLAIN HIT-TAKEN WINDOW, which is what says it
+ * landed at all: a ranged blow that never arrived would pass "no melee window"
+ * for the wrong reason.
+ */
+bool FCataclysmCombatEventsMeleeHitWindow::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	struct FCase
+	{
+		const TCHAR* What;
+		const TCHAR* Tag;
+		bool bMeleeWindow;
+	};
+
+	const FCase Cases[] = {
+		{TEXT("a melee blow"), TEXT("Type.Melee"), true},
+		{TEXT("a ranged blow"), TEXT("Type.Ranged"), false},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FArmedActor Attacker = MakeArmed(World);
+		ACataclysmEnemyCharacter* Target =
+			SpawnCreatureAt(World, FVector(2.0f * M, 0.0f, 0.0f), 1000.0f);
+		UCataclysmAbilitySystemComponent* Struck =
+			Target ? Cast<UCataclysmAbilitySystemComponent>(
+						 UCataclysmTargeting::AbilitySystemOf(Target))
+				   : nullptr;
+		if (!TestNotNull(FString::Printf(TEXT("%s: a target with this "
+											  "project's ability system"),
+										 Case.What),
+						 Struck))
+		{
+			continue;
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Target, 100.0f,
+										 TagsNamed({Case.Tag}));
+
+		TestEqual(FString::Printf(TEXT("%s opened the hit-taken window"), Case.What),
+				  Struck->SecondsSinceHitTaken(), 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("%s and the melee-hit window"), Case.What),
+				  Struck->SecondsSinceMeleeHitTaken(),
+				  Case.bMeleeWindow ? 0.0f : -1.0f, 0.001f);
+
+		Target->Destroy();
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatEventsCrowdControlWindow,
+	"Cataclysm.CombatEvents.StunKnockdownAndDisplacementOpenTheCrowdControlWindowAndStaggerDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Stunning, knocking down or knocking back a creature opens the crowd control
+ * window on the character that did it, and staggering one does not. Issue
+ * #1815: "Applying a CC effect grants 10%-20% increased movement speed for 3
+ * seconds".
+ *
+ * CROWD CONTROL IS WHAT `crowd_control_resistance` SHORTENS, ruled under the
+ * owner's delegation on 2026-09-23. The stagger is the case that separates that
+ * reading from "anything that stops an enemy", and each case asks whether its
+ * effect was applied at all, so a refused stun cannot pass as "no window".
+ */
+bool FCataclysmCombatEventsCrowdControlWindow::RunTest(const FString&)
+{
+	using namespace CataclysmCombatEventsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	enum class EVerb : uint8 { Stun, Knockdown, Knockback, Stagger };
+	struct FCase
+	{
+		const TCHAR* What;
+		EVerb Verb;
+		bool bWindow;
+	};
+
+	const FCase Cases[] = {
+		{TEXT("a stun"), EVerb::Stun, true},
+		{TEXT("a knockdown"), EVerb::Knockdown, true},
+		{TEXT("a knockback"), EVerb::Knockback, true},
+		{TEXT("a stagger"), EVerb::Stagger, false},
+	};
+
+	for (const FCase& Case : Cases)
+	{
+		FArmedActor Caster = MakeArmed(World);
+		ACataclysmEnemyCharacter* Target =
+			SpawnCreatureAt(World, FVector(2.0f * M, 0.0f, 0.0f), 1000.0f);
+		if (!TestNotNull(FString::Printf(TEXT("%s: a target"), Case.What), Target))
+		{
+			continue;
+		}
+
+		bool bApplied = false;
+		switch (Case.Verb)
+		{
+		case EVerb::Stun:
+			bApplied = UCataclysmSkillEffects::ApplyStun(
+				Caster.Actor, Target, /*DurationSeconds=*/1.5f,
+				/*DamageDealt=*/0.0f, /*bStunIsDesigned=*/true);
+			break;
+		case EVerb::Knockdown:
+			bApplied = UCataclysmSkillEffects::ApplyKnockdown(
+				Caster.Actor, Target, /*DurationSeconds=*/2.0f,
+				/*DamageDealt=*/0.0f, /*bKnockdownIsDesigned=*/true);
+			break;
+		case EVerb::Knockback:
+			bApplied = UCataclysmSkillEffects::ApplyKnockback(
+				Caster.Actor, Target, /*DistanceCm=*/300.0f);
+			break;
+		case EVerb::Stagger:
+			bApplied = UCataclysmSkillEffects::ApplyStagger(Caster.Actor, Target);
+			break;
+		}
+
+		if (!TestTrue(FString::Printf(TEXT("%s was applied"), Case.What), bApplied))
+		{
+			Target->Destroy();
+			continue;
+		}
+
+		TestEqual(FString::Printf(TEXT("%s and the crowd control window"),
+								  Case.What),
+				  Caster.AbilitySystem->SecondsSinceCrowdControlApplied(),
+				  Case.bWindow ? 0.0f : -1.0f, 0.001f);
+
+		Target->Destroy();
+	}
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

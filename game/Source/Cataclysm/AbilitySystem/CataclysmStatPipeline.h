@@ -1277,6 +1277,56 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	EnergyShieldAboveZero
 		UMETA(DisplayName = "Energy Shield Above Zero"),
+
+	/**
+	 * The character used the skill in its Support slot within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "Using your support ability grants you 10%-20% increased movement speed for 3 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfSupportSkill
+		UMETA(DisplayName = "Within Seconds Of Support Skill"),
+
+	/**
+	 * The character used the skill in its Movement slot within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "After you use a movement ability you lose 50% movespeed for 3 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfMovementSkill
+		UMETA(DisplayName = "Within Seconds Of Movement Skill"),
+
+	/**
+	 * The character used a skill carrying `Type.Spell` within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "Casting a spell grants 5%-10% increased movement speed for 3 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfSpell
+		UMETA(DisplayName = "Within Seconds Of Spell"),
+
+	/**
+	 * The character was hit by a melee attack within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "After being hit by a melee attack you gain 10%-20% increased movement speed for 2 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfMeleeHitTaken
+		UMETA(DisplayName = "Within Seconds Of Melee Hit Taken"),
+
+	/**
+	 * The character stunned, knocked down or displaced a character within the last `ConditionValue` seconds.
+	 * Issue #1815, for the movement rows issue #1821 unblocked.
+	 *
+	 * "Applying a CC effect grants 10%-20% increased movement speed for 3 seconds" is the row. At or within, and a negative reading refuses, as for
+	 * every clock above.
+	 */
+	WithinSecondsOfCrowdControl
+		UMETA(DisplayName = "Within Seconds Of Crowd Control"),
 };
 
 /**
@@ -1913,6 +1963,41 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsSinceStruckABoss = -1.0f;
+
+	/**
+	 * Seconds since the character last used the skill in its Support slot. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceSupportSkill = -1.0f;
+
+	/**
+	 * Seconds since the character last used the skill in its Movement slot. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMovementSkill = -1.0f;
+
+	/**
+	 * Seconds since the character last used a skill carrying `Type.Spell`. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceSpell = -1.0f;
+
+	/**
+	 * Seconds since the character last was hit by a melee attack. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceMeleeHitTaken = -1.0f;
+
+	/**
+	 * Seconds since the character last stunned, knocked down or displaced a character. Negative means neither known
+	 * nor ever, as above.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceCrowdControl = -1.0f;
 
 	/**
 	 * How much of the class resource the character is holding. Issue #980.
@@ -2982,7 +3067,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a forty-eighth, which is the drift that put the passive tree eight
+	 * adds a fifty-third, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -2991,7 +3076,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * NINETEEN OF THE FORTY-SEVEN COMPARE NOTHING. They are the case labels
+	 * NINETEEN OF THE FIFTY-TWO COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

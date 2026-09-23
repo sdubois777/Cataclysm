@@ -3405,6 +3405,21 @@ CONDITIONS = {
     # Path of Exile 1 and 2 both define "Recently" as, and it sits inside the 2
     # to 5 seconds this game's own rows already use.
     "seconds_after_striking_a_boss": (0.0, 60.0, "a number of seconds"),
+    # Using your support ability grants you 10%-20% increased movement speed for 3 seconds: `seconds_after_support_skill`.
+    # Issue #1815. The character used the skill in its Support slot.
+    "seconds_after_support_skill": (0.0, 60.0, "a number of seconds"),
+    # After you use a movement ability you lose 50% movespeed for 3 seconds: `seconds_after_movement_skill`.
+    # Issue #1815. The character used the skill in its Movement slot.
+    "seconds_after_movement_skill": (0.0, 60.0, "a number of seconds"),
+    # Casting a spell grants 5%-10% increased movement speed for 3 seconds: `seconds_after_spell`.
+    # Issue #1815. The character used a skill carrying `Type.Spell`.
+    "seconds_after_spell": (0.0, 60.0, "a number of seconds"),
+    # After being hit by a melee attack you gain 10%-20% increased movement speed for 2 seconds: `seconds_after_melee_hit_taken`.
+    # Issue #1815. The character was hit by a melee attack.
+    "seconds_after_melee_hit_taken": (0.0, 60.0, "a number of seconds"),
+    # Applying a CC effect grants 10%-20% increased movement speed for 3 seconds: `seconds_after_crowd_control`.
+    # Issue #1815. The character stunned, knocked down or displaced a character.
+    "seconds_after_crowd_control": (0.0, 60.0, "a number of seconds"),
 
     # "a skill whose health cost is above 10% of your maximum health" is
     # `skill_health_cost_above` with 10. Issue #983.

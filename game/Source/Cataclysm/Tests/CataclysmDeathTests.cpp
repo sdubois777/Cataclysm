@@ -1387,6 +1387,111 @@ CATACLYSM_TEST(FCataclysmRespawnClosesWindowsTest,
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeathClosesEveryEventWindow,
+	"Cataclysm.Death.ARespawnClosesEveryWindowAnEventOpened",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A respawn puts every window a recent event opened back to "never". Issue
+ * #1815.
+ *
+ * THE TEST ABOVE OPENS TWO OF THEM, and that is how the Boss window was added
+ * by issue #2010 without being added to `ClearWhatDeathEnds`: no test opened
+ * it before a respawn, so nothing noticed that it survived one. This opens
+ * every clock a `seconds_after_*` condition reads, through the call the game
+ * makes, and checks each by name.
+ */
+bool FCataclysmDeathClosesEveryEventWindow::RunTest(const FString&)
+{
+	UWorld* World = CataclysmDeathTest::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+
+	ACataclysmPlayerCharacter* Player = CataclysmDeathTest::SpawnPlayer(World);
+	ACataclysmEnemyCharacter* Killer = CataclysmDeathTest::SpawnEnemy(
+		World, FVector(300.0f, 0.0f, 0.0f), ECataclysmTeam::Monsters);
+	UCataclysmAbilitySystemComponent* System =
+		CataclysmDeathTest::CataclysmSystemOf(Player);
+
+	if (TestNotNull(TEXT("a player"), Player) && TestNotNull(TEXT("a killer"), Killer)
+		&& TestNotNull(TEXT("with this project's ability system"), System))
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Killer, Player, 100000.0f);
+		TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Player));
+
+		using FSystem = UCataclysmAbilitySystemComponent;
+		struct FWindow
+		{
+			const TCHAR* Name;
+			void (FSystem::*Open)();
+			float (FSystem::*Since)() const;
+		};
+
+		const FWindow Windows[] = {
+			{TEXT("foreign damage"), &FSystem::NoteForeignDamageTaken,
+			 &FSystem::SecondsSinceForeignDamageTaken},
+			{TEXT("a charge skill"), &FSystem::NoteChargeSkillUsed,
+			 &FSystem::SecondsSinceChargeSkillUsed},
+			{TEXT("a basic attack"), &FSystem::NoteBasicAttackUsed,
+			 &FSystem::SecondsSinceBasicAttackUsed},
+			{TEXT("a block"), &FSystem::NoteBlocked, &FSystem::SecondsSinceBlocked},
+			{TEXT("a summon"), &FSystem::NoteSummonUsed,
+			 &FSystem::SecondsSinceSummonUsed},
+			{TEXT("a dodge"), &FSystem::NoteEvaded, &FSystem::SecondsSinceEvaded},
+			{TEXT("a hit taken"), &FSystem::NoteHitTaken,
+			 &FSystem::SecondsSinceHitTaken},
+			{TEXT("a full class resource"), &FSystem::NoteClassResourceFull,
+			 &FSystem::SecondsSinceClassResourceFull},
+			{TEXT("an empty class resource"), &FSystem::NoteClassResourceEmptied,
+			 &FSystem::SecondsSinceClassResourceEmptied},
+			{TEXT("striking a Boss"), &FSystem::NoteStruckABoss,
+			 &FSystem::SecondsSinceStruckABoss},
+			{TEXT("a support skill"), &FSystem::NoteSupportSkillUsed,
+			 &FSystem::SecondsSinceSupportSkillUsed},
+			{TEXT("a movement skill"), &FSystem::NoteMovementSkillUsed,
+			 &FSystem::SecondsSinceMovementSkillUsed},
+			{TEXT("a spell"), &FSystem::NoteSpellCast, &FSystem::SecondsSinceSpellCast},
+			{TEXT("a melee hit taken"), &FSystem::NoteMeleeHitTaken,
+			 &FSystem::SecondsSinceMeleeHitTaken},
+			{TEXT("crowd control applied"), &FSystem::NoteCrowdControlApplied,
+			 &FSystem::SecondsSinceCrowdControlApplied},
+		};
+
+		// OPENED ON THE CORPSE, for the reason the test above gives.
+		System->NoteHealthCostPaid();
+		for (const FWindow& Window : Windows)
+		{
+			(System->*Window.Open)();
+		}
+
+		TestTrue(TEXT("a health cost counts as recent"),
+			System->SecondsSinceHealthCostPaid() >= 0.0f);
+		for (const FWindow& Window : Windows)
+		{
+			TestTrue(FString::Printf(TEXT("before the respawn, %s counts as recent"),
+									 Window.Name),
+				(System->*Window.Since)() >= 0.0f);
+		}
+
+		Player->Revive();
+
+		TestTrue(TEXT("after it, no health cost counts as recent"),
+			System->SecondsSinceHealthCostPaid() < 0.0f);
+		for (const FWindow& Window : Windows)
+		{
+			TestTrue(FString::Printf(TEXT("after the respawn, %s no longer counts"),
+									 Window.Name),
+				(System->*Window.Since)() < 0.0f);
+		}
+	}
+
+	World->DestroyWorld(/*bInformEngineOfWorld=*/false);
+	return true;
+}
+
+
 /**
  * A timed effect that lowered a maximum is lifted before the refill, so the
  * character stands up at its whole maximum.
