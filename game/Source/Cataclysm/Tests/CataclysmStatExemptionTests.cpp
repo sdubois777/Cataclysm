@@ -774,6 +774,46 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `mana_cost_as_current_health_percent` is read by
+	 * `UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent`. Issues #1820 and
+	 * #41.
+	 *
+	 * TWO CHARACTERS, one carrying a flat row of 5 with no condition, each asked
+	 * about the same 40-mana skill. The dungeon floor rule writes this row under
+	 * `mana_below`; the condition is not what is being probed here, so it is left
+	 * off and the reading is asked directly.
+	 */
+	void ProbeManaCostAsCurrentHealthPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger Converted(World, FVector(0, 100 * M, 0));
+		GrantFlat(Converted.Actor,
+				  UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat, 5.0f);
+
+		UCataclysmStrikeSkill* PlainSkill = GrantCostingSkill(Plain);
+		UCataclysmStrikeSkill* ConvertedSkill = GrantCostingSkill(Converted);
+		if (!Test.TestNotNull(TEXT("a skill that costs mana"), PlainSkill)
+			|| !Test.TestNotNull(TEXT("and one under the row"), ConvertedSkill))
+		{
+			return;
+		}
+
+		Test.TestEqual(TEXT("a character with no row pays no share of health"),
+			PlainSkill->ManaCostPaidAsHealthPercent(Plain.AbilitySystem), 0.0f,
+			0.001f);
+		Test.TestEqual(TEXT("and one carrying a row of 5 pays 5% of current health"),
+			ConvertedSkill->ManaCostPaidAsHealthPercent(Converted.AbilitySystem),
+			5.0f, 0.001f);
+	}
+
+	/**
 	 * `cooldown_lengthening` is read by
 	 * `UCataclysmGameplayAbility::CooldownAfterReduction`. Issue #1994.
 	 *
@@ -1762,6 +1802,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},
+			{TEXT("mana_cost_as_current_health_percent"),
+									&ProbeManaCostAsCurrentHealthPercent},
 			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},
 			{TEXT("minion_explosion_damage"),  &ProbeExplosionDamage},
 			{TEXT("minion_hits_count_as_yours"), &ProbeHitsCountAsYours},

@@ -2832,8 +2832,22 @@ void UCataclysmSkillTemplate::PayHealthCost()
 	// than charged one after the other. Two shares of current health applied in
 	// turn would compound -- the second would be a share of what the first left
 	// -- and the design says "an additional 15%", which is a sum.
-	const float FromCurrentPercent =
-		OwnPercent + AddedHealthCostOfCurrentPercent(AbilitySystem, SkillTags);
+	//
+	// AND THE SHARE THIS CAST PAID INSTEAD OF ITS MANA, SUMMED THE SAME WAY.
+	// Issues #1820 and #41. The dungeon floor rule `Famine_Desperate_Measures`:
+	// "your skills cost 5% of your current Health to cast instead of Mana."
+	// READ FROM WHAT `ApplyCost` RECORDED, not asked again: that cast's mana has
+	// been paid by now, and a cast that took the character below the threshold
+	// paid in mana and owes no health for it.
+	//
+	// IT IS A HEALTH COST LIKE THE OTHERS HERE, so everything that asks about a
+	// health cost sees it -- the Fervour it fills, the window after paying one,
+	// and a suppression that makes skills cost no health. Ruled under the project
+	// owner's delegation: the row makes the cast cost health, and it does not say
+	// that cost is unlike any other.
+	const float FromCurrentPercent = OwnPercent
+		+ AddedHealthCostOfCurrentPercent(AbilitySystem, SkillTags)
+		+ ManaCostPaidAsHealthPercentThisCast();
 
 	// FLOORED SO IT LEAVES AT LEAST ONE HEALTH BEHIND. The design states it,
 	// and it applies only to this half of the cost. See
