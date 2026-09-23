@@ -16,8 +16,10 @@ is not greyed out), `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffec
 rule), `tools/generate_datatables.py` (the condition a data sheet may name), the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmSkillTemplateTests.cpp`, `CataclysmStatPipelineTests.cpp`,
 `CataclysmDungeonModifierEffectsTests.cpp` and `CataclysmStatExemptionTests.cpp`, and the Python checks
-`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` and
-`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. Issues
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py`,
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py` and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py` (the new stat lookup listed with what it
+hands over). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
 automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry

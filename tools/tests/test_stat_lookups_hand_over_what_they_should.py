@@ -286,6 +286,13 @@ INVENTORY = {
      'FName(TEXT("cooldown_skip_chance")), FGameplayTagContainer(), 0.0f'):
         'the chance a skill does not go on cooldown, asked of the '
         'character',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(ManaCostAsCurrentHealthPercentStat), SkillTagsForStats(), 0.0f'):
+        'the share of current health a cast pays instead of its mana, asked '
+        'with the tags of the skill; its only row carries mana_below, which '
+        'reads the caster\'s own mana, so no blow or target is needed; nought '
+        'is the fallback because the stat has no attribute. Issues #1820 and '
+        '#41.',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmHealthDebt.cpp',
      'FName(UnpayableBecomesDebtStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
         "the health debt's own rates, read off the character",
