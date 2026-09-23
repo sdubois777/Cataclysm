@@ -1104,6 +1104,25 @@ public:
 	}
 
 	/**
+	 * Whether a lost minion may be replaced now, for Press-Ganged (a death) or
+	 * Rekindled (an explosion). Issue #1515.
+	 *
+	 * TWO CLOCKS, ONE PER KEYSTONE, because the sentences give two intervals --
+	 * "no more than once every 10 seconds" and "every 5 seconds" -- and a
+	 * character holding both must not have one keystone's wait decide the
+	 * other's. The shape is `MayReleaseNova`'s: never replaced is allowed, and no
+	 * world means no clock and so no replacement.
+	 */
+	bool MayReplaceMinion(bool bForExplosion) const;
+
+	/**
+	 * Record that a lost minion was replaced, so the next waits
+	 * `IntervalSeconds`. Only a replacement actually made is recorded: one the
+	 * summon cap refused leaves the clock as it was.
+	 */
+	void NoteMinionReplaced(bool bForExplosion, float IntervalSeconds);
+
+	/**
 	 * Record that an enemy is standing inside this character's Fervour decay
 	 * radius right now. Issue #1515.
 	 *
@@ -2137,6 +2156,12 @@ protected:
 	 * is still happening; the only question is when the next may come.
 	 */
 	float NovaNextAllowedSeconds = -1.0f;
+
+	/** When Press-Ganged may next replace a minion that died. -1 is never yet. */
+	float MinionDeathReplacementNextAllowedSeconds = -1.0f;
+
+	/** When Rekindled may next replace a minion that exploded. -1 is never yet. */
+	float MinionExplosionReplacementNextAllowedSeconds = -1.0f;
 
 	/** When an enemy was last inside the Fervour decay radius. Issue #1515. */
 	float EnemyLastInReachSeconds = -1.0f;

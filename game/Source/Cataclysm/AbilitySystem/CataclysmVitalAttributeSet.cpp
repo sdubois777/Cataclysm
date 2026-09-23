@@ -38,6 +38,8 @@
 #include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmImpactEffect.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "AbilitySystem/CataclysmMinion.h"
 // For the stack that taking damage builds. Issue #1003.
 #include "AbilitySystem/CataclysmStacks.h"
 #include "Character/CataclysmCharacterBase.h"
@@ -1710,13 +1712,32 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	//
 	// THE COMMANDER'S ABILITY SYSTEM, NOT THE DYING THING'S. A minion has no
 	// class resource attribute set, so passing its own would answer zero.
-	if (AActor* Commander = UCataclysmCommand::CommanderOf(Character))
+	AActor* Commander = UCataclysmCommand::CommanderOf(Character);
+	if (Commander)
 	{
 		UCataclysmFervour::GainOnMinionDeath(
 			UCataclysmTargeting::AbilitySystemOf(Commander));
 	}
 
+	// WHAT A REPLACEMENT NEEDS, TAKEN BEFORE THE DEATH IS HANDLED. Issue #1515:
+	// Press-Ganged and Rekindled. A minion whose death is an explosion is
+	// destroyed inside `HandleDeath`, so where it stood and whether it exploded
+	// are read now; the commander was found above for the same reason.
+	const FVector Where = Character->GetActorLocation();
+	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
+	const bool bExplodes = AsMinion && AsMinion->ExplodesOnDeath();
+
 	Character->HandleDeath();
+
+	// AND THE REPLACEMENT AFTER IT, so the lost minion has already left the
+	// living count its summon skill's cap reads. A thrall comes through here
+	// too, which a hook inside `ACataclysmMinion::HandleDeath` would have
+	// missed: the owner's first wording of Press-Ganged was "a thrall that dies
+	// is replaced by an imp".
+	if (Commander)
+	{
+		UCataclysmSummonSkill::ReplaceLost(Commander, Character, Where, bExplodes);
+	}
 }
 
 void UCataclysmVitalAttributeSet::NotifyHealthChanged() const

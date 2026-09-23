@@ -8,6 +8,7 @@
 
 class UCataclysmAbilitySystemComponent;
 class UCataclysmVitalAttributeSet;
+class UCataclysmSummonSkill;
 class UStaticMeshComponent;
 
 /**
@@ -348,6 +349,26 @@ public:
 	 * want -- dropping loot and writing the run record are two it should not.
 	 */
 	virtual void HandleDeath() override;
+
+	/**
+	 * Whether this minion's death will be an explosion. Issue #1515.
+	 *
+	 * THE SAME TEST `HandleDeath` MAKES, stated once so a caller can ask it
+	 * BEFORE the death: the death hook for Press-Ganged and Rekindled has to
+	 * know whether the minion it is replacing died quietly or exploded, and an
+	 * exploded minion has been destroyed by the time `HandleDeath` returns.
+	 */
+	bool ExplodesOnDeath() const;
+
+	/**
+	 * The summon skill that made this minion, or null. Issue #1515.
+	 *
+	 * A REPLACEMENT IS THE KIND THIS SKILL MAKES, ruled 2026-09-23 under the
+	 * owner's delegation: Press-Ganged and Rekindled summon what the summon skill
+	 * that made the lost minion summons. Weak, because the skill belongs to the
+	 * summoner and can go before the minion does.
+	 */
+	TWeakObjectPtr<UCataclysmSummonSkill> SummonedBy;
 	//~ End
 
 protected:

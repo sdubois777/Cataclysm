@@ -379,6 +379,10 @@ INVENTORY = {
      'FName(UCataclysmCommand::PossessionThresholdBonusStat), SkillTags, Mine->GetNumericAttribute(Stat)'):
         "an aura's upkeep and a skill's own numbers, asked with no blow "
         'in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.cpp',
+     'FName(bForExplosion ? ReplacedOnExplosionStat : ReplacedOnDeathStat), FGameplayTagContainer(), 0.0f'):
+        "the seconds between replacements of a lost minion, a flag read off "
+        'the commander after a death, with no blow or skill in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmStacks.cpp',
      'FName(CarnageFromDamageTakenStat), FGameplayTagContainer(), AbilitySystem->GetNumericAttribute(Flag)'):
         'how long a stack lasts and how many may be held, read off the '

@@ -3257,11 +3257,114 @@ void UCataclysmDeployableSkill::ActivateAbility(
 
 int32 UCataclysmSummonSkill::LivingMinionCount()
 {
+	// DESTROYED OR DEAD. Issue #1957: a dead minion's body stays in the level
+	// until its lifespan ends, and while it did it held a slot, so a summon at
+	// the cap could explode a LIVING minion while a corpse went on counting. A
+	// corpse leaves the list the moment it dies; the body itself is left for its
+	// lifespan to remove, which nothing here changes.
 	Minions.RemoveAll([](const TObjectPtr<ACataclysmMinion>& Minion)
 	{
-		return !IsValid(Minion);
+		return !IsValid(Minion) || UCataclysmSkillEffects::IsDead(Minion);
 	});
 	return Minions.Num();
+}
+
+const TCHAR* UCataclysmSummonSkill::ReplacedOnDeathStat =
+	TEXT("minion_death_replaced_every_seconds");
+const TCHAR* UCataclysmSummonSkill::ReplacedOnExplosionStat =
+	TEXT("minion_explosion_replaced_every_seconds");
+
+ACataclysmMinion* UCataclysmSummonSkill::SummonReplacementAt(const FVector& Location)
+{
+	AActor* Self = Avatar();
+	if (!Self || Params.bPossess)
+	{
+		return nullptr;
+	}
+
+	const int32 SummonCap = MinionCapFor(Self, Params, SkillTags);
+	if (SummonCap > 0 && LivingMinionCount() >= SummonCap)
+	{
+		return nullptr;
+	}
+
+	const float Lifetime = Params.Duration > 0.0f ? Params.Duration : 20.0f;
+	const FString SummonedType =
+		Params.Minions.IsEmpty() ? FString() : Params.Minions[0].Type;
+
+	ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+		Self, Location, Lifetime, Params.bBurns, SummonedType);
+	if (Minion)
+	{
+		Minion->RecordExplosionRadius(Params.RadiusCm);
+		Minion->SummonedBy = this;
+		Minions.Add(Minion);
+	}
+	return Minion;
+}
+
+ACataclysmMinion* UCataclysmSummonSkill::ReplaceLost(AActor* Commander,
+													 AActor* Lost,
+													 const FVector& Where,
+													 bool bExploded)
+{
+	UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Commander));
+	if (!Theirs)
+	{
+		return nullptr;
+	}
+
+	// WHICH SUMMON SKILL'S KIND. The one that made the lost minion; failing
+	// that -- a thrall, or a skill since taken away -- the first the commander
+	// holds that summons anything.
+	UCataclysmSummonSkill* Skill = nullptr;
+	if (const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Lost))
+	{
+		Skill = Minion->SummonedBy.Get();
+	}
+	if (!Skill)
+	{
+		for (const FGameplayAbilitySpec& Spec : Theirs->GetActivatableAbilities())
+		{
+			UCataclysmSummonSkill* Held =
+				Cast<UCataclysmSummonSkill>(Spec.GetPrimaryInstance());
+			if (Held && !Held->Params.bPossess)
+			{
+				Skill = Held;
+				break;
+			}
+		}
+	}
+	if (!Skill)
+	{
+		return nullptr;
+	}
+
+	// PRESS-GANGED FIRST, THEN REKINDLED FOR AN EXPLOSION, AND ONE AT MOST.
+	const auto Try = [&](bool bForExplosion) -> ACataclysmMinion*
+	{
+		const float Every = Theirs->StatForSkill(
+			FName(bForExplosion ? ReplacedOnExplosionStat : ReplacedOnDeathStat),
+			FGameplayTagContainer(), 0.0f);
+		if (Every <= 0.0f || !Theirs->MayReplaceMinion(bForExplosion))
+		{
+			return nullptr;
+		}
+		ACataclysmMinion* Made = Skill->SummonReplacementAt(Where);
+		if (Made)
+		{
+			Theirs->NoteMinionReplaced(bForExplosion, Every);
+		}
+		return Made;
+	};
+
+	if (ACataclysmMinion* Made = Try(/*bForExplosion=*/false))
+	{
+		return Made;
+	}
+	return bExploded ? Try(/*bForExplosion=*/true) : nullptr;
 }
 
 bool UCataclysmSummonSkill::Possess()
@@ -3481,6 +3584,7 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 		// to ask for them. `minion_explodes_on_death` on the summoner is what
 		// decides whether they are ever used.
 		Minion->RecordExplosionRadius(Params.RadiusCm);
+		Minion->SummonedBy = this;
 		Minions.Add(Minion);
 	}
 	return Minion;

@@ -1547,6 +1547,35 @@ bool UCataclysmAbilitySystemComponent::OutOfContactFor(float Seconds) const
 	return World->GetTimeSeconds() - EnemyLastInReachSeconds >= Seconds;
 }
 
+bool UCataclysmAbilitySystemComponent::MayReplaceMinion(bool bForExplosion) const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	const float NextAllowed = bForExplosion
+		? MinionExplosionReplacementNextAllowedSeconds
+		: MinionDeathReplacementNextAllowedSeconds;
+	return NextAllowed < 0.0f || World->GetTimeSeconds() >= NextAllowed;
+}
+
+void UCataclysmAbilitySystemComponent::NoteMinionReplaced(bool bForExplosion,
+														   float IntervalSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	float& NextAllowed = bForExplosion
+		? MinionExplosionReplacementNextAllowedSeconds
+		: MinionDeathReplacementNextAllowedSeconds;
+	NextAllowed = World->GetTimeSeconds() + IntervalSeconds;
+}
+
 void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
 {
 	const UWorld* World = GetWorld();
@@ -1916,6 +1945,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	LowHealthReliefNextAllowedSeconds = -1.0f;
 	NovaNextAllowedSeconds = -1.0f;
 	AuraNextAllowedSeconds = -1.0f;
+	MinionDeathReplacementNextAllowedSeconds = -1.0f;
+	MinionExplosionReplacementNextAllowedSeconds = -1.0f;
 
 	// AND LEECH NOT YET PAID. `UCataclysmLeech::PayOutStep` skips a corpse, so a
 	// payment promised by a hit before the death would resume paying out after
