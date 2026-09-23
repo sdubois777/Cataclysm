@@ -1017,9 +1017,21 @@ mana and refreshes before the pools fill), `game/Source/Cataclysm/AbilitySystem/
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (the new lookup), and tests in
 `CataclysmPlayerClassStatsTests.cpp`. Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
 
-**Partial.** The engine half is written. The row, "Each active minion reduces your maximum HP by 3%-6%"
-(`max_health`, more -3 to -6, `minions_held`, step 1), needs the design workbook and is added to this
-change before its machine window. Nothing has been compiled.
+**The row is written**: "Each active minion reduces your maximum HP by 3%-6%" is `max_health`, **increased**
+-3 to -6, `minions_held`, step 1, in the design workbook's Enchantment Effects sheet and
+`game/Data/EnchantmentEffects.csv` (293 rows to 294, 227 enchantments with a row to 228). Dry-run first on a
+`git archive` copy against an unedited control: only that CSV changed, the tools tests failed exactly as the
+control's did, and the real run matched the dry run byte for byte. Nothing has been compiled.
+
+**Increased, not more, which the plan had said.** Ruled under the owner's delegation on 2026-09-23: "reduces"
+is this project's word for the increased bucket, and the text check refuses a multiplying row on a sentence
+that does not say more, less or the like. The genre reads it the same way: in Path of Exile "reduced" is
+additive and "less" multiplies. **In play**, two minions add -12% to the character's other maximum health
+increases, rather than multiplying the finished figure by 0.88.
+
+**`max_health` joins the stats asked for through the pipeline**: `RefreshLiveMaximumHealth` asks the whole
+line, and `ProbeScaledMaximumHealth` in `CataclysmStatExemptionTests.cpp` scales a line by debuffs carried,
+runs one regeneration step, and watches the attribute rise.
 
 ### Why a row could not lower maximum health before
 

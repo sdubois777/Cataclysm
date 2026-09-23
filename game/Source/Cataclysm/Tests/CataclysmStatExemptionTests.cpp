@@ -1725,6 +1725,49 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `max_health`, scaled by debuffs carried, asked by
+	 * `UCataclysmAbilitySystemComponent::RefreshLiveMaximumHealth`, which each
+	 * regeneration step calls for a character whose `max_health` line moves with
+	 * its state. Issue #1815: "Each active minion reduces your maximum HP by
+	 * 3%-6%" is the first scaled row on this stat.
+	 *
+	 * THE ATTRIBUTE IS WHAT MOVES, because every reader of maximum health reads
+	 * the attribute; the refresh is what writes the scaled line onto it.
+	 */
+	void ProbeScaledMaximumHealth(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Character(World, /*AttackDamage=*/0.0f);
+		Character.AbilitySystem->SetNumericAttributeBase(
+			Vital::GetMaxHealthAttribute(), 1000.0f);
+		ScaledBy(Character.Actor, TEXT("max_health"), 100.0f,
+				 ECataclysmStatScale::PerDebuffCarried, /*Base=*/1000.0f);
+
+		const auto MaximumOf = [&]()
+		{
+			return Character.AbilitySystem->GetNumericAttribute(
+				Vital::GetMaxHealthAttribute());
+		};
+
+		UCataclysmRegeneration::ApplyStep(Character.Actor, 1.0f, 100.0f);
+		const float Clean = MaximumOf();
+		GiveTwoDebuffs(Character.Actor);
+		UCataclysmRegeneration::ApplyStep(Character.Actor, 1.0f, 100.0f);
+		const float Carrying = MaximumOf();
+
+		Test.TestTrue(
+			FString::Printf(TEXT("max_health is asked for, so two debuffs raise the "
+								 "maximum: %.2f against %.2f"), Carrying, Clean),
+			Carrying > Clean + 0.001f);
+	}
+
+	/**
 	 * `health_regen`, scaled by debuffs carried, asked by `RateOf` inside
 	 * `UCataclysmRegeneration::ApplyStep`.
 	 *
@@ -1988,6 +2031,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_reduction"),           &ProbeScaledDamageReduction},
 			{TEXT("damage_taken"),               &ProbeScaledDamageTaken},
 			{TEXT("crit_chance"),                &ProbeScaledCritChance},
+			{TEXT("max_health"),                 &ProbeScaledMaximumHealth},
 			{TEXT("retaliation"),                &ProbeScaledRetaliation},
 			{TEXT("health_regen"),               &ProbeScaledHealthRegen},
 			{TEXT("fervour_per_second"),         &ProbeScaledFervourPerSecond},
