@@ -115,6 +115,71 @@ because the restored run overwrites the test log.
 
 ---
 
+## 2026-09-23 — Every damage over time but bleed now reaches an energy shield, reversing the rule of 2026-08-02
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (a
+bleed marker on the incoming hit, and step 8), `CataclysmVitalAttributeSet.cpp` (where the marker
+is filled), comments in five more engine files that stated the old rule, four test files,
+`docs/Cataclysm_GDD_v2.md` (the step-8 row, the Energy Shield rules, the Succubus paragraph). Issue
+[#2014](https://github.com/sdubois777/Cataclysm/issues/2014).
+
+### THE OWNER'S WORDS
+
+On 2026-09-18, at about 03:30 UTC, asked how damage over time should meet energy shield:
+
+> "Design: every DoT except bleed reaches ES."
+
+**This reverses the rule in the entry of 2026-08-02, "The damage calculation"**, which said the
+shield "does not absorb damage over time". That rule was read out of a drawback, "Energy shield can
+now be effected by bleed" — a drawback only if the shield normally ignores bleed. The drawback
+names bleed alone, and bleed alone is what stays exempt.
+
+### WHAT CHANGED IN PLAY
+
+| Tick | Before | Now |
+|---|---|---|
+| Poison, burn, disease, necrosis, and every other kind with an ailment | straight to health | absorbed by the shield, like a hit |
+| A ground zone's or a dungeon hazard's, which carries no ailment | straight to health | absorbed |
+| Bleed | straight to health | straight to health |
+| Bleed, on a character with `shield_absorbs_damage_over_time` | absorbed | absorbed |
+
+**Every tick still restarts the shield's three-second refill wait**, absorbed or not, so damage over
+time still holds a shield empty while it ticks.
+
+**The Succubus paragraph changes with it.** It said burn was the answer to a Succubus because burn
+passed through its shield. Burn now wears the shield down and keeps it from refilling; only a bleed
+reaches its health past a standing shield.
+
+### HOW A BLEED IS RECOGNISED
+
+**By the tag the tick's effect GRANTS, `Keyword.DoT.Bleed`.** `ApplyDamageOverTime` grants the
+ailment's tag and carries only the bare `Keyword.DoT` as an asset tag, so the asset tags cannot tell
+one kind from another. Every bleed source goes through that function: the ailment roll, Mutilation
+Mastery, the self-bleed conversion and contagion. `CataclysmCombatEvents.cpp` already read a tick's
+granted tags for the same reason.
+
+### RULINGS UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto.**
+
+| Question | Answer | Why |
+|---|---|---|
+| Is a tick with no ailment (a ground zone, a dungeon hazard) a bleed? | **No: the shield absorbs it** | The owner's words are "every DoT except bleed" |
+| Retire `shield_absorbs_damage_over_time`, or keep it? | **Keep it, under its name, as the flag that lets bleed in** | Renaming would touch the Warded row and saved characters for no change in play |
+| The drawback "Energy shield can now be effected by bleed" | **One flat row granting that flag** | It is the rule's own exception; the row lands on this branch when the workbook is free |
+| Warded (`Ritualist_keystone_c_kA`) | **Text and row unchanged; no issue opened** | Its sentence, "absorbs damage over time as well as hits", stays true |
+
+**What the Warded ruling costs, stated rather than left to be found:** Warded now adds only bleed to
+what the shield absorbs. Before, it added every kind. **Its effect is now the same as the
+drawback's.** A keystone's worth is tuned in play; the coordinating session has told the owner so
+they can veto it.
+
+### TESTS
+
+Four tests stated the old rule and now state the new one, including one that applies a real burn
+and a real bleed by the route play uses and runs one tick of each. That one is what proves the bleed
+is recognised from the granted tag rather than only by a calculation handed a hit already marked.
+
 ---
 
 ## 2026-09-23 — A second stat makes a cooldown longer, and six cooldown rows are written: the five drawbacks and the Boss window
@@ -56265,6 +56330,9 @@ property exists by default, which is how they were found:
 | Has a recharge delay | `EnchantmentsPositive.csv` line 118, "regeneration begins immediately after taking damage with no delay" |
 | Recharges toward a maximum that can be capped below full | `EnchantmentsNegative.csv` line 89 |
 | Being broken is a distinct event | A set bonus that triggers on it |
+
+**Reversed for every kind of damage over time but bleed on 2026-09-23** (issue #2014), by the
+project owner's decision of 2026-09-18: "every DoT except bleed reaches ES." See that entry.
 
 The recharge delay is **3 seconds after the character last took damage, restarted
 by taking damage again inside that window**. Damage over time restarts it too.
