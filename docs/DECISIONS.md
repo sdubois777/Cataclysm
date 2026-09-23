@@ -13,9 +13,8 @@ the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEff
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (four checks) and
 `tools/tests/test_every_floor_effect_field_is_read_by_both_readers.py` (the new field recorded as not
 a percentage). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Python suite, the compile, the automation tests and the three guard proofs have all
+run; the figures are at the end of this entry.
 
 ### The row
 
@@ -142,10 +141,32 @@ it guards was broken by hand and to pass once restored: the row still sets magic
 the figures are the shared constants; the lock is scoped to the spell tag and an empty scope writes
 nothing; the fold carries the scope to the cast.
 
-### Not yet run
+### Evidence
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+From one editor window in worktree `lucid-hodgkin-26d23e`, lock released 17:15:48Z on 2026-09-23. The
+game tree is `f2f31e4f` throughout; only this entry changed after the runs.
+
+- The group `Cataclysm.DungeonModifierEffects.` measured on development `2df271ab` first: "Build:
+  Succeeded - 58 actions, 48 files compiled" (a full build; the worktree had no binaries); "Tests: 193
+  tests performed, 193 succeeded, 0 failed".
+- The change's own compile, first attempt: "Build: Succeeded - 14 actions, 11 files compiled".
+- The whole suite, once: "Tests: 2160 tests performed, 2160 succeeded, 0 failed"; "Declared: 2160
+  tests in the tree at e207a6ad; 2160 performed, gap 0". Registered 2160 (development 2151 + the nine
+  above). 39 tests skipped part of what they check, as on development.
+- Three guard proofs at that prefix, each registered with the tests it fails and the tests that keep
+  passing; each matched exactly, each restored to "202 tests performed, 202 succeeded, 0 failed", and
+  the source hash was the same before and after each:
+  - the lock written without its spell scope: "202 performed, 200 succeeded, 2 failed:
+    ABasicAttackIsNeverLockedInAnAntiMagicZone, SummonImpIsNotASpellAndStaysUsableInAnAntiMagicZone";
+  - the lock put on whenever any zone stands: "202 performed, 200 succeeded, 2 failed:
+    AnAntiMagicZoneIsLaidClearOfThePlayerAndDealsNoDamage, SteppingOutOfAnAntiMagicZoneGivesTheSpellBack";
+  - the rule's field never reaching the character: "202 performed, 196 succeeded, 6 failed:
+    ABasicAttackIsNeverLockedInAnAntiMagicZone, AFloorChangeForgetsTheAntiMagicZonesAndItsLock,
+    AnAntiMagicZoneExpiringLiftsTheLock, StandingInAnAntiMagicZoneLocksATaggedDemonicSpell,
+    SteppingOutOfAnAntiMagicZoneGivesTheSpellBack, SummonImpIsNotASpellAndStaysUsableInAnAntiMagicZone".
+- Python on `94b7f8eb` (the same game tree): "5330 passed, 7 skipped in 369.46s"; JUnit tests=5337,
+  failures=0, errors=0 (registered 5337). ruff "All checks passed!".
+- No fail-before run and no asset rebuild: nothing under `game/Data` or `game/Content` changed.
 
 ---
 
