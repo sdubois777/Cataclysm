@@ -2,6 +2,68 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Same-day entries are ordered by the branch commit that first writes each, and the log resolver's flag is --first
+
+**Affects:** `tools/resolve_decisions_log.py` (the command that orders two conflicting entries at
+the top of this log) and `tools/tests/test_resolve_decisions_log.py`. Issues
+[#1964](https://github.com/sdubois777/Cataclysm/issues/1964) and
+[#1990](https://github.com/sdubois777/Cataclysm/issues/1990).
+
+### THE ORDERING RULE, CLARIFIED
+
+**The coordinating session's clarification of 2026-09-23, made under the owner's delegation; it is
+not an owner ruling.** Entries of one day are ordered newest first by the author date of the
+**branch** commit that first writes each entry. For a merged entry, that commit is found with
+`git log -S "<heading>"` on the branch, or in the merged pull request's commit list. **Never by the
+squash commit's date.** A merged entry never moves.
+
+It clarifies the rule stated in the entry of 2026-09-17 headed "A creature the player kills has one
+chance in ten of bringing a greater one of its own kind out of its corpse", which orders entries by
+"the commit that writes or carries each one". "Carries" allowed a squash commit's date to be used, and
+on 2026-09-23 two sessions ordered entries by squash dates. A squash is made when the change merges,
+which can be long after the entry was written, so its date says nothing about which entry is newer.
+
+### THE FLAG
+
+`resolve --mine <word>` wrote the heading holding the word first. That was the right design: rule 1
+of the module says it takes the ORDER, because a rebase inverts the conflict sides. **Its help said
+the word was "a word appearing in YOUR heading"**, which is the wrong order whenever the other
+session's entry is the newer one. That happens whenever a change waits for another to merge first,
+the situation the tool was written for. Nothing caught a wrong order, because the log's separator
+check does not read dates. #1964 recorded one resolution on 2026-09-17 that had to pass a word from
+the other heading to get the right order, and #1990 recorded another on 2026-09-18.
+
+**Ruled by the coordinating session on 2026-09-23 under the owner's delegation:**
+
+- the flag is `--first`, and its help says the word comes from the NEWER heading and gives the rule
+  above;
+- `--mine` is still accepted, hidden from the help, and means the same, so older notes keep working;
+- the local names `mine` and `theirs` are `first` and `second`, matching `resolve(data, first,
+  second)`.
+
+No behaviour changed: `resolve` wrote the named heading first before this and does now.
+
+**A possible later change, not filed:** the tool could find each entry's writing commit with
+`git log -S` and choose the order itself, which would remove the judgement from the caller.
+
+### TESTS AND PROOF
+
+- `test_first_can_put_the_upstream_entry_on_top`: from one conflicted log, `--first` with a word from
+  either heading puts that entry on top at the command line.
+- `test_the_old_mine_flag_is_still_accepted_and_means_first`
+- `test_the_help_no_longer_says_the_word_is_from_your_heading`
+- The three existing command-line tests now pass `--first`.
+
+Two proofs with `tools/prove_guard.break_and_run`, in a `git archive` copy of e9542689, each break
+asserted to match once:
+
+| Break | Printed | `named_failures` |
+|---|---|---|
+| always write the `<<<<<<<` (upstream) side first | `PROVED: 1 failed, 21 passed in 0.37s \| restored: 22 passed in 0.34s` | `test_first_can_put_the_upstream_entry_on_top` |
+| always write the `>>>>>>>` side first | `PROVED: 2 failed, 20 passed in 0.33s \| restored: 22 passed in 0.32s` | `test_first_can_put_the_upstream_entry_on_top`, `test_the_old_mine_flag_is_still_accepted_and_means_first` |
+
+---
+
 ## 2026-09-23 — The stairs stay sealed until the player has slain half the floor, and open once nothing is left standing
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
