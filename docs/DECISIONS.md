@@ -2,6 +2,62 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Deeper Hurt lengthens a Cripple or a Weaken where it is applied, and a spread copy keeps the row's duration
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp` (the stat's name
+and its reader), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (a new stat with
+no attribute), the design workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (one
+row), two test files, and the counts in `tools/tests/test_passive_effects_match_the_node_text.py`,
+`CataclysmDataTableTests.cpp` and `docs/README.md`. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ravager_basic_c_stem2` Deeper Hurt: "+3% increased duration of Cripple and Weaken you apply per
+point." One row: `cripple_and_weaken_duration`, increased, 3 per point. One stat for both, because
+the node's one sentence names both.
+
+### WHERE IT IS READ
+
+**`UCataclysmAilments::Apply`, in its Cripple and Weaken branches, and nowhere else.** That is the
+one place a character CREATES either debuff: the chance roll on a landed blow, which the two
+chance affixes, several Ravager nodes, Attrition and Never Lets Go all feed. The row's duration is
+multiplied by one plus the applier's increases, asked with the skill's own tags as the chances are.
+
+**The multiplier is floored at nothing, with no further guard.** Both functions that put the debuff
+on refuse a duration of nothing, so a cut of a hundred per cent applies no debuff rather than a
+permanent one. That is the difference from Kept Longer's minion lifetime, where nothing means
+"never expires".
+
+### THE RULING: A SPREAD COPY KEEPS THE ROW'S DURATION
+
+**Ruled by the coordinating session on 2026-09-23 under the project owner's delegation, open to the
+owner's veto.** Four paths copy an existing Cripple or Weaken to another enemy: `CopyDebuffsTo`
+(the projectile curse spread and Anathema), Contagion's `SpreadOne` and `SpreadOnDeath`, and the
+Epidemic floor rule. A copy is **not** "Cripple and Weaken you apply":
+
+- a copy is not a fresh application;
+- the copy paths already ignore the applier's other Cripple and Weaken stats, their magnitude and
+  strength overflow, so reading this one there would make the rules disagree;
+- a read on copies would lengthen the debuff every time it passed from enemy to enemy.
+
+### TESTS
+
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: a Cripple from an
+  applier granted the stat outlasts one from a plain applier.
+- `Cataclysm.Passives.DeeperHurtLengthensTheCrippleAndWeakenARealRavagerApplies`: a real Ravager
+  holding Attrition, with 0, then 5, then 0 points of Deeper Hurt. Both debuffs last `1 + 5 × row/100`
+  times as long, measured as ratios so the target's own duration rule cancels. **The ruling above
+  is its copy control:** with the points still spent, a Cripple and a Weaken copied by
+  `UCataclysmContagion::SpreadOne` last what an unspent character's did.
+
+**Counts:** 296 passive effect rows from 295, and 217 of 441 nodes with an authored effect from 216.
+Measured then, the Ravager is 69 of its 74 nodes.
+
+---
+
+---
+
 ## 2026-09-23 — Kept Longer lengthens what a character summons, fixed at the summoning
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (a new stat with no

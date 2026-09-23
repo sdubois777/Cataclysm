@@ -599,7 +599,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 295 ON 2026-09-23, for `Ritualist_basic_b_c0` Kept Longer: +3%
 #: increased `minion_duration` per point, a stat with no attribute that
 #: `ACataclysmMinion::Spawn` reads on the lifetime a summoning states.
-AUTHORED_ROWS = 295
+#:
+#: AND TO 296 ON 2026-09-23, for `Ravager_basic_c_stem2` Deeper Hurt: +3%
+#: increased `cripple_and_weaken_duration` per point, read by
+#: `UCataclysmAilments::Apply` where a Cripple or a Weaken is created.
+AUTHORED_ROWS = 296
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -977,7 +981,11 @@ AUTHORED_ROWS = 295
 #: AND TO 216 ON 2026-09-23, for Kept Longer (`Ritualist_basic_b_c0`), which had
 #: no row. Measured then: the Ravager is 68 of its 74, the Ritualist 70 of its
 #: 74 and the Masochist 74 of its 74.
-AUTHORED_NODES = 216
+#:
+#: AND TO 217 ON 2026-09-23, for Deeper Hurt (`Ravager_basic_c_stem2`), which had
+#: no row. Measured then: the Ravager is 69 of its 74, the Ritualist 70 of its
+#: 74 and the Masochist 74 of its 74.
+AUTHORED_NODES = 217
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
