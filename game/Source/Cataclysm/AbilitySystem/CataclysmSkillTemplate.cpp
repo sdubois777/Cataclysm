@@ -99,9 +99,14 @@ FGameplayTag UCataclysmSkillTemplate::ElementTag() const
 		return FGameplayTag();
 	}
 
-	// The first, not every one. A row of the Weapon Skills sheet has exactly one
-	// damage type because the sheet is a matrix of weapon against damage type,
-	// and Cataclysm.Data.EverySkillRowCarriesOneElementTag holds that.
+	// The first, not every one. A skill's tags are its Weapon Skills row's
+	// `Tags` cell and nothing else, and no row there carries two element tags;
+	// every row with a skill name carries exactly one, naming its `DamageType`.
+	// Rows with no skill name carry none and are granted as the placeholder,
+	// which asks nothing of this. Held by
+	// tools/tests/test_weapon_skill_rows_carry_one_element_tag.py, issue #2005.
+	// This comment used to name a C++ test that never existed and to say
+	// "exactly one" of every row, which 261 unnamed rows did not hold.
 	for (const FGameplayTag& Tag : SkillTags)
 	{
 		if (Tag.MatchesTag(Element) && Tag != Element)
