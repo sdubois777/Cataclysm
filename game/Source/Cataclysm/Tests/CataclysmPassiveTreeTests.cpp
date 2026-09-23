@@ -14167,4 +14167,124 @@ bool FCataclysmPassiveAttritionOnARealCharacterTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Kept Longer, from its row. Issue #1515.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveKeptLongerOnARealCharacterTest,
+	"Cataclysm.Passives.KeptLongerLengthensWhatARealRitualistSummons",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_b_c0` Kept Longer, from its row, on a real Ritualist.
+ *
+ * "+3% increased duration of what you summon per point."
+ *
+ * READ FROM THE ROW AND SPENT THROUGH THE PLAYER STATE, not granted by hand,
+ * so this fails while the row is missing. The stat is read at the summoning by
+ * `ACataclysmMinion::Spawn`, which both the summon and the deploy skills call,
+ * so a summoning here is that call with the Ritualist as the summoner.
+ *
+ * THREE READINGS: unspent, the stated lifetime; with five points, the stated
+ * lifetime raised by five times the row's own figure; and the points given
+ * back, the stated lifetime again. The only figures the test states are the
+ * lifetime handed in and the number of points.
+ */
+bool FCataclysmPassiveKeptLongerOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ritualist_basic_b_c0"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Kept Longer carries one row"), Effects.Num(), 1))
+	{
+		AddError(TEXT("The node's row is missing from the data, so it grants "
+					  "nothing in play. Author it in the Passive Effects sheet "
+					  "of docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+	const FCataclysmPassiveEffectRow* Row = Effects[0];
+	TestEqual(TEXT("on the duration of what is summoned"), Row->Stat,
+			  FString(TEXT("minion_duration")));
+	TestEqual(TEXT("stated as an increase"), Row->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("under no condition"), Row->Condition, FString());
+	TestEqual(TEXT("for every summoning"), Row->RequiredTags, FString());
+	if (!TestTrue(*FString::Printf(TEXT("of a figure above nothing: %.1f"),
+								   Row->ValuePerPoint),
+				  Row->ValuePerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	const auto Spend = [&Player, Node](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(Node, Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	};
+
+	// ONE SUMMONING WITH THIS LIFETIME, and how long the minion is given. A
+	// test world's clock does not move, so that is the whole of it.
+	constexpr float Stated = 20.0f;
+	const auto LifespanOfOneSummoned = [&]()
+	{
+		ACataclysmMinion* Minion = ACataclysmMinion::Spawn(
+			Player.Character, FVector(200.0f, 0.0f, 0.0f), Stated,
+			/*bBurns=*/false, TEXT("Imp"));
+		if (!Minion)
+		{
+			AddError(TEXT("A minion could not be summoned."));
+			return -1.0f;
+		}
+		const float Lifespan = Minion->GetLifeSpan();
+		Minion->Destroy();
+		return Lifespan;
+	};
+
+	constexpr int32 Points = 5;
+
+	Spend(0);
+	TestEqual(TEXT("unspent, a minion is given the lifetime stated"),
+			  LifespanOfOneSummoned(), Stated, 0.01f);
+
+	Spend(Points);
+	TestEqual(*FString::Printf(TEXT("with %d points it is given %.0f%% more"),
+							   Points, Row->ValuePerPoint * Points),
+			  LifespanOfOneSummoned(),
+			  Stated * (1.0f + Row->ValuePerPoint * Points / 100.0f), 0.01f);
+
+	Spend(0);
+	TestEqual(TEXT("and with the points given back, the lifetime stated again"),
+			  LifespanOfOneSummoned(), Stated, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
