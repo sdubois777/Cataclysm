@@ -445,7 +445,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// maximum class resource through the pipeline. Issue #1515.
 	// AND 294 SINCE 2026-09-23, for Attrition: a hundred chance to Cripple and
 	// a hundred to Weaken, both for melee attacks only. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        294)
+	// AND 295 SINCE LATER ON 2026-09-23, for Kept Longer: +3% increased
+	// duration of what the character summons, per point. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        295)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

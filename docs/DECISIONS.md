@@ -2,6 +2,61 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Kept Longer lengthens what a character summons, fixed at the summoning
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (a new stat with no
+attribute), `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.cpp` (its reader), the design
+workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (one row), two test files, and
+the counts in `tools/tests/test_passive_effects_match_the_node_text.py`,
+`CataclysmDataTableTests.cpp` and `docs/README.md`. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ritualist_basic_b_c0` Kept Longer: "+3% increased duration of what you summon per point." One row:
+`minion_duration`, increased, 3 per point.
+
+### THE STAT, AND WHERE IT IS READ
+
+**`minion_duration` is a stat with no attribute**, listed beside `minion_health` in
+`UCataclysmPlayerClassStats::StatsWithNoAttribute`. The entry of 2026-09-13 named "the duration of
+what you summon" among quantities with no stat yet, each needing its own decision: a base from a
+flat row, a new attribute, or that exemption. **The exemption**, because the two minion figures
+nearest to this one, health and explosion damage, both chose it.
+
+**`ACataclysmMinion::Spawn` reads it**, on the lifetime the summoning skill states: that lifetime
+times one plus the summoner's increases. Everything a character summons comes through `Spawn`, a
+deployed machine as well as a summoned minion.
+
+### THREE QUESTIONS SETTLED BY PRECEDENT, AND ONE GUARD
+
+**Recorded as settled rather than ruled; the coordinating session agreed on 2026-09-23.**
+
+| Question | Answer | Precedent |
+|---|---|---|
+| A new attribute, or the exemption? | **The exemption** | `minion_health`, `minion_explosion_damage` |
+| Does the lifetime follow a later passive or gear change? | **No: it is fixed at the summoning** | Health is, under the deferral this log recorded on 2026-09-13 ("Minions update live rather than snapshotting") |
+| Does a deployed machine count as "what you summon"? | **Yes** | Both go through `Spawn`, and the stat belongs to the summoner |
+
+**A multiplier of nothing or less keeps the stated lifetime.** `SetLifeSpan(0)` means "never
+expires", so a cut of a hundred per cent would otherwise make a minion permanent. No shipped row
+reduces the duration, which is why the guard has its own test:
+`Cataclysm.StatExemption.AMinionDurationCutByAHundredPerCentKeepsTheStatedLifetime`, at -100% and
+-150%.
+
+### TESTS
+
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`: a summoner granted
+  the stat summons an imp with a longer lifespan than a plain summoner's.
+- `Cataclysm.Passives.KeptLongerLengthensWhatARealRitualistSummons` reads the row on a real
+  Ritualist: the stated lifetime unspent, raised by five times the row's figure at five points, and
+  the stated lifetime again with the points given back.
+
+**Counts:** 295 passive effect rows from 294, and 216 of 441 nodes with an authored effect from 215.
+Measured then, the Ritualist is 70 of its 74 nodes.
+
+---
+
 ## 2026-09-23 — Below 10% mana a cast costs 5% of current health instead, and a general "mana below" condition exists
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the new condition
@@ -15806,6 +15861,9 @@ characterised from a search result.
 
 **A per-swing read is live by construction**, so this constrains health, which is
 set once at spawn, and not a stat asked for at the moment of a blow.
+
+**A second figure it covers, since 2026-09-23:** a minion's lifetime, which Kept Longer's
+`minion_duration` lengthens at the summoning. See that day's entry on Kept Longer.
 
 ### The green health bar
 

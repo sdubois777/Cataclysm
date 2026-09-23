@@ -595,7 +595,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `cripple_chance` and flat 100 `weaken_chance`, each for melee attacks only.
 #: Unwritable until an ailment chance was asked for with the skill's tags,
 #: which `UCataclysmAilments::ChancesFor` now does.
-AUTHORED_ROWS = 294
+#:
+#: AND TO 295 ON 2026-09-23, for `Ritualist_basic_b_c0` Kept Longer: +3%
+#: increased `minion_duration` per point, a stat with no attribute that
+#: `ACataclysmMinion::Spawn` reads on the lifetime a summoning states.
+AUTHORED_ROWS = 295
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -969,7 +973,11 @@ AUTHORED_ROWS = 294
 #: AND TO 215 ON 2026-09-23, for Attrition (`Ravager_keystone_c_kA`), which had
 #: no row. Measured then: the Ravager is 68 of its 74, the Ritualist 69 of its
 #: 74 and the Masochist 74 of its 74.
-AUTHORED_NODES = 215
+#:
+#: AND TO 216 ON 2026-09-23, for Kept Longer (`Ritualist_basic_b_c0`), which had
+#: no row. Measured then: the Ravager is 68 of its 74, the Ritualist 70 of its
+#: 74 and the Masochist 74 of its 74.
+AUTHORED_NODES = 216
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
