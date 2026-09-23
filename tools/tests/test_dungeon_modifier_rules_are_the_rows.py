@@ -3544,3 +3544,37 @@ def test_a_risen_creature_pays_nothing_and_a_wraith_is_risen():
     assert "Wraith->bRisenFromTheDead = true;" in "\n".join(
         line for line in wraith.splitlines() if not line.lstrip().startswith("//")), (
         "A Vengeful Wraith is no longer marked as risen, so it pays twice for one kill.")
+
+
+def test_dead_rising_row_still_states_a_chance_and_names_no_killer():
+    """The two readings the rule rests on: no figure, and no killer.
+
+    "Enemies have a chance to revive after being killed." THE ROW GIVES NO PERCENTAGE, so
+    the rule's chance is the table's ten for a chance on a death; if the row ever states
+    a figure, the rule must use that one. AND IT NAMES NO KILLER, which is why every death
+    rolls whoever dealt it -- where Vengeful Wraiths says "the one who killed them" and so
+    asks for the player. Both rulings were made under the owner's delegation on 2026-09-23.
+    """
+    words = flat(rows()["Death_Dead_Rising"]["Description"])
+    lower = words.lower()
+
+    assert "a chance" in lower, words
+    assert "%" not in words, (
+        "Death_Dead_Rising now states a percentage. The rule's chance was a judgement "
+        "made because the row gave none -- see DeadRisingChancePercent in "
+        "CataclysmDungeonModifierEffects.h. Use the row's figure instead. " + words)
+    assert "after being killed" in lower, words
+    assert "player" not in lower and "who killed" not in lower, (
+        "Death_Dead_Rising now names who does the killing. Every death rolls because "
+        "it named nobody; re-read the rule's killer. " + words)
+
+
+def test_dead_rising_chance_is_declared_as_the_tables_figure_for_a_death():
+    """The tie, not the number: one figure held by three rules cannot drift apart."""
+    text = EFFECTS_HEADER.read_text(encoding="utf-8")
+
+    assert re.search(
+        r"DeadRisingChancePercent\s*=\s*SporeCloudsChancePercentOnDeath\s*;", text), (
+        "DeadRisingChancePercent is no longer declared as SporeCloudsChancePercentOnDeath, "
+        "the ten this table uses for a chance fired by a death. Write the tie back rather "
+        "than a second number.")

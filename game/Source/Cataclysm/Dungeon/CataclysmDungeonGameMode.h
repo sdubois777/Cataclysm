@@ -1800,6 +1800,16 @@ private:
 	 */
 	void NoteDeathForDivineResurgence(const struct FCataclysmDeathNotice& Notice);
 
+	/**
+	 * Death Dead Rising, on every death. Issues #1820 and #41.
+	 *
+	 * ROLLS `DeadRisingChancePercent` FOR EVERY UNMARKED CREATURE THAT DIES, whoever
+	 * killed it, and on a hit puts the same kind back where it fell, at the rung it died
+	 * at, at full health and marked. A marked creature never rolls, so no creature gets
+	 * more than one extra life from this row.
+	 */
+	void NoteDeathForDeadRising(const struct FCataclysmDeathNotice& Notice);
+
 public:
 	/**
 	 * Divine Resurgence's state, for the floor panel and for tests. How many unmarked
@@ -1809,6 +1819,9 @@ public:
 	int32 DivineResurgenceFallenCount() const { return DivineResurgenceFallen; }
 	int32 DivineResurgencePlacedCount() const;
 	int32 DivineResurgenceRisenCount() const { return DivineResurgenceRisen; }
+
+	/** How many creatures Dead Rising has put back on this floor, for the panel and tests. */
+	int32 DeadRisingRisenCount() const { return DeadRisingRisen; }
 
 private:
 
@@ -2583,6 +2596,9 @@ private:
 	int32 DivineResurgenceFallen = 0;
 	bool bDivineResurgenceDone = false;
 	int32 DivineResurgenceRisen = 0;
+
+	/** How many creatures Dead Rising has put back on this floor. Goes at the stairs. */
+	int32 DeadRisingRisen = 0;
 
 	/**
 	 * Judgment Zones: the ground standing now, the clock that lays more, and what the

@@ -20617,4 +20617,308 @@ bool FCataclysmWraithIsMarkedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Death_Dead_Rising. Issues #1820 and #41.
+//
+// "Enemies have a chance to revive after being killed." Ten percent, the table's figure
+// for a chance on a death; every death rolls, whoever dealt it; at once, where it fell,
+// at its kind and rung and at full health; marked, and a marked creature never rolls.
+// Rulings under the owner's delegation, 2026-09-23.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where a killed creature may get back up. Issues #1820, #41. */
+	const FName DeadRising(UCataclysmDungeonModifierEffects::DeadRisingKey);
+
+	/**
+	 * The floor every Dead Rising test starts from: the Divine Resurgence floor's setup
+	 * with this row instead, emptied, and every Imp a Common so a rung is never drawn.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheDeadRisingRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonModifiers = {DeadRising};
+		Mode->FloorNumber = 1;
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString DeadRisingPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(DeadRising);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** Every marked creature on the floor that is still alive. */
+	TArray<ACataclysmEnemyCharacter*> TheLivingRisen(ACataclysmDungeonGameMode* Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Living;
+		for (ACataclysmEnemyCharacter* Creature : TheRisen(Mode))
+		{
+			if (!UCataclysmSkillEffects::IsDead(Creature))
+			{
+				Living.Add(Creature);
+			}
+		}
+		return Living;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadRisingRevivesTest,
+	"Cataclysm.DungeonModifierEffects.AKilledCreatureOnTheRollGetsUpAtOnceAtFullHealthAndItsRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeadRisingRevivesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDeadRisingRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DeadRisingRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the Dead Rising roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	// AN ELITE, so the rung it gets up at is visible against the floor's Common.
+	ACataclysmEnemyCharacter* Elite =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 1);
+	if (!TestNotNull(TEXT("an Elite was placed"), Elite))
+	{
+		return false;
+	}
+	TestEqual(TEXT("nothing has got up yet"), DeadRisingPanelLine(Mode),
+			  FString(TEXT("dead rising: 0 got back up")));
+
+	if (!ThePlayerKills(*this, Player, Elite))
+	{
+		return false;
+	}
+
+	// AT ONCE: no beat has run since the blow.
+	const TArray<ACataclysmEnemyCharacter*> Risen = TheLivingRisen(Mode);
+	if (!TestEqual(TEXT("one creature got back up in the same death notice"), Risen.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the floor counted it"), DeadRisingPanelLine(Mode),
+			  FString(TEXT("dead rising: 1 got back up")));
+
+	ACataclysmEnemyCharacter* Again = Risen[0];
+	TestEqual(TEXT("it got up at the Elite's rung"), Again->RarityStep, 1);
+	TestFalse(TEXT("and its death pays nothing"), Again->PaysForItsDeath());
+
+	const UAbilitySystemComponent* System = Again->GetAbilitySystemComponent();
+	if (TestNotNull(TEXT("it has an ability system"), System))
+	{
+		const float Maximum = System->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+		TestTrue(FString::Printf(TEXT("it has a maximum to be full at: %.1f"), Maximum),
+				 Maximum > 0.0f);
+		TestEqual(TEXT("and stands at all of it"),
+				  System->GetNumericAttribute(Vital::GetHealthAttribute()), Maximum, 0.01f);
+	}
+	return true;
+}
+
+// TEN PERCENT MEANS A ROLL BELOW TEN, and a roll of exactly ten leaves the dead dead.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadRisingMissTest,
+	"Cataclysm.DungeonModifierEffects.ARollOfTenLeavesTheDeadDead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeadRisingMissTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ARITHMETIC, with the ten written out rather than read from the constant.
+	TestTrue(TEXT("a roll just under ten gets up"), Effects::DeadRisingRevives(9.99f));
+	TestFalse(TEXT("a roll of ten does not"), Effects::DeadRisingRevives(10.0f));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDeadRisingRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DeadRisingRoll"), TEXT("10"));
+	if (!TestNotNull(TEXT("the Dead Rising roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature was placed"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("nothing got up"), TheRisen(Mode).Num(), 0);
+	TestEqual(TEXT("and the floor says so"), DeadRisingPanelLine(Mode),
+			  FString(TEXT("dead rising: 0 got back up")));
+	return true;
+}
+
+// EVERY DEATH ROLLS, WHOEVER DEALT IT: the row names no killer. Vengeful Wraiths' own
+// test of a creature's kill raises nothing; this one raises it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadRisingOtherKillerTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureKilledByAnotherCreatureAlsoGetsUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeadRisingOtherKillerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDeadRisingRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DeadRisingRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the Dead Rising roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slayer =
+		SpawnImpWithHealth(World, FVector(300.0f, 0.0f, 0.0f), 100.0f);
+	ACataclysmEnemyCharacter* Slain =
+		PlaceCreatureAtRung(World, Mode, FVector(600.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature to do the killing"), Slayer)
+		|| !TestNotNull(TEXT("a creature for it to kill"), Slain))
+	{
+		return false;
+	}
+
+	// A BARE CREATURE HITS FOR NOTHING, so the killer is given damage and the figure is
+	// asserted rather than assumed.
+	const float SlayersDamage = GiveCreatureAttackDamage(Slayer, 100.0f);
+	if (!TestTrue(FString::Printf(TEXT("the killer hits for something: %.2f"),
+								  SlayersDamage),
+				  SlayersDamage > 0.0f))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ApplyHit(Slayer, Slain, 100000.0f);
+	if (!TestTrue(TEXT("a creature's blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a death the player had no part in still gets up"),
+			  TheLivingRisen(Mode).Num(), 1);
+	TestEqual(TEXT("and the floor counted it"), DeadRisingPanelLine(Mode),
+			  FString(TEXT("dead rising: 1 got back up")));
+	return true;
+}
+
+// ONE EXTRA LIFE AT MOST: a creature that got back up is marked, and a marked creature
+// never rolls, so killing it again leaves it dead even on a roll that always hits.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadRisingOnceEachTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureThatGotUpNeverRollsAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDeadRisingOnceEachTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDeadRisingRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.DeadRisingRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the Dead Rising roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature was placed"), Slain)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+
+	// THE CONTROL: it did get up once, so the answer below is the mark and not a roll
+	// that never hits.
+	const TArray<ACataclysmEnemyCharacter*> Risen = TheLivingRisen(Mode);
+	if (!TestEqual(TEXT("it got up once"), Risen.Num(), 1)
+		|| !ThePlayerKillsARisenOne(*this, Player, Risen[0]))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("killed again, nothing gets up"), TheLivingRisen(Mode).Num(), 0);
+	TestEqual(TEXT("and the floor still says one"), DeadRisingPanelLine(Mode),
+			  FString(TEXT("dead rising: 1 got back up")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

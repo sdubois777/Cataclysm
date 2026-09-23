@@ -705,6 +705,17 @@ static TAutoConsoleVariable<float> CVarVengefulWraithRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * The roll Dead Rising offers every creature that dies, pinned for tests. The same shape
+ * as the one above, for the same reason.
+ */
+static TAutoConsoleVariable<float> CVarDeadRisingRoll(
+	TEXT("Cataclysm.DeadRisingRoll"),
+	-1.0f,
+	TEXT("Pin the roll Dead Rising offers a creature that died, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 namespace
 {
 	/** The roll Wasting Sickness's chance is compared with: pinned, or drawn. */
@@ -787,6 +798,12 @@ namespace
 	float DungeonGameModeVengefulWraithRoll()
 	{
 		const float Pinned = CVarVengefulWraithRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeDeadRisingRoll()
+	{
+		const float Pinned = CVarDeadRisingRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -3555,6 +3572,9 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForBloodForgedChampions(Notice);
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForMarchOfProgress(Notice);
+	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
+	// standing and marked when that rule counts the floor. Issues #1820 and #41.
+	NoteDeathForDeadRising(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -4157,6 +4177,70 @@ void ACataclysmDungeonGameMode::NoteDeathForVengefulWraiths(
 		   *Fallen->GetName(), CataclysmDungeonCreatureName(Kind),
 		   Effects::VengefulWraithsDamageReductionMore,
 		   Effects::VengefulWraithsSightMultiplier);
+
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForDeadRising(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::DeadRisingKey)))
+	{
+		return;
+	}
+
+	// A MARKED CREATURE NEVER ROLLS, so one extra life is the most this row gives. Ruled
+	// under the owner's delegation, 2026-09-23. A Vengeful Wraith and a creature Divine
+	// Resurgence raised are marked too, and are refused here for the same reason.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!IsValid(Fallen) || !Fallen->PaysForItsDeath())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// EVERY DEATH ROLLS, WHOEVER DEALT IT: the row says "after being killed" and names no
+	// killer, so nothing here asks who did it.
+	if (!Effects::DeadRisingRevives(DungeonGameModeDeadRisingRoll()))
+	{
+		return;
+	}
+
+	// ITS OWN KIND, and nothing gets up from a creature that is none of the seven, the
+	// refusal Vengeful Wraiths and Divine Resurgence make.
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
+	if (Kind == ECataclysmDungeonCreature::Count)
+	{
+		return;
+	}
+
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(Notice.Location);
+	Placement.Creature = Kind;
+
+	// AT THE RUNG IT DIED AT, set before its modifiers are drawn, as Divine Resurgence
+	// does. AT FULL HEALTH because the spawn gives it that and nothing here lowers it:
+	// "revive" with no reduction stated is the creature as it was placed.
+	ACataclysmEnemyCharacter* Risen = SpawnPlacedCreature(
+		Placement, FloorBrief.SightRadiusMultiplier, Fallen->RarityStep);
+	if (!Risen)
+	{
+		return;
+	}
+	Risen->bRisenFromTheDead = true;
+	FloorEnemies.Add(Risen);
+	++DeadRisingRisen;
+
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Dead Rising: %s (%s) got back up at rung %d"),
+		   *Fallen->GetName(), CataclysmDungeonCreatureName(Kind), Fallen->RarityStep);
 
 	RefreshFloorModifierPanel();
 }
@@ -5166,6 +5250,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 										   DivineResurgenceRisen)
 						 : FString::Printf(TEXT("holy revival: %d of %d fallen, comes at %d"),
 										   DivineResurgenceFallen, Placed, ComesAt));
+	}
+
+	// AND HOW MANY OF THE FLOOR'S DEAD GOT BACK UP. Issues #1820 and #41.
+	const FName Rising(Effects::DeadRisingKey);
+	if (FloorBrief.Modifiers.Contains(Rising))
+	{
+		Counting.Add(Rising, FString::Printf(TEXT("dead rising: %d got back up"),
+											 DeadRisingRisen));
 	}
 
 	// AND HOW MANY ANTI-MAGIC ZONES ARE STANDING. Issues #1820 and #41. The number is all
@@ -6934,6 +7026,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		DivineResurgenceFallen = 0;
 		bDivineResurgenceDone = false;
 		DivineResurgenceRisen = 0;
+
+		// AND DEAD RISING FORGETS HOW MANY GOT UP. Issues #1820 and #41. A creature it
+		// put back that lives through a Horde dungeon's change of wave keeps its mark, so
+		// it never rolls again on the next floor either.
+		DeadRisingRisen = 0;
 
 		// AND JUDGMENT ZONES FORGETS EVERYTHING, which is the whole of its state.
 		// Issues #1820 and #41. The zones themselves are actors on the floor being left
