@@ -149,6 +149,12 @@ public:
 	 * tested, and every cooldown in the game was applied at its base length, so
 	 * `Stat_Increased_cooldown_reduction` was worth nothing. Issue #895.
 	 *
+	 * AND IT LENGTHENS IT TOO, despite the name. Issue #1994. The stat
+	 * `cooldown_lengthening` multiplies what the reduction leaves, floored so a
+	 * negative row shortens nothing: Base x (1 + lengthening) / divisor. The
+	 * name was kept because every caller and test asks it by this name, and it
+	 * is still the one place a cooldown's length is worked out.
+	 *
 	 * A PERCENTAGE HERE AND A FRACTION THERE. The `CooldownReduction` attribute
 	 * holds a percentage, because that is what an affix grants, and FinalCooldown
 	 * takes a fraction. This is where the two meet, and it is the only place

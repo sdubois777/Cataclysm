@@ -129,6 +129,9 @@ const TCHAR* UCataclysmSkillSlots::ManaOnHitStat = TEXT("mana_on_hit");
 
 const TCHAR* UCataclysmSkillSlots::ManaCostStat = TEXT("mana_cost");
 
+const TCHAR* UCataclysmSkillSlots::CooldownLengtheningStat =
+	TEXT("cooldown_lengthening");
+
 const TCHAR* UCataclysmSkillSlots::LockedStat = TEXT("skill_locked");
 
 FGameplayTag UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot Slot)

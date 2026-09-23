@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Misc/ScopeExit.h"
@@ -662,6 +663,261 @@ bool FCataclysmBossWindowCooldownRowTest::RunTest(const FString&)
 	TestEqual(TEXT("and inside it a flat fifty divides it by 1.5"),
 		UCataclysmGameplayAbility::CooldownAfterReduction(AbilitySystem, 4.0f),
 		4.0f / 1.5f, 0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// A cooldown made LONGER, by a second stat. Issue #1994.
+// ---------------------------------------------------------------------------
+
+/**
+ * Shared by the four tests below: one character with the combat set, whose
+ * recorded lines are replaced whole on every call, so no reading carries a row
+ * over from the one before it.
+ *
+ * FLAT ROWS, because both stats' rows are flat: neither has a base for an
+ * increase to scale (issue #2000). Named for this block because the module is
+ * built as a unity blob and another file's helper would collide.
+ */
+namespace CataclysmCooldownLengtheningTest
+{
+	struct FCharacter
+	{
+		UCataclysmAbilitySystemComponent* AbilitySystem = nullptr;
+
+		explicit FCharacter(UWorld* World)
+		{
+			AActor* Actor = World->SpawnActor<AActor>();
+			check(Actor);
+			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			AbilitySystem->RegisterComponent();
+			// A raw pointer, for the reason the first test in this file gives.
+			UCataclysmCombatAttributeSet* Combat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			AbilitySystem->AddAttributeSetSubobject(Combat);
+			AbilitySystem->InitAbilityActorInfo(Actor, Actor);
+		}
+
+		/** Records a flat reduction and a flat lengthening; 0 records no row. */
+		void Record(float ReductionPercent, float LengtheningPercent,
+					const FGameplayTagContainer& LengtheningScope =
+						FGameplayTagContainer()) const
+		{
+			TMap<FName, FCataclysmStatInputs> Inputs;
+			const auto Line = [&Inputs](const TCHAR* Stat, float Value,
+										const FGameplayTagContainer& Scope)
+			{
+				FCataclysmStatModifier Flat;
+				Flat.Bucket = ECataclysmStatBucket::Flat;
+				Flat.Source = ECataclysmModifierSource::Enchantment;
+				Flat.Value = Value;
+				Flat.RequiredTags = Scope;
+				FCataclysmStatInputs& Made = Inputs.FindOrAdd(FName(Stat));
+				Made.Base = 0.0f;
+				Made.Modifiers.Add(Flat);
+			};
+			if (ReductionPercent != 0.0f)
+			{
+				Line(TEXT("cooldown_reduction"), ReductionPercent,
+					 FGameplayTagContainer());
+			}
+			if (LengtheningPercent != 0.0f)
+			{
+				Line(UCataclysmSkillSlots::CooldownLengtheningStat,
+					 LengtheningPercent, LengtheningScope);
+			}
+			AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+		}
+
+		float Cooldown(float Base, const FGameplayTagContainer& SkillTags =
+									   FGameplayTagContainer()) const
+		{
+			return UCataclysmGameplayAbility::CooldownAfterReduction(
+				AbilitySystem, Base, SkillTags);
+		}
+	};
+
+	FGameplayTagContainer Tagged(const TCHAR* Tag)
+	{
+		FGameplayTagContainer Made;
+		Made.AddTag(FGameplayTag::RequestGameplayTag(FName(Tag),
+													 /*ErrorIfNotFound=*/false));
+		return Made;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownLengtheningRowTest,
+	"Cataclysm.Ability.ACooldownLengtheningRowMultipliesACooldownByTheSentencesOwnNumber",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A lengthening row carries the number its sentence states, and that number is
+ * what the cooldown grows by. Issue #1994.
+ *
+ * "Ultimate cooldowns increased by 100%-500%" is 100 to 500: 100 makes four
+ * seconds eight, 500 makes it twenty-four. "Movement abilities have 50%
+ * increased cooldown" is 50: four seconds becomes six. A negative
+ * `cooldown_reduction` could not say any of these in its own words.
+ */
+bool FCataclysmCooldownLengtheningRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownLengtheningTest;
+
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCharacter Character(World);
+
+	// NOTHING RECORDED FIRST, so the readings below are measured against a
+	// cooldown that really is four seconds with no row.
+	Character.Record(0.0f, 0.0f);
+	TestEqual(TEXT("with no row a four second cooldown is four seconds"),
+		Character.Cooldown(4.0f), 4.0f, 0.001f);
+
+	Character.Record(0.0f, 100.0f);
+	TestEqual(TEXT("a lengthening row of 100 makes four seconds eight"),
+		Character.Cooldown(4.0f), 8.0f, 0.001f);
+
+	Character.Record(0.0f, 500.0f);
+	TestEqual(TEXT("a lengthening row of 500 makes four seconds twenty-four"),
+		Character.Cooldown(4.0f), 24.0f, 0.001f);
+
+	Character.Record(0.0f, 50.0f);
+	TestEqual(TEXT("a lengthening row of 50 makes four seconds six"),
+		Character.Cooldown(4.0f), 6.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScopedCooldownLengtheningTest,
+	"Cataclysm.Ability.ACooldownLengtheningRowScopedToASlotLengthensOnlyThatSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A lengthening row scoped to the Ultimate slot lengthens the ultimate and
+ * nothing else. Issue #1994. Three of the five sentences are scoped: the
+ * Ultimate slot, the Movement slot and point-blank area skills.
+ *
+ * BOTH TAGS ARE CHECKED TO BE REAL FIRST. A tag this build did not know would
+ * leave its container empty, and "the movement skill is not lengthened" would
+ * then pass for the wrong reason.
+ */
+bool FCataclysmScopedCooldownLengtheningTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownLengtheningTest;
+
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FGameplayTagContainer Ultimate = Tagged(TEXT("Slot.Ultimate"));
+	const FGameplayTagContainer Movement = Tagged(TEXT("Slot.Movement"));
+	if (!TestEqual(TEXT("Slot.Ultimate is a real tag in this build"),
+				   Ultimate.Num(), 1)
+		|| !TestEqual(TEXT("and so is Slot.Movement"), Movement.Num(), 1))
+	{
+		return false;
+	}
+
+	const FCharacter Character(World);
+	Character.Record(0.0f, 100.0f, Ultimate);
+
+	TestEqual(TEXT("the ultimate's four seconds become eight"),
+		Character.Cooldown(4.0f, Ultimate), 8.0f, 0.001f);
+	TestEqual(TEXT("a movement skill's four seconds stay four"),
+		Character.Cooldown(4.0f, Movement), 4.0f, 0.001f);
+	TestEqual(TEXT("and a skill with no tags stays four"),
+		Character.Cooldown(4.0f), 4.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLengtheningAndReductionComposeTest,
+	"Cataclysm.Ability.ALengtheningAndAReductionAreTwoSeparateFactors",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A character carrying both gets Base x (1 + lengthening) / divisor. Issue
+ * #1994, the ruling of 2026-09-23.
+ *
+ * THE SECOND AND THIRD READINGS ARE THE ONES THAT TELL FORMULAS APART. 100
+ * against 100 gives back the base, but so would several wrong readings. 100 of
+ * reduction against 50 of lengthening is three seconds as two factors; netting
+ * the percentages first (a 50 reduction left over) would give 2.667, and
+ * reading the reduction where the lengthening belongs would give four.
+ */
+bool FCataclysmLengtheningAndReductionComposeTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownLengtheningTest;
+
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCharacter Character(World);
+
+	Character.Record(100.0f, 100.0f);
+	TestEqual(TEXT("a 100 reduction and a 100 lengthening give back four seconds"),
+		Character.Cooldown(4.0f), 4.0f, 0.001f);
+
+	Character.Record(100.0f, 50.0f);
+	TestEqual(TEXT("a 100 reduction and a 50 lengthening make four seconds three"),
+		Character.Cooldown(4.0f), 3.0f, 0.001f);
+
+	Character.Record(12.0f, 50.0f);
+	TestEqual(TEXT("the Haste affix's 12 and a 50 lengthening: 4 x 1.5 / 1.12"),
+		Character.Cooldown(4.0f), 4.0f * 1.5f / 1.12f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNegativeLengtheningTest,
+	"Cataclysm.Ability.ANegativeCooldownLengtheningRowShortensNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A lengthening below nought shortens nothing. Issue #1994: the lengthening is
+ * floored at nought the way the divisor floors its increases, so the two
+ * stats cannot stand in for one another by sign.
+ *
+ * THE SECOND READING HAS A REDUCTION UNDER IT, so the floor is seen leaving a
+ * real reduction alone rather than only a bare cooldown.
+ */
+bool FCataclysmNegativeLengtheningTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownLengtheningTest;
+
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+									   /*bInformEngineOfWorld=*/false);
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FCharacter Character(World);
+
+	Character.Record(0.0f, -50.0f);
+	TestEqual(TEXT("a lengthening row of minus 50 leaves four seconds at four"),
+		Character.Cooldown(4.0f), 4.0f, 0.001f);
+
+	Character.Record(100.0f, -50.0f);
+	TestEqual(TEXT("and under a 100 reduction it leaves the reduction's two"),
+		Character.Cooldown(4.0f), 2.0f, 0.001f);
 
 	return true;
 }

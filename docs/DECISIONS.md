@@ -2,6 +2,147 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — A second stat makes a cooldown longer, and six cooldown rows are written: the five drawbacks and the Boss window
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillSlots.h` and `.cpp` (the stat's name),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the stat joins the list of stats with
+no gameplay attribute, so the generator accepts its rows),
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp` (the floored factor),
+`game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the one place a cooldown's
+length is worked out asks for the stat), four automation tests in
+`game/Source/Cataclysm/Tests/CataclysmAbilitySystemTests.cpp`, a probe in
+`CataclysmStatExemptionTests.cpp`, one check in
+`tools/tests/test_a_cooldown_is_asked_for_not_read.py` and an entry in
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`; and the six rows: `docs/All_Things_Cataclysm.xlsx`
+(one sentence lengthened, six rows on the Enchantment Effects sheet), the regenerated
+`game/Data/EnchantmentEffects.csv` and `EnchantmentsPositive.csv`, two tests in
+`CataclysmEnchantmentEffectTests.cpp` that read the rows, the count pins in `docs/README.md`,
+`CataclysmDataTableTests.cpp` and `tools/tests/test_enchantment_effects_match_the_row_text.py`, and
+`seconds_after_striking_a_boss` leaving the built-ahead list in
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. Issue
+[#1994](https://github.com/sdubois777/Cataclysm/issues/1994), which this closes, and the Boss window row
+whose engine half merged as pull request #2013.
+
+**Applied.** The Python suite, the compile, the DataTable asset rebuild, the automation tests and both
+guard proofs have run, the Unreal steps inside one editor lock. The figures are at the end of this
+entry.
+
+### What it does
+
+`cooldown_lengthening` is a percentage that MULTIPLIES a skill's cooldown after the reduction has
+divided it. Ruled on issue #1994 on 2026-09-23 by the coordinating session, under the owner's
+delegation:
+
+    Final cooldown = Base x (1 + lengthening) / divisor
+
+where the divisor is the existing one, `(1 + Sum of Increases) x Product of More Multipliers`, and the
+lengthening is floored at nought. The ruling cites the design document's "Class Stat Lines" section
+for the divisor; it is written in the section "Stat Calculation", under "Cooldown reduction divides
+rather than subtracts." A 100% lengthening with a 100% reduction gives back the base cooldown.
+
+### The five sentences it serves
+
+Issue #1994 named two. `game/Data/EnchantmentsNegative.csv` has five that lengthen a cooldown by a
+percentage, none with a row:
+
+| Line | Sentence | Scoped to |
+| :-- | :-- | :-- |
+| 5 | Ultimate cooldowns increased by 100%-500% | `Slot.Ultimate` |
+| 123 | Point blank AOE skills have 30%-50% increased cooldown | `Type.AOE.PointBlank` |
+| 167 | Movement abilities have 50% increased cooldown | `Slot.Movement` |
+| 169 | Cooldowns are increased by 30%-50% | every skill |
+| 179 | Your cooldowns are increased by 100%-200% | every skill |
+
+Lines 49 and 63, a one to two second and a half to one second global cooldown on a kill and on a
+critical strike, are a different mechanism and are not covered.
+
+### Judgements made under the owner's delegation, marked as judgements
+
+The coordinating session approved each of these on 2026-09-23.
+
+| The judgement | Why |
+| :-- | :-- |
+| the name `cooldown_lengthening`, not `cooldown_increase` | "increased" already names a bucket, and confusing a stat with a bucket is what issue #2000 was |
+| its rows are flat | no class supplies a base, so an increased row alone would be worth nothing, as for cooldown reduction |
+| the floor lives in `UCataclysmCombatAttributeSet::CooldownLengthFactor`, beside `CooldownDivisor` | both cooldown floors then sit in one class |
+| `CooldownAfterReduction` keeps its name | every caller and test asks it by that name, and it is still the one place a cooldown's length is worked out; its comment says it lengthens too |
+| no test that the stat agrees with the gameplay-attribute route | there is no attribute route for this stat, so there is nothing for it to agree with |
+
+**A known limit.** `CooldownAfterReduction` returns the base cooldown at once for an ability system
+with no cooldown reduction attribute, so the lengthening does not reach one either. Every player has
+that attribute.
+
+### The six rows
+
+Ruled 2026-09-23 by the coordinating session, under the owner's delegation: all six go in this change,
+so one machine window builds the stat, rebuilds the asset and tests the rows.
+
+| Enchantment | Stat | Kind | Value | Required tag | Condition |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4 seconds after you strike one | `cooldown_reduction` | flat | 50 to 100 | — | `seconds_after_striking_a_boss` 4 |
+| Ultimate cooldowns increased by 100%-500% | `cooldown_lengthening` | flat | 100 to 500 | `Slot.Ultimate` | — |
+| Point blank AOE skills have 30%-50% increased cooldown | `cooldown_lengthening` | flat | 30 to 50 | `Type.AOE.PointBlank` | — |
+| Movement abilities have 50% increased cooldown | `cooldown_lengthening` | flat | 50 | `Slot.Movement` | — |
+| Cooldowns are increased by 30%-50% | `cooldown_lengthening` | flat | 30 to 50 | — | — |
+| Your cooldowns are increased by 100%-200% | `cooldown_lengthening` | flat | 100 to 200 | — | — |
+
+**The Boss sentence is the owner's wording of 2026-09-18, appended rather than rewritten.** Its row name
+is built from its first 48 characters and saved items store that name, so the clause goes after them:
+`row_name("Positive", text[:48])` is `Positive_Your_cooldowns_reset_50_100_faster_when_fighti` for both
+the old sentence and the new one, measured before the edit.
+
+**Rehearsed first, then applied.** The same two scripts (one edits the workbook, one moves the count
+pins) were run on a `git archive` copy with an unedited copy as the control, through the whole
+generator. The copies differed in one test only, `test_every_csv_still_hashes_to_what_was_recorded`,
+which names `EnchantmentEffects.csv` and `EnchantmentsPositive.csv` until the assets are rebuilt. The
+real edit was then applied to the workbook as it stood at development `2df271ab`. Its diffs of both
+CSVs are byte for byte the rehearsal's: six rows added to `EnchantmentEffects.csv`, and line 171 of
+`EnchantmentsPositive.csv` changed. `generate_datatables.py --check` printed "All 29 DataTable CSVs are
+up to date."
+
+**The counts** move from 257 rows over 198 enchantments to 263 over 204, measured on `2df271ab`
+before the edit.
+
+### Figures
+
+**The Unreal window**, one editor lock from 17:26:30Z to 17:37:31Z on 2026-09-23, on head `caa0585c`
+(game tree `0f094a7d`, on development `f965eb52`), every line as printed:
+
+| Step | What it printed |
+| :-- | :-- |
+| the base, development `f965eb52`, four groups | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 71 tests performed, 71 succeeded, 0 failed` (from the test log: `Cataclysm.Ability.` 4, `Cataclysm.Data.` 7, `Cataclysm.Enchantments.` 58, `Cataclysm.StatExemption.` 2) |
+| this tree's build | `Build: Succeeded - 27 actions, 24 files compiled` |
+| before the asset rebuild, `Cataclysm.Enchantments.+Cataclysm.Data.`, nothing compiled | `Tests: 67 tests performed, 64 succeeded, 3 failed: EveryGeneratedTableHasAnAssetThatMatchesIt, TheBossCooldownRowShortensACooldownOnlyAfterABossIsStruck, TheMovementCooldownDrawbackLengthensOnlyMovementSkills` |
+| the asset rebuild | `rebuilt 2 DataTable assets and left 27 already current, 3016 rows in total across /Game/Data`: `DT_EnchantmentEffects` with 263 rows and `DT_EnchantmentsPositive` with 379, each "its source changed"; three files changed, the two assets and `game/Data/datatable_asset_sources.json` |
+| after it, the same groups, nothing compiled | `Tests: 67 tests performed, 67 succeeded, 0 failed` |
+| the whole suite, the run of record | `Tests: 2166 tests performed, 2166 succeeded, 0 failed`; `Declared: 2166 tests in the tree at caa0585c; 2166 performed, gap 0` (from the test log: `Cataclysm.Ability.` 8, `Cataclysm.Enchantments.` 60, `Cataclysm.Data.` 7, `Cataclysm.StatExemption.` 2) |
+
+**The three failures before the rebuild failed on the registered assertions**, read from the test log:
+the stale asset had "6 row(s) only in the CSV" for `DT_EnchantmentEffects` and a first difference at
+line 171 for `DT_EnchantmentsPositive`; the Boss row read 4.000000 where 2 was expected, and the
+movement row read 4.000000 where 6 was expected. The rebuild was the only change between the two runs,
+and neither run compiled anything. 39 tests reported skipping part of what they check: the art-pack
+ones a git worktree cannot run in full.
+
+**The guard proofs**, at prefix `Cataclysm.Ability.`, run detached, each with the SHA-256 of the file
+it broke taken before the break and after the restore:
+
+| The break | With it in | Restored |
+| :-- | :-- | :-- |
+| P1: the lookup asks for `ManaCostStat`, which no row names, instead of `CooldownLengtheningStat` | 8 performed, 5 succeeded, 3 failed: `ACooldownLengtheningRowMultipliesACooldownByTheSentencesOwnNumber`, `ACooldownLengtheningRowScopedToASlotLengthensOnlyThatSlot`, `ALengtheningAndAReductionAreTwoSeparateFactors` | 8 performed, 8 succeeded, 0 failed |
+| P2: `CooldownLengthFactor` loses its floor at nought | 8 performed, 7 succeeded, 1 failed: `ANegativeCooldownLengtheningRowShortensNothing` | 8 performed, 8 succeeded, 0 failed |
+
+Both printed `PROVED True CRASHED False`, and each file's hash was the same before and after. The tests
+each proof failed are the ones registered; which assertions inside them failed was not read, because
+the restored run overwrites the test log.
+
+**Python**, on `caa0585c` before the window, registered at 5338 collected with one failure:
+`1 failed, 5329 passed, 8 skipped in 310.39s (0:05:10)`, the failure being the asset-freshness check
+naming `EnchantmentEffects.csv` and `EnchantmentsPositive.csv`, which the rebuild resolves. ruff:
+`All checks passed!`
+
+---
+
 ## 2026-09-23 — Anti-magic zones refuse the player's spells while they stand in one, and "magical" means the skills tagged as spells
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library

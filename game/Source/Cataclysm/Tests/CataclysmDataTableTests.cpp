@@ -529,7 +529,12 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// each gained a clause at the END of its sentence rather than a rewrite:
 	// the first 48 characters of a sentence are its row name and a dropped item
 	// stores that name, so rewriting inside them orphans saved items.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    257)
+	//
+	// AND 263 SINCE THE SIX COOLDOWN ROWS OF ISSUE #1994, from 257: the
+	// Boss window row on `cooldown_reduction`, and five drawbacks on the new
+	// `cooldown_lengthening`. One sentence was lengthened after its first 48
+	// characters, so EnchantmentsPositive.csv keeps its count.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    263)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

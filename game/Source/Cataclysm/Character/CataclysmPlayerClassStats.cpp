@@ -238,6 +238,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// one number on the character would be the wrong number for all but one
 		// of them.
 		TEXT("mana_cost"),
+		// How much longer a cooldown is, read by
+		// UCataclysmGameplayAbility::CooldownAfterReduction. Issue #1994. It has
+		// no gameplay attribute: its rows are asked with the skill's tags, the
+		// route that honours a row scoped to a slot (issue #1981), and three of
+		// the five sentences it serves are scoped.
+		TEXT("cooldown_lengthening"),
 	};
 	return Stats;
 }

@@ -12,6 +12,7 @@
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -3468,4 +3469,120 @@ bool FCataclysmLowHealthCrowdControlImmunity::RunTest(const FString&)
 
 	return true;
 }
+
+// ---------------------------------------------------------------------------
+// The two cooldown rows of issue #1994, read from the shipped tables.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBossCooldownRowTest,
+	"Cataclysm.Enchantments.TheBossCooldownRowShortensACooldownOnlyAfterABossIsStruck",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4
+ * seconds after you strike one", worn, reaches a cooldown only inside the
+ * window. Issue #1994, which carries the row; the engine half is #2013.
+ *
+ * THE ROW IS READ, NOT WRITTEN BY HAND. A test that granted the modifier itself
+ * would pass with no data row at all. This one equips an item carrying the
+ * enchantment, so it fails until the row exists in the imported table.
+ *
+ * A WORN ITEM ROLLS THE TOP OF ITS RANGE BY DEFAULT, so the row gives 100: a
+ * flat 100 divides a four second cooldown by two.
+ */
+bool FCataclysmBossCooldownRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"),
+				 TEXT("Positive_Your_cooldowns_reset_50_100_faster_when_fighti"),
+				 DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	TestEqual(TEXT("with no Boss struck, a four second cooldown is four"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(ASC, 4.0f), 4.0f, 0.001f);
+
+	ASC->NoteStruckABoss();
+	TestEqual(TEXT("and just after striking one it is two"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(ASC, 4.0f), 2.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMovementCooldownDrawbackTest,
+	"Cataclysm.Enchantments.TheMovementCooldownDrawbackLengthensOnlyMovementSkills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Movement abilities have 50% increased cooldown", worn, makes a movement
+ * skill's four second cooldown six and leaves an ultimate's at four. Issue
+ * #1994.
+ *
+ * READ FROM THE SHIPPED ROW, for the reason the test above gives. The row
+ * states one number, so the roll does not matter.
+ *
+ * BOTH TAGS ARE CHECKED TO BE REAL FIRST, or "the ultimate is not lengthened"
+ * could pass on an empty container.
+ */
+bool FCataclysmMovementCooldownDrawbackTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FGameplayTagContainer Movement;
+	Movement.AddTag(FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Slot.Movement")), /*ErrorIfNotFound=*/false));
+	FGameplayTagContainer Ultimate;
+	Ultimate.AddTag(FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Slot.Ultimate")), /*ErrorIfNotFound=*/false));
+	if (!TestEqual(TEXT("Slot.Movement is a real tag in this build"),
+				   Movement.Num(), 1)
+		|| !TestEqual(TEXT("and so is Slot.Ultimate"), Ultimate.Num(), 1))
+	{
+		return false;
+	}
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Movement_abilities_have_50_increased_cooldown")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	TestEqual(TEXT("a movement skill's four second cooldown becomes six"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(ASC, 4.0f, Movement),
+		6.0f, 0.001f);
+	TestEqual(TEXT("and an ultimate's stays four"),
+		UCataclysmGameplayAbility::CooldownAfterReduction(ASC, 4.0f, Ultimate),
+		4.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

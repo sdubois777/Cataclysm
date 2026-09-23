@@ -278,6 +278,11 @@ INVENTORY = {
         'fallback for a character with no recorded rows. Issue #2000 '
         'replaced a rate lookup here that read the wrong bucket.',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(UCataclysmSkillSlots::CooldownLengtheningStat), SkillTags, 0.0f'):
+        'how much longer the cooldown is, asked with the tags of the skill so '
+        'a row scoped to a slot reaches only that slot; nought is the '
+        'fallback because the stat has no attribute. Issue #1994.',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
      'FName(TEXT("cooldown_skip_chance")), FGameplayTagContainer(), 0.0f'):
         'the chance a skill does not go on cooldown, asked of the '
         'character',

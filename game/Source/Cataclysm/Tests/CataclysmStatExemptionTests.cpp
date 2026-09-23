@@ -20,6 +20,7 @@
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
@@ -770,6 +771,60 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and one carrying a row that halves it pays half"),
 					   CheaperSkill->ManaCostFor(Cheaper.AbilitySystem),
 					   Base * 0.5f, 0.01f);
+	}
+
+	/**
+	 * `cooldown_lengthening` is read by
+	 * `UCataclysmGameplayAbility::CooldownAfterReduction`. Issue #1994.
+	 *
+	 * TWO CHARACTERS, one carrying a flat row of 100, asked for the same four
+	 * second cooldown. A bare actor is enough: the lookup needs only an ability
+	 * system with the combat set, which is what decides that a cooldown is
+	 * worked out at all.
+	 */
+	void ProbeCooldownLengthening(FAutomationTestBase& Test)
+	{
+		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+										   /*bInformEngineOfWorld=*/false);
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto Make = [World]()
+		{
+			AActor* Actor = World->SpawnActor<AActor>();
+			check(Actor);
+			UCataclysmAbilitySystemComponent* System =
+				NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			System->RegisterComponent();
+			UCataclysmCombatAttributeSet* Combat =
+				NewObject<UCataclysmCombatAttributeSet>(Actor);
+			System->AddAttributeSetSubobject(Combat);
+			System->InitAbilityActorInfo(Actor, Actor);
+			return System;
+		};
+		UCataclysmAbilitySystemComponent* Plain = Make();
+		UCataclysmAbilitySystemComponent* Longer = Make();
+
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = 100.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line =
+			Inputs.FindOrAdd(FName(UCataclysmSkillSlots::CooldownLengtheningStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Longer->SetStatInputs(MoveTemp(Inputs));
+
+		Test.TestEqual(TEXT("a character with no row keeps a four second cooldown"),
+			UCataclysmGameplayAbility::CooldownAfterReduction(Plain, 4.0f),
+			4.0f, 0.001f);
+		Test.TestEqual(TEXT("and one carrying a row of 100 waits eight"),
+			UCataclysmGameplayAbility::CooldownAfterReduction(Longer, 4.0f),
+			8.0f, 0.001f);
 	}
 
 	void ProbeHitsCountAsYours(FAutomationTestBase& Test)
@@ -1706,6 +1761,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_health"),       &ProbeHealth},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
+			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},
 			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},
 			{TEXT("minion_explosion_damage"),  &ProbeExplosionDamage},
 			{TEXT("minion_hits_count_as_yours"), &ProbeHitsCountAsYours},

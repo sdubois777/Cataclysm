@@ -394,6 +394,12 @@ float UCataclysmCombatAttributeSet::CooldownDivisor(float CooldownIncreases,
 	return (1.0f + Increases) * More;
 }
 
+float UCataclysmCombatAttributeSet::CooldownLengthFactor(float Lengthening)
+{
+	// Floored so a negative row cannot pass for a reduction by another route.
+	return 1.0f + FMath::Max(Lengthening, 0.0f);
+}
+
 TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 {
 	return {

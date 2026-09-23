@@ -367,8 +367,15 @@ JUDGED_NUMBERS = {
 #: Three shorten a cooldown as flat rows, because an increase scales a base and
 #: cooldown reduction has none; three sentences take two rows each, one for
 #: attack damage and one for spell damage; the rest are one row each.
-AUTHORED_ROWS = 257
-AUTHORED_ENCHANTMENTS = 198
+#: AND 263 OVER 204 SINCE THE SIX COOLDOWN ROWS OF ISSUE #1994,
+#: from 257 over 198: one row each on six enchantments that had
+#: none. The Boss window row is a flat `cooldown_reduction` under
+#: `seconds_after_striking_a_boss` 4, its sentence lengthened after its first
+#: 48 characters so its row name holds; the five drawbacks that make a
+#: cooldown longer are flat `cooldown_lengthening` rows carrying their
+#: sentences' own numbers.
+AUTHORED_ROWS = 263
+AUTHORED_ENCHANTMENTS = 204
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

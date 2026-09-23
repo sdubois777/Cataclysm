@@ -454,8 +454,22 @@ float UCataclysmGameplayAbility::CooldownAfterReduction(
 
 	// A PERCENTAGE BECOMES A FRACTION HERE. The stat holds 12 for a 12% affix
 	// and FinalCooldown wants 0.12, and this is the only place the two meet.
-	return UCataclysmCombatAttributeSet::FinalCooldown(BaseCooldown,
-													  Percent / 100.0f);
+	const float Reduced =
+		UCataclysmCombatAttributeSet::FinalCooldown(BaseCooldown, Percent / 100.0f);
+
+	// AND THEN IT IS LENGTHENED, BY A SEPARATE STAT. Issue #1994, ruled
+	// 2026-09-23: Base x (1 + lengthening) / divisor, two factors. Five drawback
+	// sentences need it, "Ultimate cooldowns increased by 100%-500%" among
+	// them. Asked with the skill's tags for the reason the reduction is, so a
+	// row scoped to a slot lengthens only that slot. The fallback is nought:
+	// the stat has no attribute, so a character with nothing recorded -- every
+	// enemy, and a player before its first refresh -- is lengthened by nothing.
+	const float Lengthening = Cataclysm
+		? Cataclysm->StatForSkill(
+			  FName(UCataclysmSkillSlots::CooldownLengtheningStat), SkillTags, 0.0f)
+		: 0.0f;
+	return Reduced
+		* UCataclysmCombatAttributeSet::CooldownLengthFactor(Lengthening / 100.0f);
 }
 
 bool UCataclysmGameplayAbility::CooldownIsSkipped(
