@@ -2,6 +2,115 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — The dungeon drains 2.5% of maximum health and 3% of maximum mana a second, enough to beat every class's base regeneration
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its two rates and the arithmetic), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and
+`.cpp` (a step on the quarter-second beat beside Mortal Decay's), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
+
+### The row
+
+`Famine_Suffering_Aura` in `game/Data/DungeonModifiers.csv`, weight 10: "The dungeon passively saps the
+player's resources (e.g., health, mana, stamina) at a slow but constant rate." It gives no figure.
+
+### What the rule does
+
+On a floor carrying the row, every quarter-second beat takes `SufferingAuraHealthPercentPerSecond` (2.5)
+of the player's maximum health and `SufferingAuraManaPercentPerSecond` (3) of their maximum mana, each
+for the beat's length. It is the same on every floor. Health is taken through
+`UCataclysmSkillEffects::ReduceHealthDirectly`, which is not a hit, as Mortal Decay's is; mana is taken
+the way a cast spends it, and the attribute's clamp stops it at zero. It keeps no state, so the stairs
+have nothing to reset.
+
+### The rates: the owner's decision, and two figures that were wrong before it
+
+**The project owner decided the intent on 2026-09-23**, asked through the coordinating session: a drain
+the player notices, enough to beat every class's base regeneration. The two figures are the
+coordinating session's, under that intent. That is not a judgement under the delegation.
+
+Why the first figure was not used. Under the delegation the rate was first ruled as 0.1% a second,
+Mortal Decay's first-floor figure. Measured against `game/Data/ClassStats.csv` before building, that
+is 7.5 to 25 times below every class's base regeneration, so it would only have slowed the refill by 4%
+to 13% and could never have emptied a pool or killed anyone.
+
+**Two figures given between then and now were wrong, and are recorded as errors.** This session wrote
+that the smallest rates beating base regeneration were "about 1.4%" for health and 2.5% for mana; it
+read the level-100 ratios and missed the level-1 Masochist, and 2.5% mana only ties the Ravager. The
+coordinating session carried 1.5% and 2.5% to the owner from that message, then caught it and corrected
+the figures to 2.5% and 3% before anything was built on them.
+
+Base regeneration as a share of the maximum, a second, read the way `UCataclysmClassStats::BaseFor`
+reads it (a class's own row, else the Default row; Base plus PerLevel for each level above the first):
+
+| Class | Health, level 1 | Health, level 100 | Mana, level 1 | Mana, level 100 |
+|---|---|---|---|---|
+| Default | 1.00% | 1.00% | 2.00% | 1.69% |
+| Ravager | 0.77% | 0.75% | 2.50% | 2.50% |
+| Ritualist | 1.43% | 1.50% | 2.22% | 2.09% |
+| Masochist | 2.00% | 1.49% | 2.00% | 1.69% |
+
+Over every level from 1 to 100 the highest is 2.00% for health (the Masochist at level 1) and 2.50% for
+mana (the Ravager, at every level). So 2.5% and 3% beat every class's base regeneration, and a pool with
+nothing else refilling it falls. **Regeneration from attribute points and gear can still outpace them**:
+each point of vitality or mind adds 1% regeneration (`game/Data/Attributes.csv`), and gear adds more.
+That is a play-test point: whether a geared character still feels the drain.
+
+`test_suffering_aura_beats_every_classs_base_regeneration` recomputes that table from the class file
+and fails if either rate stops beating it, so a class added or retuned to regenerate faster is caught.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-09-23:**
+
+- **Health and mana only.** No attribute named stamina exists in `game/Source`, and the row names neither
+  the energy shield nor a class resource.
+- **It can kill**, as Mortal Decay can.
+
+**Measured, as the rulings asked:** this row and `Death_Mortal_Decay` can stand on one floor, because
+`UCataclysmDungeonModifierRules::PoolFor` draws a dungeon's rows from every Cataclysm active in the run.
+**The two drains add**: each is its own step on the beat and neither reads the other.
+`SufferingAuraAndMortalDecayOnOneFloorBothTakeTheirShare` holds that.
+
+### Tests
+
+Three automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+`SufferingAuraTakesItsShareOfHealthAndManaEachBeat` (and a floor without the row takes nothing, and the
+energy shield is untouched), `SufferingAuraTakesTheSameOnADeepFloor` and
+`SufferingAuraAndMortalDecayOnOneFloorBothTakeTheirShare`. Each works its expected loss out as rate x
+maximum x time from the two constants, not through the rule's own arithmetic. No test kills the player:
+the health goes by the route Mortal Decay's does.
+
+Two Python checks: the row still names health, mana and stamina, says "constant" and gives no figure;
+and the rates beat every class's base regeneration. Each was seen to fail with its break in, in a copy of
+the repository: the health rate set to 1.5; the Ravager's maximum mana lowered to 30, which puts its base
+regeneration at 3.33%; and the row given "a slow but constant rate of 1%".
+
+### Run
+
+- **The group on development (44dd0aec) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 15 actions, 12 files compiled" and "216 tests performed, 216 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 74077104:** "Build: Succeeded - 14 actions, 11 files compiled" and "2212 tests
+  performed, 2212 succeeded, 0 failed", as registered (2209 + the three named tests), with every
+  declared test reported. In that run's `game/Saved/Logs/Cataclysm.log` the group's 219 all succeeded,
+  the three named above among them.
+- **Three guard proofs** in `CataclysmDungeonGameMode.cpp` on the prefix
+  `Cataclysm.DungeonModifierEffects.`, each exactly as registered and each 219 of 219 restored:
+  - no mana taken (`-ManaLoss` made `0.0f`) failed 1 of 219:
+    `SufferingAuraTakesItsShareOfHealthAndManaEachBeat`;
+  - a floor carrying only this row returning before the step (`&& !bSufferingAura` removed) failed 2
+    of 219: that test and `SufferingAuraTakesTheSameOnADeepFloor`, while the Mortal Decay floor kept
+    passing;
+  - health taken at the mana rate failed 3 of 219: all three tests above.
+
+---
+
 ## 2026-09-23 — A weapon skill row carries at most one element tag, a named one exactly its own, and the comment that said so now names a check that exists
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (a comment in

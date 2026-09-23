@@ -20921,4 +20921,201 @@ bool FCataclysmDeadRisingOnceEachTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Famine_Suffering_Aura. Issues #1820 and #41.
+//
+// "The dungeon passively saps the player's resources (e.g., health, mana, stamina) at a
+// slow but constant rate." Health and mana only, the same rate on every floor, and not a
+// hit. The rates are the project owner's decision of 2026-09-23.
+//
+// EVERY EXPECTED LOSS IS WORKED OUT HERE AS RATE x MAXIMUM x TIME FROM THE TWO RATE
+// CONSTANTS, and not through `SufferingAuraLossFor`, so a fault in that arithmetic cannot
+// pass by agreeing with itself, and a change to either rate changes one line.
+//
+// ONE BEAT, WITH THE WORLD CLOCK STANDING STILL. `Mode->Tick` does not move the world's
+// time, so the regeneration a character's BeginPlay starts cannot pollute a figure; the
+// Mortal Decay beat test gives the same reason.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where the dungeon drains health and mana. Issues #1820, #41. */
+	const FName SufferingAura(UCataclysmDungeonModifierEffects::SufferingAuraKey);
+
+	/** A beat's loss from a pool of this maximum at this share a second. */
+	float OneBeatOf(float Maximum, float PercentPerSecond)
+	{
+		return Maximum * PercentPerSecond / 100.0f
+			* ACataclysmDungeonGameMode::SecondsBetweenWaveChecks;
+	}
+
+	/**
+	 * A floor carrying these rows at this depth. THE DEPTH IS ASSERTED, because every
+	 * figure a caller works out rests on it.
+	 */
+	bool BuildTheFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode,
+					   const TArray<FName>& Rows, int32 Floor)
+	{
+		Mode->DungeonModifiers = Rows;
+		Mode->FloorNumber = Floor;
+		return Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+			&& Test.TestEqual(TEXT("at the depth asked for"), Mode->FloorBrief.FloorNumber,
+							  Floor);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSufferingAuraBeatTest,
+	"Cataclysm.DungeonModifierEffects.SufferingAuraTakesItsShareOfHealthAndManaEachBeat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSufferingAuraBeatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable())
+		|| !BuildTheFloor(*this, Mode, {SufferingAura}, 1))
+	{
+		return false;
+	}
+
+	const float MaxHealth = Player.Read(Vital::GetMaxHealthAttribute());
+	const float MaxMana = Player.Read(Vital::GetMaxManaAttribute());
+	const float HealthBefore = Player.Read(Vital::GetHealthAttribute());
+	const float ManaBefore = Player.Read(Vital::GetManaAttribute());
+	const float ShieldBefore = Player.Read(Vital::GetEnergyShieldAttribute());
+
+	// BOTH POOLS HOLD MORE THAN A BEAT TAKES, asserted, so neither loss below is cut
+	// short by the pool running out.
+	if (!TestTrue(FString::Printf(TEXT("health to lose: %.2f of %.2f"), HealthBefore, MaxHealth),
+				  HealthBefore > OneBeatOf(MaxHealth, Effects::SufferingAuraHealthPercentPerSecond))
+		|| !TestTrue(FString::Printf(TEXT("and mana to lose: %.2f of %.2f"), ManaBefore, MaxMana),
+					 ManaBefore > OneBeatOf(MaxMana, Effects::SufferingAuraManaPercentPerSecond)))
+	{
+		return false;
+	}
+
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	TestEqual(TEXT("a beat takes its share of maximum health"),
+			  HealthBefore - Player.Read(Vital::GetHealthAttribute()),
+			  OneBeatOf(MaxHealth, Effects::SufferingAuraHealthPercentPerSecond), 0.001f);
+	TestEqual(TEXT("and its share of maximum mana"),
+			  ManaBefore - Player.Read(Vital::GetManaAttribute()),
+			  OneBeatOf(MaxMana, Effects::SufferingAuraManaPercentPerSecond), 0.001f);
+	TestEqual(TEXT("and leaves the energy shield alone"),
+			  Player.Read(Vital::GetEnergyShieldAttribute()), ShieldBefore, 0.001f);
+
+	// A FLOOR WITHOUT THE ROW TAKES NOTHING, which says the beat reads the floor's list
+	// rather than draining everybody. Starvation is there so the floor is not empty.
+	if (!BuildTheFloor(*this, Mode, {Starvation}, 1))
+	{
+		return false;
+	}
+	const float HealthElsewhere = Player.Read(Vital::GetHealthAttribute());
+	const float ManaElsewhere = Player.Read(Vital::GetManaAttribute());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestEqual(TEXT("a floor without the row takes no health"),
+			  Player.Read(Vital::GetHealthAttribute()), HealthElsewhere, 0.001f);
+	TestEqual(TEXT("and no mana"), Player.Read(Vital::GetManaAttribute()), ManaElsewhere, 0.001f);
+	return true;
+}
+
+// "CONSTANT": floor 10 takes what floor 1 takes, where Mortal Decay's rate grows.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSufferingAuraFlatTest,
+	"Cataclysm.DungeonModifierEffects.SufferingAuraTakesTheSameOnADeepFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSufferingAuraFlatTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable())
+		|| !BuildTheFloor(*this, Mode, {SufferingAura}, 10))
+	{
+		return false;
+	}
+
+	const float MaxHealth = Player.Read(Vital::GetMaxHealthAttribute());
+	const float Before = Player.Read(Vital::GetHealthAttribute());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	TestEqual(TEXT("floor 10 takes the same share of maximum health as floor 1"),
+			  Before - Player.Read(Vital::GetHealthAttribute()),
+			  OneBeatOf(MaxHealth, Effects::SufferingAuraHealthPercentPerSecond), 0.001f);
+	return true;
+}
+
+// ON ONE FLOOR WITH MORTAL DECAY, BOTH TAKE THEIR SHARE AND THE TWO ADD. A floor can carry
+// both: `UCataclysmDungeonModifierRules::PoolFor` draws from every active Cataclysm.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSufferingAuraWithDecayTest,
+	"Cataclysm.DungeonModifierEffects.SufferingAuraAndMortalDecayOnOneFloorBothTakeTheirShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSufferingAuraWithDecayTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable())
+		|| !BuildTheFloor(*this, Mode, {SufferingAura, MortalDecay}, 1))
+	{
+		return false;
+	}
+
+	const float MaxHealth = Player.Read(Vital::GetMaxHealthAttribute());
+	const float Before = Player.Read(Vital::GetHealthAttribute());
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+
+	// MORTAL DECAY'S RATE ON FLOOR 1 WITH NO KILL SLOWING IT, asked of its own function,
+	// which that rule's tests hold; asserted above zero so the sum below has two parts.
+	const float DecayRate = Effects::MortalDecayPercentPerSecond(1, false);
+	if (!TestTrue(FString::Printf(TEXT("Mortal Decay takes something on floor 1: %.3f"),
+								  DecayRate),
+				  DecayRate > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("health falls by both rules' shares added"),
+			  Before - Player.Read(Vital::GetHealthAttribute()),
+			  OneBeatOf(MaxHealth, Effects::SufferingAuraHealthPercentPerSecond)
+				  + OneBeatOf(MaxHealth, DecayRate),
+			  0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

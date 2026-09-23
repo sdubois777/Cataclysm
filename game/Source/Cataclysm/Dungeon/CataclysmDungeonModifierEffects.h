@@ -1413,6 +1413,27 @@ public:
 	static const TCHAR* DeadRisingKey;
 
 	/**
+	 * The row where the dungeon drains the player's health and mana. Issues #1820 and
+	 * #41.
+	 *
+	 * "The dungeon passively saps the player's resources (e.g., health, mana, stamina)
+	 * at a slow but constant rate." Each quarter-second beat takes
+	 * `SufferingAuraHealthPercentPerSecond` of the player's maximum health and
+	 * `SufferingAuraManaPercentPerSecond` of their maximum mana, for the beat's length.
+	 *
+	 * RULED UNDER THE PROJECT OWNER'S DELEGATION ON 2026-09-23:
+	 * - HEALTH AND MANA ONLY. No stamina exists in this game, and the row names neither
+	 *   the energy shield nor a class resource.
+	 * - THE SAME RATE ON EVERY FLOOR: "constant". Mortal Decay's grows with depth.
+	 * - IT CAN KILL, as Mortal Decay can. The health goes through
+	 *   `UCataclysmSkillEffects::ReduceHealthDirectly`, which is not a hit.
+	 *
+	 * THE RATES ARE THE PROJECT OWNER'S DECISION OF 2026-09-23: a drain the player
+	 * notices, enough to beat every class's BASE regeneration. See the two constants.
+	 */
+	static const TCHAR* SufferingAuraKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3510,6 +3531,31 @@ public:
 		"a player could observe: every floor would sap at the same rate.");
 
 	/**
+	 * The shares of the player's maximum health and maximum mana that Suffering Aura
+	 * takes each second. THE ROW SAYS "slow but constant" AND GIVES NO FIGURE.
+	 *
+	 * THE PROJECT OWNER DECIDED THE INTENT ON 2026-09-23: a drain the player notices,
+	 * enough to beat every class's base regeneration. These two figures are the
+	 * coordinating session's under that intent. Base regeneration as a share of the
+	 * maximum, over every class of game/Data/ClassStats.csv and every level from 1 to
+	 * 100, is at most 2.00% a second for health (the Masochist at level 1) and 2.50% for
+	 * mana (the Ravager, at every level). So a pool with nothing else refilling it
+	 * falls. REGENERATION FROM ATTRIBUTES AND GEAR CAN STILL OUTPACE THEM.
+	 */
+	static constexpr float SufferingAuraHealthPercentPerSecond = 2.5f;
+	static constexpr float SufferingAuraManaPercentPerSecond = 3.0f;
+
+	static_assert(
+		SufferingAuraHealthPercentPerSecond > 2.0f && SufferingAuraManaPercentPerSecond > 2.5f,
+		"Suffering Aura no longer beats every class's base regeneration, which is what the "
+		"project owner asked of it on 2026-09-23. If the class table changed, re-measure "
+		"the highest base regeneration share and move these figures, not this check.");
+
+	static_assert(
+		SufferingAuraHealthPercentPerSecond < 100.0f && SufferingAuraManaPercentPerSecond < 100.0f,
+		"A drain of a whole pool each second is not slow.");
+
+	/**
 	 * How much of what this row says has been built.
 	 *
 	 * NOT BUILT FOR EVERY KEY THIS FILE DOES NOT NAME, a key that is not a row
@@ -4163,6 +4209,13 @@ public:
 
 	/** Whether a roll of 0 to 100 gets a killed creature up again under Dead Rising. */
 	static bool DeadRisingRevives(float Roll);
+
+	/**
+	 * What Suffering Aura takes from a pool with this maximum over this many seconds, at
+	 * this share of the maximum each second. Nothing from an empty maximum or a time of
+	 * none or less.
+	 */
+	static float SufferingAuraLossFor(float Maximum, float PercentPerSecond, float Seconds);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

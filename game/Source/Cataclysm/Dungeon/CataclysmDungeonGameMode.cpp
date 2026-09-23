@@ -2512,6 +2512,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// of that shape.
 	const bool bMortalDecay = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::MortalDecayKey));
+	// AND SUFFERING AURA, MORTAL DECAY'S SHAPE: it takes health and mana directly and
+	// moves no stat. Issues #1820 and #41.
+	const bool bSufferingAura = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::SufferingAuraKey));
 	// AND WASTING SICKNESS, WHOSE BEAT DECIDES NOTHING. Issues #1786 and #41. Its
 	// stacks move on events; this beat only puts them back on the player after a
 	// floor change took them off.
@@ -2583,7 +2587,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bAntiMagicZones = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::AntiMagicZonesKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
-		&& !bSingularityWells && !bWitheredGround && !bMortalDecay
+		&& !bSingularityWells && !bWitheredGround && !bMortalDecay && !bSufferingAura
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
@@ -2705,6 +2709,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bMortalDecay)
 	{
 		StepMortalDecay(Player, AbilitySystem);
+	}
+
+	// AND SUFFERING AURA, FREE IN THIS ORDER FOR MORTAL DECAY'S REASON. Issues #1820 and
+	// #41. When a floor carries both, both take their share, and the two add.
+	if (bSufferingAura)
+	{
+		StepSufferingAura(Player, AbilitySystem);
 	}
 
 	// AND WASTING SICKNESS LAST, WHICH IS FREE WHERE NOTHING HAS CHANGED. Issues
@@ -3364,6 +3375,32 @@ void ACataclysmDungeonGameMode::StepMortalDecay(
 	// attacker, so nothing in the mitigation order touches it and the player is
 	// its own instigator because nothing else dealt it.
 	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, Amount);
+}
+
+void ACataclysmDungeonGameMode::StepSufferingAura(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	// HEALTH, AS A LOSS AND NOT A HIT, the route Mortal Decay takes, so it can kill the
+	// way Mortal Decay can. Ruled under the owner's delegation, 2026-09-23.
+	const float HealthLoss = Effects::SufferingAuraLossFor(
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+		Effects::SufferingAuraHealthPercentPerSecond, SecondsBetweenWaveChecks);
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player, Player, HealthLoss);
+
+	// MANA, WRITTEN THE WAY A CAST SPENDS IT. The clamp in `PreAttributeChange` stops it
+	// at zero, so nothing here checks the floor.
+	const float ManaLoss = Effects::SufferingAuraLossFor(
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxManaAttribute()),
+		Effects::SufferingAuraManaPercentPerSecond, SecondsBetweenWaveChecks);
+	if (ManaLoss > 0.0f)
+	{
+		AbilitySystem->ApplyModToAttribute(Vital::GetManaAttribute(),
+										   EGameplayModOp::Additive, -ManaLoss);
+	}
 }
 
 void ACataclysmDungeonGameMode::StepNihilsEmbrace(
