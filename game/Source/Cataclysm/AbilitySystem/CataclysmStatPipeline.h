@@ -1434,6 +1434,29 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetCarriesADot
 		UMETA(DisplayName = "Target Carries A Dot"),
+
+	/**
+	 * The weapon this character has equipped takes two hands. Issue #1515.
+	 *
+	 * `Ravager_basic_b_b0` Two Hands is the row: "Two-handed weapons only. +3%
+	 * increased Attack Damage per point."
+	 *
+	 * TWO-HANDED IS THE DATA'S OWN COLUMN: `game/Data/ItemBases.csv` gives the
+	 * weapon's base row a `Hands` of 2. Greatsword, Greataxe, Spear, Staff,
+	 * Warhammer and the Two-Handed Crossbow do, measured 2026-09-23.
+	 *
+	 * AN UNKNOWN READING REFUSES: no weapon, no weapon-slot component (every
+	 * enemy), no item base table, or a weapon type with no base row. The
+	 * reading is -1 for all of them, so a missing row is never guessed to be
+	 * one-handed or two.
+	 *
+	 * IT TAKES NO VALUE: it names a state rather than comparing a number.
+	 *
+	 * ONE WEAPON IS HELD TODAY. What "two-handed weapons only" means with two in
+	 * hand waits for the capstone option that allows that, Both Hands Full.
+	 */
+	WieldingTwoHandedWeapon
+		UMETA(DisplayName = "Wielding Two Handed Weapon"),
 };
 
 /**
@@ -2307,6 +2330,17 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ManaPercent = -1.0f;
+
+	/**
+	 * How many hands the equipped weapon takes, from its base row's `Hands`
+	 * column. Issue #1515. Read by `WieldingTwoHandedWeapon`.
+	 *
+	 * NEGATIVE MEANS UNKNOWN: no weapon, no weapon-slot component, no item base
+	 * table, or a weapon type the table has no row for. See
+	 * `UCataclysmWeaponSlotsComponent::GetEquippedWeaponHands`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 WeaponHands = -1;
 
 	/**
 	 * How much maximum health the character has. Issue #1515.
@@ -3377,7 +3411,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a sixtieth, which is the drift that put the passive tree eight
+	 * adds a sixty-first, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -3386,7 +3420,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TWENTY-FIVE OF THE FIFTY-NINE COMPARE NOTHING. They are the case labels
+	 * TWENTY-SIX OF THE SIXTY COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

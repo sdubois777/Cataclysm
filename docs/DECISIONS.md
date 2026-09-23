@@ -2271,6 +2271,59 @@ were as registered.
 
 ---
 
+## 2026-09-23 — Two Hands asks what weapon is in hand, through a new condition read off the item base table
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the
+condition `wielding_two_handed_weapon` and its reading), `CataclysmAbilitySystemComponent.cpp`
+(where the reading is filled), `game/Source/Cataclysm/Items/CataclysmWeaponSlotsComponent.h` and
+`.cpp` (how many hands the equipped weapon takes), `tools/generate_datatables.py`, three test files
+and three Python checks. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ravager_basic_b_b0` Two Hands: "Two-handed weapons only. +3% increased Attack Damage per point."
+Eight points, worth up to +24% attack damage. **Five of the Demonic weapon types take two hands**:
+Greataxe, Greatsword, Spear, Staff and Warhammer, five skills each in `WeaponSkills.csv`.
+
+### WHAT WAS MISSING
+
+**Nothing in the stat pipeline could see the weapon in hand.** No condition read it, and no skill
+carries a two-handed tag, so a row's required tags could not express it either. What the data
+already had was the answer: `game/Data/ItemBases.csv` gives each weapon base a `Hands` column.
+
+### THE CONDITION, AND THREE READINGS SETTLED WITHOUT A RULING
+
+**Recorded as settled; the coordinating session agreed on 2026-09-23.**
+
+| Question | Answer | Settled by |
+|---|---|---|
+| What counts as two-handed? | **`Hands` = 2 on the equipped weapon's base row** | The data's own column. That includes the Two-Handed Crossbow |
+| No weapon, no weapon slots (every enemy), no table, or **a weapon type with no base row**? | **The condition refuses: the reading is -1, not a guess** | Every condition in the pipeline refuses an unknown reading |
+| What does "two-handed weapons only" mean with two weapons in hand? | **Not decided: one weapon is held today** | The capstone option that allows two, Both Hands Full, brings the question when it is built |
+
+**The reading** is `UCataclysmWeaponSlotsComponent::GetEquippedWeaponHands`. It finds the base
+row by the same `WeaponType` match `GetEquippedSubType` makes, so the two can never read different
+rows for one weapon.
+
+**A judgement, classifying it for the cached movement-speed reader:** the weapon in hand is not an
+attribute, but the condition is classed with the attributes that change unannounced. A weapon swap
+rewrites the character's attributes, and that reader re-asks only when the speed attribute itself
+changes, which a swap that leaves speed alone does not do. So it re-asks as time passes instead.
+
+### TESTS
+
+- `Cataclysm.StatPipeline.WieldingTwoHandedHoldsOnlyForTwoHandsAndRefusesAnUnknownWeapon`: two hands
+  holds, one does not, -1 refuses, and it compares no value.
+- `Cataclysm.WeaponSlots.TheEquippedWeaponSaysHowManyHandsItTakes`: a Greatsword 2, a Sword 1,
+  nothing -1, and **with a table holding only a Sword, a Greatsword reads -1** rather than a guess.
+- `Cataclysm.Passives.TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon` reads the
+  node's row on a real Ravager, switching its own weapon slots between a Greatsword and a Sword.
+  It fails until the row exists, which needs the design workbook.
+
+**Counts moved:** the conditions that compare nothing are 20 of 54, from 19 of 53.
+
+---
+
 ## 2026-09-23 — The floor's dead rise once, at half health, when half the floor has fallen
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the revival mark,

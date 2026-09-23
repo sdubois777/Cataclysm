@@ -1512,4 +1512,73 @@ bool FCataclysmEquipIsLoggedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmWeaponHandsTest,
+	"Cataclysm.WeaponSlots.TheEquippedWeaponSaysHowManyHandsItTakes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * How many hands the equipped weapon takes, read off its base row. Issue #1515,
+ * for the Two Hands node's condition.
+ *
+ * AGAINST THE GENERATED TABLE, one weapon of each kind, and then AGAINST A
+ * TABLE WITH NO ROW FOR THE WEAPON HELD: that reads -1, not a guess, so the
+ * condition refuses it.
+ */
+bool FCataclysmWeaponHandsTest::RunTest(const FString&)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
+	if (!World)
+	{
+		AddError(TEXT("could not make a world"));
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AActor* Actor = World->SpawnActor<AActor>();
+	if (!Actor)
+	{
+		AddError(TEXT("could not spawn an actor"));
+		return false;
+	}
+
+	UCataclysmWeaponSlotsComponent* Slots =
+		NewObject<UCataclysmWeaponSlotsComponent>(Actor);
+	Slots->RegisterComponent();
+	Slots->SetDamageType(TEXT("Demonic"));
+
+	TestEqual(TEXT("holding nothing, the hands are unknown"),
+		Slots->GetEquippedWeaponHands(), -1);
+
+	Slots->EquipWeaponType(TEXT("Greatsword"));
+	TestEqual(TEXT("a Greatsword takes two hands"),
+		Slots->GetEquippedWeaponHands(), 2);
+	Slots->EquipWeaponType(TEXT("Sword"));
+	TestEqual(TEXT("a Sword takes one"), Slots->GetEquippedWeaponHands(), 1);
+	Slots->UnequipWeapon();
+	TestEqual(TEXT("and putting it down leaves them unknown"),
+		Slots->GetEquippedWeaponHands(), -1);
+
+	// A TABLE HOLDING A SWORD AND NOTHING ELSE, so a Greatsword has no row.
+	UDataTable* SwordOnly = NewObject<UDataTable>();
+	SwordOnly->RowStruct = FCataclysmItemBaseRow::StaticStruct();
+	const TArray<FString> Problems = SwordOnly->CreateTableFromCSVString(TEXT(
+		"Name,BaseName,Slot,Hands,SubType,WeaponType,MaxDamageTypes,AttackSpeed,BasicShape,BasicShapeParams,CellsWide,CellsHigh,Implicit1Stat,Implicit1Kind,Implicit1Value,Implicit2Stat,Implicit2Kind,Implicit2Value\r\n"
+		"Weapon_Sword,Sword,Weapon,1,Slashing,Sword,4,1.3,Strike,Radius=1.8,1,3,attack_damage,flat,40.0,,,0.0\r\n"));
+	for (const FString& Problem : Problems)
+	{
+		AddError(Problem);
+	}
+	Slots->SetItemBaseTable(SwordOnly);
+
+	Slots->EquipWeaponType(TEXT("Sword"));
+	TestEqual(TEXT("with that table a Sword still takes one hand"),
+		Slots->GetEquippedWeaponHands(), 1);
+	Slots->EquipWeaponType(TEXT("Greatsword"));
+	TestEqual(TEXT("and a Greatsword, which has no row, is unknown rather than "
+				   "guessed"),
+		Slots->GetEquippedWeaponHands(), -1);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

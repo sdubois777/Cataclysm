@@ -72,6 +72,9 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",
+    # Landed with the engine half of Two Hands (`Ravager_basic_b_b0`), issue
+    # #1515. Its row needs the design workbook and leaves this list then.
+    "wielding_two_handed_weapon",
 }
 
 #: A condition several enchantment effect rows name. The control.

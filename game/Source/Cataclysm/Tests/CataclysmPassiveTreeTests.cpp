@@ -1639,7 +1639,10 @@ namespace CataclysmPassiveConditionTest
 			// ISSUE #1815, THE TARGET'S DEBUFFS. Whether it carries any, and
 			// whether one is a damage over time; neither is a number.
 			|| Name == TEXT("target_carries_any_debuff")
-			|| Name == TEXT("target_carries_a_dot");
+			|| Name == TEXT("target_carries_a_dot")
+			// ISSUE #1515, TWO HANDS. It names the weapon in hand rather than a
+			// number, so it compares nothing.
+			|| Name == TEXT("wielding_two_handed_weapon");
 	}
 }
 

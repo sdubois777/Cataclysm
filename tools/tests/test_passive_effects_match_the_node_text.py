@@ -1498,6 +1498,10 @@ CONDITION_WORDS = {
     # so a condition about the target would be false every time for this node.
     "can_cripple_or_weaken": ("cripple or weaken", None),
 
+    # TWO HANDS, `Ravager_basic_b_b0`: "Two-handed weapons only." Issue #1515.
+    # The equipped weapon's base row takes two hands.
+    "wielding_two_handed_weapon": ("two-handed weapons only", None),
+
     # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
     # REDUCTION, and which stat that row should use is with the project owner
     # on issue #1748. The entry is here because a name missing from this map is
