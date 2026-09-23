@@ -278,7 +278,7 @@ def test_a_refusal_naming_an_em_dash_heading_reaches_a_caller(tmp_path):
 
     finished = subprocess.run(
         [sys.executable, str(pathlib.Path(resolver.__file__)),
-         "--path", str(log_path), "resolve", "--mine", "matches-neither-heading"],
+         "--path", str(log_path), "resolve", "--first", "matches-neither-heading"],
         capture_output=True, text=True, encoding="utf-8",
     )
 
@@ -316,7 +316,7 @@ def test_a_refusal_survives_a_caller_that_decodes_the_bytes_itself(tmp_path):
 
     finished = subprocess.run(
         [sys.executable, str(pathlib.Path(resolver.__file__)),
-         "--path", str(log_path), "resolve", "--mine", "matches-neither-heading"],
+         "--path", str(log_path), "resolve", "--first", "matches-neither-heading"],
         capture_output=True,          # raw bytes: the decode is ours
     )
 
@@ -339,7 +339,7 @@ def test_a_successful_run_also_reaches_a_caller(tmp_path):
 
     finished = subprocess.run(
         [sys.executable, str(pathlib.Path(resolver.__file__)),
-         "--path", str(log_path), "resolve", "--mine", "em dash"],
+         "--path", str(log_path), "resolve", "--first", "em dash"],
         capture_output=True, text=True, encoding="utf-8",
     )
 
@@ -347,3 +347,73 @@ def test_a_successful_run_also_reaches_a_caller(tmp_path):
     assert finished.returncode == 0, finished.stderr
     assert EM_DASH_HEADING in finished.stdout
     assert separator_faults(log_path.read_bytes()) == []
+
+
+# ---------------------------------------------------------------------------
+# `--first` names the entry that goes on top, whichever session wrote it.
+# Issues #1964 and #1990.
+# ---------------------------------------------------------------------------
+
+def run_resolve(log_path: pathlib.Path, flag: str, word: str):
+    """The command line, as a session runs it."""
+    return subprocess.run(
+        [sys.executable, str(pathlib.Path(resolver.__file__)),
+         "--path", str(log_path), "resolve", flag, word],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+
+
+def headings_in_order(data: bytes) -> list[bytes]:
+    return [line for line in data.split(CRLF) if line.startswith(b"## ")]
+
+
+def test_first_can_put_the_upstream_entry_on_top(tmp_path):
+    """The case the old flag's help got wrong, at the command line.
+
+    THE UPSTREAM ENTRY IS THE NEWER ONE HERE, as it is whenever the other
+    session's change merged after this one's entry was written, so the word
+    comes from ITS heading and it is written first. The function below the
+    command line was already pinned for this by
+    `test_the_other_entry_can_be_asked_for_first`; the flag that reaches it
+    was not, and it told the caller to name their own entry.
+
+    BOTH DIRECTIONS FROM ONE STARTING LOG, so a flag that always wrote the
+    `<<<<<<<` side first, or always the `>>>>>>>` side, fails one of the two.
+    """
+    for word, expected in ((b"locked", [THEIRS[0], MINE[0], OLDER[0]]),
+                           (b"staggered", [MINE[0], THEIRS[0], OLDER[0]])):
+        log_path = tmp_path / f"{word.decode()}.md"
+        log_path.write_bytes(conflicted([THEIRS], [MINE], OLDER))
+
+        finished = run_resolve(log_path, "--first", word.decode())
+
+        assert finished.returncode == 0, finished.stderr
+        written = log_path.read_bytes()
+        assert headings_in_order(written) == expected, (
+            f"--first {word.decode()} wrote {headings_in_order(written)}")
+        assert separator_faults(written) == []
+
+
+def test_the_old_mine_flag_is_still_accepted_and_means_first(tmp_path):
+    """`--mine` stays so older notes keep working, and it means what
+    `--first` means: the named entry is written on top, whoever wrote it."""
+    log_path = tmp_path / "DECISIONS.md"
+    log_path.write_bytes(conflicted([THEIRS], [MINE], OLDER))
+
+    finished = run_resolve(log_path, "--mine", "locked")
+
+    assert finished.returncode == 0, finished.stderr
+    assert headings_in_order(log_path.read_bytes()) == [
+        THEIRS[0], MINE[0], OLDER[0]]
+
+
+def test_the_help_no_longer_says_the_word_is_from_your_heading():
+    """The sentence #1964 and #1990 found misleading, and the flag's new name."""
+    finished = subprocess.run(
+        [sys.executable, str(pathlib.Path(resolver.__file__)), "resolve", "--help"],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert finished.returncode == 0, finished.stderr
+    assert "--first" in finished.stdout
+    assert "YOUR heading" not in finished.stdout
+    assert "NEWER" in finished.stdout
