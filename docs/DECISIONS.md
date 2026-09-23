@@ -2,6 +2,71 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — A second stat makes a cooldown longer, for the five drawbacks that say so
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillSlots.h` and `.cpp` (the stat's name),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the stat joins the list of stats with
+no gameplay attribute, so the generator accepts its rows),
+`game/Source/Cataclysm/AbilitySystem/CataclysmCombatAttributeSet.h` and `.cpp` (the floored factor),
+`game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the one place a cooldown's
+length is worked out asks for the stat), four automation tests in
+`game/Source/Cataclysm/Tests/CataclysmAbilitySystemTests.cpp`, a probe in
+`CataclysmStatExemptionTests.cpp`, and one check in
+`tools/tests/test_a_cooldown_is_asked_for_not_read.py`. Issue
+[#1994](https://github.com/sdubois777/Cataclysm/issues/1994): this is its engine half, and the issue stays
+open until the five rows land.
+
+**Partial.** The Python suite has run. The compile, the automation tests and the guard proofs wait for a
+machine window. No data row is written here: the five rows need the design workbook, which another
+session holds, and follow with the boss-cooldown row.
+
+### What it does
+
+`cooldown_lengthening` is a percentage that MULTIPLIES a skill's cooldown after the reduction has
+divided it. Ruled on issue #1994 on 2026-09-23 by the coordinating session, under the owner's
+delegation:
+
+    Final cooldown = Base x (1 + lengthening) / divisor
+
+where the divisor is the existing one, `(1 + Sum of Increases) x Product of More Multipliers`, and the
+lengthening is floored at nought. The ruling cites the design document's "Class Stat Lines" section
+for the divisor; it is written in the section "Stat Calculation", under "Cooldown reduction divides
+rather than subtracts." A 100% lengthening with a 100% reduction gives back the base cooldown.
+
+### The five sentences it serves
+
+Issue #1994 named two. `game/Data/EnchantmentsNegative.csv` has five that lengthen a cooldown by a
+percentage, none with a row:
+
+| Line | Sentence | Scoped to |
+| :-- | :-- | :-- |
+| 5 | Ultimate cooldowns increased by 100%-500% | `Slot.Ultimate` |
+| 123 | Point blank AOE skills have 30%-50% increased cooldown | `Type.AOE.PointBlank` |
+| 167 | Movement abilities have 50% increased cooldown | `Slot.Movement` |
+| 169 | Cooldowns are increased by 30%-50% | every skill |
+| 179 | Your cooldowns are increased by 100%-200% | every skill |
+
+Lines 49 and 63, a one to two second and a half to one second global cooldown on a kill and on a
+critical strike, are a different mechanism and are not covered.
+
+### Judgements made under the owner's delegation, marked as judgements
+
+The coordinating session approved each of these on 2026-09-23.
+
+| The judgement | Why |
+| :-- | :-- |
+| the name `cooldown_lengthening`, not `cooldown_increase` | "increased" already names a bucket, and confusing a stat with a bucket is what issue #2000 was |
+| its rows are flat | no class supplies a base, so an increased row alone would be worth nothing, as for cooldown reduction |
+| the floor lives in `UCataclysmCombatAttributeSet::CooldownLengthFactor`, beside `CooldownDivisor` | both cooldown floors then sit in one class |
+| `CooldownAfterReduction` keeps its name | every caller and test asks it by that name, and it is still the one place a cooldown's length is worked out; its comment says it lengthens too |
+| no test that the stat agrees with the gameplay-attribute route | there is no attribute route for this stat, so there is nothing for it to agree with |
+
+**A known limit.** `CooldownAfterReduction` returns the base cooldown at once for an ability system
+with no cooldown reduction attribute, so the lengthening does not reach one either. Every player has
+that attribute.
+
+---
+
 ## 2026-09-23 — Anti-magic zones refuse the player's spells while they stand in one, and "magical" means the skills tagged as spells
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the library

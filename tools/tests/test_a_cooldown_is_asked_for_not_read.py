@@ -174,3 +174,24 @@ def test_the_asked_for_figure_is_divided_by_and_not_multiplied(
         "CooldownAfterReduction no longer divides through FinalCooldown, so "
         "nothing guarantees that a cooldown divides by its reduction rather "
         "than multiplying, and nothing floors a negative reduction")
+
+def test_the_cooldown_lookup_asks_for_the_lengthening_and_floors_it(
+        ability_code: str) -> None:
+    """A cooldown is made longer by a second stat, asked for here. Issue #1994.
+
+    BOTH HALVES OR NEITHER. Asking for `cooldown_lengthening` without the
+    floored factor would let a negative row shorten a cooldown by a second
+    route; applying the factor to a figure nobody asked for would lengthen
+    nothing. The automation tests measure the numbers; this is the cheap check
+    that runs on every pull request.
+    """
+    body = body_of(ability_code,
+                   "float UCataclysmGameplayAbility::CooldownAfterReduction(",
+                   "CataclysmGameplayAbility.cpp")
+    assert "CooldownLengtheningStat" in body, (
+        "CooldownAfterReduction no longer asks for cooldown_lengthening, so the "
+        "five drawback sentences that make a cooldown longer change nothing. "
+        "Issue #1994")
+    assert "CooldownLengthFactor(" in body, (
+        "CooldownAfterReduction no longer applies the lengthening through "
+        "CooldownLengthFactor, which is where it is floored at nought")

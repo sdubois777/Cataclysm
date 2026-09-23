@@ -1141,6 +1141,23 @@ public:
 	/** What a base cooldown is divided by. Never zero, so a cooldown never is. */
 	static float CooldownDivisor(float CooldownIncreases, float MoreMultiplier);
 
+	/**
+	 * What a cooldown is MULTIPLIED by for being lengthened. Issue #1994.
+	 *
+	 *     Final cooldown = Base x (1 + Lengthening) / CooldownDivisor
+	 *
+	 * which is the ruling on issue #1994 of 2026-09-23: the lengthening and the
+	 * reduction are two separate factors, and since multiplication does not care
+	 * about order, none needs stating. A 100% lengthening with a 100% reduction
+	 * gives back the base cooldown.
+	 *
+	 * FLOORED AT NOUGHT, the way `CooldownDivisor` floors its increases, so a
+	 * negative lengthening shortens nothing. Shortening is the reduction's job.
+	 *
+	 * @param Lengthening  a fraction: 1.0 for "increased by 100%"
+	 */
+	static float CooldownLengthFactor(float Lengthening);
+
 protected:
 	UFUNCTION() void OnRep_Armor(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_Evasion(const FGameplayAttributeData& OldValue);

@@ -148,6 +148,27 @@ public:
 	static const TCHAR* ManaCostStat;
 
 	/**
+	 * The stat that makes a skill's cooldown LONGER. Issue #1994.
+	 *
+	 * A SECOND STAT, NOT A NEGATIVE `cooldown_reduction`. That one divides, so
+	 * "Ultimate cooldowns increased by 100%" would need a row of -50, a number no
+	 * reader finds in the sentence, and its floor makes a negative lengthen
+	 * nothing anyway. This one multiplies, so the row carries the sentence's own
+	 * number: 100 doubles a cooldown.
+	 *
+	 * NOT NAMED "cooldown_increase", because "increased" already names a bucket,
+	 * and confusing a stat with a bucket is what issue #2000 was.
+	 *
+	 * ITS ROWS ARE FLAT. No class supplies a base, so an increased row alone is
+	 * worth nothing, exactly as for cooldown reduction. The flat rows summed are
+	 * the percentage.
+	 *
+	 * ASKED IN ONE PLACE, `UCataclysmGameplayAbility::CooldownAfterReduction`,
+	 * which is the only place a cooldown's length is worked out.
+	 */
+	static const TCHAR* CooldownLengtheningStat;
+
+	/**
 	 * The tag marking that this slot is waiting to be used again.
 	 *
 	 * Invalid for the Basic Attack and the Aura, which is correct rather than
