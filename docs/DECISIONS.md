@@ -2,6 +2,64 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — A weapon skill row carries at most one element tag, a named one exactly its own, and the comment that said so now names a check that exists
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp` (a comment in
+`ElementTag`) and the new `tools/tests/test_weapon_skill_rows_carry_one_element_tag.py`. Issue
+[#2005](https://github.com/sdubois777/Cataclysm/issues/2005).
+
+### WHAT WAS WRONG
+
+`UCataclysmSkillTemplate::ElementTag` returns the first `Element.*` tag in a skill's tags. Its
+comment said every row of the Weapon Skills sheet carries exactly one, and that
+`Cataclysm.Data.EverySkillRowCarriesOneElementTag` held that. **No test of that name was ever
+registered**, so nothing held it, and "exactly one" was not true of every row.
+
+### WHAT THE SHEET HOLDS, MEASURED 2026-09-23 ON `development` AT 38089da3
+
+A skill's tags are its row's `Tags` cell and nothing else: `UCataclysmWeaponSkills` builds them with
+`UCataclysmSkillShapes::TagsFromCell(Row.Tags)` and `UCataclysmWeaponSlotsComponent` stamps them on
+the granted template unchanged. No code adds a tag from the `DamageType` column.
+
+| Rows of `game/Data/WeaponSkills.csv` | Skill name | `Element.*` tags in `Tags` |
+|--:|---|---|
+| 117 | yes | exactly 1, and it names the row's own `DamageType` |
+| 25 | no | 1 |
+| 261 | no | 0 |
+| 0 | either | 2 or more |
+
+**The 286 rows with no skill name cannot reach `ElementTag`.** None has a shape, so each is granted
+as `UCataclysmUndesignedSkill`, which derives from `UCataclysmGameplayAbility` and not from
+`UCataclysmSkillTemplate`. Tags are stamped only inside the cast to `UCataclysmSkillTemplate`, so
+nothing is stamped on them and nothing calls `ElementTag` for them. **So this was not a live defect**:
+every skill that can read an element reads its own.
+
+### THE RULING, UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto:** make the comment true
+rather than write the test it named, and add a check, because the sheet's rule had none. Before this
+change, `Element.*` tags on that sheet were checked only for being declared tags, never for how many
+a row carries.
+
+The new file holds the two rules the sheet keeps:
+
+- **no row carries two or more element tags**, because `ElementTag` would ignore the second without
+  any error;
+- **a row with a skill name carries exactly `Element.<DamageType>`**, because a named skill with none
+  has no element to read, and one naming another type would scale with that type's stats.
+
+It also has a control, that at least 100 named rows were read, and a test that each rule fires on a
+hand-made row that breaks it. The comment in `ElementTag` now states these rules and names the file.
+
+### PROOF
+
+`tools/prove_guard.break_and_run`, in a `git archive` copy of a7a775e7. The break adds
+`, Element.War` to the `Tags` cell of `Demonic_Sword_Support`, asserted to match once. It printed
+`PROVED: 1 failed, 2 passed in 0.09s | restored: 3 passed in 0.04s`, and `named_failures` was
+`tools/tests/test_weapon_skill_rows_carry_one_element_tag.py::test_every_named_weapon_skill_row_carries_its_own_element_and_no_row_two`.
+
+---
+
 ## 2026-09-23 — A killed creature has a one-in-ten chance to get back up at once, whoever killed it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
