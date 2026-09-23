@@ -3585,4 +3585,120 @@ bool FCataclysmMovementCooldownDrawbackTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBleedDrawbackReachesTheShieldTest,
+	"Cataclysm.Enchantments.TheBleedDrawbackLetsABleedIntoItsWearersShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Energy shield can now be effected by bleed", from its row, worn. Issue #2014.
+ *
+ * THE ONE EXCEPTION TO THE ONE EXCEPTION. The project owner, 2026-09-18:
+ * "every DoT except bleed reaches ES." A bleed passes an energy shield to
+ * health; this drawback makes its wearer's shield take bleed too, by granting
+ * `shield_absorbs_damage_over_time`, the flag Warded grants.
+ *
+ * READ FROM THE ROW AND WORN, NOT GRANTED BY HAND. A case that wrote the flag
+ * itself would pass with no row at all, which is how three nodes on the passive
+ * side came to grant nothing. The drawback is paired with a benefit that has
+ * no effect row, so the flag is the only thing the item changes.
+ *
+ * BOTH HALVES, WITHOUT AND WITH, on the same wearer: a bleed passes the shield
+ * before the item is worn and is absorbed after.
+ */
+bool FCataclysmBleedDrawbackReachesTheShieldTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FTables Tables;
+	if (!LoadAll(*this, Tables))
+	{
+		return false;
+	}
+
+	const TCHAR* BleedDrawback =
+		TEXT("Negative_Energy_shield_can_now_be_effected_by_bleed");
+	if (!TestNotNull(TEXT("the drawback is a row of EnchantmentsNegative.csv"),
+			Tables.Negative->FindRow<FCataclysmEnchantmentRow>(
+				FName(BleedDrawback), TEXT("BleedDrawback"),
+				/*bWarnIfMissing=*/false)))
+	{
+		return false;
+	}
+
+	const FCataclysmEnchantmentEffectRow* Effect =
+		Tables.Effects->FindRow<FCataclysmEnchantmentEffectRow>(
+			FName(FString(BleedDrawback) + TEXT("#1")), TEXT("BleedDrawback"),
+			/*bWarnIfMissing=*/false);
+	if (!TestNotNull(TEXT("the drawback has an effect row"), Effect))
+	{
+		AddError(TEXT("The drawback grants nothing in play without a row in "
+					  "the Enchantment Effects sheet of "
+					  "docs/All_Things_Cataclysm.xlsx."));
+		return false;
+	}
+	TestEqual(TEXT("which grants the flag that lets bleed into the shield"),
+			  Effect->Stat,
+			  FString(UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat));
+	TestEqual(TEXT("stated flat"), Effect->ValueKind, FString(TEXT("flat")));
+	TestTrue(TEXT("and above zero, which is what the flag asks"),
+			 Effect->ValueLow > 0.0f);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	// WRITTEN AFTER EVERY REFRESH, because the refresh writes the class line's
+	// pools back. A shield of 400 and far more health than a tick can take.
+	const auto FillPools = [ASC]()
+	{
+		ASC->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), 100000.0f);
+		ASC->SetNumericAttributeBase(Vital::GetHealthAttribute(), 100000.0f);
+		ASC->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 400.0f);
+		ASC->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 400.0f);
+	};
+	const auto BleedFor = [ASC](float Damage)
+	{
+		FCataclysmIncomingHit Tick;
+		Tick.Damage = Damage;
+		Tick.bIsDamageOverTime = true;
+		Tick.bIsBleed = true;
+		return UCataclysmDamageCalculation::Resolve(
+			Tick, ASC, /*Tier=*/1, /*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f);
+	};
+
+	Wearer.Equipment->RefreshAttributes(ASC);
+	FillPools();
+	// A TICK FAR LARGER THAN THE SHIELD, because armour and damage reduction
+	// act on a tick before the shield does and the helm below carries armour of
+	// its own. Whatever they take, what is left is still more than 400, so the
+	// shield's share is exactly its whole 400 when it applies at all.
+	constexpr float Tick = 100000.0f;
+
+	TestEqual(TEXT("wearing nothing, the shield absorbs none of a bleed"),
+			  BleedFor(Tick).AbsorbedByShield, 0.0f, 0.001f);
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, BleedDrawback),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+	FillPools();
+
+	const FCataclysmDamageResult Worn = BleedFor(Tick);
+	TestEqual(TEXT("wearing the drawback, the shield absorbs the whole of itself "
+				   "from a bleed"),
+			  Worn.AbsorbedByShield, 400.0f, 0.001f);
+	TestTrue(TEXT("and the rest still reaches health"), Worn.DealtToHealth > 0.0f);
+
+	return true;
+}
 #endif // WITH_AUTOMATION_TESTS

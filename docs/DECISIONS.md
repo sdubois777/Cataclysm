@@ -2,6 +2,59 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Attrition is two rows, now that an ailment chance is asked for with the skill's tags
+
+**Affects:** the design workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (two
+rows), `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (one test),
+`tools/tests/test_passive_effects_match_the_node_text.py`, `CataclysmDataTableTests.cpp` and
+`docs/README.md` (the counts). Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ravager_keystone_c_kA` Attrition: "Your melee attacks always Cripple and always Weaken, with no
+chance roll."
+
+| Row | Stat | Kind | Value | Required tags |
+|---|---|---|---|---|
+| `#1` | `cripple_chance` | flat | 100 | `Type.Melee` |
+| `#2` | `weaken_chance` | flat | 100 | `Type.Melee` |
+
+A hundred is the whole of the roll's range, which is what "always" and "no chance roll" say.
+
+### WHY IT WAS UNWRITTEN, AND WHAT CHANGED
+
+The entry of 2026-09-17 on Never Lets Go recorded that Attrition "cannot be written until an
+ailment chance is asked through the pipeline with the blow in hand": a row scoped to melee is
+never folded into the chance attribute, and the roll read the attribute. **The roll no longer
+does.** `UCataclysmAilments::ChancesFor` asks each chance through `StatForSkill` with the skill's
+own tags, so a row requiring `Type.Melee` reaches a melee blow and no other. No engine change was
+needed; the rows are the whole node.
+
+### TWO QUESTIONS THE DOCUMENTS ALREADY SETTLE
+
+**Recorded as settled, not as new rulings; the coordinating session agreed on 2026-09-23.**
+
+| Question | Answer | Settled by |
+|---|---|---|
+| Does "always" skip the rule that an ailment needs the blow to take a tenth of the target's maximum health? | **No** | The owner's rule of 2026-09-02 (#917) covers every ailment that does not come from the skill's own row. The sentence removes the roll, not the threshold |
+| What does a hundred plus other chance to Cripple or Weaken do? | **A stronger ailment** | Chance above a hundred becomes strength for every ailment (`UCataclysmAilments::Application`) |
+
+### THE TEST
+
+`Cataclysm.Passives.AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll` reads both
+rows and lands real blows from a Ravager with the ailment roll pinned at 99.99, the top of its
+range, so only a chance of the whole range passes. Its controls: the same blow without the point,
+a spell's blow, and a melee blow under a tenth of the target's maximum health each apply neither
+ailment.
+
+**Counts:** 294 passive effect rows from 292, and 215 of 441 nodes with an authored effect from
+214. Measured then, the Ravager is 68 of its 74 nodes.
+
+**The machine window** was shared with the energy-shield change of the same day; its entry
+carries the printed figures, including this node's test and its guard proof.
+
+---
+
 ## 2026-09-23 — Movement speed is asked for again as time passes, which also corrects the Ravager keystone Unstoppable
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (what each
@@ -114,6 +167,92 @@ because the restored run overwrites the test log.
 `All checks passed!`
 
 ---
+
+## 2026-09-23 — Every damage over time but bleed now reaches an energy shield, reversing the rule of 2026-08-02
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (a
+bleed marker on the incoming hit, and step 8), `CataclysmVitalAttributeSet.cpp` (where the marker
+is filled), comments in five more engine files that stated the old rule, four test files,
+`docs/Cataclysm_GDD_v2.md` (the step-8 row, the Energy Shield rules, the Succubus paragraph). Issue
+[#2014](https://github.com/sdubois777/Cataclysm/issues/2014).
+
+### THE OWNER'S WORDS
+
+On 2026-09-18, at about 03:30 UTC, asked how damage over time should meet energy shield:
+
+> "Design: every DoT except bleed reaches ES."
+
+**This reverses the rule in the entry of 2026-08-02, "The damage calculation"**, which said the
+shield "does not absorb damage over time". That rule was read out of a drawback, "Energy shield can
+now be effected by bleed" — a drawback only if the shield normally ignores bleed. The drawback
+names bleed alone, and bleed alone is what stays exempt.
+
+### WHAT CHANGED IN PLAY
+
+| Tick | Before | Now |
+|---|---|---|
+| Poison, burn, disease, necrosis, and every other kind with an ailment | straight to health | absorbed by the shield, like a hit |
+| A ground zone's or a dungeon hazard's, which carries no ailment | straight to health | absorbed |
+| Bleed | straight to health | straight to health |
+| Bleed, on a character with `shield_absorbs_damage_over_time` | absorbed | absorbed |
+
+**Every tick still restarts the shield's three-second refill wait**, absorbed or not, so damage over
+time still holds a shield empty while it ticks.
+
+**The Succubus paragraph changes with it.** It said burn was the answer to a Succubus because burn
+passed through its shield. Burn now wears the shield down and keeps it from refilling; only a bleed
+reaches its health past a standing shield.
+
+### HOW A BLEED IS RECOGNISED
+
+**By the tag the tick's effect GRANTS, `Keyword.DoT.Bleed`.** `ApplyDamageOverTime` grants the
+ailment's tag and carries only the bare `Keyword.DoT` as an asset tag, so the asset tags cannot tell
+one kind from another. Every bleed source goes through that function: the ailment roll, Mutilation
+Mastery, the self-bleed conversion and contagion. `CataclysmCombatEvents.cpp` already read a tick's
+granted tags for the same reason.
+
+### RULINGS UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto.**
+
+| Question | Answer | Why |
+|---|---|---|
+| Is a tick with no ailment (a ground zone, a dungeon hazard) a bleed? | **No: the shield absorbs it** | The owner's words are "every DoT except bleed" |
+| Retire `shield_absorbs_damage_over_time`, or keep it? | **Keep it, under its name, as the flag that lets bleed in** | Renaming would touch the Warded row and saved characters for no change in play |
+| The drawback "Energy shield can now be effected by bleed" | **One flat row granting that flag** | It is the rule's own exception; the row lands on this branch when the workbook is free |
+| Warded (`Ritualist_keystone_c_kA`) | **Text and row unchanged; no issue opened** | Its sentence, "absorbs damage over time as well as hits", stays true |
+
+**What the Warded ruling costs, stated rather than left to be found:** Warded now adds only bleed to
+what the shield absorbs. Before, it added every kind. **Its effect is now the same as the
+drawback's.** A keystone's worth is tuned in play; the coordinating session has told the owner so
+they can veto it.
+
+### TESTS
+
+Four tests stated the old rule and now state the new one, including one that applies a real burn
+and a real bleed by the route play uses and runs one tick of each. That one is what proves the bleed
+is recognised from the granted tag rather than only by a calculation handed a hit already marked.
+
+### THE MACHINE WINDOW, 2026-09-23, SHARED WITH ATTRITION
+
+One window for this change and Attrition's two rows, run from worktree `jovial-bouman-9ada36` on
+head `f07f0bc3` (development `54d781b9`), the editor lock held from the first build to the last
+proof. Every figure below matched its registration.
+
+| Step | Printed |
+|---|---|
+| Build, then nine tests before the asset rebuild | `9 tests performed, 7 succeeded, 2 failed: TheBleedDrawbackLetsABleedIntoItsWearersShield, AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll` -- each for the registered reason, its row absent from the old asset |
+| Asset rebuild | `rebuilt 2 DataTable assets and left 27 already current, 3019 rows in total across /Game/Data`: EnchantmentEffects 263 to 264, PassiveEffects 292 to 294; committed as `aefbdb47` |
+| The whole suite, once | `2171 tests performed, 2171 succeeded, 0 failed` |
+
+| Proof | Printed |
+|---|---|
+| Step 8 back to the old rule, no tick reaching the shield | `7 tests performed, 5 succeeded, 2 failed: EnergyShieldAbsorbsBeforeHealthAndEveryTickButABleed, AnEnergyShieldAbsorbsEveryTickButABleed`; restored 7 of 7 |
+| The bleed marker read from the burn tag | `1 tests performed, 0 succeeded, 1 failed: AnEnergyShieldAbsorbsEveryTickButABleed`; restored 1 of 1 |
+| An ailment chance asked with no skill tags (Attrition's) | `2 tests performed, 0 succeeded, 2 failed: AChanceIsAskedForWithTheSkillsOwnTags, AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll`; restored 2 of 2 |
+
+All three printed `PROVED: True CRASHED: False`, with the broken file's SHA-256 the same before and
+after. **Only tests are measured, not assertions:** the restored run overwrites the log.
 
 ---
 
@@ -6147,6 +6286,9 @@ the whole difference between two sentences that look alike:
   condition, a conditioned row cannot reach the attribute, and so the node
   **cannot be written until an ailment chance is asked through the pipeline with
   the blow in hand**. It is not authored here, and this entry is the reason.
+
+**Answered 2026-09-23:** the chance is now asked with the skill's tags, and Attrition is written
+as two rows. See that day's entry on Attrition.
 
 ### THE CONDITION'S WORDS
 
@@ -56265,6 +56407,9 @@ property exists by default, which is how they were found:
 | Has a recharge delay | `EnchantmentsPositive.csv` line 118, "regeneration begins immediately after taking damage with no delay" |
 | Recharges toward a maximum that can be capped below full | `EnchantmentsNegative.csv` line 89 |
 | Being broken is a distinct event | A set bonus that triggers on it |
+
+**Reversed for every kind of damage over time but bleed on 2026-09-23** (issue #2014), by the
+project owner's decision of 2026-09-18: "every DoT except bleed reaches ES." See that entry.
 
 The recharge delay is **3 seconds after the character last took damage, restarted
 by taking damage again inside that window**. Damage over time restarts it too.

@@ -590,7 +590,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: maximum health, and `Ritualist_keystone_d_kC` Vessel, 1 Fervour for every 20
 #: maximum mana. One row each, both flat and both scaled, and both nodes had
 #: none before.
-AUTHORED_ROWS = 292
+#:
+#: AND TO 294 ON 2026-09-23, for `Ravager_keystone_c_kA` Attrition: flat 100
+#: `cripple_chance` and flat 100 `weaken_chance`, each for melee attacks only.
+#: Unwritable until an ailment chance was asked for with the skill's tags,
+#: which `UCataclysmAilments::ChancesFor` now does.
+AUTHORED_ROWS = 294
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -960,7 +965,11 @@ AUTHORED_ROWS = 292
 #: AND TO 214 ON 2026-09-18, for the two keystones above. Neither had a row, so
 #: this moved with the row count for the fifth time, and the Ravager is 67 of
 #: its 74 with the Ritualist 69 of its 74.
-AUTHORED_NODES = 214
+#:
+#: AND TO 215 ON 2026-09-23, for Attrition (`Ravager_keystone_c_kA`), which had
+#: no row. Measured then: the Ravager is 68 of its 74, the Ritualist 69 of its
+#: 74 and the Masochist 74 of its 74.
+AUTHORED_NODES = 215
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2360,6 +2369,15 @@ VALUE_IN_WORDS = {
     # have to keep for the row to still be right.
     ("Ritualist_keystone_c_kA", "shield_absorbs_damage_over_time"):
         ("absorbs damage over time as well as hits", 1.0),
+
+    # ATTRITION, "Your melee attacks always Cripple and always Weaken, with no
+    # chance roll." Issue #1515, written 2026-09-23. A hundred on each chance is
+    # the whole of the roll's range, which is what "always" and "no chance
+    # roll" say; the sentence states no number because the rule has none. One
+    # phrase per row, each naming its own ailment, so the two rows cannot be
+    # satisfied by the same words.
+    ("Ravager_keystone_c_kA", "cripple_chance"): ("always cripple", 100.0),
+    ("Ravager_keystone_c_kA", "weaken_chance"): ("always weaken", 100.0),
     ("Ritualist_keystone_c_kB", "shield_recharges_while_damaged"):
         ("recharges while you are taking damage", 1.0),
     ("Ritualist_keystone_d_kA", "mana_regen_restores_shield"):

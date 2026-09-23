@@ -151,7 +151,13 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not)\b", re.IGNORECASE)
 #: `test_every_flag_stat_row_states_one` keeps this honest: a row on one of these
 #: stats states 1 and nothing else, so the exemption cannot grow to cover a
 #: magnitude nobody wrote down.
-FLAG_STATS = {"skill_locked", "mana_pool_becomes_health"}
+#:
+#: `shield_absorbs_damage_over_time` JOINED ON 2026-09-23, issue #2014, with
+#: "Energy shield can now be effected by bleed". Above zero it lets a bleed into
+#: the wearer's energy shield; the sentence says what happens and the 1 says
+#: that it happens.
+FLAG_STATS = {"skill_locked", "mana_pool_becomes_health",
+              "shield_absorbs_damage_over_time"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -374,8 +380,12 @@ JUDGED_NUMBERS = {
 #: 48 characters so its row name holds; the five drawbacks that make a
 #: cooldown longer are flat `cooldown_lengthening` rows carrying their
 #: sentences' own numbers.
-AUTHORED_ROWS = 263
-AUTHORED_ENCHANTMENTS = 204
+#: AND 264 OVER 205 SINCE ISSUE #2014, from 263 over 204: one flag row on
+#: "Energy shield can now be effected by bleed", an enchantment that had none.
+#: It grants `shield_absorbs_damage_over_time`, which since that issue lets a
+#: bleed into the wearer's energy shield.
+AUTHORED_ROWS = 264
+AUTHORED_ENCHANTMENTS = 205
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

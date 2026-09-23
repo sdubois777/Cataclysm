@@ -796,26 +796,35 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// to read here yet; the step is left in place and does nothing.
 	// See the issue on the affix pool.
 
-	// 8. Energy shield. It does not absorb damage over time, which is what makes
-	// it a distinct defence rather than a second health bar.
+	// 8. Energy shield. It absorbs every hit and every kind of damage over time
+	// EXCEPT BLEED, which passes straight to health. The project owner,
+	// 2026-09-18: "every DoT except bleed reaches ES." Issue #2014. Until then
+	// no tick of any kind reached the shield, the rule of 2026-08-02 that this
+	// reverses.
 	//
-	// UNLESS THIS CHARACTER BOUGHT THE KEYSTONE THAT SAYS OTHERWISE. Issue
-	// #1515. `Ritualist_keystone_c_kA` Warded: "Your Energy Shield absorbs
-	// damage over time as well as hits." The stat is a flag and every character
-	// that has not taken the node reads zero, so the sentence above stays true
-	// for all of them.
+	// UNLESS THIS CHARACTER CARRIES THE FLAG THAT LETS BLEED IN TOO:
+	// `Ritualist_keystone_c_kA` Warded, "Your Energy Shield absorbs damage over
+	// time as well as hits" (issue #1515), and the drawback "Energy shield can
+	// now be effected by bleed". Since #2014 the flag decides bleed and nothing
+	// else, so Warded now adds only bleed. Kept under its old name, by a ruling
+	// under the owner's delegation, rather than renamed across the data.
+	//
+	// A TICK WITH NO AILMENT -- a ground zone's, a dungeon hazard's -- IS NOT A
+	// BLEED, so the shield takes it. `FCataclysmIncomingHit::bIsBleed` says
+	// where the answer comes from.
 	//
 	// THIS IS THE ONLY PLACE IN THE MODULE WHERE DAMAGE OVER TIME AND THE
 	// ENERGY SHIELD MEET, which was swept rather than assumed: thirty-one sites
 	// branch on `bIsDamageOverTime` and the other thirty are critical strike,
 	// retaliation, the stun roll, contagion, evasion, ailment chance, the
 	// overlay's scale and the delivery flags that set the bool. Everything
-	// downstream reads `Result.AbsorbedByShield`, which is zero for a tick today
-	// only because of this line, so all of it follows with no change of its own.
+	// downstream reads `Result.AbsorbedByShield`, which is zero for a bleed tick
+	// only because of this line, and was zero for every tick until issue #2014,
+	// so all of it followed that change with no change of its own.
 	//
 	// READ FROM THE DEFENDER, like every other defence in this function. It is
 	// the shield being hit that decides, not the thing swinging.
-	const bool bShieldApplies = !Hit.bIsDamageOverTime
+	const bool bShieldApplies = !Hit.bIsBleed
 		|| DefenderStat(Defender, ShieldAbsorbsDamageOverTimeStat,
 						Combat ? Combat->GetShieldAbsorbsDamageOverTime() : 0.0f)
 			> 0.0f;

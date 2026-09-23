@@ -286,8 +286,8 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			//
 			// HOW IT ARRIVED RIDES ON THE EFFECT TOO, as two more tags. Whether
 			// the hit swept a volume decides the evasion step, and whether it is
-			// damage over time decides whether an energy shield absorbs it.
-			// Issue #513.
+			// damage over time decides evasion and, with whether it is a bleed,
+			// whether an energy shield absorbs it. Issues #513 and #2014.
 			//
 			// ALL OF THEM REACH IT NOW. Armour penetration gained an attribute on
 			// issue #520 and is read beside the resistance penetration below; the
@@ -318,6 +318,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				UCataclysmDamageCalculation::AreaDamageTag());
 			Hit.bIsDamageOverTime = AssetTags.HasTag(
 				UCataclysmDamageCalculation::DamageOverTimeTag());
+
+			// AND WHETHER THE TICK IS A BLEED, the one kind the energy shield
+			// lets through. Issue #2014. From the GRANTED tags, where
+			// `ApplyDamageOverTime` puts the ailment; the asset tags carry only
+			// the bare `Keyword.DoT`. Gathered only for a tick, since a hit
+			// cannot be a bleed.
+			if (Hit.bIsDamageOverTime)
+			{
+				FGameplayTagContainer Granted;
+				Data.EffectSpec.GetAllGrantedTags(Granted);
+				Hit.bIsBleed = Granted.HasTag(UCataclysmDebuffs::BleedTag());
+			}
 
 			// AND WHETHER THE ATTACKER IS CHARMED BY THIS CREATURE. The Beguiling
 			// enemy modifier reads "Players cannot deal direct damage to you
@@ -890,9 +902,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// shield a three second delay after the character last took damage,
 			// restarted by taking damage again inside that window, and says
 			// damage over time restarts it as well. That last part is
-			// load-bearing: the shield absorbs no damage over time at all, so
-			// without it a bleeding character would refill freely and the
-			// shield would be strongest against the one thing it ignores.
+			// load-bearing: the shield does not absorb a bleed (issue #2014;
+			// until then it absorbed no damage over time at all), so without it
+			// a bleeding character would refill freely and the shield would be
+			// strongest against the one thing it ignores.
 			//
 			// ANYTHING THAT GOT THROUGH COUNTS, including a blow a shield
 			// swallowed whole and including a burn tick. A hit that was evaded,

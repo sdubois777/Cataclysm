@@ -616,15 +616,18 @@ public:
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Whether this character's energy shield absorbs damage over time. Issue
-	 * #1515.
+	 * Whether this character's energy shield absorbs a BLEED. Issue #1515, then
+	 * #2014.
 	 *
 	 * `Ritualist_keystone_c_kA` Warded is the node: "Your Energy Shield absorbs
-	 * damage over time as well as hits."
+	 * damage over time as well as hits." The drawback "Energy shield can now be
+	 * effected by bleed" grants it too.
 	 *
-	 * ZERO FOR EVERY CHARACTER BUT ONE THAT BOUGHT IT, and zero is the rule the
-	 * design states everywhere else: an energy shield stops hits and not ticks,
-	 * which is what makes it a distinct defence rather than a second health bar.
+	 * THE NAME IS OLDER THAN WHAT IT DOES. Until issue #2014 no tick reached the
+	 * shield and this let every kind in. Since then every kind but bleed reaches
+	 * it anyway, the project owner's rule of 2026-09-18, so this decides bleed
+	 * and nothing else. Kept under its name, by a ruling under the owner's
+	 * delegation, rather than renamed across the data and saved characters.
 	 *
 	 * ONE SITE READS IT. `UCataclysmDamageCalculation::Resolve` decides whether
 	 * the shield applies to a hit, and that is the only place in the module

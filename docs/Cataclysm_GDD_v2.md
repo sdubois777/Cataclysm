@@ -1526,7 +1526,7 @@ One incoming hit is resolved in this order. Each step operates on what the previ
 | 5. Damage reduction | The flat percentage stat, capped at 75%. |
 | 6. Damage taken | The defender's own `damage_taken` stat, as a percentage where 100 is normal. A second stat, `damage_over_time_taken`, applies as well when the hit is damage over time. |
 | 7. Mana | Only for damage over time, and only if an enchantment grants it. |
-| 8. Energy shield | Absorbs before health, one for one. Does not absorb damage over time. |
+| 8. Energy shield | Absorbs before health, one for one. Absorbs damage over time too, except bleed. |
 | 9. Health | Takes whatever is left. |
 
   
@@ -1643,11 +1643,11 @@ Energy shield is a distinct defence with its own rules, not a second health bar.
 
   
 
-  - **It does not absorb damage over time.** Bleed, poison, burn and the rest pass straight through it to health.
+  - **It absorbs damage over time as well as hits, except bleed.** Poison, burn and every other kind of damage over time are absorbed like a hit. A bleed passes straight through to health, unless the character has something that lets bleed in too (the Warded keystone, or the drawback "Energy shield can now be effected by bleed"). The project owner decided this on 2026-09-18, reversing the rule that no damage over time reached the shield.
   - **It refills 3 seconds after the character last took damage.** Taking damage again inside that window restarts the wait.
   - **It refills at a fifth of its own maximum per second, so a full shield takes 5 seconds however large it is.** Every source of maximum energy shield grants that rate alongside it: the Vestment's 120 comes with 24 a second, the flat maximum energy shield affix's 50 with 10, and the Ritualist's class line with a fifth of its own. A class with no energy shield of its own therefore refills the one it builds from gear at the same speed the Ritualist refills its own. Path of Exile recharges 20% of maximum energy shield per second after its own delay, which is the same figure.
   - **Two things move that 5 seconds, both deliberately.** The increased energy shield regeneration affix shortens it, to 3.4 seconds on four pieces and 2.0 on twelve. The increased maximum energy shield affix lengthens it, because it raises the pool and not the rate: 7.4 seconds on four pieces and 12.2 on twelve. A bigger shield taking longer to come back is the trade for having it.
-  - **Damage over time restarts that wait as well.** So damage over time both bypasses the shield and holds it empty, which is what makes it the answer to shield stacking rather than a stat check.
+  - **Damage over time restarts that wait as well.** So damage over time holds the shield empty while it ticks, whether or not the shield absorbs it, and a bleed also goes straight past it to health.
   - **Magic weapons strip 10% more of it** per hit than other sub-types.
   - Breaking the shield is a distinct event that other effects can trigger on.
 
@@ -5718,7 +5718,7 @@ It is one of only two enemies in the slice with an energy shield, at 50% of its 
 
   
 
-- **Damage over time passes straight through the shield and holds it empty**, because taking damage over time restarts the three second refill wait. 46 of the 56 designed Demonic skills carry `Burn=1`, so a Demonic player already carries the answer to a Succubus without building for it.
+- **Damage over time holds the shield empty**, because taking damage over time restarts the three second refill wait. Since 2026-09-18 the shield absorbs every kind of damage over time except bleed. 46 of the 56 designed Demonic skills carry `Burn=1`, so a Demonic player's burns now wear the shield down and keep it from refilling. They no longer pass through it. Only a bleed reaches the Succubus's health past a standing shield.
 - **Magic weapons strip 10% more of it per hit** than other weapon sub-types.
 - **It refills three seconds after the last damage it took.** A Succubus left alone while the player clears the Imps around it gets its shield back, which is the second reason to kill it first.
 

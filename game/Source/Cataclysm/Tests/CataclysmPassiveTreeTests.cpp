@@ -18,6 +18,7 @@
 // For the bucket and the condition a modifier carries, which many of the tests
 // below read off an authored row.
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmAilments.h"
 // For putting health back the way the game itself does, rather than reading the
 // rate off a gameplay attribute a scaled bonus never reaches. Issue #1038.
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -13943,6 +13944,225 @@ bool FCataclysmPassiveMaximumShieldCountedOnceTest::RunTest(const FString&)
 	TestEqual(TEXT("and the lookup is the attribute, not the increase applied "
 				   "twice"),
 			  AbilitySystem->MaximumEnergyShield(), Attribute(), 0.001f);
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Attrition, from its rows. Issue #1515.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveAttritionOnARealCharacterTest,
+	"Cataclysm.Passives.AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_c_kA` Attrition, from its rows, on a real Ravager.
+ *
+ * "Your melee attacks always Cripple and always Weaken, with no chance roll."
+ *
+ * TWO ROWS AND NO NEW MECHANISM. Each grants a hundred chance, the whole of the
+ * roll's range, to melee skills only. The chance is asked for with the skill's
+ * tags by `UCataclysmAilments::ChancesFor`, which is what made a row scoped to
+ * melee reach the roll at all; `docs/DECISIONS.md` recorded the node as
+ * unwritable until that was so.
+ *
+ * "ALWAYS" IS PROVED AT THE TOP OF THE ROLL. The roll is pinned at 99.99, the
+ * highest a draw from 0 to 100 can come, so only a chance of the whole range
+ * passes. A node granting half would pass a roll pinned at nought.
+ *
+ * THE TENTH-OF-MAXIMUM-HEALTH RULE STILL APPLIES, settled by the documents and
+ * not ruled here: the project owner's rule of 2026-09-02 (#917) covers every
+ * ailment that does not come from the skill's own row, and the sentence removes
+ * the roll, not the threshold. So a melee blow taking less than a tenth applies
+ * neither.
+ *
+ * EVERY CLAIM HAS ITS CONTROL: the same blow without the point, the same blow
+ * with a spell's tags, and a blow below the threshold, each applying neither.
+ */
+bool FCataclysmPassiveAttritionOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmEnemiesStruckRowTest;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_c_kA"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Attrition carries two rows"), Effects.Num(), 2))
+	{
+		AddError(TEXT("The node's rows are missing from the data, so it grants "
+					  "nothing in play. Author them in the Passive Effects sheet "
+					  "of docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+
+	TSet<FString> Stats;
+	for (const FCataclysmPassiveEffectRow* Row : Effects)
+	{
+		Stats.Add(Row->Stat);
+		TestEqual(*FString::Printf(TEXT("%s is stated flat"), *Row->Stat),
+				  Row->ValueKind, FString(TEXT("flat")));
+		TestTrue(*FString::Printf(TEXT("%s is the whole roll: %.1f"), *Row->Stat,
+								  Row->ValuePerPoint),
+				 Row->ValuePerPoint >= UCataclysmAilments::ChanceCap);
+		TestEqual(*FString::Printf(TEXT("%s is for melee attacks only"),
+								   *Row->Stat),
+				  Row->RequiredTags, FString(TEXT("Type.Melee")));
+		TestEqual(*FString::Printf(TEXT("%s carries no condition"), *Row->Stat),
+				  Row->Condition, FString());
+	}
+	TestTrue(TEXT("one row is the chance to Cripple"),
+			 Stats.Contains(TEXT("cripple_chance")));
+	TestTrue(TEXT("and the other the chance to Weaken"),
+			 Stats.Contains(TEXT("weaken_chance")));
+
+	const FGameplayTagContainer Melee = MeleeTags();
+	const FGameplayTagContainer Spell(UCataclysmSkillEffects::SpellTag());
+	const FCataclysmAilmentKind* Cripple =
+		UCataclysmAilments::KindNamed(TEXT("Cripple"));
+	const FCataclysmAilmentKind* Weaken =
+		UCataclysmAilments::KindNamed(TEXT("Weaken"));
+	if (!TestEqual(TEXT("the melee tag exists"), Melee.Num(), 1)
+		|| !TestEqual(TEXT("and the spell tag"), Spell.Num(), 1)
+		|| !TestNotNull(TEXT("Cripple is an ailment"), Cripple)
+		|| !TestNotNull(TEXT("and Weaken"), Weaken))
+	{
+		return false;
+	}
+
+	const auto Spend = [&Player, Node](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(Node, Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+		// A WEAPON'S WORTH OF DAMAGE, AFTER THE REFRESH. A test player has none.
+		Player.AbilitySystem->SetNumericAttributeBase(
+			Combat::GetAttackDamageAttribute(), 1000.0f);
+	};
+
+	// ONE BLOW WITH THESE TAGS AT A FRESH, UNDEFENDED ENEMY WITH THIS MUCH
+	// HEALTH. Says what the blow took, and whether each ailment is on it after.
+	struct FStruck
+	{
+		float Taken = 0.0f;
+		bool bCrippled = false;
+		bool bWeakened = false;
+	};
+	const auto Strike = [&](const FGameplayTagContainer& Tags, float MaxHealth)
+	{
+		FStruck Out;
+		ACataclysmEnemyCharacter* Enemy = SpawnUndefendedEnemy(World);
+		UAbilitySystemComponent* EnemySystem =
+			Enemy ? Enemy->GetAbilitySystemComponent() : nullptr;
+		if (!EnemySystem)
+		{
+			AddError(TEXT("An enemy could not be spawned."));
+			return Out;
+		}
+		EnemySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+											 MaxHealth);
+		EnemySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+											 MaxHealth);
+
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy,
+										 /*DamagePercent=*/100.0f, Tags);
+
+		Out.Taken = MaxHealth
+			- EnemySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+		Out.bCrippled = EnemySystem->HasMatchingGameplayTag(
+			FGameplayTag::RequestGameplayTag(FName(Cripple->TagName)));
+		Out.bWeakened = EnemySystem->HasMatchingGameplayTag(
+			FGameplayTag::RequestGameplayTag(FName(Weaken->TagName)));
+		Enemy->Destroy();
+		return Out;
+	};
+
+	// THE TOP OF THE ROLL. Only a chance of the whole range passes this.
+	const CataclysmTestWorld::FScopedAilmentRoll AtTheTop(99.99f);
+
+	// A POOL THE BLOW TAKES WELL OVER A TENTH OF, and one it takes far less of.
+	constexpr float SmallPool = 4000.0f;
+	constexpr float DeepPool = 1'000'000.0f;
+
+	// WITHOUT THE POINT: a melee blow over the threshold applies neither.
+	Spend(0);
+	const FStruck Unspent = Strike(Melee, SmallPool);
+	TestTrue(*FString::Printf(TEXT("without Attrition the blow takes over a "
+								   "tenth: %.1f"), Unspent.Taken),
+			 Unspent.Taken >= SmallPool / 10.0f);
+	TestFalse(TEXT("and does not Cripple"), Unspent.bCrippled);
+	TestFalse(TEXT("or Weaken"), Unspent.bWeakened);
+
+	Spend(1);
+
+	// THE CHANCE ASKED WITH EACH SKILL'S TAGS, as the roll asks it.
+	const TPair<const TCHAR*, FGameplayAttribute> Chances[] = {
+		{TEXT("cripple_chance"), Combat::GetCrippleChanceAttribute()},
+		{TEXT("weaken_chance"), Combat::GetWeakenChanceAttribute()},
+	};
+	for (const TPair<const TCHAR*, FGameplayAttribute>& Chance : Chances)
+	{
+		const float Held =
+			Player.AbilitySystem->GetNumericAttribute(Chance.Value);
+		TestTrue(*FString::Printf(TEXT("a melee skill asks the whole roll of %s"),
+								  Chance.Key),
+				 Player.AbilitySystem->StatForSkill(FName(Chance.Key), Melee, Held)
+					 >= UCataclysmAilments::ChanceCap);
+		TestEqual(*FString::Printf(TEXT("and a spell asks none of %s"),
+								   Chance.Key),
+				  Player.AbilitySystem->StatForSkill(FName(Chance.Key), Spell, Held),
+				  0.0f, 0.001f);
+	}
+
+	const FStruck MeleeBlow = Strike(Melee, SmallPool);
+	TestTrue(*FString::Printf(TEXT("with Attrition a melee blow takes over a "
+								   "tenth: %.1f of %.0f"),
+							  MeleeBlow.Taken, SmallPool),
+			 MeleeBlow.Taken >= SmallPool / 10.0f);
+	TestTrue(TEXT("and Cripples at the top of the roll"), MeleeBlow.bCrippled);
+	TestTrue(TEXT("and Weakens at the top of the roll"), MeleeBlow.bWeakened);
+
+	const FStruck SpellBlow = Strike(Spell, SmallPool);
+	TestTrue(TEXT("a spell's blow takes over a tenth as well"),
+			 SpellBlow.Taken >= SmallPool / 10.0f);
+	TestFalse(TEXT("and does not Cripple"), SpellBlow.bCrippled);
+	TestFalse(TEXT("or Weaken"), SpellBlow.bWeakened);
+
+	const FStruck Small = Strike(Melee, DeepPool);
+	TestTrue(*FString::Printf(TEXT("a melee blow that takes under a tenth lands: "
+								   "%.1f of %.0f"), Small.Taken, DeepPool),
+			 Small.Taken > 0.0f && Small.Taken < DeepPool / 10.0f);
+	TestFalse(TEXT("and does not Cripple, the threshold still applying"),
+			  Small.bCrippled);
+	TestFalse(TEXT("or Weaken"), Small.bWeakened);
 
 	return true;
 }
