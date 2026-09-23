@@ -617,11 +617,13 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 	// spent an ultimate and 30 reserved Fervour on.
 	//
 	// A DIRECT WRITE OF THE ATTRIBUTE, NOT A HEALING EFFECT, AND THAT IS NOT A
-	// BYPASS. `HealingCeilingReduction` limits healing that arrives as a gameplay
-	// effect, which is how regeneration and a heal from a skill reach a
-	// character. This writes the base value, so no ceiling is in the path to
-	// ignore. It is also what "to full" has to mean: a ceiling that left the
-	// creature short would contradict the words of the ruling.
+	// BYPASS. `HealingCeilingReduction` is applied inside
+	// `UCataclysmRegeneration::TopUp`, which regeneration, leech, an
+	// enchantment's restore and the other capped heals call; no heal in the
+	// game's code arrives as a gameplay effect. This writes the base value
+	// without calling `TopUp`, so no ceiling is in the path to ignore. It is
+	// also what "to full" has to mean: a ceiling that left the creature short
+	// would contradict the words of the ruling.
 	//
 	// WHETHER A CURSE SHOULD CUT IT IS OPEN, AND THIS DOES NOT DECIDE IT. Issue
 	// #1713. The owner also ruled, on 2026-09-12, that healing received is "one

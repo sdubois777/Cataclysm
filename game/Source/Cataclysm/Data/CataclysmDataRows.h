@@ -2198,8 +2198,9 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	/**
 	 * The pool this row MOVES when its event happens, or empty for a row that
 	 * changes a stat instead. `POOL_ACTIONS` in `tools/generate_datatables.py`
-	 * is the list, and `UCataclysmItemModifiers::PoolActionFor` turns a name
-	 * into the two attributes it needs -- what is held and the most that can be.
+	 * is the list, and `UCataclysmAbilitySystemComponent::PoolAttributesFor`
+	 * turns a name into the two attributes it needs -- what is held and the most
+	 * that can be.
 	 *
 	 * A ROW DOES ONE OR THE OTHER. A stat row changes a number the pipeline
 	 * reads when something asks for it; an action row moves a pool at the moment

@@ -119,7 +119,7 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	// through this same function.
 	//
 	// A RESPAWN IS NOT HEALING AND IS NOT CAPPED.
-	// `ACataclysmPlayerCharacter::Respawn` writes health back with
+	// `ACataclysmPlayerCharacter::Revive` writes health back with
 	// `SetNumericAttributeBase` rather than through here, so it is untouched.
 	// That is the right answer -- a respawn is a new life -- and issue #956 is
 	// the open question about what else that direct write should do.

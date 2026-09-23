@@ -212,9 +212,13 @@ public:
 	 *
 	 * THE CAP IS THE WHOLE OF WHAT RESERVATION DOES TODAY, and that is worth
 	 * saying plainly. Nothing is subtracted from the character's usable pool,
-	 * because nothing the Ritualist has spends it: the class has no passive tree
-	 * and no designed generator, which is issue #950. When it does, this is where
-	 * the reserved amount comes from.
+	 * which is issue #1160, and so far that has no visible effect: the
+	 * Ritualist fills the pool (its tree's first node, Fervour, generates it
+	 * from minions) but no node or skill of the Ritualist's spends it. The two
+	 * nodes that spend Fervour today, Wrung Out and Bought With Ruin, are the
+	 * Ravager's. Issue #1478 is the question of what should spend it. When
+	 * something the Ritualist holds does, this is where the reserved amount
+	 * comes from.
 	 *
 	 * MEASURED AGAINST THE MAXIMUM AND NOT THE CURRENT VALUE. A reservation is a
 	 * standing claim on the pool rather than a payment out of it, which is how

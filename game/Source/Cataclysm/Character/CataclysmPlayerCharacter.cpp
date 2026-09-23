@@ -829,7 +829,9 @@ void ACataclysmPlayerCharacter::OnClassResourceChanged(const FOnAttributeChangeD
 	// THE OTHER ATTRIBUTE IS READ AT ITS CURRENT VALUE, because fullness
 	// depends on both and only one of them moved. Which one is `Data.Attribute`.
 	// THE MAXIMUM FALLING TO MEET A STATIC POOL IS A REAL CASE, not a
-	// hypothetical: the Crowned thrall lowers a summoner's Fervour reserve.
+	// hypothetical: giving back the point in the Ritualist keystone Room for
+	// One More, whose row grants 30 maximum Fervour, lowers the maximum by 30
+	// while the Fervour held does not move.
 	UCataclysmAbilitySystemComponent* Cataclysm =
 		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
 	if (!Cataclysm)
@@ -2079,8 +2081,9 @@ void ACataclysmPlayerCharacter::InitAbilityActorInfo()
 	// BOTH ATTRIBUTES, NOT ONLY WHAT THE CHARACTER HOLDS.
 	// `ClassResourceAtMaximum` compares the two readings, so the condition also
 	// turns true when the MAXIMUM falls to meet a held value that never moved.
-	// That is not hypothetical: the Crowned thrall lowers a summoner's Fervour
-	// reserve, which is exactly that shape.
+	// That is not hypothetical: giving back the point in the Ritualist
+	// keystone Room for One More, whose row grants 30 maximum Fervour, is
+	// exactly that shape.
 	//
 	// EVERY TIME-DEPENDENT CONDITION IS STILL UNSERVED BY THIS, and no amount
 	// of binding will serve it. A delegate can only watch an attribute, and a
