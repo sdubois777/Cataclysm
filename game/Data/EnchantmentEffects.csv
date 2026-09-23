@@ -262,3 +262,4 @@ Negative_Point_blank_AOE_skills_have_30_50_increased_co#1,Negative_Point_blank_A
 Negative_Movement_abilities_have_50_increased_cooldown#1,Negative_Movement_abilities_have_50_increased_cooldown,cooldown_lengthening,flat,50.0,50.0,Slot.Movement,,0.0,,0.0,,,
 Negative_Cooldowns_are_increased_by_30_50#1,Negative_Cooldowns_are_increased_by_30_50,cooldown_lengthening,flat,30.0,50.0,,,0.0,,0.0,,,
 Negative_Your_cooldowns_are_increased_by_100_200#1,Negative_Your_cooldowns_are_increased_by_100_200,cooldown_lengthening,flat,100.0,200.0,,,0.0,,0.0,,,
+Negative_Energy_shield_can_now_be_effected_by_bleed#1,Negative_Energy_shield_can_now_be_effected_by_bleed,shield_absorbs_damage_over_time,flat,1.0,1.0,,,0.0,,0.0,,,
