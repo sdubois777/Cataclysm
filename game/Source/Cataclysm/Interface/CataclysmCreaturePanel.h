@@ -153,6 +153,38 @@ public:
 								 TArray<FString>& OutNames);
 
 	/**
+	 * Every line the panel draws under the health bar, in the order it draws them.
+	 * Issue #1997.
+	 *
+	 * `FloorsCommanderLine` FIRST, WHEN THIS CREATURE IS THE FLOOR'S COMMANDER, then the
+	 * modifier names unchanged. The dungeon floor rule `War_March_of_Progress` pays the
+	 * player for killing one chosen creature a floor, and nothing else in play says which
+	 * one it is; this line is how a player finds it, by pointing at it. First, because it
+	 * says why this creature matters on this floor, which a modifier does not. Ruled under
+	 * the project owner's delegation, as are the two choices beside it: no colour or art
+	 * of its own, and no line for a Commander that has been killed (the caller answers
+	 * false for one, and the panel is not drawn for a corpse anyway).
+	 *
+	 * A FUNCTION OF PLAIN VALUES, so a test can read the lines. Whether a creature IS the
+	 * floor's Commander is `ACataclysmDungeonGameMode::IsTheFloorsCommanderIn`, which the
+	 * heads-up display asks and no automation test can reach; see its comment.
+	 */
+	static void LinesUnderTheHealthBar(bool bIsTheFloorsCommander,
+									   const TArray<FString>& ModifierNames,
+									   TArray<FString>& OutLines);
+
+	/**
+	 * What the panel says about the floor's Commander.
+	 *
+	 * THE WORDS THE FLOOR PANEL ALREADY USES for the same creature -- "<name>, this
+	 * floor's Commander, alive" -- so the two panels name it the same way. The word
+	 * "Commander" means three things in this game; `docs/DECISIONS.md` (2026-09-18,
+	 * "Every elite creature buffs the allies beside it") records which is which, and this
+	 * line is the War March of Progress one.
+	 */
+	static const TCHAR* FloorsCommanderLine;
+
+	/**
 	 * The panel's first line: which rung, then which creature.
 	 *
 	 * ONE LINE RATHER THAN TWO, because "Elite Brute" is how a player says it and

@@ -1620,6 +1620,33 @@ ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::TheFloorsCommander() const
 	return MarchOfProgressCommander.Get();
 }
 
+bool ACataclysmDungeonGameMode::IsTheFloorsCommander(const AActor* Creature) const
+{
+	// THREE QUESTIONS, BECAUSE THE WEAK POINTER ALONE ANSWERS WRONGLY FOR A CORPSE. A
+	// killed creature's weak pointer stays valid until its body is removed, so the floor's
+	// slain flag and the creature's own dead mark are asked too. Issue #1997.
+	const ACataclysmEnemyCharacter* Chosen = MarchOfProgressCommander.Get();
+	return Creature && Chosen && Creature == Chosen && !bMarchOfProgressCommanderSlain
+		&& !UCataclysmSkillEffects::IsDead(Chosen);
+}
+
+bool ACataclysmDungeonGameMode::IsTheFloorsCommanderIn(const UObject* WorldContext,
+														const AActor* Creature)
+{
+	// THE HOP NO AUTOMATION TEST CAN TAKE. See the declaration.
+	const UWorld* World = GEngine
+		? GEngine->GetWorldFromContextObject(WorldContext, EGetWorldErrorMode::ReturnNull)
+		: nullptr;
+	if (!World)
+	{
+		return false;
+	}
+
+	const ACataclysmDungeonGameMode* Mode =
+		World->GetAuthGameMode<ACataclysmDungeonGameMode>();
+	return Mode && Mode->IsTheFloorsCommander(Creature);
+}
+
 void ACataclysmDungeonGameMode::ChooseTheFloorsCommander()
 {
 	// ONLY A FLOOR CARRYING THE RULE HAS A COMMANDER, the same test and for the same

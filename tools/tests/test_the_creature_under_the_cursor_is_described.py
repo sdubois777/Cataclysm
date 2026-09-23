@@ -470,3 +470,62 @@ def test_the_design_document_records_what_the_panel_shows() -> None:
         "docs/Cataclysm_GDD_v2.md no longer records what the hover panel shows. "
         "The modifiers are the reason it exists; a word over a creature's head "
         "has no room for them.")
+
+
+# ---------------------------------------------------------------------------
+# The floor's Commander, named on hover. Issue #1997.
+# ---------------------------------------------------------------------------
+
+DUNGEON_MODE_CPP = SOURCE / "Dungeon" / "CataclysmDungeonGameMode.cpp"
+
+
+def test_the_panel_names_the_floors_commander() -> None:
+    """The frame asks the game mode and draws the line the panel function returns.
+
+    WHY FROM PYTHON AND NOT ONLY FROM THE AUTOMATION TESTS. The lookup,
+    `ACataclysmDungeonGameMode::IsTheFloorsCommanderIn`, finds the game mode through
+    `UWorld::GetAuthGameMode`, and a world built for a test has none; `DrawHUD` never runs
+    under `-nullrhi` either. So the automation tests cover the member that answers and the
+    function that builds the lines, and nothing but this check covers the call that joins
+    them. Deleting it would leave every automation test passing and the line never drawn.
+
+    READ WITH COMMENTS STRIPPED, for the reason `function_body` gives: the frame's own
+    comment names both functions.
+    """
+    drawn = function_body(read(HUD_CPP), "void ACataclysmHUD::DrawCreaturePanel")
+
+    assert re.search(
+        r"UCataclysmCreaturePanel::LinesUnderTheHealthBar\(\s*"
+        r"ACataclysmDungeonGameMode::IsTheFloorsCommanderIn\(\s*this\s*,\s*Creature\s*\)",
+        drawn), (
+        "DrawCreaturePanel no longer asks the game mode whether the creature under the "
+        "cursor is the floor's Commander and hands the answer to LinesUnderTheHealthBar. "
+        "No automation test can see this call. Issue #1997.")
+
+    lines = function_body(read(PANEL_CPP),
+                          "void UCataclysmCreaturePanel::LinesUnderTheHealthBar")
+    commander = lines.find("OutLines.Add(FloorsCommanderLine);")
+    modifiers = lines.find("OutLines.Append(ModifierNames);")
+    assert commander != -1 and modifiers != -1 and commander < modifiers, (
+        "LinesUnderTheHealthBar no longer puts the floor's Commander line first and the "
+        "modifier names after it. The line goes first, ruled under the owner's delegation "
+        "on issue #1997.")
+
+
+def test_the_two_panels_name_the_floors_commander_in_the_same_words() -> None:
+    """The hover panel's line is the words the floor panel already uses.
+
+    The floor panel says "<name>, this floor's Commander, alive" (or "slain"). A second
+    wording for the same creature on a second panel would read as a second thing, and the
+    word "Commander" already means three things in this game.
+    """
+    match = re.search(r'FloorsCommanderLine\s*=\s*TEXT\("([^"]+)"\)', read(PANEL_CPP))
+    assert match, "CataclysmCreaturePanel.cpp no longer defines FloorsCommanderLine."
+    words = match.group(1)
+
+    assert words == "this floor's Commander", (
+        f"The hover panel's Commander line reads {words!r}. Issue #1997 ruled "
+        "\"this floor's Commander\".")
+    assert f", {words}, " in read(DUNGEON_MODE_CPP), (
+        f"The floor panel no longer names the Commander with {words!r}, so the two "
+        "panels now name one creature two ways.")

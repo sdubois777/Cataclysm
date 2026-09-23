@@ -4,6 +4,7 @@
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
+#include "Dungeon/CataclysmDungeonGameMode.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/EngineTypes.h"
@@ -684,10 +685,20 @@ void ACataclysmHUD::DrawCreaturePanel()
 	const FString HealthText =
 		UCataclysmCombatOverlay::PoolTextFor(Health, MaxHealth);
 
-	TArray<FString> Modifiers;
+	TArray<FString> ModifierNames;
 	UCataclysmCreaturePanel::ModifierNamesFor(
 		UCataclysmCreaturePanel::LoadEnemyModifierTable(),
-		Creature->ModifierRows, Modifiers);
+		Creature->ModifierRows, ModifierNames);
+
+	// AND, FIRST UNDER THE HEALTH BAR, WHETHER THIS IS THE FLOOR'S COMMANDER. Issue
+	// #1997. The dungeon floor rule `War_March_of_Progress` pays for killing one chosen
+	// creature a floor, and this line is how a player finds out which. The lookup goes
+	// through the game mode, which no automation test can reach from here; the line itself
+	// comes from `LinesUnderTheHealthBar`, which a test reads.
+	TArray<FString> Modifiers;
+	UCataclysmCreaturePanel::LinesUnderTheHealthBar(
+		ACataclysmDungeonGameMode::IsTheFloorsCommanderIn(this, Creature), ModifierNames,
+		Modifiers);
 
 	// MEASURED IN FULL BEFORE ANYTHING IS DRAWN, because the panel is as wide as
 	// the widest line inside it. The X and Y passed here are throwaway: only the
@@ -798,10 +809,10 @@ void ACataclysmHUD::DrawCreaturePanel()
 					UCataclysmCreaturePanel::LineScale);
 	Top += HealthRowHeight;
 
-	// THE MODIFIERS LAST, WHICH IS THE REASON THIS PANEL EXISTS. There will be
-	// none of them until something grants them, which is issue #742; see
-	// ACataclysmEnemyCharacter::ModifierRows, which is what lets a creature
-	// placed in a level be given some by hand in the meantime.
+	// THE LINES UNDER THE BAR LAST: "this floor's Commander" when this creature is
+	// it (issue #1997), then the modifiers, which are the reason this panel exists.
+	// See ACataclysmEnemyCharacter::ModifierRows for how a creature is given
+	// modifiers (issue #742).
 	for (int32 Index = 0; Index < ModifierBoxes.Num(); ++Index)
 	{
 		Top += UCataclysmCreaturePanel::LineGapPx;

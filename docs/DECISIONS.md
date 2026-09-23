@@ -168,6 +168,85 @@ because the restored run overwrites the test log.
 
 ---
 
+## 2026-09-23 — The creature hover panel names the floor's Commander
+
+**Affects:** `game/Source/Cataclysm/Interface/CataclysmCreaturePanel.h` and `.cpp` (the panel that
+describes the creature under the cursor: the line and the function that orders the lines under the
+health bar), `game/Source/Cataclysm/Interface/CataclysmHUD.cpp` (the frame that draws that panel),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (whether a creature is this
+floor's Commander, asked of a game mode and found in a world), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmCreaturePanelTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_the_creature_under_the_cursor_is_described.py` (two checks). Issue
+[#1997](https://github.com/sdubois777/Cataclysm/issues/1997), which this closes FOR THE HOVER PANEL
+ONLY. **Applied.** The Unreal compile, the automation tests and the guard proofs have NOT run yet; the
+figures are added at the end of this entry when they have.
+
+### What was missing
+
+The dungeon floor rule `War_March_of_Progress` chooses one creature a floor as its Commander and pays
+the player 10% armour for killing it. Nothing in play showed which creature that was. The floor panel
+said whether the Commander was alive; it could not say which one to go after.
+
+### What changes
+
+When the player points at the floor's Commander, the creature hover panel shows one more line,
+`this floor's Commander`, first under the health bar and above the creature's modifiers. Pointing at
+any other creature shows no such line. A floor without the row has no Commander and shows it on no
+creature.
+
+### Rulings
+
+The mechanism was ruled by the coordinating session on the issue, under the owner's delegation: the
+hover panel names the creature, with no new art and no minimap marker. **A mark in the game world or on
+the minimap stays out of scope** unless play shows the hover panel is not enough.
+
+Three judgements under the owner's delegation, approved by the coordinating session on 2026-09-23:
+
+- **The line goes first under the health bar**, above the modifiers, because it says why this
+  creature matters on this floor, which a modifier does not.
+- **A killed Commander is not named.** The weak pointer to a killed creature stays valid until its
+  body is removed, so `ACataclysmDungeonGameMode::IsTheFloorsCommander` also asks the floor's
+  slain flag and the creature's dead mark. The panel is not drawn for a corpse anyway.
+- **No colour or art of its own.** The line is drawn in the panel's ink at the size of the modifier
+  lines.
+
+**The words are the floor panel's own.** The floor panel already says
+"<name>, this floor's Commander, alive"; the hover panel says "this floor's Commander", and a Python
+check holds the two to the same words. The word "Commander" means three things in this game; the entry
+of 2026-09-18, "Every elite creature buffs the allies beside it…", records which is which, and this
+line is the March of Progress one.
+
+### The one hop no test can take
+
+The heads-up display asks `ACataclysmDungeonGameMode::IsTheFloorsCommanderIn`, which finds the game
+mode through `UWorld::GetAuthGameMode`. A world built for an automation test has no authority game mode,
+so no automation test can make that call answer true; the same gap is recorded for
+`JudgmentZonesMagicFindIn` and `UCataclysmEnemyScore::FloorIn`. The member it forwards to and the
+panel's line function are tested. The call that joins them in `ACataclysmHUD::DrawCreaturePanel` is
+held by `test_the_panel_names_the_floors_commander`, which reads that function with its comments
+removed. Checked by breaking it four ways, each of which failed the check: the lookup replaced by
+`false`; the call commented out with a comment still naming both functions; the line moved after the
+modifiers; and the words changed.
+
+### Tests
+
+Four automation tests: `Cataclysm.CreaturePanel.TheFloorsCommanderIsNamedFirstAndOnlyForTheCommander`;
+`Cataclysm.DungeonModifierEffects.TheHoverPanelNamesTheFloorsCommanderAndNoOtherCreature`;
+`Cataclysm.DungeonModifierEffects.TheHoverPanelStopsNamingTheCommanderOnceItIsKilled`;
+`Cataclysm.DungeonModifierEffects.AFloorWithoutTheRowNamesNoCommanderOnTheHoverPanel`.
+
+Two Python checks in `test_the_creature_under_the_cursor_is_described.py`:
+`test_the_panel_names_the_floors_commander` and
+`test_the_two_panels_name_the_floors_commander_in_the_same_words`.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the guard proofs. They run in one editor
+window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — Every damage over time but bleed now reaches an energy shield, reversing the rule of 2026-08-02
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (a

@@ -43,6 +43,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
+#include "Interface/CataclysmCreaturePanel.h"
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -19921,6 +19922,169 @@ bool FCataclysmAntiMagicFloorChangeTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("and the spell is refused there too"),
 			 IsLockedFor(Player, Malefice.Tags));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The floor's Commander, named on the creature hover panel. Issue #1997.
+//
+// WHAT THESE CANNOT REACH: `ACataclysmDungeonGameMode::IsTheFloorsCommanderIn`, which the
+// heads-up display asks. It finds the game mode through `UWorld::GetAuthGameMode`, and a
+// test world has none. These test the member it forwards to, and feed that member's answer
+// into the panel's own function, which is everything but the one hop; a Python check in
+// `tools/tests/test_the_creature_under_the_cursor_is_described.py` holds the hop.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCommanderOnHoverTest,
+	"Cataclysm.DungeonModifierEffects.TheHoverPanelNamesTheFloorsCommanderAndNoOtherCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCommanderOnHoverTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Ordinary =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Elite =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 1);
+	if (!TestNotNull(TEXT("an ordinary creature was placed"), Ordinary)
+		|| !TestNotNull(TEXT("an Elite was placed"), Elite))
+	{
+		return false;
+	}
+
+	Mode->ChooseTheFloorsCommander();
+	if (!TestSamePtr(TEXT("the Elite is the Commander"), Mode->TheFloorsCommander(), Elite))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the game mode answers yes for the Commander"),
+			 Mode->IsTheFloorsCommander(Elite));
+	TestFalse(TEXT("and no for another creature on the same floor"),
+			  Mode->IsTheFloorsCommander(Ordinary));
+	TestFalse(TEXT("and no for nothing at all"), Mode->IsTheFloorsCommander(nullptr));
+
+	// AND THE ANSWER BECOMES THE LINE. The words are written out rather than read from the
+	// constant, so a change of wording cannot pass by comparing it with itself.
+	TArray<FString> Lines;
+	UCataclysmCreaturePanel::LinesUnderTheHealthBar(Mode->IsTheFloorsCommander(Elite), {},
+												   Lines);
+	TestEqual(TEXT("hovering the Commander shows one line naming it"), Lines,
+			  TArray<FString>({ TEXT("this floor's Commander") }));
+
+	UCataclysmCreaturePanel::LinesUnderTheHealthBar(Mode->IsTheFloorsCommander(Ordinary),
+												   {}, Lines);
+	TestEqual(TEXT("hovering another creature shows no such line"), Lines.Num(), 0);
+	return true;
+}
+
+// A CORPSE IS NOT NAMED. The weak pointer to a killed creature stays valid until its body
+// is removed, so the pointer is asserted to still answer, and the member is what must not.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCommanderOnHoverSlainTest,
+	"Cataclysm.DungeonModifierEffects.TheHoverPanelStopsNamingTheCommanderOnceItIsKilled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCommanderOnHoverSlainTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheMarchRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Elite =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 1);
+	if (!TestNotNull(TEXT("an Elite was placed"), Elite))
+	{
+		return false;
+	}
+	Mode->ChooseTheFloorsCommander();
+	if (!TestTrue(TEXT("while it lives it is named"), Mode->IsTheFloorsCommander(Elite)))
+	{
+		return false;
+	}
+
+	if (!ThePlayerKills(*this, Player, Elite))
+	{
+		return false;
+	}
+
+	TestSamePtr(TEXT("the floor still points at the body"), Mode->TheFloorsCommander(),
+				Elite);
+	TestFalse(TEXT("but a killed Commander is no longer named"),
+			  Mode->IsTheFloorsCommander(Elite));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCommanderOnHoverNoRowTest,
+	"Cataclysm.DungeonModifierEffects.AFloorWithoutTheRowNamesNoCommanderOnTheHoverPanel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCommanderOnHoverNoRowTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	Mode->DungeonModifiers = {};
+	Mode->FloorNumber = 1;
+	Mode->ImpRarityStep = 0;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	ACataclysmEnemyCharacter* Elite =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 1);
+	if (!TestNotNull(TEXT("an Elite was placed"), Elite))
+	{
+		return false;
+	}
+
+	// ASKED TO CHOOSE ANYWAY, so the answer below is the floor's lack of the row and not
+	// merely nothing having asked.
+	Mode->ChooseTheFloorsCommander();
+	TestNull(TEXT("a floor without the row has no Commander"), Mode->TheFloorsCommander());
+	TestFalse(TEXT("so no creature on it is named"), Mode->IsTheFloorsCommander(Elite));
 	return true;
 }
 

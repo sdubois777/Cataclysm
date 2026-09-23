@@ -434,6 +434,47 @@ bool FCataclysmCreaturePanelModifierNames::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * The floor's Commander is named first under the health bar, and only for it. Issue
+ * #1997.
+ *
+ * THE WORDS ARE WRITTEN OUT HERE rather than read from `FloorsCommanderLine`, so a change
+ * of wording cannot pass by comparing the constant with itself.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCreaturePanelCommanderLine,
+	"Cataclysm.CreaturePanel.TheFloorsCommanderIsNamedFirstAndOnlyForTheCommander",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCreaturePanelCommanderLine::RunTest(const FString&)
+{
+	using namespace CataclysmCreaturePanelTest;
+
+	const TArray<FString> Modifiers = { TEXT("Beguiling"), TEXT("Hellfire Aura") };
+
+	TArray<FString> Lines;
+	FPanel::LinesUnderTheHealthBar(/*bIsTheFloorsCommander=*/true, Modifiers, Lines);
+	TestEqual(TEXT("the Commander's line first, then its modifiers in order"), Lines,
+		TArray<FString>({ TEXT("this floor's Commander"), TEXT("Beguiling"),
+						  TEXT("Hellfire Aura") }));
+
+	FPanel::LinesUnderTheHealthBar(/*bIsTheFloorsCommander=*/false, Modifiers, Lines);
+	TestEqual(TEXT("any other creature shows its modifiers and nothing more"), Lines,
+		Modifiers);
+
+	// A COMMANDER WITH NO MODIFIERS STILL GETS ITS LINE, which is most Commanders: the
+	// rule chooses the highest rung on the floor, and a Common carries none.
+	FPanel::LinesUnderTheHealthBar(/*bIsTheFloorsCommander=*/true, {}, Lines);
+	TestEqual(TEXT("a Commander carrying no modifiers still has its one line"), Lines,
+		TArray<FString>({ TEXT("this floor's Commander") }));
+
+	// AND THE OUTPUT IS CLEARED RATHER THAN APPENDED TO, or the next creature hovered
+	// would inherit the Commander's line.
+	FPanel::LinesUnderTheHealthBar(/*bIsTheFloorsCommander=*/false, {}, Lines);
+	TestEqual(TEXT("a creature with nothing to say has no lines"), Lines.Num(), 0);
+
+	return true;
+}
+
 // ---------------------------------------------------------------------------
 // Where the panel goes
 // ---------------------------------------------------------------------------

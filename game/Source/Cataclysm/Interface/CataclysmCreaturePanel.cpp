@@ -18,6 +18,8 @@ const TCHAR* UCataclysmCreaturePanel::PanelHex = TEXT("0A0F12");
 const TCHAR* UCataclysmCreaturePanel::EdgeHex = TEXT("8F98A6");
 const TCHAR* UCataclysmCreaturePanel::InkHex = TEXT("E8E4DE");
 const TCHAR* UCataclysmCreaturePanel::UnnamedCreature = TEXT("Creature");
+const TCHAR* UCataclysmCreaturePanel::FloorsCommanderLine =
+	TEXT("this floor's Commander");
 
 namespace
 {
@@ -168,6 +170,20 @@ void UCataclysmCreaturePanel::ModifierNamesFor(
 			OutNames.Add(Name);
 		}
 	}
+}
+
+void UCataclysmCreaturePanel::LinesUnderTheHealthBar(bool bIsTheFloorsCommander,
+													 const TArray<FString>& ModifierNames,
+													 TArray<FString>& OutLines)
+{
+	OutLines.Reset();
+
+	// THE FLOOR'S ROLE BEFORE THE CREATURE'S OWN MODIFIERS. See the header.
+	if (bIsTheFloorsCommander)
+	{
+		OutLines.Add(FloorsCommanderLine);
+	}
+	OutLines.Append(ModifierNames);
 }
 
 FString UCataclysmCreaturePanel::TitleFor(const FString& ArchetypeName,
