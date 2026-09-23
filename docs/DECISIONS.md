@@ -12,8 +12,8 @@ per-floor reset), the automation tests in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -82,10 +82,24 @@ One Python check: the row still says "sealed", "the next level", "the player has
 with no figure. It was seen to fail with the row changed to "until enough enemies have been slain", and
 with "slain 50% of enemies", in a copy of the repository.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (c1d93b88) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 27 actions, 24 files compiled" and "219 tests performed, 219 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 9278adcf:** "Build: Succeeded - 14 actions, 11 files compiled" and "2217 tests
+  performed, 2217 succeeded, 0 failed", as registered (2212 + the five named tests), with every
+  declared test reported. In that run's `game/Saved/Logs/Cataclysm.log` the group's 224 all succeeded,
+  the five named above among them.
+- **Three guard proofs** in `CataclysmDungeonGameMode.cpp` on the prefix
+  `Cataclysm.DungeonModifierEffects.`, each exactly as registered and each 224 of 224 restored:
+  - stairs never sealed (`if (BloodGatesSealTheStairs())` made `if (false)`) failed 2 of 224:
+    `TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor` and
+    `ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget`;
+  - the refusal not restarting the stairs' watch failed 1 of 224:
+    `TheStairsStaySealedUntilThePlayerHasSlainHalfTheFloor`;
+  - every death counted as the player's (the killer check removed) failed 1 of 224:
+    `ACreatureKilledByAnotherIsNotSlainAndLowersTheTarget`.
 
 ---
 
