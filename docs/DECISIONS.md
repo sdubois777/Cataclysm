@@ -1083,8 +1083,6 @@ grant nothing with no error.
 
 ---
 
----
-
 ## 2026-09-23 — "In combat" means a hit dealt or taken within the last 3 seconds, and a scaled value can be capped
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two conditions, two
