@@ -15,8 +15,8 @@ a speed row could have changed), three automation tests in
 `tools/tests/test_every_condition_says_what_it_depends_on.py`. Issue
 [#1821](https://github.com/sdubois777/Cataclysm/issues/1821), which this closes.
 
-**Partial.** The Python suite has run. The compile, the automation tests and the guard proofs wait for a
-machine window.
+**Applied.** The Python suite, the compile, the automation tests and the three guard proofs have run,
+the Unreal steps inside one editor lock. The figures are at the end of this entry.
 
 ### What was wrong
 
@@ -79,6 +79,39 @@ it is today, and nothing in this project tests with a client.
 Seven enchantment sentences that change movement speed for a window after an event, held since
 2026-09-14 for this reason, "Using your support ability grants you 10%-20% increased movement speed for
 3 seconds" among them. Each still needs its own new clock, on the pattern of pull request #2013.
+
+### Figures
+
+**The Unreal window**, one editor lock from 18:06:41Z to 18:15:46Z on 2026-09-23, every line as printed:
+
+| Step | What it printed |
+| :-- | :-- |
+| the first test alone on unchanged engine code, commit `afde6d11`, prefix `Cataclysm.Player.` | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 16 tests performed, 15 succeeded, 1 failed: AnEnemyWalkingIntoReachDropsTheReductionWithNoHealthChange` |
+| this change, head `5396fd89` (game tree `af098b1d`), the whole suite, the run of record | `Build: Succeeded - 27 actions, 24 files compiled`; `Tests: 2169 tests performed, 2169 succeeded, 0 failed`; `Declared: 2169 tests in the tree at 5396fd89; 2169 performed, gap 0` (18 in `Cataclysm.Player.`, counted from the test log) |
+
+**The defect, shown on the code before the change.** The one failure before the change was the
+registered assertion: "Expected 'with an enemy within four metres and nothing else happening, the
+reduction is dropped' to be 460.000000, but it was 230.000000". It was the only error in that test's
+log. So the health check before it passed, and the speed stayed halved for half a second with an enemy
+two metres away and nothing else happening. 39 tests of the whole suite reported skipping part of what
+they check: the art-pack ones a git worktree cannot run in full.
+
+**The guard proofs**, at prefix `Cataclysm.Player.`, run detached, each with the SHA-256 of the file it
+broke taken before the break and after the restore:
+
+| The break | With it in | Restored |
+| :-- | :-- | :-- |
+| P1: the gate removed, `if (!MovementSpeedCanChangeUnannounced())` becomes `if (false)` | 18 performed, 17 succeeded, 1 failed: `ASpeedLineWithNothingToWatchCostsTheStepNothing` | 18 of 18 |
+| P2: the step's call to `AfterRegenerationStep` replaced with nothing | 18 performed, 15 succeeded, 3 failed: `AnEnemyWalkingIntoReachDropsTheReductionWithNoHealthChange`, `ASpeedLineWithNothingToWatchCostsTheStepNothing`, `ATimedSpeedRowOpensOnItsEventAndClosesWithinAStep` | 18 of 18 |
+| P3: the action event no longer announced | 18 performed, 17 succeeded, 1 failed: `ATimedSpeedRowOpensOnItsEventAndClosesWithinAStep` | 18 of 18 |
+
+All three printed `PROVED True CRASHED False`, and each file's hash was the same before and after. The
+tests each proof failed are the ones registered. Which assertion inside each failed was not read,
+because the restored run overwrites the test log.
+
+**Python**, on `5396fd89` before the window, registered at 5342 collected: `5334 passed, 8 skipped in
+389.43s (0:06:29)`, exit 0; results file tests=5342, failures=0, errors=0, skipped=8. ruff:
+`All checks passed!`
 
 ---
 
