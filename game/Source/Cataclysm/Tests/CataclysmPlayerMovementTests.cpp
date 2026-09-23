@@ -1192,6 +1192,129 @@ bool FCataclysmPlayerSpeedIgnoresAReductionOnlyWhileCrowded::RunTest(const FStri
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FCataclysmPlayerSpeedFollowsAnEnemyIntoReachUnprompted,
+	"Cataclysm.Player.AnEnemyWalkingIntoReachDropsTheReductionWithNoHealthChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The Ravager keystone Unstoppable's movement clause takes effect when an enemy
+ * comes within four metres, without anything else happening. Issue #1821.
+ *
+ * THE TEST ABOVE CALLS `RefreshMovementSpeed` BY HAND after each body is
+ * placed, so it proves the clause is judged correctly and cannot see whether
+ * the game ever asks. Until issue #1821 the game asked only when the
+ * character's health, class resource or speed attribute changed: an enemy
+ * walking into reach changes none of those, so the reduction stayed on until
+ * the player next took damage, and stayed off after the enemy left.
+ *
+ * NOTHING HERE CALLS THE REFRESH. The game clock runs, and the speed has to
+ * follow on its own. The character's health is checked unchanged across both
+ * readings, because a blow landing in between would refresh the speed through
+ * the health route and the test would pass for the wrong reason.
+ */
+bool FCataclysmPlayerSpeedFollowsAnEnemyIntoReachUnprompted::RunTest(const FString&)
+{
+	using namespace CataclysmPlayerMovementTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* AbilitySystem =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), AbilitySystem))
+	{
+		return false;
+	}
+
+	AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetMovementSpeedAttribute(),
+		RavagerMetresPerSecond);
+
+	// THE SAME TWO LINES AS THE TEST ABOVE: a hazard halving the speed, and the
+	// flag granted only while an enemy is within four metres.
+	FCataclysmStatInputs Speed;
+	Speed.Base = RavagerMetresPerSecond;
+	Speed.Modifiers.Add(Always(ECataclysmStatBucket::More, -50.0f));
+
+	FCataclysmStatInputs Flag;
+	Flag.Base = 0.0f;
+	Flag.Modifiers.Add(Row(ECataclysmStatBucket::Flat, 1.0f,
+						   ECataclysmStatCondition::EnemiesInReachAtLeast, 1.0f,
+						   FourMetres));
+
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("movement_speed")), Speed);
+	Stats.Add(FName(ACataclysmPlayerCharacter::MovementSpeedReductionSuppressedStat),
+			  Flag);
+	AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(FVector::ZeroVector,
+													 FRotator::ZeroRotator);
+	const UCharacterMovementComponent* Movement =
+		Character ? Character->GetCharacterMovement() : nullptr;
+	if (!TestNotNull(TEXT("movement component"), Movement))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+
+	const float Plain =
+		RavagerMetresPerSecond * ACataclysmPlayerCharacter::CentimetresPerMetre;
+	const auto Health = [AbilitySystem]()
+	{
+		return AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetHealthAttribute());
+	};
+
+	// ALONE, THE REDUCTION STANDS. This reading comes from the setup's own
+	// refresh, so it is the control for the one below.
+	if (!TestEqual(TEXT("alone, the reduction halves the speed"),
+				   Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f))
+	{
+		return false;
+	}
+
+	// AN ENEMY TWO METRES AWAY, AND HALF A SECOND OF GAME TIME: two steps of
+	// the quarter-second regeneration timer.
+	const float HealthBefore = Health();
+	ACataclysmEnemyCharacter* Enemy =
+		SpawnHostile(World, FVector(0.0f, 2.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("an enemy within four metres"), Enemy))
+	{
+		return false;
+	}
+	CataclysmTestWorld::RunClock(World, 0.5f);
+
+	if (!TestEqual(TEXT("the character's health did not change, so nothing but "
+						"the enemy's arrival can have moved the speed"),
+				   Health(), HealthBefore, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with an enemy within four metres and nothing else "
+				   "happening, the reduction is dropped"),
+			  Movement->MaxWalkSpeed, Plain, 0.01f);
+
+	// AND IT COMES BACK WHEN THE ENEMY IS GONE, which is the half a refresh on
+	// arrival alone would never give.
+	Enemy->Destroy();
+	CataclysmTestWorld::RunClock(World, 0.5f);
+
+	TestEqual(TEXT("with the enemy gone and nothing else happening, the "
+				   "reduction is back"),
+			  Movement->MaxWalkSpeed, Plain * 0.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FCataclysmMovementSuppressionStatNameIsKnown,
 	"Cataclysm.Player.TheMovementSuppressionStatNameIsTheOneTheMapKnows",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
