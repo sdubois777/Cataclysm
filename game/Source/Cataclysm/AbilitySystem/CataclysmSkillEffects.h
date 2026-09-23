@@ -46,8 +46,9 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	bool bIsArea = false;
 
 	/**
-	 * Bleed, poison, burn and the rest. An energy shield does not absorb it,
-	 * which is what makes a shield a distinct defence rather than extra health.
+	 * Bleed, poison, burn and the rest. An energy shield absorbs every kind but
+	 * bleed (issue #2014; until then it absorbed none), and a tick restarts the
+	 * shield's refill wait whatever its kind.
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
 	bool bIsDamageOverTime = false;
@@ -860,9 +861,10 @@ public:
 	 * 2026-08-24 -- a fully mitigated hit would otherwise have set a target
 	 * alight at full strength.
 	 *
-	 * WHY THE THRESHOLD RATHER THAN ALLOWING IT OUTRIGHT. The design already
-	 * says damage over time bypasses an energy shield, so ailments are the
-	 * existing route past one defensive layer. Letting an incidental one ignore
+	 * WHY THE THRESHOLD RATHER THAN ALLOWING IT OUTRIGHT. When this was written
+	 * the design said damage over time bypassed an energy shield, so ailments
+	 * were the existing route past one defensive layer; since issue #2014 only
+	 * bleed is. Letting an incidental one ignore
 	 * every layer is a larger change than it looks and nobody asked for it. A
 	 * designed one is different: it is part of what the skill IS, so a Support
 	 * skill dealing no damage by design still sets alight what its sentence

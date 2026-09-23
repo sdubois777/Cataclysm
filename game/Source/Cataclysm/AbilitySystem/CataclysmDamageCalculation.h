@@ -107,13 +107,33 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	bool bIsArea = false;
 
 	/**
-	 * Bleed, poison, burn and the rest. Routed differently: an energy shield
-	 * does not absorb it, though it does still restart the shield's recharge,
-	 * and it is never evaded, because a tick is not a direct attack.
+	 * Bleed, poison, burn and the rest. It restarts the energy shield's
+	 * recharge, and it is never evaded, because a tick is not a direct attack.
 	 * Issue #1584.
+	 *
+	 * THE SHIELD ABSORBS IT, UNLESS IT IS A BLEED: see `bIsBleed`. Until issue
+	 * #2014 no tick of any kind reached the shield.
 	 */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsDamageOverTime = false;
+
+	/**
+	 * A damage-over-time tick that is a bleed. Issue #2014.
+	 *
+	 * THE ONE KIND OF DAMAGE OVER TIME AN ENERGY SHIELD DOES NOT ABSORB. The
+	 * project owner, 2026-09-18: "every DoT except bleed reaches ES." A bleed
+	 * passes to health unless the defender carries
+	 * `shield_absorbs_damage_over_time`, which the Warded keystone and the
+	 * "Energy shield can now be effected by bleed" drawback grant.
+	 *
+	 * FILLED FROM THE TICK'S GRANTED TAGS, NOT ITS ASSET TAGS.
+	 * `UCataclysmSkillEffects::ApplyDamageOverTime` grants the ailment's tag,
+	 * `Keyword.DoT.Bleed`, and carries only the bare `Keyword.DoT` as an asset
+	 * tag. A ground zone's tick and a dungeon hazard's carry no ailment at all,
+	 * so they are not bleeds and the shield takes them.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bIsBleed = false;
 
 	/** 10% more damage to what reaches health. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")

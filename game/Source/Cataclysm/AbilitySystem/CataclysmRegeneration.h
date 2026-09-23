@@ -41,9 +41,10 @@ class UAbilitySystemComponent;
  * rather than a guess. Its section says the shield "refills 3 seconds after the
  * character last took damage", that taking damage again inside that window
  * restarts the wait, and that damage over time restarts it as well. That last
- * part is load-bearing: the shield does not absorb damage over time at all, so
- * without it a bleeding character would refill their shield freely and the
- * shield would be strongest against the one thing it ignores.
+ * part is load-bearing: the shield does not absorb a bleed (issue #2014; until
+ * then it absorbed no damage over time at all), so without it a bleeding
+ * character would refill their shield freely and the shield would be strongest
+ * against the one thing it ignores.
  *
  * Health and mana have no such delay. Nothing in the design gives them one, and
  * the enchantment that proves the shield's delay exists -- "regeneration begins

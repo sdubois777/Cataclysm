@@ -1709,10 +1709,10 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// enemy's damage type, so the player's resistance to it applies to every
 	// tick and not only to the blow that started it.
 	//
-	// AND MARKED AS DAMAGE OVER TIME, which is what stops an energy shield
-	// absorbing it. A shield that soaked burn would be a second health bar rather
-	// than a distinct defence, and damage over time is the design's answer to
-	// shield stacking. Issue #513.
+	// AND MARKED AS DAMAGE OVER TIME, which restarts an energy shield's refill
+	// wait and cannot be evaded. Issue #513. Whether the shield ABSORBS it is the
+	// ailment's granted tag: every kind but bleed, since issue #2014. Until then
+	// no tick reached the shield.
 	FCataclysmHitDelivery Delivery;
 	Delivery.bIsDamageOverTime = true;
 	Delivery.DamageType = DamageType;

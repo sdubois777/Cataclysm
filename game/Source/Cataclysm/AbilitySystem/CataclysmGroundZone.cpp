@@ -378,7 +378,8 @@ void ACataclysmGroundZone::Sweep()
 	{
 		// AREA AND OVER TIME BOTH. A zone catches whatever is standing in it
 		// rather than striking one target, so it cannot be evaded; and it is
-		// damage over time, so an energy shield does not absorb it. Issue #513.
+		// damage over time, which restarts an energy shield's refill wait. Issue
+		// #513. It is not a bleed, so the shield absorbs it (issue #2014).
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = true;
 		Delivery.bIsDamageOverTime = true;
