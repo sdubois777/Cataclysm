@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — The floor's dead rise once, at half health, when half the floor has fallen
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the revival mark,
+and the death handler skipping the drop roll and the experience for a marked creature),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the rule's key, figures
+and arithmetic), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the record of
+deaths, the revival, a fixed rung passed through spawning, Vengeful Wraiths setting the mark, the floor
+panel and the per-floor reset), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Celestial_Divine_Resurgence` in `game/Data/DungeonModifiers.csv`, weight 15: "Once per floor, all
+defeated enemies on that floor resurrect at half health in a sudden holy revival." Two figures are the
+row's own: once a floor, and half health.
+
+### The owner's revival mark, built here
+
+The project owner decided on 2026-09-17 that "a creature that is revived or resurrected is marked, and
+its second death drops no loot and grants no experience", and that the mark was "to be built with
+whichever of those rows is taken first". This is that row. `ACataclysmEnemyCharacter::bRisenFromTheDead`
+is the mark, and `HandleDeath` skips `SpawnDropsFor` and `GrantExperience` for a marked creature and
+nothing else: the death notice is still sent, so every rule still hears the death.
+
+**No automation test reaches those two payments.** The death handler needs a possessed player, a loot
+table and an enemy score before it gets to them. `test_a_risen_creature_pays_nothing_and_a_wraith_is_risen`
+reads the handler with its comments removed and requires both payments to be gated on the mark; it was
+seen to fail with each gate removed and with the wraith's mark commented out.
+
+### What the rule does
+
+Each death of an unmarked creature on a floor carrying the row is counted, and recorded with its place,
+its kind and its rung. The moment at least half of the creatures the floor placed have fallen, every
+recorded death rises at once: at its kind and rung, at half of its maximum health, and marked. After
+that, nothing more rises on that floor. The stairs forget all of it. The floor panel says
+`holy revival: N of M fallen, comes at K` while waiting and `holy revival: N risen` after.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-09-23:**
+
+- **When it fires: at least half of the creatures the floor placed, counted at the moment of each
+  death, rounded up.** Of five placed, three must fall; of four, two. "Placed" is the unmarked creatures
+  that have fallen plus the unmarked still standing, counted at each death. It is not the length of the
+  floor's creature list: an entry can be emptied by the engine after its creature is destroyed, so that
+  length drifts. A state the player creates, which cannot fire on an empty floor; a timer would fire
+  whatever the player did.
+- **No cap.** The row says "all", and the trigger holds the number at about half the floor. **A play-test
+  point:** a large floor raises many creatures in one frame, which was not measured for lag.
+- **Once means once.** A creature that dies after the revival stays dead, whether it is dying for the
+  first time or the second.
+- **A Vengeful Wraith is a revival and is marked**, so one kill pays once. The Vengeful Wraiths row says
+  the kill "stands back up". A guard, an arriving wave or any other new creature is not marked, because
+  it never died: the owner's own example. **The owner may veto this ruling.** One line under the
+  2026-09-18 Vengeful Wraiths entry points here.
+- **A marked creature is neither counted nor recorded**: not as placed, not as fallen, and never as a
+  death that could rise. So a risen creature that lives into a Horde dungeon's next wave does not count
+  toward that floor's revival, and a wraith that dies before the revival does not rise in it.
+
+**Under the owner's delegation, made while writing it:**
+
+- **Each creature rises at the kind and rung it died at**, because the row says "resurrect". Its
+  modifiers are drawn afresh for that rung; which ones it carried before is not recorded. To make the
+  rung stick, `SpawnPlacedCreature` and `ApplyDesignedStats` take an optional fixed rung, set before the
+  modifiers are drawn: setting it afterwards would keep the modifiers of whatever rung was drawn first,
+  because drawing only ever adds. Every other caller leaves it unset and behaves as before.
+- **Half health is half of the risen creature's own maximum**, written after its rung, because setting a
+  rung refills health. Its energy shield is left as its rung gives it; the row names health only.
+- **Every death counts, whoever dealt it**: the row says "all defeated enemies", not the player's kills.
+  A creature of none of the seven kinds this dungeon places is counted and not recorded, because nothing
+  can put it back; Vengeful Wraiths treats it the same way.
+
+### Tests
+
+Six automation tests: `TheRevivalIsDueAtHalfTheFloorRoundedUp`,
+`HalfTheFloorFallenRaisesEveryDeathAtHalfHealthAndItsRung`,
+`TheRevivalComesOnceAndLaterDeathsStayDead`, `AMarkedCreatureIsNeitherCountedNorRaised`,
+`ARisenCreatureDoesNotCountTowardTheNextFloor` and `AWraithIsMarkedAsRisenAndItsDeathPaysNothing`, all
+in `Cataclysm.DungeonModifierEffects.`. Two Python checks: the row still states its two figures, and the
+death handler gates both payments on the mark while Vengeful Wraiths sets it.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — Deeper Hurt lengthens a Cripple or a Weaken where it is applied, and a spread copy keeps the row's duration
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp` (the stat's name
@@ -3960,6 +4053,10 @@ Holy Repercussions', and finding it is what produced the distinction written abo
   a test, not measured against a player's damage over a real fight.
 - **Whether a floor can fill with wraiths.** There is no ceiling on how many rise, because the row
   states none and a 10% chance is its own limit. How that reads on a long floor was not measured.
+
+**Added 2026-09-23:** a wraith is now marked as risen, so its death pays no loot and no experience;
+see the entry "The floor's dead rise once, at half health, when half the floor has fallen" of
+2026-09-23. A ruling under the owner's delegation, which the owner may veto.
 
 ---
 

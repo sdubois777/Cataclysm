@@ -20159,4 +20159,462 @@ bool FCataclysmDesperateMeasuresOnTheFloorTest::RunTest(const FString& Parameter
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Celestial_Divine_Resurgence, and the owner's revival mark. Issues #1820 and #41.
+//
+// "Once per floor, all defeated enemies on that floor resurrect at half health in a
+// sudden holy revival." The revival comes when at least half of the creatures the floor
+// placed have fallen, counted at each death and rounded up: a ruling under the owner's
+// delegation, 2026-09-23.
+//
+// WHAT THESE CANNOT REACH: the two payments a marked creature's death skips. They sit in
+// `ACataclysmEnemyCharacter::HandleDeath` behind a possessed player, a loot table and an
+// enemy score; `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` reads that
+// handler instead. These test the mark itself and everything the floor does with it.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where the floor's dead rise again, once. Issues #1820, #41. */
+	const FName DivineResurgence(UCataclysmDungeonModifierEffects::DivineResurgenceKey);
+
+	/**
+	 * The floor every Divine Resurgence test starts from, emptied of the creatures
+	 * starting play put there, with every Imp a Common -- the reason the Vengeful
+	 * Wraiths floor gives, which applies here too: a drawn rung is a coin toss under
+	 * every assertion about a rung.
+	 */
+	ACataclysmDungeonGameMode* AFloorCarryingTheResurgenceRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonModifiers = {DivineResurgence};
+		Mode->FloorNumber = 1;
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString ResurgencePanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(DivineResurgence);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** Every creature on the floor carrying the revival mark, alive or not. */
+	TArray<ACataclysmEnemyCharacter*> TheRisen(ACataclysmDungeonGameMode* Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Risen;
+		for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			if (IsValid(Creature) && Creature->bRisenFromTheDead)
+			{
+				Risen.Add(Creature);
+			}
+		}
+		return Risen;
+	}
+
+	/**
+	 * Kill a creature the floor raised. ITS EVASION IS ZEROED FIRST: a risen creature is
+	 * spawned at its rung with that rung's designed evasion, so an ordinary blow against
+	 * it is a roll, and a test that kills it must not depend on one.
+	 */
+	bool ThePlayerKillsARisenOne(FAutomationTestBase& Test, const FPossessedPlayer& Player,
+								 ACataclysmEnemyCharacter* Risen)
+	{
+		if (UAbilitySystemComponent* System =
+				Risen ? Risen->GetAbilitySystemComponent() : nullptr)
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		}
+		return ThePlayerKills(Test, Player, Risen);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResurgenceArithmeticTest,
+	"Cataclysm.DungeonModifierEffects.TheRevivalIsDueAtHalfTheFloorRoundedUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResurgenceArithmeticTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// HALF OF FIVE IS THREE, AND HALF OF FOUR IS TWO: "at least half, rounded up".
+	TestFalse(TEXT("two of five is not half"), Effects::DivineResurgenceIsDue(2, 5));
+	TestTrue(TEXT("three of five is"), Effects::DivineResurgenceIsDue(3, 5));
+	TestFalse(TEXT("one of four is not"), Effects::DivineResurgenceIsDue(1, 4));
+	TestTrue(TEXT("two of four is exactly half, which is enough"),
+			 Effects::DivineResurgenceIsDue(2, 4));
+	TestTrue(TEXT("one of one is"), Effects::DivineResurgenceIsDue(1, 1));
+	TestFalse(TEXT("nothing placed is never due"), Effects::DivineResurgenceIsDue(0, 0));
+	TestFalse(TEXT("and nothing fallen is never due"), Effects::DivineResurgenceIsDue(0, 3));
+
+	TestEqual(TEXT("a creature of 300 health rises with 150"),
+			  Effects::DivineResurgenceHealthFor(300.0f), 150.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResurgenceRaisesTest,
+	"Cataclysm.DungeonModifierEffects.HalfTheFloorFallenRaisesEveryDeathAtHalfHealthAndItsRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResurgenceRaisesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheResurgenceRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// FOUR PLACED, ONE OF THEM AN ELITE, so the rung a creature rises at is visible.
+	ACataclysmEnemyCharacter* Elite =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 1);
+	ACataclysmEnemyCharacter* First =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 0);
+	PlaceCreatureAtRung(World, Mode, FVector(1600.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("an Elite was placed"), Elite)
+		|| !TestNotNull(TEXT("and a Common"), First))
+	{
+		return false;
+	}
+
+	if (!TestEqual(TEXT("a floor of four waits for two"), ResurgencePanelLine(Mode),
+				   FString(TEXT("holy revival: 0 of 4 fallen, comes at 2"))))
+	{
+		return false;
+	}
+
+	// ONE OF FOUR IS NOT HALF, and nothing rises.
+	if (!ThePlayerKills(*this, Player, Elite))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one fallen is not enough"), ResurgencePanelLine(Mode),
+			  FString(TEXT("holy revival: 1 of 4 fallen, comes at 2")));
+	TestEqual(TEXT("and nothing has risen"), TheRisen(Mode).Num(), 0);
+
+	// TWO OF FOUR IS: both rise, the Elite as an Elite.
+	if (!ThePlayerKills(*this, Player, First))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Risen = TheRisen(Mode);
+	if (!TestEqual(TEXT("both of the fallen rose"), Risen.Num(), 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the floor counted them"), ResurgencePanelLine(Mode),
+			  FString(TEXT("holy revival: 2 risen")));
+
+	int32 Elites = 0;
+	for (ACataclysmEnemyCharacter* Creature : Risen)
+	{
+		Elites += Creature->RarityStep == 1 ? 1 : 0;
+		TestFalse(TEXT("a risen creature is alive"), UCataclysmSkillEffects::IsDead(Creature));
+		TestFalse(TEXT("and its death pays nothing"), Creature->PaysForItsDeath());
+
+		const UAbilitySystemComponent* System = Creature->GetAbilitySystemComponent();
+		if (TestNotNull(TEXT("a risen creature has an ability system"), System))
+		{
+			const float Maximum = System->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+			TestTrue(FString::Printf(TEXT("it has a maximum to be half of: %.1f"), Maximum),
+					 Maximum > 0.0f);
+			TestEqual(TEXT("and rises at half of it"),
+					  System->GetNumericAttribute(Vital::GetHealthAttribute()),
+					  Maximum * 0.5f, 0.01f);
+		}
+	}
+	TestEqual(TEXT("one of them rose at the Elite's rung"), Elites, 1);
+	return true;
+}
+
+// ONCE MEANS ONCE: after the revival, the dead stay dead -- the ones killed for the first
+// time and the risen killed a second time.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResurgenceOnceTest,
+	"Cataclysm.DungeonModifierEffects.TheRevivalComesOnceAndLaterDeathsStayDead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResurgenceOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheResurgenceRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(
+			World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0));
+		if (!TestNotNull(TEXT("a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+
+	if (!ThePlayerKills(*this, Player, Placed[0]) || !ThePlayerKills(*this, Player, Placed[1]))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Risen = TheRisen(Mode);
+	if (!TestEqual(TEXT("the revival raised the two"), Risen.Num(), 2))
+	{
+		return false;
+	}
+
+	// A FIRST DEATH AFTER IT, and a risen creature's second.
+	if (!ThePlayerKills(*this, Player, Placed[2])
+		|| !ThePlayerKillsARisenOne(*this, Player, Risen[0]))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("no second revival: still two marked"), TheRisen(Mode).Num(), 2);
+	TestEqual(TEXT("and the floor still says two rose"), ResurgencePanelLine(Mode),
+			  FString(TEXT("holy revival: 2 risen")));
+	return true;
+}
+
+// A MARKED CREATURE IS NOT THE FLOOR'S TO COUNT OR TO RAISE: it is one of the dead already
+// brought back, whatever brought it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResurgenceMarkedTest,
+	"Cataclysm.DungeonModifierEffects.AMarkedCreatureIsNeitherCountedNorRaised",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResurgenceMarkedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheResurgenceRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Marked =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* A = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* B = PlaceCreatureAtRung(World, Mode, FVector(1200.0f, 0.0f, 0.0f), 0);
+	PlaceCreatureAtRung(World, Mode, FVector(1600.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("the marked creature"), Marked) || !TestNotNull(TEXT("A"), A)
+		|| !TestNotNull(TEXT("B"), B))
+	{
+		return false;
+	}
+	Marked->bRisenFromTheDead = true;
+
+	TestEqual(TEXT("three are counted as placed, not four"), ResurgencePanelLine(Mode),
+			  FString(TEXT("holy revival: 0 of 3 fallen, comes at 2")));
+
+	if (!ThePlayerKills(*this, Player, Marked))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and its death is not counted as fallen"), ResurgencePanelLine(Mode),
+			  FString(TEXT("holy revival: 0 of 3 fallen, comes at 2")));
+
+	if (!ThePlayerKills(*this, Player, A) || !ThePlayerKills(*this, Player, B))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two of three bring the revival"), ResurgencePanelLine(Mode),
+			  FString(TEXT("holy revival: 2 risen")));
+
+	// EXACTLY TWO NEW MARKED CREATURES STAND, and the marked one that died is not among
+	// them: it is dead, so `TheRisen` counts it only while its body stays; count the
+	// living.
+	int32 LivingRisen = 0;
+	for (ACataclysmEnemyCharacter* Creature : TheRisen(Mode))
+	{
+		LivingRisen += UCataclysmSkillEffects::IsDead(Creature) ? 0 : 1;
+	}
+	TestEqual(TEXT("the two that fell rose, and the marked one did not"), LivingRisen, 2);
+	return true;
+}
+
+// THE NEXT FLOOR STARTS FROM NOTHING, AND A RISEN SURVIVOR IS NOT ITS CREATURE TO COUNT.
+// A Horde dungeon's change of wave keeps the arena and its survivors, which is the only
+// way a risen creature reaches a later floor at all.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResurgenceNextFloorTest,
+	"Cataclysm.DungeonModifierEffects.ARisenCreatureDoesNotCountTowardTheNextFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmResurgenceNextFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheResurgenceRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	TArray<ACataclysmEnemyCharacter*> Placed;
+	for (int32 Index = 0; Index < 4; ++Index)
+	{
+		Placed.Add(PlaceCreatureAtRung(
+			World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0));
+		if (!TestNotNull(TEXT("a creature was placed"), Placed.Last()))
+		{
+			return false;
+		}
+	}
+	if (!ThePlayerKills(*this, Player, Placed[0]) || !ThePlayerKills(*this, Player, Placed[1]))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("the revival raised two"), TheRisen(Mode).Num(), 2))
+	{
+		return false;
+	}
+
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+
+	// THE TWO RISEN ARE STILL STANDING, so there is something the count could wrongly
+	// include; asserted, or the test below would pass on an empty arena.
+	int32 RisenStanding = 0;
+	int32 UnmarkedStanding = 0;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		if (!IsValid(Creature) || UCataclysmSkillEffects::IsDead(Creature))
+		{
+			continue;
+		}
+		RisenStanding += Creature->bRisenFromTheDead ? 1 : 0;
+		UnmarkedStanding += Creature->bRisenFromTheDead ? 0 : 1;
+	}
+	if (!TestEqual(TEXT("both risen creatures lived into the next wave"), RisenStanding, 2))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the new floor has seen no deaths"),
+			  Mode->DivineResurgenceFallenCount(), 0);
+	TestEqual(TEXT("and raised nobody yet"), Mode->DivineResurgenceRisenCount(), 0);
+	TestEqual(TEXT("and counts only the unmarked as placed"),
+			  Mode->DivineResurgencePlacedCount(), UnmarkedStanding);
+	return true;
+}
+
+// Q4: A WRAITH IS A REVIVAL, ruled under the owner's delegation on 2026-09-23 and
+// vetoable. The row says the kill "stands back up"; the owner's decision of 2026-09-17 is
+// that one kill pays once.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWraithIsMarkedTest,
+	"Cataclysm.DungeonModifierEffects.AWraithIsMarkedAsRisenAndItsDeathPaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWraithIsMarkedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheWraithsRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.VengefulWraithRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the wraith roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain =
+		SpawnImpWithHealth(World, FVector(600.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an Imp for the player to kill"), Slain))
+	{
+		return false;
+	}
+
+	// THE CONTROL: a creature that has never died pays, so the answer below is the mark.
+	TestTrue(TEXT("an ordinary creature's death pays"), Slain->PaysForItsDeath());
+
+	if (!ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Wraith = TheOnlyWraith(Mode);
+	if (!TestNotNull(TEXT("a wraith stood up"), Wraith))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the wraith is marked as risen"), Wraith->bRisenFromTheDead);
+	TestFalse(TEXT("so its death pays nothing"), Wraith->PaysForItsDeath());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
