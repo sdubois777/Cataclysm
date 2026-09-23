@@ -3578,3 +3578,61 @@ def test_dead_rising_chance_is_declared_as_the_tables_figure_for_a_death():
         "DeadRisingChancePercent is no longer declared as SporeCloudsChancePercentOnDeath, "
         "the ten this table uses for a chance fired by a death. Write the tie back rather "
         "than a second number.")
+
+
+def test_suffering_aura_row_still_names_health_and_mana_and_no_figure():
+    """The row the rule reads: two pools it drains, one it cannot, and no rate.
+
+    "The dungeon passively saps the player's resources (e.g., health, mana, stamina) at a
+    slow but constant rate." Health and mana are what the rule drains; stamina is named
+    and does not exist in this game; and the row gives no figure, which is why the rates
+    are the project owner's decision of 2026-09-23. If the row ever states a figure or
+    stops naming a pool, the rule must follow it.
+    """
+    words = flat(rows()["Famine_Suffering_Aura"]["Description"])
+    lower = words.lower()
+
+    for pool in ("health", "mana", "stamina"):
+        assert pool in lower, (
+            f"Famine_Suffering_Aura no longer names {pool}. The rule drains health and mana "
+            "and nothing else, ruled on this list. " + words)
+    assert "constant" in lower, (
+        "Famine_Suffering_Aura no longer says CONSTANT. The rule takes the same share on "
+        "every floor because it did. " + words)
+    assert "%" not in words, (
+        "Famine_Suffering_Aura now states a percentage. The rates were the owner's decision "
+        "because the row gave none; use the row's figure. " + words)
+
+
+def test_suffering_aura_beats_every_classs_base_regeneration():
+    """The owner's intent of 2026-09-23, recomputed from the class table.
+
+    The owner chose a drain the player notices, enough to beat every class's BASE
+    regeneration. This reads game/Data/ClassStats.csv the way `UCataclysmClassStats::
+    BaseFor` does -- a class's own row, else the Default row; Base plus PerLevel for each
+    level above the first -- over every class and every level from 1 to 100, and requires
+    each rate to exceed the highest regeneration share it finds. A class added or retuned
+    to regenerate faster fails this, rather than quietly making the rule invisible.
+    """
+    with (REPO_ROOT / "game" / "Data" / "ClassStats.csv").open(
+            newline="", encoding="utf-8") as handle:
+        table = list(csv.DictReader(handle))
+    classes = sorted({row["ClassName"] for row in table})
+
+    def base(name: str, stat: str, level: int) -> float:
+        row = next((r for r in table if r["ClassName"] == name and r["Stat"] == stat),
+                   None) or next(r for r in table
+                                 if r["ClassName"] == "Default" and r["Stat"] == stat)
+        return float(row["Base"]) + float(row["PerLevel"]) * (level - 1)
+
+    for pool, rate_name in (("health", "SufferingAuraHealthPercentPerSecond"),
+                            ("mana", "SufferingAuraManaPercentPerSecond")):
+        highest, who = max(
+            (100.0 * base(name, f"{pool}_regen", level) / base(name, f"max_{pool}", level),
+             f"{name} level {level}")
+            for name in classes for level in range(1, 101))
+        rate = constant(rate_name)
+        assert rate > highest, (
+            f"{rate_name} is {rate:g}% a second, and {who} regenerates {highest:.3f}% of its "
+            f"maximum {pool} a second from its base alone. The owner asked on 2026-09-23 for a "
+            "drain that beats every class's base regeneration; re-measure and move the rate.")

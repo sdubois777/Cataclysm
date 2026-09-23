@@ -1305,6 +1305,17 @@ private:
 						 class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Suffering Aura: take a beat's share of the player's maximum health and maximum
+	 * mana. Issues #1820 and #41.
+	 *
+	 * THE SAME RATE ON EVERY FLOOR, and NOT A HIT, for Mortal Decay's reason: the loss
+	 * comes from the floor, so nothing in the mitigation order touches it. It reads no
+	 * state of its own, so it has nothing to reset at the stairs.
+	 */
+	void StepSufferingAura(class ACataclysmPlayerCharacter* Player,
+						   class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
 	 * Wasting Sickness: put whatever stacks the player has onto their maximums.
 	 * Issues #1786 and #41.
 	 *

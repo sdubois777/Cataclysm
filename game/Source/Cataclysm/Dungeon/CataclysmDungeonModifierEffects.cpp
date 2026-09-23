@@ -94,6 +94,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::DivineResurgenceKey =
 const TCHAR* UCataclysmDungeonModifierEffects::DeadRisingKey =
 	TEXT("Death_Dead_Rising");
 
+const TCHAR* UCataclysmDungeonModifierEffects::SufferingAuraKey =
+	TEXT("Famine_Suffering_Aura");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -357,7 +360,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(AntiMagicZonesKey)
 		|| RowKey == FName(DesperateMeasuresKey)
 		|| RowKey == FName(DivineResurgenceKey)
-		|| RowKey == FName(DeadRisingKey))
+		|| RowKey == FName(DeadRisingKey)
+		|| RowKey == FName(SufferingAuraKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -528,6 +532,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DesperateMeasuresKey),
 		FName(DivineResurgenceKey),
 		FName(DeadRisingKey),
+		FName(SufferingAuraKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1692,6 +1697,14 @@ float UCataclysmDungeonModifierEffects::DivineResurgenceHealthFor(float MaxHealt
 bool UCataclysmDungeonModifierEffects::DeadRisingRevives(float Roll)
 {
 	return Roll < DeadRisingChancePercent;
+}
+
+float UCataclysmDungeonModifierEffects::SufferingAuraLossFor(float Maximum,
+															  float PercentPerSecond,
+															  float Seconds)
+{
+	return FMath::Max(0.0f, Maximum) * FMath::Max(0.0f, PercentPerSecond) / 100.0f
+		* FMath::Max(0.0f, Seconds);
 }
 
 float UCataclysmDungeonModifierEffects::HolyRepercussionsJudgmentLessPercent(
