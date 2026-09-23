@@ -80,6 +80,7 @@ namespace
 		{ TEXT("seconds_after_hit_taken"),      ECataclysmStatCondition::WithinSecondsOfHitTaken },
 		{ TEXT("seconds_after_resource_full"),  ECataclysmStatCondition::WithinSecondsOfClassResourceFull },
 		{ TEXT("seconds_after_resource_empty"), ECataclysmStatCondition::WithinSecondsOfClassResourceEmpty },
+		{ TEXT("seconds_after_striking_a_boss"), ECataclysmStatCondition::WithinSecondsOfStrikingABoss },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -456,6 +457,18 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// The same two rules again. Issue #1815.
 		return State.SecondsSinceClassResourceEmpty >= 0.0f
 			&& State.SecondsSinceClassResourceEmpty <= Value;
+
+	case ECataclysmStatCondition::WithinSecondsOfStrikingABoss:
+		// The same two rules again, and the same reason for the first: a
+		// character that has never struck a Boss reads -1, which is at or
+		// within every threshold a sheet may write.
+		//
+		// THE ONLY CLOCK HERE THAT TURNS ON WHAT WAS STRUCK. The stamp is made
+		// on whoever the blow belongs to, which
+		// `UCataclysmCombatEvents::AttackerOf` decides once for the whole game,
+		// so nothing in this file has to know about minions or Conduit.
+		return State.SecondsSinceStruckABoss >= 0.0f
+			&& State.SecondsSinceStruckABoss <= Value;
 
 	case ECataclysmStatCondition::SkillHealthCostAbovePercent:
 		// STRICTLY ABOVE, WHICH IS THE OPPOSITE BOUNDARY FROM EVERY OTHER

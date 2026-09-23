@@ -1444,6 +1444,32 @@ public:
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceClassResourceEmptied() const;
 
+	/**
+	 * Record that this character has just landed a blow on a Boss enemy.
+	 *
+	 * CALLED FROM `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, in
+	 * the branch that runs when a blow got through -- health, energy shield or
+	 * mana -- so a blow that was evaded, or that armour and resistance stopped
+	 * completely, opens nothing. That is the same line the energy shield's
+	 * refill wait draws a few lines above it.
+	 *
+	 * ON THE CHARACTER THE BLOW BELONGS TO, WHICH IS NOT ALWAYS THE INSTIGATOR.
+	 * The caller asks `UCataclysmCombatEvents::AttackerOf`, so a minion's blow
+	 * opens the minion's own window and opens its summoner's only while the
+	 * summoner holds the Ritualist keystone Conduit. Asking a second time here
+	 * is how those two would come to disagree.
+	 *
+	 * WHAT THE WINDOW IS FOR. "Your cooldowns reset 50%-100% faster when
+	 * fighting Boss enemies, for 4 seconds after you strike one" -- a cooldown
+	 * counts down with nobody being struck, so the per-blow condition
+	 * `target_is_boss` cannot reach it and a clock can. The project owner chose
+	 * the clock over a proximity check on 2026-09-18.
+	 */
+	void NoteStruckABoss();
+
+	/** How long ago that was, in seconds, or -1 if it has never happened. */
+	float SecondsSinceStruckABoss() const;
+
 	/** Promise this character one hit's worth of leech. */
 	void AddLeechPayment(const FCataclysmLeechPayment& Payment)
 	{
@@ -1692,6 +1718,12 @@ protected:
 	 * seconds. Issue #1815. Negative means never, as above.
 	 */
 	float LastSummonAtSeconds = -1.0f;
+
+	/**
+	 * When this character last landed a blow on a Boss enemy, in world seconds.
+	 * Negative means never, as above.
+	 */
+	float LastStruckABossAtSeconds = -1.0f;
 
 	/**
 	 * When this character last evaded a blow, in world seconds. Issue #1815.

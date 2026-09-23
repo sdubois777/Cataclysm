@@ -12,6 +12,10 @@
 class ACataclysmCharacterBase;
 class UCataclysmAbilitySystemComponent;
 struct FGameplayEffectModCallbackData;
+// FOR `AttackerOf` BELOW. Declared rather than included, which is what
+// `CataclysmSkillEffects.h` does for the same type and for the same reason: a
+// const reference in a declaration needs the name and not the definition.
+struct FGameplayEffectContextHandle;
 
 /**
  * One blow, as the character it landed on resolved it. Issue #41, slice 4.
@@ -280,6 +284,25 @@ public:
 	FCataclysmOnHit OnHit;
 	FCataclysmOnDeath OnDeath;
 	FCataclysmOnSkillUsed OnSkillUsed;
+
+	/**
+	 * Whose blow this is: the minion that dealt it, unless its summoner holds
+	 * the Ritualist keystone Conduit, and the instigator for every other blow.
+	 *
+	 * ONE IMPLEMENTATION, BECAUSE THE ANSWER HAS TO BE THE SAME EVERYWHERE.
+	 * `NoteBlow` below asks it for the hit record and the announcement, and
+	 * everything that asks "was this hit mine" -- on-hit and on-kill effects,
+	 * kill credit and four dungeon floor rules -- reads that answer. Issue
+	 * #1515 made this a real question by giving a minion its own instigator;
+	 * before that, leaving the instigator alone was the same as naming the
+	 * summoner.
+	 *
+	 * IT WAS INLINE IN `NoteBlow` UNTIL A SECOND CALLER NEEDED IT.
+	 * `UCataclysmVitalAttributeSet` opens a window on the attacker when a Boss
+	 * is struck, and working the answer out a second time there is exactly how
+	 * the keystone would quietly stop applying to one of the two.
+	 */
+	static AActor* AttackerOf(const FGameplayEffectContextHandle& Context);
 
 	/**
 	 * Announces a blow that has just resolved, and keeps it as the victim's last

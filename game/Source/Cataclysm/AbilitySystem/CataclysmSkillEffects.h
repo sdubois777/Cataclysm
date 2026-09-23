@@ -162,9 +162,18 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	 * This blow gives its attacker no leech.
 	 *
 	 * FOR A SUMMONED MINION, the fourth exclusion built for the same reason as
-	 * the three above. Leech is read off the attacker when a hit lands, and a
-	 * minion's damage is dealt in its summoner's name, so without this a
-	 * Ravager's imps would heal the Ravager with every blow they struck.
+	 * the three above. Leech is read off the attacker when a hit lands.
+	 *
+	 * UNTIL ISSUE #1515, on 2026-09-17, a minion's damage was dealt in its
+	 * summoner's name, and without this flag a Ravager's imps would have healed
+	 * the Ravager with every blow they struck. THAT IS NO LONGER WHY IT IS
+	 * HERE: a minion is its own instigator now, so it heals nobody else of its
+	 * own accord. What the flag forbids today is a minion leeching from figures
+	 * of ITS OWN, which the design does not ask for and no data can produce;
+	 * `CataclysmMinion.cpp` states that where the flag is set, and it is kept so
+	 * that the change of instigator moved no behaviour. Issue #2010 corrected
+	 * this paragraph, which had gone on saying the old reason in the present
+	 * tense and had already sent one reader to the wrong answer.
 	 *
 	 * THE DESIGN NAMES LEECH OUTRIGHT among what does not cross: "A minion does
 	 * not take the summoner's weapon damage, flat added damage, attack speed,
