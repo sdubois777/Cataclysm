@@ -54,6 +54,32 @@ Epidemic floor rule. A copy is **not** "Cripple and Weaken you apply":
 **Counts:** 296 passive effect rows from 295, and 217 of 441 nodes with an authored effect from 216.
 Measured then, the Ravager is 69 of its 74 nodes.
 
+**What "217 of 441" counts:** every row of `game/Data/PassiveNodes.csv`, a capstone counted once,
+that has at least one row in `PassiveEffects.csv`, **across all six trees**: Berserker 0 of 71,
+Bulwark 3 of 74, Masochist 74 of 74, Ravager 69 of 74, Ritualist 70 of 74, Saboteur 1 of 74. The
+three Demonic trees are 213 of 222.
+
+### THE MACHINE WINDOW, 2026-09-23, SHARED WITH KEPT LONGER
+
+One window for both nodes, run from worktree `jovial-bouman-9ada36` on head `e9e4142a` (development
+`7e0c793f`), with the editor lock held from the first build to the last proof. Every figure below
+matched its registration.
+
+| Step | Printed |
+|---|---|
+| Build, then six tests before the asset rebuild | `Build: Succeeded - 27 actions, 24 files compiled`; `6 tests performed, 4 succeeded, 2 failed: DeeperHurtLengthensTheCrippleAndWeakenARealRavagerApplies, KeptLongerLengthensWhatARealRitualistSummons`, each because its node's row was absent from the old asset |
+| Asset rebuild | `rebuilt 1 DataTable assets and left 28 already current, 3027 rows in total across /Game/Data`: PassiveEffects 294 to 296; committed as `8a7cb574` |
+| The whole suite, once | `2192 tests performed, 2192 succeeded, 0 failed` |
+
+| Proof | Printed |
+|---|---|
+| Kept Longer's multiplier dropped | `4 tests performed, 2 succeeded, 2 failed: KeptLongerLengthensWhatARealRitualistSummons, EveryStatWithNoAttributeIsActuallyRead`; restored 4 of 4 |
+| The guard that stops a minion never expiring, removed | `1 tests performed, 0 succeeded, 1 failed: AMinionDurationCutByAHundredPerCentKeepsTheStatedLifetime`; restored 1 of 1 |
+| Deeper Hurt's multiplier dropped | `2 tests performed, 0 succeeded, 2 failed: DeeperHurtLengthensTheCrippleAndWeakenARealRavagerApplies, EveryStatWithNoAttributeIsActuallyRead`; restored 2 of 2 |
+
+All three printed `PROVED: True CRASHED: False`, with the broken file's SHA-256 the same before and
+after. **Only tests are measured, not assertions:** the restored run overwrites the log.
+
 ---
 
 ---
@@ -109,7 +135,11 @@ reduces the duration, which is why the guard has its own test:
   the stated lifetime again with the points given back.
 
 **Counts:** 295 passive effect rows from 294, and 216 of 441 nodes with an authored effect from 215.
-Measured then, the Ritualist is 70 of its 74 nodes.
+Measured then, the Ritualist is 70 of its 74 nodes. The 441 is every node of all six trees, not the
+three Demonic ones; Deeper Hurt's entry of the same day lists them.
+
+**The machine window** was shared with Deeper Hurt; its entry carries the printed figures,
+including this node's test and its two guard proofs.
 
 ---
 
