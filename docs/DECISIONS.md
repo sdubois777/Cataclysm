@@ -19,9 +19,9 @@ landed ahead of its row), and the automation tests in
 `CataclysmStatPipelineTests.cpp` and `CataclysmAbilitySystemTests.cpp`. Issue
 [#2010](https://github.com/sdubois777/Cataclysm/issues/2010), which this closes.
 
-**Partial.** The Python suite has run. **The compile, the automation tests and the guard proofs have
-not.** No data row is written here; the row and its sentence need the design workbook, which another
-session holds.
+**Applied.** The Python suite, the compile, the automation tests and the three guard proofs have all
+run, on one tree inside one editor lock. The figures are at the end of this entry. No data row is
+written here; the row and its sentence need the design workbook, which another session holds.
 
 ### The sentence, and why it had no mechanism
 
@@ -142,6 +142,49 @@ true before #1515, and names issue #2010, which this closes.
 
 **The two minion cases are a pair and neither means anything alone.** A build reading the effect's
 instigator instead of `AttackerOf` passes the first and fails the second.
+
+### What the engine measured, on one tree inside one editor lock
+
+Every line below is what a command printed. The tree is `ead70d85`; the base it is measured against is
+`46763748`.
+
+**Each group counted on the base first**, so the five this change adds are visible as a difference
+rather than asserted:
+
+| Test group | On the base | On this tree |
+| :-- | --: | --: |
+| `Cataclysm.CombatEvents.` | 17 performed, 17 succeeded, 0 failed | 20 |
+| `Cataclysm.StatPipeline.` | 38 performed, 38 succeeded, 0 failed | 39 |
+| `Cataclysm.Ability.` | 3 performed, 3 succeeded, 0 failed | 4 |
+
+```
+the base's build    Build: Succeeded - 27 actions, 24 files compiled
+this tree's build   Build: Succeeded - 27 actions, 24 files compiled
+the whole suite     Tests: 2148 tests performed, 2148 succeeded, 0 failed
+                    Declared: 2148 tests in the tree at ead70d85; 2148 performed, gap 0
+```
+
+**The compile succeeded on the first attempt.** The 39 the whole suite reports as skipping part of
+what they check are the art-pack ones a git worktree cannot run in full; none is in any of the three
+groups above.
+
+### The three proofs, each naming exactly one test
+
+One per group, each run on its own, each with the source file's SHA-256 taken before the break and
+after the restore and compared.
+
+| The break | What failed with it in | Restored |
+| :-- | :-- | :-- |
+| the stamp reads the effect's instigator instead of `AttackerOf` | 20 performed, 19 succeeded, 1 failed: `TheConduitKeystoneOpensTheSummonersWindowWhenItsMinionStrikesABoss` | 20 performed, 20 succeeded, 0 failed |
+| the judgement loses its "never struck" guard | 39 performed, 38 succeeded, 1 failed: `TheWindowAfterStrikingABossHoldsInsideItAndRefusesWithoutOne` | 39 performed, 39 succeeded, 0 failed |
+| the state builder stops filling the clock | 4 performed, 3 succeeded, 1 failed: `ACooldownRowInTheBossWindowShortensOnlyAfterABossIsStruck` | 4 performed, 4 succeeded, 0 failed |
+
+All three report `PROVED: True`, `CRASHED: False`, and a source hash identical before and after.
+
+**The first proof is the one worth reading twice.** With the stamp reading the effect's instigator,
+`AMinionsStrikeOnABossOpensTheMinionsWindowAndNotItsSummoners` still **passed** — a minion is its own
+instigator, so that half cannot tell the two implementations apart. Only the Conduit case fails. That
+is the whole argument for one implementation of whose blow a blow is, measured rather than asserted.
 
 ---
 
