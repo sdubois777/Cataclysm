@@ -83,7 +83,10 @@ def body_of(text: str, opening: str) -> str:
 #: exception was ever deliberate. Deleting it would have stopped it catching the typo it
 #: was written for -- a field named for a share that `StatModifiersFor` then applies as
 #: the wrong kind of number. Naming the exception keeps both.
-NOT_PERCENTAGES = {"SkillsLockedValue"}
+#:
+#: `SpellsLockedValue` IS THE SAME STAT FOR THE SAME REASON, written by Anti-Magic Zones
+#: with its scope set to spells. Issues #1820 and #41.
+NOT_PERCENTAGES = {"SkillsLockedValue", "SpellsLockedValue"}
 
 
 @pytest.fixture(scope="module")
