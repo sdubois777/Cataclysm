@@ -1036,7 +1036,7 @@ change before its machine window. Nothing has been compiled.
 | `target_carries_a_dot` | condition, no value | the target carries a tag under `Keyword.DoT` |
 | `target_debuffs` | scale | how many distinct debuffs the target carries |
 | `buffs_held` | scale | how many self-buff skills are running on the character |
-| `mana_held` | scale | the mana the character holds now |
+| `mana_held_percent` | scale | a percentage of the mana the character holds now: the first scale whose value is a percentage of its reading rather than an amount per step |
 
 A debuff is what `UCataclysmDebuffs` counts: every damage over time and a stun, an explicit list with its
 sources recorded when it was made. `target_debuffs` is the length of the target's debuff tags, which is
@@ -1056,7 +1056,7 @@ grant nothing with no error.
 | "Strike skills deal 20%-40% increased damage against enemies affected by a DoT" | `attack_damage` and `spell_damage`, increased 20-40, `Type.Strike`, `target_carries_a_dot` |
 | "Each unique debuff on an enemy increases your crit chance against them by 5%-10%" | `crit_chance`, increased 5-10, `target_debuffs`, step 1 |
 | "Each unique debuff you apply to an enemy increases your damage against that enemy by 5%-10%" | `attack_damage` and `spell_damage`, increased 5-10, `target_debuffs`, step 1 |
-| "Your skills deal 10%-30% of your current mana as more damage" | `attack_damage` and `spell_damage`, flat 0.1-0.3, `mana_held`, step 1 |
+| "Your skills deal 10%-30% of your current mana as more damage" | `attack_damage` and `spell_damage`, flat 10-30, `mana_held_percent`, step 1 |
 | "Each active buff on you increases your damage by 5%-10%" | `attack_damage` and `spell_damage`, increased 5-10, `buffs_held`, step 1 |
 | "Spells deal 10%-20% bonus damage for each active buff on you" | `spell_damage`, increased 10-20, `Type.Spell`, `buffs_held`, step 1 |
 
@@ -1070,7 +1070,7 @@ grant nothing with no error.
 | "An enemy you apply a debuff to" is read as "a debuff on the enemy" | no record says who applied a debuff; a tag carries no source. **So a minion's debuffs count too**, unlike a minion's HIT, which is its own by the owner's ruling of 2026-09-17. A record of who applied each debuff is what would narrow it |
 | "From all sources" reaches the character's own hits only | the row sits on the character, and a minion's hit is its own. A debuff on the enemy that every attacker reads would be a new mechanism |
 | An active buff is a running self-buff skill | the player sees skills as buffs, and nothing shows the few-second windows enchantments open as buffs today. The same test `ClearWhatDeathEnds` uses. **To be revisited if a buff bar is built** |
-| "10%-30% of your current mana as more damage" is flat added damage, 0.1 to 0.3 a point of mana with a step of 1 | "as more damage" means added damage, as the genre's "gain X% of mana as extra damage" does, not the more bucket. A step of 1 loses no mana to rounding; a step of 100 at 10-30 would drop up to 99. The sheet's number is therefore not the sentence's 10-30, and the text check carries an entry saying why |
+| "10%-30% of your current mana as more damage" is flat added damage: 10 to 30 PER CENT of the mana held, counted in whole points (a step of 1) | "as more damage" means added damage, as the genre's "gain X% of mana as extra damage" does, not the more bucket. **CHANGED THE SAME DAY.** It was first ruled as 0.1 to 0.3 a point on a scale of the ordinary "value per step" kind, and the generator refused that row: the owner ruled on 2026-09-11 that the game shows an enchantment's rolled number in place of its sentence's range, so a row must carry the range the sentence states, and 0.1-0.3 would have read "0.2% of your current mana". The scale was replaced by one whose value is a percentage of its reading, which keeps the sentence's own 10-30 and loses no mana to rounding. The alternative was 10-30 per whole 100 mana, which rounds up to 99 away |
 
 ### Not written here
 

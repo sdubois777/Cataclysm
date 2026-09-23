@@ -4128,9 +4128,11 @@ SCALES = {
     "buffs_held": (0.0, 10.0, "a number of buffs"),
 
     # "Your skills deal 10%-30% of your current mana as more damage" is
-    # `mana_held` with a step of 1 and a flat value of 0.1 to 0.3 a point. Issue
-    # #1815. The same 0 to 1,000 bound as `max_mana`.
-    "mana_held": (0.0, 1000.0, "an amount of mana"),
+    # `mana_held_percent`, flat 10 to 30 with a step of 1: the value is a
+    # PERCENTAGE of the mana held, the one scale that reads its value that way,
+    # so the row carries the sentence's own range. Issue #1815. The same 0 to
+    # 1,000 bound as `max_mana`.
+    "mana_held_percent": (0.0, 1000.0, "an amount of mana"),
 }
 
 

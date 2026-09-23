@@ -1907,15 +1907,24 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Buff Held"),
 
 	/**
-	 * Multiplied by how many whole `ScaleStep` points of mana the character
+	 * `Value` PER CENT of the whole `ScaleStep` points of mana the character
 	 * holds now. Issue #1815: "Your skills deal 10%-30% of your current mana as
-	 * more damage", a flat row worth 0.1 to 0.3 a point with a step of 1.
+	 * more damage" is a flat row of 10 to 30 with a step of 1.
+	 *
+	 * THE FIRST SCALE WHOSE VALUE IS A PERCENTAGE OF ITS READING rather than an
+	 * amount per step. Every other scale answers `Value` times the steps; this
+	 * one answers `Value` / 100 times them. It exists because the game shows an
+	 * enchantment's rolled number in place of the range in its sentence (the
+	 * owner's ruling of 2026-09-11), so the row must carry the sentence's own
+	 * 10 to 30; a row of 0.1 to 0.3 a point would read "0.2% of your current
+	 * mana". Ruled 2026-09-23 under the owner's delegation, replacing a ruling
+	 * of the same day that had not checked that display rule.
 	 *
 	 * THE MANA IN HAND, NOT THE MAXIMUM, which `PerPointOfMaximumMana` reads. A
 	 * spell that spends mana lowers the next one's bonus, as the sentence says.
 	 */
-	PerPointOfManaHeld
-		UMETA(DisplayName = "Per Point Of Mana Held"),
+	PercentOfManaHeld
+		UMETA(DisplayName = "Percent Of Mana Held"),
 };
 
 /**

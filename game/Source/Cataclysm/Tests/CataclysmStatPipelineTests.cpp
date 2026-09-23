@@ -3907,7 +3907,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebuffBuffManaScalesTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * `target_debuffs`, `buffs_held` and `mana_held` each multiply a value by whole
+ * `target_debuffs`, `buffs_held` and `mana_held_percent` each multiply a value by whole
  * steps of their reading. Issue #1815.
  *
  * 250.7 MANA, SO ROUNDING UP OR TO NEAREST WOULD GIVE A DIFFERENT ANSWER, and a
@@ -3924,9 +3924,9 @@ bool FCataclysmDebuffBuffManaScalesTest::RunTest(const FString&)
 	TestTrue(TEXT("and buffs_held"),
 		FPipeline::ScaleNamed(TEXT("buffs_held"), Scale)
 			&& Scale == ECataclysmStatScale::PerBuffHeld);
-	TestTrue(TEXT("and mana_held"),
-		FPipeline::ScaleNamed(TEXT("mana_held"), Scale)
-			&& Scale == ECataclysmStatScale::PerPointOfManaHeld);
+	TestTrue(TEXT("and mana_held_percent"),
+		FPipeline::ScaleNamed(TEXT("mana_held_percent"), Scale)
+			&& Scale == ECataclysmStatScale::PercentOfManaHeld);
 
 	FCataclysmStatModifier Per;
 	Per.Bucket = ECataclysmStatBucket::Increased;
@@ -3952,10 +3952,17 @@ bool FCataclysmDebuffBuffManaScalesTest::RunTest(const FString&)
 
 	FCataclysmStatModifier PerMana = Per;
 	PerMana.Bucket = ECataclysmStatBucket::Flat;
-	PerMana.Value = 0.2f;
-	PerMana.Scale = ECataclysmStatScale::PerPointOfManaHeld;
-	TestEqual(TEXT("250.7 mana is 250 whole points, worth 50"),
+	PerMana.Value = 20.0f;
+	PerMana.Scale = ECataclysmStatScale::PercentOfManaHeld;
+	TestEqual(TEXT("20% of 250.7 mana is 20% of 250 whole points, 50"),
 		FPipeline::ScaledValue(PerMana, State), 50.0f, 0.001f);
+
+	// AND ITS CAP COUNTS STEPS, NOT THE VALUE. Ten steps of 20% are 2, where a
+	// cap reading "value per step" would allow 200.
+	FCataclysmStatModifier CappedMana = PerMana;
+	CappedMana.ScaleMaxSteps = 10;
+	TestEqual(TEXT("capped at ten points of mana, 20% of them is 2"),
+		FPipeline::ScaledValue(CappedMana, State), 2.0f, 0.001f);
 
 	FCataclysmStatConditions Unread;
 	TestEqual(TEXT("an unread character scales to nothing on all three"),

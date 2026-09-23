@@ -72,7 +72,7 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {
     "target_debuffs",
     "buffs_held",
-    "mana_held",
+    "mana_held_percent",
 }
 
 #: A scale source many effect rows name. The control.

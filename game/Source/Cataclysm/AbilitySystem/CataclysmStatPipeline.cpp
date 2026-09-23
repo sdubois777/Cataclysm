@@ -158,7 +158,7 @@ namespace
 		{ TEXT("seconds_out_of_combat"), ECataclysmStatScale::PerSecondOutOfCombat },
 		{ TEXT("target_debuffs"),      ECataclysmStatScale::PerTargetDebuff },
 		{ TEXT("buffs_held"),          ECataclysmStatScale::PerBuffHeld },
-		{ TEXT("mana_held"),           ECataclysmStatScale::PerPointOfManaHeld },
+		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
 	};
 
 	/**
@@ -1171,15 +1171,20 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 {
 	const float Uncapped = UncappedScaledValue(Modifier, State);
 
-	// "UP TO 10 STACKS". Issue #1815. Every scale answers `Value` times a whole
-	// number of steps that is never negative, so capping the answer's size at
-	// `Value` times the cap is capping the steps, for every scale at once.
+	// "UP TO 10 STACKS". Issue #1815. Every scale answers what one step is worth
+	// times a whole number of steps that is never negative, so capping the
+	// answer's size at one step's worth times the cap is capping the steps, for
+	// every scale at once. One step is worth `Value`, except on the one scale
+	// whose value is a percentage of its reading, where it is `Value` / 100.
 	if (Modifier.Scale == ECataclysmStatScale::Fixed || Modifier.ScaleMaxSteps <= 0)
 	{
 		return Uncapped;
 	}
 
-	const float Cap = FMath::Abs(Modifier.Value) * static_cast<float>(Modifier.ScaleMaxSteps);
+	const float PerStep = Modifier.Scale == ECataclysmStatScale::PercentOfManaHeld
+		? FMath::Abs(Modifier.Value) / 100.0f
+		: FMath::Abs(Modifier.Value);
+	const float Cap = PerStep * static_cast<float>(Modifier.ScaleMaxSteps);
 	return FMath::Clamp(Uncapped, -Cap, Cap);
 }
 
@@ -1434,16 +1439,17 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerBuffHeld:
 		return StackedValue(Modifier, State.BuffsHeld);
 
-	case ECataclysmStatScale::PerPointOfManaHeld:
+	case ECataclysmStatScale::PercentOfManaHeld:
 	{
-		// THE REFUSALS AND ARITHMETIC OF THE MAXIMUM MANA SCALE. Issue #1815.
+		// THE REFUSALS OF THE MAXIMUM MANA SCALE, AND A PERCENTAGE. Issue #1815.
+		// `Value` is a share of the mana held, so a 20 roll on 250 mana is 50.
 		if (State.ManaHeld < 0.0f || Modifier.ScaleStep <= 0.0f)
 		{
 			return 0.0f;
 		}
 
 		const float Steps = FMath::FloorToFloat(State.ManaHeld / Modifier.ScaleStep);
-		return Modifier.Value * FMath::Max(0.0f, Steps);
+		return Modifier.Value / 100.0f * FMath::Max(0.0f, Steps);
 	}
 
 	// AND THE MINIONS THE CHARACTER IS COMMANDING, COUNTED THE SAME WAY AGAIN.
