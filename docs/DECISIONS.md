@@ -2,6 +2,56 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Attrition is two rows, now that an ailment chance is asked for with the skill's tags
+
+**Affects:** the design workbook's Passive Effects sheet and `game/Data/PassiveEffects.csv` (two
+rows), `game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (one test),
+`tools/tests/test_passive_effects_match_the_node_text.py`, `CataclysmDataTableTests.cpp` and
+`docs/README.md` (the counts). Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ravager_keystone_c_kA` Attrition: "Your melee attacks always Cripple and always Weaken, with no
+chance roll."
+
+| Row | Stat | Kind | Value | Required tags |
+|---|---|---|---|---|
+| `#1` | `cripple_chance` | flat | 100 | `Type.Melee` |
+| `#2` | `weaken_chance` | flat | 100 | `Type.Melee` |
+
+A hundred is the whole of the roll's range, which is what "always" and "no chance roll" say.
+
+### WHY IT WAS UNWRITTEN, AND WHAT CHANGED
+
+The entry of 2026-09-17 on Never Lets Go recorded that Attrition "cannot be written until an
+ailment chance is asked through the pipeline with the blow in hand": a row scoped to melee is
+never folded into the chance attribute, and the roll read the attribute. **The roll no longer
+does.** `UCataclysmAilments::ChancesFor` asks each chance through `StatForSkill` with the skill's
+own tags, so a row requiring `Type.Melee` reaches a melee blow and no other. No engine change was
+needed; the rows are the whole node.
+
+### TWO QUESTIONS THE DOCUMENTS ALREADY SETTLE
+
+**Recorded as settled, not as new rulings; the coordinating session agreed on 2026-09-23.**
+
+| Question | Answer | Settled by |
+|---|---|---|
+| Does "always" skip the rule that an ailment needs the blow to take a tenth of the target's maximum health? | **No** | The owner's rule of 2026-09-02 (#917) covers every ailment that does not come from the skill's own row. The sentence removes the roll, not the threshold |
+| What does a hundred plus other chance to Cripple or Weaken do? | **A stronger ailment** | Chance above a hundred becomes strength for every ailment (`UCataclysmAilments::Application`) |
+
+### THE TEST
+
+`Cataclysm.Passives.AttritionMakesARealRavagersMeleeBlowCrippleAndWeakenWithoutARoll` reads both
+rows and lands real blows from a Ravager with the ailment roll pinned at 99.99, the top of its
+range, so only a chance of the whole range passes. Its controls: the same blow without the point,
+a spell's blow, and a melee blow under a tenth of the target's maximum health each apply neither
+ailment.
+
+**Counts:** 294 passive effect rows from 292, and 215 of 441 nodes with an authored effect from
+214. Measured then, the Ravager is 68 of its 74 nodes.
+
+---
+
 ## 2026-09-23 — Movement speed is asked for again as time passes, which also corrects the Ravager keystone Unstoppable
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (what each
@@ -6212,6 +6262,9 @@ the whole difference between two sentences that look alike:
   condition, a conditioned row cannot reach the attribute, and so the node
   **cannot be written until an ailment chance is asked through the pipeline with
   the blow in hand**. It is not authored here, and this entry is the reason.
+
+**Answered 2026-09-23:** the chance is now asked with the skill's tags, and Attrition is written
+as two rows. See that day's entry on Attrition.
 
 ### THE CONDITION'S WORDS
 

@@ -443,7 +443,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// flat row carrying a scale, and each needed a half that did not exist:
 	// a reading of how BIG a health bar is, and something that asks for the
 	// maximum class resource through the pipeline. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        292)
+	// AND 294 SINCE 2026-09-23, for Attrition: a hundred chance to Cripple and
+	// a hundred to Weaken, both for melee attacks only. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        294)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
