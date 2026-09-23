@@ -1371,6 +1371,29 @@ public:
 	static const TCHAR* DesperateMeasuresKey;
 
 	/**
+	 * The row where the floor's dead rise again, once. Issues #1820 and #41.
+	 *
+	 * "Once per floor, all defeated enemies on that floor resurrect at half health in a
+	 * sudden holy revival." Both figures are the row's own: once a floor, and
+	 * `DivineResurgenceHealthPercent`.
+	 *
+	 * WHEN IT FIRES IS A RULING, UNDER THE PROJECT OWNER'S DELEGATION ON 2026-09-23:
+	 * the moment at least `DivineResurgenceFallenPercent` of the creatures the floor
+	 * placed have died, counted at each death and rounded up. A state the player
+	 * creates, which cannot fire on an empty floor. `DivineResurgenceIsDue` holds the
+	 * arithmetic.
+	 *
+	 * EVERY CREATURE RECORDED AS DYING BEFORE THAT MOMENT RISES, AT THE KIND AND RUNG
+	 * IT DIED AT, and none that dies afterwards: once means once. No cap -- the row says
+	 * "all", and the trigger holds the number at about half the floor.
+	 *
+	 * EACH ONE RISES MARKED, so its second death pays no loot and no experience (the
+	 * owner's decision of 2026-09-17), is not counted among the creatures the floor
+	 * placed, and is never recorded as a death that could rise.
+	 */
+	static const TCHAR* DivineResurgenceKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3304,6 +3327,26 @@ public:
 		"A threshold no mana is below or all mana is below, or a health cost of "
 		"nothing or of everything, is not the row.");
 
+	/**
+	 * The share of its maximum health a creature rises with. STATED BY THE ROW:
+	 * "resurrect at half health".
+	 */
+	static constexpr float DivineResurgenceHealthPercent = 50.0f;
+
+	/**
+	 * The share of the creatures the floor placed that must have died for the
+	 * revival to come. A RULING UNDER THE OWNER'S DELEGATION, 2026-09-23: half, so it
+	 * comes part-way through a clear rather than on a timer that runs regardless of
+	 * play. Rounded up, so of five placed, three must fall.
+	 */
+	static constexpr int32 DivineResurgenceFallenPercent = 50;
+
+	static_assert(
+		DivineResurgenceHealthPercent > 0.0f && DivineResurgenceHealthPercent <= 100.0f
+			&& DivineResurgenceFallenPercent > 0 && DivineResurgenceFallenPercent <= 100,
+		"A creature rising with no health, or a revival that no number of deaths or "
+		"none at all brings on, is not the row.");
+
 	static_assert(
 		HallowedGroundfallCraters > 1,
 		"The row says the artillery bombards AREAS, plural. One crater is not a "
@@ -4076,6 +4119,16 @@ public:
 
 	/** Whether another anti-magic zone is due, given the clock and how many stand now. */
 	static bool AntiMagicZoneIsDue(float SecondsSinceLastZone, int32 StandingNow);
+
+	/**
+	 * Whether Divine Resurgence is due: at least `DivineResurgenceFallenPercent` of
+	 * `Placed` have fallen, rounded UP, and at least one was placed. Whole numbers
+	 * throughout, so "half of five" is three and never a float that rounds the wrong way.
+	 */
+	static bool DivineResurgenceIsDue(int32 Fallen, int32 Placed);
+
+	/** The health a creature rises with: `DivineResurgenceHealthPercent` of its maximum. */
+	static float DivineResurgenceHealthFor(float MaxHealth);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in
