@@ -2,6 +2,68 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Five comments corrected to what the code does, and one of them finds that the Ravager now spends Fervour
+
+**Affects:** comments only, in `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h`,
+`game/Source/Cataclysm/Data/CataclysmDataRows.h`,
+`game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp`,
+`game/Source/Cataclysm/Character/CataclysmPlayerCharacter.cpp` and
+`game/Source/Cataclysm/AbilitySystem/CataclysmCommand.cpp`. Issues
+[#1933](https://github.com/sdubois777/Cataclysm/issues/1933),
+[#1923](https://github.com/sdubois777/Cataclysm/issues/1923),
+[#1911](https://github.com/sdubois777/Cataclysm/issues/1911),
+[#1936](https://github.com/sdubois777/Cataclysm/issues/1936) and
+[#1912](https://github.com/sdubois777/Cataclysm/issues/1912).
+
+**Bundled into one change, ruled by the coordinating session on 2026-09-23 under the owner's
+delegation**, because each comment edit moves the game tree and every merge makes the waiting
+branches rebase and run Python again. One commit per issue. Every replacement claim was checked
+against the code on `development` at 44dd0aec before it was written.
+
+| Issue | Where | Was | Now |
+|---|---|---|---|
+| #1933 | `UCataclysmCommand::HasRoomForAnotherThrall` | nothing is subtracted from Fervour because the Ritualist "has no passive tree and no designed generator" (#950, closed) | nothing is subtracted, which is #1160; the Ritualist's tree generates Fervour and nothing of the Ritualist's spends it; #1478 is cited |
+| #1923 | `FCataclysmEnchantmentEffectRow::Action` | `UCataclysmItemModifiers::PoolActionFor`, which does not exist | `UCataclysmAbilitySystemComponent::PoolAttributesFor` |
+| #1911 | `UCataclysmRegeneration::TopUp` | `ACataclysmPlayerCharacter::Respawn`, which does not exist | `ACataclysmPlayerCharacter::Revive`, which writes health with `SetNumericAttributeBase` |
+| #1936 | two comments on the class resource's maximum | Crowned as the case of maximum Fervour falling; Crowned lowers a minion's reserve and changes neither the maximum nor the pool | giving back the point in `Ritualist_keystone_spine_001` Room for One More, whose row grants `class_resource` flat 30 |
+| #1912 | `UCataclysmCommand::Subjugate` | the healing ceiling "limits healing that arrives as a gameplay effect" | the ceiling is applied inside `UCataclysmRegeneration::TopUp`, which the capped heals call; no heal in the game's code arrives as a gameplay effect |
+
+### WHAT SPENDS FERVOUR, MEASURED FOR #1933
+
+**Issue [#1478](https://github.com/sdubois777/Cataclysm/issues/1478), "Nothing in the game spends
+Fervour", is no longer true as worded.** Two Ravager nodes subtract it in
+`game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp`:
+
+| Node | Row stat | Function | Cost |
+|---|---|---|---|
+| `Ravager_basic_d_c1` Wrung Out | `health_restored_on_kill` | `UCataclysmFervour::RestoreHealthOnKill` | 5 Fervour a kill (`KillRestoreCost`) |
+| `Ravager_basic_b_b2` Bought With Ruin | `increased_damage_bought_per_extra_enemy_hit` | `UCataclysmFervour::BuyDamageForEnemiesStruckTogether` | 2 Fervour for each enemy beyond the first (`ExtraEnemyHitCost`) |
+
+The Ravager's pool also decays out of combat (`UCataclysmFervour::DecayStep`, from
+`Ravager_basic_spine_000`), which lowers it without spending it. **No Ritualist node or skill
+subtracts Fervour**: the spending stats are on those two Ravager rows only. So the reserve not
+being subtracted still makes no difference to a Ritualist, which is what the corrected comment says.
+
+**The other four claims were checked the same way:**
+
+- `PoolAttributesFor` is defined in `CataclysmAbilitySystemComponent.cpp`, and it turns a pool's name
+  into its held and maximum attributes.
+- `Revive` is the only one of the two names defined.
+- Room for One More's row is `class_resource` flat 30.
+- `HealingCeilingReduction` is applied to healing only in `TopUp`, which uses `ApplyModToAttribute`.
+  The one runtime gameplay effect built on health subtracts it (`CataclysmHealthLoss`). The other
+  runtime-built modifiers write damage, damage taken, or reduce a stat.
+
+**`TopUp` has more callers than #1912 listed**: an enchantment's pool restore, Wrung Out's restore and
+the Ravager capstone's no-cost kill restore (`RestoreHealthOnKillAtNoCost`), leech, an enemy modifier, two dungeon rules and regeneration. The comment says "the other
+capped heals" rather than naming a list that would go stale.
+
+**No code line changed.** Every changed C++ file was compared against 44dd0aec with comments and
+blank lines removed, by a stripper that was first shown to notice a changed code line and to ignore
+a changed comment. It printed `TOTAL code lines differing: 0`.
+
+---
+
 ## 2026-09-23 — The dungeon drains 2.5% of maximum health and 3% of maximum mana a second, enough to beat every class's base regeneration
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
