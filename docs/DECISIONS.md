@@ -1015,6 +1015,76 @@ death handler gates both payments on the mark while Vengeful Wraiths sets it.
 
 ---
 
+## 2026-09-23 — A row can ask about the debuffs on its target, the buffs running and the mana in hand, and "low mana" is below 35%
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two conditions, three
+scales and two readings), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp` (the
+target's debuffs are read when a scale asks as well as a condition, and the buffs running and the mana
+in hand are read), `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (the damage over
+time parent tag), `tools/generate_datatables.py` (the five names a sheet may write), the two built-ahead
+lists in `tools/tests/`, and tests in `CataclysmStatPipelineTests.cpp`, `CataclysmCriticalStrikeTests.cpp`
+and `CataclysmSkillTemplateTests.cpp`. Issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
+
+**Partial.** The engine half is written. The eight rows need the design workbook, and are added to this
+change before its machine window. Nothing has been compiled.
+
+### What is new
+
+| Name | Kind | Reads |
+| :-- | :-- | :-- |
+| `target_carries_any_debuff` | condition, no value | the target carries any debuff |
+| `target_carries_a_dot` | condition, no value | the target carries a tag under `Keyword.DoT` |
+| `target_debuffs` | scale | how many distinct debuffs the target carries |
+| `buffs_held` | scale | how many self-buff skills are running on the character |
+| `mana_held` | scale | the mana the character holds now |
+
+A debuff is what `UCataclysmDebuffs` counts: every damage over time and a stun, an explicit list with its
+sources recorded when it was made. `target_debuffs` is the length of the target's debuff tags, which is
+`UCataclysmDebuffs::CountOn` for the target by construction. A stun is a debuff and not a damage over time.
+
+**A scale now asks for the target's debuffs as a condition does.** The target-side reading is filled only
+when a row in the lookup asks for it, and "Each unique debuff on an enemy increases your crit chance
+against them" carries no condition. Without that request its count would read an empty container and
+grant nothing with no error.
+
+### The sentences, written with the rows
+
+| Sentence | Row |
+| :-- | :-- |
+| "Take 10%-40% more damage when on low mana" | `damage_taken`, more 10-40, `mana_below` 35 |
+| "Debuffed enemies take 10%-20% increased damage from all sources" | `attack_damage` and `spell_damage`, increased 10-20, `target_carries_any_debuff` |
+| "Strike skills deal 20%-40% increased damage against enemies affected by a DoT" | `attack_damage` and `spell_damage`, increased 20-40, `Type.Strike`, `target_carries_a_dot` |
+| "Each unique debuff on an enemy increases your crit chance against them by 5%-10%" | `crit_chance`, increased 5-10, `target_debuffs`, step 1 |
+| "Each unique debuff you apply to an enemy increases your damage against that enemy by 5%-10%" | `attack_damage` and `spell_damage`, increased 5-10, `target_debuffs`, step 1 |
+| "Your skills deal 10%-30% of your current mana as more damage" | `attack_damage` and `spell_damage`, flat 0.1-0.3, `mana_held`, step 1 |
+| "Each active buff on you increases your damage by 5%-10%" | `attack_damage` and `spell_damage`, increased 5-10, `buffs_held`, step 1 |
+| "Spells deal 10%-20% bonus damage for each active buff on you" | `spell_damage`, increased 10-20, `Type.Spell`, `buffs_held`, step 1 |
+
+"Spells" reaches the nine Demonic caster skills tagged `Type.Spell`, as every `Type.Spell` row does today.
+
+### Judgements made under the owner's delegation, ruled by the coordinating session on 2026-09-23
+
+| The judgement | Why |
+| :-- | :-- |
+| "Low mana" is below 35% of maximum mana | Path of Exile 2: "You are on Low Mana if you have 35% of your Maximum Mana or less" (`poe2db.tw/us/Low_Mana`), and its Low Life is "35% of its Maximum Life or less" (`poe2db.tw/us/Low_Life`). This game's own Low Life keystone is at or below 35% health. **Known edge:** `mana_below` is strictly below, so a character on exactly 35.0% is not on low mana. Accepted rather than adding a second mana condition |
+| "An enemy you apply a debuff to" is read as "a debuff on the enemy" | no record says who applied a debuff; a tag carries no source. **So a minion's debuffs count too**, unlike a minion's HIT, which is its own by the owner's ruling of 2026-09-17. A record of who applied each debuff is what would narrow it |
+| "From all sources" reaches the character's own hits only | the row sits on the character, and a minion's hit is its own. A debuff on the enemy that every attacker reads would be a new mechanism |
+| An active buff is a running self-buff skill | the player sees skills as buffs, and nothing shows the few-second windows enchantments open as buffs today. The same test `ClearWhatDeathEnds` uses. **To be revisited if a buff bar is built** |
+| "10%-30% of your current mana as more damage" is flat added damage, 0.1 to 0.3 a point of mana with a step of 1 | "as more damage" means added damage, as the genre's "gain X% of mana as extra damage" does, not the more bucket. A step of 1 loses no mana to rounding; a step of 100 at 10-30 would drop up to 99. The sheet's number is therefore not the sentence's 10-30, and the text check carries an entry saying why |
+
+### Not written here
+
+- **"While leeching, reduce your max resistances by 1%-3% per second"** is held. It is the only sentence
+  that says "while leeching", and it needs a maximum-resistance stat, which does not exist, as well as a
+  seconds-while-leeching scale. A `while_leeching` condition alone would write nothing, so none is built.
+- **"Each active minion reduces your maximum HP by 3%-6%"** is its own change. `CataclysmPlayerClassStats`
+  folds only fixed rows into the `MaxHealth` attribute and nothing asks for `max_health`, so the row
+  would be accepted and do nothing. It needs a new route to maximum health that feeds every bucket.
+
+---
+
+---
+
 ## 2026-09-23 — "In combat" means a hit dealt or taken within the last 3 seconds, and a scaled value can be capped
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two conditions, two

@@ -40,7 +40,8 @@ that is doing work today is
 `test_every_scale_source_is_named_by_a_row_or_listed_as_built_ahead`.
 
 IT DID NOT STAY EMPTY FOR LONG. On 2026-09-23 the two combat clocks of issue
-#1815 were listed, and left it with their rows in the same change.
+#1815 were listed, and left it with their rows in the same change; three more
+scales from the same issue followed them.
 """
 
 from __future__ import annotations
@@ -66,8 +67,13 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: with the thirteen enchantment rows.
 #:
 #: TWO JOINED ON 2026-09-23, the combat clocks for issue #1815, and LEFT with
-#: their rows in the same change.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#: their rows in the same change. THREE MORE JOINED THE SAME DAY for issue
+#: #1815's section C, whose rows also need the design workbook.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {
+    "target_debuffs",
+    "buffs_held",
+    "mana_held",
+}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

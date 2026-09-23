@@ -3555,6 +3555,13 @@ CONDITIONS = {
     "in_combat": None,
     "out_of_combat": None,
 
+    # "Debuffed enemies take 10%-20% increased damage from all sources" is
+    # `target_carries_any_debuff`, and "Strike skills deal 20%-40% increased
+    # damage against enemies affected by a DoT" is `target_carries_a_dot`. Issue
+    # #1815. Neither takes a value. A debuff is what `UCataclysmDebuffs` counts.
+    "target_carries_any_debuff": None,
+    "target_carries_a_dot": None,
+
     # "While moving" is `while_moving` and "while stationary" is
     # `while_stationary`, and neither takes a value. Issue #41, slice 2.
     #
@@ -4112,6 +4119,18 @@ SCALES = {
     # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
     "seconds_in_combat": (0.0, 60.0, "a number of seconds"),
     "seconds_out_of_combat": (0.0, 60.0, "a number of seconds"),
+
+    # "Each unique debuff on an enemy increases your crit chance against them by
+    # 5%-10%" is `target_debuffs`, and "Each active buff on you increases your
+    # damage by 5%-10%" is `buffs_held`, each with a step of 1. Issue #1815. The
+    # same 0 to 10 bound the character's own debuff and minion counts use.
+    "target_debuffs": (0.0, 10.0, "a number of debuffs"),
+    "buffs_held": (0.0, 10.0, "a number of buffs"),
+
+    # "Your skills deal 10%-30% of your current mana as more damage" is
+    # `mana_held` with a step of 1 and a flat value of 0.1 to 0.3 a point. Issue
+    # #1815. The same 0 to 1,000 bound as `max_mana`.
+    "mana_held": (0.0, 1000.0, "an amount of mana"),
 }
 
 

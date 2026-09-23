@@ -226,6 +226,12 @@ FGameplayTag UCataclysmDebuffs::WeakenTag()
 		FName(TEXT("Status.Debuff.Weaken")), /*ErrorIfNotFound=*/false);
 }
 
+FGameplayTag UCataclysmDebuffs::DamageOverTimeTag()
+{
+	return UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Keyword.DoT")), /*ErrorIfNotFound=*/false);
+}
+
 FGameplayTag UCataclysmDebuffs::VoidSplinterTag()
 {
 	return UGameplayTagsManager::Get().RequestGameplayTag(

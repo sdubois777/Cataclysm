@@ -844,6 +844,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		State.ManaPercent = MaxMana > 0.0f
 			? FMath::Clamp(ForMana->GetMana() / MaxMana * 100.0f, 0.0f, 100.0f)
 			: -1.0f;
+
+		// AND THE MANA IN HAND. Issue #1815, "10%-30% of your current mana".
+		State.ManaHeld = FMath::Max(0.0f, ForMana->GetMana());
 	}
 
 	// AND HOW MANY STACKS OF EACH KIND ARE STANDING. Issues #1002, #1003 and
@@ -929,6 +932,18 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// player in the game.
 	State.MinionsHeld =
 		UCataclysmCommand::ThingsCommandedBy(GetAvatarActor()).Num();
+
+	// AND THE SELF-BUFF SKILLS RUNNING. Issue #1815. The same test
+	// `ClearWhatDeathEnds` uses to find the buffs a death ends, so "a buff"
+	// means one thing in both places.
+	State.BuffsHeld = 0;
+	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
+	{
+		if (Spec.IsActive() && Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
+		{
+			++State.BuffsHeld;
+		}
+	}
 
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT
 	// A PROPERTY OF THE CHARACTER. Issue #983. The Masochist's Grand Tithe node
@@ -1131,6 +1146,9 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		// is judged against an empty container, answers false every time, and
 		// the row grants nothing with no error anywhere.
 		case ECataclysmStatCondition::TargetCarriesVoidSplinter:
+		// AND THE TWO THAT ASK ABOUT ANY DEBUFF. Issue #1815.
+		case ECataclysmStatCondition::TargetCarriesAnyDebuff:
+		case ECataclysmStatCondition::TargetCarriesADot:
 			bWantsAilments = true;
 			break;
 		case ECataclysmStatCondition::TargetHealthBelowPercent:
@@ -1150,6 +1168,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 			break;
 		default:
 			break;
+		}
+
+		// A SCALE ASKS TOO, and asks separately from the condition. Issue
+		// #1815: "Each unique debuff on an enemy increases your crit chance
+		// against them" carries no condition at all, so the switch above never
+		// sees it, and without this its count would read an empty container.
+		if (Modifier.Scale == ECataclysmStatScale::PerTargetDebuff)
+		{
+			bWantsAilments = true;
 		}
 
 		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory)
