@@ -21,9 +21,9 @@ rule), `tools/generate_datatables.py` (the condition a data sheet may name), the
 `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (the new stat lookup listed with what it
 hands over). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The compile, the automation
+tests and the three guard proofs have run; ONE TEST FAILED ON THE FIRST RUN AND WAS CORRECTED, and the
+whole suite was not re-run afterwards, by ruling. The figures are at the end of this entry.
 
 ### The row
 
@@ -117,10 +117,48 @@ stat.
 One Python check, `test_desperate_measures_row_still_states_its_two_figures`, seen to fail with the
 threshold changed and to pass once restored.
 
-### Not yet run
+### Evidence
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+From one editor window in worktree `lucid-hodgkin-26d23e`, lock taken 20:08:04Z and released 20:25:24Z
+on 2026-09-23.
+
+- The groups `Cataclysm.Skills.+Cataclysm.StatPipeline.+Cataclysm.DungeonModifierEffects.+Cataclysm.StatExemption.`
+  measured on development `46a9b9d0` first: "Build: Succeeded - 27 actions, 24 files compiled";
+  "Tests: 475 tests performed, 475 succeeded, 0 failed".
+- **THE WHOLE SUITE FAILED ONE TEST, ONCE.** On head `06884ae4`: "Build: Succeeded - 27 actions, 24 files
+  compiled"; "Tests: 2189 tests performed, 2188 succeeded, 1 failed:
+  ABasicAttackBelowTenPercentManaPaysNoHealth"; "Declared: 2189 ... gap 0". Registered 2189 (development
+  2181 + the eight above).
+- **THE CAUSE WAS THE TEST, NOT THE RULE.** The engine log: "Expected 'and takes no mana' to be 50.000000,
+  but it was 56.000000". The swing hit the target placed two metres away, and the Basic slot pays 6 mana
+  on every hit (`game/Data/SkillSlots.csv`), so mana rose. The rule took no mana and no health, which is
+  what it should do.
+- **THE CORRECTION.** The test now reads the Basic slot's mana on hit from the imported table, asserts it
+  is above nothing, and asserts mana is EXACTLY 50 plus that figure, with health unchanged. A first
+  correction asserting "at least 50" was committed and replaced before anything ran on it: the
+  coordinating session ruled that a floor could not catch a cast that wrongly took mana and then gained
+  it back on the hit.
+- **THE WHOLE SUITE WAS NOT RE-RUN, BY RULING.** The coordinating session ruled that the run on `06884ae4`
+  stands for everything but the test file that changed, the same ruling as for the Weight Bearing
+  window. That file's group was run on the corrected head `14080745`: "Build: Succeeded - 4 actions, 1
+  file compiled: Module.Cataclysm.24.cpp" (the extra build, flagged); "Tests: 235 tests performed, 235
+  succeeded, 0 failed". Registered 235, counted from the whole-suite log before it was overwritten:
+  2189 completion lines in all, equal to the printed total, 235 of them in `Cataclysm.Skills.`.
+- Three guard proofs at the four-group prefix on `14080745`, each registered with the tests it fails and
+  those that keep passing, each restored to "483 tests performed, 483 succeeded, 0 failed", with the
+  source hash the same before and after each:
+  - the health share asked again after the mana was paid: "483 performed, 481 succeeded, 2 failed:
+    ACastThatTakesManaBelowTenPercentIsNotAlsoChargedHealth, AtExactlyTenPercentManaACastStillPaysMana".
+    **REGISTERED AS ONE FAILURE; TWO FAILED.** The second is the same fault: a cast from exactly 10%
+    also crosses below it when it pays, so asking again charges it health too. The prediction missed it.
+  - "would have cost mana" judged by the slot's base cost: "483 performed, 482 succeeded, 1 failed:
+    ASkillThatCostsNoManaPaysNoHealthBelowTenPercent", as registered.
+  - "below" read as "at or below": "483 performed, 481 succeeded, 2 failed:
+    AtExactlyTenPercentManaACastStillPaysMana, ManaBelowIsStrictAndRefusesACharacterWithNoPool", as
+    registered.
+- Python on `06884ae4` before the window: "5337 passed, 8 skipped in 382.19s"; JUnit tests=5345,
+  failures=0, errors=0. The run on the final head follows the window.
+- No fail-before run and no asset rebuild: nothing under `game/Data` or `game/Content` changed.
 
 ---
 
