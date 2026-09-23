@@ -343,6 +343,18 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float SpellsLockedValue = 0.0f;
 
+	/**
+	 * The share of current health a cast pays instead of its mana while mana is
+	 * low. Desperate Measures. Issues #1820 and #41.
+	 *
+	 * ONCE A FLOOR, NOT ON THE BEAT: the floor carries the row or it does not,
+	 * and whether mana is low right now is judged at each cast by the condition
+	 * the modifier carries. `DesperateMeasuresManaBelowPercent` is that
+	 * condition's threshold and is not a field, because only this rule writes it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float ManaCostAsCurrentHealthPercent = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
@@ -360,6 +372,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& JudgmentResistanceLessPercent <= 0.0f
 			&& SkillsLockedValue <= 0.0f
 			&& SpellsLockedValue <= 0.0f
+			&& ManaCostAsCurrentHealthPercent <= 0.0f
 			// AND THE ONE FIELD HERE THAT IS A REWARD RATHER THAN A LOSS. Issues #1820
 			// and #41. March of Progress' armour is still something the floor is doing
 			// to the player, so a floor carrying it is not empty.
@@ -1331,6 +1344,31 @@ public:
 	 * The floor panel says how many zones are standing.
 	 */
 	static const TCHAR* AntiMagicZonesKey;
+
+	/**
+	 * The row where a player low on mana pays for skills in health. Issues #1820
+	 * and #41.
+	 *
+	 * "When your Mana falls below 10%, your skills cost 5% of your current Health
+	 * to cast instead of Mana." Both figures are the row's own:
+	 * `DesperateMeasuresManaBelowPercent` and `DesperateMeasuresHealthPercent`.
+	 *
+	 * A ROW ON THE CHARACTER'S STAT LINE AND NOTHING ON THE BEAT. The floor writes
+	 * `mana_cost_as_current_health_percent` under the condition `mana_below`, and
+	 * the condition is judged each time a cast asks what it costs -- so the rule
+	 * turns on and off with the mana in hand, with no clock of its own.
+	 *
+	 * ONLY A CAST THAT WOULD HAVE TAKEN MANA PAYS, ruled under the project owner's
+	 * delegation on 2026-09-23: "instead of Mana" replaces a cost and does not
+	 * add one. `UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent` holds
+	 * that rule, and its comment says why the cost after the character's own
+	 * reductions decides it rather than the slot's figure.
+	 *
+	 * AN AURA'S UPKEEP IS NOT A CAST AND STILL DRAINS MANA, a judgement under the
+	 * same delegation. The row says "to cast", and an upkeep paid in health
+	 * instead would let a toggled aura run for ever at low mana.
+	 */
+	static const TCHAR* DesperateMeasuresKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -3244,6 +3282,27 @@ public:
 			&& AntiMagicZonesLockValue > 0.0f,
 		"No zones, zones that never come or never stand, zones of no size, zones that "
 		"cannot be laid clear of the player, or a lock of nothing is not the row.");
+
+	/**
+	 * The share of maximum mana below which Desperate Measures turns a cast's
+	 * cost into health. STATED BY THE ROW: "When your Mana falls below 10%".
+	 * Strictly below, which is the reading `mana_below` takes.
+	 */
+	static constexpr float DesperateMeasuresManaBelowPercent = 10.0f;
+
+	/**
+	 * The share of CURRENT health a cast pays instead of its mana, once below
+	 * that. STATED BY THE ROW: "your skills cost 5% of your current Health".
+	 */
+	static constexpr float DesperateMeasuresHealthPercent = 5.0f;
+
+	static_assert(
+		DesperateMeasuresManaBelowPercent > 0.0f
+			&& DesperateMeasuresManaBelowPercent < 100.0f
+			&& DesperateMeasuresHealthPercent > 0.0f
+			&& DesperateMeasuresHealthPercent < 100.0f,
+		"A threshold no mana is below or all mana is below, or a health cost of "
+		"nothing or of everything, is not the row.");
 
 	static_assert(
 		HallowedGroundfallCraters > 1,

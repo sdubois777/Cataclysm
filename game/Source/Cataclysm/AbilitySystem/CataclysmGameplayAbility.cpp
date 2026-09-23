@@ -258,6 +258,37 @@ float UCataclysmGameplayAbility::ManaCostFor(
 	return FMath::Max(0.0f, Asked);
 }
 
+const TCHAR* UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat =
+	TEXT("mana_cost_as_current_health_percent");
+
+float UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent(
+	const UAbilitySystemComponent* AbilitySystem) const
+{
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	if (!Cataclysm)
+	{
+		// AN ENEMY, OR ANY ABILITY SYSTEM WITH NO STAT LINE, pays as it always has.
+		return 0.0f;
+	}
+
+	// ONLY A CAST THAT WOULD HAVE TAKEN MANA. See the declaration: the pool must
+	// be mana, and the cost after this character's reductions must be above
+	// nothing. The basic attack has no mana cost, so it never reaches the stat.
+	if (CostPool(AbilitySystem) != UCataclysmVitalAttributeSet::GetManaAttribute()
+		|| ManaCostFor(AbilitySystem) <= 0.0f)
+	{
+		return 0.0f;
+	}
+
+	// WITH THE SKILL'S TAGS AND THE CHARACTER'S CURRENT CONDITIONS, which is what
+	// judges `mana_below` against the mana in hand now. A fallback of nothing, so
+	// a character carrying no such row pays exactly as before.
+	return FMath::Max(0.0f,
+					  Cataclysm->StatForSkill(FName(ManaCostAsCurrentHealthPercentStat),
+											  SkillTagsForStats(), 0.0f));
+}
+
 float UCataclysmGameplayAbility::GetManaOnHit() const
 {
 	// NO OVERRIDE PROPERTY, UNLIKE THE COST AND THE COOLDOWN. Those two exist
@@ -337,6 +368,15 @@ bool UCataclysmGameplayAbility::CheckCost(
 		return false;
 	}
 
+	// AND A CAST PAID IN HEALTH INSTEAD IS ALWAYS AFFORDABLE. Issues #1820 and #41.
+	// It takes a share of CURRENT health, and `UCataclysmSkillTemplate::
+	// PayHealthCost` stops that share at the last point of health, so there is no
+	// amount of health too small to pay it from.
+	if (ManaCostPaidAsHealthPercent(AbilitySystem) > 0.0f)
+	{
+		return true;
+	}
+
 	// OUT OF WHICHEVER POOL THIS CHARACTER PAYS FROM, asked of the two functions
 	// above so that an aura's per-pulse upkeep asks exactly the same question.
 	// Issues #1067 and #1901.
@@ -356,6 +396,12 @@ void UCataclysmGameplayAbility::ApplyCost(
 	// THE SAME FIGURE `CheckCost` ALLOWED THE CAST ON. Issue #1815. Asking
 	// `GetManaCost` here instead would charge the slot's number while the check
 	// above used the character's, so a free cast would still empty a pool.
+	// WHAT THIS CAST PAYS IN HEALTH INSTEAD, DECIDED HERE AND ONLY HERE. Issues
+	// #1820 and #41. See `ManaCostPaidAsHealthPercentThisCast`: asked after the
+	// mana below were taken, the answer could change with the mana it took.
+	// Cleared first, so a cast that pays in mana never carries the last one's.
+	LastManaCostPaidAsHealthPercent = ManaCostPaidAsHealthPercent(AbilitySystem);
+
 	const float Cost = ManaCostFor(AbilitySystem);
 	if (Cost <= 0.0f)
 	{
@@ -363,6 +409,13 @@ void UCataclysmGameplayAbility::ApplyCost(
 	}
 
 	if (!AbilitySystem)
+	{
+		return;
+	}
+
+	// INSTEAD OF MANA MEANS NO MANA IS TAKEN. The health is taken by
+	// `UCataclysmSkillTemplate::PayHealthCost`, beside every other health cost.
+	if (LastManaCostPaidAsHealthPercent > 0.0f)
 	{
 		return;
 	}

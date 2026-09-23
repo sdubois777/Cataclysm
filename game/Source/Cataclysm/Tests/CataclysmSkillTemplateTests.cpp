@@ -56,6 +56,7 @@
 #include "Player/CataclysmPlayerState.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
 #include "Data/CataclysmDataRows.h"
+#include "Dungeon/CataclysmDungeonModifierEffects.h"
 #include "Engine/DataTable.h"
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
@@ -15387,6 +15388,356 @@ bool FCataclysmManaPoolBecomesHealthRowTest::RunTest(const FString&)
 	TestEqual(TEXT("because the halved cost came out of health"),
 		HealthOf(Below), BelowHealthBefore - 20.0f, 0.01f);
 
+	return true;
+}
+
+// --------------------------------------------------------------------------
+// Famine_Desperate_Measures, the dungeon floor rule. Issues #1820 and #41.
+//
+// "When your Mana falls below 10%, your skills cost 5% of your current Health to
+// cast instead of Mana."
+//
+// EVERY TEST HERE PUTS THE RULE'S OWN MODIFIERS ON THE CASTER, built by
+// `UCataclysmDungeonModifierEffects` from the row key exactly as a floor builds
+// them, so a test cannot pass with a modifier the rule does not write.
+// --------------------------------------------------------------------------
+
+namespace CataclysmDesperateMeasuresTest
+{
+	using namespace CataclysmSkillTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	/** The maximum mana every caster here holds, so a share is exact. */
+	constexpr float DesperateMaxMana = 1000.0f;
+
+	/** And the health, so 5% of it is exact. */
+	constexpr float DesperateMaxHealth = 100000.0f;
+
+	/**
+	 * What the floor would put on this caster, with or without the row, and with
+	 * the character's own mana cost removed if asked -- the way "your skills cost
+	 * no mana" does, which is the case the ruling of 2026-09-23 turns on.
+	 */
+	void OnAFloor(FScopedFighter& Caster, bool bCarriesTheRow, bool bCostRemoved = false)
+	{
+		TArray<FName> Rows;
+		if (bCarriesTheRow)
+		{
+			Rows.Add(FName(UCataclysmDungeonModifierEffects::DesperateMeasuresKey));
+		}
+		const TMap<FName, TArray<FCataclysmStatModifier>> FromTheFloor =
+			UCataclysmDungeonModifierEffects::StatModifiersFor(
+				UCataclysmDungeonModifierEffects::PlayerEffectsFor(Rows, 1));
+
+		TMap<FName, FCataclysmStatInputs> Stats;
+		for (const TPair<FName, TArray<FCataclysmStatModifier>>& Stat : FromTheFloor)
+		{
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(Stat.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers.Append(Stat.Value);
+		}
+
+		if (bCostRemoved)
+		{
+			FCataclysmStatModifier Free;
+			Free.Bucket = ECataclysmStatBucket::Removed;
+			Free.Source = ECataclysmModifierSource::Enchantment;
+			Free.Value = 1.0f;
+			FCataclysmStatInputs& Line =
+				Stats.FindOrAdd(FName(UCataclysmSkillSlots::ManaCostStat));
+			Line.Base = 0.0f;
+			Line.Modifiers.Add(Free);
+		}
+
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** Mana in hand, out of `DesperateMaxMana`, and full health. */
+	void Holding(FScopedFighter& Caster, float Mana)
+	{
+		Caster.Set(Vital::GetMaxHealthAttribute(), DesperateMaxHealth);
+		Caster.Set(Vital::GetHealthAttribute(), DesperateMaxHealth);
+		Caster.Set(Vital::GetMaxManaAttribute(), DesperateMaxMana);
+		Caster.Set(Vital::GetManaAttribute(), Mana);
+	}
+
+	/** A Movement skill, which costs 20 mana at level 100 from the slot's row. */
+	UCataclysmMovementSkill* GrantStep(FScopedFighter& Caster)
+	{
+		return GrantSkill<UCataclysmMovementSkill>(
+			Caster, ECataclysmAbilitySlot::Movement, TEXT("Mode=Blink; Range=9; Radius=2"),
+			TEXT("Ashwalk"), TEXT("Slot.Movement"));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresPaysHealthTest,
+	"Cataclysm.Skills.BelowTenPercentManaACastPaysFivePercentOfCurrentHealthInstead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDesperateMeasuresPaysHealthTest::RunTest(const FString&)
+{
+	using namespace CataclysmDesperateMeasuresTest;
+
+	// THREE CASTERS AT 5% MANA, each with a fresh skill, so no cooldown from one
+	// cast can be what refuses or changes another.
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Low(World, FVector::ZeroVector);
+	FScopedFighter NoRow(World, FVector(30 * M, 0, 0));
+	OnAFloor(Low, /*bCarriesTheRow=*/true);
+	OnAFloor(NoRow, /*bCarriesTheRow=*/false);
+	Holding(Low, 50.0f);
+	Holding(NoRow, 50.0f);
+
+	UCataclysmMovementSkill* LowStep = GrantStep(Low);
+	UCataclysmMovementSkill* NoRowStep = GrantStep(NoRow);
+	if (!LowStep || !NoRowStep)
+	{
+		AddError(TEXT("Could not grant the movement skill to both."));
+		return false;
+	}
+
+	const float Cost = NoRowStep->ManaCostFor(NoRow.AbilitySystem);
+	if (!TestTrue(FString::Printf(TEXT("the skill costs mana: %.1f"), Cost), Cost > 0.0f))
+	{
+		return false;
+	}
+
+	// THE CONTROL: the same 5% of mana with no row pays mana and no health.
+	TestTrue(TEXT("with no row the cast goes off"), Activate(NoRow, NoRowStep));
+	TestEqual(TEXT("and takes its mana"), NoRow.Mana(), 50.0f - Cost, 0.01f);
+	TestEqual(TEXT("and no health"), NoRow.Health(), DesperateMaxHealth, 0.01f);
+
+	// AND THE ROW: no mana, and 5% of current health.
+	TestTrue(TEXT("under the row the cast goes off"), Activate(Low, LowStep));
+	TestEqual(TEXT("and takes no mana"), Low.Mana(), 50.0f, 0.01f);
+	TestEqual(TEXT("and 5% of current health instead"), Low.Health(),
+			  DesperateMaxHealth * 0.95f, 0.01f);
+	return true;
+}
+
+// "BELOW 10%" IS STRICT, and both sides of the boundary are cast rather than one.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresBoundaryTest,
+	"Cataclysm.Skills.AtExactlyTenPercentManaACastStillPaysMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDesperateMeasuresBoundaryTest::RunTest(const FString&)
+{
+	using namespace CataclysmDesperateMeasuresTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter AtTen(World, FVector::ZeroVector);
+	FScopedFighter JustUnder(World, FVector(30 * M, 0, 0));
+	OnAFloor(AtTen, true);
+	OnAFloor(JustUnder, true);
+
+	// 100 OF 1000 IS 10% EXACTLY, AND 99 OF 1000 IS 9.9%.
+	Holding(AtTen, 0.10f * DesperateMaxMana);
+	Holding(JustUnder, 0.10f * DesperateMaxMana - 1.0f);
+
+	UCataclysmMovementSkill* AtTenStep = GrantStep(AtTen);
+	UCataclysmMovementSkill* JustUnderStep = GrantStep(JustUnder);
+	if (!AtTenStep || !JustUnderStep)
+	{
+		AddError(TEXT("Could not grant the movement skill to both."));
+		return false;
+	}
+	const float Cost = AtTenStep->ManaCostFor(AtTen.AbilitySystem);
+
+	TestTrue(TEXT("a cast at exactly 10% goes off"), Activate(AtTen, AtTenStep));
+	TestEqual(TEXT("and pays in mana, because 10% is not below 10%"), AtTen.Mana(),
+			  0.10f * DesperateMaxMana - Cost, 0.01f);
+	TestEqual(TEXT("and no health"), AtTen.Health(), DesperateMaxHealth, 0.01f);
+
+	TestTrue(TEXT("a cast at 9.9% goes off"), Activate(JustUnder, JustUnderStep));
+	TestEqual(TEXT("and takes no mana"), JustUnder.Mana(), 0.10f * DesperateMaxMana - 1.0f, 0.01f);
+	TestEqual(TEXT("and 5% of current health"), JustUnder.Health(), DesperateMaxHealth * 0.95f,
+			  0.01f);
+	return true;
+}
+
+// PAID ONCE: a cast that takes the caster below 10% paid in mana, and asking again
+// after the mana moved would charge it health as well.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresOnceTest,
+	"Cataclysm.Skills.ACastThatTakesManaBelowTenPercentIsNotAlsoChargedHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDesperateMeasuresOnceTest::RunTest(const FString&)
+{
+	using namespace CataclysmDesperateMeasuresTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	OnAFloor(Caster, true);
+
+	// 11% OF MANA, AND A COST THAT TAKES IT UNDER 10%.
+	Holding(Caster, 110.0f);
+	UCataclysmMovementSkill* Step = GrantStep(Caster);
+	if (!Step)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+	const float Cost = Step->ManaCostFor(Caster.AbilitySystem);
+	if (!TestTrue(FString::Printf(TEXT("the cast crosses the threshold: %.1f - %.1f"),
+								  110.0f, Cost),
+				  110.0f - Cost < 0.10f * DesperateMaxMana))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the cast goes off"), Activate(Caster, Step));
+	TestEqual(TEXT("and pays its mana"), Caster.Mana(), 110.0f - Cost, 0.01f);
+	TestEqual(TEXT("and no health, though mana is now below 10%"), Caster.Health(),
+			  DesperateMaxHealth, 0.01f);
+	return true;
+}
+
+// "INSTEAD OF MANA" REPLACES A COST AND DOES NOT ADD ONE, ruled under the project
+// owner's delegation on 2026-09-23. A skill whose cost the character's own
+// reductions removed would not have cost mana, so it pays nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresFreeSkillTest,
+	"Cataclysm.Skills.ASkillThatCostsNoManaPaysNoHealthBelowTenPercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDesperateMeasuresFreeSkillTest::RunTest(const FString&)
+{
+	using namespace CataclysmDesperateMeasuresTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	OnAFloor(Caster, /*bCarriesTheRow=*/true, /*bCostRemoved=*/true);
+	Holding(Caster, 50.0f);
+
+	UCataclysmMovementSkill* Step = GrantStep(Caster);
+	if (!Step)
+	{
+		AddError(TEXT("Could not grant the movement skill."));
+		return false;
+	}
+
+	// THE SLOT STILL STATES A COST, AND THE CHARACTER'S REDUCTION REMOVED IT, which
+	// is the case where "the row's base cost" and "the cost after reductions" give
+	// different answers. The ruling takes the second.
+	TestTrue(TEXT("the slot states a cost"), Step->GetManaCost() > 0.0f);
+	TestEqual(TEXT("and this character pays none of it"),
+			  Step->ManaCostFor(Caster.AbilitySystem), 0.0f, 0.001f);
+
+	TestTrue(TEXT("the cast goes off"), Activate(Caster, Step));
+	TestEqual(TEXT("and takes no mana"), Caster.Mana(), 50.0f, 0.01f);
+	TestEqual(TEXT("and no health either"), Caster.Health(), DesperateMaxHealth, 0.01f);
+	return true;
+}
+
+// THE BASIC ATTACK HAS NO MANA COST, so the row never reaches it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresBasicAttackTest,
+	"Cataclysm.Skills.ABasicAttackBelowTenPercentManaPaysNoHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDesperateMeasuresBasicAttackTest::RunTest(const FString&)
+{
+	using namespace CataclysmDesperateMeasuresTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(2 * M, 0, 0));
+	OnAFloor(Caster, true);
+	Holding(Caster, 50.0f);
+
+	// GRANTED THE WAY `Cataclysm.Skills.ABasicAttackSurvivesALockOnEverySkill`
+	// grants it: a Strike skill in the Basic slot at level 100.
+	const FGameplayAbilitySpecHandle Handle =
+		Caster.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmStrikeSkill::StaticClass(),
+			ECataclysmAbilitySlot::BasicAttack, /*Level=*/100, Caster.Actor);
+	FGameplayAbilitySpec* Spec = Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+	UCataclysmStrikeSkill* Swing =
+		Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!Swing)
+	{
+		AddError(TEXT("Could not grant the basic attack."));
+		return false;
+	}
+	Swing->SkillName = TEXT("Basic Attack");
+	Swing->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Radius=2.4; Angle=120; MaxTargets=1"));
+
+	TestEqual(TEXT("the basic attack costs no mana"),
+			  Swing->ManaCostFor(Caster.AbilitySystem), 0.0f, 0.001f);
+	TestTrue(TEXT("it swings at 5% mana"),
+			 UCataclysmBasicAttack::Swing(Caster.AbilitySystem));
+	// NO MANA TAKEN, AND THE SWING'S OWN MANA ON HIT PAID BACK, EXACTLY. A basic
+	// attack that lands pays mana on hit to the attacker, read here from the
+	// imported Skill Slots table rather than written as a number. MEASURED: the
+	// first run of this test asserted exactly 50 and read 56, because the swing hit
+	// the target two metres away and the Basic slot pays 6.
+	//
+	// EXACT AND NOT "AT LEAST 50", ruled by the coordinating session: a cast that
+	// wrongly took 5 mana and then gained 6 would read 51 and pass a floor.
+	const float ManaOnHit = Swing->GetManaOnHit();
+	TestTrue(FString::Printf(TEXT("the basic attack pays mana on hit: %.1f"), ManaOnHit),
+			 ManaOnHit > 0.0f);
+	TestEqual(TEXT("and takes no mana, paying back only its mana on hit"), Caster.Mana(),
+			  50.0f + ManaOnHit, 0.01f);
+	TestEqual(TEXT("and no health"), Caster.Health(), DesperateMaxHealth, 0.01f);
+	return true;
+}
+
+// AN AURA'S UPKEEP IS NOT A CAST. Switching the aura on is a cast and pays in
+// health below 10%; each second of upkeep after that still drains mana, or a
+// toggled aura would run for ever at low mana. A judgement under the owner's
+// delegation: the row says "to cast".
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresAuraTest,
+	"Cataclysm.Skills.BelowTenPercentManaAnAurasUpkeepStillDrainsMana",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDesperateMeasuresAuraTest::RunTest(const FString&)
+{
+	using namespace CataclysmDesperateMeasuresTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	OnAFloor(Caster, true);
+	Holding(Caster, 50.0f);
+
+	// Conflagration. No Duration, so it is a toggle and pays per pulse.
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"),
+		TEXT("Conflagration"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+	const float PerPulse = Aura->ManaCostFor(Caster.AbilitySystem);
+	if (!TestTrue(FString::Printf(TEXT("the aura costs mana a pulse: %.1f"), PerPulse),
+				  PerPulse > 0.0f && PerPulse < 50.0f))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the aura switches on at 5% mana"), Activate(Caster, Aura));
+	TestEqual(TEXT("and switching it on took no mana"), Caster.Mana(), 50.0f, 0.01f);
+	TestEqual(TEXT("and 5% of current health"), Caster.Health(), DesperateMaxHealth * 0.95f,
+			  0.01f);
+
+	const float HealthBeforePulse = Caster.Health();
+	Aura->Pulse();
+	TestTrue(TEXT("a pulse later it is still running"), Aura->IsHeld());
+	TestEqual(TEXT("and the pulse drained its mana"), Caster.Mana(), 50.0f - PerPulse,
+			  0.01f);
+	TestEqual(TEXT("and took no health"), Caster.Health(), HealthBeforePulse, 0.01f);
 	return true;
 }
 

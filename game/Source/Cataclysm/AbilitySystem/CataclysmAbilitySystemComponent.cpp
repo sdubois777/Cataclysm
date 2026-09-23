@@ -833,6 +833,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 			GetSet<UCataclysmVitalAttributeSet>())
 	{
 		State.MaximumMana = FMath::Max(0.0f, ForMana->GetMaxMana());
+
+		// AND HOW FULL IT IS, as a share of that maximum. Issues #1820 and #41.
+		// Read by `mana_below`. A maximum of zero leaves it unknown rather than
+		// at zero percent: a character with no mana pool has nothing to run low
+		// on, and every cost it pays already comes from health.
+		const float MaxMana = ForMana->GetMaxMana();
+		State.ManaPercent = MaxMana > 0.0f
+			? FMath::Clamp(ForMana->GetMana() / MaxMana * 100.0f, 0.0f, 100.0f)
+			: -1.0f;
 	}
 
 	// AND HOW MANY STACKS OF EACH KIND ARE STANDING. Issues #1002, #1003 and

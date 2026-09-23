@@ -121,6 +121,7 @@ namespace
 		{ TEXT("class_resource_points_at_least"),
 										ECataclysmStatCondition::ClassResourcePointsAtLeast },
 		{ TEXT("energy_shield_above_zero"),     ECataclysmStatCondition::EnergyShieldAboveZero },
+		{ TEXT("mana_below"),                   ECataclysmStatCondition::ManaBelowPercent },
 	};
 
 	struct FNamedStatScale
@@ -345,6 +346,9 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::EnergyShieldAtMaximum:
 	case C::EnergyShieldAboveZero:
 	case C::CanCrippleOrWeaken:
+	// MANA IS AN ATTRIBUTE THAT MOVES WITH NO NOTICE THIS PIPELINE HEARS, as the
+	// energy shield does: casting, regeneration and leech all write it.
+	case C::ManaBelowPercent:
 		return EOn::OtherAttributes;
 
 	// EVERY WINDOW AFTER AN EVENT, and the three that measure how long
@@ -1060,6 +1064,16 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// -1 would satisfy. Which of those two a condition is in is the thing
 		// worth stating, and the pair above shows both.
 		return State.EnergyShieldHeld > 0.0f;
+
+	case ECataclysmStatCondition::ManaBelowPercent:
+		// STRICTLY BELOW, the reading `HealthBelowPercent` takes of the same
+		// word. Issues #1820 and #41. A character on exactly 10% of their mana
+		// is not below 10%.
+		//
+		// AN UNKNOWN READING REFUSES, AND SO DOES NO POOL AT ALL. Both read -1,
+		// which IS strictly below every threshold, so the guard cannot be
+		// folded into the comparison -- the reason `HealthBelowPercent` gives.
+		return State.ManaPercent >= 0.0f && State.ManaPercent < Value;
 	}
 
 	// A CONDITION THIS BUILD DOES NOT KNOW REFUSES rather than applying. A saved
@@ -1488,6 +1502,18 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 		return FString::Printf(
 			TEXT("a health threshold of %.1f%%. A percentage of maximum health "
 				 "is between 0 and 100."),
+			Modifier.ConditionValue);
+	}
+
+	// AND THE MANA THRESHOLD, BOUNDED THE SAME WAY AND FOR THE SAME REASON: it is
+	// a share of the maximum. Issues #1820 and #41. Its own branch rather than a
+	// sixth line in the health list above, so the message names the right pool.
+	if (Modifier.Condition == ECataclysmStatCondition::ManaBelowPercent
+		&& (Modifier.ConditionValue < 0.0f || Modifier.ConditionValue > 100.0f))
+	{
+		return FString::Printf(
+			TEXT("a mana threshold of %.1f%%. A percentage of maximum mana is "
+				 "between 0 and 100."),
 			Modifier.ConditionValue);
 	}
 

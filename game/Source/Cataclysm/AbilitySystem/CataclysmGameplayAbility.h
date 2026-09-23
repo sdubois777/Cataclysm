@@ -230,6 +230,47 @@ public:
 	float ManaCostFor(const UAbilitySystemComponent* AbilitySystem) const;
 
 	/**
+	 * The share of current health a cast of this skill pays INSTEAD of its mana
+	 * cost right now, as a percentage, or nothing. Issues #1820 and #41.
+	 *
+	 * ONE SOURCE TODAY: the dungeon floor rule `Famine_Desperate_Measures`, "When
+	 * your Mana falls below 10%, your skills cost 5% of your current Health to
+	 * cast instead of Mana." It writes `ManaCostAsCurrentHealthPercentStat` under
+	 * the condition `mana_below`, so the condition is judged when this is asked.
+	 *
+	 * NOTHING UNLESS THE CAST WOULD HAVE TAKEN MANA, which is the reading ruled
+	 * under the project owner's delegation on 2026-09-23: "instead of Mana"
+	 * replaces a cost and does not add one. So it answers nothing when
+	 * `ManaCostFor` is nothing -- the basic attack, or a skill whose cost the
+	 * character's own reductions removed -- and nothing when `CostPool` is health,
+	 * because a character whose costs are paid from health would not have paid
+	 * mana either.
+	 *
+	 * `ManaCostFor` AND NOT THE ROW'S BASE COST decides "would have cost mana",
+	 * because it is the cost after the character's reductions: a skill that gear
+	 * made free would not have cost mana, whatever its slot states.
+	 */
+	float ManaCostPaidAsHealthPercent(const UAbilitySystemComponent* AbilitySystem) const;
+
+	/**
+	 * What the last cast of this skill paid in current health instead of mana, as
+	 * a percentage, or nothing. Recorded by `ApplyCost` and read by
+	 * `UCataclysmSkillTemplate::PayHealthCost`. Issues #1820 and #41.
+	 *
+	 * RECORDED ONCE, AT THE PAYMENT, AND NOT ASKED AGAIN. The condition is a
+	 * reading of the mana in hand, and paying the mana cost moves it: a cast
+	 * taken from 12% mana down to 8% paid in mana, and asking again afterwards
+	 * would charge it health as well.
+	 */
+	float ManaCostPaidAsHealthPercentThisCast() const
+	{
+		return LastManaCostPaidAsHealthPercent;
+	}
+
+	/** `mana_cost_as_current_health_percent`. See `ManaCostPaidAsHealthPercent`. */
+	static const TCHAR* ManaCostAsCurrentHealthPercentStat;
+
+	/**
 	 * Mana one landed use RETURNS to the character holding it, at their level.
 	 *
 	 * ONLY THE BASIC ATTACK HAS ONE. game/Data/SkillSlots.csv gives the Basic
@@ -320,4 +361,12 @@ private:
 	mutable float SlotCooldown = 0.0f;
 	mutable float SlotManaCostAtLevel100 = 0.0f;
 	mutable float SlotManaOnHitAtLevel100 = 0.0f;
+
+	/**
+	 * See `ManaCostPaidAsHealthPercentThisCast`. MUTABLE BECAUSE `ApplyCost` IS
+	 * CONST in the engine's declaration, and the payment is the one moment the
+	 * answer is known; the three fields above are mutable for the same kind of
+	 * reason.
+	 */
+	mutable float LastManaCostPaidAsHealthPercent = 0.0f;
 };

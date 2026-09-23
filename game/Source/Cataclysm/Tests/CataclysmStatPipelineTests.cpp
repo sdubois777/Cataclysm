@@ -3559,4 +3559,62 @@ bool FCataclysmFiveMovementWindowsConditionTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineManaBelowTest,
+	"Cataclysm.StatPipeline.ManaBelowIsStrictAndRefusesACharacterWithNoPool",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `mana_below`, the first mana predicate. Issues #1820 and #41.
+ *
+ * WRITTEN FOR THE DUNGEON FLOOR RULE `Famine_Desperate_Measures` AT 10 AND MEANT
+ * TO BE REUSED, so it is pinned here as a general threshold: both sides of the
+ * boundary, the two readings that must refuse, and the bound a sheet may write.
+ */
+bool FCataclysmPipelineManaBelowTest::RunTest(const FString&)
+{
+	using FPipeline = UCataclysmStatPipeline;
+
+	const auto Mana = [](float Percent)
+	{
+		FCataclysmStatConditions State;
+		State.ManaPercent = Percent;
+		return State;
+	};
+
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("mana_below is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("mana_below"), Named));
+	TestEqual(TEXT("and it is the mana-below reading"), static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::ManaBelowPercent));
+
+	const ECataclysmStatCondition Below = ECataclysmStatCondition::ManaBelowPercent;
+	TestTrue(TEXT("9.9% of mana is below 10%"),
+		FPipeline::ConditionHolds(Below, 10.0f, Mana(9.9f)));
+	TestFalse(TEXT("exactly 10% is not below 10%"),
+		FPipeline::ConditionHolds(Below, 10.0f, Mana(10.0f)));
+	TestFalse(TEXT("and 50% is not"),
+		FPipeline::ConditionHolds(Below, 10.0f, Mana(50.0f)));
+	TestTrue(TEXT("an empty pool is below 10%"),
+		FPipeline::ConditionHolds(Below, 10.0f, Mana(0.0f)));
+
+	// -1 IS BELOW EVERY THRESHOLD, WHICH IS WHY IT MUST REFUSE ON PURPOSE. It is
+	// what an unknown reading and a character with no maximum mana both read.
+	TestFalse(TEXT("an unknown reading, or no pool at all, is never below"),
+		FPipeline::ConditionHolds(Below, 10.0f, Mana(-1.0f)));
+
+	// AND A SHEET MAY WRITE ONLY A SHARE.
+	FCataclysmStatModifier Modifier;
+	Modifier.Bucket = ECataclysmStatBucket::Flat;
+	Modifier.Source = ECataclysmModifierSource::Enchantment;
+	Modifier.Value = 1.0f;
+	Modifier.Condition = Below;
+	Modifier.ConditionValue = 10.0f;
+	TestTrue(TEXT("a threshold of 10% is accepted"),
+		FPipeline::ValidateModifier(Modifier).IsEmpty());
+	Modifier.ConditionValue = 150.0f;
+	TestFalse(TEXT("and one of 150% is refused"),
+		FPipeline::ValidateModifier(Modifier).IsEmpty());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

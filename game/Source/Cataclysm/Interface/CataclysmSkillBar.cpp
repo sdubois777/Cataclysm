@@ -369,7 +369,14 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 
 		// `CanAfford` says why a character with no pool to read yet can afford
 		// everything, which is issue #653.
-		Box.bAffordable = CanAfford(Abilities, Pool, Box.ManaCost);
+		//
+		// AND A SKILL WHOSE COST IS PAID IN HEALTH INSTEAD IS AFFORDABLE, the same
+		// answer `UCataclysmGameplayAbility::CheckCost` gives. Issues #1820 and
+		// #41: the dungeon floor rule `Famine_Desperate_Measures` moves the cost
+		// onto current health below 10% mana, which is exactly when a mana check
+		// alone would grey the box out.
+		Box.bAffordable = Ability->ManaCostPaidAsHealthPercent(Abilities) > 0.0f
+			|| CanAfford(Abilities, Pool, Box.ManaCost);
 
 		// THE LOCK IS ASKED PER BOX, WITH THIS SKILL'S OWN TAGS. Issue #1810.
 		// Unlike mana above, this is not one answer for the character:

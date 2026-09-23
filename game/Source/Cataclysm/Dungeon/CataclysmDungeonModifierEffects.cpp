@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "Items/CataclysmItem.h"
@@ -83,6 +84,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::CommandersAuraKey =
 
 const TCHAR* UCataclysmDungeonModifierEffects::AntiMagicZonesKey =
 	TEXT("Void_Anti_Magic_Zones");
+
+const TCHAR* UCataclysmDungeonModifierEffects::DesperateMeasuresKey =
+	TEXT("Famine_Desperate_Measures");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -264,6 +268,34 @@ namespace
 
 		Into.FindOrAdd(FName(Stat)).Add(Modifier);
 	}
+
+	/**
+	 * The same flat addition, holding only while `Condition` does. Desperate
+	 * Measures. Issues #1820 and #41.
+	 *
+	 * BESIDE THE TWO ABOVE AND NOT A CHANGE TO EITHER, for the reason the scoped
+	 * one gives. The condition is judged by the stat pipeline each time the stat
+	 * is asked for, with the character's state at that moment, which is what lets
+	 * a rule written once a floor turn on and off as the player's mana moves.
+	 */
+	void DungeonModifierEffectsAddFlatWhile(
+		TMap<FName, TArray<FCataclysmStatModifier>>& Into, const TCHAR* Stat,
+		float Value, ECataclysmStatCondition Condition, float ConditionValue)
+	{
+		if (Value <= 0.0f)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Modifier;
+		Modifier.Bucket = ECataclysmStatBucket::Flat;
+		Modifier.Source = ECataclysmModifierSource::DungeonRule;
+		Modifier.Value = Value;
+		Modifier.Condition = Condition;
+		Modifier.ConditionValue = ConditionValue;
+
+		Into.FindOrAdd(FName(Stat)).Add(Modifier);
+	}
 }
 
 ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName RowKey)
@@ -316,7 +348,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(JudgmentZonesKey)
 		|| RowKey == FName(MarchOfProgressKey)
 		|| RowKey == FName(CommandersAuraKey)
-		|| RowKey == FName(AntiMagicZonesKey))
+		|| RowKey == FName(AntiMagicZonesKey)
+		|| RowKey == FName(DesperateMeasuresKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -484,6 +517,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(MarchOfProgressKey),
 		FName(CommandersAuraKey),
 		FName(AntiMagicZonesKey),
+		FName(DesperateMeasuresKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -700,6 +734,14 @@ FCataclysmPlayerFloorEffects UCataclysmDungeonModifierEffects::PlayerEffectsFor(
 			DehydrationPercentPerFloor, DehydrationMostPercent, FloorNumber);
 	}
 
+	// AND DESPERATE MEASURES, THE SAME ON EVERY FLOOR. Issues #1820 and #41. The
+	// row states no deepening, so the floor number is not read; whether the
+	// player's mana is low is judged at each cast, not here.
+	if (FloorModifiers.Contains(FName(DesperateMeasuresKey)))
+	{
+		Effects.ManaCostAsCurrentHealthPercent = DesperateMeasuresHealthPercent;
+	}
+
 	return Effects;
 }
 
@@ -830,6 +872,16 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	}
 	DungeonModifierEffectsAddFlatForTags(Modifiers, UCataclysmSkillSlots::LockedStat,
 										 Effects.SpellsLockedValue, Spells);
+
+	// AND DESPERATE MEASURES, ON THE STAT THAT MOVES A CAST'S COST ONTO HEALTH,
+	// HOLDING ONLY WHILE MANA IS LOW. Issues #1820 and #41. FLAT, for the reason
+	// the lines above give: the stat is zero for every character until something
+	// writes it. `UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent` reads it
+	// and decides which casts it reaches.
+	DungeonModifierEffectsAddFlatWhile(
+		Modifiers, UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat,
+		Effects.ManaCostAsCurrentHealthPercent, ECataclysmStatCondition::ManaBelowPercent,
+		DesperateMeasuresManaBelowPercent);
 
 	// AND SINGULARITY WELLS, ON THE SPEED THE CHARACTER WALKS AT. Issues #1605
 	// and #41.
@@ -1127,6 +1179,17 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	if (Effects.SpellsLockedValue > 0.0f)
 	{
 		Clauses.Add(TEXT("spells refused inside an anti-magic zone"));
+	}
+
+	// AND DESPERATE MEASURES, SAID AS WHEN IT APPLIES AND WHAT IT COSTS. Issues
+	// #1820 and #41. The floor panel shows the row's own sentence; this reaches
+	// the per-floor log.
+	if (Effects.ManaCostAsCurrentHealthPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("below %.0f%% mana, skills cost %.0f%% of current health instead"),
+			DesperateMeasuresManaBelowPercent,
+			Effects.ManaCostAsCurrentHealthPercent));
 	}
 
 	if (Effects.SicknessMaxHealthLessPercent > 0.0f

@@ -3458,3 +3458,33 @@ def test_a_dungeon_rule_modifiers_required_tags_reach_the_stat_line():
         template), (
         "Hop 5: the skill template no longer asks for skill_locked with the skill's own "
         "tags, so a scoped lock could not tell one skill from another.")
+
+
+def test_desperate_measures_row_still_states_its_two_figures():
+    """Both of this rule's figures are the row's own, and neither is a judgement.
+
+    "When your Mana falls below 10%, your skills cost 5% of your current Health to
+    cast instead of Mana." `DesperateMeasuresManaBelowPercent` is the 10 and
+    `DesperateMeasuresHealthPercent` the 5. If the row is reworded to another
+    figure, the rule must follow it; if it stops saying "current", the health
+    cost would be a share of the wrong pool.
+    """
+    words = flat(rows()["Famine_Desperate_Measures"]["Description"])
+    percents = re.findall(r"(\d+)%", words)
+
+    assert percents == ["10", "5"], (
+        "The Famine Desperate Measures row no longer states 10% of mana and then 5% "
+        "of health. Check DesperateMeasuresManaBelowPercent and "
+        "DesperateMeasuresHealthPercent against it. " + words)
+    assert "current Health" in words and "instead of Mana" in words, (
+        "The row no longer says the health is CURRENT health and that it is paid "
+        "INSTEAD of mana. Both readings are built into "
+        "UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent. " + words)
+    assert re.search(r"\bbelow 10%", words), (
+        "The row no longer says BELOW 10%. The condition mana_below is strictly "
+        "below; an 'at or below' wording needs a different condition. " + words)
+
+    assert constant("DesperateMeasuresManaBelowPercent") == 10.0, (
+        "DesperateMeasuresManaBelowPercent no longer holds the row's 10.")
+    assert constant("DesperateMeasuresHealthPercent") == 5.0, (
+        "DesperateMeasuresHealthPercent no longer holds the row's 5.")

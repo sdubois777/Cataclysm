@@ -3852,6 +3852,15 @@ CONDITIONS = {
     # NOT THE SAME QUESTION AS `energy_shield_at_maximum` ABOVE, which asks
     # whether the bar is full. This asks whether there is any bar left at all.
     "energy_shield_above_zero": None,
+
+    # "When your Mana falls below 10%" is `mana_below` with 10. Issues #1820 and
+    # #41. STRICTLY BELOW, the reading `health_below` takes of the same word, and
+    # a character with no maximum mana is never below anything.
+    #
+    # A GENERAL THRESHOLD ON PURPOSE. The dungeon floor rule
+    # `Famine_Desperate_Measures` asks it from C++ at 10, and the enchantment
+    # "Take 10%-40% more damage when on low mana" is to take a row on it.
+    "mana_below": (0.0, 100.0, "a percentage of maximum mana"),
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.

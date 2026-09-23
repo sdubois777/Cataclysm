@@ -1327,6 +1327,31 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WithinSecondsOfCrowdControl
 		UMETA(DisplayName = "Within Seconds Of Crowd Control"),
+
+	/**
+	 * The character's mana is STRICTLY below `ConditionValue` percent of its
+	 * maximum. Issues #1820 and #41.
+	 *
+	 * THE FIRST MANA PREDICATE, AND WRITTEN AS A GENERAL THRESHOLD ON PURPOSE.
+	 * The dungeon floor rule `Famine_Desperate_Measures` asks it at 10: "When your
+	 * Mana falls below 10%, your skills cost 5% of your current Health to cast
+	 * instead of Mana." The enchantment "Take 10%-40% more damage when on low
+	 * mana" is to reuse it with whatever share "low" is ruled to be, so nothing
+	 * here is specific to the floor rule.
+	 *
+	 * STRICTLY BELOW, BECAUSE THE ROW SAYS "BELOW". A character on exactly 10% of
+	 * their mana is not below it. `HealthBelowPercent` is the same reading on the
+	 * other pool, and `HealthAtOrBelowPercent` the one this deliberately is not.
+	 *
+	 * AN UNKNOWN READING REFUSES, and so does a character with no maximum mana.
+	 * `ManaPercent` reads -1 for both, which is below every threshold a sheet may
+	 * write, so the guard is written out rather than left to the comparison --
+	 * the reason `HealthBelowPercent` gives. A character whose every cost is
+	 * paid from health has its maximum mana set to zero, so this never holds for
+	 * it: it has no mana to run low on.
+	 */
+	ManaBelowPercent
+		UMETA(DisplayName = "Mana Below Percent"),
 };
 
 /**
@@ -2100,6 +2125,20 @@ struct CATACLYSM_API FCataclysmStatConditions
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float MaximumMana = -1.0f;
+
+	/**
+	 * The mana in hand as a percentage of the maximum, from 0 to 100. Issues
+	 * #1820 and #41. Read by `ManaBelowPercent`.
+	 *
+	 * NEGATIVE MEANS UNKNOWN OR NO POOL AT ALL: an ability system with no vital
+	 * attribute set, or a character whose maximum mana is zero. A share of
+	 * nothing is not zero percent full, so it is not read as low.
+	 *
+	 * THE MANA IN HAND AND NOT THE MAXIMUM, which is the opposite of
+	 * `MaximumMana` above and is why they are two fields.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ManaPercent = -1.0f;
 
 	/**
 	 * How much maximum health the character has. Issue #1515.
@@ -3067,7 +3106,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a fifty-third, which is the drift that put the passive tree eight
+	 * adds a fifty-fourth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -3076,7 +3115,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * NINETEEN OF THE FIFTY-TWO COMPARE NOTHING. They are the case labels
+	 * NINETEEN OF THE FIFTY-THREE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

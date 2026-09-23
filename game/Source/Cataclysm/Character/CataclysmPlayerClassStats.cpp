@@ -244,6 +244,13 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// route that honours a row scoped to a slot (issue #1981), and three of
 		// the five sentences it serves are scoped.
 		TEXT("cooldown_lengthening"),
+		// What share of current health a cast pays INSTEAD of its mana, read by
+		// UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent. Issues #1820
+		// and #41. Written by the dungeon floor rule `Famine_Desperate_Measures`
+		// under the condition `mana_below`. No gameplay attribute, for the
+		// reason `mana_cost` gives: it is asked per cast, with the skill's tags
+		// and the character's conditions at that moment.
+		TEXT("mana_cost_as_current_health_percent"),
 	};
 	return Stats;
 }
