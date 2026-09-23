@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-23 — A second stat makes a cooldown longer, for the five drawbacks that say so
+## 2026-09-23 — A second stat makes a cooldown longer, and six cooldown rows are written: the five drawbacks and the Boss window
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillSlots.h` and `.cpp` (the stat's name),
 `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the stat joins the list of stats with
@@ -11,14 +11,20 @@ no gameplay attribute, so the generator accepts its rows),
 `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the one place a cooldown's
 length is worked out asks for the stat), four automation tests in
 `game/Source/Cataclysm/Tests/CataclysmAbilitySystemTests.cpp`, a probe in
-`CataclysmStatExemptionTests.cpp`, and one check in
-`tools/tests/test_a_cooldown_is_asked_for_not_read.py`. Issue
-[#1994](https://github.com/sdubois777/Cataclysm/issues/1994): this is its engine half, and the issue stays
-open until the five rows land.
+`CataclysmStatExemptionTests.cpp`, one check in
+`tools/tests/test_a_cooldown_is_asked_for_not_read.py` and an entry in
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`; and the six rows: `docs/All_Things_Cataclysm.xlsx`
+(one sentence lengthened, six rows on the Enchantment Effects sheet), the regenerated
+`game/Data/EnchantmentEffects.csv` and `EnchantmentsPositive.csv`, two tests in
+`CataclysmEnchantmentEffectTests.cpp` that read the rows, the count pins in `docs/README.md`,
+`CataclysmDataTableTests.cpp` and `tools/tests/test_enchantment_effects_match_the_row_text.py`, and
+`seconds_after_striking_a_boss` leaving the built-ahead list in
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. Issue
+[#1994](https://github.com/sdubois777/Cataclysm/issues/1994), which this closes, and the Boss window row
+whose engine half merged as pull request #2013.
 
-**Partial.** The Python suite has run. The compile, the automation tests and the guard proofs wait for a
-machine window. No data row is written here: the five rows need the design workbook, which another
-session holds, and follow with the boss-cooldown row.
+**Partial.** The Python suite has run. The compile, the DataTable asset rebuild, the automation tests
+and the guard proofs wait for a machine window.
 
 ### What it does
 
@@ -64,6 +70,37 @@ The coordinating session approved each of these on 2026-09-23.
 **A known limit.** `CooldownAfterReduction` returns the base cooldown at once for an ability system
 with no cooldown reduction attribute, so the lengthening does not reach one either. Every player has
 that attribute.
+
+### The six rows
+
+Ruled 2026-09-23 by the coordinating session, under the owner's delegation: all six go in this change,
+so one machine window builds the stat, rebuilds the asset and tests the rows.
+
+| Enchantment | Stat | Kind | Value | Required tag | Condition |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4 seconds after you strike one | `cooldown_reduction` | flat | 50 to 100 | — | `seconds_after_striking_a_boss` 4 |
+| Ultimate cooldowns increased by 100%-500% | `cooldown_lengthening` | flat | 100 to 500 | `Slot.Ultimate` | — |
+| Point blank AOE skills have 30%-50% increased cooldown | `cooldown_lengthening` | flat | 30 to 50 | `Type.AOE.PointBlank` | — |
+| Movement abilities have 50% increased cooldown | `cooldown_lengthening` | flat | 50 | `Slot.Movement` | — |
+| Cooldowns are increased by 30%-50% | `cooldown_lengthening` | flat | 30 to 50 | — | — |
+| Your cooldowns are increased by 100%-200% | `cooldown_lengthening` | flat | 100 to 200 | — | — |
+
+**The Boss sentence is the owner's wording of 2026-09-18, appended rather than rewritten.** Its row name
+is built from its first 48 characters and saved items store that name, so the clause goes after them:
+`row_name("Positive", text[:48])` is `Positive_Your_cooldowns_reset_50_100_faster_when_fighti` for both
+the old sentence and the new one, measured before the edit.
+
+**Rehearsed first, then applied.** The same two scripts (one edits the workbook, one moves the count
+pins) were run on a `git archive` copy with an unedited copy as the control, through the whole
+generator. The copies differed in one test only, `test_every_csv_still_hashes_to_what_was_recorded`,
+which names `EnchantmentEffects.csv` and `EnchantmentsPositive.csv` until the assets are rebuilt. The
+real edit was then applied to the workbook as it stood at development `2df271ab`. Its diffs of both
+CSVs are byte for byte the rehearsal's: six rows added to `EnchantmentEffects.csv`, and line 171 of
+`EnchantmentsPositive.csv` changed. `generate_datatables.py --check` printed "All 29 DataTable CSVs are
+up to date."
+
+**The counts** move from 257 rows over 198 enchantments to 263 over 204, measured on `2df271ab`
+before the edit.
 
 ---
 

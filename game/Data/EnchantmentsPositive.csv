@@ -168,7 +168,7 @@ Positive_Every_12_seconds_gain_a_shield_absorbing_15_25,Every 12 seconds gain a 
 Positive_Your_damage_is_increased_by_0_01_0_05_permanen,Your damage is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run,Generic,4.0,"Trigger.Progression, Stat.Offense.Global",False
 Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm,Your maximum HP is increased by 0.01%-0.05% permanently for every 1000 enemies killed this run,Generic,4.0,"Trigger.Progression, Stat.Defense.Life",False
 Positive_Your_armor_is_increased_by_1_2_for_every_dunge,Your armor is increased by 1%-2% for every dungeon floor cleared this run,Generic,4.0,"Trigger.Progression, Stat.Defense.Armor",False
-Positive_Your_cooldowns_reset_50_100_faster_when_fighti,Your cooldowns reset 50%-100% faster when fighting Boss enemies,Generic,3.0,Scope.BossOnly,False
+Positive_Your_cooldowns_reset_50_100_faster_when_fighti,"Your cooldowns reset 50%-100% faster when fighting Boss enemies, for 4 seconds after you strike one",Generic,3.0,Scope.BossOnly,False
 Positive_Critical_strike_chance_is_increased_by_20_40_a,Critical strike chance is increased by 20%-40% against Boss enemies,Generic,3.0,"Scope.BossOnly, Stat.Offense.Crit",False
 Positive_Your_block_chance_is_increased_by_10_20,Your block chance is increased by 10%-20%,Generic,3.0,Stat.Defense.Block,False
 Positive_Each_successful_block_increases_your_next_attack,"Each successful block increases your next attack's damage by 10%-20%, stacking up to 5 times",Generic,4.0,"Stat.Defense.Block, Stat.Offense.Global",False
