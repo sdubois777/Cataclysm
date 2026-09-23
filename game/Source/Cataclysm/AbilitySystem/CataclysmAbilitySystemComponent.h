@@ -47,6 +47,12 @@ struct FCataclysmWhatDeathEnded
 };
 
 /**
+ * Raised by `UCataclysmAbilitySystemComponent::ActOnEvent` for every event, with
+ * the event's name. Issue #1821.
+ */
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnActionEvent, FName);
+
+/**
  * The project's ability system component.
  *
  * Exists as a subclass from the start so that behaviour common to every actor
@@ -442,6 +448,22 @@ public:
 	 */
 	void ActOnEvent(FName Event, const FGameplayTagContainer* EventTags = nullptr,
 					float EventAmount = 0.0f);
+
+	/**
+	 * Raised at the top of every `ActOnEvent`, whether or not any worn action
+	 * is hung on the event. Issue #1821.
+	 *
+	 * WHAT IT IS FOR. Every clock a `seconds_after_*` condition reads is stamped
+	 * by a `NoteX()` that calls `ActOnEvent` straight after the stamp, so this
+	 * is the moment a window opens, in one place. `ACataclysmPlayerCharacter`
+	 * binds it to ask for its movement speed again, so a speed row under such a
+	 * window takes effect on the frame of its event rather than at the next
+	 * quarter-second step.
+	 *
+	 * RAISED BEFORE THE EARLY RETURN FOR A CHARACTER WITH NO ACTIONS, which is
+	 * nearly every character; raising it after would mean it never fired.
+	 */
+	FCataclysmOnActionEvent OnActionEvent;
 
 	/**
 	 * What the dungeon floor this character is standing on does to its stat

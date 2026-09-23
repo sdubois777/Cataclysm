@@ -2138,6 +2138,11 @@ bool UCataclysmAbilitySystemComponent::PoolAttributesFor(
 void UCataclysmAbilitySystemComponent::ActOnEvent(
 	FName Event, const FGameplayTagContainer* EventTags, float EventAmount)
 {
+	// ANNOUNCED FIRST, before either early return below. Issue #1821: a
+	// listener asking again for a cached stat needs every event, and most
+	// characters carry no action to fire.
+	OnActionEvent.Broadcast(Event);
+
 	// DEPTH ONE, BY CONSTRUCTION. See `PoolActionDepth` for why this is stated
 	// rather than left to hold by accident.
 	if (PoolActionDepth > 0 || PoolActions.IsEmpty())

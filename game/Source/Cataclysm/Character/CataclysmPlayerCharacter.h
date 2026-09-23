@@ -121,20 +121,55 @@ public:
 	 * be stale the moment health moved -- so a speed read straight off the
 	 * attribute is the speed of a character with no condition on it.
 	 *
-	 * CALLED FROM FOUR PLACES AND THEY ARE ALL EVENTS, NOT A CLOCK. Counted
-	 * 2026-09-14: `OnMovementSpeedChanged` (gear, a level, an attribute point),
-	 * `OnClassResourceChanged`, `HealthChanged`, and `InitAbilityActorInfo`.
-	 * All go through here, so no two of them can produce different speeds.
+	 * CALLED ON FOUR EVENTS, AND SINCE ISSUE #1821 ON TIME PASSING TOO.
+	 * `OnMovementSpeedChanged` (gear, a level, an attribute point),
+	 * `OnClassResourceChanged`, `HealthChanged` and `InitAbilityActorInfo` are
+	 * the events. All go through here, so no two of them can produce different
+	 * speeds.
 	 *
-	 * **THAT NONE OF THEM IS A CLOCK IS A LIMIT ON WHAT A ROW CAN SAY.** A
-	 * condition that turns true on its own -- a timer, a body walking closer --
-	 * does not reach the movement component until one of those four happens
-	 * next. A condition that changes ON one of those events works; one that
-	 * changes between them is read late or not at all. This said "two places"
-	 * until today and the number has moved twice, so count it rather than
-	 * quoting it.
+	 * A CONDITION THAT CHANGES WITH NO EVENT -- a timer running out, a body
+	 * walking closer -- was read late or not at all until issue #1821: the
+	 * Ravager keystone Unstoppable's "while an enemy is within four metres" took
+	 * effect only when the player's health next moved. It now reaches the
+	 * movement component through `RefreshMovementSpeedIfItCanChangeUnannounced`,
+	 * on the quarter-second regeneration step and on every event that opens a
+	 * timed window. Count the callers rather than quoting a number; this said
+	 * "two places" once and the number has moved three times.
 	 */
 	void RefreshMovementSpeed();
+
+	/**
+	 * Whether the movement speed could have changed since it was last asked for
+	 * without any event telling this character. Issue #1821.
+	 *
+	 * TRUE WHEN EITHER SPEED STAT CARRIES A ROW whose condition depends on time,
+	 * motion, surroundings or an attribute nothing here listens to, as
+	 * `UCataclysmStatPipeline::WhatConditionDependsOn` classifies it, or a row
+	 * whose size is scaled by anything, since every scale source measures
+	 * something that moves on its own. False for every character with no such
+	 * row, which is nearly every character, and then the step does no work.
+	 */
+	bool MovementSpeedCanChangeUnannounced() const;
+
+	/**
+	 * Asks for the movement speed again, but only when
+	 * `MovementSpeedCanChangeUnannounced` says it could have moved. Issue #1821.
+	 * Called on every regeneration step and on every action event.
+	 */
+	void RefreshMovementSpeedIfItCanChangeUnannounced();
+
+	/**
+	 * How many times `RefreshMovementSpeedIfItCanChangeUnannounced` has asked.
+	 * Issue #1821.
+	 *
+	 * FOR A TEST, which has to see that a character with nothing to watch costs
+	 * nothing on the step: a speed that came out right would say nothing about
+	 * how often it was asked for.
+	 */
+	int32 GetUnannouncedSpeedRefreshCount() const
+	{
+		return UnannouncedSpeedRefreshCount;
+	}
 
 	/**
 	 * The stat name saying nothing may lower this character's movement speed.
@@ -515,6 +550,9 @@ public:
 protected:
 	virtual void InitAbilityActorInfo() override;
 
+	/** Asks for the movement speed again if it could have moved. Issue #1821. */
+	virtual void AfterRegenerationStep() override;
+
 	/**
 	 * How near and how far the camera may get, in centimetres.
 	 *
@@ -769,6 +807,17 @@ private:
 	 *  reason the handle above is. */
 	FDelegateHandle ClassResourceChangedHandle;
 	FDelegateHandle MaxClassResourceChangedHandle;
+
+	/** Asks for the movement speed again when an event opens a timed window.
+	 *  Issue #1821. Bound in InitAbilityActorInfo to
+	 *  `UCataclysmAbilitySystemComponent::OnActionEvent`. */
+	void OnActionEvent(FName Event);
+
+	/** Replaced rather than added, for the reason the handles above are. */
+	FDelegateHandle ActionEventHandle;
+
+	/** See `GetUnannouncedSpeedRefreshCount`. */
+	int32 UnannouncedSpeedRefreshCount = 0;
 
 	/**
 	 * Recomputes the stat line and refills the ability slots after a change
