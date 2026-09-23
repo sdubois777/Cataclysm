@@ -11,8 +11,8 @@ key, its two rates and the arithmetic), `game/Source/Cataclysm/Dungeon/Cataclysm
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -91,10 +91,23 @@ and the rates beat every class's base regeneration. Each was seen to fail with i
 the repository: the health rate set to 1.5; the Ravager's maximum mana lowered to 30, which puts its base
 regeneration at 3.33%; and the row given "a slow but constant rate of 1%".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (44dd0aec) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 15 actions, 12 files compiled" and "216 tests performed, 216 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 74077104:** "Build: Succeeded - 14 actions, 11 files compiled" and "2212 tests
+  performed, 2212 succeeded, 0 failed", as registered (2209 + the three named tests), with every
+  declared test reported. In that run's `game/Saved/Logs/Cataclysm.log` the group's 219 all succeeded,
+  the three named above among them.
+- **Three guard proofs** in `CataclysmDungeonGameMode.cpp` on the prefix
+  `Cataclysm.DungeonModifierEffects.`, each exactly as registered and each 219 of 219 restored:
+  - no mana taken (`-ManaLoss` made `0.0f`) failed 1 of 219:
+    `SufferingAuraTakesItsShareOfHealthAndManaEachBeat`;
+  - a floor carrying only this row returning before the step (`&& !bSufferingAura` removed) failed 2
+    of 219: that test and `SufferingAuraTakesTheSameOnADeepFloor`, while the Mortal Decay floor kept
+    passing;
+  - health taken at the mana rate failed 3 of 219: all three tests above.
 
 ---
 
