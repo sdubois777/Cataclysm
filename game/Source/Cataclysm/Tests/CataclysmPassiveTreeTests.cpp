@@ -1623,7 +1623,11 @@ namespace CataclysmPassiveConditionTest
 			// means held above zero rather than full, so it is not the name
 			// above under another spelling: one asks whether the bar is full and
 			// this asks whether any of it is left. Neither states a number.
-			|| Name == TEXT("energy_shield_above_zero");
+			|| Name == TEXT("energy_shield_above_zero")
+			// ISSUE #1815, THE FIRST HIT AGAINST EACH ENEMY. "First" names the
+			// state of the target's record of who has struck it, not a number.
+			|| Name == TEXT("target_not_yet_struck_by_you")
+			|| Name == TEXT("target_not_yet_crit_by_you");
 	}
 }
 

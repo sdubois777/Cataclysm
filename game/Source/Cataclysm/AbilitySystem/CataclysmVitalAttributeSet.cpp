@@ -599,9 +599,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								  /*SkillHealthCostPercent=*/-1.0f,
 								  FCataclysmBlowContext(),
 								  /*MetresMovedBeforeBlow=*/-1.0f,
-								  /*TargetDistanceMetres=*/-1.0f,
-								  /*bTargetIsStaggered=*/false,
-								  /*Target=*/nullptr,
+								  Hit.OpponentDistanceMetres,
+								  UCataclysmSkillEffects::IsStaggered(GetOwningActor()),
+								  /*Target=*/GetOwningActor(),
 								  EnemiesStruckTogether)
 							: Offence->GetArmorPenetration();
 					}
@@ -702,11 +702,14 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						// `target_carries_void_splinter`, `target_health_below`,
 						// `target_is_boss` and `target_is_not_boss`.
 						//
-						// THE DISTANCE AND THE STAGGER ARE STILL NOT PASSED. They are
-						// separate parameters rather than part of the target state, so a
-						// row on a critical strike stat asking `target_within_metres`
-						// still grants nothing. Said here rather than left for the next
-						// author to find.
+						// AND THE DISTANCE AND THE TARGET'S STAGGER, since issue #1992.
+						// They are separate parameters rather than part of the target
+						// state, and until then a row on a critical strike stat asking
+						// `target_within_metres` or `target_is_staggered` granted
+						// nothing. The distance is `Hit.OpponentDistanceMetres`, the
+						// same physical distance read from the other end; the stagger
+						// is the struck character's own, where `Hit.bFromStaggered`
+						// above is the attacker's.
 						const UCataclysmAbilitySystemComponent* Asking =
 							Cast<const UCataclysmAbilitySystemComponent>(Attacker);
 						const float OwnCritChance = Asking
@@ -716,8 +719,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 												   /*SkillHealthCostPercent=*/-1.0f,
 												   FCataclysmBlowContext(),
 												   /*MetresMovedBeforeBlow=*/-1.0f,
-												   /*TargetDistanceMetres=*/-1.0f,
-												   /*bTargetIsStaggered=*/false,
+												   Hit.OpponentDistanceMetres,
+												   UCataclysmSkillEffects::IsStaggered(
+													   GetOwningActor()),
 												   /*Target=*/GetOwningActor())
 							: Offence->GetCritChance();
 
@@ -758,8 +762,9 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 												   /*SkillHealthCostPercent=*/-1.0f,
 												   FCataclysmBlowContext(),
 												   /*MetresMovedBeforeBlow=*/-1.0f,
-												   /*TargetDistanceMetres=*/-1.0f,
-												   /*bTargetIsStaggered=*/false,
+												   Hit.OpponentDistanceMetres,
+												   UCataclysmSkillEffects::IsStaggered(
+													   GetOwningActor()),
 												   /*Target=*/GetOwningActor())
 							: Offence->GetCritMultiplier();
 					}
@@ -985,6 +990,23 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					{
 						Striker->NoteStruckABoss();
 					}
+				}
+
+				// AND THIS CHARACTER REMEMBERS WHO GOT A BLOW THROUGH. Issue
+				// #1815, "your first hit against each enemy". The same site and
+				// the same `AttackerOf` as the Boss clock above, so "a hit" means
+				// the same thing to both: health, shield or mana absorbed it.
+				// Written after the blow's own stats were read, so the first blow
+				// is judged against a record that does not hold it yet.
+				if (UCataclysmAbilitySystemComponent* Struck =
+						Cast<UCataclysmAbilitySystemComponent>(
+							GetOwningAbilitySystemComponent()))
+				{
+					Struck->NoteStruckBy(
+						UCataclysmTargeting::AbilitySystemOf(
+							UCataclysmCombatEvents::AttackerOf(
+								Data.EffectSpec.GetContext())),
+						Outcome.bWasCritical);
 				}
 
 				// AND THE DEFENDER DEALS ITS RETALIATION BACK. Issue #895: the

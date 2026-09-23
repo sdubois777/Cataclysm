@@ -1524,6 +1524,28 @@ public:
 	float SecondsSinceStruckABoss() const;
 
 	/**
+	 * Record that a blow of `Striker`'s got through to THIS character, and
+	 * whether it was a critical strike. Issue #1815, "your first hit against
+	 * each enemy".
+	 *
+	 * KEPT ON THE CHARACTER STRUCK, so each enemy holds its own answer and an
+	 * enemy that dies takes it with it. KEYED ON THE STRIKER'S ABILITY SYSTEM,
+	 * not its actor: a player's ability system lives on its player state, and
+	 * the lookup that asks later knows itself by its ability system.
+	 *
+	 * CALLED FROM `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+	 * beside the Boss clock, where a blow has got through, on
+	 * `UCataclysmCombatEvents::AttackerOf`.
+	 */
+	void NoteStruckBy(const UAbilitySystemComponent* Striker, bool bCritical);
+
+	/** Whether a blow of `Striker`'s has got through to this character. */
+	bool WasStruckBy(const UAbilitySystemComponent* Striker) const;
+
+	/** Whether a critical strike of `Striker`'s has got through to it. */
+	bool WasCriticallyStruckBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
 	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -1873,6 +1895,10 @@ protected:
 	 * Negative means never, as above.
 	 */
 	float LastStruckABossAtSeconds = -1.0f;
+
+	/** Who has got a blow, and a critical strike, through to this character. */
+	TSet<TWeakObjectPtr<const UAbilitySystemComponent>> StruckBy;
+	TSet<TWeakObjectPtr<const UAbilitySystemComponent>> CriticallyStruckBy;
 
 	/** When this character last used the skill in its Support slot, in world seconds; negative means never. */
 	float LastSupportSkillAtSeconds = -1.0f;

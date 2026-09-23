@@ -986,6 +986,13 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// such collision: "not staggered" and "no target" both mean no bonus.
 	State.bTargetIsStaggered = bTargetIsStaggered;
 
+	// WHO IS ASKING, SET LAST. Issue #1815. `FromHealth` near the top of this
+	// function replaces the whole struct, so a field set before it is lost:
+	// that is how the first A2 build left this null for every character with a
+	// vital set, and both first-hit conditions refused for everyone. Only the
+	// strike-history fill in `WithTargetState` reads it.
+	State.AskingAbilitySystem = this;
+
 	return State;
 }
 
@@ -1109,6 +1116,7 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	bool bWantsAilments = false;
 	bool bWantsHealth = false;
 	bool bWantsBoss = false;
+	bool bWantsHistory = false;
 	for (const FCataclysmStatModifier& Modifier : Modifiers)
 	{
 		switch (Modifier.Condition)
@@ -1134,11 +1142,15 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 		case ECataclysmStatCondition::TargetIsNotBoss:
 			bWantsBoss = true;
 			break;
+		case ECataclysmStatCondition::TargetNotYetStruckByYou:
+		case ECataclysmStatCondition::TargetNotYetCritByYou:
+			bWantsHistory = true;
+			break;
 		default:
 			break;
 		}
 
-		if (bWantsAilments && bWantsHealth && bWantsBoss)
+		if (bWantsAilments && bWantsHealth && bWantsBoss && bWantsHistory)
 		{
 			// NOTHING LEFT TO LEARN, so stop rather than walking the rest.
 			break;
@@ -1150,9 +1162,27 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	// negative percentage for the health. The two cases are not distinguished
 	// because nothing could do anything differently with the distinction: a
 	// lookup with no row asking has no condition to answer.
-	if (!Target || (!bWantsAilments && !bWantsHealth && !bWantsBoss))
+	if (!Target
+		|| (!bWantsAilments && !bWantsHealth && !bWantsBoss && !bWantsHistory))
 	{
 		return State;
+	}
+
+	// WHETHER "YOU" HAVE STRUCK IT YET. Issue #1815, the first hit against each
+	// enemy. The target keeps the record and the state says who is asking; both
+	// are needed, so a lookup missing either leaves the reading unknown and the
+	// two conditions refuse.
+	if (bWantsHistory && State.AskingAbilitySystem)
+	{
+		if (const UCataclysmAbilitySystemComponent* Struck =
+				Cast<const UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(Target)))
+		{
+			State.bTargetStruckByYou = Struck->WasStruckBy(State.AskingAbilitySystem);
+			State.bTargetCritByYou =
+				Struck->WasCriticallyStruckBy(State.AskingAbilitySystem);
+			State.bTargetStrikeHistoryKnown = true;
+		}
 	}
 
 	// `OpponentCarriesWeaken` IS DELIBERATELY NOT IN THAT SWITCH. It reads
@@ -1827,6 +1857,10 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// window opened by striking a Boss survived the character's revival. Found
 	// while adding the five below; the respawn test now opens every window.
 	LastStruckABossAtSeconds = -1.0f;
+	// AND WHO HAS STRUCK IT, so a revived character is "not yet struck" by
+	// everyone again. Issue #1815.
+	StruckBy.Reset();
+	CriticallyStruckBy.Reset();
 	LastSupportSkillAtSeconds = -1.0f;
 	LastMovementSkillAtSeconds = -1.0f;
 	LastSpellAtSeconds = -1.0f;
@@ -2113,6 +2147,32 @@ float UCataclysmAbilitySystemComponent::SecondsSinceStruckABoss() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastStruckABossAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteStruckBy(
+	const UAbilitySystemComponent* Striker, bool bCritical)
+{
+	if (!Striker)
+	{
+		return;
+	}
+	StruckBy.Add(Striker);
+	if (bCritical)
+	{
+		CriticallyStruckBy.Add(Striker);
+	}
+}
+
+bool UCataclysmAbilitySystemComponent::WasStruckBy(
+	const UAbilitySystemComponent* Striker) const
+{
+	return Striker && StruckBy.Contains(Striker);
+}
+
+bool UCataclysmAbilitySystemComponent::WasCriticallyStruckBy(
+	const UAbilitySystemComponent* Striker) const
+{
+	return Striker && CriticallyStruckBy.Contains(Striker);
 }
 
 void UCataclysmAbilitySystemComponent::NoteSupportSkillUsed()

@@ -548,7 +548,13 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 270 SINCE GROUP B OF ISSUE #1815, from 264: the five movement speed windows' rows and the one lengthened to three seconds.
 	// One sentence was lengthened after its first 48 characters, so
 	// EnchantmentsPositive.csv keeps its count.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    270)
+	//
+	// AND 274 SINCE THE FIRST HIT AGAINST EACH ENEMY, issue #1815, from 270:
+	// four rows on three sentences that had none. "Deals 100%-300% bonus
+	// damage" is one row for attack damage and one for spell damage; "ignores
+	// all armor" and the first critical strike are one row each. No sentence
+	// changed, so both Enchantments CSVs keep their counts.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    274)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

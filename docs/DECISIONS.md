@@ -106,6 +106,154 @@ death handler gates both payments on the mark while Vengeful Wraiths sets it.
 
 ---
 
+## 2026-09-23 — The first hit against each enemy is remembered, and three attacker-side lookups hand over the whole blow
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (two conditions,
+the state they read, and who is asking), `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h`
+and `.cpp` (the record, kept on the character struck, of who has got a blow and a critical strike through
+to it; filled into the state when a row asks), `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp`
+(the record is written beside the Boss clock, and the critical strike and armour penetration lookups
+hand over the distance, the target's stagger and the target), `tools/generate_datatables.py` (the two
+names a sheet may write), `tools/tests/test_stat_lookups_hand_over_what_they_should.py` (the three
+changed call sites, and the exemption list now empty),
+`tools/tests/test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`, and tests in
+`CataclysmCriticalStrikeTests.cpp`, `CataclysmStatPipelineTests.cpp` and `CataclysmPassiveTreeTests.cpp`.
+Issue [#1992](https://github.com/sdubois777/Cataclysm/issues/1992), which this closes, and issue
+[#1815](https://github.com/sdubois777/Cataclysm/issues/1815).
+
+**The rows are written**, four of them on three sentences that had none, in the design workbook's
+Enchantment Effects sheet and `game/Data/EnchantmentEffects.csv` (270 rows to 274, and 211 enchantments
+with a row to 214):
+
+| Sentence | Row |
+| :-- | :-- |
+| "Your first hit against each enemy deals 100%-300% bonus damage" | `attack_damage` and `spell_damage`, increased 100-300, `target_not_yet_struck_by_you` |
+| "Your first hit against each enemy ignores all armor" | `armor_penetration`, flat 100, `target_not_yet_struck_by_you` |
+| "Your first critical strike against each enemy deals an additional 50%-100% bonus damage" | `crit_multiplier`, flat 50-100, `target_not_yet_crit_by_you` |
+
+Dry-run first on a `git archive` copy against an unedited control: the generator changed that one CSV
+and nothing else, and the real run matched the dry run byte for byte. `tools/tests/test_enchantment_effects_match_the_row_text.py`
+learns that "all" is 100 on `armor_penetration`. Compiled and tested in two machine windows, below.
+
+**Not written here: "Your first hit against each enemy has a 50%-100% chance to stagger them".** It
+reads the same condition, but no ruling covers a stagger chance on a hit, so it waits for one.
+
+### Issue #1992: three lookups now hand over the whole blow
+
+`UCataclysmAbilitySystemComponent::StatForSkill` takes the state a condition may read as positional
+parameters with defaults, so a call that stops early supplies nothing for the rest. In
+`UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, `crit_chance` and `crit_multiplier` passed the
+character struck but not the distance or its stagger, and `armor_penetration` passed none of the three.
+A row on those stats asking `target_within_metres` or `target_is_staggered`, or on armour penetration
+asking any target condition, granted nothing.
+
+All three now pass `Hit.OpponentDistanceMetres` (the same physical distance, already computed in that
+function), `UCataclysmSkillEffects::IsStaggered(GetOwningActor())` (the struck character's own stagger)
+and `GetOwningActor()`. The call-site inventory's exemption list, which excused the two critical strike
+calls, is empty.
+
+**No shipped row changes value**, measured on development `802ad193` and again on `46a9b9d0`: 10 shipped
+rows sit on those three stats, none carries a scale, and 1 carries a target-side condition,
+"Critical strike chance is increased by 20%-40% against Boss enemies" (`target_is_boss`), whose lookup
+already passed the target. `target_is_boss` reads only the target, so the distance and the stagger cannot
+move it.
+
+### Issue #1815: the first hit against each enemy
+
+Two conditions: `target_not_yet_struck_by_you` and `target_not_yet_crit_by_you`. Neither takes a value.
+The character struck keeps a record of whose blows and whose critical strikes have got through to it,
+keyed on the striker's ability system rather than its actor, because a player's ability system lives on
+its player state. The state a lookup builds carries which ability system is asking, so the record can be
+asked about "you" without any caller changing.
+
+**Judgements made under the owner's delegation, ruled by the coordinating session on 2026-09-23:**
+
+| The judgement | Why |
+| :-- | :-- |
+| "a hit" is a blow that got through: health, shield or mana absorbed it | an evaded blow is not a hit and does not use up the first one; a blow a shield absorbed whole is. The record is written where the Boss clock is stamped, so both read "got through" at the same site |
+| "ignores all armor" is `armor_penetration` flat 100 | the engine clamps armour penetration at 100 (`CataclysmDamageCalculation.cpp`), so 100 is all of it; "all" is read as 100 for that stat alone, as "immune" is 100 for crowd control resistance |
+| the record is on the character struck, keyed on `AttackerOf` | a minion's blow is the minion's own unless its summoner holds Conduit, the same rule every other kind of credit follows |
+
+**Read while the blow resolves and written after it lands**, so the first blow is judged against a record
+that does not yet hold it. A revived character's record is cleared.
+
+**Held: "Your first hit against each enemy in a combat ignores all resistances".** It waits on two things:
+the combat state (group 4's A1), and the `penetration` lookup, which still passes three arguments and no
+target.
+
+### The machine window, 2026-09-23
+
+Every line below is what the run printed.
+
+1. **Fail-before, on `385c749f`** (the two #1992 tests on the engine before this change):
+   `Build: Succeeded - 28 actions, 25 files compiled`, then at `Cataclysm.Crit.+Cataclysm.ConditionalDamage.`:
+   `Tests: 41 tests performed, 39 succeeded, 2 failed: AnArmourPenetrationRowCanAskAboutTheCharacterBeingStruck, ACriticalStrikeRowCanAskHowFarAwayTheTargetIsAndWhetherItIsStaggered`.
+2. **Stale assets, on `3d162ba6`**, at `Cataclysm.Enchantments.+Cataclysm.Data.`:
+   `Tests: 70 tests performed, 68 succeeded, 2 failed: EveryGeneratedTableHasAnAssetThatMatchesIt, TheFirstHitArmourRowIgnoresArmourOnlyUntilThatEnemyIsStruck`,
+   the first naming `DT_EnchantmentEffects is stale ... 4 row(s) only in the CSV, 0 only in the asset`.
+3. **Rebuild**: `tools/generate_datatable_assets.py` changed `DT_EnchantmentEffects.uasset` and
+   `datatable_asset_sources.json` and nothing else (`6851e58b`); the asset-freshness test then passed, 18 of 18.
+4. **The whole suite, on `6851e58b`, MISSED its registration of 0 failures**:
+   `Tests: 2204 tests performed, 2201 succeeded, 3 failed: AFirstCriticalStrikeRowReachesOnlyTheFirstCriticalStrike, AFirstHitRowReachesOnlyTheFirstBlowThatGetsThroughToEachEnemy, TheFirstHitArmourRowIgnoresArmourOnlyUntilThatEnemyIsStruck`.
+   The three assertions: "the first blow is twice the second" expected 200 and read 100; "only the first
+   carried the extra multiplier" read 150.00 against 150.00; "against an enemy not yet struck, the row gives
+   all 100" read 0.
+
+   **The cause was in this change.** `CurrentConditions` set `State.AskingAbilitySystem = this;` directly
+   after declaring `State`, and the next statement, `State = FCataclysmStatConditions::FromHealth(...)`,
+   replaced the whole struct for every character with a vital set. The strike-history fill in
+   `WithTargetState` needs the asker, so it never ran and both first-hit conditions refused for everyone.
+   The pipeline test for the two conditions filled the state by hand and passed; the tests through a real
+   blow and through the imported row are the ones that caught it. **An anchor that matches once proves where
+   a line lands, not that it survives the next statement.** The assignment now comes last, before
+   `return State;` (`ca2a6126`).
+
+   **The whole suite was not run a second time**, ruled by the coordinating session: the field did not exist
+   before this change, and a search of `game/Source` finds one reader, the strike-history fill (lines
+   1169-1177 of `CataclysmAbilitySystemComponent.cpp`), which runs only when a row asks for a first-hit
+   condition. Every other test passed on the same code without this line.
+5. **The four groups holding this change's tests, on `ca2a6126`** (a build the plan did not have):
+   `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.2.cpp`, then at
+   `Cataclysm.ConditionalDamage.+Cataclysm.Crit.+Cataclysm.Enchantments.+Cataclysm.StatPipeline.`:
+   `Tests: 147 tests performed, 147 succeeded, 0 failed`, as registered from the whole-suite log's group counts
+   (25, 18, 63 and 41).
+6. **Proofs**: 
+   - **a**, recording who struck a character switched off (`if (false) Struck->NoteStruckBy(`), at
+     `Cataclysm.ConditionalDamage.`: `PROVED: with the break in: 25 tests performed, 23 succeeded, 2 failed:
+     AFirstCriticalStrikeRowReachesOnlyTheFirstCriticalStrike, AFirstHitRowReachesOnlyTheFirstBlowThatGetsThroughToEachEnemy |
+     restored: 25 tests performed, 25 succeeded, 0 failed`.
+   - **b**, the armour penetration lookup handed no target (`/*Target=*/nullptr,`), at
+     `Cataclysm.ConditionalDamage.`: **`NOT A PROOF: nothing failed with the break in`**, 25 of 25 both ways.
+     **Missing coverage, and its cause:** the armour test asked `target_within_metres`, which reads the
+     distance the lookup is handed and not the target, so it passed with the target broken, and no other
+     test went through that site with a target-only row. See the second window below.
+   - **c**, the critical strike chance lookup handed no distance, at `Cataclysm.Crit.`: `PROVED: with the
+     break in: 18 tests performed, 17 succeeded, 1 failed: ACriticalStrikeRowCanAskHowFarAwayTheTargetIsAndWhetherItIsStaggered |
+     restored: 18 tests performed, 18 succeeded, 0 failed`.
+
+   The source's hash was the same before and after each proof.
+
+### The second machine window, 2026-09-23
+
+For proof b alone, ruled by the coordinating session before this change could merge, because it closes
+#1992 and the target hand-over at the armour site is part of #1992's ask.
+
+- **A new test**, `Cataclysm.ConditionalDamage.AnArmourPenetrationRowCanAskWhetherTheCharacterStruckIsABoss`:
+  a flat 100 row under `target_is_boss`, which reads only the target, and two equally armoured creatures
+  each struck before and after the row; only the Boss takes more. The distance test is renamed
+  `AnArmourPenetrationRowCanAskHowFarAwayTheCharacterStruckIs`, from a name that claimed the target, and
+  its comment says what it measures (`158b4711`).
+- `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.11.cpp` (the window's extra build), then
+  at `Cataclysm.ConditionalDamage.`: `Tests: 26 tests performed, 26 succeeded, 0 failed`, as registered.
+- **Proof b again**: `PROVED: with the break in: 26 tests performed, 25 succeeded, 1 failed:
+  AnArmourPenetrationRowCanAskWhetherTheCharacterStruckIsABoss | restored: 26 tests performed, 26
+  succeeded, 0 failed`.
+
+**The test counts.** The whole suite ran at 2204 on `6851e58b`, which is the final code without the fix
+line; the final head carries 2205, the Boss test added in the second window.
+
+---
+
 ## 2026-09-23 — Deeper Hurt lengthens a Cripple or a Weaken where it is applied, and a spread copy keeps the row's duration
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAilments.h` and `.cpp` (the stat's name

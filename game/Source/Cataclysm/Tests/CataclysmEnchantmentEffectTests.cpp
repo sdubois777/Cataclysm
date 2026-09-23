@@ -3760,4 +3760,69 @@ bool FCataclysmSupportSpeedRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstHitArmourRowTest,
+	"Cataclysm.Enchantments.TheFirstHitArmourRowIgnoresArmourOnlyUntilThatEnemyIsStruck",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your first hit against each enemy ignores all armor", worn, gives full armour
+ * penetration against an enemy the wearer has not struck, and none once it has.
+ * Issue #1815.
+ *
+ * THE ROW IS READ, NOT WRITTEN BY HAND: the item carrying the enchantment is
+ * equipped, so this fails until the row exists in the imported table.
+ *
+ * THE TARGET IS A SECOND CHARACTER WITH ITS OWN ABILITY SYSTEM, because the
+ * record of who has struck a character is kept on the character struck, and
+ * the lookup asks it through the target it is handed.
+ */
+bool FCataclysmFirstHitArmourRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	FWearer Enemy(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"),
+				 TEXT("Positive_Your_first_hit_against_each_enemy_ignores_all_ar"),
+				 DrawbackWithNoEffect),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Penetration(TEXT("armor_penetration"));
+	const auto Against = [&](AActor* Target)
+	{
+		return ASC->StatForSkill(Penetration, FGameplayTagContainer(), 0.0f,
+								 /*SkillHealthCostPercent=*/-1.0f,
+								 FCataclysmBlowContext(),
+								 /*MetresMovedBeforeBlow=*/-1.0f,
+								 /*TargetDistanceMetres=*/-1.0f,
+								 /*bTargetIsStaggered=*/false, Target);
+	};
+
+	const float Unstruck = Against(Enemy.Actor);
+	const float NoTarget = Against(nullptr);
+	TestEqual(TEXT("with no target in hand the row grants nothing"), NoTarget, 0.0f, 0.001f);
+	TestEqual(TEXT("against an enemy not yet struck, the row gives all 100"),
+		Unstruck - NoTarget, 100.0f, 0.001f);
+
+	Enemy.AbilitySystem->NoteStruckBy(ASC, /*bCritical=*/false);
+	TestEqual(TEXT("and once that enemy is struck, nothing"),
+		Against(Enemy.Actor), NoTarget, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

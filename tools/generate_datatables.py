@@ -3539,6 +3539,14 @@ CONDITIONS = {
     # target, so neither fires on a character sheet with no target in hand.
     "target_is_not_boss": None,
 
+    # "Your first hit against each enemy ..." is `target_not_yet_struck_by_you`,
+    # and "Your first critical strike against each enemy ..." is
+    # `target_not_yet_crit_by_you`. Issue #1815. Neither takes a value: "first"
+    # names a state of the target's record, not a number. A hit is a blow that
+    # got through, ruled under the owner's delegation on 2026-09-23.
+    "target_not_yet_struck_by_you": None,
+    "target_not_yet_crit_by_you": None,
+
     # "While moving" is `while_moving` and "while stationary" is
     # `while_stationary`, and neither takes a value. Issue #41, slice 2.
     #

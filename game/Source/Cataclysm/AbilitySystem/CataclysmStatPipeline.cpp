@@ -86,6 +86,8 @@ namespace
 		{ TEXT("seconds_after_spell"), ECataclysmStatCondition::WithinSecondsOfSpell },
 		{ TEXT("seconds_after_melee_hit_taken"), ECataclysmStatCondition::WithinSecondsOfMeleeHitTaken },
 		{ TEXT("seconds_after_crowd_control"), ECataclysmStatCondition::WithinSecondsOfCrowdControl },
+		{ TEXT("target_not_yet_struck_by_you"), ECataclysmStatCondition::TargetNotYetStruckByYou },
+		{ TEXT("target_not_yet_crit_by_you"),   ECataclysmStatCondition::TargetNotYetCritByYou },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -249,8 +251,10 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::CanCrippleOrWeaken:
 	case ECataclysmStatCondition::OpponentCarriesWeaken:
 	case ECataclysmStatCondition::EnergyShieldAboveZero:
+	case ECataclysmStatCondition::TargetNotYetStruckByYou:
+	case ECataclysmStatCondition::TargetNotYetCritByYou:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the nineteen says
+		// nothing for a number to be compared against. Each of the twenty-one says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -402,6 +406,8 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetHealthBelowPercent:
 	case C::EnemiesStruckTogetherAtLeast:
 	case C::OpponentWithinMetres:
+	case C::TargetNotYetStruckByYou:
+	case C::TargetNotYetCritByYou:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -781,6 +787,15 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// THREE STATES, NOT TWO: a boss, not a boss, and nothing looked at. One
 		// flag cannot carry three, which is why there are two.
 		return State.bTargetIsBossKnown && !State.bTargetIsBoss;
+
+	case ECataclysmStatCondition::TargetNotYetStruckByYou:
+		// Issue #1815. Known first, as for every target reading, so a lookup
+		// with no target in hand refuses rather than finding everyone unstruck.
+		return State.bTargetStrikeHistoryKnown && !State.bTargetStruckByYou;
+
+	case ECataclysmStatCondition::TargetNotYetCritByYou:
+		// Issue #1815. The same rule, counting critical strikes only.
+		return State.bTargetStrikeHistoryKnown && !State.bTargetCritByYou;
 
 	case ECataclysmStatCondition::TargetCarriesCripple:
 		// THE EXPLICIT TAG AND NOT AN IMPLIED PARENT. Issue #1515.
