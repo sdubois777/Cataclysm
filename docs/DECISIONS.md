@@ -1857,6 +1857,148 @@ hand-made row that breaks it. The comment in `ElementTag` now states these rules
 
 ---
 
+## 2026-09-23 — Set Upon and Set the Pack On: a minion hits harder against an enemy its summoner damaged in the last 2 seconds
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
+(the struck record keeps a time, and a target-aware multiplier), `CataclysmStatPipeline.h` and
+`.cpp` (a condition), `CataclysmMinion.cpp` (a minion's blow asks it), `tools/generate_datatables.py`,
+the two rows in `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`,
+`docs/README.md`, four test files and three Python checks. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE TWO NODES, ONE CONDITION
+
+| Node | Sentence | Row, to be written |
+|---|---|---|
+| `Ritualist_basic_a_b0` Set Upon | "+2% increased Minion Damage per point against enemies you have damaged in the last 2 seconds." | `minion_damage`, increased 2, `target_damaged_by_you_within_seconds` 2 |
+| `Ritualist_capstone_100` option 1, Set the Pack On | "Enemies you have damaged in the last 2 seconds take 25% more damage from your minions." | `minion_damage`, more 25, the same condition, `Option` 1 |
+
+The entry of 2026-09-13 headed "A stat may deliberately have no gameplay attribute" excluded Set
+Upon: "It waits on a condition that does not exist." **`target_damaged_by_you_within_seconds` is
+that condition.** It compares a number
+of seconds, inclusive, as every clock condition does. A target never struck reads -1 and refuses,
+and so does a lookup with no target in hand, which leaves the record unread.
+
+### ONE RECORD, NOT TWO
+
+**The record is the one the first-hit conditions read**, added by
+[#2027](https://github.com/sdubois777/Cataclysm/pull/2027): each character keeps who has got a
+blow through to it, keyed on `UCataclysmCombatEvents::AttackerOf`. It now keeps, for each striker,
+when their most recent blow did. Ruled by the coordinating session on 2026-09-23 so that "struck by
+you" and "damaged by you" cannot disagree about one blow. Each entry is overwritten by that striker's
+next blow and the record is cleared on revival, so nothing prunes it.
+
+### A MINION'S BLOW NOW ASKS ABOUT THE ENEMY IT STRIKES
+
+`SummonerMultiplierFor` read the summoner's increases with no target, so a row asking about the
+enemy could never hold. **Minion damage alone now reads
+`UCataclysmAbilitySystemComponent::MultiplierForStatAgainst`**, which evaluates the same state with
+the struck enemy added and returns `(1 + increases) × more`. Health and duration are settled at the
+summoning, with no enemy in hand, and keep the old reading.
+
+### NO SHIPPED ROW CHANGES VALUE, MEASURED 2026-09-23
+
+**Two things the new reading does that the old did not, and neither reaches a shipped row.**
+
+**It counts the "more" bucket.** Every `minion_damage` row in `game/Data` on `development` at
+38089da3 is in the increases, so the "more" product is one for all of them:
+
+| Sheet and line | Row | Value |
+|---|---|---|
+| `EnchantmentEffects.csv:147` | Tyrant's Chains, 2 pieces | increased 50 |
+| `EnchantmentEffects.csv:220` | "Summoned minions deal 30-50% increased damage..." | increased 30-50, `seconds_after_summon` 5 |
+| `PassiveEffects.csv:225-230` | `Ritualist_basic_spine_005`, `spine_009`, `a_stem2`, `a_a2`, `b_stem2`, `b_a0` | increased 2 each |
+| `PassiveEffects.csv:238` | `Ritualist_capstone_25` option 1 | increased 25 |
+| `Affixes.csv:83` | `Stat_Increased_minion_damage` | increased |
+
+**It judges conditions with a target in the state.** The one conditioned row, `EnchantmentEffects.csv:220`,
+reads `seconds_after_summon`. That reading is filled by `CurrentConditions` from the component it is
+called on, and `WithTargetState` only adds the target's readings, so it is the summoner's clock under
+both. **The new reading must therefore be asked on the summoner's component and never the minion's**,
+whose clock no summon stamps; `Cataclysm.MinionGear.ARowOnTheSecondsAfterASummonStillReachesAMinionsBlow`
+holds that.
+
+**A "more" row on minion damage is new, and the rule against multiplying minion scaling does not
+forbid it.** That rule, recorded in `SummonerMultiplierFor`, is that an attribute's and an affix's
+increases add rather than multiply; they still add. Set the Pack On is a capstone option whose
+sentence says "more", recorded in the 2026-09-08 entry that wrote it as "the first flat
+*offensive*" capstone multiplier.
+
+### FIVE RULINGS UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto.**
+
+| Question | Answer |
+|---|---|
+| Whose blows are "yours"? | **`AttackerOf`'s answer**, the record's own key: the character's blows, and its minions' only while it holds Conduit, per the owner's ruling of 2026-09-17. With Conduit the condition holds for every enemy the minions strike, which the 2026-09-08 entry that wrote both nodes already left standing |
+| What counts as damaged? | **What the first-hit record counts**: a blow that reached health, shield or mana; an evaded blow does not. **A damage over time tick counts**: it reaches `PostGameplayEffectExecute` through the same branch, with no early return before the record is written, so it stamps the record as a hit does |
+| Is the 2 seconds inclusive? | **Yes**, as every clock condition is |
+| Is 25% final? | **Kept**, the judgement recorded when Set the Pack On was written |
+| The rows? | As in the table above, written when the design workbook is free, on their own branch |
+
+### TESTS
+
+- `Cataclysm.StatPipeline.DamagedByYouHoldsWithinItsSecondsInclusiveAndRefusesAnUnreadOrUnstruckTarget`
+- `Cataclysm.MinionGear.AMinionHitsHarderOnlyAgainstAnEnemyItsSummonerDamagedInTheLastTwoSeconds`:
+  16% increased and 25% more give 1.45, where one sum would give 1.41. The imp's own blows do not
+  count as its summoner's.
+- `Cataclysm.MinionGear.ARowOnTheSecondsAfterASummonStillReachesAMinionsBlow`
+- `Cataclysm.MinionGear.TheStruckRecordKeepsWhenEachStrikersMostRecentBlowGotThrough`
+- `Cataclysm.Passives.SetUponRaisesARealRitualistsMinionDamageOnlyAgainstAnEnemyItDamagedWithinTwoSeconds`
+  and `Cataclysm.Passives.SetThePackOnMultipliesARealRitualistsMinionDamageAgainstAnEnemyItDamagedWithinTwoSeconds`
+  read the rows on a real Ritualist. **Every other test grants the stat by hand**, so these are the
+  two that fail while the rows are missing.
+
+### THE ROWS, AND WHAT THEY MOVED
+
+Written into the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx` on top of Two Hands'
+row, by the same script the four passive changes' dry run used on a copy first. The generator then
+changed only `game/Data/PassiveEffects.csv`, adding the two rows, each on `minion_damage` while
+`target_damaged_by_you_within_seconds` 2. **Each number is its node's own**: Set Upon "+2%
+increased Minion Damage per point", and Set the Pack On, the Third Pact's first option, "25% more
+damage". Pins moved, each with a comment saying why:
+
+| Pin | From | To |
+|---|--:|--:|
+| `docs/README.md`, Passive Effects rows | 300 | 302 |
+| `AUTHORED_ROWS` in `test_passive_effects_match_the_node_text.py` | 300 | 302 |
+| `AUTHORED_NODES`, same file (the Ritualist now 73 of its 74 nodes) | 221 | 222 |
+| `AUTHORED_OPTIONS`, same file | 23 | 24 |
+| `CHECK_TABLE` for `PassiveEffects.csv` in `CataclysmDataTableTests.cpp` | 300 | 302 |
+| The condition's phrase in the same Python file: "damaged in the last", "{value:g} second" | | |
+
+**Set the Pack On moves the options count and not the nodes count**: its capstone already had a row
+for its third option, Standing Apart. `target_damaged_by_you_within_seconds` leaves
+`BUILT_AHEAD_OF_THEIR_ROWS`. `DT_PassiveEffects` is rebuilt in this change's build window.
+
+**The condition counts, after Two Hands landed first**: 26 of 61 conditions compare nothing, and
+the sentence above the full list says a test naming them by hand passes "after somebody adds a
+sixty-second". This condition compares a number of seconds, so it adds to the 61 and not to the
+26. `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py` holds both.
+
+### THE WINDOW, 2026-09-24, ON f5635e7a
+
+**This change's C++ was compiled for the first time here**, including the conflicts resolved by hand
+when it was stacked on Two Hands, and it built.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 28 actions, 25 files compiled` |
+| Fail-before, `tests --prefix "Cataclysm.Passives."`, stale asset | `131 tests performed, 129 succeeded, 2 failed`: the Set Upon and Set the Pack On row tests, on "Expected 'Set Upon carries one row' to be 1, but it was 0" and "Expected 'Set the Pack On carries one row' to be 1, but it was 0" |
+| Rebuild, `generate_datatable_assets.py` | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` and nothing else |
+| Whole suite, `tests --no-build` | `2293 tests performed, 2293 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before. The broken run's log
+was copied before the restored run overwrote it. **Every one was registered before the window, test
+and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Restored | Assertions that failed |
+|---|---|---|---|---|
+| a blow exactly 2 seconds ago falls outside the window (`<` for `<=` in `CataclysmStatPipeline.cpp`) | `Cataclysm.StatPipeline.` | `47 tests performed, 46 succeeded, 1 failed: DamagedByYouHoldsWithinItsSecondsInclusiveAndRefusesAnUnreadOrUnstruckTarget` | `47 tests performed, 47 succeeded, 0 failed` | "and one struck exactly two seconds ago is, because within is inclusive" |
+| a minion's blow no longer names the enemy it strikes (`nullptr` for `Target` in `CataclysmMinion.cpp`) | `Cataclysm.MinionGear.` | `8 tests performed, 7 succeeded, 1 failed: AMinionHitsHarderOnlyAgainstAnEnemyItsSummonerDamagedInTheLastTwoSeconds` | `8 tests performed, 8 succeeded, 0 failed` | "against an enemy its summoner just damaged: 16% increased and 25% more", 220.5 (the imp's own figure) where 319.725 |
+| the struck record keeps no time (`CataclysmAbilitySystemComponent.cpp`) | `Cataclysm.Passives.` | `131 tests performed, 129 succeeded, 2 failed`: the Set Upon and Set the Pack On row tests | `131 tests performed, 131 succeeded, 0 failed` | "one point adds 2.0% against an enemy struck a moment ago", 0 where 0.02; "against an enemy struck a moment ago, 25% more", 1.32 where 1.65 |
+
+---
+
 ## 2026-09-23 — Overreach adds 2 metres to a melee strike's reach, after every multiplier, and to where the basic attack starts swinging
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp` (the stat and

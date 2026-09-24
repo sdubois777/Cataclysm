@@ -94,6 +94,7 @@ namespace
 		{ TEXT("target_carries_any_debuff"),    ECataclysmStatCondition::TargetCarriesAnyDebuff },
 		{ TEXT("target_carries_a_dot"),         ECataclysmStatCondition::TargetCarriesADot },
 		{ TEXT("wielding_two_handed_weapon"),   ECataclysmStatCondition::WieldingTwoHandedWeapon },
+		{ TEXT("target_damaged_by_you_within_seconds"), ECataclysmStatCondition::TargetDamagedByYouWithinSeconds },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -435,6 +436,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetNotYetCritByYou:
 	case C::TargetCarriesAnyDebuff:
 	case C::TargetCarriesADot:
+	case C::TargetDamagedByYouWithinSeconds:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -829,6 +831,13 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// An unknown reading is -1, so a missing weapon, table or row refuses
 		// rather than being guessed either way.
 		return State.WeaponHands == 2;
+
+	case ECataclysmStatCondition::TargetDamagedByYouWithinSeconds:
+		// Issue #1515. Known first, as above, then the two rules of every
+		// clock: never reads -1 and refuses, and the window is inclusive.
+		return State.bTargetStrikeHistoryKnown
+			&& State.SecondsSinceStruckByYou >= 0.0f
+			&& State.SecondsSinceStruckByYou <= Value;
 
 	case ECataclysmStatCondition::TargetCarriesCripple:
 		// THE EXPLICIT TAG AND NOT AN IMPLIED PARENT. Issue #1515.

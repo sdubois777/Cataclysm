@@ -1457,6 +1457,29 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	WieldingTwoHandedWeapon
 		UMETA(DisplayName = "Wielding Two Handed Weapon"),
+
+	/**
+	 * A blow of the asking character's got through to the target no more than
+	 * `ConditionValue` seconds ago. Issue #1515: Set Upon, "+2% increased
+	 * Minion Damage per point against enemies you have damaged in the last 2
+	 * seconds", and Set the Pack On, "Enemies you have damaged in the last 2
+	 * seconds take 25% more damage from your minions".
+	 *
+	 * THE RECORD `TargetNotYetStruckByYou` READS, WITH THE TIME KEPT, so
+	 * "damaged" means what "a hit" means there, ruled under the owner's
+	 * delegation on 2026-09-23: health, shield or mana absorbed it, and an
+	 * evaded blow does not count. A damage over time tick counts, because it
+	 * reaches the same site.
+	 *
+	 * "YOU" IS WHOEVER `UCataclysmCombatEvents::AttackerOf` NAMES, which is who
+	 * the record was written for: a minion's blow counts for its summoner only
+	 * while the summoner holds Conduit.
+	 *
+	 * INCLUSIVE, AS EVERY CLOCK HERE IS: a blow exactly 2 seconds ago counts.
+	 * Never struck reads -1 and refuses, and so does an unread target.
+	 */
+	TargetDamagedByYouWithinSeconds
+		UMETA(DisplayName = "Target Damaged By You Within Seconds"),
 };
 
 /**
@@ -2722,6 +2745,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	float ManaHeld = -1.0f;
 
 	/**
+	 * How long ago the asker's most recent blow got through to the target, in
+	 * seconds; -1 for never, and for a target nobody read. Issue #1515.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsSinceStruckByYou = -1.0f;
+
+	/**
 	 * How far away each hostile character near this one is, in metres. Empty
 	 * means either that nobody is near or that this lookup never asked. Issue
 	 * #1597.
@@ -3411,7 +3441,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a sixty-first, which is the drift that put the passive tree eight
+	 * adds a sixty-second, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -3420,7 +3450,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TWENTY-SIX OF THE SIXTY COMPARE NOTHING. They are the case labels
+	 * TWENTY-SIX OF THE SIXTY-ONE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

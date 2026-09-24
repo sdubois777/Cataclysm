@@ -331,6 +331,27 @@ public:
 	float IncreasesForStat(FName Stat, const FGameplayTagContainer& Tags) const;
 
 	/**
+	 * A stat's whole multiplier, `(1 + increases) * more`, judged against the
+	 * character being struck. Issue #1515, for minion damage.
+	 *
+	 * `IncreasesForStat` ABOVE, WITH A TARGET AND WITH THE "MORE" BUCKET. Set
+	 * Upon asks for an increase and Set the Pack On for a "more", both "against
+	 * enemies you have damaged in the last 2 seconds", which is a question about
+	 * the enemy a minion is swinging at. `IncreasesForStat` builds its state
+	 * with no target, so a row asking about one refuses there.
+	 *
+	 * THE SAME STATE OTHERWISE, built by `CurrentConditions` on THIS component.
+	 * Called on the summoner's, a row such as `seconds_after_summon` reads the
+	 * summoner's clock here exactly as it does through `IncreasesForStat`.
+	 *
+	 * NOTHING RECORDED MEANS ONE. The increases' half is floored at zero, as
+	 * the minion's multiplier always was, so a reduction past -100% deals
+	 * nothing rather than negative damage.
+	 */
+	float MultiplierForStatAgainst(FName Stat, const FGameplayTagContainer& Tags,
+								   const AActor* Target) const;
+
+	/**
 	 * Whether a removal reaches this stat, for these tags, right now. Issue #1791.
 	 *
 	 * FOR A CONSUMER THAT DOES NOT GET THE STAT'S VALUE FROM THE PIPELINE. A
@@ -1651,6 +1672,19 @@ public:
 	void SetConvertedManaToHealth(float Converted) { ConvertedManaToHealth = Converted; }
 
 	/**
+	 * How long ago `Striker`'s most recent blow got through to this character,
+	 * in seconds, or -1 if none has. Issue #1515, Set Upon and Set the Pack On:
+	 * "enemies you have damaged in the last 2 seconds".
+	 *
+	 * THE RECORD `WasStruckBy` READS, WITH THE TIME KEPT, rather than a second
+	 * record beside it, ruled on 2026-09-23 under the owner's delegation: one
+	 * record means "struck by you" and "damaged by you" cannot disagree about
+	 * one blow. Each striker's entry is overwritten by its next blow, and the
+	 * record is cleared on revival, so nothing needs to prune it.
+	 */
+	float SecondsSinceStruckBy(const UAbilitySystemComponent* Striker) const;
+
+	/**
 	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -2046,8 +2080,12 @@ protected:
 	/** Both combat notes pass through here. */
 	void NoteCombatEvent();
 
-	/** Who has got a blow, and a critical strike, through to this character. */
-	TSet<TWeakObjectPtr<const UAbilitySystemComponent>> StruckBy;
+	/**
+	 * Who has got a blow through to this character, with when their most
+	 * recent one did, in world seconds; and who has got a critical strike
+	 * through. The time was added for Set Upon, issue #1515.
+	 */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> StruckBy;
 	TSet<TWeakObjectPtr<const UAbilitySystemComponent>> CriticallyStruckBy;
 
 	/** When this character last used the skill in its Support slot, in world seconds; negative means never. */

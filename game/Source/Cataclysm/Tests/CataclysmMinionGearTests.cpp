@@ -577,4 +577,242 @@ bool FCataclysmMinionGearNoFallbackTest::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// Set Upon and Set the Pack On: a minion's blow against an enemy its summoner
+// damaged in the last 2 seconds. Issue #1515.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmMinionGearTest
+{
+	/**
+	 * `minion_damage` on a summoner, as the two rows grant it: an increase and a
+	 * "more", both under `target_damaged_by_you_within_seconds` at 2. Through
+	 * `SetStatInputs`, for the reason `GrantMinionStat` gives.
+	 */
+	void GrantDamagedByYouRows(AActor* Summoner, float IncreasePercent,
+							   float MorePercent)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Summoner));
+		if (!System)
+		{
+			return;
+		}
+
+		FCataclysmStatModifier Increase;
+		Increase.Bucket = ECataclysmStatBucket::Increased;
+		Increase.Source = ECataclysmModifierSource::PassiveKeystone;
+		Increase.Value = IncreasePercent;
+		Increase.Condition = ECataclysmStatCondition::TargetDamagedByYouWithinSeconds;
+		Increase.ConditionValue = 2.0f;
+
+		FCataclysmStatModifier More = Increase;
+		More.Bucket = ECataclysmStatBucket::More;
+		More.Value = MorePercent;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("minion_damage")));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Increase, More};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** One swing of `Imp` at `Target`, read as the health it took. */
+	float SwingAt(ACataclysmMinion* Imp, const FScopedFighter& Target)
+	{
+		const float Before = Target.Health();
+		Imp->AttackTarget(Target.Actor);
+		return Before - Target.Health();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionGearDamagedByYouTest,
+	"Cataclysm.MinionGear.AMinionHitsHarderOnlyAgainstAnEnemyItsSummonerDamagedInTheLastTwoSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Set Upon and Set the Pack On in the shape their rows take. Issue #1515.
+ *
+ * THE SUMMONER'S BLOW GOES THROUGH THE PATH EVERY BLOW TAKES, so the record is
+ * written where the game writes it rather than by hand.
+ *
+ * 16% INCREASED AND 25% MORE ARE 1.45, and added into one sum they would be
+ * 1.41, so a build that put the "more" row among the increases fails here, and
+ * so does one that dropped it.
+ *
+ * THE IMP'S OWN BLOWS ARE NOT ITS SUMMONER'S, the owner's ruling of 2026-09-17:
+ * a second swing at the enemy nobody else struck is still its own figure,
+ * although the imp itself struck it a moment before. Ruled for this condition
+ * on 2026-09-23 under the owner's delegation.
+ */
+bool FCataclysmMinionGearDamagedByYouTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, SummonerWeapon);
+	FScopedFighter Struck(World, /*AttackDamage=*/0.0f);
+	FScopedFighter Untouched(World, /*AttackDamage=*/0.0f);
+
+	ACataclysmMinion* Imp = SummonImp(*this, World, Summoner.Actor);
+	if (!Imp)
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	GrantDamagedByYouRows(Summoner.Actor, 16.0f, 25.0f);
+	const float ItsOwn =
+		RaisedByLevel(ImpBaseDamage, ImpDamagePerLevel, LevelTheseTestsSee());
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Summoner.Actor, Struck.Actor, 1.0f);
+	if (!TestTrue(TEXT("the summoner's blow is on the struck enemy's record"),
+				  Struck.AbilitySystem->SecondsSinceStruckBy(
+					  Summoner.AbilitySystem) >= 0.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("against an enemy its summoner just damaged: 16% increased and 25% more"),
+			  SwingAt(Imp, Struck), ItsOwn * 1.16f * 1.25f, 0.01f);
+	TestEqual(TEXT("against one its summoner never damaged: its own figure"),
+			  SwingAt(Imp, Untouched), ItsOwn, 0.01f);
+	TestEqual(TEXT("and still its own after the imp struck it, since the imp's blows are its own"),
+			  SwingAt(Imp, Untouched), ItsOwn, 0.01f);
+
+	World->TimeSeconds += 2.5f;
+	TestEqual(TEXT("and against the first, 2.5 seconds later: its own figure"),
+			  SwingAt(Imp, Struck), ItsOwn, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionGearSummonClockTest,
+	"Cataclysm.MinionGear.ARowOnTheSecondsAfterASummonStillReachesAMinionsBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The enchantment "Summoned minions deal 30%-50% increased damage for 5 seconds
+ * after being summoned" (`EnchantmentEffects.csv`, `seconds_after_summon`
+ * at 5) through the minion's new target-aware multiplier. Issue #1515.
+ *
+ * WHY THIS IS PINNED. Before Set Upon the minion read its summoner's
+ * increases with the summoner's state; it now reads them with a target added.
+ * The row is unchanged only while that state is still built on the SUMMONER's
+ * component, whose summon clock this row reads. A build that asked the minion's
+ * own component would read a clock no summon ever stamps, and the row would
+ * grant nothing, with no error anywhere.
+ */
+bool FCataclysmMinionGearSummonClockTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter Summoner(World, SummonerWeapon);
+	FScopedFighter Target(World, /*AttackDamage=*/0.0f);
+
+	ACataclysmMinion* Imp = SummonImp(*this, World, Summoner.Actor);
+	if (!Imp)
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	FCataclysmStatModifier AfterSummon;
+	AfterSummon.Bucket = ECataclysmStatBucket::Increased;
+	AfterSummon.Source = ECataclysmModifierSource::Enchantment;
+	AfterSummon.Value = 40.0f;
+	AfterSummon.Condition = ECataclysmStatCondition::WithinSecondsOfSummon;
+	AfterSummon.ConditionValue = 5.0f;
+
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(TEXT("minion_damage")));
+	Line.Base = 0.0f;
+	Line.Modifiers = {AfterSummon};
+	Summoner.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	const float ItsOwn =
+		RaisedByLevel(ImpBaseDamage, ImpDamagePerLevel, LevelTheseTestsSee());
+
+	TestEqual(TEXT("with no summon used, its own figure"),
+			  SwingAt(Imp, Target), ItsOwn, 0.01f);
+
+	Summoner.AbilitySystem->NoteSummonUsed();
+	TestEqual(TEXT("within five seconds of its summoner's summon, 40% increased"),
+			  SwingAt(Imp, Target), ItsOwn * 1.4f, 0.01f);
+
+	World->TimeSeconds += 6.0f;
+	TestEqual(TEXT("and six seconds later, its own figure again"),
+			  SwingAt(Imp, Target), ItsOwn, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionGearStruckRecordTimeTest,
+	"Cataclysm.MinionGear.TheStruckRecordKeepsWhenEachStrikersMostRecentBlowGotThrough",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The record the first-hit conditions read, with the time Set Upon needs.
+ * Issue #1515.
+ *
+ * ONE ENTRY PER STRIKER, OVERWRITTEN BY THEIR NEXT BLOW: a stranger has no
+ * time, and a second blow resets the first's age rather than keeping it.
+ */
+bool FCataclysmMinionGearStruckRecordTimeTest::RunTest(const FString&)
+{
+	using namespace CataclysmMinionGearTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedFighter You(World, SummonerWeapon);
+	FScopedFighter Stranger(World, SummonerWeapon);
+	FScopedFighter Enemy(World, /*AttackDamage=*/0.0f);
+
+	TestEqual(TEXT("before any blow the enemy has no time for you"),
+			  Enemy.AbilitySystem->SecondsSinceStruckBy(You.AbilitySystem), -1.0f,
+			  0.001f);
+
+	UCataclysmSkillEffects::ApplyDirectDamage(You.Actor, Enemy.Actor, 1.0f);
+	TestEqual(TEXT("your blow is recorded as this instant"),
+			  Enemy.AbilitySystem->SecondsSinceStruckBy(You.AbilitySystem), 0.0f,
+			  0.001f);
+	TestEqual(TEXT("and a stranger still has none"),
+			  Enemy.AbilitySystem->SecondsSinceStruckBy(Stranger.AbilitySystem),
+			  -1.0f, 0.001f);
+
+	World->TimeSeconds += 1.5f;
+	TestEqual(TEXT("1.5 seconds later it is 1.5 seconds old"),
+			  Enemy.AbilitySystem->SecondsSinceStruckBy(You.AbilitySystem), 1.5f,
+			  0.001f);
+	TestTrue(TEXT("and the first-hit record still holds you"),
+			 Enemy.AbilitySystem->WasStruckBy(You.AbilitySystem));
+
+	UCataclysmSkillEffects::ApplyDirectDamage(You.Actor, Enemy.Actor, 1.0f);
+	TestEqual(TEXT("and a second blow makes it this instant again"),
+			  Enemy.AbilitySystem->SecondsSinceStruckBy(You.AbilitySystem), 0.0f,
+			  0.001f);
+
+	return true;
+}
+
 #endif  // WITH_AUTOMATION_TESTS

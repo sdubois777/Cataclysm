@@ -455,7 +455,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// replaced, once every 10 seconds, or 5 for one that exploded. Issue #1515.
 	// AND 300 SINCE 2026-09-24, for Two Hands: 3% increased attack damage per
 	// point while wielding a two-handed weapon. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        300)
+	// AND 302 SINCE THEN, for Set Upon and Set the Pack On: minions hit harder
+	// against an enemy their summoner damaged in the last 2 seconds. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        302)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
