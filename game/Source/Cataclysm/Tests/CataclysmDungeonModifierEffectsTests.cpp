@@ -19,6 +19,7 @@
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
+#include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmImpCharacter.h"
@@ -22304,6 +22305,395 @@ bool FCataclysmChaoticItemTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("affixes were compared: %d"), AffixesCompared), AffixesCompared > 0);
 	TestTrue(FString::Printf(TEXT("and some of their tiers moved: %d"), TiersThatMoved),
 			 TiersThatMoved > 0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Unstable_Portal. Issues #1820 and #41.
+//
+// "Stepping through a portal has a 50% chance of taking you to the next floor, a 25%
+// chance of returning you to the beginning of the current floor, and a 25% chance of
+// spawning a powerful, unpredictable mini-boss." The stairs are the portal; one roll per
+// step; the mini-boss is an Abyssal Warden at the Herald rung. Rulings under the owner's
+// delegation, 2026-09-23.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where the stairs may not take the player down. Issues #1820, #41. */
+	const FName UnstablePortal(UCataclysmDungeonModifierEffects::UnstablePortalKey);
+
+	/**
+	 * A floor carrying these rows, reached with `GoToFloor` so it has stairs, then emptied.
+	 * EVERY WARDEN'S OWN RUNG IS PINNED TO COMMON, so a Warden the portal raises is at the
+	 * mini-boss rung only because the portal set it.
+	 */
+	ACataclysmDungeonGameMode* AFloorWithAPortalCarrying(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+		const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonModifiers = Rows;
+		Mode->ImpRarityStep = 0;
+		Mode->AbyssalWardenRarityStep = 0;
+		if (!Test.TestTrue(TEXT("floor 1 was reached"), Mode->GoToFloor(1))
+			|| !Test.TestNotNull(TEXT("and it has stairs"), Mode->Stairs.Get()))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString PortalPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(UnstablePortal);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** The living Abyssal Wardens on the floor. */
+	TArray<ACataclysmEnemyCharacter*> TheFloorsWardens(ACataclysmDungeonGameMode* Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Wardens;
+		for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+		{
+			if (IsValid(Creature) && Creature->IsA<ACataclysmAbyssalWardenCharacter>()
+				&& !UCataclysmSkillEffects::IsDead(Creature))
+			{
+				Wardens.Add(Creature);
+			}
+		}
+		return Wardens;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalDescendTest,
+	"Cataclysm.DungeonModifierEffects.APortalRollBelowFiftyTakesThePlayerDown",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalDescendTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ROW'S THREE ODDS, the boundaries written out.
+	TestEqual(TEXT("49.99 goes down"), Effects::UnstablePortalOutcomeFor(49.99f),
+			  Effects::UnstablePortalDescends);
+	TestEqual(TEXT("50 goes back"), Effects::UnstablePortalOutcomeFor(50.0f),
+			  Effects::UnstablePortalReturns);
+	TestEqual(TEXT("74.99 goes back"), Effects::UnstablePortalOutcomeFor(74.99f),
+			  Effects::UnstablePortalReturns);
+	TestEqual(TEXT("75 raises a mini-boss"), Effects::UnstablePortalOutcomeFor(75.0f),
+			  Effects::UnstablePortalRaisesAMiniBoss);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorWithAPortalCarrying(*this, World, Player, {UnstablePortal});
+	FScopedConsoleString Roll(TEXT("Cataclysm.UnstablePortalRoll"), TEXT("10"));
+	if (!Mode || !TestNotNull(TEXT("the portal roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel gives the odds before any step"), PortalPanelLine(Mode),
+			  FString(TEXT("unstable portal: 50% down, 25% back to the start, 25% a mini-boss")));
+
+	TestEqual(TEXT("a roll of 10 takes the player down"), TakeTheStairs(*this, Mode), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalReturnTest,
+	"Cataclysm.DungeonModifierEffects.APortalRollOfFiftyToSeventyFiveReturnsThePlayerToTheEntrance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalReturnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorWithAPortalCarrying(*this, World, Player, {UnstablePortal});
+	FScopedConsoleString Roll(TEXT("Cataclysm.UnstablePortalRoll"), TEXT("60"));
+	if (!Mode || !TestNotNull(TEXT("the portal roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	// A CREATURE ON THE FLOOR, so "the floor keeps its state" has something to keep.
+	ACataclysmEnemyCharacter* Kept = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature on the floor"), Kept))
+	{
+		return false;
+	}
+
+	// THE PLAYER ON THE STAIRS, far from the entrance.
+	const FVector Exit = Mode->Stairs->GetActorLocation();
+	Player.Character->SetActorLocation(Exit);
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	if (!TestTrue(FString::Printf(TEXT("the stairs are away from the entrance: %.0f cm"),
+								  FVector::Dist2D(Exit, Entrance)),
+				  FVector::Dist2D(Exit, Entrance) > ACataclysmDungeonStairs::ReachCm * 2.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a roll of 60 does not take the player down"), TakeTheStairs(*this, Mode), 1);
+	TestTrue(FString::Printf(TEXT("it puts them at the entrance: %.0f cm from it"),
+							 FVector::Dist2D(Player.Character->GetActorLocation(), Entrance)),
+			 FVector::Dist2D(Player.Character->GetActorLocation(), Entrance) < 50.0f);
+	TestTrue(TEXT("and the floor keeps its creature"),
+			 IsValid(Kept) && Mode->FloorEnemies.Contains(Kept));
+	TestEqual(TEXT("the panel says what the portal did"), PortalPanelLine(Mode),
+			  FString(TEXT("unstable portal: sent you back to the start")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalMiniBossTest,
+	"Cataclysm.DungeonModifierEffects.APortalRollOfSeventyFiveOrMoreRaisesAWardenAtTheHeraldRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalMiniBossTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorWithAPortalCarrying(*this, World, Player, {UnstablePortal});
+	FScopedConsoleString Roll(TEXT("Cataclysm.UnstablePortalRoll"), TEXT("90"));
+	if (!Mode || !TestNotNull(TEXT("the portal roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("the floor starts with no Warden"), TheFloorsWardens(Mode).Num(), 0))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a roll of 90 does not take the player down"), TakeTheStairs(*this, Mode), 1);
+	const TArray<ACataclysmEnemyCharacter*> Wardens = TheFloorsWardens(Mode);
+	if (!TestEqual(TEXT("it raises one Abyssal Warden"), Wardens.Num(), 1))
+	{
+		return false;
+	}
+	// THE HERALD RUNG, 3, written out. Wardens on this floor are otherwise Common.
+	TestEqual(TEXT("at the Herald rung"), Wardens[0]->RarityStep, 3);
+	TestTrue(TEXT("and the stairs wait for the player to step off"),
+			 Mode->Stairs->WaitsForThePlayerToLeave());
+	TestEqual(TEXT("the panel says what the portal did"), PortalPanelLine(Mode),
+			  FString(TEXT("unstable portal: raised a mini-boss")));
+	return true;
+}
+
+// ONE STEP IS ONE ROLL: a player standing on the portal is looked for four times a second,
+// and only stepping off and back on rolls again.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalOneRollTest,
+	"Cataclysm.DungeonModifierEffects.StandingOnThePortalIsOneRollUntilThePlayerStepsOff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalOneRollTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorWithAPortalCarrying(*this, World, Player, {UnstablePortal});
+	FScopedConsoleString Roll(TEXT("Cataclysm.UnstablePortalRoll"), TEXT("90"));
+	if (!Mode || !TestNotNull(TEXT("the portal roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	const FVector Exit = Mode->Stairs->GetActorLocation();
+	Player.Character->SetActorLocation(Exit);
+	for (int32 Look = 0; Look < 5; ++Look)
+	{
+		Mode->Stairs->LookForThePlayer();
+	}
+	TestEqual(TEXT("five looks at a player standing still are one roll"),
+			  Mode->UnstablePortalRollCount(), 1);
+
+	// STEPPING OFF, one look, and back on.
+	Player.Character->SetActorLocation(Exit + FVector(ACataclysmDungeonStairs::ReachCm * 3.0f, 0.0f, 0.0f));
+	Mode->Stairs->LookForThePlayer();
+	TestFalse(TEXT("off the portal, the stairs stop waiting"),
+			  Mode->Stairs->WaitsForThePlayerToLeave());
+	Player.Character->SetActorLocation(Exit);
+	Mode->Stairs->LookForThePlayer();
+	TestEqual(TEXT("and stepping back on is the second roll"), Mode->UnstablePortalRollCount(), 2);
+	return true;
+}
+
+// BLOOD GATES FIRST, AND A PORTAL'S WARDEN DOES NOT SEAL THE GATE AGAIN. Sealed stairs roll
+// nothing; once the player has opened them, the Warden the portal raises is not one of the
+// floor's creatures for the gate's count.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalBloodGatesTest,
+	"Cataclysm.DungeonModifierEffects.APortalWardenDoesNotSealOpenBloodGatesAgain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalBloodGatesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode =
+		AFloorWithAPortalCarrying(*this, World, Player, {BloodGates, UnstablePortal});
+	FScopedConsoleString Roll(TEXT("Cataclysm.UnstablePortalRoll"), TEXT("90"));
+	if (!Mode || !TestNotNull(TEXT("the portal roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* A = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* B = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("A"), A) || !TestNotNull(TEXT("B"), B))
+	{
+		return false;
+	}
+
+	// SEALED: the step rolls nothing.
+	TestEqual(TEXT("sealed stairs lead nowhere"), TakeTheStairs(*this, Mode), 1);
+	TestEqual(TEXT("and roll nothing"), Mode->UnstablePortalRollCount(), 0);
+
+	// ONE OF TWO SLAIN OPENS THEM: slain 1, standing 1, open at 1.
+	if (!ThePlayerKills(*this, Player, A))
+	{
+		return false;
+	}
+	if (!TestFalse(TEXT("the gate is open"), Mode->BloodGatesSealTheStairs()))
+	{
+		return false;
+	}
+
+	// THE PORTAL ROLLS A MINI-BOSS, AND THE GATE STAYS OPEN. Counted, the Warden would make
+	// the floor two standing and one slain, open at two: sealed again.
+	TestEqual(TEXT("the portal rolls a mini-boss"), TakeTheStairs(*this, Mode), 1);
+	TestEqual(TEXT("once"), Mode->UnstablePortalRollCount(), 1);
+	TestEqual(TEXT("its Warden is on the floor"), TheFloorsWardens(Mode).Num(), 1);
+	TestFalse(TEXT("and the gate is still open"), Mode->BloodGatesSealTheStairs());
+	TestEqual(TEXT("as the panel says"), GatesPanelLine(Mode), FString(TEXT("blood gates: open")));
+	return true;
+}
+
+// THE LAST FLOOR'S STAIRS ARE NOT A PORTAL: they lead out. The control is the floor above,
+// where the same pinned roll raises a Warden instead of taking the player down.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPortalLastFloorTest,
+	"Cataclysm.DungeonModifierEffects.TheLastFloorsWayOutIsNotAPortal",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPortalLastFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedConsoleString Roll(TEXT("Cataclysm.UnstablePortalRoll"), TEXT("90"));
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	UCataclysmEmpireRun* Run = NewObject<UCataclysmEmpireRun>();
+	if (!TestNotNull(TEXT("the portal roll can be pinned"), Roll.Variable)
+		|| !TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+	Run->Begin(1);
+	Run->AdvanceDay();
+	Mode->SetEmpireRunForTests(Run);
+
+	int32 Chosen = INDEX_NONE;
+	for (int32 Index = 0; Index < Run->Dungeons.Num() && Chosen == INDEX_NONE; ++Index)
+	{
+		if (Run->Dungeons[Index].SubType != ECataclysmDungeonSubType::CowLevel)
+		{
+			Chosen = Index;
+		}
+	}
+	if (!TestTrue(TEXT("the run has an ordinary dungeon"), Chosen != INDEX_NONE))
+	{
+		return false;
+	}
+	FCataclysmDungeon& Dungeon = Run->Dungeons[Chosen];
+	Dungeon.Floors = 2;
+	Dungeon.SubType = ECataclysmDungeonSubType::None;
+	Dungeon.Modifiers = {UnstablePortal};
+	const int32 DungeonId = Dungeon.DungeonId;
+	if (!TestTrue(TEXT("the dungeon was entered"), Mode->EnterEmpireDungeon(DungeonId)))
+	{
+		return false;
+	}
+
+	// THE CONTROL: on floor 1 the same roll does not take the player down.
+	const int32 RollsBefore = Mode->UnstablePortalRollCount();
+	Mode->HandleStairsTaken();
+	TestEqual(TEXT("floor 1's stairs are a portal: the roll raised a mini-boss"),
+			  Mode->UnstablePortalRollCount(), RollsBefore + 1);
+	TestEqual(TEXT("and left the player on floor 1"), Mode->ChooseFloorNumber(), 1);
+
+	Mode->GoDownOneFloor();
+	if (!TestTrue(TEXT("floor 2 is the last"), Mode->IsOnTheLastFloor()))
+	{
+		return false;
+	}
+	const int32 RollsOnTheLast = Mode->UnstablePortalRollCount();
+	Mode->HandleStairsTaken();
+	TestEqual(TEXT("the last floor's stairs roll nothing"), Mode->UnstablePortalRollCount(),
+			  RollsOnTheLast);
+	bool bStillStanding = false;
+	for (const FCataclysmDungeon& Standing : Run->Dungeons)
+	{
+		bStillStanding |= Standing.DungeonId == DungeonId;
+	}
+	TestFalse(TEXT("they lead out: the dungeon is cleared"), bStillStanding);
 	return true;
 }
 

@@ -150,8 +150,23 @@ bool ACataclysmDungeonStairs::LookForThePlayer()
 	const APlayerController* Controller =
 		World ? World->GetFirstPlayerController() : nullptr;
 	const APawn* Pawn = Controller ? Controller->GetPawn() : nullptr;
+	if (!Pawn)
+	{
+		return false;
+	}
 
-	return Pawn ? ArriveAt(Pawn->GetActorLocation()) : false;
+	// ONE ARRIVAL PER STEP WHEN ASKED FOR: until a look finds the player out of reach,
+	// they are still on the step that was already answered.
+	if (bPlayerMustLeaveFirst)
+	{
+		if (!IsWithinReach(Pawn->GetActorLocation()))
+		{
+			bPlayerMustLeaveFirst = false;
+		}
+		return false;
+	}
+
+	return ArriveAt(Pawn->GetActorLocation());
 }
 
 void ACataclysmDungeonStairs::StartWatching()

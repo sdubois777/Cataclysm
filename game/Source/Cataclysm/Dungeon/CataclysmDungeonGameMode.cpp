@@ -710,6 +710,17 @@ static TAutoConsoleVariable<float> CVarVengefulWraithRoll(
  * The roll Dead Rising offers every creature that dies, pinned for tests. The same shape
  * as the one above, for the same reason.
  */
+/**
+ * The roll a step through an unstable portal makes, pinned for tests. The same shape as
+ * the other pinned rolls, for the same reason.
+ */
+static TAutoConsoleVariable<float> CVarUnstablePortalRoll(
+	TEXT("Cataclysm.UnstablePortalRoll"),
+	-1.0f,
+	TEXT("Pin the roll a step through an unstable portal makes, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
 static TAutoConsoleVariable<float> CVarDeadRisingRoll(
 	TEXT("Cataclysm.DeadRisingRoll"),
 	-1.0f,
@@ -799,6 +810,12 @@ namespace
 	float DungeonGameModeVengefulWraithRoll()
 	{
 		const float Pinned = CVarVengefulWraithRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeUnstablePortalRoll()
+	{
+		const float Pinned = CVarUnstablePortalRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -1959,7 +1976,70 @@ void ACataclysmDungeonGameMode::HandleStairsTaken()
 		return;
 	}
 
+	// UNSTABLE PORTAL: ONE ROLL, and only where the stairs lead to a next floor. Issues
+	// #1820 and #41. A roll that does not take the player down leaves them on this floor
+	// and the stairs watching again, ignoring them until they step off.
+	using Effects = UCataclysmDungeonModifierEffects;
+	if (FloorBrief.Modifiers.Contains(FName(Effects::UnstablePortalKey)) && !IsOnTheLastFloor())
+	{
+		const int32 Outcome =
+			Effects::UnstablePortalOutcomeFor(DungeonGameModeUnstablePortalRoll());
+		++UnstablePortalRolls;
+		UnstablePortalLast = Outcome;
+
+		if (Outcome == Effects::UnstablePortalDescends)
+		{
+			GoDownOneFloor();
+			return;
+		}
+
+		if (Outcome == Effects::UnstablePortalReturns)
+		{
+			// THE PLAYER ONLY, to the floor's entrance, the way a floor places them.
+			UWorld* World = GetWorld();
+			APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+			PlaceAtEntrance(Controller ? Controller->GetPawn() : nullptr);
+		}
+		else
+		{
+			RaiseTheUnstablePortalsWarden();
+		}
+
+		if (Stairs)
+		{
+			Stairs->RequireThePlayerToLeaveFirst();
+			Stairs->StartWatching();
+		}
+		RefreshFloorModifierPanel();
+		return;
+	}
+
 	GoDownOneFloor();
+}
+
+void ACataclysmDungeonGameMode::RaiseTheUnstablePortalsWarden()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// AN ABYSSAL WARDEN BESIDE THE PORTAL, AT THE MINI-BOSS RUNG, its modifiers drawn for
+	// that rung as any creature's are. The rung is set before they are drawn; see
+	// `SpawnPlacedCreature`.
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(CurrentFloor->ExitWorld());
+	Placement.Creature = ECataclysmDungeonCreature::AbyssalWarden;
+	ACataclysmEnemyCharacter* Warden = SpawnPlacedCreature(
+		Placement, FloorBrief.SightRadiusMultiplier, Effects::UnstablePortalMiniBossRung);
+	if (!Warden)
+	{
+		return;
+	}
+	FloorEnemies.Add(Warden);
+	UnstablePortalWardens.Add(Warden);
 }
 
 int32 ACataclysmDungeonGameMode::BloodGatesPlacedCount() const
@@ -1971,7 +2051,8 @@ int32 ACataclysmDungeonGameMode::BloodGatesPlacedCount() const
 	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
 	{
 		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
-			&& Enemy->PaysForItsDeath())
+			&& Enemy->PaysForItsDeath()
+			&& !UnstablePortalWardens.Contains(Enemy.Get()))
 		{
 			++Standing;
 		}
@@ -2002,11 +2083,14 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodGates(
 	// asks. A minion's kill is the minion's unless its summoner holds Conduit, which
 	// `UCataclysmCombatEvents::NoteBlow` decides in one place (issue #1515). A MARKED
 	// creature is the floor's dead brought back, and is not counted.
-	const ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
 	UWorld* World = GetWorld();
 	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
 	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
-	if (Fallen && Fallen->PaysForItsDeath() && Player && Notice.Killer == Player)
+	// A WARDEN THE UNSTABLE PORTAL RAISED IS NOT THE FLOOR'S TO COUNT, slain or standing,
+	// so it cannot seal again stairs the player had opened. Issues #1820 and #41.
+	if (Fallen && Fallen->PaysForItsDeath() && Player && Notice.Killer == Player
+		&& !UnstablePortalWardens.Contains(Fallen))
 	{
 		++BloodGatesSlain;
 	}
@@ -5466,6 +5550,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 										   DivineResurgenceFallen, Placed, ComesAt));
 	}
 
+	// AND WHAT THE UNSTABLE PORTAL LAST DID, or its odds before its first step. Issues
+	// #1820 and #41.
+	const FName Portal(Effects::UnstablePortalKey);
+	if (FloorBrief.Modifiers.Contains(Portal))
+	{
+		const TCHAR* Last = UnstablePortalLast == Effects::UnstablePortalReturns ? TEXT("sent you back to the start")
+			: UnstablePortalLast == Effects::UnstablePortalRaisesAMiniBoss ? TEXT("raised a mini-boss")
+												   : nullptr;
+		Counting.Add(Portal, Last
+			? FString::Printf(TEXT("unstable portal: %s"), Last)
+			: FString(TEXT("unstable portal: 50% down, 25% back to the start, 25% a mini-boss")));
+	}
+
 	// AND THE RANGE CHAOTIC LOOT DRAWS AFFIX TIERS FROM, which is the difficulty's own cap.
 	// Issues #1820 and #41. The item pop-up already prints each affix's tier.
 	const FName Chaotic(Effects::ChaoticLootKey);
@@ -7313,6 +7410,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND BLOOD GATES FORGETS THE PLAYER'S KILLS: each floor's stairs are sealed
 		// afresh. Issues #1820 and #41.
 		BloodGatesSlain = 0;
+
+		// AND UNSTABLE PORTAL FORGETS ITS ROLLS AND ITS WARDENS. Issues #1820 and #41.
+		UnstablePortalRolls = 0;
+		UnstablePortalLast = -1;
+		UnstablePortalWardens.Reset();
 
 		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
 		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already

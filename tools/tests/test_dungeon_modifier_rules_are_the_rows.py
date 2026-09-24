@@ -3728,3 +3728,31 @@ def test_chaotic_loot_row_still_names_enemy_drops_and_stats_and_the_cap_still_st
         "docs/Cataclysm_GDD_v2.md no longer says the affix tier column is a hard cap. "
         "Chaotic Loot keeps UCataclysmDropRoll::MaxAffixTierOnADrop as its cap on that "
         "sentence alone; put the ruling again.")
+
+
+def test_unstable_portal_row_still_states_its_three_odds_and_the_warden_is_the_mini_boss():
+    """The row's three figures, held against the two constants, and the design's mini-boss.
+
+    "Stepping through a portal has a 50% chance of taking you to the next floor, a 25%
+    chance of returning you to the beginning of the current floor, and a 25% chance of
+    spawning a powerful, unpredictable mini-boss." UnstablePortalDescendPercent is the
+    first figure and UnstablePortalReturnBelow the first two added. The mini-boss is an
+    Abyssal Warden because docs/Cataclysm_GDD_v2.md names it the mini-boss.
+    """
+    words = flat(rows()["Chaos_Unstable_Portal"]["Description"])
+    percents = [float(p) for p in re.findall(r"(\d+(?:\.\d+)?)\s*%", words)]
+
+    assert len(percents) == 3, (
+        f"Chaos_Unstable_Portal no longer states three chances: found {percents} in: {words}")
+    assert constant("UnstablePortalDescendPercent") == percents[0], (
+        f"UnstablePortalDescendPercent no longer holds the row's {percents[0]:g}% down.")
+    assert constant("UnstablePortalReturnBelow") == percents[0] + percents[1], (
+        "UnstablePortalReturnBelow no longer holds the row's first two chances added: "
+        f"{percents[0] + percents[1]:g}.")
+    assert sum(percents) == 100.0, f"The row's three chances no longer add to 100: {percents}"
+    assert "mini-boss" in words.lower(), words
+
+    design = (REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+    assert "The Abyssal Warden (Mini-Boss)" in design, (
+        "docs/Cataclysm_GDD_v2.md no longer names the Abyssal Warden as the mini-boss. The "
+        "unstable portal raises one on that line alone; put the ruling again.")
