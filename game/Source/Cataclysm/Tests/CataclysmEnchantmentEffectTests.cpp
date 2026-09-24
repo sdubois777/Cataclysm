@@ -4926,8 +4926,8 @@ namespace CataclysmOwnStackRowTest
 			for (const FCataclysmStatModifier& Modifier :
 				 Line ? Line->Modifiers : TArray<FCataclysmStatModifier>())
 			{
-				Increases += Modifier.Bucket == ECataclysmStatBucket::Increased;
-				Stacked += Modifier.Scale == ECataclysmStatScale::PerOwnStack;
+				Increases += Modifier.Bucket == ECataclysmStatBucket::Increased ? 1 : 0;
+				Stacked += Modifier.Scale == ECataclysmStatScale::PerOwnStack ? 1 : 0;
 			}
 			Test.TestEqual(FString::Printf(
 				TEXT("'%s' holds one increase, this row's"), *Stat.ToString()),
