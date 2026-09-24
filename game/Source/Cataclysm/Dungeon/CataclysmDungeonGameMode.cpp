@@ -721,6 +721,17 @@ static TAutoConsoleVariable<float> CVarUnstablePortalRoll(
 	TEXT("-1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * The draw that decides which curse a floor carrying the starvation curse adds, pinned for
+ * tests. The same shape as the other pinned rolls, for the same reason.
+ */
+static TAutoConsoleVariable<float> CVarStarvationCurseRoll(
+	TEXT("Cataclysm.StarvationCurseRoll"),
+	-1.0f,
+	TEXT("Pin the draw that picks the starvation curse a floor adds, 0 to 100: below 50 ")
+	TEXT("slows movement, from 50 lowers maximum health. -1 draws normally."),
+	ECVF_Cheat);
+
 static TAutoConsoleVariable<float> CVarDeadRisingRoll(
 	TEXT("Cataclysm.DeadRisingRoll"),
 	-1.0f,
@@ -816,6 +827,12 @@ namespace
 	float DungeonGameModeUnstablePortalRoll()
 	{
 		const float Pinned = CVarUnstablePortalRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeStarvationCurseRoll()
+	{
+		const float Pinned = CVarStarvationCurseRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -2056,6 +2073,85 @@ void ACataclysmDungeonGameMode::NoteDeathForNothingIsForgotten(
 	RefreshFloorModifierPanel();
 }
 
+bool ACataclysmDungeonGameMode::DiedAsAFloorsBoss(const AActor* Died)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Died);
+	return Creature
+		&& (Creature->IsBoss() || Creature->IsA<ACataclysmGatekeeperCharacter>());
+}
+
+void ACataclysmDungeonGameMode::AddAStarvationCurse()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ONE KIND PER FLOOR, drawn evenly between the row's two examples. A kind already at
+	// its cap gains nothing; the draw is not moved to the other kind.
+	const int32 Kind = Effects::StarvationCurseKindFor(DungeonGameModeStarvationCurseRoll());
+	int32& Stacks = Kind == Effects::StarvationCurseSlowsMovement
+		? StarvationCurseMovementStacks
+		: StarvationCurseHealthStacks;
+	Stacks = Effects::StarvationCurseStacksAfterAdding(Stacks);
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Starvation Curse: floor %d adds %s; %d movement and %d health stacks held"),
+		   FloorNumber,
+		   Kind == Effects::StarvationCurseSlowsMovement ? TEXT("slower movement")
+														 : TEXT("less maximum health"),
+		   StarvationCurseMovementStacks, StarvationCurseHealthStacks);
+}
+
+void ACataclysmDungeonGameMode::StepStarvationCurse(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (StarvationCurseMovementStacks == StarvationCurseMovementApplied
+		&& StarvationCurseHealthStacks == StarvationCurseHealthApplied)
+	{
+		return;
+	}
+	StarvationCurseMovementApplied = StarvationCurseMovementStacks;
+	StarvationCurseHealthApplied = StarvationCurseHealthStacks;
+	ApplyChangingFloorEffects(Player, AbilitySystem);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForStarvationCurse(
+	const FCataclysmDeathNotice& Notice)
+{
+	// ON ANY FLOOR, not only one carrying the row: the stacks are the dungeon's.
+	if (StarvationCurseMovementStacks == 0 && StarvationCurseHealthStacks == 0)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+
+	// THE PLAYER'S OWN DEATH CLEARS IT, AND AT ONCE, for the reason Wasting Sickness's
+	// listener gives: `Revive` refills the vitals by reading the maximums.
+	if (Player && Notice.Victim == Player)
+	{
+		StarvationCurseMovementStacks = 0;
+		StarvationCurseHealthStacks = 0;
+		StarvationCurseMovementApplied = 0;
+		StarvationCurseHealthApplied = 0;
+		ApplyChangingFloorEffects(
+			Player, Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()));
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	// AND A FLOOR'S BOSS CLEANSES BOTH. Left to the beat, which puts the change on the
+	// character within a quarter of a second.
+	if (DiedAsAFloorsBoss(Notice.Victim))
+	{
+		StarvationCurseMovementStacks = 0;
+		StarvationCurseHealthStacks = 0;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::FeedTheFinalBoss(ACataclysmEnemyCharacter* Boss)
 {
 	if (!IsValid(Boss))
@@ -2829,6 +2925,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// #1820 and #41.
 	const bool bAntiMagicZones = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::AntiMagicZonesKey));
+	// AND THE STARVATION CURSE, ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON THE
+	// CHARACTER, not only on floors carrying the row: its stacks are the dungeon's and a
+	// floor change takes them off. Issues #1820 and #41.
+	const bool bStarvationCurse =
+		StarvationCurseMovementStacks != StarvationCurseMovementApplied
+		|| StarvationCurseHealthStacks != StarvationCurseHealthApplied;
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay && !bSufferingAura
 		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence && !bDirgeResonance
@@ -2836,7 +2938,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
-		&& !bAntiMagicZones)
+		&& !bAntiMagicZones && !bStarvationCurse)
 	{
 		return;
 	}
@@ -2966,6 +3068,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bWastingSickness)
 	{
 		StepWastingSickness(Player, AbilitySystem);
+	}
+
+	// AND THE STARVATION CURSE, THE SAME SHAPE AND AS CHEAP. Issues #1820 and #41.
+	if (bStarvationCurse)
+	{
+		StepStarvationCurse(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -3884,6 +3992,15 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// whichever wrote second erased the first. Issue #1765.
 	Effects.GraspMovementLessPercent = GraspMovementLessApplied;
 
+	// AND WHAT THE STARVATION CURSE'S STACKS TAKE. Issues #1820 and #41. Their own two
+	// fields, which the declaration explains; read unconditionally like the rest.
+	Effects.CurseMovementLessPercent =
+		UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(
+			StarvationCurseMovementApplied);
+	Effects.CurseMaxHealthLessPercent =
+		UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(
+			StarvationCurseHealthApplied);
+
 	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN BOTH DIRECTIONS. Issues #1820
 	// and #41. Read unconditionally like the rest: a floor without that row
 	// places no mushroom, and nothing is what the effects already hold.
@@ -3960,6 +4077,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForDeadRising(Notice);
 	NoteDeathForBloodGates(Notice);
 	NoteDeathForNothingIsForgotten(Notice);
+	NoteDeathForStarvationCurse(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -5494,6 +5612,20 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Holy, FString::Printf(
 			TEXT("%d of %d"), JudgmentStacks,
 			Effects::HolyRepercussionsJudgmentMostStacks));
+	}
+
+	// AND THE STARVATION CURSE: each kind as "N of M" and the share it takes. Issues #1820
+	// and #41.
+	const FName Curse(Effects::StarvationCurseKey);
+	if (FloorBrief.Modifiers.Contains(Curse))
+	{
+		Counting.Add(Curse, FString::Printf(
+			TEXT("starvation curse: movement %.0f%% slower (%d of %d), maximum health %.0f%% "
+				 "less (%d of %d); a floor boss's death cleanses both"),
+			Effects::StarvationCurseLessPercent(StarvationCurseMovementStacks),
+			StarvationCurseMovementStacks, Effects::StarvationCurseMostStacks,
+			Effects::StarvationCurseLessPercent(StarvationCurseHealthStacks),
+			StarvationCurseHealthStacks, Effects::StarvationCurseMostStacks));
 	}
 
 	const FName Wasting(Effects::WastingSicknessKey);
@@ -7596,6 +7728,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// the row does not offer.
 		WastingSicknessStacksApplied = 0;
 
+		// AND THE STARVATION CURSE THE SAME WAY, for the same reason: its stacks are the
+		// dungeon's and the call above took them off the character. Issues #1820 and #41.
+		StarvationCurseMovementApplied = 0;
+		StarvationCurseHealthApplied = 0;
+
 		// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues #1786
 		// and #41. The list because those actors are already destroyed -- see the
 		// top of this function -- and a stale list would count them against the cap
@@ -7685,6 +7822,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			NothingIsForgottenBoss.Reset();
 			NothingIsForgottenHealthGiven = 0.0f;
 			NothingIsForgottenDamageGiven = 0.0f;
+
+			// AND THE STARVATION CURSE'S STACKS: "persist unless cleansed" ends with the
+			// dungeon. Issues #1820 and #41.
+			StarvationCurseMovementStacks = 0;
+			StarvationCurseHealthStacks = 0;
 
 			// AND LEAVING THE DUNGEON IS WHERE THE EDICT OF SILENCE'S CLOCK
 			// FINALLY STOPS. Issues #1786 and #41. This is the branch that runs
@@ -7912,6 +8054,16 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	// floor, so a rule worded "each floor" follows the floor being stood on and
 	// never the one before it. A Horde dungeon's next wave comes through here
 	// too, so its rules apply per wave. Issue #41.
+	// THE STARVATION CURSE ADDS ITS STACK AS THE FLOOR BEGINS, before the floor's rules
+	// reach the player, so floor 1 counts and each floor adds exactly one. Here and not in
+	// `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for the first floor.
+	// Issues #1820 and #41.
+	if (FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::StarvationCurseKey)))
+	{
+		AddAStarvationCurse();
+	}
+
 	ApplyFloorRulesToPlayer();
 
 	return true;

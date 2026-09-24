@@ -1903,6 +1903,19 @@ public:
 	 */
 	void FeedTheFinalBoss(ACataclysmEnemyCharacter* Boss);
 
+	/**
+	 * The starvation curse's stacks, for the floor panel and tests. Issues #1820 and #41.
+	 */
+	int32 StarvationCurseMovementStacksHeld() const { return StarvationCurseMovementStacks; }
+	int32 StarvationCurseHealthStacksHeld() const { return StarvationCurseHealthStacks; }
+
+	/**
+	 * Whether this death was a floor's boss: a Gatekeeper, the creature the game places as a
+	 * floor's boss, or any creature at the Boss rung. `IsBoss()` alone asks the rung, which
+	 * every creature draws, the Gatekeeper included, so on its own it is a 1% draw.
+	 */
+	static bool DiedAsAFloorsBoss(const AActor* Died);
+
 private:
 	/** Unstable Portal's mini-boss: an Abyssal Warden beside the stairs at the mini-boss rung. */
 	void RaiseTheUnstablePortalsWarden();
@@ -1922,6 +1935,21 @@ private:
 	 * `FCataclysmDungeonFloorRules::BossAtTheExit` makes of depth.
 	 */
 	bool IsTheFinalFloorForItsBoss() const;
+
+	/** The starvation curse, as a floor carrying it begins: one more stack of one kind. */
+	void AddAStarvationCurse();
+
+	/**
+	 * The starvation curse, on the beat: puts the stacks back on the player after a floor
+	 * change took them off. Runs on any floor while stacks are held, because the stacks are
+	 * the dungeon's and outlast floors that do not carry the row.
+	 */
+	void StepStarvationCurse(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** The starvation curse, on every death: a floor's boss or the player clears it. */
+	void NoteDeathForStarvationCurse(const struct FCataclysmDeathNotice& Notice);
 
 public:
 
@@ -2731,6 +2759,15 @@ private:
 	TWeakObjectPtr<ACataclysmEnemyCharacter> NothingIsForgottenBoss;
 	float NothingIsForgottenHealthGiven = 0.0f;
 	float NothingIsForgottenDamageGiven = 0.0f;
+
+	/**
+	 * The starvation curse: the stacks of each kind the dungeon has added, and what is on the
+	 * character. Two numbers per kind for the reason `WastingSicknessStacks` has two.
+	 */
+	int32 StarvationCurseMovementStacks = 0;
+	int32 StarvationCurseHealthStacks = 0;
+	int32 StarvationCurseMovementApplied = 0;
+	int32 StarvationCurseHealthApplied = 0;
 
 	/**
 	 * Judgment Zones: the ground standing now, the clock that lays more, and what the

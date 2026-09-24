@@ -116,6 +116,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::UnstablePortalKey =
 const TCHAR* UCataclysmDungeonModifierEffects::NothingIsForgottenKey =
 	TEXT("Void_Nothing_Is_Forgotten");
 
+const TCHAR* UCataclysmDungeonModifierEffects::StarvationCurseKey =
+	TEXT("Famine_Starvation_Curse");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -386,7 +389,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(ScarcityKey)
 		|| RowKey == FName(ChaoticLootKey)
 		|| RowKey == FName(UnstablePortalKey)
-		|| RowKey == FName(NothingIsForgottenKey))
+		|| RowKey == FName(NothingIsForgottenKey)
+		|| RowKey == FName(StarvationCurseKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -564,6 +568,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(ChaoticLootKey),
 		FName(UnstablePortalKey),
 		FName(NothingIsForgottenKey),
+		FName(StarvationCurseKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -820,6 +825,12 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxManaStat,
 								  Effects.SicknessMaxManaLessPercent);
 
+	// AND THE STARVATION CURSE'S HEALTH STACKS, ON THE SAME STAT FROM ITS OWN FIELD, so a
+	// floor carrying Starvation, Wasting Sickness and this row multiplies all three.
+	// Issues #1820 and #41.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat,
+								  Effects.CurseMaxHealthLessPercent);
+
 	// AND THE NIHIL'S EMBRACE, ON ALL EIGHT RESISTANCES. Issue #41, slice 2. The
 	// row says "your resistances", and this game holds one resistance per
 	// Cataclysm damage type rather than a single number, so that is eight
@@ -962,6 +973,12 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 	DungeonModifierEffectsAddLess(Modifiers,
 								  DungeonModifierEffectsMovementSpeedStat,
 								  Effects.GraspMovementLessPercent);
+
+	// AND THE STARVATION CURSE'S MOVEMENT STACKS, FROM ITS OWN FIELD for the same reason.
+	// Issues #1820 and #41.
+	DungeonModifierEffectsAddLess(Modifiers,
+								  DungeonModifierEffectsMovementSpeedStat,
+								  Effects.CurseMovementLessPercent);
 
 	// AND FUNGAL OVERGROWTH, ON THE SAME STAT AGAIN AND FROM ITS OWN TWO FIELDS.
 	// Issues #1820 and #41. Three rows now move `movement_speed` and each holds
@@ -1178,6 +1195,19 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	if (Effects.GraspMovementLessPercent > 0.0f)
 	{
 		Clauses.Add(TEXT("held by a tentacle"));
+	}
+
+	// AND THE STARVATION CURSE, EACH KIND SAID ON ITS OWN, because a floor boss cleanses
+	// both and a player needs to know what they are carrying. Issues #1820 and #41.
+	if (Effects.CurseMovementLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from the starvation curse"),
+									Effects.CurseMovementLessPercent));
+	}
+	if (Effects.CurseMaxHealthLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("maximum health %.0f%% less from the starvation curse"),
+									Effects.CurseMaxHealthLessPercent));
 	}
 
 	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN WHICHEVER DIRECTION. Issues
@@ -1757,6 +1787,23 @@ float UCataclysmDungeonModifierEffects::NothingIsForgottenDamageAdded(float Held
 {
 	return FMath::Min(FMath::Max(0.0f, Held),
 					  FMath::Max(0.0f, BossOwnDamage) * NothingIsForgottenMostDamagePercent / 100.0f);
+}
+
+int32 UCataclysmDungeonModifierEffects::StarvationCurseKindFor(float Roll)
+{
+	return Roll < StarvationCurseMovementBelow ? StarvationCurseSlowsMovement
+											   : StarvationCurseLowersHealth;
+}
+
+int32 UCataclysmDungeonModifierEffects::StarvationCurseStacksAfterAdding(int32 Held)
+{
+	return FMath::Min(FMath::Max(0, Held) + 1, StarvationCurseMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(int32 Stacks)
+{
+	return static_cast<float>(FMath::Clamp(Stacks, 0, StarvationCurseMostStacks))
+		* StarvationCursePercentPerStack;
 }
 
 int32 UCataclysmDungeonModifierEffects::UnstablePortalOutcomeFor(float Roll)
