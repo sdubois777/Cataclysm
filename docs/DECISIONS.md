@@ -43,6 +43,18 @@ The coordinating session asked for this case to be decided and pinned, not left 
 
 Tests pin all three.
 
+### A STACK ROW'S TAGS AND CONDITION SCOPE ITS STAT, NOT ITS GRANT
+
+**A judgement under the owner's delegation, approved by the coordinating session on 2026-09-23.**
+
+- A row's `RequiredTags` and `Condition` go onto its stat modifier, as on any stat row. They
+  decide when the stacks count.
+- They are not copied onto the action that grants the stack. The row's event grants a stack
+  whatever skill raised it and whatever state the wearer is in.
+- **No phase-1 row needs either.** None of the seven rows waiting for the workbook carries a tag or
+  a condition. A later row whose sentence scopes the grant itself ("critical strikes with spells
+  grant a stack") needs the grant filtered, which this change does not build.
+
 ### THREE THINGS FOUND WHILE BUILDING IT
 
 - **`hit_taken` and `melee_hit_taken` fire on an evaded blow too.** `CataclysmVitalAttributeSet.cpp`
