@@ -79,9 +79,11 @@ defect with a different fix, and it is issue #1408.
 
 from __future__ import annotations
 
+import ast
 import datetime
 import pathlib
 import re
+import subprocess
 
 import pytest
 
@@ -318,6 +320,123 @@ def test_the_allowance_list_holds_nothing_that_is_now_correct(
         + "\n".join(f"  {heading}" for heading in stale)
         + f"\n\nDelete those lines from ALREADY_WRONG in {pathlib.Path(__file__).name}. "
         "The list is meant to shrink as the boundaries are repaired.")
+
+
+#: THE MOST HEADINGS `ALREADY_WRONG` MAY HOLD, AS A LITERAL, AND IT IS ONLY EVER
+#: LOWERED. Issue #1423. When a boundary is repaired and its heading deleted from
+#: the list, lower this number by one in the same change; never raise it. It is a
+#: separate number from the list's own length on purpose: growing the list now
+#: takes a second edit, in plain view in the diff, to a line that says it must
+#: not be raised. Sixty-one when this was written, 2026-09-23.
+ALLOWANCE_CEILING = 61
+
+
+def test_the_allowance_list_is_never_longer_than_its_ceiling():
+    """The guard that runs everywhere, continuous integration included.
+
+    WHY THERE ARE TWO GUARDS AGAINST GROWTH. The test below compares the list
+    with the version its branch started from, which is exact but needs git
+    history, and the pull request job checks out one commit, so it skips there.
+    This one needs nothing but the file. Ruled by the coordinating session on
+    2026-09-23 under the owner's delegation, rather than fetching full history
+    on every run.
+    """
+    assert len(ALREADY_WRONG) <= ALLOWANCE_CEILING, (
+        f"ALREADY_WRONG holds {len(ALREADY_WRONG)} headings, more than its "
+        f"ceiling of {ALLOWANCE_CEILING}. A heading was ADDED to the allowance "
+        f"list, which switches this file's check off for that entry. Put a rule "
+        f"and a blank line above the heading in {DECISIONS.name} instead, and "
+        f"take it back out of ALREADY_WRONG. Issue #1423.")
+
+
+def allowance_list_in(source: str) -> frozenset[str]:
+    """`ALREADY_WRONG` as written in one version of this file.
+
+    READ WITH PYTHON'S OWN PARSER rather than a pattern, because fourteen of the
+    headings hold an apostrophe and two a double quote, so they are written
+    with either quote character, and a pattern that assumed one would drop the
+    others (issue #1423 records the measurement). Line endings do not matter to
+    the parser, which also settles the other trap that issue names: git hands
+    back a blob with LF endings while the working copy is CRLF.
+    """
+    for node in ast.parse(source).body:
+        if (isinstance(node, ast.Assign)
+                and any(isinstance(target, ast.Name)
+                        and target.id == "ALREADY_WRONG"
+                        for target in node.targets)):
+            call = node.value
+            assert (isinstance(call, ast.Call) and len(call.args) == 1), (
+                "ALREADY_WRONG is no longer written as frozenset({...}), so "
+                "allowance_list_in cannot read it")
+            return frozenset(ast.literal_eval(call.args[0]))
+    raise AssertionError("no ALREADY_WRONG assignment in that version of the file")
+
+
+def base_version_of_this_file() -> tuple[str | None, str]:
+    """This file as it stood where the current branch left `development`.
+
+    Returns the source, or None and the reason it could not be read.
+
+    THE MERGE-BASE AND NOT THE TIP OF `origin/development`. A branch is judged
+    against the base it was built on, so a machine that has not fetched for a
+    day compares against the right list rather than yesterday's tip, and a
+    heading that `development` removed after the branch started is not read as
+    one this branch added.
+    """
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *args], cwd=REPO_ROOT,
+                              capture_output=True, text=True, encoding="utf-8")
+
+    base = git("merge-base", "HEAD", "origin/development")
+    if base.returncode != 0 or not base.stdout.strip():
+        return None, ("there is no merge-base between HEAD and "
+                      "origin/development here -- no such remote branch, a "
+                      "shallow checkout, or no git history: "
+                      + (base.stderr.strip() or "git printed nothing"))
+    relative = pathlib.Path(__file__).resolve().relative_to(REPO_ROOT).as_posix()
+    shown = git("show", f"{base.stdout.strip()}:{relative}")
+    if shown.returncode != 0:
+        return None, (f"{relative} does not exist at the merge-base "
+                      f"{base.stdout.strip()[:8]}: {shown.stderr.strip()}")
+    return shown.stdout, ""
+
+
+def test_the_allowance_list_gained_no_heading_since_its_branch_began():
+    """Nothing may be added to ALREADY_WRONG. Issue #1423.
+
+    THE EXACT GUARD: every heading in this file's list that was not in the list
+    at the merge-base with `origin/development` is named. It skips, and says
+    why, where there is no merge-base to read, which includes the pull request
+    job's one-commit checkout; `test_the_allowance_list_is_never_longer_than_its_ceiling`
+    is the guard that runs there.
+    """
+    source, reason = base_version_of_this_file()
+    if source is None:
+        pytest.skip(reason)
+    added = sorted(ALREADY_WRONG - allowance_list_in(source))
+    assert not added, (
+        f"{len(added)} heading(s) were ADDED to ALREADY_WRONG since this branch "
+        f"left development:\n"
+        + "\n".join(f"  {heading}" for heading in added)
+        + f"\n\nAdding a heading switches the separator check off for that "
+        f"entry. Put a rule and a blank line above it in {DECISIONS.name} and "
+        f"remove it from ALREADY_WRONG. Issue #1423.")
+
+
+def test_the_allowance_reader_reads_both_quote_styles():
+    """The reader above, on a hand-made file holding headings in both quotes."""
+    source = (
+        "ALREADY_WRONG = frozenset({\n"
+        "    '## 2026-09-01 — plain',\n"
+        "    \"## 2026-09-02 — the Siege's slack\",\n"
+        "    '## 2026-09-03 — \"the design is right\"',\n"
+        "})\n")
+    assert allowance_list_in(source) == {
+        "## 2026-09-01 — plain",
+        "## 2026-09-02 — the Siege's slack",
+        '## 2026-09-03 — "the design is right"',
+    }
+    assert allowance_list_in(source.replace("\n", "\r\n")) == allowance_list_in(source)
 
 
 def test_no_entry_is_dated_later_than_today(decisions_entries):

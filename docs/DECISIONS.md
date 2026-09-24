@@ -2,6 +2,69 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — The separator check's list of old faults can only shrink, and a ceiling holds it where git history is missing
+
+**Affects:** `tools/tests/test_decisions_entries_are_separated.py`, the check that every entry in
+this log has a rule and a blank line above it. Issue
+[#1423](https://github.com/sdubois777/Cataclysm/issues/1423).
+
+### WHAT WAS UNGUARDED
+
+That check carries `ALREADY_WRONG`, the 61 headings whose separators were already missing when the
+check landed. **A red run could be made green by adding a new bad heading to that list instead of
+fixing the log**, and nothing would say so. The shrinking direction was already guarded, by
+`test_the_allowance_list_holds_nothing_that_is_now_correct`. The growing direction was not.
+
+### THE RULING, UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto:** two guards, and no
+change to the continuous integration configuration.
+
+- **The exact guard** reads `ALREADY_WRONG` from this file as it stood at
+  `git merge-base HEAD origin/development`, and names every heading the working copy has that the
+  base did not.
+  - It compares with the merge-base and not the tip of `origin/development`, so a branch is judged
+    against the base it was built on. A machine that has not fetched lately cannot produce a false
+    failure or hide a real one.
+  - Both versions are read with Python's own parser. Fourteen of the 61 headings hold an apostrophe
+    and two hold a double quote, so the list uses both quote styles, and the git blob and the working
+    copy have different line endings. The parser handles both.
+  - **Where there is no merge-base it skips and names the reason.** That includes the pull request
+    job, whose checkout is one commit deep (`.github/workflows/ci.yml`, `actions/checkout@v4` with
+    no `fetch-depth`).
+- **The ceiling runs everywhere**: `ALLOWANCE_CEILING = 61`, a literal, and a test that the list is
+  no longer. Growing the list now takes a second edit, in plain view in the diff, to a line whose
+  comment says it is only ever lowered. The shrink test makes the list fall, and the literal is
+  lowered with it in the same change.
+- **Fetching full history in continuous integration was considered and closed**: the ceiling
+  guards the pull request job without it, so the runner's checkout time is not spent. No issue is
+  filed for it.
+
+### PROOF
+
+**The break is the attack #1423 describes.** The separator above a real entry is removed, the one
+headed "As each floor begins, one worn non-weapon slot gives nothing for that floor", and its heading
+is added to `ALREADY_WRONG`. The original separator check and the shrink check stay green under it,
+which is the gap. `tools/prove_guard.break_and_run` ran in two `git archive` copies of 8626d3ae:
+
+| Copy | Printed | `named_failures` |
+|---|---|---|
+| made a git repository whose commit is also `origin/development` | `PROVED: 2 failed, 6 passed in 0.26s \| restored: 8 passed in 0.10s` | `test_the_allowance_list_is_never_longer_than_its_ceiling`, `test_the_allowance_list_gained_no_heading_since_its_branch_began` |
+| no git history, as in the pull request job | `PROVED: 1 failed, 6 passed, 1 skipped in 0.13s \| restored: 7 passed, 1 skipped in 0.08s` | `test_the_allowance_list_is_never_longer_than_its_ceiling` |
+
+In the second copy, the skip printed its reason: "there is no merge-base between HEAD and
+origin/development here -- no such remote branch, a shallow checkout, or no git history: fatal: not
+a git repository".
+
+**The first attempt measured nothing, and is not counted.** It passed `-rs` to pytest, which replaces
+the default short summary, so the FAILED lines `prove_guard` reads names from were not printed.
+`prove_guard` reported "NOT A PROOF" and "named no test", as it is built to. The rerun passed
+`-rfEs`.
+
+---
+
+---
+
 ## 2026-09-23 — A hand-resolved C++ conflict can be checked before a build, by a tool that reports a comment left with no opening
 
 **Affects:** the new `tools/check_resolved_cpp.py` and `tools/tests/test_check_resolved_cpp.py`. Issue
