@@ -297,6 +297,19 @@ already held one. **The coordinating session ruled the correction on 2026-09-24,
 delegation:** change the test's shared check and nothing else, and make the test cover the
 attribute increase rather than avoid it.
 
+**The corrected test then read the other increases as nought on all ten lines, armor and movement
+speed included.** The attribute path supplies nothing on this test's wearer: `RefreshAttributes`
+reads spent points from the pawn's player state, and the test wearer is a bare actor with none, so
+agility and constitution are nought and so are the increases they add. **Ruled by the coordinating
+session on 2026-09-24, under the owner's delegation:** each line gets one increase of 20 from the
+Attribute source, standing in for attribute points. An assertion requires the other increases to
+read 20.00, so a change that drops the stand-in fails.
+
+The attribute path, points to an increase on a stat line, is tested through vitality by
+`Cataclysm.Attributes.SpendingPointsRaisesTheStatsThoseAttributesScale` and
+`Cataclysm.Attributes.GearRaisesAnAttributeBeforeThatAttributeScalesAnything`. Neither names armor or
+movement_speed. The path is table-driven, so those rows go through the same function.
+
 ---
 
 ## 2026-09-24 — Overlapping zones of one floor rule burn a target once a second, not once per zone

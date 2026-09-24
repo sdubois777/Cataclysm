@@ -4923,6 +4923,46 @@ namespace CataclysmOwnStackRowTest
 			Removed, AlsoRemoved, Slot);
 		Wearer.Equipment->RefreshAttributes(ASC);
 
+		// A STAND-IN FOR ATTRIBUTE POINTS, because this wearer cannot have
+		// any. `RefreshAttributes` reads spent points from the pawn's player
+		// state, and FWearer is a bare actor, so agility and constitution are
+		// nought and the increases they put on `movement_speed` and `armor`
+		// are worth nought -- measured on 2026-09-24. One increase of 20 on
+		// each line, from the Attribute source, makes the row's increase sum
+		// with another, as it does on a real wearer.
+		//
+		// ONLY THE CASE'S OWN LINES ARE WRITTEN BACK, and they are all this
+		// test reads: `SetStatInputs` replaces the whole map.
+		constexpr float StandIn = 20.0f;
+		{
+			TMap<FName, FCataclysmStatInputs> Lines;
+			for (const FName& Stat : Case.Stats)
+			{
+				const FCataclysmStatInputs* Line = ASC->GetStatInputs(Stat);
+				if (!Test.TestNotNull(FString::Printf(
+						TEXT("'%s' has a line to add the stand-in to"), *Stat.ToString()),
+						Line))
+				{
+					return;
+				}
+				FCataclysmStatModifier FromAttributes;
+				FromAttributes.Bucket = ECataclysmStatBucket::Increased;
+				FromAttributes.Source = ECataclysmModifierSource::Attribute;
+				FromAttributes.Value = StandIn;
+				FromAttributes.Scale = ECataclysmStatScale::Fixed;
+				FromAttributes.Condition = ECataclysmStatCondition::Always;
+				Test.TestEqual(FString::Printf(
+					TEXT("the stand-in on '%s' passes the modifier validator"),
+					*Stat.ToString()),
+					UCataclysmStatPipeline::ValidateModifier(FromAttributes), FString());
+
+				FCataclysmStatInputs Copy = *Line;
+				Copy.Modifiers.Add(FromAttributes);
+				Lines.Add(Stat, MoveTemp(Copy));
+			}
+			ASC->SetStatInputs(MoveTemp(Lines));
+		}
+
 		TMap<FName, float> Plain;
 		TMap<FName, float> Other;
 		for (const FName& Stat : Case.Stats)
@@ -4957,6 +4997,10 @@ namespace CataclysmOwnStackRowTest
 				TEXT("'%s': every other increase, %.2f in all, is unscaled and "
 					 "unconditioned"), *Stat.ToString(), OtherIncreases),
 				Moving, 0);
+			Test.TestEqual(FString::Printf(
+				TEXT("'%s': the line's other increases are the stand-in's %.2f"),
+				*Stat.ToString(), StandIn),
+				OtherIncreases, StandIn, 0.001f);
 			Other.Add(Stat, OtherIncreases);
 
 			// PRINTED WHETHER OR NOT ANYTHING FAILS, because a passing
