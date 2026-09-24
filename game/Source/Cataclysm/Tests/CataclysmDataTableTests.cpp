@@ -585,7 +585,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 304 SINCE THE NON-CRITICAL DRAWBACK, issue #1686, from 303.
 	//
 	// AND 305 SINCE THE PROJECTILE LATER-HIT DRAWBACK, issue #1686, from 304.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    305)
+	//
+	// AND 306 SINCE THE ZONE FIRST-SWEEP DRAWBACK, issue #1686, from 305.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    306)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
