@@ -1852,6 +1852,41 @@ every 10 seconds" and "once every 5 seconds". Pins moved, each with a comment sa
 
 `DT_PassiveEffects` is rebuilt in this change's build window.
 
+### THE WINDOW, 2026-09-24 BY THE ENGINE LOG'S CLOCK (UTC), ON b3123e59
+
+**The first build failed before any test ran**, and the window's head is the commit that fixed it.
+Every error was in `CataclysmPassiveTreeTests.cpp`, the first `error C2027: use of undefined type
+'UCataclysmSummonSkill'`. The new row test used that class, and the file reached it only through
+`CataclysmMinion.h`, which declares it without defining it. **This change's C++ had never been
+compiled before the window**: it was written in a worktree with no binaries, which cannot compile.
+Commit b3123e59 adds `#include "AbilitySystem/CataclysmSkillTemplates.h"` and was pushed before the
+first test run; the coordinating session ruled the window could continue, as it had for the same
+kind of fault in group B. Issue #2022 carries the case.
+
+| Step | Printed |
+|---|---|
+| First build, on 8c5c98df | `Build: Failed - 27 actions, 24 files compiled`, the C2027 above |
+| Build after the include | `Build: Succeeded - 5 actions, 2 files compiled: CataclysmPassiveTreeTests.cpp, Module.Cataclysm.24.cpp` |
+| Fail-before, `tests --prefix "Cataclysm.Passives."`, stale asset | `128 tests performed, 127 succeeded, 1 failed: PressGangedAndRekindledRowsReplaceARealRitualistsLostImp`, on "Expected 'Ritualist_keystone_a_kB carries one row' to be 1, but it was 0" |
+| Rebuild, `generate_datatable_assets.py` | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` and nothing else |
+| Whole suite, `tests --no-build` | `2270 tests performed, 2270 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard` on `CataclysmSkillTemplates.cpp`, prefix
+`Cataclysm.MinionDeath.`, each anchor re-checked immediately before. The broken run's log was
+copied before the restored run overwrote it, so each row names the assertions that failed. Each
+restored run printed `10 tests performed, 10 succeeded, 0 failed`.
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| a replacement made without the summon cap's check | `10 tests performed, 9 succeeded, 1 failed: ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced` | "at the cap a dead thrall is not replaced", 4 where 3 was expected; and "and Press-Ganged's clock is not spent" |
+| the living count keeps a dead minion (#1957) | `10 tests performed, 8 succeeded, 2 failed: ADeadMinionNoLongerHoldsAPlaceUnderTheSummonCap, PressGangedReplacesAMinionWhereItDiedOnceInTenSeconds` | the first: "but the skill counts two living", 3 where 2; "a summon takes the free place and the oldest lives". The second: "which the skill counts as its one living minion", 2 where 1; "a second death inside ten seconds is not replaced", 2 where 0; "after ten seconds a death is replaced again", 3 where 1; "without the keystone a death is not replaced", 1 where 0 |
+| Rekindled tried before Press-Ganged | `10 tests performed, 9 succeeded, 1 failed: ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced` | "by Press-Ganged, whose clock is spent"; "while Rekindled's is not" |
+
+**The first proof's second assertion was not in its registered prediction**, which named only the
+count. With the cap's check gone the replacement is made, and a replacement made spends
+Press-Ganged's clock, which the next line of the test checks. The test and the number that failed
+were as registered.
+
 ---
 
 ## 2026-09-23 — The floor's dead rise once, at half health, when half the floor has fallen
