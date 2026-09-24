@@ -99,6 +99,30 @@ namespace
 	}
 }
 
+AActor* UCataclysmCommand::LeastHealthCommandedBy(const AActor* Commander)
+{
+	AActor* Least = nullptr;
+	float LeastHealth = 0.0f;
+	for (AActor* Creature : ThingsCommandedBy(Commander))
+	{
+		const UAbilitySystemComponent* Its =
+			UCataclysmTargeting::AbilitySystemOf(Creature);
+		if (!Its)
+		{
+			continue;
+		}
+		const float Health =
+			Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+		// STRICTLY LESS, so the first of a tie -- the nearest -- is kept.
+		if (!Least || Health < LeastHealth)
+		{
+			Least = Creature;
+			LeastHealth = Health;
+		}
+	}
+	return Least;
+}
+
 TArray<AActor*> UCataclysmCommand::ThingsCommandedBy(const AActor* Commander,
 													 float WithinCm)
 {

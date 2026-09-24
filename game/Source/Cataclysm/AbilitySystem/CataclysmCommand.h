@@ -67,6 +67,17 @@ public:
 											 float WithinCm = 0.0f);
 
 	/**
+	 * Of everything this character commands, the one with the least health
+	 * remaining, in points; null if it commands nothing alive. Issue #1515,
+	 * Sacrificial Ward: "destroys the minion with the least health remaining".
+	 *
+	 * POINTS AND NOT A SHARE OF MAXIMUM, ruled on 2026-09-23 under the owner's
+	 * delegation, because the sentence says "least health remaining". A tie
+	 * goes to the nearer, since `ThingsCommandedBy` answers nearest first.
+	 */
+	static AActor* LeastHealthCommandedBy(const AActor* Commander);
+
+	/**
 	 * Who this creature follows, or null if it follows nobody.
 	 *
 	 * THE OTHER DIRECTION OF `ThingsCommandedBy` ABOVE, and it is asked from the

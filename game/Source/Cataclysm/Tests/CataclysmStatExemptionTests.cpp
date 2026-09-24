@@ -1038,6 +1038,57 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `shield_break_destroys_minion_every_seconds`, read in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. Issue #1515,
+	 * Sacrificial Ward. Two shielded summoners, each with an imp, take a blow
+	 * worth three times the shield: the plain one's shield breaks, and the one
+	 * holding the stat keeps its shield and loses its imp instead.
+	 */
+	void ProbeShieldWard(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto ShieldLeft = [&Test, World](bool bHeld, const FVector& Where)
+		{
+			FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+			// NO LOCATION TO SET: `FScopedFighter` has no root component, so it
+			// stands at the origin. The ward does not look at distance.
+			FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+			Summoner.AbilitySystem->SetNumericAttributeBase(
+				Vital::GetMaxEnergyShieldAttribute(), 100.0f);
+			Summoner.AbilitySystem->SetNumericAttributeBase(
+				Vital::GetEnergyShieldAttribute(), 100.0f);
+			if (bHeld)
+			{
+				GrantFlats(Summoner.Actor,
+					{{FName(UCataclysmAbilitySystemComponent::
+								ShieldBreakDestroysMinionEverySecondsStat),
+					  3.0f}});
+			}
+			ACataclysmMinion* Imp =
+				ImpToldItsExplosion(Test, Summoner.Actor, Where + FVector(1 * M, 0, 0));
+			ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+			UCataclysmSkillEffects::ApplyDirectDamage(
+				Attacker.Actor, Summoner.Actor, 300.0f);
+			return Summoner.AbilitySystem->GetNumericAttribute(
+				Vital::GetEnergyShieldAttribute());
+		};
+
+		const float Plain = ShieldLeft(false, FVector::ZeroVector);
+		const float Held = ShieldLeft(true, FVector(0, 100 * M, 0));
+		Test.TestEqual(TEXT("a plain summoner's shield breaks"), Plain, 0.0f, 0.001f);
+		Test.TestEqual(
+			TEXT("and one holding shield_break_destroys_minion_every_seconds keeps "
+				 "it, so PostGameplayEffectExecute really reads it"),
+			Held, 100.0f, 0.001f);
+	}
+
+	/**
 	 * Nothing Stops It's two stats, read in
 	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. Issue #1515.
 	 * `Blows` are dealt in turn to a fighter holding `Stats`, and what it has
@@ -2394,6 +2445,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_death_blast_radius_metres"), &ProbeDeathBlastRadius},
 			{TEXT("lethal_hit_survived_every_seconds"), &ProbeLethalHitSurvived},
 			{TEXT("damage_immunity_after_lethal_hit_seconds"), &ProbeImmuneAfterLethalHit},
+			{TEXT("shield_break_destroys_minion_every_seconds"), &ProbeShieldWard},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},

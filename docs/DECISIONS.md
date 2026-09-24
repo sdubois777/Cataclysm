@@ -105,6 +105,63 @@ One Python check: the row still says "every floor", "a random buff or debuff", "
 
 ---
 
+## 2026-09-24 — Sacrificial Ward, engine only: a blow that would break the energy shield is taken by the weakest minion instead
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (where the ward is
+read), `CataclysmCommand.h` and `.cpp` (choosing the minion), `CataclysmAbilitySystemComponent.h`
+and `.cpp` (its clock), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one stat
+with no attribute), two test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE KEYSTONE
+
+`Ritualist_keystone_c_kC` Sacrificial Ward: "Damage that would break your Energy Shield instead
+destroys the minion with the least health remaining, no more than once every 3 seconds." One stat,
+`shield_break_destroys_minion_every_seconds`, whose row will carry the 3; above zero means the
+keystone is held. **Engine only**, for the reason the Shared Ruin entry gives: the design workbook is
+with the enchantment session, and the row follows when it comes back.
+
+### RULINGS AND JUDGEMENTS
+
+**Ruled on 2026-09-23 under the owner's delegation:**
+
+- The least health is counted in **points**, because the sentence says "least health remaining".
+  This was already chosen over the oldest minion in the entry that reworded the keystone.
+- **The minion spent dies as any death does.** Its health is written to nothing, so its own death
+  path runs, and Every One Bursts, Press-Ganged, Rekindled and Shared Ruin each answer it.
+- **With nothing alive to spend, the shield breaks as it would have.**
+
+**JUDGEMENTS in this change, put to the coordinating session with a recommendation:**
+
+- **"Instead" cancels the whole blow.** The shield keeps what it had, health takes nothing, and the
+  minion dies in the blow's place. The alternatives were the shield absorbing down to one point with
+  the overflow cancelled, which states a figure the sentence never gives, and the shield breaking with
+  only the overflow cancelled, which contradicts "instead".
+- **"Would break" is the blow's shield share reaching what the shield holds, while it holds
+  something.** A shield already at nothing is not broken again.
+- **Damage over time counts**, since the sentence says "damage". A bleed never reaches the shield
+  (issue #2014), so it never asks.
+- **Everything the character commands is considered, thralls included**, through
+  `UCataclysmCommand::ThingsCommandedBy`, which leaves out anything dead. A tie goes to the nearer.
+
+### WHERE IT IS READ
+
+In `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, on the resolved blow and **before
+Nothing Stops It**, because a blow the ward takes whole is lethal to nobody. As in Nothing Stops It's
+window, the whole result is emptied: no shield drawn, no refill wait restarted, and no leech for the
+attacker. The clock goes back to "never" on revival.
+
+### TESTS
+
+- `Cataclysm.SacrificialWard.AShieldBreakingBlowIsCancelledAndTheWeakestMinionDiesInstead`: the
+  weaker imp of two dies although it is the farther.
+- `Cataclysm.SacrificialWard.ABlowTheShieldHoldsSpendsNothing`
+- `Cataclysm.SacrificialWard.OnceInThreeSecondsAndWithNothingToSpendTheShieldBreaks`
+- `Cataclysm.SacrificialWard.ASpentMinionsDeathIsADeathForSharedRuin`
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+---
+
 ## 2026-09-24 — Shared Ruin and Nothing Stops It, engine only: a minion's death is a blast, and a lethal hit is survived once in twenty seconds
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the death blast),

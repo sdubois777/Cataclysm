@@ -1665,6 +1665,32 @@ void UCataclysmAbilitySystemComponent::NoteLethalHitSurvived(float IntervalSecon
 		ImmuneSeconds > 0.0f ? Now + ImmuneSeconds : -1.0f;
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::ShieldBreakDestroysMinionEverySecondsStat =
+	TEXT("shield_break_destroys_minion_every_seconds");
+
+bool UCataclysmAbilitySystemComponent::MaySpendMinionForShield() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	return ShieldWardNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= ShieldWardNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteMinionSpentForShield(float IntervalSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	ShieldWardNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
+}
+
 bool UCataclysmAbilitySystemComponent::IsImmuneAfterLethalHit() const
 {
 	const UWorld* World = GetWorld();
@@ -2052,6 +2078,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	MinionExplosionReplacementNextAllowedSeconds = -1.0f;
 	LethalHitSurvivalNextAllowedSeconds = -1.0f;
 	ImmuneAfterLethalHitUntilSeconds = -1.0f;
+	ShieldWardNextAllowedSeconds = -1.0f;
 
 	// AND LEECH NOT YET PAID. `UCataclysmLeech::PayOutStep` skips a corpse, so a
 	// payment promised by a hit before the death would resume paying out after
