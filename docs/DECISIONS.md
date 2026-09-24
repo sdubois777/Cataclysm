@@ -2348,6 +2348,28 @@ increased Attack Damage per point". Pins moved, each with a comment saying why:
 `test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. `DT_PassiveEffects` is rebuilt in
 this change's build window.
 
+### THE WINDOW, 2026-09-24, ON 6fd1b255
+
+**This change's C++ was compiled for the first time here**, and it built: its worktree before the
+rebase had no binaries.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 28 actions, 25 files compiled` |
+| Fail-before, `tests --prefix "Cataclysm.Passives."`, stale asset | `129 tests performed, 128 succeeded, 1 failed: TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon`, on "Expected 'Two Hands carries one row' to be 1, but it was 0" |
+| Rebuild, `generate_datatable_assets.py` | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` and nothing else |
+| Whole suite, `tests --no-build` | `2287 tests performed, 2287 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before. The broken run's log
+was copied before the restored run overwrote it, so each row names the assertions that failed.
+**Every one was registered before the window, test and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Restored | Assertions that failed |
+|---|---|---|---|---|
+| an unknown weapon counts as two-handed (`!= 1` for `== 2` in `CataclysmStatPipeline.cpp`) | `Cataclysm.StatPipeline.` | `46 tests performed, 45 succeeded, 1 failed: WieldingTwoHandedHoldsOnlyForTwoHandsAndRefusesAnUnknownWeapon` | `46 tests performed, 46 succeeded, 0 failed` | "and an unknown weapon refuses" |
+| the character's state is never told the weapon's hands (`CataclysmAbilitySystemComponent.cpp`) | `Cataclysm.Passives.` | `129 tests performed, 128 succeeded, 1 failed: TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon` | `129 tests performed, 129 succeeded, 0 failed` | "with a Greatsword two points add 6.0 percentage points", 0 where 6 |
+| every weapon with a base row reads as two-handed (`CataclysmWeaponSlotsComponent.cpp`) | `Cataclysm.WeaponSlots.` | `17 tests performed, 16 succeeded, 1 failed: TheEquippedWeaponSaysHowManyHandsItTakes` | `17 tests performed, 17 succeeded, 0 failed` | "a Sword takes one" and "with that table a Sword still takes one hand", each 2 where 1 |
+
 ---
 
 ## 2026-09-23 — The floor's dead rise once, at half health, when half the floor has fallen
