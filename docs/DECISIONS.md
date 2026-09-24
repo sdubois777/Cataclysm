@@ -47,9 +47,14 @@ are alive and how sick the player is.
 **By the coordinating session under the owner's delegation of unstated numbers, 2026-09-24. Every
 figure is a play-test value:**
 
-- **It begins 120 seconds into a floor**, counted on the beat the way the Reaper's arrival is. The
-  Reaper arrives at 10 seconds (`TheReaperDelaySeconds`), so on a floor carrying both the Reaper has
-  been on the floor for 110 seconds when the convergence begins.
+- **It begins 120 seconds into a floor** (`PlagueConvergenceBeginsAfterSeconds`,
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` line 4081). **The Reaper's figure
+  counts the same thing**: `TheReaperDelaySeconds` = 10 (the same file, line 4075) is also seconds since
+  the floor began, added a quarter-second beat at a time (`CataclysmDungeonGameMode.cpp` line 2123 for
+  the Reaper, line 2365 for this rule) and put back to 0 in the same per-floor reset (lines 8556 and
+  8572). So on a floor carrying both, the Reaper arrives 10 seconds in and the convergence begins 110
+  seconds after it. The Reaper's clock stops counting once it has arrived; neither counts on a Horde
+  wave.
 - **A wave every 10 seconds of 3 creatures of the floor's own kinds**, at the edge cells farthest from
   the player; **at most 30 alive**, a wave at the cap bringing only what fits; **never on a Horde
   wave**.
@@ -62,7 +67,8 @@ figure is a play-test value:**
   descending stops it, and killing the creatures does not reset the clock.
 - **The creatures pay nothing** (`bDiesUnpaid`, set as they spawn) **and join the raised set.**
 
-**Judgements in this change, marked as such, under the same delegation:**
+**Judgements proposed by this change and approved by the coordinating session under the same
+delegation:**
 
 - **They notice the player from anywhere on the floor**, at the Reaper's sight multiplier: a horde that
   "converges" comes for the player rather than waiting at the wall.
@@ -84,9 +90,10 @@ Done before the build, as ruled; each page fetched on 2026-09-24 before it was q
 
 **What it settles and what it does not.** The debuffs these games put on a player stack linearly and
 are capped; the one exponential stack found is one the player chooses. So the research gives no
-better base or cap than the ruled one, and nothing in it is an exponential debuff to copy. The row
-says "exponentially", so the rule follows the row and bounds it tightly: six stacks, the last 32 times
-the first. That bound is this game's own judgement.
+better base or cap than the ruled one, and nothing in it is an exponential debuff to copy. **The row's
+own word, "exponentially", is why this debuff doubles**, when the games read here stack debuffs
+linearly. The rule follows the row and bounds it tightly: six stacks, the last 32 times the first.
+That bound is this game's own judgement.
 
 ### Tests
 
