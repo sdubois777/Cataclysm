@@ -36,6 +36,29 @@ Each route now tells the buffs beside its Fervour pay, under the same test: the 
 - **Martyr's Ember now spends its store once per landed projectile contact.** A piercing shot through five enemies spends it five times. That follows from "each hit you land", the same reading that already had one wide strike spend it once per enemy.
 - **Groundbreaker now opens a fissure beneath a distant target hit by a projectile.** "Every blow you land ... beneath what it hits" names no range.
 
+### Run
+
+Every step matched its registration.
+
+- **The build**, on `2f9e210f`: "Build: Succeeded - 28 actions, 25 files compiled".
+- **`Cataclysm.Skills.`:** "241 tests performed, 241 succeeded, 0 failed".
+- **The whole suite on `2f9e210f`:** "2297 tests performed, 2297 succeeded, 0 failed", as registered
+  (2293 + the four named tests), with every declared test reported.
+- **Three guard proofs, one per route.** Each replaced that route's call to `NoteBlowLanded` with
+  `(void)bFromBehind;`, so no variable went unused. Each failed exactly the registered tests with the
+  break in and none once restored. Each broken run's log was copied before the restored run
+  overwrote it:
+  - **the projectile contact** (`ACataclysmProjectile::HitOne`) failed
+    `AProjectileContactTellsARunningBuffItLanded` ("Expected 'so the shot opened one fissure, for the
+    contact that landed' to be 1, but it was 0" and "Expected 'which stands in the world' to be 1, but
+    it was 0") and `AShotIntoAnEnemysBackReturnsSlipstreamsMoveAndOneIntoItsFaceDoesNot` ("Expected
+    'and a shot into an enemy's back returns it' to be 1, but it was 0" and "Expected 'so the movement
+    slot is ready again' to be false"), 2 of 2, and 0 of 2 restored;
+  - **the rack's throw with no speed** failed `ARackWithNoSpeedTellsARunningBuffItLanded` ("Expected 'and
+    landing it opened one fissure' to be 1, but it was 0"), 1 of 1, and 0 of 1 restored;
+  - **the buried axe tearing free** failed `ABuriedAxeTearingFreeTellsItsThrowersRunningBuff` ("Expected
+    'so the thrower's buff opened one fissure' to be 1, but it was 0"), 1 of 1, and 0 of 1 restored.
+
 ---
 
 ## 2026-09-24 — A negative crowd control resistance lengthens crowd control, to at most twice, and a held effect still stops at 3 seconds
