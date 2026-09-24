@@ -317,11 +317,15 @@ public:
 	static const FName TypeName;
 
 	/**
+	 * 3 SINCE 2026-09-24. A character may spend in only one class tree for each
+	 * damage type, issue #2064, and a character written at 2 may hold points in
+	 * two or three trees of one; `Migrate_2_to_3` keeps one of them.
+	 *
 	 * 2 SINCE 2026-08-24, AND IT WAS 1. `SpentAttributePoints` below arrived
 	 * when attribute allocation became something the running game produces, so
 	 * a character written before that has no such field at all. Issue #50.
 	 */
-	static constexpr int32 SchemaVersionNow = 2;
+	static constexpr int32 SchemaVersionNow = 3;
 
 	virtual FName RecordType() const override { return TypeName; }
 	virtual int32 CurrentSchemaVersion() const override { return SchemaVersionNow; }

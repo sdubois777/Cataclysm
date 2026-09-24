@@ -317,16 +317,26 @@ bool ACataclysmPlayerState::ReachesTreeOf(const UDataTable* NodeTable,
 	}
 
 	const TArray<FName> Carried = {GetChosenDamageType()};
-	if (UCataclysmPassiveTree::TreeIsReachable(Tree, Carried))
+	if (!UCataclysmPassiveTree::TreeIsReachable(Tree, Carried))
 	{
-		return true;
+		OutReason = FString::Printf(
+			TEXT("No equipped weapon carries a damage type that unlocks the "
+				 "%s tree. This character is %s."),
+			*Tree, *GetChosenDamageType().ToString());
+		return false;
 	}
 
-	OutReason = FString::Printf(
-		TEXT("No equipped weapon carries a damage type that unlocks the "
-			 "%s tree. This character is %s."),
-		*Tree, *GetChosenDamageType().ToString());
-	return false;
+	// AND ONLY ONE OF A DAMAGE TYPE'S THREE TREES. Issue #2064. Asked here
+	// because this is the gate both ways of putting a point in share, spending
+	// one and choosing a capstone option.
+	const FString NotYourClass = UCataclysmPassiveTree::RefusalForClassChoice(
+		NodeTable, PassiveAllocation, Tree, Carried);
+	if (!NotYourClass.IsEmpty())
+	{
+		OutReason = NotYourClass;
+		return false;
+	}
+	return true;
 }
 
 bool ACataclysmPlayerState::SpendPassivePoint(FName Node, FString& OutReason)
@@ -411,7 +421,7 @@ void ACataclysmPlayerState::ResetPassivePoints()
 {
 	// THE CAPSTONE CHOICES GO WITH THE POINTS. Each capstone's own description
 	// ends "The choice is permanent", and a respec that returned the points
-	// while leaving the four decisions made would not be a respec at all.
+	// while leaving the capstone decisions made would not be a respec at all.
 	PassiveAllocation.Clear();
 
 	// AND EVERYTHING THE TREE WAS GRANTING GOES WITH THEM. Issue #1054. A respec

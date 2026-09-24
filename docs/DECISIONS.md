@@ -2,6 +2,157 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — One class tree per damage type is enforced: the first point chooses, a respec frees it, and older saves keep the tree with the most points
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmPassiveTree.h` and `.cpp` (the choice and
+its refusal), `game/Source/Cataclysm/Player/CataclysmPlayerState.cpp` (where a point is refused),
+`game/Source/Cataclysm/Interface/CataclysmPassiveTreeWidget.h` and `.cpp` and
+`CataclysmChoiceButton.h` and `.cpp` (the screen), `game/Source/Cataclysm/Save/CataclysmSaveRecords.h`
+and `.cpp` (the character save at version 3), `game/Tests/SaveFixtures/Character_v3.json` and its
+README, `docs/Cataclysm_GDD_v2.md`, two C++ test files and one new Python test. Issue
+[#2064](https://github.com/sdubois777/Cataclysm/issues/2064).
+
+This enforces the 2026-09-24 entry further down, "One class tree per damage type: a two-handed weapon reaches 8 class
+trees, not 24", and answers the three questions it left open.
+
+### THE RULINGS
+
+**The project owner decided two** on 2026-09-24, relayed by the coordinating session and recorded
+on #2064:
+
+- **Q1, "FIRST POINT SPENT".** The first passive point spent in any of a damage type's three trees
+  chooses that class, and the other two refuse points.
+- **Q4, "VIA THE RESPEC".** The respec that empties a tree frees the choice, and there is no new
+  service.
+
+**The coordinating session ruled the rest under the owner's delegation:**
+
+- **Q2.** A damage type gained later from a new weapon is chosen the same way.
+- **Q3.** Saves made before this keep the tree with the most points in each damage type and are
+  refunded the others, without asking the player. On a tie, the tree the first point went into.
+- **Q5.** The two classes not chosen are shown dimmed, with the reason as a tool tip.
+- **J1, the respec.** Nothing new is built. The respec that exists,
+  `ACataclysmPlayerState::ResetPassivePoints`, empties every tree, which frees every choice and so
+  satisfies Q4 as written. `docs/Cataclysm_GDD_v2.md` says what the full respec is: "The tree can be
+  respecced, at a cost in days. The Trainer at the capital moves empire upgrade points as well as
+  class passive skill points". **That Trainer service is not built and is issue
+  [#48](https://github.com/sdubois777/Cataclysm/issues/48)'s work** (the capital hub and its
+  services). So the refusal says "A respec frees the choice" and does not name the Trainer, because
+  a sentence the player reads has to be true of the game as it is.
+- **J2, the screen.** A class not chosen keeps its tree button enabled so the tree can still be
+  read, and the label is drawn in the unavailable colour.
+- **J3, the migration.** Built in this change, with no code for the ruled fallback (below), and a
+  Python check on the node names it depends on.
+- **J4, the older entries.** Answered here and left unedited.
+
+### WHAT THE RULE DOES
+
+- **The chosen class is read from the allocation, not stored beside it.**
+  `UCataclysmPassiveTree::ClassChosenFor` returns the one of a damage type's three trees that holds
+  points. Points stay spent when the weapon that unlocked a tree comes off (the 2026-08-25
+  decision), so the choice stays with them, and emptying the tree is the only thing that frees it.
+- **Refused in one place.** `UCataclysmPassiveTree::RefusalForClassChoice` is asked in
+  `ACataclysmPlayerState::ReachesTreeOf`, right after reachability. That is the gate both ways of
+  putting a point in already share: spending one, and choosing a capstone option. The sentence is
+  "Ravager is your Demonic class. A respec frees the choice."
+- **Asked per carried damage type**, so Q2 needs no code of its own. Reachability is unchanged: a
+  tree is still reachable when a carried damage type unlocks it, and the choice is a second
+  question after it.
+- **The screen asks the same question.** A node in a class not chosen is drawn as not takeable, and
+  the tree's button is dimmed but still clickable. Both carry the sentence as their tool tip,
+  because a node that cannot be clicked never shows the refusal under the tree. **That the tool tip
+  appears on hover is not shown by any test**: a headless test has no Widget Blueprint, so it
+  reaches the function that describes a button, on a button it made, and not a drawn screen.
+
+### OLDER SAVES: `Migrate_2_to_3`
+
+The character save goes from version 2 to 3. For each damage type with points in more than one
+tree, the step keeps the tree with the most points and removes the others' nodes, which returns
+their points, since the points left to spend are the level's less the allocation's total. It logs
+each tree it refunds.
+
+- **A migration step may not read the game's data tables**, so it cannot look a node up to learn
+  its tree. It reads the tree from the node's name, which starts with the tree's name and an
+  underscore, and groups the trees by damage type with a copy of the class list frozen on this
+  date. `tools/tests/test_passive_nodes_are_named_for_a_frozen_class.py` checks that every row of
+  `game/Data/PassiveNodes.csv` is named for its own tree and for no other in that list. Without it a
+  node renamed later would be grouped under the wrong tree, and the step would keep or remove the
+  wrong points without any error.
+- **A tie keeps the tree the first point went into, and the file always answers that.**
+  `FCataclysmPassiveAllocation::Add` appends a node the first time it is bought, so the first node of
+  a tree in the list is that tree's first purchase. The ruled fallback for when the first point is
+  unknown -- keep the tree `ClassesFor` lists first -- can therefore never be reached, and it is not
+  written.
+- **Nothing loads a character save yet**, so this changes nothing in play today. Saves pass through
+  it once a loader exists.
+
+### THE OLDER ENTRIES THIS ANSWERS
+
+Four lines say one character can reach all 24 class trees. **None is edited**; this answers them.
+
+- **2026-08-25**, "Every class shares one resource, called Fervour, and each class grants ways to
+  fill and spend it": "one character with a two-handed weapon can reach **all 24 class trees**. A
+  one-handed weapon rolls 4 and reaches 12." Under the rule it is 8 and 4. Its conclusion, one
+  shared bar, still holds at 8, and `docs/Cataclysm_GDD_v2.md` now gives 8 in both places it
+  repeated the figure.
+- **2026-09-09**, "The Ritualist's Fervour generator is built, on a new count of what a character
+  commands and two stats of its own", and **2026-09-14**, "The Ravager's Fervour fills from the
+  enemies standing near it and drains when contact is lost". Both chose a separate stat because one
+  character could hold nodes in the Masochist tree and another Demonic tree at once. Under the rule
+  it cannot, since all three are Demonic. **The stats stay as they are**: a separate stat is still
+  correct when only one of those trees is held, and changing it would gain nothing.
+- **2026-09-24**, "One class tree per damage type", says the line it supersedes is in "the earlier
+  entry on dual wielding two two-handed weapons". **The 24 figure is not in that entry**: the
+  dual-wielding section of 2026-09-08 counts affix slots and sockets. The line is the 2026-08-25 one
+  above.
+
+### THE GENRE
+
+The two sources recorded on #2064, not fetched again for this entry: Last Epoch's "Respecialize
+Mastery" at Chronomancer Lerinne ([maxroll.gg respec guide](https://maxroll.gg/last-epoch/resources/respec-guide))
+and Path of Exile 2's "Change Ascendancy" at a trial NPC
+([game8](https://game8.co/games/Path-of-Exile-2/archives/513917)). Both let a character change its
+sub-class after choosing it, at an NPC. Neither page states a cost, and none is claimed here.
+
+### ALSO IN THIS CHANGE
+
+- **Comments giving a wrong count, in files this change edits**, measured on 2026-09-24 against
+  `game/Data/PassiveNodes.csv`, which holds six trees and 441 nodes:
+  - `CataclysmPassiveTree.h` and `.cpp` said "four" trees in six places. Each measured claim still
+    holds for all six: one root node per tree, several nodes on one vertical line in each, and no
+    named capstone option without a description. The five nodes with two incoming edges are all in
+    the Berserker tree, and the comment now says so.
+  - `CataclysmPassiveTree.h` said a character "can touch at most 230 nodes". Under this rule it is
+    one tree per damage type: at most 148 today, 74 each for War and Demonic.
+  - `CataclysmPassiveTree.h` said the effect table covers "A MINORITY OF THE 293 NODES". It covers
+    222 of 441, which is not a minority.
+  - `CataclysmPassiveTreeWidget.h` and `.cpp` said "the four tree names" and "The four trees".
+  - `CataclysmPlayerState.cpp` said a respec clears "the four decisions made". It clears the
+    capstone decisions of every tree.
+  - `game/Tests/SaveFixtures/README.md` said "all three real records are at version 1". The
+    character record has been at 2 since 2026-08-24, and its file table had no row for
+    `Character_v2.json`.
+- **Not measured and left as they are:** `CataclysmPassiveTree.h`'s "76 keystones and capstone
+  options that are rule changes", which needs every keystone read. Files this change does not edit
+  are not swept.
+- **`Cataclysm.SaveRecords.TheCommittedCharacterFileReadsIntoTheValuesItStates` now reads
+  `Character_v3.json`.** It asserted "it says it is version 2", and a file read at version 2 is now
+  migrated to 3. `Character_v2.json` is kept, as the file the new step runs against.
+
+### TESTS
+
+- `Cataclysm.Passives.OneClass.TheFirstPointChoosesTheDamageTypesClass`
+- `Cataclysm.Passives.OneClass.TheRespecFreesTheChoice`
+- `Cataclysm.Passives.OneClass.AnotherDamageTypeChoosesItsOwnClass`
+- `Cataclysm.Passives.OneClass.TheScreenDimsTheClassesNotChosen`, on buttons the test made, as
+  above.
+- `Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType`: most points wins in each
+  damage type, a tie keeps the tree bought first, and a file with one tree per damage type is
+  unchanged.
+- `tools/tests/test_passive_nodes_are_named_for_a_frozen_class.py`, two tests.
+
+---
+
 ## 2026-09-24 — Overlapping zones of one floor rule burn a target once a second, not once per zone
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h` and `.cpp` (the record of

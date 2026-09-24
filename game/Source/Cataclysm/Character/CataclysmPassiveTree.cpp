@@ -227,7 +227,7 @@ TArray<FName> UCataclysmPassiveTree::NodesIn(const UDataTable* NodeTable,
 	{
 		// TOP TO BOTTOM, THEN LEFT TO RIGHT, THEN BY ROW NAME. The third is not
 		// decoration: without it two nodes at the same point on the canvas would
-		// order differently between runs, and the four trees each stack several
+		// order differently between runs, and the six trees each stack several
 		// nodes on one vertical line.
 		if (Left.Value->PositionY != Right.Value->PositionY)
 		{
@@ -341,12 +341,12 @@ bool UCataclysmPassiveTree::EdgesAllow(
 		}
 	});
 
-	// NO EDGE AT ALL MEANS OPEN, which is how a tree is started: each of the four
+	// NO EDGE AT ALL MEANS OPEN, which is how a tree is started: each of the six
 	// has exactly one such node and it is the one that unlocks the class
 	// resource.
 	//
-	// ANY SATISFIED EDGE OPENS IT, NOT ALL OF THEM. Five nodes across the four
-	// trees have two incoming edges, and two edges into one node are two routes
+	// ANY SATISFIED EDGE OPENS IT, NOT ALL OF THEM. Five nodes, all in the
+	// Berserker tree, have two incoming edges, and two edges into one node are two routes
 	// to it rather than two requirements. Reading it as "all" would make those
 	// five need both parents, which nothing in the design asks for and which can
 	// make a node unreachable.
@@ -443,7 +443,7 @@ FString UCataclysmPassiveTree::FullDescriptionOf(const UDataTable* NodeTable,
 		Text += FString::Printf(TEXT("\n\n%d  %s"), Option, *Names[Index]);
 
 		// A NAMED OPTION WITH NO DESCRIPTION SAYS SO. It cannot happen in the
-		// four trees today and the alternative is a name followed by nothing,
+		// six trees today and the alternative is a name followed by nothing,
 		// which reads as a description that failed to load.
 		const bool bDescribed = Descriptions.IsValidIndex(Index)
 			&& !Descriptions[Index].IsEmpty();
@@ -700,6 +700,48 @@ bool UCataclysmPassiveTree::TreeIsReachable(const FString& Tree,
 	return false;
 }
 
+FString UCataclysmPassiveTree::ClassChosenFor(
+	const UDataTable* NodeTable, const FCataclysmPassiveAllocation& Allocation,
+	FName DamageType)
+{
+	const TArray<FName>& Classes = UCataclysmCharacterCreation::ClassesFor(DamageType);
+	for (const FCataclysmSpentNode& Spent : Allocation.Nodes)
+	{
+		if (Spent.Points <= 0)
+		{
+			continue;
+		}
+		const FString Tree = TreeOf(NodeTable, Spent.Node);
+		if (!Tree.IsEmpty() && Classes.Contains(FName(*Tree)))
+		{
+			return Tree;
+		}
+	}
+	return FString();
+}
+
+FString UCataclysmPassiveTree::RefusalForClassChoice(
+	const UDataTable* NodeTable, const FCataclysmPassiveAllocation& Allocation,
+	const FString& Tree, const TArray<FName>& DamageTypes)
+{
+	const FName AsClass(*Tree);
+	for (const FName& DamageType : DamageTypes)
+	{
+		if (!UCataclysmCharacterCreation::ClassesFor(DamageType).Contains(AsClass))
+		{
+			continue;
+		}
+		const FString Chosen = ClassChosenFor(NodeTable, Allocation, DamageType);
+		if (!Chosen.IsEmpty() && Chosen != Tree)
+		{
+			return FString::Printf(
+				TEXT("%s is your %s class. A respec frees the choice."),
+				*Chosen, *DamageType.ToString());
+		}
+	}
+	return FString();
+}
+
 TArray<FString> UCataclysmPassiveTree::ReachableTrees(
 	const UDataTable* NodeTable, const TArray<FName>& DamageTypes)
 {
@@ -773,8 +815,8 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 	}
 
 	// WHICH TREES ARE DOING ANYTHING, ASKED ONCE. A character can have points in
-	// four trees and the answer is the same for every node of a tree, so asking
-	// per node would be the same question up to 230 times.
+	// several trees and the answer is the same for every node of a tree, so asking
+	// per node would be the same question once for every node held.
 	TMap<FString, bool> TreeIsOn;
 
 	// EVERY EFFECT ROW GROUPED BY THE NODE IT IS ABOUT, BUILT ONCE. Issue #953.
@@ -850,7 +892,7 @@ int32 UCataclysmPassiveTree::AccumulateInto(
 			// row that is not an option carries, so no option row can match it.
 			//
 			// A ROW WITH NO OPTION ALWAYS APPLIES, which is every row in the
-			// four trees but the capstones'. That is the branch this check has
+			// trees but the capstones'. That is the branch this check has
 			// to leave alone, and the one the test for it asserts first.
 			if (Effect->Option != 0 && Effect->Option != ChosenOption)
 			{

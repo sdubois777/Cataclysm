@@ -63,6 +63,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Data/CataclysmDataRows.h"
 #include "Interface/CataclysmPassiveTreeLayout.h"
+#include "Interface/CataclysmChoiceButton.h"
 #include "Interface/CataclysmPassiveTreeWidget.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmWeaponSlotsComponent.h"
@@ -15268,6 +15269,235 @@ bool FCataclysmClassPointsReachTheConditionsTest::RunTest(const FString&)
 	TestEqual(TEXT("an ability system no player state owns reads -1"),
 		Other->CurrentConditions().ClassPointsSpent, -1);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// One class tree per damage type. Issue #2064.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmOneClassTest
+{
+	const FName RavagerRoot(TEXT("Ravager_basic_spine_000"));
+	const FName RavagerNext(TEXT("Ravager_basic_spine_001"));
+	const FName MasochistRoot(TEXT("Masochist_basic_spine_000"));
+	const FName MasochistCapstone(TEXT("Masochist_capstone_25"));
+	const FName BulwarkRoot(TEXT("Bulwark_basic_trunk_000"));
+
+	/** A possessed Demonic player at level 100, so points never run out. */
+	ACataclysmPlayerState* DemonicPlayer(FAutomationTestBase& Test, UWorld* World,
+										 APlayerController*& OutController)
+	{
+		ACataclysmPlayerCharacter* Character =
+			CataclysmPassiveTest::SpawnPossessedPlayer(World);
+		OutController = Character ? Cast<APlayerController>(Character->GetController())
+								  : nullptr;
+		ACataclysmPlayerState* State =
+			Character ? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+		if (!Test.TestNotNull(TEXT("a possessed player with a player state"), State))
+		{
+			return nullptr;
+		}
+		State->SetCreationChoice(FName(TEXT("Greataxe")), FName(TEXT("Demonic")));
+		State->SetLevelAndExperience(100, 0);
+		return State;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneClassFirstPointChoosesTest,
+	"Cataclysm.Passives.OneClass.TheFirstPointChoosesTheDamageTypesClass",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A Demonic character's first point, in Ravager, makes Ravager its Demonic
+ * class: Masochist then refuses a point and a capstone option, with the reason,
+ * and Ravager goes on taking them.
+ */
+bool FCataclysmOneClassFirstPointChoosesTest::RunTest(const FString&)
+{
+	using namespace CataclysmOneClassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	APlayerController* Controller = nullptr;
+	ACataclysmPlayerState* State = DemonicPlayer(*this, World, Controller);
+	if (!State)
+	{
+		return false;
+	}
+
+	FString Reason;
+	if (!TestTrue(TEXT("the first point goes into Ravager"),
+				  State->SpendPassivePoint(RavagerRoot, Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	Reason.Empty();
+	TestFalse(TEXT("then Masochist refuses a point"),
+			  State->SpendPassivePoint(MasochistRoot, Reason));
+	TestEqual(TEXT("and says why"), Reason,
+			  FString(TEXT("Ravager is your Demonic class. A respec frees the choice.")));
+	TestEqual(TEXT("and Masochist holds nothing"),
+			  State->GetPassiveAllocation().PointsIn(MasochistRoot), 0);
+
+	Reason.Empty();
+	TestFalse(TEXT("a Masochist capstone option is refused as well"),
+			  State->ChoosePassiveOption(MasochistCapstone, 1, Reason));
+	TestTrue(TEXT("for the same reason"),
+			 Reason.StartsWith(TEXT("Ravager is your Demonic class.")));
+
+	Reason.Empty();
+	TestTrue(TEXT("and Ravager takes a second point"),
+			 State->SpendPassivePoint(RavagerNext, Reason));
+	TestEqual(TEXT("so two points are spent, both in Ravager"),
+			  State->GetPassiveAllocation().Total(), 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneClassRespecFreesTest,
+	"Cataclysm.Passives.OneClass.TheRespecFreesTheChoice",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** Emptying the trees frees the choice, and the next first point chooses again. */
+bool FCataclysmOneClassRespecFreesTest::RunTest(const FString&)
+{
+	using namespace CataclysmOneClassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	APlayerController* Controller = nullptr;
+	ACataclysmPlayerState* State = DemonicPlayer(*this, World, Controller);
+	if (!State)
+	{
+		return false;
+	}
+
+	FString Reason;
+	if (!TestTrue(TEXT("a point in Ravager"), State->SpendPassivePoint(RavagerRoot, Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	State->ResetPassivePoints();
+
+	Reason.Empty();
+	TestTrue(TEXT("after a respec Masochist takes a point"),
+			 State->SpendPassivePoint(MasochistRoot, Reason));
+	Reason.Empty();
+	TestFalse(TEXT("and now Ravager is the one refused"),
+			  State->SpendPassivePoint(RavagerRoot, Reason));
+	TestTrue(TEXT("because Masochist is the Demonic class now"),
+			 Reason.StartsWith(TEXT("Masochist is your Demonic class.")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneClassPerDamageTypeTest,
+	"Cataclysm.Passives.OneClass.AnotherDamageTypeChoosesItsOwnClass",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The choice is one per damage type, not one for the character: a Demonic
+ * class chosen does not stop a War tree from taking a point once the character
+ * carries War. The Ravager point stays spent, as a weapon change leaves it.
+ */
+bool FCataclysmOneClassPerDamageTypeTest::RunTest(const FString&)
+{
+	using namespace CataclysmOneClassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	APlayerController* Controller = nullptr;
+	ACataclysmPlayerState* State = DemonicPlayer(*this, World, Controller);
+	if (!State)
+	{
+		return false;
+	}
+
+	FString Reason;
+	if (!TestTrue(TEXT("a point in Ravager"), State->SpendPassivePoint(RavagerRoot, Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	State->SetCreationChoice(FName(TEXT("Greataxe")), FName(TEXT("War")));
+
+	Reason.Empty();
+	TestTrue(TEXT("carrying War, Bulwark takes a point"),
+			 State->SpendPassivePoint(BulwarkRoot, Reason));
+	TestEqual(TEXT("and the Ravager point is still spent"),
+			  State->GetPassiveAllocation().PointsIn(RavagerRoot), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneClassScreenDimsTest,
+	"Cataclysm.Passives.OneClass.TheScreenDimsTheClassesNotChosen",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * After a Ravager point, the screen draws Masochist's tree button dimmed but
+ * still enabled, and a Masochist node as not takeable, both with the reason as
+ * their tool tip; Ravager's are unchanged.
+ *
+ * ON BUTTONS THIS TEST MADE. A headless test has no Widget Blueprint, so the
+ * screen's own panels never exist; `DescribeButtonForTests` runs the function
+ * those panels run. Whether the tool tip is shown on hover is not something a
+ * headless test can see.
+ */
+bool FCataclysmOneClassScreenDimsTest::RunTest(const FString&)
+{
+	using namespace CataclysmOneClassTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	APlayerController* Controller = nullptr;
+	ACataclysmPlayerState* State = DemonicPlayer(*this, World, Controller);
+	if (!State || !TestNotNull(TEXT("a player controller"), Controller))
+	{
+		return false;
+	}
+
+	FString Reason;
+	if (!TestTrue(TEXT("a point in Ravager"), State->SpendPassivePoint(RavagerRoot, Reason)))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	// `NewObject` WITH THE CONTROLLER, as `TheScreenSpendsThroughTheCharacterAndNotIntoItself`
+	// makes it and for its reason.
+	UCataclysmPassiveTreeWidget* Screen = NewObject<UCataclysmPassiveTreeWidget>(Controller);
+	Screen->SetPlayerStateForTests(State);
+
+	const FString Why(TEXT("Ravager is your Demonic class. A respec frees the choice."));
+
+	UCataclysmChoiceButton* MasochistTree = NewObject<UCataclysmChoiceButton>();
+	Screen->DescribeButtonForTests(*MasochistTree, FName(TEXT("Masochist")), true);
+	TestTrue(TEXT("the Masochist tree button is dimmed"), MasochistTree->IsDimmed());
+	TestTrue(TEXT("but can still be clicked, to read the tree"),
+			 MasochistTree->IsAvailable());
+	TestEqual(TEXT("and its tool tip says why"),
+			  MasochistTree->GetToolTipText().ToString(), Why);
+
+	UCataclysmChoiceButton* RavagerTree = NewObject<UCataclysmChoiceButton>();
+	Screen->DescribeButtonForTests(*RavagerTree, FName(TEXT("Ravager")), true);
+	TestFalse(TEXT("the Ravager tree button is not dimmed"), RavagerTree->IsDimmed());
+	TestTrue(TEXT("and has no tool tip"), RavagerTree->GetToolTipText().IsEmpty());
+
+	UCataclysmChoiceButton* MasochistNode = NewObject<UCataclysmChoiceButton>();
+	Screen->DescribeButtonForTests(*MasochistNode, MasochistRoot, false);
+	TestFalse(TEXT("the Masochist root cannot be taken"), MasochistNode->IsAvailable());
+	TestEqual(TEXT("and its tool tip says why, on the node"),
+			  MasochistNode->GetToolTipText().ToString(), Why);
+
+	UCataclysmChoiceButton* RavagerNode = NewObject<UCataclysmChoiceButton>();
+	Screen->DescribeButtonForTests(*RavagerNode, RavagerNext, false);
+	TestTrue(TEXT("the next Ravager node can be taken"), RavagerNode->IsAvailable());
+	TestTrue(TEXT("and has no tool tip, on the node"),
+			 RavagerNode->GetToolTipText().IsEmpty());
 	return true;
 }
 

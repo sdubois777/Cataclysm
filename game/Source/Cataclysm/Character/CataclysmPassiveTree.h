@@ -51,8 +51,9 @@ struct CATACLYSM_API FCataclysmSpentNode
  * about taste. Every container already on `UCataclysmCharacterSave` is an array,
  * the writer is known to handle them, and a map's serialisation is a shape
  * nothing in this project has tried. The lists are short -- a character can
- * touch at most 230 nodes and in practice far fewer -- so a linear search is not
- * worth avoiding.
+ * touch one tree for each damage type, at most 148 nodes across the 441 of
+ * 2026-09-24, and in practice far fewer -- so a linear search is not worth
+ * avoiding.
  *
  * ONLY NODES THAT HOLD SOMETHING ARE IN IT. A node with no points has no entry
  * rather than an entry saying zero, so an untouched character's record is empty.
@@ -105,9 +106,9 @@ struct CATACLYSM_API FCataclysmPassiveAllocation
  *   a capstone opens at 25, 50, 100 or 200 points spent in ITS OWN TREE, by
  *     total rather than by any path, and is one choice of three
  *
- * WHAT A SPENT POINT IS WORTH IS IN `game/Data/PassiveEffects.csv`, FOR A
- * MINORITY OF THE 293 NODES. `AccumulateInto` turns those into the same three
- * buckets a worn item's affixes produce. The rest say what they do only in a
+ * WHAT A SPENT POINT IS WORTH IS IN `game/Data/PassiveEffects.csv`, FOR 222 OF
+ * THE 441 NODES, counted on 2026-09-24. `AccumulateInto` turns those into the
+ * same three buckets a worn item's affixes produce. The rest say what they do only in a
  * sentence written for a player, and a character spending on one of them still
  * receives nothing: each needs machinery that does not exist -- threshold
  * clauses, timed conditional windows, and 76 keystones and capstone options that
@@ -193,7 +194,7 @@ public:
 	 * Whether the paths leading to this node are open.
 	 *
 	 * TRUE FOR A NODE WITH NO INCOMING EDGE, which is how a tree is started:
-	 * each of the four has exactly one such node and it is the one that unlocks
+	 * each of the six has exactly one such node and it is the one that unlocks
 	 * the class's resource.
 	 *
 	 * TRUE FOR A CAPSTONE, which has no edges at all by design. Whether a
@@ -346,6 +347,40 @@ public:
 	 */
 	static bool TreeIsReachable(const FString& Tree,
 								const TArray<FName>& DamageTypes);
+
+	/**
+	 * The class this allocation has chosen for one damage type, or empty.
+	 *
+	 * ONE CLASS PER DAMAGE TYPE. Issue #2064; the project owner decided it on
+	 * 2026-09-24, and the design already said it: "Players can spec into one
+	 * class per damage type available on their weapon." The first point spent
+	 * in any of a damage type's three trees chooses that class.
+	 *
+	 * READ FROM THE ALLOCATION, NOT STORED BESIDE IT. The chosen class is the
+	 * one of the three trees holding points, so there is nothing to keep in step.
+	 * Points stay spent when the weapon that unlocked a tree comes off, so the
+	 * choice stays with them. Emptying the tree is what frees it.
+	 *
+	 * THE FIRST IN THE ALLOCATION'S ORDER if more than one holds points, which
+	 * only an allocation written without this check can do. `Add` appends a node
+	 * the first time it is bought, so that is the tree the first point went into.
+	 */
+	static FString ClassChosenFor(const UDataTable* NodeTable,
+								  const FCataclysmPassiveAllocation& Allocation,
+								  FName DamageType);
+
+	/**
+	 * Why a point may not go into this tree because its damage type's class is
+	 * another one, or empty when nothing refuses it.
+	 *
+	 * Asked for each carried damage type whose three classes include the tree.
+	 * The sentence names the class chosen and says how to change it, and says
+	 * nothing about the Trainer, which is not built (issue #48).
+	 */
+	static FString RefusalForClassChoice(const UDataTable* NodeTable,
+										 const FCataclysmPassiveAllocation& Allocation,
+										 const FString& Tree,
+										 const TArray<FName>& DamageTypes);
 
 	/** Every tree in the table those damage types reach, in the table's order. */
 	static TArray<FString> ReachableTrees(const UDataTable* NodeTable,

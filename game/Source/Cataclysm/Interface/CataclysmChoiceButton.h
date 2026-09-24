@@ -126,6 +126,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	bool IsChosen() const { return bChosen; }
 
+	/**
+	 * Draw the label as unavailable while the button stays enabled.
+	 *
+	 * FOR SOMETHING THAT CAN BE READ BUT NOT TAKEN. Issue #2064: the passive
+	 * tree screen dims the two classes of a damage type that were not chosen,
+	 * and a player still has to be able to open them to read what they offer.
+	 * `SetChoice`'s availability disables the button, so it cannot say that.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Creation")
+	void SetDimmed(bool bInDimmed);
+
+	/** Whether the label is drawn dimmed by `SetDimmed`. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
+	bool IsDimmed() const { return bDimmed; }
+
 	/** Whether this option can be taken at all. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Creation")
 	bool IsAvailable() const { return bAvailable; }
@@ -200,6 +215,7 @@ private:
 	FText Label;
 	bool bChosen = false;
 	bool bAvailable = true;
+	bool bDimmed = false;
 
 	/** What `SetLabelScale` was last told. */
 	float LabelScale = 1.0f;
