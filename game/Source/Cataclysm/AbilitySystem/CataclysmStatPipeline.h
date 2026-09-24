@@ -788,6 +788,20 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Opponent Is Crowd Controlled"),
 
 	/**
+	 * The blow arriving is a melee attack AND the character is moving. Issue
+	 * #1686: "You take 15%-25% more damage from melee attacks while moving".
+	 *
+	 * ONE NAME FOR A PAIR, ruled on #1697 under the owner's delegation on
+	 * 2026-09-23, after `TargetCarriesCrippleAndWeaken`'s precedent. A row
+	 * carries one condition; two rows would ADD, so either half alone would
+	 * pay; and `RequiredTags` scopes the defender's own skill, so it cannot
+	 * say what hit them. Exactly `HitIsMeleeAttack` and `WhileMoving` read
+	 * together, so each refuses when it would.
+	 */
+	MeleeHitWhileMoving
+		UMETA(DisplayName = "Melee Hit While Moving"),
+
+	/**
 	 * The character being HIT is staggered. Issue #45.
 	 *
 	 * "Staggered enemies take 20%-35% increased damage from all sources" is a
@@ -3555,7 +3569,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a sixty-fourth, which is the drift that put the passive tree eight
+	 * adds a sixty-fifth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -3564,7 +3578,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TWENTY-SEVEN OF THE SIXTY-THREE COMPARE NOTHING. They are the case labels
+	 * TWENTY-EIGHT OF THE SIXTY-FOUR COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

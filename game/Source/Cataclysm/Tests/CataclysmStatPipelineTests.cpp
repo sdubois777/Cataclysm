@@ -4233,4 +4233,53 @@ bool FCataclysmClassPointScaleTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeHitWhileMovingTest,
+	"Cataclysm.StatPipeline.AMeleeHitWhileMovingNeedsBothHalves",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `melee_hit_while_moving` holds only when the blow is a melee attack AND the
+ * character is moving. Issue #1686, ruled on #1697. Each half alone is refused,
+ * which is what two rows could not do: they would add, and either half would
+ * pay. A melee SPELL is not a melee attack, exactly as `hit_is_melee_attack`
+ * reads it.
+ */
+bool FCataclysmMeleeHitWhileMovingTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatCondition Condition = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("melee_hit_while_moving is a condition this build knows"),
+		FPipeline::ConditionNamed(TEXT("melee_hit_while_moving"), Condition)
+			&& Condition == ECataclysmStatCondition::MeleeHitWhileMoving);
+
+	const auto State = [](bool bMelee, bool bRanged, bool bSpell, bool bMoving)
+	{
+		FCataclysmStatConditions Made;
+		Made.Blow.bIsMelee = bMelee;
+		Made.Blow.bIsRanged = bRanged;
+		Made.Blow.bIsSpell = bSpell;
+		Made.bIsMoving = bMoving;
+		return Made;
+	};
+	const auto Holds = [](const FCataclysmStatConditions& Made)
+	{
+		return FPipeline::ConditionHolds(ECataclysmStatCondition::MeleeHitWhileMoving,
+										 0.0f, Made);
+	};
+
+	TestTrue(TEXT("a melee blow on a moving character holds"),
+		Holds(State(true, false, false, true)));
+	TestFalse(TEXT("a melee blow on a STANDING character does not"),
+		Holds(State(true, false, false, false)));
+	TestFalse(TEXT("a ranged blow on a MOVING character does not"),
+		Holds(State(false, true, false, true)));
+	TestFalse(TEXT("a melee spell on a moving character does not"),
+		Holds(State(true, false, true, true)));
+	TestFalse(TEXT("and a moving character with no blow in hand does not"),
+		Holds(State(false, false, false, true)));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
