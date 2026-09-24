@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Every workbook column the generator reads is required, and one may be optional only by declaration
+
+**Affects:** `tools/generate_datatables.py` (how a workbook cell is read), four fixtures in
+`tools/tests/test_generate_datatables.py`, and the new `tools/tests/test_required_workbook_columns.py`.
+Issue [#1882](https://github.com/sdubois777/Cataclysm/issues/1882).
+
+### WHAT WAS WRONG
+
+The generator reads the design workbook by column name. `_cell` returned an empty string for a
+column the sheet did not have, the same as for an empty cell, so **a column deleted or renamed in
+the workbook emptied that field on every row, with no error.**
+
+### THE RULING, UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto:**
+
+- **Every column the generator asks a sheet for is required.** A missing column raises `DataError`
+  naming the sheet and the column. The reason is the design's rule of never a silent default: a
+  deleted column that empties a field is the same fault as a missing row, which the generator
+  already refuses.
+- **A column is optional only by declaration**, in `OPTIONAL_COLUMNS = {sheet: {column: reason}}`,
+  and each reason names the issue that will add the column. That keeps the freedom #1882 valued: a
+  generator change may still land before the workbook gains its column.
+- **The table only shrinks.** An entry whose column the committed workbook now has fails, and the
+  message says to delete the entry in the same change that adds the column.
+
+### HOW IT IS BUILT
+
+`_header_index` returns the headers together with the name of their sheet, and `_cell` checks on
+every read. A column is therefore required exactly when the generator reads it, and no second list
+of required columns has to agree with the code. A row shorter than its header row still reads its
+missing trailing cells as empty, because a spreadsheet drops those; that is not a missing column.
+A plain dict passed as headers carries no sheet name and is read as before.
+
+**`OPTIONAL_COLUMNS` is empty.** The workbook as committed on `development` at baee8048, read out of
+git rather than from any worktree, has every column the generator reads. `python
+tools/generate_datatables.py --check` with the rule in force printed "All 29 DataTable CSVs are up
+to date" and exited 0. #1882 had counted three missing columns on the Enchantment Effects sheet on
+2026-09-14; they have been added since.
+
+**Four test fixtures built sheets without columns their reader asks for**, and were read as empty in
+silence. That is #1882's fault, inside the tests:
+
+- `TestBasicAttacks`: Implicit 2 on Item Bases;
+- `TestTheWordAnAffixGivesAnItemsName`: Floor and Percent on Affixes;
+- two Passive Effects fixtures, which lacked Condition, Scale, Option and others.
+
+24 tests failed on them. Each header row now names every column its reader asks for, with the new
+ones appended at the end so no data row changes.
+
+### PROOF
+
+Two breaks with `tools/prove_guard.break_and_run`, in a `git archive` copy of 205e3a56, each
+asserted to match once:
+
+| Break | Printed | `named_failures` |
+|---|---|---|
+| a missing column read as empty again | `PROVED: 2 failed, 5 passed in 0.51s \| restored: 7 passed in 0.47s` | `test_a_column_the_sheet_lacks_is_refused_and_named`, `test_an_optional_column_on_another_sheet_does_not_excuse_this_one` |
+| `OPTIONAL_COLUMNS` lists Passive Effects' Node, which the sheet has | `PROVED: 1 failed, 6 passed in 0.49s \| restored: 7 passed in 0.43s` | `test_an_optional_column_the_sheet_now_has_is_not_listed` |
+
+**A required column renamed in a COPY of the workbook.** The Passive Effects header
+"Required Tags" was renamed "Required Tag" in copies saved by openpyxl, in archives of the base and of
+this change. A control copy, saved the same way without the rename, was checked beside each. The
+real workbook was never opened for writing.
+
+| Code | Control copy | Renamed copy |
+|---|---|---|
+| base, baee8048 | exit 0, "All 29 DataTable CSVs are up to date." | exit 1, "FAIL: 1 DataTable CSV(s) out of date", naming `PassiveEffects.csv` and not the column |
+| this change, 205e3a56 | exit 0, "All 29 DataTable CSVs are up to date." | exit 1, "FAIL: the Passive Effects sheet has no 'Required Tags' column, and the generator reads it." |
+
+The base's `--check` noticed only because the committed CSV holds tags that the renamed copy no
+longer produced. A run without `--check`, which writes the files, was not measured.
+
+---
+
+---
+
 ## 2026-09-23 — The separator check's list of old faults can only shrink, and a ceiling holds it where git history is missing
 
 **Affects:** `tools/tests/test_decisions_entries_are_separated.py`, the check that every entry in
