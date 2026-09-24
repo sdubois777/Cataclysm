@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Chaos Touched: each floor adds one of eight 10% buffs or debuffs, and a floor's boss cleanses the debuffs
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, the eight kinds, the draw, the cap and eight player-effect fields with both readers of them),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (adding a stack as a floor
+begins, putting the stacks back on the beat, the cleanse on a death, a console variable pinning the
+draw, the floor panel line and the resets), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Chaos_Chaos_Touched` in `game/Data/DungeonModifiers.csv`, weight 15: "Every floor, a random buff or
+debuff is added to the player. These do not have the normal time limits and will continue to stack
+unless cleansed." The row gives no figure and names no pool.
+
+### What the rule does
+
+As each floor carrying the row begins, floor 1 included, one stack is added of one of eight kinds,
+drawn in eight even bands of the roll: 10% more maximum health, movement speed, attack speed or
+resistances (all eight), then 10% less of the same four. A kind holds at most five stacks (50%); a draw
+for a full kind goes to the next kind with room, and a floor adds nothing only when all eight are full.
+A buff and a debuff of one stat are two multipliers and do not cancel each other's stacks. The stacks
+belong to the dungeon and are put back on the player after every floor change. **A floor's boss's death
+cleanses the debuffs; the buffs stay.** The player's own death clears every stack, and leaving the
+dungeon empties them. The floor panel shows the stacks of all eight kinds.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24. Every figure here is a
+judgement, not something derived:**
+
+- **The eight kinds are this game's own player-effect routes**, each with a field of its own: maximum
+  health and movement speed as the starvation curse moves them, attack speed as Trick or Treat's
+  haste does, and all eight resistances as The Nihil's Embrace does. **`game/Data/StatusEffects.csv`
+  offers no pool a player could carry**: of its 18 Buff and 28 Debuff rows, three move a stat
+  (Abyssal Aura, Shred, Weaken), and Shred and Weaken are the player's own debuffs on enemies; the rest
+  belong to skills.
+- **Even odds**, pinned for tests by `Cataclysm.ChaosTouchedRoll`.
+- **10% a stack and five of a kind at most**, a full kind passing the draw on, following the starvation
+  curse's redirect ruling. **Play-test point.**
+- **A floor's boss (`DiedAsAFloorsBoss`) cleanses the DEBUFFS ONLY.** A cleanse in the genre removes
+  what harms, and taking the player's buffs away as the reward for killing a boss would read as a
+  penalty. **The player's own death clears everything**, under the owner's ruling of 2026-09-10 that
+  anything lasting only for a dungeon ends at a death; leaving the dungeon empties everything.
+- **Floor 1 counts**, as for the starvation curse.
+
+### Tests
+
+Three automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `EachFloorAddsOneChaosTouchOfTheDrawnKind`: the eight bands' boundaries (12.49 more health, 12.5 more
+  speed, 50 less health, 87.5 and 100 less resistances); three floors drawn at 0, 50 and 99 leave one
+  stack each of more health, less health and less resistances, with maximum health carrying both 10%
+  more and 10% less and a resistance 10% less; leaving the dungeon empties every kind.
+- `AFullChaosTouchSendsTheDrawToTheNextKind`: the redirect's answers, round from the last kind to the
+  first and nothing when all eight are full; seven floors all drawing more health leave five of it and
+  two of more speed.
+- `AFloorsBossCleansesChaosTouchedDebuffsAndTheBuffsStay`: with one buff and one debuff of maximum
+  health, a Gatekeeper held at the Common rung dies, the debuff is gone and the buff stays; then the
+  player's own death clears the buff at once.
+
+One Python check: the row still says "every floor", "a random buff or debuff", "continue to stack" and
+"unless cleansed", and states no percentage. It was seen to fail, in a copy of the repository, with
+"buff or debuff" made "buff", with "unless cleansed" removed, and with "10%" added.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-24 — Shared Ruin and Nothing Stops It, engine only: a minion's death is a blast, and a lethal hit is survived once in twenty seconds
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the death blast),
