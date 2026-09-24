@@ -927,6 +927,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						Resolved.AbsorbedByShield = 0.0f;
 						Resolved.AbsorbedByMana = 0.0f;
 						Warded->NoteMinionSpentForShield(WardEvery);
+
+						// KILLED BY NOBODY. A death written to health names as its
+						// killer whoever last struck the dying creature, however long
+						// ago, so a minion an enemy grazed a minute earlier would
+						// credit that enemy for the ward. Its record is emptied first:
+						// the ward's death is nobody's kill, neither the player's nor
+						// the creature that struck the shield, which is never recorded
+						// on the minion at all.
+						if (UCataclysmAbilitySystemComponent* SpentCataclysm =
+								Cast<UCataclysmAbilitySystemComponent>(SpentSystem))
+						{
+							SpentCataclysm->RecordLastBlow(FCataclysmLastBlow());
+						}
 						SpentSystem->SetNumericAttributeBase(
 							UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
 					}

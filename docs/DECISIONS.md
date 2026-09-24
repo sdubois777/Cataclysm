@@ -151,6 +151,21 @@ Nothing Stops It**, because a blow the ward takes whole is lethal to nobody. As 
 window, the whole result is emptied: no shield drawn, no refill wait restarted, and no leech for the
 attacker. The clock goes back to "never" on revival.
 
+**ONE CHARACTER CAN HOLD BOTH.** Sacrificial Ward is a Ritualist keystone and Nothing Stops It a
+Ravager option, but the passive tree limits a character by damage type and not by class:
+`UCataclysmPassiveTree::TreeIsReachable` accepts every class of the chosen damage type, and a Demonic
+character reaches all three Demonic trees. So the order is stated rather than assumed. **The ward
+runs first**, and a blow it takes whole never asks Nothing Stops It. A blow it does not take is asked
+as it would have been.
+
+**THE MINION IS KILLED BY NOBODY.** A death written to health names as its killer whoever last struck
+the dying creature, however long ago (`UCataclysmCombatEvents::NoteDeath` reads the creature's own
+last-blow record). So a minion an enemy grazed a minute earlier would have credited that enemy. The
+ward empties that record before the health is written. The death is nobody's kill: not the
+player's, so no kill rule of the player's pays for it, and not the creature that struck the shield,
+whose blow is never recorded on the minion at all. The commander's Fervour for a minion's death
+reads no killer and is still paid, as for any other minion's death.
+
 ### TESTS
 
 - `Cataclysm.SacrificialWard.AShieldBreakingBlowIsCancelledAndTheWeakestMinionDiesInstead`: the
@@ -158,6 +173,7 @@ attacker. The clock goes back to "never" on revival.
 - `Cataclysm.SacrificialWard.ABlowTheShieldHoldsSpendsNothing`
 - `Cataclysm.SacrificialWard.OnceInThreeSecondsAndWithNothingToSpendTheShieldBreaks`
 - `Cataclysm.SacrificialWard.ASpentMinionsDeathIsADeathForSharedRuin`
+- `Cataclysm.SacrificialWard.ASpentMinionIsKilledByNobodyEvenIfAnEnemyStruckItBefore`
 - A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
 
 ---

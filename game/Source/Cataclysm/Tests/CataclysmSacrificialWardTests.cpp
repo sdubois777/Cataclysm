@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -341,6 +342,67 @@ bool FCataclysmSacrificialWardDeathTest::RunTest(const FString&)
 	TestTrue(TEXT("the ward spends the imp"), IsDead(Imp));
 	TestEqual(TEXT("and its death is Shared Ruin's: a fifth of its maximum, three metres away"),
 			  Pool - Enemy.Get(Vital::GetHealthAttribute()), Maximum * 0.2f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSacrificialWardKillerTest,
+	"Cataclysm.SacrificialWard.ASpentMinionIsKilledByNobodyEvenIfAnEnemyStruckItBefore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A death written to health names as its killer whoever last struck the dying
+ * creature. An enemy grazes an imp, and later strikes its Ritualist's shield;
+ * the ward spends the imp, and its death notice names no killer: not the
+ * player, so no kill rule of the player's pays for it, and not the enemy.
+ */
+bool FCataclysmSacrificialWardKillerTest::RunTest(const FString&)
+{
+	using namespace CataclysmSacrificialWardTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("combat events"), Events))
+	{
+		return false;
+	}
+
+	FScopedFighter Enemy(World, FVector(0, 50 * M, 0));
+	FScopedFighter Ritualist(World, FVector::ZeroVector);
+	Ritualist.Shielded();
+	Ritualist.HoldTheWard();
+	ACataclysmMinion* Imp = ImpAt(*this, Ritualist.Actor, FVector(2 * M, 0, 0), 0.8f);
+	if (!Imp)
+	{
+		return false;
+	}
+
+	bool bHeard = false;
+	const AActor* Killer = nullptr;
+	const FDelegateHandle Handle = Events->OnDeath.AddLambda(
+		[&bHeard, &Killer, Imp](const FCataclysmDeathNotice& Notice)
+		{
+			if (Notice.Victim == Imp)
+			{
+				bHeard = true;
+				Killer = Notice.Killer;
+			}
+		});
+	ON_SCOPE_EXIT { Events->OnDeath.Remove(Handle); };
+
+	UCataclysmSkillEffects::ApplyDirectDamage(Enemy.Actor, Imp, 1.0f);
+	Strike(Enemy, Ritualist, 300.0f);
+
+	if (!TestTrue(TEXT("the ward spent the imp and its death was announced"), bHeard))
+	{
+		return false;
+	}
+	TestNull(TEXT("and it names no killer"), Killer);
 	return true;
 }
 
