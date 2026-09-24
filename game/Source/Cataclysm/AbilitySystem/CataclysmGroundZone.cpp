@@ -5,6 +5,11 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
+// THE FIRST FILE UNDER AbilitySystem/ TO INCLUDE A Dungeon/ HEADER: none of the 12 in
+// Dungeon/ was included by any file here before issue #2074. It is here because the record
+// of which floor rule last burned whom lives on the floor hazard source, the one owner every
+// floor rule's zones share, and a zone asks it before it burns.
+#include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Components/SceneComponent.h"
 #include "NiagaraComponent.h"
 #include "Engine/World.h"
@@ -374,6 +379,14 @@ void ACataclysmGroundZone::Sweep()
 		: UCataclysmTargeting::FindEnemiesInLine(
 			GetWorld(), Source, GetActorLocation(), FarEnd, RadiusCm);
 
+	// A ZONE OF A FLOOR RULE ASKS ITS OWNER BEFORE IT BURNS, so zones of one rule that overlap
+	// burn a target once a second between them. Issue #2074. Every other zone has no kind and
+	// asks nothing.
+	ACataclysmFloorHazardSource* Hazard = BurnsOnceASecondAs.IsNone()
+		? nullptr
+		: Cast<ACataclysmFloorHazardSource>(Source);
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+
 	for (AActor* Target : Inside)
 	{
 		// AREA AND OVER TIME BOTH. A zone catches whatever is standing in it
@@ -391,7 +404,7 @@ void ACataclysmGroundZone::Sweep()
 		// now, and a hit of zero is still a hit: it would announce itself, count
 		// towards anything that reacts to being struck, and read in a combat log
 		// as an attack that did nothing.
-		if (bDamages)
+		if (bDamages && (!Hazard || Hazard->MayBurn(BurnsOnceASecondAs, Target, Now)))
 		{
 			// THE FIRST SWEEP MAY DEAL ITS OWN FIGURE. Issue #1686. `TicksElapsed`
 			// is still nought during it, because it moves after the sweep.

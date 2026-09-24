@@ -948,8 +948,7 @@ namespace
 	 */
 	int32 DungeonGameModeDestroyTheRulesZones(UWorld* World)
 	{
-		const ACataclysmFloorHazardSource* Source =
-			ACataclysmFloorHazardSource::Existing(World);
+		ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::Existing(World);
 		if (!Source)
 		{
 			return 0;
@@ -967,6 +966,10 @@ namespace
 		{
 			Zone->Destroy();
 		}
+
+		// AND WHO THEY LAST BURNED. Issue #2074. The source outlives the floor, so the record of
+		// the last floor's burns would otherwise refuse a burn on this one's first second.
+		Source->ForgetBurns();
 		return Doomed.Num();
 	}
 }
@@ -3198,6 +3201,11 @@ void ACataclysmDungeonGameMode::StepInfernalRain(
 		Source, Where, UCataclysmDungeonModifierEffects::InfernalRainRadiusCm,
 		UCataclysmDungeonModifierEffects::InfernalRainPatchSeconds, PerSecond,
 		FName(*Row->CataclysmType));
+	if (Patch)
+	{
+		// PATCHES THAT OVERLAP BURN ONCE A SECOND BETWEEN THEM. Issue #2074.
+		Patch->BurnsOnceASecondAs = FName(UCataclysmDungeonModifierEffects::InfernalRainKey);
+	}
 	if (!Patch)
 	{
 		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
@@ -3333,6 +3341,11 @@ void ACataclysmDungeonGameMode::StepSingularityWells(
 		Source, Where, Where, Effects::SingularityWellsRadiusCm, PerSecond,
 		/*bAffectsEveryone=*/false, /*InDrawnAsType=*/NAME_None,
 		FName(*Row->CataclysmType));
+	if (Well)
+	{
+		// WELLS THAT OVERLAP BURN ONCE A SECOND BETWEEN THEM. Issue #2074.
+		Well->BurnsOnceASecondAs = FName(Effects::SingularityWellsKey);
+	}
 	if (!Well)
 	{
 		// THE CLOCK IS NOT RESET ON A FAILED SPAWN, so the next beat tries again
@@ -4164,6 +4177,8 @@ void ACataclysmDungeonGameMode::StepHallowedGroundfall(
 			DungeonGameModeTypeOfRow(Effects::HallowedGroundfallKey));
 		if (Crater)
 		{
+			// CRATERS THAT OVERLAP BURN ONCE A SECOND BETWEEN THEM. Issue #2074.
+			Crater->BurnsOnceASecondAs = FName(Effects::HallowedGroundfallKey);
 			HallowedGroundfallCratersBurning.Add(Crater);
 		}
 	}

@@ -3,6 +3,7 @@
 #include "Dungeon/CataclysmFloorHazardSource.h"
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
@@ -89,6 +90,25 @@ ACataclysmFloorHazardSource* ACataclysmFloorHazardSource::ForFloor(UWorld* World
 		ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	return World->SpawnActor<ACataclysmFloorHazardSource>(
 		ACataclysmFloorHazardSource::StaticClass(), FTransform::Identity, Params);
+}
+
+bool ACataclysmFloorHazardSource::MayBurn(FName Kind, const AActor* Target, double NowSeconds)
+{
+	if (Kind.IsNone() || !Target)
+	{
+		return true;
+	}
+
+	const TPair<FName, TWeakObjectPtr<const AActor>> Key(Kind, Target);
+	if (const double* Last = LastBurnedAt.Find(Key))
+	{
+		if (NowSeconds - *Last < ACataclysmGroundZone::TickSeconds - BurnSlackSeconds)
+		{
+			return false;
+		}
+	}
+	LastBurnedAt.Add(Key, NowSeconds);
+	return true;
 }
 
 UAbilitySystemComponent* ACataclysmFloorHazardSource::GetAbilitySystemComponent() const

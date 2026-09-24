@@ -1564,6 +1564,14 @@ namespace CataclysmDungeonModifierEffectsTest
 		{
 			return false;
 		}
+		// ONE SWEEP'S INTERVAL OF WORLD TIME FIRST, and nothing else. Issue #2074: a floor
+		// rule's zone refuses a second burn on the same target within one interval, so two
+		// sweeps at one instant would measure one burn and nothing. Moving `TimeSeconds` runs
+		// no timer and ticks no actor, so no regeneration lands between the measurements.
+		if (UWorld* World = Zone->GetWorld())
+		{
+			World->TimeSeconds += ACataclysmGroundZone::TickSeconds;
+		}
 		Zone->Sweep();
 		return Test.TestEqual(TEXT("and its sweep found the player and nobody else"),
 							  Zone->LastSweepCount, 1);
@@ -25462,6 +25470,314 @@ bool FCataclysmBloodBondOnceTest::RunTest(const FString& Parameters)
 	}
 	Beat(Mode, 1);
 	TestTrue(TEXT("floor 3 bound its Elite"), Mode->BloodBondedOnTheFloor() == Third);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Overlapping zones of one floor rule burn a target once a second. Issue #2074.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/**
+	 * A floor carrying these rows, built, with a player of a hundred thousand health, beaten
+	 * `Beats` times so the rules place their zones. Null, with a failure, when any step failed.
+	 */
+	ACataclysmDungeonGameMode* AFloorOfZones(FAutomationTestBase& Test, UWorld* World,
+											 const FPossessedPlayer& Player,
+											 const TArray<FName>& Rows, int32 Beats)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		Mode->FloorNumber = 1;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+			|| !GiveThePlayerHealthForTypedDamage(Test, Player))
+		{
+			return nullptr;
+		}
+		Beat(Mode, Beats);
+		return Mode;
+	}
+
+	/** Every ground zone on the floor. */
+	TArray<ACataclysmGroundZone*> ZonesIn(UWorld* World)
+	{
+		TArray<ACataclysmGroundZone*> Zones;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			Zones.Add(*It);
+		}
+		return Zones;
+	}
+
+	/**
+	 * Keep these two zones and take the rest away, put the second on the first's centre, and
+	 * stand the player there. Whether the player stands in both.
+	 */
+	bool TwoZonesOnOneSpot(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+						   ACataclysmGroundZone* First, ACataclysmGroundZone* Second)
+	{
+		for (ACataclysmGroundZone* Zone : ZonesIn(World))
+		{
+			if (Zone != First && Zone != Second)
+			{
+				Zone->Destroy();
+			}
+		}
+		Second->SetActorLocation(First->GetActorLocation());
+		Player.Character->SetActorLocation(First->GetActorLocation());
+		const FVector Feet = Player.Character->GetActorLocation();
+		return Test.TestEqual(TEXT("two zones are left"), ZonesIn(World).Num(), 2)
+			&& Test.TestTrue(TEXT("and the player stands in both"),
+							 First->Covers(Feet) && Second->Covers(Feet));
+	}
+
+	/**
+	 * The five checks every rule's test makes of two zones of that rule on one spot, sweeping
+	 * by hand and moving only the world's time, so no timer fires between the readings.
+	 */
+	void OncePerSecondBetweenTwoZones(FAutomationTestBase& Test, UWorld* World,
+									  const FPossessedPlayer& Player, ACataclysmGroundZone* First,
+									  ACataclysmGroundZone* Second)
+	{
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Start = Player.Read(Health);
+
+		First->Sweep();
+		const float One = Start - Player.Read(Health);
+		Test.TestTrue(FString::Printf(TEXT("one zone's sweep costs health: %.2f"), One), One > 0.0f);
+
+		Second->Sweep();
+		Test.TestEqual(TEXT("the second zone found the player"), Second->LastSweepCount, 1);
+		Test.TestEqual(TEXT("and burned nothing more in the same second"),
+					   Start - Player.Read(Health), One, 0.01f);
+
+		World->TimeSeconds += ACataclysmGroundZone::TickSeconds;
+		First->Sweep();
+		Test.TestEqual(TEXT("a second later the first zone burns again"),
+					   Start - Player.Read(Health), One * 2.0f, 0.02f);
+		Second->Sweep();
+		Test.TestEqual(TEXT("and the second is refused that second too"),
+					   Start - Player.Read(Health), One * 2.0f, 0.02f);
+	}
+}
+
+// TWO CRATERS ON ONE SPOT BURN A PLAYER ONCE A SECOND BETWEEN THEM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoCratersOnceTest,
+	"Cataclysm.DungeonModifierEffects.TwoOverlappingCratersBurnAPlayerOncePerSecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoCratersOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorOfZones(*this, World, Player, {HallowedGroundfall},
+		BeatsFor(Effects::HallowedGroundfallSecondsBetween) + 1);
+	const TArray<ACataclysmGroundZone*> Craters = Mode ? ZonesIn(World) : TArray<ACataclysmGroundZone*>();
+	if (!TestTrue(TEXT("a bombardment left at least two craters"), Craters.Num() >= 2)
+		|| !TestEqual(TEXT("each crater is marked as the row's"), Craters[0]->BurnsOnceASecondAs,
+					  FName(Effects::HallowedGroundfallKey))
+		|| !TwoZonesOnOneSpot(*this, World, Player, Craters[0], Craters[1]))
+	{
+		return false;
+	}
+	OncePerSecondBetweenTwoZones(*this, World, Player, Craters[0], Craters[1]);
+	return true;
+}
+
+// TWO INFERNAL RAIN PATCHES ON ONE SPOT BURN A PLAYER ONCE A SECOND BETWEEN THEM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoPatchesOnceTest,
+	"Cataclysm.DungeonModifierEffects.TwoOverlappingInfernalRainPatchesBurnAPlayerOncePerSecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoPatchesOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorOfZones(*this, World, Player, {InfernalRain},
+		BeatsFor(Effects::InfernalRainSecondsBetweenPatches) * 2 + 2);
+	const TArray<ACataclysmGroundZone*> Patches = Mode ? ZonesIn(World) : TArray<ACataclysmGroundZone*>();
+	if (!TestTrue(TEXT("two cadences left at least two patches"), Patches.Num() >= 2)
+		|| !TestEqual(TEXT("each patch is marked as the row's"), Patches[0]->BurnsOnceASecondAs,
+					  FName(Effects::InfernalRainKey))
+		|| !TwoZonesOnOneSpot(*this, World, Player, Patches[0], Patches[1]))
+	{
+		return false;
+	}
+	OncePerSecondBetweenTwoZones(*this, World, Player, Patches[0], Patches[1]);
+	return true;
+}
+
+// TWO SINGULARITY WELLS ON ONE SPOT BURN A PLAYER ONCE A SECOND BETWEEN THEM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoWellsOnceTest,
+	"Cataclysm.DungeonModifierEffects.TwoOverlappingSingularityWellsBurnAPlayerOncePerSecond",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoWellsOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorOfZones(*this, World, Player, {SingularityWells},
+		BeatsFor(Effects::SingularityWellsSecondsBetweenWells) * 2 + 2);
+	const TArray<ACataclysmGroundZone*> Wells = Mode ? ZonesIn(World) : TArray<ACataclysmGroundZone*>();
+	if (!TestTrue(TEXT("two cadences left at least two wells"), Wells.Num() >= 2)
+		|| !TestEqual(TEXT("each well is marked as the row's"), Wells[0]->BurnsOnceASecondAs,
+					  FName(Effects::SingularityWellsKey))
+		|| !TwoZonesOnOneSpot(*this, World, Player, Wells[0], Wells[1]))
+	{
+		return false;
+	}
+	OncePerSecondBetweenTwoZones(*this, World, Player, Wells[0], Wells[1]);
+	return true;
+}
+
+// A CRATER AND A PATCH ON ONE SPOT ARE TWO KINDS, AND BOTH BURN IN THE SAME SECOND. Each is first
+// measured alone, with the player's health put back after each, five seconds apart so no
+// window can reach from one reading into the next.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTwoKindsBothTest,
+	"Cataclysm.DungeonModifierEffects.ACraterAndAPatchOnOneSpotBothBurn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTwoKindsBothTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorOfZones(*this, World, Player,
+		{HallowedGroundfall, InfernalRain}, BeatsFor(Effects::HallowedGroundfallSecondsBetween) + 1);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// ONE OF EACH TYPE, told apart by the damage type each rule's row gives its zones.
+	const TArray<ACataclysmGroundZone*> Zones = ZonesIn(World);
+	ACataclysmGroundZone* First = Zones.IsEmpty() ? nullptr : Zones[0];
+	ACataclysmGroundZone* Other = nullptr;
+	for (ACataclysmGroundZone* Zone : Zones)
+	{
+		if (First && Zone->DamageType != First->DamageType)
+		{
+			Other = Zone;
+			break;
+		}
+	}
+	if (!TestNotNull(TEXT("a zone of one rule"), First)
+		|| !TestNotNull(TEXT("and a zone of the other"), Other)
+		|| !TestNotEqual(TEXT("of two kinds"), First->BurnsOnceASecondAs, Other->BurnsOnceASecondAs)
+		|| !TwoZonesOnOneSpot(*this, World, Player, First, Other))
+	{
+		return false;
+	}
+
+	const FGameplayAttribute Health = Vital::GetHealthAttribute();
+	const float Start = Player.Read(Health);
+	const auto PutHealthBack = [&Player, &Health, Start]()
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(Health, Start);
+	};
+
+	World->TimeSeconds += 5.0f;
+	First->Sweep();
+	const float FirstAlone = Start - Player.Read(Health);
+	PutHealthBack();
+
+	World->TimeSeconds += 5.0f;
+	Other->Sweep();
+	const float OtherAlone = Start - Player.Read(Health);
+	PutHealthBack();
+
+	TestTrue(FString::Printf(TEXT("the first kind burns alone: %.2f"), FirstAlone), FirstAlone > 0.0f);
+	TestTrue(FString::Printf(TEXT("the other kind burns alone: %.2f"), OtherAlone), OtherAlone > 0.0f);
+
+	World->TimeSeconds += 5.0f;
+	First->Sweep();
+	Other->Sweep();
+	TestEqual(TEXT("together, in one second, they cost both"), Start - Player.Read(Health),
+			  FirstAlone + OtherAlone, 0.02f);
+	return true;
+}
+
+// ZONES WITH NO FLOOR KIND STILL EACH BURN: two of a rule's patches with the kind taken off both
+// burn the player twice in one second, which is what every skill's and creature's ground does.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoKindStacksTest,
+	"Cataclysm.DungeonModifierEffects.OverlappingZonesWithNoFloorKindStillEachBurn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmNoKindStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorOfZones(*this, World, Player, {InfernalRain},
+		BeatsFor(Effects::InfernalRainSecondsBetweenPatches) * 2 + 2);
+	const TArray<ACataclysmGroundZone*> Patches = Mode ? ZonesIn(World) : TArray<ACataclysmGroundZone*>();
+	if (!TestTrue(TEXT("two cadences left at least two patches"), Patches.Num() >= 2)
+		|| !TwoZonesOnOneSpot(*this, World, Player, Patches[0], Patches[1]))
+	{
+		return false;
+	}
+	Patches[0]->BurnsOnceASecondAs = NAME_None;
+	Patches[1]->BurnsOnceASecondAs = NAME_None;
+
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	const float Start = Player.Read(Health);
+	Patches[0]->Sweep();
+	const float One = Start - Player.Read(Health);
+	TestTrue(FString::Printf(TEXT("one patch's sweep costs health: %.2f"), One), One > 0.0f);
+	Patches[1]->Sweep();
+	TestEqual(TEXT("the second patch found the player"), Patches[1]->LastSweepCount, 1);
+	TestEqual(TEXT("and burned them too, in the same second"), Start - Player.Read(Health),
+			  One * 2.0f, 0.02f);
 	return true;
 }
 
