@@ -65,6 +65,22 @@ int32 ACataclysmGameMode::DifficultyTierFor(const ACataclysmGameMode* Mode)
 	return LowestDifficultyTier;
 }
 
+bool ACataclysmGameMode::DropsAreChaoticIn(const UObject* WorldContext)
+{
+	if (WorldContext && GEngine)
+	{
+		if (const UWorld* World = GEngine->GetWorldFromContextObject(
+				WorldContext, EGetWorldErrorMode::ReturnNull))
+		{
+			if (const ACataclysmGameMode* Mode = World->GetAuthGameMode<ACataclysmGameMode>())
+			{
+				return Mode->DropsAreChaotic();
+			}
+		}
+	}
+	return false;
+}
+
 int32 ACataclysmGameMode::DifficultyTierIn(const UObject* WorldContext)
 {
 	const ACataclysmGameMode* Mode = nullptr;

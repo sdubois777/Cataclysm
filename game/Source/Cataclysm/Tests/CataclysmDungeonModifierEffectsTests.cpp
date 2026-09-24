@@ -49,6 +49,7 @@
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
 #include "Interface/CataclysmGearPanel.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
@@ -22099,6 +22100,210 @@ bool FCataclysmScarcityDrawTest::RunTest(const FString& Parameters)
 			 Equipment->GetDisabledSlot() == ECataclysmGearSlot::Count);
 	TestEqual(TEXT("and the panel says nothing is"), ScarcityPanelLine(Mode),
 			  FString(TEXT("scarcity: nothing worn to switch off")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Chaotic_Loot. Issues #1820 and #41.
+//
+// "Items dropped by enemies have randomized stats within a wide range, making each piece
+// potentially extremely valuable or useless." On a floor carrying it each affix of an
+// enemy drop draws its tier evenly from T1 to the difficulty's cap, which stays: the
+// design document's "The affix tier column IS still a hard cap." Ruled by the
+// coordinating session under the owner's delegation, 2026-09-23.
+//
+// THE DRAWS ARE COUNTED OVER MANY ROLLS OF A SEEDED STREAM, so every figure below is the
+// same on every run. The bands are wide -- about five standard deviations -- because they
+// only have to tell an even draw from the halving one, which differs by a factor of ten
+// or more at the top tiers.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where drops roll their affix tiers evenly. Issues #1820, #41. */
+	const FName ChaoticLoot(UCataclysmDungeonModifierEffects::ChaoticLootKey);
+
+	/** How many of `Draws` chaotic tier draws at this difficulty land on each tier, T1 at [1]. */
+	TArray<int32> ChaoticTierCounts(int32 DifficultyTier, int32 Draws, int32 Seed)
+	{
+		TArray<int32> Counts;
+		Counts.Init(0, 9);
+		FRandomStream Stream(Seed);
+		for (int32 Index = 0; Index < Draws; ++Index)
+		{
+			const int32 Tier = UCataclysmDropRoll::RollChaoticAffixTier(DifficultyTier, Stream);
+			Counts[FMath::Clamp(Tier, 0, 8)] += 1;
+		}
+		return Counts;
+	}
+
+	/** Roll one enemy drop from the live tables, chaotically or not. */
+	bool RollALiveDrop(int32 Seed, int32 DifficultyTier, bool bChaotic, FCataclysmItem& OutItem)
+	{
+		const UDataTable* Bases = UCataclysmItemModifiers::LoadBaseTable();
+		FRandomStream Stream(Seed);
+		const FString Slot = UCataclysmDropRoll::RollSlot(Bases, Stream);
+		return UCataclysmDropRoll::RollItem(
+			Bases, UCataclysmDropRoll::LoadAffixTable(), UCataclysmDropRoll::LoadGearRarityTable(),
+			UCataclysmDropRoll::LoadItemSocketTable(), UCataclysmDropRoll::LoadAffixTierTable(),
+			UCataclysmWeaponSkills::LoadGeneratedTable(),
+			UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
+			UCataclysmDropRoll::LoadNegativeEnchantmentTable(), Slot, DifficultyTier,
+			/*MagicFind=*/0.0f, Stream, OutItem, bChaotic);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChaoticCapTest,
+	"Cataclysm.DungeonModifierEffects.AChaoticAffixTierNeverPassesTheDifficultyCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChaoticCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// DIFFICULTY 1: THE CAP IS T2, written out. Two thousand draws, each tier about half.
+	const TArray<int32> Low = ChaoticTierCounts(1, 2000, 17);
+	TestEqual(TEXT("at difficulty 1 nothing is drawn above T2"),
+			  Low[3] + Low[4] + Low[5] + Low[6] + Low[7] + Low[8], 0);
+	TestTrue(FString::Printf(TEXT("and T1 and T2 are about even: %d and %d"), Low[1], Low[2]),
+			 Low[1] >= 850 && Low[1] <= 1150 && Low[2] >= 850 && Low[2] <= 1150);
+
+	// DIFFICULTY 3: THE CAP IS T4, and it is reached, so the cap is a limit and not a gap.
+	const TArray<int32> Mid = ChaoticTierCounts(3, 2000, 23);
+	TestEqual(TEXT("at difficulty 3 nothing is drawn above T4"),
+			  Mid[5] + Mid[6] + Mid[7] + Mid[8], 0);
+	TestTrue(FString::Printf(TEXT("and T4 itself is drawn: %d"), Mid[4]), Mid[4] > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChaoticEvenTest,
+	"Cataclysm.DungeonModifierEffects.AChaoticAffixTierIsEvenFromT1ToT7AtTheTopDifficulty",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChaoticEvenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// DIFFICULTY 8: THE CAP IS T7. Seven thousand draws, each tier about a thousand.
+	const TArray<int32> Top = ChaoticTierCounts(8, 7000, 29);
+	for (int32 Tier = 1; Tier <= 7; ++Tier)
+	{
+		TestTrue(FString::Printf(TEXT("T%d is drawn about one time in seven: %d of 7000"),
+								 Tier, Top[Tier]),
+				 Top[Tier] >= 800 && Top[Tier] <= 1200);
+	}
+
+	// THE CONTROL: THE ORDINARY DRAW HALVES PER TIER, so T7 is about one in 127 of the
+	// same number of draws -- about 55 -- and nowhere near a thousand.
+	const UDataTable* Tiers = UCataclysmDropRoll::LoadAffixTierTable();
+	if (!TestNotNull(TEXT("the affix tier table loads"), Tiers))
+	{
+		return false;
+	}
+	FRandomStream Stream(29);
+	int32 OrdinaryTopTier = 0;
+	for (int32 Index = 0; Index < 7000; ++Index)
+	{
+		OrdinaryTopTier += UCataclysmDropRoll::RollAffixTier(Tiers, 8, Stream) == 7 ? 1 : 0;
+	}
+	TestTrue(FString::Printf(TEXT("the ordinary draw gives T7 rarely: %d of 7000"), OrdinaryTopTier),
+			 OrdinaryTopTier < 150);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChaoticFloorTest,
+	"Cataclysm.DungeonModifierEffects.AFloorCarryingChaoticLootMakesItsDropsChaotic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChaoticFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {ChaoticLoot};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a floor carrying the row makes drops chaotic"), Mode->DropsAreChaotic());
+
+	const int32 Cap = UCataclysmDropRoll::MaxAffixTierOnADrop(
+		ACataclysmGameMode::DifficultyTierFor(Mode));
+	const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+	const FString* Line = Counting.Find(ChaoticLoot);
+	TestEqual(TEXT("and the panel says which tiers"), Line ? *Line : FString(TEXT("no line")),
+			  FString::Printf(TEXT("chaotic loot: every affix tier from T1 to T%d equally likely"),
+							  Cap));
+
+	Mode->DungeonModifiers = {Starvation};
+	Mode->BuildFloor();
+	TestFalse(TEXT("a floor without it does not"), Mode->DropsAreChaotic());
+	return true;
+}
+
+// ONLY THE TIERS MOVE: the same seed rolls the same base, rarity, affixes and values
+// either way, because the chaotic draw takes one number from the stream just as the
+// ordinary one does.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChaoticItemTest,
+	"Cataclysm.DungeonModifierEffects.AChaoticDropKeepsItsBaseRarityAffixesAndValues",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChaoticItemTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	int32 AffixesCompared = 0;
+	int32 TiersThatMoved = 0;
+	for (int32 Seed = 1; Seed <= 40; ++Seed)
+	{
+		FCataclysmItem Ordinary;
+		FCataclysmItem Chaotic;
+		if (!TestTrue(FString::Printf(TEXT("seed %d rolls an item both ways"), Seed),
+					  RollALiveDrop(Seed, 8, false, Ordinary)
+						  && RollALiveDrop(Seed, 8, true, Chaotic)))
+		{
+			return false;
+		}
+
+		TestEqual(FString::Printf(TEXT("seed %d: the same base"), Seed),
+				  Chaotic.Base.ToString(), Ordinary.Base.ToString());
+		TestEqual(FString::Printf(TEXT("seed %d: the same gear level, which is the rarity"), Seed),
+				  Chaotic.GearLevel, Ordinary.GearLevel);
+		if (!TestEqual(FString::Printf(TEXT("seed %d: the same number of affixes"), Seed),
+					   Chaotic.Affixes.Num(), Ordinary.Affixes.Num()))
+		{
+			continue;
+		}
+		for (int32 Index = 0; Index < Ordinary.Affixes.Num(); ++Index)
+		{
+			TestEqual(TEXT("the same affix"), Chaotic.Affixes[Index].Affix.ToString(),
+					  Ordinary.Affixes[Index].Affix.ToString());
+			TestEqual(TEXT("the same value within its tier"), Chaotic.Affixes[Index].Roll,
+					  Ordinary.Affixes[Index].Roll, 0.0001f);
+			TestTrue(TEXT("and a tier inside the cap"),
+					 Chaotic.Affixes[Index].Tier >= 1 && Chaotic.Affixes[Index].Tier <= 7);
+			++AffixesCompared;
+			TiersThatMoved += Chaotic.Affixes[Index].Tier != Ordinary.Affixes[Index].Tier ? 1 : 0;
+		}
+	}
+
+	// THE CONTROL: THE CHAOTIC PATH WAS TAKEN, which is some tier landing elsewhere.
+	TestTrue(FString::Printf(TEXT("affixes were compared: %d"), AffixesCompared), AffixesCompared > 0);
+	TestTrue(FString::Printf(TEXT("and some of their tiers moved: %d"), TiersThatMoved),
+			 TiersThatMoved > 0);
 	return true;
 }
 

@@ -22,6 +22,7 @@
 #include "Dungeon/CataclysmDungeonModifierTable.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Interface/CataclysmCreaturePanel.h"
+#include "Items/CataclysmDropRoll.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Player/CataclysmPlayerController.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
@@ -3037,6 +3038,12 @@ void ACataclysmDungeonGameMode::StepDirgeResonance()
 	}
 }
 
+bool ACataclysmDungeonGameMode::DropsAreChaotic() const
+{
+	return FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::ChaoticLootKey));
+}
+
 void ACataclysmDungeonGameMode::ChooseTheScarceSlot(
 	UCataclysmEquipmentComponent* Equipment) const
 {
@@ -5457,6 +5464,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 										   DivineResurgenceRisen)
 						 : FString::Printf(TEXT("holy revival: %d of %d fallen, comes at %d"),
 										   DivineResurgenceFallen, Placed, ComesAt));
+	}
+
+	// AND THE RANGE CHAOTIC LOOT DRAWS AFFIX TIERS FROM, which is the difficulty's own cap.
+	// Issues #1820 and #41. The item pop-up already prints each affix's tier.
+	const FName Chaotic(Effects::ChaoticLootKey);
+	if (FloorBrief.Modifiers.Contains(Chaotic))
+	{
+		Counting.Add(Chaotic, FString::Printf(
+			TEXT("chaotic loot: every affix tier from T1 to T%d equally likely"),
+			UCataclysmDropRoll::MaxAffixTierOnADrop(DifficultyTierFor(this))));
 	}
 
 	// AND WHICH SLOT SCARCITY HAS SWITCHED OFF, named. Issues #1820 and #41. The gear
