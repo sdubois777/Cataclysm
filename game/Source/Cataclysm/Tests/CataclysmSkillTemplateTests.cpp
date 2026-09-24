@@ -16538,7 +16538,10 @@ bool FCataclysmSkillCastFromWardNotABreakTest::RunTest(const FString&)
 	using namespace CataclysmSkillTest;
 	using namespace CataclysmCastFromWardTest;
 
-	UWorld* World = MakeWorld();
+	// A WORLD THAT HAS BEGUN PLAY, because this test spawns a minion: a minion
+	// registers its attribute sets in `BeginPlay`, and without it the spawn
+	// writes maximum health to an ability system that has no vital set.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	ON_SCOPE_EXIT { World->DestroyWorld(false); };
 
 	FScopedFighter Caster(World, FVector::ZeroVector);
