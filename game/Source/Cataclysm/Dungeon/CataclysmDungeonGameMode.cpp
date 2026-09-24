@@ -2188,6 +2188,79 @@ void ACataclysmDungeonGameMode::NoteHitForTheReaper(const FCataclysmHitNotice& N
 		   *Player->GetName());
 }
 
+void ACataclysmDungeonGameMode::StepBloodBond(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!Player || UCataclysmSkillEffects::IsDead(Player))
+	{
+		return;
+	}
+
+	// THE NEAREST, when more than one elite notices the player on the same beat: the one
+	// the player met first, as nearly as a quarter-second beat can tell.
+	ACataclysmEnemyCharacter* Nearest = nullptr;
+	float NearestCm = 0.0f;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		if (!IsValid(Enemy) || UCataclysmSkillEffects::IsDead(Enemy))
+		{
+			continue;
+		}
+		const float Cm = FVector::Dist(Enemy->GetActorLocation(), Player->GetActorLocation());
+		if (!Effects::BloodBondMayBond(Enemy->RarityStep, DiedAsAFloorsBoss(Enemy), Cm,
+										 Enemy->NoticesFromCm()))
+		{
+			continue;
+		}
+		if (!Nearest || Cm < NearestCm)
+		{
+			Nearest = Enemy;
+			NearestCm = Cm;
+		}
+	}
+	if (!Nearest)
+	{
+		return;
+	}
+
+	bBloodBondFormed = true;
+	Nearest->bCannotBeHurt = true;
+	CreaturesRaisedByARule.Add(Nearest);
+	BloodBonded = Nearest;
+	UE_LOG(LogCataclysm, Log, TEXT("Blood Bond: %s is bound to the player on floor %d"),
+		   *Nearest->GetName(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForBloodBond(const FCataclysmDeathNotice& Notice)
+{
+	ACataclysmEnemyCharacter* Bonded = BloodBonded.Get();
+	if (!Bonded || !Cast<ACataclysmPlayerCharacter>(Notice.Victim)
+		|| UCataclysmSkillEffects::IsDead(Bonded))
+	{
+		return;
+	}
+
+	// THE ORDINARY DEATH, WITH NOTHING TO PAY AND NOBODY TO CREDIT. The flag comes off
+	// first, or the health write below would be held at the maximum. The last blow is
+	// emptied because a death written to health names whoever last struck the creature,
+	// the way Sacrificial Ward's spent minion is. Cleared before the write, so the death
+	// this causes finds no bond to act on.
+	BloodBonded.Reset();
+	Bonded->bCannotBeHurt = false;
+	Bonded->bDiesUnpaid = true;
+	if (UCataclysmAbilitySystemComponent* Its = Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Bonded)))
+	{
+		Its->RecordLastBlow(FCataclysmLastBlow());
+		Its->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Blood Bond: the player died and %s died with them"),
+		   *Bonded->GetName());
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::AddAChaosTouch()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -3392,6 +3465,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bTheReaper = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TheReaperKey))
 		&& !FloorBrief.bOneWave && !bTheReaperRaised;
+	// AND BLOOD BOND, UNTIL THIS FLOOR HAS BONDED. Issues #1820 and #41.
+	const bool bBloodBond = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::BloodBondKey))
+		&& !bBloodBondFormed;
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -3406,7 +3483,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
-		&& !bTheReaper)
+		&& !bTheReaper && !bBloodBond)
 	{
 		return;
 	}
@@ -3560,6 +3637,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bTheReaper)
 	{
 		StepTheReaper();
+	}
+
+	// AND BLOOD BOND, WHICH READS WHERE THE CREATURES STAND. Issues #1820 and #41.
+	if (bBloodBond)
+	{
+		StepBloodBond(Player);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -4588,6 +4671,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForStarvationCurse(Notice);
 	NoteDeathForSoulHarvest(Notice);
 	NoteDeathForChaosTouched(Notice);
+	NoteDeathForBloodBond(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -6124,6 +6208,18 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Holy, FString::Printf(
 			TEXT("%d of %d"), JudgmentStacks,
 			Effects::HolyRepercussionsJudgmentMostStacks));
+	}
+
+	// AND BLOOD BOND: whether this floor has bonded, and whether the bond still holds.
+	// Issues #1820 and #41.
+	const FName Bond(Effects::BloodBondKey);
+	if (FloorBrief.Modifiers.Contains(Bond))
+	{
+		Counting.Add(Bond, BloodBonded.IsValid()
+			? FString(TEXT("blood bond: an elite is bound to you; it cannot die unless you do"))
+			: bBloodBondFormed
+			? FString(TEXT("blood bond: ended for this floor"))
+			: FString(TEXT("blood bond: the first elite that notices you will be bound")));
 	}
 
 	// AND THE REAPER: whether it has come, and what it does. Issues #1820 and #41.
@@ -8225,6 +8321,16 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		TheReaperSecondsOnFloor = 0.0f;
 		bTheReaperRaised = false;
 		TheReaper.Reset();
+
+		// AND BLOOD BOND LETS GO: a bond is this floor's. A Horde wave keeps its creatures, so
+		// an elite still bonded is made mortal again rather than left unable to die with
+		// nothing tying it to the player. Issues #1820 and #41.
+		if (ACataclysmEnemyCharacter* Held = BloodBonded.Get())
+		{
+			Held->bCannotBeHurt = false;
+		}
+		BloodBonded.Reset();
+		bBloodBondFormed = false;
 
 		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
 		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already

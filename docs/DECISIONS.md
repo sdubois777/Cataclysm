@@ -2,6 +2,141 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Blood Bond: the first elite that notices the player on a floor cannot be hurt, and dies when the player does
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, the rung and the test of which creature may take the bond),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (taking the bond on the beat, the
+player's death killing the bonded elite, the floor panel line and the per-floor release),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (a flag, `bDiesUnpaid`, which
+`PaysForItsDeath` now also asks), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
+
+### The row
+
+`Demonic_Blood_Bond` in `game/Data/DungeonModifiers.csv`, weight 20: "You are soul-linked to the first
+elite you see on each floor. This enemy cannot die unless you do and is immune to your damage." The row
+gives no figure. The design document does not mention it.
+
+### What the rule does
+
+On each floor carrying the row, the beat looks for a living creature at the Elite rung, not the floor's
+boss, that has the player within the distance it notices from. The nearest such creature is bound. It
+cannot be hurt, subjugation refuses it, and Blood Gates does not wait on its death. When the player dies
+on that floor, it dies too: through the ordinary death path, credited to nobody, dropping nothing and
+granting no experience. A floor binds once: a revival on the same floor binds nothing new. A floor
+change releases a bond still held, so a Horde wave's surviving elite can be hurt again and does not die
+with the player on the next wave; the next floor binds afresh. The floor panel says whether the first
+elite to notice the player will be bound, that one is bound, or that the bond ended for this floor.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24:**
+
+- **An elite is a creature at exactly the Elite rung** (`BloodBondRung`, 1), the rung
+  `game/Data/EnemyRarities.csv` names "Elite"; the rungs above it have names of their own.
+- **"See" is the elite's own notice radius**, checked on the beat. The ruling was to add clear sight if
+  the game can already answer it, and it cannot: the only trace near the line suggested
+  (`CataclysmEnemyCharacter.cpp`, in `SetChargeStepHeight`) looks straight down for the floor under a
+  charging creature, the visibility trace in `CataclysmProjectile.cpp` (`TraceStep`) serves a
+  projectile's flight, and the creatures themselves notice the player by distance alone
+  (`CataclysmEnemyController.cpp` reads `NoticesFromCm()` and searches that radius). **No
+  line-of-sight check exists**, so the bond uses the notice radius alone.
+- **The player's death kills it through the ordinary path**, with its last-blow record emptied so that
+  nobody is credited, and it pays nothing.
+- **It takes no damage from anyone** (`bCannotBeHurt`, the Reaper's flag), which also settles the
+  player's minions without deciding whose damage theirs is.
+- **One bond per floor**; a revival on the same floor does not bond again.
+- **Never a floor's boss** (a Gatekeeper, or anything at the Boss rung): an unkillable Gatekeeper would
+  leave the floor with no end. The bonded creature joins the creatures a rule raised, so Blood Gates does
+  not wait on it. **Horde waves bond as any floor does.**
+- **A bond from one floor must not reach into the next** (added by the coordinating session). The
+  per-floor reset clears it, and a creature still standing -- a Horde wave keeps its creatures -- has its
+  immunity taken back.
+
+**Proposed by this change and then ruled by the coordinating session under the same delegation,
+2026-09-24:**
+
+- **When more than one elite notices the player on the same beat, the nearest is bound**, as the one the
+  player met first as nearly as a quarter-second beat can tell.
+- **"Pays nothing" is `PaysForItsDeath` answering false, with all its reach**, through a new flag set
+  immediately before the death. `PaysForItsDeath` is what the drop roll and the experience ask, and it
+  is also what five rules ask of a death: Nothing Is Forgotten, Soul Harvest, Blood Gates, Dead Rising
+  and Divine Resurgence. So this death releases no soul, feeds no void, raises nothing and counts for no
+  gate, as a risen creature's second death does not. The coordinating session's reason: that death is
+  not a kill in any sense those rules mean, since nothing struck it down and the player's own death
+  ended it. The flag is set only at the death, so the living bonded elite is counted as any other
+  creature is.
+
+### Tests
+
+Five automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `BloodBondBindsTheFirstEliteThatNoticesThePlayerAndNeverABoss`: the test of which creature may bond
+  (an Elite within reach may; a Common or Legendary one, a floor's boss, or an Elite one centimetre past
+  its reach may not). On a floor, a Common creature close by, an Elite past its reach and a Gatekeeper at
+  the Elite rung close by bind nothing in four beats; an Elite within reach is bound on the next, and
+  the panel says so.
+- `TheBloodBondedEliteCannotBeHurtOrTaken`: a blow that would kill it leaves it alive at full health,
+  and subjugation refuses it.
+- `ThePlayersDeathKillsTheBloodBondedEliteAndItPaysNothing`: the player strikes it and then dies; it
+  dies, its death is announced once and names no killer, it pays nothing, the bond is gone and the panel
+  says it ended.
+- `ABloodBondDoesNotReachIntoTheNextFloor`: on a Horde dungeon, of two Elites in reach the nearer is
+  bound; at the next wave it is still standing, is no longer bound and can be hurt, and the player's death
+  before that wave has bonded leaves it alive.
+- `ABloodBondThatEndedIsNotFormedAgainOnTheSameFloor`: after the bonded elite died with the player and
+  the player is revived, a new Elite within reach is not bound in four beats; the next floor binds its
+  Elite.
+
+One Python check: the row still says "the first elite you see", "on each floor", "cannot die unless you
+do" and "immune to your damage", and states no figure. It was seen to fail, in a copy of the repository,
+with "the first elite" made "an elite", with "unless you do" removed, and with "for 30 seconds" added.
+
+### Also in this change
+
+**The crater test's bound, issue [#2072](https://github.com/sdubois777/Cataclysm/issues/2072)**, as its
+own commit. `ACraterBurnsThePlayerStandingInIt` now takes away every ground zone but the crater the
+player stands in, asserts that exactly one is left, and bounds the burn by the sweeps that crater counted
+rather than by two seconds of clock. A bombardment's craters can overlap under the player -- about one
+run in seven, from a simulation of the placement, not a measurement -- and the player was then burned by
+both. Whether that should happen in play is
+[#2074](https://github.com/sdubois777/Cataclysm/issues/2074), ruled separately.
+
+### Run
+
+One editor window on 2026-09-24, on development 52c80ea1 as the base. Every figure below is what
+`python tools/unreal_build.py tests` or `prove_cpp_guard` printed.
+
+- **The group on the base**, 52c80ea1: 270 tests performed, 270 succeeded, 0 failed.
+- **The whole suite on the head**, 9db055be: 2,348 tests performed, 2,348 succeeded, 0 failed,
+  `ACraterBurnsThePlayerStandingInIt` among them.
+- **The group on the head**: 275 tests performed, 275 succeeded, 0 failed.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **The rung test.** `Rung == BloodBondRung` made `<=`. With the break in: 275 performed, 274
+  succeeded, 1 failed, `BloodBondBindsTheFirstEliteThatNoticesThePlayerAndNeverABoss` ("Expected 'a
+  Common one may not' to be false", "Expected 'none of the three was bound' to be null", and the near
+  Elite then neither bound nor unhurtable, the floor's one bond having gone to the Common creature).
+  Restored: 275 performed, 275 succeeded, 0 failed.
+- **The death link.** The health write that kills the bonded elite removed. With the break in: 275
+  performed, 273 succeeded, 2 failed, `ThePlayersDeathKillsTheBloodBondedEliteAndItPaysNothing` ("Expected
+  'and the bonded elite died with them' to be true", "Expected 'its death was announced once' to be 1,
+  but it was 0") and `ABloodBondThatEndedIsNotFormedAgainOnTheSameFloor` ("Expected 'the bonded Elite
+  died with the player' to be true"). Restored: 275 performed, 275 succeeded, 0 failed.
+- **One bond a floor.** `&& !bBloodBondFormed` removed from the beat's gate. With the break in: 275
+  performed, 274 succeeded, 1 failed, `ABloodBondThatEndedIsNotFormedAgainOnTheSameFloor` ("Expected 'no
+  second bond on this floor' to be null", "Expected 'and the second Elite can be hurt' to be false").
+  Restored: 275 performed, 275 succeeded, 0 failed.
+
+---
+
 ## 2026-09-24 — The Reaper: an Abyssal Warden that cannot die comes ten seconds into a floor, and one landed blow of its kills
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

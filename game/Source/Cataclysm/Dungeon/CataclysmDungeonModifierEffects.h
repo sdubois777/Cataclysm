@@ -1746,6 +1746,29 @@ public:
 	static const TCHAR* TheReaperKey;
 
 	/**
+	 * The row that binds the player to the first elite that notices them. Issues #1820
+	 * and #41.
+	 *
+	 * "You are soul-linked to the first elite you see on each floor. This enemy cannot die
+	 * unless you do and is immune to your damage." The design document does not mention it.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24:
+	 * - AN ELITE IS A CREATURE AT EXACTLY `BloodBondRung`, the rung
+	 *   game/Data/EnemyRarities.csv names "Elite".
+	 * - "SEE" IS THE ELITE'S OWN NOTICE RADIUS, checked on the beat. The game has no
+	 *   line-of-sight check to ask; its creatures notice the player by distance alone.
+	 * - IT CANNOT BE HURT (`ACataclysmEnemyCharacter::bCannotBeHurt`), so no damage from
+	 *   anyone reaches it, and subjugation refuses it.
+	 * - THE PLAYER'S DEATH ON THE SAME FLOOR KILLS IT, credited to nobody and paying
+	 *   nothing (`bDiesUnpaid`).
+	 * - ONE BOND PER FLOOR; a revival on the same floor does not bond again. A floor change
+	 *   releases a bond still held, so it cannot reach into the next floor.
+	 * - NEVER A FLOOR'S BOSS; the bonded creature is one a rule raised, so Blood Gates does
+	 *   not wait on it; Horde waves bond as any floor does.
+	 */
+	static const TCHAR* BloodBondKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4025,6 +4048,9 @@ public:
 	/** How long into a floor The Reaper arrives. Ruled; a play-test point. */
 	static constexpr float TheReaperDelaySeconds = 10.0f;
 
+	/** The rung a Blood Bond takes: Elite. Ruled. */
+	static constexpr int32 BloodBondRung = 1;
+
 	/** The Reaper's rung: Common, the rung that adds nothing to the Warden. Ruled. */
 	static constexpr int32 TheReaperRung = 0;
 
@@ -4805,6 +4831,13 @@ public:
 
 	/** Whether The Reaper is due after this long on a floor: at `TheReaperDelaySeconds`. */
 	static bool TheReaperIsDue(float SecondsOnFloor);
+
+	/**
+	 * Whether a creature may take the Blood Bond: at `BloodBondRung`, not a floor's boss, and
+	 * with the player within the distance it notices from.
+	 */
+	static bool BloodBondMayBond(int32 Rung, bool bIsAFloorsBoss, float DistanceCm,
+								 float NoticesFromCm);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

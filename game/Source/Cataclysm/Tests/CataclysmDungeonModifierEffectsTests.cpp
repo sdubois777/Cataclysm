@@ -5762,26 +5762,56 @@ bool FCataclysmGroundfallBurnTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// ONE CRATER AND NO OTHER. Issue #2072. A bombardment drops its craters at random,
+	// with nothing keeping them apart, so in about one run in seven another crater covers
+	// the spot this one's centre is -- a simulation's figure, from reading, not a
+	// measurement -- and the player standing there was burned by both. The others are
+	// taken away, and the count asserted, so the bound below is about one crater.
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (*It != Crater)
+		{
+			It->Destroy();
+		}
+	}
+	if (!TestEqual(TEXT("exactly one crater is left to burn the player"),
+				   ZonesOnTheFloor(World), 1))
+	{
+		return false;
+	}
+
 	const float Full = Player.Read(Vital::GetHealthAttribute());
 	Player.Character->SetActorLocation(Crater->GetActorLocation());
 
 	// THE CRATER BURNS ON ITS OWN CLOCK, not on the rule's beat, so the world
 	// clock is what has to move. A zone sweeps once a second.
+	const int32 SweepsBefore = Crater->TicksElapsed;
 	CataclysmTestWorld::RunClock(World, 2.0f);
 	Beat(Mode, 1);
+	const int32 Sweeps = Crater->TicksElapsed - SweepsBefore;
 
 	// A RANGE AND NOT A FIGURE, for the reason the Artillery Strike's test gives:
 	// what the constant states is what the ground DEALS, and the player's own
 	// armour and resistances take their cut before it reaches health. Both ends
 	// are real -- a crater that burned nobody fails the bottom, and one burning
 	// faster than it states fails the top.
+	//
+	// BOUNDED BY THE SWEEPS THE CRATER COUNTED, NOT BY THE CLOCK. Issue #2072. Two
+	// seconds of clock hold one sweep or two, by where float rounding puts the second,
+	// and the bound follows whichever it was.
 	const float Lost = Full - Player.Read(Vital::GetHealthAttribute());
-	const float StatedForTwoSeconds = Effects::HallowedGroundfallBurnPerSecond(
-		Player.Read(Vital::GetMaxHealthAttribute())) * 2.0f;
+	const float StatedForTheSweeps = Effects::HallowedGroundfallBurnPerSecond(
+		Player.Read(Vital::GetMaxHealthAttribute()))
+		* ACataclysmGroundZone::TickSeconds * static_cast<float>(Sweeps);
 
 	TestTrue(TEXT("standing in a crater costs health"), Lost > 0.0f);
-	TestTrue(TEXT("and never more than the share the constant states"),
-			 Lost <= StatedForTwoSeconds + 0.01f);
+	TestTrue(FString::Printf(TEXT("the crater swept in the two seconds: %d time(s)"), Sweeps),
+			 Sweeps >= 1);
+	TestTrue(FString::Printf(
+				 TEXT("and never more than the share the constant states for its %d sweep(s): "
+					  "%.2f lost against %.2f"),
+				 Sweeps, Lost, StatedForTheSweeps),
+			 Lost <= StatedForTheSweeps + 0.01f);
 
 	return true;
 }
@@ -25069,6 +25099,369 @@ bool FCataclysmReaperNotTakenTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("and the player does not own it"), Reaper->GetOwner() != Player.Character);
 	TestFalse(TEXT("and it is not the player's friend"),
 			  UCataclysmTargeting::IsFriendlyTo(Reaper, Player.Character));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Blood_Bond. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName BloodBondRow(UCataclysmDungeonModifierEffects::BloodBondKey);
+
+	/** A dungeon carrying only Blood Bond, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* ABloodBondFloor(FAutomationTestBase& Test, UWorld* World,
+											   const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {BloodBondRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/**
+	 * A creature at `Rung` on the floor's list, `Share` of its own notice radius from the
+	 * player along X. A share below 1 is noticed and one above 1 is not.
+	 */
+	ACataclysmEnemyCharacter* ACreatureNoticingAt(UWorld* World, ACataclysmDungeonGameMode* Mode,
+												  const FPossessedPlayer& Player, int32 Rung,
+												  float Share)
+	{
+		ACataclysmEnemyCharacter* Creature =
+			PlaceCreatureAtRung(World, Mode, FVector::ZeroVector, Rung);
+		if (!Creature)
+		{
+			return nullptr;
+		}
+		Creature->SetActorLocation(Player.Character->GetActorLocation()
+								   + FVector(Creature->NoticesFromCm() * Share, 0.0f, 0.0f));
+		return Creature;
+	}
+
+	FString BondPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		return Mode->LiveCountsForTheFloor().FindRef(BloodBondRow);
+	}
+}
+
+// THE FIRST ELITE THAT NOTICES THE PLAYER TAKES THE BOND; A COMMON ONE AND AN ELITE OUT OF RANGE
+// DO NOT; A GATEKEEPER AT THE ELITE RUNG NEVER DOES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodBondTakesTest,
+	"Cataclysm.DungeonModifierEffects.BloodBondBindsTheFirstEliteThatNoticesThePlayerAndNeverABoss",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodBondTakesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestTrue(TEXT("an Elite within reach may bond"), Effects::BloodBondMayBond(1, false, 900.0f, 1000.0f));
+	TestFalse(TEXT("a Common one may not"), Effects::BloodBondMayBond(0, false, 900.0f, 1000.0f));
+	TestFalse(TEXT("nor a Legendary one"), Effects::BloodBondMayBond(2, false, 900.0f, 1000.0f));
+	TestFalse(TEXT("nor a floor's boss"), Effects::BloodBondMayBond(1, true, 900.0f, 1000.0f));
+	TestFalse(TEXT("nor an Elite past its notice radius"),
+			  Effects::BloodBondMayBond(1, false, 1001.0f, 1000.0f));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodBondFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	TestTrue(TEXT("the panel says the first elite to notice will be bound"),
+			 BondPanelLine(Mode).Contains(TEXT("will be bound")));
+
+	// A COMMON CREATURE CLOSE, AN ELITE FAR, AND A GATEKEEPER AT THE ELITE RUNG CLOSE: NO BOND.
+	ACataclysmEnemyCharacter* Common = ACreatureNoticingAt(World, Mode, Player, 0, 0.3f);
+	ACataclysmEnemyCharacter* Far = ACreatureNoticingAt(World, Mode, Player, 1, 1.5f);
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Gatekeeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+		ACataclysmGatekeeperCharacter::StaticClass(),
+		Player.Character->GetActorLocation() + FVector(0.0f, 200.0f, 0.0f), FRotator::ZeroRotator,
+		Spawn);
+	if (!TestNotNull(TEXT("a Common creature"), Common) || !TestNotNull(TEXT("a far Elite"), Far)
+		|| !TestNotNull(TEXT("a Gatekeeper"), Gatekeeper))
+	{
+		return false;
+	}
+	Gatekeeper->SetRarityStep(1);
+	Mode->FloorEnemies.Add(Gatekeeper);
+	if (!TestTrue(TEXT("the Gatekeeper notices the player"),
+				  FVector::Dist(Gatekeeper->GetActorLocation(), Player.Character->GetActorLocation())
+					  <= Gatekeeper->NoticesFromCm()))
+	{
+		return false;
+	}
+	Beat(Mode, 4);
+	TestNull(TEXT("none of the three was bound"), Mode->BloodBondedOnTheFloor());
+	TestFalse(TEXT("and the Gatekeeper can still be hurt"), Gatekeeper->bCannotBeHurt);
+
+	// AN ELITE WITHIN ITS NOTICE RADIUS: BOUND ON THE NEXT BEAT.
+	ACataclysmEnemyCharacter* Near = ACreatureNoticingAt(World, Mode, Player, 1, 0.5f);
+	if (!TestNotNull(TEXT("a near Elite"), Near))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("the near Elite was bound"), Mode->BloodBondedOnTheFloor() == Near);
+	TestTrue(TEXT("and cannot be hurt"), Near->bCannotBeHurt);
+	TestFalse(TEXT("and the far one can"), Far->bCannotBeHurt);
+	TestTrue(TEXT("the panel says an elite is bound"),
+			 BondPanelLine(Mode).Contains(TEXT("is bound to you")));
+	return true;
+}
+
+// THE BONDED ELITE CANNOT BE HURT BY THE PLAYER'S BLOW, AND SUBJUGATION REFUSES IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodBondImmuneTest,
+	"Cataclysm.DungeonModifierEffects.TheBloodBondedEliteCannotBeHurtOrTaken",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodBondImmuneTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodBondFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Elite =
+		Mode ? ACreatureNoticingAt(World, Mode, Player, 1, 0.5f) : nullptr;
+	if (!TestNotNull(TEXT("a near Elite"), Elite))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("it was bound"), Mode->BloodBondedOnTheFloor() == Elite))
+	{
+		return false;
+	}
+
+	const float Maximum = MaxHealthOf(Elite);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Elite, 100000.0f);
+	TestFalse(TEXT("the player's blow did not kill it"), UCataclysmSkillEffects::IsDead(Elite));
+	TestEqual(TEXT("and its health is full"), HealthOf(Elite), Maximum, 0.01f);
+	TestFalse(TEXT("subjugation refuses it"), UCataclysmCommand::Subjugate(Player.Character, Elite));
+	return true;
+}
+
+// THE PLAYER'S DEATH KILLS THE ELITE BONDED ON THAT FLOOR, CREDITED TO NOBODY AND PAYING NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodBondDeathTest,
+	"Cataclysm.DungeonModifierEffects.ThePlayersDeathKillsTheBloodBondedEliteAndItPaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodBondDeathTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodBondFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* Elite =
+		Mode ? ACreatureNoticingAt(World, Mode, Player, 1, 0.5f) : nullptr;
+	if (!TestNotNull(TEXT("a near Elite"), Elite))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("it was bound"), Mode->BloodBondedOnTheFloor() == Elite))
+	{
+		return false;
+	}
+
+	// THE PLAYER STRUCK IT FIRST, so a death credited by its last blow would name the player.
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Elite, 10.0f);
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the world announces deaths"), Events))
+	{
+		return false;
+	}
+	int32 EliteDeaths = 0;
+	bool bEliteHadAKiller = false;
+	const FDelegateHandle Heard = Events->OnDeath.AddLambda(
+		[&EliteDeaths, &bEliteHadAKiller, Elite](const FCataclysmDeathNotice& Notice)
+		{
+			if (Notice.Victim == Elite)
+			{
+				++EliteDeaths;
+				bEliteHadAKiller |= Notice.Killer != nullptr;
+			}
+		});
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	Events->OnDeath.Remove(Heard);
+
+	if (!TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the bonded elite died with them"), UCataclysmSkillEffects::IsDead(Elite));
+	TestEqual(TEXT("its death was announced once"), EliteDeaths, 1);
+	TestFalse(TEXT("credited to nobody"), bEliteHadAKiller);
+	TestFalse(TEXT("and it pays nothing"), Elite->PaysForItsDeath());
+	TestNull(TEXT("the bond is gone"), Mode->BloodBondedOnTheFloor());
+	TestTrue(TEXT("and the panel says it ended"), BondPanelLine(Mode).Contains(TEXT("ended")));
+	return true;
+}
+
+// A FLOOR CHANGE RELEASES A BOND STILL HELD -- A HORDE WAVE KEEPS ITS CREATURES -- SO THE PLAYER'S
+// DEATH ON THE NEXT FLOOR DOES NOT REACH THE OLD ELITE. Of two Elites in reach, the nearer is bound.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodBondPerFloorTest,
+	"Cataclysm.DungeonModifierEffects.ABloodBondDoesNotReachIntoTheNextFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodBondPerFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {BloodBondRow};
+	if (!TestTrue(TEXT("the first wave was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// THE FIRST WAVE: two Elites within reach, and only the nearer is bound.
+	ACataclysmEnemyCharacter* First = ACreatureNoticingAt(World, Mode, Player, 1, 0.3f);
+	ACataclysmEnemyCharacter* Second = ACreatureNoticingAt(World, Mode, Player, 1, 0.6f);
+	if (!TestNotNull(TEXT("a first Elite"), First) || !TestNotNull(TEXT("a second Elite"), Second))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("the nearer Elite was bound"), Mode->BloodBondedOnTheFloor() == First)
+		|| !TestFalse(TEXT("and the other was not"), Second->bCannotBeHurt))
+	{
+		return false;
+	}
+
+	// THE NEXT WAVE: the same arena, so the bound Elite is still standing, and it is let go.
+	if (!TestTrue(TEXT("the second wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the first Elite is still on the floor"),
+				  IsValid(First) && !UCataclysmSkillEffects::IsDead(First)))
+	{
+		return false;
+	}
+	TestNull(TEXT("no bond as the wave begins"), Mode->BloodBondedOnTheFloor());
+	TestFalse(TEXT("and the first Elite can be hurt again"), First->bCannotBeHurt);
+
+	// THE PLAYER DIES BEFORE THIS WAVE HAS BONDED: the old Elite does not die with them.
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the last wave's Elite lives"), UCataclysmSkillEffects::IsDead(First));
+	return true;
+}
+
+// ONE BOND PER FLOOR: A REVIVAL ON THE SAME FLOOR DOES NOT BOND AGAIN, AND THE NEXT FLOOR DOES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloodBondOnceTest,
+	"Cataclysm.DungeonModifierEffects.ABloodBondThatEndedIsNotFormedAgainOnTheSameFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloodBondOnceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloodBondFloor(*this, World, Player);
+	ACataclysmEnemyCharacter* First =
+		Mode ? ACreatureNoticingAt(World, Mode, Player, 1, 0.5f) : nullptr;
+	if (!TestNotNull(TEXT("a near Elite"), First))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestTrue(TEXT("it was bound"), Mode->BloodBondedOnTheFloor() == First))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("the bonded Elite died with the player"), UCataclysmSkillEffects::IsDead(First)))
+	{
+		return false;
+	}
+
+	// BACK ON THEIR FEET, with a new Elite close by: no second bond on this floor.
+	Player.Character->Revive();
+	if (!TestFalse(TEXT("the player is back"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Second = ACreatureNoticingAt(World, Mode, Player, 1, 0.5f);
+	if (!TestNotNull(TEXT("a second near Elite"), Second))
+	{
+		return false;
+	}
+	Beat(Mode, 4);
+	TestNull(TEXT("no second bond on this floor"), Mode->BloodBondedOnTheFloor());
+	TestFalse(TEXT("and the second Elite can be hurt"), Second->bCannotBeHurt);
+
+	// THE NEXT FLOOR BONDS AGAIN.
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	ACataclysmEnemyCharacter* Third = ACreatureNoticingAt(World, Mode, Player, 1, 0.5f);
+	if (!TestNotNull(TEXT("an Elite on floor 3"), Third))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestTrue(TEXT("floor 3 bound its Elite"), Mode->BloodBondedOnTheFloor() == Third);
 	return true;
 }
 

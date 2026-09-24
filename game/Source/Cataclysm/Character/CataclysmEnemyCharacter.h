@@ -1005,11 +1005,20 @@ public:
 	bool bCannotBeHurt = false;
 
 	/**
+	 * Whether this creature's death is to pay nothing and name no killer: a Blood Bond's
+	 * elite, which dies because the player did. Issues #1820 and #41. Set by the dungeon
+	 * game mode immediately before that death, and by nothing else.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bDiesUnpaid = false;
+
+	/**
 	 * Whether this creature's death pays the player loot and experience. False for a
-	 * creature `bRisenFromTheDead` marks. Asked by `HandleDeath`, and nothing else
+	 * creature `bRisenFromTheDead` marks, and for one `bDiesUnpaid` marks. Asked by
+	 * `HandleDeath`, and nothing else
 	 * about a death changes: the notice is still sent and every rule still hears it.
 	 */
-	bool PaysForItsDeath() const { return !bRisenFromTheDead; }
+	bool PaysForItsDeath() const { return !bRisenFromTheDead && !bDiesUnpaid; }
 
 	/**
 	 * What being a wraith does to this creature's movement and attack speed.
