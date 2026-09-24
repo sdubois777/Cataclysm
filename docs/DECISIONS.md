@@ -13,8 +13,8 @@ variable pinning the draw, the floor panel line and the resets), the automation 
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -109,10 +109,32 @@ One Python check: the row still says "each new floor", "slower movement", "reduc
 with "Each new floor" made "Every other floor", with the second sentence made "These debuffs last one
 floor.", and with "5%" added before "slower movement".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (72236168) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 25 actions, 22 files compiled" and "245 tests performed, 245 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 8607b5c7:** "Build: Succeeded - 14 actions, 11 files compiled" and "2265 tests
+  performed, 2265 succeeded, 0 failed", as registered (2261 + the four named tests), with every declared
+  test reported. The group alone on the same head then printed "249 tests performed, 249 succeeded,
+  0 failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing exactly the
+  registered tests with the break in and 0 of 249 restored. Each broken run's log was copied before the
+  restored run overwrote it, and its failure text is quoted:
+  - **the cap let through** (both `>= StarvationCurseMostStacks` in `StarvationCurseKindToAdd` made `>`,
+    in `CataclysmDungeonModifierEffects.cpp`) failed `TheStarvationCurseStopsAtTenStacksOfEachKind` alone,
+    on the nine registered assertions, among them "Expected 'twelve floors hold ten slow stacks' to be
+    10, but it was 11", "Expected 'and the two draws past the cap went to health' to be 2, but it was 1"
+    and "Expected 'maximum health is half' to be 50.000000, but it was 55.000000";
+  - **the Gatekeeper left out of the cleanse** (`DiedAsAFloorsBoss` asking only `IsBoss()`, in
+    `CataclysmDungeonGameMode.cpp`) failed `AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse` alone:
+    "Expected 'its death cleansed both kinds' to be 0, but it was 2";
+  - **two stacks a floor** (`Stacks += 1;` made `Stacks += 2;`) failed
+    `EachFloorCarryingTheStarvationCurseAddsOneStack` ("Expected 'floor 1 adds a stack' to be 1, but it
+    was 2"), `StarvationAndTheStarvationCurseMultiplyOnMaximumHealth` ("Expected 'maximum health is both
+    shares multiplied' to be 465.119965, but it was 440.639984") and
+    `TheStarvationCurseStopsAtTenStacksOfEachKind` ("Expected 'and the two draws past the cap went to
+    health' to be 2, but it was 10"), the three registered.
 
 ---
 
