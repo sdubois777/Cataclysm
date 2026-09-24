@@ -13,8 +13,8 @@ draw, the floor panel line and the resets), the automation tests in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures, and a build that failed
+first, are at the end of this entry.
 
 ### The row
 
@@ -72,10 +72,36 @@ One Python check: the row still says "every floor", "a random buff or debuff", "
 "unless cleansed", and states no percentage. It was seen to fail, in a copy of the repository, with
 "buff or debuff" made "buff", with "unless cleansed" removed, and with "10%" added.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (30c05a9f) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "261 tests performed, 261 succeeded, 0 failed", as
+  predicted.
+- **THE WHOLE SUITE ON 1aa8d21b DID NOT COMPILE, AND NO TEST RAN.** "Build: Failed - 13 actions, 10
+  files compiled", with error C2664 at `CataclysmDungeonModifierEffects.cpp` line 1271 ("cannot convert
+  argument 1 from 'const T' to 'UE::Core::Private::FormatStringSan::TCheckedFormatStringPrivate...'")
+  and C2088 beside it. **The cause:** the `Describe` clause held its format strings in a table and called
+  `FString::Printf(Each.Value, Each.Key)`; UE 5.8 checks a `Printf` format at compile time, so the format
+  must be a literal at the call. **The fix, ruled by the coordinating session with the lock kept**
+  (1767f613): the table holds the stat and the direction as plain strings and the call is
+  `FString::Printf(TEXT("%s %.0f%% %s from chaos touched"), ...)`, the same printed text; the whole suite
+  was run again because it had never run on this code. The check that would have caught it before the
+  window needs no build: grep a change's new `Printf(` calls for a first argument that is not `TEXT(`.
+- **The whole suite on 1767f613:** "Build: Succeeded - 4 actions, 1 file compiled" (the failed build had
+  already compiled the other nine) and "2320 tests performed, 2320 succeeded, 0 failed", as registered
+  from the declared names, with every declared test reported. The group alone then printed "264 tests
+  performed, 264 succeeded, 0 failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing exactly the
+  registered test with the break in and 0 of 264 restored, with each broken run's failure text quoted:
+  - **seven bands instead of eight** (`Roll * (ChaosTouchedKinds - 1) / 100.0f`) failed
+    `EachFloorAddsOneChaosTouchOfTheDrawnKind` alone: "Expected '12.5 is more speed' to be 1, but it was
+    0", "Expected '50 is less health' to be 4, but it was 3";
+  - **the cap out of reach** (`ChaosTouchedMostStacks * 100`) failed
+    `AFullChaosTouchSendsTheDrawToTheNextKind` alone: "Expected 'seven draws of more health leave five'
+    to be 5, but it was 7", "Expected 'all eight full adds nothing' to be -1, but it was 3";
+  - **a boss clearing the buffs too** (the cleanse loop started at kind 0) failed
+    `AFloorsBossCleansesChaosTouchedDebuffsAndTheBuffsStay` alone: "Expected 'and the buff stays' to be
+    1, but it was 0", "Expected 'maximum health still carries 10% more' to be true".
 
 ---
 
