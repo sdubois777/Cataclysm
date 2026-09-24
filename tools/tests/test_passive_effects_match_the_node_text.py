@@ -608,7 +608,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `melee_reach_metres`, flat, for `Type.Melee` skills, read by
 #: `UCataclysmSkillTemplate::MeleeReachBonusCm` on a strike's reach and the
 #: basic attack's walk.
-AUTHORED_ROWS = 297
+#:
+#: AND TO 299 ON 2026-09-23, for `Ritualist_keystone_a_kB` Press-Ganged and
+#: `Ritualist_keystone_b_kC` Rekindled: flat `minion_death_replaced_every_seconds`
+#: 10 and `minion_explosion_replaced_every_seconds` 5, read by
+#: `UCataclysmSummonSkill::ReplaceLost` after a commanded death.
+AUTHORED_ROWS = 299
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -994,7 +999,12 @@ AUTHORED_ROWS = 297
 #: AND TO 218 ON 2026-09-23, for Overreach (`Ravager_keystone_b_kC`), which had
 #: no row. Measured then: the Ravager is 70 of its 74, the Ritualist 70 of its
 #: 74 and the Masochist 74 of its 74.
-AUTHORED_NODES = 218
+#:
+#: AND TO 220 ON 2026-09-23, for Press-Ganged (`Ritualist_keystone_a_kB`) and
+#: Rekindled (`Ritualist_keystone_b_kC`), which had no rows. Measured then: the
+#: Ravager is 70 of its 74, the Ritualist 72 of its 74 and the Masochist 74 of
+#: its 74.
+AUTHORED_NODES = 220
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -2007,6 +2017,12 @@ VALUE_FORMS = {
     # "Your melee attacks reach 2 metres further than the skill states": a flat
     # distance, written with its unit. Overreach, issue #1515.
     "melee_reach_metres": "{value:g} metres",
+
+    # "no more than once every 10 seconds" and "once every 5 seconds": the
+    # interval between replacements, in seconds. Press-Ganged and Rekindled,
+    # issue #1515. The singular matches the plural, as the entry above does.
+    "minion_death_replaced_every_seconds": "{value:g} second",
+    "minion_explosion_replaced_every_seconds": "{value:g} second",
 
     # A PLAIN COUNT OF FERVOUR, which is the last form issue #990 named and had
     # no entry for. Low Life reads "you gain 10 Fervour per second", so the

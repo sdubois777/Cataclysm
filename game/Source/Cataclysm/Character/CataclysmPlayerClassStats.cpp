@@ -218,6 +218,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// UCataclysmSkillTemplate::MeleeReachBonusCm for the swing and for the
 		// basic attack's walk into reach. Issue #1515, the Overreach keystone.
 		TEXT("melee_reach_metres"),
+		// The seconds between replacements, read by
+		// UCataclysmSummonSkill::ReplaceLost after a commanded death: above zero
+		// means the keystone is held. Press-Ganged replaces a minion or thrall
+		// that died, Rekindled one that exploded. Issue #1515.
+		TEXT("minion_death_replaced_every_seconds"),
+		TEXT("minion_explosion_replaced_every_seconds"),
 		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
 		// Weaken is created, and not where a spread copies one. Issue #1515,
 		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken

@@ -2973,4 +2973,358 @@ bool FCataclysmVeilReadsItsOwnRowsTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A lost minion replaced: Press-Ganged and Rekindled. Issue #1515. And a dead
+// minion no longer holding a place under the summon cap. Issue #1957.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmReplacementTest
+{
+	/** Summon Imp's own figures: three at once, twenty seconds, three metres. */
+	UCataclysmSummonSkill* GrantSummon(CataclysmCommandTest::FScopedCaster& Who)
+	{
+		const FGameplayAbilitySpecHandle Handle = Who.AbilitySystem->GiveAbilityInSlot(
+			UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special,
+			/*Level=*/100, Who.Actor);
+		FGameplayAbilitySpec* Spec =
+			Who.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+		UCataclysmSummonSkill* Skill =
+			Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (Skill)
+		{
+			Skill->SkillName = TEXT("Summon Imp");
+			Skill->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+		}
+		return Skill;
+	}
+
+	/** One minion from the skill, standing where the test says. */
+	ACataclysmMinion* SummonAt(UCataclysmSummonSkill* Skill, const FVector& Where)
+	{
+		ACataclysmMinion* Minion = Skill ? Skill->SummonOne() : nullptr;
+		if (Minion)
+		{
+			Minion->SetActorLocation(Where);
+		}
+		return Minion;
+	}
+
+	/** The newest minion the skill holds, or null. */
+	ACataclysmMinion* Newest(UCataclysmSummonSkill* Skill)
+	{
+		return Skill && Skill->LivingMinionCount() > 0 ? Skill->Minions.Last().Get()
+													   : nullptr;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPressGangedTest,
+	"Cataclysm.MinionDeath.PressGangedReplacesAMinionWhereItDiedOnceInTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kB` Press-Ganged, its stat granted by hand. Issue #1515.
+ *
+ * "When one of your minions dies, a new minion is summoned where it died at no
+ * cost, no more than once every 10 seconds."
+ *
+ * FOUR DEATHS: the first replaced where it fell, by the skill's own kind; the
+ * second, inside the ten seconds, not replaced; the third, after them, replaced
+ * again; and a death under a summoner without the keystone, not replaced.
+ */
+bool FCataclysmPressGangedTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{UCataclysmSummonSkill::ReplacedOnDeathStat,
+						  ECataclysmStatBucket::Flat, 10.0f}});
+	TestTrue(TEXT("the stat is one the engine records"),
+			 UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(
+				 FString(UCataclysmSummonSkill::ReplacedOnDeathStat)));
+
+	const FVector Where(5 * M, 2 * M, 0);
+	ACataclysmMinion* First = SummonAt(Skill, Where);
+	if (!TestNotNull(TEXT("an imp"), First))
+	{
+		return false;
+	}
+	Kill(First);
+
+	ACataclysmMinion* Replacement = Newest(Skill);
+	if (!TestNotNull(TEXT("the dead imp was replaced"), Replacement))
+	{
+		return false;
+	}
+	TestTrue(TEXT("by a new minion, not the body"), Replacement != First);
+	TestEqual(TEXT("which the skill counts as its one living minion"),
+			  Skill->LivingMinionCount(), 1);
+	TestTrue(TEXT("standing where the dead one fell"),
+			 FVector::Dist(Replacement->GetActorLocation(), Where) < 1.0f);
+	TestTrue(TEXT("made by the same summon skill"),
+			 Replacement->SummonedBy.Get() == Skill);
+	TestEqual(TEXT("of the skill's own kind"), Replacement->TypeName,
+			  FString(TEXT("Imp")));
+
+	// INSIDE THE TEN SECONDS: not replaced.
+	Kill(Replacement);
+	TestEqual(TEXT("a second death inside ten seconds is not replaced"),
+			  Skill->LivingMinionCount(), 0);
+
+	// AFTER THEM: replaced again.
+	CataclysmTestWorld::RunClock(World, 10.1f);
+	ACataclysmMinion* Third = SummonAt(Skill, Where);
+	if (!TestNotNull(TEXT("another imp"), Third))
+	{
+		return false;
+	}
+	Kill(Third);
+	TestEqual(TEXT("after ten seconds a death is replaced again"),
+			  Skill->LivingMinionCount(), 1);
+
+	// AND A SUMMONER WITHOUT THE KEYSTONE: nothing.
+	FScopedCaster Plain(World, FVector(0, 10 * M, 0));
+	UCataclysmSummonSkill* PlainSkill = GrantSummon(Plain);
+	ACataclysmMinion* PlainImp = SummonAt(PlainSkill, FVector(0, 12 * M, 0));
+	if (!TestNotNull(TEXT("a plain summoner's imp"), PlainImp))
+	{
+		return false;
+	}
+	Kill(PlainImp);
+	TestEqual(TEXT("without the keystone a death is not replaced"),
+			  PlainSkill->LivingMinionCount(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledTest,
+	"Cataclysm.MinionDeath.RekindledReplacesAnExplodedMinionButNotACapEviction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kC` Rekindled, its stat granted by hand. Issue #1515.
+ *
+ * "When a minion explodes a new minion is summoned where it stood, no more than
+ * once every 5 seconds."
+ *
+ * THE CAP'S EVICTION FIRST, while the clock is ready, so a replacement there
+ * could not be hidden by the wait: ruled 2026-09-23, an eviction is the summon's
+ * own price for a slot and is not replaced. THEN AN EXPLOSION ON DEATH, which
+ * is, and which spends the clock.
+ */
+bool FCataclysmRekindledTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f},
+						 {UCataclysmSummonSkill::ReplacedOnExplosionStat,
+						  ECataclysmStatBucket::Flat, 5.0f}});
+
+	// THE CAP'S EVICTION: three, then a fourth that explodes the oldest.
+	ACataclysmMinion* Oldest = SummonAt(Skill, FVector(3 * M, 0, 0));
+	SummonAt(Skill, FVector(3 * M, 1 * M, 0));
+	SummonAt(Skill, FVector(3 * M, 2 * M, 0));
+	SummonAt(Skill, FVector(3 * M, 3 * M, 0));
+	TestFalse(TEXT("the fourth summon exploded the oldest"), IsValid(Oldest));
+	TestEqual(TEXT("and no replacement took the count above three"),
+			  Skill->LivingMinionCount(), 3);
+	TestTrue(TEXT("nor spent Rekindled's clock"),
+			 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+
+	// AN EXPLOSION ON DEATH: replaced where it stood.
+	const FVector Where(8 * M, 0, 0);
+	ACataclysmMinion* Bursting = Newest(Skill);
+	if (!TestNotNull(TEXT("an imp to lose"), Bursting))
+	{
+		return false;
+	}
+	Bursting->SetActorLocation(Where);
+	Kill(Bursting);
+	TestFalse(TEXT("the imp exploded on its death"), IsValid(Bursting));
+	TestEqual(TEXT("and was replaced, keeping three"), Skill->LivingMinionCount(),
+			  3);
+	ACataclysmMinion* Replacement = Newest(Skill);
+	TestTrue(TEXT("where it stood"),
+			 Replacement
+				 && FVector::Dist(Replacement->GetActorLocation(), Where) < 1.0f);
+	TestFalse(TEXT("which spent Rekindled's clock"),
+			  Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOneLossOneReplacementTest,
+	"Cataclysm.MinionDeath.ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Both keystones held, and a thrall. Issue #1515.
+ *
+ * ONE LOSS, ONE REPLACEMENT, ruled 2026-09-23: a minion that dies and explodes
+ * in one event is replaced once, Press-Ganged first, and only Press-Ganged's
+ * clock is spent.
+ *
+ * A THRALL IS A MINION FOR PRESS-GANGED, and is replaced by the summon skill's
+ * kind where it fell. AT THE CAP a replacement is not made and its clock is
+ * not spent, ruled the same day.
+ */
+bool FCataclysmOneLossOneReplacementTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+	GiveStats(Summoner, {{TEXT("minion_explodes_on_death"),
+						  ECataclysmStatBucket::Flat, 1.0f},
+						 {UCataclysmSummonSkill::ReplacedOnDeathStat,
+						  ECataclysmStatBucket::Flat, 10.0f},
+						 {UCataclysmSummonSkill::ReplacedOnExplosionStat,
+						  ECataclysmStatBucket::Flat, 5.0f}});
+
+	// ONE IMP THAT DIES AND EXPLODES: one replacement.
+	ACataclysmMinion* Imp = SummonAt(Skill, FVector(4 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	Kill(Imp);
+	TestFalse(TEXT("it exploded on its death"), IsValid(Imp));
+	TestEqual(TEXT("and was replaced once, not twice"), Skill->LivingMinionCount(),
+			  1);
+	TestFalse(TEXT("by Press-Ganged, whose clock is spent"),
+			  Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/false));
+	TestTrue(TEXT("while Rekindled's is not"),
+			 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/true));
+
+	// A THRALL WITH ROOM: replaced by an imp where it fell.
+	CataclysmTestWorld::RunClock(World, 10.1f);
+	const FVector Where(9 * M, 0, 0);
+	FScopedCreature Thrall(World, Where);
+	if (!TestTrue(TEXT("an enemy is taken as a thrall"),
+			UCataclysmCommand::Subjugate(Summoner.Actor, Thrall.Actor)))
+	{
+		return false;
+	}
+	const int32 BeforeThrall = Skill->LivingMinionCount();
+	Thrall.SetHealthTo(0.0f);
+	TestEqual(TEXT("the dead thrall is replaced by one more imp"),
+			  Skill->LivingMinionCount(), BeforeThrall + 1);
+	ACataclysmMinion* ForTheThrall = Newest(Skill);
+	TestTrue(TEXT("standing where the thrall fell"),
+			 ForTheThrall
+				 && FVector::Dist(ForTheThrall->GetActorLocation(), Where) < 1.0f);
+
+	// A THRALL AT THE CAP: not replaced, and the clock not spent.
+	CataclysmTestWorld::RunClock(World, 10.1f);
+	while (Skill->LivingMinionCount() < 3)
+	{
+		SummonAt(Skill, FVector(6 * M, Skill->LivingMinionCount() * M, 0));
+	}
+	FScopedCreature Second(World, FVector(12 * M, 0, 0));
+	if (!TestTrue(TEXT("a second thrall is taken"),
+			UCataclysmCommand::Subjugate(Summoner.Actor, Second.Actor)))
+	{
+		return false;
+	}
+	Second.SetHealthTo(0.0f);
+	TestEqual(TEXT("at the cap a dead thrall is not replaced"),
+			  Skill->LivingMinionCount(), 3);
+	TestTrue(TEXT("and Press-Ganged's clock is not spent"),
+			 Summoner.AbilitySystem->MayReplaceMinion(/*bForExplosion=*/false));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDeadMinionFreesItsPlaceTest,
+	"Cataclysm.MinionDeath.ADeadMinionNoLongerHoldsAPlaceUnderTheSummonCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1957. A dead minion's body stays in the level until its lifespan ends,
+ * and until this change it went on counting toward the cap: a summon at the cap
+ * then exploded the oldest minion, alive, while the corpse kept its place.
+ *
+ * THREE IMPS, THE YOUNGEST KILLED, with no keystone and no explosion, so its
+ * body stays. The skill counts two, and a summon takes the free place without
+ * touching the oldest.
+ */
+bool FCataclysmDeadMinionFreesItsPlaceTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmReplacementTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	UCataclysmSummonSkill* Skill = GrantSummon(Summoner);
+	if (!TestNotNull(TEXT("a summon skill"), Skill))
+	{
+		return false;
+	}
+
+	ACataclysmMinion* Oldest = SummonAt(Skill, FVector(3 * M, 0, 0));
+	SummonAt(Skill, FVector(3 * M, 1 * M, 0));
+	ACataclysmMinion* Youngest = SummonAt(Skill, FVector(3 * M, 2 * M, 0));
+	if (!TestNotNull(TEXT("three imps"), Youngest))
+	{
+		return false;
+	}
+	Kill(Youngest);
+	TestTrue(TEXT("the youngest's body stays in the level"), IsValid(Youngest));
+	TestEqual(TEXT("but the skill counts two living"), Skill->LivingMinionCount(),
+			  2);
+
+	SummonAt(Skill, FVector(3 * M, 3 * M, 0));
+	TestTrue(TEXT("a summon takes the free place and the oldest lives"),
+			 IsValid(Oldest) && !UCataclysmSkillEffects::IsDead(Oldest));
+	TestEqual(TEXT("with three living"), Skill->LivingMinionCount(), 3);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

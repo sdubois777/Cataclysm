@@ -40,6 +40,9 @@
 #include "AbilitySystem/CataclysmNova.h"
 // For the flag saying a character's skills cost no health. Issue #1051.
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For Summon Imp and the two stats Press-Ganged and Rekindled are read by.
+// Issue #1515.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 // For the weapon skill table, which says which damage types a weapon type can
 // carry and so which creation choices are legal. Issue #1055.
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -14627,6 +14630,148 @@ bool FCataclysmPassiveOverreachOnARealCharacterTest::RunTest(const FString&)
 	TestEqual(TEXT("and with the point given back, no further"),
 			  UCataclysmBasicAttack::ReachCmOf(Player.AbilitySystem), Unspent,
 			  0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Press-Ganged and Rekindled, from their rows. Issue #1515.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReplacementRowsTest,
+	"Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kB` Press-Ganged and `Ritualist_keystone_b_kC`
+ * Rekindled, from their rows, on a real Ritualist holding Summon Imp.
+ *
+ * READ FROM THE ROWS AND SPENT THROUGH THE PLAYER STATE, not granted by hand,
+ * so this fails while either row is missing. Each row's value is the seconds
+ * between replacements, the number its sentence states.
+ *
+ * TWO LOSSES: an imp that dies, with Press-Ganged held; and an imp that
+ * explodes on its death, with Rekindled and Every One Bursts
+ * (`Ritualist_keystone_b_kB`, whose row makes a minion's death an explosion)
+ * held. Each is replaced; with nothing spent, neither is.
+ */
+bool FCataclysmPassiveReplacementRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ritualist with an effect table"),
+				  Player.IsComplete()))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName PressGanged(TEXT("Ritualist_keystone_a_kB"));
+	const FName Rekindled(TEXT("Ritualist_keystone_b_kC"));
+	const FName EveryOneBursts(TEXT("Ritualist_keystone_b_kB"));
+
+	const auto OneRow = [&](FName Node, const TCHAR* Stat) -> bool
+	{
+		const TArray<const FCataclysmPassiveEffectRow*> Effects =
+			UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+		if (!TestEqual(*FString::Printf(TEXT("%s carries one row"),
+										*Node.ToString()),
+					   Effects.Num(), 1))
+		{
+			AddError(TEXT("The node's row is missing from the data, so it grants "
+						  "nothing in play. Author it in the Passive Effects "
+						  "sheet of docs/All_Things_Cataclysm.xlsx and "
+						  "regenerate."));
+			return false;
+		}
+		TestEqual(*FString::Printf(TEXT("%s grants its stat"), *Node.ToString()),
+				  Effects[0]->Stat, FString(Stat));
+		TestEqual(TEXT("stated flat"), Effects[0]->ValueKind, FString(TEXT("flat")));
+		return TestTrue(TEXT("of the seconds between replacements, above nothing"),
+						Effects[0]->ValuePerPoint > 0.0f);
+	};
+	if (!OneRow(PressGanged, UCataclysmSummonSkill::ReplacedOnDeathStat)
+		|| !OneRow(Rekindled, UCataclysmSummonSkill::ReplacedOnExplosionStat))
+	{
+		return false;
+	}
+
+	// SUMMON IMP ON THE REAL CHARACTER, with its own figures.
+	UCataclysmAbilitySystemComponent* System = Player.AbilitySystem;
+	const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+		UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special,
+		/*Level=*/100, Player.Character);
+	FGameplayAbilitySpec* Spec = System->FindAbilitySpecFromHandle(Handle);
+	UCataclysmSummonSkill* Skill =
+		Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("Summon Imp is granted"), Skill))
+	{
+		return false;
+	}
+	Skill->Params = UCataclysmSkillShapes::ParseParams(
+		TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+
+	const auto Spend = [&Player](const TArray<FName>& Nodes)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		for (const FName& Node : Nodes)
+		{
+			Allocation.Add(Node, 1);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	};
+
+	// ONE LOSS: summon an imp, kill it, and say how many the skill holds after.
+	const auto LivingAfterALoss = [&]()
+	{
+		ACataclysmMinion* Imp = Skill->SummonOne();
+		UAbilitySystemComponent* ImpSystem =
+			UCataclysmTargeting::AbilitySystemOf(Imp);
+		if (!ImpSystem)
+		{
+			AddError(TEXT("The imp has no ability system."));
+			return -1;
+		}
+		ImpSystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+		const int32 Living = Skill->LivingMinionCount();
+		for (ACataclysmMinion* Left : Skill->Minions)
+		{
+			if (IsValid(Left))
+			{
+				Left->Destroy();
+			}
+		}
+		Skill->LivingMinionCount();
+		return Living;
+	};
+
+	Spend({});
+	TestEqual(TEXT("with nothing spent a dead imp is not replaced"),
+			  LivingAfterALoss(), 0);
+
+	Spend({PressGanged});
+	TestEqual(TEXT("with Press-Ganged a dead imp is replaced"),
+			  LivingAfterALoss(), 1);
+
+	Spend({Rekindled, EveryOneBursts});
+	TestEqual(TEXT("with Rekindled an imp that explodes on its death is replaced"),
+			  LivingAfterALoss(), 1);
+
 	return true;
 }
 

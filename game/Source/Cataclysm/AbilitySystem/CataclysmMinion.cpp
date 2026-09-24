@@ -792,11 +792,16 @@ void ACataclysmMinion::HandleDeath()
 	// granted before this runs, and `CataclysmVitalAttributeSet.cpp` says why:
 	// a death handler may remove the actor, and the code that finds the
 	// commander cannot walk the ownership chain of one that is leaving.
-	if (ExplosionRadiusCm > 0.0f && ExplosionPercentOfOwnDamage > 0.0f
-		&& SummonerStat(Summoner, TEXT("minion_explodes_on_death")) > 0.0f)
+	if (ExplodesOnDeath())
 	{
 		Explode();
 	}
+}
+
+bool ACataclysmMinion::ExplodesOnDeath() const
+{
+	return ExplosionRadiusCm > 0.0f && ExplosionPercentOfOwnDamage > 0.0f
+		&& SummonerStat(Summoner, TEXT("minion_explodes_on_death")) > 0.0f;
 }
 
 void ACataclysmMinion::RecordExplosionRadius(float RadiusCm)

@@ -379,6 +379,110 @@ namespace CataclysmStatExemptionTest
 	 * move, so a fresh debuff's time left is the whole of what it was given.
 	 */
 	/**
+	 * A summoner holding Summon Imp, with these stats on its line, and the
+	 * living count its skill holds after one of its imps dies. Issue #1515.
+	 */
+	int32 LivingAfterALoss(FAutomationTestBase& Test, UWorld* World,
+						   const TMap<FName, float>& Stats)
+	{
+		FScopedFighter Summoner(World, /*AttackDamage=*/0.0f);
+		UCataclysmAbilitySystemComponent* System = Summoner.AbilitySystem;
+		const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+			UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special,
+			/*Level=*/100, Summoner.Actor);
+		FGameplayAbilitySpec* Spec = System->FindAbilitySpecFromHandle(Handle);
+		UCataclysmSummonSkill* Skill =
+			Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+		if (!Test.TestNotNull(TEXT("a summon skill"), Skill))
+		{
+			return -1;
+		}
+		Skill->Params = UCataclysmSkillShapes::ParseParams(
+			TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		for (const TPair<FName, float>& Stat : Stats)
+		{
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+			Flat.Value = Stat.Value;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(Stat.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+		}
+		System->SetStatInputs(MoveTemp(Inputs));
+
+		ACataclysmMinion* Imp = Skill->SummonOne();
+		UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp);
+		if (!Test.TestNotNull(TEXT("an imp with an ability system"), ImpSystem))
+		{
+			return -1;
+		}
+		ImpSystem->SetNumericAttributeBase(Vital::GetHealthAttribute(), 0.0f);
+		const int32 Living = Skill->LivingMinionCount();
+		for (ACataclysmMinion* Left : Skill->Minions)
+		{
+			if (IsValid(Left))
+			{
+				Left->Destroy();
+			}
+		}
+		return Living;
+	}
+
+	/**
+	 * `minion_death_replaced_every_seconds`, read by
+	 * `UCataclysmSummonSkill::ReplaceLost` after a commanded death. Issue #1515,
+	 * Press-Ganged. A summoner holding it has its dead imp replaced; a plain one
+	 * does not.
+	 */
+	void ProbeReplacedOnDeath(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const int32 Plain = LivingAfterALoss(Test, World, {});
+		const int32 Held = LivingAfterALoss(Test, World,
+			{{FName(UCataclysmSummonSkill::ReplacedOnDeathStat), 10.0f}});
+		Test.TestEqual(TEXT("a plain summoner's dead imp is not replaced"), Plain, 0);
+		Test.TestEqual(
+			TEXT("minion_death_replaced_every_seconds replaces it, so "
+				 "UCataclysmSummonSkill::ReplaceLost really reads it"),
+			Held, 1);
+	}
+
+	/**
+	 * `minion_explosion_replaced_every_seconds`, the same for an imp whose
+	 * death is an explosion. Issue #1515, Rekindled.
+	 */
+	void ProbeReplacedOnExplosion(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Explodes(TEXT("minion_explodes_on_death"));
+		const int32 Plain = LivingAfterALoss(Test, World, {{Explodes, 1.0f}});
+		const int32 Held = LivingAfterALoss(Test, World,
+			{{Explodes, 1.0f},
+			 {FName(UCataclysmSummonSkill::ReplacedOnExplosionStat), 5.0f}});
+		Test.TestEqual(TEXT("a plain summoner's exploded imp is not replaced"),
+			Plain, 0);
+		Test.TestEqual(
+			TEXT("minion_explosion_replaced_every_seconds replaces it, so "
+				 "UCataclysmSummonSkill::ReplaceLost really reads it"),
+			Held, 1);
+	}
+
+	/**
 	 * `melee_reach_metres`, read by `UCataclysmSkillTemplate::MeleeReachBonusCm`
 	 * into a melee strike's reach. Issue #1515, Overreach. The same melee strike
 	 * on two fighters, one granted a flat metre and a half: its reach is longer.
@@ -2110,6 +2214,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_duration"),     &ProbeDuration},
 			{TEXT("cripple_and_weaken_duration"), &ProbeCrippleAndWeakenDuration},
 			{TEXT("melee_reach_metres"),  &ProbeMeleeReach},
+			{TEXT("minion_death_replaced_every_seconds"), &ProbeReplacedOnDeath},
+			{TEXT("minion_explosion_replaced_every_seconds"), &ProbeReplacedOnExplosion},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},

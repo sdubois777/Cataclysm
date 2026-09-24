@@ -1417,9 +1417,54 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	bool bRefusedForRoom = false;
 
-	/** How many are alive, after dropping the ones that expired. */
+	/**
+	 * How many are alive, after dropping the ones that expired or died. A dead
+	 * minion's body stays in the level until its lifespan ends and no longer
+	 * counts once it has died. Issue #1957.
+	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill")
 	int32 LivingMinionCount();
+
+	/**
+	 * Summon one minion of this skill's kind at `Location`, at no cost, for a
+	 * minion that was lost. Issue #1515: Press-Ganged and Rekindled.
+	 *
+	 * NEVER ABOVE THE CAP AND NEVER BY EVICTING, ruled 2026-09-23 under the
+	 * owner's delegation. At the cap it makes nothing and returns null, where
+	 * `SummonOne` would explode the oldest to make room. The count is the living
+	 * one `LivingMinionCount` gives, so the minion just lost has already left it.
+	 */
+	ACataclysmMinion* SummonReplacementAt(const FVector& Location);
+
+	/**
+	 * Replace a minion or thrall its commander just lost, if a keystone says
+	 * to. Issue #1515. Called once per death, after the death is handled.
+	 *
+	 * ONE REPLACEMENT PER LOSS, Press-Ganged tried first, ruled 2026-09-23 under
+	 * the owner's delegation: a minion that dies and explodes in one event is
+	 * one loss. Rekindled is tried only for an explosion, and only when
+	 * Press-Ganged made nothing. A cap eviction never comes here, so it never
+	 * triggers Rekindled.
+	 *
+	 * THE KIND IS THE SUMMON SKILL THAT MADE THE LOST MINION; for a thrall, which
+	 * no summon skill made, the first summon skill the commander holds that
+	 * summons anything. A commander with no summon skill gets nothing.
+	 *
+	 * @param Commander  who commanded what was lost
+	 * @param Lost       the minion or thrall, possibly already destroyed
+	 * @param Where      where it was when it was lost
+	 * @param bExploded  whether the loss was an explosion
+	 * @return the replacement, or null
+	 */
+	static ACataclysmMinion* ReplaceLost(AActor* Commander, AActor* Lost,
+										 const FVector& Where, bool bExploded);
+
+	/**
+	 * The two keystones' stats. Each is the seconds between replacements, the
+	 * number its sentence states, and above zero means the keystone is held.
+	 */
+	static const TCHAR* ReplacedOnDeathStat;
+	static const TCHAR* ReplacedOnExplosionStat;
 
 private:
 	void SpawnTick();

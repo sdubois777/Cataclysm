@@ -1774,6 +1774,121 @@ Every line below is what the run printed, and every step matched its registratio
 
 ---
 
+## 2026-09-23 — Press-Ganged and Rekindled replace a lost minion, and a dead minion stops holding a place under the summon cap
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplates.h` and `.cpp` (the
+replacement, and the living count), `CataclysmMinion.h` and `.cpp` (which skill made a minion, and
+whether its death is an explosion), `CataclysmAbilitySystemComponent.h` and `.cpp` (two cooldown
+clocks), `CataclysmVitalAttributeSet.cpp` (the hook after a commanded death),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (two stats), two test files and
+one Python inventory. Issues [#1515](https://github.com/sdubois777/Cataclysm/issues/1515) and
+[#1957](https://github.com/sdubois777/Cataclysm/issues/1957).
+
+### THE TWO KEYSTONES, ONE MECHANISM
+
+| Node | Sentence | Stat |
+|---|---|---|
+| `Ritualist_keystone_a_kB` Press-Ganged | "When one of your minions dies, a new minion is summoned where it died at no cost, no more than once every 10 seconds." | `minion_death_replaced_every_seconds` |
+| `Ritualist_keystone_b_kC` Rekindled | "When a minion explodes a new minion is summoned where it stood, no more than once every 5 seconds." | `minion_explosion_replaced_every_seconds` |
+
+**Each stat's value is the seconds between replacements**, the number its sentence states, and
+above zero means the keystone is held; so each row states its sentence's own number. Both are stats
+with no attribute. **Two clocks, one per keystone**, because the sentences give two intervals.
+
+**After every commanded death** — a summoned minion's or a thrall's — the replacement is decided
+once, after the death is handled, so the lost minion has already left its skill's living count. The
+kind is the summon skill that made the lost minion, the ruling this log recorded when the node was
+first written ("the kind the character's summon skill makes"). **A thrall is a minion here**: the
+owner's first wording of Press-Ganged was "a thrall that dies is replaced by an imp", and a hook
+inside the minion class alone would have missed it. **At no cost** holds as built: the summon's cost
+is paid when the skill is used, not when it makes a minion.
+
+### FOUR RULINGS UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto.**
+
+| Question | Answer |
+|---|---|
+| A minion that dies and explodes in one event: both keystones? | **One replacement per loss.** Press-Ganged is tried first; Rekindled only for an explosion and only if Press-Ganged made nothing |
+| Does the cap's own eviction (the oldest exploded to make room) trigger Rekindled? | **No.** It is the summon's price for a slot; replacing it would put the count above the cap inside the summon itself |
+| May a replacement exceed the cap, or evict to fit? | **Neither.** It is made only while the LIVING count is below the cap, and a replacement not made leaves its clock unspent |
+| Which kind, if a character has several summon skills? | **The skill that made the lost minion**; for a thrall, the first summon skill the character holds that summons anything |
+
+### ISSUE #1957, FIXED HERE BECAUSE THE THIRD RULING NEEDED IT
+
+**A dead minion's body counted toward the summon cap until its lifespan ended.** With that left as
+it was, the body of the minion just lost would still hold its place, and at the cap Press-Ganged
+would almost never fire, in exactly the case it exists for. **The summon skill's cap and the
+replacement's check share one count**, `UCataclysmSummonSkill::LivingMinionCount`, so the first
+remedy #1957 proposed fixes both: the count now drops a minion that is dead as well as one that is
+destroyed. The body stays in the level for its lifespan to remove, as before.
+
+### TESTS
+
+- `Cataclysm.MinionDeath.PressGangedReplacesAMinionWhereItDiedOnceInTenSeconds`
+- `Cataclysm.MinionDeath.RekindledReplacesAnExplodedMinionButNotACapEviction`
+- `Cataclysm.MinionDeath.ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced`
+- `Cataclysm.MinionDeath.ADeadMinionNoLongerHoldsAPlaceUnderTheSummonCap` (#1957)
+- Two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, one per stat.
+
+- `Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp` reads both rows on
+  a real Ritualist holding Summon Imp. **Every other test grants the stats by hand**, so this is the
+  one that fails while a row is missing.
+
+### THE ROWS, AND WHAT THEY MOVED
+
+Written into the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx` on top of Overreach's
+row, by the same script their dry run used on a copy first. The generator then changed only
+`game/Data/PassiveEffects.csv`, adding the two rows. **Each row's number is its node's own**: "once
+every 10 seconds" and "once every 5 seconds". Pins moved, each with a comment saying why:
+
+| Pin | From | To |
+|---|--:|--:|
+| `docs/README.md`, Passive Effects rows | 297 | 299 |
+| `AUTHORED_ROWS` in `test_passive_effects_match_the_node_text.py` | 297 | 299 |
+| `AUTHORED_NODES`, same file (the Ritualist now 72 of its 74 nodes) | 218 | 220 |
+| `CHECK_TABLE` for `PassiveEffects.csv` in `CataclysmDataTableTests.cpp` | 297 | 299 |
+| `VALUE_FORMS` gains both stats as "{value:g} second" | | |
+
+`DT_PassiveEffects` is rebuilt in this change's build window.
+
+### THE WINDOW, 2026-09-24 BY THE ENGINE LOG'S CLOCK (UTC), ON b3123e59
+
+**The first build failed before any test ran**, and the window's head is the commit that fixed it.
+Every error was in `CataclysmPassiveTreeTests.cpp`, the first `error C2027: use of undefined type
+'UCataclysmSummonSkill'`. The new row test used that class, and the file reached it only through
+`CataclysmMinion.h`, which declares it without defining it. **This change's C++ had never been
+compiled before the window**: it was written in a worktree with no binaries, which cannot compile.
+Commit b3123e59 adds `#include "AbilitySystem/CataclysmSkillTemplates.h"` and was pushed before the
+first test run; the coordinating session ruled the window could continue, as it had for the same
+kind of fault in group B. Issue #2022 carries the case.
+
+| Step | Printed |
+|---|---|
+| First build, on 8c5c98df | `Build: Failed - 27 actions, 24 files compiled`, the C2027 above |
+| Build after the include | `Build: Succeeded - 5 actions, 2 files compiled: CataclysmPassiveTreeTests.cpp, Module.Cataclysm.24.cpp` |
+| Fail-before, `tests --prefix "Cataclysm.Passives."`, stale asset | `128 tests performed, 127 succeeded, 1 failed: PressGangedAndRekindledRowsReplaceARealRitualistsLostImp`, on "Expected 'Ritualist_keystone_a_kB carries one row' to be 1, but it was 0" |
+| Rebuild, `generate_datatable_assets.py` | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` and nothing else |
+| Whole suite, `tests --no-build` | `2270 tests performed, 2270 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard` on `CataclysmSkillTemplates.cpp`, prefix
+`Cataclysm.MinionDeath.`, each anchor re-checked immediately before. The broken run's log was
+copied before the restored run overwrote it, so each row names the assertions that failed. Each
+restored run printed `10 tests performed, 10 succeeded, 0 failed`.
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| a replacement made without the summon cap's check | `10 tests performed, 9 succeeded, 1 failed: ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced` | "at the cap a dead thrall is not replaced", 4 where 3 was expected; and "and Press-Ganged's clock is not spent" |
+| the living count keeps a dead minion (#1957) | `10 tests performed, 8 succeeded, 2 failed: ADeadMinionNoLongerHoldsAPlaceUnderTheSummonCap, PressGangedReplacesAMinionWhereItDiedOnceInTenSeconds` | the first: "but the skill counts two living", 3 where 2; "a summon takes the free place and the oldest lives". The second: "which the skill counts as its one living minion", 2 where 1; "a second death inside ten seconds is not replaced", 2 where 0; "after ten seconds a death is replaced again", 3 where 1; "without the keystone a death is not replaced", 1 where 0 |
+| Rekindled tried before Press-Ganged | `10 tests performed, 9 succeeded, 1 failed: ALossIsReplacedOnceAndAThrallAtTheCapIsNotReplaced` | "by Press-Ganged, whose clock is spent"; "while Rekindled's is not" |
+
+**The first proof's second assertion was not in its registered prediction**, which named only the
+count. With the cap's check gone the replacement is made, and a replacement made spends
+Press-Ganged's clock, which the next line of the test checks. The test and the number that failed
+were as registered.
+
+---
+
 ## 2026-09-23 — The floor's dead rise once, at half health, when half the floor has fallen
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the revival mark,
