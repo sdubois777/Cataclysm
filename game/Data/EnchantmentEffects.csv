@@ -303,3 +303,4 @@ Positive_Each_class_point_spent_above_100_grants_0_5_1#1,Positive_Each_class_poi
 Positive_Each_class_point_spent_above_100_grants_0_5_1#2,Positive_Each_class_point_spent_above_100_grants_0_5_1,spell_damage,increased,0.5,1.0,,,0.0,class_points_spent,1.0,,,,0,0.0,100.0
 Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever#1,Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever,max_health,increased,-1.5,-2.5,,,0.0,class_points_spent,10.0,,,,0,0.0,50.0
 Negative_Non_critical_strikes_deal_20_35_less_damage#1,Negative_Non_critical_strikes_deal_20_35_less_damage,non_critical_damage,more,-20.0,-35.0,,,0.0,,0.0,,,,0,0.0,0.0
+Negative_Projectiles_deal_20_35_less_damage_on_each_sub#1,Negative_Projectiles_deal_20_35_less_damage_on_each_sub,projectile_later_hit_damage,more,-20.0,-35.0,Type.Projectile,,0.0,,0.0,,,,0,0.0,0.0

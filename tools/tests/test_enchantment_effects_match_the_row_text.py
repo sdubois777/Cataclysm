@@ -423,8 +423,10 @@ JUDGED_NUMBERS = {
 #: row each; the maximum health drawback is one row.
 #: AND 304 OVER 235 SINCE THE NON-CRITICAL DRAWBACK,
 #: issue #1686, from 303 over 234: one row on one enchantment.
-AUTHORED_ROWS = 304
-AUTHORED_ENCHANTMENTS = 235
+#: AND 305 OVER 236 SINCE THE PROJECTILE LATER-HIT DRAWBACK,
+#: issue #1686, from 304 over 235: one row on one enchantment.
+AUTHORED_ROWS = 305
+AUTHORED_ENCHANTMENTS = 236
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
