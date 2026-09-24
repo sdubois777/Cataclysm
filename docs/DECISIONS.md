@@ -11,8 +11,8 @@ automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffects
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -74,10 +74,25 @@ says "10 seconds", "all enemies", "haste", "fear immunity" and "music", and stat
 to fail, in a copy of the repository, with the row given "15 seconds", with the row given "every 60
 seconds", and with `DirgeResonanceHasteSeconds` set to 12.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (47a9a6c7) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 14 actions, 11 files compiled" and "224 tests performed, 224 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 175d7ad8:** "Build: Succeeded - 14 actions, 11 files compiled" and "2220 tests
+  performed, 2220 succeeded, 0 failed", as registered (2217 + the three named tests), with every
+  declared test reported. In that run's `game/Saved/Logs/Cataclysm.log` the group's 227 all succeeded,
+  the three named above among them.
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each exactly as registered
+  and each 227 of 227 restored:
+  - no crescendo ever (the due check made `if (false)`, in `CataclysmDungeonGameMode.cpp`) failed 3 of
+    227: all three tests above;
+  - a crescendo every ten seconds (the due check compared with the haste's length, in
+    `CataclysmDungeonModifierEffects.cpp`) failed 2 of 227:
+    `TheDirgeCrescendoAtNinetySecondsHastesEveryCreature` and
+    `TheDirgeHasteLastsTenSecondsAndComesAgainNinetyLater`;
+  - a haste lasting ninety seconds failed 1 of 227:
+    `TheDirgeHasteLastsTenSecondsAndComesAgainNinetyLater`.
 
 ---
 
