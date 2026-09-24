@@ -10,9 +10,8 @@ which floor rule last burned whom, and the question a zone asks it),
 before each burn), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (the three rules mark
 their zones, and a floor change clears the record), and the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
-[#2074](https://github.com/sdubois777/Cataclysm/issues/2074). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#2074](https://github.com/sdubois777/Cataclysm/issues/2074). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The ruling
 
@@ -66,6 +65,15 @@ everyone inside it, so a player where two overlapped was burned by both.
   before this change, searched both by the `Dungeon/` path and by each header's name. The include
   carries a comment saying so.
 
+### A stated limit, not fixed
+
+A skill's zone may deal less on its first sweep ([#2079](https://github.com/sdubois777/Cataclysm/pull/2079),
+`FirstSweepDamage`), and that share is spent when `TicksElapsed` first moves. **A zone carrying both a
+first-sweep share and a burn kind would spend its share on a first sweep that `MayBurn` refused.** No
+zone carries both today: only skills set a first-sweep share (`DealsOnItsFirstSweep`, called from
+`CataclysmSkillTemplate.cpp`), and only the three floor rules set a kind. The two otherwise do not
+interact: `MayBurn` decides whether a target is burned, and the first-sweep share decides how much.
+
 ### Why Necrotic Ground's mechanism was not reused
 
 Necrotic Ground's patches deal nothing; the game mode's beat asks whether any patch covers the player's
@@ -98,10 +106,36 @@ resistances, and at one instant the second sweep would now be refused. Moving `T
 and ticks no actor. Those four tests measure resistances, not stacking, and a sweep one interval later
 keeps them measuring that.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-24, on f3528a2a (the melee-while-moving change's final head, since merged as
+development 31674a86 with the same whole tree, eccaf3b6). Every figure below is what
+`python tools/unreal_build.py tests` or `prove_cpp_guard` printed. The Python suite of record ran first:
+5,425 tests, 0 failed.
+
+- **The whole suite on the head**, ca64d67c: 2,364 tests performed, 2,364 succeeded, 0 failed. It ran
+  from 14:49:06 to 14:55:51 local time, and the Unreal CI compile for the merge of #2080 ran on the same
+  machine from 14:53:04 to 14:55:11, inside it. Nothing failed.
+- **The group on the head**: 280 tests performed, 280 succeeded, 0 failed.
+- **The group on the base**, f3528a2a: 275 tests performed, 275 succeeded, 0 failed. Run after the
+  others, once the Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **`MayBurn` never refusing** (`if (false && ...)`). With the break in: 280 performed, 277 succeeded, 3
+  failed, the three rule tests, each on "and burned nothing more in the same second", "a second later the
+  first zone burns again" and "and the second is refused that second too" -- the craters' reading 3,447.67,
+  5,171.51 and 6,895.34 where 1,723.84, 3,447.67 and 3,447.67 were expected. The crater-and-patch and
+  no-kind tests held. Restored: 280 performed, 280 succeeded, 0 failed.
+- **The floor change not forgetting** (`Source->ForgetBurns();` removed). With the break in: 280
+  performed, 279 succeeded, 1 failed, `TwoOverlappingCratersBurnAPlayerOncePerSecond`, on "Expected 'and a
+  floor change forgets them' to be 0, but it was 1". Restored: 280 performed, 280 succeeded, 0 failed.
+- **The window doubled** (`2.0 * ACataclysmGroundZone::TickSeconds`). With the break in: 280 performed,
+  273 succeeded, 7 failed: the three rule tests on "a second later the first zone burns again" and "and
+  the second is refused that second too" (one burn where two were expected), and the four resistance
+  tests, whose sweeps `StandInAndSweep` puts one second apart, on "took health with ... raised: 0.0".
+  Restored: 280 performed, 280 succeeded, 0 failed.
 
 ---
 
