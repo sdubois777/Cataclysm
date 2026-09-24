@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Every ninety seconds the dirge hastes every creature on the floor for ten; its fear immunity and its music do nothing yet
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its two figures and the due check), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (a step on the quarter-second beat, the floor panel line and the per-floor reset), the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Death_Dirge_Resonance` in `game/Data/DungeonModifiers.csv`, weight 10: "Distant funeral music plays;
+when it crescendos, all enemies gain haste and fear immunity for 10 seconds." Ten seconds and "all
+enemies" are the row's own; it gives no period.
+
+### What the rule does
+
+On a floor carrying the row, every `DirgeResonanceEverySeconds` (90) of the floor's beat, every living
+creature on the floor gains `Status.Buff.Commander` for `DirgeResonanceHasteSeconds` (10). The first
+crescendo comes ninety seconds into the floor, and each floor starts its ninety again. The floor panel
+says `dirge: crescendo in N s`, then `dirge: enemies hasted, N s left`, refreshed when the whole second
+changes.
+
+**Two halves of the row do nothing today, and are recorded as waiting.** There is no fear in this game:
+the word appears once under `game/Source/Cataclysm`, in a comment in `CataclysmGroundZone.h`, and there
+is no fear tag, status or ailment, so "fear immunity" grants nothing until fear exists. And there is no
+audio for the "distant funeral music"; the panel line is the rule's only sign.
+
+### The haste reaches both speeds, measured before building
+
+A creature's attack interval and walk speed do not read the `AttackSpeed` and `MovementSpeed`
+attributes. Read in `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp`:
+`SpeedMultiplier()` is `CommanderMultiplier() * CrippleMultiplier() * WraithMultiplier()`, and
+`CommanderMultiplier()` is 1.2 while the creature holds `Status.Buff.Commander`.
+`SecondsBetweenAttacks()` divides the designed interval by it each time it is asked, and
+`RefreshWalkSpeed()` multiplies the designed walk speed by it and runs on every tick of the creature, so
+a status granted after the creature began play reaches its movement on its next frame. The tests
+therefore measure both speeds, not the tag.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-09-23:**
+
+- **Every ninety seconds, the first at ninety.** `DirgeResonanceEverySeconds` is declared as
+  `EdictOfSilenceEverySeconds`, the only period the table states for a repeating event across a floor.
+  With ten seconds of haste, creatures are hasted about 11% of the time.
+- **"Haste" is `Status.Buff.Commander`**, "20% increased movement speed and attack speed", the one
+  haste-like status a creature can hold, already granted to creatures by Commander's Aura, Hallowed
+  Groundfall, the Horde Leader modifier and the Succubus. `ApplyTagForDuration` refreshes rather than
+  stacks, so a creature already hasted by a commander is not hasted twice.
+- **"All enemies" is every living creature on the floor at the crescendo, marked ones included.** One
+  that arrives during the ten seconds waits for the next crescendo. Creatures the floor does not track
+  in `FloorEnemies` -- a Gatekeeper's summoned Imps -- are not reached.
+
+### Tests
+
+Three automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `TheDirgeCrescendoAtNinetySecondsHastesEveryCreature`: nothing just short of ninety seconds; at
+  ninety, a creature and a marked creature each attack 20% faster and walk 20% faster.
+- `TheDirgeHasteLastsTenSecondsAndComesAgainNinetyLater`: the haste is gone eleven seconds of world
+  clock later, and returns ninety seconds of beat after the first crescendo and not sooner.
+- `ACreatureArrivingAfterTheCrescendoIsNotHasted`: and a floor without the row hastes nothing.
+
+Each writes the 1.2 out rather than reading the creature's constant. One Python check: the row still
+says "10 seconds", "all enemies", "haste", "fear immunity" and "music", and states no period. It was seen
+to fail, in a copy of the repository, with the row given "15 seconds", with the row given "every 60
+seconds", and with `DirgeResonanceHasteSeconds` set to 12.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — Same-day entries are ordered by the branch commit that first writes each, and the log resolver's flag is --first
 
 **Affects:** `tools/resolve_decisions_log.py` (the command that orders two conflicting entries at
