@@ -125,6 +125,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::TrickOrTreatKey =
 const TCHAR* UCataclysmDungeonModifierEffects::SoulHarvestKey =
 	TEXT("Demonic_Soul_Harvest");
 
+const TCHAR* UCataclysmDungeonModifierEffects::ChaosTouchedKey =
+	TEXT("Chaos_Chaos_Touched");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -401,7 +404,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(NothingIsForgottenKey)
 		|| RowKey == FName(StarvationCurseKey)
 		|| RowKey == FName(TrickOrTreatKey)
-		|| RowKey == FName(SoulHarvestKey))
+		|| RowKey == FName(SoulHarvestKey)
+		|| RowKey == FName(ChaosTouchedKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -582,6 +586,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(StarvationCurseKey),
 		FName(TrickOrTreatKey),
 		FName(SoulHarvestKey),
+		FName(ChaosTouchedKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -863,6 +868,27 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 											-Effects.ResistanceLessPercent);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat,
 											Effects.ResistanceMorePercent);
+	}
+
+	// AND CHAOS TOUCHED'S STACKS, A MORE AND A LESS ON EACH OF FOUR STATS, from their own fields,
+	// the resistances on all eight as the loop above does. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMaxHealthStat),
+										Effects.TouchedMaxHealthMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMaxHealthStat,
+								  Effects.TouchedMaxHealthLessPercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsMovementSpeedStat),
+										Effects.TouchedSpeedMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat,
+								  Effects.TouchedSpeedLessPercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers, FName(DungeonModifierEffectsAttackSpeedStat),
+										Effects.TouchedAttackSpeedMorePercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsAttackSpeedStat,
+								  Effects.TouchedAttackSpeedLessPercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, Effects.TouchedResistanceMorePercent);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.TouchedResistanceLessPercent);
 	}
 
 	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
@@ -1225,6 +1251,35 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from the starvation curse"),
 									Effects.CurseMovementLessPercent));
+	}
+	// AND CHAOS TOUCHED, EACH STAT'S MORE AND LESS SAID ON THEIR OWN. Issues #1820 and #41.
+	{
+		// THE FORMAT IS A LITERAL AT THE CALL and the words vary as arguments: UE 5.8 checks a
+		// Printf format at compile time, so one read out of a table does not compile.
+		struct FTouchedClause
+		{
+			float Percent;
+			const TCHAR* Stat;
+			const TCHAR* Direction;
+		};
+		const FTouchedClause Touched[] = {
+			{Effects.TouchedMaxHealthMorePercent, TEXT("maximum health"), TEXT("more")},
+			{Effects.TouchedSpeedMorePercent, TEXT("movement speed"), TEXT("more")},
+			{Effects.TouchedAttackSpeedMorePercent, TEXT("attack speed"), TEXT("more")},
+			{Effects.TouchedResistanceMorePercent, TEXT("resistances"), TEXT("more")},
+			{Effects.TouchedMaxHealthLessPercent, TEXT("maximum health"), TEXT("less")},
+			{Effects.TouchedSpeedLessPercent, TEXT("movement speed"), TEXT("less")},
+			{Effects.TouchedAttackSpeedLessPercent, TEXT("attack speed"), TEXT("less")},
+			{Effects.TouchedResistanceLessPercent, TEXT("resistances"), TEXT("less")},
+		};
+		for (const FTouchedClause& Each : Touched)
+		{
+			if (Each.Percent > 0.0f)
+			{
+				Clauses.Add(FString::Printf(TEXT("%s %.0f%% %s from chaos touched"), Each.Stat,
+											Each.Percent, Each.Direction));
+			}
+		}
 	}
 	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
 	{
@@ -1843,6 +1898,37 @@ int32 UCataclysmDungeonModifierEffects::StarvationCurseKindToAdd(int32 Drawn,
 float UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(int32 Stacks)
 {
 	return static_cast<float>(FMath::Max(0, Stacks)) * StarvationCursePercentPerStack;
+}
+
+int32 UCataclysmDungeonModifierEffects::ChaosTouchedKindFor(float Roll)
+{
+	return FMath::Clamp(FMath::FloorToInt(Roll * ChaosTouchedKinds / 100.0f), 0,
+						ChaosTouchedKinds - 1);
+}
+
+int32 UCataclysmDungeonModifierEffects::ChaosTouchedKindToAdd(int32 Drawn,
+															   const TArray<int32>& Stacks)
+{
+	for (int32 Step = 0; Step < ChaosTouchedKinds; ++Step)
+	{
+		const int32 Kind = (Drawn + Step) % ChaosTouchedKinds;
+		const int32 Held = Stacks.IsValidIndex(Kind) ? Stacks[Kind] : 0;
+		if (Held < ChaosTouchedMostStacks)
+		{
+			return Kind;
+		}
+	}
+	return ChaosTouchedAddsNothing;
+}
+
+float UCataclysmDungeonModifierEffects::ChaosTouchedPercentFor(int32 Stacks)
+{
+	return static_cast<float>(FMath::Max(0, Stacks)) * ChaosTouchedPercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::ChaosTouchedIsDebuff(int32 Kind)
+{
+	return Kind >= ChaosTouchedFirstDebuff && Kind < ChaosTouchedKinds;
 }
 
 float UCataclysmDungeonModifierEffects::SoulHarvestRadiusCm()

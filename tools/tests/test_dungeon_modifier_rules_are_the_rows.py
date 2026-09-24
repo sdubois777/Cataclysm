@@ -3846,3 +3846,25 @@ def test_soul_harvest_row_still_feeds_the_nearest_demon_health_damage_and_resist
     assert "%" not in words, (
         "Demonic_Soul_Harvest now states a percentage. The figures a soul gives were rulings "
         "because the row gave none; use the row's figure. " + words)
+
+def test_chaos_touched_row_still_adds_a_random_buff_or_debuff_each_floor_until_cleansed():
+    """The phrases the rule's readings rest on.
+
+    "Every floor, a random buff or debuff is added to the player. These do not have the
+    normal time limits and will continue to stack unless cleansed." EVERY FLOOR is why each
+    floor adds one; A RANDOM BUFF OR DEBUFF is why the draw spans both; CONTINUE TO STACK is
+    why stacks add; UNLESS CLEANSED is why a floor's boss clears the debuffs; and the row
+    gives no figure, which is why ten per cent and five of a kind are rulings. If any of them
+    changes, the reading must be revisited.
+    """
+    words = flat(rows()["Chaos_Chaos_Touched"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("every floor", "a random buff or debuff", "continue to stack",
+                   "unless cleansed"):
+        assert phrase in lower, (
+            f"Chaos_Chaos_Touched no longer says {phrase.upper()!r}. A reading of the rule "
+            "rests on it; see ChaosTouchedKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert "%" not in words, (
+        "Chaos_Chaos_Touched now states a percentage. Ten per cent a stack was a ruling "
+        "because the row gave none; use the row's figure. " + words)

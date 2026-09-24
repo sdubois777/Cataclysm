@@ -24344,4 +24344,255 @@ bool FCataclysmSoulsRungTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Chaos_Chaos_Touched. Issues #1820 and #41.
+//
+// "Every floor, a random buff or debuff is added to the player. These do not have the normal
+// time limits and will continue to stack unless cleansed." One stack a floor of one of eight
+// kinds, 10% each and five of a kind at most; a floor's boss cleanses the debuffs and the
+// player's death clears all. Rulings under the owner's delegation, 2026-09-24.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the row whose floors each add a buff or a debuff. Issues #1820, #41. */
+	const FName ChaosTouched(UCataclysmDungeonModifierEffects::ChaosTouchedKey);
+
+	/** Go to this floor with the draw pinned, and let the beat apply it. */
+	bool TheTouchedFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode, int32 Floor,
+						 const TCHAR* Draw)
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.ChaosTouchedRoll"), Draw);
+		if (!Test.TestNotNull(TEXT("the draw can be pinned"), Pinned.Variable)
+			|| !Test.TestTrue(FString::Printf(TEXT("floor %d was reached"), Floor),
+							  Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		return true;
+	}
+
+	/** Every dungeon rule's value on this stat, in the order the inputs hold them. */
+	TArray<float> DungeonRulesOn(const UCataclysmAbilitySystemComponent* AbilitySystem,
+								 const TCHAR* Stat)
+	{
+		TArray<float> Out;
+		if (const FCataclysmStatInputs* Inputs = AbilitySystem->GetStatInputs(FName(Stat)))
+		{
+			for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+			{
+				if (Modifier.Source == ECataclysmModifierSource::DungeonRule)
+				{
+					Out.Add(Modifier.Value);
+				}
+			}
+		}
+		return Out;
+	}
+
+	/** Whether one of the dungeon rules on this stat is this value. */
+	bool ARuleOnIs(const FPossessedPlayer& Player, const TCHAR* Stat, float Value)
+	{
+		for (const float Each : DungeonRulesOn(Player.AbilitySystem, Stat))
+		{
+			if (FMath::IsNearlyEqual(Each, Value, 0.01f))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+// EACH FLOOR CARRYING THE ROW ADDS ONE STACK OF THE KIND THE DRAW NAMES, IN EIGHT EVEN BANDS, and
+// leaving the dungeon empties every kind.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTouchedDrawTest,
+	"Cataclysm.DungeonModifierEffects.EachFloorAddsOneChaosTouchOfTheDrawnKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTouchedDrawTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("0 is more health"), Effects::ChaosTouchedKindFor(0.0f), Effects::ChaosTouchedHealthMore);
+	TestEqual(TEXT("12.49 is still more health"), Effects::ChaosTouchedKindFor(12.49f),
+			  Effects::ChaosTouchedHealthMore);
+	TestEqual(TEXT("12.5 is more speed"), Effects::ChaosTouchedKindFor(12.5f), Effects::ChaosTouchedSpeedMore);
+	TestEqual(TEXT("50 is less health"), Effects::ChaosTouchedKindFor(50.0f), Effects::ChaosTouchedHealthLess);
+	TestEqual(TEXT("87.5 is less resistances"), Effects::ChaosTouchedKindFor(87.5f),
+			  Effects::ChaosTouchedResistanceLess);
+	TestEqual(TEXT("100 is held to the last kind"), Effects::ChaosTouchedKindFor(100.0f),
+			  Effects::ChaosTouchedResistanceLess);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ChaosTouched};
+	if (!TheTouchedFloor(*this, Mode, 1, TEXT("0")) || !TheTouchedFloor(*this, Mode, 2, TEXT("50"))
+		|| !TheTouchedFloor(*this, Mode, 3, TEXT("99")))
+	{
+		return false;
+	}
+	TestEqual(TEXT("floor 1 added more health"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 1);
+	TestEqual(TEXT("floor 2 less health"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthLess), 1);
+	TestEqual(TEXT("floor 3 less resistances"),
+			  Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedResistanceLess), 1);
+	TestTrue(TEXT("maximum health carries 10% more"), ARuleOnIs(Player, TEXT("max_health"), 10.0f));
+	TestTrue(TEXT("and 10% less, as a second multiplier"), ARuleOnIs(Player, TEXT("max_health"), -10.0f));
+	const FName FirstResistance =
+		UCataclysmItemModifiers::ResistanceStatFor(UCataclysmItemModifiers::DamageTypeNames()[0]);
+	TestTrue(FString::Printf(TEXT("%s carries 10%% less"), *FirstResistance.ToString()),
+			 ARuleOnIs(Player, *FirstResistance.ToString(), -10.0f));
+
+	// LEAVING THE DUNGEON -- a floor whose brief carries no rows -- EMPTIES EVERY KIND.
+	Mode->DungeonModifiers = {};
+	if (!TheTouchedFloor(*this, Mode, 4, TEXT("0")))
+	{
+		return false;
+	}
+	for (int32 Kind = 0; Kind < Effects::ChaosTouchedKinds; ++Kind)
+	{
+		TestEqual(FString::Printf(TEXT("kind %d is empty"), Kind), Mode->ChaosTouchedStacksOf(Kind), 0);
+	}
+	TestEqual(TEXT("and nothing is on maximum health"),
+			  DungeonRulesOn(Player.AbilitySystem, TEXT("max_health")).Num(), 0);
+	return true;
+}
+
+// FIVE OF A KIND AT MOST, AND A DRAW FOR A FULL KIND GOES TO THE NEXT KIND WITH ROOM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTouchedCapTest,
+	"Cataclysm.DungeonModifierEffects.AFullChaosTouchSendsTheDrawToTheNextKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTouchedCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("a kind with room takes the draw"),
+			  Effects::ChaosTouchedKindToAdd(0, {4, 0, 0, 0, 0, 0, 0, 0}), 0);
+	TestEqual(TEXT("a full kind passes it to the next"),
+			  Effects::ChaosTouchedKindToAdd(0, {5, 0, 0, 0, 0, 0, 0, 0}), 1);
+	TestEqual(TEXT("the last kind passes it round to the first"),
+			  Effects::ChaosTouchedKindToAdd(7, {0, 0, 0, 0, 0, 0, 0, 5}), 0);
+	TestEqual(TEXT("all eight full adds nothing"),
+			  Effects::ChaosTouchedKindToAdd(3, {5, 5, 5, 5, 5, 5, 5, 5}), Effects::ChaosTouchedAddsNothing);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ChaosTouched};
+	Mode->TotalFloors = 20;
+	for (int32 Floor = 1; Floor <= 7; ++Floor)
+	{
+		if (!TheTouchedFloor(*this, Mode, Floor, TEXT("0")))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("seven draws of more health leave five"),
+			  Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 5);
+	TestEqual(TEXT("and the two past the cap went to more speed"),
+			  Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedSpeedMore), 2);
+	TestTrue(TEXT("maximum health is 50% more"), ARuleOnIs(Player, TEXT("max_health"), 50.0f));
+	return true;
+}
+
+// A FLOOR'S BOSS CLEANSES THE DEBUFFS AND THE BUFFS STAY; THE PLAYER'S OWN DEATH CLEARS BOTH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTouchedCleanseTest,
+	"Cataclysm.DungeonModifierEffects.AFloorsBossCleansesChaosTouchedDebuffsAndTheBuffsStay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTouchedCleanseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {ChaosTouched};
+
+	// A BUFF AND A DEBUFF OF ONE STAT. 60 is less health on every reading of the eight bands,
+	// so the draw's own boundary cannot decide this test.
+	if (!TheTouchedFloor(*this, Mode, 1, TEXT("0")) || !TheTouchedFloor(*this, Mode, 2, TEXT("60")))
+	{
+		return false;
+	}
+	if (!TestEqual(TEXT("a buff is held"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 1)
+		|| !TestEqual(TEXT("and a debuff"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthLess), 1))
+	{
+		return false;
+	}
+
+	// A GATEKEEPER AT THE COMMON RUNG DIES: the floor's boss.
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Gatekeeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+		ACataclysmGatekeeperCharacter::StaticClass(), FVector(-800.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a Gatekeeper"), Gatekeeper))
+	{
+		return false;
+	}
+	Gatekeeper->SetRarityStep(0);
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Gatekeeper, 1.0e9f);
+	if (!TestTrue(TEXT("the Gatekeeper died"), UCataclysmSkillEffects::IsDead(Gatekeeper)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its death cleansed the debuff"),
+			  Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthLess), 0);
+	TestEqual(TEXT("and the buff stays"), Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 1);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestTrue(TEXT("maximum health still carries 10% more"), ARuleOnIs(Player, TEXT("max_health"), 10.0f));
+	TestFalse(TEXT("and no longer 10% less"), ARuleOnIs(Player, TEXT("max_health"), -10.0f));
+
+	// THE PLAYER'S OWN DEATH CLEARS THE BUFF TOO, with no beat in between.
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the player's death cleared the buff"),
+			  Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 0);
+	TestFalse(TEXT("and took it off maximum health before any beat"),
+			  ARuleOnIs(Player, TEXT("max_health"), 10.0f));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

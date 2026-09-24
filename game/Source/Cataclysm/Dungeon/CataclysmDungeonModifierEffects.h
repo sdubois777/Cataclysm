@@ -269,6 +269,28 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float TreatAttackSpeedMorePercent = 0.0f;
 
 	/**
+	 * What Chaos Touched's stacks move, in percent: a More and a Less for each of four stats.
+	 * Issues #1820 and #41. Their own fields, for the reason `SicknessMaxHealthLessPercent`
+	 * gives; a buff and a debuff of one stat are two multipliers.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TouchedMaxHealthMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TouchedMaxHealthLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TouchedSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TouchedSpeedLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TouchedAttackSpeedMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TouchedAttackSpeedLessPercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TouchedResistanceMorePercent = 0.0f;
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TouchedResistanceLessPercent = 0.0f;
+
+	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
 	 *
@@ -397,6 +419,10 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& CurseMaxHealthLessPercent <= 0.0f
 			&& TreatSpeedMorePercent <= 0.0f
 			&& TreatAttackSpeedMorePercent <= 0.0f
+			&& TouchedMaxHealthMorePercent <= 0.0f && TouchedMaxHealthLessPercent <= 0.0f
+			&& TouchedSpeedMorePercent <= 0.0f && TouchedSpeedLessPercent <= 0.0f
+			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
+			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -1672,6 +1698,29 @@ public:
 	 *   adds no creature damage multiplier.
 	 */
 	static const TCHAR* SoulHarvestKey;
+
+	/**
+	 * The row where every floor adds a random buff or debuff to the player. Issues #1820 and
+	 * #41.
+	 *
+	 * "Every floor, a random buff or debuff is added to the player. These do not have the
+	 * normal time limits and will continue to stack unless cleansed." Each floor carrying the
+	 * row adds one stack of one of `ChaosTouchedKinds` kinds, drawn evenly: 10% more or 10%
+	 * less of maximum health, movement speed, attack speed or all eight resistances.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24:
+	 * - THE EIGHT KINDS ARE THIS GAME'S OWN PLAYER-EFFECT ROUTES. game/Data/StatusEffects.csv
+	 *   offers no pool a player could carry: of its 46 buff and debuff rows, three move a stat
+	 *   and two of those are the player's own debuffs on enemies.
+	 * - EVEN ODDS, pinned for tests by `Cataclysm.ChaosTouchedRoll`.
+	 * - FIVE STACKS OF A KIND AT MOST; a draw for a full kind goes to the next kind with room.
+	 *   A buff and a debuff of one stat are two multipliers and do not cancel.
+	 * - A FLOOR'S BOSS CLEANSES THE DEBUFFS ONLY, and the buffs stay: a cleanse removes what
+	 *   harms. The player's own death clears every stack (the owner's ruling of 2026-09-10),
+	 *   and leaving the dungeon empties them.
+	 * - FLOOR 1 COUNTS.
+	 */
+	static const TCHAR* ChaosTouchedKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -3930,6 +3979,32 @@ public:
 			&& SoulHarvestDamagePercentPerSoul > 0.0f && SoulHarvestResistancePerSoul > 0.0f,
 		"A soul that gives nothing, or a cap of none, is not the row.");
 
+	/**
+	 * Chaos Touched's kinds, as `ChaosTouchedKindFor` answers them: the four buffs first, then
+	 * the four debuffs of the same stats in the same order.
+	 */
+	static constexpr int32 ChaosTouchedHealthMore = 0;
+	static constexpr int32 ChaosTouchedSpeedMore = 1;
+	static constexpr int32 ChaosTouchedAttackSpeedMore = 2;
+	static constexpr int32 ChaosTouchedResistanceMore = 3;
+	static constexpr int32 ChaosTouchedHealthLess = 4;
+	static constexpr int32 ChaosTouchedSpeedLess = 5;
+	static constexpr int32 ChaosTouchedAttackSpeedLess = 6;
+	static constexpr int32 ChaosTouchedResistanceLess = 7;
+	static constexpr int32 ChaosTouchedKinds = 8;
+	static constexpr int32 ChaosTouchedFirstDebuff = ChaosTouchedHealthLess;
+	static constexpr int32 ChaosTouchedAddsNothing = -1;
+
+	/** What one stack takes or gives, and how many of a kind there may be. A play-test point. */
+	static constexpr float ChaosTouchedPercentPerStack = 10.0f;
+	static constexpr int32 ChaosTouchedMostStacks = 5;
+
+	static_assert(
+		ChaosTouchedPercentPerStack * ChaosTouchedMostStacks < 100.0f
+			&& ChaosTouchedFirstDebuff * 2 == ChaosTouchedKinds,
+		"A debuff that could take a whole stat would stop the player, and the kinds must be "
+		"four buffs then the same four as debuffs.");
+
 	static_assert(
 		DirgeResonanceHasteSeconds > 0.0f
 			&& DirgeResonanceHasteSeconds < DirgeResonanceEverySeconds,
@@ -4671,6 +4746,21 @@ public:
 
 	/** What this many souls add to a creature's all-resistance figure. */
 	static float SoulHarvestResistanceAdded(int32 Souls);
+
+	/** Which kind a floor draws for this roll, 0 to 100: eight even bands, the lowest first. */
+	static int32 ChaosTouchedKindFor(float Roll);
+
+	/**
+	 * The kind a floor actually adds: the drawn one, or the next kind with room when it is
+	 * full, or `ChaosTouchedAddsNothing` when all eight are. The only cap on the stacks.
+	 */
+	static int32 ChaosTouchedKindToAdd(int32 Drawn, const TArray<int32>& Stacks);
+
+	/** What this many stacks move their stat by, in percent. */
+	static float ChaosTouchedPercentFor(int32 Stacks);
+
+	/** Whether a kind is a debuff, which a floor's boss cleanses. */
+	static bool ChaosTouchedIsDebuff(int32 Kind);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in
