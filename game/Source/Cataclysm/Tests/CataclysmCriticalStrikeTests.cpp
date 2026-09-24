@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "Tests/CataclysmTestWorld.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -1643,6 +1644,83 @@ CATACLYSM_TEST(FCataclysmFirstCritRowTest,
 				 TEXT("and only the first carried the extra multiplier: %.2f against %.2f"),
 				 Opening.DealtToHealth, Follow.DealtToHealth),
 			 Opening.DealtToHealth > Follow.DealtToHealth + 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCritPerTargetDebuffTest,
+	"Cataclysm.Crit.ACriticalStrikeRowCanGrowWithTheDebuffsOnTheTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A critical strike chance row scaled by `target_debuffs` reaches the blow.
+ * Issue #1815: "Each unique debuff on an enemy increases your crit chance
+ * against them by 5%-10%".
+ *
+ * WHY THROUGH A REAL BLOW. The target's debuffs are read only when a row in the
+ * lookup asks for them, and a scale asks separately from a condition. A test
+ * that set the reading by hand would pass with that request deleted.
+ *
+ * THE ROLL IS PINNED AT NOUGHT and the chance is nothing but the row, so a
+ * creature with no debuff cannot be struck critically and one bleeding is.
+ */
+bool FCataclysmCritPerTargetDebuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmCritTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FScopedCritRoll Pinned(0.0f);
+
+	FScopedCombatant Attacker(World);
+	Attacker.AbilitySystem->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+	ACataclysmEnemyCharacter* Bleeding =
+		SpawnCritCreature(World, FVector(2.0f * M, 0.0f, 0.0f), 1'000'000.0f);
+	ACataclysmEnemyCharacter* Clean =
+		SpawnCritCreature(World, FVector(0.0f, 2.0f * M, 0.0f), 1'000'000.0f);
+	UAbilitySystemComponent* BleedingSystem =
+		Bleeding ? Bleeding->GetAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a creature to bleed"), BleedingSystem)
+		|| !TestNotNull(TEXT("and one that does not"), Clean))
+	{
+		return false;
+	}
+
+	// A LOOSE TAG IS AN OWNED TAG, which is all `UCataclysmDebuffs` reads.
+	BleedingSystem->AddLooseGameplayTag(UCataclysmDebuffs::BleedTag());
+	if (!TestEqual(TEXT("the one creature carries one debuff"),
+				   UCataclysmDebuffs::CountOnActor(Bleeding), 1)
+		|| !TestEqual(TEXT("and the other none"), UCataclysmDebuffs::CountOnActor(Clean), 0))
+	{
+		return false;
+	}
+
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatInputs& Chance = Lines.FindOrAdd(FName(TEXT("crit_chance")));
+		Chance.Base = 0.0f;
+		FCataclysmStatModifier PerDebuff = Conditioned(
+			ECataclysmStatBucket::Flat, 50.0f, ECataclysmStatCondition::Always);
+		PerDebuff.Scale = ECataclysmStatScale::PerTargetDebuff;
+		PerDebuff.ScaleStep = 1.0f;
+		Chance.Modifiers = {PerDebuff};
+		GiveLines(Attacker.AbilitySystem, MoveTemp(Lines));
+	}
+
+	const FCataclysmDamageResult AtBleeding = StrikeOnce(Attacker.Actor, Bleeding);
+	const FCataclysmDamageResult AtClean = StrikeOnce(Attacker.Actor, Clean);
+	TestTrue(TEXT("both blows landed"),
+			 AtBleeding.DealtToHealth > 0.0f && AtClean.DealtToHealth > 0.0f);
+	TestTrue(TEXT("the blow on the bleeding creature critically struck"),
+			 AtBleeding.bWasCritical);
+	TestFalse(TEXT("and the blow on the clean one did not"), AtClean.bWasCritical);
 
 	return true;
 }

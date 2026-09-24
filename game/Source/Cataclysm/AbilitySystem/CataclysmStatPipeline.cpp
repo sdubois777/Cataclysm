@@ -90,6 +90,8 @@ namespace
 		{ TEXT("target_not_yet_crit_by_you"),   ECataclysmStatCondition::TargetNotYetCritByYou },
 		{ TEXT("in_combat"),                    ECataclysmStatCondition::InCombat },
 		{ TEXT("out_of_combat"),                ECataclysmStatCondition::OutOfCombat },
+		{ TEXT("target_carries_any_debuff"),    ECataclysmStatCondition::TargetCarriesAnyDebuff },
+		{ TEXT("target_carries_a_dot"),         ECataclysmStatCondition::TargetCarriesADot },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -154,6 +156,9 @@ namespace
 		{ TEXT("seconds_stationary"),  ECataclysmStatScale::PerSecondStationary },
 		{ TEXT("seconds_in_combat"),   ECataclysmStatScale::PerSecondInCombat },
 		{ TEXT("seconds_out_of_combat"), ECataclysmStatScale::PerSecondOutOfCombat },
+		{ TEXT("target_debuffs"),      ECataclysmStatScale::PerTargetDebuff },
+		{ TEXT("buffs_held"),          ECataclysmStatScale::PerBuffHeld },
+		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
 	};
 
 	/**
@@ -259,8 +264,10 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetNotYetCritByYou:
 	case ECataclysmStatCondition::InCombat:
 	case ECataclysmStatCondition::OutOfCombat:
+	case ECataclysmStatCondition::TargetCarriesAnyDebuff:
+	case ECataclysmStatCondition::TargetCarriesADot:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the twenty-three says
+		// nothing for a number to be compared against. Each of the twenty-five says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -416,6 +423,8 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::OpponentWithinMetres:
 	case C::TargetNotYetStruckByYou:
 	case C::TargetNotYetCritByYou:
+	case C::TargetCarriesAnyDebuff:
+	case C::TargetCarriesADot:
 		return EOn::TheBlowOrSkill;
 	}
 
@@ -846,6 +855,18 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		return State.TargetDebuffs.HasTagExact(
 			UCataclysmDebuffs::VoidSplinterTag());
 
+	case ECataclysmStatCondition::TargetCarriesAnyDebuff:
+		// Issue #1815. Every entry is a debuff, because only debuffs are
+		// collected; an unread target's container is empty and refuses.
+		return !State.TargetDebuffs.IsEmpty();
+
+	case ECataclysmStatCondition::TargetCarriesADot:
+		// Issue #1815. `HasTag` AND NOT `HasTagExact`, ON PURPOSE: the entries
+		// are the children (`Keyword.DoT.Bleed`), and the question is whether any
+		// of them sits under the parent. The void splinter case above asks the
+		// opposite question and says why it is exact.
+		return State.TargetDebuffs.HasTag(UCataclysmDebuffs::DamageOverTimeTag());
+
 	case ECataclysmStatCondition::CanCrippleOrWeaken:
 		// THIS CHARACTER'S OWN CHANCES, NOT THE TARGET'S STATE. Issue #1718.
 		// Spreading Hurt widens attacks that cripple or weaken, and an area of
@@ -1150,15 +1171,20 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 {
 	const float Uncapped = UncappedScaledValue(Modifier, State);
 
-	// "UP TO 10 STACKS". Issue #1815. Every scale answers `Value` times a whole
-	// number of steps that is never negative, so capping the answer's size at
-	// `Value` times the cap is capping the steps, for every scale at once.
+	// "UP TO 10 STACKS". Issue #1815. Every scale answers what one step is worth
+	// times a whole number of steps that is never negative, so capping the
+	// answer's size at one step's worth times the cap is capping the steps, for
+	// every scale at once. One step is worth `Value`, except on the one scale
+	// whose value is a percentage of its reading, where it is `Value` / 100.
 	if (Modifier.Scale == ECataclysmStatScale::Fixed || Modifier.ScaleMaxSteps <= 0)
 	{
 		return Uncapped;
 	}
 
-	const float Cap = FMath::Abs(Modifier.Value) * static_cast<float>(Modifier.ScaleMaxSteps);
+	const float PerStep = Modifier.Scale == ECataclysmStatScale::PercentOfManaHeld
+		? FMath::Abs(Modifier.Value) / 100.0f
+		: FMath::Abs(Modifier.Value);
+	const float Cap = PerStep * static_cast<float>(Modifier.ScaleMaxSteps);
 	return FMath::Clamp(Uncapped, -Cap, Cap);
 }
 
@@ -1404,6 +1430,27 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	// somebody applied that the ability system is already holding.
 	case ECataclysmStatScale::PerDebuffCarried:
 		return StackedValue(Modifier, State.DebuffsCarried);
+
+	// AND THE TARGET'S, AND THE BUFFS RUNNING. Issue #1815. Whole things, so the
+	// stack arithmetic. An unread target's container is empty and counts none.
+	case ECataclysmStatScale::PerTargetDebuff:
+		return StackedValue(Modifier, State.TargetDebuffs.Num());
+
+	case ECataclysmStatScale::PerBuffHeld:
+		return StackedValue(Modifier, State.BuffsHeld);
+
+	case ECataclysmStatScale::PercentOfManaHeld:
+	{
+		// THE REFUSALS OF THE MAXIMUM MANA SCALE, AND A PERCENTAGE. Issue #1815.
+		// `Value` is a share of the mana held, so a 20 roll on 250 mana is 50.
+		if (State.ManaHeld < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		const float Steps = FMath::FloorToFloat(State.ManaHeld / Modifier.ScaleStep);
+		return Modifier.Value / 100.0f * FMath::Max(0.0f, Steps);
+	}
 
 	// AND THE MINIONS THE CHARACTER IS COMMANDING, COUNTED THE SAME WAY AGAIN.
 	// Issue #1518, the Ritualist's generator: "1 per second for each minion you

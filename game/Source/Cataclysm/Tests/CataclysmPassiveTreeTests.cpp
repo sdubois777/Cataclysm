@@ -1631,7 +1631,11 @@ namespace CataclysmPassiveConditionTest
 			// ISSUE #1815, THE COMBAT STATE. One meaning of "in combat" for the
 			// whole game, so no row states a window of its own.
 			|| Name == TEXT("in_combat")
-			|| Name == TEXT("out_of_combat");
+			|| Name == TEXT("out_of_combat")
+			// ISSUE #1815, THE TARGET'S DEBUFFS. Whether it carries any, and
+			// whether one is a damage over time; neither is a number.
+			|| Name == TEXT("target_carries_any_debuff")
+			|| Name == TEXT("target_carries_a_dot");
 	}
 }
 

@@ -1413,6 +1413,27 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	OutOfCombat
 		UMETA(DisplayName = "Out Of Combat"),
+
+	/**
+	 * The target carries at least one debuff. Issue #1815: "Debuffed enemies
+	 * take 10%-20% increased damage from all sources".
+	 *
+	 * NO THRESHOLD, SO `ConditionValue` IS NOT READ. A debuff is what
+	 * `UCataclysmDebuffs` counts: every damage over time, and a stun.
+	 *
+	 * AN UNREAD TARGET CARRIES NOTHING AND REFUSES, as every target ailment
+	 * condition does: `TargetDebuffs` is filled only when a row asks.
+	 */
+	TargetCarriesAnyDebuff
+		UMETA(DisplayName = "Target Carries Any Debuff"),
+
+	/**
+	 * The target carries a damage over time: a tag under `Keyword.DoT`. Issue
+	 * #1815: "Strike skills deal 20%-40% increased damage against enemies
+	 * affected by a DoT". A stun is a debuff and not a damage over time.
+	 */
+	TargetCarriesADot
+		UMETA(DisplayName = "Target Carries A Dot"),
 };
 
 /**
@@ -1855,6 +1876,55 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerSecondOutOfCombat
 		UMETA(DisplayName = "Per Second Out Of Combat"),
+
+	/**
+	 * Multiplied by how many distinct debuffs the target carries. Issue #1815:
+	 * "Each unique debuff on an enemy increases your crit chance against them
+	 * by 5%-10%".
+	 *
+	 * THE LENGTH OF `TargetDebuffs`, which is `UCataclysmDebuffs::CountOn` for
+	 * the target by construction, the same count `PerDebuffCarried` makes of
+	 * the character itself.
+	 *
+	 * "YOU APPLY" IS READ AS "ON THE ENEMY", ruled under the owner's delegation
+	 * on 2026-09-23. No record says who applied a debuff, so a minion's debuffs
+	 * count too, unlike a minion's hit, which is its own. An applier record is
+	 * what would narrow it.
+	 */
+	PerTargetDebuff
+		UMETA(DisplayName = "Per Target Debuff"),
+
+	/**
+	 * Multiplied by how many self-buff skills are running on the character.
+	 * Issue #1815: "Each active buff on you increases your damage by 5%-10%".
+	 *
+	 * A RUNNING SELF-BUFF SKILL IS WHAT AN ACTIVE BUFF MEANS, ruled under the
+	 * owner's delegation on 2026-09-23: the player sees skills as buffs, and
+	 * nothing shows an enchantment's few-second window as one today. To be
+	 * revisited if a buff bar is built.
+	 */
+	PerBuffHeld
+		UMETA(DisplayName = "Per Buff Held"),
+
+	/**
+	 * `Value` PER CENT of the whole `ScaleStep` points of mana the character
+	 * holds now. Issue #1815: "Your skills deal 10%-30% of your current mana as
+	 * more damage" is a flat row of 10 to 30 with a step of 1.
+	 *
+	 * THE FIRST SCALE WHOSE VALUE IS A PERCENTAGE OF ITS READING rather than an
+	 * amount per step. Every other scale answers `Value` times the steps; this
+	 * one answers `Value` / 100 times them. It exists because the game shows an
+	 * enchantment's rolled number in place of the range in its sentence (the
+	 * owner's ruling of 2026-09-11), so the row must carry the sentence's own
+	 * 10 to 30; a row of 0.1 to 0.3 a point would read "0.2% of your current
+	 * mana". Ruled 2026-09-23 under the owner's delegation, replacing a ruling
+	 * of the same day that had not checked that display rule.
+	 *
+	 * THE MANA IN HAND, NOT THE MAXIMUM, which `PerPointOfMaximumMana` reads. A
+	 * spell that spends mana lowers the next one's bonus, as the sentence says.
+	 */
+	PercentOfManaHeld
+		UMETA(DisplayName = "Percent Of Mana Held"),
 };
 
 /**
@@ -2594,6 +2664,17 @@ struct CATACLYSM_API FCataclysmStatConditions
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float SecondsOutOfCombat = -1.0f;
 
+	/** How many self-buff skills are running on the character. Issue #1815. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 BuffsHeld = 0;
+
+	/**
+	 * How much mana the character holds now. Negative means unknown: no vital
+	 * attribute set. Issue #1815.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float ManaHeld = -1.0f;
+
 	/**
 	 * How far away each hostile character near this one is, in metres. Empty
 	 * means either that nobody is near or that this lookup never asked. Issue
@@ -3251,7 +3332,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a fifty-eighth, which is the drift that put the passive tree eight
+	 * adds a sixtieth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -3260,7 +3341,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TWENTY-THREE OF THE FIFTY-SEVEN COMPARE NOTHING. They are the case labels
+	 * TWENTY-FIVE OF THE FIFTY-NINE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

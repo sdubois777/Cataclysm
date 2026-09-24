@@ -226,6 +226,12 @@ public:
 	static FGameplayTag BleedTag();
 
 	/**
+	 * The parent of every damage over time, `Keyword.DoT`. Issue #1815, for
+	 * "enemies affected by a DoT". The same branch `DebuffRootNames` counts.
+	 */
+	static FGameplayTag DamageOverTimeTag();
+
+	/**
 	 * `Status.Debuff.Cripple`, or an invalid tag if the vocabulary has lost it.
 	 * Issue #1515.
 	 *

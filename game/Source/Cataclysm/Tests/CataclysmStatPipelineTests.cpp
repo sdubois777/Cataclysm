@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
@@ -3838,6 +3839,135 @@ bool FCataclysmScaleCapTest::RunTest(const FString&)
 
 	TestTrue(TEXT("and a cap on a scaled value is accepted"),
 		FPipeline::ValidateModifier(UpToTen).IsEmpty());
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTargetDebuffConditionsTest,
+	"Cataclysm.StatPipeline.TheTargetDebuffConditionsRefuseAnUnreadTargetAndAStunIsNotADamageOverTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `target_carries_any_debuff` holds for any debuff on the target, and
+ * `target_carries_a_dot` only for a damage over time. Issue #1815.
+ *
+ * THE STUN IS THE CASE THAT SEPARATES THEM. It is a debuff and deals no damage,
+ * so a build that answered the second condition with the first would pass every
+ * bleeding case and fail this one.
+ */
+bool FCataclysmTargetDebuffConditionsTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("target_carries_any_debuff is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("target_carries_any_debuff"), Named)
+			&& Named == ECataclysmStatCondition::TargetCarriesAnyDebuff);
+	TestTrue(TEXT("and so is target_carries_a_dot"),
+		FPipeline::ConditionNamed(TEXT("target_carries_a_dot"), Named)
+			&& Named == ECataclysmStatCondition::TargetCarriesADot);
+	TestFalse(TEXT("neither compares a value"),
+		FPipeline::ConditionTakesAValue(ECataclysmStatCondition::TargetCarriesAnyDebuff)
+			|| FPipeline::ConditionTakesAValue(ECataclysmStatCondition::TargetCarriesADot));
+
+	const ECataclysmStatCondition Any = ECataclysmStatCondition::TargetCarriesAnyDebuff;
+	const ECataclysmStatCondition Dot = ECataclysmStatCondition::TargetCarriesADot;
+
+	const FGameplayTag Stunned = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Stunned")), /*ErrorIfNotFound=*/false);
+	const FGameplayTag Bleed = UCataclysmDebuffs::BleedTag();
+	if (!TestTrue(TEXT("the stun and bleed tags exist"), Stunned.IsValid() && Bleed.IsValid()))
+	{
+		return false;
+	}
+
+	FCataclysmStatConditions Unread;
+	TestFalse(TEXT("an unread target carries no debuff"),
+		FPipeline::ConditionHolds(Any, 0.0f, Unread));
+	TestFalse(TEXT("and no damage over time"), FPipeline::ConditionHolds(Dot, 0.0f, Unread));
+
+	FCataclysmStatConditions StunnedOnly;
+	StunnedOnly.TargetDebuffs.AddTag(Stunned);
+	TestTrue(TEXT("a stunned target carries a debuff"),
+		FPipeline::ConditionHolds(Any, 0.0f, StunnedOnly));
+	TestFalse(TEXT("and a stun is not a damage over time"),
+		FPipeline::ConditionHolds(Dot, 0.0f, StunnedOnly));
+
+	FCataclysmStatConditions Bleeding;
+	Bleeding.TargetDebuffs.AddTag(Bleed);
+	TestTrue(TEXT("a bleeding target carries a debuff"),
+		FPipeline::ConditionHolds(Any, 0.0f, Bleeding));
+	TestTrue(TEXT("and a damage over time"), FPipeline::ConditionHolds(Dot, 0.0f, Bleeding));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDebuffBuffManaScalesTest,
+	"Cataclysm.StatPipeline.TheTargetDebuffBuffAndManaScalesCountWholeThings",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `target_debuffs`, `buffs_held` and `mana_held_percent` each multiply a value by whole
+ * steps of their reading. Issue #1815.
+ *
+ * 250.7 MANA, SO ROUNDING UP OR TO NEAREST WOULD GIVE A DIFFERENT ANSWER, and a
+ * value of 0.2 a point is the shape "10%-30% of your current mana" is written in.
+ */
+bool FCataclysmDebuffBuffManaScalesTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("target_debuffs is a scale this build knows"),
+		FPipeline::ScaleNamed(TEXT("target_debuffs"), Scale)
+			&& Scale == ECataclysmStatScale::PerTargetDebuff);
+	TestTrue(TEXT("and buffs_held"),
+		FPipeline::ScaleNamed(TEXT("buffs_held"), Scale)
+			&& Scale == ECataclysmStatScale::PerBuffHeld);
+	TestTrue(TEXT("and mana_held_percent"),
+		FPipeline::ScaleNamed(TEXT("mana_held_percent"), Scale)
+			&& Scale == ECataclysmStatScale::PercentOfManaHeld);
+
+	FCataclysmStatModifier Per;
+	Per.Bucket = ECataclysmStatBucket::Increased;
+	Per.Value = 5.0f;
+	Per.ScaleStep = 1.0f;
+
+	FCataclysmStatConditions State;
+	State.TargetDebuffs.AddTag(UCataclysmDebuffs::BleedTag());
+	State.TargetDebuffs.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("State.Stunned")), /*ErrorIfNotFound=*/false));
+	State.BuffsHeld = 3;
+	State.ManaHeld = 250.7f;
+
+	FCataclysmStatModifier PerDebuff = Per;
+	PerDebuff.Scale = ECataclysmStatScale::PerTargetDebuff;
+	TestEqual(TEXT("two debuffs on the target is two steps"),
+		FPipeline::ScaledValue(PerDebuff, State), 10.0f, 0.001f);
+
+	FCataclysmStatModifier PerBuff = Per;
+	PerBuff.Scale = ECataclysmStatScale::PerBuffHeld;
+	TestEqual(TEXT("three buffs held is three steps"),
+		FPipeline::ScaledValue(PerBuff, State), 15.0f, 0.001f);
+
+	FCataclysmStatModifier PerMana = Per;
+	PerMana.Bucket = ECataclysmStatBucket::Flat;
+	PerMana.Value = 20.0f;
+	PerMana.Scale = ECataclysmStatScale::PercentOfManaHeld;
+	TestEqual(TEXT("20% of 250.7 mana is 20% of 250 whole points, 50"),
+		FPipeline::ScaledValue(PerMana, State), 50.0f, 0.001f);
+
+	// AND ITS CAP COUNTS STEPS, NOT THE VALUE. Ten steps of 20% are 2, where a
+	// cap reading "value per step" would allow 200.
+	FCataclysmStatModifier CappedMana = PerMana;
+	CappedMana.ScaleMaxSteps = 10;
+	TestEqual(TEXT("capped at ten points of mana, 20% of them is 2"),
+		FPipeline::ScaledValue(CappedMana, State), 2.0f, 0.001f);
+
+	FCataclysmStatConditions Unread;
+	TestEqual(TEXT("an unread character scales to nothing on all three"),
+		FPipeline::ScaledValue(PerDebuff, Unread) + FPipeline::ScaledValue(PerBuff, Unread)
+			+ FPipeline::ScaledValue(PerMana, Unread), 0.0f, 0.001f);
 
 	return true;
 }

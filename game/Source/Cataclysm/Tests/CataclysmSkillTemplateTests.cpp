@@ -15741,4 +15741,65 @@ bool FCataclysmDesperateMeasuresAuraTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuffsHeldCountTest,
+	"Cataclysm.Skills.ARunningSelfBuffIsCountedAsHeldAndAnEndedOneIsNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `BuffsHeld` counts the self-buff skills running on the character. Issue
+ * #1815: "Each active buff on you increases your damage by 5%-10%".
+ *
+ * AN ACTIVE BUFF IS A RUNNING SELF-BUFF SKILL, ruled under the owner's
+ * delegation on 2026-09-23. The few-second windows enchantments open are not
+ * counted.
+ *
+ * THE ENDED BUFF IS READ AT ONCE, AND THAT IS NOT AN ASSUMPTION. Read in the
+ * Unreal Engine 5.8 source on 2026-09-23: `CancelAbilityHandle` calls
+ * `CancelAbilitySpec` (AbilitySystemComponent_Abilities.cpp, lines 1316 and
+ * 1350), which calls the instance's `CancelAbility`. That defers only while the
+ * ability's own `ScopeLockCount` is above nought (GameplayAbility.cpp line 745),
+ * and so does `EndAbility` (line 806); nothing here holds that lock. `EndAbility`
+ * then calls `NotifyAbilityEnded` (line 894), which lowers the spec's
+ * `ActiveCount`, and `FGameplayAbilitySpec::IsActive` is `ActiveCount > 0`
+ * (GameplayAbilityTypes.cpp line 204). `UCataclysmSelfBuffSkill::EndAbility`
+ * clears its timers and calls the engine's directly. The death test
+ * `Cataclysm.Death.ARespawnEndsASelfBuffThatWasStillRunning` observes an
+ * ended buff the same way, straight after `Revive`.
+ */
+bool FCataclysmBuffsHeldCountTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"), TEXT("Burning Wrath"),
+		TEXT("Item.Weapon.Greataxe, Element.Demonic, Type.Buff"));
+	if (!Buff)
+	{
+		AddError(TEXT("Could not grant the buff."));
+		return false;
+	}
+
+	TestEqual(TEXT("a granted buff that has not been used is not held"),
+		Caster.AbilitySystem->CurrentConditions().BuffsHeld, 0);
+
+	if (!TestTrue(TEXT("the buff activates"), Activate(Caster, Buff)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a running buff is held"),
+		Caster.AbilitySystem->CurrentConditions().BuffsHeld, 1);
+
+	Caster.AbilitySystem->CancelAbilityHandle(Buff->GetCurrentAbilitySpecHandle());
+	TestEqual(TEXT("and an ended one is not"),
+		Caster.AbilitySystem->CurrentConditions().BuffsHeld, 0);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
