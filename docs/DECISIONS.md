@@ -264,6 +264,15 @@ remedy. **The coordinating session ruled on 2026-09-24 that it is inside this ch
   landed (the engine entry's rule). **"Each spell cast" is `spell`, and "each skill use" is
   `skill_use`.**
 
+### "INCREASING" AND "REDUCING" ARE INCREASE WORDS
+
+**The wording check refused the critical strike rows as first written.** Their sentence says
+"increasing all damage", and `test_an_increased_row_is_worded_as_an_increase` accepted "increase",
+"increases" and "increased" but not "increasing". The check now also accepts "increasing" and
+"reducing". **Ruled by the coordinating session on 2026-09-24, under the owner's delegation:** they are
+the same words in another form. This widens the check in the way the 2026-09-14 change did, which
+added "reduce" and "reduces", and it does not change what the check means.
+
 ### THE TESTS
 
 One test per enchantment, `Cataclysm.Enchantments.The...StackRow...`. Each wears the real row on a
