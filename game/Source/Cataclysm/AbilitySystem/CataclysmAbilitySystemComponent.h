@@ -1156,6 +1156,38 @@ public:
 	void NoteMinionReplaced(bool bForExplosion, float IntervalSeconds);
 
 	/**
+	 * The two figures of Nothing Stops It, the Final Onslaught's third option.
+	 * Issue #1515: "You cannot be brought below 1 health by a single hit. When
+	 * a hit would have done so you take no damage for 2 seconds, no more than
+	 * once every 20 seconds." The first is the 20, and above zero means the
+	 * option is held; the second is the 2.
+	 */
+	static const TCHAR* LethalHitSurvivedEverySecondsStat;
+	static const TCHAR* ImmuneAfterLethalHitSecondsStat;
+
+	/**
+	 * Whether a hit that would kill this character may be survived now. The
+	 * shape is `MayReleaseNova`'s: never survived one is allowed, and no world
+	 * means no clock and so no survival.
+	 */
+	bool MaySurviveLethalHit() const;
+
+	/**
+	 * Record that a lethal hit was survived: the next waits `IntervalSeconds`,
+	 * and no damage is taken for `ImmuneSeconds` from now.
+	 */
+	void NoteLethalHitSurvived(float IntervalSeconds, float ImmuneSeconds);
+
+	/** Whether the no-damage window after a survived hit is still open. */
+	bool IsImmuneAfterLethalHit() const;
+
+	/** When a lethal hit may next be survived, in world seconds. For tests. */
+	float LethalHitSurvivalAllowedAt() const
+	{
+		return LethalHitSurvivalNextAllowedSeconds;
+	}
+
+	/**
 	 * Record that an enemy is standing inside this character's Fervour decay
 	 * radius right now. Issue #1515.
 	 *
@@ -2243,6 +2275,12 @@ protected:
 
 	/** When Rekindled may next replace a minion that exploded. -1 is never yet. */
 	float MinionExplosionReplacementNextAllowedSeconds = -1.0f;
+
+	/** When Nothing Stops It may next save this character. -1 is never yet. */
+	float LethalHitSurvivalNextAllowedSeconds = -1.0f;
+
+	/** Until when, in world seconds, this character takes no damage. -1 is not. */
+	float ImmuneAfterLethalHitUntilSeconds = -1.0f;
 
 	/** When an enemy was last inside the Fervour decay radius. Issue #1515. */
 	float EnemyLastInReachSeconds = -1.0f;

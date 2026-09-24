@@ -233,7 +233,9 @@ namespace
 			: 0.0f;
 	}
 
-	FCataclysmHitDelivery MinionDelivery(ACataclysmMinion* Minion, bool bIsArea)
+	// ANY ACTOR RATHER THAN A MINION, SINCE SHARED RUIN. Issue #1515. A thrall
+	// is a taken enemy character, and its death blast is dealt by the thrall.
+	FCataclysmHitDelivery MinionDelivery(AActor* Minion, bool bIsArea)
 	{
 		FCataclysmHitDelivery Delivery;
 		Delivery.bIsArea = bIsArea;
@@ -919,4 +921,57 @@ void ACataclysmMinion::Explode()
 	}
 
 	Destroy();
+}
+
+const TCHAR* ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat =
+	TEXT("minion_death_blast_percent_of_maximum_health");
+const TCHAR* ACataclysmMinion::DeathBlastRadiusMetresStat =
+	TEXT("minion_death_blast_radius_metres");
+
+int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
+{
+	if (!IsValid(Lost) || !Commander)
+	{
+		return 0;
+	}
+
+	// BOTH FIGURES ARE THE COMMANDER'S, and either at nothing means no blast: a
+	// share with no radius reaches nobody, and a radius with no share deals
+	// nothing.
+	const float Percent =
+		SummonerStat(Commander, DeathBlastPercentOfMaximumHealthStat);
+	const float RadiusMetres = SummonerStat(Commander, DeathBlastRadiusMetresStat);
+	if (Percent <= 0.0f || RadiusMetres <= 0.0f)
+	{
+		return 0;
+	}
+
+	// THE DYING CREATURE'S OWN MAXIMUM, which is what "that minion's maximum
+	// health" names. Read now, while it still has an ability system to read.
+	const UAbilitySystemComponent* Its = UCataclysmTargeting::AbilitySystemOf(Lost);
+	const float Maximum = Its
+		? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+		: 0.0f;
+	const float Damage = Maximum * Percent / 100.0f;
+	if (Damage <= 0.0f)
+	{
+		return 0;
+	}
+
+	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
+		Lost->GetWorld(), Lost, Lost->GetActorLocation(), RadiusMetres * 100.0f);
+
+	// AREA DAMAGE WITH THE MINION'S OWN DELIVERY, as its explosion is, AND NOT
+	// RETALIATED AGAINST. Area damage provokes retaliation, and retaliation is
+	// paid back to whoever dealt the blow: here that is a creature whose death
+	// is being handled, so a reflected blow would write its health again and
+	// run the death a second time.
+	FCataclysmHitDelivery Delivery = MinionDelivery(Lost, /*bIsArea=*/true);
+	Delivery.bCannotBeRetaliatedAgainst = true;
+
+	for (AActor* Target : Caught)
+	{
+		UCataclysmSkillEffects::ApplyDirectDamage(Lost, Target, Damage, Delivery);
+	}
+	return Caught.Num();
 }

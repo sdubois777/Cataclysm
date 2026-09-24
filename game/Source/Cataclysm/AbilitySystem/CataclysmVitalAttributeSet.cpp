@@ -881,6 +881,49 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						AsEnemy && AsEnemy->IsBoss()));
 			}
 
+			// AND NOTHING STOPS IT, ON WHAT CAME OUT AS WELL. Issue #1515: "You
+			// cannot be brought below 1 health by a single hit. When a hit would
+			// have done so you take no damage for 2 seconds, no more than once
+			// every 20 seconds." Ruled on 2026-09-23 under the owner's
+			// delegation: a damage over time tick is not "a single hit", so only
+			// a hit is saved; the window after it stops ALL damage, ticks
+			// included, because the sentence says "no damage".
+			//
+			// THE WHOLE RESULT IS EMPTIED IN THE WINDOW, NOT ONLY THE HEALTH, so
+			// nothing downstream hears of a blow that did nothing: no shield
+			// drawn, no refill wait restarted, no leech for the attacker.
+			//
+			// LETHAL MEANS THE RESOLVED FIGURE REACHES THE HEALTH LEFT. The
+			// Masochist's conversion below may turn some of a blow into bleeding
+			// first, but a Ravager has none to hold, so the order is stated
+			// rather than felt.
+			if (UCataclysmAbilitySystemComponent* Guarded =
+					Cast<UCataclysmAbilitySystemComponent>(
+						GetOwningAbilitySystemComponent()))
+			{
+				if (Guarded->IsImmuneAfterLethalHit())
+				{
+					Resolved.DealtToHealth = 0.0f;
+					Resolved.AbsorbedByShield = 0.0f;
+					Resolved.AbsorbedByMana = 0.0f;
+				}
+				else if (!Hit.bIsDamageOverTime && GetHealth() > 0.0f
+					&& Resolved.DealtToHealth >= GetHealth())
+				{
+					using UGuarded = UCataclysmAbilitySystemComponent;
+					const FName SurvivedEveryStat(UGuarded::LethalHitSurvivedEverySecondsStat);
+					const FName ImmuneForStat(UGuarded::ImmuneAfterLethalHitSecondsStat);
+					const float Every = Guarded->StatForSkill(
+						SurvivedEveryStat, FGameplayTagContainer(), 0.0f);
+					if (Every > 0.0f && Guarded->MaySurviveLethalHit())
+					{
+						Resolved.DealtToHealth = FMath::Max(0.0f, GetHealth() - 1.0f);
+						Guarded->NoteLethalHitSurvived(Every, Guarded->StatForSkill(
+							ImmuneForStat, FGameplayTagContainer(), 0.0f));
+					}
+				}
+			}
+
 			// EVERYTHING BELOW READS THIS, so the second check reaches the health
 			// write, the floating number, the leech and everything else that asks
 			// what the blow dealt.
@@ -1729,6 +1772,15 @@ void UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero() const
 	const FVector Where = Character->GetActorLocation();
 	const ACataclysmMinion* AsMinion = Cast<ACataclysmMinion>(Character);
 	const bool bExplodes = AsMinion && AsMinion->ExplodesOnDeath();
+
+	// AND SHARED RUIN'S BLAST, ALSO BEFORE THE DEATH IS HANDLED. Issue #1515.
+	// The dying creature deals it and its maximum health sets it, and an
+	// exploding minion is destroyed inside `HandleDeath`. A thrall comes through
+	// here as well, which is why it is not inside `ACataclysmMinion::HandleDeath`.
+	if (Commander)
+	{
+		ACataclysmMinion::DeathBlast(Character, Commander);
+	}
 
 	Character->HandleDeath();
 
