@@ -157,6 +157,44 @@ sub-class after choosing it, at an NPC. Neither page states a cost, and none is 
   screen breaks whether the node can be taken, and the tool tip is set apart from that.
 - `tools/tests/test_passive_nodes_are_named_for_a_frozen_class.py`, two tests.
 
+### THE WINDOW, 2026-09-24, ON 7b3fd053
+
+**This change's C++ was compiled for the first time here, and it built. Every registered figure
+matched, and all three proofs are proved.** No data row changed, so there was no stale-asset step.
+
+| Step | Printed |
+|---|---|
+| Python of record, on 7b3fd053 | `5419 passed, 8 skipped in 414.29s`; JUnit 5427 tests, 0 failures, 0 errors, 8 skipped |
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2369 tests performed, 2369 succeeded, 0 failed` |
+
+**A continuous-integration compile overlapped the end of the whole suite.** Overlapping zones
+(#2081) merged during the window, and its push to `development` started the Unreal run
+36060821476. Its "Game compiles" job ran from 21:20:21 to 21:22:13 UTC by GitHub's clock; the
+suite's tests ran from 21:16:18 to 21:21:52 by the engine log's. It builds in the runner's own
+checkout, so it shared the processor and nothing else. No test failed. It had completed before the
+first proof began.
+
+The Python check the migration depends on was broken once by hand before the window, with
+`tools/prove_guard.py` on this worktree: `Ravager_basic_spine_000` renamed to
+`Ravagr_basic_spine_000` in `game/Data/PassiveNodes.csv` printed `PROVED: 1 failed, 1 passed |
+restored: 2 passed`, the failure being
+`test_every_passive_node_is_named_for_its_tree_and_only_that_tree`.
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before and each started with
+no Unreal run in progress. **Every one was registered before the window, test and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| the spend gate ignores the class refusal (`if (false && ...)` in `ReachesTreeOf`) | `Cataclysm.Passives.OneClass.` | `4 tests performed, 2 succeeded, 2 failed: TheFirstPointChoosesTheDamageTypesClass, TheRespecFreesTheChoice` | "then Masochist refuses a point"; "and says why", empty where the sentence; "and Masochist holds nothing", 1 where 0; "for the same reason"; "so two points are spent, both in Ravager", 3 where 2; "and now Ravager is the one refused"; "because Masochist is the Demonic class now" |
+| the migration's tie keeps the tree bought later (`>` for `<`) | `Cataclysm.SaveRecords.MigratingTo3` | `1 tests performed, 0 succeeded, 1 failed: MigratingTo3KeepsOneClassTreePerDamageType` | "on a tie the tree bought into first is kept", `Masochist_basic_spine_000` where `Ravager_basic_spine_000` |
+| the screen's node button ignores the class refusal (`bCanTake` without it) | `Cataclysm.Passives.OneClass.` | `4 tests performed, 3 succeeded, 1 failed: TheScreenDimsTheClassesNotChosen` | "the Masochist root cannot be taken" |
+
+Each restored run printed every test succeeding. The second proof's prefix has no trailing dot
+because the one test it selects continues the name, `MigratingTo3KeepsOne...`; a dot would select
+none. As registered, "a Masochist capstone option is refused as well" held under the first break,
+and the node's tool tip assertion held under the third.
+
 ---
 
 ## 2026-09-24 — Overlapping zones of one floor rule burn a target once a second, not once per zone
