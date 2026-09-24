@@ -54,32 +54,37 @@ measured from the file rather than typed, and
 `tools/tests/test_docs_readme_sheet_table_is_true.py` fails if any of them drifts
 or if a sheet is added or removed without this table changing.
 
-| Sheet | Rows | First columns |
+**Columns lists every cell of the sheet's first row, in order**, with `(blank)`
+for an empty one, and the same test fails when a sheet gains, loses, renames
+or reorders a column without this table changing. The three sheets with no
+heading row describe their layout instead. Issue #1884.
+
+| Sheet | Rows | Columns |
 |---|---|---|
 | Dungeon Modifiers | 117 | Cataclysm Type, Modifier Name, Weight, Description |
-| Gems | 27 | Column 1, Everyday / Quality / Superb / Masterful / Legendary / Mythical Gemstone |
+| Gems | 27 | Column 1, Everyday Gemstone, Quality Gemstone, Superb Gemstone, Masterful Gemstone, Legendary Gemstone, Mythical Gemstone, Ascendant Gemstone, Cataclysmic Gemstone, Type |
 | City Upgrades | 24 | Type, Tier 1, Tier 2, Tier 3 |
-| Enchantments | 380 | Positives, Type, Weight / Negatives, Type, Weight |
+| Enchantments | 380 | Positives, Type, Weight, Column 4, (blank), Negatives, Type, Weight, Tags |
 | **Tags** | **141** | **Tag Name, Description** |
-| Enemy Modifiers | 11 | Demonic / Death / War / Pestilence / Famine / Celestial / Chaos Modifiers |
-| Weapon Skills | 403 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance |
+| Enemy Modifiers | 11 | Demonic Modifiers, Death Modifiers, War Modifiers, Pestilence Modifiers, Famine Modifiers, Celestial Modifiers, Chaos Modifiers, Void Modifiers, Generic Modifiers |
+| Weapon Skills | 403 | Weapon Type, Damage Type, Slot, Skill Name, Skill Description, Tags, Shape, Shape Params, Crit Chance, Damage Percent, Cooldown, Mana Cost |
 | Buffs | 18 | one description per row, no heading row |
 | Debuffs | 28 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
 | DoTs | 8 | `Name: Description`, then seven positional numbers and a stat name, no heading row |
-| Crafting | 46 | Material Name, Tier & Source, Primary Use, Functions, CR Metric |
-| Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types |
-| Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth |
+| Crafting | 46 | Material Name, Tier & Source, Primary Use, Functions, (blank), (blank), CR Metric, Formula, Outcome |
+| Item Bases | 55 | Base Name, Slot, Hands, Sub-Type, Weapon Type, Max Damage Types, Implicit 1 Stat, Implicit 1 Kind, Implicit 1 Value, Implicit 2 Stat, Implicit 2 Kind, Implicit 2 Value, Attack Speed, Basic Shape, Basic Shape Params, Cells Wide, Cells High |
+| Affixes | 86 | Affix Name, Affix Kind, Position, Stat, Value Kind, Top Value, Breadth, Ailment, Gem, Hybrid Part 1, Hybrid Part 2, Allowed Slots, Name Word, Percent, Floor |
 | Class Stats | 33 | Class, Stat, Base, Per Level |
-| Minion Types | 5 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags |
+| Minion Types | 5 | Minion Type, Family, Base Health, Health Per Level, Base Damage, Damage Per Level, Attack Interval Seconds, Move Speed, Threat Percent, Reach Cm, Notice Radius Cm, Target Mode, Tags, Explosion Percent Of Own Damage |
 | Minion Scaling | 2 | Attribute, Requires Tag, Stat, Percent Per Point |
 | Attributes | 17 | Attribute, Stat, Percent Per Point |
-| Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown |
-| Element Visuals | 8 | Element Tag, Primary, Secondary, Emissive Multiplier, Spawn Rate Scale |
+| Skill Slots | 7 | Slot, Damage Percent, Damage Lowest, Damage Highest, Cooldown, Cooldown Lowest, Cooldown Highest, Mana Cost, Mana On Hit, Note |
+| Element Visuals | 8 | Element Tag, Primary, Secondary, Emissive Multiplier, Spawn Rate Scale, Velocity Scale |
 | Gear Rarity | 8 | Rarity, Drop Weight, Gear Level Gate, Residue On Drop Lowest, Residue On Drop Highest, Colour, Note |
 | Item Sockets | 12 | Slot, Hands, Max Sockets, Note |
 | Affix Tiers | 7 | Tier, Drop Weight, Note |
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Note |
-| Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Note |
+| Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
 | Passive Effects | 296 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
 | Enchantment Effects | 294 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps |

@@ -30,6 +30,9 @@ WHAT IS ASSERTED HERE.
     the count for the three heading-less sheets agrees with the generated
       status effect table, which is derived from them
     the prose count of sheets in the file listing above matches as well
+    every headed sheet's column list is its first row, in order, with
+      `(blank)` for an empty heading cell -- issue #1884, which found ten of
+      the table's rows short of their sheets while only the counts were checked
 """
 
 from __future__ import annotations
@@ -189,3 +192,69 @@ def test_the_file_listing_states_the_right_number_of_sheets(
         f"docs/README.md does not say the workbook has {expected}. The file "
         f"listing near the top states a sheet count in prose, and it went "
         f"stale alongside the table below it. Issue #334.")
+
+
+#: How the table writes a heading cell the sheet leaves empty. Issue #1884.
+BLANK = "(blank)"
+
+
+def heading_row(sheet) -> str:
+    """A sheet's first row as the table writes it: every cell in order, an
+    empty one as `(blank)`, and the empty cells after the last heading dropped,
+    since a spreadsheet's used range often runs past them."""
+    first = next(sheet.iter_rows(values_only=True, max_row=1), ())
+    cells = [str(cell).strip() if cell is not None and str(cell).strip()
+             else BLANK for cell in first]
+    while cells and cells[-1] == BLANK:
+        cells.pop()
+    return ", ".join(cells)
+
+
+@pytest.fixture(scope="module")
+def workbook_columns() -> dict[str, str]:
+    if not WORKBOOK.is_file():
+        pytest.skip("the design workbook is not present")
+    book = openpyxl.load_workbook(WORKBOOK, read_only=True)
+    try:
+        return {name: heading_row(book[name]) for name in book.sheetnames
+                if name not in HEADERLESS}
+    finally:
+        book.close()
+
+
+@pytest.fixture(scope="module")
+def table_columns(readme: str, table_counts) -> dict[str, str]:
+    """Sheet name against the Columns cell, read with the same rules as the
+    counts; `table_counts` is asked first so a table this cannot parse fails
+    there, by name."""
+    start = readme.find(TABLE_HEADING)
+    end = readme.find("\n## ", start + len(TABLE_HEADING))
+    section = readme[start:end if end != -1 else len(readme)]
+    found: dict[str, str] = {}
+    for line in section.splitlines():
+        cells = [cell.strip().strip("*") for cell in line.split("|")]
+        if len(cells) < 5 or not re.fullmatch(r"\d+", cells[2]):
+            continue
+        found[cells[1]] = cells[3]
+    return found
+
+
+def test_every_column_list_in_the_table_is_true(table_columns,
+                                                workbook_columns) -> None:
+    """Issue #1884. The counts were checked and the columns were not, and the
+    columns drifted the way the counts had before issue #334: ten rows were
+    short of their sheets, the Affixes row listing 7 of 15 and leaving out the
+    two columns an affix's behaviour depends on. Measured again on 2026-09-23,
+    eleven were."""
+    assert len(workbook_columns) >= 20, (
+        f"only {len(workbook_columns)} headed sheets were read from the workbook")
+    wrong = {name: (table_columns.get(name), actual)
+             for name, actual in workbook_columns.items()
+             if table_columns.get(name) != actual}
+    assert not wrong, (
+        "the Columns cell of the sheet table in docs/README.md differs from the "
+        "sheet's first row. Write every cell of that row, in order, with "
+        f"{BLANK} for an empty one:\n"
+        + "\n".join(f"  {name}\n    table:    {stated}\n    workbook: {actual}"
+                    for name, (stated, actual) in sorted(wrong.items()))
+        + "\nIssue #1884.")
