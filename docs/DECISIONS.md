@@ -2276,8 +2276,9 @@ were as registered.
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the
 condition `wielding_two_handed_weapon` and its reading), `CataclysmAbilitySystemComponent.cpp`
 (where the reading is filled), `game/Source/Cataclysm/Items/CataclysmWeaponSlotsComponent.h` and
-`.cpp` (how many hands the equipped weapon takes), `tools/generate_datatables.py`, three test files
-and three Python checks. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+`.cpp` (how many hands the equipped weapon takes), `tools/generate_datatables.py`, the node's row in
+`docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`, `docs/README.md`, four test
+files and three Python checks. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
 
 ### THE NODE
 
@@ -2317,10 +2318,35 @@ changes, which a swap that leaves speed alone does not do. So it re-asks as time
 - `Cataclysm.WeaponSlots.TheEquippedWeaponSaysHowManyHandsItTakes`: a Greatsword 2, a Sword 1,
   nothing -1, and **with a table holding only a Sword, a Greatsword reads -1** rather than a guess.
 - `Cataclysm.Passives.TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon` reads the
-  node's row on a real Ravager, switching its own weapon slots between a Greatsword and a Sword.
-  It fails until the row exists, which needs the design workbook.
+  node's row on a real Ravager, switching its own weapon slots between a Greatsword and a Sword,
+  and spends **two points, so a row paid once rather than per point reads differently**. It fails
+  while the row is missing. **This line was written with the engine half and the test was not**:
+  the engine commit added no such test, and it was written with the row.
 
-**Counts moved:** the conditions that compare nothing are 20 of 54, from 19 of 53.
+**Counts moved:** the conditions that compare nothing are 26 of 60, from 25 of 59, as the sentence
+in `CataclysmStatPipeline.h` states and
+`tools/tests/test_the_condition_count_sentences_agree_with_the_code.py` holds. **This line said
+"20 of 54, from 19 of 53" until the row was written**, which no version of the code has held since
+the base this branch was rebased onto.
+
+### THE ROW, AND WHAT IT MOVED
+
+Written into the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx` on top of Press-Ganged's
+and Rekindled's rows, by the same script the four passive changes' dry run used on a copy first. The
+generator then changed only `game/Data/PassiveEffects.csv`, adding the one row: `attack_damage`,
+`increased`, 3 per point, on `wielding_two_handed_weapon`. **The number is the node's own**, "+3%
+increased Attack Damage per point". Pins moved, each with a comment saying why:
+
+| Pin | From | To |
+|---|--:|--:|
+| `docs/README.md`, Passive Effects rows | 299 | 300 |
+| `AUTHORED_ROWS` in `test_passive_effects_match_the_node_text.py` | 299 | 300 |
+| `AUTHORED_NODES`, same file (the Ravager now 71 of its 74 nodes) | 220 | 221 |
+| `CHECK_TABLE` for `PassiveEffects.csv` in `CataclysmDataTableTests.cpp` | 299 | 300 |
+
+`wielding_two_handed_weapon` leaves the list of conditions built ahead of their rows in
+`test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. `DT_PassiveEffects` is rebuilt in
+this change's build window.
 
 ---
 

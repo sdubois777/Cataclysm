@@ -613,7 +613,10 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: `Ritualist_keystone_b_kC` Rekindled: flat `minion_death_replaced_every_seconds`
 #: 10 and `minion_explosion_replaced_every_seconds` 5, read by
 #: `UCataclysmSummonSkill::ReplaceLost` after a commanded death.
-AUTHORED_ROWS = 299
+#:
+#: AND TO 300 ON 2026-09-24, for `Ravager_basic_b_b0` Two Hands: 3% increased
+#: `attack_damage` per point while `wielding_two_handed_weapon`.
+AUTHORED_ROWS = 300
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1004,7 +1007,11 @@ AUTHORED_ROWS = 299
 #: Rekindled (`Ritualist_keystone_b_kC`), which had no rows. Measured then: the
 #: Ravager is 70 of its 74, the Ritualist 72 of its 74 and the Masochist 74 of
 #: its 74.
-AUTHORED_NODES = 220
+#:
+#: AND TO 221 ON 2026-09-24, for Two Hands (`Ravager_basic_b_b0`), which had no
+#: row. Measured then: the Ravager is 71 of its 74, the Ritualist 72 of its 74
+#: and the Masochist 74 of its 74.
+AUTHORED_NODES = 221
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:

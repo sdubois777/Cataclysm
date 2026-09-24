@@ -14778,4 +14778,114 @@ bool FCataclysmPassiveReplacementRowsTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Two Hands, from its row. Issue #1515.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveTwoHandsOnARealCharacterTest,
+	"Cataclysm.Passives.TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_b_b0` Two Hands, from its row, on a real Ravager.
+ *
+ * "Two-handed weapons only. +3% increased Attack Damage per point."
+ *
+ * READ FROM THE ROW AND SPENT THROUGH THE PLAYER STATE, not granted by hand, so
+ * this fails while the row is missing. The weapon is equipped on the
+ * character's own weapon slots, whose hands come from the item base table: a
+ * Greatsword takes two and a Sword one.
+ *
+ * TWO POINTS, NOT ONE, so a row that paid its figure once rather than per point
+ * reads differently. Each reading is a difference from the same character with
+ * no point spent, so the only figure it states is the row's own.
+ */
+bool FCataclysmPassiveTwoHandsOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"),
+				  AsRavager.IsUsable()))
+	{
+		return false;
+	}
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	UCataclysmWeaponSlotsComponent* Slots = Player.Character
+		? Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>()
+		: nullptr;
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"),
+				  Player.IsComplete())
+		|| !TestNotNull(TEXT("and weapon slots"), Slots))
+	{
+		AddError(TEXT("If the effect table is what is missing, run  python "
+					  "tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_basic_b_b0"));
+	const TArray<const FCataclysmPassiveEffectRow*> Effects =
+		UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+	if (!TestEqual(TEXT("Two Hands carries one row"), Effects.Num(), 1))
+	{
+		AddError(TEXT("The node's row is missing from the data, so it grants "
+					  "nothing in play. Author it in the Passive Effects sheet "
+					  "of docs/All_Things_Cataclysm.xlsx and regenerate."));
+		return false;
+	}
+	const FCataclysmPassiveEffectRow* Row = Effects[0];
+	TestEqual(TEXT("on attack damage"), Row->Stat,
+			  FString(TEXT("attack_damage")));
+	TestEqual(TEXT("joining the additive sum"), Row->ValueKind,
+			  FString(TEXT("increased")));
+	TestEqual(TEXT("while wielding a two-handed weapon"), Row->Condition,
+			  FString(TEXT("wielding_two_handed_weapon")));
+	if (!TestTrue(*FString::Printf(TEXT("of a figure above nothing: %.1f"),
+								   Row->ValuePerPoint),
+				  Row->ValuePerPoint > 0.0f))
+	{
+		return false;
+	}
+
+	const auto Spend = [&Player, Node](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(Node, Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	};
+	const auto Gained = [&](const TCHAR* Weapon)
+	{
+		Slots->EquipWeaponType(Weapon);
+		Spend(0);
+		const float Unspent = IncreasesOn(Player.AbilitySystem, TEXT("attack_damage"));
+		Spend(2);
+		const float Spent = IncreasesOn(Player.AbilitySystem, TEXT("attack_damage"));
+		Spend(0);
+		return Spent - Unspent;
+	};
+
+	Slots->EquipWeaponType(TEXT("Greatsword"));
+	TestEqual(TEXT("a Greatsword takes two hands"), Slots->GetEquippedWeaponHands(), 2);
+	TestEqual(*FString::Printf(
+				  TEXT("with a Greatsword two points add %.1f percentage points"),
+				  Row->ValuePerPoint * 2.0f),
+			  Gained(TEXT("Greatsword")), Row->ValuePerPoint * 2.0f, 0.01f);
+
+	Slots->EquipWeaponType(TEXT("Sword"));
+	TestEqual(TEXT("a Sword takes one hand"), Slots->GetEquippedWeaponHands(), 1);
+	TestEqual(TEXT("and with a Sword they add nothing"),
+			  Gained(TEXT("Sword")), 0.0f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
