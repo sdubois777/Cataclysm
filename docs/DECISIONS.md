@@ -318,6 +318,10 @@ Sources: [poedb, Eldritch Battery (Path of Exile 1)](https://poedb.tw/us/Eldritc
   one point short is refused.
 - `Cataclysm.Skills.CastFromWardEmptyingTheShieldIsNotABreak`: a caster with Sacrificial Ward and an
   imp empties its shield on a cost; the imp lives, and the ward's clock is never started.
+- `Cataclysm.Skills.CastFromWardTheSkillBarShowsACostTheShieldCoversAsAffordable` and
+  `Cataclysm.Skills.CastFromWardAnAurasUpkeepIsPaidFromTheShieldWhenManaIsShort`: the two payers
+  besides the cast, each with a test of its own, added before the window at the coordinating
+  session's request so that nothing leaves them unguarded.
 - A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
 
 ---
