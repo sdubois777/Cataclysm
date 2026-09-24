@@ -16385,4 +16385,281 @@ bool FCataclysmAurasHeldCountTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Cast from Ward, the Ritualist's 50 point option 3. Issue #1515.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmCastFromWardTest
+{
+	/** Give the caster Cast from Ward's flag, and optionally Sacrificial Ward's. */
+	void HoldCastFromWard(CataclysmSkillTest::FScopedFighter& Caster, bool bAndTheWard)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		const auto Flat = [&Stats](const TCHAR* Name, float Value)
+		{
+			FCataclysmStatModifier Modifier;
+			Modifier.Bucket = ECataclysmStatBucket::Flat;
+			Modifier.Source = ECataclysmModifierSource::PassiveKeystone;
+			Modifier.Value = Value;
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(FName(Name));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Modifier};
+		};
+		Flat(UCataclysmGameplayAbility::CostPaidFromEnergyShieldStat, 1.0f);
+		if (bAndTheWard)
+		{
+			Flat(UCataclysmAbilitySystemComponent::ShieldBreakDestroysMinionEverySecondsStat,
+				 3.0f);
+		}
+		Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	void SetPools(CataclysmSkillTest::FScopedFighter& Caster, float Mana, float Shield)
+	{
+		Caster.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetManaAttribute(), Mana);
+		Caster.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 1000.0f);
+		Caster.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Shield);
+	}
+
+	float ShieldOf(const CataclysmSkillTest::FScopedFighter& Caster)
+	{
+		return Caster.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillCastFromWardPaysTest,
+	"Cataclysm.Skills.CastFromWardPaysACostTheManaCannotCoverFromTheShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "A skill may be paid for with Energy Shield when your mana is not enough."
+ * One point of mana short of the Heavy slot's cost, with a shield of 500: the
+ * strike activates, the shield pays the whole cost, and the mana is untouched.
+ */
+bool FCataclysmSkillCastFromWardPaysTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmCastFromWardTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+	const float Cost = Strike->GetManaCost();
+	if (!TestTrue(FString::Printf(TEXT("The Heavy slot costs more than one (%.1f)"), Cost),
+				  Cost > 1.0f))
+	{
+		return false;
+	}
+
+	HoldCastFromWard(Caster, /*bAndTheWard=*/false);
+	SetPools(Caster, Cost - 1.0f, 500.0f);
+
+	TestTrue(TEXT("the strike activates one point of mana short"), Activate(Caster, Strike));
+	TestEqual(TEXT("the shield paid the whole cost"), ShieldOf(Caster), 500.0f - Cost, 0.01f);
+	TestEqual(TEXT("and the mana was left alone"), Caster.Mana(), Cost - 1.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillCastFromWardOnlyWhenShortTest,
+	"Cataclysm.Skills.CastFromWardTakesNothingFromTheShieldWhileManaIsEnough",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The shield pays only "when your mana is not enough". With mana to spare the
+ * mana pays and the shield is untouched; and without the option, a caster one
+ * point short is refused and its shield is untouched.
+ */
+bool FCataclysmSkillCastFromWardOnlyWhenShortTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmCastFromWardTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Held(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 50 * M, 0));
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* HeldStrike = GrantSkill<UCataclysmStrikeSkill>(
+		Held, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	UCataclysmStrikeSkill* PlainStrike = GrantSkill<UCataclysmStrikeSkill>(
+		Plain, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	if (!HeldStrike || !PlainStrike)
+	{
+		AddError(TEXT("Could not grant the strikes."));
+		return false;
+	}
+	const float Cost = HeldStrike->GetManaCost();
+	if (!TestTrue(FString::Printf(TEXT("The Heavy slot costs more than one (%.1f)"), Cost),
+				  Cost > 1.0f))
+	{
+		return false;
+	}
+
+	HoldCastFromWard(Held, /*bAndTheWard=*/false);
+	SetPools(Held, 1000.0f, 500.0f);
+	SetPools(Plain, Cost - 1.0f, 500.0f);
+
+	TestTrue(TEXT("with mana to spare the strike activates"), Activate(Held, HeldStrike));
+	TestEqual(TEXT("and the mana pays"), Held.Mana(), 1000.0f - Cost, 0.01f);
+	TestEqual(TEXT("and the shield is untouched"), ShieldOf(Held), 500.0f, 0.01f);
+
+	TestFalse(TEXT("without the option, one point short is refused"),
+			  Activate(Plain, PlainStrike));
+	TestEqual(TEXT("and its shield is untouched"), ShieldOf(Plain), 500.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillCastFromWardNotABreakTest,
+	"Cataclysm.Skills.CastFromWardEmptyingTheShieldIsNotABreak",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-09-24 under the owner's delegation: a cost that empties the shield
+ * is not "breaking" it. A caster holding Cast from Ward and Sacrificial Ward,
+ * with no mana, a shield of exactly the cost and an imp, casts: the shield is
+ * emptied, the imp lives, and the ward's clock was never started.
+ */
+bool FCataclysmSkillCastFromWardNotABreakTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmCastFromWardTest;
+
+	// A WORLD THAT HAS BEGUN PLAY, because this test spawns a minion: a minion
+	// registers its attribute sets in `BeginPlay`, and without it the spawn
+	// writes maximum health to an ability system that has no vital set.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+	const float Cost = Strike->GetManaCost();
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Caster.Actor, FVector(0, 3 * M, 0), /*Lifetime=*/60.0f, /*bBurns=*/false,
+		TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	HoldCastFromWard(Caster, /*bAndTheWard=*/true);
+	SetPools(Caster, 0.0f, Cost);
+
+	TestTrue(TEXT("with no mana the strike activates, paid from the shield"),
+			 Activate(Caster, Strike));
+	TestEqual(TEXT("the cost emptied the shield"), ShieldOf(Caster), 0.0f, 0.01f);
+	TestTrue(TEXT("the imp lives"),
+			 IsValid(Imp) && !UCataclysmSkillEffects::IsDead(Imp));
+	TestTrue(TEXT("and Sacrificial Ward's clock was never started"),
+			 Caster.AbilitySystem->ShieldWardAllowedAt() < 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillCastFromWardSkillBarTest,
+	"Cataclysm.Skills.CastFromWardTheSkillBarShowsACostTheShieldCoversAsAffordable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The skill bar asks the question the cast asks. With 10 mana, a shield of 500
+ * and a cost of 40, a caster holding Cast from Ward is shown the skill as
+ * affordable, and one without it is not. Ruled 2026-09-24: every payer routes
+ * through `UCataclysmGameplayAbility::PoolPaying`, so the bar never shows as
+ * unaffordable a skill the cast would pay for.
+ */
+bool FCataclysmSkillCastFromWardSkillBarTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmCastFromWardTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Held(World, FVector::ZeroVector);
+	FScopedFighter Plain(World, FVector(0, 50 * M, 0));
+	HoldCastFromWard(Held, /*bAndTheWard=*/false);
+	SetPools(Held, 10.0f, 500.0f);
+	SetPools(Plain, 10.0f, 500.0f);
+
+	TestTrue(TEXT("holding the option, the bar shows a cost of 40 as affordable"),
+		UCataclysmSkillBar::CanAfford(Held.AbilitySystem,
+			UCataclysmGameplayAbility::CostPool(Held.AbilitySystem), 40.0f));
+	TestFalse(TEXT("and without it, it does not"),
+		UCataclysmSkillBar::CanAfford(Plain.AbilitySystem,
+			UCataclysmGameplayAbility::CostPool(Plain.AbilitySystem), 40.0f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillCastFromWardAuraTest,
+	"Cataclysm.Skills.CastFromWardAnAurasUpkeepIsPaidFromTheShieldWhenManaIsShort",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-09-24: an aura's per-pulse upkeep is a skill's cost, so it may be
+ * paid from the shield. With half a pulse's mana and a shield of 500, the pulse
+ * is paid from the shield, the mana is untouched, and the aura stays on; the
+ * test beside it, `AnAuraSwitchesOffWhenTheManaRunsOut`, is the same pulse
+ * without the option.
+ */
+bool FCataclysmSkillCastFromWardAuraTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+	using namespace CataclysmCastFromWardTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(3 * M, 0, 0));
+	UCataclysmAuraSkill* Aura = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1; Burn=1"),
+		TEXT("Conflagration"));
+	if (!Aura)
+	{
+		AddError(TEXT("Could not grant the aura."));
+		return false;
+	}
+	HoldCastFromWard(Caster, /*bAndTheWard=*/false);
+	if (!TestTrue(TEXT("it activates"), Activate(Caster, Aura)))
+	{
+		return false;
+	}
+	const float PerPulse = Aura->GetManaCost();
+	if (!TestTrue(TEXT("the aura slot drains something"), PerPulse > 0.0f))
+	{
+		return false;
+	}
+
+	SetPools(Caster, PerPulse * 0.5f, 500.0f);
+	const float TooLittle = Caster.Mana();
+
+	Aura->Pulse();
+
+	TestTrue(TEXT("with half a pulse's mana the aura stays on"), Aura->IsHeld());
+	TestFalse(TEXT("and did not end for lack of mana"), Aura->bEndedForLackOfMana);
+	TestEqual(TEXT("the shield paid the pulse"), ShieldOf(Caster), 500.0f - PerPulse, 0.01f);
+	TestEqual(TEXT("and the mana was left alone"), Caster.Mana(), TooLittle, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -3871,9 +3871,14 @@ int32 UCataclysmAuraSkill::Pulse()
 		// ONCE by `ApplyCost`. The Masochist's deferral and debt rules belong to the
 		// added health costs `PayHealthCost` charges, and do not apply to that cost
 		// or to this one.
-		const FGameplayAttribute Pool = CostPool(AbilitySystem);
+		//
+		// AND THE ENERGY SHIELD WHEN CAST FROM WARD IS HELD, ruled on 2026-09-24:
+		// an upkeep is a skill's cost, so it may be paid from the shield too.
+		// Issue #1515. `PoolPaying` is what the activation asked.
+		const FGameplayAttribute Pool =
+			Cost > 0.0f ? PoolPaying(AbilitySystem, Cost) : CostPool(AbilitySystem);
 
-		if (Cost > 0.0f && !PoolCovers(AbilitySystem, Pool, Cost))
+		if (Cost > 0.0f && !Pool.IsValid())
 		{
 			// SAID ONCE, AT `Log` AND NOT `Verbose`, because the aura ends here and
 			// nothing in the game read the flag below, so a playtest log could not
@@ -3882,7 +3887,8 @@ int32 UCataclysmAuraSkill::Pulse()
 				   TEXT("%s in %s switched off: a pulse's upkeep of %.1f %s could "
 						"not be paid from %.1f."),
 				   *SkillName, *CataclysmAbilitySlots::Tag(Slot).ToString(), Cost,
-				   *Pool.GetName(), AbilitySystem->GetNumericAttribute(Pool));
+				   *CostPool(AbilitySystem).GetName(),
+				   AbilitySystem->GetNumericAttribute(CostPool(AbilitySystem)));
 			bEndedForLackOfMana = true;
 			Finish();
 			return 0;

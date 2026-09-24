@@ -339,6 +339,31 @@ bool UCataclysmGameplayAbility::PoolCovers(
 		: Held >= Cost;
 }
 
+const TCHAR* UCataclysmGameplayAbility::CostPaidFromEnergyShieldStat =
+	TEXT("skill_cost_paid_from_energy_shield");
+
+FGameplayAttribute UCataclysmGameplayAbility::PoolPaying(
+	const UAbilitySystemComponent* AbilitySystem, float Cost)
+{
+	const FGameplayAttribute Pool = CostPool(AbilitySystem);
+	if (PoolCovers(AbilitySystem, Pool, Cost))
+	{
+		return Pool;
+	}
+
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const FGameplayAttribute Shield = UCataclysmVitalAttributeSet::GetEnergyShieldAttribute();
+	if (Cataclysm && Pool == UCataclysmVitalAttributeSet::GetManaAttribute()
+		&& Cataclysm->StatForSkill(FName(CostPaidFromEnergyShieldStat),
+								   FGameplayTagContainer(), 0.0f) > 0.0f
+		&& PoolCovers(AbilitySystem, Shield, Cost))
+	{
+		return Shield;
+	}
+	return FGameplayAttribute();
+}
+
 bool UCataclysmGameplayAbility::CheckCost(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -377,10 +402,10 @@ bool UCataclysmGameplayAbility::CheckCost(
 		return true;
 	}
 
-	// OUT OF WHICHEVER POOL THIS CHARACTER PAYS FROM, asked of the two functions
-	// above so that an aura's per-pulse upkeep asks exactly the same question.
-	// Issues #1067 and #1901.
-	return PoolCovers(AbilitySystem, CostPool(AbilitySystem), Cost);
+	// OUT OF WHICHEVER POOL THIS CHARACTER PAYS FROM, asked of the function above
+	// so that an aura's per-pulse upkeep asks exactly the same question. Issues
+	// #1067 and #1901, and #1515 for the energy shield Cast from Ward adds.
+	return PoolPaying(AbilitySystem, Cost).IsValid();
 }
 
 void UCataclysmGameplayAbility::ApplyCost(
@@ -427,9 +452,19 @@ void UCataclysmGameplayAbility::ApplyCost(
 	// are built -- four of them exist in the data -- this is where they hook in.
 	//
 	// OUT OF WHICHEVER POOL THIS CHARACTER PAYS FROM, and `CheckCost` above has
-	// already refused the cast if that pool could not cover it. Issue #1067.
-	AbilitySystem->ApplyModToAttribute(CostPool(AbilitySystem),
-									   EGameplayModOp::Additive, -Cost);
+	// already refused the cast if no pool could cover it. Issue #1067.
+	//
+	// A COST PAID FROM THE SHIELD IS NOT DAMAGE, ruled on 2026-09-24 under the
+	// owner's delegation, issue #1515. Written straight onto the attribute, it
+	// passes none of the damage path: the shield's refill wait, which restarts
+	// only on damage taken, does not restart, and emptying the shield this way
+	// is not "breaking" it, so Sacrificial Ward and anything else that answers a
+	// break never hears of it.
+	const FGameplayAttribute Pool = PoolPaying(AbilitySystem, Cost);
+	if (Pool.IsValid())
+	{
+		AbilitySystem->ApplyModToAttribute(Pool, EGameplayModOp::Additive, -Cost);
+	}
 }
 
 bool UCataclysmGameplayAbility::CheckCooldown(

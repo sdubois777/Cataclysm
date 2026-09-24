@@ -1089,6 +1089,45 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `skill_cost_paid_from_energy_shield`, read by
+	 * `UCataclysmGameplayAbility::PoolPaying`. Issue #1515, Cast from Ward. A
+	 * character with no mana and a full shield: a cost of 20 finds no pool to pay
+	 * it, and with the stat held the shield pays.
+	 */
+	void ProbeCostPaidFromShield(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto Paying = [World](bool bHeld)
+		{
+			FScopedFighter Caster(World, /*AttackDamage=*/0.0f);
+			Caster.AbilitySystem->SetNumericAttributeBase(Vital::GetManaAttribute(), 0.0f);
+			Caster.AbilitySystem->SetNumericAttributeBase(
+				Vital::GetMaxEnergyShieldAttribute(), 100.0f);
+			Caster.AbilitySystem->SetNumericAttributeBase(
+				Vital::GetEnergyShieldAttribute(), 100.0f);
+			if (bHeld)
+			{
+				GrantFlats(Caster.Actor,
+					{{FName(UCataclysmGameplayAbility::CostPaidFromEnergyShieldStat), 1.0f}});
+			}
+			return UCataclysmGameplayAbility::PoolPaying(Caster.AbilitySystem, 20.0f);
+		};
+
+		Test.TestFalse(TEXT("with no mana, a plain caster finds nothing to pay 20 from"),
+					   Paying(false).IsValid());
+		Test.TestTrue(
+			TEXT("and one holding skill_cost_paid_from_energy_shield pays it from the "
+				 "shield, so UCataclysmGameplayAbility::PoolPaying really reads it"),
+			Paying(true) == Vital::GetEnergyShieldAttribute());
+	}
+
+	/**
 	 * Nothing Stops It's two stats, read in
 	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. Issue #1515.
 	 * `Blows` are dealt in turn to a fighter holding `Stats`, and what it has
@@ -2446,6 +2485,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("lethal_hit_survived_every_seconds"), &ProbeLethalHitSurvived},
 			{TEXT("damage_immunity_after_lethal_hit_seconds"), &ProbeImmuneAfterLethalHit},
 			{TEXT("shield_break_destroys_minion_every_seconds"), &ProbeShieldWard},
+			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},

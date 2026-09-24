@@ -261,6 +261,107 @@ One Python check: the row still says "every floor", "a random buff or debuff", "
 
 ---
 
+## 2026-09-24 — Cast from Ward, engine only: a cost the mana cannot cover is paid from the energy shield, which is not damage and not a break
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the pool that
+pays a cost), `CataclysmSkillTemplates.cpp` (an aura's upkeep), `game/Source/Cataclysm/Interface/CataclysmSkillBar.cpp`
+(what the bar shows as affordable), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(one stat with no attribute), two test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ritualist_capstone_50` option 3, Cast from Ward: "A skill may be paid for with Energy Shield when
+your mana is not enough." One flag, `skill_cost_paid_from_energy_shield`, whose row will carry 1.
+**Engine only**, for the reason the Shared Ruin entry gives: the row follows when the design workbook
+comes back.
+
+### HOW IT IS BUILT
+
+`UCataclysmGameplayAbility::PoolPaying` answers which pool pays a cost now. It tries `CostPool` first,
+as before. When that pool is mana and cannot cover the cost, and the flag is held and the shield
+can cover it, it answers the energy shield. **Every payer asks it**: the cast's `CheckCost` and
+`ApplyCost`, an aura's per-pulse upkeep, and the skill bar's "can afford".
+
+**JUDGEMENTS in this change:**
+
+- **The whole cost comes from one pool, and the mana is left untouched.** The sentence says the
+  skill is "paid for with Energy Shield", and splitting one cost across two pools states a rule the
+  sentence does not give.
+- **A character whose mana became health never reaches the shield.** Water to Blood moves every
+  cost onto health, and "when your mana is not enough" asks about mana.
+
+### RULINGS, 2026-09-24, UNDER THE OWNER'S DELEGATION
+
+- **Paying a cost from the shield does not restart its 3 second refill wait.** Our own design
+  settles it: `docs/Cataclysm_GDD_v2.md`, the Energy Shield section, in the bullet beginning "It
+  refills 3 seconds after the character last took damage", restarts the wait on damage taken, and a
+  cost is not damage. The genre agrees. Path of Exile 1's Eldritch Battery reads "Spend Energy
+  Shield before Mana for Skill Mana Costs", and poedb states that "Taking life damage or spending
+  energy shield on skill cost will not interrupt energy shield recharge". Path of Exile 2 reshaped
+  that keystone to convert the shield into mana, so it is no precedent here and is not counted. A
+  web-search summary saying the same was not counted either, because its sources could not be read.
+- **A cost that empties the shield is not "breaking" it.** "Break" follows damage in this project's
+  texts ("Damage that would break your Energy Shield"), so Sacrificial Ward and anything else that
+  answers a break never fires on a cost.
+
+**Both hold by construction:** the cost is written straight onto the attribute and passes none of
+the damage path, where the refill wait and the ward are read. A test pins the second.
+
+Sources: [poedb, Eldritch Battery (Path of Exile 1)](https://poedb.tw/us/Eldritch_Battery);
+[poe2db, Eldritch Battery (Path of Exile 2)](https://poe2db.tw/us/Eldritch_Battery).
+
+### TESTS
+
+- `Cataclysm.Skills.CastFromWardPaysACostTheManaCannotCoverFromTheShield`
+- `Cataclysm.Skills.CastFromWardTakesNothingFromTheShieldWhileManaIsEnough`: and without the option,
+  one point short is refused.
+- `Cataclysm.Skills.CastFromWardEmptyingTheShieldIsNotABreak`: a caster with Sacrificial Ward and an
+  imp empties its shield on a cost; the imp lives, and the ward's clock is never started.
+- `Cataclysm.Skills.CastFromWardTheSkillBarShowsACostTheShieldCoversAsAffordable` and
+  `Cataclysm.Skills.CastFromWardAnAurasUpkeepIsPaidFromTheShieldWhenManaIsShort`: the two payers
+  besides the cast, each with a test of its own, added before the window at the coordinating
+  session's request so that nothing leaves them unguarded.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+### THE WINDOW, 2026-09-24, ON efc175e7 AND THEN ff184de8
+
+**This change's C++ was compiled for the first time here, and it built. The first whole suite
+failed two tests; one was a fault in a test of this change, corrected in ff184de8, and the other
+fails by timing and is issue [#2072](https://github.com/sdubois777/Cataclysm/issues/2072).** No data
+row changed, so there was no stale-asset step.
+
+| Step | Printed |
+|---|---|
+| Build, on efc175e7 | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2339 tests performed, 2337 succeeded, 2 failed: ACraterBurnsThePlayerStandingInIt, CastFromWardEmptyingTheShieldIsNotABreak` |
+| The crater test alone, `--prefix "Cataclysm.DungeonModifierEffects.ACraterBurnsThePlayerStandingInIt"`, three times on the same build | `1 tests performed, 1 succeeded, 0 failed`, each time |
+| Build, on ff184de8 | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp` |
+| Whole suite again, `tests` | `2339 tests performed, 2339 succeeded, 0 failed` |
+
+- **`CastFromWardEmptyingTheShieldIsNotABreak`** raised an engine ensure,
+  `SetAttributeBaseValue: Unable to get attribute set for attribute MaxHealth`, when it spawned its
+  imp. A minion registers its attribute sets in `BeginPlay`, and the test's world had not begun
+  play. ff184de8 makes it with `CataclysmTestWorld::MakeWorldThatHasBegunPlay()`; nothing else
+  changed.
+- **`ACraterBurnsThePlayerStandingInIt`** failed at "and never more than the share the constant
+  states". It does not touch how skill costs are paid, it passed three times alone, and it passed in
+  the earlier windows on this machine. Its upper bound is exact to the second while the crater's
+  sweeps are counted by the clock; #2072 has the detail.
+
+Three proofs with `prove_cpp_guard` on ff184de8, prefix `Cataclysm.Skills.CastFromWard` (no trailing
+dot: every test of this change begins with that name, and a dot would select none), each anchor
+re-checked immediately before. Each restored run printed `5 tests performed, 5 succeeded, 0 failed`.
+**Every one was registered before the window, test and assertion alike.**
+
+| Break, in `CataclysmGameplayAbility.cpp` | Printed with the break in | Assertions that failed |
+|---|---|---|
+| the shield is never offered to a mana payer (`!=` for `==` in `PoolPaying`) | `5 tests performed, 1 succeeded, 4 failed` | "with half a pulse's mana the aura stays on"; "and did not end for lack of mana"; "the shield paid the pulse", 500 where 480; "with no mana the strike activates, paid from the shield"; "the cost emptied the shield", 15 where 0; "the strike activates one point of mana short"; "the shield paid the whole cost", 500 where 485; "holding the option, the bar shows a cost of 40 as affordable" |
+| the check accepts the shield but the payment takes mana (`ApplyCost` pays `CostPool`) | `5 tests performed, 3 succeeded, 2 failed: CastFromWardEmptyingTheShieldIsNotABreak, CastFromWardPaysACostTheManaCannotCoverFromTheShield` | "the cost emptied the shield", 15 where 0; "the shield paid the whole cost", 500 where 485; "and the mana was left alone", 0 where 14 |
+| the flag is ignored, so everyone pays from the shield (`>= 0.0f` for `> 0.0f`) | `5 tests performed, 3 succeeded, 2 failed: CastFromWardTakesNothingFromTheShieldWhileManaIsEnough, CastFromWardTheSkillBarShowsACostTheShieldCoversAsAffordable` | "without the option, one point short is refused"; "and its shield is untouched", 485 where 500; "and without it, it does not" |
+
+---
+
 ## 2026-09-24 — One class tree per damage type: a two-handed weapon reaches 8 class trees, not 24
 
 **Affects:** nothing in code yet; issue [#2064](https://github.com/sdubois777/Cataclysm/issues/2064)
