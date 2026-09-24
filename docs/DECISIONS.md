@@ -72,8 +72,8 @@ the floor panel line and the per-floor reset), the automation tests in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -144,10 +144,29 @@ One Python check: the row still states three chances that add to 100 and match
 the Abyssal Warden the mini-boss. It was seen to fail, in a copy of the repository, with the row's 50%
 made 40%, with `UnstablePortalReturnBelow` made 70, and with the design's "(Mini-Boss)" made "(Elite)".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (914de0f9) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 27 actions, 24 files compiled" and "235 tests performed, 235 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 9ad8fa2d:** "Build: Succeeded - 14 actions, 11 files compiled" and "2254 tests
+  performed, 2254 succeeded, 0 failed", as registered (2248 + the six named tests), with every declared
+  test reported. In that run's `game/Saved/Logs/Cataclysm.log` the group's 241 all succeeded, the six
+  named above among them.
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing 1 of 241 with the
+  break in and 0 of 241 restored, exactly as registered. Each broken run's log was copied before the
+  restored run overwrote it, and its failure text is quoted:
+  - the Warden without the fixed rung (in `CataclysmDungeonGameMode.cpp`) failed
+    `APortalRollOfSeventyFiveOrMoreRaisesAWardenAtTheHeraldRung`: "Expected 'at the Herald rung' to be 3,
+    but it was 0";
+  - **one roll per step removed** (`if (bPlayerMustLeaveFirst)` made `if (false)`, in
+    `CataclysmDungeonStairs.cpp`) failed `StandingOnThePortalIsOneRollUntilThePlayerStepsOff`: "Expected
+    'five looks at a player standing still are one roll' to be 1, but it was 5", and stepping back on
+    was the sixth roll, not the second;
+  - **the portal's Warden counted by Blood Gates** (the exclusion removed from `BloodGatesPlacedCount`)
+    failed `APortalWardenDoesNotSealOpenBloodGatesAgain`: "Expected 'and the gate is still open' to be
+    false", and the panel read "blood gates: 1 of 3 slain, open at 2" -- the re-sealing measured
+    above.
 
 ---
 
