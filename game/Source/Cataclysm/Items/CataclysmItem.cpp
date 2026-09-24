@@ -950,6 +950,8 @@ namespace
 			{
 				Out.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(Effect);
 			}
+			// AND ITS OFFSET. Issue #1686.
+			Out.ScaleOffset = Effect.ScaleOffset;
 		}
 
 		return true;

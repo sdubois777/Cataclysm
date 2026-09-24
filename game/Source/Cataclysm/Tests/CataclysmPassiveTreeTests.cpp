@@ -15213,4 +15213,59 @@ bool FCataclysmPassiveSetThePackOnRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointsReachTheConditionsTest,
+	"Cataclysm.Passives.ThePointsSpentReachTheStatConditionsAndOnlyAPlayerHasThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `FCataclysmStatConditions::ClassPointsSpent` is the allocation's total,
+ * read through the player state that owns a player's ability system. Issue
+ * #1686. An ability system with no player state reads -1, which gives a class
+ * point row nothing.
+ *
+ * A NODE IN NO TREE HOLDS THE POINTS, so they grant nothing of their own and
+ * the count is the only thing that moves. The allocation is not validated
+ * when it is set, the way a loaded save is not.
+ */
+bool FCataclysmClassPointsReachTheConditionsTest::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* ASC =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("a player state's ability system"), ASC))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("a player that has spent nothing reads nought"),
+		ASC->CurrentConditions().ClassPointsSpent, 0);
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Test_node_in_no_tree")), 137);
+	State->SetPassiveAllocation(Allocation, {});
+	TestEqual(TEXT("and one that has spent 137 reads 137"),
+		ASC->CurrentConditions().ClassPointsSpent, 137);
+
+	AActor* Creature = World->SpawnActor<AActor>();
+	UCataclysmAbilitySystemComponent* Other = Creature
+		? NewObject<UCataclysmAbilitySystemComponent>(Creature) : nullptr;
+	if (!TestNotNull(TEXT("an ability system with no player state"), Other))
+	{
+		return false;
+	}
+	Other->RegisterComponent();
+	Other->InitAbilityActorInfo(Creature, Creature);
+	TestEqual(TEXT("an ability system no player state owns reads -1"),
+		Other->CurrentConditions().ClassPointsSpent, -1);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -2248,4 +2248,12 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float StackSeconds = 0.0f;
+
+	/**
+	 * How much of the scale's reading is not counted, or 0 for none. Issue
+	 * #1686: "for every 10 class points spent above 100" is 100. Copied onto
+	 * the modifier's `ScaleOffset`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float ScaleOffset = 0.0f;
 };

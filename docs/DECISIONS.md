@@ -1114,6 +1114,67 @@ floor.", and with "5%" added before "slower movement".
 
 ---
 
+## 2026-09-23 — A row can count the passive points spent above a threshold, and three class point enchantments do
+
+**Affects:**
+- `CataclysmStatPipeline.h` and `.cpp`: the scale `class_points_spent`, and
+  `FCataclysmStatModifier::ScaleOffset`
+- `FCataclysmStatConditions::ClassPointsSpent`, filled from the player state in
+  `UCataclysmAbilitySystemComponent::CurrentConditions`
+- the Enchantment Effects sheet's new Scale Offset column, carried by
+  `FCataclysmEnchantmentEffectRow::ScaleOffset` and read by `tools/generate_datatables.py`
+- issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686)'s second window, and
+  issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815)'s held group
+  "Class points spent"
+
+### WHAT WAS MISSING
+
+Four of the five class point sentences count points **above a threshold**: "above 100", "above
+50", "above the max". A scale had no way to leave part of its reading uncounted, and nothing handed
+the stat pipeline the points a character had spent. The state existed on the player state and went
+no further.
+
+### WHAT WAS BUILT
+
+- **`class_points_spent`** multiplies a value by the whole `ScaleStep` passive points spent past
+  the row's `ScaleOffset`.
+  - A reading at or below the offset is worth nothing, never a negative number of steps.
+  - A character with no player state reads -1 and gets nothing: every creature and minion.
+- **Scale Offset** is a column on the Enchantment Effects sheet only, as Scale Max Steps is.
+  - Only `class_points_spent` reads it. `ValidateModifier` and the generator both refuse an
+    offset on any other scale rather than drop it.
+  - The generator also refuses a negative offset, one past the 230 point budget, and the column
+    on the Passive Effects sheet.
+
+### THE ROWS
+
+| Enchantment | Rows |
+| :-- | :-- |
+| Your skills deal 1.5%-2.5% less damage for every 10 class points spent above 100 | `attack_damage` and `spell_damage`, more -1.5 to -2.5, step 10, offset 100 |
+| Each class point spent above 100 grants 0.5%-1% increased damage | `attack_damage` and `spell_damage`, increased 0.5 to 1, step 1, offset 100 |
+| Your maximum HP is reduced by 1.5%-2.5% for every 10 class points above 50 | `max_health`, increased -1.5 to -2.5, step 10, offset 50 |
+
+The three sentences and their rates were settled by the owner on 2026-09-09, in the entry "Three
+enchantments state their rate per 100 armour or per 10 class points, not per point". That entry
+sized each row at the 230 point budget, and kept the increased row's per-point rate on purpose.
+
+**Not written, and why:**
+- "Each class point above the max reduces your max resistances by 2%-5%". Points can pass the 230
+  budget only through gear-granted points ("Gain 5-10 class points" and its twin), which are not
+  built, so the row would never apply.
+- "Class points spent in your primary tree are 10%-20% more effective". It needs a different
+  mechanism: a multiplier on the effects of one tree's nodes, not a scale.
+
+### THE JUDGEMENT, UNDER THE OWNER'S DELEGATION
+
+**A class point is a passive point spent**: `FCataclysmPassiveAllocation::Total` on the player
+state. It is not a point earned. The 2026-09-09 entry sizes these sentences at the 230 point budget
+spent, and the health row's "class points above 50" is read the same way as the others' "class
+points spent above 100". Points in a tree the character's weapon no longer reaches still count,
+because they stay spent (the owner's decision of 2026-08-25).
+
+---
+
 ## 2026-09-23 — Nothing Is Forgotten: the player's kills feed five per cent of their health and damage to the dungeon's final boss
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

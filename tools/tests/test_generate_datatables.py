@@ -1483,6 +1483,16 @@ class TestAPassiveNodeCanGrantSeveralStats:
         with pytest.raises(gen.DataError, match="Stack Seconds"):
             gen.passive_effects(book)
 
+    def test_an_offset_column_on_this_sheet_is_refused(self, tmp_path):
+        """Issue #1686. Only an enchantment's modifier reads an offset."""
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "effects.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Scale Offset"],
+                                 ["A_node", "armor", "increased", 3, None, None]]}))
+        with pytest.raises(gen.DataError, match="Scale Offset"):
+            gen.passive_effects(book)
+
     def test_a_cap_column_on_this_sheet_is_refused(self, tmp_path):
         """Issue #1815. Only an enchantment's modifier reads a cap, so a cap
         written on this sheet would be dropped with no error."""
@@ -1825,7 +1835,7 @@ class TestEnchantmentEffects:
     HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
               "Value High", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
-              "Scale Max Steps", "Stack Seconds"]
+              "Scale Max Steps", "Stack Seconds", "Scale Offset"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -1851,7 +1861,7 @@ class TestEnchantmentEffects:
             "ValueLow": 100.0, "ValueHigh": 100.0, "RequiredTags": "",
             "Condition": "", "ConditionValue": 0.0, "Scale": "",
             "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
-            "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0}]
+            "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.
@@ -1893,6 +1903,32 @@ class TestEnchantmentEffects:
         with pytest.raises(gen.DataError, match="own_stacks"):
             gen.enchantment_effects(self.book(tmp_path, [self.row(
                 {"Action Event": "critical_strike"})]))
+
+    # AN OFFSET ON THE CLASS POINT SCALE. Issue #1686: "above 100" is 100.
+    def test_an_offset_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Scale": "class_points_spent", "Scale Step": 10,
+            "Scale Offset": 100})]))
+        assert out[0]["ScaleOffset"] == 100.0
+
+    def test_an_offset_on_another_scale_is_refused(self, tmp_path):
+        """The engine reads an offset on one scale only, so anywhere else it
+        would be dropped with no error."""
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale": "debuffs_carried", "Scale Step": 1,
+                "Scale Offset": 100})]))
+
+    def test_an_offset_with_no_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale Offset": 100})]))
+
+    def test_an_offset_past_the_point_budget_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="from 0 to 230"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale": "class_points_spent", "Scale Step": 10,
+                "Scale Offset": 231})]))
 
     # A CAP ON A SCALE. Issue #1815: "up to 10 stacks" is a cap of 10 steps.
     def test_a_cap_is_carried_through(self, tmp_path):
