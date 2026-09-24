@@ -49,7 +49,10 @@ says when it will come, that it is here, or that a Horde wave does not bring it.
 - **Nothing Stops It does not save the player from it.** The Ravager's keystone saves from "a single
   hit that would kill", and the row says "instantly die". The kill is written straight to health after
   the blow is announced, so the save, which runs only on a blow, cannot catch it. A lethal blow from
-  the Reaper still spends the save, and the player dies anyway.
+  the Reaper still spends the save, and the player dies anyway. **That is not a fault**: the
+  blow passes the damage path, where the save runs, before the kill, and the revival resets the
+  save's clock (`UCataclysmAbilitySystemComponent::ClearWhatDeathEnds`, called from
+  `ACataclysmPlayerCharacter::Revive`).
 
 **Judgements in this change, marked as such, under the same delegation:**
 
