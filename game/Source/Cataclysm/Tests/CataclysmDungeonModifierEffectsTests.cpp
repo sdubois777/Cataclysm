@@ -22,6 +22,7 @@
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
+#include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
 #include "Components/CapsuleComponent.h"
@@ -22694,6 +22695,340 @@ bool FCataclysmPortalLastFloorTest::RunTest(const FString& Parameters)
 		bStillStanding |= Standing.DungeonId == DungeonId;
 	}
 	TestFalse(TEXT("they lead out: the dungeon is cleared"), bStillStanding);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Void_Nothing_Is_Forgotten. Issues #1820 and #41.
+//
+// "Enemies that the player kills aren't forgotten, instead a portion of their stats are
+// fed back into the void to fuel the final boss of the dungeon." Five percent of each
+// killed creature's maximum health and attack damage; the health uncapped, the damage
+// capped at the boss's own; the last floor's boss only. Rulings under the owner's
+// delegation, 2026-09-23. Every expected figure is worked out here from the creatures'
+// own attributes and the written-out five percent.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where the player's kills feed the final boss. Issues #1820, #41. */
+	const FName NothingIsForgotten(UCataclysmDungeonModifierEffects::NothingIsForgottenKey);
+
+	/** A creature's maximum health and attack damage, as the void reads them. */
+	struct FVoidFigures
+	{
+		float Health = 0.0f;
+		float Damage = 0.0f;
+	};
+
+	FVoidFigures VoidFiguresOf(ACataclysmEnemyCharacter* Creature)
+	{
+		FVoidFigures Out;
+		if (const UAbilitySystemComponent* System =
+				Creature ? Creature->GetAbilitySystemComponent() : nullptr)
+		{
+			Out.Health = System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+			Out.Damage = System->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+		}
+		return Out;
+	}
+
+	/** A floor carrying the row, reached with `GoToFloor`, emptied, every Imp a Common. */
+	ACataclysmDungeonGameMode* AFloorCarryingTheVoidRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {NothingIsForgotten};
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestTrue(TEXT("floor 1 was reached"), Mode->GoToFloor(1)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The player kills this many Commons; answers what the void should now hold. */
+	bool ThePlayerFeedsTheVoid(FAutomationTestBase& Test, UWorld* World,
+							   ACataclysmDungeonGameMode* Mode, const FPossessedPlayer& Player,
+							   int32 Kills, FVoidFigures& InOutExpected)
+	{
+		for (int32 Index = 0; Index < Kills; ++Index)
+		{
+			ACataclysmEnemyCharacter* Fed = PlaceCreatureAtRung(
+				World, Mode, FVector(400.0f * (Index + 1), 0.0f, 0.0f), 0);
+			if (!Test.TestNotNull(TEXT("a creature to kill"), Fed))
+			{
+				return false;
+			}
+			const FVoidFigures Figures = VoidFiguresOf(Fed);
+			if (!ThePlayerKills(Test, Player, Fed))
+			{
+				return false;
+			}
+			InOutExpected.Health += Figures.Health * 0.05f;
+			InOutExpected.Damage += Figures.Damage * 0.05f;
+		}
+		return true;
+	}
+
+	/** A Gatekeeper to feed, given this attack damage, answering its figures before. */
+	ACataclysmEnemyCharacter* AGatekeeperToFeed(FAutomationTestBase& Test, UWorld* World,
+												float Damage, FVoidFigures& OutBefore)
+	{
+		FActorSpawnParameters Spawn;
+		Spawn.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+		ACataclysmEnemyCharacter* Boss = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+			ACataclysmGatekeeperCharacter::StaticClass(), FVector(-800.0f, 0.0f, 0.0f),
+			FRotator::ZeroRotator, Spawn);
+		if (!Test.TestNotNull(TEXT("a Gatekeeper to feed"), Boss)
+			|| !Test.TestTrue(TEXT("it hits for the damage asked"),
+							  GiveCreatureAttackDamage(Boss, Damage) > 0.0f))
+		{
+			return nullptr;
+		}
+		OutBefore = VoidFiguresOf(Boss);
+		return Test.TestTrue(FString::Printf(TEXT("it has a maximum health: %.1f"), OutBefore.Health),
+							 OutBefore.Health > 0.0f) ? Boss : nullptr;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString VoidPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(NothingIsForgotten);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+}
+
+// ONLY THE PLAYER'S KILLS OF UNMARKED CREATURES FEED THE VOID, and leaving the dungeon
+// empties it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidFeedTest,
+	"Cataclysm.DungeonModifierEffects.OnlyThePlayersKillsOfUnmarkedCreaturesFeedTheVoid",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVoidFeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheVoidRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	FVoidFigures Expected;
+	if (!ThePlayerFeedsTheVoid(*this, World, Mode, Player, 2, Expected))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the kills held something"), Expected.Health > 0.0f && Expected.Damage > 0.0f))
+	{
+		return false;
+	}
+
+	// A CREATURE'S KILL AND A MARKED CREATURE'S DEATH FEED NOTHING.
+	ACataclysmEnemyCharacter* ByAnother = PlaceCreatureAtRung(World, Mode, FVector(2000.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Marked = PlaceCreatureAtRung(World, Mode, FVector(2400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature for another to kill"), ByAnother)
+		|| !TestNotNull(TEXT("a marked creature"), Marked)
+		|| !ACreatureKills(*this, World, ByAnother))
+	{
+		return false;
+	}
+	Marked->bRisenFromTheDead = true;
+	if (!ThePlayerKills(*this, Player, Marked))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the void holds 5% of the player's two kills' maximum health"),
+			  Mode->NothingIsForgottenHealthHeld(), Expected.Health, 0.01f);
+	TestEqual(TEXT("and 5% of their attack damage"),
+			  Mode->NothingIsForgottenDamageHeld(), Expected.Damage, 0.01f);
+	TestEqual(TEXT("the panel says what it holds"), VoidPanelLine(Mode),
+			  FString::Printf(TEXT("nothing is forgotten: the void holds %.0f health and %.0f damage for the final boss"),
+							  Expected.Health, Expected.Damage));
+
+	// LEAVING THE DUNGEON -- a floor whose brief carries no rows -- EMPTIES IT.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("out of the dungeon"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the void is empty of health"), Mode->NothingIsForgottenHealthHeld(), 0.0f, 0.0001f);
+	TestEqual(TEXT("and of damage"), Mode->NothingIsForgottenDamageHeld(), 0.0f, 0.0001f);
+	return true;
+}
+
+// THE HEALTH IS UNCAPPED AND THE DAMAGE STOPS AT DOUBLE: a boss hitting for 10 is fed from
+// three kills holding about 15 damage.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidCapTest,
+	"Cataclysm.DungeonModifierEffects.TheFinalBossTakesAllTheHealthAndAtMostDoubleItsDamage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVoidCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheVoidRow(*this, World, Player);
+	FVoidFigures Expected;
+	if (!Mode || !ThePlayerFeedsTheVoid(*this, World, Mode, Player, 3, Expected))
+	{
+		return false;
+	}
+
+	FVoidFigures Before;
+	ACataclysmEnemyCharacter* Boss = AGatekeeperToFeed(*this, World, 10.0f, Before);
+	if (!Boss || !TestTrue(FString::Printf(TEXT("the void holds more damage than the boss has: %.2f against %.2f"),
+										   Expected.Damage, Before.Damage),
+						   Expected.Damage > Before.Damage))
+	{
+		return false;
+	}
+
+	Mode->FeedTheFinalBoss(Boss);
+	const FVoidFigures After = VoidFiguresOf(Boss);
+	TestEqual(TEXT("its maximum health rises by all the void held"), After.Health,
+			  Before.Health + Expected.Health, 0.01f);
+	TestEqual(TEXT("and it stands at that maximum"),
+			  Boss->GetAbilitySystemComponent()->GetNumericAttribute(Vital::GetHealthAttribute()),
+			  After.Health, 0.01f);
+	TestEqual(TEXT("its damage stops at double its own"), After.Damage, Before.Damage * 2.0f, 0.01f);
+	TestTrue(TEXT("and the panel says the damage is at its cap"),
+			 VoidPanelLine(Mode).EndsWith(TEXT("(damage at its cap)")));
+	return true;
+}
+
+// BELOW THE CAP THE BOSS TAKES ALL THE DAMAGE HELD: a boss hitting for 1000 is fed from two
+// kills holding about 10.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidBelowCapTest,
+	"Cataclysm.DungeonModifierEffects.BelowTheCapTheFinalBossTakesAllTheDamageHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVoidBelowCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheVoidRow(*this, World, Player);
+	FVoidFigures Expected;
+	if (!Mode || !ThePlayerFeedsTheVoid(*this, World, Mode, Player, 2, Expected))
+	{
+		return false;
+	}
+
+	FVoidFigures Before;
+	ACataclysmEnemyCharacter* Boss = AGatekeeperToFeed(*this, World, 1000.0f, Before);
+	if (!Boss || !TestTrue(TEXT("the void holds less damage than the boss has"),
+						   Expected.Damage < Before.Damage))
+	{
+		return false;
+	}
+
+	Mode->FeedTheFinalBoss(Boss);
+	TestEqual(TEXT("its damage rises by all the void held"), VoidFiguresOf(Boss).Damage,
+			  Before.Damage + Expected.Damage, 0.01f);
+	TestFalse(TEXT("and the panel does not say it is capped"),
+			  VoidPanelLine(Mode).EndsWith(TEXT("(damage at its cap)")));
+	return true;
+}
+
+// THE FINAL FLOOR'S BOSS ONLY, EVEN WHERE EVERY FLOOR ENDS WITH ONE: an Elite dungeon of two
+// floors places a Gatekeeper at floor 1's exit too, and only floor 2's is fed.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVoidFinalFloorTest,
+	"Cataclysm.DungeonModifierEffects.OnlyTheFinalFloorsBossIsFedEvenInAnEliteDungeon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVoidFinalFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheVoidRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	FVoidFigures Expected;
+	if (!ThePlayerFeedsTheVoid(*this, World, Mode, Player, 2, Expected))
+	{
+		return false;
+	}
+
+	Mode->TotalFloors = 2;
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Elite;
+
+	// FLOOR 1 AGAIN, NOW AN ELITE FLOOR WITH A BOSS AT ITS EXIT, and not the final floor.
+	if (!TestTrue(TEXT("floor 1 of an Elite dungeon"), Mode->GoToFloor(1))
+		|| !TestTrue(TEXT("has a boss at its exit"), Mode->FloorBrief.bBossAtTheExit))
+	{
+		return false;
+	}
+	bool bAGatekeeperStands = false;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		bAGatekeeperStands |= IsValid(Creature) && Creature->IsA<ACataclysmGatekeeperCharacter>();
+	}
+	TestTrue(TEXT("a Gatekeeper stands there"), bAGatekeeperStands);
+	TestNull(TEXT("and it is not fed: floor 1 is not the last"), Mode->NothingIsForgottenFinalBoss());
+
+	// FLOOR 2, THE LAST.
+	if (!TestTrue(TEXT("floor 2, the last"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Fed = Mode->NothingIsForgottenFinalBoss();
+	if (!TestNotNull(TEXT("its boss is fed"), Fed))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and it is the floor's Gatekeeper"),
+			 Fed->IsA<ACataclysmGatekeeperCharacter>() && Mode->FloorEnemies.Contains(Fed));
 	return true;
 }
 

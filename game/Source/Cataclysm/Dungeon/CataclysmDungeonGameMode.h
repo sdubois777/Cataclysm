@@ -1884,9 +1884,44 @@ public:
 	int32 UnstablePortalRollCount() const { return UnstablePortalRolls; }
 	int32 UnstablePortalLastOutcome() const { return UnstablePortalLast; }
 
+	/**
+	 * Nothing Is Forgotten's state, for the floor panel and tests: the health and attack
+	 * damage the void holds for the final boss, and the boss it fed, if one has been.
+	 * Issues #1820 and #41.
+	 */
+	float NothingIsForgottenHealthHeld() const { return NothingIsForgottenHealth; }
+	float NothingIsForgottenDamageHeld() const { return NothingIsForgottenDamage; }
+	ACataclysmEnemyCharacter* NothingIsForgottenFinalBoss() const
+	{
+		return NothingIsForgottenBoss.Get();
+	}
+
+	/**
+	 * Add what the void holds to this boss, and remember it as the one fed, so a rung
+	 * change can put the figures back. Called on the final floor's boss when it is
+	 * placed; public so a test can feed a boss it made.
+	 */
+	void FeedTheFinalBoss(ACataclysmEnemyCharacter* Boss);
+
 private:
 	/** Unstable Portal's mini-boss: an Abyssal Warden beside the stairs at the mini-boss rung. */
 	void RaiseTheUnstablePortalsWarden();
+
+	/** Nothing Is Forgotten, on every death: the player's kill feeds the void. */
+	void NoteDeathForNothingIsForgotten(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * The void's figures on the boss it fed, and on nothing else. Written at the feeding
+	 * and again after any rung change, which rewrites the creature's whole stat block.
+	 */
+	void ApplyNothingIsForgottenFigures(ACataclysmEnemyCharacter* Creature);
+
+	/**
+	 * Whether this is the dungeon's final floor, whose exit holds its final boss: at or past
+	 * the dungeon's floor count, when it has more than one floor. The same test
+	 * `FCataclysmDungeonFloorRules::BossAtTheExit` makes of depth.
+	 */
+	bool IsTheFinalFloorForItsBoss() const;
 
 public:
 
@@ -2686,6 +2721,16 @@ private:
 	int32 UnstablePortalRolls = 0;
 	int32 UnstablePortalLast = -1;
 	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> UnstablePortalWardens;
+
+	/**
+	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that
+	 * boss. The dungeon's, not the floor's: emptied when the player leaves the dungeon.
+	 */
+	float NothingIsForgottenHealth = 0.0f;
+	float NothingIsForgottenDamage = 0.0f;
+	TWeakObjectPtr<ACataclysmEnemyCharacter> NothingIsForgottenBoss;
+	float NothingIsForgottenHealthGiven = 0.0f;
+	float NothingIsForgottenDamageGiven = 0.0f;
 
 	/**
 	 * Judgment Zones: the ground standing now, the clock that lays more, and what the

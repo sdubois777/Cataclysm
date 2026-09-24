@@ -113,6 +113,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::ChaoticLootKey =
 const TCHAR* UCataclysmDungeonModifierEffects::UnstablePortalKey =
 	TEXT("Chaos_Unstable_Portal");
 
+const TCHAR* UCataclysmDungeonModifierEffects::NothingIsForgottenKey =
+	TEXT("Void_Nothing_Is_Forgotten");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -382,7 +385,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DirgeResonanceKey)
 		|| RowKey == FName(ScarcityKey)
 		|| RowKey == FName(ChaoticLootKey)
-		|| RowKey == FName(UnstablePortalKey))
+		|| RowKey == FName(UnstablePortalKey)
+		|| RowKey == FName(NothingIsForgottenKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -559,6 +563,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),
 		FName(UnstablePortalKey),
+		FName(NothingIsForgottenKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1740,6 +1745,18 @@ int32 UCataclysmDungeonModifierEffects::BloodGatesOpenAt(int32 Placed)
 bool UCataclysmDungeonModifierEffects::BloodGatesAreOpen(int32 Slain, int32 Placed)
 {
 	return Slain >= BloodGatesOpenAt(Placed);
+}
+
+float UCataclysmDungeonModifierEffects::NothingIsForgottenPortionOf(float Figure)
+{
+	return FMath::Max(0.0f, Figure) * NothingIsForgottenPortionPercent / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::NothingIsForgottenDamageAdded(float Held,
+																	  float BossOwnDamage)
+{
+	return FMath::Min(FMath::Max(0.0f, Held),
+					  FMath::Max(0.0f, BossOwnDamage) * NothingIsForgottenMostDamagePercent / 100.0f);
 }
 
 int32 UCataclysmDungeonModifierEffects::UnstablePortalOutcomeFor(float Roll)
