@@ -19,6 +19,8 @@ const TCHAR* UCataclysmDamageCalculation::DamageTakenStat =
 	TEXT("damage_taken");
 const TCHAR* UCataclysmDamageCalculation::DamageOverTimeTakenStat =
 	TEXT("damage_over_time_taken");
+const TCHAR* UCataclysmDamageCalculation::NonCriticalDamageStat =
+	TEXT("non_critical_damage");
 const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
 	TEXT("debuff_damage_suppressed");
 const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =
@@ -570,6 +572,17 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			Result.bWasCritical = true;
 			Damage *= Hit.CritMultiplier / 100.0f;
 		}
+	}
+
+	// AND A HIT WHOSE ROLL FAILED KEEPS ONLY ITS NON-CRITICAL SHARE. Issue #1686:
+	// "Non-critical strikes deal 20%-35% less damage". Path of Exile's "Non-
+	// Critical Strike" is a hit whose roll failed, judged per hit, and this is
+	// the first place a roll exists. The share is 100 for every hit whose
+	// attacker never asked for it, so a creature, a minion, retaliation and a
+	// tick are untouched.
+	if (!Result.bWasCritical)
+	{
+		Damage *= FMath::Max(0.0f, Hit.NonCriticalDamagePercent) / 100.0f;
 	}
 
 	// 2. Block. Applies to area damage too, and removes half rather than all.

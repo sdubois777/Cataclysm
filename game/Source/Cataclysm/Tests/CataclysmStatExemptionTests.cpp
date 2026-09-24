@@ -2446,6 +2446,68 @@ namespace CataclysmStatExemptionTest
 			Restored > Unscaled + 0.0001f);
 	}
 
+	/**
+	 * `non_critical_damage` is read beside the critical multiplier in
+	 * CataclysmVitalAttributeSet.cpp and applied by
+	 * `UCataclysmDamageCalculation::Resolve` when the roll fails. Issue #1686.
+	 *
+	 * TWO ATTACKERS, the roll pinned so neither critically strikes, one carrying
+	 * the stat at its base of 100 with 50% less on it. Its blow must be half.
+	 */
+	void ProbeNonCriticalDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		IConsoleVariable* Roll =
+			IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+		if (!Test.TestNotNull(TEXT("the critical strike roll can be pinned"), Roll))
+		{
+			return;
+		}
+		const float PreviousRoll = Roll->GetFloat();
+		Roll->Set(100.0f, ECVF_SetByConsole);
+		ON_SCOPE_EXIT { Roll->Set(PreviousRoll, ECVF_SetByConsole); };
+
+		FScopedFighter Plain(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Carrying(World, /*AttackDamage=*/1000.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+
+		FCataclysmStatModifier Half;
+		Half.Bucket = ECataclysmStatBucket::More;
+		Half.Source = ECataclysmModifierSource::Enchantment;
+		Half.Value = -50.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line =
+			Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::NonCriticalDamageStat));
+		Line.Base = UCataclysmDamageCalculation::NormalNonCriticalDamage;
+		Line.Modifiers = {Half};
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Carrying.Actor))
+			->SetStatInputs(MoveTemp(Inputs));
+
+		FCataclysmDamageResult Clean;
+		UCataclysmSkillEffects::ApplyHit(Plain.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Clean);
+		FCataclysmDamageResult Cut;
+		UCataclysmSkillEffects::ApplyHit(Carrying.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Cut);
+
+		if (!Test.TestTrue(TEXT("both blows landed and neither critically struck"),
+				Clean.DealtToHealth > 0.0f && !Clean.bWasCritical && !Cut.bWasCritical))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("the carrying attacker's non-critical blow is half"),
+			Cut.DealtToHealth, Clean.DealtToHealth * 0.5f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -2498,6 +2560,7 @@ namespace CataclysmStatExemptionTest
 									&ProbeMinionsDrawNearbyEnemiesMetres},
 			{TEXT("minions_draw_nearby_enemies_minimum"),
 									&ProbeMinionsDrawNearbyEnemiesMinimum},
+			{TEXT("non_critical_damage"), &ProbeNonCriticalDamage},
 		};
 		return Made;
 	}

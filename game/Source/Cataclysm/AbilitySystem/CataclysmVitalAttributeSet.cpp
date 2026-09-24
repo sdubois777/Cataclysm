@@ -785,6 +785,24 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 													   GetOwningActor()),
 												   /*Target=*/GetOwningActor())
 							: Offence->GetCritMultiplier();
+
+						// AND WHAT A HIT KEEPS IF ITS ROLL FAILS, ASKED ON THE SAME
+						// TERMS AS THE MULTIPLIER. Issue #1686. Inside this block, so
+						// only a blow that CAN critically strike is a non-critical
+						// strike when it does not: a tick, a minion's blow and
+						// retaliation keep 100, ruled under the owner's delegation
+						// on 2026-09-23. A creature has no stat line and reads the
+						// fallback, 100.
+						Hit.NonCriticalDamagePercent = Asking
+							? Asking->StatForSkill(
+								FName(UCataclysmDamageCalculation::NonCriticalDamageStat),
+								AssetTags,
+								UCataclysmDamageCalculation::NormalNonCriticalDamage,
+								-1.0f, FCataclysmBlowContext(), -1.0f,
+								Hit.OpponentDistanceMetres,
+								UCataclysmSkillEffects::IsStaggered(GetOwningActor()),
+								GetOwningActor())
+							: UCataclysmDamageCalculation::NormalNonCriticalDamage;
 					}
 				}
 			}

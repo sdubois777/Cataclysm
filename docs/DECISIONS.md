@@ -1371,6 +1371,63 @@ floor.", and with "5%" added before "slower movement".
 
 ---
 
+## 2026-09-23 — A hit whose critical roll failed can be made smaller, and "Non-critical strikes deal 20%-35% less damage" does it
+
+**Affects:**
+- `UCataclysmDamageCalculation`: `NonCriticalDamageStat` (`non_critical_damage`),
+  `NormalNonCriticalDamage` (100), `FCataclysmIncomingHit::NonCriticalDamagePercent`, and `Resolve`
+- `CataclysmVitalAttributeSet.cpp`, which asks for the stat beside the critical multiplier
+- `UCataclysmPlayerClassStats`: the stat's base in `EngineSuppliedBases`, and its name in
+  `StatsWithNoAttribute`
+- `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`
+- issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686) (row N063)
+
+### WHY IT IS A STAT AND NOT A CONDITION
+
+**The attacker's damage is asked for before the critical strike exists.**
+- `attack_damage` and `spell_damage` are read where the hit is built.
+- The roll happens later, in `UCataclysmDamageCalculation::Resolve`, from a chance and a
+  multiplier that `CataclysmVitalAttributeSet.cpp` asks the attacker for.
+
+So a condition on attack damage could never know whether the hit crits. Instead, the share a
+non-critical hit keeps becomes a stat of its own:
+- It is asked for beside the critical multiplier, on the same terms: the attacker, the skill's
+  tags, the distance, the target's stagger and the target.
+- It is carried on the hit, and `Resolve` multiplies a hit whose roll failed by it.
+- **Its base is 100, supplied by `EngineSuppliedBases`.** The row is a `more` of -20 to -35. With
+  no base under it, every non-critical hit a player landed would be multiplied by zero.
+
+### WHAT THE RESEARCH SETTLES, AND WHAT IS A JUDGEMENT
+
+**The genre settles the meaning.** Path of Exile uses "Non-Critical Strike" to mean a hit whose
+critical roll failed, judged per hit after the roll. The Assassin node Unstable Infusion reads
+"30% chance to gain a Power Charge on Non-Critical Strike" (poedb.tw/us/Assassin). "Less" is this
+project's `more` bucket.
+
+**Which blows count is a judgement, ruled by the coordinating session on 2026-09-23 under the
+owner's delegation:** only a blow that CAN critically strike, and whose roll failed. The stat is
+asked for inside the block that reads the critical strike, so these keep all of their damage:
+- **a damage over time tick**, which is not a strike;
+- **a minion's blow**, which is the minion's own (the owner's decision of 2026-09-17);
+- **retaliation**.
+
+The minion blow and retaliation are the only two blows the code marks as unable to critically
+strike. No player skill carries `Keyword.NoCrit` (0 of 403 rows in `WeaponSkills.csv`).
+
+**A creature reads 100.** It has no stat line, so the lookup answers its fallback. A test checks
+this rather than assuming it: a creature's hit is the same through the path that asks and the path
+that never asks.
+
+### THE ROW
+
+| Enchantment | Row |
+| :-- | :-- |
+| Non-critical strikes deal 20%-35% less damage | `non_critical_damage`, more -20 to -35 |
+
+At the top of its range, a non-critical hit keeps 65% of itself, and a critical hit is unchanged.
+
+---
+
 ## 2026-09-23 — A row can count the passive points spent above a threshold, and three class point enchantments do
 
 **Affects:**

@@ -4647,4 +4647,55 @@ bool FCataclysmClassPointRowsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNonCriticalRowTest,
+	"Cataclysm.Enchantments.TheNonCriticalRowLeavesANonCriticalHit65PercentOfItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Non-critical strikes deal 20%-35% less damage", worn, leaves the wearer's
+ * non-critical share at 65: the base of 100 the stat fold supplies, and 35%
+ * less at the top of the range. Issue #1686.
+ *
+ * AND WITHOUT THE ROW THE SHARE IS 100, which is the line that fails if the
+ * base were ever lost: a stat line with no base would read 0 and every
+ * non-critical hit the wearer landed would deal nothing.
+ */
+bool FCataclysmNonCriticalRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FName Share(UCataclysmDamageCalculation::NonCriticalDamageStat);
+	const auto Read = [&]()
+	{
+		return ASC->StatForSkill(Share, FGameplayTagContainer(),
+								 UCataclysmDamageCalculation::NormalNonCriticalDamage);
+	};
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Non_critical_strikes_deal_20_35_less_damage")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	TestEqual(TEXT("worn, a non-critical hit keeps 65% of itself"), Read(), 65.0f, 0.01f);
+
+	Wearer.Equipment->UnequipEverything();
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(TEXT("and with nothing worn, all of itself"), Read(), 100.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

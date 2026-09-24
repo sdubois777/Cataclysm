@@ -5237,6 +5237,13 @@ ENGINE_SUPPLIED_BASES = {
         "UCataclysmSkillEffects::NormalStaggerDuration, put on the character by "
         "UCataclysmPlayerClassStats::EngineSuppliedBases",
 
+    # AND WHAT SHARE A HIT KEEPS WHEN ITS CRITICAL ROLL FAILS, at 100. Issue
+    # #1686: "Non-critical strikes deal 20%-35% less damage" is a `more` row on
+    # it, so with no base under it every non-critical hit would deal nothing.
+    "non_critical_damage":
+        "UCataclysmDamageCalculation::NormalNonCriticalDamage, put on the "
+        "character by UCataclysmPlayerClassStats::EngineSuppliedBases",
+
     # AND HOW LARGE THE CRIPPLE AND WEAKEN THIS CHARACTER APPLIES ARE, at 100 for
     # normal. Issue #1767. The Ravager's Dragging Weight reads "+3% increased
     # magnitude of Cripple you apply per point" and its Sapped says the same of

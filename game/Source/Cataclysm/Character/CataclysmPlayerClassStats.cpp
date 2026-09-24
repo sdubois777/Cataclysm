@@ -290,6 +290,12 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// reason `mana_cost` gives: it is asked per cast, with the skill's tags
 		// and the character's conditions at that moment.
 		TEXT("mana_cost_as_current_health_percent"),
+		// What share a hit keeps when its critical roll fails, read by
+		// CataclysmVitalAttributeSet.cpp beside the critical multiplier and
+		// applied by UCataclysmDamageCalculation::Resolve. Issue #1686. No
+		// gameplay attribute: it is asked per blow, with the skill's tags, and
+		// its base of 100 comes from `EngineSuppliedBases`.
+		TEXT("non_critical_damage"),
 	};
 	return Stats;
 }
@@ -1054,6 +1060,13 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 			 UCataclysmDamageCalculation::NormalDamageTaken},
 			{FName(UCataclysmDamageCalculation::DamageOverTimeTakenStat),
 			 UCataclysmDamageCalculation::NormalDamageTaken},
+
+			// AND WHAT SHARE A HIT KEEPS WHEN ITS CRITICAL ROLL FAILS, at 100.
+			// Issue #1686. The same shape and the same reason: its one row is a
+			// `more` of -20 to -35, so with no base every non-critical hit a
+			// player lands would be multiplied by zero.
+			{FName(UCataclysmDamageCalculation::NonCriticalDamageStat),
+			 UCataclysmDamageCalculation::NormalNonCriticalDamage},
 
 			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
 			// for normal. Issue #1033. The THIRD stat of this shape and it meets the
