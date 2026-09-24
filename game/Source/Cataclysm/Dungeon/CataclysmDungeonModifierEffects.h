@@ -1458,6 +1458,30 @@ public:
 	static const TCHAR* BloodGatesKey;
 
 	/**
+	 * The row where a crescendo hastes every creature on the floor for ten seconds.
+	 * Issues #1820 and #41.
+	 *
+	 * "Distant funeral music plays; when it crescendos, all enemies gain haste and fear
+	 * immunity for 10 seconds." Every `DirgeResonanceEverySeconds` of the floor's beat,
+	 * every living creature on the floor gains `Status.Buff.Commander` for
+	 * `DirgeResonanceHasteSeconds`.
+	 *
+	 * RULED UNDER THE PROJECT OWNER'S DELEGATION ON 2026-09-23:
+	 * - THE PERIOD IS THE EDICT OF SILENCE'S NINETY SECONDS, the only period the table
+	 *   states for a repeating event across a whole floor; the first crescendo comes
+	 *   ninety seconds into the floor.
+	 * - "HASTE" IS `Status.Buff.Commander`, 20% more movement and attack speed, the one
+	 *   haste-like status a creature can hold. It reaches both speeds through
+	 *   `ACataclysmEnemyCharacter::SpeedMultiplier`, and refreshes rather than stacks.
+	 * - "ALL ENEMIES" is every living creature on the floor at the crescendo, marked ones
+	 *   included. One that arrives during the ten seconds waits for the next.
+	 *
+	 * TWO HALVES OF THE ROW DO NOTHING TODAY. There is no fear in this game, so "fear
+	 * immunity" grants nothing; and there is no audio for the "distant funeral music".
+	 */
+	static const TCHAR* DirgeResonanceKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3594,6 +3618,22 @@ public:
 		"creature slain are Lightforged Walls rather than this row.");
 
 	/**
+	 * How often the dirge crescendos. THE ROW GIVES NO FIGURE. Ruled under the owner's
+	 * delegation on 2026-09-23 as the Edict of Silence's period, and declared as that
+	 * constant rather than written a second time.
+	 */
+	static constexpr float DirgeResonanceEverySeconds = EdictOfSilenceEverySeconds;
+
+	/** How long a crescendo's haste lasts. STATED BY THE ROW: "for 10 seconds". */
+	static constexpr float DirgeResonanceHasteSeconds = 10.0f;
+
+	static_assert(
+		DirgeResonanceHasteSeconds > 0.0f
+			&& DirgeResonanceHasteSeconds < DirgeResonanceEverySeconds,
+		"A haste of no length is not the row, and one as long as the gap between "
+		"crescendos never ends.");
+
+	/**
 	 * How much of what this row says has been built.
 	 *
 	 * NOT BUILT FOR EVERY KEY THIS FILE DOES NOT NAME, a key that is not a row
@@ -4264,6 +4304,12 @@ public:
 
 	/** Whether the stairs are open: `Slain` has reached `BloodGatesOpenAt(Placed)`. */
 	static bool BloodGatesAreOpen(int32 Slain, int32 Placed);
+
+	/**
+	 * Whether a crescendo is due: `DirgeResonanceEverySeconds` of the floor's beat have
+	 * passed since the last one, or since the floor began. A negative wait brings none.
+	 */
+	static bool DirgeResonanceIsDue(float SecondsSinceLast);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

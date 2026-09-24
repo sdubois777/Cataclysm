@@ -3657,3 +3657,30 @@ def test_blood_gates_row_still_seals_the_next_level_for_the_players_kills():
     assert "%" not in words, (
         "Demonic_Blood_Gates now states a percentage. The half was a ruling because the row "
         "gave none; use the row's figure. " + words)
+
+
+def test_dirge_resonance_row_still_states_ten_seconds_for_all_enemies():
+    """The row's own figure and scope, and the two halves that grant nothing today.
+
+    "Distant funeral music plays; when it crescendos, all enemies gain haste and fear
+    immunity for 10 seconds." The ten seconds is `DirgeResonanceHasteSeconds`; ALL ENEMIES
+    is why every living creature on the floor is hasted, marked ones included; and the
+    period is a ruling, because the row states none. FEAR IMMUNITY and the MUSIC are in the
+    row and do nothing, because this game has no fear and no audio for it -- if the row
+    drops either, the note saying so should go too.
+    """
+    words = flat(rows()["Death_Dirge_Resonance"]["Description"])
+    lower = words.lower()
+
+    assert "10 seconds" in lower, (
+        "Death_Dirge_Resonance no longer says 10 SECONDS. Check DirgeResonanceHasteSeconds. "
+        + words)
+    assert constant("DirgeResonanceHasteSeconds") == 10.0, (
+        "DirgeResonanceHasteSeconds no longer holds the row's ten seconds.")
+    for phrase in ("all enemies", "haste", "fear immunity", "music"):
+        assert phrase in lower, (
+            f"Death_Dirge_Resonance no longer says {phrase.upper()!r}; a reading of the rule "
+            "rests on it. See DirgeResonanceKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert not re.search(r"every\s+\d+", lower), (
+        "Death_Dirge_Resonance now states how often it crescendos. The ninety seconds was a "
+        "ruling because it gave no period; use the row's. " + words)

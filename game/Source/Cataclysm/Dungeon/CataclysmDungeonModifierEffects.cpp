@@ -100,6 +100,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::SufferingAuraKey =
 const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
 	TEXT("Demonic_Blood_Gates");
 
+const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
+	TEXT("Death_Dirge_Resonance");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -365,7 +368,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DivineResurgenceKey)
 		|| RowKey == FName(DeadRisingKey)
 		|| RowKey == FName(SufferingAuraKey)
-		|| RowKey == FName(BloodGatesKey))
+		|| RowKey == FName(BloodGatesKey)
+		|| RowKey == FName(DirgeResonanceKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -538,6 +542,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DeadRisingKey),
 		FName(SufferingAuraKey),
 		FName(BloodGatesKey),
+		FName(DirgeResonanceKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1719,6 +1724,11 @@ int32 UCataclysmDungeonModifierEffects::BloodGatesOpenAt(int32 Placed)
 bool UCataclysmDungeonModifierEffects::BloodGatesAreOpen(int32 Slain, int32 Placed)
 {
 	return Slain >= BloodGatesOpenAt(Placed);
+}
+
+bool UCataclysmDungeonModifierEffects::DirgeResonanceIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= 0.0f && SecondsSinceLast >= DirgeResonanceEverySeconds;
 }
 
 float UCataclysmDungeonModifierEffects::SufferingAuraLossFor(float Maximum,
