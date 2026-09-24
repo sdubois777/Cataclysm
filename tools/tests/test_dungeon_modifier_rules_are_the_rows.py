@@ -3684,3 +3684,22 @@ def test_dirge_resonance_row_still_states_ten_seconds_for_all_enemies():
     assert not re.search(r"every\s+\d+", lower), (
         "Death_Dirge_Resonance now states how often it crescendos. The ninety seconds was a "
         "ruling because it gave no period; use the row's. " + words)
+
+
+def test_scarcity_row_still_disables_one_non_weapon_slots_stats_and_enchantments():
+    """The row's own words, each of which a part of the rule rests on.
+
+    "At the start of each floor, a random equipment slot (excluding weapons) has its stats
+    and enchantments disabled for that floor." EACH FLOOR is when the draw happens; A
+    RANDOM EQUIPMENT SLOT is what is drawn, which is why the slot and not the item is off;
+    EXCLUDING WEAPONS is why the two weapon slots are never drawn; and STATS AND
+    ENCHANTMENTS is why the item gives nothing at all and is no piece of a set.
+    """
+    words = flat(rows()["Famine_Scarcity"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("each floor", "a random equipment slot", "excluding weapons",
+                   "stats and enchantments", "for that floor"):
+        assert phrase in lower, (
+            f"Famine_Scarcity no longer says {phrase.upper()!r}; a part of the rule rests on "
+            "it. See ScarcityKey in CataclysmDungeonModifierEffects.h. " + words)

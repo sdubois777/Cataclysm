@@ -2,6 +2,122 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — As each floor begins, one worn non-weapon slot gives nothing for that floor
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (a switched-off
+slot, read as empty when the worn gear's stats and enchantments are gathered),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, a seed
+salt and the draw), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (choosing
+the slot as each floor's rules reach the player, and the floor panel line),
+`game/Source/Cataclysm/Interface/CataclysmGearPanel.h` and `.cpp` and
+`game/Source/Cataclysm/Interface/CataclysmInventoryWidget.cpp` (the gear screen marking the slot), the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the three guard proofs have run. ONE TEST FAILED ITS OWN SETUP IN THE WHOLE-SUITE RUN
+AND WAS CORRECTED; the whole suite was not run again, by ruling. The figures are at the end of this entry.
+
+### The row
+
+`Famine_Scarcity` in `game/Data/DungeonModifiers.csv`, weight 15: "At the start of each floor, a
+random equipment slot (excluding weapons) has its stats and enchantments disabled for that floor." Once
+a floor, never a weapon slot, and both stats and enchantments are the row's own.
+
+### What the rule does
+
+As each floor's rules reach the player, and before their attributes are written, one of the non-weapon
+slots that hold an item is drawn and `UCataclysmEquipmentComponent::SetDisabledSlot` switches it off.
+`GatherModifiers` then reads that slot as empty for both of the things it adds up: the item's implicits
+and affixes, and the worn enchantments, so the item is no piece of any set either. The item stays worn
+and drawn. A floor without the row switches the slot back on. The switched-off slot is not saved; each
+floor sets it again.
+
+**Where the player sees it.** The floor panel says `scarcity: Head gives nothing on this floor`, or
+`scarcity: nothing worn to switch off`. The gear screen's label for that slot gains ` (off this floor)`,
+through `UCataclysmGearPanel::DisabledNoteFor`: the label is set every frame, so it follows a new floor.
+The slot's pop-up is not changed, because the screen rebuilds pop-ups only when what is worn changes and
+would not notice a new floor.
+
+### The draw, measured before writing
+
+A floor has seeded streams. `FCataclysmFloorBrief`'s modifier draw and the floor populator each seed
+theirs with `FCataclysmFloorGenerator::SeedForFloor(the floor's seed, a salt)`, the floor's seed being
+`SeedForFloor(the dungeon's seed, the floor number)` and the salts `ModifierSalt` and `PopulationSalt`.
+Scarcity does the same with its own `ScarcitySalt` ("sca"), from `ChooseSeed()` and the floor brief's
+number, in `UCataclysmDungeonModifierEffects::ScarcityPick`. So the same floor of the same dungeon, with
+the same gear worn, switches off the same slot.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-09-23:**
+
+- **Drawn evenly from the non-weapon slots that hold an item** when the floor begins, so the rule always
+  costs something; a player wearing only weapons has nothing switched off. **A play-test point:** rings
+  are drawn more often because there are eight ring slots, and a ring is usually a smaller loss than a
+  chest piece. The draw is not weighted for that now.
+- **The item counts as not worn for stats**: no implicit, affix or enchantment, and no piece of a set. It
+  stays worn and visible.
+- **The slot, not the item, for the whole floor.** Whatever the player moves into it gives nothing, and
+  what they move out of it works again: swapping gear is the answer.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `ASwitchedOffSlotsItemGivesNoStats`: a helm's health affix gives nothing with its slot off and again
+  when it is back on; an empty slot switched off takes nothing; and the gear screen's note marks that
+  slot and no other.
+- `ASwitchedOffPieceDoesNotCountTowardsItsSet`: two pieces of Archon's Aegis give its two-piece bonus,
+  and with one switched off the pair gives what one piece alone does.
+- `AFloorCarryingScarcitySwitchesOffAWornSlot`: a player wearing one helm has its slot switched off on a
+  floor carrying the row, their maximum health falls, the panel names the slot, and a floor without the
+  row puts it all back.
+- `ScarcityNeverDrawsAWeaponAndItsDrawIsSeeded`: the draw stays in range and repeats for the same
+  dungeon and floor, and a player holding only a sword has nothing switched off.
+
+One Python check: the row still says "each floor", "a random equipment slot", "excluding weapons",
+"stats and enchantments" and "for that floor". It was seen to fail, in a copy of the repository, with
+"(excluding weapons)" removed and with "and enchantments" removed.
+
+### Run
+
+- **The group on development (853f4c36) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "227 tests performed, 227 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on e3589904 MISSED ITS REGISTRATION BY ONE:** "Build: Succeeded - 23 actions, 20 files
+  compiled" and "2232 tests performed, 2231 succeeded, 1 failed: ScarcityNeverDrawsAWeaponAndItsDrawIsSeeded",
+  with every declared test reported. The failure was the test's own setup -- "Expected 'Weapon_Sword went
+  on' to be true" -- before any assertion about the rule: a possessed player starts holding a two-handed
+  Greataxe (`ACataclysmPlayerCharacter::GiveStartingWeapon`), which fills both weapon slots, so the sword
+  did not go into Weapon1. In that run's `game/Saved/Logs/Cataclysm.log` the other 230 tests of the group
+  succeeded, and so did all 26 of `Cataclysm.Equipment.`, which is what shows the equipment tests pass on
+  the unbroken code.
+- **Ruled by the coordinating session under the owner's delegation, following the Desperate Measures
+  precedent:** keep the window, correct the test and not the rule, and do not run the whole suite again.
+  Both player tests now unequip everything and assert nothing is worn before putting on what they test;
+  `git diff --stat e3589904 bad3ed7c` shows that file and no other. Python on bad3ed7c printed "5360
+  passed, 8 skipped" (5368 in JUnit, 0 failures). The group on bad3ed7c then printed "Build: Succeeded - 4
+  actions, 1 file compiled" and "231 tests performed, 231 succeeded, 0 failed", the corrected test among
+  them.
+- **Three guard proofs** on bad3ed7c, on the prefix `Cataclysm.DungeonModifierEffects.`, each exactly as
+  registered and each 231 of 231 restored:
+  - nothing actually switched off (the emptied copy left holding the item, in
+    `CataclysmEquipmentComponent.cpp`) failed 3 of 231: `ASwitchedOffSlotsItemGivesNoStats`,
+    `ASwitchedOffPieceDoesNotCountTowardsItsSet` and `AFloorCarryingScarcitySwitchesOffAWornSlot`;
+  - enchantments reading every slot (`*Worn` made `Slots`) failed 1 of 231:
+    `ASwitchedOffPieceDoesNotCountTowardsItsSet`;
+  - weapons drawable (the weapon-slot check removed, in `CataclysmDungeonGameMode.cpp`) failed 1 of 231:
+    `ScarcityNeverDrawsAWeaponAndItsDrawIsSeeded`, on the rule's own assertions and not on its setup --
+    "Expected 'a weapon is never switched off' to be true", and the panel read "scarcity: Weapon 1 gives
+    nothing on this floor". That text was read from a copy of the broken run's log taken before the
+    restored run overwrote it.
+- **The proofs' prefix does not include `Cataclysm.Equipment.`, and need not:** the two equipment breaks
+  act only when a switched-off slot holds an item, and nothing outside this rule's code and its own tests
+  switches a slot off.
+
+---
+
 ## 2026-09-23 — The two lists of stats the engine gives a base value are held equal by a check
 
 **Affects:** the new `tools/tests/test_engine_supplied_bases_agree.py` only. Issue

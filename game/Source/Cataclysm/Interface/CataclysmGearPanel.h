@@ -110,4 +110,14 @@ public:
 	static FString EmptyWeaponHandNote(
 		ECataclysmGearSlot Slot,
 		const UCataclysmEquipmentComponent* Equipment);
+
+	/**
+	 * What a worn slot's label adds when a floor rule has switched it off, or nothing.
+	 * `Famine_Scarcity`; issues #1820 and #41. ADDED TO THE LABEL, which is set every
+	 * frame, and not to the pop-up, which is rebuilt only when what is worn changes and so
+	 * would not notice a new floor.
+	 */
+	static FString DisabledNoteFor(
+		ECataclysmGearSlot Slot,
+		const UCataclysmEquipmentComponent* Equipment);
 };

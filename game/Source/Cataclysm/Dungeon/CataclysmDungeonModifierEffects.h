@@ -1482,6 +1482,27 @@ public:
 	static const TCHAR* DirgeResonanceKey;
 
 	/**
+	 * The row where one worn piece of gear gives nothing for a floor. Issues #1820 and #41.
+	 *
+	 * "At the start of each floor, a random equipment slot (excluding weapons) has its
+	 * stats and enchantments disabled for that floor." As each floor begins, one of the
+	 * non-weapon slots that hold an item is drawn, and
+	 * `UCataclysmEquipmentComponent::SetDisabledSlot` switches it off until the next.
+	 *
+	 * RULED UNDER THE PROJECT OWNER'S DELEGATION ON 2026-09-23:
+	 * - DRAWN EVENLY FROM THE NON-WEAPON SLOTS THAT HOLD AN ITEM, so the rule always costs
+	 *   something; with nothing but weapons worn, nothing is switched off. Rings are drawn
+	 *   more often because there are more of them: a play-test point.
+	 * - THE ITEM COUNTS AS NOT WORN FOR STATS: no implicit, affix or enchantment, and no
+	 *   piece of a set. It stays worn and visible.
+	 * - THE SLOT, NOT THE ITEM, for the whole floor, so swapping gear is the answer.
+	 *
+	 * THE DRAW IS SEEDED BY THE DUNGEON AND THE FLOOR, the way a floor's contents are, so
+	 * the same floor of the same dungeon draws from the same stream; `ScarcityPick` holds it.
+	 */
+	static const TCHAR* ScarcityKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3627,6 +3648,14 @@ public:
 	/** How long a crescendo's haste lasts. STATED BY THE ROW: "for 10 seconds". */
 	static constexpr float DirgeResonanceHasteSeconds = 10.0f;
 
+	/**
+	 * What Scarcity's draw adds to the floor's seed, so it is not the stream that lays
+	 * the floor out or the one that populates it. The same pattern as
+	 * `FCataclysmDungeonFloorRules::ModifierSalt` and `FCataclysmFloorPopulator::
+	 * PopulationSalt`; "sca" in ASCII.
+	 */
+	static constexpr int32 ScarcitySalt = 0x736361;
+
 	static_assert(
 		DirgeResonanceHasteSeconds > 0.0f
 			&& DirgeResonanceHasteSeconds < DirgeResonanceEverySeconds,
@@ -4310,6 +4339,13 @@ public:
 	 * passed since the last one, or since the floor began. A negative wait brings none.
 	 */
 	static bool DirgeResonanceIsDue(float SecondsSinceLast);
+
+	/**
+	 * Which of `Candidates` worn slots Scarcity switches off on this floor of this
+	 * dungeon, or `INDEX_NONE` when there are none. From a stream seeded by the dungeon's
+	 * seed, the floor number and `ScarcitySalt`, so it is the same every time it is asked.
+	 */
+	static int32 ScarcityPick(int32 Candidates, int32 DungeonSeed, int32 FloorNumber);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in
