@@ -79,7 +79,9 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #:
 #: AND `class_points_spent` JOINED THE SAME DAY for issue #1686's second
 #: window. Its three rows wait for the design workbook and it leaves with them.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"own_stacks"}
+#:
+#: `own_stacks` LEFT on 2026-09-24 with its seven enchantments, issue #1833.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
@@ -102,7 +104,9 @@ KNOWN_USED = "debuffs_carried"
 #: AND 23 OF 23 THE SAME DAY, when `auras_held` gained its row for issue #1686.
 #:
 #: AND 24 OF 24 WHEN `class_points_spent` GAINED ITS ROWS, issue #1686.
-EXPECTED_NAMED_BY_A_ROW = 24
+#:
+#: AND 25 OF 25 WHEN `own_stacks` GAINED ITS TEN ROWS, issue #1833.
+EXPECTED_NAMED_BY_A_ROW = 25
 
 
 def scales_named_by_a_row() -> set[str]:

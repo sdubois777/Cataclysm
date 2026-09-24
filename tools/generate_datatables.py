@@ -1581,12 +1581,10 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: TWO ENTRIES SINCE 2026-09-23, read by this generator before the design
 #: workbook gains them: Stack Seconds for issue #1833, and Scale Offset for
 #: issue #1686. Each leaves with the rows that need it. SCALE OFFSET LEFT with
-#: the class point rows, issue #1686's second window; Stack Seconds remains.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Enchantment Effects": {
-        "Stack Seconds": "issue #1833: the own-stack rows add this column",
-    },
-}
+#: the class point rows, issue #1686's second window. STACK SECONDS LEFT
+#: with the seven own-stack enchantments, issue #1833, and the table is
+#: empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):
