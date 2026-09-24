@@ -185,10 +185,41 @@ CATACLYSM_CC_TEST(FCataclysmCrowdControlScalesTest,
 	{
 		// FLOORED AT -100, SO AT MOST TWICE AS LONG. A drawback counts on every
 		// piece, and nineteen slots at -70 would otherwise be fourteen times.
-		FScopedCreature Deep(World, -150.0f, FVector(1200.0f, 0.0f, 0.0f));
-		TestEqual(TEXT("-150 is floored at -100: a 1 second effect lasts 2, not 2.5"),
-				  UCataclysmSkillEffects::AfterCrowdControlResistance(
-					  Deep.Actor, 1.0f), 2.0f, 0.001f);
+		//
+		// ON A STAT LINE, WHICH IS HOW A PLAYER'S TOTAL IS READ, and which floors
+		// nothing, so this measures the floor in `AfterCrowdControlResistance`.
+		// The attribute has a floor of its own (below), and a test cannot break
+		// a `PreAttributeChange` clamp to see a floor after it fail (#1623).
+		FScopedCreature Deep(World, 0.0f, FVector(1200.0f, 0.0f, 0.0f));
+		UCataclysmAbilitySystemComponent* DeepAbilities =
+			Cast<UCataclysmAbilitySystemComponent>(
+				Deep.Actor->GetAbilitySystemComponent());
+		if (TestNotNull(TEXT("a creature with a Cataclysm ability system"),
+						DeepAbilities))
+		{
+			FCataclysmStatModifier Drawbacks;
+			Drawbacks.Bucket = ECataclysmStatBucket::Flat;
+			Drawbacks.Source = ECataclysmModifierSource::PassiveKeystone;
+			Drawbacks.Value = -150.0f;
+			TMap<FName, FCataclysmStatInputs> Stats;
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(
+				FName(UCataclysmSkillEffects::CrowdControlResistanceStat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Drawbacks};
+			DeepAbilities->SetStatInputs(MoveTemp(Stats));
+			TestEqual(TEXT("-150 is floored at -100: a 1 second effect lasts 2, not 2.5"),
+					  UCataclysmSkillEffects::AfterCrowdControlResistance(
+						  Deep.Actor, 1.0f), 2.0f, 0.001f);
+		}
+
+		// AND THE ATTRIBUTE ITSELF STOPS AT -100 rather than at zero, the floor
+		// every other unnamed combat attribute takes. Pinned by this assertion,
+		// not by a guard proof, for the reason above.
+		FScopedCreature Written(World, -150.0f, FVector(1400.0f, 0.0f, 0.0f));
+		TestEqual(TEXT("an attribute written at -150 reads -100"),
+				  Written.Actor->GetAbilitySystemComponent()->GetNumericAttribute(
+					  UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute()),
+				  -100.0f, 0.001f);
 	}
 
 	// A TARGET WITH NO ABILITY SYSTEM AT ALL TAKES THE WHOLE OF IT rather than
