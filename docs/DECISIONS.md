@@ -12,9 +12,8 @@ where they arrive, the disease's stacks and its burn, the floor panel line and t
 automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row, and why it is next
 
@@ -121,10 +120,35 @@ exponentially with every hit" and "descend to the next floor", and states no fig
 fail, in a copy of the repository, with "exponentially" made "linearly", with "descend to the next
 floor" removed, and with "more than 2 minutes" added.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-24, on development e7eb5d35 as the base. Every figure below is what
+`python tools/unreal_build.py tests` or `prove_cpp_guard` printed. The Python suite of record ran first
+on the head, c1979235: 5,428 tests, 0 failed.
+
+- **The whole suite on the head**, c1979235: 2,381 tests performed, 2,381 succeeded, 0 failed.
+- **The group on the head**: 285 tests performed, 285 succeeded, 0 failed.
+- **The group on the base**, e7eb5d35: 280 tests performed, 280 succeeded, 0 failed. Run after the
+  Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **The start a beat early** (`>= PlagueConvergenceBeginsAfterSeconds - 0.25f`). With the break in: 285
+  performed, 283 succeeded, 2 failed: `PlagueConvergenceBeginsAfterTwoMinutesWithWavesOfThreeAtTheFarEdge`
+  ("Expected '119.75 seconds has not begun' to be false", "Expected 'nothing has come a beat before two
+  minutes' to be 0, but it was 3") and `ThePlagueDiseaseClearsOnDeathAndAFloorChangeStopsTheConvergence`
+  ("... nothing a beat before two minutes' to be 0, but it was 3"). Restored: 285 performed, 285
+  succeeded, 0 failed.
+- **The cap ignored** (`PlagueConvergenceMostAlive + 0 * ...`). With the break in: 285 performed, 283
+  succeeded, 2 failed: `APlagueConvergenceStopsAtThirtyAliveAndFillsOnlyWhatFits` ("Expected 'an
+  eleventh wave brings none past the cap' to be 30, but it was 33", and "two were killed" reading 31
+  after it) and `PlagueConvergenceBeginsAfterTwoMinutesWithWavesOfThreeAtTheFarEdge` (the wave with 28 and
+  with 30 alive reading 3). Restored: 285 performed, 285 succeeded, 0 failed.
+- **No doubling** (`FMath::Pow(1.0f, ...)`). With the break in: 285 performed, 284 succeeded, 1 failed,
+  `ALandedConvergenceBlowAddsADiseaseStackThatDoubles`, on two, three, six and seven stacks each reading
+  0.5% where 1, 2, 16 and 16 were expected. The burn test held. Restored: 285 performed, 285 succeeded, 0
+  failed.
 
 ---
 
