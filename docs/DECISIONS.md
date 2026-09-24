@@ -1420,6 +1420,23 @@ sentence.** It moved five pins, each updated with a comment saying why:
 The last is how a flat row's value is found in its sentence: in the stat's own unit, not as a
 percentage. `DT_PassiveEffects` is rebuilt in this change's build window.
 
+### THE WINDOW, 2026-09-24, ON 76f8979e
+
+| Step | Printed |
+|---|---|
+| Fail-before, `tests --prefix "Cataclysm.Passives."`, stale asset | `127 tests performed, 126 succeeded, 1 failed: OverreachLengthensARealRavagersBasicAttackReach`, on "Expected 'Overreach carries one row' to be 1, but it was 0"; 25 files compiled |
+| Rebuild, `generate_datatable_assets.py` | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` and nothing else |
+| Whole suite, `tests --no-build` | `2261 tests performed, 2261 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before. The broken run's log
+was copied before the restored run overwrote it, so each row names the assertion that failed:
+
+| Break | Prefix | Printed | Assertion that failed |
+|---|---|---|---|
+| the reach stat multiplied by 0, not 100 | `Cataclysm.Skills.` | `PROVED: with the break in: 237 tests performed, 236 succeeded, 1 failed: OverreachLengthensOnlyAMeleeStrikeAndAfterEveryMultiplier \| restored: 237 tests performed, 237 succeeded, 0 failed` | 380 read as 180, and 500 as 300 |
+| the reach added before area of effect | `Cataclysm.Skills.` | `PROVED: with the break in: 237 tests performed, 236 succeeded, 1 failed: OverreachLengthensOnlyAMeleeStrikeAndAfterEveryMultiplier \| restored: 237 tests performed, 237 succeeded, 0 failed` | only the area strike: 500 read as 600 |
+| the basic attack's walk without the reach | `Cataclysm.BasicAttack.` | `PROVED: with the break in: 11 tests performed, 10 succeeded, 1 failed: OverreachMovesWhereTheBasicAttackReachesAndSwingsAlike \| restored: 11 tests performed, 11 succeeded, 0 failed` | the walk stopped at 180 while the swing reached 380 |
+
 ---
 
 ## 2026-09-23 — A killed creature has a one-in-ten chance to get back up at once, whoever killed it
