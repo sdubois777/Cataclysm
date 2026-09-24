@@ -197,6 +197,85 @@ and the node's tool tip assertion held under the third.
 
 ---
 
+## 2026-09-24 — Seven enchantments count stacks of their own: a critical strike, a DoT applied, a skill use, a spell, a kill and a melee hit taken each grant one
+
+**Affects:**
+- the Enchantment Effects sheet: ten rows on seven enchantments, and the new Stack Seconds column
+- `tools/generate_datatables.py`: Stack Seconds leaves `OPTIONAL_COLUMNS`, and `movement_speed` joins
+  `STATS_WITH_AN_ASKER`
+- `BUILT_AHEAD_OF_THEIR_ROWS` in `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`,
+  which `own_stacks` leaves
+- `ProbeScaledMovementSpeed` in `CataclysmStatExemptionTests.cpp`
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 1's rows
+
+The engine for these rows merged on 2026-09-23 ("Each enchantment row can count stacks of its own,
+granted by its event"). This change adds the rows it was built for.
+
+### THE ROWS
+
+Every row is scaled by `own_stacks` with a step of 1. Its value is per stack, its Scale Max Steps is
+the cap, and its Stack Seconds is how long the stacks last after the last grant.
+
+| Enchantment | Stat | Per stack | Event | Seconds | Cap |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Critical strikes grant a stack of power increasing all damage by 3%-5% for 5 seconds, up to 5 stacks | `attack_damage`, `spell_damage` | increased 3 to 5 | `critical_strike` | 5 | 5 |
+| Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds, stacking up to 5 times | `attack_damage`, `spell_damage` | increased 5 to 10 | `dot_applied` | 4 | 5 |
+| Each skill use increases your movement speed by 3%-5% for 2 seconds, stacking up to 5 times | `movement_speed` | increased 3 to 5 | `skill_use` | 2 | 5 |
+| Melee attacks that hit you reduce your armor by 3%-5% for 3 seconds, stacking up to 5 times | `armor` | increased -3 to -5 | `melee_hit_taken` | 3 | 5 |
+| Each kill reduces your damage by 2%-4% for 5 seconds, stacking up to 5 times | `attack_damage`, `spell_damage` | increased -2 to -4 | `kill` | 5 | 5 |
+| Each skill use reduces your armor by 1%-2% for 3 seconds stacking up to 10 times | `armor` | increased -1 to -2 | `skill_use` | 3 | 10 |
+| Each spell cast reduces your armor by 2%-4% for 3 seconds stacking up to 5 times | `armor` | increased -2 to -4 | `spell` | 3 | 5 |
+
+### WHICH WORD IS WHICH BUCKET
+
+**The seven sentences say "increasing", "increased", "increases", "reduce" and "reduces". None of
+them says "more" or "less".** All ten rows are therefore the increased bucket, positive for an
+increase and negative for a reduction. That is the sheet's precedent: "Your movement speed is reduced
+by 10%" and "Taking a hit reduces your damage by 5%-10% for 3 seconds" are both increased rows. The
+more bucket stays with sentences that say "more" or "less". Approved by the coordinating session on
+2026-09-24.
+
+### "ALL DAMAGE" AND "DAMAGE" ARE TWO ROWS EACH
+
+A damage sentence is a row on `attack_damage` and a row on `spell_damage`, as every damage sentence
+already in the sheet is. A stack's key is the enchantment and the stat, so each of the two rows keeps
+its own count. One event grants each of them one stack, so the two counts always move together.
+
+### MOVEMENT SPEED IS ASKED FOR, AND NOW THE GENERATOR KNOWS IT
+
+**The generator refused the speed row as first written:** "scales 'movement_speed' by 'own_stacks',
+and nothing asks for that stat through the stat pipeline". The stat was not in
+`STATS_WITH_AN_ASKER`. Something does ask for it:
+- `ACataclysmPlayerCharacter::RefreshMovementSpeed` asks `StatForSkill("movement_speed")`;
+- `MovementSpeedCanChangeUnannounced` asks again on the quarter-second step whenever a movement speed
+  row is scaled.
+
+`movement_speed` joins the list, and `ProbeScaledMovementSpeed` measures the ask. The probe gives a
+spawned player character a movement speed line scaled by debuffs carried, and reads the speed its
+movement component holds before and after two debuffs. The generator's own message names this as the
+remedy. **The coordinating session ruled on 2026-09-24 that it is inside this change.**
+
+### THE JUDGEMENTS, UNDER THE OWNER'S DELEGATION
+
+- **"For N seconds" is Stack Seconds, and "up to N stacks" or "stacking up to N times" is Scale Max
+  Steps.** A grant restarts the window, and the whole count lapses together, as the engine entry
+  ruled.
+- **"Melee attacks that hit you" is `melee_hit_taken`**, which grants a stack only for a blow that
+  landed (the engine entry's rule). **"Each spell cast" is `spell`, and "each skill use" is
+  `skill_use`.**
+
+### THE TESTS
+
+One test per enchantment, `Cataclysm.Enchantments.The...StackRow...`. Each wears the real row on a
+helm, checks that the stat's line holds that row as its only increase, then fires the row's event
+and reads the stat applied to 1,000, as a share of the same reading with no stacks:
+- after two events, two stacks;
+- after the cap's worth more, the cap and no more;
+- 0.1 seconds inside the window, still the cap;
+- 0.1 seconds after it, none.
+
+---
+
 ## 2026-09-24 — Overlapping zones of one floor rule burn a target once a second, not once per zone
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h` and `.cpp` (the record of

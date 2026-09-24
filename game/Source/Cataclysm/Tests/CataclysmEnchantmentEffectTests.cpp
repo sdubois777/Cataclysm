@@ -4870,4 +4870,254 @@ bool FCataclysmMeleeWhileMovingRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmOwnStackRowTest
+{
+	/** One of the seven own-stack enchantments, at the top of its range. */
+	struct FCase
+	{
+		const TCHAR* Enchantment = nullptr;
+		bool bBenefit = true;
+		const TCHAR* Event = nullptr;
+		TArray<FName> Stats;
+		float PerStack = 0.0f;
+		int32 Cap = 0;
+		float Seconds = 0.0f;
+	};
+
+	/**
+	 * Wear the row, fire its event, and read each stat it names as a share of
+	 * the same stat with no stacks: after two events, after enough to pass its
+	 * cap, just inside its window and just after it. Issue #1833.
+	 *
+	 * A SHARE OF THE STAT WITH NO STACKS, and the line is first checked to hold
+	 * this row as its ONLY increase. Then the share is the row's own arithmetic,
+	 * 1 + stacks x its value, whatever base or flat addition the stat carries.
+	 */
+	void Check(FAutomationTestBase& Test, const FCase& Case)
+	{
+		using namespace CataclysmEnchantmentEffectTest;
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FWearer Wearer(World);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(
+			Case.bBenefit
+				? Carrying(TEXT("Head_Helm"), Case.Enchantment, DrawbackWithNoEffect)
+				: Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, Case.Enchantment),
+			Removed, AlsoRemoved, Slot);
+		Wearer.Equipment->RefreshAttributes(ASC);
+
+		TMap<FName, float> Plain;
+		for (const FName& Stat : Case.Stats)
+		{
+			const FCataclysmStatInputs* Line = ASC->GetStatInputs(Stat);
+			int32 Increases = 0;
+			int32 Stacked = 0;
+			for (const FCataclysmStatModifier& Modifier :
+				 Line ? Line->Modifiers : TArray<FCataclysmStatModifier>())
+			{
+				Increases += Modifier.Bucket == ECataclysmStatBucket::Increased;
+				Stacked += Modifier.Scale == ECataclysmStatScale::PerOwnStack;
+			}
+			Test.TestEqual(FString::Printf(
+				TEXT("'%s' holds one increase, this row's"), *Stat.ToString()),
+				Increases, 1);
+			Test.TestEqual(FString::Printf(
+				TEXT("'%s' holds one row scaled by its own stacks"), *Stat.ToString()),
+				Stacked, 1);
+
+			const float None = ASC->StatAppliedTo(Stat, FGameplayTagContainer(), 1000.0f);
+			if (!Test.TestTrue(FString::Printf(
+					TEXT("'%s' with no stacks is something"), *Stat.ToString()),
+					None > 0.0f))
+			{
+				return;
+			}
+			Plain.Add(Stat, None);
+		}
+
+		const FName Event(Case.Event);
+		const auto Expect = [&](const TCHAR* When, int32 Stacks)
+		{
+			for (const FName& Stat : Case.Stats)
+			{
+				Test.TestEqual(FString::Printf(TEXT("'%s', %s"), *Stat.ToString(), When),
+					ASC->StatAppliedTo(Stat, FGameplayTagContainer(), 1000.0f) / Plain[Stat],
+					1.0f + Stacks * Case.PerStack / 100.0f, 0.001f);
+			}
+		};
+
+		ASC->ActOnEvent(Event);
+		ASC->ActOnEvent(Event);
+		Expect(TEXT("two events hold two stacks"), 2);
+
+		for (int32 More = 0; More < Case.Cap; ++More)
+		{
+			ASC->ActOnEvent(Event);
+		}
+		Expect(TEXT("more events than its cap hold its cap"), Case.Cap);
+
+		World->TimeSeconds += Case.Seconds - 0.1f;
+		Expect(TEXT("just inside its window, still its cap"), Case.Cap);
+
+		World->TimeSeconds += 0.2f;
+		Expect(TEXT("and just after, none"), 0);
+	}
+
+	const FName AttackDamage(TEXT("attack_damage"));
+	const FName SpellDamage(TEXT("spell_damage"));
+	const FName MovementSpeed(TEXT("movement_speed"));
+	const FName Armour(TEXT("armor"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCritStackRowTest,
+	"Cataclysm.Enchantments.TheCriticalStrikeStackRowAdds5PercentDamagePerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Critical strikes grant a stack of power increasing all damage by 3%-5% for 5 seconds, up to 5 stacks", worn. Issue #1833. */
+bool FCataclysmCritStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Positive_Critical_strikes_grant_a_stack_of_power_increasi");
+	Case.bBenefit = true;
+	Case.Event = TEXT("critical_strike");
+	Case.Stats = {AttackDamage, SpellDamage};
+	Case.PerStack = 5.0f;
+	Case.Cap = 5;
+	Case.Seconds = 5.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotStackRowTest,
+	"Cataclysm.Enchantments.TheDotStackRowAdds10PercentDamagePerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds, stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmDotStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Positive_Applying_a_DoT_to_an_enemy_grants_5_10_increas");
+	Case.bBenefit = true;
+	Case.Event = TEXT("dot_applied");
+	Case.Stats = {AttackDamage, SpellDamage};
+	Case.PerStack = 10.0f;
+	Case.Cap = 5;
+	Case.Seconds = 4.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillSpeedStackRowTest,
+	"Cataclysm.Enchantments.TheSkillUseSpeedStackRowAdds5PercentSpeedPerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each skill use increases your movement speed by 3%-5% for 2 seconds, stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmSkillSpeedStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Positive_Each_skill_use_increases_your_movement_speed_by");
+	Case.bBenefit = true;
+	Case.Event = TEXT("skill_use");
+	Case.Stats = {MovementSpeed};
+	Case.PerStack = 5.0f;
+	Case.Cap = 5;
+	Case.Seconds = 2.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeArmourStackRowTest,
+	"Cataclysm.Enchantments.TheMeleeHitTakenStackRowTakes5PercentArmourPerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Melee attacks that hit you reduce your armor by 3%-5% for 3 seconds, stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmMeleeArmourStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Negative_Melee_attacks_that_hit_you_reduce_your_armor_by");
+	Case.bBenefit = false;
+	Case.Event = TEXT("melee_hit_taken");
+	Case.Stats = {Armour};
+	Case.PerStack = -5.0f;
+	Case.Cap = 5;
+	Case.Seconds = 3.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillStackRowTest,
+	"Cataclysm.Enchantments.TheKillStackRowTakes4PercentDamagePerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each kill reduces your damage by 2%-4% for 5 seconds, stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmKillStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Negative_Each_kill_reduces_your_damage_by_2_4_for_5_sec");
+	Case.bBenefit = false;
+	Case.Event = TEXT("kill");
+	Case.Stats = {AttackDamage, SpellDamage};
+	Case.PerStack = -4.0f;
+	Case.Cap = 5;
+	Case.Seconds = 5.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillArmourStackRowTest,
+	"Cataclysm.Enchantments.TheSkillUseArmourStackRowTakes2PercentArmourPerStackUpTo10",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each skill use reduces your armor by 1%-2% for 3 seconds stacking up to 10 times", worn. Issue #1833. */
+bool FCataclysmSkillArmourStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Negative_Each_skill_use_reduces_your_armor_by_1_2_for_3");
+	Case.bBenefit = false;
+	Case.Event = TEXT("skill_use");
+	Case.Stats = {Armour};
+	Case.PerStack = -2.0f;
+	Case.Cap = 10;
+	Case.Seconds = 3.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellArmourStackRowTest,
+	"Cataclysm.Enchantments.TheSpellStackRowTakes4PercentArmourPerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each spell cast reduces your armor by 2%-4% for 3 seconds stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmSpellArmourStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Negative_Each_spell_cast_reduces_your_armor_by_2_4_for");
+	Case.bBenefit = false;
+	Case.Event = TEXT("spell");
+	Case.Stats = {Armour};
+	Case.PerStack = -4.0f;
+	Case.Cap = 5;
+	Case.Seconds = 3.0f;
+	Check(*this, Case);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

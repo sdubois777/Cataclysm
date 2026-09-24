@@ -32,7 +32,10 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Player/CataclysmPlayerState.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
 #include "GameplayEffect.h"
@@ -2710,6 +2713,61 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and the carrying caster's is half of one"), Cut, 0.5f, 0.001f);
 	}
 
+	/**
+	 * `movement_speed`, scaled by debuffs carried, asked by
+	 * `ACataclysmPlayerCharacter::RefreshMovementSpeed`. Issue #1833, for
+	 * "Each skill use increases your movement speed by 3%-5% for 2 seconds,
+	 * stacking up to 5 times".
+	 *
+	 * A SPAWNED PLAYER CHARACTER AND ITS MOVEMENT COMPONENT, because the
+	 * speed a player runs at is what the component holds, and the attribute
+	 * never carries a scaled row. The line is written after
+	 * `OnRep_PlayerState`, which applies the class's stat line over it.
+	 */
+	void ProbeScaledMovementSpeed(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+		UCataclysmAbilitySystemComponent* System =
+			PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+		ACataclysmPlayerCharacter* Character =
+			World->SpawnActor<ACataclysmPlayerCharacter>(
+				FVector::ZeroVector, FRotator::ZeroRotator);
+		const UCharacterMovementComponent* Movement =
+			Character ? Character->GetCharacterMovement() : nullptr;
+		if (!Test.TestNotNull(TEXT("an ability system"), System)
+			|| !Test.TestNotNull(TEXT("a movement component"), Movement))
+		{
+			return;
+		}
+		Character->SetPlayerState(PlayerState);
+		Character->OnRep_PlayerState();
+
+		constexpr float MetresPerSecond = 5.0f;
+		System->SetNumericAttributeBase(Combat::GetMovementSpeedAttribute(),
+										 MetresPerSecond);
+		ScaledBy(Character, TEXT("movement_speed"), 50.0f,
+				 ECataclysmStatScale::PerDebuffCarried, MetresPerSecond);
+
+		Character->RefreshMovementSpeed();
+		const float Clean = Movement->MaxWalkSpeed;
+		GiveTwoDebuffs(Character);
+		Character->RefreshMovementSpeed();
+		const float Carrying = Movement->MaxWalkSpeed;
+
+		Test.TestTrue(
+			FString::Printf(TEXT("movement_speed is asked for, so two debuffs "
+								 "raise the speed run at: %.2f against %.2f"),
+							Carrying, Clean),
+			Clean > 0.0f && Carrying > Clean + 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -2729,6 +2787,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("class_resource"),             &ProbeScaledMaximumClassResource},
 			{TEXT("max_energy_shield"),          &ProbeScaledMaximumEnergyShield},
 			{TEXT("mana_regen"),                 &ProbeScaledManaRegen},
+			{TEXT("movement_speed"),             &ProbeScaledMovementSpeed},
 		};
 		return Made;
 	}

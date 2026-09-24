@@ -5415,6 +5415,13 @@ STATS_WITH_AN_ASKER = frozenset({
     # the character's state and writes the attribute, from `ApplyTo` and from
     # each regeneration step; `ProbeScaledMaximumHealth` measures that.
     "max_health",
+    # ADDED 2026-09-24 FOR "Each skill use increases your movement speed by
+    # 3%-5% for 2 seconds, stacking up to 5 times", issue #1833.
+    # `ACataclysmPlayerCharacter::RefreshMovementSpeed` asks it through
+    # `StatForSkill`, and `MovementSpeedCanChangeUnannounced` asks again on
+    # the quarter-second step for any scaled row; `ProbeScaledMovementSpeed`
+    # measures that on a spawned player character.
+    "movement_speed",
 })
 
 
