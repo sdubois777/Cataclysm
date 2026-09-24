@@ -65,6 +65,84 @@ the default short summary, so the FAILED lines `prove_guard` reads names from we
 
 ---
 
+## 2026-09-23 — On a Chaotic Loot floor, an enemy drop's affix tiers are drawn evenly up to the difficulty's cap, and the cap stays
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmDropRoll.h` and `.cpp` (an even tier draw under the
+same cap, and a flag on `RollItem` that is off by default), `game/Source/Cataclysm/Items/CataclysmDroppedItem.cpp`
+(the drop spawner asking whether drops are chaotic), `game/Source/Cataclysm/Player/CataclysmGameMode.h`
+and `.cpp` (the question, answered false), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (answered from the floor, and the floor panel line),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key), the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Chaos_Chaotic_Loot` in `game/Data/DungeonModifiers.csv`, weight 10: "Items dropped by enemies have
+randomized stats within a wide range, making each piece potentially extremely valuable or useless."
+
+### What the rule does
+
+On a floor carrying the row, each affix of an item an enemy drops draws its tier evenly from T1 up to
+`UCataclysmDropRoll::MaxAffixTierOnADrop`, the difficulty tier plus one and never above T7, instead of
+from `AffixTiers.csv`'s halving weights (64, 32, 16, 8, 4, 2, 1). Its value is drawn evenly within the
+tier, as everywhere. Nothing else about the item changes. The drop spawner asks
+`ACataclysmGameMode::DropsAreChaoticIn(World)` beside `DifficultyTierIn(World)`, and the dungeon game
+mode answers true on a floor carrying the row. The floor panel says `chaotic loot: every affix tier from
+T1 to T2 equally likely`, with the floor's own cap; the item pop-up already prints each affix's tier.
+
+**The effect, stated plainly.** From difficulty 6 up the cap is T7, and every tier is 1 in 7, where T7
+is 1 in 127 elsewhere. At difficulty 1 the cap is T2, and T1 and T2 are 1 in 2 each, where they are 2 in
+3 and 1 in 3 elsewhere: a small change, accepted by the ruling.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-23; the owner was not asked:**
+
+- **The difficulty cap stays; only the odds within it flatten.** This session proposed lifting the cap,
+  so that any drop could reach T7, and wrote that it had found no owner decision behind it. **That was
+  wrong:** it had searched this log for the constants' names and not the design document, which says
+  in section VII: "**The affix tier column IS still a hard cap.** Only gear rarity changed." The same
+  section gives the reason for "one above": the best a dungeon drops sits one tier above what the player
+  has otherwise reached, and a floor rule that lifted the cap would make an early Chaos floor a gear
+  farm. A value outside its tier's range is excluded too: an earlier entry of this log records that the
+  shared table "cannot carry a number the game would not itself have produced", and the design
+  document's section on scaling equipment rests on affix tiers having defined value ranges.
+- **Rarity, the number of affixes and magic find are unchanged.** The row says stats. The even draw
+  takes exactly one number from the stream, as the ordinary draw does, so every later draw lands where
+  it would have: the same seed rolls the same base, rarity, affixes and values, and only tiers differ.
+- **Every enemy drop on the floor counts, whoever made the kill.** Nothing crafted or already owned is
+  affected, and neither are materials.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `AChaoticAffixTierNeverPassesTheDifficultyCap`: over two thousand seeded draws at difficulty 1,
+  nothing above T2 and T1 and T2 about even; at difficulty 3, nothing above T4, and T4 reached.
+- `AChaoticAffixTierIsEvenFromT1ToT7AtTheTopDifficulty`: over seven thousand draws at difficulty 8,
+  each tier about a thousand; the ordinary draw, the control, gives T7 fewer than 150 times.
+- `AFloorCarryingChaoticLootMakesItsDropsChaotic`: the dungeon mode answers true on a floor carrying
+  the row and false on one without it, and the panel names the floor's cap.
+- `AChaoticDropKeepsItsBaseRarityAffixesAndValues`: forty seeds rolled both ways from the live tables
+  give the same base, gear level, affixes and values, every tier inside the cap, and some tiers moved.
+
+One Python check: the row still says "items dropped by enemies", "randomized stats" and "a wide range",
+and docs/Cataclysm_GDD_v2.md still says "The affix tier column IS still a hard cap." It was seen to fail,
+in a copy of the repository, with "dropped by enemies" removed from the row and with that design
+sentence changed.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — A hand-resolved C++ conflict can be checked before a build, by a tool that reports a comment left with no opening
 
 **Affects:** the new `tools/check_resolved_cpp.py` and `tools/tests/test_check_resolved_cpp.py`. Issue

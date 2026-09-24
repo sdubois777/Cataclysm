@@ -1510,7 +1510,7 @@ public:
 	 * affix of an enemy drop draws its tier evenly from T1 to the difficulty's cap
 	 * (`UCataclysmDropRoll::RollChaoticAffixTier`), and its value evenly within it.
 	 *
-	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24:
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-23:
 	 * - THE CAP STAYS: docs/Cataclysm_GDD_v2.md section VII, "The affix tier column IS
 	 *   still a hard cap." From difficulty 6 up every tier is 1 in 7; at difficulty 1,
 	 *   T1 and T2 are 1 in 2 each, where they are 2 in 3 and 1 in 3 elsewhere.

@@ -22110,7 +22110,7 @@ bool FCataclysmScarcityDrawTest::RunTest(const FString& Parameters)
 // potentially extremely valuable or useless." On a floor carrying it each affix of an
 // enemy drop draws its tier evenly from T1 to the difficulty's cap, which stays: the
 // design document's "The affix tier column IS still a hard cap." Ruled by the
-// coordinating session under the owner's delegation, 2026-09-24.
+// coordinating session under the owner's delegation, 2026-09-23.
 //
 // THE DRAWS ARE COUNTED OVER MANY ROLLS OF A SEEDED STREAM, so every figure below is the
 // same on every run. The bands are wide -- about five standard deviations -- because they

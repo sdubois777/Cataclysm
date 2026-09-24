@@ -3712,7 +3712,7 @@ def test_chaotic_loot_row_still_names_enemy_drops_and_stats_and_the_cap_still_st
     potentially extremely valuable or useless." DROPPED BY ENEMIES is why nothing crafted
     or owned changes; STATS is why rarity and the number of affixes do not. The cap stays
     because docs/Cataclysm_GDD_v2.md says "The affix tier column IS still a hard cap."
-    If that sentence goes, the ruling of 2026-09-24 has lost its ground and should be put
+    If that sentence goes, the ruling of 2026-09-23 has lost its ground and should be put
     again rather than left standing.
     """
     words = flat(rows()["Chaos_Chaotic_Loot"]["Description"])
