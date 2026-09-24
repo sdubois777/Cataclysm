@@ -209,6 +209,26 @@ reads no killer and is still paid, as for any other minion's death.
 - `Cataclysm.SacrificialWard.ASpentMinionIsKilledByNobodyEvenIfAnEnemyStruckItBefore`
 - A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
 
+### THE WINDOW, 2026-09-24, ON 197b2003
+
+**This change's C++ was compiled for the first time here, and it built.** No data row changed, so
+there was no stale-asset step and no rebuild.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2325 tests performed, 2325 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.SacrificialWard.`, each anchor re-checked
+immediately before. Each restored run printed `5 tests performed, 5 succeeded, 0 failed`. **Every one
+was registered before the window, test and assertion alike.**
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| the minion is spent but the blow still lands (the three lines that empty the result, removed as one) | `5 tests performed, 3 succeeded, 2 failed` | "the shield keeps its 100", 0 where 100; "and health keeps its 1,000", 800 where 1000; "and health takes what the shield did not", 500 where 800; "and the shield keeps its 100", 0 where 100 |
+| the minion with the MOST health is spent (`>` for `<` in `LeastHealthCommandedBy`) | `5 tests performed, 3 succeeded, 2 failed` | "the imp with the least health remaining dies"; "and the other does not"; "the first ward spends the weaker imp"; "and the other imp is not spent" |
+| the spent minion's last attacker is left as its killer (the record not emptied) | `5 tests performed, 4 succeeded, 1 failed: ASpentMinionIsKilledByNobodyEvenIfAnEnemyStruckItBefore` | "and it names no killer" |
+
 ---
 
 ## 2026-09-24 — Shared Ruin and Nothing Stops It, engine only: a minion's death is a blast, and a lethal hit is survived once in twenty seconds
