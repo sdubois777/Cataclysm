@@ -249,6 +249,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Weaken the holder applied does not run down on an enemy that near.
 		// Issue #1515.
 		TEXT("applied_cripple_and_weaken_held_within_metres"),
+		// Rendering Blows' share of the struck enemy's armour and its seconds,
+		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
+		// every third landed melee hit on one enemy. Issue #1515.
+		TEXT("third_melee_hit_armour_removed_percent"),
+		TEXT("third_melee_hit_armour_removed_seconds"),
 		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
 		// Weaken is created, and not where a spread copies one. Issue #1515,
 		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken

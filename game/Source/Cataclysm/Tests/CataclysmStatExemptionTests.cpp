@@ -1135,6 +1135,92 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * Four landed melee blows from `Holder` on a defender with 1,000 armour, and
+	 * what the fourth took compared with the third. Rendering Blows, issue #1515:
+	 * the third blow removes the holder's share of the armour, so the fourth
+	 * takes more than the third exactly when both of its stats are read.
+	 */
+	float RendingBlowsFourthOverThird(UWorld* World, const FScopedFighter& Holder)
+	{
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			Combat::GetArmorAttribute(), 1000.0f);
+
+		FGameplayTagContainer Melee;
+		Melee.AddTag(UCataclysmDamageCalculation::MeleeTag());
+
+		float Taken[4] = {};
+		for (float& Reading : Taken)
+		{
+			const float Before = Defender.Health();
+			UCataclysmSkillEffects::ApplyHit(Holder.Actor, Defender.Actor, 100.0f, Melee);
+			Reading = Before - Defender.Health();
+		}
+		return Taken[3] - Taken[2];
+	}
+
+	/**
+	 * `third_melee_hit_armour_removed_percent`, read by
+	 * `UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom`. Issue #1515,
+	 * Rendering Blows. With both stats the fourth blow takes more than the
+	 * third; with only the seconds it takes the same.
+	 */
+	void ProbeRendPercent(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Held(World, 1000.0f);
+		GrantFlats(Held.Actor,
+			{{FName(UCataclysmAbilitySystemComponent::RendPercentStat), 20.0f},
+			 {FName(UCataclysmAbilitySystemComponent::RendSecondsStat), 6.0f}});
+		FScopedFighter SecondsOnly(World, 1000.0f);
+		GrantFlats(SecondsOnly.Actor,
+			{{FName(UCataclysmAbilitySystemComponent::RendSecondsStat), 6.0f}});
+
+		Test.TestEqual(TEXT("without third_melee_hit_armour_removed_percent the "
+							"fourth blow takes what the third did"),
+					   RendingBlowsFourthOverThird(World, SecondsOnly), 0.0f, 0.01f);
+		Test.TestTrue(TEXT("and with it the fourth takes more, so "
+						   "NoteLandedMeleeHitFrom really reads it"),
+					  RendingBlowsFourthOverThird(World, Held) > 0.01f);
+	}
+
+	/**
+	 * `third_melee_hit_armour_removed_seconds`, read by the same function. With
+	 * both stats the fourth blow takes more than the third; with only the share
+	 * it takes the same, because a removal of no seconds is none.
+	 */
+	void ProbeRendSeconds(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Held(World, 1000.0f);
+		GrantFlats(Held.Actor,
+			{{FName(UCataclysmAbilitySystemComponent::RendPercentStat), 20.0f},
+			 {FName(UCataclysmAbilitySystemComponent::RendSecondsStat), 6.0f}});
+		FScopedFighter PercentOnly(World, 1000.0f);
+		GrantFlats(PercentOnly.Actor,
+			{{FName(UCataclysmAbilitySystemComponent::RendPercentStat), 20.0f}});
+
+		Test.TestEqual(TEXT("without third_melee_hit_armour_removed_seconds the "
+							"fourth blow takes what the third did"),
+					   RendingBlowsFourthOverThird(World, PercentOnly), 0.0f, 0.01f);
+		Test.TestTrue(TEXT("and with it the fourth takes more, so "
+						   "NoteLandedMeleeHitFrom really reads it"),
+					  RendingBlowsFourthOverThird(World, Held) > 0.01f);
+	}
+
+	/**
 	 * `applied_cripple_and_weaken_held_within_metres`, read by
 	 * `UCataclysmDebuffs::HoldAppliedNearbyStep`. Issue #1515, No Second Wind.
 	 * Two appliers a hundred metres apart each cripple an enemy two metres away
@@ -2810,6 +2896,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("shield_break_destroys_minion_every_seconds"), &ProbeShieldWard},
 			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
+			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},
+			{TEXT("third_melee_hit_armour_removed_seconds"), &ProbeRendSeconds},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},

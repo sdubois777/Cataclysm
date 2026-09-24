@@ -152,6 +152,9 @@ private:
 	 */
 	void DrawRarityNames();
 
+	/** "Armor -20%" under a creature's bar while Rendering Blows holds. Issue #1515. */
+	void DrawArmourRemoved();
+
 	/**
 	 * The panel at the top of the screen describing the creature under the
 	 * cursor.

@@ -2,6 +2,7 @@
 
 #include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmHUD.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For asking whether this character can move Fervour at all. Issue #954.
@@ -430,6 +431,19 @@ float UCataclysmCombatOverlay::FadeFor(float Age)
 
 	const float FadingOver = NumberLifetimeSeconds - OpaqueUntil;
 	return FMath::Clamp(1.0f - (Age - OpaqueUntil) / FadingOver, 0.0f, 1.0f);
+}
+
+FString UCataclysmCombatOverlay::ArmourRemovedTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const float Removed = AbilitySystem ? AbilitySystem->ArmourRemovedPercentNow() : 0.0f;
+	if (Removed <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Armor -%d%%"), FMath::RoundToInt(Removed));
 }
 
 bool UCataclysmCombatOverlay::VitalsOf(const AActor* Actor, float& OutHealth,

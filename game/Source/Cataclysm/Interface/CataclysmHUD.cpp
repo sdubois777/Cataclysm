@@ -68,6 +68,12 @@ void ACataclysmHUD::DrawHUD()
 		DrawRarityNames();
 	}
 
+	// UNDER THE BAR, WHICH THE RARITY NAME DOES NOT USE. Issue #1515.
+	if (UCataclysmCombatOverlay::OverheadBarsEnabled())
+	{
+		DrawArmourRemoved();
+	}
+
 	DrawDamageNumbers();
 	DrawDropNames();
 
@@ -580,6 +586,52 @@ void ACataclysmHUD::DrawRarityNames()
 						Screen.Y - Height
 							- UCataclysmCombatOverlay::RarityNameGapPx
 							- BarBackingInsetPx,
+						UCataclysmCombatOverlay::RarityNameScale);
+	}
+}
+
+void ACataclysmHUD::DrawArmourRemoved()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	const AActor* LocalPawn = GetOwningPawn();
+	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(
+		UCataclysmCombatOverlay::RarityNameHex);
+
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		const ACataclysmEnemyCharacter* Enemy = *It;
+		if (!UCataclysmCombatOverlay::IsOverheadBarCandidate(Enemy, LocalPawn))
+		{
+			continue;
+		}
+
+		const FString Words = UCataclysmCombatOverlay::ArmourRemovedTextFor(Enemy);
+		if (Words.IsEmpty())
+		{
+			continue;
+		}
+
+		const FVector Anchor = Enemy->GetActorLocation()
+			+ FVector(0.0f, 0.0f,
+					  UCataclysmCombatOverlay::AnchorHeightFor(Enemy));
+
+		// THE Z TEST IS WHAT REJECTS ANYTHING BEHIND THE CAMERA, the same test
+		// and the same reasoning as DrawOverheadBars.
+		const FVector Screen = Project(Anchor, /*bClampToZeroPlane=*/false);
+		if (Screen.Z <= 0.0f)
+		{
+			continue;
+		}
+
+		// THE TOP OF THE TEXT UNDER THE BOTTOM OF THE BAR AND ITS BACKING.
+		DrawTextCentred(Words, Ink, Screen.X,
+						Screen.Y + OverheadBarHeightPx + BarBackingInsetPx
+							+ UCataclysmCombatOverlay::RarityNameGapPx,
 						UCataclysmCombatOverlay::RarityNameScale);
 	}
 }

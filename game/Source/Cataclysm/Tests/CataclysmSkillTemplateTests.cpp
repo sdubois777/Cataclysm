@@ -65,6 +65,7 @@
 #include "GameplayTagsManager.h"
 #include "GameFramework/Actor.h"
 // For the test that the bar, the check and the payment agree on a skill's cost.
+#include "Interface/CataclysmCombatOverlay.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -14599,6 +14600,296 @@ bool FCataclysmArmourIgnoredByCountTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("and exactly two enemies took anything"), Struck, 2);
 
+	return true;
+}
+
+namespace CataclysmRenderingBlowsTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** What a single test blow deals before armour. */
+	constexpr float Blow = 100.0f;
+
+	/** A health pool small enough that a blow reads as a difference of two
+	 *  health readings to well inside the tolerance. Issue #1728. */
+	constexpr float Pool = 10'000.0f;
+
+	/** Rendering Blows at its designed 20% and 6 seconds, as its row will give it. */
+	void HoldRendingBlows(FScopedFighter& Holder)
+	{
+		TMap<FName, FCataclysmStatInputs> Stats;
+		for (const TPair<const TCHAR*, float>& Stat :
+			 {TPair<const TCHAR*, float>(UCataclysmAbilitySystemComponent::RendPercentStat, 20.0f),
+			  TPair<const TCHAR*, float>(UCataclysmAbilitySystemComponent::RendSecondsStat, 6.0f)})
+		{
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+			Flat.Value = Stat.Value;
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(FName(Stat.Key));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+		}
+		Holder.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** An enemy with this much armour and a small pool. */
+	void Armour(FScopedFighter& Enemy, float Armor)
+	{
+		Enemy.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Pool);
+		Enemy.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+		Enemy.Set(UCataclysmCombatAttributeSet::GetArmorAttribute(), Armor);
+	}
+
+	FGameplayTagContainer Melee()
+	{
+		FGameplayTagContainer Tags;
+		Tags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+		return Tags;
+	}
+
+	/** One blow of `Blow` from `From` on `To`, with these tags; what it took. The
+	 *  pool is filled first, so every reading starts from the same number. */
+	float Hit(const FScopedFighter& From, FScopedFighter& To,
+			  const FGameplayTagContainer& Tags)
+	{
+		To.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+		UCataclysmSkillEffects::ApplyHit(From.Actor, To.Actor, Blow, Tags);
+		return Pool - To.Health();
+	}
+
+	/** What one plain melee blow takes from an enemy with this much armour. */
+	float AgainstArmour(UWorld* World, float Armor)
+	{
+		FScopedFighter Plain(World, FVector(0, 50 * M, 0));
+		FScopedFighter Enemy(World, FVector(1 * M, 50 * M, 0));
+		Armour(Enemy, Armor);
+		return Hit(Plain, Enemy, Melee());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRenderingBlowsThirdHitTest,
+	"Cataclysm.RenderingBlows.TheThirdMeleeHitRemovesAFifthOfTheArmour",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Rendering Blows, `Ravager_capstone_50` option 1. Issue #1515: "Every third
+ * melee attack against the same enemy removes 20% of its Armor for 6 seconds."
+ *
+ * THE STATS ARE GIVEN BY HAND, as the row will give them: the option has no row
+ * yet, so this cannot see a missing or wrong one. The rows change has to add a
+ * test that wears the real row.
+ *
+ * AGAINST AN ENEMY WITH 800 ARMOUR, not a figure worked out here: the fourth
+ * blow on a 1,000 armour enemy has to take exactly what a plain blow takes from
+ * one with 800. And the third blow is not itself reduced (ruled 2026-09-24).
+ */
+bool FCataclysmRenderingBlowsThirdHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmRenderingBlowsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const float Against1000 = AgainstArmour(World, 1000.0f);
+	const float Against800 = AgainstArmour(World, 800.0f);
+	if (!TestTrue(TEXT("800 armour lets more through than 1,000, which every figure "
+					   "below depends on"),
+				  Against800 > Against1000 + 1.0f))
+	{
+		return false;
+	}
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(1 * M, 0, 0));
+	HoldRendingBlows(Holder);
+	Armour(Enemy, 1000.0f);
+
+	const float First = Hit(Holder, Enemy, Melee());
+	const float Second = Hit(Holder, Enemy, Melee());
+	TestEqual(TEXT("before anything is removed, a display says nothing"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(Enemy.Actor), FString());
+	const float Third = Hit(Holder, Enemy, Melee());
+	const float Fourth = Hit(Holder, Enemy, Melee());
+
+	TestEqual(TEXT("the first blow takes what 1,000 armour lets through"),
+			  First, Against1000, 0.01f);
+	TestEqual(TEXT("and so does the second"), Second, Against1000, 0.01f);
+	TestEqual(TEXT("and so does the third, which is not itself reduced"),
+			  Third, Against1000, 0.01f);
+	TestEqual(TEXT("the fourth takes what 800 armour lets through"),
+			  Fourth, Against800, 0.01f);
+	TestEqual(TEXT("and the enemy's Armor attribute still reads 1,000"),
+			  Enemy.Get(UCataclysmCombatAttributeSet::GetArmorAttribute()), 1000.0f);
+	TestEqual(TEXT("and the display under its bar says so"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(Enemy.Actor),
+			  FString(TEXT("Armor -20%")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRenderingBlowsLastsTest,
+	"Cataclysm.RenderingBlows.ItLastsSixSecondsRefreshesAndDoesNotStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Six seconds, started again by the next third hit, and never more than the
+ * one share however many hold it. Ruled 2026-09-24: it refreshes and does not
+ * stack.
+ */
+bool FCataclysmRenderingBlowsLastsTest::RunTest(const FString&)
+{
+	using namespace CataclysmRenderingBlowsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const float Against1000 = AgainstArmour(World, 1000.0f);
+	const float Against800 = AgainstArmour(World, 800.0f);
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Other(World, FVector(0, 2 * M, 0));
+	FScopedFighter Enemy(World, FVector(1 * M, 0, 0));
+	HoldRendingBlows(Holder);
+	HoldRendingBlows(Other);
+	Armour(Enemy, 1000.0f);
+
+	for (int32 Each = 0; Each < 3; ++Each)
+	{
+		Hit(Holder, Enemy, Melee());
+	}
+
+	// SIX SECONDS AND A TENTH LATER IT HAS ENDED. This blow is the first of the
+	// next three.
+	World->TimeSeconds += 6.1f;
+	TestEqual(TEXT("six seconds and a tenth later a blow meets the full 1,000"),
+			  Hit(Holder, Enemy, Melee()), Against1000, 0.01f);
+	TestEqual(TEXT("and the display says nothing"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(Enemy.Actor), FString());
+
+	// REMOVED AGAIN BY THE NEXT TWO, then three more four seconds later start
+	// the six again, so eight seconds after the second removal it still holds.
+	Hit(Holder, Enemy, Melee());
+	Hit(Holder, Enemy, Melee());
+	World->TimeSeconds += 4.0f;
+	for (int32 Each = 0; Each < 3; ++Each)
+	{
+		Hit(Holder, Enemy, Melee());
+	}
+	World->TimeSeconds += 4.0f;
+	TestEqual(TEXT("eight seconds after it was removed, the refreshed removal "
+				   "still holds: a blow meets 800"),
+			  Hit(Holder, Enemy, Melee()), Against800, 0.01f);
+
+	// A SECOND HOLDER'S THIRD HIT, WHILE IT RUNS. The share stays a fifth.
+	for (int32 Each = 0; Each < 3; ++Each)
+	{
+		Hit(Other, Enemy, Melee());
+	}
+	TestEqual(TEXT("a second holder's removal leaves it at 800, not 640"),
+			  Hit(Other, Enemy, Melee()), Against800, 0.01f);
+	TestEqual(TEXT("and the display still says a fifth"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(Enemy.Actor),
+			  FString(TEXT("Armor -20%")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRenderingBlowsCountsApartTest,
+	"Cataclysm.RenderingBlows.EachEnemyAndEachAttackerCountsApart",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A sweep counts once on every enemy it strikes, and nothing else counts: hits
+ * shared between two enemies, a character without the option, a blow that is
+ * not melee, a tick, or an evaded swing. Ruled 2026-09-24: landed melee hits
+ * only, and an evaded swing neither advances the count nor resets it.
+ */
+bool FCataclysmRenderingBlowsCountsApartTest::RunTest(const FString&)
+{
+	using namespace CataclysmRenderingBlowsTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FString Removed(TEXT("Armor -20%"));
+
+	// A SWEEP: a 360 degree strike on two enemies, three times.
+	{
+		FScopedFighter Holder(World, FVector::ZeroVector);
+		FScopedFighter Near(World, FVector(1 * M, 0, 0));
+		FScopedFighter Far(World, FVector(0, 2 * M, 0));
+		HoldRendingBlows(Holder);
+		Armour(Near, 1000.0f);
+		Armour(Far, 1000.0f);
+
+		UCataclysmStrikeSkill* Sweep = GrantSkill<UCataclysmStrikeSkill>(
+			Holder, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+			TEXT("Test Sweep"), TEXT("Type.Melee"));
+		if (!Sweep)
+		{
+			AddError(TEXT("Could not grant the strike."));
+			return false;
+		}
+		for (int32 Swing = 0; Swing < 3; ++Swing)
+		{
+			TestEqual(TEXT("each swing strikes both"), Sweep->SwingOnce(), 2);
+		}
+		TestEqual(TEXT("three sweeps remove the near enemy's armour"),
+				  UCataclysmCombatOverlay::ArmourRemovedTextFor(Near.Actor), Removed);
+		TestEqual(TEXT("and the far one's, since a sweep counts once on each"),
+				  UCataclysmCombatOverlay::ArmourRemovedTextFor(Far.Actor), Removed);
+	}
+
+	FScopedFighter Holder(World, FVector(0, 20 * M, 0));
+	FScopedFighter Plain(World, FVector(0, 40 * M, 0));
+	HoldRendingBlows(Holder);
+
+	// TWO AND ONE ACROSS TWO ENEMIES: neither has had three.
+	FScopedFighter A(World, FVector(1 * M, 20 * M, 0));
+	FScopedFighter B(World, FVector(2 * M, 20 * M, 0));
+	Armour(A, 1000.0f);
+	Armour(B, 1000.0f);
+	Hit(Holder, A, Melee());
+	Hit(Holder, A, Melee());
+	Hit(Holder, B, Melee());
+	TestEqual(TEXT("two hits on one enemy and one on another remove nothing from "
+				   "the first"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(A.Actor), FString());
+	TestEqual(TEXT("or the second"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(B.Actor), FString());
+
+	// A CHARACTER WITHOUT THE OPTION.
+	FScopedFighter C(World, FVector(1 * M, 40 * M, 0));
+	Armour(C, 1000.0f);
+	for (int32 Each = 0; Each < 3; ++Each)
+	{
+		Hit(Plain, C, Melee());
+	}
+	TestEqual(TEXT("three melee hits from a character without the option remove "
+				   "nothing"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(C.Actor), FString());
+
+	// NOT MELEE, A TICK, AND AN EVADED SWING: none advance the count.
+	FScopedFighter D(World, FVector(3 * M, 20 * M, 0));
+	Armour(D, 1000.0f);
+	FGameplayTagContainer Tick = Melee();
+	Tick.AddTag(UCataclysmDamageCalculation::DamageOverTimeTag());
+	Hit(Holder, D, FGameplayTagContainer());
+	Hit(Holder, D, Tick);
+	D.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	Hit(Holder, D, Melee());
+	D.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	Hit(Holder, D, Melee());
+	Hit(Holder, D, Melee());
+	TestEqual(TEXT("a blow that is not melee, a tick and an evaded swing do not "
+				   "count, so two landed melee hits after them remove nothing"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(D.Actor), FString());
+	Hit(Holder, D, Melee());
+	TestEqual(TEXT("and the third landed melee hit does, so the evaded swing did "
+				   "not reset the count either"),
+			  UCataclysmCombatOverlay::ArmourRemovedTextFor(D.Actor), Removed);
 	return true;
 }
 

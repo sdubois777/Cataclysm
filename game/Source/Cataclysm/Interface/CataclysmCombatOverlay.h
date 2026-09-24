@@ -460,6 +460,19 @@ public:
 	static bool RarityNamesEnabled();
 
 	/**
+	 * What is said under a creature's health bar while part of its armour is
+	 * removed, such as "Armor -20%", or empty while none is. Rendering Blows,
+	 * issue #1515.
+	 *
+	 * SHOWN FOR AS LONG AS IT LASTS, because the removal is state on the
+	 * creature rather than a tagged debuff, so nothing else on screen would say
+	 * it was there. The owner's rule is that a system ships with a basic
+	 * in-game display. Drawn in the rarity name's ink and size: a label on a
+	 * creature, not a colour of its own.
+	 */
+	static FString ArmourRemovedTextFor(const AActor* Actor);
+
+	/**
 	 * Whether an actor is a candidate for an overhead bar at all.
 	 *
 	 * NOT THE PLAYER'S OWN PAWN, which has its bar on the frame instead, and

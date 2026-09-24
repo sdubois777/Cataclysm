@@ -414,6 +414,14 @@ INVENTORY = {
      'SurvivedEveryStat, FGameplayTagContainer(), 0.0f'):
         "Nothing Stops It's interval, a flag read off the defender when a hit "
         'would kill, with no skill of its own in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(RendPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Rendering Blows' share, asked of the striker as a count of landed "
+        'melee hits is kept; a flag-like value, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(RendSecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Rendering Blows' seconds, asked of the striker on the third landed "
+        'melee hit; a duration, not a blow modifier',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
      'FName(AppliedHeldWithinMetresStat), FGameplayTagContainer(), 0.0f'):
         "No Second Wind's radius, read in a regeneration step with no blow, "
