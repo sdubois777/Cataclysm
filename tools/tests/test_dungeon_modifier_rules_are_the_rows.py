@@ -3910,3 +3910,28 @@ def test_blood_bond_row_still_binds_the_first_elite_seen_until_the_player_dies()
             "on it; see BloodBondKey in CataclysmDungeonModifierEffects.h. " + words)
     assert not any(character.isdigit() for character in words), (
         "Demonic_Blood_Bond now states a figure; the rule states none. " + words)
+
+def test_plague_convergence_row_still_converges_after_too_long_with_an_exponential_disease():
+    """The phrases the rule's readings rest on.
+
+    "If players spend too long on a floor, the dungeon begins to "converge" on them. Hordes of
+    enemies will spawn continuously, all carrying highly contagious diseases that stack
+    exponentially with every hit. The only way to stop the convergence is to complete objectives
+    quickly and descend to the next floor." TOO LONG ON A FLOOR is why it begins on a clock;
+    SPAWN CONTINUOUSLY is why waves come on a cadence; STACK EXPONENTIALLY WITH EVERY HIT is why
+    each landed blow doubles the disease; DESCEND TO THE NEXT FLOOR is why only a floor change
+    stops it; and the row gives no figure, which is why every number is a ruling. If any of
+    them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Plague_Convergence"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("spend too long on a floor", "spawn continuously",
+                   "stack exponentially with every hit", "descend to the next floor"):
+        assert phrase in lower, (
+            f"Pestilence_Plague_Convergence no longer says {phrase.upper()!r}. A reading of the "
+            "rule rests on it; see PlagueConvergenceKey in CataclysmDungeonModifierEffects.h. "
+            + words)
+    assert not any(character.isdigit() for character in words), (
+        "Pestilence_Plague_Convergence now states a figure; the rule's figures are rulings. "
+        + words)

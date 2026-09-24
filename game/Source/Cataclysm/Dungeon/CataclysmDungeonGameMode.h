@@ -1930,6 +1930,22 @@ public:
 	/** The elite a Blood Bond holds on this floor, or null. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* BloodBondedOnTheFloor() const { return BloodBonded.Get(); }
 
+	/** Plague Convergence, for the floor panel and tests: the living creatures it sent. */
+	int32 PlagueConvergenceCreaturesAlive() const;
+
+	/** Whether this creature is one Plague Convergence sent. */
+	bool IsAPlagueConvergenceCreature(const AActor* Actor) const;
+
+	/** Plague Convergence's disease stacks on the player. */
+	int32 PlagueConvergenceDiseaseStacks() const { return PlagueConvergenceStacks; }
+
+	/**
+	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
+	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
+	 */
+	static TArray<FIntPoint> ConvergenceArrivalCells(const struct FCataclysmFloorPlan& Plan,
+												   FIntPoint From, int32 Count);
+
 	/** Chaos Touched's stacks of one kind, for the floor panel and tests. Issues #1820, #41. */
 	int32 ChaosTouchedStacksOf(int32 Kind) const
 	{
@@ -2009,6 +2025,16 @@ private:
 
 	/** Blood Bond, on every death: the player's death kills the elite bonded on this floor. */
 	void NoteDeathForBloodBond(const struct FCataclysmDeathNotice& Notice);
+
+	/** Plague Convergence, on the beat: the clock, the waves and the disease's burn. */
+	void StepPlagueConvergence(class ACataclysmPlayerCharacter* Player,
+							   class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Plague Convergence, on every blow: one of its creatures' landed blows adds a stack. */
+	void NoteHitForPlagueConvergence(const struct FCataclysmHitNotice& Notice);
+
+	/** Plague Convergence, on every death: the player's own clears the disease. */
+	void NoteDeathForPlagueConvergence(const struct FCataclysmDeathNotice& Notice);
 
 	/** Soul Harvest, on every death: a soul to the nearest living creature within reach. */
 	void NoteDeathForSoulHarvest(const struct FCataclysmDeathNotice& Notice);
@@ -2875,6 +2901,17 @@ private:
 	 */
 	TWeakObjectPtr<ACataclysmEnemyCharacter> BloodBonded;
 	bool bBloodBondFormed = false;
+
+	/**
+	 * Plague Convergence: the floor's seconds on the beat, the seconds since the last wave, the
+	 * creatures it sent, the disease's stacks and the seconds since its last burn. The floor's:
+	 * all go back when a floor begins.
+	 */
+	float PlagueConvergenceSecondsOnFloor = 0.0f;
+	float PlagueConvergenceSecondsSinceWave = 0.0f;
+	TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> PlagueConvergenceCreatures;
+	int32 PlagueConvergenceStacks = 0;
+	float PlagueConvergenceSecondsSinceBurn = 0.0f;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that
