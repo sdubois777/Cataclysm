@@ -1051,16 +1051,46 @@ CATACLYSM_TEST(FCataclysmEveryEngineSuppliedBaseReachesACharacter,
 		// refusing an increase with no base under it, and nothing anywhere put
 		// the base on a character -- so it resolved to zero, The Breaking Point
 		// opened a conversion window of zero seconds, and it converted nothing.
+		if (!bNoAttribute)
+		{
+			TestEqual(*FString::Printf(
+				TEXT("and a character built from the class table holds '%s' at %.2f"),
+				*Stat, Pair.Value),
+				Character.Read(*Attribute), Pair.Value, 0.001f);
+			continue;
+		}
+
+		// ON THE STAT LINE for a stat with no attribute, WHICH IS RECORDED ONLY
+		// FOR A STAT WITH A MODIFIER: `ApplyTo` returns the base unrecorded when
+		// the stat has none, and the reader supplies its own fallback. So the
+		// character is given one modifier that changes nothing, and the base is
+		// read from under it, which is what the base is for. Every field the
+		// validator reads is set, rather than left to its default.
+		FCataclysmStatModifier Nothing;
+		Nothing.Bucket = ECataclysmStatBucket::Increased;
+		Nothing.Source = ECataclysmModifierSource::Enchantment;
+		Nothing.Value = 0.0f;
+		Nothing.Scale = ECataclysmStatScale::Fixed;
+		Nothing.Condition = ECataclysmStatCondition::Always;
+		TMap<FName, TArray<FCataclysmStatModifier>> One;
+		One.Add(Pair.Key, {Nothing});
+		UCataclysmPlayerClassStats::ApplyTo(
+			Character.AbilitySystem, Table,
+			UCataclysmClassStats::DefaultClassName, 20, &One);
+
+		// THE LINE FIRST, so a line that was never recorded fails as that
+		// rather than as a wrong number.
+		if (!TestNotNull(*FString::Printf(
+				TEXT("'%s', given a modifier, has a line recorded"), *Stat),
+				Character.AbilitySystem->GetStatInputs(Pair.Key)))
+		{
+			continue;
+		}
 		TestEqual(*FString::Printf(
-			TEXT("and a character built from the class table holds '%s' at %.2f"),
+			TEXT("and that line holds '%s' at its stated base of %.2f"),
 			*Stat, Pair.Value),
-			bNoAttribute
-				// ON THE STAT LINE for a stat with no attribute. The fallback of -1
-				// is answered only when the line holds no entry, and no stated base
-				// is -1, so it cannot be mistaken for the base arriving.
-				? Character.AbilitySystem->StatForSkill(
-					Pair.Key, FGameplayTagContainer(), -1.0f)
-				: Character.Read(*Attribute),
+			Character.AbilitySystem->StatForSkill(
+				Pair.Key, FGameplayTagContainer(), -1.0f),
 			Pair.Value, 0.001f);
 	}
 
