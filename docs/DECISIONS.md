@@ -987,6 +987,9 @@ player kills" reworded, with "a portion" made "all", and with "a portion" made "
 - the incoming blow's record: `FCataclysmIncomingHit::bFromCrowdControlled`, copied to
   `FCataclysmBlowContext::bOpponentIsCrowdControlled`
 - the aura count, `FCataclysmStatConditions::AurasHeld`, filled beside `BuffsHeld`
+- `UCataclysmSkillEffects::SpellDamageOf`, which now takes the attack's enemy count. Without it
+  the spell damage half of the point blank drawback never saw a count and refused on every blow of
+  the one point blank spell, the Demonic Wand's Ultimate (`Demonic_Wand_Ultimate`)
 - `tools/generate_datatables.py`
 - issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686)'s first window, three
   enchantments
