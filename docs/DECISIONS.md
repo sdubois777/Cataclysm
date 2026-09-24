@@ -1862,7 +1862,8 @@ hand-made row that breaks it. The comment in `ElementTag` now states these rules
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp`
 (the struck record keeps a time, and a target-aware multiplier), `CataclysmStatPipeline.h` and
 `.cpp` (a condition), `CataclysmMinion.cpp` (a minion's blow asks it), `tools/generate_datatables.py`,
-three test files and one Python list. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+the two rows in `docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`,
+`docs/README.md`, four test files and three Python checks. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
 
 ### THE TWO NODES, ONE CONDITION
 
@@ -1945,8 +1946,34 @@ sentence says "more", recorded in the 2026-09-08 entry that wrote it as "the fir
 - `Cataclysm.Passives.SetUponRaisesARealRitualistsMinionDamageOnlyAgainstAnEnemyItDamagedWithinTwoSeconds`
   and `Cataclysm.Passives.SetThePackOnMultipliesARealRitualistsMinionDamageAgainstAnEnemyItDamagedWithinTwoSeconds`
   read the rows on a real Ritualist. **Every other test grants the stat by hand**, so these are the
-  two that fail while the rows are missing. `target_damaged_by_you_within_seconds` is in
-  `BUILT_AHEAD_OF_THEIR_ROWS` until then.
+  two that fail while the rows are missing.
+
+### THE ROWS, AND WHAT THEY MOVED
+
+Written into the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx` on top of Two Hands'
+row, by the same script the four passive changes' dry run used on a copy first. The generator then
+changed only `game/Data/PassiveEffects.csv`, adding the two rows, each on `minion_damage` while
+`target_damaged_by_you_within_seconds` 2. **Each number is its node's own**: Set Upon "+2%
+increased Minion Damage per point", and Set the Pack On, the Third Pact's first option, "25% more
+damage". Pins moved, each with a comment saying why:
+
+| Pin | From | To |
+|---|--:|--:|
+| `docs/README.md`, Passive Effects rows | 300 | 302 |
+| `AUTHORED_ROWS` in `test_passive_effects_match_the_node_text.py` | 300 | 302 |
+| `AUTHORED_NODES`, same file (the Ritualist now 73 of its 74 nodes) | 221 | 222 |
+| `AUTHORED_OPTIONS`, same file | 23 | 24 |
+| `CHECK_TABLE` for `PassiveEffects.csv` in `CataclysmDataTableTests.cpp` | 300 | 302 |
+| The condition's phrase in the same Python file: "damaged in the last", "{value:g} second" | | |
+
+**Set the Pack On moves the options count and not the nodes count**: its capstone already had a row
+for its third option, Standing Apart. `target_damaged_by_you_within_seconds` leaves
+`BUILT_AHEAD_OF_THEIR_ROWS`. `DT_PassiveEffects` is rebuilt in this change's build window.
+
+**The condition counts, after Two Hands landed first**: 26 of 61 conditions compare nothing, and
+the sentence above the full list says a test naming them by hand passes "after somebody adds a
+sixty-second". This condition compares a number of seconds, so it adds to the 61 and not to the
+26. `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py` holds both.
 
 ---
 

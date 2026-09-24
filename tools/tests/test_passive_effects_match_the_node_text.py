@@ -616,7 +616,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #:
 #: AND TO 300 ON 2026-09-24, for `Ravager_basic_b_b0` Two Hands: 3% increased
 #: `attack_damage` per point while `wielding_two_handed_weapon`.
-AUTHORED_ROWS = 300
+#:
+#: AND TO 302 ON 2026-09-24, for `Ritualist_basic_a_b0` Set Upon and the first
+#: option of `Ritualist_capstone_100`, Set the Pack On: `minion_damage` 2%
+#: increased per point and 25% more, each while
+#: `target_damaged_by_you_within_seconds` 2.
+AUTHORED_ROWS = 302
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1011,7 +1016,12 @@ AUTHORED_ROWS = 300
 #: AND TO 221 ON 2026-09-24, for Two Hands (`Ravager_basic_b_b0`), which had no
 #: row. Measured then: the Ravager is 71 of its 74, the Ritualist 72 of its 74
 #: and the Masochist 74 of its 74.
-AUTHORED_NODES = 221
+#:
+#: AND TO 222 ON 2026-09-24, for Set Upon (`Ritualist_basic_a_b0`), which had
+#: no row. Set the Pack On moves `AUTHORED_OPTIONS` and not this: its capstone
+#: already had a row for its third option. Measured then: the Ravager is 71 of
+#: its 74, the Ritualist 73 of its 74 and the Masochist 74 of its 74.
+AUTHORED_NODES = 222
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1091,7 +1101,10 @@ AUTHORED_NODES = 221
 #: AND TO 23 ON 2026-09-17: `Never Lets Go`, the First Onslaught's second
 #: option. Its node already had rows for the other two options, so
 #: `AUTHORED_NODES` does not move. Issue #1515.
-AUTHORED_OPTIONS = 23
+#: AND TO 24 ON 2026-09-24: `Set the Pack On`, the Third Pact's first option.
+#: Its node already had a row for the third, so `AUTHORED_NODES` does not move
+#: for it. Issue #1515.
+AUTHORED_OPTIONS = 24
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -1508,6 +1521,11 @@ CONDITION_WORDS = {
     # TWO HANDS, `Ravager_basic_b_b0`: "Two-handed weapons only." Issue #1515.
     # The equipped weapon's base row takes two hands.
     "wielding_two_handed_weapon": ("two-handed weapons only", None),
+
+    # SET UPON, `Ritualist_basic_a_b0`, and SET THE PACK ON, the first option of
+    # `Ritualist_capstone_100`: "enemies you have damaged in the last 2
+    # seconds". Issue #1515. The singular matches the plural, as elsewhere.
+    "target_damaged_by_you_within_seconds": ("damaged in the last", "{value:g} second"),
 
     # NO ROW CARRIES THIS ONE YET. Wearing Them Down grants increased DAMAGE
     # REDUCTION, and which stat that row should use is with the project owner

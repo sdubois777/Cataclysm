@@ -299,3 +299,5 @@ Ravager_keystone_b_kC#1,Ravager_keystone_b_kC,melee_reach_metres,flat,2.0,Type.M
 Ritualist_keystone_a_kB#1,Ritualist_keystone_a_kB,minion_death_replaced_every_seconds,flat,10.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_b_kC#1,Ritualist_keystone_b_kC,minion_explosion_replaced_every_seconds,flat,5.0,,,0.0,,0.0,0,-1.0
 Ravager_basic_b_b0#1,Ravager_basic_b_b0,attack_damage,increased,3.0,,wielding_two_handed_weapon,0.0,,0.0,0,-1.0
+Ritualist_basic_a_b0#1,Ritualist_basic_a_b0,minion_damage,increased,2.0,,target_damaged_by_you_within_seconds,2.0,,0.0,0,-1.0
+Ritualist_capstone_100#2,Ritualist_capstone_100,minion_damage,more,25.0,,target_damaged_by_you_within_seconds,2.0,,0.0,1,-1.0
