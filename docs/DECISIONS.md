@@ -763,7 +763,7 @@ Effects sheet and `game/Data/EnchantmentEffects.csv` (274 rows to 280, and 214 e
 219), with the sheet's new `Scale Max Steps` column. They are listed under "The sentences" below. Dry-run
 first on a `git archive` copy against an unedited control: `EnchantmentEffects.csv` and one sentence of
 `EnchantmentsNegative.csv` changed and nothing else, the tools tests failed exactly as the control's did,
-and the real run matched the dry run byte for byte. Nothing has been compiled.
+and the real run matched the dry run byte for byte. Compiled and tested in the machine window, below.
 
 **The cap reaches the game** through `FCataclysmEnchantmentEffectRow::ScaleMaxSteps`, copied onto the
 modifier where an enchantment's row becomes one (`CataclysmItem.cpp`). The generator reads the column on the
@@ -865,6 +865,52 @@ is done while the Demonic trees are unfinished.
 
 **A later user of the cap:** "Gadgets deal 5%-10% increased damage for each second they have been active,
 up to 30 seconds". It needs a scale for how long a gadget has been active, which is not written here.
+
+### The machine window, 2026-09-24
+
+Every line below is what the run printed.
+
+1. **Stale assets, on `d6842c70`, MISSED its registration of exactly 4 failures**:
+   `Build: Succeeded - 28 actions, 25 files compiled`, then at `Cataclysm.Enchantments.+Cataclysm.Data.`:
+   `Tests: 73 tests performed, 66 succeeded, 7 failed`. The 4 registered were there
+   (`EveryGeneratedTableHasAnAssetThatMatchesIt` and the three row-reading tests); the 3 more were
+   `ABenefitOnTwoPiecesIsGrantedOnceAtTheHigherRoll` and `AWornRangeGrantsTheNumberItsHoverTextShows`
+   ("Expected column 'ScaleMaxSteps' not found in input") and `AnActionRowBecomesAPoolActionAndNotAStatModifier`
+   (its effect table read as null). A fourth, the `Cataclysm.EnchantmentSets.` tests, was outside that
+   prefix and would have failed in the whole suite.
+
+   **The cause was in this change.** Unreal's `CreateTableFromCSVString` reports a problem for every struct
+   field whose column the CSV lacks, so a new field on `FCataclysmEnchantmentEffectRow` broke every test
+   that writes its own effect table as CSV text with the old header: three fixtures, in
+   `CataclysmEnchantmentRollTests.cpp`, `CataclysmEnchantmentEffectTests.cpp` and
+   `CataclysmEnchantmentSetTests.cpp`. The Python dry run could not see them, because they are C++. Each
+   header gained the column and each of its twelve rows a 0 (`77a07496`). **A new field on a row struct
+   must be followed into every hand-written CSV fixture of that row type.**
+2. **The same step again, on `77a07496`** (a build the plan did not have), with `Cataclysm.EnchantmentSets.`
+   added: `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.14.cpp`, then
+   `Tests: unknown tests performed, 77 succeeded, 4 failed` -- **the editor ended silently at the last
+   test**, `TwoPiecesGrantTheFirstBonusAndTheDrawbackOnce`, with no crash report and no total. The nine
+   set tests alone then gave `Tests: 9 tests performed, 9 succeeded, 0 failed`, and the step repeated
+   gave `Tests: 82 tests performed, 78 succeeded, 4 failed`, exactly the four registered. **The silent
+   ending was not reproduced and its cause is not known.**
+3. **Rebuild**: `DT_EnchantmentEffects.uasset`, `DT_EnchantmentsNegative.uasset` and
+   `datatable_asset_sources.json` changed and nothing else (`ae1a82e8`); the asset-freshness test then
+   passed, 18 of 18.
+4. **The whole suite, on `ae1a82e8`**: `Build: Succeeded - target already up to date, 0 actions, nothing
+   compiled`, then `Tests: 2228 tests performed, 2228 succeeded, 0 failed`, as registered (development's
+   2220 and this change's 8).
+5. **Proofs**, the source's hash the same before and after each:
+   - **a**, the attacker never marked in combat (`(void)Dealer;`), at
+     `Cataclysm.ConditionalDamage.+Cataclysm.CombatEvents.`: `PROVED: with the break in: 52 tests
+     performed, 50 succeeded, 2 failed: AMinionsBlowPutsTheMinionInCombatAndNotItsSummoner,
+     OneBlowPutsBothSidesInCombatEvadedOrNot | restored: 52 tests performed, 52 succeeded, 0 failed`.
+   - **b**, a combat that never restarts after a lapse, at `Cataclysm.ConditionalDamage.`: `PROVED: with
+     the break in: 28 tests performed, 27 succeeded, 1 failed:
+     ACombatRestartsAfterItLapsesAndOutOfCombatCountsFromTheLapse | restored: 28 tests performed, 28
+     succeeded, 0 failed`.
+   - **c**, the step cap removed, at `Cataclysm.StatPipeline.`: `PROVED: with the break in: 43 tests
+     performed, 42 succeeded, 1 failed: AScaleCapStopsTheStepsAndZeroMeansNoCap | restored: 43 tests
+     performed, 43 succeeded, 0 failed`.
 
 ---
 
