@@ -1016,12 +1016,19 @@ CATACLYSM_TEST(FCataclysmEveryEngineSuppliedBaseReachesACharacter,
 	{
 		const FString Stat = Pair.Key.ToString();
 
-		// IT HAS TO HAVE AN ATTRIBUTE, or `ApplyTo` never resolves it: the loop
-		// there is over `StatToAttribute` rather than over these bases, so a stat
-		// missing from that map is dropped before this base is ever consulted.
+		// TWO ROUTES REACH A CHARACTER, AND EACH BASE HAS TO BE ON ONE. `ApplyTo`
+		// resolves every stat in `StatToAttribute` and writes it to its attribute,
+		// and resolves every stat in `StatsWithNoAttribute` onto the character's
+		// stat line; both read this base by name. A stat on neither list is never
+		// resolved, so its base is never consulted. Until issue #1686 every base
+		// here had an attribute, and this test required one; `non_critical_damage`
+		// is the first with none, asked per blow through the stat pipeline.
+		const bool bNoAttribute =
+			UCataclysmPlayerClassStats::StatsWithNoAttribute().Contains(Stat);
 		const FGameplayAttribute* Attribute =
 			UCataclysmPlayerClassStats::StatToAttribute().Find(Stat);
-		if (!TestNotNull(*FString::Printf(
+		if (!bNoAttribute
+			&& !TestNotNull(*FString::Printf(
 				TEXT("'%s' has an attribute to be written to"), *Stat),
 				Attribute))
 		{
@@ -1044,10 +1051,47 @@ CATACLYSM_TEST(FCataclysmEveryEngineSuppliedBaseReachesACharacter,
 		// refusing an increase with no base under it, and nothing anywhere put
 		// the base on a character -- so it resolved to zero, The Breaking Point
 		// opened a conversion window of zero seconds, and it converted nothing.
+		if (!bNoAttribute)
+		{
+			TestEqual(*FString::Printf(
+				TEXT("and a character built from the class table holds '%s' at %.2f"),
+				*Stat, Pair.Value),
+				Character.Read(*Attribute), Pair.Value, 0.001f);
+			continue;
+		}
+
+		// ON THE STAT LINE for a stat with no attribute, WHICH IS RECORDED ONLY
+		// FOR A STAT WITH A MODIFIER: `ApplyTo` returns the base unrecorded when
+		// the stat has none, and the reader supplies its own fallback. So the
+		// character is given one modifier that changes nothing, and the base is
+		// read from under it, which is what the base is for. Every field the
+		// validator reads is set, rather than left to its default.
+		FCataclysmStatModifier Nothing;
+		Nothing.Bucket = ECataclysmStatBucket::Increased;
+		Nothing.Source = ECataclysmModifierSource::Enchantment;
+		Nothing.Value = 0.0f;
+		Nothing.Scale = ECataclysmStatScale::Fixed;
+		Nothing.Condition = ECataclysmStatCondition::Always;
+		TMap<FName, TArray<FCataclysmStatModifier>> One;
+		One.Add(Pair.Key, {Nothing});
+		UCataclysmPlayerClassStats::ApplyTo(
+			Character.AbilitySystem, Table,
+			UCataclysmClassStats::DefaultClassName, 20, &One);
+
+		// THE LINE FIRST, so a line that was never recorded fails as that
+		// rather than as a wrong number.
+		if (!TestNotNull(*FString::Printf(
+				TEXT("'%s', given a modifier, has a line recorded"), *Stat),
+				Character.AbilitySystem->GetStatInputs(Pair.Key)))
+		{
+			continue;
+		}
 		TestEqual(*FString::Printf(
-			TEXT("and a character built from the class table holds '%s' at %.2f"),
+			TEXT("and that line holds '%s' at its stated base of %.2f"),
 			*Stat, Pair.Value),
-			Character.Read(*Attribute), Pair.Value, 0.001f);
+			Character.AbilitySystem->StatForSkill(
+				Pair.Key, FGameplayTagContainer(), -1.0f),
+			Pair.Value, 0.001f);
 	}
 
 	return true;

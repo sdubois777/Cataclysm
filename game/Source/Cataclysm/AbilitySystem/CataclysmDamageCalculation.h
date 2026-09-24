@@ -102,6 +102,15 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	float CritMultiplier = 150.0f;
 
+	/**
+	 * What share of itself this hit keeps if its critical roll fails, as a
+	 * percentage. Issue #1686. 100 changes nothing, which is every hit that
+	 * never asks: a creature's, a minion's, retaliation and a tick. See
+	 * `UCataclysmDamageCalculation::NonCriticalDamageStat`.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float NonCriticalDamagePercent = 100.0f;
+
 	/** Area damage cannot be evaded. It can still be blocked. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsArea = false;
@@ -434,6 +443,20 @@ public:
 	static const TCHAR* DamageOverTimeTakenStat;
 
 	/**
+	 * What share of its damage an ATTACKER'S hit keeps when its critical roll
+	 * fails, as a percentage. Issue #1686: "Non-critical strikes deal 20%-35%
+	 * less damage" is a `more` row on it.
+	 *
+	 * A STAT OF ITS OWN, NOT A CONDITION ON ATTACK DAMAGE, because the
+	 * attacker's damage is asked for before the roll exists. It is asked beside
+	 * the critical multiplier, carried on the hit, and applied in `Resolve`
+	 * after the roll. No gameplay attribute: its base is
+	 * `NormalNonCriticalDamage`, supplied by
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+	 */
+	static const TCHAR* NonCriticalDamageStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *
@@ -504,6 +527,9 @@ public:
 	 * states the same figure as the base a player's stat line is built from.
 	 */
 	static constexpr float NormalDamageTaken = 100.0f;
+
+	/** `NonCriticalDamageStat`'s base: a non-critical hit keeps all of itself. */
+	static constexpr float NormalNonCriticalDamage = 100.0f;
 
 	/** Negative resistance means taking extra damage. This bounds how bad. */
 	static constexpr float ResistanceFloor = -100.0f;

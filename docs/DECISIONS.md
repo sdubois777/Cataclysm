@@ -1371,6 +1371,116 @@ floor.", and with "5%" added before "slower movement".
 
 ---
 
+## 2026-09-23 — A hit whose critical roll failed can be made smaller, and "Non-critical strikes deal 20%-35% less damage" does it
+
+**Affects:**
+- `UCataclysmDamageCalculation`: `NonCriticalDamageStat` (`non_critical_damage`),
+  `NormalNonCriticalDamage` (100), `FCataclysmIncomingHit::NonCriticalDamagePercent`, and `Resolve`
+- `CataclysmVitalAttributeSet.cpp`, which asks for the stat beside the critical multiplier
+- `UCataclysmPlayerClassStats`: the stat's base in `EngineSuppliedBases`, and its name in
+  `StatsWithNoAttribute`
+- `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`
+- issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686) (row N063)
+
+### WHY IT IS A STAT AND NOT A CONDITION
+
+**The attacker's damage is asked for before the critical strike exists.**
+- `attack_damage` and `spell_damage` are read where the hit is built.
+- The roll happens later, in `UCataclysmDamageCalculation::Resolve`, from a chance and a
+  multiplier that `CataclysmVitalAttributeSet.cpp` asks the attacker for.
+
+So a condition on attack damage could never know whether the hit crits. Instead, the share a
+non-critical hit keeps becomes a stat of its own:
+- It is asked for beside the critical multiplier, on the same terms: the attacker, the skill's
+  tags, the distance, the target's stagger and the target.
+- It is carried on the hit, and `Resolve` multiplies a hit whose roll failed by it.
+- **Its base is 100, supplied by `EngineSuppliedBases`.** The row is a `more` of -20 to -35. With
+  no base under it, every non-critical hit a player landed would be multiplied by zero.
+
+### WHAT THE RESEARCH SETTLES, AND WHAT IS A JUDGEMENT
+
+**The genre settles the meaning.** Path of Exile uses "Non-Critical Strike" to mean a hit whose
+critical roll failed, judged per hit after the roll. The Assassin node Unstable Infusion reads
+"30% chance to gain a Power Charge on Non-Critical Strike" (poedb.tw/us/Assassin). "Less" is this
+project's `more` bucket.
+
+**Which blows count is a judgement, ruled by the coordinating session on 2026-09-23 under the
+owner's delegation:** only a blow that CAN critically strike, and whose roll failed. The stat is
+asked for inside the block that reads the critical strike, so these keep all of their damage:
+- **a damage over time tick**, which is not a strike;
+- **a minion's blow**, which is the minion's own (the owner's decision of 2026-09-17);
+- **retaliation**.
+
+The minion blow and retaliation are the only two blows the code marks as unable to critically
+strike. No player skill carries `Keyword.NoCrit` (0 of 403 rows in `WeaponSkills.csv`).
+
+**A creature reads 100.** It has no stat line, so the lookup answers its fallback. A test checks
+this rather than assuming it: a creature's hit is the same through the path that asks and the path
+that never asks.
+
+### THE ROW
+
+| Enchantment | Row |
+| :-- | :-- |
+| Non-critical strikes deal 20%-35% less damage | `non_critical_damage`, more -20 to -35 |
+
+At the top of its range, a non-critical hit keeps 65% of itself, and a critical hit is unchanged.
+
+### Run
+
+The row was written into the design workbook in this window, at row 305 of the Enchantment Effects
+sheet.
+
+- **The build**, on `f5ff3ed6`: "Build: Succeeded - 29 actions, 26 files compiled".
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "83 tests
+  performed, 81 succeeded, 2 failed", the two registered:
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt`, with 1 row only in the CSV;
+  - `TheNonCriticalRowLeavesANonCriticalHit65PercentOfItself`: "Expected 'worn, a non-critical hit
+    keeps 65% of itself' to be 65.000000, but it was 100.000000".
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`818b00ea`, 303 rows to 304). The Python asset-freshness tests then passed, 18 of 18.
+- **The whole suite on `818b00ea` MISSED its registration of 0 failed**: "2343 tests performed, 2342
+  succeeded, 1 failed: EveryEngineSuppliedBaseReachesACharacter", on "Expected ''non_critical_damage'
+  has an attribute to be written to' to be not null".
+  - **The test's rule was older than this row.** `non_critical_damage` is the first engine-supplied
+    base with no gameplay attribute. The test, from issue #1025, required every such base to have
+    one, saying "`ApplyTo` never resolves it" otherwise. Since `StatsWithNoAttribute` exists, that
+    is no longer true: `ApplyTo` resolves those stats too, and reads the same base by name.
+  - The game code needed no change. Both tests that wear the row passed in the same run.
+- **Ruled by the coordinating session, under the owner's delegation**: change only that test, so
+  that a stat in `StatsWithNoAttribute` is checked on its stat line, with the expected value read
+  from `EngineSuppliedBases`, and every other stat as before.
+  - **The first version failed its group run** (`062af88c`): "14 tests performed, 13 succeeded, 1
+    failed", reading -1 against 100.
+  - **A stat line is recorded only for a stat with a modifier.** `ApplyTo` returns the base
+    unrecorded when a stat has none, and the reader supplies its own fallback of 100. The proposal
+    had said the base reaches the stat line, and the ruling approved it from the same reading, so
+    this miss is both the building session's and the coordinating session's.
+  - **Ruled again**: give the stat one modifier that changes nothing (increased 0, from an
+    enchantment, every field the validator reads set), assert that its line was recorded, then that
+    it holds the stated base (`f4daebc2`). `Cataclysm.PlayerStats.` printed "14 tests performed, 14
+    succeeded, 0 failed", every declared test in the group.
+  - The whole suite was not run again, because it had shown the other 2342 passing on `818b00ea`
+    and the change touches one test.
+- **Three guard proofs.** Each failed exactly the registered tests with the break in and none once
+  restored. Each broken run's log was copied before the restored run overwrote it:
+  - **the share never applied** (in `Resolve`) failed
+    `TheNonCriticalShareCutsOnlyAHitWhoseRollFailed`, `TheNonCriticalRowCutsARealHitAndOnlyABlowThatCouldCrit`
+    and `EveryStatWithNoAttributeIsActuallyRead`, 3 of 27: "Expected 'and keeps 65%: 650' to be
+    650.000000, but it was 1000.000000", "Expected 'an ordinary blow keeps 65%: 650' to be 650.000000,
+    but it was 1000.000000" and "Expected 'the carrying attacker's non-critical blow is half' to be
+    500.000000, but it was 1000.000000";
+  - **the stat never asked for** (`= Asking` made `= false`, so the share takes its fallback of 100,
+    not 0) failed `TheNonCriticalRowCutsARealHitAndOnlyABlowThatCouldCrit` and
+    `EveryStatWithNoAttributeIsActuallyRead`, 2 of 27, on the second and third lines above;
+  - **the share applied to a critical strike too** failed `TheNonCriticalShareCutsOnlyAHitWhoseRollFailed`
+    and `TheNonCriticalRowCutsARealHitAndOnlyABlowThatCouldCrit`, 2 of 24: "Expected 'and a critical
+    strike keeps all of itself: exactly 2,000' to be 2000.000000, but it was 1300.000000" and
+    "Expected 'a critical strike keeps all of itself: exactly 1,500' to be 1500.000000, but it was
+    975.000000".
+
+---
+
 ## 2026-09-23 — A row can count the passive points spent above a threshold, and three class point enchantments do
 
 **Affects:**

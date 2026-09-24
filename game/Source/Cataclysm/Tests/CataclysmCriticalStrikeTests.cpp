@@ -1839,6 +1839,184 @@ CATACLYSM_TEST(FCataclysmOwnStackOnDotAppliedTest,
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// The share a hit keeps when its roll fails. Issue #1686
+// --------------------------------------------------------------------------
+
+namespace CataclysmNonCriticalTest
+{
+	/** A stat line holding "Non-critical strikes deal 35% less damage": the
+	 *  base of 100 the stat fold supplies, and a `more` of -35 on it. */
+	void GiveTheDrawback(UCataclysmAbilitySystemComponent* System)
+	{
+		FCataclysmStatModifier Less;
+		Less.Bucket = ECataclysmStatBucket::More;
+		Less.Source = ECataclysmModifierSource::Enchantment;
+		Less.Value = -35.0f;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line =
+			Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::NonCriticalDamageStat));
+		Line.Base = UCataclysmDamageCalculation::NormalNonCriticalDamage;
+		Line.Modifiers = {Less};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+}
+
+CATACLYSM_TEST(FCataclysmNonCriticalShareInResolveTest,
+	"Cataclysm.Crit.TheNonCriticalShareCutsOnlyAHitWhoseRollFailed")
+{
+	using namespace CataclysmCritTest;
+
+	// AGAINST THE CALCULATION DIRECTLY. A hit keeping 65% of itself when its roll
+	// fails, at a 25% chance and a 200% multiplier.
+	//
+	// THE CRITICAL LINE IS EXACT, and it is the line the third proof breaks: a
+	// share applied to a critical strike too would make 2,000 into 1,300.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		const FScopedCombatant Defender(World);
+		FCataclysmIncomingHit Hit = HitThatCanCrit(1'000.0f, 25.0f, 200.0f);
+		Hit.NonCriticalDamagePercent = 65.0f;
+
+		const FCataclysmDamageResult Crit = UCataclysmDamageCalculation::Resolve(
+			Hit, Defender.AbilitySystem, /*Tier=*/1,
+			/*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f, /*CritRoll=*/0.0f);
+		TestTrue(TEXT("a roll of 0 critically strikes"), Crit.bWasCritical);
+		TestEqual(TEXT("and a critical strike keeps all of itself: exactly 2,000"),
+			Crit.DealtToHealth, 2'000.0f, 0.001f);
+
+		const FCataclysmDamageResult Ordinary = UCataclysmDamageCalculation::Resolve(
+			Hit, Defender.AbilitySystem, /*Tier=*/1,
+			/*EvasionRoll=*/100.0f, /*BlockRoll=*/100.0f, /*CritRoll=*/25.0f);
+		TestFalse(TEXT("a roll of 25 does not"), Ordinary.bWasCritical);
+		TestEqual(TEXT("and keeps 65%: 650"), Ordinary.DealtToHealth, 650.0f, 0.001f);
+
+		FCataclysmIncomingHit Untouched = HitThatCanCrit(1'000.0f, 25.0f, 200.0f);
+		TestEqual(TEXT("a hit that carries no share is left alone"),
+			UCataclysmDamageCalculation::Resolve(
+				Untouched, Defender.AbilitySystem, /*Tier=*/1,
+				100.0f, 100.0f, /*CritRoll=*/25.0f).DealtToHealth,
+			1'000.0f, 0.001f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmNonCriticalRealHitTest,
+	"Cataclysm.Crit.TheNonCriticalRowCutsARealHitAndOnlyABlowThatCouldCrit")
+{
+	using namespace CataclysmCritTest;
+	using namespace CataclysmNonCriticalTest;
+
+	// THROUGH A REAL EFFECT, so the share is shown to be ASKED FOR where the
+	// critical multiplier is, not only applied where the roll is. 1,000 attack
+	// damage at 40% and 150%, carrying 35% less on a non-critical strike.
+	//
+	// FOUR BLOWS: a critical one keeps exactly 1,500; an ordinary one keeps
+	// 650; a blow that cannot critically strike -- a minion's or retaliation --
+	// and a tick both keep all of themselves, because neither is a strike whose
+	// roll failed. Ruled under the owner's delegation on 2026-09-23.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		const FScopedCombatant Attacker(World);
+		FScopedCombatant Defender(World);
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1'000.0f);
+		Attacker.SetCritical(/*Chance=*/40.0f, /*Multiplier=*/150.0f);
+		GiveTheDrawback(Attacker.AbilitySystem);
+
+		{
+			const FScopedCritRoll AlwaysCrits(0.0f);
+			UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+			TestEqual(TEXT("a critical strike keeps all of itself: exactly 1,500"),
+				Defender.TakeDamageReading(), 1'500.0f, 0.001f);
+		}
+
+		const FScopedCritRoll NeverCrits(100.0f);
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f);
+		TestEqual(TEXT("an ordinary blow keeps 65%: 650"),
+			Defender.TakeDamageReading(), 650.0f, 0.01f);
+
+		FCataclysmHitDelivery NoCrit;
+		NoCrit.bCannotCriticallyStrike = true;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), NoCrit);
+		TestEqual(TEXT("a blow that cannot critically strike keeps all of itself"),
+			Defender.TakeDamageReading(), 1'000.0f, 0.01f);
+
+		FCataclysmHitDelivery Tick;
+		Tick.bIsDamageOverTime = true;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), Tick);
+		TestEqual(TEXT("and so does a tick"),
+			Defender.TakeDamageReading(), 1'000.0f, 0.01f);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmNonCriticalCreatureTest,
+	"Cataclysm.Crit.ACreatureReadsTheWholeNonCriticalShareAndHitsUnchanged")
+{
+	using namespace CataclysmCritTest;
+
+	// A CREATURE HAS NO STAT LINE, so it reads the fallback: all of its hit.
+	// Checked rather than assumed, as the coordinating session asked: its
+	// ordinary blow through the path that asks is the same as one through the
+	// path that never asks.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		ACataclysmEnemyCharacter* Creature =
+			SpawnCritCreature(World, FVector::ZeroVector, /*Health=*/1'000.0f);
+		FScopedCombatant Defender(World);
+		UCataclysmAbilitySystemComponent* System = Creature
+			? Cast<UCataclysmAbilitySystemComponent>(Creature->GetAbilitySystemComponent())
+			: nullptr;
+		if (!TestNotNull(TEXT("a creature with an ability system"), System))
+		{
+			World->DestroyWorld(false);
+			return false;
+		}
+		System->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 1'000.0f);
+
+		TestEqual(TEXT("the creature reads a non-critical share of 100"),
+			System->StatForSkill(FName(UCataclysmDamageCalculation::NonCriticalDamageStat),
+				FGameplayTagContainer(),
+				UCataclysmDamageCalculation::NormalNonCriticalDamage),
+			100.0f, 0.001f);
+
+		const FScopedCritRoll NeverCrits(100.0f);
+		UCataclysmSkillEffects::ApplyHit(Creature, Defender.Actor, 100.0f);
+		const float Asked = Defender.TakeDamageReading();
+		FCataclysmHitDelivery NoCrit;
+		NoCrit.bCannotCriticallyStrike = true;
+		UCataclysmSkillEffects::ApplyHit(Creature, Defender.Actor, 100.0f,
+										 FGameplayTagContainer(), NoCrit);
+		const float NeverAsked = Defender.TakeDamageReading();
+		if (TestTrue(TEXT("the creature's blow lands"), Asked > 0.0f))
+		{
+			TestEqual(TEXT("and deals the same through the path that asks"),
+				Asked, NeverAsked, 0.001f);
+		}
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif  // WITH_AUTOMATION_TESTS
