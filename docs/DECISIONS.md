@@ -10,8 +10,8 @@ asks `DiedAsAFloorsBoss`), the comment on `WastingSicknessKey` in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issues
 [#1786](https://github.com/sdubois777/Cataclysm/issues/1786) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 **This answers the entry of 2026-09-14, "Wasting Sickness stacks on a blow that lands, takes its own
 two fields rather than Starvation's, and has two cures where the row states one", which is left as it
@@ -55,10 +55,29 @@ Two automation tests, both in `Cataclysm.DungeonModifierEffects.`:
 The existing `ABossCuresWastingSicknessAndTheStairsDoNot` still holds: a Common's death cures nothing
 and a creature at the Boss rung cures it.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the guard proofs. They run in one editor
-window when the build machine is granted.
+- **The group on development (f285be3d) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "249 tests performed, 249 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on f22a699b:** "Build: Succeeded - 11 actions, 8 files compiled" and "2278 tests
+  performed, 2278 succeeded, 0 failed", as registered (2276 + the two named tests), with every declared
+  test reported. The group alone on the same head then printed "251 tests performed, 251 succeeded,
+  0 failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing exactly the
+  registered tests with the break in and 0 of 251 restored, with each broken run's failure text quoted:
+  - **Wasting Sickness asking the rung alone again** failed `AGatekeeperAtAnyRungCuresWastingSickness`
+    alone: "Expected 'its death took the debuff off entirely' to be null";
+  - **the Gatekeeper left out of `DiedAsAFloorsBoss`** failed
+    `AFloorsBossIsAGatekeeperOrAnyCreatureAtTheBossRung` ("Expected 'and it is a floor's boss all the
+    same' to be true"), `AGatekeeperAtAnyRungCuresWastingSickness` and Starvation Curse's
+    `AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse` ("Expected 'its death cleansed both kinds'
+    to be 0, but it was 2");
+  - **the Boss rung left out of `DiedAsAFloorsBoss`** failed
+    `AFloorsBossIsAGatekeeperOrAnyCreatureAtTheBossRung` ("Expected 'a creature at the Boss rung is' to
+    be true"), `ABossCuresWastingSicknessAndTheStairsDoNot` ("Expected 'a boss's death takes the debuff
+    off entirely' to be null") and `AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse` ("Expected
+    'its death cleansed the curse' to be 0, but it was 1").
 
 ---
 
