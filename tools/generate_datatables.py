@@ -5251,6 +5251,13 @@ ENGINE_SUPPLIED_BASES = {
         "UCataclysmDamageCalculation::NormalProjectileLaterHitDamage, put on "
         "the character by UCataclysmPlayerClassStats::EngineSuppliedBases",
 
+    # AND WHAT SHARE A SKILL'S ZONE DEALS ON ITS FIRST SWEEP, at 100. Issue
+    # #1686: "Persistent AOE zones deal 20%-35% less damage on initial
+    # placement" is a `more` row on it.
+    "zone_first_sweep_damage":
+        "UCataclysmDamageCalculation::NormalZoneFirstSweepDamage, put on the "
+        "character by UCataclysmPlayerClassStats::EngineSuppliedBases",
+
     # AND HOW LARGE THE CRIPPLE AND WEAKEN THIS CHARACTER APPLIES ARE, at 100 for
     # normal. Issue #1767. The Ravager's Dragging Weight reads "+3% increased
     # magnitude of Cripple you apply per point" and its Sapped says the same of

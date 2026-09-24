@@ -306,6 +306,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// asked per contact with the firing skill's tags, based at 100 by
 		// `EngineSuppliedBases`.
 		TEXT("projectile_later_hit_damage"),
+		// What share a skill's zone deals on its first sweep, read by
+		// UCataclysmSkillTemplate::LeaveGroundAlong. Issue #1686. No gameplay
+		// attribute: asked once per zone with the skill's tags, based at 100 by
+		// `EngineSuppliedBases`.
+		TEXT("zone_first_sweep_damage"),
 	};
 	return Stats;
 }
@@ -1083,6 +1088,11 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 			// `more` of -20 to -35.
 			{FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat),
 			 UCataclysmDamageCalculation::NormalProjectileLaterHitDamage},
+
+			// AND WHAT SHARE A ZONE'S FIRST SWEEP DEALS, at 100. Issue #1686, for
+			// the same reason: its one row is a `more` of -20 to -35.
+			{FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat),
+			 UCataclysmDamageCalculation::NormalZoneFirstSweepDamage},
 
 			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
 			// for normal. Issue #1033. The THIRD stat of this shape and it meets the

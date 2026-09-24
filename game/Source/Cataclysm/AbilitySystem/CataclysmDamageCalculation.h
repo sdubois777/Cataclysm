@@ -471,6 +471,20 @@ public:
 	static const TCHAR* ProjectileLaterHitDamageStat;
 
 	/**
+	 * What share of its damage a skill's persistent zone deals on its FIRST
+	 * sweep, as a percentage. Issue #1686: "Persistent AOE zones deal 20%-35%
+	 * less damage on initial placement" is a `more` row on it.
+	 *
+	 * THE FIRST SWEEP, BECAUSE A ZONE DEALS NOTHING AT THE INSTANT IT IS
+	 * PLACED: `ACataclysmGroundZone` sweeps first a full tick in, so a zone
+	 * left by a skill that already hit everyone there does not hit them twice
+	 * at once. Ruled under the owner's delegation on 2026-09-23. Asked by
+	 * `UCataclysmSkillTemplate::LeaveGroundAlong` where the zone is priced;
+	 * based at 100 by `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+	 */
+	static const TCHAR* ZoneFirstSweepDamageStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *
@@ -547,6 +561,9 @@ public:
 
 	/** `ProjectileLaterHitDamageStat`'s base: a later contact keeps all of itself. */
 	static constexpr float NormalProjectileLaterHitDamage = 100.0f;
+
+	/** `ZoneFirstSweepDamageStat`'s base: a first sweep deals all of a tick. */
+	static constexpr float NormalZoneFirstSweepDamage = 100.0f;
 
 	/** Negative resistance means taking extra damage. This bounds how bad. */
 	static constexpr float ResistanceFloor = -100.0f;

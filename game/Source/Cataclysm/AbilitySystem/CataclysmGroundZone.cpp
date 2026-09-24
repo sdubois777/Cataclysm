@@ -393,8 +393,13 @@ void ACataclysmGroundZone::Sweep()
 		// as an attack that did nothing.
 		if (bDamages)
 		{
+			// THE FIRST SWEEP MAY DEAL ITS OWN FIGURE. Issue #1686. `TicksElapsed`
+			// is still nought during it, because it moves after the sweep.
+			const float ThisSweep = TicksElapsed == 0 && FirstSweepDamage >= 0.0f
+				? FirstSweepDamage
+				: DamagePerTick;
 			UCataclysmSkillEffects::ApplyDirectDamage(Source, Target,
-													  DamagePerTick, Delivery);
+													  ThisSweep, Delivery);
 		}
 
 		// AND THE CURSE, IF THIS ZONE CARRIES ONE. The Wand's Foul Wake: "the

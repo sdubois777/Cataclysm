@@ -61,13 +61,13 @@ SOURCE_ROOT = REPO_ROOT / "game" / "Source"
 #: tree rather than a property of the design, so it is labelled with the tree.
 MEASURED_AT = "af715829da8789c5f29f19413255d13b0f42f703"
 
-#: How many call sites that commit held. THE INVENTORY BELOW HOLDS 68, counted
-#: with `len(INVENTORY)` on 2026-09-23 on branch `feat/projectile-later-hits`,
+#: How many call sites that commit held. THE INVENTORY BELOW HOLDS 69, counted
+#: with `len(INVENTORY)` on 2026-09-23 on branch `feat/zone-first-sweep`,
 #: and the extra are dated rather than folded into the figure above. Among
 #: them: issue #2000 replaced a rate lookup here with an asked-for reduction,
 #: the Behind the Veil keystone added one of its own, issue #1815's live
-#: maximum health added one, and issue #1686's non-critical share and
-#: projectile later-hit share one each. THIS
+#: maximum health added one, and issue #1686's non-critical share, projectile
+#: later-hit share and zone first-sweep share one each. THIS
 #: SENTENCE SAID 64 WHILE THE LIST HELD 66: a count carried forward by adding
 #: one keeps an earlier miscount. A count describes a tree, so the label
 #: stays with the tree it was taken on and the movement is written out.
@@ -358,6 +358,10 @@ INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
      'FName(CrowdControlResistanceStat), FGameplayTagContainer(), Stat'):
         'a figure read off the attacker with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat), SkillTags, UCataclysmDamageCalculation::NormalZoneFirstSweepDamage'):
+        "the share a skill's zone deals on its first sweep (issue #1686), "
+        "asked where the zone is priced; a zone is not a blow",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(UCataclysmSkillSlots::LockedStat), SkillTags, 0.0f'):
         "a skill's own cost and shape, asked before any blow exists",
