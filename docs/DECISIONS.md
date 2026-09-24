@@ -396,6 +396,47 @@ One Python check: the row still says "every floor", "a random buff or debuff", "
 
 ---
 
+## 2026-09-24 — No Second Wind, engine only: a Cripple or Weaken you applied stops running down while its enemy is within 4 metres
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (the step),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (where it runs),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one stat with no attribute), two test
+files, the stat-lookup inventory, and the list of jobs the regeneration step must call. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE KEYSTONE
+
+`Ravager_keystone_c_kB` No Second Wind: "Cripple and Weaken you applied do not expire while that
+enemy is within 4 metres of you." One stat, `applied_cripple_and_weaken_held_within_metres`, whose
+row will carry the 4; above zero means the keystone is held, and the value is the radius. **Engine
+only**, for the reason the Shared Ruin entry gives.
+
+### HOW IT IS BUILT
+
+`UCataclysmDebuffs::HoldAppliedNearbyStep` makes the same hold `HoldStep` makes for the Masochist's
+option that keeps a character's own debuffs from expiring. Each held effect's start is moved by the
+step, so the time left on it does not change. Here the hold is made on **enemies' effects** instead
+of the character's own. It runs on the character's regeneration step, beside `HoldStep`, so whether
+an enemy is still within the radius is asked again each step.
+
+- **Only what this character applied.** A Cripple is one tag per enemy, so each effect is matched by
+  its instigator: the actor, or the ability system that actor resolves to, which for the player's
+  pawn is the player's. A Cripple or Weaken from anyone else runs down as it would.
+- **Both kinds are timed gameplay effects on the enemy.** A Cripple is applied through
+  `ApplyTagForDuration` and a Weaken through `ApplyNamedEffect`, and both carry their tag, so one
+  query finds either.
+- **"Within 4 metres"** is the enemy search every radius in this project uses,
+  `UCataclysmTargeting::FindEnemiesInSphere`, from the character's position.
+
+### TESTS
+
+- `Cataclysm.NoSecondWind.YourCrippleAndWeakenDoNotRunDownOnAnEnemyWithinFourMetres`: an enemy two
+  metres away keeps three seconds on both after a second; one six metres away drops to two.
+- `Cataclysm.NoSecondWind.OnlyWhatYouAppliedIsHeldAndOnlyWhileYouHoldTheKeystone`
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+---
+
 ## 2026-09-24 — Cast from Ward, engine only: a cost the mana cannot cover is paid from the energy shield, which is not damage and not a break
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the pool that

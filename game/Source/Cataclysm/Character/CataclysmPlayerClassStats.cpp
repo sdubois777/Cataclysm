@@ -244,6 +244,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// above zero, a skill cost the mana cannot cover is paid from the energy
 		// shield. Issue #1515.
 		TEXT("skill_cost_paid_from_energy_shield"),
+		// No Second Wind's radius in metres, read by
+		// UCataclysmDebuffs::HoldAppliedNearbyStep: above zero, a Cripple or
+		// Weaken the holder applied does not run down on an enemy that near.
+		// Issue #1515.
+		TEXT("applied_cripple_and_weaken_held_within_metres"),
 		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
 		// Weaken is created, and not where a spread copies one. Issue #1515,
 		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken

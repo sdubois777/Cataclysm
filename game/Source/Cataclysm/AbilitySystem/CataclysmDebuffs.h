@@ -376,4 +376,30 @@ public:
 	 *         the game without the option and for one carrying no debuffs
 	 */
 	static int32 HoldStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * No Second Wind's figure: the radius, in metres, within which a Cripple or
+	 * a Weaken this character applied does not run down. Issue #1515,
+	 * `Ravager_keystone_c_kB`: "Cripple and Weaken you applied do not expire
+	 * while that enemy is within 4 metres of you." Above zero means the
+	 * keystone is held.
+	 */
+	static const TCHAR* AppliedHeldWithinMetresStat;
+
+	/**
+	 * Hold still, for one step, every Cripple and Weaken `Character` applied to
+	 * an enemy within the keystone's radius. Issue #1515.
+	 *
+	 * THE SAME HOLD `HoldStep` MAKES, on the ENEMY'S effects rather than the
+	 * character's own: each effect's start is moved by the step, so the time
+	 * left on it does not change while the enemy stays near.
+	 *
+	 * ONLY WHAT THIS CHARACTER APPLIED. A Cripple is one tag per enemy, so an
+	 * effect is matched by the ability system that applied it, and a Cripple
+	 * from anyone else runs down as it would.
+	 *
+	 * @return how many effects were held, zero for every character without the
+	 *         keystone
+	 */
+	static int32 HoldAppliedNearbyStep(AActor* Character, float StepSeconds);
 };

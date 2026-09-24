@@ -251,6 +251,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// game without that capstone option, and it is returned for tests.
 	UCataclysmDebuffs::HoldStep(this, UCataclysmRegeneration::StepSeconds);
 
+	// AND THE CRIPPLES AND WEAKENS THIS CHARACTER APPLIED, ON ENEMIES NEAR IT.
+	// Issue #1515, No Second Wind. The same step for the same reason: whether an
+	// enemy is still within the radius is asked again each time.
+	UCataclysmDebuffs::HoldAppliedNearbyStep(this, UCataclysmRegeneration::StepSeconds);
+
 	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
 	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the
 	// first of them whose effect reaches out on its own. "Emits a burning aura

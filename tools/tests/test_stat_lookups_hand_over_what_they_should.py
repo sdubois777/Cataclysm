@@ -404,6 +404,10 @@ INVENTORY = {
      'SurvivedEveryStat, FGameplayTagContainer(), 0.0f'):
         "Nothing Stops It's interval, a flag read off the defender when a hit "
         'would kill, with no skill of its own in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(AppliedHeldWithinMetresStat), FGameplayTagContainer(), 0.0f'):
+        "No Second Wind's radius, read in a regeneration step with no blow, "
+        'target or skill in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
      'FName(CostPaidFromEnergyShieldStat), FGameplayTagContainer(), 0.0f'):
         "Cast from Ward's flag, asked when a cost is weighed against the pools, "
