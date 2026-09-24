@@ -21983,7 +21983,15 @@ bool FCataclysmScarcityFloorTest::RunTest(const FString& Parameters)
 	}
 	Mode->StartPlay();
 
-	// ONE NON-WEAPON ITEM, so it is the only slot the draw can land on.
+	// NOTHING WORN BUT WHAT THIS TEST PUTS ON. A possessed player starts holding a
+	// Greataxe (`ACataclysmPlayerCharacter::GiveStartingWeapon`), so the gear is emptied
+	// first and asserted empty; then one non-weapon item, the only slot the draw can take.
+	Equipment->UnequipEverything();
+	if (!TestEqual(TEXT("the player starts this test wearing nothing"),
+				   Equipment->NumEquipped(), 0))
+	{
+		return false;
+	}
 	if (!ScarcityWear(*this, Equipment, ScarcityItemWithHealth(TEXT("Head_Helm")),
 					  ECataclysmGearSlot::Head))
 	{
@@ -22065,6 +22073,15 @@ bool FCataclysmScarcityDrawTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Mode->StartPlay();
+
+	// NOTHING WORN BUT THE SWORD. A possessed player starts holding a two-handed Greataxe,
+	// which fills both weapon slots, so the gear is emptied first and asserted empty.
+	Equipment->UnequipEverything();
+	if (!TestEqual(TEXT("the player starts this test wearing nothing"),
+				   Equipment->NumEquipped(), 0))
+	{
+		return false;
+	}
 
 	FCataclysmItem Sword;
 	Sword.Base = FName(TEXT("Weapon_Sword"));
