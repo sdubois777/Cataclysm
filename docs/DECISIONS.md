@@ -2,6 +2,51 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — The balance report prints no surge-size figures it did not measure, and the 2026-09-05 table is kept as a dated record
+
+**Affects:** `sim/experiments.py` (section 7 of the balance report, and two comments) and
+`sim/tests/test_sweep_states_its_settings.py`. Issue
+[#1438](https://github.com/sdubois777/Cataclysm/issues/1438).
+
+### WHAT WAS WRONG
+
+A table of figures measured on 2026-09-05 is the evidence for `PRESET_SECOND_SURGE_SIZE`: how the
+empire tree presets compare with no tree at surge sizes 4 to 7. Section 7 of the balance report
+**printed that table as literal strings in every fresh report**. #1438 re-measured the surge 5 and 7
+columns on 998d758 and found **five of the six cells had moved**: the tier 1 no-tree win rate at
+surge 5 had fallen from 52% to 19%. A reader cannot tell a printed literal from a printed result,
+so the report was presenting an old measurement as one it had just taken.
+
+### WHAT CHANGED, A JUDGEMENT UNDER THE STANDING APPROVAL
+
+#1438 offered two remedies: re-measure the 4 and 6 columns and replace every copy, or annotate the
+table in place. **This takes the second, and adds nothing measured.** Re-measuring takes a long run
+of `sim/experiments.py` at the report's exact calibrated settings, and #1438's comment warns that
+figures taken under other settings are easily mistaken for them.
+
+- **The printed copy is gone.** Section 7 now says that the ordering moved more with the surge size
+  than with the tier when this was measured on 2026-09-05, and that the dated figures are in the
+  source comment and not reprinted because this report did not measure them.
+- **Three source copies are kept whole and annotated as a record of 2026-09-05:** the comment on
+  `PRESET_SECOND_SURGE_SIZE`, the docstring of `inherited_settings`, and the docstring of
+  `test_sweep_states_its_settings.py`. The table is not refreshed by half, which #1438 warns would
+  mix figures from two models. Each annotation cites #1438's re-measurement.
+  - **The `inherited_settings` docstring was a fifth copy #1438 did not list**. It has a different
+    table, with an Architect row.
+- **The 2026-09-05 entry in this log is a dated record of its own day and is not edited.**
+- **The constant is unaffected.** The two reasons its comment gives for 7 were always independent
+  of the table, as #1438 records.
+
+### TEST AND PROOF
+
+`test_it_prints_no_figures_it_did_not_measure` runs section 7 and fails if it prints the table's row
+labels or its figures. `tools/prove_guard.break_and_run`, in a `git archive` copy of 0d85bbce, with
+one of the old table's lines printed again: `PROVED: 1 failed, 22 passed in 15.11s | restored: 23
+passed in 15.51s`, `named_failures`
+`sim/tests/test_sweep_states_its_settings.py::TestSectionSevenPrintsThem::test_it_prints_no_figures_it_did_not_measure`.
+
+---
+
 ## 2026-09-23 — The README's sheet table lists every column of each sheet, and a test holds the list to the workbook
 
 **Affects:** `docs/README.md` (the table headed "Sheets in `All_Things_Cataclysm.xlsx`") and
