@@ -2,6 +2,95 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — A hand-resolved C++ conflict can be checked before a build, by a tool that reports a comment left with no opening
+
+**Affects:** the new `tools/check_resolved_cpp.py` and `tools/tests/test_check_resolved_cpp.py`. Issue
+[#1610](https://github.com/sdubois777/Cataclysm/issues/1610), all of it except the line in
+`CLAUDE.md`, which is the owner's to approve.
+
+### THE FAULT
+
+On 2026-09-12, four hand-resolved conflicts on four branches broke C++ the same way. Every entry of
+`ECataclysmStatCondition`, in `CataclysmStatPipeline.h`, has a `/** ... */` above it. When two
+changes both append an entry after the same one:
+
+1. git leaves that `/**` outside the conflict, as shared context;
+2. each side supplies its own comment body and closing `*/`;
+3. keeping both, the usual correct resolution, leaves the second body with no opening.
+
+**Braces still balance**, so only the compiler notices, and the compiler runs only in a build
+window. A second fault the same day joined two function bodies at a conflict boundary. Nothing in
+the repository looked for either. The script #1610 describes was in a worktree that no longer
+exists, and no scratchpad on this machine held a copy, so the tool was written again from the
+issue's specification.
+
+### THE RULING, UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto:** the checker becomes
+a repository tool with its own tests. The line #1610 asks for in `CLAUDE.md` is **not** part of
+this change: `CLAUDE.md` is the project's law, and a change to it is the owner's to approve. #1610
+stays open for that line.
+
+### WHAT IT CHECKS
+
+`python tools/check_resolved_cpp.py <files> | --changed | --control`. For each file it reports:
+
+- a conflict marker line;
+- a block comment never closed;
+- a string or character literal left open at the end of its line;
+- braces or parentheses that do not balance, counted after comments and literals are removed;
+- **a `*/` found outside any comment.**
+
+**It exits 2 when it read no file.**
+
+**The last check replaces the raw count comparison #1610 describes.** That comparison was `/*`
+against `*/` in the raw text. Raw counts include comment markers written inside strings and inside
+`//` comments, so they can differ in a healthy file. #1610 also measured that they differ between
+branches of the same file. A `*/` outside any comment is the fault itself, and it is exact: the
+healthy tree has none. The raw counts are still printed for a file with a complaint, as
+information only.
+
+**The two false alarms #1610 measured are handled:**
+
+- an apostrophe inside a numeric literal is a digit separator (`10'000'000.0f`, `0xFF'FF`);
+- a quote or bracket written as a character literal (`TEXT('(')`, `TEXT('"')`) is one character.
+
+Raw strings (`R"x(...)x"`) are skipped whole.
+
+**Before a rebase**, `git merge-tree --write-tree <development> <branch>` shows a conflict
+without starting one, as #1610 recorded. The tool's docstring says so.
+
+### TESTS AND PROOF
+
+`--control` on `development` at 9ff0de2e read **457 files, with 0 complaints**. The test requires at
+least 400 files to have been read, so a reader that found nothing cannot pass. Thirteen tests
+cover:
+
+- the control, both in the same process and at the command line;
+- that reading no file is not a pass;
+- each fault on a hand-made file;
+- the #1610 keep-both shape, and the same text with the opening restored;
+- the two false alarms, and strings and raw strings;
+- the #1610 fault applied to the real `CataclysmStatPipeline.h`, whose unbroken text is the
+  control.
+
+Three breaks with `tools/prove_guard.break_and_run`, each in a `git archive` copy and each asserted
+to match once:
+
+| Break | Printed | `named_failures` |
+|---|---|---|
+| a digit separator read as a character literal, on be75d3e7 | `PROVED: 3 failed, 10 passed in 3.46s \| restored: 13 passed in 2.09s` | the two control tests, `test_digit_separators_are_not_character_literals` |
+| a `*/` outside a comment no longer reported, on 7e3330b6 | `PROVED: 2 failed, 11 passed in 2.14s \| restored: 13 passed in 2.07s` | `test_the_1610_shape_keep_both_with_one_shared_opening_is_found`, `test_the_fault_on_the_real_header_it_happened_in` |
+| `//` comments not removed before counting, on 7e3330b6 | `PROVED: 2 failed, 11 passed in 2.83s \| restored: 13 passed in 2.12s` | the two control tests |
+
+**The first break found a weak test.** Its first run, on 7e3330b6, failed only the two control
+tests. The digit-separator test passed with the break in, because its sample line held four
+apostrophes, which a wrong reader pairs off as two character literals with the brackets still
+balanced. The sample now has a second line holding one separator, and the rerun shown above fails
+that test as well.
+
+---
+
 ## 2026-09-23 — As each floor begins, one worn non-weapon slot gives nothing for that floor
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (a switched-off
