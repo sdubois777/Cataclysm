@@ -24256,7 +24256,8 @@ bool FCataclysmSoulsResistTest::RunTest(const FString& Parameters)
 	};
 
 	float Unfed = 0.0f;
-	if (!TestTrue(TEXT("an ordinary blow landed before the soul"), AnOrdinaryBlow(Unfed))
+	if (!TestTrue(TEXT("an ordinary (non-critical, not evaded) blow was found among 40 before the soul"),
+						  AnOrdinaryBlow(Unfed))
 		|| !TestTrue(FString::Printf(TEXT("and it did not empty the creature: %.2f of %.2f"), Unfed,
 									 SoulFiguresOf(Target).MaxHealth),
 					 Unfed < SoulFiguresOf(Target).MaxHealth * 0.9f)
@@ -24267,7 +24268,8 @@ bool FCataclysmSoulsResistTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the creature holds a soul"), Mode->SoulHarvestSoulsOn(Target), 1);
 
 	float Fed = 0.0f;
-	if (!TestTrue(TEXT("an ordinary blow landed after it"), AnOrdinaryBlow(Fed)))
+	if (!TestTrue(TEXT("an ordinary (non-critical, not evaded) blow was found among 40 after it"),
+						  AnOrdinaryBlow(Fed)))
 	{
 		return false;
 	}
@@ -24328,6 +24330,10 @@ bool FCataclysmSoulsRungTest::RunTest(const FString& Parameters)
 	// whole stat block from its rung and the modifiers it drew, and which the game mode does not
 	// hear. Not a twin creature: the rung-up drew modifiers at random, and a twin's draw could
 	// differ.
+	//
+	// READ IN THIS ORDER: the fed figures FIRST, then the rung set again for the base. Setting
+	// the rung wipes what the souls added, so reading the fed figures after it would compare the
+	// base with itself and nothing could make this test fail.
 	const FSoulFigures Fed = SoulFiguresOf(Champion);
 	Champion->SetRarityStep(To);
 	const FSoulFigures Bare = SoulFiguresOf(Champion);
