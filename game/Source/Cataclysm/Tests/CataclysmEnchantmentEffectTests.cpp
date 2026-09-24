@@ -4959,6 +4959,14 @@ namespace CataclysmOwnStackRowTest
 				Moving, 0);
 			Other.Add(Stat, OtherIncreases);
 
+			// PRINTED WHETHER OR NOT ANYTHING FAILS, because a passing
+			// assertion's label never reaches the log, and the figure is the
+			// point of this test for armor and movement speed: nought there
+			// would mean the attribute increase was not covered after all.
+			Test.AddInfo(FString::Printf(
+				TEXT("'%s': the line's other increases total %.2f"),
+				*Stat.ToString(), OtherIncreases));
+
 			const float None = ASC->StatAppliedTo(Stat, FGameplayTagContainer(), 1000.0f);
 			if (!Test.TestTrue(FString::Printf(
 					TEXT("'%s' with no stacks is something"), *Stat.ToString()),
