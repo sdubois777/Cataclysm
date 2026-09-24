@@ -2,6 +2,112 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Soul Harvest: each death gives the nearest creature within 6 metres a soul of health, damage and resistance, up to five
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its radius, the soul's figures, the cap and their arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the death listener, writing a
+soul's figures onto a creature and writing them again after a rung change, the floor panel line and the
+reset on leaving the dungeon), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Demonic_Soul_Harvest` in `game/Data/DungeonModifiers.csv`, weight 10: "Defeated enemies release
+demonic souls that empower other enemies nearby. Souls float toward the nearest demon, granting
+increased health, damage, and resistances." The row gives no figure.
+
+### What the rule does
+
+On a floor carrying the row, every creature that dies gives one soul to the nearest living creature
+within 6 metres of where it died. A soul adds 10% of the creature's own maximum health (and the same
+amount of health, so it arrives as health and not as a wound), 10% of its own attack damage, and 5 to
+its all-resistance figure. A creature holds at most five souls; a soul for a creature already at five
+is lost, not passed on. The gain stays until the creature dies and is written again whenever a rung
+change rewrites the creature's stat block. The floor panel counts the souls given and the most any
+living creature holds.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24. Every figure here is a
+judgement, not something derived:**
+
+- **Every death, whoever dealt it**, because the row says "defeated enemies" and names no killer; **a
+  risen creature's second death releases nothing**, following the owner's decision of 2026-09-17 that a
+  creature brought back pays nothing twice.
+- **The nearest living creature within 6 metres**, `BloodForgedChampionsRadiusMetres`, so a floor rule
+  means one distance; at once and with nothing drawn, because "float toward" needs an effect the game
+  does not have. **"The nearest demon" is the nearest living creature because every creature the game
+  has today is Demonic**: `docs/Cataclysm_GDD_v2.md` lists them all under "Vertical Slice Enemies
+  (Demonic Cataclysm)". **When a non-Demonic creature exists, this reading must be revisited.**
+- **10% more maximum health, 10% more attack damage and +5 all-resistance per soul, at most five
+  souls.** **Play-test point.**
+- **The gain stays until the creature dies and survives a rung change.**
+- **No damage multiplier is added.** The entry "Below 10% mana a cast costs 5% of current health
+  instead, and a general "mana below" condition exists" (2026-09-23) records that "a fourth creature
+  damage multiplier ... would start the refactor of the three multipliers into one map that was ruled
+  on 2026-09-17". A soul's figures are written onto the creature's attribute bases, as Nothing Is
+  Forgotten's are, so they add no multiplier and do not start that refactor.
+
+### The resistance, checked before it was built
+
+**A creature's resistance is read on every blow, and it is one figure.** `UCataclysmDamageCalculation::
+Resolve` multiplies the damage by one minus the defender's effective resistance
+(`CataclysmDamageCalculation.cpp`), and `ResistanceFor` adds `UCataclysmAllResistanceAttributeSet::
+AllResistance` for a defender holding that set. An enemy holds only that set, one figure met by a hit
+of any type, as the owner ruled on 2026-08-12; so "+5 to each resistance" is +5 to that figure. A rung
+change writes the figure again from the creature's designed value, which is why the soul's share is
+written again after one.
+
+**Five souls cannot reach the cap.** `ResistanceCap` is 70. A creature's resistance does not scale with
+its rung (only its armour does), and the designed values are Imp 0, Hellhound 10, Succubus 10, Brute 15,
+Corrupted Sentinel 20, Gatekeeper 30 and Abyssal Warden 35; five souls take the highest to 60. The only
+other thing that moves a creature's figure is Shred, which lowers it.
+
+### With Blood-Forged Champions
+
+On a floor carrying both rows, one death feeds both: Blood-Forged gives the nearest Elite-or-above
+creature within 6 metres a count toward its next rung, and Soul Harvest gives the nearest living
+creature within 6 metres a soul. **When the nearest creature is an Elite, the same creature takes both**,
+and when Blood-Forged raises it a rung the rung change rewrites its stat block and its souls are written
+again on top: `SoulsSurviveTheRungABloodForgedChampionGains` pins it. When the nearest creature is a
+Common and an Elite stands farther off within 6 metres, the two rules feed different creatures.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `ADeathFeedsTheNearestLivingCreatureWithinSixMetres`: of two creatures at 3 and 5 metres the nearer
+  takes the soul, with 10% more maximum health (and as much health), 10% more attack damage and 5 more
+  all-resistance, and the farther is unchanged; a death with the only creature 8 metres away releases
+  nothing; the panel line.
+- `ACreatureHoldsAtMostFiveSouls`: four becomes five and five stays five; seven deaths beside one
+  creature leave it with five souls, half again its maximum health and attack damage, and 25 more
+  all-resistance.
+- `ASoulFedCreatureTakesLessOfTheSameBlow`: an Imp (all-resistance 0, and 0 + 5 < 70 is asserted) takes
+  a non-critical blow before and after one soul, and the second deals (1 − 0.05) of the first.
+- `SoulsSurviveTheRungABloodForgedChampionGains`: an Elite fed by three deaths rises a rung and holds
+  three souls, and its attack damage and all-resistance are its new rung's plus three souls' worth,
+  its new rung's figures read by setting its rung again, which writes its stat block from its rung and
+  the modifiers it drew.
+
+One Python check: the row still says "defeated enemies", "nearby", "the nearest demon" and "health,
+damage, and resistances", and states no percentage. It was seen to fail, in a copy of the repository,
+with "the nearest demon" made "the strongest demon", with the three things made two, and with "10%"
+added.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-24 — A projectile's landed contact, a rack's throw with no speed and a buried axe tearing free tell the character's running buffs
 
 **Affects:**
