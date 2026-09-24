@@ -1924,6 +1924,12 @@ public:
 	int32 SoulHarvestSoulsOn(const ACataclysmEnemyCharacter* Creature) const;
 	int32 SoulHarvestSoulsGiven() const { return SoulHarvestGiven; }
 
+	/** Chaos Touched's stacks of one kind, for the floor panel and tests. Issues #1820, #41. */
+	int32 ChaosTouchedStacksOf(int32 Kind) const
+	{
+		return ChaosTouchedStacks.IsValidIndex(Kind) ? ChaosTouchedStacks[Kind] : 0;
+	}
+
 	/**
 	 * Whether this death was a floor's boss: a Gatekeeper, the creature the game places as a
 	 * floor's boss, or any creature at the Boss rung. `IsBoss()` alone asks the rung, which
@@ -1973,6 +1979,17 @@ private:
 	void RaiseTheTrickOrTreatPair(const FVector& Where);
 
 	/** Trick or Treat, on the beat: the haste on while its clock runs and off after. */
+	/** Chaos Touched, as a floor carrying it begins: one more stack of one kind. */
+	void AddAChaosTouch();
+
+	/** Chaos Touched, on the beat: its stacks back on the player after a floor change. */
+	void StepChaosTouched(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Chaos Touched, on every death: a floor's boss cleanses the debuffs, the player all. */
+	void NoteDeathForChaosTouched(const struct FCataclysmDeathNotice& Notice);
+
 	/** Soul Harvest, on every death: a soul to the nearest living creature within reach. */
 	void NoteDeathForSoulHarvest(const struct FCataclysmDeathNotice& Notice);
 
@@ -2815,6 +2832,13 @@ private:
 	};
 	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, FSoulHarvestHeld> SoulHarvestHeld;
 	int32 SoulHarvestGiven = 0;
+
+	/**
+	 * Chaos Touched: the stacks of each kind the dungeon has added, and what is on the
+	 * character. Eight entries each, in `ChaosTouchedKindFor`'s order.
+	 */
+	TArray<int32> ChaosTouchedStacks = {0, 0, 0, 0, 0, 0, 0, 0};
+	TArray<int32> ChaosTouchedApplied = {0, 0, 0, 0, 0, 0, 0, 0};
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

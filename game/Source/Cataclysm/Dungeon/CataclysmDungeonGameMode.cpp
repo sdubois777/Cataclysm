@@ -744,6 +744,16 @@ static TAutoConsoleVariable<float> CVarTrickOrTreatRoll(
 	TEXT("raises two creatures, from 50 hastes the player. -1 rolls normally."),
 	ECVF_Cheat);
 
+/**
+ * The draw that decides which kind a floor carrying Chaos Touched adds, pinned for tests.
+ */
+static TAutoConsoleVariable<float> CVarChaosTouchedRoll(
+	TEXT("Cataclysm.ChaosTouchedRoll"),
+	-1.0f,
+	TEXT("Pin the draw that picks the kind Chaos Touched adds, 0 to 100 in eight even bands: ")
+	TEXT("health, speed, attack speed, resistances more, then the same less. -1 draws normally."),
+	ECVF_Cheat);
+
 static TAutoConsoleVariable<float> CVarDeadRisingRoll(
 	TEXT("Cataclysm.DeadRisingRoll"),
 	-1.0f,
@@ -851,6 +861,12 @@ namespace
 	float DungeonGameModeTrickOrTreatRoll()
 	{
 		const float Pinned = CVarTrickOrTreatRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeChaosTouchedRoll()
+	{
+		const float Pinned = CVarChaosTouchedRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -2095,6 +2111,80 @@ void ACataclysmDungeonGameMode::NoteDeathForNothingIsForgotten(
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::AddAChaosTouch()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const int32 Kind = Effects::ChaosTouchedKindToAdd(
+		Effects::ChaosTouchedKindFor(DungeonGameModeChaosTouchedRoll()), ChaosTouchedStacks);
+	if (Kind == Effects::ChaosTouchedAddsNothing || !ChaosTouchedStacks.IsValidIndex(Kind))
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Chaos Touched: floor %d adds nothing; every kind is at its cap"), FloorNumber);
+		return;
+	}
+	ChaosTouchedStacks[Kind] += 1;
+	UE_LOG(LogCataclysm, Log, TEXT("Chaos Touched: floor %d adds kind %d, now %d stack(s)"),
+		   FloorNumber, Kind, ChaosTouchedStacks[Kind]);
+}
+
+void ACataclysmDungeonGameMode::StepChaosTouched(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	if (ChaosTouchedStacks == ChaosTouchedApplied)
+	{
+		return;
+	}
+	ChaosTouchedApplied = ChaosTouchedStacks;
+	ApplyChangingFloorEffects(Player, AbilitySystem);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForChaosTouched(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ON ANY FLOOR: the stacks are the dungeon's.
+	bool bHeld = false;
+	for (const int32 Held : ChaosTouchedStacks)
+	{
+		bHeld |= Held > 0;
+	}
+	if (!bHeld)
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+
+	// THE PLAYER'S OWN DEATH CLEARS EVERY STACK, BUFFS AS WELL, and at once, for the reason the
+	// starvation curse's listener gives.
+	if (Player && Notice.Victim == Player)
+	{
+		ChaosTouchedStacks = {0, 0, 0, 0, 0, 0, 0, 0};
+		ChaosTouchedApplied = {0, 0, 0, 0, 0, 0, 0, 0};
+		ApplyChangingFloorEffects(
+			Player, Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()));
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	// A FLOOR'S BOSS CLEANSES THE DEBUFFS ONLY; the buffs stay. Ruled 2026-09-24.
+	if (DiedAsAFloorsBoss(Notice.Victim))
+	{
+		for (int32 Kind = Effects::ChaosTouchedFirstDebuff; Kind < Effects::ChaosTouchedKinds;
+			 ++Kind)
+		{
+			ChaosTouchedStacks[Kind] = 0;
+		}
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::NoteDeathForSoulHarvest(const FCataclysmDeathNotice& Notice)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -3218,6 +3308,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// floor change takes them off. Issues #1820 and #41.
 	// AND TRICK OR TREAT, ON ANY FLOOR WHILE A HASTE IS ON OR ITS CLOCK RUNS, as well as on
 	// floors carrying the row. Issues #1820 and #41.
+	// AND CHAOS TOUCHED, ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON THE CHARACTER.
+	// Issues #1820 and #41.
+	const bool bChaosTouched = ChaosTouchedStacks != ChaosTouchedApplied;
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -3231,7 +3324,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
-		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat)
+		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched)
 	{
 		return;
 	}
@@ -3373,6 +3466,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bTrickOrTreat)
 	{
 		StepTrickOrTreat(Player, AbilitySystem);
+	}
+
+	// AND CHAOS TOUCHED, THE SAME SHAPE AS THE STARVATION CURSE. Issues #1820 and #41.
+	if (bChaosTouched)
+	{
+		StepChaosTouched(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -4304,6 +4403,24 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	Effects.TreatSpeedMorePercent = TrickOrTreatHasteApplied;
 	Effects.TreatAttackSpeedMorePercent = TrickOrTreatHasteApplied;
 
+	// AND CHAOS TOUCHED'S STACKS, on their own eight fields. Issues #1820 and #41.
+	{
+		using Effects_ = UCataclysmDungeonModifierEffects;
+		const auto Percent = [this](int32 Kind)
+		{
+			return Effects_::ChaosTouchedPercentFor(
+				ChaosTouchedApplied.IsValidIndex(Kind) ? ChaosTouchedApplied[Kind] : 0);
+		};
+		Effects.TouchedMaxHealthMorePercent = Percent(Effects_::ChaosTouchedHealthMore);
+		Effects.TouchedSpeedMorePercent = Percent(Effects_::ChaosTouchedSpeedMore);
+		Effects.TouchedAttackSpeedMorePercent = Percent(Effects_::ChaosTouchedAttackSpeedMore);
+		Effects.TouchedResistanceMorePercent = Percent(Effects_::ChaosTouchedResistanceMore);
+		Effects.TouchedMaxHealthLessPercent = Percent(Effects_::ChaosTouchedHealthLess);
+		Effects.TouchedSpeedLessPercent = Percent(Effects_::ChaosTouchedSpeedLess);
+		Effects.TouchedAttackSpeedLessPercent = Percent(Effects_::ChaosTouchedAttackSpeedLess);
+		Effects.TouchedResistanceLessPercent = Percent(Effects_::ChaosTouchedResistanceLess);
+	}
+
 	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN BOTH DIRECTIONS. Issues #1820
 	// and #41. Read unconditionally like the rest: a floor without that row
 	// places no mushroom, and nothing is what the effects already hold.
@@ -4382,6 +4499,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForNothingIsForgotten(Notice);
 	NoteDeathForStarvationCurse(Notice);
 	NoteDeathForSoulHarvest(Notice);
+	NoteDeathForChaosTouched(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -5921,6 +6039,21 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 
 	// AND TRICK OR TREAT: the clicks, the creatures raised, and whether a treat is running.
 	// Issues #1820 and #41.
+	const FName Touched(Effects::ChaosTouchedKey);
+	if (FloorBrief.Modifiers.Contains(Touched))
+	{
+		const auto S = [this](int32 Kind) { return ChaosTouchedStacksOf(Kind); };
+		Counting.Add(Touched, FString::Printf(
+			TEXT("chaos touched: more health %d, speed %d, attack speed %d, resistances %d; "
+				 "less health %d, speed %d, attack speed %d, resistances %d (each %.0f%%, at most %d); "
+				 "a floor boss's death cleanses the less"),
+			S(Effects::ChaosTouchedHealthMore), S(Effects::ChaosTouchedSpeedMore),
+			S(Effects::ChaosTouchedAttackSpeedMore), S(Effects::ChaosTouchedResistanceMore),
+			S(Effects::ChaosTouchedHealthLess), S(Effects::ChaosTouchedSpeedLess),
+			S(Effects::ChaosTouchedAttackSpeedLess), S(Effects::ChaosTouchedResistanceLess),
+			Effects::ChaosTouchedPercentPerStack, Effects::ChaosTouchedMostStacks));
+	}
+
 	const FName Souls(Effects::SoulHarvestKey);
 	if (FloorBrief.Modifiers.Contains(Souls))
 	{
@@ -8071,6 +8204,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// running, so the next beat puts it back if the ten seconds are not over.
 		TrickOrTreatHasteApplied = 0.0f;
 
+		// AND CHAOS TOUCHED THE SAME WAY: its stacks are the dungeon's and the call above took
+		// them off the character. Issues #1820 and #41.
+		ChaosTouchedApplied = {0, 0, 0, 0, 0, 0, 0, 0};
+
 		// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues #1786
 		// and #41. The list because those actors are already destroyed -- see the
 		// top of this function -- and a stale list would count them against the cap
@@ -8175,6 +8312,9 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			// Issues #1820 and #41.
 			SoulHarvestHeld.Reset();
 			SoulHarvestGiven = 0;
+
+			// AND CHAOS TOUCHED'S STACKS, BUFFS AND DEBUFFS. Issues #1820 and #41.
+			ChaosTouchedStacks = {0, 0, 0, 0, 0, 0, 0, 0};
 
 			// AND LEAVING THE DUNGEON IS WHERE THE EDICT OF SILENCE'S CLOCK
 			// FINALLY STOPS. Issues #1786 and #41. This is the branch that runs
@@ -8410,6 +8550,13 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 			FName(UCataclysmDungeonModifierEffects::StarvationCurseKey)))
 	{
 		AddAStarvationCurse();
+	}
+
+	// AND CHAOS TOUCHED THE SAME WAY, for the same reason. Issues #1820 and #41.
+	if (FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::ChaosTouchedKey)))
+	{
+		AddAChaosTouch();
 	}
 
 	ApplyFloorRulesToPlayer();
