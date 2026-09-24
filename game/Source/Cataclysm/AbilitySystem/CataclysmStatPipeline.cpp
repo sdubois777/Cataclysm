@@ -104,6 +104,7 @@ namespace
 		{ TEXT("opponent_is_boss"),             ECataclysmStatCondition::OpponentIsBoss },
 		{ TEXT("opponent_is_staggered"),        ECataclysmStatCondition::OpponentIsStaggered },
 		{ TEXT("opponent_is_crowd_controlled"), ECataclysmStatCondition::OpponentIsCrowdControlled },
+		{ TEXT("melee_hit_while_moving"),       ECataclysmStatCondition::MeleeHitWhileMoving },
 		{ TEXT("target_is_staggered"),          ECataclysmStatCondition::TargetIsStaggered },
 		{ TEXT("target_is_boss"),               ECataclysmStatCondition::TargetIsBoss },
 		{ TEXT("target_is_not_boss"),           ECataclysmStatCondition::TargetIsNotBoss },
@@ -258,6 +259,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::OpponentIsBoss:
 	case ECataclysmStatCondition::OpponentIsStaggered:
 	case ECataclysmStatCondition::OpponentIsCrowdControlled:
+	case ECataclysmStatCondition::MeleeHitWhileMoving:
 	case ECataclysmStatCondition::TargetIsStaggered:
 	case ECataclysmStatCondition::TargetIsBoss:
 	case ECataclysmStatCondition::TargetIsNotBoss:
@@ -277,7 +279,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesADot:
 	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the twenty-seven says
+		// nothing for a number to be compared against. Each of the twenty-eight says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -428,6 +430,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::TargetWithinMetres:
 	case C::OpponentIsStaggered:
 	case C::OpponentIsCrowdControlled:
+	case C::MeleeHitWhileMoving:
 	case C::TargetIsStaggered:
 	case C::TargetIsBoss:
 	case C::TargetIsNotBoss:
@@ -787,6 +790,12 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// THE SAME TWO RULES AS THE CASE ABOVE. Issue #1686. A caller with no
 		// blow in hand, and a damage over time tick, leave this false.
 		return State.Blow.bOpponentIsCrowdControlled;
+
+	case ECataclysmStatCondition::MeleeHitWhileMoving:
+		// BOTH HALVES, EACH EXACTLY AS ITS OWN CONDITION READS IT. Issue #1686,
+		// ruled on #1697. A caller with no blow, or no character in motion,
+		// refuses, for the reasons those two give.
+		return State.Blow.bIsMelee && !State.Blow.bIsSpell && State.bIsMoving;
 
 	case ECataclysmStatCondition::TargetIsStaggered:
 		// THE MIRROR OF THE CASE ABOVE, READING A DIFFERENT FIELD, and that is the

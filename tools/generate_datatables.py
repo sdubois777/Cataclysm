@@ -3563,6 +3563,12 @@ CONDITIONS = {
     # Read off the attacker as an actor, beside `opponent_is_staggered`.
     "opponent_is_crowd_controlled": None,
 
+    # "You take 15%-25% more damage from melee attacks while moving" is
+    # `melee_hit_while_moving`, and it takes no value. Issue #1686, ruled on
+    # #1697: ONE NAME FOR THE PAIR, as `target_carries_cripple_and_weaken` is,
+    # because a row carries one condition and two rows would add.
+    "melee_hit_while_moving": None,
+
     # "Staggered enemies take 20%-35% increased damage from all sources" is
     # `target_is_staggered`, and it takes no value. Issue #45. It is the mirror
     # of `opponent_is_staggered` above: the same state, asked from the other end

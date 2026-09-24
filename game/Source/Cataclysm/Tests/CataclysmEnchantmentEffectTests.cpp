@@ -4803,4 +4803,71 @@ bool FCataclysmZoneFirstSweepRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeWhileMovingRowTest,
+	"Cataclysm.Enchantments.TheMeleeWhileMovingRowRaisesOnlyAMeleeHitWhileMoving",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You take 15%-25% more damage from melee attacks while moving", worn, raises
+ * a melee hit on a moving wearer by 25% and nothing else. Issue #1686, ruled on
+ * #1697. Both halves are proved: a melee hit on the wearer STANDING and a
+ * ranged hit on it MOVING each leave the row inactive. Measured as ratios of
+ * two lookups, so the base the wearer recorded does not matter.
+ */
+bool FCataclysmMeleeWhileMovingRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_You_take_15_25_more_damage_from_melee_attacks")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Taken(TEXT("damage_taken"));
+	FCataclysmBlowContext Melee;
+	Melee.bIsMelee = true;
+	FCataclysmBlowContext Ranged;
+	Ranged.bIsRanged = true;
+	const auto TakenFrom = [&](const FCataclysmBlowContext& Blow)
+	{
+		return ASC->StatForSkill(Taken, FGameplayTagContainer(), 100.0f, -1.0f, Blow);
+	};
+
+	// STANDING, first: standing still has to be started, and then held.
+	ASC->NoteDidNotMove();
+	CataclysmTestWorld::RunClock(World, 3.0f);
+	const float MeleeStanding = TakenFrom(Melee);
+	const float RangedStanding = TakenFrom(Ranged);
+	if (!TestTrue(TEXT("hits on a standing wearer are priced at something"),
+				  MeleeStanding > 0.0f && RangedStanding > 0.0f))
+	{
+		return false;
+	}
+
+	// MOVING: one step taken.
+	ASC->NoteMovedMetres(1.0f);
+	TestEqual(TEXT("a melee hit while moving is 25% more than while standing"),
+		TakenFrom(Melee) / MeleeStanding, 1.25f, 0.001f);
+	TestEqual(TEXT("a ranged hit while moving is no more than while standing"),
+		TakenFrom(Ranged) / RangedStanding, 1.0f, 0.001f);
+	TestEqual(TEXT("and standing, a melee hit is no more than a ranged one"),
+		MeleeStanding / RangedStanding, 1.0f, 0.001f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

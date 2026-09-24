@@ -1593,6 +1593,9 @@ namespace CataclysmPassiveConditionTest
 			// ISSUE #1686. Whether the attacker is under crowd control, beside
 			// the staggered pair; a state, so no value.
 			|| Name == TEXT("opponent_is_crowd_controlled")
+			// ISSUE #1686 AGAIN, ruled on #1697: a melee hit while moving. A
+			// pair of states, so no value.
+			|| Name == TEXT("melee_hit_while_moving")
 			// ISSUE #1815, THE MISSING HALF OF THE BOSS PAIR AND ITS NEGATION.
 			// `opponent_is_boss` above answers "a boss hit me"; these answer "I am
 			// hitting a boss" and "I am not". Each names a state rather than a

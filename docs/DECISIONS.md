@@ -1442,6 +1442,48 @@ rows. The tests use hand-made rows.
 
 ---
 
+## 2026-09-23 — One condition names a melee hit while moving, and "You take 15%-25% more damage from melee attacks while moving" uses it
+
+**Affects:** `CataclysmStatPipeline.h` and `.cpp` (the condition `melee_hit_while_moving`) and
+`tools/generate_datatables.py`. Issues [#1697](https://github.com/sdubois777/Cataclysm/issues/1697)
+and [#1686](https://github.com/sdubois777/Cataclysm/issues/1686) (row N120).
+
+### WHY ONE NAME FOR A PAIR
+
+The row asks two things at once: the blow arriving is a melee attack, and the character is moving.
+None of the three existing tools can say both:
+
+- **A row carries one condition.**
+- **Two rows would add,** so either half alone would pay the drawback.
+- **`RequiredTags` scopes the defender's own skill,** so it cannot say what hit them.
+
+**Ruled on #1697 by the coordinating session on 2026-09-23, under the owner's delegation: one
+combined condition.** It follows the in-project precedent, `target_carries_cripple_and_weaken`,
+and the generator's own comment, "THE CONJUNCTION IS ONE NAME AND NOT TWO ROWS". Rejected:
+- a second condition column, which changes the row struct, every fixture, the generator and the
+  pipeline for one row;
+- waiting for a second row, because none appeared across #1686's small and medium items.
+
+If pairs multiply, the names can be retired into a column.
+
+### WHAT IT READS
+
+`melee_hit_while_moving` takes no value. It holds when `State.Blow.bIsMelee && !State.Blow.bIsSpell &&
+State.bIsMoving`: exactly `hit_is_melee_attack` and `while_moving`, read together.
+- **A melee spell is not a melee attack**, as `hit_is_melee_attack` reads it.
+- **A caller with no blow, or with no character in motion, refuses.**
+
+Tests prove both halves: a melee hit on a standing wearer, and a ranged hit on a moving one, each
+leave the row inactive.
+
+### THE ROW
+
+| Enchantment | Row |
+| :-- | :-- |
+| You take 15%-25% more damage from melee attacks while moving | `damage_taken`, more 15 to 25, `melee_hit_while_moving` |
+
+---
+
 ## 2026-09-23 — A skill's persistent zone can deal less on its first sweep, and "Persistent AOE zones deal 20%-35% less damage on initial placement" does it
 
 **Affects:**
