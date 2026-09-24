@@ -5,8 +5,8 @@ Decisions made outside the Google Drive documents, newest first.
 ## 2026-09-23 — A hand-resolved C++ conflict can be checked before a build, by a tool that reports a comment left with no opening
 
 **Affects:** the new `tools/check_resolved_cpp.py` and `tools/tests/test_check_resolved_cpp.py`. Issue
-[#1610](https://github.com/sdubois777/Cataclysm/issues/1610), all of it except the line in
-`CLAUDE.md`, which is the owner's to approve.
+[#1610](https://github.com/sdubois777/Cataclysm/issues/1610), all of it except the line in the
+project instructions file, which is the owner's to approve.
 
 ### THE FAULT
 
