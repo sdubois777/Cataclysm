@@ -326,7 +326,8 @@ public:
 	 * above finds a thrall by asking who owns it.
 	 *
 	 * A BOSS IS REFUSED. The row says "bosses cannot be taken", which is the same
-	 * shape as the stun's boss immunity and read off the same rarity.
+	 * shape as the stun's boss immunity and read off the same rarity. SO IS A CREATURE
+	 * THAT CANNOT BE HURT, The Reaper, by ruling: see `bCannotBeHurt`.
 	 *
 	 * IT DOES NOT CHECK THE HEALTH THRESHOLD OR THE RESERVE. Those belong to the
 	 * skill: `HealthThresholdPercent` is a number on one row and the reserve is

@@ -1924,6 +1924,9 @@ public:
 	int32 SoulHarvestSoulsOn(const ACataclysmEnemyCharacter* Creature) const;
 	int32 SoulHarvestSoulsGiven() const { return SoulHarvestGiven; }
 
+	/** The Reaper on this floor, or null before it arrives. For the floor panel and tests. */
+	ACataclysmEnemyCharacter* TheReaperOnTheFloor() const { return TheReaper.Get(); }
+
 	/** Chaos Touched's stacks of one kind, for the floor panel and tests. Issues #1820, #41. */
 	int32 ChaosTouchedStacksOf(int32 Kind) const
 	{
@@ -1978,7 +1981,6 @@ private:
 	/** Trick or Treat's trick: two creatures of the floor's kinds where the drop lay. */
 	void RaiseTheTrickOrTreatPair(const FVector& Where);
 
-	/** Trick or Treat, on the beat: the haste on while its clock runs and off after. */
 	/** Chaos Touched, as a floor carrying it begins: one more stack of one kind. */
 	void AddAChaosTouch();
 
@@ -1990,6 +1992,15 @@ private:
 	/** Chaos Touched, on every death: a floor's boss cleanses the debuffs, the player all. */
 	void NoteDeathForChaosTouched(const struct FCataclysmDeathNotice& Notice);
 
+	/** The Reaper, on the beat: counts the floor's seconds and raises it when due. */
+	void StepTheReaper();
+
+	/** The Reaper itself: an Abyssal Warden at the entrance that cannot be hurt. */
+	void RaiseTheReaper();
+
+	/** The Reaper, on every blow: one of its that lands on the player kills them. */
+	void NoteHitForTheReaper(const struct FCataclysmHitNotice& Notice);
+
 	/** Soul Harvest, on every death: a soul to the nearest living creature within reach. */
 	void NoteDeathForSoulHarvest(const struct FCataclysmDeathNotice& Notice);
 
@@ -2000,6 +2011,7 @@ private:
 	 */
 	void ApplySoulHarvestFigures(ACataclysmEnemyCharacter* Creature, bool bFreshBlock);
 
+	/** Trick or Treat, on the beat: the haste on while its clock runs and off after. */
 	void StepTrickOrTreat(
 		class ACataclysmPlayerCharacter* Player,
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -2839,6 +2851,14 @@ private:
 	 */
 	TArray<int32> ChaosTouchedStacks = {0, 0, 0, 0, 0, 0, 0, 0};
 	TArray<int32> ChaosTouchedApplied = {0, 0, 0, 0, 0, 0, 0, 0};
+
+	/**
+	 * The Reaper: the seconds this floor has run on the beat, whether it has come, and the
+	 * creature. The floor's: all three go back when a floor begins.
+	 */
+	float TheReaperSecondsOnFloor = 0.0f;
+	bool bTheReaperRaised = false;
+	TWeakObjectPtr<ACataclysmEnemyCharacter> TheReaper;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

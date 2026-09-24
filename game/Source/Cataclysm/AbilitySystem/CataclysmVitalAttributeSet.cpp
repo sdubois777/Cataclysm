@@ -149,7 +149,17 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 
 	if (Attribute == GetHealthAttribute())
 	{
-		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
+		// A CREATURE THAT CANNOT BE HURT IS HELD AT ITS MAXIMUM: The Reaper. Issues #1820 and
+		// #41. HERE, BEFORE ANYTHING READS THE CURRENT VALUE: a write to the health base runs
+		// this clamp and then `PostAttributeBaseChange`, whose death check would otherwise see
+		// the lowered value before `PostGameplayEffectExecute` could put it back. Seen in the
+		// whole-suite run of 2026-09-24, where a write straight to health left the Reaper dead
+		// at full health.
+		const ACataclysmEnemyCharacter* Unhurt =
+			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
+		NewValue = Unhurt && Unhurt->bCannotBeHurt
+			? GetMaxHealth()
+			: FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
 	}
 	else if (Attribute == GetManaAttribute())
 	{
@@ -989,6 +999,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// AND A CREATURE NO DAMAGE REACHES: The Reaper. Issues #1820 and #41. The blow
+			// has resolved -- evaded, blocked or not -- and deals nothing, the way the
+			// immunity above deals nothing. After the save, so nothing is ever saved from a
+			// blow this then empties.
+			if (AsEnemy && AsEnemy->bCannotBeHurt)
+			{
+				Resolved.DealtToHealth = 0.0f;
+				Resolved.AbsorbedByShield = 0.0f;
+				Resolved.AbsorbedByMana = 0.0f;
+			}
+
 			// EVERYTHING BELOW READS THIS, so the second check reaches the health
 			// write, the floating number, the leech and everything else that asks
 			// what the blow dealt.
@@ -1643,6 +1664,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 	}
 	else if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
+		// AND THE REAPER'S HEALTH BASE IS PUT BACK TOO. Issues #1820 and #41.
+		// `UCataclysmSkillEffects::ReduceHealthDirectly` takes health off through this
+		// branch and never through the damage branch above. `PreAttributeChange` has already
+		// held the CURRENT value at the maximum, which is what keeps it alive; the base the
+		// effect lowered is left behind, and this writes it back so the two agree.
+		const ACataclysmEnemyCharacter* Unhurt =
+			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
+		if (Unhurt && Unhurt->bCannotBeHurt)
+		{
+			SetHealth(GetMaxHealth());
+		}
 		SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));
 		NotifyIfHealthReachedZero();
 		NotifyHealthChanged();

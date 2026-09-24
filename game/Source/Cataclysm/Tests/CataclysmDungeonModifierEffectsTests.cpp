@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystem/CataclysmGroundEffect.h"
@@ -24592,6 +24593,482 @@ bool FCataclysmTouchedCleanseTest::RunTest(const FString& Parameters)
 			  Mode->ChaosTouchedStacksOf(Effects::ChaosTouchedHealthMore), 0);
 	TestFalse(TEXT("and took it off maximum health before any beat"),
 			  ARuleOnIs(Player, TEXT("max_health"), 10.0f));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Death_The_Reaper. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName TheReaperRow(UCataclysmDungeonModifierEffects::TheReaperKey);
+
+	/**
+	 * A dungeon carrying only The Reaper, on floor 2 with its own creatures cleared, beaten
+	 * for as long as the Reaper takes to come. Null, with a failure, when it did not come.
+	 */
+	ACataclysmEnemyCharacter* TheReaperCame(FAutomationTestBase& Test, UWorld* World,
+											const FPossessedPlayer& Player,
+											ACataclysmDungeonGameMode*& OutMode)
+	{
+		OutMode = ACurseDungeon(Test, World, Player);
+		if (!OutMode)
+		{
+			return nullptr;
+		}
+		OutMode->DungeonModifiers = {TheReaperRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), OutMode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		OutMode->ClearFloorEnemies();
+		Beat(OutMode, BeatsFor(UCataclysmDungeonModifierEffects::TheReaperDelaySeconds));
+		ACataclysmEnemyCharacter* Reaper = OutMode->TheReaperOnTheFloor();
+		return Test.TestNotNull(TEXT("the Reaper came"), Reaper) ? Reaper : nullptr;
+	}
+
+	/** What reached the defender of one resolved blow: mana, shield and health together. */
+	float LandedOf(const FCataclysmDamageResult& Resolved)
+	{
+		return Resolved.bEvaded
+			? 0.0f
+			: Resolved.AbsorbedByMana + Resolved.AbsorbedByShield + Resolved.DealtToHealth;
+	}
+
+	/**
+	 * Blows of `DamagePercent` from `From` on `To` until one lands, up to forty, so an evasion
+	 * roll cannot decide a test. Whether one landed.
+	 */
+	bool ABlowLands(AActor* From, AActor* To, float DamagePercent)
+	{
+		for (int32 Try = 0; Try < 40; ++Try)
+		{
+			FCataclysmDamageResult Resolved;
+			UCataclysmSkillEffects::ApplyHit(From, To, DamagePercent, FGameplayTagContainer(),
+											 FCataclysmHitDelivery(), &Resolved);
+			if (LandedOf(Resolved) > 0.0f)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** A tick of damage over time worth `Damage`, from `From` on `To`. */
+	void ATickOf(AActor* From, AActor* To, float Damage)
+	{
+		FCataclysmHitDelivery AsATick;
+		AsATick.bIsDamageOverTime = true;
+		UCataclysmSkillEffects::ApplyDirectDamage(From, To, Damage, AsATick);
+	}
+}
+
+// TEN SECONDS INTO A FLOOR CARRYING THE ROW, AT THE ENTRANCE; ONCE; GONE WITH THE FLOOR, AND A NEW
+// ONE ON THE NEXT; NEVER ON A HORDE WAVE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperArrivesTest,
+	"Cataclysm.DungeonModifierEffects.TheReaperComesTenSecondsIntoAFloorAtTheEntranceAndNeverOnAHorde",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReaperArrivesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestFalse(TEXT("9.75 seconds is not yet"), Effects::TheReaperIsDue(9.75f));
+	TestTrue(TEXT("10 seconds is due"), Effects::TheReaperIsDue(10.0f));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {TheReaperRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	// ONE BEAT SHORT OF TEN SECONDS, NOTHING; THE NEXT BEAT, THE REAPER.
+	const int32 Beats = BeatsFor(Effects::TheReaperDelaySeconds);
+	Beat(Mode, Beats - 1);
+	if (!TestNull(TEXT("no Reaper a beat before ten seconds"), Mode->TheReaperOnTheFloor()))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmEnemyCharacter* First = Mode->TheReaperOnTheFloor();
+	if (!TestNotNull(TEXT("the Reaper came at ten seconds"), First))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is an Abyssal Warden"), First->IsA<ACataclysmAbyssalWardenCharacter>());
+	TestEqual(TEXT("at the Common rung"), First->RarityStep, Effects::TheReaperRung);
+	TestTrue(TEXT("that cannot be hurt"), First->bCannotBeHurt);
+	TestTrue(TEXT("raised by a rule"), First->bRaisedByARule);
+	TestEqual(TEXT("and noticing from the stalking multiplier"), First->SightRadiusMultiplier,
+			  Effects::TheReaperSightMultiplier);
+	TestTrue(TEXT("at the entrance, within one cell of it"),
+			 FVector::Dist2D(First->GetActorLocation(), Mode->CurrentFloor->EntranceWorld())
+				 < FCataclysmFloorGenerator::CellSizeCm);
+	TestTrue(TEXT("the panel says it is here"),
+			 Mode->LiveCountsForTheFloor().FindRef(TheReaperRow).Contains(TEXT("cannot die")));
+
+	// ONCE: another minute on the floor raises no second one.
+	Beat(Mode, BeatsFor(60.0f));
+	TestTrue(TEXT("a minute later it is the same Reaper"), Mode->TheReaperOnTheFloor() == First);
+
+	// IT GOES WITH THE FLOOR, AND THE NEXT FLOOR BRINGS A NEW ONE TEN SECONDS IN.
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestNull(TEXT("no Reaper as floor 3 begins"), Mode->TheReaperOnTheFloor());
+	TestFalse(TEXT("the first went with floor 2"), IsValid(First));
+	Mode->ClearFloorEnemies();
+	Beat(Mode, Beats);
+	ACataclysmEnemyCharacter* Second = Mode->TheReaperOnTheFloor();
+	TestTrue(TEXT("a new Reaper came on floor 3"), Second != nullptr && Second != First);
+
+	// NEVER ON A HORDE WAVE.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(4)))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(30.0f));
+	TestNull(TEXT("no Reaper thirty seconds into a Horde wave"), Mode->TheReaperOnTheFloor());
+	TestTrue(TEXT("and the panel says why"),
+			 Mode->LiveCountsForTheFloor().FindRef(TheReaperRow).Contains(TEXT("horde")));
+	return true;
+}
+
+// NO DAMAGE REACHES IT: A BLOW, A WRITE STRAIGHT TO HEALTH, OR A TICK. The same blow kills an
+// ordinary creature.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperImmuneTest,
+	"Cataclysm.DungeonModifierEffects.TheReaperCannotBeHurtByABlowAHealthWriteOrATick",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReaperImmuneTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	ACataclysmEnemyCharacter* Reaper = TheReaperCame(*this, World, Player, Mode);
+	if (!Reaper)
+	{
+		return false;
+	}
+	const float Maximum = MaxHealthOf(Reaper);
+	if (!TestTrue(TEXT("the Reaper has health"), Maximum > 0.0f)
+		|| !TestEqual(TEXT("and it is full"), HealthOf(Reaper), Maximum, 0.01f))
+	{
+		return false;
+	}
+
+	// THE CONTROL: the same blow kills an ordinary creature.
+	ACataclysmEnemyCharacter* Ordinary =
+		SpawnCreatureWithHealth(World, FVector(900.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an ordinary creature"), Ordinary))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Ordinary, 100000.0f);
+	if (!TestTrue(TEXT("the blow kills an ordinary creature"),
+				  UCataclysmSkillEffects::IsDead(Ordinary)))
+	{
+		return false;
+	}
+
+	for (int32 Try = 0; Try < 5; ++Try)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Reaper, 100000.0f,
+										 FGameplayTagContainer(), FCataclysmHitDelivery(),
+										 &Resolved);
+		TestEqual(FString::Printf(TEXT("blow %d dealt it nothing"), Try), LandedOf(Resolved),
+				  0.0f);
+	}
+	TestEqual(TEXT("after five blows its health is full"), HealthOf(Reaper), Maximum, 0.01f);
+
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Reaper, 1.0e9f);
+	TestEqual(TEXT("a write straight to health leaves it full"), HealthOf(Reaper), Maximum, 0.01f);
+
+	ATickOf(Player.Character, Reaper, 1.0e9f);
+	TestEqual(TEXT("a tick leaves it full"), HealthOf(Reaper), Maximum, 0.01f);
+	TestFalse(TEXT("and it is not dead"), UCataclysmSkillEffects::IsDead(Reaper));
+	return true;
+}
+
+// A BLOW OF THE REAPER'S THAT LANDS KILLS THE PLAYER; ANOTHER CREATURE'S BLOW AND THE REAPER'S OWN
+// TICK DO NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperKillsTest,
+	"Cataclysm.DungeonModifierEffects.ALandedBlowFromTheReaperKillsThePlayerAndNoOtherBlowDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReaperKillsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	ACataclysmEnemyCharacter* Reaper = TheReaperCame(*this, World, Player, Mode);
+	if (!Reaper || !TestTrue(TEXT("the Reaper has attack damage"),
+							 GiveCreatureAttackDamage(Reaper, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+
+	// ANOTHER CREATURE'S SMALL BLOW LANDS AND THE PLAYER LIVES.
+	ACataclysmEnemyCharacter* Other = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("another creature"), Other)
+		|| !TestTrue(TEXT("its small blow landed"), ABlowLands(Other, Player.Character, 10.0f)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and the player lives"), UCataclysmSkillEffects::IsDead(Player.Character));
+
+	// THE REAPER'S OWN TICK IS NOT A BLOW OF THE SCYTHE.
+	ATickOf(Reaper, Player.Character, 1.0f);
+	TestFalse(TEXT("the Reaper's tick does not kill"),
+			  UCataclysmSkillEffects::IsDead(Player.Character));
+	if (!TestTrue(TEXT("the player still has health"), HealthOf(Player.Character) > 1.0f))
+	{
+		return false;
+	}
+
+	// THE REAPER'S SMALL BLOW LANDS AND THE PLAYER DIES.
+	if (!TestTrue(TEXT("the Reaper's small blow landed"),
+				  ABlowLands(Reaper, Player.Character, 10.0f)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	TestEqual(TEXT("with no health left"), HealthOf(Player.Character), 0.0f, 0.001f);
+	return true;
+}
+
+// NOTHING STOPS IT SAVES A PLAYER FROM ANOTHER CREATURE'S LETHAL BLOW AND NOT FROM THE REAPER'S.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperPastTheSaveTest,
+	"Cataclysm.DungeonModifierEffects.APlayerHoldingNothingStopsItStillDiesToTheReaper",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReaperPastTheSaveTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Guarded = UCataclysmAbilitySystemComponent;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	ACataclysmEnemyCharacter* Reaper = TheReaperCame(*this, World, Player, Mode);
+	if (!Reaper || !TestTrue(TEXT("the Reaper has attack damage"),
+							 GiveCreatureAttackDamage(Reaper, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+
+	// THE RAVAGER'S KEYSTONE, AS ITS ROWS GIVE IT: saved once every 20 seconds, then 2 seconds
+	// of nothing. Held after the last beat, which rewrites the stat line.
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	for (const TPair<const TCHAR*, float>& Stat :
+		 {TPair<const TCHAR*, float>(Guarded::LethalHitSurvivedEverySecondsStat, 20.0f),
+		  TPair<const TCHAR*, float>(Guarded::ImmuneAfterLethalHitSecondsStat, 2.0f)})
+	{
+		FCataclysmStatModifier Held;
+		Held.Bucket = ECataclysmStatBucket::Flat;
+		Held.Source = ECataclysmModifierSource::PassiveKeystone;
+		Held.Value = Stat.Value;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat.Key));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Held};
+	}
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	const float Maximum = MaxHealthOf(Player.Character);
+
+	// THE CONTROL: another creature's lethal blow is saved, leaving one health.
+	ACataclysmEnemyCharacter* Other = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("another creature"), Other)
+		|| !TestTrue(TEXT("its lethal blow landed"), ABlowLands(Other, Player.Character, 100000.0f)))
+	{
+		return false;
+	}
+	if (!TestFalse(TEXT("Nothing Stops It saved the player"),
+				   UCataclysmSkillEffects::IsDead(Player.Character))
+		|| !TestEqual(TEXT("with one health"), HealthOf(Player.Character), 1.0f, 0.001f))
+	{
+		return false;
+	}
+
+	// PAST THE IMMUNITY AND THE TWENTY SECONDS, AND BACK TO FULL: the save is ready again.
+	World->TimeSeconds += 21.0f;
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetHealthAttribute(),
+												  Maximum);
+	if (!TestTrue(TEXT("the save is ready again"), Player.AbilitySystem->MaySurviveLethalHit()))
+	{
+		return false;
+	}
+
+	// THE REAPER'S LETHAL BLOW: the save catches the blow, and the player dies all the same.
+	const float Struck = World->GetTimeSeconds();
+	if (!TestTrue(TEXT("the Reaper's lethal blow landed"),
+				  ABlowLands(Reaper, Player.Character, 100000.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the save was spent on the blow"),
+			  Player.AbilitySystem->LethalHitSurvivalAllowedAt() - Struck, 20.0f, 0.01f);
+	TestTrue(TEXT("and the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	return true;
+}
+
+// SACRIFICIAL WARD TAKES A SHIELD-BREAKING BLOW OF THE REAPER'S WHOLE, AT THE COST OF A MINION,
+// AND A SECOND BREAKING BLOW INSIDE THE WARD'S THREE SECONDS KILLS. Ruled by the coordinating
+// session under the owner's delegation, 2026-09-24: the ward destroys the minion "instead", so
+// the scythe never lands.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperAgainstTheWardTest,
+	"Cataclysm.DungeonModifierEffects.SacrificialWardSpendsAMinionForOneReaperBlowAndNotForTheNext",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReaperAgainstTheWardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	ACataclysmEnemyCharacter* Reaper = TheReaperCame(*this, World, Player, Mode);
+	if (!Reaper || !TestTrue(TEXT("the Reaper has attack damage"),
+							 GiveCreatureAttackDamage(Reaper, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WARD, AS ITS ROW WILL GIVE IT: once every 3 seconds. Held after the last beat, which
+	// rewrites the stat line. No evasion or block, so each blow lands or is warded and nothing
+	// else decides it; a full shield of 100; one imp to spend.
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatModifier Ward;
+	Ward.Bucket = ECataclysmStatBucket::Flat;
+	Ward.Source = ECataclysmModifierSource::PassiveKeystone;
+	Ward.Value = 3.0f;
+	FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+		FName(UCataclysmAbilitySystemComponent::ShieldBreakDestroysMinionEverySecondsStat));
+	Line.Base = 0.0f;
+	Line.Modifiers = {Ward};
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	Player.AbilitySystem->SetNumericAttributeBase(Combat::GetEvasionAttribute(), 0.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 0.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 100.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 100.0f);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Player.Character, Player.Character->GetActorLocation() + FVector(200.0f, 0.0f, 0.0f),
+		/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp of the player's"), Imp)
+		|| !TestEqual(TEXT("with a full shield of 100"),
+					  ShieldOf(Player.Character), 100.0f, 0.001f))
+	{
+		return false;
+	}
+	const float Health = HealthOf(Player.Character);
+
+	// THE FIRST BREAKING BLOW: the ward takes it whole and the imp dies instead.
+	FCataclysmDamageResult First;
+	UCataclysmSkillEffects::ApplyHit(Reaper, Player.Character, 100000.0f,
+									 FGameplayTagContainer(), FCataclysmHitDelivery(), &First);
+	TestEqual(TEXT("the first blow landed nothing"), LandedOf(First), 0.0f);
+	TestFalse(TEXT("the player lives"), UCataclysmSkillEffects::IsDead(Player.Character));
+	TestEqual(TEXT("with the health they had"), HealthOf(Player.Character), Health, 0.001f);
+	TestTrue(TEXT("and the imp was spent"),
+			 !IsValid(Imp) || UCataclysmSkillEffects::IsDead(Imp));
+
+	// THE SECOND, AT ONCE AND SO INSIDE THE THREE SECONDS: it breaks the shield and kills.
+	FCataclysmDamageResult Second;
+	UCataclysmSkillEffects::ApplyHit(Reaper, Player.Character, 100000.0f,
+									 FGameplayTagContainer(), FCataclysmHitDelivery(), &Second);
+	TestTrue(TEXT("the second blow landed"), LandedOf(Second) > 0.0f);
+	TestTrue(TEXT("and the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	return true;
+}
+
+// SUBJUGATION REFUSES THE REAPER, AND TAKES AN ORDINARY CREATURE. Ruled by the coordinating
+// session under the owner's delegation, 2026-09-24.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperNotTakenTest,
+	"Cataclysm.DungeonModifierEffects.SubjugationRefusesTheReaper",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReaperNotTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	ACataclysmEnemyCharacter* Reaper = TheReaperCame(*this, World, Player, Mode);
+	if (!Reaper)
+	{
+		return false;
+	}
+
+	// THE CONTROL: an ordinary creature is taken.
+	ACataclysmEnemyCharacter* Ordinary =
+		SpawnCreatureWithHealth(World, FVector(900.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an ordinary creature"), Ordinary)
+		|| !TestTrue(TEXT("an ordinary creature is taken"),
+					 UCataclysmCommand::Subjugate(Player.Character, Ordinary)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("the Reaper is refused"), UCataclysmCommand::Subjugate(Player.Character, Reaper));
+	// NOT "NOBODY OWNS IT": a pawn's owner is its AI controller once possessed.
+	TestTrue(TEXT("and the player does not own it"), Reaper->GetOwner() != Player.Character);
+	TestFalse(TEXT("and it is not the player's friend"),
+			  UCataclysmTargeting::IsFriendlyTo(Reaper, Player.Character));
 	return true;
 }
 

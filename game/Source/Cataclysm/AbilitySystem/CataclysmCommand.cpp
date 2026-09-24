@@ -614,6 +614,18 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 				TEXT("'%s' is a boss and cannot be taken."), *Taken->GetName());
 			return false;
 		}
+
+		// AND NOTHING THAT CANNOT BE HURT: The Reaper. Issues #1820 and #41, ruled by the
+		// coordinating session under the owner's delegation, 2026-09-24. A thrall that
+		// cannot die would be an ally nothing can remove, and Sacrificial Ward, which ends
+		// a minion by writing its health, would reach it past the check that keeps it
+		// alive.
+		if (AsEnemy->bCannotBeHurt)
+		{
+			UE_LOG(LogCataclysm, Verbose,
+				TEXT("'%s' cannot be hurt and cannot be taken."), *Taken->GetName());
+			return false;
+		}
 	}
 
 	// ALREADY OURS. Taking something twice would reserve a second 30 Fervour for

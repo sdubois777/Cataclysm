@@ -993,6 +993,18 @@ public:
 	bool bRaisedByARule = false;
 
 	/**
+	 * Whether no damage reaches this creature's health, shield or mana: The Reaper, which
+	 * cannot die. Issues #1820 and #41.
+	 *
+	 * ITS BLOWS STILL RESOLVE. Evasion, block and the announcement run as for any creature;
+	 * `UCataclysmVitalAttributeSet` empties what the blow would have dealt, and puts a
+	 * write straight to health back to the maximum. Set by the dungeon game mode as it
+	 * raises the creature, and by nothing else.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bCannotBeHurt = false;
+
+	/**
 	 * Whether this creature's death pays the player loot and experience. False for a
 	 * creature `bRisenFromTheDead` marks. Asked by `HandleDeath`, and nothing else
 	 * about a death changes: the notice is still sent and every rule still hears it.

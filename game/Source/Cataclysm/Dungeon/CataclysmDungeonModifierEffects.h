@@ -1723,6 +1723,29 @@ public:
 	static const TCHAR* ChaosTouchedKey;
 
 	/**
+	 * The row where death stalks the player and one blow of his kills. Issues #1820 and #41.
+	 *
+	 * "The embodiment of death slowly stalks the player. If they are hit by his scythe,
+	 * they instantly die." The design document does not mention the Reaper.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24:
+	 * - AN ABYSSAL WARDEN AT THE COMMON RUNG (`TheReaperRung`), raised by the rule.
+	 * - IT CANNOT DIE: blows on it resolve and nothing reaches its health
+	 *   (`ACataclysmEnemyCharacter::bCannotBeHurt`).
+	 * - ONCE PER FLOOR CARRYING THE ROW, `TheReaperDelaySeconds` after the floor begins,
+	 *   at the entrance; never on a Horde wave. A play-test point.
+	 * - A BLOW OF ITS THAT LANDS KILLS through the ordinary death path, so revival and the
+	 *   owner's ruling of 2026-09-10 apply. The kill writes health directly, so Nothing
+	 *   Stops It, which saves only from a blow, cannot catch it: the row says "instantly
+	 *   die".
+	 * - IT GOES WITH THE FLOOR; the next floor carrying the row raises a new one.
+	 *
+	 * "SLOWLY" NEEDS NOTHING OF ITS OWN: the Warden's designed walk is 2.8 metres a second
+	 * and the slowest class moves at 3.5. "STALKS" IS `TheReaperSightMultiplier`.
+	 */
+	static const TCHAR* TheReaperKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3999,6 +4022,24 @@ public:
 	static constexpr float ChaosTouchedPercentPerStack = 10.0f;
 	static constexpr int32 ChaosTouchedMostStacks = 5;
 
+	/** How long into a floor The Reaper arrives. Ruled; a play-test point. */
+	static constexpr float TheReaperDelaySeconds = 10.0f;
+
+	/** The Reaper's rung: Common, the rung that adds nothing to the Warden. Ruled. */
+	static constexpr int32 TheReaperRung = 0;
+
+	/**
+	 * What The Reaper notices the player from, times its own sight: the Vengeful Wraiths'
+	 * figure, which covers the largest floor corner to corner, so it hunts the player
+	 * wherever they stand. A JUDGEMENT under the owner's delegation, reading "stalks".
+	 */
+	static constexpr float TheReaperSightMultiplier = VengefulWraithsSightMultiplier;
+
+	static_assert(
+		TheReaperDelaySeconds > 0.0f && TheReaperRung == 0,
+		"The Reaper arriving with the player gives no warning, and a rung above Common "
+		"was not ruled.");
+
 	static_assert(
 		ChaosTouchedPercentPerStack * ChaosTouchedMostStacks < 100.0f
 			&& ChaosTouchedFirstDebuff * 2 == ChaosTouchedKinds,
@@ -4761,6 +4802,9 @@ public:
 
 	/** Whether a kind is a debuff, which a floor's boss cleanses. */
 	static bool ChaosTouchedIsDebuff(int32 Kind);
+
+	/** Whether The Reaper is due after this long on a floor: at `TheReaperDelaySeconds`. */
+	static bool TheReaperIsDue(float SecondsOnFloor);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

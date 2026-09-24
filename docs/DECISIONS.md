@@ -2,6 +2,162 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — The Reaper: an Abyssal Warden that cannot die comes ten seconds into a floor, and one landed blow of its kills
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, the delay, the rung, the sight figure and when it is due),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the clock on the beat, raising
+it, the kill on a landed blow, the floor panel line and the resets),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (a flag, `bCannotBeHurt`),
+`game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (no damage reaches a creature
+carrying that flag), `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp` (subjugation
+refuses such a creature), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
+
+### The row
+
+`Death_The_Reaper` in `game/Data/DungeonModifiers.csv`, weight 20: "The embodiment of death slowly
+stalks the player. If they are hit by his scythe, they instantly die." The row gives no figure. The
+design document does not mention the Reaper.
+
+### What the rule does
+
+Ten seconds into each floor carrying the row, an Abyssal Warden at the Common rung arrives at the
+floor's entrance. It notices the player from anywhere on the floor, and no damage reaches it: blows on
+it resolve (evasion and block included) and deal nothing, and a write straight to its health is put
+back to the maximum. A blow of its that lands on the player kills them through the ordinary death
+path. It comes once per floor, goes with the floor, and never comes on a Horde wave. The floor panel
+says when it will come, that it is here, or that a Horde wave does not bring it.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24:**
+
+- **An Abyssal Warden at the Common rung**, raised by the rule, so Blood Gates does not count it.
+- **It cannot die.** Its blows land, but no damage reaches its health. Because a blow on it deals
+  nothing, the hit announcement reports nothing landed, so a rule that asks whether a blow landed
+  does not answer a blow on it.
+- **Once per floor carrying the row, ten seconds after the floor begins, at the entrance; never on a
+  Horde wave.** A play-test point.
+- **A blow of its that lands kills** through the ordinary death path, so revival and the owner's ruling
+  of 2026-09-10 apply.
+- **It goes with the floor**, and a new one comes ten seconds into the next floor carrying the row.
+- **Nothing Stops It does not save the player from it.** The Ravager's keystone saves from "a single
+  hit that would kill", and the row says "instantly die". The kill is written straight to health after
+  the blow is announced, so the save, which runs only on a blow, cannot catch it. A lethal blow from
+  the Reaper still spends the save, and the player dies anyway. **That is not a fault**: the
+  blow passes the damage path, where the save runs, before the kill, and the revival resets the
+  save's clock (`UCataclysmAbilitySystemComponent::ClearWhatDeathEnds`, called from
+  `ACataclysmPlayerCharacter::Revive`).
+- **Sacrificial Ward does save the player from it, at the cost of a minion.** The ward's sentence
+  says a blow that would break the energy shield "instead destroys" the minion with the least health,
+  so that blow does not land and the scythe never hits. It is an escape the ward allows once every
+  3 seconds, not an immunity: a second shield-breaking blow inside those 3 seconds kills.
+- **Subjugation refuses it.** `UCataclysmCommand::Subjugate`, the one call that takes a creature into
+  the player's command, refuses any creature that cannot be hurt, beside its refusal of bosses. A
+  Reaper thrall would be an ally nothing could remove, and Sacrificial Ward, which ends a minion by
+  writing its health straight to nothing, would reach it past the check that keeps it alive.
+
+**Judgements in this change, marked as such, under the same delegation:**
+
+- **"Slowly" needs no code.** The Warden's designed walk is 2.8 metres a second
+  (`game/Data/EnemyArchetypes.csv`), and the slowest class moves at 3.5 (the Ritualist,
+  `game/Data/ClassStats.csv`). A player who keeps moving outpaces it.
+- **"Stalks" is its sight.** It notices the player from 30 times its own sight, the Vengeful Wraiths'
+  figure, which covers the largest floor from corner to corner.
+- **A damage-over-time tick from the Reaper does not kill.** A tick is not a hit of the scythe.
+
+### The genre
+
+**Spelunky's ghost** is the precedent the coordinating session named, and it is confirmed. The
+Spelunky wiki's page for the ghost in Spelunky Classic
+(`https://spelunky.wiki/wiki/Ghost_(Classic)`, read 2026-09-24) says it appears on "any level except
+the first and last, at 2:30", that it is "unkillable", and that contact is "Instant Death". An
+unkillable pursuer that arrives after a delay and kills on contact is the shape of this rule.
+`spelunky.fandom.com` (HTTP 402) and `spelunky.wiki.gg` (HTTP 401) could not be read. **Ten seconds is
+this game's own figure**: nothing in the research fixes a delay for this game's floors.
+
+### Tests
+
+Six automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `TheReaperComesTenSecondsIntoAFloorAtTheEntranceAndNeverOnAHorde`: 9.75 seconds is not due and 10 is.
+  Nothing one beat before ten seconds; on the next beat, an Abyssal Warden at the Common rung, unhurtable,
+  raised by a rule, with the stalking sight, within one cell of the entrance, and the panel says so. A
+  minute later it is the same one. The next floor starts without it, the first one is gone, and a new
+  one comes ten seconds in. Thirty seconds of a Horde wave bring none, and the panel says why.
+- `TheReaperCannotBeHurtByABlowAHealthWriteOrATick`: a blow that kills an ordinary creature deals the
+  Reaper nothing five times over; a write straight to health and a tick leave it full and alive.
+- `ALandedBlowFromTheReaperKillsThePlayerAndNoOtherBlowDoes`: another creature's small blow lands and
+  the player lives; the Reaper's tick does not kill; the Reaper's small blow lands and the player dies
+  with no health left.
+- `APlayerHoldingNothingStopsItStillDiesToTheReaper`: holding the keystone's two figures (a save every
+  20 seconds, then 2 seconds of immunity), another creature's lethal blow is saved at one health; past
+  the immunity and the twenty seconds, at full health, the Reaper's lethal blow spends the save and the
+  player dies.
+- `SacrificialWardSpendsAMinionForOneReaperBlowAndNotForTheNext`: a player holding the ward, with a full
+  shield of 100, no evasion or block and one imp, takes a shield-breaking Reaper blow: nothing lands,
+  the player lives with the health they had, and the imp is spent. A second breaking blow at once lands
+  and the player dies.
+- `SubjugationRefusesTheReaper`: an ordinary creature is taken; the Reaper is refused, has no owner and
+  is not the player's friend.
+
+One Python check: the row still says "slowly stalks the player", "hit by his scythe" and "instantly
+die", and states no figure. It was seen to fail, in a copy of the repository, with "slowly" removed, with
+"instantly" removed, and with "for 10 seconds" added.
+
+### Also in this change
+
+Two comments the Chaos Touched and Soul Harvest changes left out of place are moved back: the Trick or
+Treat comment in the floor panel code, and the Trick or Treat doc comment in the game mode header, had
+each ended up above another rule's code.
+
+### Run
+
+One editor window on 2026-09-24, on development 38af0c0e (row window 2's squash) as the base. Every
+figure below is what `python tools/unreal_build.py tests` or `prove_cpp_guard` printed.
+
+- **The group on the base**, 38af0c0e: 264 tests performed, 264 succeeded, 0 failed.
+- **The whole suite on the first head**, 20970cb0: 2,334 tests performed, 2,332 succeeded, 2 failed.
+  - `TheReaperCannotBeHurtByABlowAHealthWriteOrATick`: "Expected 'and it is not dead' to be false".
+    A write straight to health, which is an instant effect on the health base, ran
+    `PreAttributeChange`'s clamp to zero and then `PostAttributeBaseChange`'s death check before
+    `PostGameplayEffectExecute` could put the health back, so the Reaper died at full health. Fixed
+    by holding a creature that cannot be hurt at its maximum in `PreAttributeChange` itself; the later
+    check now only writes the lowered base back.
+  - `SubjugationRefusesTheReaper`: "Expected 'and nobody owns it' to be true". A wrong expectation in
+    the test: a pawn's owner is its AI controller once possessed. It now asserts that the player does
+    not own it. The refusal itself had passed.
+  Both fixes were ruled by the coordinating session, with the lock kept, and the run restarted.
+- **The whole suite on the fixed head**, e45ae404: 2,334 tests performed, 2,334 succeeded, 0 failed.
+- **The group on that head**: 270 tests performed, 270 succeeded, 0 failed.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **The landed-blow kill.** The kill's `Notice.Attacker != Reaper` made `==`. With the break in: 270
+  performed, 268 succeeded, 2 failed, `ALandedBlowFromTheReaperKillsThePlayerAndNoOtherBlowDoes`
+  ("Expected 'and the player lives' to be false") and
+  `APlayerHoldingNothingStopsItStillDiesToTheReaper` ("Expected 'Nothing Stops It saved the player' to
+  be false"). Restored: 270 performed, 270 succeeded, 0 failed.
+- **The immunity.** The damage branch's check given `&& false`. With the break in: 270 performed, 269
+  succeeded, 1 failed, `TheReaperCannotBeHurtByABlowAHealthWriteOrATick`, on "blow N dealt it
+  nothing" for each of the five blows ("but it was 873.000000"); its health stayed full and it lived,
+  held by the `PreAttributeChange` clause, which is the reason the test asserts what each blow landed.
+  That clause itself is not guard-proven here (issue
+  [#1623](https://github.com/sdubois777/Cataclysm/issues/1623)). Restored: 270 performed, 270 succeeded, 0
+  failed.
+- **The ten-second delay.** `TheReaperIsDue` compared against the delay less 0.25. With the break in: 270
+  performed, 269 succeeded, 1 failed, `TheReaperComesTenSecondsIntoAFloorAtTheEntranceAndNeverOnAHorde`
+  ("Expected '9.75 seconds is not yet' to be false", "Expected 'no Reaper a beat before ten seconds' to
+  be null"). Restored: 270 performed, 270 succeeded, 0 failed.
+
+---
+
 ## 2026-09-24 — Chaos Touched: each floor adds one of eight 10% buffs or debuffs, and a floor's boss cleanses the debuffs
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
