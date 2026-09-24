@@ -1254,21 +1254,30 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	}
 	// AND CHAOS TOUCHED, EACH STAT'S MORE AND LESS SAID ON THEIR OWN. Issues #1820 and #41.
 	{
-		const TPair<float, const TCHAR*> Touched[] = {
-			{Effects.TouchedMaxHealthMorePercent, TEXT("maximum health %.0f%% more")},
-			{Effects.TouchedSpeedMorePercent, TEXT("movement speed %.0f%% more")},
-			{Effects.TouchedAttackSpeedMorePercent, TEXT("attack speed %.0f%% more")},
-			{Effects.TouchedResistanceMorePercent, TEXT("resistances %.0f%% more")},
-			{Effects.TouchedMaxHealthLessPercent, TEXT("maximum health %.0f%% less")},
-			{Effects.TouchedSpeedLessPercent, TEXT("movement speed %.0f%% less")},
-			{Effects.TouchedAttackSpeedLessPercent, TEXT("attack speed %.0f%% less")},
-			{Effects.TouchedResistanceLessPercent, TEXT("resistances %.0f%% less")},
-		};
-		for (const TPair<float, const TCHAR*>& Each : Touched)
+		// THE FORMAT IS A LITERAL AT THE CALL and the words vary as arguments: UE 5.8 checks a
+		// Printf format at compile time, so one read out of a table does not compile.
+		struct FTouchedClause
 		{
-			if (Each.Key > 0.0f)
+			float Percent;
+			const TCHAR* Stat;
+			const TCHAR* Direction;
+		};
+		const FTouchedClause Touched[] = {
+			{Effects.TouchedMaxHealthMorePercent, TEXT("maximum health"), TEXT("more")},
+			{Effects.TouchedSpeedMorePercent, TEXT("movement speed"), TEXT("more")},
+			{Effects.TouchedAttackSpeedMorePercent, TEXT("attack speed"), TEXT("more")},
+			{Effects.TouchedResistanceMorePercent, TEXT("resistances"), TEXT("more")},
+			{Effects.TouchedMaxHealthLessPercent, TEXT("maximum health"), TEXT("less")},
+			{Effects.TouchedSpeedLessPercent, TEXT("movement speed"), TEXT("less")},
+			{Effects.TouchedAttackSpeedLessPercent, TEXT("attack speed"), TEXT("less")},
+			{Effects.TouchedResistanceLessPercent, TEXT("resistances"), TEXT("less")},
+		};
+		for (const FTouchedClause& Each : Touched)
+		{
+			if (Each.Percent > 0.0f)
 			{
-				Clauses.Add(FString::Printf(Each.Value, Each.Key) + TEXT(" from chaos touched"));
+				Clauses.Add(FString::Printf(TEXT("%s %.0f%% %s from chaos touched"), Each.Stat,
+											Each.Percent, Each.Direction));
 			}
 		}
 	}
