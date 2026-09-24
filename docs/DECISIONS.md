@@ -19,8 +19,8 @@ line, the resets, and the set Blood Gates leaves out, renamed), the automation t
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures, and a test that failed
+first, are at the end of this entry.
 
 ### The row
 
@@ -124,10 +124,40 @@ One Python check: the row still says "picking up loot", "spawns additional enemi
 "temporary buffs to the player", and states no percentage. It was seen to fail, in a copy of the
 repository, with "Picking up loot" made "Opening chests", with "or" made "and", and with "20%" added.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (ebff1d00) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "251 tests performed, 251 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 8ae0f977 FAILED ONE TEST, AND IT WAS THE TEST.** "Build: Succeeded - 28 actions,
+  25 files compiled" and "2284 tests performed, 2283 succeeded, 1 failed:
+  ATrickOrTreatPairDoesNotResealOpenBloodGates", with every declared test reported. Its two assertions
+  read "Expected 'one of two slain opens the gate' to be "blood gates: 1 of 2 slain, open at 1", but it
+  was "blood gates: open"", and the same for 'and the gate is as it was'. **The cause:** the Blood Gates
+  panel line prints "N of M slain, open at K" only while the gate is sealed and "blood gates: open" once
+  it opens, and the test was written with the sealed form for an open gate. The run itself showed the
+  gate open before the trick and still open after it, which is the ruled behaviour. **Ruled by the
+  coordinating session:** the lock was kept, the two expected strings were changed to "blood gates:
+  open" (50ce05d7, the test only), and the group alone was run again on the new head, with no second
+  whole-suite run, because the whole suite had shown the other 2283 passing and the change touched one
+  test -- the Scarcity precedent. The controller test, the one registered risk, passed in that run.
+- **The group on 50ce05d7:** "Build: Succeeded - 4 actions, 1 file compiled" and "257 tests performed,
+  257 succeeded, 0 failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing exactly the
+  registered tests with the break in and 0 of 257 restored, with each broken run's failure text quoted:
+  - **a sweep allowed to roll** (`|| !Notice.bByHand` removed) failed
+    `OnlyAClickedPickupRollsForTrickOrTreat` ("Expected 'a sweep is not a pickup the rule counts' to be
+    0, but it was 1") and `AClickThroughThePlayerControllerRollsAndItsSweepDoesNot` ("Expected 'and the
+    rule counted no pickup' to be 0, but it was 1");
+  - **a haste that never ends** (the clock's comparison removed from `TrickOrTreatIsHasting`) failed
+    `ATreatHastesThePlayerForTenSecondsAndThenStops` ("Expected 'no longer hasted after ten' to be
+    false") and `ASecondTreatRestartsTheClockAndDoesNotStack` ("Expected 'and ten and a half seconds
+    after the second, it has stopped' to be false");
+  - **Blood Gates counting the raised** (the `CreaturesRaisedByARule` check removed from
+    `BloodGatesPlacedCount`) failed `ATrickOrTreatPairDoesNotResealOpenBloodGates` ("Expected 'and the
+    gate is as it was' to be "blood gates: open", but it was "blood gates: 1 of 4 slain, open at 2"")
+    and `APortalWardenDoesNotSealOpenBloodGatesAgain` ("Expected 'as the panel says' to be "blood
+    gates: open", but it was "blood gates: 1 of 3 slain, open at 2"").
 
 ---
 
