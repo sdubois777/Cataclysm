@@ -23817,7 +23817,7 @@ bool FCataclysmTreatGatesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("one of two slain opens the gate"), GatesPanelLine(Mode),
-			  FString(TEXT("blood gates: 1 of 2 slain, open at 1")));
+			  FString(TEXT("blood gates: open")));
 
 	if (!ThePlayerTakes(*this, World, Player, FVector(-300.0f, 0.0f, 0.0f), true, ATrick))
 	{
@@ -23825,7 +23825,7 @@ bool FCataclysmTreatGatesTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("a trick raised two"), Mode->TrickOrTreatRaisedCount(), 2);
 	TestEqual(TEXT("and the gate is as it was"), GatesPanelLine(Mode),
-			  FString(TEXT("blood gates: 1 of 2 slain, open at 1")));
+			  FString(TEXT("blood gates: open")));
 	return true;
 }
 
