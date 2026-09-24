@@ -1029,7 +1029,7 @@ and `CataclysmSkillTemplateTests.cpp`. Issue [#1815](https://github.com/sdubois7
 Enchantment Effects sheet and `game/Data/EnchantmentEffects.csv` (280 rows to 293, and 219 enchantments with
 a row to 227), listed under "The sentences" below. Dry-run first on a `git archive` copy against an unedited
 control: only that CSV changed, the tools tests failed exactly as the control's did with one more passing,
-and the real run matched the dry run byte for byte. Nothing has been compiled.
+and the real run matched the dry run byte for byte. Compiled and tested in the machine window, below.
 
 **"Low mana" states 35 on `mana_below`**, a labelled judgement tied to the ruling below that low mana is
 below 35%. "Take 10%-40% more damage when on low mana" states no number, and the text check requires a
@@ -1099,6 +1099,33 @@ grant nothing with no error.
 - **"Each active minion reduces your maximum HP by 3%-6%"** is its own change. `CataclysmPlayerClassStats`
   folds only fixed rows into the `MaxHealth` attribute and nothing asks for `max_health`, so the row
   would be accepted and do nothing. It needs a new route to maximum health that feeds every bucket.
+
+### The machine window, 2026-09-24
+
+Every line below is what the run printed, and every step matched its registration.
+
+1. **Stale asset, on `a6078e33`**: `Build: Succeeded - 28 actions, 25 files compiled`, then at
+   `Cataclysm.Enchantments.+Cataclysm.Data.+Cataclysm.EnchantmentSets.`: `Tests: 85 tests performed, 81
+   succeeded, 4 failed: EveryGeneratedTableHasAnAssetThatMatchesIt, TheCurrentManaRowAddsAShareOfTheManaHeld,
+   TheLowManaRowRaisesDamageTakenOnlyBelow35PercentMana, TheStrikeAgainstADotRowReachesOnlyAStrikeOnAnEnemyWithADot`,
+   the first naming `DT_EnchantmentEffects is stale ... 13 row(s) only in the CSV, 0 only in the asset`.
+   No row struct gained a field in this change, so no hand-written CSV fixture needed a column.
+2. **Rebuild**: `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed and nothing else
+   (`a5a512da`); the asset-freshness test then passed, 18 of 18.
+3. **The whole suite, on `a5a512da`**: `Build: Succeeded - target already up to date, 0 actions, nothing
+   compiled`, then `Tests: 2239 tests performed, 2239 succeeded, 0 failed` (development's 2232 and this
+   change's 7).
+4. **Proofs**, the source's hash the same before and after each:
+   - **a**, the target's debuffs not read when a scale asks, at `Cataclysm.Crit.`: `PROVED: with the break
+     in: 19 tests performed, 18 succeeded, 1 failed: ACriticalStrikeRowCanGrowWithTheDebuffsOnTheTarget |
+     restored: 19 tests performed, 19 succeeded, 0 failed`.
+   - **b**, running buffs never counted, at `Cataclysm.Skills.`: `PROVED: with the break in: 236 tests
+     performed, 235 succeeded, 1 failed: ARunningSelfBuffIsCountedAsHeldAndAnEndedOneIsNot | restored: 236
+     tests performed, 236 succeeded, 0 failed`.
+   - **c**, any debuff read as a damage over time, at `Cataclysm.StatPipeline.`: `PROVED: with the break
+     in: 45 tests performed, 44 succeeded, 1 failed:
+     TheTargetDebuffConditionsRefuseAnUnreadTargetAndAStunIsNotADamageOverTime | restored: 45 tests
+     performed, 45 succeeded, 0 failed`.
 
 ---
 
