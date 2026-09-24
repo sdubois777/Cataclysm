@@ -160,13 +160,66 @@ CATACLYSM_CC_TEST(FCataclysmCrowdControlScalesTest,
 	}
 
 	{
-		// A NEGATIVE STAT DOES NOT LENGTHEN A STUN. Nothing in the design says a
-		// value below zero makes a target easier to control, and a modifier
-		// subtracting from the stat could produce one.
+		// A NEGATIVE STAT LENGTHENS. Issue #1951: "CC effects applied to you
+		// last 40%-70% longer" is -40 to -70, and -40 is 1.4 times.
 		FScopedCreature Negative(World, -40.0f, FVector(1000.0f, 0.0f, 0.0f));
-		TestEqual(TEXT("a negative stat leaves the effect at its own length"),
+		TestEqual(TEXT("-40 makes an effect last 1.4 times as long"),
 				  UCataclysmSkillEffects::AfterCrowdControlResistance(
+					  Negative.Actor, 3.0f), 4.2f, 0.001f);
+
+		// BUT A HELD EFFECT STAYS WITHIN THE ANTI-STUN-LOCK BOUND, 3 seconds, so
+		// a 3 second stun is not lengthened at all and a 1.5 second one is.
+		TestEqual(TEXT("a 3 second stun at -40 stays at the 3 second bound, not 4.2"),
+				  UCataclysmSkillEffects::HeldSecondsAfterCrowdControlResistance(
 					  Negative.Actor, 3.0f), 3.0f, 0.001f);
+		TestEqual(TEXT("a 1.5 second stun at -40 lasts 2.1 seconds"),
+				  UCataclysmSkillEffects::HeldSecondsAfterCrowdControlResistance(
+					  Negative.Actor, 1.5f), 2.1f, 0.001f);
+
+		// AND A SHOVE IS NOT LENGTHENED: a distance does not "last longer".
+		TestEqual(TEXT("a 400 centimetre shove at -40 keeps its distance"),
+				  UCataclysmSkillEffects::ShoveAfterCrowdControlResistance(
+					  Negative.Actor, 400.0f), 400.0f, 0.001f);
+	}
+
+	{
+		// FLOORED AT -100, SO AT MOST TWICE AS LONG. A drawback counts on every
+		// piece, and nineteen slots at -70 would otherwise be fourteen times.
+		//
+		// ON A STAT LINE, WHICH IS HOW A PLAYER'S TOTAL IS READ, and which floors
+		// nothing, so this measures the floor in `AfterCrowdControlResistance`.
+		// The attribute has a floor of its own (below), and a test cannot break
+		// a `PreAttributeChange` clamp to see a floor after it fail (#1623).
+		FScopedCreature Deep(World, 0.0f, FVector(1200.0f, 0.0f, 0.0f));
+		UCataclysmAbilitySystemComponent* DeepAbilities =
+			Cast<UCataclysmAbilitySystemComponent>(
+				Deep.Actor->GetAbilitySystemComponent());
+		if (TestNotNull(TEXT("a creature with a Cataclysm ability system"),
+						DeepAbilities))
+		{
+			FCataclysmStatModifier Drawbacks;
+			Drawbacks.Bucket = ECataclysmStatBucket::Flat;
+			Drawbacks.Source = ECataclysmModifierSource::PassiveKeystone;
+			Drawbacks.Value = -150.0f;
+			TMap<FName, FCataclysmStatInputs> Stats;
+			FCataclysmStatInputs& Line = Stats.FindOrAdd(
+				FName(UCataclysmSkillEffects::CrowdControlResistanceStat));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Drawbacks};
+			DeepAbilities->SetStatInputs(MoveTemp(Stats));
+			TestEqual(TEXT("-150 is floored at -100: a 1 second effect lasts 2, not 2.5"),
+					  UCataclysmSkillEffects::AfterCrowdControlResistance(
+						  Deep.Actor, 1.0f), 2.0f, 0.001f);
+		}
+
+		// AND THE ATTRIBUTE ITSELF STOPS AT -100 rather than at zero, the floor
+		// every other unnamed combat attribute takes. Pinned by this assertion,
+		// not by a guard proof, for the reason above.
+		FScopedCreature Written(World, -150.0f, FVector(1400.0f, 0.0f, 0.0f));
+		TestEqual(TEXT("an attribute written at -150 reads -100"),
+				  Written.Actor->GetAbilitySystemComponent()->GetNumericAttribute(
+					  UCataclysmCombatAttributeSet::GetCrowdControlResistanceAttribute()),
+				  -100.0f, 0.001f);
 	}
 
 	// A TARGET WITH NO ABILITY SYSTEM AT ALL TAKES THE WHOLE OF IT rather than

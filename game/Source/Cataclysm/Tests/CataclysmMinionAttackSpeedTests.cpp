@@ -236,8 +236,11 @@ bool FCataclysmMinionAttackSpeedReachesAThrallTest::RunTest(const FString&)
 
 	// AND IT IS A THRALL RATHER THAN A MINION, asserted rather than assumed,
 	// because the whole value of this test is that it covers the other class.
-	TestNull(TEXT("a thrall is not an ACataclysmMinion"),
-			 Cast<ACataclysmMinion>(Taken));
+	// STATED AT COMPILE TIME, because it is a fact about the two classes: an
+	// enemy character can never be a minion, so a `Cast` asked at run time
+	// could not fail and only drew warning C4996. Issue #2055.
+	static_assert(!std::is_base_of_v<ACataclysmEnemyCharacter, ACataclysmMinion>,
+				  "a thrall stays the enemy character it was, never an ACataclysmMinion");
 
 	TestEqual(TEXT("with no such gear the interval is unchanged"),
 			  UCataclysmCommand::AttackIntervalScaleFor(Taken, Enemy), 1.0f,

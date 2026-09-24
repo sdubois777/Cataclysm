@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "Net/UnrealNetwork.h"
 
 UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
@@ -337,6 +338,20 @@ void UCataclysmCombatAttributeSet::PreAttributeChange(
 		// opposite of maximum resistance, where one enchantment raises the cap to
 		// a ceiling of 90%.
 		NewValue = FMath::Clamp(NewValue, 0.0f, CritChanceCap);
+		return;
+	}
+
+	// CROWD CONTROL RESISTANCE GOES BELOW ZERO, TO -100, and is not floored at
+	// zero with the rest below. Issue #1951: below zero it lengthens crowd
+	// control, to at most twice at -100, and the pipeline that reads a player's
+	// total floors nothing. Floored here at zero, a creature could never be
+	// lengthened and a player's sheet would read 0 while its crowd control
+	// lasted longer. The one reader of this attribute is
+	// `UCataclysmSkillEffects::AfterCrowdControlResistance`, which expects it.
+	if (Attribute == GetCrowdControlResistanceAttribute())
+	{
+		NewValue = FMath::Max(NewValue,
+							  UCataclysmSkillEffects::MostCrowdControlLengthening);
 		return;
 	}
 
