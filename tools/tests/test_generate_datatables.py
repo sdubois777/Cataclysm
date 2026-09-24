@@ -760,10 +760,14 @@ class TestBasicAttacks:
     exactly as invisible as an empty sheet, so the generator refuses one.
     """
 
+    # EVERY COLUMN THE READER ASKS FOR, the ones this test leaves empty
+    # appended at the end so no row changes. Issue #1882: a column a
+    # sheet lacks is now refused rather than read as empty.
     HEADERS = ["Base Name", "Slot", "Hands", "Sub-Type", "Weapon Type",
                "Max Damage Types", "Implicit 1 Stat", "Implicit 1 Kind",
                "Implicit 1 Value", "Attack Speed", "Basic Shape",
-               "Basic Shape Params", "Cells Wide", "Cells High"]
+               "Basic Shape Params", "Cells Wide", "Cells High",
+               "Implicit 2 Stat", "Implicit 2 Kind", "Implicit 2 Value"]
 
     def sheet(self, tmp_path, *rows) -> "openpyxl.Workbook":
         path = workbook_with(tmp_path / "b.xlsx",
@@ -1227,9 +1231,13 @@ class TestTheWordAnAffixGivesAnItemsName:
     be read, because the first word of the name is the rarity.
     """
 
+    # EVERY COLUMN THE READER ASKS FOR, the ones this test leaves empty
+    # appended at the end so no row changes. Issue #1882: a column a
+    # sheet lacks is now refused rather than read as empty.
     HEADER = ["Affix Name", "Affix Kind", "Position", "Stat", "Value Kind",
               "Top Value", "Breadth", "Ailment", "Gem", "Hybrid Part 1",
-              "Hybrid Part 2", "Allowed Slots", "Name Word"]
+              "Hybrid Part 2", "Allowed Slots", "Name Word", "Floor",
+              "Percent"]
 
     def row(self, name, position, word):
         return [name, "Stat", position, "max_health", "flat", 100, None,
@@ -1425,8 +1433,12 @@ class TestAPassiveNodeCanGrantSeveralStats:
 
     @staticmethod
     def sheet(rows: list[list]) -> list[list]:
+        # EVERY COLUMN THE READER ASKS FOR, the ones this test leaves empty
+        # appended at the end so no row changes. Issue #1882: a column a
+        # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
-                 "Required Tags"]] + rows
+                 "Required Tags", "Condition", "Condition Value", "Scale",
+                 "Scale Step", "Option", "Reach Metres"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(
@@ -1561,9 +1573,12 @@ class TestARowCountingNearbyEnemiesCarriesItsOwnRadius:
 
     @staticmethod
     def sheet(rows: list[list]) -> list[list]:
+        # EVERY COLUMN THE READER ASKS FOR, the ones this test leaves empty
+        # appended at the end so no row changes. Issue #1882: a column a
+        # sheet lacks is now refused rather than read as empty.
         return [["Node", "Stat", "Value Kind", "Value Per Point",
                  "Condition", "Condition Value", "Scale", "Scale Step",
-                 "Reach Metres"]] + rows
+                 "Reach Metres", "Required Tags", "Option"]] + rows
 
     def book(self, tmp_path, rows: list[list]):
         return openpyxl.load_workbook(workbook_with(

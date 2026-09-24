@@ -1561,6 +1561,34 @@ AFFIX_KINDS = ("Stat", "Resistance", "Ailment", "Hybrid")
 AFFIX_POSITIONS = ("prefix", "suffix")
 
 
+#: The workbook columns the generator reads before the sheet has them, by sheet,
+#: each with the issue that will add it. Issue #1882.
+#:
+#: EVERY OTHER COLUMN THE GENERATOR ASKS FOR IS REQUIRED. `_cell` used to
+#: return an empty string for a column the sheet did not have, the same as for
+#: an empty cell, so a column deleted or renamed in the workbook emptied that
+#: field on every row and nothing said so. That is the same fault as a missing
+#: row, which the generator already refuses; ruled on 2026-09-23 under the
+#: owner's delegation. A generator change may still land before the workbook
+#: gains its column, by declaring the column here.
+#:
+#: THIS TABLE ONLY SHRINKS. An entry whose column the committed workbook now has
+#: fails `test_an_optional_column_the_sheet_now_has_is_not_listed`: delete the
+#: entry in the same change that adds the column. Empty when written, because
+#: every column the generator read was on its sheet (measured 2026-09-23 on
+#: `development` at baee8048).
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+
+
+class _Headers(dict):
+    """Header text to column index, remembering which sheet it came from, so a
+    missing column can be named with its sheet."""
+
+    def __init__(self, sheet: str, columns: dict[str, int]):
+        super().__init__(columns)
+        self.sheet = sheet
+
+
 def _header_index(rows: list, sheet: str) -> dict[str, int]:
     """Map header text to column index, so a reordered sheet still reads."""
     if not rows:
@@ -1568,12 +1596,32 @@ def _header_index(rows: list, sheet: str) -> dict[str, int]:
     headers = {clean(h): i for i, h in enumerate(rows[0]) if clean(h)}
     if not headers:
         raise DataError(f"{sheet} has no header row")
-    return headers
+    return _Headers(sheet, headers)
 
 
 def _cell(raw, headers: dict[str, int], name: str) -> str:
+    """One cell by its column's name, or an empty string for an empty cell.
+
+    A COLUMN THE SHEET DOES NOT HAVE IS REFUSED, unless `OPTIONAL_COLUMNS`
+    declares it. Issue #1882. Checked on every read rather than once up front,
+    so a column is required exactly when the generator reads it and no list of
+    required columns has to be kept beside the code that reads them. A plain
+    dict passed as `headers`, as some tests do, carries no sheet and is read as
+    before.
+    """
     index = headers.get(name)
-    if index is None or index >= len(raw):
+    if index is None:
+        sheet = getattr(headers, "sheet", None)
+        if sheet is not None and name not in OPTIONAL_COLUMNS.get(sheet, {}):
+            raise DataError(
+                f"the {sheet} sheet has no {name!r} column, and the generator "
+                f"reads it. A column deleted or renamed in the workbook would "
+                f"otherwise empty that field on every row with no error. Put "
+                f"the column back, or, if the generator is ahead of the "
+                f"workbook, declare it in OPTIONAL_COLUMNS with the issue that "
+                f"will add it. Issue #1882.")
+        return ""
+    if index >= len(raw):
         return ""
     return clean(raw[index])
 
