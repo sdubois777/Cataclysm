@@ -84,8 +84,13 @@ MULTIPLIER = re.compile(
 #: exposed it. THIS WIDENS THE TENSE AND NOT THE MEANING: a sentence admitted by
 #: one form is admitted by the others for exactly the same reason, so the check
 #: is no weaker than it was.
+#:
+#: AND THE PRESENT PARTICIPLE, for the same reason, on 2026-09-24. "Critical
+#: strikes grant a stack of power increasing all damage by 3%-5%" was the first
+#: increased row whose sentence says "increasing"; issue #1833.
 INCREASE = re.compile(
-    r"\b(increase|increases|increased|reduce|reduces|reduced|faster|slower|longer"
+    r"\b(increase|increases|increased|increasing|reduce|reduces|reduced|reducing"
+    r"|faster|slower|longer"
     r"|larger|gain|lose)\b"
     # AND "bonus", BUT NEVER THE SET LABEL. Measured 2026-09-18: 13
     # sentences use it as an effect word, 39 carry it ONLY inside
