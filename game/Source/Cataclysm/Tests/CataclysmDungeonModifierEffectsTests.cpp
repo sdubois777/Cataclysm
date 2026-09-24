@@ -23032,4 +23032,379 @@ bool FCataclysmVoidFinalFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Famine_Starvation_Curse. Issues #1820 and #41.
+//
+// "Each new floor adds a starvation debuff, such as slower movement or reduced max health.
+// These debuffs persist unless cleansed." One stack per floor carrying the row, of one of
+// the two kinds, 5% each and at most ten of each; a floor's boss or the player's own death
+// clears both. Rulings under the owner's delegation, 2026-09-23.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the row whose floors each add a curse. Issues #1820, #41. */
+	const FName StarvationCurse(UCataclysmDungeonModifierEffects::StarvationCurseKey);
+
+	/** The draw pinned below 50 adds slower movement; from 50, less maximum health. */
+	const TCHAR* CurseSlowsMovement = TEXT("10");
+	const TCHAR* CurseLowersHealth = TEXT("90");
+
+	/** A dungeon game mode begun with a possessed player, every Imp a Common. */
+	ACataclysmDungeonGameMode* ACurseDungeon(FAutomationTestBase& Test, UWorld* World,
+											 const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+		Mode->ImpRarityStep = 0;
+
+		// A FLOOR WITH NO ROWS FIRST, which is the player out of any dungeon, so nothing the
+		// floor `StartPlay` built can have added a stack before the test begins.
+		Mode->DungeonModifiers = {};
+		if (!Test.TestTrue(TEXT("a floor with no rows was reached"), Mode->GoToFloor(1))
+			|| !Test.TestEqual(TEXT("and no curse is held"),
+							   Mode->StarvationCurseMovementStacksHeld()
+								   + Mode->StarvationCurseHealthStacksHeld(), 0))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** Go to this floor with the draw pinned to one kind, and let the beat apply it. */
+	bool TheCurseFloor(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode,
+					   int32 Floor, const TCHAR* Draw)
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.StarvationCurseRoll"), Draw);
+		if (!Test.TestNotNull(TEXT("the draw can be pinned"), Pinned.Variable)
+			|| !Test.TestTrue(FString::Printf(TEXT("floor %d was reached"), Floor),
+							  Mode->GoToFloor(Floor)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+		return true;
+	}
+
+	/** What a dungeon rule takes off this stat, as a positive percent, or 0 for none. */
+	float CurseLessOn(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, Stat);
+		return Rule ? -Rule->Value : 0.0f;
+	}
+}
+
+// EACH FLOOR CARRYING THE ROW ADDS ONE, FLOOR 1 INCLUDED, AND LEAVING THE DUNGEON EMPTIES IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurseEachFloorTest,
+	"Cataclysm.DungeonModifierEffects.EachFloorCarryingTheStarvationCurseAddsOneStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCurseEachFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {StarvationCurse};
+
+	// FLOOR 1 AND FLOOR 2 SLOW, FLOOR 3 LOWERS HEALTH.
+	if (!TheCurseFloor(*this, Mode, 1, CurseSlowsMovement))
+	{
+		return false;
+	}
+	TestEqual(TEXT("floor 1 adds a stack"), Mode->StarvationCurseMovementStacksHeld(), 1);
+	if (!TheCurseFloor(*this, Mode, 2, CurseSlowsMovement)
+		|| !TheCurseFloor(*this, Mode, 3, CurseLowersHealth))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two floors' movement stacks"), Mode->StarvationCurseMovementStacksHeld(), 2);
+	TestEqual(TEXT("and one floor's health stack"), Mode->StarvationCurseHealthStacksHeld(), 1);
+	TestEqual(TEXT("movement speed is 10% less"), CurseLessOn(Player, TEXT("movement_speed")),
+			  10.0f, 0.01f);
+	TestEqual(TEXT("maximum health is 5% less"), CurseLessOn(Player, TEXT("max_health")),
+			  5.0f, 0.01f);
+
+	const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+	const FString* Line = Counting.Find(StarvationCurse);
+	TestEqual(TEXT("the panel says what is carried"), Line ? *Line : FString(TEXT("no line")),
+			  FString(TEXT("starvation curse: movement 10% slower (2 of 10), maximum health 5% "
+						   "less (1 of 10); a floor boss's death cleanses both")));
+
+	// LEAVING THE DUNGEON -- a floor whose brief carries no rows -- EMPTIES IT.
+	Mode->DungeonModifiers = {};
+	if (!TheCurseFloor(*this, Mode, 4, CurseSlowsMovement))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no movement stacks are left"), Mode->StarvationCurseMovementStacksHeld(), 0);
+	TestEqual(TEXT("no health stacks either"), Mode->StarvationCurseHealthStacksHeld(), 0);
+	TestNull(TEXT("and nothing is on movement speed"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+	return true;
+}
+
+// TEN STACKS OF EACH AT MOST, AND A DRAW FOR A FULL KIND GOES TO THE OTHER: twelve floors that
+// all draw a slow leave ten slow and two health stacks, and once both are full a floor adds
+// nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurseCapTest,
+	"Cataclysm.DungeonModifierEffects.TheStarvationCurseStopsAtTenStacksOfEachKind",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCurseCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("below 50 the draw slows"), Effects::StarvationCurseKindFor(49.99f),
+			  Effects::StarvationCurseSlowsMovement);
+	TestEqual(TEXT("from 50 it lowers health"), Effects::StarvationCurseKindFor(50.0f),
+			  Effects::StarvationCurseLowersHealth);
+	TestEqual(TEXT("ten stacks take 50%"), Effects::StarvationCurseLessPercent(10), 50.0f, 0.001f);
+	TestEqual(TEXT("a slow drawn with room is a slow"),
+			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseSlowsMovement, 9, 0),
+			  Effects::StarvationCurseSlowsMovement);
+	TestEqual(TEXT("a slow drawn at the cap goes to health"),
+			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseSlowsMovement, 10, 3),
+			  Effects::StarvationCurseLowersHealth);
+	TestEqual(TEXT("a health curse drawn at the cap goes to movement"),
+			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseLowersHealth, 4, 10),
+			  Effects::StarvationCurseSlowsMovement);
+	TestEqual(TEXT("both full adds nothing"),
+			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseSlowsMovement, 10, 10),
+			  Effects::StarvationCurseAddsNothing);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {StarvationCurse};
+	Mode->TotalFloors = 30;
+	for (int32 Floor = 1; Floor <= 12; ++Floor)
+	{
+		if (!TheCurseFloor(*this, Mode, Floor, CurseSlowsMovement))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("twelve floors hold ten slow stacks"), Mode->StarvationCurseMovementStacksHeld(),
+			  10);
+	TestEqual(TEXT("and the two draws past the cap went to health"),
+			  Mode->StarvationCurseHealthStacksHeld(), 2);
+	TestEqual(TEXT("movement speed is half"), CurseLessOn(Player, TEXT("movement_speed")),
+			  50.0f, 0.01f);
+
+	// TEN MORE FLOORS: eight fill health to ten, and the last two add nothing.
+	for (int32 Floor = 13; Floor <= 22; ++Floor)
+	{
+		if (!TheCurseFloor(*this, Mode, Floor, CurseSlowsMovement))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("ten slow stacks still"), Mode->StarvationCurseMovementStacksHeld(), 10);
+	TestEqual(TEXT("and ten health stacks, no more"), Mode->StarvationCurseHealthStacksHeld(), 10);
+	TestEqual(TEXT("maximum health is half"), CurseLessOn(Player, TEXT("max_health")),
+			  50.0f, 0.01f);
+	return true;
+}
+
+// A FLOOR'S BOSS CLEANSES BOTH -- A GATEKEEPER AT THE COMMON RUNG, AND ANY CREATURE AT THE BOSS
+// RUNG -- AND SO DOES THE PLAYER'S OWN DEATH. An ordinary creature's death does not.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurseCleanseTest,
+	"Cataclysm.DungeonModifierEffects.AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCurseCleanseTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {StarvationCurse};
+	if (!TheCurseFloor(*this, Mode, 1, CurseSlowsMovement)
+		|| !TheCurseFloor(*this, Mode, 2, CurseLowersHealth))
+	{
+		return false;
+	}
+	const auto Held = [Mode]()
+	{
+		return Mode->StarvationCurseMovementStacksHeld() + Mode->StarvationCurseHealthStacksHeld();
+	};
+	if (!TestTrue(TEXT("the curse holds stacks of both kinds"),
+				  Mode->StarvationCurseMovementStacksHeld() > 0
+					  && Mode->StarvationCurseHealthStacksHeld() > 0))
+	{
+		return false;
+	}
+
+	// AN ORDINARY CREATURE'S DEATH CLEANSES NOTHING.
+	ACataclysmEnemyCharacter* Common =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a Common creature"), Common) || !ThePlayerKills(*this, Player, Common))
+	{
+		return false;
+	}
+	const int32 AfterACommon = Held();
+	TestTrue(TEXT("a Common's death leaves the stacks"), AfterACommon > 0);
+
+	// A GATEKEEPER AT THE COMMON RUNG IS STILL THE FLOOR'S BOSS.
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Gatekeeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+		ACataclysmGatekeeperCharacter::StaticClass(), FVector(-800.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a Gatekeeper"), Gatekeeper))
+	{
+		return false;
+	}
+	Gatekeeper->SetRarityStep(0);
+	TestFalse(TEXT("it is not at the Boss rung"), Gatekeeper->IsBoss());
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Gatekeeper, 1.0e9f);
+	if (!TestTrue(TEXT("the Gatekeeper died"), UCataclysmSkillEffects::IsDead(Gatekeeper)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its death cleansed both kinds"), Held(), 0);
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("and the next beat takes the slow off"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+
+	// ANY CREATURE AT THE BOSS RUNG CLEANSES TOO.
+	if (!TheCurseFloor(*this, Mode, 3, CurseSlowsMovement))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a new floor added a stack"), Held() > 0);
+	ACataclysmEnemyCharacter* AtTheBossRung = PlaceCreatureAtRung(
+		World, Mode, FVector(800.0f, 0.0f, 0.0f), ACataclysmEnemyCharacter::FirstBossRarityStep);
+	if (!TestNotNull(TEXT("a creature at the Boss rung"), AtTheBossRung)
+		|| !ThePlayerKills(*this, Player, AtTheBossRung))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its death cleansed the curse"), Held(), 0);
+
+	// AND THE PLAYER'S OWN DEATH, AT ONCE, with no beat in between.
+	if (!TheCurseFloor(*this, Mode, 4, CurseLowersHealth))
+	{
+		return false;
+	}
+	if (!TestNotNull(TEXT("the curse is on maximum health"),
+					 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health"))))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1000000.0f);
+	if (!TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the player's death cleared the curse"), Held(), 0);
+	TestNull(TEXT("and took it off maximum health before any beat"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
+	return true;
+}
+
+// STARVATION AND THE CURSE BOTH TAKE MAXIMUM HEALTH, AND THEY MULTIPLY: on floor 4, Starvation's
+// share and one curse stack leave (1 - share) x 0.95 of the maximum.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurseWithStarvationTest,
+	"Cataclysm.DungeonModifierEffects.StarvationAndTheStarvationCurseMultiplyOnMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCurseWithStarvationTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE MAXIMUM WITH NO ROWS AT ALL, which both shares are taken from.
+	Mode->DungeonModifiers = {};
+	if (!TheCurseFloor(*this, Mode, 1, CurseLowersHealth))
+	{
+		return false;
+	}
+	const float Base = Player.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+	if (!TestTrue(FString::Printf(TEXT("the player has a maximum health: %.2f"), Base),
+				  Base > 0.0f))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {Starvation, StarvationCurse};
+	if (!TheCurseFloor(*this, Mode, 4, CurseLowersHealth))
+	{
+		return false;
+	}
+	const float Share = Effects::PlayerEffectsFor({Starvation}, 4).MaxHealthLessPercent;
+	if (!TestTrue(FString::Printf(TEXT("Starvation takes a share on floor 4: %.2f%%"), Share),
+				  Share > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one curse stack is held"), Mode->StarvationCurseHealthStacksHeld(), 1);
+	TestEqual(TEXT("maximum health is both shares multiplied"),
+			  Player.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()),
+			  Base * (1.0f - Share / 100.0f) * 0.95f, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -243,6 +243,21 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float GraspMovementLessPercent = 0.0f;
 
 	/**
+	 * What the starvation curse takes off movement speed and off maximum health, in percent.
+	 * Issues #1820 and #41.
+	 *
+	 * THEIR OWN FIELDS, for the reason `SicknessMaxHealthLessPercent` gives: Starvation
+	 * writes `MaxHealthLessPercent` and Singularity Wells `MovementSpeedLessPercent`, and a
+	 * floor can carry those rows with this one. As separate entries the pipeline multiplies
+	 * each on its own.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float CurseMovementLessPercent = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float CurseMaxHealthLessPercent = 0.0f;
+
+	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
 	 *
@@ -367,6 +382,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& SicknessMaxHealthLessPercent <= 0.0f
 			&& SicknessMaxManaLessPercent <= 0.0f
 			&& GraspMovementLessPercent <= 0.0f
+			&& CurseMovementLessPercent <= 0.0f
+			&& CurseMaxHealthLessPercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -1562,8 +1579,9 @@ public:
 	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-23:
 	 * - FIVE PERCENT OF EACH, a judgement: no figure in the design settles it.
 	 * - THE HEALTH IS UNCAPPED; THE DAMAGE IS CAPPED at `NothingIsForgottenMostDamagePercent`
-	 *   of the boss's own, so it hits at most twice as hard. Uncapped damage over a long
-	 *   dungeon would make a fight no play could survive. Both are play-test points.
+	 *   of the boss's own, so it hits at most twice as hard. Capped by the master session
+	 *   under the owner's delegation, because uncapped damage over a long dungeon could make
+	 *   a fight the player cannot survive; a play-test point. The uncapped health is one too.
 	 * - THE FINAL BOSS ONLY: the Gatekeeper the last floor places at its exit, even in an
 	 *   Elite dungeon where every floor ends with one. A dungeon of one floor has no final
 	 *   boss at its exit, so there the row feeds nothing.
@@ -1571,6 +1589,29 @@ public:
 	 *   creature's second death feeds nothing. The total empties when the player leaves.
 	 */
 	static const TCHAR* NothingIsForgottenKey;
+
+	/**
+	 * The row where every floor adds a starvation debuff that stays until it is cleansed.
+	 * Issues #1820 and #41.
+	 *
+	 * "Each new floor adds a starvation debuff, such as slower movement or reduced max
+	 * health. These debuffs persist unless cleansed." Each floor carrying the row adds one
+	 * stack of one of the row's two examples, drawn at random: movement speed or maximum
+	 * health, `StarvationCursePercentPerStack` less per stack. A draw for a kind already at
+	 * its cap goes to the other kind; a floor adds nothing only when both are at their cap. The stacks are the dungeon's
+	 * and stay on floors that do not carry the row.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-23:
+	 * - THE ROW'S TWO EXAMPLES ONLY. "Such as" gives examples and both already had appliers.
+	 * - FIVE PERCENT PER STACK, AT MOST TEN STACKS OF EACH (50%). A play-test point.
+	 * - A FLOOR'S BOSS CLEANSES BOTH: the death of a Gatekeeper, which is the creature the
+	 *   game places as a floor's boss, or of any creature at the Boss rung. The Gatekeeper
+	 *   draws its own rung like every creature, so `IsBoss()` alone is a 1% draw.
+	 * - THE PLAYER'S OWN DEATH CLEARS BOTH, under the owner's ruling of 2026-09-10 that
+	 *   anything lasting only for a dungeon ends at a death. Leaving the dungeon empties them.
+	 * - FLOOR 1 COUNTS.
+	 */
+	static const TCHAR* StarvationCurseKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -3767,6 +3808,32 @@ public:
 		"A portion of nothing or of everything is not the row, and a cap of nothing feeds "
 		"the boss no damage at all.");
 
+	/**
+	 * What one stack of the starvation curse takes, and how many of each kind it may hold:
+	 * at most half the stat. Ruled under the owner's delegation, 2026-09-23; a play-test
+	 * point. The row states no figure.
+	 */
+	static constexpr float StarvationCursePercentPerStack = 5.0f;
+	static constexpr int32 StarvationCurseMostStacks = 10;
+
+	/**
+	 * The draw that decides which curse a floor adds: below this, slower movement; from it,
+	 * less maximum health. Even odds between the row's two examples.
+	 */
+	static constexpr float StarvationCurseMovementBelow = 50.0f;
+
+	/** The two curses, as `StarvationCurseKindFor` answers them. */
+	static constexpr int32 StarvationCurseSlowsMovement = 0;
+	static constexpr int32 StarvationCurseLowersHealth = 1;
+	/** What `StarvationCurseKindToAdd` answers when both kinds are at their cap. */
+	static constexpr int32 StarvationCurseAddsNothing = -1;
+
+	static_assert(
+		StarvationCursePercentPerStack > 0.0f && StarvationCurseMostStacks > 0
+			&& StarvationCursePercentPerStack * StarvationCurseMostStacks < 100.0f,
+		"A curse of nothing is not the row, and one that can take the whole stat would "
+		"stop the player moving or leave them no health at all.");
+
 	static_assert(
 		DirgeResonanceHasteSeconds > 0.0f
 			&& DirgeResonanceHasteSeconds < DirgeResonanceEverySeconds,
@@ -4477,6 +4544,21 @@ public:
 	 * `Held`: all of it, up to `NothingIsForgottenMostDamagePercent` of the boss's own.
 	 */
 	static float NothingIsForgottenDamageAdded(float Held, float BossOwnDamage);
+
+	/** Which curse a floor adds for this draw, 0 to 100: movement below the even split. */
+	static int32 StarvationCurseKindFor(float Roll);
+
+	/**
+	 * The kind a floor actually adds: the drawn one, or the other when the drawn one is at
+	 * its cap, or `StarvationCurseAddsNothing` when both are. THE ONLY CAP ON THE STACKS:
+	 * nothing else holds them at `StarvationCurseMostStacks`. Ruled under the owner's
+	 * delegation, 2026-09-23: "each new floor adds a starvation debuff" is broken by a floor
+	 * that adds nothing while the other kind has room.
+	 */
+	static int32 StarvationCurseKindToAdd(int32 Drawn, int32 MovementStacks, int32 HealthStacks);
+
+	/** What this many stacks take off their stat, in percent. Not capped here. */
+	static float StarvationCurseLessPercent(int32 Stacks);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

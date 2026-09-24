@@ -3778,3 +3778,26 @@ def test_nothing_is_forgotten_row_still_feeds_the_final_boss_a_portion_of_the_pl
     assert "%" not in words, (
         "Void_Nothing_Is_Forgotten now states a percentage. The five per cent was a ruling "
         "because the row gave none; use the row's figure. " + words)
+
+def test_starvation_curse_row_still_adds_one_of_two_debuffs_each_floor_until_cleansed():
+    """The phrases the rule's readings rest on.
+
+    "Each new floor adds a starvation debuff, such as slower movement or reduced max
+    health. These debuffs persist unless cleansed." EACH NEW FLOOR is why every floor
+    carrying the row adds one stack; SLOWER MOVEMENT and REDUCED MAX HEALTH are the only
+    two kinds built; PERSIST UNLESS CLEANSED is why the stacks outlast the stairs and a
+    floor's boss clears them; and the row gives no figure, which is why five per cent a
+    stack and ten stacks are rulings. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Famine_Starvation_Curse"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("each new floor", "slower movement", "reduced max health",
+                   "persist unless cleansed"):
+        assert phrase in lower, (
+            f"Famine_Starvation_Curse no longer says {phrase.upper()!r}. A reading of the "
+            "rule rests on it; see StarvationCurseKey in CataclysmDungeonModifierEffects.h. "
+            + words)
+    assert "%" not in words, (
+        "Famine_Starvation_Curse now states a percentage. Five per cent a stack was a ruling "
+        "because the row gave none; use the row's figure. " + words)
