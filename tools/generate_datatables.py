@@ -5180,6 +5180,11 @@ STATS_WITH_AN_ASKER = frozenset({
     # CataclysmVitalAttributeSet.cpp asks it through `StatForSkill` on every
     # blow; `ProbeScaledCritChance` measures that.
     "crit_chance",
+    # ADDED 2026-09-23 FOR "Each active minion reduces your maximum HP by
+    # 3%-6%", issue #1815. `RefreshLiveMaximumHealth` asks the whole line with
+    # the character's state and writes the attribute, from `ApplyTo` and from
+    # each regeneration step; `ProbeScaledMaximumHealth` measures that.
+    "max_health",
 })
 
 

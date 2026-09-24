@@ -563,7 +563,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 293 SINCE ISSUE #1815'S SECTION C, from 280: thirteen rows on eight
 	// sentences that had none, five of them two rows for the two damage types.
 	// No sentence changed, so both Enchantments CSVs keep their counts.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    293)
+	//
+	// AND 294 SINCE THE MINION DRAWBACK, issue #1815, from 293: one row on
+	// "Each active minion reduces your maximum HP by 3%-6%".
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    294)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

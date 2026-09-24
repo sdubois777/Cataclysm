@@ -1582,6 +1582,36 @@ public:
 	float SecondsOutOfCombat() const;
 
 	/**
+	 * Write maximum health from its whole stat line with the character's state
+	 * now, plus any health Water to Blood converted. Issue #1815: "Each active
+	 * minion reduces your maximum HP by 3%-6%".
+	 *
+	 * WHY IT EXISTS. `UCataclysmPlayerClassStats::ApplyTo` folds every stat with
+	 * no character state, so a conditioned or scaled `max_health` row is worth
+	 * nothing in the fold. This asks the pipeline with `CurrentConditions`, so
+	 * every bucket and every condition reaches the attribute.
+	 *
+	 * CALLED AT THE END OF `ApplyTo` AND FROM EACH REGENERATION STEP, because no
+	 * event marks a minion arriving or leaving. Nothing is recorded for
+	 * `max_health` on a character with no row for it, and then this does
+	 * nothing, which is every creature and minion in the game.
+	 *
+	 * CURRENT HEALTH IS NOT MOVED, ruled under the owner's delegation on
+	 * 2026-09-23: a lowered maximum does not take health away, as for every
+	 * pool (issue #1757), and a raised one does not refill it.
+	 */
+	void RefreshLiveMaximumHealth();
+
+	/**
+	 * Whether any `max_health` row is conditioned or scaled, which is when the
+	 * regeneration step has to refresh it. Issue #1815.
+	 */
+	bool MaximumHealthMovesWithState() const;
+
+	/** What Water to Blood added to maximum health at the last stat refresh. */
+	void SetConvertedManaToHealth(float Converted) { ConvertedManaToHealth = Converted; }
+
+	/**
 	 * Record that this character has just used the skill in its Support slot. Issue #1815, for the
 	 * movement rows issue #1821 unblocked.
 	 *
@@ -1943,6 +1973,13 @@ protected:
 
 	/** When the character was last revived, in world seconds, or -1. */
 	float RevivedAtSeconds = -1.0f;
+
+	/**
+	 * The maximum mana Water to Blood turned into maximum health at the last
+	 * stat refresh, or 0. Issue #1815. Added back by `RefreshLiveMaximumHealth`,
+	 * which would otherwise write the stat line's answer over it.
+	 */
+	float ConvertedManaToHealth = 0.0f;
 
 	/** Both combat notes pass through here. */
 	void NoteCombatEvent();

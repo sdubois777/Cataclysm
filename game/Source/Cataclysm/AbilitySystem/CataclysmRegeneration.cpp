@@ -212,6 +212,19 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 		return;
 	}
 
+	// THE LIVE MAXIMUM FIRST, so the pool below fills to it. Issue #1815: "Each
+	// active minion reduces your maximum HP by 3%-6%" moves with a count no event
+	// announces, so every step asks. Only a character with such a row pays more
+	// than one look at its own `max_health` line.
+	if (UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		if (Cataclysm->MaximumHealthMovesWithState())
+		{
+			Cataclysm->RefreshLiveMaximumHealth();
+		}
+	}
+
 	// THE HEALTH STEP SAYS IT IS REGENERATION, and the other two do not bother
 	// because Fervour reads health alone. The Masochist's Staunch node reduces
 	// "the Fervour removed by your own health regeneration" specifically, which

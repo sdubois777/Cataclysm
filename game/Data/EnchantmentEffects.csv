@@ -292,3 +292,4 @@ Positive_Your_skills_deal_10_30_of_your_current_mana_as#2,Positive_Your_skills_d
 Positive_Each_active_buff_on_you_increases_your_damage_by#1,Positive_Each_active_buff_on_you_increases_your_damage_by,attack_damage,increased,5.0,10.0,,,0.0,buffs_held,1.0,,,,0
 Positive_Each_active_buff_on_you_increases_your_damage_by#2,Positive_Each_active_buff_on_you_increases_your_damage_by,spell_damage,increased,5.0,10.0,,,0.0,buffs_held,1.0,,,,0
 Positive_Spells_deal_10_20_bonus_damage_for_each_active#1,Positive_Spells_deal_10_20_bonus_damage_for_each_active,spell_damage,increased,10.0,20.0,Type.Spell,,0.0,buffs_held,1.0,,,,0
+Negative_Each_active_minion_reduces_your_maximum_HP_by_3#1,Negative_Each_active_minion_reduces_your_maximum_HP_by_3,max_health,increased,-3.0,-6.0,,,0.0,minions_held,1.0,,,,0

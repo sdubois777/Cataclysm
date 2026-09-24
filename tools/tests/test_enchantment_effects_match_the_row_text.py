@@ -411,8 +411,10 @@ JUDGED_NUMBERS = {
 #: wearer's damage and take an attack damage row and a spell damage row each;
 #: the low mana drawback, the critical strike chance and the Spells-only buff
 #: row are one row each.
-AUTHORED_ROWS = 293
-AUTHORED_ENCHANTMENTS = 227
+#: AND 294 OVER 228 SINCE THE MINION DRAWBACK, issue #1815, from 293 over 227:
+#: "Each active minion reduces your maximum HP by 3%-6%", one row.
+AUTHORED_ROWS = 294
+AUTHORED_ENCHANTMENTS = 228
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and

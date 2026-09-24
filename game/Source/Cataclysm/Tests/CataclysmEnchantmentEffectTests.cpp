@@ -11,6 +11,8 @@
 // wears an authored row on a real player character and kills with it.
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
+#include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -4152,6 +4154,76 @@ bool FCataclysmCurrentManaRowTest::RunTest(const FString&)
 
 	TestEqual(TEXT("with no mana nothing is added"), DamageAt(0.0f), 1000.0f, 0.01f);
 	TestEqual(TEXT("with 500 mana, 30% of it is added"), DamageAt(500.0f), 1150.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionMaximumHealthRowTest,
+	"Cataclysm.Enchantments.TheMinionMaximumHealthRowLowersItForEachMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each active minion reduces your maximum HP by 3%-6%", worn, takes 6% of
+ * increases off maximum health for each minion the wearer commands. Issue #1815.
+ *
+ * INCREASED, NOT MORE, ruled under the owner's delegation on 2026-09-23:
+ * "reduces" is this project's word for the increased bucket. So two minions
+ * add -12% to the wearer's other increases, which is exactly 120 less on a
+ * figure of 1000 whatever those other increases are.
+ *
+ * AND THE ATTRIBUTE FOLLOWS, once the live refresh has run: that is what every
+ * reader of maximum health sees.
+ */
+bool FCataclysmMinionMaximumHealthRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Each_active_minion_reduces_your_maximum_HP_by_3")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Maximum(TEXT("max_health"));
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+	const float Alone = ASC->StatAppliedTo(Maximum, FGameplayTagContainer(), 1000.0f);
+	const float AttributeAlone = ASC->GetNumericAttribute(MaxHealth);
+
+	for (const float Metres : {3.0f, 4.0f})
+	{
+		if (!TestNotNull(TEXT("an imp"), ACataclysmMinion::Spawn(
+				Wearer.Actor, FVector(Metres * 100.0f, 0.0f, 0.0f), /*Lifetime=*/60.0f,
+				/*bBurns=*/false, /*TypeName=*/TEXT("Imp"))))
+		{
+			return false;
+		}
+	}
+	if (!TestEqual(TEXT("the wearer commands two minions"),
+				   UCataclysmCommand::ThingsCommandedBy(Wearer.Actor).Num(), 2))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("two minions take 12% of increases off a figure of 1000"),
+		Alone - ASC->StatAppliedTo(Maximum, FGameplayTagContainer(), 1000.0f), 120.0f, 0.01f);
+
+	ASC->RefreshLiveMaximumHealth();
+	TestTrue(FString::Printf(TEXT("and the maximum health attribute falls: %.2f against %.2f"),
+							 ASC->GetNumericAttribute(MaxHealth), AttributeAlone),
+		ASC->GetNumericAttribute(MaxHealth) < AttributeAlone - 0.001f);
 
 	return true;
 }
