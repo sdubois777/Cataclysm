@@ -2597,6 +2597,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// CLOCK. Issues #1786 and #41.
 	const bool bEdictOfSilence = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::EdictOfSilenceKey));
+	// AND DIRGE RESONANCE, WHICH CHANGES CREATURES AND NEVER THE PLAYER, on the Edict's
+	// clock. Issues #1820 and #41.
+	const bool bDirgeResonance = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::DirgeResonanceKey));
 	const bool bArtilleryStrike = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::ArtilleryStrikeKey));
 	const bool bHallowedGroundfall = FloorBrief.Modifiers.Contains(
@@ -2656,7 +2660,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		FName(UCataclysmDungeonModifierEffects::AntiMagicZonesKey));
 	if (!bForcedMarch && !bNihilsEmbrace && !bDeathsEmbrace && !bInfernalRain
 		&& !bSingularityWells && !bWitheredGround && !bMortalDecay && !bSufferingAura
-		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence
+		&& !bWastingSickness && !bGraspingTentacles && !bEdictOfSilence && !bDirgeResonance
 		&& !bArtilleryStrike && !bHallowedGroundfall && !bFungalOvergrowth
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
@@ -2809,6 +2813,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bEdictOfSilence)
 	{
 		StepEdictOfSilence(Player, AbilitySystem);
+	}
+
+	// AND DIRGE RESONANCE, WHICH TOUCHES NOTHING THE PLAYER'S RULES SHARE, so its place in
+	// this order is free. Issues #1820 and #41.
+	if (bDirgeResonance)
+	{
+		StepDirgeResonance();
 	}
 
 	// AND THE ARTILLERY STRIKE, WHICH SPAWNS AN ACTOR, so it is late for the
@@ -2964,6 +2975,65 @@ void ACataclysmDungeonGameMode::StepEdictOfSilence(
 	{
 		EdictOfSilenceLockApplied = Wanted;
 		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+}
+
+void ACataclysmDungeonGameMode::StepDirgeResonance()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+
+	DirgeResonanceSecondsSinceLast += SecondsBetweenWaveChecks;
+	if (Effects::DirgeResonanceIsDue(DirgeResonanceSecondsSinceLast))
+	{
+		DirgeResonanceSecondsSinceLast = 0.0f;
+		DirgeResonanceHastedUntilSeconds = Now + Effects::DirgeResonanceHasteSeconds;
+
+		// THE TAG IS LOOKED UP ONCE, and a missing one says so rather than hasting
+		// nothing in silence. The route Commander's Aura takes.
+		const FGameplayTag Haste = UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+		if (!Haste.IsValid())
+		{
+			UE_LOG(LogCataclysm, Warning,
+				   TEXT("Dirge Resonance cannot haste: there is no Status.Buff.Commander tag."));
+		}
+		else
+		{
+			// EVERY LIVING CREATURE, MARKED ONES INCLUDED: the row says "all enemies".
+			// The creature is its own instigator, as Hallowed Groundfall's grant has it:
+			// nothing on the floor is doing the hasting.
+			int32 Hasted = 0;
+			for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+			{
+				if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy))
+				{
+					UCataclysmSkillEffects::ApplyTagForDuration(
+						Enemy, Enemy, Haste, Effects::DirgeResonanceHasteSeconds);
+					++Hasted;
+				}
+			}
+			UE_LOG(LogCataclysm, Log,
+				   TEXT("Dirge Resonance: the crescendo hastes %d creature(s) for %.0f s"),
+				   Hasted, Effects::DirgeResonanceHasteSeconds);
+		}
+	}
+
+	// THE PANEL SHOWS WHOLE SECONDS, so it is refreshed when that second changes.
+	const bool bHasted = DirgeResonanceHastedUntilSeconds > Now;
+	const int32 Shown = FMath::CeilToInt(bHasted
+		? DirgeResonanceHastedUntilSeconds - Now
+		: Effects::DirgeResonanceEverySeconds - DirgeResonanceSecondsSinceLast);
+	const int32 Signed = bHasted ? -Shown : Shown;
+	if (Signed != DirgeResonanceShownSeconds)
+	{
+		DirgeResonanceShownSeconds = Signed;
+		RefreshFloorModifierPanel();
 	}
 }
 
@@ -5358,6 +5428,22 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 										   DivineResurgenceFallen, Placed, ComesAt));
 	}
 
+	// AND WHEN THE DIRGE NEXT CRESCENDOS, OR HOW LONG ITS HASTE HAS LEFT. Issues #1820 and
+	// #41. The panel is the rule's only sign: there is no audio for the music.
+	const FName Dirge(Effects::DirgeResonanceKey);
+	if (FloorBrief.Modifiers.Contains(Dirge))
+	{
+		const UWorld* World = GetWorld();
+		const float Now = World ? World->GetTimeSeconds() : 0.0f;
+		Counting.Add(Dirge,
+					 DirgeResonanceHastedUntilSeconds > Now
+						 ? FString::Printf(TEXT("dirge: enemies hasted, %d s left"),
+										   FMath::CeilToInt(DirgeResonanceHastedUntilSeconds - Now))
+						 : FString::Printf(TEXT("dirge: crescendo in %d s"),
+										   FMath::CeilToInt(Effects::DirgeResonanceEverySeconds
+															- DirgeResonanceSecondsSinceLast)));
+	}
+
 	// AND HOW FAR THE PLAYER IS FROM OPENING THE STAIRS. Issues #1820 and #41. The target
 	// is the current one: it rises when creatures arrive and falls when one dies to
 	// anything but the player.
@@ -7156,6 +7242,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND BLOOD GATES FORGETS THE PLAYER'S KILLS: each floor's stairs are sealed
 		// afresh. Issues #1820 and #41.
 		BloodGatesSlain = 0;
+
+		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
+		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already
+		// granted runs out on its own.
+		DirgeResonanceSecondsSinceLast = 0.0f;
+		DirgeResonanceHastedUntilSeconds = -1.0f;
+		DirgeResonanceShownSeconds = -1;
 
 		// AND JUDGMENT ZONES FORGETS EVERYTHING, which is the whole of its state.
 		// Issues #1820 and #41. The zones themselves are actors on the floor being left

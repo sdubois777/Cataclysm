@@ -1381,6 +1381,18 @@ private:
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
+	 * Dirge Resonance: move the floor's clock a beat, and at a crescendo give every living
+	 * creature on the floor `Status.Buff.Commander` for the row's ten seconds. Issues
+	 * #1820 and #41.
+	 *
+	 * THE CLOCK COUNTS BEATS, as the Edict of Silence's does, so a cycle is ninety seconds
+	 * of the floor being played. The haste itself runs on the world's clock, because the
+	 * status is a gameplay effect with a duration. Refreshes the floor panel when the
+	 * whole second it shows changes, and not four times a second.
+	 */
+	void StepDirgeResonance();
+
+	/**
 	 * Call in an artillery strike, and land the one already called.
 	 *
 	 * TWO THINGS IN ONE BEAT STEP, AND THEY NEVER BOTH HAPPEN. While a circle is
@@ -2251,6 +2263,15 @@ private:
 	float EdictOfSilenceSecondsSinceLast = 0.0f;
 	float EdictOfSilencedUntilSeconds = -1.0f;
 	float EdictOfSilenceLockApplied = 0.0f;
+
+	/**
+	 * Dirge Resonance: the beat's clock since the last crescendo, when the last one's haste
+	 * ends on the world's clock, and the whole second the panel last showed. All of it is
+	 * the floor's and goes at the stairs.
+	 */
+	float DirgeResonanceSecondsSinceLast = 0.0f;
+	float DirgeResonanceHastedUntilSeconds = -1.0f;
+	int32 DirgeResonanceShownSeconds = -1;
 
 	/**
 	 * The circle on the ground, and how long it has been there.

@@ -21539,4 +21539,258 @@ bool FCataclysmBloodGatesLastFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Death_Dirge_Resonance. Issues #1820 and #41.
+//
+// "Distant funeral music plays; when it crescendos, all enemies gain haste and fear
+// immunity for 10 seconds." Every ninety seconds of the floor's beat, every living
+// creature gains Status.Buff.Commander for ten seconds. Rulings under the owner's
+// delegation, 2026-09-23.
+//
+// EACH TEST MEASURES THE SPEEDS, NOT THE TAG. A creature's attack interval and walk speed
+// come from `ACataclysmEnemyCharacter::SpeedMultiplier`, not from the speed attributes,
+// so a tag that reached nothing would pass a test that only looked for the tag. The
+// figure 1.2 is written out -- Status.Buff.Commander is "20% increased movement speed
+// and attack speed" -- rather than read from the creature's own constant.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where the dirge hastes the floor. Issues #1820, #41. */
+	const FName DirgeResonance(UCataclysmDungeonModifierEffects::DirgeResonanceKey);
+
+	/** A floor carrying the row, emptied, with every Imp a Common. */
+	ACataclysmDungeonGameMode* AFloorCarryingTheDirgeRow(
+		FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+
+		Mode->DungeonModifiers = {DirgeResonance};
+		Mode->FloorNumber = 1;
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestNotNull(TEXT("the floor was built"), Mode->BuildFloor())
+			|| !Test.TestTrue(TEXT("carrying the row"),
+							  Mode->FloorBrief.Modifiers.Contains(DirgeResonance)))
+		{
+			return nullptr;
+		}
+
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString DirgePanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(DirgeResonance);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+
+	/** A creature's two speeds as the game reads them: attack interval and walk speed. */
+	struct FCreatureSpeeds
+	{
+		float Interval = 0.0f;
+		float Walk = 0.0f;
+	};
+
+	FCreatureSpeeds SpeedsOf(ACataclysmEnemyCharacter* Creature)
+	{
+		// THE WALK SPEED IS PUT RIGHT FIRST, which the creature's own tick would do on
+		// its next frame; a test world does not tick actors.
+		Creature->RefreshWalkSpeed();
+		FCreatureSpeeds Speeds;
+		Speeds.Interval = Creature->SecondsBetweenAttacks();
+		Speeds.Walk = Creature->GetCharacterMovement()->MaxWalkSpeed;
+		return Speeds;
+	}
+
+	/** Whether these speeds are the unhasted ones, 20% faster on both. */
+	bool IsHastedFrom(FAutomationTestBase& Test, const TCHAR* Who,
+					  const FCreatureSpeeds& Now, const FCreatureSpeeds& Before)
+	{
+		const bool bInterval = Test.TestEqual(
+			FString::Printf(TEXT("%s attacks 20%% faster"), Who),
+			Now.Interval, Before.Interval / 1.2f, 0.0001f);
+		const bool bWalk = Test.TestEqual(
+			FString::Printf(TEXT("%s walks 20%% faster"), Who),
+			Now.Walk, Before.Walk * 1.2f, 0.01f);
+		return bInterval && bWalk;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDirgeCrescendoTest,
+	"Cataclysm.DungeonModifierEffects.TheDirgeCrescendoAtNinetySecondsHastesEveryCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDirgeCrescendoTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDirgeRow(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// TWO CREATURES, ONE OF THEM MARKED: "all enemies" includes the floor's risen dead.
+	ACataclysmEnemyCharacter* Plain = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Marked = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature"), Plain) || !TestNotNull(TEXT("a marked creature"), Marked))
+	{
+		return false;
+	}
+	Marked->bRisenFromTheDead = true;
+
+	const FCreatureSpeeds PlainBefore = SpeedsOf(Plain);
+	const FCreatureSpeeds MarkedBefore = SpeedsOf(Marked);
+	if (!TestTrue(FString::Printf(TEXT("both speeds are something to scale: %.4f s, %.1f cm/s"),
+								  PlainBefore.Interval, PlainBefore.Walk),
+				  PlainBefore.Interval > 0.0f && PlainBefore.Walk > 0.0f))
+	{
+		return false;
+	}
+
+	// JUST SHORT OF NINETY SECONDS: nothing yet, which is the control.
+	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds) - 1);
+	TestEqual(TEXT("no haste before the crescendo"), SpeedsOf(Plain).Interval,
+			  PlainBefore.Interval, 0.0001f);
+	TestEqual(TEXT("and the panel counts down to it"), DirgePanelLine(Mode),
+			  FString(TEXT("dirge: crescendo in 1 s")));
+
+	// AND THE CRESCENDO.
+	Beat(Mode, 1);
+	IsHastedFrom(*this, TEXT("the creature"), SpeedsOf(Plain), PlainBefore);
+	IsHastedFrom(*this, TEXT("the marked creature"), SpeedsOf(Marked), MarkedBefore);
+	TestEqual(TEXT("the panel shows the haste"), DirgePanelLine(Mode),
+			  FString(TEXT("dirge: enemies hasted, 10 s left")));
+	return true;
+}
+
+// TEN SECONDS OF HASTE, AND THE NEXT CRESCENDO NINETY SECONDS AFTER THE LAST.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDirgeCycleTest,
+	"Cataclysm.DungeonModifierEffects.TheDirgeHasteLastsTenSecondsAndComesAgainNinetyLater",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDirgeCycleTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDirgeRow(*this, World, Player);
+	ACataclysmEnemyCharacter* Creature =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a creature on the floor"), Creature))
+	{
+		return false;
+	}
+	const FCreatureSpeeds Before = SpeedsOf(Creature);
+
+	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds));
+	if (!IsHastedFrom(*this, TEXT("at the first crescendo the creature"), SpeedsOf(Creature), Before))
+	{
+		return false;
+	}
+
+	// THE WORLD'S CLOCK MOVES ELEVEN SECONDS, with no beat, so the haste runs out on its
+	// own duration and the floor's cadence does not move.
+	CataclysmTestWorld::RunClock(World, 11.0f);
+	TestEqual(TEXT("after ten seconds it attacks at its own pace again"),
+			  SpeedsOf(Creature).Interval, Before.Interval, 0.0001f);
+	TestEqual(TEXT("and walks at its own speed"), SpeedsOf(Creature).Walk, Before.Walk, 0.01f);
+
+	// THE NEXT CRESCENDO IS NINETY SECONDS OF BEAT AFTER THE LAST, NOT SOONER.
+	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds) - 1);
+	TestEqual(TEXT("no second haste before ninety more seconds"), SpeedsOf(Creature).Interval,
+			  Before.Interval, 0.0001f);
+	Beat(Mode, 1);
+	IsHastedFrom(*this, TEXT("at the second crescendo the creature"), SpeedsOf(Creature), Before);
+	return true;
+}
+
+// ONLY WHAT IS ON THE FLOOR AT THE CRESCENDO: a creature that arrives in the ten seconds
+// waits for the next one. And a floor without the row hastes nothing.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDirgeArrivalTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureArrivingAfterTheCrescendoIsNotHasted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDirgeArrivalTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AFloorCarryingTheDirgeRow(*this, World, Player);
+	ACataclysmEnemyCharacter* There =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a creature on the floor"), There))
+	{
+		return false;
+	}
+	const FCreatureSpeeds ThereBefore = SpeedsOf(There);
+
+	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds));
+	if (!IsHastedFrom(*this, TEXT("the creature that was there"), SpeedsOf(There), ThereBefore))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Late = PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature arriving after it"), Late))
+	{
+		return false;
+	}
+	const FCreatureSpeeds LateBefore = SpeedsOf(Late);
+	Beat(Mode, 4);
+	TestEqual(TEXT("the late arrival attacks at its own pace"), SpeedsOf(Late).Interval,
+			  LateBefore.Interval, 0.0001f);
+	TestEqual(TEXT("and walks at its own speed"), SpeedsOf(Late).Walk, LateBefore.Walk, 0.01f);
+
+	// AND A FLOOR WITHOUT THE ROW, beaten past ninety seconds, hastes nothing.
+	Mode->DungeonModifiers = {Starvation};
+	Mode->BuildFloor();
+	Mode->ClearFloorEnemies();
+	ACataclysmEnemyCharacter* Elsewhere =
+		PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature on a floor without the row"), Elsewhere))
+	{
+		return false;
+	}
+	const FCreatureSpeeds ElsewhereBefore = SpeedsOf(Elsewhere);
+	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds) + 4);
+	TestEqual(TEXT("a floor without the row hastes nothing"), SpeedsOf(Elsewhere).Interval,
+			  ElsewhereBefore.Interval, 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
