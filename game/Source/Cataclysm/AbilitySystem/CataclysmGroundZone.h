@@ -186,6 +186,14 @@ public:
 				   FName InDamageType);
 
 	/**
+	 * Make the first sweep deal this to each enemy inside instead of
+	 * `DamagePerTick`. Issue #1686: "Persistent AOE zones deal 20%-35% less
+	 * damage on initial placement". Every later sweep is unchanged, and a
+	 * curse or a heal the zone carries is not damage and is untouched.
+	 */
+	void DealsOnItsFirstSweep(float Damage) { FirstSweepDamage = FMath::Max(0.0f, Damage); }
+
+	/**
 	 * Also make this patch heal whoever left it faster while they stand in it.
 	 *
 	 * ONE ROW ASKS. The Fist's Blood Pyre: "standing in your own pyre does you
@@ -303,6 +311,15 @@ public:
 	/** What one tick deals to each enemy inside. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
 	float DamagePerTick = 0.0f;
+
+	/**
+	 * What the FIRST sweep deals to each enemy inside, or negative for the
+	 * same as every other sweep. Issue #1686. Set by the skill that left the
+	 * zone, from its caster's first-sweep share; a creature's zone and a
+	 * floor rule's never set it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")
+	float FirstSweepDamage = -1.0f;
 
 	/** How many times it has swept. Read by tests; there is nothing else to see. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Ground Zone")

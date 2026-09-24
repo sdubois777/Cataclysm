@@ -40,6 +40,8 @@
 #include "HAL/IConsoleManager.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmGroundZone.h"
+#include "EngineUtils.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -2629,6 +2631,85 @@ namespace CataclysmStatExemptionTest
 			Cut, Plain * 0.5f, 0.01f);
 	}
 
+	/**
+	 * `zone_first_sweep_damage` is read by
+	 * `UCataclysmSkillTemplate::LeaveGroundAlong` where a zone is priced, and
+	 * handed to the zone as its first sweep's figure. Issue #1686.
+	 *
+	 * TWO CASTERS, each in its own world, blink and leave ground; one carries
+	 * the stat at its base of 100 with 50% less on it. Its zone's first sweep
+	 * must be half a tick, where the plain caster's is a whole one.
+	 */
+	void ProbeZoneFirstSweepDamage(FAutomationTestBase& Test)
+	{
+		const auto FirstSweepShare = [&Test](bool bCarries) -> float
+		{
+			UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return -1.0f;
+			}
+			ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+			FScopedSwinger Caster(World, FVector::ZeroVector);
+			if (bCarries)
+			{
+				FCataclysmStatModifier Half;
+				Half.Bucket = ECataclysmStatBucket::More;
+				Half.Source = ECataclysmModifierSource::Enchantment;
+				Half.Value = -50.0f;
+				TMap<FName, FCataclysmStatInputs> Inputs;
+				FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+					FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat));
+				Line.Base = UCataclysmDamageCalculation::NormalZoneFirstSweepDamage;
+				Line.Modifiers = {Half};
+				Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+			}
+
+			const FGameplayAbilitySpecHandle Handle =
+				Caster.AbilitySystem->GiveAbilityInSlot(
+					UCataclysmMovementSkill::StaticClass(),
+					ECataclysmAbilitySlot::Movement, /*Level=*/100, Caster.Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid()
+				? Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmMovementSkill* Slip = Spec
+				? Cast<UCataclysmMovementSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (!Slip)
+			{
+				return -1.0f;
+			}
+			Slip->SkillName = TEXT("A blink leaving ground");
+			Slip->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Mode=Blink; Range=8; Radius=3.5; GroundRadius=3.5; "
+					 "GroundDuration=6; GroundPercent=16.7"));
+			Slip->SkillTags = UCataclysmSkillShapes::TagsFromCell(
+				TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.Persistent"));
+			if (!Caster.AbilitySystem->TryActivateAbility(Handle))
+			{
+				return -1.0f;
+			}
+
+			for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+			{
+				if (It->DamagePerTick > 0.0f)
+				{
+					return It->FirstSweepDamage / It->DamagePerTick;
+				}
+			}
+			return -1.0f;
+		};
+
+		const float Plain = FirstSweepShare(false);
+		const float Cut = FirstSweepShare(true);
+		if (!Test.TestTrue(TEXT("both casters left ground that deals something"),
+						   Plain > 0.0f && Cut > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("the plain caster's first sweep is a whole tick"), Plain, 1.0f, 0.001f);
+		Test.TestEqual(TEXT("and the carrying caster's is half of one"), Cut, 0.5f, 0.001f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -2684,6 +2765,7 @@ namespace CataclysmStatExemptionTest
 									&ProbeMinionsDrawNearbyEnemiesMinimum},
 			{TEXT("non_critical_damage"), &ProbeNonCriticalDamage},
 			{TEXT("projectile_later_hit_damage"), &ProbeProjectileLaterHitDamage},
+			{TEXT("zone_first_sweep_damage"), &ProbeZoneFirstSweepDamage},
 		};
 		return Made;
 	}

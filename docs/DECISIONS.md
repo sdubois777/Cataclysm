@@ -1442,6 +1442,104 @@ rows. The tests use hand-made rows.
 
 ---
 
+## 2026-09-23 — A skill's persistent zone can deal less on its first sweep, and "Persistent AOE zones deal 20%-35% less damage on initial placement" does it
+
+**Affects:**
+- `UCataclysmDamageCalculation`: `ZoneFirstSweepDamageStat` (`zone_first_sweep_damage`) and
+  `NormalZoneFirstSweepDamage` (100)
+- `ACataclysmGroundZone`: `FirstSweepDamage`, `DealsOnItsFirstSweep`, and `Sweep`
+- `UCataclysmSkillTemplate::LeaveGroundAlong`, which asks for the stat where the zone is priced
+- `UCataclysmPlayerClassStats`: the stat's base in `EngineSuppliedBases`, and its name in
+  `StatsWithNoAttribute`
+- `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`
+- issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686) (row N046)
+
+### "INITIAL PLACEMENT" IS READ AS THE FIRST SWEEP
+
+**A zone deals nothing at the instant it is placed.** `ACataclysmGroundZone` sets its sweep timer
+with a first delay of one tick, and the source line gives the reason: "First sweep a full tick in
+rather than at once, so that a zone left by a skill that already hit everyone standing there does
+not hit them twice in the same instant." Read literally, the row reduces damage that is never dealt,
+so it would grant nothing.
+
+**Ruled by the coordinating session on 2026-09-23, under the owner's delegation:**
+- The zone's first sweep, one second after placement, deals the row's share: 65% at the top of the
+  range. Every later sweep is unchanged.
+- Rejected: the placing skill's own hit, because the sentence does not say every hit of the skill
+  is reduced.
+- Rejected as unnecessary: asking the owner to reword the row.
+
+### WHAT WAS BUILT
+
+- `LeaveGroundAlong` prices a zone's tick once, with the caster's modifiers. It now also asks the
+  caster, with the skill's tags, for `zone_first_sweep_damage`, and tells the zone its first sweep's
+  figure: the tick times that share.
+- `Sweep` deals that figure while `TicksElapsed` is still nought.
+- **Only a skill's zone asks.** A creature's zone and a floor rule's are spawned directly and never
+  told a first-sweep figure, so they sweep the same every time. A test checks this.
+- Its base is 100, supplied by `EngineSuppliedBases`, for the reason the two stats before it give.
+
+### HOW BIG IT IS, AS A PLAY-TEST POINT FOR THE OWNER
+
+A patch's `GroundPercent` is set so that the whole patch is worth one hit of its skill. One sweep is
+therefore 1/GroundDuration of a hit, and 35% of one sweep is:
+- **3.5% of one hit on a 10 second patch**;
+- **11.7% on a 3 second patch**.
+
+That is a small drawback for its weight-4 band. The design sized the sentence, and this entry records
+its size so the owner can judge it in play.
+
+### THE JUDGEMENTS, UNDER THE OWNER'S DELEGATION
+
+- **A floor-lasting zone, and an Emberhurl trail along a flight path, are each one zone with one
+  first sweep.** Each is one `ACataclysmGroundZone`.
+- **A curse or a heal the zone carries is not damage, and is unchanged.** The Wand's Foul Wake still
+  lays Shred on its first sweep, and Blood Pyre still heals its owner.
+
+### THE ROW
+
+| Enchantment | Row |
+| :-- | :-- |
+| Persistent AOE zones deal 20%-35% less damage on initial placement | `zone_first_sweep_damage`, more -20 to -35 |
+
+### Run
+
+The row was written into the design workbook in this window, at row 307 of the Enchantment Effects
+sheet, and every step matched its registration.
+
+- **The build**, on `b01527f5`: "Build: Succeeded - 29 actions, 26 files compiled".
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "85 tests
+  performed, 83 succeeded, 2 failed", the two registered:
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt`, with 1 row only in the CSV;
+  - `TheZoneFirstSweepRowLeavesAFirstSweep65PercentOfATick`: "Expected 'worn, a zone's first sweep
+    deals 65% of a tick' to be 65.000000, but it was 100.000000".
+- **The Python run of record on `b01527f5`** ran beside the build and the test run above, because
+  neither writes a file it reads. The asset rebuild and the proofs waited for its final line, "1
+  failed, 5416 passed, 8 skipped", the stale hash as registered.
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`e078cda9`, 305 rows to 306). The Python asset-freshness tests then passed, 18 of 18.
+- **Nothing else ran beside the whole suite.** The rehearsal of the next row's window ran Python
+  suites in two copies outside this worktree, which finished at 20:07:48Z. The whole suite below ran
+  from 20:09:06Z to 20:14:36Z, so the two did not overlap.
+- **The whole suite on `e078cda9`:** "2357 tests performed, 2357 succeeded, 0 failed", as registered,
+  with every declared test reported.
+- **Three guard proofs.** Each failed exactly the registered tests and assertions with the break in,
+  and none once restored. Each broken run's log was copied before the restored run overwrote it:
+  - **the first sweep always dealing the tick** (`TicksElapsed == 0 &&` made `false &&`) failed
+    `ASkillsZoneDealsTheFirstSweepShareOnItsFirstSweepAlone`, 1 of 1, on one assertion: "Expected
+    'carrying the row: and the first deals the share of one' to be 10.857031, but it was 16.703125";
+  - **the share applied to every sweep** (`TicksElapsed == 0 && ` removed) failed the same test, 1
+    of 1, on two: "Expected 'carrying the row: the second sweep deals a whole tick' to be 16.700001,
+    but it was 10.851562" and "Expected 'carrying the row: and the first deals the share of one' to
+    be 7.053515, but it was 10.851562";
+  - **the figure never passed to the zone** (`Zone->DealsOnItsFirstSweep(...)` made
+    `(void)FirstSweepShare;`) failed that test and `EveryStatWithNoAttributeIsActuallyRead`, 2 of 4:
+    "Expected 'carrying the row: the zone was told its first sweep' to be 10.855000, but it was
+    -1.000000", the same for 'without the row' against 16.700001, the first-sweep share line above,
+    and "Expected 'both casters left ground that deals something' to be true".
+
+---
+
 ## 2026-09-23 — Starvation Curse: each floor adds a 5% slow or 5% less maximum health, until a floor's boss or the player dies
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

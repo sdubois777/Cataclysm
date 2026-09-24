@@ -2673,6 +2673,21 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 		{
 			Zone->AlsoHealItsOwner(Params.OwnGroundRegenPercent / 100.0f);
 		}
+
+		// AND ITS FIRST SWEEP MAY DEAL LESS. Issue #1686: "Persistent AOE zones
+		// deal 20%-35% less damage on initial placement", read as the first
+		// sweep because a zone deals nothing at the instant it is placed. Asked
+		// here, with the skill's tags, for the reason the tick itself is priced
+		// here: a zone outlives the skill that left it.
+		if (const UCataclysmAbilitySystemComponent* Asking =
+				Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem))
+		{
+			const float FirstSweepShare = Asking->StatForSkill(
+				FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat),
+				SkillTags,
+				UCataclysmDamageCalculation::NormalZoneFirstSweepDamage);
+			Zone->DealsOnItsFirstSweep(PerTick * FMath::Max(0.0f, FirstSweepShare) / 100.0f);
+		}
 	}
 
 	return Zone;

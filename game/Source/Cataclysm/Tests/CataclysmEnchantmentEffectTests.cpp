@@ -4755,4 +4755,52 @@ bool FCataclysmProjectileLaterHitRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmZoneFirstSweepRowTest,
+	"Cataclysm.Enchantments.TheZoneFirstSweepRowLeavesAFirstSweep65PercentOfATick",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Persistent AOE zones deal 20%-35% less damage on initial placement", worn,
+ * leaves the wearer's first-sweep share at 65: the base of 100 the stat fold
+ * supplies, and 35% less at the top of the range. Issue #1686. With nothing
+ * worn the share is 100, the line that fails if the base were lost.
+ */
+bool FCataclysmZoneFirstSweepRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FName Share(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat);
+	const auto Read = [&]()
+	{
+		return ASC->StatForSkill(Share, FGameplayTagContainer(),
+								 UCataclysmDamageCalculation::NormalZoneFirstSweepDamage);
+	};
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Persistent_AOE_zones_deal_20_35_less_damage_on")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	TestEqual(TEXT("worn, a zone's first sweep deals 65% of a tick"), Read(), 65.0f, 0.01f);
+
+	Wearer.Equipment->UnequipEverything();
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(TEXT("and with nothing worn, all of one"), Read(), 100.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

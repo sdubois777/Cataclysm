@@ -23,6 +23,8 @@ const TCHAR* UCataclysmDamageCalculation::NonCriticalDamageStat =
 	TEXT("non_critical_damage");
 const TCHAR* UCataclysmDamageCalculation::ProjectileLaterHitDamageStat =
 	TEXT("projectile_later_hit_damage");
+const TCHAR* UCataclysmDamageCalculation::ZoneFirstSweepDamageStat =
+	TEXT("zone_first_sweep_damage");
 const TCHAR* UCataclysmDamageCalculation::DebuffDamageSuppressedStat =
 	TEXT("debuff_damage_suppressed");
 const TCHAR* UCataclysmDamageCalculation::ShieldAbsorbsDamageOverTimeStat =

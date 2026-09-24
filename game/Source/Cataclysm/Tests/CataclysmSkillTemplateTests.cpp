@@ -16883,4 +16883,151 @@ bool FCataclysmSkillCastFromWardAuraTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmFirstSweepTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** "Persistent AOE zones deal 35% less damage on initial placement" on a
+	 *  fighter: the base of 100 the stat fold supplies, and 35% less. */
+	void GiveTheFirstSweepShare(FScopedFighter& Who)
+	{
+		FCataclysmStatModifier Less;
+		Less.Bucket = ECataclysmStatBucket::More;
+		Less.Source = ECataclysmModifierSource::Enchantment;
+		Less.Value = -35.0f;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+			FName(UCataclysmDamageCalculation::ZoneFirstSweepDamageStat));
+		Line.Base = UCataclysmDamageCalculation::NormalZoneFirstSweepDamage;
+		Line.Modifiers = {Less};
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmZoneFirstSweepTest,
+	"Cataclysm.Skills.ASkillsZoneDealsTheFirstSweepShareOnItsFirstSweepAlone",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Persistent AOE zones deal 20%-35% less damage on initial placement", at 35%
+ * less. Issue #1686. A zone deals nothing at the instant it is placed, so the
+ * row is read as its FIRST SWEEP, ruled under the owner's delegation on
+ * 2026-09-23: that sweep deals 65% of a tick and the next deals all of one.
+ *
+ * AND A CASTER WITHOUT THE ROW keeps every sweep whole. The standing enemy is
+ * put inside the patch only once the skill has finished, so the blink's own
+ * hit cannot reach it and every figure below is the zone's.
+ */
+bool FCataclysmZoneFirstSweepTest::RunTest(const FString&)
+{
+	using namespace CataclysmFirstSweepTest;
+
+	const auto Run = [this](bool bCarries, const TCHAR* What)
+	{
+		UWorld* World = MakeWorld();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedFighter Caster(World, FVector::ZeroVector);
+		FScopedFighter Standing(World, FVector(50 * M, 0, 0));
+		if (bCarries)
+		{
+			GiveTheFirstSweepShare(Caster);
+		}
+
+		UCataclysmMovementSkill* Slip = GrantSkill<UCataclysmMovementSkill>(
+			Caster, ECataclysmAbilitySlot::Movement,
+			TEXT("Mode=Blink; Range=8; Radius=3.5; Burn=1; GroundRadius=3.5; "
+				 "GroundDuration=6; GroundPercent=16.7"),
+			TEXT("A blink leaving ground"),
+			TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.Persistent"));
+		if (!Slip || !TestTrue(FString::Printf(TEXT("%s: it activates"), What),
+							   Activate(Caster, Slip)))
+		{
+			return;
+		}
+
+		ACataclysmGroundZone* Patch = nullptr;
+		for (TActorIterator<ACataclysmGroundZone> It(World); It && !Patch; ++It)
+		{
+			Patch = *It;
+		}
+		if (!TestNotNull(FString::Printf(TEXT("%s: it left ground"), What), Patch)
+			|| !TestTrue(FString::Printf(TEXT("%s: the ground deals something"), What),
+						 Patch->DamagePerTick > 0.0f))
+		{
+			return;
+		}
+
+		const float Share = bCarries ? 0.65f : 1.0f;
+		TestEqual(FString::Printf(TEXT("%s: the zone was told its first sweep"), What),
+			Patch->FirstSweepDamage, Patch->DamagePerTick * Share, 0.001f);
+
+		Standing.Actor->SetActorLocation(Patch->GetActorLocation());
+		float Before = Standing.Health();
+		Patch->Sweep();
+		const float FirstSweep = Before - Standing.Health();
+		Before = Standing.Health();
+		Patch->Sweep();
+		const float SecondSweep = Before - Standing.Health();
+
+		if (!TestTrue(FString::Printf(TEXT("%s: both sweeps found the enemy"), What),
+					  FirstSweep > 0.0f && SecondSweep > 0.0f))
+		{
+			return;
+		}
+		TestEqual(FString::Printf(TEXT("%s: the second sweep deals a whole tick"), What),
+			SecondSweep, Patch->DamagePerTick, 0.01f);
+		TestEqual(FString::Printf(TEXT("%s: and the first deals the share of one"), What),
+			FirstSweep, SecondSweep * Share, 0.01f);
+	};
+
+	Run(/*bCarries=*/true, TEXT("carrying the row"));
+	Run(/*bCarries=*/false, TEXT("without the row"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmZoneNoSkillFirstSweepTest,
+	"Cataclysm.Skills.AZoneNoSkillLeftSweepsTheSameEveryTime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A zone spawned directly -- the way a creature's and a floor rule's are -- is
+ * never told a first-sweep figure, so its first sweep deals the same as every
+ * other. Issue #1686.
+ */
+bool FCataclysmZoneNoSkillFirstSweepTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Owner(World, FVector::ZeroVector);
+	FScopedFighter Standing(World, FVector(5 * M, 0, 0));
+
+	ACataclysmGroundZone* Zone = ACataclysmGroundZone::Spawn(
+		Owner.Actor, FVector(5 * M, 0, 0), /*RadiusCm=*/200.0f, /*Duration=*/5.0f,
+		/*DamagePerTick=*/30.0f, NAME_None);
+	if (!TestNotNull(TEXT("the zone was spawned"), Zone))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it holds no first-sweep figure"), Zone->FirstSweepDamage < 0.0f);
+
+	float Before = Standing.Health();
+	Zone->Sweep();
+	const float FirstSweep = Before - Standing.Health();
+	Before = Standing.Health();
+	Zone->Sweep();
+	const float SecondSweep = Before - Standing.Health();
+
+	if (TestTrue(TEXT("both sweeps found the enemy"), FirstSweep > 0.0f))
+	{
+		TestEqual(TEXT("and the first deals the same as the second"),
+			FirstSweep, SecondSweep, 0.001f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

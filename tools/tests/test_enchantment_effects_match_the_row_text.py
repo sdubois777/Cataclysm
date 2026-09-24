@@ -425,8 +425,10 @@ JUDGED_NUMBERS = {
 #: issue #1686, from 303 over 234: one row on one enchantment.
 #: AND 305 OVER 236 SINCE THE PROJECTILE LATER-HIT DRAWBACK,
 #: issue #1686, from 304 over 235: one row on one enchantment.
-AUTHORED_ROWS = 305
-AUTHORED_ENCHANTMENTS = 236
+#: AND 306 OVER 237 SINCE THE ZONE FIRST-SWEEP DRAWBACK,
+#: issue #1686, from 305 over 236: one row on one enchantment.
+AUTHORED_ROWS = 306
+AUTHORED_ENCHANTMENTS = 237
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
