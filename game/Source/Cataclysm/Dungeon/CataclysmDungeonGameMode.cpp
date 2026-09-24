@@ -3037,6 +3037,37 @@ void ACataclysmDungeonGameMode::StepDirgeResonance()
 	}
 }
 
+void ACataclysmDungeonGameMode::ChooseTheScarceSlot(
+	UCataclysmEquipmentComponent* Equipment) const
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!Equipment)
+	{
+		return;
+	}
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::ScarcityKey)))
+	{
+		Equipment->SetDisabledSlot(ECataclysmGearSlot::Count);
+		return;
+	}
+
+	// THE NON-WEAPON SLOTS THAT HOLD AN ITEM, in the order the slots are listed, so the
+	// seeded pick lands on the same slot for the same gear.
+	TArray<ECataclysmGearSlot> Worn;
+	for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::AllSlots())
+	{
+		if (!UCataclysmGearSlots::IsWeaponSlot(Slot) && Equipment->EquippedAt(Slot))
+		{
+			Worn.Add(Slot);
+		}
+	}
+
+	const int32 Pick = Effects::ScarcityPick(Worn.Num(), ChooseSeed(), FloorBrief.FloorNumber);
+	Equipment->SetDisabledSlot(Worn.IsValidIndex(Pick) ? Worn[Pick]
+													   : ECataclysmGearSlot::Count);
+}
+
 void ACataclysmDungeonGameMode::StepArtilleryStrike(
 	ACataclysmPlayerCharacter* Player,
 	UCataclysmAbilitySystemComponent* AbilitySystem)
@@ -5428,6 +5459,25 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 										   DivineResurgenceFallen, Placed, ComesAt));
 	}
 
+	// AND WHICH SLOT SCARCITY HAS SWITCHED OFF, named. Issues #1820 and #41. The gear
+	// screen marks the same slot.
+	const FName Scarcity(Effects::ScarcityKey);
+	if (FloorBrief.Modifiers.Contains(Scarcity))
+	{
+		const UWorld* World = GetWorld();
+		const APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		const ACataclysmPlayerCharacter* Player =
+			Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+		const UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+		const ECataclysmGearSlot Off =
+			Equipment ? Equipment->GetDisabledSlot() : ECataclysmGearSlot::Count;
+		Counting.Add(Scarcity,
+					 Off == ECataclysmGearSlot::Count
+						 ? FString(TEXT("scarcity: nothing worn to switch off"))
+						 : FString::Printf(TEXT("scarcity: %s gives nothing on this floor"),
+										   *UCataclysmGearSlots::DisplayName(Off)));
+	}
+
 	// AND WHEN THE DIRGE NEXT CRESCENDOS, OR HOW LONG ITS HASTE HAS LEFT. Issues #1820 and
 	// #41. The panel is the rule's only sign: there is no audio for the music.
 	const FName Dirge(Effects::DirgeResonanceKey);
@@ -7074,6 +7124,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 	if (ACataclysmPlayerCharacter* Player =
 			Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr)
 	{
+		// SCARCITY FIRST, so the attribute refresh inside `ApplyFloorRulesTo` already
+		// leaves the switched-off slot out. Issues #1820 and #41.
+		ChooseTheScarceSlot(Player->GetEquipment());
+
 		ApplyFloorRulesTo(
 			Cast<UCataclysmAbilitySystemComponent>(Player->GetAbilitySystemComponent()),
 			Player->GetEquipment());

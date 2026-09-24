@@ -254,6 +254,21 @@ public:
 		TArray<FCataclysmPoolAction>* Actions = nullptr) const;
 
 	/**
+	 * The slot a floor rule has switched off, or `ECataclysmGearSlot::Count` for none.
+	 * `Famine_Scarcity` sets it as each floor begins. Issues #1820 and #41.
+	 *
+	 * GATHERMODIFIERS TREATS THE SLOT AS EMPTY, for the item's implicits and affixes and
+	 * for its enchantments, so it also stops counting towards a set's piece bonus. The
+	 * item stays worn and is drawn as worn. THE SLOT, NOT THE ITEM: whatever the player
+	 * moves into it gives nothing, and what they move out of it works again.
+	 *
+	 * NOT SAVED. It belongs to the floor, and the floor sets it again when it begins.
+	 * Setting it announces nothing; the caller refreshes the attributes.
+	 */
+	void SetDisabledSlot(ECataclysmGearSlot Slot) { DisabledSlot = Slot; }
+	ECataclysmGearSlot GetDisabledSlot() const { return DisabledSlot; }
+
+	/**
 	 * Which weapon type the character is holding, for the ability slots.
 	 *
 	 * WHY IT LIVES HERE. `UCataclysmWeaponSlotsComponent` fills the seven
@@ -406,6 +421,9 @@ private:
 	 */
 	UPROPERTY(SaveGame)
 	TArray<FCataclysmItem> Slots;
+
+	/** See `SetDisabledSlot`. Not a saved field. */
+	ECataclysmGearSlot DisabledSlot = ECataclysmGearSlot::Count;
 
 	/**
 	 * Puts the item in and reports what came out. Announces nothing.

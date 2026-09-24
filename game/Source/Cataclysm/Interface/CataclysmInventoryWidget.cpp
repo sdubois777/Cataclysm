@@ -548,7 +548,8 @@ void UCataclysmInventoryWidget::RefreshGear(
 			FScreen::BorderThicknessFor(AsCarried, Materials))));
 
 		Widgets.Label->SetText(FText::FromString(
-			UCataclysmGearPanel::LabelFor(GearSlot, Worn, Bases)));
+			UCataclysmGearPanel::LabelFor(GearSlot, Worn, Bases)
+			+ UCataclysmGearPanel::DisabledNoteFor(GearSlot, Equipment)));
 
 		// ONLY WHEN WHAT IS WORN HAS CHANGED, AND THAT IS THE FIX FOR #1192.
 		//

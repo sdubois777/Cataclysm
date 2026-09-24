@@ -77,6 +77,15 @@ FString UCataclysmGearPanel::LabelFor(ECataclysmGearSlot Slot,
 	return UCataclysmGearSlots::DisplayName(Slot);
 }
 
+FString UCataclysmGearPanel::DisabledNoteFor(
+	ECataclysmGearSlot Slot, const UCataclysmEquipmentComponent* Equipment)
+{
+	return Equipment && Slot != ECataclysmGearSlot::Count
+			&& Equipment->GetDisabledSlot() == Slot
+		? FString(TEXT(" (off this floor)"))
+		: FString();
+}
+
 FString UCataclysmGearPanel::HeaderTextFor(int32 Worn, int32 Slots)
 {
 	return FString::Printf(TEXT("Worn  %d / %d"), Worn, Slots);

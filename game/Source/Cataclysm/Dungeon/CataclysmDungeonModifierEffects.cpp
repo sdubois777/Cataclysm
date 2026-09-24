@@ -4,6 +4,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "Dungeon/CataclysmFloorBrief.h"
+#include "Dungeon/CataclysmFloorGenerator.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -102,6 +103,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::BloodGatesKey =
 
 const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 	TEXT("Death_Dirge_Resonance");
+
+const TCHAR* UCataclysmDungeonModifierEffects::ScarcityKey =
+	TEXT("Famine_Scarcity");
 
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
@@ -369,7 +373,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DeadRisingKey)
 		|| RowKey == FName(SufferingAuraKey)
 		|| RowKey == FName(BloodGatesKey)
-		|| RowKey == FName(DirgeResonanceKey))
+		|| RowKey == FName(DirgeResonanceKey)
+		|| RowKey == FName(ScarcityKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -543,6 +548,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(SufferingAuraKey),
 		FName(BloodGatesKey),
 		FName(DirgeResonanceKey),
+		FName(ScarcityKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1724,6 +1730,18 @@ int32 UCataclysmDungeonModifierEffects::BloodGatesOpenAt(int32 Placed)
 bool UCataclysmDungeonModifierEffects::BloodGatesAreOpen(int32 Slain, int32 Placed)
 {
 	return Slain >= BloodGatesOpenAt(Placed);
+}
+
+int32 UCataclysmDungeonModifierEffects::ScarcityPick(int32 Candidates, int32 DungeonSeed,
+													int32 FloorNumber)
+{
+	if (Candidates <= 0)
+	{
+		return INDEX_NONE;
+	}
+	FRandomStream Stream(FCataclysmFloorGenerator::SeedForFloor(
+		FCataclysmFloorGenerator::SeedForFloor(DungeonSeed, FloorNumber), ScarcitySalt));
+	return Stream.RandRange(0, Candidates - 1);
 }
 
 bool UCataclysmDungeonModifierEffects::DirgeResonanceIsDue(float SecondsSinceLast)

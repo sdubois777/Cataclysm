@@ -1393,6 +1393,13 @@ private:
 	void StepDirgeResonance();
 
 	/**
+	 * Famine Scarcity: switch one worn non-weapon slot off for this floor, or clear it on
+	 * a floor without the row. Issues #1820 and #41. Called as the floor's rules reach the
+	 * player, BEFORE the attributes are written, so the refresh that follows reads it.
+	 */
+	void ChooseTheScarceSlot(class UCataclysmEquipmentComponent* Equipment) const;
+
+	/**
 	 * Call in an artillery strike, and land the one already called.
 	 *
 	 * TWO THINGS IN ONE BEAT STEP, AND THEY NEVER BOTH HAPPEN. While a circle is

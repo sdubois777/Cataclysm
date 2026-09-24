@@ -48,6 +48,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Interface/CataclysmCreaturePanel.h"
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
+#include "Interface/CataclysmGearPanel.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
@@ -21790,6 +21791,297 @@ bool FCataclysmDirgeArrivalTest::RunTest(const FString& Parameters)
 	Beat(Mode, BeatsFor(Effects::DirgeResonanceEverySeconds) + 4);
 	TestEqual(TEXT("a floor without the row hastes nothing"), SpeedsOf(Elsewhere).Interval,
 			  ElsewhereBefore.Interval, 0.0001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Famine_Scarcity. Issues #1820 and #41.
+//
+// "At the start of each floor, a random equipment slot (excluding weapons) has its stats
+// and enchantments disabled for that floor." One worn non-weapon slot is switched off as
+// each floor begins; its item gives nothing and is no piece of a set. Rulings under the
+// owner's delegation, 2026-09-23.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the one where a worn slot gives nothing for a floor. Issues #1820, #41. */
+	const FName Scarcity(UCataclysmDungeonModifierEffects::ScarcityKey);
+
+	/** A worn item of this base, with a flat maximum-health affix at its top tier. */
+	FCataclysmItem ScarcityItemWithHealth(const TCHAR* Base)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+		FCataclysmRolledAffix Rolled;
+		Rolled.Affix = FName(TEXT("Stat_Flat_maximum_health"));
+		Rolled.Tier = UCataclysmItemValues::MaxAffixTier;
+		Rolled.Roll = 1.0f;
+		Item.Affixes.Add(Rolled);
+		return Item;
+	}
+
+	/** A worn item of this base carrying one enchantment pair, as a set piece does. */
+	FCataclysmItem ScarcitySetPiece(const TCHAR* Base, const TCHAR* Positive,
+									const TCHAR* Negative)
+	{
+		FCataclysmItem Item;
+		Item.Base = FName(Base);
+		FCataclysmRolledEnchantment Rolled;
+		Rolled.Positive = FName(Positive);
+		Rolled.Negative = FName(Negative);
+		Item.Enchantments.Add(Rolled);
+		Item.EnchantmentCount = 1;
+		return Item;
+	}
+
+	/** Put an item on, asserting it went where it was meant to. */
+	bool ScarcityWear(FAutomationTestBase& Test, UCataclysmEquipmentComponent* Equipment,
+					  const FCataclysmItem& Item, ECataclysmGearSlot Expected)
+	{
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Item, Removed, AlsoRemoved, Slot);
+		return Test.TestTrue(FString::Printf(TEXT("%s went on"), *Item.Base.ToString()),
+							 Slot == Expected && Equipment->EquippedAt(Expected) != nullptr);
+	}
+
+	/** How many modifiers the worn gear gives this stat. */
+	int32 ScarcityCount(const UCataclysmEquipmentComponent* Equipment, const TCHAR* Stat)
+	{
+		const TMap<FName, TArray<FCataclysmStatModifier>> Totals = Equipment->GatherModifiers();
+		const TArray<FCataclysmStatModifier>* Found = Totals.Find(FName(Stat));
+		return Found ? Found->Num() : 0;
+	}
+
+	/** What the floor panel says for this row, or a plain answer when it says nothing. */
+	FString ScarcityPanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+		const FString* Line = Counting.Find(Scarcity);
+		return Line ? *Line : FString(TEXT("no line"));
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScarcitySlotTest,
+	"Cataclysm.DungeonModifierEffects.ASwitchedOffSlotsItemGivesNoStats",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmScarcitySlotTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UCataclysmEquipmentComponent* Equipment =
+		NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
+	if (!ScarcityWear(*this, Equipment, ScarcityItemWithHealth(TEXT("Head_Helm")),
+					  ECataclysmGearSlot::Head))
+	{
+		return false;
+	}
+
+	const int32 Worn = ScarcityCount(Equipment, TEXT("max_health"));
+	if (!TestTrue(FString::Printf(TEXT("the helm's affix gives maximum health: %d"), Worn),
+				  Worn > 0))
+	{
+		return false;
+	}
+
+	// AN EMPTY SLOT SWITCHED OFF CHANGES NOTHING, which is the control.
+	Equipment->SetDisabledSlot(ECataclysmGearSlot::Boots);
+	TestEqual(TEXT("switching off an empty slot takes nothing"),
+			  ScarcityCount(Equipment, TEXT("max_health")), Worn);
+
+	Equipment->SetDisabledSlot(ECataclysmGearSlot::Head);
+	TestEqual(TEXT("the helm's slot switched off gives nothing"),
+			  ScarcityCount(Equipment, TEXT("max_health")), 0);
+	TestNotNull(TEXT("and the helm is still worn"),
+				Equipment->EquippedAt(ECataclysmGearSlot::Head));
+	TestEqual(TEXT("and the gear screen marks the slot"),
+			  UCataclysmGearPanel::DisabledNoteFor(ECataclysmGearSlot::Head, Equipment),
+			  FString(TEXT(" (off this floor)")));
+	TestEqual(TEXT("and no other"),
+			  UCataclysmGearPanel::DisabledNoteFor(ECataclysmGearSlot::Boots, Equipment),
+			  FString());
+
+	Equipment->SetDisabledSlot(ECataclysmGearSlot::Count);
+	TestEqual(TEXT("switched back on, it gives again"),
+			  ScarcityCount(Equipment, TEXT("max_health")), Worn);
+	return true;
+}
+
+// NO PIECE OF A SET: two pieces give the two-piece bonus, and with one of them switched
+// off the pair gives what one piece alone gives.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScarcitySetTest,
+	"Cataclysm.DungeonModifierEffects.ASwitchedOffPieceDoesNotCountTowardsItsSet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmScarcitySetTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	// ARCHON'S AEGIS, whose two-piece bonus is increased block chance in the live table.
+	const TCHAR* Marker = TEXT("Positive_Archon_s_Aegis_2_Piece_Bonus_Your_block_chanc");
+	const TCHAR* Drawback = TEXT("Negative_Your_movement_speed_is_reduced_by_10");
+
+	UCataclysmEquipmentComponent* Equipment =
+		NewObject<UCataclysmEquipmentComponent>(GetTransientPackage());
+	if (!ScarcityWear(*this, Equipment, ScarcitySetPiece(TEXT("Head_Helm"), Marker, Drawback),
+					  ECataclysmGearSlot::Head))
+	{
+		return false;
+	}
+	const int32 OnePiece = ScarcityCount(Equipment, TEXT("block_chance"));
+
+	if (!ScarcityWear(*this, Equipment,
+					  ScarcitySetPiece(TEXT("Boots_Sabatons"), Marker, Drawback),
+					  ECataclysmGearSlot::Boots))
+	{
+		return false;
+	}
+	const int32 TwoPieces = ScarcityCount(Equipment, TEXT("block_chance"));
+	if (!TestTrue(FString::Printf(TEXT("two pieces give the bonus one does not: %d against %d"),
+								  TwoPieces, OnePiece),
+				  TwoPieces > OnePiece))
+	{
+		return false;
+	}
+
+	Equipment->SetDisabledSlot(ECataclysmGearSlot::Boots);
+	TestEqual(TEXT("with one piece switched off, the pair gives what one piece does"),
+			  ScarcityCount(Equipment, TEXT("block_chance")), OnePiece);
+	return true;
+}
+
+// A FLOOR CARRYING THE ROW SWITCHES OFF THE ONE WORN NON-WEAPON SLOT, the player's
+// maximum health falls by what it gave, and a floor without the row switches it back on.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScarcityFloorTest,
+	"Cataclysm.DungeonModifierEffects.AFloorCarryingScarcitySwitchesOffAWornSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmScarcityFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	UCataclysmEquipmentComponent* Equipment =
+		Player.Character ? Player.Character->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable())
+		|| !TestNotNull(TEXT("and equipment"), Equipment))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	// ONE NON-WEAPON ITEM, so it is the only slot the draw can land on.
+	if (!ScarcityWear(*this, Equipment, ScarcityItemWithHealth(TEXT("Head_Helm")),
+					  ECataclysmGearSlot::Head))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("a floor without the row"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const float WithTheHelm = Player.Read(Vital::GetMaxHealthAttribute());
+	TestTrue(TEXT("nothing is switched off there"),
+			 Equipment->GetDisabledSlot() == ECataclysmGearSlot::Count);
+
+	Mode->DungeonModifiers = {Scarcity};
+	if (!TestTrue(TEXT("a floor carrying the row"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the helm's slot is switched off"),
+			 Equipment->GetDisabledSlot() == ECataclysmGearSlot::Head);
+	TestTrue(FString::Printf(TEXT("and maximum health fell: %.1f from %.1f"),
+							 Player.Read(Vital::GetMaxHealthAttribute()), WithTheHelm),
+			 Player.Read(Vital::GetMaxHealthAttribute()) < WithTheHelm);
+	TestEqual(TEXT("and the panel names it"), ScarcityPanelLine(Mode),
+			  FString(TEXT("scarcity: Head gives nothing on this floor")));
+
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("a floor without the row again"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the slot is switched back on"),
+			 Equipment->GetDisabledSlot() == ECataclysmGearSlot::Count);
+	TestEqual(TEXT("and the helm's health is back"),
+			  Player.Read(Vital::GetMaxHealthAttribute()), WithTheHelm, 0.01f);
+	return true;
+}
+
+// NEVER A WEAPON, AND NEVER NOTHING WHEN SOMETHING ELSE IS WORN: a player holding only a
+// weapon has nothing switched off; the draw is the same every time it is asked.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScarcityDrawTest,
+	"Cataclysm.DungeonModifierEffects.ScarcityNeverDrawsAWeaponAndItsDrawIsSeeded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmScarcityDrawTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE ARITHMETIC: nothing from nothing, always inside the range, and the same
+	// answer for the same dungeon and floor.
+	TestEqual(TEXT("no candidates, no pick"), Effects::ScarcityPick(0, 7, 3), INDEX_NONE);
+	for (int32 Floor = 1; Floor <= 20; ++Floor)
+	{
+		const int32 Pick = Effects::ScarcityPick(5, 7, Floor);
+		TestTrue(FString::Printf(TEXT("floor %d picks inside the five: %d"), Floor, Pick),
+				 Pick >= 0 && Pick < 5);
+		TestEqual(FString::Printf(TEXT("and floor %d picks the same again"), Floor),
+				  Effects::ScarcityPick(5, 7, Floor), Pick);
+	}
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	UCataclysmEquipmentComponent* Equipment =
+		Player.Character ? Player.Character->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable())
+		|| !TestNotNull(TEXT("and equipment"), Equipment))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+
+	FCataclysmItem Sword;
+	Sword.Base = FName(TEXT("Weapon_Sword"));
+	if (!ScarcityWear(*this, Equipment, Sword, ECataclysmGearSlot::Weapon1))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {Scarcity};
+	if (!TestTrue(TEXT("a floor carrying the row"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a weapon is never switched off"),
+			 Equipment->GetDisabledSlot() == ECataclysmGearSlot::Count);
+	TestEqual(TEXT("and the panel says nothing is"), ScarcityPanelLine(Mode),
+			  FString(TEXT("scarcity: nothing worn to switch off")));
 	return true;
 }
 

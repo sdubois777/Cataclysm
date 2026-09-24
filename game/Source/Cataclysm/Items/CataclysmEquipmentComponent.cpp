@@ -434,7 +434,21 @@ UCataclysmEquipmentComponent::GatherModifiers(
 		return Totals;
 	}
 
-	for (const FCataclysmItem& Item : Slots)
+	// A SLOT A FLOOR RULE HAS SWITCHED OFF IS READ AS EMPTY, by this loop and by the
+	// enchantments below, so its item gives no stat and no enchantment and is not a piece
+	// of any set. A copy is made only when a slot is off and holds something, which is
+	// one floor rule's case (`Famine_Scarcity`; issues #1820 and #41).
+	const TArray<FCataclysmItem>* Worn = &Slots;
+	TArray<FCataclysmItem> Counted;
+	const int32 Off = static_cast<int32>(DisabledSlot);
+	if (Slots.IsValidIndex(Off) && !Slots[Off].Base.IsNone())
+	{
+		Counted = Slots;
+		Counted[Off] = FCataclysmItem();
+		Worn = &Counted;
+	}
+
+	for (const FCataclysmItem& Item : *Worn)
 	{
 		if (Item.Base.IsNone())
 		{
@@ -448,7 +462,7 @@ UCataclysmEquipmentComponent::GatherModifiers(
 	// carry it, and only a pass over every worn item can know that. Before this,
 	// a piece recorded its enchantments and none of them changed anything.
 	UCataclysmItemModifiers::AccumulateEnchantmentsInto(
-		Totals, Slots, UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
+		Totals, *Worn, UCataclysmItemModifiers::LoadEnchantmentEffectTable(),
 		UCataclysmDropRoll::LoadPositiveEnchantmentTable(),
 		UCataclysmDropRoll::LoadNegativeEnchantmentTable(), Actions);
 
