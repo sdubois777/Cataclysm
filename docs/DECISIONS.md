@@ -59,15 +59,19 @@ elite to notice the player will be bound, that one is bound, or that the bond en
   per-floor reset clears it, and a creature still standing -- a Horde wave keeps its creatures -- has its
   immunity taken back.
 
-**Judgements in this change, marked as such, under the same delegation:**
+**Proposed by this change and then ruled by the coordinating session under the same delegation,
+2026-09-24:**
 
 - **When more than one elite notices the player on the same beat, the nearest is bound**, as the one the
   player met first as nearly as a quarter-second beat can tell.
-- **"Pays nothing" is `PaysForItsDeath` answering false**, through a new flag set immediately before
-  the death. That is the question the drop roll and the experience already ask, and it is also the one
-  Nothing Is Forgotten, Soul Harvest, Blood Gates, Dead Rising and Divine Resurgence ask of a death, so
-  those rules treat this death as they treat a risen creature's second one. The flag is set only at the
-  death, so the living bonded elite is counted as any other creature is.
+- **"Pays nothing" is `PaysForItsDeath` answering false, with all its reach**, through a new flag set
+  immediately before the death. `PaysForItsDeath` is what the drop roll and the experience ask, and it
+  is also what five rules ask of a death: Nothing Is Forgotten, Soul Harvest, Blood Gates, Dead Rising
+  and Divine Resurgence. So this death releases no soul, feeds no void, raises nothing and counts for no
+  gate, as a risen creature's second death does not. The coordinating session's reason: that death is
+  not a kill in any sense those rules mean, since nothing struck it down and the player's own death
+  ended it. The flag is set only at the death, so the living bonded elite is counted as any other
+  creature is.
 
 ### Tests
 
