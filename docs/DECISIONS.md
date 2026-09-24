@@ -1833,7 +1833,24 @@ destroyed. The body stays in the level for its lifespan to remove, as before.
 
 - `Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp` reads both rows on
   a real Ritualist holding Summon Imp. **Every other test grants the stats by hand**, so this is the
-  one that fails while a row is missing. The two rows need the design workbook.
+  one that fails while a row is missing.
+
+### THE ROWS, AND WHAT THEY MOVED
+
+Written into the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx` on top of Overreach's
+row, by the same script their dry run used on a copy first. The generator then changed only
+`game/Data/PassiveEffects.csv`, adding the two rows. **Each row's number is its node's own**: "once
+every 10 seconds" and "once every 5 seconds". Pins moved, each with a comment saying why:
+
+| Pin | From | To |
+|---|--:|--:|
+| `docs/README.md`, Passive Effects rows | 297 | 299 |
+| `AUTHORED_ROWS` in `test_passive_effects_match_the_node_text.py` | 297 | 299 |
+| `AUTHORED_NODES`, same file (the Ritualist now 72 of its 74 nodes) | 218 | 220 |
+| `CHECK_TABLE` for `PassiveEffects.csv` in `CataclysmDataTableTests.cpp` | 297 | 299 |
+| `VALUE_FORMS` gains both stats as "{value:g} second" | | |
+
+`DT_PassiveEffects` is rebuilt in this change's build window.
 
 ---
 

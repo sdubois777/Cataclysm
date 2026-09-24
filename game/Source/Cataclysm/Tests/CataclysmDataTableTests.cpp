@@ -451,7 +451,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// or a Weaken the character applies, per point. Issue #1515.
 	// AND 297 SINCE LATER ON 2026-09-23, for Overreach: melee attacks reach 2
 	// metres further. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        297)
+	// AND 299 SINCE THEN, for Press-Ganged and Rekindled: a lost minion is
+	// replaced, once every 10 seconds, or 5 for one that exploded. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        299)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
