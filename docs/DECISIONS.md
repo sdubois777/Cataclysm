@@ -310,6 +310,68 @@ The attribute path, points to an increase on a stat line, is tested through vita
 `Cataclysm.Attributes.GearRaisesAnAttributeBeforeThatAttributeScalesAnything`. Neither names armor or
 movement_speed. The path is table-driven, so those rows go through the same function.
 
+### Run
+
+The rows were written into the design workbook in this window, at rows 309 to 318 of the Enchantment
+Effects sheet, with the Stack Seconds column at Q. Two steps missed their registration and one
+proof proved nothing; each is below.
+
+- **The Python run on the code head `4f5b8a6d`**, before the rows: "5419 passed, 8 skipped".
+- **The first build**, on the row commit `364f2569`, compiled this C++ for the first time: "Build:
+  Succeeded - 28 actions, 25 files compiled", from 21:38:20Z to 21:39:03Z. The continuous
+  integration Unreal compile for `development` had ended at 21:37:30Z.
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "93 tests
+  performed, 85 succeeded, 8 failed": `EveryGeneratedTableHasAnAssetThatMatchesIt` ("10 row(s) only
+  in the CSV, 0 only in the asset") and the seven row tests, as registered.
+  - **It MISSED at one assertion.** "holds one increase, this row's" was registered to fail on all
+    ten lines and failed on six, the damage lines. That is the miss described under THE TESTS.
+- **The Python run of record on `364f2569`**: "1 failed, 5418 passed, 8 skipped", the stale hash as
+  registered.
+- **The first correction** (`793a1b8c`) built: "Build: Succeeded - 4 actions, 1 file compiled:
+  Module.Cataclysm.15.cpp".
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`91e08ea4`, 307 rows to 317). The Python asset-freshness tests then passed, 18 of 18.
+- **The seven row tests** then printed "7 tests performed, 7 succeeded, 0 failed". A passing
+  assertion's label is never logged, so an info line printing each line's other increases was added
+  (`034eb2cc`). The build printed "Build: Succeeded - 5 actions, 2 files compiled:
+  CataclysmEnchantmentEffectTests.cpp, Module.Cataclysm.15.cpp". The seven passed again and printed
+  0.00 on all ten lines, which led to the second ruling under THE TESTS.
+- **The stand-in** (`d4478c93`) built: "Build: Succeeded - 4 actions, 1 file compiled:
+  Module.Cataclysm.15.cpp". The seven printed "7 tests performed, 7 succeeded, 0 failed", with the
+  other increases at 20.00 on all ten lines.
+- **The whole suite on `d4478c93`**, from 21:49:40Z to 21:55:11Z: "2376 tests performed, 2376
+  succeeded, 0 failed", as registered, with every declared test reported. No other run was in
+  progress.
+- **Three guard proofs**, each broken run's log copied before the restored run overwrote it:
+  - **`RefreshMovementSpeed` no longer asking** (`StatForSkill("movement_speed", ...)` made the
+    attribute) failed `EveryStatTheDataScalesIsAskedForThroughThePipeline`, 1 of 1, and 0 restored:
+    "Expected 'movement_speed is asked for, so two debuffs raise the speed run at: 500.00 against
+    500.00' to be true".
+  - **a worn row's stacks lasting no time** (`Stack.StackSeconds` made 0) failed all seven row tests,
+    and none restored. On every line, "two events hold two stacks", "more events than its cap hold
+    its cap" and "just inside its window, still its cap" read 1.000000 against the registered
+    figures, for example "Expected ''movement_speed', two events hold two stacks (other increases
+    20.00)' to be 1.083333, but it was 1.000000".
+  - **a worn row's grant cap one too high** (`Stack.StackCap` made `ScaleMaxSteps + 1`) printed
+    "NOT A PROOF: nothing failed with the break in", 7 of 7 passing both times. **This was not
+    predicted.** The grant cap and the modifier's cap (`Out.ScaleMaxSteps` in
+    `UCataclysmItemModifiers`, `CataclysmItem.cpp`) are the same number, and the pipeline applies
+    the modifier's cap to the scaled value, so no stat can see the grant cap.
+
+**STATED GAP: no break has been shown to fail "more events than its cap hold its cap".** The
+modifier's cap is the one a player sees, and it is unproven in this change. The break that would
+prove it: `Out.ScaleMaxSteps = Effect.ScaleMaxSteps;` in `CataclysmItem.cpp` made `+ 1`, predicted to
+fail all seven on the cap and just-inside assertions. It was not run: the owner's ruling of
+2026-09-14 allows three proofs per change, and the coordinating session ruled that the third had been
+spent.
+
+**Whether the grant cap is redundant**, from a search of `game/Source` outside the tests for
+`OwnStacksHeld` and `OwnStacks`: two things read the grant's count. The pipeline reads it and
+applies the modifier's cap first. The death clean-up in `CataclysmAbilitySystemComponent.cpp` adds
+it to the stacks counted into a log line (`CataclysmPlayerCharacter.cpp`). Nothing shows it on
+screen. So today the grant cap changes only that log count. No issue was filed, by ruling: a
+reader such as an on-screen stack counter would make it matter.
+
 ---
 
 ## 2026-09-24 — Overlapping zones of one floor rule burn a target once a second, not once per zone
