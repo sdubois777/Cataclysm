@@ -305,3 +305,4 @@ Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever#1,Negative_Your_maximum_
 Negative_Non_critical_strikes_deal_20_35_less_damage#1,Negative_Non_critical_strikes_deal_20_35_less_damage,non_critical_damage,more,-20.0,-35.0,,,0.0,,0.0,,,,0,0.0,0.0
 Negative_Projectiles_deal_20_35_less_damage_on_each_sub#1,Negative_Projectiles_deal_20_35_less_damage_on_each_sub,projectile_later_hit_damage,more,-20.0,-35.0,Type.Projectile,,0.0,,0.0,,,,0,0.0,0.0
 Negative_Persistent_AOE_zones_deal_20_35_less_damage_on#1,Negative_Persistent_AOE_zones_deal_20_35_less_damage_on,zone_first_sweep_damage,more,-20.0,-35.0,,,0.0,,0.0,,,,0,0.0,0.0
+Negative_You_take_15_25_more_damage_from_melee_attacks#1,Negative_You_take_15_25_more_damage_from_melee_attacks,damage_taken,more,15.0,25.0,,melee_hit_while_moving,0.0,,0.0,,,,0,0.0,0.0

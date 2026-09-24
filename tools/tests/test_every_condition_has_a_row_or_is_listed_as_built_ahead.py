@@ -74,10 +74,6 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",
-    # Issue #1686, ruled on #1697. Its row, "You take 15%-25% more damage from
-    # melee attacks while moving", waits for the design workbook and leaves
-    # this list in the same change.
-    "melee_hit_while_moving",
 }
 
 #: A condition several enchantment effect rows name. The control.
