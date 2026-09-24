@@ -4698,4 +4698,61 @@ bool FCataclysmNonCriticalRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileLaterHitRowTest,
+	"Cataclysm.Enchantments.TheProjectileLaterHitRowLeavesALaterContact65PercentOfItself",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Projectiles deal 20%-35% less damage on each subsequent hit after the first",
+ * worn, leaves a projectile's later contacts 65% of themselves: the base of 100
+ * the stat fold supplies, and 35% less at the top of the range. Issue #1686.
+ *
+ * SCOPED TO `Type.Projectile`, so a skill that is not one keeps 100; and with
+ * nothing worn the share is 100, the line that fails if the base were lost.
+ */
+bool FCataclysmProjectileLaterHitRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	const FGameplayTagContainer Projectile = SkillTagged(TEXT("Type.Projectile"));
+	if (!TestFalse(TEXT("Type.Projectile is in the vocabulary"), Projectile.IsEmpty()))
+	{
+		return false;
+	}
+	const FName Share(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat);
+	const auto Read = [&](const FGameplayTagContainer& Tags)
+	{
+		return ASC->StatForSkill(Share, Tags,
+								 UCataclysmDamageCalculation::NormalProjectileLaterHitDamage);
+	};
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Projectiles_deal_20_35_less_damage_on_each_sub")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	TestEqual(TEXT("worn, a projectile's later contact keeps 65%"), Read(Projectile), 65.0f, 0.01f);
+	TestEqual(TEXT("a skill that is not a projectile keeps all of itself"),
+		Read(FGameplayTagContainer()), 100.0f, 0.01f);
+
+	Wearer.Equipment->UnequipEverything();
+	Wearer.Equipment->RefreshAttributes(ASC);
+	TestEqual(TEXT("and with nothing worn, all of itself"), Read(Projectile), 100.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

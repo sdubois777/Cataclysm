@@ -374,6 +374,18 @@ public:
 	int32 EnemiesHit = 0;
 
 	/**
+	 * How many of its contacts LANDED: struck and not evaded. Issue #1686.
+	 *
+	 * NOT `EnemiesHit`, which counts an evaded contact too, because the figure
+	 * `ApplyHit` returns is what was SENT. An evaded contact never connected
+	 * (the ruling of 2026-09-04), so it does not make the next contact a
+	 * later one. A detonation counts as one landing however many it catches,
+	 * and a return pass carries on the same count.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Projectile")
+	int32 LandedContacts = 0;
+
+	/**
 	 * Which enemies it struck, skipping any destroyed since.
 	 *
 	 * WHAT ASKS FOR IT. The Wand's Malefice, "copying every curse it already

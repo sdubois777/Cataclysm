@@ -1578,6 +1578,65 @@ floor.", and with "5%" added before "slower movement".
 
 ---
 
+## 2026-09-23 — A projectile's landed contacts after its first can deal less, and "Projectiles deal 20%-35% less damage on each subsequent hit after the first" does it
+
+**Affects:**
+- `UCataclysmDamageCalculation`: `ProjectileLaterHitDamageStat` (`projectile_later_hit_damage`)
+  and `NormalProjectileLaterHitDamage` (100)
+- `ACataclysmProjectile`: `LandedContacts`, `HitOne` and `Finish`
+- `UCataclysmPlayerClassStats`: the stat's base in `EngineSuppliedBases`, and its name in
+  `StatsWithNoAttribute`
+- `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`
+- issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686) (row N061)
+
+### WHAT EXISTED
+
+Projectiles do hit more than once:
+- `Pierce=99` passes through every enemy;
+- the Axe's Carom glances on through three more;
+- a returning throw hits on the way back.
+
+`ACataclysmProjectile::HitOne` deals each contact separately, and the projectile keeps its own count of
+what it struck. **No blow lookup carries a hit index.** Handing one through the seven stat lookups is
+the costly route #1515 warned about.
+
+So the share is a stat, the shape `non_critical_damage` uses. `HitOne` asks the firer for it, with the
+firing skill's tags, for every landed contact after the first. It multiplies that contact's whole
+damage percentage by the share. Its base is 100, supplied by `EngineSuppliedBases`.
+
+### THE READING, AND THE JUDGEMENTS
+
+**The research does not settle the reading.** poedb.tw's Pierce Support and Chain Support hold no line
+that scales damage by hit order; Chain Support has only a flat "Supported Skills deal (11-30)% less
+Damage with Hits". So the coordinating session ruled on 2026-09-23, under the owner's delegation:
+
+- **FLAT, not per contact.** The first landed contact deals 100%. Every one after it deals the row's
+  share: 65% at the top of the range, whether it is the second contact or the fifth. The sentence says
+  "on each subsequent hit" and not "for each". A per-contact reading would leave a `Pierce=99` bolt two
+  useful hits: 100, 65, 30, 1 and 1 percent across five enemies.
+- **An evaded contact is not a hit, and does not move the count.** An evaded shot never connected,
+  the ruling of 2026-09-04. `LandedContacts` counts a contact whose damage was sent and not evaded;
+  `EnemiesHit` counts evaded contacts too.
+- **One detonation is one landing.** Everything in the blast is struck at the count the projectile
+  arrived with, and the count then moves by one if anything was landed on.
+- **A return pass continues the same count.** It is the same projectile, and each contact is its own
+  landing (2026-09-16).
+
+**How it combines with Carom.** The row multiplies the contact's figure after Carom's glances have
+raised it. A Carom throw carrying the row deals 100, then 120 × 0.65 = 78, then 140 × 0.65 = 91. A test
+pins those figures.
+
+**A firer with no stat line keeps all of every contact.** That covers every creature, and a test checks
+it. Minions fire no projectiles: `CataclysmMinion.cpp` never calls `ACataclysmProjectile::Fire`.
+
+### THE ROW
+
+| Enchantment | Row |
+| :-- | :-- |
+| Projectiles deal 20%-35% less damage on each subsequent hit after the first | `projectile_later_hit_damage`, more -20 to -35, `Type.Projectile` |
+
+---
+
 ## 2026-09-23 — A hit whose critical roll failed can be made smaller, and "Non-critical strikes deal 20%-35% less damage" does it
 
 **Affects:**

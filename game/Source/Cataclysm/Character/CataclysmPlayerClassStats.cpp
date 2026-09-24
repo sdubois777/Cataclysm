@@ -301,6 +301,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// gameplay attribute: it is asked per blow, with the skill's tags, and
 		// its base of 100 comes from `EngineSuppliedBases`.
 		TEXT("non_critical_damage"),
+		// What share a projectile's landed contacts after its first keep, read
+		// by ACataclysmProjectile::HitOne. Issue #1686. No gameplay attribute:
+		// asked per contact with the firing skill's tags, based at 100 by
+		// `EngineSuppliedBases`.
+		TEXT("projectile_later_hit_damage"),
 	};
 	return Stats;
 }
@@ -1072,6 +1077,12 @@ const TMap<FName, float>& UCataclysmPlayerClassStats::EngineSuppliedBases()
 			// player lands would be multiplied by zero.
 			{FName(UCataclysmDamageCalculation::NonCriticalDamageStat),
 			 UCataclysmDamageCalculation::NormalNonCriticalDamage},
+
+			// AND WHAT SHARE A PROJECTILE'S LATER CONTACT KEEPS, at 100. Issue
+			// #1686, for the same reason as the entry above: its one row is a
+			// `more` of -20 to -35.
+			{FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat),
+			 UCataclysmDamageCalculation::NormalProjectileLaterHitDamage},
 
 			// AND HOW LONG A LASTING HARMFUL EFFECT ON THE CHARACTER RUNS, at 100
 			// for normal. Issue #1033. The THIRD stat of this shape and it meets the
