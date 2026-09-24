@@ -2,6 +2,113 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Starvation Curse: each floor adds a 5% slow or 5% less maximum health, until a floor's boss or the player dies
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, the stack figures, the draw, two new player-effect fields and both readers of them),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (adding a stack as a floor
+begins, putting the stacks back on the beat, the cleanse on a death, `DiedAsAFloorsBoss`, a console
+variable pinning the draw, the floor panel line and the resets), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Famine_Starvation_Curse` in `game/Data/DungeonModifiers.csv`, weight 10: "Each new floor adds a
+starvation debuff, such as slower movement or reduced max health. These debuffs persist unless
+cleansed." The row gives no figure.
+
+### What the rule does
+
+As each floor carrying the row begins, floor 1 included, one stack is added of one of two kinds, drawn
+at even odds: movement speed 5% less, or maximum health 5% less. Each kind holds at most ten stacks
+(50%); a draw for a kind already at ten adds nothing. The stacks belong to the dungeon: they stay on
+floors that do not carry the row and are put back on the player after every floor change. The death of
+a floor's boss clears both kinds, and so does the player's own death. Leaving the dungeon empties them.
+The floor panel shows each kind as a share and as "N of 10".
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-23. Every figure here is a
+judgement, not something derived:**
+
+- **Only the row's two examples**, slower movement and less maximum health. "Such as" gives examples;
+  a wider list would be invented.
+- **5% per stack, at most ten stacks of each kind (50%).** **Play-test point.**
+- **Floor 1 counts**, as Starvation's floor 1 already takes its first share.
+- **A floor's boss cleanses both kinds: the death of a Gatekeeper, or of any creature at the Boss
+  rung** (`ACataclysmDungeonGameMode::DiedAsAFloorsBoss`). The reason is measured, not assumed. "Boss"
+  in `ACataclysmEnemyCharacter::IsBoss()` is a rarity rung, and every creature draws its rung from
+  `game/Data/EnemyRarities.csv`, where Boss has spawn weight 0.01 of a total of 1.0. The Gatekeeper
+  draws too (`GatekeeperRarityStep=-1` in `game/Config/DefaultGame.ini`). So `IsBoss()` alone would
+  make the cleanse a 1% draw per creature, and "unless cleansed" would almost never happen. Wasting
+  Sickness asks `IsBoss()` only because, when it was built, nothing marked the creature at a floor's
+  exit; since Nothing Is Forgotten, the game mode identifies the Gatekeeper.
+- **The player's own death clears both kinds**, under the owner's ruling of 2026-09-10 recorded in this
+  file: "Anything that lasts only for the dungeon ends at death, however it is worded". It is applied
+  at once rather than on the next beat, for the reason Wasting Sickness gives: `Revive` refills the
+  vitals by reading the maximums.
+
+### When the cleanse comes, in play
+
+Read from `FCataclysmDungeonFloorRules::BossAtTheExit`, which decides where a Gatekeeper is placed:
+
+| Dungeon | Floors with a Gatekeeper |
+| :-- | :-- |
+| Ordinary or Volatile, more than one floor | the last floor only |
+| Elite | every floor |
+| Horde | the last wave, which is its last floor |
+| Ordinary, one floor | none |
+
+**So in an ordinary dungeon the cleanse comes at the end, when the last floor's Gatekeeper dies, and in
+an Elite dungeon it comes on every floor.** Before that, only a creature that drew the Boss rung (1%
+each) or the player's own death clears the stacks.
+
+### How it combines with Starvation
+
+Both rows take maximum health. The curse writes its own field, `CurseMaxHealthLessPercent`, so each
+becomes its own Less multiplier and the stat pipeline multiplies them: a player on floor 4 of a dungeon
+carrying both, holding one curse stack, keeps (1 − Starvation's share) × 0.95 of their maximum. The
+movement stacks are likewise a separate multiplier beside Singularity Wells, Grasping Tentacles and
+Fungal Overgrowth. `StarvationAndTheStarvationCurseMultiplyOnMaximumHealth` pins the product.
+
+### Also in this change
+
+The comment on `NothingIsForgottenKey` gave a reason for that rule's damage cap that no ruling gave
+("Uncapped damage over a long dungeon would make a fight no play could survive"). The sentence is
+removed; the cap and its play-test point stay.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `EachFloorCarryingTheStarvationCurseAddsOneStack`: floor 1 adds one; two slowing floors and one
+  health floor leave 10% less movement speed and 5% less maximum health; the panel line; and leaving the
+  dungeon empties both.
+- `TheStarvationCurseStopsAtTenStacksOfEachKind`: the draw's boundary at 50, nine becoming ten and ten
+  staying ten, and twelve slowing floors leaving ten stacks and half the speed.
+- `AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse`: a Common's death leaves the stacks; a
+  Gatekeeper held at the Common rung clears them; a creature at the Boss rung clears them; and the
+  player's death clears them with no beat in between.
+- `StarvationAndTheStarvationCurseMultiplyOnMaximumHealth`: the product above, against the maximum on a
+  floor with no rows.
+
+One Python check: the row still says "each new floor", "slower movement", "reduced max health" and
+"persist unless cleansed", and states no percentage. It was seen to fail, in a copy of the repository,
+with "Each new floor" made "Every other floor", with the second sentence made "These debuffs last one
+floor.", and with "5%" added before "slower movement".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — Nothing Is Forgotten: the player's kills feed five per cent of their health and damage to the dungeon's final boss
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
