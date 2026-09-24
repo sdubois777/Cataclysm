@@ -86,6 +86,14 @@ public:
 	int32 MaterialQuantity = 0;
 
 	/**
+	 * Whether a creature a dungeon rule raised mid-floor dropped this. Trick or Treat rolls
+	 * nothing for a marked drop, so a trick's pair cannot start another trick. Issues #1820
+	 * and #41.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	bool bDroppedByARaisedCreature = false;
+
+	/**
 	 * Which material tier this drop is, 1 to 5. Zero when the drop is gear.
 	 *
 	 * KEPT BESIDE THE MATERIAL for the reason Rarity is kept beside the item:
@@ -254,7 +262,8 @@ public:
 	 */
 	static int32 SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 							   float MagicFind, float LootQuantity,
-							   const FVector& At, FRandomStream& Stream);
+							   const FVector& At, FRandomStream& Stream,
+							   bool bMarked = false);
 
 	/**
 	 * The magic find and loot quantity the player in this world is carrying.
@@ -328,7 +337,7 @@ public:
 								   float MagicFind, const FVector& At,
 								   int32 Count, int32 AlreadyOnTheFloor,
 								   int32 TotalDrops, int32 DifficultyTier,
-								   FRandomStream& Stream);
+								   FRandomStream& Stream, bool bMarked = false);
 };
 
 /**

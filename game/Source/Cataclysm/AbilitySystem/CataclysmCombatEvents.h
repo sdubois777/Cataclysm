@@ -270,6 +270,9 @@ struct CATACLYSM_API FCataclysmLootTakenNotice
 
 	/** Whether the player clicked it, rather than walking near a crafting material. */
 	bool bByHand = false;
+
+	/** Whether a creature a dungeon rule raised mid-floor dropped it. */
+	bool bMarked = false;
 };
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnLootTaken, const FCataclysmLootTakenNotice&);
@@ -383,7 +386,8 @@ public:
 									int32 AbilityIndex);
 
 	/** Announces a drop taken into `Taker`'s inventory. Called by `TakeInto` only. */
-	static void NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand);
+	static void NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand,
+							  bool bMarked = false);
 
 	/** How many of each have been sent in this world. Read by tests. */
 	uint32 HitsSent() const { return Hits; }

@@ -6,8 +6,11 @@ Decisions made outside the Google Drive documents, newest first.
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (a new
 announcement, a drop taken), `game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and `.cpp`
-(`UCataclysmDropPickup::TakeInto` announces each take and says whether it was by hand; a stale comment
-corrected), `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp` (a click is by hand),
+(`UCataclysmDropPickup::TakeInto` announces each take and says whether it was by hand and whether the
+drop is marked; the drop spawners mark a raised creature's drops; a stale comment corrected),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (`bRaisedByARule`),
+`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (a click is by hand, and a narrow
+test entry to the click and the sweep),
 `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
 figures, the roll and two player-effect fields), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
 and `.cpp` (the listener, the pair, the haste's clock, a console variable pinning the roll, the panel
@@ -37,9 +40,10 @@ creatures raised and says when a treat is running.
 it lay and whether it was by hand, and the dungeon game mode listens as it listens for deaths. Only
 `ACataclysmPlayerController::TakeDrop`, the click, passes "by hand"; the per-frame sweep of crafting
 materials does not. The announcer was chosen because a test world has it while it has no authority
-game mode, which is what a call from the item code into the game mode would have needed. **That the
-controller passes "by hand" on a click is not reached by any automation test**, because the click
-path is private to the controller; the tests call `TakeInto` both ways.
+game mode, which is what a call from the item code into the game mode would have needed. The click and
+the sweep are private to the controller, so it has two public test entries, `TakeDropForTest` and
+`CollectMaterialsNearbyForTest`, which nothing in the game calls; a test drives both through the game's
+own controller.
 
 ### Rulings
 
@@ -60,10 +64,15 @@ judgement, not something derived:**
 - **20% more movement speed and 20% more attack speed for ten seconds**, the figures Dirge Resonance
   gives creatures; a second treat restarts the clock and does not stack. **Play-test point.**
 - **No exceptions**, on the last floor or in a Horde.
+- **A drop a raised creature dropped is marked, and picking a marked drop up rolls nothing**, so a
+  trick's pair cannot start another trick and the chain ends after one link at any loot quantity.
+  `ACataclysmEnemyCharacter::bRaisedByARule` is set on the Unstable Portal's Warden and on a trick's
+  pair as they join `CreaturesRaisedByARule`, and the drop spawners copy it onto every drop, gear and
+  material, as `ACataclysmDroppedItem::bDroppedByARaisedCreature`. The reason is the arithmetic below.
 
-### The chain a trick can start, worked out
+### The chain a trick could have started, worked out: the reason for the mark
 
-The pair drop loot as any creature does, and a click on that loot rolls again. Read from
+The pair drop loot as any creature does. Without the mark, a click on that loot would roll again. Read from
 `game/Data/EnemyDrops.csv` (expected gear drops per kill: Common 0.16, Elite 0.5, Legendary 1.0,
 Herald 2.0, Boss 5.0) and `game/Data/EnemyRarities.csv` (spawn weights 0.6, 0.2, 0.15, 0.04, 0.01),
 one drawn creature is expected to drop 0.476 pieces of gear at baseline loot quantity. A click is a
@@ -72,8 +81,13 @@ trick half the time and a trick raises two, so each click is expected to lead to
 0.476) = **about 1.9 clicks** in all. That assumes the player kills the pair and clicks every piece of
 gear; crafting materials are swept and roll nothing. **Loot quantity scales the expected drops**
 (`ScaledByLootQuantity`: rate × quantity ÷ 100), so at about 2.1 times the baseline quantity (210)
-each click is expected to lead to one further click and the chain no longer ends on average. **Both
-figures are arithmetic, not measured in play: a play-test point.**
+each click is expected to lead to one further click and the chain no longer ends on average: an
+endless farm. **The data gives no ceiling on loot quantity.** It starts at 100
+(`game/Data/ClassStats.csv`), rises 1 per point of luck (`game/Data/Attributes.csv`, and luck has no
+stated maximum), and rises by "increased loot quantity" affixes on the belt, boots, necklace, relic and
+ring (`game/Data/Affixes.csv`, top value 8 per affix, and a hybrid with magic find). So 210 is within
+reach of a player who invests, and the mark is what stops the chain. **These figures are arithmetic, not
+measured in play.** With the mark the chain is at most one trick deep, whatever the loot quantity.
 
 ### Also in this change
 
@@ -82,10 +96,16 @@ carried inventory was. The comment now says what takes a drop.
 
 ### Tests
 
-Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+Six automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 
 - `OnlyAClickedPickupRollsForTrickOrTreat`: a sweep takes the drop and the rule counts and raises
-  nothing; a click on a trick raises two creatures onto the floor; the panel line.
+  nothing; a click on a trick raises two creatures onto the floor, each marked as raised by a rule; the
+  panel line.
+- `AClickThroughThePlayerControllerRollsAndItsSweepDoesNot`: through the game's own controller, the
+  sweep takes a crafting material and the rule counts nothing, and a click on gear counts and raises
+  two.
+- `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`: a raised creature at the Boss rung is
+  killed, every drop it leaves is marked, and a click on its gear with a trick pinned rolls nothing.
 - `ATreatHastesThePlayerForTenSecondsAndThenStops`: the roll's boundary at 50; a treat puts 20% more on
   movement speed and on attack speed; still on at nine and a half seconds, off at ten and a half.
 - `ASecondTreatRestartsTheClockAndDoesNotStack`: a second treat six seconds in keeps the haste at 20%

@@ -432,6 +432,18 @@ private:
 	 */
 	bool TakeDrop(ACataclysmDroppedItem* Drop);
 
+public:
+	/**
+	 * The click's take and the per-frame sweep, exactly as play runs them, for automation
+	 * tests. Issues #1820 and #41: Trick or Treat's "clicked pickups only" rests on
+	 * `TakeDrop` saying "by hand" and the sweep not, and a test world has no input to click
+	 * with. Nothing in the game calls these.
+	 */
+	bool TakeDropForTest(ACataclysmDroppedItem* Drop) { return TakeDrop(Drop); }
+	void CollectMaterialsNearbyForTest() { CollectMaterialsNearby(); }
+
+private:
+
 	/**
 	 * Takes the drop the player clicked, once walking has brought them near it.
 	 *

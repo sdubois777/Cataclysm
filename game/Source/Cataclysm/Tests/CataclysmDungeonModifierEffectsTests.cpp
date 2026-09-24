@@ -57,6 +57,7 @@
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -260,10 +261,16 @@ namespace CataclysmDungeonModifierEffectsTest
 	 */
 	struct FPossessedPlayer
 	{
-		explicit FPossessedPlayer(UWorld* World)
+		/**
+		 * `ControllerClass` is the plain engine controller unless a test needs the game's own:
+		 * Trick or Treat's click is reached only through `ACataclysmPlayerController`.
+		 */
+		explicit FPossessedPlayer(UWorld* World,
+								  TSubclassOf<APlayerController> ControllerClass =
+									  APlayerController::StaticClass())
 		{
 			PlayerState = World->SpawnActor<ACataclysmPlayerState>();
-			Controller = World->SpawnActor<APlayerController>();
+			Controller = World->SpawnActor<APlayerController>(ControllerClass);
 			Character = World->SpawnActor<ACataclysmPlayerCharacter>(
 				FVector::ZeroVector, FRotator::ZeroRotator);
 			if (!PlayerState || !Controller || !Character)
@@ -23674,6 +23681,11 @@ bool FCataclysmTreatClickTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a click is counted"), Mode->TrickOrTreatPickupCount(), 1);
 	TestEqual(TEXT("and a trick raises two creatures"), Mode->TrickOrTreatRaisedCount(), 2);
 	TestEqual(TEXT("both on the floor"), Mode->FloorEnemies.Num(), 2);
+	for (ACataclysmEnemyCharacter* Raised : Mode->FloorEnemies)
+	{
+		TestTrue(TEXT("and each is marked as raised by a rule, so its drops are marked"),
+				 IsValid(Raised) && Raised->bRaisedByARule);
+	}
 	TestFalse(TEXT("and no haste"), Mode->TrickOrTreatIsHasting());
 
 	const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
@@ -23814,6 +23826,137 @@ bool FCataclysmTreatGatesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a trick raised two"), Mode->TrickOrTreatRaisedCount(), 2);
 	TestEqual(TEXT("and the gate is as it was"), GatesPanelLine(Mode),
 			  FString(TEXT("blood gates: 1 of 2 slain, open at 1")));
+	return true;
+}
+
+// A RAISED CREATURE'S DROPS ARE MARKED, AND A MARKED DROP ROLLS NOTHING WHEN CLICKED: a trick's
+// pair cannot start another trick, so the chain ends after one link at any loot quantity.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTreatMarkTest,
+	"Cataclysm.DungeonModifierEffects.ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTreatMarkTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {TrickOrTreat});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// A RAISED CREATURE AT THE BOSS RUNG, which is expected to drop five pieces of gear, so
+	// the kill leaves drops to read.
+	ACataclysmEnemyCharacter* Raised = PlaceCreatureAtRung(
+		World, Mode, FVector(600.0f, 0.0f, 0.0f), ACataclysmEnemyCharacter::FirstBossRarityStep);
+	if (!TestNotNull(TEXT("a creature to raise"), Raised))
+	{
+		return false;
+	}
+	Raised->bRaisedByARule = true;
+	if (!ThePlayerKills(*this, Player, Raised))
+	{
+		return false;
+	}
+	int32 Drops = 0;
+	int32 Marked = 0;
+	ACataclysmDroppedItem* Gear = nullptr;
+	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	{
+		++Drops;
+		Marked += It->bDroppedByARaisedCreature ? 1 : 0;
+		if (!Gear && !It->IsMaterial())
+		{
+			Gear = *It;
+		}
+	}
+	if (!TestTrue(FString::Printf(TEXT("the kill dropped something: %d"), Drops), Drops > 0))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and every drop is marked"), Marked, Drops);
+	if (!TestNotNull(TEXT("a piece of gear among them"), Gear))
+	{
+		return false;
+	}
+
+	// CLICKED WITH THE ROLL PINNED TO A TRICK: it is taken, and nothing rolls.
+	FScopedConsoleString Pinned(TEXT("Cataclysm.TrickOrTreatRoll"), ATrick);
+	if (!TestTrue(TEXT("the marked gear was taken"),
+				  UCataclysmDropPickup::TakeInto(Player.Character->GetInventory(), Gear, true)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the rule counted no pickup"), Mode->TrickOrTreatPickupCount(), 0);
+	TestEqual(TEXT("and raised nothing"), Mode->TrickOrTreatRaisedCount(), 0);
+	return true;
+}
+
+// THE PLAYER CONTROLLER'S CLICK ROLLS AND ITS SWEEP DOES NOT: the two paths play takes.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTreatControllerTest,
+	"Cataclysm.DungeonModifierEffects.AClickThroughThePlayerControllerRollsAndItsSweepDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTreatControllerTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World, ACataclysmPlayerController::StaticClass());
+	ACataclysmPlayerController* Controller = Cast<ACataclysmPlayerController>(Player.Controller);
+	if (!TestNotNull(TEXT("the game's own player controller"), Controller))
+	{
+		return false;
+	}
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {TrickOrTreat});
+	if (!Mode)
+	{
+		return false;
+	}
+	FScopedConsoleString Pinned(TEXT("Cataclysm.TrickOrTreatRoll"), ATrick);
+	if (!TestNotNull(TEXT("the roll can be pinned"), Pinned.Variable))
+	{
+		return false;
+	}
+
+	// A CRAFTING MATERIAL AT THE PLAYER'S FEET, which the sweep takes.
+	ACataclysmDroppedItem* Material = World->SpawnActor<ACataclysmDroppedItem>(
+		Player.Character->GetActorLocation() + FVector(100.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a material to sweep"), Material))
+	{
+		return false;
+	}
+	Material->Material = FName(TEXT("IronOre"));
+	Material->MaterialQuantity = 3;
+	Material->MaterialTier = 2;
+	Material->DisplayName = TEXT("Iron Ore");
+	Controller->CollectMaterialsNearbyForTest();
+	TestFalse(TEXT("the sweep took the material"), IsValid(Material));
+	TestEqual(TEXT("and the rule counted no pickup"), Mode->TrickOrTreatPickupCount(), 0);
+
+	// A PIECE OF GEAR, TAKEN AS A CLICK TAKES IT.
+	ACataclysmDroppedItem* Gear = GearLyingAt(World, FVector(200.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("gear to click"), Gear)
+		|| !TestTrue(TEXT("the click took it"), Controller->TakeDropForTest(Gear)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the click counted"), Mode->TrickOrTreatPickupCount(), 1);
+	TestEqual(TEXT("and its trick raised two"), Mode->TrickOrTreatRaisedCount(), 2);
 	return true;
 }
 

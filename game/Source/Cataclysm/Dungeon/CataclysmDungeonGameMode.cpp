@@ -2109,6 +2109,14 @@ void ACataclysmDungeonGameMode::OnLootTaken(const FCataclysmLootTakenNotice& Not
 		return;
 	}
 
+	// A DROP A RAISED CREATURE DROPPED ROLLS NOTHING, so a trick's pair cannot start
+	// another trick and the chain ends after one link at any loot quantity. Ruled
+	// 2026-09-23; the entry gives the figures.
+	if (Notice.bMarked)
+	{
+		return;
+	}
+
 	++TrickOrTreatPickups;
 	if (Effects::TrickOrTreatRaisesEnemies(DungeonGameModeTrickOrTreatRoll()))
 	{
@@ -2162,6 +2170,7 @@ void ACataclysmDungeonGameMode::RaiseTheTrickOrTreatPair(const FVector& Where)
 			continue;
 		}
 		FloorEnemies.Add(Raised);
+		Raised->bRaisedByARule = true;
 		CreaturesRaisedByARule.Add(Raised);
 		++TrickOrTreatRaised;
 	}
@@ -2352,6 +2361,7 @@ void ACataclysmDungeonGameMode::RaiseTheUnstablePortalsWarden()
 		return;
 	}
 	FloorEnemies.Add(Warden);
+	Warden->bRaisedByARule = true;
 	CreaturesRaisedByARule.Add(Warden);
 }
 

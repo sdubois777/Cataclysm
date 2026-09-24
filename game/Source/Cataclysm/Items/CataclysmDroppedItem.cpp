@@ -334,8 +334,9 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 
 	// WHERE IT LAY IS READ BEFORE THE ACTOR GOES, and the take announced after.
 	const FVector Where = Drop->GetActorLocation();
+	const bool bMarked = Drop->bDroppedByARaisedCreature;
 	Drop->Destroy();
-	UCataclysmCombatEvents::NoteLootTaken(Inventory->GetOwner(), Where, bByHand);
+	UCataclysmCombatEvents::NoteLootTaken(Inventory->GetOwner(), Where, bByHand, bMarked);
 	return true;
 }
 
@@ -476,7 +477,8 @@ void UCataclysmDropSpawner::LootStatsOf(const AActor* Character,
 int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										   float MagicFind, float LootQuantity,
 										   const FVector& At,
-										   FRandomStream& Stream)
+										   FRandomStream& Stream,
+										   bool bMarked)
 {
 	if (!World)
 	{
@@ -590,6 +592,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 		}
 
 		Drop->Item = Item;
+		Drop->bDroppedByARaisedCreature = bMarked;
 		Drop->DisplayName = UCataclysmItemName::NameOf(Item, Bases, Affixes);
 
 		ECataclysmRarity Rarity = ECataclysmRarity::Everyday;
@@ -610,7 +613,7 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	// roll still used up its place: leaving a gap is better than putting a
 	// material on top of the item after it.
 	Spawned += SpawnMaterialsFor(World, EnemyRarity, Together, At, MaterialCount,
-								 Count, Total, DifficultyTier, Stream);
+								 Count, Total, DifficultyTier, Stream, bMarked);
 
 	return Spawned;
 }
@@ -621,7 +624,8 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 											   int32 AlreadyOnTheFloor,
 											   int32 TotalDrops,
 											   int32 DifficultyTier,
-											   FRandomStream& Stream)
+											   FRandomStream& Stream,
+											   bool bMarked)
 {
 	if (!World || Count <= 0)
 	{
@@ -672,6 +676,7 @@ int32 UCataclysmDropSpawner::SpawnMaterialsFor(UWorld* World, FName EnemyRarity,
 		// player can see how many fell and can leave some.
 		Drop->Material = Material;
 		Drop->MaterialQuantity = 1;
+		Drop->bDroppedByARaisedCreature = bMarked;
 		Drop->MaterialTier = Tier;
 		Drop->DisplayName =
 			UCataclysmDropRoll::MaterialNameOf(Materials, Material);
