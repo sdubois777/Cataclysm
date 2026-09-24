@@ -276,7 +276,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesADot:
 	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the twenty-six says
+		// nothing for a number to be compared against. Each of the twenty-seven says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
