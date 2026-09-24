@@ -603,7 +603,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: AND TO 296 ON 2026-09-23, for `Ravager_basic_c_stem2` Deeper Hurt: +3%
 #: increased `cripple_and_weaken_duration` per point, read by
 #: `UCataclysmAilments::Apply` where a Cripple or a Weaken is created.
-AUTHORED_ROWS = 296
+#:
+#: AND TO 297 ON 2026-09-23, for `Ravager_keystone_b_kC` Overreach: 2 metres of
+#: `melee_reach_metres`, flat, for `Type.Melee` skills, read by
+#: `UCataclysmSkillTemplate::MeleeReachBonusCm` on a strike's reach and the
+#: basic attack's walk.
+AUTHORED_ROWS = 297
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -985,7 +990,11 @@ AUTHORED_ROWS = 296
 #: AND TO 217 ON 2026-09-23, for Deeper Hurt (`Ravager_basic_c_stem2`), which had
 #: no row. Measured then: the Ravager is 69 of its 74, the Ritualist 70 of its
 #: 74 and the Masochist 74 of its 74.
-AUTHORED_NODES = 217
+#:
+#: AND TO 218 ON 2026-09-23, for Overreach (`Ravager_keystone_b_kC`), which had
+#: no row. Measured then: the Ravager is 70 of its 74, the Ritualist 70 of its
+#: 74 and the Masochist 74 of its 74.
+AUTHORED_NODES = 218
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1994,6 +2003,10 @@ VALUE_FORMS = {
     # minions is not written as a number at all -- the same sentence says
     # "three or more minions" -- so it is exempted in `VALUE_IN_WORDS` instead.
     "minions_draw_nearby_enemies_metres": "{value:g} metres",
+
+    # "Your melee attacks reach 2 metres further than the skill states": a flat
+    # distance, written with its unit. Overreach, issue #1515.
+    "melee_reach_metres": "{value:g} metres",
 
     # A PLAIN COUNT OF FERVOUR, which is the last form issue #990 named and had
     # no entry for. Low Life reads "you gain 10 Fervour per second", so the

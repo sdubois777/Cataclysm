@@ -449,7 +449,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// duration of what the character summons, per point. Issue #1515.
 	// AND 296 SINCE THEN, for Deeper Hurt: +3% increased duration of a Cripple
 	// or a Weaken the character applies, per point. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        296)
+	// AND 297 SINCE LATER ON 2026-09-23, for Overreach: melee attacks reach 2
+	// metres further. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        297)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

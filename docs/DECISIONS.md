@@ -1350,7 +1350,7 @@ test files and one Python inventory. Issue
 ### THE NODE
 
 `Ravager_keystone_b_kC` Overreach: "Your melee attacks reach 2 metres further than the skill
-states." One row, to be written: `melee_reach_metres`, flat 2, required tag `Type.Melee`.
+states." One row: `melee_reach_metres`, flat 2, required tag `Type.Melee`.
 
 ### A NEW STAT, BY THE EARLIER RULING'S OWN CONDITION
 
@@ -1400,7 +1400,25 @@ by this node.
 - A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
 - `Cataclysm.Passives.OverreachLengthensARealRavagersBasicAttackReach` reads the row on a real Ravager
   holding a Sword. **Every other test grants the stat by hand**, so this is the one that fails while
-  the row is missing; the row needs the design workbook.
+  the row is missing.
+
+### THE ROW, AND WHAT IT MOVED
+
+Written into the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx` from `development` at
+914de0f9, by the same script its dry run used on a copy first. The generator then changed only
+`game/Data/PassiveEffects.csv`, adding the one row. **The row's 2 is the 2 of the node's own
+sentence.** It moved five pins, each updated with a comment saying why:
+
+| Pin | From | To |
+|---|--:|--:|
+| `docs/README.md`, Passive Effects rows | 296 | 297 |
+| `AUTHORED_ROWS` in `test_passive_effects_match_the_node_text.py` | 296 | 297 |
+| `AUTHORED_NODES`, same file (the Ravager now 70 of its 74 nodes) | 217 | 218 |
+| `CHECK_TABLE` for `PassiveEffects.csv` in `CataclysmDataTableTests.cpp` | 296 | 297 |
+| `VALUE_FORMS` gains `melee_reach_metres` as "{value:g} metres" | | |
+
+The last is how a flat row's value is found in its sentence: in the stat's own unit, not as a
+percentage. `DT_PassiveEffects` is rebuilt in this change's build window.
 
 ---
 
