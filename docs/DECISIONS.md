@@ -2,6 +2,91 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — As each floor begins, one worn non-weapon slot gives nothing for that floor
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (a switched-off
+slot, read as empty when the worn gear's stats and enchantments are gathered),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, a seed
+salt and the draw), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (choosing
+the slot as each floor's rules reach the player, and the floor panel line),
+`game/Source/Cataclysm/Interface/CataclysmGearPanel.h` and `.cpp` and
+`game/Source/Cataclysm/Interface/CataclysmInventoryWidget.cpp` (the gear screen marking the slot), the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Famine_Scarcity` in `game/Data/DungeonModifiers.csv`, weight 15: "At the start of each floor, a
+random equipment slot (excluding weapons) has its stats and enchantments disabled for that floor." Once
+a floor, never a weapon slot, and both stats and enchantments are the row's own.
+
+### What the rule does
+
+As each floor's rules reach the player, and before their attributes are written, one of the non-weapon
+slots that hold an item is drawn and `UCataclysmEquipmentComponent::SetDisabledSlot` switches it off.
+`GatherModifiers` then reads that slot as empty for both of the things it adds up: the item's implicits
+and affixes, and the worn enchantments, so the item is no piece of any set either. The item stays worn
+and drawn. A floor without the row switches the slot back on. The switched-off slot is not saved; each
+floor sets it again.
+
+**Where the player sees it.** The floor panel says `scarcity: Head gives nothing on this floor`, or
+`scarcity: nothing worn to switch off`. The gear screen's label for that slot gains ` (off this floor)`,
+through `UCataclysmGearPanel::DisabledNoteFor`: the label is set every frame, so it follows a new floor.
+The slot's pop-up is not changed, because the screen rebuilds pop-ups only when what is worn changes and
+would not notice a new floor.
+
+### The draw, measured before writing
+
+A floor has seeded streams. `FCataclysmFloorBrief`'s modifier draw and the floor populator each seed
+theirs with `FCataclysmFloorGenerator::SeedForFloor(the floor's seed, a salt)`, the floor's seed being
+`SeedForFloor(the dungeon's seed, the floor number)` and the salts `ModifierSalt` and `PopulationSalt`.
+Scarcity does the same with its own `ScarcitySalt` ("sca"), from `ChooseSeed()` and the floor brief's
+number, in `UCataclysmDungeonModifierEffects::ScarcityPick`. So the same floor of the same dungeon, with
+the same gear worn, switches off the same slot.
+
+### Rulings
+
+**Under the owner's delegation, by the coordinating session on 2026-09-23:**
+
+- **Drawn evenly from the non-weapon slots that hold an item** when the floor begins, so the rule always
+  costs something; a player wearing only weapons has nothing switched off. **A play-test point:** rings
+  are drawn more often because there are eight ring slots, and a ring is usually a smaller loss than a
+  chest piece. The draw is not weighted for that now.
+- **The item counts as not worn for stats**: no implicit, affix or enchantment, and no piece of a set. It
+  stays worn and visible.
+- **The slot, not the item, for the whole floor.** Whatever the player moves into it gives nothing, and
+  what they move out of it works again: swapping gear is the answer.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `ASwitchedOffSlotsItemGivesNoStats`: a helm's health affix gives nothing with its slot off and again
+  when it is back on; an empty slot switched off takes nothing; and the gear screen's note marks that
+  slot and no other.
+- `ASwitchedOffPieceDoesNotCountTowardsItsSet`: two pieces of Archon's Aegis give its two-piece bonus,
+  and with one switched off the pair gives what one piece alone does.
+- `AFloorCarryingScarcitySwitchesOffAWornSlot`: a player wearing one helm has its slot switched off on a
+  floor carrying the row, their maximum health falls, the panel names the slot, and a floor without the
+  row puts it all back.
+- `ScarcityNeverDrawsAWeaponAndItsDrawIsSeeded`: the draw stays in range and repeats for the same
+  dungeon and floor, and a player holding only a sword has nothing switched off.
+
+One Python check: the row still says "each floor", "a random equipment slot", "excluding weapons",
+"stats and enchantments" and "for that floor". It was seen to fail, in a copy of the repository, with
+"(excluding weapons)" removed and with "and enchantments" removed.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-23 — The two lists of stats the engine gives a base value are held equal by a check
 
 **Affects:** the new `tools/tests/test_engine_supplied_bases_agree.py` only. Issue
