@@ -8,6 +8,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Components/SceneComponent.h"
+#include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmWeaponSkills.h"
@@ -311,7 +312,7 @@ FBox2D UCataclysmDropPickup::TagAround(const FBox2D& Text,
 }
 
 bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
-									ACataclysmDroppedItem* Drop)
+									ACataclysmDroppedItem* Drop, bool bByHand)
 {
 	if (!Inventory || !IsValid(Drop))
 	{
@@ -331,7 +332,10 @@ bool UCataclysmDropPickup::TakeInto(UCataclysmInventoryComponent* Inventory,
 		return false;
 	}
 
+	// WHERE IT LAY IS READ BEFORE THE ACTOR GOES, and the take announced after.
+	const FVector Where = Drop->GetActorLocation();
 	Drop->Destroy();
+	UCataclysmCombatEvents::NoteLootTaken(Inventory->GetOwner(), Where, bByHand);
 	return true;
 }
 

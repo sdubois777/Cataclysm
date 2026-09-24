@@ -313,3 +313,18 @@ void UCataclysmCombatEvents::NoteCreatureAbility(ACataclysmCharacterBase* Creatu
 	++Events->SkillUses;
 	Events->OnSkillUsed.Broadcast(Notice);
 }
+
+void UCataclysmCombatEvents::NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand)
+{
+	UCataclysmCombatEvents* Events = Taker ? In(Taker->GetWorld()) : nullptr;
+	if (!Events || !Events->OnLootTaken.IsBound())
+	{
+		return;
+	}
+
+	FCataclysmLootTakenNotice Notice;
+	Notice.Taker = Taker;
+	Notice.Where = Where;
+	Notice.bByHand = bByHand;
+	Events->OnLootTaken.Broadcast(Notice);
+}

@@ -52,6 +52,8 @@
 #include "Interface/CataclysmFloorModifierPanelLayout.h"
 #include "Interface/CataclysmGearPanel.h"
 #include "Items/CataclysmDropRoll.h"
+#include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Misc/ScopeExit.h"
@@ -23546,6 +23548,272 @@ bool FCataclysmWastingGatekeeperTest::RunTest(const FString& Parameters)
 	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
 	TestNull(TEXT("its death took the debuff off entirely"),
 			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Chaos_Trick_or_Treat. Issues #1820 and #41.
+//
+// "Picking up loot spawns additional enemies or applies temporary buffs to the player." A
+// clicked pickup on a floor carrying the row rolls: below 50, two creatures of the floor's
+// kinds; from 50, 20% more movement and attack speed for ten seconds. Rulings under the
+// owner's delegation, 2026-09-23.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the row where picking up loot raises creatures or hastes. Issues #1820, #41. */
+	const FName TrickOrTreat(UCataclysmDungeonModifierEffects::TrickOrTreatKey);
+
+	/** The roll pinned below 50 raises creatures; from 50 it hastes. */
+	const TCHAR* ATrick = TEXT("10");
+	const TCHAR* ATreat = TEXT("90");
+
+	/** A piece of gear lying at a place, enough of an item to be carried. */
+	ACataclysmDroppedItem* GearLyingAt(UWorld* World, const FVector& Where)
+	{
+		ACataclysmDroppedItem* Drop = World->SpawnActor<ACataclysmDroppedItem>(
+			Where, FRotator::ZeroRotator);
+		if (Drop)
+		{
+			Drop->Item.Base = FName(TEXT("Greataxe"));
+			Drop->Item.GearLevel = 3;
+			Drop->Item.Sockets = 1;
+			Drop->Item.Residue = 42.0f;
+			Drop->DisplayName = TEXT("Treat");
+		}
+		return Drop;
+	}
+
+	/** A floor carrying these rows, reached with `GoToFloor` and emptied, every Imp a Common. */
+	ACataclysmDungeonGameMode* ATrickOrTreatFloor(FAutomationTestBase& Test, UWorld* World,
+												  const FPossessedPlayer& Player,
+												  const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable())
+			|| !Test.TestNotNull(TEXT("the player carries an inventory"),
+								 Player.Character->GetInventory()))
+		{
+			return nullptr;
+		}
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces takes"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestTrue(TEXT("floor 1 was reached"), Mode->GoToFloor(1)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The player takes a drop, by a click or by a sweep, with the roll pinned. */
+	bool ThePlayerTakes(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+						const FVector& Where, bool bByHand, const TCHAR* Roll)
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.TrickOrTreatRoll"), Roll);
+		ACataclysmDroppedItem* Drop = GearLyingAt(World, Where);
+		return Test.TestNotNull(TEXT("the roll can be pinned"), Pinned.Variable)
+			&& Test.TestNotNull(TEXT("a drop to take"), Drop)
+			&& Test.TestTrue(TEXT("it was taken"),
+							 UCataclysmDropPickup::TakeInto(Player.Character->GetInventory(),
+															Drop, bByHand));
+	}
+
+	/** What a dungeon rule adds to this stat, as a percent, or 0 for none. */
+	float TreatMoreOn(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		const FCataclysmStatModifier* Rule = DungeonRuleOn(Player.AbilitySystem, Stat);
+		return Rule ? Rule->Value : 0.0f;
+	}
+}
+
+// ONLY A CLICKED PICKUP ROLLS: a sweep takes the drop and raises nothing; a click on a trick
+// raises two creatures.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTreatClickTest,
+	"Cataclysm.DungeonModifierEffects.OnlyAClickedPickupRollsForTrickOrTreat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTreatClickTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {TrickOrTreat});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	if (!ThePlayerTakes(*this, World, Player, FVector(300.0f, 0.0f, 0.0f), false, ATrick))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a sweep is not a pickup the rule counts"), Mode->TrickOrTreatPickupCount(), 0);
+	TestEqual(TEXT("and raises nothing"), Mode->FloorEnemies.Num(), 0);
+
+	if (!ThePlayerTakes(*this, World, Player, FVector(300.0f, 0.0f, 0.0f), true, ATrick))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a click is counted"), Mode->TrickOrTreatPickupCount(), 1);
+	TestEqual(TEXT("and a trick raises two creatures"), Mode->TrickOrTreatRaisedCount(), 2);
+	TestEqual(TEXT("both on the floor"), Mode->FloorEnemies.Num(), 2);
+	TestFalse(TEXT("and no haste"), Mode->TrickOrTreatIsHasting());
+
+	const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+	const FString* Line = Counting.Find(TrickOrTreat);
+	TestEqual(TEXT("the panel counts both"), Line ? *Line : FString(TEXT("no line")),
+			  FString(TEXT("trick or treat: 1 picked up, 2 creatures raised")));
+	return true;
+}
+
+// THE ROLL SPLITS AT 50, AND A TREAT HASTES FOR TEN SECONDS AND THEN STOPS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTreatHasteTest,
+	"Cataclysm.DungeonModifierEffects.ATreatHastesThePlayerForTenSecondsAndThenStops",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTreatHasteTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestTrue(TEXT("49.99 is a trick"), Effects::TrickOrTreatRaisesEnemies(49.99f));
+	TestFalse(TEXT("50 is a treat"), Effects::TrickOrTreatRaisesEnemies(50.0f));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {TrickOrTreat});
+	if (!Mode || !ThePlayerTakes(*this, World, Player, FVector(300.0f, 0.0f, 0.0f), true, ATreat))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a treat raises nothing"), Mode->TrickOrTreatRaisedCount(), 0);
+	Beat(Mode, 1);
+	TestTrue(TEXT("the player is hasted"), Mode->TrickOrTreatIsHasting());
+	TestEqual(TEXT("moving 20% faster"), TreatMoreOn(Player, TEXT("movement_speed")), 20.0f, 0.01f);
+	TestEqual(TEXT("and attacking 20% faster"), TreatMoreOn(Player, TEXT("attack_speed")),
+			  20.0f, 0.01f);
+
+	CataclysmTestWorld::RunClock(World, 9.5f);
+	Beat(Mode, 1);
+	TestTrue(TEXT("still hasted at nine and a half seconds"), Mode->TrickOrTreatIsHasting());
+
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	Beat(Mode, 1);
+	TestFalse(TEXT("no longer hasted after ten"), Mode->TrickOrTreatIsHasting());
+	TestNull(TEXT("and nothing is on movement speed"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("movement_speed")));
+	TestNull(TEXT("or on attack speed"), DungeonRuleOn(Player.AbilitySystem, TEXT("attack_speed")));
+	return true;
+}
+
+// A SECOND TREAT RESTARTS THE CLOCK AND DOES NOT STACK.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTreatRestartTest,
+	"Cataclysm.DungeonModifierEffects.ASecondTreatRestartsTheClockAndDoesNotStack",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTreatRestartTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrickOrTreatFloor(*this, World, Player, {TrickOrTreat});
+	if (!Mode || !ThePlayerTakes(*this, World, Player, FVector(300.0f, 0.0f, 0.0f), true, ATreat))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	CataclysmTestWorld::RunClock(World, 6.0f);
+	if (!ThePlayerTakes(*this, World, Player, FVector(300.0f, 0.0f, 0.0f), true, ATreat))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	CataclysmTestWorld::RunClock(World, 6.0f);
+	Beat(Mode, 1);
+	TestTrue(TEXT("twelve seconds after the first, the second still hastes"),
+			 Mode->TrickOrTreatIsHasting());
+	TestEqual(TEXT("by 20%, not 40%"), TreatMoreOn(Player, TEXT("movement_speed")), 20.0f, 0.01f);
+
+	CataclysmTestWorld::RunClock(World, 4.5f);
+	Beat(Mode, 1);
+	TestFalse(TEXT("and ten and a half seconds after the second, it has stopped"),
+			  Mode->TrickOrTreatIsHasting());
+	return true;
+}
+
+// A TRICK'S PAIR DOES NOT SEAL AGAIN STAIRS BLOOD GATES HAD OPENED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTreatGatesTest,
+	"Cataclysm.DungeonModifierEffects.ATrickOrTreatPairDoesNotResealOpenBloodGates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTreatGatesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode =
+		ATrickOrTreatFloor(*this, World, Player, {BloodGates, TrickOrTreat});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Slain = PlaceCreatureAtRung(World, Mode, FVector(400.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Standing =
+		PlaceCreatureAtRung(World, Mode, FVector(800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature to slay"), Slain)
+		|| !TestNotNull(TEXT("and one left standing"), Standing)
+		|| !ThePlayerKills(*this, Player, Slain))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one of two slain opens the gate"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 1 of 2 slain, open at 1")));
+
+	if (!ThePlayerTakes(*this, World, Player, FVector(-300.0f, 0.0f, 0.0f), true, ATrick))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a trick raised two"), Mode->TrickOrTreatRaisedCount(), 2);
+	TestEqual(TEXT("and the gate is as it was"), GatesPanelLine(Mode),
+			  FString(TEXT("blood gates: 1 of 2 slain, open at 1")));
 	return true;
 }
 

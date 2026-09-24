@@ -258,6 +258,17 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float CurseMaxHealthLessPercent = 0.0f;
 
 	/**
+	 * How much faster a treat has the player moving and attacking, in percent. Trick or
+	 * Treat. Issues #1820 and #41. Their own fields, beside Fungal Overgrowth's
+	 * `MushroomSpeedMorePercent`, so a floor carrying both multiplies them.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TreatSpeedMorePercent = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float TreatAttackSpeedMorePercent = 0.0f;
+
+	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
 	 *
@@ -384,6 +395,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& GraspMovementLessPercent <= 0.0f
 			&& CurseMovementLessPercent <= 0.0f
 			&& CurseMaxHealthLessPercent <= 0.0f
+			&& TreatSpeedMorePercent <= 0.0f
+			&& TreatAttackSpeedMorePercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -1613,6 +1626,28 @@ public:
 	 * - FLOOR 1 COUNTS.
 	 */
 	static const TCHAR* StarvationCurseKey;
+
+	/**
+	 * The row where picking up loot raises creatures or hastes the player. Issues #1820 and
+	 * #41.
+	 *
+	 * "Picking up loot spawns additional enemies or applies temporary buffs to the player."
+	 * Each drop the player clicks on a floor carrying the row rolls 0 to 100: below
+	 * `TrickOrTreatEnemiesBelow`, two creatures of the floor's kinds arrive where it lay;
+	 * otherwise the player moves and attacks `TrickOrTreatHastePercent` faster for
+	 * `TrickOrTreatHasteSeconds`.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-23:
+	 * - CLICKED PICKUPS ONLY. A crafting material swept up by walking near it rolls nothing:
+	 *   the player did not choose it, and a sweep runs every frame.
+	 * - EVEN ODDS, pinned for tests by `Cataclysm.TrickOrTreatRoll`.
+	 * - TWO CREATURES OF THE FLOOR'S KINDS, their rarity drawn as usual, which Blood Gates
+	 *   leaves out of its count, as it does the Unstable Portal's Warden.
+	 * - 20% MORE MOVEMENT AND ATTACK SPEED FOR TEN SECONDS; a second treat restarts the
+	 *   clock and does not stack. A play-test point.
+	 * - NO EXCEPTIONS, on the last floor or in a Horde.
+	 */
+	static const TCHAR* TrickOrTreatKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -3835,6 +3870,25 @@ public:
 		"A curse of nothing is not the row, and one that can take the whole stat would "
 		"stop the player moving or leave them no health at all.");
 
+	/** The draw below which a pickup raises creatures rather than hasting: even odds. */
+	static constexpr float TrickOrTreatEnemiesBelow = 50.0f;
+
+	/** How many creatures a trick raises. Ruled under the owner's delegation, 2026-09-23. */
+	static constexpr int32 TrickOrTreatEnemies = 2;
+
+	/**
+	 * A treat: how much faster the player moves and attacks, and for how long. The figures
+	 * Dirge Resonance gives creatures. Ruled under the owner's delegation; a play-test point.
+	 */
+	static constexpr float TrickOrTreatHastePercent = 20.0f;
+	static constexpr float TrickOrTreatHasteSeconds = 10.0f;
+
+	static_assert(
+		TrickOrTreatEnemiesBelow > 0.0f && TrickOrTreatEnemiesBelow < 100.0f
+			&& TrickOrTreatEnemies > 0 && TrickOrTreatHasteSeconds > 0.0f,
+		"A roll that is always one side is not the row's \"or\", and a trick of nothing or a "
+		"treat of no length is not a trick or a treat.");
+
 	static_assert(
 		DirgeResonanceHasteSeconds > 0.0f
 			&& DirgeResonanceHasteSeconds < DirgeResonanceEverySeconds,
@@ -4560,6 +4614,9 @@ public:
 
 	/** What this many stacks take off their stat, in percent. Not capped here. */
 	static float StarvationCurseLessPercent(int32 Stacks);
+
+	/** Whether this draw, 0 to 100, is a trick: creatures rather than a haste. */
+	static bool TrickOrTreatRaisesEnemies(float Roll);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

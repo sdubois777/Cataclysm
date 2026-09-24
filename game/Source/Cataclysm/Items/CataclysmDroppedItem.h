@@ -27,9 +27,10 @@ class UWorld;
  * sixty times a second for something that cannot change while the item is on
  * the floor.
  *
- * PICKING IT UP IS NOT BUILT. There is no inventory to put an item into -- the
- * design fixes the carried inventory at 48 slots and none of it exists yet --
- * so this can be dropped and read and not yet taken. Issue #707.
+ * PICKED UP BY `UCataclysmDropPickup::TakeInto`, into the carried inventory: a click
+ * takes any drop, and walking near a crafting material takes it. This said picking
+ * up was not built, which stopped being true when the inventory was; corrected while
+ * building `Chaos_Trick_or_Treat`. Issue #707.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmDroppedItem : public AActor
@@ -680,7 +681,10 @@ public:
 	 *
 	 * THE ACTOR IS DESTROYED ONLY AFTER THE ITEM IS SAFELY IN A SLOT. The other
 	 * order would destroy the item whenever the inventory was full.
+	 *
+	 * A TAKE IS ANNOUNCED on `UCataclysmCombatEvents::OnLootTaken`, saying whether
+	 * it was by hand. Only the player controller's click passes true.
 	 */
 	static bool TakeInto(UCataclysmInventoryComponent* Inventory,
-						 ACataclysmDroppedItem* Drop);
+						 ACataclysmDroppedItem* Drop, bool bByHand = false);
 };

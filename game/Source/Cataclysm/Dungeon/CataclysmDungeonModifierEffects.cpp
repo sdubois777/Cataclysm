@@ -119,6 +119,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::NothingIsForgottenKey =
 const TCHAR* UCataclysmDungeonModifierEffects::StarvationCurseKey =
 	TEXT("Famine_Starvation_Curse");
 
+const TCHAR* UCataclysmDungeonModifierEffects::TrickOrTreatKey =
+	TEXT("Chaos_Trick_or_Treat");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -171,6 +174,9 @@ namespace
 	 * a modifier keyed by a name that map does not hold is written nowhere, silently.
 	 */
 	const TCHAR* const DungeonModifierEffectsArmourStat = TEXT("armor");
+
+	/** Attack speed, which Trick or Treat's haste raises. Issues #1820 and #41. */
+	const TCHAR* const DungeonModifierEffectsAttackSpeedStat = TEXT("attack_speed");
 
 	/**
 	 * The four stats Withered Ground's row calls "Health and Mana recovery
@@ -390,7 +396,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(ChaoticLootKey)
 		|| RowKey == FName(UnstablePortalKey)
 		|| RowKey == FName(NothingIsForgottenKey)
-		|| RowKey == FName(StarvationCurseKey))
+		|| RowKey == FName(StarvationCurseKey)
+		|| RowKey == FName(TrickOrTreatKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -569,6 +576,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(UnstablePortalKey),
 		FName(NothingIsForgottenKey),
 		FName(StarvationCurseKey),
+		FName(TrickOrTreatKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1001,6 +1009,15 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  DungeonModifierEffectsMovementSpeedStat,
 								  Effects.MushroomSpeedLessPercent);
 
+	// AND A TREAT'S HASTE, A `More` ON MOVEMENT SPEED FROM ITS OWN FIELD and a `More` on
+	// attack speed, through the signed helper as the mushroom's is. Issues #1820 and #41.
+	DungeonModifierEffectsAddMultiplier(Modifiers,
+										DungeonModifierEffectsMovementSpeedStat,
+										Effects.TreatSpeedMorePercent);
+	DungeonModifierEffectsAddMultiplier(Modifiers,
+										DungeonModifierEffectsAttackSpeedStat,
+										Effects.TreatAttackSpeedMorePercent);
+
 	// AND WITHERED GROUND, WHICH IS ONE FIELD AND FOUR STATS. The row states
 	// one figure for all of them: "your Health and Mana recovery (regen/leech)
 	// is reduced by 80%".
@@ -1203,6 +1220,12 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("movement speed %.0f%% less from the starvation curse"),
 									Effects.CurseMovementLessPercent));
+	}
+	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("movement speed %.0f%% more and attack speed %.0f%% more from a treat"),
+			Effects.TreatSpeedMorePercent, Effects.TreatAttackSpeedMorePercent));
 	}
 	if (Effects.CurseMaxHealthLessPercent > 0.0f)
 	{
@@ -1815,6 +1838,11 @@ int32 UCataclysmDungeonModifierEffects::StarvationCurseKindToAdd(int32 Drawn,
 float UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(int32 Stacks)
 {
 	return static_cast<float>(FMath::Max(0, Stacks)) * StarvationCursePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::TrickOrTreatRaisesEnemies(float Roll)
+{
+	return Roll < TrickOrTreatEnemiesBelow;
 }
 
 int32 UCataclysmDungeonModifierEffects::UnstablePortalOutcomeFor(float Roll)
