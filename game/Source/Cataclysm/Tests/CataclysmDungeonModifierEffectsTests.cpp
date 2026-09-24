@@ -25065,7 +25065,8 @@ bool FCataclysmReaperNotTakenTest::RunTest(const FString& Parameters)
 	}
 
 	TestFalse(TEXT("the Reaper is refused"), UCataclysmCommand::Subjugate(Player.Character, Reaper));
-	TestTrue(TEXT("and nobody owns it"), Reaper->GetOwner() == nullptr);
+	// NOT "NOBODY OWNS IT": a pawn's owner is its AI controller once possessed.
+	TestTrue(TEXT("and the player does not own it"), Reaper->GetOwner() != Player.Character);
 	TestFalse(TEXT("and it is not the player's friend"),
 			  UCataclysmTargeting::IsFriendlyTo(Reaper, Player.Character));
 	return true;

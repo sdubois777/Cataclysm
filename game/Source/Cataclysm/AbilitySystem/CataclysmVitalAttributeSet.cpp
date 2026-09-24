@@ -149,7 +149,17 @@ void UCataclysmVitalAttributeSet::PreAttributeChange(
 
 	if (Attribute == GetHealthAttribute())
 	{
-		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
+		// A CREATURE THAT CANNOT BE HURT IS HELD AT ITS MAXIMUM: The Reaper. Issues #1820 and
+		// #41. HERE, BEFORE ANYTHING READS THE CURRENT VALUE: a write to the health base runs
+		// this clamp and then `PostAttributeBaseChange`, whose death check would otherwise see
+		// the lowered value before `PostGameplayEffectExecute` could put it back. Seen in the
+		// whole-suite run of 2026-09-24, where a write straight to health left the Reaper dead
+		// at full health.
+		const ACataclysmEnemyCharacter* Unhurt =
+			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
+		NewValue = Unhurt && Unhurt->bCannotBeHurt
+			? GetMaxHealth()
+			: FMath::Clamp(NewValue, 0.0f, GetMaxHealth());
 	}
 	else if (Attribute == GetManaAttribute())
 	{
@@ -1654,10 +1664,11 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 	}
 	else if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
-		// A WRITE STRAIGHT TO HEALTH CANNOT KILL THE REAPER EITHER. Issues #1820 and #41.
+		// AND THE REAPER'S HEALTH BASE IS PUT BACK TOO. Issues #1820 and #41.
 		// `UCataclysmSkillEffects::ReduceHealthDirectly` takes health off through this
-		// branch and never through the damage branch above, so the check there does not
-		// reach it. Put back before the clamp and the death check below read it.
+		// branch and never through the damage branch above. `PreAttributeChange` has already
+		// held the CURRENT value at the maximum, which is what keeps it alive; the base the
+		// effect lowered is left behind, and this writes it back so the two agree.
 		const ACataclysmEnemyCharacter* Unhurt =
 			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
 		if (Unhurt && Unhurt->bCannotBeHurt)
