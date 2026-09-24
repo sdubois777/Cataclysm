@@ -2017,6 +2017,92 @@ void ACataclysmDungeonGameMode::HandleStairsTaken()
 	GoDownOneFloor();
 }
 
+bool ACataclysmDungeonGameMode::IsTheFinalFloorForItsBoss() const
+{
+	const int32 Floors = ChooseTotalFloors();
+	return Floors > 1 && FloorBrief.FloorNumber >= Floors;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForNothingIsForgotten(
+	const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::NothingIsForgottenKey)))
+	{
+		return;
+	}
+
+	// "THAT THE PLAYER KILLS", read as Vengeful Wraiths and Blood Gates read it; and never a
+	// marked creature, whose second death pays nothing.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (!Fallen || !Fallen->PaysForItsDeath() || !Player || Notice.Killer != Player)
+	{
+		return;
+	}
+
+	const UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Fallen);
+	if (!Abilities)
+	{
+		return;
+	}
+	NothingIsForgottenHealth += Effects::NothingIsForgottenPortionOf(
+		Abilities->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute()));
+	NothingIsForgottenDamage += Effects::NothingIsForgottenPortionOf(
+		Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()));
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::FeedTheFinalBoss(ACataclysmEnemyCharacter* Boss)
+{
+	if (!IsValid(Boss))
+	{
+		return;
+	}
+	NothingIsForgottenBoss = Boss;
+	ApplyNothingIsForgottenFigures(Boss);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::ApplyNothingIsForgottenFigures(ACataclysmEnemyCharacter* Creature)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	if (!IsValid(Creature) || NothingIsForgottenBoss.Get() != Creature)
+	{
+		return;
+	}
+	UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Creature);
+	if (!Abilities)
+	{
+		return;
+	}
+
+	// HEALTH, UNCAPPED, onto its maximum, and it arrives full: the void's gift is not a
+	// wound. The maximum is written first, because the clamp on health reads it.
+	const float Maximum = Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute())
+		+ NothingIsForgottenHealth;
+	Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), Maximum);
+	Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(), Maximum);
+
+	// DAMAGE, UP TO THE CAP of the boss's own. Ruled under the owner's delegation.
+	const float Own = Abilities->GetNumericAttribute(Combat::GetAttackDamageAttribute());
+	const float Added = Effects::NothingIsForgottenDamageAdded(NothingIsForgottenDamage, Own);
+	Abilities->SetNumericAttributeBase(Combat::GetAttackDamageAttribute(), Own + Added);
+
+	NothingIsForgottenHealthGiven = NothingIsForgottenHealth;
+	NothingIsForgottenDamageGiven = Added;
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Nothing Is Forgotten: the final boss %s takes %.0f health and %.0f damage "
+				"of the %.0f the void held"),
+		   *Creature->GetName(), NothingIsForgottenHealth, Added, NothingIsForgottenDamage);
+}
+
 void ACataclysmDungeonGameMode::RaiseTheUnstablePortalsWarden()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -3873,6 +3959,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
 	NoteDeathForDeadRising(Notice);
 	NoteDeathForBloodGates(Notice);
+	NoteDeathForNothingIsForgotten(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -5086,6 +5173,7 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodForgedChampions(
 	// block over with its new rung's own. Without this a floor carrying both rows would
 	// strip a wraith of everything but its name the first time it was fed.
 	ApplyVengefulWraithFigures(Champion);
+	ApplyNothingIsForgottenFigures(Champion);
 
 	// AND ITS TALLY STARTS AGAIN, so the next rung costs the same as this one did.
 	BloodForgedChampionsFed[Champion] = 0;
@@ -5548,6 +5636,20 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 										   DivineResurgenceRisen)
 						 : FString::Printf(TEXT("holy revival: %d of %d fallen, comes at %d"),
 										   DivineResurgenceFallen, Placed, ComesAt));
+	}
+
+	// AND WHAT THE VOID HOLDS FOR THE FINAL BOSS, or what it gave the boss and whether the
+	// damage reached its cap. Issues #1820 and #41.
+	const FName Void(Effects::NothingIsForgottenKey);
+	if (FloorBrief.Modifiers.Contains(Void))
+	{
+		Counting.Add(Void, NothingIsForgottenBoss.IsValid()
+			? FString::Printf(TEXT("nothing is forgotten: the final boss took %.0f health and %.0f damage%s"),
+							  NothingIsForgottenHealthGiven, NothingIsForgottenDamageGiven,
+							  NothingIsForgottenDamage > NothingIsForgottenDamageGiven + 0.5f
+								  ? TEXT(" (damage at its cap)") : TEXT(""))
+			: FString::Printf(TEXT("nothing is forgotten: the void holds %.0f health and %.0f damage for the final boss"),
+							  NothingIsForgottenHealth, NothingIsForgottenDamage));
 	}
 
 	// AND WHAT THE UNSTABLE PORTAL LAST DID, or its odds before its first step. Issues
@@ -6911,6 +7013,7 @@ void ACataclysmDungeonGameMode::StepVolatileEvolution(ACataclysmPlayerCharacter*
 		// written where Blood-Forged Champions does the same: the two calls above have
 		// just written this creature's whole stat block over.
 		ApplyVengefulWraithFigures(Creature);
+		ApplyNothingIsForgottenFigures(Creature);
 
 		VolatileEvolutionMutated.Add(Creature);
 		++VolatileEvolutionMutations;
@@ -7575,6 +7678,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			// duration of the dungeon" ends. Issues #1786 and #41.
 			WastingSicknessStacks = 0;
 
+			// AND THE VOID EMPTIES: what Nothing Is Forgotten held was this dungeon's.
+			// Issues #1820 and #41.
+			NothingIsForgottenHealth = 0.0f;
+			NothingIsForgottenDamage = 0.0f;
+			NothingIsForgottenBoss.Reset();
+			NothingIsForgottenHealthGiven = 0.0f;
+			NothingIsForgottenDamageGiven = 0.0f;
+
 			// AND LEAVING THE DUNGEON IS WHERE THE EDICT OF SILENCE'S CLOCK
 			// FINALLY STOPS. Issues #1786 and #41. This is the branch that runs
 			// when the brief carries no modifiers at all, which is the player
@@ -7697,6 +7808,27 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	}
 
 	PopulateFloor();
+
+	// NOTHING IS FORGOTTEN: THE FINAL FLOOR'S BOSS TAKES WHAT THE VOID HOLDS as it is placed.
+	// Issues #1820 and #41. The boss is the Gatekeeper the populator puts on the exit cell;
+	// nothing else marks a floor's boss. Fed whether or not this floor carries the row,
+	// because what the void holds was fed on floors that did.
+	if (IsTheFinalFloorForItsBoss() && FloorBrief.bBossAtTheExit
+		&& (NothingIsForgottenHealth > 0.0f || NothingIsForgottenDamage > 0.0f) && CurrentFloor)
+	{
+		const FVector Exit = CurrentFloor->ExitWorld();
+		ACataclysmEnemyCharacter* Boss = nullptr;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+		{
+			if (IsValid(Enemy) && Enemy->IsA<ACataclysmGatekeeperCharacter>()
+				&& (!Boss || FVector::DistSquared2D(Enemy->GetActorLocation(), Exit)
+							   < FVector::DistSquared2D(Boss->GetActorLocation(), Exit)))
+			{
+				Boss = Enemy.Get();
+			}
+		}
+		FeedTheFinalBoss(Boss);
+	}
 
 	// THE STAIRS, UNLESS THE FLOOR IS A WAVE. A Horde dungeon has none at all:
 	// the way to the next floor is to beat the wave standing in front of you,

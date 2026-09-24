@@ -1551,6 +1551,28 @@ public:
 	static const TCHAR* UnstablePortalKey;
 
 	/**
+	 * The row where the player's kills fuel the dungeon's final boss. Issues #1820 and #41.
+	 *
+	 * "Enemies that the player kills aren't forgotten, instead a portion of their stats are
+	 * fed back into the void to fuel the final boss of the dungeon." Each creature the
+	 * player kills on a floor carrying the row adds `NothingIsForgottenPortionPercent` of
+	 * its maximum health and of its attack damage to a total the dungeon keeps; when the
+	 * final floor's boss is placed, the total is added to it.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-23:
+	 * - FIVE PERCENT OF EACH, a judgement: no figure in the design settles it.
+	 * - THE HEALTH IS UNCAPPED; THE DAMAGE IS CAPPED at `NothingIsForgottenMostDamagePercent`
+	 *   of the boss's own, so it hits at most twice as hard. Uncapped damage over a long
+	 *   dungeon would make a fight no play could survive. Both are play-test points.
+	 * - THE FINAL BOSS ONLY: the Gatekeeper the last floor places at its exit, even in an
+	 *   Elite dungeon where every floor ends with one. A dungeon of one floor has no final
+	 *   boss at its exit, so there the row feeds nothing.
+	 * - THE PLAYER'S KILLS OF UNMARKED CREATURES, only on floors carrying the row. A risen
+	 *   creature's second death feeds nothing. The total empties when the player leaves.
+	 */
+	static const TCHAR* NothingIsForgottenKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3725,6 +3747,26 @@ public:
 			&& UnstablePortalReturnBelow < 100.0f,
 		"Each of the row's three outcomes must keep some share of the roll.");
 
+	/**
+	 * The share of a killed creature's maximum health, and of its attack damage, that the
+	 * void keeps for the final boss. THE ROW SAYS "a portion" AND GIVES NO FIGURE: five is
+	 * a judgement, ruled under the owner's delegation on 2026-09-23.
+	 */
+	static constexpr float NothingIsForgottenPortionPercent = 5.0f;
+
+	/**
+	 * The most attack damage the void may add to the final boss, as a share of the boss's
+	 * own: it hits at most twice as hard. Ruled under the owner's delegation, 2026-09-23.
+	 * Its health has no cap.
+	 */
+	static constexpr float NothingIsForgottenMostDamagePercent = 100.0f;
+
+	static_assert(
+		NothingIsForgottenPortionPercent > 0.0f && NothingIsForgottenPortionPercent < 100.0f
+			&& NothingIsForgottenMostDamagePercent > 0.0f,
+		"A portion of nothing or of everything is not the row, and a cap of nothing feeds "
+		"the boss no damage at all.");
+
 	static_assert(
 		DirgeResonanceHasteSeconds > 0.0f
 			&& DirgeResonanceHasteSeconds < DirgeResonanceEverySeconds,
@@ -4426,6 +4468,15 @@ public:
 	 * entrance, otherwise a mini-boss. One of the three values above.
 	 */
 	static int32 UnstablePortalOutcomeFor(float Roll);
+
+	/** What the void keeps of one killed creature's figure: the portion, never below none. */
+	static float NothingIsForgottenPortionOf(float Figure);
+
+	/**
+	 * The attack damage the void adds to a boss whose own is `BossOwnDamage`, holding
+	 * `Held`: all of it, up to `NothingIsForgottenMostDamagePercent` of the boss's own.
+	 */
+	static float NothingIsForgottenDamageAdded(float Held, float BossOwnDamage);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

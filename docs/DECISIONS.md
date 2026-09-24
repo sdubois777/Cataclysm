@@ -2,6 +2,99 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Nothing Is Forgotten: the player's kills feed five per cent of their health and damage to the dungeon's final boss
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, the portion, the damage cap and their arithmetic), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (the death listener that fills the void, feeding the last floor's Gatekeeper as it is
+placed, applying the figures again after a rung change, the floor panel line and emptying the void
+when the player leaves the dungeon), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
+
+### The row
+
+`Void_Nothing_Is_Forgotten` in `game/Data/DungeonModifiers.csv`, weight 10: "Enemies that the player
+kills aren't forgotten, instead a portion of their stats are fed back into the void to fuel the final
+boss of the dungeon." The row gives no figure.
+
+### What the rule does
+
+On a floor carrying the row, each unmarked creature the player kills adds five per cent of its maximum
+health and five per cent of its attack damage to what the void holds. When the dungeon's last floor is
+populated, the Gatekeeper at its exit takes all of the health held onto its maximum, arriving at full
+health, and the damage held onto its attack damage up to the boss's own figure again. If a rung change
+later rewrites the boss's attributes, the same figures are applied again. The floor panel shows what the
+void holds, and once the boss is fed it shows what the boss took, adding "(damage at its cap)" when the
+cap withheld some of the damage. Leaving the dungeon empties the void.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-23. Every figure here is a
+judgement, not something derived:**
+
+- **"A portion" is five per cent** (`NothingIsForgottenPortionPercent`), of **maximum health and attack
+  damage**, which are what "their stats" is read as. **Play-test point.**
+- **The health is uncapped. The damage added is capped at +100% of the boss's own attack damage**
+  (`NothingIsForgottenMostDamagePercent`), so a fed boss hits for at most double. **Play-test point.**
+- **The final boss is the Gatekeeper on the LAST floor only, Elite dungeons included**, where every floor
+  ends with a Gatekeeper and only the last one is fed. **A one-floor dungeon feeds nothing**:
+  `IsTheFinalFloorForItsBoss` asks for more than one floor, so its one Gatekeeper is never fed. The last
+  floor's boss is fed whether or not that floor itself carries the row, because what the void
+  holds was fed on floors that did.
+- **The player's kills of unmarked creatures only, and only on floors carrying the row.** A creature's
+  kill feeds nothing, and a risen creature's second death feeds nothing, as its second death pays nothing
+  anywhere else.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `OnlyThePlayersKillsOfUnmarkedCreaturesFeedTheVoid`: two of the player's kills hold five per cent of
+  their maximum health and attack damage; a creature's kill and a marked creature's death add nothing;
+  the panel line; and leaving the dungeon empties both totals.
+- `TheFinalBossTakesAllTheHealthAndAtMostDoubleItsDamage`: three kills holding more damage than a
+  Gatekeeper hitting for 10; its maximum health rises by all the health held and it stands at that
+  maximum; its damage stops at double; the panel says the damage is at its cap.
+- `BelowTheCapTheFinalBossTakesAllTheDamageHeld`: a Gatekeeper hitting for 1000 takes all of two kills'
+  damage, and the panel does not say it is capped.
+- `OnlyTheFinalFloorsBossIsFedEvenInAnEliteDungeon`: on a two-floor Elite dungeon, floor 1 has a
+  Gatekeeper at its exit and it is not fed; floor 2's Gatekeeper is.
+
+One Python check: the row still says "the player kills", "a portion", "their stats" and "the final boss
+of the dungeon", and states no percentage. It was seen to fail, in a copy of the repository, with "the
+player kills" reworded, with "a portion" made "all", and with "a portion" made "5%".
+
+### Run
+
+- **The group on development (8c5f3ac1) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 14 actions, 11 files compiled" and "241 tests performed, 241 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on e60c4b2f:** "Build: Succeeded - 14 actions, 11 files compiled" and "2258 tests
+  performed, 2258 succeeded, 0 failed", as registered (2254 + the four named tests), with every declared
+  test reported. The group alone on the same head then printed "245 tests performed, 245 succeeded,
+  0 failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing 1 of 245 with the
+  break in and 0 of 245 restored, exactly as registered. Each broken run's log was copied before the
+  restored run overwrote it, and its failure text is quoted:
+  - **the damage cap raised to 1000%** (`NothingIsForgottenMostDamagePercent`, in
+    `CataclysmDungeonModifierEffects.h`) failed `TheFinalBossTakesAllTheHealthAndAtMostDoubleItsDamage`:
+    "Expected 'its damage stops at double its own' to be 20.000000, but it was 25.000000", and the panel
+    no longer said the damage was at its cap;
+  - **any killer accepted** (`Notice.Killer != Player` made `false`, in `CataclysmDungeonGameMode.cpp`)
+    failed `OnlyThePlayersKillsOfUnmarkedCreaturesFeedTheVoid`: "Expected 'the void holds 5% of the
+    player's two kills' maximum health' to be 10.000000, but it was 15.000000", the creature's kill
+    adding a third five per cent;
+  - **every floor's exit boss fed** (`IsTheFinalFloorForItsBoss()` removed from the feeding condition, in
+    `CataclysmDungeonGameMode.cpp`) failed `OnlyTheFinalFloorsBossIsFedEvenInAnEliteDungeon`: "Expected
+    'and it is not fed: floor 1 is not the last' to be null".
+
+---
+
 ## 2026-09-23 — No rule in this log may be doubled, and the insert tool no longer writes a second one
 
 **Affects:** `tools/tests/test_decisions_entries_are_separated.py` (the check that every entry here

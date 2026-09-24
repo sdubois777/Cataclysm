@@ -3756,3 +3756,25 @@ def test_unstable_portal_row_still_states_its_three_odds_and_the_warden_is_the_m
     assert "The Abyssal Warden (Mini-Boss)" in design, (
         "docs/Cataclysm_GDD_v2.md no longer names the Abyssal Warden as the mini-boss. The "
         "unstable portal raises one on that line alone; put the ruling again.")
+
+def test_nothing_is_forgotten_row_still_feeds_the_final_boss_a_portion_of_the_players_kills():
+    """The four phrases the rule's readings rest on.
+
+    "Enemies that the player kills aren't forgotten, instead a portion of their stats are
+    fed back into the void to fuel the final boss of the dungeon." THE PLAYER KILLS is why
+    only the player's kills feed it; A PORTION gives no figure, which is why the five per
+    cent is a ruling; THEIR STATS is read as maximum health and attack damage; and THE
+    FINAL BOSS OF THE DUNGEON is why only the last floor's Gatekeeper is fed. If any of
+    them changes, the reading built on it must be revisited.
+    """
+    words = flat(rows()["Void_Nothing_Is_Forgotten"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("the player kills", "a portion", "their stats", "the final boss of the dungeon"):
+        assert phrase in lower, (
+            f"Void_Nothing_Is_Forgotten no longer says {phrase.upper()!r}. A reading of the "
+            "rule rests on it; see NothingIsForgottenKey in CataclysmDungeonModifierEffects.h. "
+            + words)
+    assert "%" not in words, (
+        "Void_Nothing_Is_Forgotten now states a percentage. The five per cent was a ruling "
+        "because the row gave none; use the row's figure. " + words)
