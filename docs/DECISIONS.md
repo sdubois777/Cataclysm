@@ -1975,6 +1975,28 @@ the sentence above the full list says a test naming them by hand passes "after s
 sixty-second". This condition compares a number of seconds, so it adds to the 61 and not to the
 26. `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py` holds both.
 
+### THE WINDOW, 2026-09-24, ON f5635e7a
+
+**This change's C++ was compiled for the first time here**, including the conflicts resolved by hand
+when it was stacked on Two Hands, and it built.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 28 actions, 25 files compiled` |
+| Fail-before, `tests --prefix "Cataclysm.Passives."`, stale asset | `131 tests performed, 129 succeeded, 2 failed`: the Set Upon and Set the Pack On row tests, on "Expected 'Set Upon carries one row' to be 1, but it was 0" and "Expected 'Set the Pack On carries one row' to be 1, but it was 0" |
+| Rebuild, `generate_datatable_assets.py` | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` and nothing else |
+| Whole suite, `tests --no-build` | `2293 tests performed, 2293 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before. The broken run's log
+was copied before the restored run overwrote it. **Every one was registered before the window, test
+and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Restored | Assertions that failed |
+|---|---|---|---|---|
+| a blow exactly 2 seconds ago falls outside the window (`<` for `<=` in `CataclysmStatPipeline.cpp`) | `Cataclysm.StatPipeline.` | `47 tests performed, 46 succeeded, 1 failed: DamagedByYouHoldsWithinItsSecondsInclusiveAndRefusesAnUnreadOrUnstruckTarget` | `47 tests performed, 47 succeeded, 0 failed` | "and one struck exactly two seconds ago is, because within is inclusive" |
+| a minion's blow no longer names the enemy it strikes (`nullptr` for `Target` in `CataclysmMinion.cpp`) | `Cataclysm.MinionGear.` | `8 tests performed, 7 succeeded, 1 failed: AMinionHitsHarderOnlyAgainstAnEnemyItsSummonerDamagedInTheLastTwoSeconds` | `8 tests performed, 8 succeeded, 0 failed` | "against an enemy its summoner just damaged: 16% increased and 25% more", 220.5 (the imp's own figure) where 319.725 |
+| the struck record keeps no time (`CataclysmAbilitySystemComponent.cpp`) | `Cataclysm.Passives.` | `131 tests performed, 129 succeeded, 2 failed`: the Set Upon and Set the Pack On row tests | `131 tests performed, 131 succeeded, 0 failed` | "one point adds 2.0% against an enemy struck a moment ago", 0 where 0.02; "against an enemy struck a moment ago, 25% more", 1.32 where 1.65 |
+
 ---
 
 ## 2026-09-23 — Overreach adds 2 metres to a melee strike's reach, after every multiplier, and to where the basic attack starts swinging
