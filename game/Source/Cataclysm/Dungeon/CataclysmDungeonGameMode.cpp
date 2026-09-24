@@ -732,6 +732,17 @@ static TAutoConsoleVariable<float> CVarStarvationCurseRoll(
 	TEXT("slows movement, from 50 lowers maximum health. -1 draws normally."),
 	ECVF_Cheat);
 
+/**
+ * The roll a clicked pickup makes on a floor carrying Trick or Treat, pinned for tests. The
+ * same shape as the other pinned rolls, for the same reason.
+ */
+static TAutoConsoleVariable<float> CVarTrickOrTreatRoll(
+	TEXT("Cataclysm.TrickOrTreatRoll"),
+	-1.0f,
+	TEXT("Pin the roll a clicked pickup makes under Trick or Treat, 0 to 100: below 50 ")
+	TEXT("raises two creatures, from 50 hastes the player. -1 rolls normally."),
+	ECVF_Cheat);
+
 static TAutoConsoleVariable<float> CVarDeadRisingRoll(
 	TEXT("Cataclysm.DeadRisingRoll"),
 	-1.0f,
@@ -833,6 +844,12 @@ namespace
 	float DungeonGameModeStarvationCurseRoll()
 	{
 		const float Pinned = CVarStarvationCurseRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeTrickOrTreatRoll()
+	{
+		const float Pinned = CVarTrickOrTreatRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -1031,6 +1048,10 @@ void ACataclysmDungeonGameMode::StartPlay()
 		// broadcast on every blow since slice 4 and only tests listened.
 		Events->OnHit.AddUObject(
 			this, &ACataclysmDungeonGameMode::OnSomethingWasHit);
+
+		// AND A DROP TAKEN ANYWHERE REACHES TRICK OR TREAT, bound for the same three reasons.
+		// Issues #1820 and #41.
+		Events->OnLootTaken.AddUObject(this, &ACataclysmDungeonGameMode::OnLootTaken);
 	}
 }
 
@@ -2073,6 +2094,115 @@ void ACataclysmDungeonGameMode::NoteDeathForNothingIsForgotten(
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::OnLootTaken(const FCataclysmLootTakenNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A CLICKED DROP, TAKEN BY THE PLAYER, ON A FLOOR CARRYING THE ROW. A material swept up
+	// by walking near it is not a choice the player made. Ruled 2026-09-23.
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	const APawn* Player = Controller ? Controller->GetPawn() : nullptr;
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::TrickOrTreatKey)) || !Notice.bByHand
+		|| !Player || Notice.Taker != Player)
+	{
+		return;
+	}
+
+	// A DROP A RAISED CREATURE DROPPED ROLLS NOTHING, so a trick's pair cannot start
+	// another trick and the chain ends after one link at any loot quantity. Ruled
+	// 2026-09-23; the entry gives the figures.
+	if (Notice.bMarked)
+	{
+		return;
+	}
+
+	++TrickOrTreatPickups;
+	if (Effects::TrickOrTreatRaisesEnemies(DungeonGameModeTrickOrTreatRoll()))
+	{
+		RaiseTheTrickOrTreatPair(Notice.Where);
+	}
+	else
+	{
+		// A SECOND TREAT RESTARTS THE CLOCK AND ADDS NOTHING: the haste is on or off.
+		TrickOrTreatHasteUntilSeconds =
+			static_cast<float>(World->GetTimeSeconds()) + Effects::TrickOrTreatHasteSeconds;
+	}
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::RaiseTheTrickOrTreatPair(const FVector& Where)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// THE FLOOR'S KINDS: every kind the floor placed, standing or slain, and never the
+	// Gatekeeper, which is the floor's boss rather than one of its creatures. An Imp when the
+	// floor placed nothing else.
+	TArray<ECataclysmDungeonCreature> Kinds;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : FloorEnemies)
+	{
+		const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Enemy.Get());
+		if (Kind != ECataclysmDungeonCreature::Count
+			&& Kind != ECataclysmDungeonCreature::Gatekeeper)
+		{
+			Kinds.AddUnique(Kind);
+		}
+	}
+	if (Kinds.IsEmpty())
+	{
+		Kinds.Add(ECataclysmDungeonCreature::Imp);
+	}
+
+	for (int32 Index = 0; Index < Effects::TrickOrTreatEnemies; ++Index)
+	{
+		FCataclysmEnemyPlacement Placement;
+		Placement.Cell = CurrentFloor->CellOfWorld(Where);
+		Placement.Creature = Kinds[FMath::RandRange(0, Kinds.Num() - 1)];
+		ACataclysmEnemyCharacter* Raised =
+			SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier);
+		if (!Raised)
+		{
+			continue;
+		}
+		FloorEnemies.Add(Raised);
+		Raised->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Raised);
+		++TrickOrTreatRaised;
+	}
+}
+
+bool ACataclysmDungeonGameMode::TrickOrTreatIsHasting() const
+{
+	const UWorld* World = GetWorld();
+	return World && TrickOrTreatHasteUntilSeconds >= 0.0f
+		&& World->GetTimeSeconds() < TrickOrTreatHasteUntilSeconds;
+}
+
+void ACataclysmDungeonGameMode::StepTrickOrTreat(
+	ACataclysmPlayerCharacter* Player,
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	const float Wanted = TrickOrTreatIsHasting()
+		? UCataclysmDungeonModifierEffects::TrickOrTreatHastePercent
+		: 0.0f;
+	if (!TrickOrTreatIsHasting())
+	{
+		TrickOrTreatHasteUntilSeconds = -1.0f;
+	}
+	if (Wanted == TrickOrTreatHasteApplied)
+	{
+		return;
+	}
+	TrickOrTreatHasteApplied = Wanted;
+	ApplyChangingFloorEffects(Player, AbilitySystem);
+	RefreshFloorModifierPanel();
+}
+
 bool ACataclysmDungeonGameMode::DiedAsAFloorsBoss(const AActor* Died)
 {
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Died);
@@ -2231,7 +2361,8 @@ void ACataclysmDungeonGameMode::RaiseTheUnstablePortalsWarden()
 		return;
 	}
 	FloorEnemies.Add(Warden);
-	UnstablePortalWardens.Add(Warden);
+	Warden->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Warden);
 }
 
 int32 ACataclysmDungeonGameMode::BloodGatesPlacedCount() const
@@ -2244,7 +2375,7 @@ int32 ACataclysmDungeonGameMode::BloodGatesPlacedCount() const
 	{
 		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
 			&& Enemy->PaysForItsDeath()
-			&& !UnstablePortalWardens.Contains(Enemy.Get()))
+			&& !CreaturesRaisedByARule.Contains(Enemy.Get()))
 		{
 			++Standing;
 		}
@@ -2282,7 +2413,7 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodGates(
 	// A WARDEN THE UNSTABLE PORTAL RAISED IS NOT THE FLOOR'S TO COUNT, slain or standing,
 	// so it cannot seal again stairs the player had opened. Issues #1820 and #41.
 	if (Fallen && Fallen->PaysForItsDeath() && Player && Notice.Killer == Player
-		&& !UnstablePortalWardens.Contains(Fallen))
+		&& !CreaturesRaisedByARule.Contains(Fallen))
 	{
 		++BloodGatesSlain;
 	}
@@ -2938,6 +3069,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND THE STARVATION CURSE, ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON THE
 	// CHARACTER, not only on floors carrying the row: its stacks are the dungeon's and a
 	// floor change takes them off. Issues #1820 and #41.
+	// AND TRICK OR TREAT, ON ANY FLOOR WHILE A HASTE IS ON OR ITS CLOCK RUNS, as well as on
+	// floors carrying the row. Issues #1820 and #41.
+	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
+		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
 	const bool bStarvationCurse =
 		StarvationCurseMovementStacks != StarvationCurseMovementApplied
 		|| StarvationCurseHealthStacks != StarvationCurseHealthApplied;
@@ -2948,7 +3084,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
-		&& !bAntiMagicZones && !bStarvationCurse)
+		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat)
 	{
 		return;
 	}
@@ -3084,6 +3220,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bStarvationCurse)
 	{
 		StepStarvationCurse(Player, AbilitySystem);
+	}
+
+	// AND TRICK OR TREAT'S HASTE, ON AND OFF BY ITS CLOCK. Issues #1820 and #41.
+	if (bTrickOrTreat)
+	{
+		StepTrickOrTreat(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -4010,6 +4152,10 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	Effects.CurseMaxHealthLessPercent =
 		UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(
 			StarvationCurseHealthApplied);
+
+	// AND A TREAT'S HASTE, on both of its fields. Issues #1820 and #41.
+	Effects.TreatSpeedMorePercent = TrickOrTreatHasteApplied;
+	Effects.TreatAttackSpeedMorePercent = TrickOrTreatHasteApplied;
 
 	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN BOTH DIRECTIONS. Issues #1820
 	// and #41. Read unconditionally like the rest: a floor without that row
@@ -5622,6 +5768,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Holy, FString::Printf(
 			TEXT("%d of %d"), JudgmentStacks,
 			Effects::HolyRepercussionsJudgmentMostStacks));
+	}
+
+	// AND TRICK OR TREAT: the clicks, the creatures raised, and whether a treat is running.
+	// Issues #1820 and #41.
+	const FName Treat(Effects::TrickOrTreatKey);
+	if (FloorBrief.Modifiers.Contains(Treat))
+	{
+		Counting.Add(Treat, FString::Printf(
+			TEXT("trick or treat: %d picked up, %d creatures raised%s"),
+			TrickOrTreatPickups, TrickOrTreatRaised,
+			TrickOrTreatIsHasting() ? TEXT(", hasted by a treat") : TEXT("")));
 	}
 
 	// AND THE STARVATION CURSE: each kind as "N of M" and the share it takes. Issues #1820
@@ -7659,7 +7816,7 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND UNSTABLE PORTAL FORGETS ITS ROLLS AND ITS WARDENS. Issues #1820 and #41.
 		UnstablePortalRolls = 0;
 		UnstablePortalLast = -1;
-		UnstablePortalWardens.Reset();
+		CreaturesRaisedByARule.Reset();
 
 		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
 		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already
@@ -7742,6 +7899,10 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// dungeon's and the call above took them off the character. Issues #1820 and #41.
 		StarvationCurseMovementApplied = 0;
 		StarvationCurseHealthApplied = 0;
+
+		// AND A TREAT'S HASTE THE SAME WAY: the call above took it off, and its clock is left
+		// running, so the next beat puts it back if the ten seconds are not over.
+		TrickOrTreatHasteApplied = 0.0f;
 
 		// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues #1786
 		// and #41. The list because those actors are already destroyed -- see the
@@ -7837,6 +7998,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			// dungeon. Issues #1820 and #41.
 			StarvationCurseMovementStacks = 0;
 			StarvationCurseHealthStacks = 0;
+
+			// AND TRICK OR TREAT'S COUNTS AND ANY HASTE STILL RUNNING. Issues #1820 and #41.
+			TrickOrTreatPickups = 0;
+			TrickOrTreatRaised = 0;
+			TrickOrTreatHasteUntilSeconds = -1.0f;
 
 			// AND LEAVING THE DUNGEON IS WHERE THE EDICT OF SILENCE'S CLOCK
 			// FINALLY STOPS. Issues #1786 and #41. This is the branch that runs

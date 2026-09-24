@@ -27,9 +27,10 @@ class UWorld;
  * sixty times a second for something that cannot change while the item is on
  * the floor.
  *
- * PICKING IT UP IS NOT BUILT. There is no inventory to put an item into -- the
- * design fixes the carried inventory at 48 slots and none of it exists yet --
- * so this can be dropped and read and not yet taken. Issue #707.
+ * PICKED UP BY `UCataclysmDropPickup::TakeInto`, into the carried inventory: a click
+ * takes any drop, and walking near a crafting material takes it. This said picking
+ * up was not built, which stopped being true when the inventory was; corrected while
+ * building `Chaos_Trick_or_Treat`. Issue #707.
  */
 UCLASS()
 class CATACLYSM_API ACataclysmDroppedItem : public AActor
@@ -83,6 +84,14 @@ public:
 	/** How many of that material lie here. Zero when the drop is gear. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
 	int32 MaterialQuantity = 0;
+
+	/**
+	 * Whether a creature a dungeon rule raised mid-floor dropped this. Trick or Treat rolls
+	 * nothing for a marked drop, so a trick's pair cannot start another trick. Issues #1820
+	 * and #41.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Drop")
+	bool bDroppedByARaisedCreature = false;
 
 	/**
 	 * Which material tier this drop is, 1 to 5. Zero when the drop is gear.
@@ -253,7 +262,8 @@ public:
 	 */
 	static int32 SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 							   float MagicFind, float LootQuantity,
-							   const FVector& At, FRandomStream& Stream);
+							   const FVector& At, FRandomStream& Stream,
+							   bool bMarked = false);
 
 	/**
 	 * The magic find and loot quantity the player in this world is carrying.
@@ -327,7 +337,7 @@ public:
 								   float MagicFind, const FVector& At,
 								   int32 Count, int32 AlreadyOnTheFloor,
 								   int32 TotalDrops, int32 DifficultyTier,
-								   FRandomStream& Stream);
+								   FRandomStream& Stream, bool bMarked = false);
 };
 
 /**
@@ -680,7 +690,10 @@ public:
 	 *
 	 * THE ACTOR IS DESTROYED ONLY AFTER THE ITEM IS SAFELY IN A SLOT. The other
 	 * order would destroy the item whenever the inventory was full.
+	 *
+	 * A TAKE IS ANNOUNCED on `UCataclysmCombatEvents::OnLootTaken`, saying whether
+	 * it was by hand. Only the player controller's click passes true.
 	 */
 	static bool TakeInto(UCataclysmInventoryComponent* Inventory,
-						 ACataclysmDroppedItem* Drop);
+						 ACataclysmDroppedItem* Drop, bool bByHand = false);
 };

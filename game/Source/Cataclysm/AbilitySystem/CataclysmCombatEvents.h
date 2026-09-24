@@ -251,6 +251,33 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnDeath, const FCataclysmDeathNoti
 DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnSkillUsed, const FCataclysmSkillUsedNotice&);
 
 /**
+ * A drop taken off the floor into an inventory. Issues #1820 and #41.
+ *
+ * BY HAND OR NOT, because the one listener cares which: Trick or Treat rolls only for a
+ * drop the player chose to pick up, and a crafting material swept up by walking near it is
+ * not a choice. `UCataclysmDropPickup::TakeInto` sends it after the item is in a slot.
+ *
+ * HERE BESIDE THE COMBAT NOTICES because this is the world's one announcer that dungeon
+ * rules already listen to, and a test world has it where it has no authority game mode.
+ */
+struct CATACLYSM_API FCataclysmLootTakenNotice
+{
+	/** Whoever's inventory took it. */
+	AActor* Taker = nullptr;
+
+	/** Where the drop lay. */
+	FVector Where = FVector::ZeroVector;
+
+	/** Whether the player clicked it, rather than walking near a crafting material. */
+	bool bByHand = false;
+
+	/** Whether a creature a dungeon rule raised mid-floor dropped it. */
+	bool bMarked = false;
+};
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FCataclysmOnLootTaken, const FCataclysmLootTakenNotice&);
+
+/**
  * The one place a hit, a death or a skill used is announced. Issue #41, slice 4.
  *
  * WHAT WAS HERE BEFORE IT. No hit or death notice existed. The game's multicast
@@ -284,6 +311,7 @@ public:
 	FCataclysmOnHit OnHit;
 	FCataclysmOnDeath OnDeath;
 	FCataclysmOnSkillUsed OnSkillUsed;
+	FCataclysmOnLootTaken OnLootTaken;
 
 	/**
 	 * Whose blow this is: the minion that dealt it, unless its summoner holds
@@ -356,6 +384,10 @@ public:
 	 */
 	static void NoteCreatureAbility(ACataclysmCharacterBase* Creature,
 									int32 AbilityIndex);
+
+	/** Announces a drop taken into `Taker`'s inventory. Called by `TakeInto` only. */
+	static void NoteLootTaken(AActor* Taker, const FVector& Where, bool bByHand,
+							  bool bMarked = false);
 
 	/** How many of each have been sent in this world. Read by tests. */
 	uint32 HitsSent() const { return Hits; }

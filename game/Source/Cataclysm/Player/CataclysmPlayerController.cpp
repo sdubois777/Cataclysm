@@ -1533,7 +1533,8 @@ bool ACataclysmPlayerController::TakeDrop(ACataclysmDroppedItem* Drop)
 		return false;
 	}
 
-	if (UCataclysmDropPickup::TakeInto(Inventory, Drop))
+	// BY HAND: the player clicked this drop. Trick or Treat rolls only for such a take.
+	if (UCataclysmDropPickup::TakeInto(Inventory, Drop, /*bByHand=*/true))
 	{
 		return true;
 	}

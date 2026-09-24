@@ -291,7 +291,7 @@ void ACataclysmEnemyCharacter::HandleDeath()
 		{
 			UCataclysmDropSpawner::SpawnDropsFor(
 				World, RarityStep, MagicFind, LootQuantity, GetActorLocation(),
-				Stream);
+				Stream, /*bMarked=*/bRaisedByARule);
 		}
 
 		// AND THE EXPERIENCE, which is this creature's Enemy Score. Issue #926.

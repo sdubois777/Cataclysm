@@ -1910,6 +1910,14 @@ public:
 	int32 StarvationCurseHealthStacksHeld() const { return StarvationCurseHealthStacks; }
 
 	/**
+	 * Trick or Treat's counts in this dungeon, for the floor panel and tests, and whether a
+	 * treat is hasting the player now. Issues #1820 and #41.
+	 */
+	int32 TrickOrTreatPickupCount() const { return TrickOrTreatPickups; }
+	int32 TrickOrTreatRaisedCount() const { return TrickOrTreatRaised; }
+	bool TrickOrTreatIsHasting() const;
+
+	/**
 	 * Whether this death was a floor's boss: a Gatekeeper, the creature the game places as a
 	 * floor's boss, or any creature at the Boss rung. `IsBoss()` alone asks the rung, which
 	 * every creature draws, the Gatekeeper included, so on its own it is a 1% draw.
@@ -1950,6 +1958,17 @@ private:
 
 	/** The starvation curse, on every death: a floor's boss or the player clears it. */
 	void NoteDeathForStarvationCurse(const struct FCataclysmDeathNotice& Notice);
+
+	/** Trick or Treat, on every take: a clicked drop on a floor carrying the row rolls. */
+	void OnLootTaken(const struct FCataclysmLootTakenNotice& Notice);
+
+	/** Trick or Treat's trick: two creatures of the floor's kinds where the drop lay. */
+	void RaiseTheTrickOrTreatPair(const FVector& Where);
+
+	/** Trick or Treat, on the beat: the haste on while its clock runs and off after. */
+	void StepTrickOrTreat(
+		class ACataclysmPlayerCharacter* Player,
+		class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 public:
 
@@ -2743,12 +2762,27 @@ private:
 	int32 BloodGatesSlain = 0;
 
 	/**
-	 * Unstable Portal: its rolls on this floor, the last outcome, and the Wardens it raised,
-	 * which Blood Gates leaves out of its count. All of it goes at the stairs.
+	 * Unstable Portal: its rolls on this floor and the last outcome. Both go at the stairs.
 	 */
 	int32 UnstablePortalRolls = 0;
 	int32 UnstablePortalLast = -1;
-	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> UnstablePortalWardens;
+
+	/**
+	 * The creatures a rule raised mid-floor in answer to the player -- the Unstable Portal's
+	 * Warden and Trick or Treat's pair -- which Blood Gates leaves out of its count, slain
+	 * or standing, so they cannot seal again stairs the player had opened. Goes at the
+	 * stairs. It held the portal's Wardens alone until Trick or Treat.
+	 */
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> CreaturesRaisedByARule;
+
+	/**
+	 * Trick or Treat: the dungeon's clicked pickups and creatures raised, when the treat's
+	 * haste ends in world seconds (negative for none), and the haste on the character.
+	 */
+	int32 TrickOrTreatPickups = 0;
+	int32 TrickOrTreatRaised = 0;
+	float TrickOrTreatHasteUntilSeconds = -1.0f;
+	float TrickOrTreatHasteApplied = 0.0f;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

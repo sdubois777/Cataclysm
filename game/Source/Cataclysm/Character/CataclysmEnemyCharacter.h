@@ -982,6 +982,17 @@ public:
 	bool bRisenFromTheDead = false;
 
 	/**
+	 * Whether a dungeon rule raised this creature mid-floor in answer to the player: the
+	 * Unstable Portal's Warden or a Trick or Treat pair. Issues #1820 and #41.
+	 *
+	 * ITS DROPS ARE MARKED, and a marked drop rolls nothing for Trick or Treat when clicked,
+	 * so a trick's pair cannot start another trick. Set by the dungeon game mode as it adds
+	 * the creature to `CreaturesRaisedByARule`.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bRaisedByARule = false;
+
+	/**
 	 * Whether this creature's death pays the player loot and experience. False for a
 	 * creature `bRisenFromTheDead` marks. Asked by `HandleDeath`, and nothing else
 	 * about a death changes: the notice is still sent and every rule still hears it.

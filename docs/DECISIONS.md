@@ -2,6 +2,165 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Trick or Treat: a clicked pickup raises two of the floor's creatures or hastes the player for ten seconds
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (a new
+announcement, a drop taken), `game/Source/Cataclysm/Items/CataclysmDroppedItem.h` and `.cpp`
+(`UCataclysmDropPickup::TakeInto` announces each take and says whether it was by hand and whether the
+drop is marked; the drop spawners mark a raised creature's drops; a stale comment corrected),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (`bRaisedByARule`),
+`game/Source/Cataclysm/Player/CataclysmPlayerController.h` and `.cpp` (a click is by hand, and a narrow
+test entry to the click and the sweep),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its
+figures, the roll and two player-effect fields), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (the listener, the pair, the haste's clock, a console variable pinning the roll, the panel
+line, the resets, and the set Blood Gates leaves out, renamed), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the three guard proofs have run; their printed figures, and a test that failed
+first, are at the end of this entry.
+
+### The row
+
+`Chaos_Trick_or_Treat` in `game/Data/DungeonModifiers.csv`, weight 10: "Picking up loot spawns
+additional enemies or applies temporary buffs to the player." The row gives no figure.
+
+### What the rule does
+
+On a floor carrying the row, each drop the player clicks and takes rolls 0 to 100. Below 50, two
+creatures of the floor's kinds arrive where the drop lay, their rarity drawn as any creature's is.
+From 50, the player moves and attacks 20% faster for ten seconds; a second treat inside those ten
+seconds starts the ten seconds again and adds nothing. The floor panel counts the clicks and the
+creatures raised and says when a treat is running.
+
+**How a pickup reaches the rule.** Nothing announced a pickup before this. `TakeInto` now sends
+`UCataclysmCombatEvents::OnLootTaken` after the item is safely in a slot, carrying who took it, where
+it lay and whether it was by hand, and the dungeon game mode listens as it listens for deaths. Only
+`ACataclysmPlayerController::TakeDrop`, the click, passes "by hand"; the per-frame sweep of crafting
+materials does not. The announcer was chosen because a test world has it while it has no authority
+game mode, which is what a call from the item code into the game mode would have needed. The click and
+the sweep are private to the controller, so it has two public test entries, `TakeDropForTest` and
+`CollectMaterialsNearbyForTest`, which nothing in the game calls; a test drives both through the game's
+own controller.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-23. Every figure here is a
+judgement, not something derived:**
+
+- **Clicked pickups only.** A crafting material swept up by walking near it rolls nothing: the player
+  did not choose to pick it up, and a sweep that runs every frame would raise creatures without any
+  decision.
+- **Even odds**, pinned for tests by `Cataclysm.TrickOrTreatRoll`.
+- **Two creatures of the floor's kinds**, rarity drawn as usual. "The floor's kinds" is every kind the
+  floor placed, standing or slain, never the Gatekeeper, and an Imp on a floor that placed nothing
+  else; that detail is this change's own judgement.
+- **Blood Gates does not count the pair**, slain or standing, for the reason measured for the Unstable
+  Portal: Blood Gates decides "open" afresh on every call, so two creatures arriving would seal again
+  stairs the player had opened. The portal's set is generalised to `CreaturesRaisedByARule`, which
+  both rules add to.
+- **20% more movement speed and 20% more attack speed for ten seconds**, the figures Dirge Resonance
+  gives creatures; a second treat restarts the clock and does not stack. **Play-test point.**
+- **No exceptions**, on the last floor or in a Horde.
+- **A drop a raised creature dropped is marked, and picking a marked drop up rolls nothing**, so a
+  trick's pair cannot start another trick and the chain ends after one link at any loot quantity.
+  `ACataclysmEnemyCharacter::bRaisedByARule` is set on the Unstable Portal's Warden and on a trick's
+  pair as they join `CreaturesRaisedByARule`, and the drop spawners copy it onto every drop, gear and
+  material, as `ACataclysmDroppedItem::bDroppedByARaisedCreature`. The reason is the arithmetic below.
+  **So the Unstable Portal's Warden's loot is marked too, and on a floor carrying both rows, picking it
+  up rolls nothing**; that follows from the ruling and was accepted with it.
+
+### The chain a trick could have started, worked out: the reason for the mark
+
+The pair drop loot as any creature does. Without the mark, a click on that loot would roll again. Read from
+`game/Data/EnemyDrops.csv` (expected gear drops per kill: Common 0.16, Elite 0.5, Legendary 1.0,
+Herald 2.0, Boss 5.0) and `game/Data/EnemyRarities.csv` (spawn weights 0.6, 0.2, 0.15, 0.04, 0.01),
+one drawn creature is expected to drop 0.476 pieces of gear at baseline loot quantity. A click is a
+trick half the time and a trick raises two, so each click is expected to lead to 0.5 × 2 × 0.476 =
+**0.476 further clickable drops**, and a chain started by one click is expected to run to 1 / (1 −
+0.476) = **about 1.9 clicks** in all. That assumes the player kills the pair and clicks every piece of
+gear; crafting materials are swept and roll nothing. **Loot quantity scales the expected drops**
+(`ScaledByLootQuantity`: rate × quantity ÷ 100), so at about 2.1 times the baseline quantity (210)
+each click is expected to lead to one further click and the chain no longer ends on average: an
+endless farm. **The data gives no ceiling on loot quantity.** It starts at 100
+(`game/Data/ClassStats.csv`), rises 1 per point of luck (`game/Data/Attributes.csv`, and luck has no
+stated maximum), and rises by "increased loot quantity" affixes on the belt, boots, necklace, relic and
+ring (`game/Data/Affixes.csv`, top value 8 per affix, and a hybrid with magic find). So 210 is within
+reach of a player who invests, and the mark is what stops the chain. **These figures are arithmetic, not
+measured in play.** With the mark the chain is at most one trick deep, whatever the loot quantity.
+
+### Also in this change
+
+`ACataclysmDroppedItem`'s comment said "PICKING IT UP IS NOT BUILT"; it has been built since the
+carried inventory was. The comment now says what takes a drop.
+
+### Tests
+
+Six automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `OnlyAClickedPickupRollsForTrickOrTreat`: a sweep takes the drop and the rule counts and raises
+  nothing; a click on a trick raises two creatures onto the floor, each marked as raised by a rule; the
+  panel line.
+- `AClickThroughThePlayerControllerRollsAndItsSweepDoesNot`: through the game's own controller, the
+  sweep takes a crafting material and the rule counts nothing, and a click on gear counts and raises
+  two.
+- `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`: the drop spawner, told to mark and run on
+  seeded streams (seeds 1 to 20 in order until one leaves gear, so the same drops every run), marks
+  every drop, and a click on the gear with a trick pinned rolls nothing; then a raised creature at the
+  Cataclysm Boss rung is killed, something fell, and every drop it left is marked. That second half
+  uses the game's own unseeded roll: it is expected to leave 24 drops and leaves none with probability
+  e^-24, about once in 26 billion kills, when the test fails rather than passing while checking
+  nothing.
+- `ATreatHastesThePlayerForTenSecondsAndThenStops`: the roll's boundary at 50; a treat puts 20% more on
+  movement speed and on attack speed; still on at nine and a half seconds, off at ten and a half.
+- `ASecondTreatRestartsTheClockAndDoesNotStack`: a second treat six seconds in keeps the haste at 20%
+  and running at twelve seconds, and it stops ten and a half seconds after the second.
+- `ATrickOrTreatPairDoesNotResealOpenBloodGates`: one of two slain opens the gate, and a trick's pair
+  leaves it open.
+
+One Python check: the row still says "picking up loot", "spawns additional enemies", " or " and
+"temporary buffs to the player", and states no percentage. It was seen to fail, in a copy of the
+repository, with "Picking up loot" made "Opening chests", with "or" made "and", and with "20%" added.
+
+### Run
+
+- **The group on development (ebff1d00) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "251 tests performed, 251 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 8ae0f977 FAILED ONE TEST, AND IT WAS THE TEST.** "Build: Succeeded - 28 actions,
+  25 files compiled" and "2284 tests performed, 2283 succeeded, 1 failed:
+  ATrickOrTreatPairDoesNotResealOpenBloodGates", with every declared test reported. Its two assertions
+  read "Expected 'one of two slain opens the gate' to be "blood gates: 1 of 2 slain, open at 1", but it
+  was "blood gates: open"", and the same for 'and the gate is as it was'. **The cause:** the Blood Gates
+  panel line prints "N of M slain, open at K" only while the gate is sealed and "blood gates: open" once
+  it opens, and the test was written with the sealed form for an open gate. The run itself showed the
+  gate open before the trick and still open after it, which is the ruled behaviour. **Ruled by the
+  coordinating session:** the lock was kept, the two expected strings were changed to "blood gates:
+  open" (50ce05d7, the test only), and the group alone was run again on the new head, with no second
+  whole-suite run, because the whole suite had shown the other 2283 passing and the change touched one
+  test -- the Scarcity precedent. The controller test, the one registered risk, passed in that run.
+- **The group on 50ce05d7:** "Build: Succeeded - 4 actions, 1 file compiled" and "257 tests performed,
+  257 succeeded, 0 failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing exactly the
+  registered tests with the break in and 0 of 257 restored, with each broken run's failure text quoted:
+  - **a sweep allowed to roll** (`|| !Notice.bByHand` removed) failed
+    `OnlyAClickedPickupRollsForTrickOrTreat` ("Expected 'a sweep is not a pickup the rule counts' to be
+    0, but it was 1") and `AClickThroughThePlayerControllerRollsAndItsSweepDoesNot` ("Expected 'and the
+    rule counted no pickup' to be 0, but it was 1");
+  - **a haste that never ends** (the clock's comparison removed from `TrickOrTreatIsHasting`) failed
+    `ATreatHastesThePlayerForTenSecondsAndThenStops` ("Expected 'no longer hasted after ten' to be
+    false") and `ASecondTreatRestartsTheClockAndDoesNotStack` ("Expected 'and ten and a half seconds
+    after the second, it has stopped' to be false");
+  - **Blood Gates counting the raised** (the `CreaturesRaisedByARule` check removed from
+    `BloodGatesPlacedCount`) failed `ATrickOrTreatPairDoesNotResealOpenBloodGates` ("Expected 'and the
+    gate is as it was' to be "blood gates: open", but it was "blood gates: 1 of 4 slain, open at 2"")
+    and `APortalWardenDoesNotSealOpenBloodGatesAgain` ("Expected 'as the panel says' to be "blood
+    gates: open", but it was "blood gates: 1 of 3 slain, open at 2"").
+
+---
+
 ## 2026-09-23 — Wasting Sickness's "floor boss" is a Gatekeeper or any creature at the Boss rung, the rule Starvation Curse uses
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (Wasting Sickness's cure

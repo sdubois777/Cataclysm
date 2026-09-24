@@ -3801,3 +3801,25 @@ def test_starvation_curse_row_still_adds_one_of_two_debuffs_each_floor_until_cle
     assert "%" not in words, (
         "Famine_Starvation_Curse now states a percentage. Five per cent a stack was a ruling "
         "because the row gave none; use the row's figure. " + words)
+
+def test_trick_or_treat_row_still_raises_enemies_or_buffs_on_picking_up_loot():
+    """The phrases the rule's readings rest on.
+
+    "Picking up loot spawns additional enemies or applies temporary buffs to the player."
+    PICKING UP LOOT is why a take fires it; SPAWNS ADDITIONAL ENEMIES and TEMPORARY BUFFS are
+    its two outcomes; OR is why a pickup gets one of them, at even odds; and the row gives
+    no figure, which is why two creatures, twenty per cent and ten seconds are rulings. If
+    any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Chaos_Trick_or_Treat"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("picking up loot", "spawns additional enemies", " or ",
+                   "temporary buffs to the player"):
+        assert phrase in lower, (
+            f"Chaos_Trick_or_Treat no longer says {phrase.strip().upper()!r}. A reading of "
+            "the rule rests on it; see TrickOrTreatKey in CataclysmDungeonModifierEffects.h. "
+            + words)
+    assert "%" not in words, (
+        "Chaos_Trick_or_Treat now states a percentage. The even odds and the haste were "
+        "rulings because the row gave none; use the row's figure. " + words)
