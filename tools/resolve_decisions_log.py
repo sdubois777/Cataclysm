@@ -1,6 +1,6 @@
 """Resolve a conflict at the top of docs/DECISIONS.md, or insert a new first entry.
 
-    python tools/resolve_decisions_log.py resolve --mine <a word in YOUR heading>
+    python tools/resolve_decisions_log.py resolve --first <a word in the NEWER heading>
     python tools/resolve_decisions_log.py insert <a file holding the entry>
     python tools/resolve_decisions_log.py --help
 
@@ -21,6 +21,16 @@ rebase. That happened, and put an older entry above a newer one until somebody
 undid it by hand. **So `resolve` takes the ORDER to write the entries in**, chosen
 from a word that appears in one heading and not the other -- an interface that
 cannot be got wrong in either direction.
+
+**WHICH ENTRY GOES FIRST IS THE NEWER ONE, AND IT IS NOT ALWAYS YOURS.** Entries
+of one day are ordered newest first by the author date of the branch commit that
+first writes each entry, never by a squash commit's date, and a merged entry
+never moves: the coordinating session's clarification of 2026-09-23, recorded in
+`docs/DECISIONS.md` in the entry about this flag. When the other session's entry
+is the newer, the word comes from ITS heading. The flag was called `--mine`, and
+its help said "a word appearing in YOUR heading", which gives the wrong order in
+exactly that case; it is `--first` since issues #1964 and #1990, and `--mine` is
+still accepted so older notes keep working.
 
 **2. A NEW FIRST ENTRY REMOVES THE OLD FIRST ENTRY'S EXEMPTION.** The separator
 test requires `---` and a blank line above every dated entry EXCEPT the first. So
@@ -225,11 +235,20 @@ def _main(argv: list[str] | None = None) -> int:
 
     resolving = sub.add_parser(
         "resolve", help="resolve one conflict at the top of the log")
-    resolving.add_argument(
-        "--mine", required=True,
-        help="a word appearing in YOUR heading and not in the other one. Chosen "
-             "this way rather than by conflict side because a rebase inverts the "
+    choosing = resolving.add_mutually_exclusive_group(required=True)
+    choosing.add_argument(
+        "--first", dest="first",
+        help="a word appearing in the heading to write FIRST and not in the other "
+             "one. That is the NEWER entry, which is not always yours: entries of "
+             "one day go newest first by the author date of the branch commit "
+             "that first wrote each (find it with git log -S on the heading, "
+             "never the squash's date), and a merged entry never moves. Chosen by "
+             "word rather than by conflict side because a rebase inverts the "
              "sides; see rule 1 in this module's docstring.")
+    # THE OLD NAME, KEPT SO NOTES AND HABITS THAT USE IT STILL WORK, and hidden
+    # because its name says "yours" where the rule says "newer". Issues #1964
+    # and #1990.
+    choosing.add_argument("--mine", dest="first", help=argparse.SUPPRESS)
 
     inserting = sub.add_parser(
         "insert", help="insert a new first entry, with no conflict present")
@@ -241,20 +260,20 @@ def _main(argv: list[str] | None = None) -> int:
 
     if args.command == "resolve":
         upstream, other = conflict_headings(data)
-        word = args.mine.lower()
+        word = args.first.lower()
         holding = [h for h in (upstream, other) if word in h.lower()]
         if len(holding) != 1:
             raise RefusedError(
-                f"{args.mine!r} appears in {len(holding)} of the two headings, "
+                f"{args.first!r} appears in {len(holding)} of the two headings, "
                 f"not exactly one.\n  <<<<<<< side: {upstream}\n"
                 f"  >>>>>>> side: {other}")
-        mine = holding[0]
-        theirs = other if mine == upstream else upstream
+        first = holding[0]
+        second = other if first == upstream else upstream
         print(f"  <<<<<<< side: {upstream}")
         print(f"  >>>>>>> side: {other}")
-        print(f"  writing FIRST:  {mine}")
-        print(f"  writing SECOND: {theirs}")
-        out = resolve(data, mine.encode("utf-8"), theirs.encode("utf-8"))
+        print(f"  writing FIRST:  {first}")
+        print(f"  writing SECOND: {second}")
+        out = resolve(data, first.encode("utf-8"), second.encode("utf-8"))
     else:
         out = insert_first(data, args.entry.read_bytes())
         print(f"  inserted: {args.entry.read_bytes().split(CRLF)[0][:90]!r}")
