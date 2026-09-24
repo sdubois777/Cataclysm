@@ -778,8 +778,8 @@ public:
 	/**
 	 * React to one of this character's blows landing, if this buff's row says to.
 	 *
-	 * CALLED FROM `UCataclysmSkillTemplate::NoteBlowLanded`, which every blow in
-	 * the game goes through. Two rows react and they react to different halves of
+	 * CALLED FROM `UCataclysmSkillTemplate::NoteBlowLanded`, which every landed
+	 * blow of the character's reaches since issue #1938, projectiles included. Two rows react and they react to different halves of
 	 * what it is told; every other buff in the game ignores it.
 	 *
 	 * THE DAGGER'S SLIPSTREAM READS THE SIDE. "For 8 seconds every enemy you

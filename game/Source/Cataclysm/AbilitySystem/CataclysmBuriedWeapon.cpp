@@ -7,6 +7,7 @@
 // For the Fervour the axe's next landing earns its thrower. Issue #1515.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
 #include "GameFramework/Actor.h"
@@ -81,6 +82,9 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 	// `FindEnemiesInSphere` answers first.
 	AActor* NextHost = Nearby[0];
 
+	// WHICH SIDE, ASKED BEFORE THE HIT as a fired contact asks it. Issue #1938.
+	const bool bFromBehind = UCataclysmSkillEffects::IsBehind(Credited, NextHost);
+
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Credited, NextHost, Buried->DamagePercent, Buried->SkillTags,
@@ -116,6 +120,13 @@ bool UCataclysmBuriedWeapon::LeapFromDying(AActor* Dying)
 		UCataclysmFervour::GainForEnemiesHit(
 			UCataclysmTargeting::AbilitySystemOf(Credited), Buried->SkillTags,
 			/*EnemiesHit=*/1);
+
+		// AND THE THROWER'S RUNNING BUFFS ARE TOLD, BY THE SAME TEST AND ONLY
+		// WHILE THE THROWER IS HERE. Issue #1938, ruled 2026-09-24: this blow
+		// never passes through `HitTargets`. When the thrower has gone the
+		// credited attacker is the dying creature, whose blows tell nothing.
+		UCataclysmSkillTemplate::NoteBlowLanded(
+			Credited, NextHost, NextHost->GetActorLocation(), bFromBehind);
 	}
 
 	// AND IT IS NOW IN THAT ONE, which is what makes it go on. Copied from the

@@ -1494,6 +1494,9 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		// AND IT ASKS WHAT THE BLOW RESOLVED TO, for the Fervour it earns. Issue
 		// #1515: the Ravager's starting node pays for each enemy a blow lands on,
 		// and `Dealt` is what was sent, so only the result says whether it landed.
+		// WHICH SIDE, ASKED BEFORE THE HIT as a fired contact asks it. Issue #1938.
+		const bool bFromBehind = UCataclysmSkillEffects::IsBehind(Self, Target);
+
 		FCataclysmDamageResult Resolved;
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(
 			Self, Target, GetDamagePercent(), SkillTags, FCataclysmHitDelivery(),
@@ -1503,6 +1506,11 @@ bool UCataclysmProjectileSkill::ThrowOne()
 			UCataclysmFervour::GainForEnemiesHit(
 				GetAbilitySystemComponentFromActorInfo(), SkillTags,
 				/*EnemiesHit=*/1);
+
+			// AND THE RUNNING BUFFS ARE TOLD, as a fired axe's contact tells them
+			// in `ACataclysmProjectile::HitOne`. Issue #1938, ruled 2026-09-24:
+			// this fallback does what a fired projectile does.
+			NoteBlowLanded(Self, Target, Target->GetActorLocation(), bFromBehind);
 		}
 	}
 
@@ -2322,7 +2330,8 @@ void UCataclysmSelfBuffSkill::NoteBlowLanded(AActor* Target,
 	// `StoreSpendPerBlow`.
 	//
 	// IT CANNOT SET OFF ANOTHER ROUND OF THIS. `ApplyDirectDamage` is not the
-	// path that calls the dispatcher -- `HitTargets` is -- so a bonus landing on
+	// path that calls the dispatcher -- `HitTargets` and the three routes issue
+	// #1938 added are -- so a bonus landing on
 	// a target cannot spend the store again.
 	if (Stored > 0.0f && IsValid(Target))
 	{

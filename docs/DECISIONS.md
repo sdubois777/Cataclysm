@@ -2,6 +2,65 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — A projectile's landed contact, a rack's throw with no speed and a buried axe tearing free tell the character's running buffs
+
+**Affects:**
+- `ACataclysmProjectile::HitOne`, `UCataclysmProjectileSkill::ThrowOne` (its no-speed fallback) and `UCataclysmBuriedWeapon`: each now calls `UCataclysmSkillTemplate::NoteBlowLanded`.
+- The comments on `NoteBlowLanded`, `HitTargets` and `UCataclysmSelfBuffSkill::NoteBlowLanded`.
+- Four tests in `CataclysmSkillTemplateTests.cpp`.
+- Issue [#1938](https://github.com/sdubois777/Cataclysm/issues/1938).
+
+### WHAT WAS WRONG
+
+`NoteBlowLanded` tells the character's running self buffs that a blow landed:
+- Groundbreaker: "every blow you land cracks the ground beneath what it hits";
+- Martyr's Ember: "each hit you land spends part of the store";
+- Slipstream: "every enemy you strike from behind returns your movement skill".
+
+Its comment said it was called where "every blow in the game is dealt", but it was called only from `HitTargets`. Three routes deal the player's blows without passing through `HitTargets`, and they told the buffs nothing. #1515 had already made those same three routes pay Fervour.
+
+### WHAT CHANGED
+
+Each route now tells the buffs beside its Fervour pay, under the same test: the blow was sent with damage and was not evaded.
+
+### RULINGS, UNDER THE OWNER'S DELEGATION
+
+**Ruled by the coordinating session on 2026-09-24.**
+
+1. **A projectile contact is "from behind" by the same `UCataclysmSkillEffects::IsBehind` test** `HitTargets` makes, asked before the hit. "Every enemy you strike from behind" does not leave out a thrown blow. A test pins it: a shot into an enemy's back returns Slipstream's movement skill, and one into its face does not.
+2. **A buried weapon tells its thrower's buffs only while the thrower is still present**, the same condition as its Fervour.
+3. **A rack's throw with no speed behaves as a fired projectile.**
+
+### WHAT THIS DOES IN PLAY, STATED BECAUSE BOTH ARE INTENDED
+
+- **Martyr's Ember now spends its store once per landed projectile contact.** A piercing shot through five enemies spends it five times. That follows from "each hit you land", the same reading that already had one wide strike spend it once per enemy.
+- **Groundbreaker now opens a fissure beneath a distant target hit by a projectile.** "Every blow you land ... beneath what it hits" names no range.
+
+### Run
+
+Every step matched its registration.
+
+- **The build**, on `2f9e210f`: "Build: Succeeded - 28 actions, 25 files compiled".
+- **`Cataclysm.Skills.`:** "241 tests performed, 241 succeeded, 0 failed".
+- **The whole suite on `2f9e210f`:** "2297 tests performed, 2297 succeeded, 0 failed", as registered
+  (2293 + the four named tests), with every declared test reported.
+- **Three guard proofs, one per route.** Each replaced that route's call to `NoteBlowLanded` with
+  `(void)bFromBehind;`, so no variable went unused. Each failed exactly the registered tests with the
+  break in and none once restored. Each broken run's log was copied before the restored run
+  overwrote it:
+  - **the projectile contact** (`ACataclysmProjectile::HitOne`) failed
+    `AProjectileContactTellsARunningBuffItLanded` ("Expected 'so the shot opened one fissure, for the
+    contact that landed' to be 1, but it was 0" and "Expected 'which stands in the world' to be 1, but
+    it was 0") and `AShotIntoAnEnemysBackReturnsSlipstreamsMoveAndOneIntoItsFaceDoesNot` ("Expected
+    'and a shot into an enemy's back returns it' to be 1, but it was 0" and "Expected 'so the movement
+    slot is ready again' to be false"), 2 of 2, and 0 of 2 restored;
+  - **the rack's throw with no speed** failed `ARackWithNoSpeedTellsARunningBuffItLanded` ("Expected 'and
+    landing it opened one fissure' to be 1, but it was 0"), 1 of 1, and 0 of 1 restored;
+  - **the buried axe tearing free** failed `ABuriedAxeTearingFreeTellsItsThrowersRunningBuff` ("Expected
+    'so the thrower's buff opened one fissure' to be 1, but it was 0"), 1 of 1, and 0 of 1 restored.
+
+---
+
 ## 2026-09-24 — A negative crowd control resistance lengthens crowd control, to at most twice, and a held effect still stops at 3 seconds
 
 **Affects:**

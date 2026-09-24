@@ -2040,7 +2040,10 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 		// The Warhammer's Groundbreaker: "for 10 seconds every blow you land
 		// cracks the ground beneath what it hits". Here rather than in the Strike
 		// template, because "every blow you land" includes a projectile, an aura
-		// pulse and a leap, and this is the one place all of them pass through.
+		// pulse and a leap. Most blows pass through here; the three that do not
+		// -- a fired projectile's contact, a rack's throw with no speed, and a
+		// buried weapon tearing free -- tell the buffs where they are dealt.
+		// Issue #1938: until 2026-09-24 they told them nothing.
 		//
 		// ONLY WHEN THE BLOW CONNECTED, and until issue #1156 this line said so
 		// and did not do it: it tested `Dealt > 0`, which is the figure the

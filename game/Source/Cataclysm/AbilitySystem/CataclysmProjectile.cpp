@@ -9,6 +9,7 @@
 // For the Fervour each enemy a shot lands on earns. Issue #1515.
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmSkillTemplate.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Cataclysm.h"
 // For the skill that fired it, which its blows carry. Issue #41, slice 4.
@@ -608,6 +609,12 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// AND THE SKILL THAT FIRED IT, kept since it was fired. Issue #41, slice 4.
 	Delivery.Skill = FiringSkill;
 
+	// WHICH SIDE THE FIRER IS ON, asked before the hit for the reason
+	// `UCataclysmSkillTemplate::HitTargets` gives: the hit can move what it
+	// struck. The same test as any blow's, ruled 2026-09-24 for issue #1938:
+	// "every enemy you strike from behind" does not leave out a thrown one.
+	const bool bFromBehind = UCataclysmSkillEffects::IsBehind(Firer, Target);
+
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
 		Firer, Target, DamagePercent, SkillTags, Delivery, &Resolved);
@@ -651,6 +658,15 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 			UCataclysmFervour::GainForEnemiesHit(
 				UCataclysmTargeting::AbilitySystemOf(Firer), SkillTags,
 				/*EnemiesHit=*/1);
+
+			// AND THE FIRER'S RUNNING BUFFS ARE TOLD, BY THE SAME TEST. Issue
+			// #1938: Groundbreaker's "every blow you land" and Martyr's Ember's
+			// "each hit you land" name no kind of blow, and this contact never
+			// passes through `HitTargets`, which tells them for every other one.
+			// ONCE PER CONTACT, as the Fervour above: a piercing shot through five
+			// enemies spends Martyr's Ember's store five times.
+			UCataclysmSkillTemplate::NoteBlowLanded(
+				Firer, Target, Target->GetActorLocation(), bFromBehind);
 		}
 	}
 }
