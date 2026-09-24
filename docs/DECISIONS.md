@@ -1059,6 +1059,45 @@ All three were ruled by the coordinating session on 2026-09-23.
 in flight, would meet the row, because the causer is read when the blow lands. That is a reading of
 the code and was not run.
 
+### Run
+
+The rows were written into the design workbook in this window, at rows 296-299 of the Enchantment
+Effects sheet, and every step matched its registration.
+
+- **The build**, on `37e0a879`: "Build: Succeeded - 28 actions, 25 files compiled".
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "81 tests
+  performed, 77 succeeded, 4 failed", the four registered:
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt`: "Expected 'DT_EnchantmentEffects has every row
+    EnchantmentEffects.csv has' to be 0, but it was 4";
+  - the three tests that wear the new rows through the equipment component, which reads the built
+    asset: `TheAuraRowRaisesDamageTakenWhileAnAuraRuns` ("one aura running: the wearer takes 15%
+    more", 100 against 115), `TheCrowdControlRowRaisesOnlyAHitFromACrowdControlledAttacker` ("a crowd
+    controlled attacker's hit is 25% more", 1.0 against 1.25) and
+    `ThePointBlankRowReachesOnlyAPointBlankAttackOnOneEnemy` ("the worn drawback put a modifier on
+    attack damage").
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`6cb6e595`, 294 rows to 298). The Python asset-freshness tests then passed, 18 of 18.
+- **The whole suite on `6cb6e595`:** "2317 tests performed, 2317 succeeded, 0 failed", as registered,
+  with every declared test reported.
+- **Three guard proofs.** Each failed exactly the registered tests with the break in and none once
+  restored. Each broken run's log was copied before the restored run overwrote it:
+  - **the crowd control flag not copied onto the blow** (`Blow.bOpponentIsCrowdControlled =
+    Hit.bFromCrowdControlled;` made `(void)Hit.bFromCrowdControlled;`) failed
+    `EachSourceRowMeetsOnlyHitsFromItsSource` and `AHitFromACrowdControlledAttackerSaysSoAndAFreeOneDoesNot`,
+    2 of 13: "Expected '50% less from crowd controlled attackers, against a crowd controlled
+    attacker's hit' to be 200.000000, but it was 400.000000" and "Expected 'a pinned or maddened
+    attacker's hit meets the row' to be 50.000000, but it was 100.000000";
+  - **`enemies_hit_at_most` taking an unknown count** (`State.EnemiesStruckTogether >= 0` made `true`)
+    failed `AurasRunningASingleTargetAndACrowdControlledAttackerAreRead`, 1 of 48: "Expected 'an unknown
+    count refuses, though -1 is below one' to be 100.000000, but it was 80.000000" and "Expected 'and
+    so does a state nobody filled in' to be 100.000000, but it was 80.000000";
+  - **no running aura counted** (`++State.AurasHeld;` made `(void)0;`) failed
+    `RunningAurasAreCountedAsHeldAndABuffIsNotAnAura` and `TheAuraRowRaisesDamageTakenWhileAnAuraRuns`, 2
+    of 2: "Expected 'a running aura is held' to be 1, but it was 0", "Expected 'two running auras are
+    two' to be 2, but it was 0", "Expected 'and an ended one is no longer counted' to be 1, but it was
+    0" and "Expected 'one aura running: the wearer takes 15% more' to be 115.000000, but it was
+    100.000000".
+
 ---
 
 ## 2026-09-23 — No rule in this log may be doubled, and the insert tool no longer writes a second one
