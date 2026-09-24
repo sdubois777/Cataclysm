@@ -15,9 +15,8 @@ refuses such a creature), the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -117,10 +116,45 @@ Two comments the Chaos Touched and Soul Harvest changes left out of place are mo
 Treat comment in the floor panel code, and the Trick or Treat doc comment in the game mode header, had
 each ended up above another rule's code.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-24, on development 38af0c0e (row window 2's squash) as the base. Every
+figure below is what `python tools/unreal_build.py tests` or `prove_cpp_guard` printed.
+
+- **The group on the base**, 38af0c0e: 264 tests performed, 264 succeeded, 0 failed.
+- **The whole suite on the first head**, 20970cb0: 2,334 tests performed, 2,332 succeeded, 2 failed.
+  - `TheReaperCannotBeHurtByABlowAHealthWriteOrATick`: "Expected 'and it is not dead' to be false".
+    A write straight to health, which is an instant effect on the health base, ran
+    `PreAttributeChange`'s clamp to zero and then `PostAttributeBaseChange`'s death check before
+    `PostGameplayEffectExecute` could put the health back, so the Reaper died at full health. Fixed
+    by holding a creature that cannot be hurt at its maximum in `PreAttributeChange` itself; the later
+    check now only writes the lowered base back.
+  - `SubjugationRefusesTheReaper`: "Expected 'and nobody owns it' to be true". A wrong expectation in
+    the test: a pawn's owner is its AI controller once possessed. It now asserts that the player does
+    not own it. The refusal itself had passed.
+  Both fixes were ruled by the coordinating session, with the lock kept, and the run restarted.
+- **The whole suite on the fixed head**, e45ae404: 2,334 tests performed, 2,334 succeeded, 0 failed.
+- **The group on that head**: 270 tests performed, 270 succeeded, 0 failed.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **The landed-blow kill.** The kill's `Notice.Attacker != Reaper` made `==`. With the break in: 270
+  performed, 268 succeeded, 2 failed, `ALandedBlowFromTheReaperKillsThePlayerAndNoOtherBlowDoes`
+  ("Expected 'and the player lives' to be false") and
+  `APlayerHoldingNothingStopsItStillDiesToTheReaper` ("Expected 'Nothing Stops It saved the player' to
+  be false"). Restored: 270 performed, 270 succeeded, 0 failed.
+- **The immunity.** The damage branch's check given `&& false`. With the break in: 270 performed, 269
+  succeeded, 1 failed, `TheReaperCannotBeHurtByABlowAHealthWriteOrATick`, on "blow N dealt it
+  nothing" for each of the five blows ("but it was 873.000000"); its health stayed full and it lived,
+  held by the `PreAttributeChange` clause, which is the reason the test asserts what each blow landed.
+  That clause itself is not guard-proven here (issue
+  [#1623](https://github.com/sdubois777/Cataclysm/issues/1623)). Restored: 270 performed, 270 succeeded, 0
+  failed.
+- **The ten-second delay.** `TheReaperIsDue` compared against the delay less 0.25. With the break in: 270
+  performed, 269 succeeded, 1 failed, `TheReaperComesTenSecondsIntoAFloorAtTheEntranceAndNeverOnAHorde`
+  ("Expected '9.75 seconds is not yet' to be false", "Expected 'no Reaper a beat before ten seconds' to
+  be null"). Restored: 270 performed, 270 succeeded, 0 failed.
 
 ---
 
