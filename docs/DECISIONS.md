@@ -261,6 +261,67 @@ One Python check: the row still says "every floor", "a random buff or debuff", "
 
 ---
 
+## 2026-09-24 — Cast from Ward, engine only: a cost the mana cannot cover is paid from the energy shield, which is not damage and not a break
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the pool that
+pays a cost), `CataclysmSkillTemplates.cpp` (an aura's upkeep), `game/Source/Cataclysm/Interface/CataclysmSkillBar.cpp`
+(what the bar shows as affordable), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`
+(one stat with no attribute), two test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ritualist_capstone_50` option 3, Cast from Ward: "A skill may be paid for with Energy Shield when
+your mana is not enough." One flag, `skill_cost_paid_from_energy_shield`, whose row will carry 1.
+**Engine only**, for the reason the Shared Ruin entry gives: the row follows when the design workbook
+comes back.
+
+### HOW IT IS BUILT
+
+`UCataclysmGameplayAbility::PoolPaying` answers which pool pays a cost now. It tries `CostPool` first,
+as before. When that pool is mana and cannot cover the cost, and the flag is held and the shield
+can cover it, it answers the energy shield. **Every payer asks it**: the cast's `CheckCost` and
+`ApplyCost`, an aura's per-pulse upkeep, and the skill bar's "can afford".
+
+**JUDGEMENTS in this change:**
+
+- **The whole cost comes from one pool, and the mana is left untouched.** The sentence says the
+  skill is "paid for with Energy Shield", and splitting one cost across two pools states a rule the
+  sentence does not give.
+- **A character whose mana became health never reaches the shield.** Water to Blood moves every
+  cost onto health, and "when your mana is not enough" asks about mana.
+
+### RULINGS, 2026-09-24, UNDER THE OWNER'S DELEGATION
+
+- **Paying a cost from the shield does not restart its 3 second refill wait.** Our own design
+  settles it: `docs/Cataclysm_GDD_v2.md`, the Energy Shield section, in the bullet beginning "It
+  refills 3 seconds after the character last took damage", restarts the wait on damage taken, and a
+  cost is not damage. The genre agrees. Path of Exile 1's Eldritch Battery reads "Spend Energy
+  Shield before Mana for Skill Mana Costs", and poedb states that "Taking life damage or spending
+  energy shield on skill cost will not interrupt energy shield recharge". Path of Exile 2 reshaped
+  that keystone to convert the shield into mana, so it is no precedent here and is not counted. A
+  web-search summary saying the same was not counted either, because its sources could not be read.
+- **A cost that empties the shield is not "breaking" it.** "Break" follows damage in this project's
+  texts ("Damage that would break your Energy Shield"), so Sacrificial Ward and anything else that
+  answers a break never fires on a cost.
+
+**Both hold by construction:** the cost is written straight onto the attribute and passes none of
+the damage path, where the refill wait and the ward are read. A test pins the second.
+
+Sources: [poedb, Eldritch Battery (Path of Exile 1)](https://poedb.tw/us/Eldritch_Battery);
+[poe2db, Eldritch Battery (Path of Exile 2)](https://poe2db.tw/us/Eldritch_Battery).
+
+### TESTS
+
+- `Cataclysm.Skills.CastFromWardPaysACostTheManaCannotCoverFromTheShield`
+- `Cataclysm.Skills.CastFromWardTakesNothingFromTheShieldWhileManaIsEnough`: and without the option,
+  one point short is refused.
+- `Cataclysm.Skills.CastFromWardEmptyingTheShieldIsNotABreak`: a caster with Sacrificial Ward and an
+  imp empties its shield on a cost; the imp lives, and the ward's clock is never started.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+---
+
 ## 2026-09-24 — One class tree per damage type: a two-handed weapon reaches 8 class trees, not 24
 
 **Affects:** nothing in code yet; issue [#2064](https://github.com/sdubois777/Cataclysm/issues/2064)

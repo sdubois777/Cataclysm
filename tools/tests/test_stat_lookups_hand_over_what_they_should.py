@@ -401,6 +401,10 @@ INVENTORY = {
      'SurvivedEveryStat, FGameplayTagContainer(), 0.0f'):
         "Nothing Stops It's interval, a flag read off the defender when a hit "
         'would kill, with no skill of its own in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.cpp',
+     'FName(CostPaidFromEnergyShieldStat), FGameplayTagContainer(), 0.0f'):
+        "Cast from Ward's flag, asked when a cost is weighed against the pools, "
+        'which is a question about the character and not about one skill',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'WardStat, FGameplayTagContainer(), 0.0f'):
         "Sacrificial Ward's interval, a flag read off the defender when a blow "

@@ -182,7 +182,16 @@ bool UCataclysmSkillBar::CanAfford(const UAbilitySystemComponent* AbilitySystem,
 	{
 		return true;
 	}
-	return UCataclysmGameplayAbility::PoolCovers(AbilitySystem, Pool, ManaCost);
+	if (UCataclysmGameplayAbility::PoolCovers(AbilitySystem, Pool, ManaCost))
+	{
+		return true;
+	}
+
+	// AND WHAT THE CAST ITSELF WOULD ACCEPT, when the pool asked about is the one
+	// the cast pays from: Cast from Ward pays a cost the mana cannot cover out of
+	// the energy shield. Issue #1515.
+	return Pool == UCataclysmGameplayAbility::CostPool(AbilitySystem)
+		&& UCataclysmGameplayAbility::PoolPaying(AbilitySystem, ManaCost).IsValid();
 }
 
 FString UCataclysmSkillBar::KeyTextFor(const FKey& Key)

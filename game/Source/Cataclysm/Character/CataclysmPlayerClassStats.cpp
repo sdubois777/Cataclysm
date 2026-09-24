@@ -240,6 +240,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// would break the energy shield: above zero means the keystone is held.
 		// Issue #1515.
 		TEXT("shield_break_destroys_minion_every_seconds"),
+		// Cast from Ward's flag, read by UCataclysmGameplayAbility::PoolPaying:
+		// above zero, a skill cost the mana cannot cover is paid from the energy
+		// shield. Issue #1515.
+		TEXT("skill_cost_paid_from_energy_shield"),
 		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
 		// Weaken is created, and not where a spread copies one. Issue #1515,
 		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken

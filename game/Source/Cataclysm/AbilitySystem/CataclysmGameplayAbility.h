@@ -314,6 +314,30 @@ public:
 	static bool PoolCovers(const UAbilitySystemComponent* AbilitySystem,
 						   const FGameplayAttribute& Pool, float Cost);
 
+	/**
+	 * Cast from Ward's flag, the Ritualist's 50 point option 3. Issue #1515: "A
+	 * skill may be paid for with Energy Shield when your mana is not enough."
+	 * Above zero means the option is held.
+	 */
+	static const TCHAR* CostPaidFromEnergyShieldStat;
+
+	/**
+	 * The pool that pays `Cost` for this character now, or an invalid attribute
+	 * if none can. Issue #1515.
+	 *
+	 * `CostPool` FIRST, AS IT ALWAYS WAS. Then, when that pool is mana and cannot
+	 * cover the cost, the ENERGY SHIELD if Cast from Ward is held and the shield
+	 * can cover it. JUDGEMENT: the whole cost from one pool, the mana left
+	 * untouched, since the sentence says the skill is "paid for with Energy
+	 * Shield". A character whose mana became health (Water to Blood) never
+	 * reaches the shield: "when your mana is not enough" asks about mana.
+	 *
+	 * ONE ANSWER FOR EVERY PAYER, as `CostPool` is: the cast's check and payment,
+	 * an aura's upkeep and the skill bar all ask this.
+	 */
+	static FGameplayAttribute PoolPaying(const UAbilitySystemComponent* AbilitySystem,
+										 float Cost);
+
 	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle,
 						   const FGameplayAbilityActorInfo* ActorInfo,
 						   FGameplayTagContainer* OptionalRelevantTags) const override;
