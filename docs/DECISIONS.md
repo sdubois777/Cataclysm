@@ -60,6 +60,116 @@ from memory, and the new shrink test failed on both. The headings are now copied
 
 ---
 
+## 2026-09-23 — The stairs become an unstable portal: down, back to the entrance, or an Abyssal Warden, one roll per step
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonStairs.h` and `.cpp` (the stairs ignoring
+the player until they step off), `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and
+`.cpp` (the row's key, its odds, the mini-boss rung and the outcome arithmetic),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the roll in the stairs
+handler, the Warden, Blood Gates leaving it out of its count, a console variable pinning the roll,
+the floor panel line and the per-floor reset), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
+
+### The row
+
+`Chaos_Unstable_Portal` in `game/Data/DungeonModifiers.csv`, weight 15: "The only way to get to the
+next floor is through a series of unstable portals. Stepping through a portal has a 50% chance of
+taking you to the next floor, a 25% chance of returning you to the beginning of the current floor, and
+a 25% chance of spawning a powerful, unpredictable mini-boss." All three odds are the row's own.
+
+### What the rule does
+
+The stairs are the portal. On a floor carrying the row, once Blood Gates (if present) has let the
+player through, stepping onto the stairs rolls 0 to 100: below 50 the player goes down as usual; from
+50 to below 75 they are moved to the floor's entrance with `PlaceAtEntrance`; from 75 an Abyssal
+Warden appears beside the stairs at the Herald rung. After either of the last two the stairs start
+watching again but ignore the player until a look finds them out of reach, so each step onto the
+portal is one roll. The floor panel gives the odds before the first step and then what the last step
+did. A Horde dungeon has no stairs, so on one the row does nothing.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-23:**
+
+- **The mini-boss is an Abyssal Warden at rung 3, the Herald rung**, declared as
+  `VolatileEvolutionHighestRung`, which Epidemic's Plague Lord and Blood-Forged Champions' ceiling
+  already share as the mini-boss rung. Its modifiers are drawn afresh for that rung, as any creature's
+  are, and they are the "unpredictable". The reason: docs/Cataclysm_GDD_v2.md's enemy table names it --
+  "The Abyssal Warden (Mini-Boss)" -- the only mini-boss that exists. It drops loot as any creature of
+  its rung does, so Chaotic Loot applies to its drops on a floor carrying both rows.
+- **One roll per step.** The stairs look for the player every 0.25 s, so without this a player who
+  rolled a Warden and stood still would roll again four times a second.
+- **Blood Gates first, and sealed stairs roll nothing. The last floor's stairs are not a portal**: the
+  row says "the only way to get to the next floor", and those stairs lead out, as Blood Gates' ruling
+  on the last floor has it.
+- **"Returning you to the beginning of the current floor" moves the player only**, to
+  `CurrentFloor->EntranceWorld()`. The floor keeps all its state and nothing is rebuilt.
+
+### The interaction with Blood Gates, measured as the ruling asked
+
+**An open Blood Gates CAN close again.** `ACataclysmDungeonGameMode::BloodGatesSealTheStairs` decides
+afresh every time it is asked -- `!Effects::BloodGatesAreOpen(BloodGatesSlain,
+BloodGatesPlacedCount())` -- and `BloodGatesPlacedCount` is the player's kills plus every unmarked
+creature still standing. So a creature that arrives raises the target: with one slain and one standing
+the gate opens at one, and a Warden arriving makes two standing and the gate opens at two, sealed
+again. That is what Blood Gates' ruling on arrivals intends for creatures the floor brings; **the
+portal's Warden is the player's own roll, so it is left out**: `UnstablePortalWardens` holds the Wardens
+the portal raised, and Blood Gates neither counts one as standing nor counts its death as slain.
+`APortalWardenDoesNotSealOpenBloodGatesAgain` holds it.
+
+### Tests
+
+Six automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `APortalRollBelowFiftyTakesThePlayerDown`: the three boundaries, 49.99, 50, 74.99 and 75, and a
+  roll of 10 taking the player to floor 2.
+- `APortalRollOfFiftyToSeventyFiveReturnsThePlayerToTheEntrance`: the player from the stairs to within
+  50 cm of the entrance, the floor keeping its creature, and the panel.
+- `APortalRollOfSeventyFiveOrMoreRaisesAWardenAtTheHeraldRung`: one Abyssal Warden at rung 3, on a floor
+  whose own Wardens are pinned to Common, and the stairs waiting for the player to step off.
+- `StandingOnThePortalIsOneRollUntilThePlayerStepsOff`: five looks at a player standing still are one
+  roll; a look off the portal ends the wait; stepping back on is the second.
+- `APortalWardenDoesNotSealOpenBloodGatesAgain`: sealed stairs roll nothing; once one of two is slain
+  the gate is open, and the portal's Warden leaves it open.
+- `TheLastFloorsWayOutIsNotAPortal`: on a two-floor empire dungeon the same roll raises a Warden on
+  floor 1 and, on floor 2, rolls nothing and clears the dungeon.
+
+One Python check: the row still states three chances that add to 100 and match
+`UnstablePortalDescendPercent` and `UnstablePortalReturnBelow`, and the design document still names
+the Abyssal Warden the mini-boss. It was seen to fail, in a copy of the repository, with the row's 50%
+made 40%, with `UnstablePortalReturnBelow` made 70, and with the design's "(Mini-Boss)" made "(Elite)".
+
+### Run
+
+- **The group on development (914de0f9) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 27 actions, 24 files compiled" and "235 tests performed, 235 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 9ad8fa2d:** "Build: Succeeded - 14 actions, 11 files compiled" and "2254 tests
+  performed, 2254 succeeded, 0 failed", as registered (2248 + the six named tests), with every declared
+  test reported. In that run's `game/Saved/Logs/Cataclysm.log` the group's 241 all succeeded, the six
+  named above among them.
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing 1 of 241 with the
+  break in and 0 of 241 restored, exactly as registered. Each broken run's log was copied before the
+  restored run overwrote it, and its failure text is quoted:
+  - the Warden without the fixed rung (in `CataclysmDungeonGameMode.cpp`) failed
+    `APortalRollOfSeventyFiveOrMoreRaisesAWardenAtTheHeraldRung`: "Expected 'at the Herald rung' to be 3,
+    but it was 0";
+  - **one roll per step removed** (`if (bPlayerMustLeaveFirst)` made `if (false)`, in
+    `CataclysmDungeonStairs.cpp`) failed `StandingOnThePortalIsOneRollUntilThePlayerStepsOff`: "Expected
+    'five looks at a player standing still are one roll' to be 1, but it was 5", and stepping back on
+    was the sixth roll, not the second;
+  - **the portal's Warden counted by Blood Gates** (the exclusion removed from `BloodGatesPlacedCount`)
+    failed `APortalWardenDoesNotSealOpenBloodGatesAgain`: "Expected 'and the gate is still open' to be
+    false", and the panel read "blood gates: 1 of 3 slain, open at 2" -- the re-sealing measured
+    above.
+
+---
+
 ## 2026-09-23 — The balance report prints no surge-size figures it did not measure, and the 2026-09-05 table is kept as a dated record
 
 **Affects:** `sim/experiments.py` (section 7 of the balance report, and two comments) and

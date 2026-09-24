@@ -1876,6 +1876,20 @@ public:
 	int32 BloodGatesPlacedCount() const;
 	bool BloodGatesSealTheStairs() const;
 
+	/**
+	 * Unstable Portal's state, for the floor panel and tests: how many times the portal has
+	 * rolled on this floor, and what the last roll did (0 down, 1 back to the entrance, 2 a
+	 * mini-boss, -1 none yet). Issues #1820 and #41.
+	 */
+	int32 UnstablePortalRollCount() const { return UnstablePortalRolls; }
+	int32 UnstablePortalLastOutcome() const { return UnstablePortalLast; }
+
+private:
+	/** Unstable Portal's mini-boss: an Abyssal Warden beside the stairs at the mini-boss rung. */
+	void RaiseTheUnstablePortalsWarden();
+
+public:
+
 private:
 
 	/**
@@ -2664,6 +2678,14 @@ private:
 
 	/** How many unmarked creatures the player has slain on this floor. Goes at the stairs. */
 	int32 BloodGatesSlain = 0;
+
+	/**
+	 * Unstable Portal: its rolls on this floor, the last outcome, and the Wardens it raised,
+	 * which Blood Gates leaves out of its count. All of it goes at the stairs.
+	 */
+	int32 UnstablePortalRolls = 0;
+	int32 UnstablePortalLast = -1;
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> UnstablePortalWardens;
 
 	/**
 	 * Judgment Zones: the ground standing now, the clock that lays more, and what the

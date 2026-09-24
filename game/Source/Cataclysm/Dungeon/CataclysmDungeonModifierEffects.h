@@ -1524,6 +1524,33 @@ public:
 	static const TCHAR* ChaoticLootKey;
 
 	/**
+	 * The row where the stairs are a portal that may not take the player down. Issues
+	 * #1820 and #41.
+	 *
+	 * "Stepping through a portal has a 50% chance of taking you to the next floor, a 25%
+	 * chance of returning you to the beginning of the current floor, and a 25% chance of
+	 * spawning a powerful, unpredictable mini-boss." All three odds are the row's own;
+	 * `UnstablePortalOutcomeFor` holds them.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-23:
+	 * - THE MINI-BOSS IS AN ABYSSAL WARDEN at `UnstablePortalMiniBossRung`, the Herald rung
+	 *   the built rules already call the mini-boss rung, with modifiers drawn afresh:
+	 *   docs/Cataclysm_GDD_v2.md names the Warden as the mini-boss, and its random
+	 *   modifiers are the "unpredictable". It drops loot as any creature of its rung.
+	 * - ONE ROLL PER STEP: after a roll that did not take the player down, the stairs
+	 *   ignore the player until a look finds them out of reach.
+	 * - BLOOD GATES FIRST: sealed stairs roll nothing. THE LAST FLOOR'S STAIRS ARE NOT A
+	 *   PORTAL: they lead out, not to a next floor.
+	 * - "THE BEGINNING OF THE CURRENT FLOOR" moves the player only, to the entrance; the
+	 *   floor keeps all its state.
+	 * - A WARDEN THE PORTAL RAISED IS LEFT OUT OF BLOOD GATES' COUNT, placed and slain, so it
+	 *   cannot seal again stairs the player had opened.
+	 *
+	 * A HORDE DUNGEON HAS NO STAIRS, so on one this row does nothing.
+	 */
+	static const TCHAR* UnstablePortalKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3677,6 +3704,27 @@ public:
 	 */
 	static constexpr int32 ScarcitySalt = 0x736361;
 
+	/** A roll below this, of 0 to 100, takes the player down. STATED BY THE ROW: 50%. */
+	static constexpr float UnstablePortalDescendPercent = 50.0f;
+
+	/**
+	 * A roll below this and at or above the last returns the player to the entrance; the
+	 * rest raise a mini-boss. STATED BY THE ROW: 25% each.
+	 */
+	static constexpr float UnstablePortalReturnBelow = 75.0f;
+
+	/**
+	 * The mini-boss's rung. DECLARED AS `VolatileEvolutionHighestRung`, the Herald rung that
+	 * Epidemic's Plague Lord and Blood-Forged Champions' ceiling already share as the
+	 * mini-boss rung. Ruled under the owner's delegation, 2026-09-23.
+	 */
+	static constexpr int32 UnstablePortalMiniBossRung = VolatileEvolutionHighestRung;
+
+	static_assert(
+		UnstablePortalDescendPercent > 0.0f && UnstablePortalDescendPercent < UnstablePortalReturnBelow
+			&& UnstablePortalReturnBelow < 100.0f,
+		"Each of the row's three outcomes must keep some share of the roll.");
+
 	static_assert(
 		DirgeResonanceHasteSeconds > 0.0f
 			&& DirgeResonanceHasteSeconds < DirgeResonanceEverySeconds,
@@ -4367,6 +4415,17 @@ public:
 	 * seed, the floor number and `ScarcitySalt`, so it is the same every time it is asked.
 	 */
 	static int32 ScarcityPick(int32 Candidates, int32 DungeonSeed, int32 FloorNumber);
+
+	/** What one step through an unstable portal does: these three values. */
+	static constexpr int32 UnstablePortalDescends = 0;
+	static constexpr int32 UnstablePortalReturns = 1;
+	static constexpr int32 UnstablePortalRaisesAMiniBoss = 2;
+
+	/**
+	 * What a step does, from a roll of 0 to 100: below 50 down, below 75 back to the
+	 * entrance, otherwise a mini-boss. One of the three values above.
+	 */
+	static int32 UnstablePortalOutcomeFor(float Roll);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

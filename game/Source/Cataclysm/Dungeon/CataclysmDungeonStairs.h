@@ -143,6 +143,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Dungeon")
 	bool LookForThePlayer();
 
+	/**
+	 * Ignore the player until a look finds them out of reach. `Chaos_Unstable_Portal`;
+	 * issues #1820 and #41. A portal that did not take the player down would otherwise
+	 * roll again on every look while they stand on it -- four times a second -- so each
+	 * step onto it is one roll only once they have stepped off first. `ArriveAt` does not
+	 * read this; the looks do.
+	 */
+	void RequireThePlayerToLeaveFirst() { bPlayerMustLeaveFirst = true; }
+
+	/** Whether the stairs are waiting for the player to step off. */
+	bool WaitsForThePlayerToLeave() const { return bPlayerMustLeaveFirst; }
+
 	/** Broadcast when the player reaches the stairs. */
 	UPROPERTY(BlueprintAssignable, Category = "Cataclysm|Dungeon")
 	FCataclysmStairsTaken OnTaken;
@@ -193,4 +205,7 @@ private:
 
 	/** The timer that looks for the player. */
 	FTimerHandle LookHandle;
+
+	/** See `RequireThePlayerToLeaveFirst`. */
+	bool bPlayerMustLeaveFirst = false;
 };

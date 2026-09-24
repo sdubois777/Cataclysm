@@ -110,6 +110,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::ScarcityKey =
 const TCHAR* UCataclysmDungeonModifierEffects::ChaoticLootKey =
 	TEXT("Chaos_Chaotic_Loot");
 
+const TCHAR* UCataclysmDungeonModifierEffects::UnstablePortalKey =
+	TEXT("Chaos_Unstable_Portal");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -378,7 +381,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(BloodGatesKey)
 		|| RowKey == FName(DirgeResonanceKey)
 		|| RowKey == FName(ScarcityKey)
-		|| RowKey == FName(ChaoticLootKey))
+		|| RowKey == FName(ChaoticLootKey)
+		|| RowKey == FName(UnstablePortalKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -554,6 +558,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
 		FName(ChaoticLootKey),
+		FName(UnstablePortalKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1735,6 +1740,16 @@ int32 UCataclysmDungeonModifierEffects::BloodGatesOpenAt(int32 Placed)
 bool UCataclysmDungeonModifierEffects::BloodGatesAreOpen(int32 Slain, int32 Placed)
 {
 	return Slain >= BloodGatesOpenAt(Placed);
+}
+
+int32 UCataclysmDungeonModifierEffects::UnstablePortalOutcomeFor(float Roll)
+{
+	if (Roll < UnstablePortalDescendPercent)
+	{
+		return UnstablePortalDescends;
+	}
+	return Roll < UnstablePortalReturnBelow ? UnstablePortalReturns
+											: UnstablePortalRaisesAMiniBoss;
 }
 
 int32 UCataclysmDungeonModifierEffects::ScarcityPick(int32 Candidates, int32 DungeonSeed,
