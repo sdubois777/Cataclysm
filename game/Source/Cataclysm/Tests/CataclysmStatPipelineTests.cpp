@@ -4187,6 +4187,7 @@ bool FCataclysmClassPointScaleTest::RunTest(const FString&)
 
 	FCataclysmStatModifier PerTen;
 	PerTen.Bucket = ECataclysmStatBucket::More;
+	PerTen.Source = ECataclysmModifierSource::Enchantment;
 	PerTen.Value = -2.5f;
 	PerTen.Scale = ECataclysmStatScale::PerClassPointSpent;
 	PerTen.ScaleStep = 10.0f;
