@@ -10,7 +10,8 @@ key, the delay, the rung, the sight figure and when it is due),
 it, the kill on a landed blow, the floor panel line and the resets),
 `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (a flag, `bCannotBeHurt`),
 `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (no damage reaches a creature
-carrying that flag), the automation tests in
+carrying that flag), `game/Source/Cataclysm/AbilitySystem/CataclysmCommand.h` and `.cpp` (subjugation
+refuses such a creature), the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
@@ -53,6 +54,14 @@ says when it will come, that it is here, or that a Horde wave does not bring it.
   blow passes the damage path, where the save runs, before the kill, and the revival resets the
   save's clock (`UCataclysmAbilitySystemComponent::ClearWhatDeathEnds`, called from
   `ACataclysmPlayerCharacter::Revive`).
+- **Sacrificial Ward does save the player from it, at the cost of a minion.** The ward's sentence
+  says a blow that would break the energy shield "instead destroys" the minion with the least health,
+  so that blow does not land and the scythe never hits. It is an escape the ward allows once every
+  3 seconds, not an immunity: a second shield-breaking blow inside those 3 seconds kills.
+- **Subjugation refuses it.** `UCataclysmCommand::Subjugate`, the one call that takes a creature into
+  the player's command, refuses any creature that cannot be hurt, beside its refusal of bosses. A
+  Reaper thrall would be an ally nothing could remove, and Sacrificial Ward, which ends a minion by
+  writing its health straight to nothing, would reach it past the check that keeps it alive.
 
 **Judgements in this change, marked as such, under the same delegation:**
 
@@ -75,7 +84,7 @@ this game's own figure**: nothing in the research fixes a delay for this game's 
 
 ### Tests
 
-Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+Six automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 
 - `TheReaperComesTenSecondsIntoAFloorAtTheEntranceAndNeverOnAHorde`: 9.75 seconds is not due and 10 is.
   Nothing one beat before ten seconds; on the next beat, an Abyssal Warden at the Common rung, unhurtable,
@@ -91,6 +100,12 @@ Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
   20 seconds, then 2 seconds of immunity), another creature's lethal blow is saved at one health; past
   the immunity and the twenty seconds, at full health, the Reaper's lethal blow spends the save and the
   player dies.
+- `SacrificialWardSpendsAMinionForOneReaperBlowAndNotForTheNext`: a player holding the ward, with a full
+  shield of 100, no evasion or block and one imp, takes a shield-breaking Reaper blow: nothing lands,
+  the player lives with the health they had, and the imp is spent. A second breaking blow at once lands
+  and the player dies.
+- `SubjugationRefusesTheReaper`: an ordinary creature is taken; the Reaper is refused, has no owner and
+  is not the player's friend.
 
 One Python check: the row still says "slowly stalks the player", "hit by his scythe" and "instantly
 die", and states no figure. It was seen to fail, in a copy of the repository, with "slowly" removed, with

@@ -8,6 +8,7 @@
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystem/CataclysmGroundEffect.h"
@@ -24948,6 +24949,125 @@ bool FCataclysmReaperPastTheSaveTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the save was spent on the blow"),
 			  Player.AbilitySystem->LethalHitSurvivalAllowedAt() - Struck, 20.0f, 0.01f);
 	TestTrue(TEXT("and the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	return true;
+}
+
+// SACRIFICIAL WARD TAKES A SHIELD-BREAKING BLOW OF THE REAPER'S WHOLE, AT THE COST OF A MINION,
+// AND A SECOND BREAKING BLOW INSIDE THE WARD'S THREE SECONDS KILLS. Ruled by the coordinating
+// session under the owner's delegation, 2026-09-24: the ward destroys the minion "instead", so
+// the scythe never lands.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperAgainstTheWardTest,
+	"Cataclysm.DungeonModifierEffects.SacrificialWardSpendsAMinionForOneReaperBlowAndNotForTheNext",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReaperAgainstTheWardTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	ACataclysmEnemyCharacter* Reaper = TheReaperCame(*this, World, Player, Mode);
+	if (!Reaper || !TestTrue(TEXT("the Reaper has attack damage"),
+							 GiveCreatureAttackDamage(Reaper, 100.0f) > 0.0f))
+	{
+		return false;
+	}
+
+	// THE WARD, AS ITS ROW WILL GIVE IT: once every 3 seconds. Held after the last beat, which
+	// rewrites the stat line. No evasion or block, so each blow lands or is warded and nothing
+	// else decides it; a full shield of 100; one imp to spend.
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	FCataclysmStatModifier Ward;
+	Ward.Bucket = ECataclysmStatBucket::Flat;
+	Ward.Source = ECataclysmModifierSource::PassiveKeystone;
+	Ward.Value = 3.0f;
+	FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+		FName(UCataclysmAbilitySystemComponent::ShieldBreakDestroysMinionEverySecondsStat));
+	Line.Base = 0.0f;
+	Line.Modifiers = {Ward};
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	Player.AbilitySystem->SetNumericAttributeBase(Combat::GetEvasionAttribute(), 0.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Combat::GetBlockChanceAttribute(), 0.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxEnergyShieldAttribute(), 100.0f);
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 100.0f);
+	ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+		Player.Character, Player.Character->GetActorLocation() + FVector(200.0f, 0.0f, 0.0f),
+		/*Lifetime=*/60.0f, /*bBurns=*/false, TEXT("Imp"));
+	if (!TestNotNull(TEXT("an imp of the player's"), Imp)
+		|| !TestEqual(TEXT("with a full shield of 100"),
+					  ShieldOf(Player.Character), 100.0f, 0.001f))
+	{
+		return false;
+	}
+	const float Health = HealthOf(Player.Character);
+
+	// THE FIRST BREAKING BLOW: the ward takes it whole and the imp dies instead.
+	FCataclysmDamageResult First;
+	UCataclysmSkillEffects::ApplyHit(Reaper, Player.Character, 100000.0f,
+									 FGameplayTagContainer(), FCataclysmHitDelivery(), &First);
+	TestEqual(TEXT("the first blow landed nothing"), LandedOf(First), 0.0f);
+	TestFalse(TEXT("the player lives"), UCataclysmSkillEffects::IsDead(Player.Character));
+	TestEqual(TEXT("with the health they had"), HealthOf(Player.Character), Health, 0.001f);
+	TestTrue(TEXT("and the imp was spent"),
+			 !IsValid(Imp) || UCataclysmSkillEffects::IsDead(Imp));
+
+	// THE SECOND, AT ONCE AND SO INSIDE THE THREE SECONDS: it breaks the shield and kills.
+	FCataclysmDamageResult Second;
+	UCataclysmSkillEffects::ApplyHit(Reaper, Player.Character, 100000.0f,
+									 FGameplayTagContainer(), FCataclysmHitDelivery(), &Second);
+	TestTrue(TEXT("the second blow landed"), LandedOf(Second) > 0.0f);
+	TestTrue(TEXT("and the player died"), UCataclysmSkillEffects::IsDead(Player.Character));
+	return true;
+}
+
+// SUBJUGATION REFUSES THE REAPER, AND TAKES AN ORDINARY CREATURE. Ruled by the coordinating
+// session under the owner's delegation, 2026-09-24.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmReaperNotTakenTest,
+	"Cataclysm.DungeonModifierEffects.SubjugationRefusesTheReaper",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmReaperNotTakenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	ACataclysmEnemyCharacter* Reaper = TheReaperCame(*this, World, Player, Mode);
+	if (!Reaper)
+	{
+		return false;
+	}
+
+	// THE CONTROL: an ordinary creature is taken.
+	ACataclysmEnemyCharacter* Ordinary =
+		SpawnCreatureWithHealth(World, FVector(900.0f, 0.0f, 0.0f), 100.0f);
+	if (!TestNotNull(TEXT("an ordinary creature"), Ordinary)
+		|| !TestTrue(TEXT("an ordinary creature is taken"),
+					 UCataclysmCommand::Subjugate(Player.Character, Ordinary)))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("the Reaper is refused"), UCataclysmCommand::Subjugate(Player.Character, Reaper));
+	TestTrue(TEXT("and nobody owns it"), Reaper->GetOwner() == nullptr);
+	TestFalse(TEXT("and it is not the player's friend"),
+			  UCataclysmTargeting::IsFriendlyTo(Reaper, Player.Character));
 	return true;
 }
 
