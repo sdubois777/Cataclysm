@@ -1496,7 +1496,15 @@ public:
 	 * hit is still a hit; an evaded hit is still a hit. So this opens together
 	 * with those and must not be described, or tested, as exclusive.
 	 */
-	void NoteHitTaken(bool bLanded = true);
+	void NoteHitTaken(bool bLanded);
+
+	/**
+	 * The same, for a blow that landed. Kept as a form of its own rather than
+	 * a default argument, because a default does not change a function's type:
+	 * `CataclysmDeathTests.cpp` stores this one's address as a pointer to a
+	 * member taking no arguments, in its table of event windows. Issue #1833.
+	 */
+	void NoteHitTaken() { NoteHitTaken(true); }
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;
@@ -1693,7 +1701,15 @@ public:
 	 * condition `seconds_after_melee_hit_taken`, and which asks the player's movement speed again on
 	 * the frame of the event.
 	 */
-	void NoteMeleeHitTaken(bool bLanded = true);
+	void NoteMeleeHitTaken(bool bLanded);
+
+	/**
+	 * The same, for a blow that landed. Kept as a form of its own rather than
+	 * a default argument, because a default does not change a function's type:
+	 * `CataclysmDeathTests.cpp` stores this one's address as a pointer to a
+	 * member taking no arguments, in its table of event windows. Issue #1833.
+	 */
+	void NoteMeleeHitTaken() { NoteMeleeHitTaken(true); }
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceMeleeHitTaken() const;
