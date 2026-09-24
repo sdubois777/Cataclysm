@@ -159,10 +159,16 @@ float UCataclysmBasicAttack::ReachCmOf(
 	//
 	// `ShouldSwingNow` READS THIS, so a character holding the coil begins
 	// swinging at something further away rather than reaching it and missing.
+	//
+	// AND THE FLAT MELEE REACH LAST, the same value the swing adds in
+	// `ScaledRadiusCm`, so the walk stops where the swing reaches. Issue #1515,
+	// Overreach. Without it the character would walk to the old reach and swing
+	// short of the one its keystone gives.
 	return Skill->Params.RadiusCm
 		* (1.0f + UCataclysmSkillTemplate::HeldRangeIncreasePercent(
 					  AbilitySystem ? AbilitySystem->GetAvatarActor() : nullptr)
-					  / 100.0f);
+					  / 100.0f)
+		+ Skill->MeleeReachBonusCm();
 }
 
 bool UCataclysmBasicAttack::SomethingInReach(const AActor* Character,

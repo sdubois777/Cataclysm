@@ -214,6 +214,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// lifetime the summoning skill states. Issue #1515, the Kept Longer node:
 		// "+3% increased duration of what you summon per point".
 		TEXT("minion_duration"),
+		// Flat metres of reach on a melee strike, read by
+		// UCataclysmSkillTemplate::MeleeReachBonusCm for the swing and for the
+		// basic attack's walk into reach. Issue #1515, the Overreach keystone.
+		TEXT("melee_reach_metres"),
 		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
 		// Weaken is created, and not where a spread copies one. Issue #1515,
 		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken

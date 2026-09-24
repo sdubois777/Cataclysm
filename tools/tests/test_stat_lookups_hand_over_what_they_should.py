@@ -359,6 +359,10 @@ INVENTORY = {
      'FName(TEXT("added_health_cost")), SkillTags, FromAttribute'):
         "a skill's own cost and shape, asked before any blow exists",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
+     'FName(MeleeReachMetresStat), SkillTags, 0.0f'):
+        "a strike's own reach, asked with the skill's tags before any blow "
+        'exists',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',
      'FName(HealthCostSuppressedStat), FGameplayTagContainer(), 0.0f'):
         "a skill's own cost and shape, asked before any blow exists",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.cpp',

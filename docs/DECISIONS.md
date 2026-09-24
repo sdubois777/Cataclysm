@@ -1339,6 +1339,106 @@ hand-made row that breaks it. The comment in `ElementTag` now states these rules
 
 ---
 
+## 2026-09-23 — Overreach adds 2 metres to a melee strike's reach, after every multiplier, and to where the basic attack starts swinging
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillTemplate.h` and `.cpp` (the stat and
+the swing's reach), `CataclysmBasicAttack.cpp` (the walk into reach),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (a stat with no attribute), three
+test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ravager_keystone_b_kC` Overreach: "Your melee attacks reach 2 metres further than the skill
+states." One row: `melee_reach_metres`, flat 2, required tag `Type.Melee`.
+
+### A NEW STAT, BY THE EARLIER RULING'S OWN CONDITION
+
+The section "Attack range can be increased, and it is not a new stat", in the entry of 2026-09-02,
+chose no stat for reach because
+"no affix, no node and no enemy modifier mentions reach". **A node now does.** So `melee_reach_metres`
+is a stat with no attribute, read with the skill's own tags, so the row's `Type.Melee` scope decides
+which skills it reaches. The self buff's percentage range increase is left as it was.
+
+### TWO READS OF ONE REACH, KEPT IN AGREEMENT
+
+A strike's radius is how far it reaches, decided in `UCataclysmSkillTemplate::ScaledRadiusCm`. **The
+basic attack has a second read**, `UCataclysmBasicAttack::ReachCmOf`, which decides where the
+character stops walking toward a clicked enemy and whether a click may swing at all. Both now add
+`UCataclysmSkillTemplate::MeleeReachBonusCm`, so the walk stops where the swing reaches; with only the
+first, the character would walk to the old reach.
+
+### SIX RULINGS UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto.**
+
+| Question | Answer |
+|---|---|
+| Charges and the Flicker? | **Left out: Strikes, and the basic attack, only.** A Charge's radius is the width of its path and its range how far it travels; a Flicker has no reach |
+| Before or after area of effect, for a melee strike that is also an area (Backswing, Molten Cleave)? | **After.** The final reach is exactly 2 m longer, not 2 m that grows with area |
+| Before or after the self buff's range increase? | **After**, for the same reason |
+| The basic attack? | **Included**; it is a melee attack and carries `Type.Melee`, and `ReachCmOf` agrees with the swing |
+| Strike-shaped rows without `Type.Melee`? | **Left out.** The tag decides melee everywhere else |
+| A new stat, against the earlier ruling? | **Yes**, by that ruling's own condition, quoted above |
+
+### THE STRIKES THIS DOES NOT REACH, FOR THE WEAPON SKILLS SHEET
+
+**Ten Strike-shaped rows of `game/Data/WeaponSkills.csv` carry no `Type.Melee`**, measured
+2026-09-23, so Overreach does not lengthen them: Extinction and Touch Off (Sword), The Whole Weight
+and Buried Fire (Greatsword), Pyroclasm (Greataxe), Anathema (Wand), The Gathering (Whip), Break the
+World and Upthrust (Warhammer), and Thicket (Spear). All are Demonic. **Whether each should carry the
+tag is a question for the Weapon Skills sheet**, recorded here with its evidence rather than decided
+by this node.
+
+### TESTS
+
+- `Cataclysm.Skills.OverreachLengthensOnlyAMeleeStrikeAndAfterEveryMultiplier`: a melee strike of
+  1.8 m reaches 3.8; a strike without the tag stays 1.8; a melee area strike of 2 m at 150% area
+  reaches 5, not 6; a melee Charge keeps its 3 m path.
+- `Cataclysm.BasicAttack.OverreachMovesWhereTheBasicAttackReachesAndSwingsAlike`: `ReachCmOf` and the
+  swing agree, with the stat and without.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- `Cataclysm.Passives.OverreachLengthensARealRavagersBasicAttackReach` reads the row on a real Ravager
+  holding a Sword. **Every other test grants the stat by hand**, so this is the one that fails while
+  the row is missing.
+
+### THE ROW, AND WHAT IT MOVED
+
+Written into the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx` from `development` at
+914de0f9, by the same script its dry run used on a copy first. The generator then changed only
+`game/Data/PassiveEffects.csv`, adding the one row. **The row's 2 is the 2 of the node's own
+sentence.** It moved five pins, each updated with a comment saying why:
+
+| Pin | From | To |
+|---|--:|--:|
+| `docs/README.md`, Passive Effects rows | 296 | 297 |
+| `AUTHORED_ROWS` in `test_passive_effects_match_the_node_text.py` | 296 | 297 |
+| `AUTHORED_NODES`, same file (the Ravager now 70 of its 74 nodes) | 217 | 218 |
+| `CHECK_TABLE` for `PassiveEffects.csv` in `CataclysmDataTableTests.cpp` | 296 | 297 |
+| `VALUE_FORMS` gains `melee_reach_metres` as "{value:g} metres" | | |
+
+The last is how a flat row's value is found in its sentence: in the stat's own unit, not as a
+percentage. `DT_PassiveEffects` is rebuilt in this change's build window.
+
+### THE WINDOW, 2026-09-24, ON 76f8979e
+
+| Step | Printed |
+|---|---|
+| Fail-before, `tests --prefix "Cataclysm.Passives."`, stale asset | `127 tests performed, 126 succeeded, 1 failed: OverreachLengthensARealRavagersBasicAttackReach`, on "Expected 'Overreach carries one row' to be 1, but it was 0"; 25 files compiled |
+| Rebuild, `generate_datatable_assets.py` | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` and nothing else |
+| Whole suite, `tests --no-build` | `2261 tests performed, 2261 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before. The broken run's log
+was copied before the restored run overwrote it, so each row names the assertion that failed:
+
+| Break | Prefix | Printed | Assertion that failed |
+|---|---|---|---|
+| the reach stat multiplied by 0, not 100 | `Cataclysm.Skills.` | `PROVED: with the break in: 237 tests performed, 236 succeeded, 1 failed: OverreachLengthensOnlyAMeleeStrikeAndAfterEveryMultiplier \| restored: 237 tests performed, 237 succeeded, 0 failed` | 380 read as 180, and 500 as 300 |
+| the reach added before area of effect | `Cataclysm.Skills.` | `PROVED: with the break in: 237 tests performed, 236 succeeded, 1 failed: OverreachLengthensOnlyAMeleeStrikeAndAfterEveryMultiplier \| restored: 237 tests performed, 237 succeeded, 0 failed` | only the area strike: 500 read as 600 |
+| the basic attack's walk without the reach | `Cataclysm.BasicAttack.` | `PROVED: with the break in: 11 tests performed, 10 succeeded, 1 failed: OverreachMovesWhereTheBasicAttackReachesAndSwingsAlike \| restored: 11 tests performed, 11 succeeded, 0 failed` | the walk stopped at 180 while the swing reached 380 |
+
+---
+
 ## 2026-09-23 — A killed creature has a one-in-ten chance to get back up at once, whoever killed it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

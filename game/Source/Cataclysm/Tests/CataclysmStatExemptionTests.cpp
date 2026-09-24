@@ -378,6 +378,63 @@ namespace CataclysmStatExemptionTest
 	 * target, and the time left on each compared. A test world's clock does not
 	 * move, so a fresh debuff's time left is the whole of what it was given.
 	 */
+	/**
+	 * `melee_reach_metres`, read by `UCataclysmSkillTemplate::MeleeReachBonusCm`
+	 * into a melee strike's reach. Issue #1515, Overreach. The same melee strike
+	 * on two fighters, one granted a flat metre and a half: its reach is longer.
+	 */
+	void ProbeMeleeReach(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto ReachOfAMeleeStrike = [&Test, World](float GrantedMetres)
+		{
+			FScopedFighter Fighter(World, /*AttackDamage=*/0.0f);
+			UCataclysmAbilitySystemComponent* System = Fighter.AbilitySystem;
+			const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Special,
+				/*Level=*/100, Fighter.Actor);
+			FGameplayAbilitySpec* Spec = System->FindAbilitySpecFromHandle(Handle);
+			UCataclysmSkillTemplate* Strike = Spec
+				? Cast<UCataclysmSkillTemplate>(Spec->GetPrimaryInstance())
+				: nullptr;
+			if (!Test.TestNotNull(TEXT("a strike"), Strike))
+			{
+				return -1.0f;
+			}
+			Strike->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=2"));
+			Strike->SkillTags = UCataclysmSkillShapes::TagsFromCell(TEXT("Type.Melee"));
+
+			if (GrantedMetres > 0.0f)
+			{
+				FCataclysmStatModifier Flat;
+				Flat.Bucket = ECataclysmStatBucket::Flat;
+				Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+				Flat.Value = GrantedMetres;
+				TMap<FName, FCataclysmStatInputs> Inputs;
+				FCataclysmStatInputs& Line =
+					Inputs.FindOrAdd(FName(UCataclysmSkillTemplate::MeleeReachMetresStat));
+				Line.Base = 0.0f;
+				Line.Modifiers = {Flat};
+				System->SetStatInputs(MoveTemp(Inputs));
+			}
+			return Strike->ScaledRadiusCm();
+		};
+
+		const float Plain = ReachOfAMeleeStrike(0.0f);
+		const float Granted = ReachOfAMeleeStrike(1.5f);
+		Test.TestTrue(TEXT("the plain strike reaches at all"), Plain > 0.0f);
+		Test.TestTrue(
+			TEXT("melee_reach_metres lengthens a melee strike, so "
+				 "UCataclysmSkillTemplate::MeleeReachBonusCm really reads it"),
+			Granted > Plain + 0.001f);
+	}
+
 	void ProbeCrippleAndWeakenDuration(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -2052,6 +2109,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_health"),       &ProbeHealth},
 			{TEXT("minion_duration"),     &ProbeDuration},
 			{TEXT("cripple_and_weaken_duration"), &ProbeCrippleAndWeakenDuration},
+			{TEXT("melee_reach_metres"),  &ProbeMeleeReach},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},

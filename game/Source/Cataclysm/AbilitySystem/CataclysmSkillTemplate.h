@@ -98,6 +98,26 @@ public:
 	float ScaledRadiusCm() const;
 
 	/**
+	 * The flat reach a STRIKE gains from `melee_reach_metres`, in centimetres,
+	 * or nothing. Issue #1515: `Ravager_keystone_b_kC` Overreach, "Your melee
+	 * attacks reach 2 metres further than the skill states."
+	 *
+	 * STRIKES ONLY, ruled 2026-09-23 under the owner's delegation: a Strike's
+	 * radius is how far it reaches, while a Charge's is the width of its path and
+	 * a Flicker has no reach. Asked with the skill's own tags, so the row's
+	 * `Type.Melee` scope decides which strikes it reaches, the basic attack among
+	 * them.
+	 *
+	 * ADDED AFTER EVERY MULTIPLIER, by the same ruling: `ScaledRadiusCm` and
+	 * `UCataclysmBasicAttack::ReachCmOf` both add it last, so the final reach is
+	 * exactly this much longer whatever area of effect or range increase does.
+	 */
+	float MeleeReachBonusCm() const;
+
+	/** The stat Overreach grants: flat metres of reach on a melee strike. */
+	static const TCHAR* MeleeReachMetresStat;
+
+	/**
 	 * The radius of the ground this skill leaves, after area of effect.
 	 *
 	 * ALWAYS SCALED, unlike the radius above, because a zone's damage IS area
