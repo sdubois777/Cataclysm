@@ -1482,6 +1482,44 @@ leave the row inactive.
 | :-- | :-- |
 | You take 15%-25% more damage from melee attacks while moving | `damage_taken`, more 15 to 25, `melee_hit_while_moving` |
 
+### Run
+
+The row was written into the design workbook in this window, at row 308 of the Enchantment Effects
+sheet, and every step matched its registration. `melee_hit_while_moving` left the list of conditions
+built ahead of their rows in the same commit.
+
+- **The build**, on `64f93de1`: "Build: Succeeded - 29 actions, 26 files compiled".
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "86 tests
+  performed, 84 succeeded, 2 failed", the two registered:
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt`, with 1 row only in the CSV;
+  - `TheMeleeWhileMovingRowRaisesOnlyAMeleeHitWhileMoving`: "Expected 'a melee hit while moving is
+    25% more than while standing' to be 1.250000, but it was 1.000000".
+- **The Python run of record on `64f93de1`** ran beside the build and the test run above, because
+  neither writes a file it reads. The asset rebuild and the proofs waited for its final line, "1
+  failed, 5416 passed, 8 skipped", the stale hash as registered.
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`c762f766`, 306 rows to 307). The Python asset-freshness tests then passed, 18 of 18.
+- **Nothing else ran beside the whole suite.** The continuous integration Python job for `development`
+  `d156d17a` was still running when the rebuild finished, so the whole suite waited for it; it
+  completed at 20:35:56Z. The whole suite ran from 20:36:31Z to 20:42:02Z.
+- **The whole suite on `c762f766`:** "2359 tests performed, 2359 succeeded, 0 failed", as registered,
+  with every declared test reported.
+- **Three guard proofs**, each on `Cataclysm.StatPipeline.AMeleeHitWhileMoving` and
+  `Cataclysm.Enchantments.TheMeleeWhileMovingRow`. Each failed both tests, on exactly the registered
+  assertions, with the break in, and neither once restored. Each broken run's log was copied before
+  the restored run overwrote it:
+  - **the moving half dropped** (`&& State.bIsMoving` removed): "Expected 'a melee blow on a STANDING
+    character does not' to be false", "Expected 'a melee hit while moving is 25% more than while
+    standing' to be 1.250000, but it was 1.000000" and "Expected 'and standing, a melee hit is no more
+    than a ranged one' to be 1.000000, but it was 1.250000";
+  - **the melee half dropped** (`return State.bIsMoving;`): "Expected 'a ranged blow on a MOVING
+    character does not' to be false", the same for 'a melee spell on a moving character' and 'a
+    moving character with no blow in hand', and "Expected 'a ranged hit while moving is no more than
+    while standing' to be 1.000000, but it was 1.250000";
+  - **the name not mapped** (its line in the condition names removed, so the row reader drops the
+    row): "Expected 'melee_hit_while_moving is a condition this build knows' to be true" and "Expected
+    'a melee hit while moving is 25% more than while standing' to be 1.250000, but it was 1.000000".
+
 ---
 
 ## 2026-09-23 — A skill's persistent zone can deal less on its first sweep, and "Persistent AOE zones deal 20%-35% less damage on initial placement" does it
