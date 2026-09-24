@@ -308,6 +308,81 @@ bool UCataclysmDebuffs::DoNotExpireOn(
 								0.0f) > 0.0f;
 }
 
+const TCHAR* UCataclysmDebuffs::AppliedHeldWithinMetresStat =
+	TEXT("applied_cripple_and_weaken_held_within_metres");
+
+int32 UCataclysmDebuffs::HoldAppliedNearbyStep(AActor* Character, float StepSeconds)
+{
+	if (!Character || StepSeconds <= 0.0f || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	if (!Mine)
+	{
+		return 0;
+	}
+
+	const float Metres = Mine->StatForSkill(
+		FName(AppliedHeldWithinMetresStat), FGameplayTagContainer(), 0.0f);
+	if (Metres <= 0.0f)
+	{
+		return 0;
+	}
+
+	FGameplayTagContainer HeldKinds;
+	if (CrippleTag().IsValid())
+	{
+		HeldKinds.AddTag(CrippleTag());
+	}
+	if (WeakenTag().IsValid())
+	{
+		HeldKinds.AddTag(WeakenTag());
+	}
+	if (HeldKinds.IsEmpty())
+	{
+		return 0;
+	}
+	const FGameplayEffectQuery Query =
+		FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(HeldKinds);
+
+	int32 Held = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			 Character->GetWorld(), Character, Character->GetActorLocation(),
+			 Metres * 100.0f))
+	{
+		UAbilitySystemComponent* Theirs = UCataclysmTargeting::AbilitySystemOf(Enemy);
+		if (!Theirs)
+		{
+			continue;
+		}
+		for (const FActiveGameplayEffectHandle& Handle : Theirs->GetActiveEffects(Query))
+		{
+			// "YOU APPLIED": the effect names this character as its instigator.
+			// Every ailment's context is made by `AddInstigator(Instigator,
+			// Instigator)`, so the actor is compared, and the ability system it
+			// resolves to as well, which is the player's for the player's pawn.
+			const FActiveGameplayEffect* Active = Theirs->GetActiveGameplayEffect(Handle);
+			if (!Active)
+			{
+				continue;
+			}
+			const FGameplayEffectContextHandle& Context = Active->Spec.GetContext();
+			if (Context.GetInstigator() != Character
+				&& Context.GetInstigatorAbilitySystemComponent() != Mine)
+			{
+				continue;
+			}
+			Theirs->ModifyActiveEffectStartTime(Handle, StepSeconds);
+			++Held;
+		}
+	}
+	return Held;
+}
+
 int32 UCataclysmDebuffs::HoldStep(AActor* Character, float StepSeconds)
 {
 	// A STEP OF NO TIME HOLDS NOTHING, rather than pushing every effect's start

@@ -35,6 +35,7 @@
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
+#include "GameplayEffect.h"
 #include "GameplayTagsManager.h"
 #include "HAL/IConsoleManager.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
@@ -1125,6 +1126,59 @@ namespace CataclysmStatExemptionTest
 			TEXT("and one holding skill_cost_paid_from_energy_shield pays it from the "
 				 "shield, so UCataclysmGameplayAbility::PoolPaying really reads it"),
 			Paying(true) == Vital::GetEnergyShieldAttribute());
+	}
+
+	/**
+	 * `applied_cripple_and_weaken_held_within_metres`, read by
+	 * `UCataclysmDebuffs::HoldAppliedNearbyStep`. Issue #1515, No Second Wind.
+	 * Two appliers a hundred metres apart each cripple an enemy two metres away
+	 * for three seconds; after a second of the clock and a step, the plain one's
+	 * has two left and the one holding the stat still has three.
+	 */
+	void ProbeAppliedHeldNearby(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Plain(World, FVector::ZeroVector);
+		FScopedSwinger PlainsEnemy(World, FVector(2 * M, 0, 0));
+		FScopedSwinger Held(World, FVector(0, 100 * M, 0));
+		FScopedSwinger HeldsEnemy(World, FVector(2 * M, 100 * M, 0));
+		GrantFlats(Held.Actor,
+			{{FName(UCataclysmDebuffs::AppliedHeldWithinMetresStat), 4.0f}});
+
+		const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+		UCataclysmSkillEffects::ApplyTagForDuration(Plain.Actor, PlainsEnemy.Actor,
+			Cripple, 3.0f, 30.0f);
+		UCataclysmSkillEffects::ApplyTagForDuration(Held.Actor, HeldsEnemy.Actor,
+			Cripple, 3.0f, 30.0f);
+
+		World->TimeSeconds += 1.0f;
+		UCataclysmDebuffs::HoldAppliedNearbyStep(Plain.Actor, 1.0f);
+		UCataclysmDebuffs::HoldAppliedNearbyStep(Held.Actor, 1.0f);
+
+		const auto Left = [&Cripple](const FScopedSwinger& Who)
+		{
+			FGameplayTagContainer Tags;
+			Tags.AddTag(Cripple);
+			float Longest = -1.0f;
+			for (const float Seconds : Who.AbilitySystem->GetActiveEffectsTimeRemaining(
+					 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Tags)))
+			{
+				Longest = FMath::Max(Longest, Seconds);
+			}
+			return Longest;
+		};
+		Test.TestEqual(TEXT("a plain applier's Cripple runs down to two"),
+					   Left(PlainsEnemy), 2.0f, 0.01f);
+		Test.TestEqual(
+			TEXT("and one holding applied_cripple_and_weaken_held_within_metres keeps "
+				 "three, so HoldAppliedNearbyStep really reads it"),
+			Left(HeldsEnemy), 3.0f, 0.01f);
 	}
 
 	/**
@@ -2548,6 +2602,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("damage_immunity_after_lethal_hit_seconds"), &ProbeImmuneAfterLethalHit},
 			{TEXT("shield_break_destroys_minion_every_seconds"), &ProbeShieldWard},
 			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
+			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},

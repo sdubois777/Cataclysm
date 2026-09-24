@@ -79,6 +79,9 @@ HOOKS = {
             "UCataclysmDebuffs::HoldStep":
                 "the debuffs on a character being held still rather than "
                 "counting down, issue #1070",
+            "UCataclysmDebuffs::HoldAppliedNearbyStep":
+                "the Cripples and Weakens a character applied being held still "
+                "on enemies near it, No Second Wind, issue #1515",
             "UCataclysmEnemyModifiers::AuraStep":
                 "the burning aura a creature carrying the Hellfire Aura "
                 "enemy modifier lays on whoever stands within six metres, "

@@ -396,6 +396,78 @@ One Python check: the row still says "every floor", "a random buff or debuff", "
 
 ---
 
+## 2026-09-24 — No Second Wind, engine only: a Cripple or Weaken you applied stops running down while its enemy is within 4 metres
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (the step),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (where it runs),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one stat with no attribute), two test
+files, the stat-lookup inventory, and the list of jobs the regeneration step must call. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE KEYSTONE
+
+`Ravager_keystone_c_kB` No Second Wind: "Cripple and Weaken you applied do not expire while that
+enemy is within 4 metres of you." One stat, `applied_cripple_and_weaken_held_within_metres`, whose
+row will carry the 4; above zero means the keystone is held, and the value is the radius. **Engine
+only**, for the reason the Shared Ruin entry gives.
+
+### HOW IT IS BUILT
+
+`UCataclysmDebuffs::HoldAppliedNearbyStep` makes the same hold `HoldStep` makes for the Masochist's
+option that keeps a character's own debuffs from expiring. Each held effect's start is moved by the
+step, so the time left on it does not change. Here the hold is made on **enemies' effects** instead
+of the character's own. It runs on the character's regeneration step, beside `HoldStep`, so whether
+an enemy is still within the radius is asked again each step.
+
+- **Only what this character applied.** A Cripple is one tag per enemy, so each effect is matched by
+  its instigator: the actor, or the ability system that actor resolves to, which for the player's
+  pawn is the player's. A Cripple or Weaken from anyone else runs down as it would.
+- **Both kinds are timed gameplay effects on the enemy.** A Cripple is applied through
+  `ApplyTagForDuration` and a Weaken through `ApplyNamedEffect`, and both carry their tag, so one
+  query finds either.
+- **"Within 4 metres"** is the enemy search every radius in this project uses,
+  `UCataclysmTargeting::FindEnemiesInSphere`, from the character's position.
+
+### TESTS
+
+- `Cataclysm.NoSecondWind.YourCrippleAndWeakenDoNotRunDownOnAnEnemyWithinFourMetres`: an enemy two
+  metres away keeps three seconds on both after a second; one six metres away drops to two.
+- `Cataclysm.NoSecondWind.OnlyWhatYouAppliedIsHeldAndOnlyWhileYouHoldTheKeystone`
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+### THE WINDOW, 2026-09-24, ON 7dcae6d4
+
+**This change's C++ was compiled for the first time here, and it built. Every registered figure
+matched, and all three proofs are proved.** No data row changed, so there was no stale-asset step.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2350 tests performed, 2350 succeeded, 0 failed` |
+
+**A continuous-integration compile overlapped this window.** Blood Bond (#2076) merged while the
+whole suite ran, and its push to `development` started the Unreal run 36046769484, whose "Game
+compiles" job compiled on this machine at the same time. It builds in the runner's own checkout, so
+it shared the processor and nothing else. No test failed. It had completed before the first proof
+began, and the proofs' builds ran with no Unreal run in progress.
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.NoSecondWind.`, each anchor re-checked
+immediately before. Each restored run printed `2 tests performed, 2 succeeded, 0 failed`. **Every one
+was registered before its run, test and assertion alike.**
+
+| Break, in `HoldAppliedNearbyStep` | Printed with the break in | Assertion that failed |
+|---|---|---|
+| an effect anyone applied is held (the instigator test made `if (false)`) | `2 tests performed, 1 succeeded, 1 failed: OnlyWhatYouAppliedIsHeldAndOnlyWhileYouHoldTheKeystone` | "a Cripple someone else applied, two metres from the holder, runs down", 3 where 2 |
+| the radius is ten times the stat (`Metres * 1000.0f`) | `2 tests performed, 1 succeeded, 1 failed: YourCrippleAndWeakenDoNotRunDownOnAnEnemyWithinFourMetres` | "and the far enemy's Cripple two, since six metres is outside four", 3 where 2 |
+| a character without the keystone holds at four metres (the stat's fallback `4.0f` for `0.0f`) | `2 tests performed, 1 succeeded, 1 failed: OnlyWhatYouAppliedIsHeldAndOnlyWhileYouHoldTheKeystone` | "and one applied by a character without the keystone runs down", 3 where 2 |
+
+The Python suite on 7dcae6d4 printed `5418 passed, 7 skipped`. One test fewer was skipped than in
+the runs before it, and it is not a change in this branch:
+`test_the_real_check_refuses_this_checkout_when_it_has_no_binaries` skips in a checkout that has its
+game modules built, and this run was in a worktree that has none.
+
+---
+
 ## 2026-09-24 — Cast from Ward, engine only: a cost the mana cannot cover is paid from the energy shield, which is not damage and not a break
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmGameplayAbility.h` and `.cpp` (the pool that
