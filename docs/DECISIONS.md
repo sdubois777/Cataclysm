@@ -80,6 +80,26 @@ resolved blow, beside the boss floor that is checked there for the same reason.
 - `tools/tests/test_stat_lookups_hand_over_what_they_should.py` lists Nothing Stops It's two new
   lookups. Shared Ruin reads through `SummonerStat`, a lookup already listed.
 
+### THE WINDOW, 2026-09-24, ON 24a9740c
+
+**This change's C++ was compiled for the first time here, and it built.** No data row changed, so
+there was no stale-asset step and no rebuild.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 28 actions, 25 files compiled` |
+| Whole suite, `tests` | `2308 tests performed, 2308 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before. The broken run's log
+was copied before the restored run overwrote it. **Every one was registered before the window, test
+and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Restored | Assertions that failed |
+|---|---|---|---|---|
+| Shared Ruin's radius read as tenths of a metre (`* 10.0f` for `* 100.0f` in `CataclysmMinion.cpp`) | `Cataclysm.MinionDeath.` | `13 tests performed, 10 succeeded, 3 failed` | `13 tests performed, 13 succeeded, 0 failed` | "a target three metres away loses a fifth of the imp's maximum health", 0 where 400; "and with Shared Ruin as well, a fifth of the imp's maximum more", 0 where 400; "a monster two metres away loses something: 0.00" |
+| a lethal damage over time tick saved too (the tick exclusion removed in `CataclysmVitalAttributeSet.cpp`) | `Cataclysm.LethalHit.` | `4 tests performed, 3 succeeded, 1 failed: ATickIsNotASingleHitButTheWindowStopsTicksToo` | `4 tests performed, 4 succeeded, 0 failed` | "a lethal tick is not a single hit, so it kills", 1 where 0 |
+| the twenty seconds between saves never kept (`CataclysmAbilitySystemComponent.cpp`) | `Cataclysm.LethalHit.` | `4 tests performed, 2 succeeded, 2 failed` | `4 tests performed, 4 succeeded, 0 failed` | "and the next save waits twenty seconds", 0 where 20; "ten seconds after a save, a lethal hit kills", 1 where 0 |
+
 ---
 
 ## 2026-09-24 — Soul Harvest: each death gives the nearest creature within 6 metres a soul of health, damage and resistance, up to five
