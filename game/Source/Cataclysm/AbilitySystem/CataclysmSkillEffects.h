@@ -1138,13 +1138,19 @@ public:
 	 * AND WITH WHAT THE SKILL COST, since issue #983, for the same reason:
 	 * a modifier conditioned on the skill's own health cost is another the
 	 * attribute could not carry. -1 means no skill in hand and refuses it.
+	 *
+	 * AND WITH HOW MANY ENEMIES THE ATTACK STRUCK, since issue #1686, for
+	 * "Point blank AOE skills deal 15%-25% less damage to a single target":
+	 * its spell damage row asks `enemies_hit_at_most`. -1 means no attack in
+	 * hand and refuses it.
 	 */
 	static float SpellDamageOf(const UAbilitySystemComponent* Source,
 							   const FGameplayTagContainer& SkillTags,
 							   float SkillHealthCostPercent = -1.0f,
 							   float TargetDistanceMetres = -1.0f,
 							   bool bTargetIsStaggered = false,
-							   const AActor* Target = nullptr);
+							   const AActor* Target = nullptr,
+							   int32 EnemiesStruckTogether = -1);
 
 	/**
 	 * The sum of increases already applied to this character's attack damage.

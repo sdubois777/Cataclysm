@@ -23,6 +23,7 @@
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -4347,6 +4348,191 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		CheckEach(TEXT("a benefit"), *Armour, Actions,
 			FName(*FString::Printf(TEXT("%s:armor"), ShieldBenefit)));
 	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraRowTest,
+	"Cataclysm.Enchantments.TheAuraRowRaisesDamageTakenWhileAnAuraRuns",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Take 5%-15% more damage per active aura", worn, raises the damage the wearer
+ * takes by 15% while an aura skill of its own is running. Issue #1686. A worn
+ * item rolls the top of its range.
+ */
+bool FCataclysmAuraRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Take_5_15_more_damage_per_active_aura")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Taken(TEXT("damage_taken"));
+	TestEqual(TEXT("with no aura running nothing is added"),
+		ASC->StatAppliedTo(Taken, FGameplayTagContainer(), 100.0f), 100.0f, 0.01f);
+
+	// A REAL AURA, GRANTED AND SWITCHED ON, and free so the wearer's mana is not
+	// what this test measures.
+	const FGameplayAbilitySpecHandle Handle = ASC->GiveAbilityInSlot(
+		UCataclysmAuraSkill::StaticClass(), ECataclysmAbilitySlot::Aura,
+		/*Level=*/100, Wearer.Actor);
+	FGameplayAbilitySpec* Spec = ASC->FindAbilitySpecFromHandle(Handle);
+	UCataclysmAuraSkill* Ring = Spec ? Cast<UCataclysmAuraSkill>(Spec->GetPrimaryInstance()) : nullptr;
+	if (!TestNotNull(TEXT("the aura is granted"), Ring))
+	{
+		return false;
+	}
+	Ring->ManaCostOverride = 0.0f;
+	if (!TestTrue(TEXT("and it runs"), ASC->TryActivateAbility(Handle)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("one aura running: the wearer takes 15% more"),
+		ASC->StatAppliedTo(Taken, FGameplayTagContainer(), 100.0f), 115.0f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPointBlankRowTest,
+	"Cataclysm.Enchantments.ThePointBlankRowReachesOnlyAPointBlankAttackOnOneEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Point blank AOE skills deal 15%-25% less damage to a single target", worn,
+ * takes 25% off a point blank attack that struck one enemy. Issue #1686.
+ *
+ * TWO REFUSALS BESIDE THE ONE CASE THAT TAKES: the same attack on two enemies,
+ * and an attack that is not point blank on one. It drives the attack damage
+ * half, as `FCataclysmSpellsMovingDrawbackTest` does, and checks the spell
+ * damage half arrived; `SpellDamageIsToldHowManyEnemiesTheAttackStruck`
+ * drives that half's count.
+ */
+bool FCataclysmPointBlankRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	const FGameplayTagContainer PointBlank = SkillTagged(TEXT("Type.AOE.PointBlank"));
+	const FGameplayTagContainer Melee = SkillTagged(TEXT("Type.Melee"));
+	if (!TestFalse(TEXT("Type.AOE.PointBlank is in the vocabulary"), PointBlank.IsEmpty())
+		|| !TestFalse(TEXT("and so is Type.Melee"), Melee.IsEmpty()))
+	{
+		return false;
+	}
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_Point_blank_AOE_skills_deal_15_25_less_damage")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	if (!TestTrue(TEXT("the worn drawback put a modifier on attack damage"),
+			CarriesAModifierOn(ASC, UCataclysmItemModifiers::AttackDamageStat))
+		|| !TestTrue(TEXT("and one on spell damage"),
+			CarriesAModifierOn(ASC, TEXT("spell_damage"))))
+	{
+		return false;
+	}
+
+	const auto More = [&](const FGameplayTagContainer& Tags, int32 Enemies)
+	{
+		return ASC->AttackDamageMoreForSkill(Tags, -1.0f, -1.0f, -1.0f, false, nullptr, Enemies);
+	};
+
+	TestEqual(TEXT("a point blank attack on one enemy deals 25% less"),
+		More(PointBlank, 1), 0.75f, 0.001f);
+	TestEqual(TEXT("on two enemies it deals the full amount"),
+		More(PointBlank, 2), 1.0f, 0.001f);
+	TestEqual(TEXT("an attack that is not point blank, on one enemy, is untouched"),
+		More(Melee, 1), 1.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlledAttackerRowTest,
+	"Cataclysm.Enchantments.TheCrowdControlRowRaisesOnlyAHitFromACrowdControlledAttacker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "You take 15%-25% more damage from enemies that are currently CC'd", worn,
+ * raises a hit from a crowd controlled attacker by 25% and nothing else. Issue
+ * #1686. Measured as a ratio of two lookups, so the base damage taken the
+ * wearer recorded does not matter.
+ */
+bool FCataclysmCrowdControlledAttackerRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FWearer Wearer(World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	Wearer.Equipment->Equip(
+		Carrying(TEXT("Head_Helm"), BenefitWithNoEffect,
+				 TEXT("Negative_You_take_15_25_more_damage_from_enemies_that_a")),
+		Removed, AlsoRemoved, Slot);
+	Wearer.Equipment->RefreshAttributes(ASC);
+
+	const FName Taken(TEXT("damage_taken"));
+	FCataclysmBlowContext Free;
+	FCataclysmBlowContext Held;
+	Held.bOpponentIsCrowdControlled = true;
+	FCataclysmBlowContext Staggered;
+	Staggered.bOpponentIsStaggered = true;
+
+	const auto TakenFrom = [&](const FCataclysmBlowContext& Blow)
+	{
+		return ASC->StatForSkill(Taken, FGameplayTagContainer(), 100.0f, -1.0f, Blow);
+	};
+
+	const float Plain = TakenFrom(Free);
+	if (!TestTrue(TEXT("a hit from a free attacker is priced at something"), Plain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a crowd controlled attacker's hit is 25% more"),
+		TakenFrom(Held) / Plain, 1.25f, 0.001f);
+	TestEqual(TEXT("a staggered attacker's is not, for a stagger is not crowd control"),
+		TakenFrom(Staggered) / Plain, 1.0f, 0.001f);
 
 	return true;
 }

@@ -359,7 +359,8 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 										   float SkillHealthCostPercent,
 										   float TargetDistanceMetres,
 										   bool bTargetIsStaggered,
-										   const AActor* Target)
+										   const AActor* Target,
+										   int32 EnemiesStruckTogether)
 {
 	const FGameplayAttribute Spell =
 		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
@@ -385,12 +386,15 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 		// the distance the character moved, so a spell damage row conditioned
 		// on either of those silently grants nothing. That gap is older than
 		// this line and is recorded as its own issue.
+		//
+		// AND HOW MANY ENEMIES THE ATTACK STRUCK, since issue #1686, which the
+		// point blank drawback's spell damage row asks about.
 		? Cataclysm->StatForSkill(FName(TEXT("spell_damage")), SkillTags,
 								  FromAttribute, SkillHealthCostPercent,
 								  FCataclysmBlowContext(),
 								  /*MetresMovedBeforeBlow=*/-1.0f,
 								  TargetDistanceMetres, bTargetIsStaggered,
-								  Target)
+								  Target, EnemiesStruckTogether)
 		: FromAttribute;
 
 	return FMath::Max(0.0f, Value);
@@ -807,7 +811,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const float Flat = IsSpell(SkillTags)
 		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,
 						TargetDistanceMetres, bTargetIsStaggered,
-						AilmentTarget)
+						AilmentTarget, Delivery.EnemiesStruckTogether)
 		: 0.0f;
 
 	// THE SAME FOUR FACTS THE TWO CALLS ABOVE ALREADY USE. Issue #1729. They were
