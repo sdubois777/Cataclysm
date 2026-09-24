@@ -13,8 +13,8 @@ reset on leaving the dungeon), the automation tests in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -101,10 +101,28 @@ damage, and resistances", and states no percentage. It was seen to fail, in a co
 with "the nearest demon" made "the strongest demon", with the three things made two, and with "10%"
 added.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (f3a75d63) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "257 tests performed, 257 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on dca0593a:** "Build: Succeeded - 13 actions, 10 files compiled" and "2301 tests
+  performed, 2301 succeeded, 0 failed", as registered from the declared names, with every declared test
+  reported. The group alone on the same head then printed "261 tests performed, 261 succeeded, 0
+  failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing exactly the
+  registered test with the break in and 0 of 261 restored, with each broken run's failure text quoted:
+  - **the radius doubled** (`SoulHarvestRadiusCm() * 2.0f` in the listener) failed
+    `ADeathFeedsTheNearestLivingCreatureWithinSixMetres` alone: "Expected 'the creature eight metres
+    away holds none' to be 0, but it was 1";
+  - **the cap removed** (`SoulHarvestSoulsAfterFeeding` without its `Min`) failed
+    `ACreatureHoldsAtMostFiveSouls` alone: "Expected 'seven deaths leave five souls' to be 5, but it
+    was 7", and its health and damage at 170 against 150 and resistance at 35 against 25;
+  - **the souls not written again after a Blood-Forged rung-up** (that call removed) failed
+    `SoulsSurviveTheRungABloodForgedChampionGains` alone: "Expected 'its attack damage is its new rung's
+    plus a tenth a soul' to be 254.800003, but it was 218.400024" and "Expected 'its all-resistance is
+    its new rung's plus five a soul' to be 15.000000, but it was 5.000000", which is what a third soul
+    reading two stale additions off a fresh block gives.
 
 ---
 
