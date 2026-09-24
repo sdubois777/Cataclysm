@@ -2027,6 +2027,24 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Aura Held"),
 
 	/**
+	 * Multiplied by the whole `ScaleStep` passive points the character has
+	 * spent, past `ScaleOffset`. Issue #1686: "Your skills deal 1.5%-2.5% less
+	 * damage for every 10 class points spent above 100" is a step of 10 and an
+	 * offset of 100.
+	 *
+	 * A CLASS POINT IS A PASSIVE POINT SPENT, ruled under the owner's
+	 * delegation on 2026-09-23: `FCataclysmPassiveAllocation::Total` on the
+	 * player state. The design sizes these sentences at the 230 point budget
+	 * spent (`docs/DECISIONS.md`, 2026-09-09), and points earned but not spent
+	 * are not "spent".
+	 *
+	 * A CHARACTER WITH NO PLAYER STATE READS -1 AND GETS NOTHING: every
+	 * creature and minion.
+	 */
+	PerClassPointSpent
+		UMETA(DisplayName = "Per Class Point Spent"),
+
+	/**
 	 * `Value` PER CENT of the whole `ScaleStep` points of mana the character
 	 * holds now. Issue #1815: "Your skills deal 10%-30% of your current mana as
 	 * more damage" is a flat row of 10 to 30 with a step of 1.
@@ -2811,6 +2829,13 @@ struct CATACLYSM_API FCataclysmStatConditions
 	int32 AurasHeld = 0;
 
 	/**
+	 * How many passive points the character has spent, or -1 for one with no
+	 * player state to ask. Issue #1686. See `PerClassPointSpent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 ClassPointsSpent = -1;
+
+	/**
 	 * How much mana the character holds now. Negative means unknown: no vital
 	 * attribute set. Issue #1815.
 	 */
@@ -3074,6 +3099,22 @@ struct CATACLYSM_API FCataclysmStatModifier
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
 	FName StackKey;
+
+	/**
+	 * How much of the scale's reading is not counted, before the steps are.
+	 * Zero means all of it. Issue #1686.
+	 *
+	 * "FOR EVERY 10 CLASS POINTS SPENT ABOVE 100" IS A STEP OF 10 AND AN OFFSET
+	 * OF 100: 150 points spent are 50 counted, five steps. A reading at or below
+	 * the offset is worth nothing, never a negative number of steps.
+	 *
+	 * ONLY `PerClassPointSpent` READS IT, because only its sentences state a
+	 * threshold, and `ValidateModifier` refuses an offset on any other scale
+	 * rather than let it be dropped. Four of the five class point sentences
+	 * count points above a figure (issue #1815's held group).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	float ScaleOffset = 0.0f;
 
 	/**
 	 * How far "in reach" is for this row, in metres. Negative means the row is

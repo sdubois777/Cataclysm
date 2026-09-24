@@ -417,8 +417,12 @@ JUDGED_NUMBERS = {
 #: rows on three enchantments that had none. "Point blank AOE skills deal
 #: 15%-25% less damage to a single target" is an attack damage row and a spell
 #: damage row; the aura and crowd control drawbacks are one row each.
-AUTHORED_ROWS = 298
-AUTHORED_ENCHANTMENTS = 231
+#: AND 303 OVER 234 SINCE THE CLASS POINT ROWS, issue #1686,
+#: from 298 over 231: five rows on three enchantments that had none.
+#: The two damage sentences take an attack damage row and a spell damage
+#: row each; the maximum health drawback is one row.
+AUTHORED_ROWS = 303
+AUTHORED_ENCHANTMENTS = 234
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -730,6 +734,31 @@ def test_the_single_target_rows_are_refused_without_their_words(effects, enchant
         assert any(line.startswith(
             "Negative_Point_blank_AOE_skills_deal_15_25_less_damage" + suffix)
             for line in wrong), wrong
+
+
+def offsets_not_stated(effects, enchantments) -> list[str]:
+    """The rows whose Scale Offset is not a number in their own sentence."""
+    wrong = []
+    for r in effects:
+        offset = float(r.get("ScaleOffset") or 0.0)
+        if offset and offset not in numbers_in(words_of(r, enchantments)):
+            wrong.append(f"{r['Name']}: {offset:g} against {words_of(r, enchantments)!r}")
+    return wrong
+
+
+def test_every_scale_offset_appears_in_the_words(effects, enchantments):
+    """"Above 100" is an offset of 100. Issue #1686. An offset the sentence
+    does not state is a number nobody wrote."""
+    wrong = offsets_not_stated(effects, enchantments)
+    assert not wrong, "; ".join(wrong)
+
+
+def test_the_offset_check_can_fail():
+    """The control: a row whose offset its words do not state is named."""
+    effects = [{"Name": "A#1", "Enchantment": "A", "ScaleOffset": "100.0"}]
+    enchantments = {"A": {"Effect": "for every 10 class points spent above 50"}}
+    assert offsets_not_stated(effects, enchantments) == [
+        "A#1: 100 against 'for every 10 class points spent above 50'"]
 
 
 def test_a_more_row_is_worded_as_a_multiplier(effects, enchantments):

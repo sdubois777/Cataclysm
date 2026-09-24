@@ -578,7 +578,10 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 298 SINCE ISSUE #1686'S FIRST WINDOW, from 294: four rows on three
 	// sentences that had none, one of them two rows for the two damage types.
 	// No sentence changed, so both Enchantments CSVs keep their counts.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    298)
+	//
+	// AND 303 SINCE THE CLASS POINT ROWS, issue #1686, from 298: five
+	// rows on three sentences that had none. No sentence changed.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    303)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

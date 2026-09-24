@@ -165,6 +165,7 @@ namespace
 		{ TEXT("buffs_held"),          ECataclysmStatScale::PerBuffHeld },
 		{ TEXT("own_stacks"),          ECataclysmStatScale::PerOwnStack },
 		{ TEXT("auras_held"),          ECataclysmStatScale::PerAuraHeld },
+		{ TEXT("class_points_spent"),  ECataclysmStatScale::PerClassPointSpent },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
 	};
 
@@ -1502,6 +1503,17 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerAuraHeld:
 		return StackedValue(Modifier, State.AurasHeld);
 
+	// AND THE PASSIVE POINTS SPENT, PAST THE OFFSET. Issue #1686. Whole points,
+	// so the stack arithmetic, on what is left once the offset is taken off.
+	// Unknown (-1) and at or below the offset are both nothing.
+	case ECataclysmStatScale::PerClassPointSpent:
+		if (State.ClassPointsSpent < 0)
+		{
+			return 0.0f;
+		}
+		return StackedValue(Modifier, State.ClassPointsSpent
+			- FMath::FloorToInt32(FMath::Max(0.0f, Modifier.ScaleOffset)));
+
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{
 		// THE REFUSALS OF THE MAXIMUM MANA SCALE, AND A PERCENTAGE. Issue #1815.
@@ -1784,6 +1796,24 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	if (Modifier.Scale == ECataclysmStatScale::PerOwnStack && Modifier.StackKey.IsNone())
 	{
 		return TEXT("own_stacks with no stack key. It would count nothing.");
+	}
+
+	// AN OFFSET IS A NUMBER OF POINTS NOT COUNTED, AND ONE SCALE READS IT.
+	// Issue #1686. An offset anywhere else would be dropped with no error.
+	if (Modifier.ScaleOffset < 0.0f)
+	{
+		return FString::Printf(
+			TEXT("an offset of %.1f. An offset is how much of the reading is not "
+				 "counted, and zero means all of it is."),
+			Modifier.ScaleOffset);
+	}
+	if (Modifier.ScaleOffset > 0.0f
+		&& Modifier.Scale != ECataclysmStatScale::PerClassPointSpent)
+	{
+		return FString::Printf(
+			TEXT("an offset of %.1f on a scale that does not read one. Only "
+				 "class_points_spent counts from a threshold."),
+			Modifier.ScaleOffset);
 	}
 
 	return FString();

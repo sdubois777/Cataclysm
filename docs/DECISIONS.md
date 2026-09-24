@@ -1114,6 +1114,114 @@ floor.", and with "5%" added before "slower movement".
 
 ---
 
+## 2026-09-23 — A row can count the passive points spent above a threshold, and three class point enchantments do
+
+**Affects:**
+- `CataclysmStatPipeline.h` and `.cpp`: the scale `class_points_spent`, and
+  `FCataclysmStatModifier::ScaleOffset`
+- `FCataclysmStatConditions::ClassPointsSpent`, filled from the player state in
+  `UCataclysmAbilitySystemComponent::CurrentConditions`
+- the Enchantment Effects sheet's new Scale Offset column, carried by
+  `FCataclysmEnchantmentEffectRow::ScaleOffset` and read by `tools/generate_datatables.py`
+- issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686)'s second window, and
+  issue [#1815](https://github.com/sdubois777/Cataclysm/issues/1815)'s held group
+  "Class points spent"
+
+### WHAT WAS MISSING
+
+Four of the five class point sentences count points **above a threshold**: "above 100", "above
+50", "above the max". A scale had no way to leave part of its reading uncounted, and nothing handed
+the stat pipeline the points a character had spent. The state existed on the player state and went
+no further.
+
+### WHAT WAS BUILT
+
+- **`class_points_spent`** multiplies a value by the whole `ScaleStep` passive points spent past
+  the row's `ScaleOffset`.
+  - A reading at or below the offset is worth nothing, never a negative number of steps.
+  - A character with no player state reads -1 and gets nothing: every creature and minion.
+- **Scale Offset** is a column on the Enchantment Effects sheet only, as Scale Max Steps is.
+  - Only `class_points_spent` reads it. `ValidateModifier` and the generator both refuse an
+    offset on any other scale rather than drop it.
+  - The generator also refuses a negative offset, one past the 230 point budget, and the column
+    on the Passive Effects sheet.
+
+### THE ROWS
+
+| Enchantment | Rows |
+| :-- | :-- |
+| Your skills deal 1.5%-2.5% less damage for every 10 class points spent above 100 | `attack_damage` and `spell_damage`, more -1.5 to -2.5, step 10, offset 100 |
+| Each class point spent above 100 grants 0.5%-1% increased damage | `attack_damage` and `spell_damage`, increased 0.5 to 1, step 1, offset 100 |
+| Your maximum HP is reduced by 1.5%-2.5% for every 10 class points above 50 | `max_health`, increased -1.5 to -2.5, step 10, offset 50 |
+
+The three sentences and their rates were settled by the owner on 2026-09-09, in the entry "Three
+enchantments state their rate per 100 armour or per 10 class points, not per point". That entry
+sized each row at the 230 point budget, and kept the increased row's per-point rate on purpose.
+
+**Not written, and why:**
+- "Each class point above the max reduces your max resistances by 2%-5%". Points can pass the 230
+  budget only through gear-granted points ("Gain 5-10 class points" and its twin), which are not
+  built, so the row would never apply.
+- "Class points spent in your primary tree are 10%-20% more effective". It needs a different
+  mechanism: a multiplier on the effects of one tree's nodes, not a scale.
+
+### THE JUDGEMENT, UNDER THE OWNER'S DELEGATION
+
+**A class point is a passive point spent**: `FCataclysmPassiveAllocation::Total` on the player
+state. It is not a point earned. The 2026-09-09 entry sizes these sentences at the 230 point budget
+spent, and the health row's "class points above 50" is read the same way as the others' "class
+points spent above 100". Points in a tree the character's weapon no longer reaches still count,
+because they stay spent (the owner's decision of 2026-08-25).
+
+### Run
+
+The Scale Offset column and the five rows were written into the design workbook in this window,
+at rows 300-304 of the Enchantment Effects sheet, with offsets 100, 100, 100, 100 and 50.
+
+- **The build**, on `91d9f48e`: "Build: Succeeded - 29 actions, 26 files compiled".
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "82 tests
+  performed, 80 succeeded, 2 failed", the two registered:
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt`: "Expected 'DT_EnchantmentEffects has every row
+    EnchantmentEffects.csv has' to be 0, but it was 5";
+  - `TheClassPointRowsCountOnlyThePointsAboveTheirThresholds`, which equips the rows through the
+    built asset: "Expected 'it put a modifier on spell damage as well' to be true".
+
+  The new column itself cannot show in that check, because every existing row's offset is 0, the
+  field's default.
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`9eeba51b`, 298 rows to 303). The Python asset-freshness tests then passed, 18 of 18.
+- **The whole suite on `9eeba51b` MISSED its registration of 0 failed**: "2328 tests performed, 2327
+  succeeded, 1 failed: AClassPointRowCountsOnlyThePointsAboveItsOffset", on "Expected 'the class point
+  row itself is valid' to be true". Every other assertion in that test passed, the boundary included.
+  - **The cause was the test, not the engine.** Its hand-built `PerTen` modifier set Bucket = More
+    and no Source, so it took the default `GearAffix`, and `ValidateModifier` refuses a More from a
+    gear affix.
+  - The real rows carry `Enchantment` (`EnchantmentModifierFor`), which may grant a More. That is why
+    the test going through the real item path passed in the same run.
+  - The test had never compiled before this window, and the prediction took its line on trust.
+- **Ruled by the coordinating session**: the fix is one line in the test, `PerTen.Source =
+  ECataclysmModifierSource::Enchantment;` (`5c01b670`). The whole suite was not run again, because
+  the run on `9eeba51b` had shown the other 2327 passing and the fix touches one line of one test.
+  `Cataclysm.StatPipeline.` on the fixed head printed "49 tests performed, 49 succeeded, 0 failed".
+  A hand-built modifier in a test should set every field the validator reads, the source among
+  them, and not rely on the defaults.
+- **Three guard proofs.** Each failed exactly the registered tests with the break in and none once
+  restored. Each broken run's log was copied before the restored run overwrote it. Each also failed
+  a line or two beyond those registered, inside the same tests:
+  - **the offset read as 0 in the step arithmetic** failed `AClassPointRowCountsOnlyThePointsAboveItsOffset`,
+    1 of 49: "Expected 'exactly 100 is nothing' to be 0.000000, but it was -25.000000", "Expected
+    '110 is one step of the per-10 row' to be -2.500000, but it was -27.500000", and "159 points are
+    59 above 100: five whole steps" (-37.5 against -12.5), with "below 100 is nothing" as well;
+  - **the points spent never reaching the conditions** failed
+    `ThePointsSpentReachTheStatConditionsAndOnlyAPlayerHasThem` ("Expected 'and one that has spent 137
+    reads 137' to be 137, but it was -1") and `TheClassPointRowsCountOnlyThePointsAboveTheirThresholds`
+    ("Expected 'at 150 points it takes 12.5%' to be 0.875000, but it was 1.000000"), 2 of 2;
+  - **a row's offset not copied onto its modifier** failed
+    `TheClassPointRowsCountOnlyThePointsAboveTheirThresholds`, 1 of 1: "Expected 'at 100 points the
+    drawback takes nothing' to be 1.000000, but it was 0.750000".
+
+---
+
 ## 2026-09-23 — Nothing Is Forgotten: the player's kills feed five per cent of their health and damage to the dungeon's final boss
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

@@ -2294,9 +2294,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4269,9 +4269,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -4533,6 +4533,116 @@ bool FCataclysmCrowdControlledAttackerRowTest::RunTest(const FString&)
 		TakenFrom(Held) / Plain, 1.25f, 0.001f);
 	TestEqual(TEXT("a staggered attacker's is not, for a stagger is not crowd control"),
 		TakenFrom(Staggered) / Plain, 1.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointRowsTest,
+	"Cataclysm.Enchantments.TheClassPointRowsCountOnlyThePointsAboveTheirThresholds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The three class point enchantments, worn by a player, at two allocations.
+ * Issue #1686. A worn item rolls the top of each range.
+ *
+ *   "Your skills deal 1.5%-2.5% less damage for every 10 class points spent
+ *    above 100": 150 points are five steps, 12.5% less.
+ *   "Each class point spent above 100 grants 0.5%-1% increased damage": 150
+ *    points are 50 steps, 50% more increases than at 100.
+ *   "Your maximum HP is reduced by 1.5%-2.5% for every 10 class points above
+ *    50": 100 points are five steps, 12.5% of increases off a figure of 1000
+ *    against 50 points.
+ *
+ * THE POINTS SIT IN A NODE IN NO TREE, so they grant nothing of their own.
+ */
+bool FCataclysmClassPointRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+	UCataclysmAbilitySystemComponent* ASC =
+		PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+	if (!TestNotNull(TEXT("ability system component"), ASC))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter* Character =
+		World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("a character"), Character))
+	{
+		return false;
+	}
+	Character->SetPlayerState(PlayerState);
+	Character->OnRep_PlayerState();
+	UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+	if (!TestNotNull(TEXT("the character's own equipment"), Equipment))
+	{
+		return false;
+	}
+
+	const auto Spend = [&](int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		Allocation.Add(FName(TEXT("Test_node_in_no_tree")), Points);
+		PlayerState->SetPassiveAllocation(Allocation, {});
+		Equipment->RefreshAttributes(ASC);
+	};
+
+	const auto Wear = [&](const TCHAR* Benefit, const TCHAR* Drawback)
+	{
+		Equipment->UnequipEverything();
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Carrying(TEXT("Head_Helm"), Benefit, Drawback),
+						 Removed, AlsoRemoved, Slot);
+		Equipment->RefreshAttributes(ASC);
+	};
+
+	// THE DAMAGE DRAWBACK.
+	Wear(BenefitWithNoEffect, TEXT("Negative_Your_skills_deal_1_5_2_5_less_damage_for_every"));
+	if (!TestTrue(TEXT("it put a modifier on spell damage as well"),
+			CarriesAModifierOn(ASC, TEXT("spell_damage"))))
+	{
+		return false;
+	}
+	Spend(100);
+	TestEqual(TEXT("at 100 points the drawback takes nothing"),
+		ASC->AttackDamageMoreForSkill(FGameplayTagContainer()), 1.0f, 0.001f);
+	Spend(150);
+	TestEqual(TEXT("at 150 points it takes 12.5%"),
+		ASC->AttackDamageMoreForSkill(FGameplayTagContainer()), 0.875f, 0.001f);
+
+	// THE BENEFIT.
+	Wear(TEXT("Positive_Each_class_point_spent_above_100_grants_0_5_1"), DrawbackWithNoEffect);
+	const auto Increases = [&]()
+	{
+		return ASC->AttackDamageIncreasesForSkill(FGameplayTagContainer(),
+			-1.0f, -1.0f, -1.0f, false, nullptr);
+	};
+	Spend(100);
+	const float AtHundred = Increases();
+	Spend(150);
+	TestEqual(TEXT("50 points above 100 add 50% to the increases"),
+		Increases() - AtHundred, 0.50f, 0.001f);
+
+	// THE HEALTH DRAWBACK.
+	Wear(BenefitWithNoEffect, TEXT("Negative_Your_maximum_HP_is_reduced_by_1_5_2_5_for_ever"));
+	const FName Maximum(TEXT("max_health"));
+	Spend(50);
+	const float AtFifty = ASC->StatAppliedTo(Maximum, FGameplayTagContainer(), 1000.0f);
+	Spend(100);
+	TestEqual(TEXT("50 points above 50 take 12.5% of increases off a figure of 1000"),
+		AtFifty - ASC->StatAppliedTo(Maximum, FGameplayTagContainer(), 1000.0f),
+		125.0f, 0.01f);
 
 	return true;
 }

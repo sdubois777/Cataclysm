@@ -4164,4 +4164,73 @@ bool FCataclysmAuraSingleTargetCrowdControlTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmClassPointScaleTest,
+	"Cataclysm.StatPipeline.AClassPointRowCountsOnlyThePointsAboveItsOffset",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `class_points_spent` with a Scale Offset. Issue #1686: "for every 10 class
+ * points spent above 100" is a step of 10 and an offset of 100.
+ *
+ * 159 POINTS, SO ROUNDING THE STEPS UP OR TO NEAREST GIVES SIX, and whole
+ * steps give five. At and below the offset is nothing, never a negative number
+ * of steps; an unknown count is nothing.
+ */
+bool FCataclysmClassPointScaleTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("class_points_spent is a scale this build knows"),
+		FPipeline::ScaleNamed(TEXT("class_points_spent"), Scale)
+			&& Scale == ECataclysmStatScale::PerClassPointSpent);
+
+	FCataclysmStatModifier PerTen;
+	PerTen.Bucket = ECataclysmStatBucket::More;
+	PerTen.Source = ECataclysmModifierSource::Enchantment;
+	PerTen.Value = -2.5f;
+	PerTen.Scale = ECataclysmStatScale::PerClassPointSpent;
+	PerTen.ScaleStep = 10.0f;
+	PerTen.ScaleOffset = 100.0f;
+
+	const auto At = [&PerTen](int32 Points)
+	{
+		FCataclysmStatConditions State;
+		State.ClassPointsSpent = Points;
+		return FPipeline::ScaledValue(PerTen, State);
+	};
+
+	TestEqual(TEXT("159 points are 59 above 100: five whole steps"), At(159), -12.5f, 0.001f);
+	// THE BOUNDARY, BOTH SIDES. Exactly the offset is no steps; ten past it is
+	// one. An offset read as nought would make these ten steps and eleven.
+	TestEqual(TEXT("exactly 100 is nothing"), At(100), 0.0f, 0.001f);
+	TestEqual(TEXT("110 is one step of the per-10 row"), At(110), -2.5f, 0.001f);
+	TestEqual(TEXT("below 100 is nothing, not a negative number of steps"), At(40), 0.0f, 0.001f);
+	TestEqual(TEXT("an unknown count is nothing"), At(-1), 0.0f, 0.001f);
+	TestEqual(TEXT("and so is a state nobody filled in"),
+		FPipeline::ScaledValue(PerTen, FCataclysmStatConditions()), 0.0f, 0.001f);
+
+	FCataclysmStatModifier NoOffset = PerTen;
+	NoOffset.ScaleOffset = 0.0f;
+	FCataclysmStatConditions Spent;
+	Spent.ClassPointsSpent = 159;
+	TestEqual(TEXT("with no offset, 159 points are fifteen steps"),
+		FPipeline::ScaledValue(NoOffset, Spent), -37.5f, 0.001f);
+
+	// AND WHAT VALIDATION REFUSES: an offset on a scale that does not read one,
+	// and a negative offset.
+	TestTrue(TEXT("the class point row itself is valid"),
+		FPipeline::ValidateModifier(PerTen).IsEmpty());
+	FCataclysmStatModifier Elsewhere = PerTen;
+	Elsewhere.Scale = ECataclysmStatScale::PerDebuffCarried;
+	TestFalse(TEXT("an offset on another scale is refused"),
+		FPipeline::ValidateModifier(Elsewhere).IsEmpty());
+	FCataclysmStatModifier Negative = PerTen;
+	Negative.ScaleOffset = -1.0f;
+	TestFalse(TEXT("a negative offset is refused"),
+		FPipeline::ValidateModifier(Negative).IsEmpty());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

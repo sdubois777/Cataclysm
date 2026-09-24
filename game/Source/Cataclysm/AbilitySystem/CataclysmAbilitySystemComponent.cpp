@@ -18,6 +18,7 @@
 // For the cooldown tags and the self buffs a respawn tells apart. Issue #1535.
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "Player/CataclysmPlayerState.h"
 // For AbilitySystemOf, which `WithTargetState` uses to read the health of the
 // character being hit. Issue #1515. An actor with no ability system is the
 // "cannot be read" case the condition refuses on.
@@ -983,6 +984,16 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 		{
 			++State.AurasHeld;
 		}
+	}
+
+	// AND THE PASSIVE POINTS SPENT, WHICH ONLY A PLAYER HAS. Issue #1686. A
+	// player's ability system is owned by its player state, which holds the
+	// allocation; anything else keeps the -1 that gives a class point row
+	// nothing.
+	if (const ACataclysmPlayerState* Player =
+			Cast<ACataclysmPlayerState>(GetOwnerActor()))
+	{
+		State.ClassPointsSpent = Player->GetPassiveAllocation().Total();
 	}
 
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT

@@ -1578,8 +1578,10 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: every column the generator read was on its sheet (measured 2026-09-23 on
 #: `development` at baee8048).
 #:
-#: ONE ENTRY SINCE 2026-09-23: Stack Seconds, read by this generator before
-#: the design workbook gains it for issue #1833. It leaves with the rows.
+#: TWO ENTRIES SINCE 2026-09-23, read by this generator before the design
+#: workbook gains them: Stack Seconds for issue #1833, and Scale Offset for
+#: issue #1686. Each leaves with the rows that need it. SCALE OFFSET LEFT with
+#: the class point rows, issue #1686's second window; Stack Seconds remains.
 OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
     "Enchantment Effects": {
         "Stack Seconds": "issue #1833: the own-stack rows add this column",
@@ -4226,6 +4228,12 @@ SCALES = {
     # two can today. The same 0 to 10 bound as the buff count above.
     "auras_held": (0.0, 10.0, "a number of auras"),
 
+    # "Your skills deal 1.5%-2.5% less damage for every 10 class points spent
+    # above 100" is `class_points_spent` with a step of 10 and a Scale Offset of
+    # 100. Issue #1686. A class point is a passive point spent, ruled under the
+    # owner's delegation on 2026-09-23. Bounded by the 230 point budget.
+    "class_points_spent": (0.0, 230.0, "a number of class points"),
+
     # "Your skills deal 10%-30% of your current mana as more damage" is
     # `mana_held_percent`, flat 10 to 30 with a step of 1: the value is a
     # PERCENTAGE of the mana held, the one scale that reads its value that way,
@@ -4244,6 +4252,15 @@ MAX_SCALE_STEPS = 100
 #: The longest a row's own stacks may last, in seconds. Issue #1833. The
 #: sentences state 2 to 5; the same 60 second sanity bound the clocks use.
 MAX_STACK_SECONDS = 60.0
+
+#: The scales that read a Scale Offset: how much of the reading is not counted.
+#: Issue #1686. Only the class point sentences state a threshold ("above 100",
+#: "above 50"), and the engine's `ValidateModifier` refuses an offset on any
+#: other scale, so the generator refuses it first, with the row named.
+SCALES_THAT_TAKE_AN_OFFSET = frozenset({"class_points_spent"})
+
+#: The largest offset a row may state: the 230 point budget. Issue #1686.
+MAX_SCALE_OFFSET = 230
 
 
 #: The value kinds a stat row may carry, on both sheets that write one.
@@ -4355,6 +4372,12 @@ def passive_effects(book) -> list[dict]:
             "the Passive Effects sheet has a 'Stack Seconds' column, and the "
             "game reads a row's own stacks from the Enchantment Effects sheet "
             "only. Remove it.")
+    # NOR AN OFFSET, FOR THE SAME REASON. Issue #1686.
+    if "Scale Offset" in headers:
+        raise DataError(
+            "the Passive Effects sheet has a 'Scale Offset' column, and the "
+            "game reads an offset from the Enchantment Effects sheet only. "
+            "Remove it.")
 
     out = []
     counts: dict[str, int] = {}
@@ -4934,6 +4957,26 @@ def enchantment_effects(book) -> list[dict]:
                     f"an event only to grant its own stacks, with the scale "
                     f"own_stacks; here it would be dropped.")
 
+        # "ABOVE 100" IS AN OFFSET OF 100. Issue #1686. Empty is none. An offset
+        # needs a scale that reads one, and is a number of points from 0 up to
+        # the point budget.
+        offset_text = clean(_cell(raw, headers, "Scale Offset"))
+        scale_offset = 0.0
+        if offset_text:
+            offset = number(offset_text, "Scale Offset", index)
+            if scale not in SCALES_THAT_TAKE_AN_OFFSET:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has an offset of "
+                    f"{offset:g} on the scale {scale or '(none)'!r}. Only "
+                    f"{', '.join(sorted(SCALES_THAT_TAKE_AN_OFFSET))} reads an "
+                    f"offset, so here it would be dropped.")
+            if not 0 <= offset <= MAX_SCALE_OFFSET:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has an offset of "
+                    f"{offset:g}. An offset is a number of points from 0 to "
+                    f"{MAX_SCALE_OFFSET}; leave the column empty for none.")
+            scale_offset = offset
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -4952,6 +4995,7 @@ def enchantment_effects(book) -> list[dict]:
             "FractionOf": fraction_of,
             "ScaleMaxSteps": scale_max_steps,
             "StackSeconds": stack_seconds,
+            "ScaleOffset": scale_offset,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
