@@ -435,6 +435,37 @@ an enemy is still within the radius is asked again each step.
 - `Cataclysm.NoSecondWind.OnlyWhatYouAppliedIsHeldAndOnlyWhileYouHoldTheKeystone`
 - A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
 
+### THE WINDOW, 2026-09-24, ON 7dcae6d4
+
+**This change's C++ was compiled for the first time here, and it built. Every registered figure
+matched, and all three proofs are proved.** No data row changed, so there was no stale-asset step.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2350 tests performed, 2350 succeeded, 0 failed` |
+
+**A continuous-integration compile overlapped this window.** Blood Bond (#2076) merged while the
+whole suite ran, and its push to `development` started the Unreal run 36046769484, whose "Game
+compiles" job compiled on this machine at the same time. It builds in the runner's own checkout, so
+it shared the processor and nothing else. No test failed. It had completed before the first proof
+began, and the proofs' builds ran with no Unreal run in progress.
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.NoSecondWind.`, each anchor re-checked
+immediately before. Each restored run printed `2 tests performed, 2 succeeded, 0 failed`. **Every one
+was registered before its run, test and assertion alike.**
+
+| Break, in `HoldAppliedNearbyStep` | Printed with the break in | Assertion that failed |
+|---|---|---|
+| an effect anyone applied is held (the instigator test made `if (false)`) | `2 tests performed, 1 succeeded, 1 failed: OnlyWhatYouAppliedIsHeldAndOnlyWhileYouHoldTheKeystone` | "a Cripple someone else applied, two metres from the holder, runs down", 3 where 2 |
+| the radius is ten times the stat (`Metres * 1000.0f`) | `2 tests performed, 1 succeeded, 1 failed: YourCrippleAndWeakenDoNotRunDownOnAnEnemyWithinFourMetres` | "and the far enemy's Cripple two, since six metres is outside four", 3 where 2 |
+| a character without the keystone holds at four metres (the stat's fallback `4.0f` for `0.0f`) | `2 tests performed, 1 succeeded, 1 failed: OnlyWhatYouAppliedIsHeldAndOnlyWhileYouHoldTheKeystone` | "and one applied by a character without the keystone runs down", 3 where 2 |
+
+The Python suite on 7dcae6d4 printed `5418 passed, 7 skipped`. One test fewer was skipped than in
+the runs before it, and it is not a change in this branch:
+`test_the_real_check_refuses_this_checkout_when_it_has_no_binaries` skips in a checkout that has its
+game modules built, and this run was in a worktree that has none.
+
 ---
 
 ## 2026-09-24 — Cast from Ward, engine only: a cost the mana cannot cover is paid from the energy shield, which is not damage and not a break
