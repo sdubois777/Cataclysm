@@ -3703,3 +3703,28 @@ def test_scarcity_row_still_disables_one_non_weapon_slots_stats_and_enchantments
         assert phrase in lower, (
             f"Famine_Scarcity no longer says {phrase.upper()!r}; a part of the rule rests on "
             "it. See ScarcityKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_chaotic_loot_row_still_names_enemy_drops_and_stats_and_the_cap_still_stands():
+    """The row's scope, and the design sentence the ruling rests on.
+
+    "Items dropped by enemies have randomized stats within a wide range, making each piece
+    potentially extremely valuable or useless." DROPPED BY ENEMIES is why nothing crafted
+    or owned changes; STATS is why rarity and the number of affixes do not. The cap stays
+    because docs/Cataclysm_GDD_v2.md says "The affix tier column IS still a hard cap."
+    If that sentence goes, the ruling of 2026-09-24 has lost its ground and should be put
+    again rather than left standing.
+    """
+    words = flat(rows()["Chaos_Chaotic_Loot"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("items dropped by enemies", "randomized stats", "a wide range"):
+        assert phrase in lower, (
+            f"Chaos_Chaotic_Loot no longer says {phrase.upper()!r}; a part of the rule rests "
+            "on it. See ChaoticLootKey in CataclysmDungeonModifierEffects.h. " + words)
+
+    design = (REPO_ROOT / "docs" / "Cataclysm_GDD_v2.md").read_text(encoding="utf-8")
+    assert "The affix tier column IS still a hard cap." in design, (
+        "docs/Cataclysm_GDD_v2.md no longer says the affix tier column is a hard cap. "
+        "Chaotic Loot keeps UCataclysmDropRoll::MaxAffixTierOnADrop as its cap on that "
+        "sentence alone; put the ruling again.")

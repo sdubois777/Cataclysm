@@ -376,6 +376,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Difficulty")
 	static int32 DifficultyTierFor(const ACataclysmGameMode* Mode);
 
+	/**
+	 * Whether enemy drops in this world roll their affix tiers chaotically, which a floor
+	 * carrying `Chaos_Chaotic_Loot` does. Issues #1820 and #41. Found the way
+	 * `DifficultyTierIn` finds the mode, and false with no mode.
+	 */
+	static bool DropsAreChaoticIn(const UObject* WorldContext);
+
+	/**
+	 * This mode's answer. False here; the dungeon game mode answers from its floor. Split
+	 * from `DropsAreChaoticIn` for `DifficultyTierFor`'s reason: a test world has no
+	 * authority game mode, so a test asks the mode it spawned.
+	 */
+	virtual bool DropsAreChaotic() const { return false; }
+
 	// ----------------------------------------------------------------------
 	// WHICH ENCOUNTER THE SANDBOX IS. Issue #525.
 	//

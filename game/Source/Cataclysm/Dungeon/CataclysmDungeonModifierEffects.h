@@ -1503,6 +1503,27 @@ public:
 	static const TCHAR* ScarcityKey;
 
 	/**
+	 * The row where an enemy drop's affix tiers are drawn evenly. Issues #1820 and #41.
+	 *
+	 * "Items dropped by enemies have randomized stats within a wide range, making each
+	 * piece potentially extremely valuable or useless." On a floor carrying it, each
+	 * affix of an enemy drop draws its tier evenly from T1 to the difficulty's cap
+	 * (`UCataclysmDropRoll::RollChaoticAffixTier`), and its value evenly within it.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24:
+	 * - THE CAP STAYS: docs/Cataclysm_GDD_v2.md section VII, "The affix tier column IS
+	 *   still a hard cap." From difficulty 6 up every tier is 1 in 7; at difficulty 1,
+	 *   T1 and T2 are 1 in 2 each, where they are 2 in 3 and 1 in 3 elsewhere.
+	 * - RARITY, THE NUMBER OF AFFIXES AND MAGIC FIND ARE UNCHANGED: the row says stats.
+	 * - EVERY ENEMY DROP ON THE FLOOR, whoever made the kill. Nothing crafted or already
+	 *   owned, and no material.
+	 *
+	 * THE DUNGEON GAME MODE ANSWERS `ACataclysmGameMode::DropsAreChaotic` from its floor,
+	 * and the drop spawner asks it as it asks the difficulty tier.
+	 */
+	static const TCHAR* ChaoticLootKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they

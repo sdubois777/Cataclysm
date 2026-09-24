@@ -925,7 +925,7 @@ public:
 						 const UDataTable* NegativeEnchantmentTable,
 						 const FString& Slot, int32 DifficultyTier,
 						 float MagicFind, FRandomStream& Stream,
-						 FCataclysmItem& OutItem);
+						 FCataclysmItem& OutItem, bool bChaoticTiers = false);
 
 	// -----------------------------------------------------------------------
 	// What a kill drops
@@ -1138,6 +1138,19 @@ public:
 	 */
 	static int32 RollAffixTier(const UDataTable* AffixTierTable,
 							   int32 DifficultyTier, FRandomStream& Stream);
+
+	/**
+	 * The tier one affix rolls at on a drop from a floor carrying `Chaos_Chaotic_Loot`.
+	 * Issues #1820 and #41.
+	 *
+	 * EVENLY FROM T1 TO THE SAME CAP `RollAffixTier` HAS, `MaxAffixTierOnADrop`. The
+	 * row's "a wide range" flattens the odds and does NOT lift the cap:
+	 * docs/Cataclysm_GDD_v2.md section VII, "The affix tier column IS still a hard cap."
+	 * Ruled by the coordinating session under the owner's delegation, 2026-09-24. One
+	 * draw from the stream, the same as `RollAffixTier`, so every draw after it on the
+	 * same stream lands where it would have.
+	 */
+	static int32 RollChaoticAffixTier(int32 DifficultyTier, FRandomStream& Stream);
 };
 
 /**

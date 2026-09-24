@@ -548,6 +548,10 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 	// `Cataclysm.DifficultyTier 8` to get that back deliberately.
 	const int32 DifficultyTier = ACataclysmGameMode::DifficultyTierIn(World);
 
+	// AND WHETHER THIS FLOOR MAKES DROPS CHAOTIC, asked the same way. `Chaos_Chaotic_Loot`;
+	// issues #1820 and #41.
+	const bool bChaotic = ACataclysmGameMode::DropsAreChaoticIn(World);
+
 	int32 Spawned = 0;
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
@@ -560,7 +564,8 @@ int32 UCataclysmDropSpawner::SpawnDropsFor(UWorld* World, int32 EnemyRarityStep,
 										  Tiers, WeaponSkills,
 										  PositiveEnchantments,
 										  NegativeEnchantments, Slot,
-										  DifficultyTier, Together, Stream, Item))
+										  DifficultyTier, Together, Stream, Item,
+										  bChaotic))
 		{
 			// RollItem has already said why. One item failing to roll is not a
 			// reason to drop the rest on the floor unspawned.

@@ -107,6 +107,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::DirgeResonanceKey =
 const TCHAR* UCataclysmDungeonModifierEffects::ScarcityKey =
 	TEXT("Famine_Scarcity");
 
+const TCHAR* UCataclysmDungeonModifierEffects::ChaoticLootKey =
+	TEXT("Chaos_Chaotic_Loot");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -374,7 +377,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(SufferingAuraKey)
 		|| RowKey == FName(BloodGatesKey)
 		|| RowKey == FName(DirgeResonanceKey)
-		|| RowKey == FName(ScarcityKey))
+		|| RowKey == FName(ScarcityKey)
+		|| RowKey == FName(ChaoticLootKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -549,6 +553,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(BloodGatesKey),
 		FName(DirgeResonanceKey),
 		FName(ScarcityKey),
+		FName(ChaoticLootKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }

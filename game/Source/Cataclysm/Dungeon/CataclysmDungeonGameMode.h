@@ -948,6 +948,9 @@ public:
 	 */
 	virtual int32 RunTotalFloors() const override { return ChooseTotalFloors(); }
 
+	/** True on a floor carrying `Chaos_Chaotic_Loot`. Issues #1820 and #41. */
+	virtual bool DropsAreChaotic() const override;
+
 	virtual ECataclysmDungeonType RunDungeonType() const override
 	{
 		return DungeonType;

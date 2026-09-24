@@ -808,6 +808,11 @@ int32 UCataclysmDropRoll::MaxAffixTierOnADrop(int32 DifficultyTier)
 					  Tier + AffixTiersAboveDifficulty);
 }
 
+int32 UCataclysmDropRoll::RollChaoticAffixTier(int32 DifficultyTier, FRandomStream& Stream)
+{
+	return Stream.RandRange(1, MaxAffixTierOnADrop(DifficultyTier));
+}
+
 int32 UCataclysmDropRoll::RollAffixTier(const UDataTable* AffixTierTable,
 										int32 DifficultyTier,
 										FRandomStream& Stream)
@@ -1944,7 +1949,7 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 								  const UDataTable* NegativeEnchantmentTable,
 								  const FString& Slot, int32 DifficultyTier,
 								  float MagicFind, FRandomStream& Stream,
-								  FCataclysmItem& OutItem)
+								  FCataclysmItem& OutItem, bool bChaoticTiers)
 {
 	OutItem = FCataclysmItem();
 
@@ -2003,7 +2008,11 @@ bool UCataclysmDropRoll::RollItem(const UDataTable* BaseTable,
 		{
 			FCataclysmRolledAffix Rolled;
 			Rolled.Affix = Candidate.Affix;
-			Rolled.Tier = RollAffixTier(AffixTierTable, DifficultyTier, Stream);
+			// A CHAOTIC FLOOR'S DROP DRAWS ITS TIER EVENLY UP TO THE SAME CAP, and nothing
+			// else about the item changes: its base, rarity, affix count and values are
+			// drawn exactly as they are anywhere. `Chaos_Chaotic_Loot`.
+			Rolled.Tier = bChaoticTiers ? RollChaoticAffixTier(DifficultyTier, Stream)
+										: RollAffixTier(AffixTierTable, DifficultyTier, Stream);
 			Rolled.Roll = Stream.FRand();
 			Rolled.DamageTypes = Candidate.DamageTypes;
 			OutItem.Affixes.Add(MoveTemp(Rolled));
