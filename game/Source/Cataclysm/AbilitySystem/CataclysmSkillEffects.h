@@ -390,6 +390,19 @@ struct CATACLYSM_API FCataclysmHitDelivery
 	float IncreasedDamageBoughtPercent = 0.0f;
 
 	/**
+	 * Increased damage the use spent from next-use charges, in percentage
+	 * points. Issue #1833, phase 2: "your next skill deals 30%-60% increased
+	 * damage". `UCataclysmSkillTemplate::SpendHeldNextUseCharges` decides it
+	 * once when the use is paid for, and `ApplyHit` adds it into the increases
+	 * on every blow of that use, as it does the damage bought above.
+	 *
+	 * ZERO WHEN NOTHING WAS SPENT, which is every blow the game dealt before
+	 * this existed.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Skill Effects")
+	float IncreasedDamageSpentPercent = 0.0f;
+
+	/**
 	 * The attacker's chance to apply each ailment with this blow, in percent,
 	 * keyed by the name it travels under on the damage effect. Issue #899.
 	 *

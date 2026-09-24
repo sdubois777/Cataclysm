@@ -286,6 +286,21 @@ public:
 	static FString LockedNotice();
 
 	/**
+	 * The line above the bar naming the next-use charges held, or empty when
+	 * none are. Issue #1833, phase 2: the owner's rule that every system ships
+	 * with a basic interface, so a held charge can be seen in play.
+	 *
+	 * ONE ENTRY PER KIND, with what the held charges are worth together and,
+	 * when more than one is held, how many: "Next skill +60%   Next attack
+	 * +40% (2)". Whole percentages, because an enchantment rolls anywhere in
+	 * its range and a decimal would be noise on a line read mid-fight.
+	 *
+	 * PURE, so a test can read the exact words the HUD draws.
+	 */
+	static FString NextUseLine(float SkillPercent, int32 SkillCount,
+							  float AttackPercent, int32 AttackCount);
+
+	/**
 	 * A key written short enough to fit in a box.
 	 *
 	 * `FKey` CARRIES TWO NAMES AND THIS TAKES THE SHORT ONE. The long name is

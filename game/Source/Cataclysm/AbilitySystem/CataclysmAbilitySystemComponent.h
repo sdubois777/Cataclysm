@@ -483,6 +483,46 @@ public:
 	void GrantOwnStack(FName StackKey, float WindowSeconds, int32 Cap);
 
 	/**
+	 * The two action names a row uses to grant a charge the next use spends.
+	 * Issue #1833, phase 2. `tools/generate_datatables.py` holds the same two in
+	 * `NEXT_USE_ACTIONS`.
+	 */
+	static const TCHAR* NextSkillDamageAction;
+	static const TCHAR* NextAttackDamageAction;
+
+	/**
+	 * Grant one charge of a row's next-use bonus, up to its cap. Issue #1833,
+	 * phase 2. A cap of one is "your next skill deals ...": a second trigger
+	 * while one is unspent changes nothing. No duration, ruled 2026-09-24: an
+	 * unspent charge waits until a use spends it, and death clears it.
+	 *
+	 * @param bAttack  true for "your next attack", which a spell does not spend
+	 * @param Percent  what one charge is worth, as increased damage
+	 */
+	void GrantNextUseCharge(FName Key, bool bAttack, float Percent, int32 Cap);
+
+	/**
+	 * Spend every charge this use takes, and answer what they were worth in
+	 * total, as increased damage. Issue #1833, phase 2.
+	 *
+	 * EVERY "NEXT SKILL" CHARGE, AND EVERY "NEXT ATTACK" CHARGE UNLESS THE USE IS
+	 * A SPELL. Ruled 2026-09-24: attack against spell is the genre's split.
+	 * Called by `UCataclysmSkillTemplate::SpendHeldNextUseCharges` for a use that
+	 * delivers damage itself, and by nothing else.
+	 */
+	float SpendNextUseCharges(bool bUseIsSpell);
+
+	/** How many charges one row holds now. Issue #1833, phase 2. */
+	int32 NextUseChargesHeld(FName Key) const;
+
+	/**
+	 * What the held charges are worth, by kind, for the line above the skill
+	 * bar. Issue #1833, phase 2.
+	 */
+	void NextUseChargesByKind(float& OutSkillPercent, int32& OutSkillCount,
+							  float& OutAttackPercent, int32& OutAttackCount) const;
+
+	/**
 	 * Raised at the top of every `ActOnEvent`, whether or not any worn action
 	 * is hung on the event. Issue #1821.
 	 *
@@ -2019,6 +2059,21 @@ protected:
 	 * grant restarts the window, and the whole count lapses together.
 	 */
 	TMap<FName, FOwnStack> OwnStacks;
+
+	/** One row's held next-use charges. Issue #1833, phase 2. */
+	struct FNextUseCharge
+	{
+		int32 Count = 0;
+		int32 Cap = 1;
+		float Percent = 0.0f;
+		bool bAttack = false;
+	};
+
+	/**
+	 * Every row's held next-use charges, by `FCataclysmPoolAction::NextUseKey`.
+	 * No timestamp, because a charge has no duration.
+	 */
+	TMap<FName, FNextUseCharge> NextUseCharges;
 
 	/**
 	 * How deep inside `ActOnEvent` this character currently is, which is never

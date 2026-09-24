@@ -1075,4 +1075,24 @@ bool FCataclysmSkillBarGrantedNameTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarNextUseLineTest,
+	"Cataclysm.SkillBar.TheNextUseLineNamesEachKindOfChargeHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The line drawn above the bar for held next-use charges. Issue #1833, phase 2:
+ * the owner's rule that every system ships with a basic interface. One entry
+ * per kind, the count only when more than one is held, and nothing at all when
+ * none are.
+ */
+bool FCataclysmSkillBarNextUseLineTest::RunTest(const FString&)
+{
+	TestEqual(TEXT("one skill charge of 60 and two attack charges worth 40"),
+		UCataclysmSkillBar::NextUseLine(60.0f, 1, 40.0f, 2),
+		FString(TEXT("Next skill +60%   Next attack +40% (2)")));
+	TestTrue(TEXT("and nothing held draws nothing"),
+		UCataclysmSkillBar::NextUseLine(0.0f, 0, 0.0f, 0).IsEmpty());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -1497,10 +1497,14 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		// WHICH SIDE, ASKED BEFORE THE HIT as a fired contact asks it. Issue #1938.
 		const bool bFromBehind = UCataclysmSkillEffects::IsBehind(Self, Target);
 
+		// AND WHAT THIS USE SPENT FROM NEXT-USE CHARGES, as a fired axe carries
+		// it. Issue #1833, phase 2.
+		FCataclysmHitDelivery Delivery;
+		Delivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+
 		FCataclysmDamageResult Resolved;
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(
-			Self, Target, GetDamagePercent(), SkillTags, FCataclysmHitDelivery(),
-			&Resolved);
+			Self, Target, GetDamagePercent(), SkillTags, Delivery, &Resolved);
 		if (Dealt > 0.0f && !Resolved.bEvaded)
 		{
 			UCataclysmFervour::GainForEnemiesHit(

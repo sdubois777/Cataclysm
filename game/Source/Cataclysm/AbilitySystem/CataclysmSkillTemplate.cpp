@@ -58,6 +58,34 @@ UCataclysmSkillTemplate::UCataclysmSkillTemplate()
 	Slot = ECataclysmAbilitySlot::None;
 }
 
+bool UCataclysmSkillTemplate::DeliversDamageItself() const
+{
+	return GetDamagePercent() > 0.0f || Params.GroundPercent > 0.0f;
+}
+
+float UCataclysmSkillTemplate::SpendHeldNextUseCharges(
+	UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	LastNextUseIncreasePercent =
+		AbilitySystem && DeliversDamageItself()
+			? AbilitySystem->SpendNextUseCharges(
+				  UCataclysmSkillEffects::IsSpell(SkillTags))
+			: 0.0f;
+	return LastNextUseIncreasePercent;
+}
+
+float UCataclysmSkillTemplate::WithSpentIncrease(
+	const UAbilitySystemComponent* AbilitySystem) const
+{
+	if (LastNextUseIncreasePercent <= 0.0f)
+	{
+		return 1.0f;
+	}
+	const float Folded = UCataclysmSkillEffects::IncreasesBehindAttackDamage(AbilitySystem);
+	return (1.0f + Folded + LastNextUseIncreasePercent / 100.0f)
+		/ FMath::Max(1.0f + Folded, UE_KINDA_SMALL_NUMBER);
+}
+
 float UCataclysmSkillTemplate::GetDamagePercent() const
 {
 	// THE SKILL'S OWN FIGURE FIRST, AND THAT ORDER IS THE WHOLE POINT.
@@ -160,6 +188,11 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		LastMetresMovedBeforeUse = Cataclysm->MetresMovedSinceOwnAttack();
 		Cataclysm->NoteOwnAttack();
 
+		// AND THE NEXT-USE CHARGES THIS USE SPENDS, here for the reason the
+		// tally above is: spent when the use is paid for, ruled 2026-09-24.
+		// Issue #1833, phase 2.
+		SpendHeldNextUseCharges(Cataclysm);
+
 		// AND THE TWO WINDOWS A SKILL USE OPENS FOR AN ENCHANTMENT. Issue
 		// #1826. "After using a charge skill gain 20%-40% increased attack
 		// speed for 4 seconds" and "Gain 5%-10% attack speed on basic attack
@@ -253,6 +286,7 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// NOTHING OF THIS PROJECT'S OWN MEASURED ANYTHING, and -1 is the reading
 		// the condition refuses on rather than treating as no distance.
 		LastMetresMovedBeforeUse = -1.0f;
+		LastNextUseIncreasePercent = 0.0f;
 	}
 
 	// THE BURST AT THE CASTER, AND THIS IS THE ONLY PLACE IT IS ASKED FOR.
@@ -1920,6 +1954,10 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 	Delivery.EnemiesStruckTogether = AttackEnemiesStruckTogether;
 	Delivery.IncreasedDamageBoughtPercent = AttackIncreasedDamageBoughtPercent;
 
+	// AND WHAT THIS USE SPENT FROM NEXT-USE CHARGES, into the same sum. Issue
+	// #1833, phase 2.
+	Delivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+
 	float Total = 0.0f;
 
 	// EVERYTHING THIS USE PINNED, KEPT SO THAT `OnDeath=Release` CAN BIND IT
@@ -2638,7 +2676,8 @@ ACataclysmGroundZone* UCataclysmSkillTemplate::LeaveGroundAlong(
 							AbilitySystem,
 							WeaponDamage * GetDamagePercent() / 100.0f,
 							SkillTags)
-						* Params.GroundPercent / 100.0f;
+						* Params.GroundPercent / 100.0f
+						* WithSpentIncrease(AbilitySystem);
 
 	ACataclysmGroundZone* Zone = ACataclysmGroundZone::SpawnAlong(
 		Self, Start, End, ScaledGroundRadiusCm(), Params.GroundDuration, PerTick);

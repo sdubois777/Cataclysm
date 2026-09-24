@@ -2,6 +2,7 @@
 
 #include "Items/CataclysmItem.h"
 // For the stat an Ailment affix's chance is kept under. Issue #899.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
 #include "Cataclysm.h"
 #include "Data/CataclysmDataRows.h"
@@ -1045,6 +1046,25 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					Action.Pool = FName(*Effect->Action);
 					Action.Percent = UCataclysmItemValues::EnchantmentValue(
 						Effect->ValueLow, Effect->ValueHigh, Roll);
+
+					// A CHARGE THE NEXT USE SPENDS, rather than a pool moved.
+					// Issue #1833, phase 2. Keyed by the enchantment and the
+					// action, the pair the generator never lets two rows share;
+					// capped by Scale Max Steps, which the generator requires on
+					// these rows.
+					const bool bNextSkill = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::NextSkillDamageAction,
+						ESearchCase::IgnoreCase);
+					const bool bNextAttack = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::NextAttackDamageAction,
+						ESearchCase::IgnoreCase);
+					if (bNextSkill || bNextAttack)
+					{
+						Action.NextUseKey = FName(*FString::Printf(
+							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
+						Action.NextUseCap = FMath::Max(1, Effect->ScaleMaxSteps);
+						Action.bNextUseIsAttack = bNextAttack;
+					}
 
 					// EMPTY MEANS THE MAXIMUM, which is what the generator writes
 					// when the column is blank and what most sentences mean.

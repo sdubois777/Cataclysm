@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — A dodge, a full resource, a movement ability or a block grants a charge the next skill or attack spends as increased damage
+
+**Affects:**
+- `UCataclysmAbilitySystemComponent`: `GrantNextUseCharge`, `SpendNextUseCharges`,
+  `NextUseChargesHeld`, `NextUseChargesByKind`, and death clearing held charges
+- `FCataclysmPoolAction`: `NextUseKey`, `NextUseCap`, `bNextUseIsAttack`
+- `UCataclysmSkillTemplate`: `DeliversDamageItself`, `SpendHeldNextUseCharges`,
+  `LastNextUseIncreasePercent` and `WithSpentIncrease`; overrides on the summon, deployable and aura
+  shapes
+- `FCataclysmHitDelivery::IncreasedDamageSpentPercent`, the projectile's copy of it, and `ApplyHit`
+- `UCataclysmSkillBar::NextUseLine` and the HUD line above the skill bar
+- `NEXT_USE_ACTIONS` in `tools/generate_datatables.py`
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 2, "spent on the next attack or
+  skill"
+
+### THE ROWS
+
+| Enchantment | Action | Event | Per charge | Charges |
+| :-- | :-- | :-- | :-- | :-- |
+| When you dodge an attack your next skill deals 30%-60% increased damage | `next_skill_damage` | `dodge` | 30 to 60 | 1 |
+| When your class resource is full, your next skill deals 30%-60% increased damage | `next_skill_damage` | `resource_full` | 30 to 60 | 1 |
+| After using your movement ability your next attack deals 30%-60% increased damage | `next_attack_damage` | `movement_skill` | 30 to 60 | 1 |
+| Each successful block increases your next attack's damage by 10%-20%, stacking up to 5 times | `next_attack_damage` | `block` | 10 to 20 | 5 |
+
+**Action rows, not stat rows.** A stat row would be folded into every use, which is the opposite
+of "next". Approved by the coordinating session on 2026-09-24.
+
+### WHAT THE GENRE SETTLES
+
+Each source below was fetched and read.
+
+- **Path of Exile**, from the Seismic Cry gem text on poedb.tw: "Exerts the next 6 Melee Slam Attacks
+  you perform". It also lists what cannot receive it: "(Vaal Attacks, Channelling Attacks,
+  Retaliation Attacks, and Attacks which Repeat cannot be Exerted)".
+- **Path of Exile 2**, from the Infernal Cry gem on poe2db.tw: "Perform a Warcry, Empowering
+  subsequent Melee Attacks if there are enemies nearby."
+- **Diablo IV**, Rogue Combo Points, on the Fextralife wiki: "Core Skills consume Combo Points for
+  additional effects." "As soon as the Core Skill is cast, all accumulated Combo Points will be
+  spent, be it 1,2 or 3." "Each Basic Skill generates one Combo Point when used, up to a maximum of
+  three Combo Points."
+
+So the genre settles three things: the bonus is spent by a named category of use, it is spent when
+the use is paid for, and a stacking one adds up to its cap. **No page I could read says what an
+unspent single charge does when triggered again.** poewiki.net refused the tool, and no Last Epoch
+source was found.
+
+### THE RULINGS, by the coordinating session on 2026-09-24, under the owner's delegation
+
+- **"Next skill" is the next paid use that deals damage, from any of the seven slots.** The design
+  document says: "Each player has seven skill slots: basic attack, heavy, special, support, aura,
+  movement and ultimate." So the basic attack is a skill. In code it is the ability in the basic
+  slot, a `UCataclysmSkillTemplate`, and it passes through `CommitAndBegin` like the other six.
+- **"Next attack" is the same, except that a skill tagged `Type.Spell` does not spend it.** Attack
+  against spell is the genre's split. On `game/Data/WeaponSkills.csv` at `e7eb5d35`, nine skills
+  carry the tag, all Demonic, so this reaches those nine today.
+- **Spent when the use is paid for, and carried by everything the use deals itself**: every target
+  of its hits, the projectiles it fires (each copies the figure when it is fired), the throw with no
+  speed, and the ground it leaves. This follows this game's Headlong rule, which measures its attack
+  when the skill is paid for.
+- **NARROWED BY THE OWNER'S DECISION OF 2026-08-25: not damage over time.** That entry, "'Increased
+  damage' on a passive node means attack damage and spell damage, and not damage over time", says:
+  "It is an increase to every kind of damage the character DEALS, which is attack damage and spell
+  damage. It does not include damage over time." The coordinating session first ruled that the
+  damage over time would carry the bonus, following Path of Exile, and reversed that ruling when the
+  owner's decision was found.
+- **"Deals damage" is a check on what the use does, not a list of names**: `DeliversDamageItself()`,
+  true for a figure of damage or of ground above nought. On the sheet at `e7eb5d35` it excludes 23
+  of the 117 designed skills, all in the Support slot at 0% damage.
+- **A summon or a deployable counts its ground alone**, because its damage figure is its
+  creature's, and the creature's blows do not carry the use's delivery. So Summon Imp, Subjugate,
+  Bolt Turret, Ballista and Iron Fortress do not spend a charge.
+- **An aura never spends a charge (a judgement with no genre source).** Its damage is a pulse
+  repeated for as long as one activation runs: ongoing damage, the kind the owner kept out of
+  "increased damage", with no single "next" moment. That covers Conflagration and Living Pyre.
+- **A stacking row adds one charge per event, up to its cap, and the next use spends them all**
+  (Diablo IV's combo points). **A row stating no stacking holds one charge, and a second trigger
+  while it is unspent changes nothing (a judgement with no genre source).**
+- **No duration.** An unspent charge waits until a use spends it. Death clears it.
+- **Only an event that landed grants a charge**, the rule a row's own stacks follow. The full
+  resource row triggers at the moment the resource becomes full.
+- **The owner's standing rule that every system has a basic interface**: a line above the skill
+  bar, for example "Next skill +60%   Next attack +40% (2)", drawn only while a charge is held.
+
+### ADDED INTO THE SAME SUM AS EVERY OTHER INCREASE
+
+A hit adds the spent figure to its increases beside the damage Fervour buys, because increases are
+a sum. The ground's tick is priced from the weapon damage attribute, which already has the
+character's increases folded in. So the tick is multiplied by (1 + folded + spent) / (1 + folded),
+which adds the spent increase to that same sum.
+
+### THE WAR SKILLS CANNOT SPEND OR GAIN A CHARGE
+
+54 designed skills have an empty Shape, all of them War skills, Blood and Iron among them. Each is
+granted as `UCataclysmUndesignedSkill`, which derives from `UCataclysmGameplayAbility`, not from
+the skill template. Its use logs "has no behaviour yet" and ends, and never reaches
+`CommitAndBegin`. No issue was filed: War skills are outside the current work, by the owner's
+instruction.
+
+---
+
 ## 2026-09-24 — Rendering Blows, engine only: every third landed melee hit on one enemy removes a fifth of its armour for six seconds, shown under its bar
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the

@@ -626,6 +626,13 @@ private:
 	 */
 	TWeakObjectPtr<const UGameplayAbility> FiringSkill;
 
+	/**
+	 * Increased damage the firing use spent from next-use charges, copied when
+	 * it was fired. Issue #1833, phase 2. Nought for every projectile whose
+	 * use spent none, and for every creature's.
+	 */
+	float SpentIncreasePercent = 0.0f;
+
 	/** Whether it sets what it hits alight. */
 	bool bBurns = false;
 

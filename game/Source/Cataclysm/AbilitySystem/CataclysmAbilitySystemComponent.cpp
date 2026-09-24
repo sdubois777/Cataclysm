@@ -2022,6 +2022,13 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	OwnStacks.Empty();
 
+	// AND EVERY HELD NEXT-USE CHARGE, ruled 2026-09-24. Issue #1833, phase 2.
+	for (const TPair<FName, FNextUseCharge>& Held : NextUseCharges)
+	{
+		Ended.Stacks += Held.Value.Count;
+	}
+	NextUseCharges.Empty();
+
 	// THE HEALTH DEBT, WHAT IS OWED AND WHEN IT FALLS DUE TOGETHER, the pair
 	// `UCataclysmHealthDebt::ClearOnKill` writes. Issue #1013, answered by the
 	// same ruling: every character, The Reckoning included. That keystone's debt
@@ -2717,6 +2724,64 @@ bool UCataclysmAbilitySystemComponent::PoolAttributesFor(
 	return false;
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::NextSkillDamageAction =
+	TEXT("next_skill_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::NextAttackDamageAction =
+	TEXT("next_attack_damage");
+
+void UCataclysmAbilitySystemComponent::GrantNextUseCharge(FName Key, bool bAttack,
+													   float Percent, int32 Cap)
+{
+	if (Key.IsNone() || Cap <= 0)
+	{
+		return;
+	}
+	FNextUseCharge& Held = NextUseCharges.FindOrAdd(Key);
+	Held.Count = FMath::Min(Held.Count + 1, Cap);
+	Held.Cap = Cap;
+	Held.Percent = Percent;
+	Held.bAttack = bAttack;
+}
+
+float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell)
+{
+	float Spent = 0.0f;
+	for (auto It = NextUseCharges.CreateIterator(); It; ++It)
+	{
+		const FNextUseCharge& Held = It.Value();
+		// A SPELL LEAVES A "NEXT ATTACK" CHARGE WHERE IT IS, for the next use
+		// that is an attack. Ruled 2026-09-24.
+		if (Held.bAttack && bUseIsSpell)
+		{
+			continue;
+		}
+		Spent += Held.Count * Held.Percent;
+		It.RemoveCurrent();
+	}
+	return Spent;
+}
+
+int32 UCataclysmAbilitySystemComponent::NextUseChargesHeld(FName Key) const
+{
+	const FNextUseCharge* Held = NextUseCharges.Find(Key);
+	return Held ? Held->Count : 0;
+}
+
+void UCataclysmAbilitySystemComponent::NextUseChargesByKind(
+	float& OutSkillPercent, int32& OutSkillCount,
+	float& OutAttackPercent, int32& OutAttackCount) const
+{
+	OutSkillPercent = OutAttackPercent = 0.0f;
+	OutSkillCount = OutAttackCount = 0;
+	for (const TPair<FName, FNextUseCharge>& Held : NextUseCharges)
+	{
+		float& Percent = Held.Value.bAttack ? OutAttackPercent : OutSkillPercent;
+		int32& Count = Held.Value.bAttack ? OutAttackCount : OutSkillCount;
+		Percent += Held.Value.Count * Held.Value.Percent;
+		Count += Held.Value.Count;
+	}
+}
+
 int32 UCataclysmAbilitySystemComponent::OwnStacksHeld(FName StackKey) const
 {
 	const FOwnStack* Held = OwnStacks.Find(StackKey);
@@ -2772,6 +2837,18 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	{
 		if (Action.Event != Event || !PoolActionAllowed(Action, EventTags))
 		{
+			continue;
+		}
+		// A CHARGE THE NEXT USE SPENDS. Issue #1833, phase 2. Landed only, and
+		// once per row per event, for the reasons the stacks below give.
+		if (!Action.NextUseKey.IsNone())
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.NextUseKey))
+			{
+				StackedThisEvent.Add(Action.NextUseKey);
+				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
+								   Action.Percent, Action.NextUseCap);
+			}
 			continue;
 		}
 		if (!Action.StackKey.IsNone())

@@ -1898,6 +1898,44 @@ class TestEnchantmentEffects:
             gen.enchantment_effects(self.book(tmp_path, [self.row(
                 {"Scale": "debuffs_carried", "Scale Step": 1, "Stack Seconds": 5})]))
 
+    # A CHARGE THE NEXT USE SPENDS. Issue #1833, phase 2: an action row whose
+    # event grants a charge, worth its value as increased damage, capped by
+    # Scale Max Steps.
+    NEXT = {"Stat": None, "Value Kind": None, "Action": "next_skill_damage",
+            "Action Event": "dodge", "Scale Max Steps": 1}
+
+    def test_a_next_use_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.NEXT)]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ScaleMaxSteps"],
+                out[0]["FractionOf"], out[0]["Stat"]) == (
+                    "next_skill_damage", "dodge", 1, "", "")
+
+    def test_a_next_use_row_with_no_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no event to grant it on"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, "Action Event": None})]))
+
+    def test_a_next_use_row_with_no_cap_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Scale Max Steps"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, "Scale Max Steps": None})]))
+
+    @pytest.mark.parametrize("column, written", [
+        ("Scale", "debuffs_carried"), ("Fraction Of", "maximum"),
+        ("Value Kind", "increased")])
+    def test_a_next_use_row_refuses_a_column_it_cannot_use(self, tmp_path,
+                                                           column, written):
+        with pytest.raises(gen.DataError, match="must be empty"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NEXT, column: written})]))
+
+    def test_two_rows_of_one_next_use_action_on_one_enchantment_are_refused(
+            self, tmp_path):
+        with pytest.raises(gen.DataError, match="two rows of the same next-use"):
+            gen.enchantment_effects(self.book(tmp_path, [
+                self.row(self.NEXT),
+                self.row({**self.NEXT, "Action Event": "block"})]))
+
     def test_an_event_on_a_stat_row_that_counts_no_stacks_is_refused(self, tmp_path):
         """Before issue #1833 such an event was read by nothing and dropped."""
         with pytest.raises(gen.DataError, match="own_stacks"):

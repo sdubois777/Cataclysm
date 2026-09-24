@@ -1,6 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "Interface/CataclysmHUD.h"
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmCharacterBase.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -365,6 +367,36 @@ void ACataclysmHUD::DrawSkillBar()
 						Canvas->SizeX * 0.5f,
 						First.Y - SkillBarLockedNoticeGapPx,
 						SkillBarLockedNoticeScale);
+	}
+
+	// AND THE NEXT-USE CHARGES HELD, ABOVE THE BAR. Issue #1833, phase 2: a
+	// held charge nothing shows cannot be judged in play. Another caller of
+	// `DrawTextCentred`, for the reason the notice above gives.
+	if (const UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<const UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Pawn)))
+	{
+		float SkillPercent = 0.0f;
+		float AttackPercent = 0.0f;
+		int32 SkillCount = 0;
+		int32 AttackCount = 0;
+		Cataclysm->NextUseChargesByKind(SkillPercent, SkillCount,
+										AttackPercent, AttackCount);
+		const FString Line = UCataclysmSkillBar::NextUseLine(
+			SkillPercent, SkillCount, AttackPercent, AttackCount);
+		if (!Line.IsEmpty())
+		{
+			const FVector2D First = UCataclysmSkillBar::BoxOriginFor(
+				0, Slots.Num(), Canvas->SizeX, Canvas->SizeY);
+			const float Gaps =
+				UCataclysmSkillBar::EverySkillIsLocked(Slots) ? 2.0f : 1.0f;
+			DrawTextCentred(Line,
+							UCataclysmCombatOverlay::ColourFromHex(
+								UCataclysmSkillBar::LockedNoticeInkHex),
+							Canvas->SizeX * 0.5f,
+							First.Y - SkillBarLockedNoticeGapPx * Gaps,
+							SkillBarNextUseScale);
+		}
 	}
 }
 
