@@ -1188,6 +1188,30 @@ public:
 	}
 
 	/**
+	 * Sacrificial Ward's figure: the seconds between wards, above zero meaning
+	 * the keystone is held. Issue #1515, `Ritualist_keystone_c_kC`: "Damage that
+	 * would break your Energy Shield instead destroys the minion with the least
+	 * health remaining, no more than once every 3 seconds."
+	 */
+	static const TCHAR* ShieldBreakDestroysMinionEverySecondsStat;
+
+	/**
+	 * Whether a minion may be spent for the shield now. The shape is
+	 * `MayReleaseNova`'s: never spent one is allowed, and no world means no
+	 * clock and so no ward.
+	 */
+	bool MaySpendMinionForShield() const;
+
+	/** Record that one was spent, so the next waits `IntervalSeconds`. */
+	void NoteMinionSpentForShield(float IntervalSeconds);
+
+	/** When a minion may next be spent for the shield, in world seconds. For tests. */
+	float ShieldWardAllowedAt() const
+	{
+		return ShieldWardNextAllowedSeconds;
+	}
+
+	/**
 	 * Record that an enemy is standing inside this character's Fervour decay
 	 * radius right now. Issue #1515.
 	 *
@@ -2281,6 +2305,9 @@ protected:
 
 	/** Until when, in world seconds, this character takes no damage. -1 is not. */
 	float ImmuneAfterLethalHitUntilSeconds = -1.0f;
+
+	/** When Sacrificial Ward may next spend a minion. -1 is never yet. */
+	float ShieldWardNextAllowedSeconds = -1.0f;
 
 	/** When an enemy was last inside the Fervour decay radius. Issue #1515. */
 	float EnemyLastInReachSeconds = -1.0f;

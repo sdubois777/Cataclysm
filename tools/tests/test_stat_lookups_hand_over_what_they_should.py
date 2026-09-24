@@ -402,6 +402,10 @@ INVENTORY = {
         "Nothing Stops It's interval, a flag read off the defender when a hit "
         'would kill, with no skill of its own in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'WardStat, FGameplayTagContainer(), 0.0f'):
+        "Sacrificial Ward's interval, a flag read off the defender when a blow "
+        'would break its energy shield, with no skill of its own in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'ImmuneForStat, FGameplayTagContainer(), 0.0f'):
         "Nothing Stops It's no-damage seconds, read off the defender once a "
         'lethal hit is survived',

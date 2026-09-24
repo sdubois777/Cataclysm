@@ -235,6 +235,11 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// is held, and the seconds of no damage after one. Issue #1515.
 		TEXT("lethal_hit_survived_every_seconds"),
 		TEXT("damage_immunity_after_lethal_hit_seconds"),
+		// Sacrificial Ward's seconds between wards, read in
+		// UCataclysmVitalAttributeSet::PostGameplayEffectExecute when a blow
+		// would break the energy shield: above zero means the keystone is held.
+		// Issue #1515.
+		TEXT("shield_break_destroys_minion_every_seconds"),
 		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
 		// Weaken is created, and not where a spread copies one. Issue #1515,
 		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken

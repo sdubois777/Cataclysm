@@ -105,6 +105,132 @@ One Python check: the row still says "every floor", "a random buff or debuff", "
 
 ---
 
+## 2026-09-24 — One class tree per damage type: a two-handed weapon reaches 8 class trees, not 24
+
+**Affects:** nothing in code yet; issue [#2064](https://github.com/sdubois777/Cataclysm/issues/2064)
+enforces it. It answers a line in an earlier entry, which is not edited.
+
+**The project owner decided on 2026-09-24**, typed in the coordinating session: "ONE CLASS PER DAMAGE
+TYPE". A character may spend points in only one class tree for each damage type on their weapons.
+That is what `docs/Cataclysm_GDD_v2.md` already says in its passive-tree overview: "Players can spec
+into one class per damage type available on their weapon."
+
+**It supersedes one line of the earlier entry on dual wielding two two-handed weapons**, which said a
+two-handed weapon "can reach all 24 class trees": 8 damage types at 3 classes each. Under this
+decision a two-handed weapon's 8 damage types reach **8** class trees, and a one-handed weapon's 4
+reach 4. That entry is not edited; this one answers it.
+
+**Found while building Sacrificial Ward's engine half** (issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515)). The code lets one Demonic character spend
+in the Ravager, Ritualist and Masochist trees at once, so a Ritualist keystone and a Ravager option
+can be held together. The design document and that design-log line disagreed, so it went to the
+owner as a question rather than being filed as a bug.
+
+**What is not decided yet**, and is listed in #2064: how and when the class for a damage type is
+chosen; what happens to points already spent in a second tree; and whether the Trainer's respec
+also frees the choice.
+
+---
+
+## 2026-09-24 — Sacrificial Ward, engine only: a blow that would break the energy shield is taken by the weakest minion instead
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (where the ward is
+read), `CataclysmCommand.h` and `.cpp` (choosing the minion), `CataclysmAbilitySystemComponent.h`
+and `.cpp` (its clock), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one stat
+with no attribute), two test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE KEYSTONE
+
+`Ritualist_keystone_c_kC` Sacrificial Ward: "Damage that would break your Energy Shield instead
+destroys the minion with the least health remaining, no more than once every 3 seconds." One stat,
+`shield_break_destroys_minion_every_seconds`, whose row will carry the 3; above zero means the
+keystone is held. **Engine only**, for the reason the Shared Ruin entry gives: the design workbook is
+with the enchantment session, and the row follows when it comes back.
+
+### RULINGS AND JUDGEMENTS
+
+**Ruled on 2026-09-23 under the owner's delegation:**
+
+- The least health is counted in **points**, because the sentence says "least health remaining".
+  This was already chosen over the oldest minion in the entry that reworded the keystone.
+- **The minion spent dies as any death does.** Its health is written to nothing, so its own death
+  path runs, and Every One Bursts, Press-Ganged, Rekindled and Shared Ruin each answer it.
+- **With nothing alive to spend, the shield breaks as it would have.**
+
+**JUDGEMENTS in this change, put to the coordinating session with a recommendation:**
+
+- **"Instead" cancels the whole blow.** The shield keeps what it had, health takes nothing, and the
+  minion dies in the blow's place. The alternatives were the shield absorbing down to one point with
+  the overflow cancelled, which states a figure the sentence never gives, and the shield breaking with
+  only the overflow cancelled, which contradicts "instead".
+- **"Would break" is the blow's shield share reaching what the shield holds, while it holds
+  something.** A shield already at nothing is not broken again.
+- **Damage over time counts**, since the sentence says "damage". A bleed never reaches the shield
+  (issue #2014), so it never asks.
+- **Everything the character commands is considered, thralls included**, through
+  `UCataclysmCommand::ThingsCommandedBy`, which leaves out anything dead. A tie goes to the nearer.
+
+### WHERE IT IS READ
+
+In `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, on the resolved blow and **before
+Nothing Stops It**, because a blow the ward takes whole is lethal to nobody. As in Nothing Stops It's
+window, the whole result is emptied: no shield drawn, no refill wait restarted, and no leech for the
+attacker. The clock goes back to "never" on revival.
+
+**ONE CHARACTER CAN HOLD BOTH.** Sacrificial Ward is a Ritualist keystone and Nothing Stops It a
+Ravager option, but the passive tree limits a character by damage type and not by class:
+`UCataclysmPassiveTree::TreeIsReachable` accepts every class of the chosen damage type, and a Demonic
+character reaches all three Demonic trees. So the order is stated rather than assumed. **The ward
+runs first**, and a blow it takes whole never asks Nothing Stops It. A blow it does not take is asked
+as it would have been.
+
+**Once one class per damage type is enforced, the two can never meet.** The project owner decided on
+2026-09-24 that a character may spend points in only one class tree per damage type (the entry
+"One class tree per damage type" above records it, and issue
+[#2064](https://github.com/sdubois777/Cataclysm/issues/2064) enforces it). The order above holds until
+then.
+
+**THE MINION IS KILLED BY NOBODY.** A death written to health names as its killer whoever last struck
+the dying creature, however long ago (`UCataclysmCombatEvents::NoteDeath` reads the creature's own
+last-blow record). So a minion an enemy grazed a minute earlier would have credited that enemy. The
+ward empties that record before the health is written. The death is nobody's kill: not the
+player's, so no kill rule of the player's pays for it, and not the creature that struck the shield,
+whose blow is never recorded on the minion at all. The commander's Fervour for a minion's death
+reads no killer and is still paid, as for any other minion's death.
+
+### TESTS
+
+- `Cataclysm.SacrificialWard.AShieldBreakingBlowIsCancelledAndTheWeakestMinionDiesInstead`: the
+  weaker imp of two dies although it is the farther.
+- `Cataclysm.SacrificialWard.ABlowTheShieldHoldsSpendsNothing`
+- `Cataclysm.SacrificialWard.OnceInThreeSecondsAndWithNothingToSpendTheShieldBreaks`
+- `Cataclysm.SacrificialWard.ASpentMinionsDeathIsADeathForSharedRuin`
+- `Cataclysm.SacrificialWard.ASpentMinionIsKilledByNobodyEvenIfAnEnemyStruckItBefore`
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+### THE WINDOW, 2026-09-24, ON 197b2003
+
+**This change's C++ was compiled for the first time here, and it built.** No data row changed, so
+there was no stale-asset step and no rebuild.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2325 tests performed, 2325 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, prefix `Cataclysm.SacrificialWard.`, each anchor re-checked
+immediately before. Each restored run printed `5 tests performed, 5 succeeded, 0 failed`. **Every one
+was registered before the window, test and assertion alike.**
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| the minion is spent but the blow still lands (the three lines that empty the result, removed as one) | `5 tests performed, 3 succeeded, 2 failed` | "the shield keeps its 100", 0 where 100; "and health keeps its 1,000", 800 where 1000; "and health takes what the shield did not", 500 where 800; "and the shield keeps its 100", 0 where 100 |
+| the minion with the MOST health is spent (`>` for `<` in `LeastHealthCommandedBy`) | `5 tests performed, 3 succeeded, 2 failed` | "the imp with the least health remaining dies"; "and the other does not"; "the first ward spends the weaker imp"; "and the other imp is not spent" |
+| the spent minion's last attacker is left as its killer (the record not emptied) | `5 tests performed, 4 succeeded, 1 failed: ASpentMinionIsKilledByNobodyEvenIfAnEnemyStruckItBefore` | "and it names no killer" |
+
+---
+
 ## 2026-09-24 — Shared Ruin and Nothing Stops It, engine only: a minion's death is a blast, and a lethal hit is survived once in twenty seconds
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the death blast),

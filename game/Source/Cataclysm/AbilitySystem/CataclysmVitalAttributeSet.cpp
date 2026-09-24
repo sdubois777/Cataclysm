@@ -887,6 +887,65 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						AsEnemy && AsEnemy->IsBoss()));
 			}
 
+			// SACRIFICIAL WARD, BEFORE NOTHING STOPS IT BELOW, because a blow the
+			// ward takes whole is lethal to nobody. Issue #1515: "Damage that
+			// would break your Energy Shield instead destroys the minion with the
+			// least health remaining, no more than once every 3 seconds."
+			//
+			// "WOULD BREAK" IS THE BLOW'S SHIELD SHARE REACHING WHAT THE SHIELD
+			// HOLDS, while it holds something: a shield already at nothing is not
+			// broken again. Damage over time counts, since the sentence says
+			// "damage"; a bleed never reaches the shield (issue #2014) and so
+			// never asks.
+			//
+			// JUDGEMENT: "INSTEAD" CANCELS THE WHOLE BLOW. The shield keeps what
+			// it had, health takes nothing, and the minion dies in its place.
+			// With nothing alive to spend, the shield breaks as it would have.
+			//
+			// THE MINION DIES AS ANY DEATH DOES, ruled on 2026-09-23 under the
+			// owner's delegation: its health is written to nothing, so its own
+			// death path runs, and Every One Bursts, Press-Ganged, Rekindled and
+			// Shared Ruin each answer it as they would any other.
+			if (UCataclysmAbilitySystemComponent* Warded =
+					Cast<UCataclysmAbilitySystemComponent>(
+						GetOwningAbilitySystemComponent()))
+			{
+				const float Shield = GetEnergyShield();
+				if (Shield > 0.0f && Resolved.AbsorbedByShield >= Shield)
+				{
+					const FName WardStat(
+						UCataclysmAbilitySystemComponent::ShieldBreakDestroysMinionEverySecondsStat);
+					const float WardEvery =
+						Warded->StatForSkill(WardStat, FGameplayTagContainer(), 0.0f);
+					AActor* Spent = WardEvery > 0.0f && Warded->MaySpendMinionForShield()
+						? UCataclysmCommand::LeastHealthCommandedBy(Warded->GetAvatarActor())
+						: nullptr;
+					if (UAbilitySystemComponent* SpentSystem =
+							UCataclysmTargeting::AbilitySystemOf(Spent))
+					{
+						Resolved.DealtToHealth = 0.0f;
+						Resolved.AbsorbedByShield = 0.0f;
+						Resolved.AbsorbedByMana = 0.0f;
+						Warded->NoteMinionSpentForShield(WardEvery);
+
+						// KILLED BY NOBODY. A death written to health names as its
+						// killer whoever last struck the dying creature, however long
+						// ago, so a minion an enemy grazed a minute earlier would
+						// credit that enemy for the ward. Its record is emptied first:
+						// the ward's death is nobody's kill, neither the player's nor
+						// the creature that struck the shield, which is never recorded
+						// on the minion at all.
+						if (UCataclysmAbilitySystemComponent* SpentCataclysm =
+								Cast<UCataclysmAbilitySystemComponent>(SpentSystem))
+						{
+							SpentCataclysm->RecordLastBlow(FCataclysmLastBlow());
+						}
+						SpentSystem->SetNumericAttributeBase(
+							UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+					}
+				}
+			}
+
 			// AND NOTHING STOPS IT, ON WHAT CAME OUT AS WELL. Issue #1515: "You
 			// cannot be brought below 1 health by a single hit. When a hit would
 			// have done so you take no damage for 2 seconds, no more than once
