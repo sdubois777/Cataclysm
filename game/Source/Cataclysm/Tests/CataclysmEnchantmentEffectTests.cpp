@@ -2293,9 +2293,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4225,6 +4225,76 @@ bool FCataclysmMinionMaximumHealthRowTest::RunTest(const FString&)
 							 ASC->GetNumericAttribute(MaxHealth), AttributeAlone),
 		ASC->GetNumericAttribute(MaxHealth) < AttributeAlone - 0.001f);
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnStackRowBuildsTest,
+	"Cataclysm.Enchantments.AnOwnStackRowBecomesAScaledModifierAndAStackGrant",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A hand-made row scaled by `own_stacks`, worn twice. Issue #1833, engine-only:
+ * the seven real rows wait for the design workbook. Each copy becomes a stat
+ * modifier scaled by the row's own stacks and a grant on the row's event, and
+ * the two copies carry ONE key, so they share one count.
+ */
+bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UDataTable* Positive =
+		LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	UDataTable* Negative =
+		LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("the positive enchantments"), Positive)
+		|| !TestNotNull(TEXT("the negative enchantments"), Negative))
+	{
+		return false;
+	}
+
+	UDataTable* Effects = EffectTableFrom(
+		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
+					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds\n"))
+		+ FString::Printf(
+			TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5\n"),
+			ShieldBenefit, ShieldBenefit));
+	if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
+	{
+		return false;
+	}
+
+	const TArray<FCataclysmItem> Worn = {
+		Carrying(TEXT("Head_Helm"), ShieldBenefit, DrawbackWithNoEffect),
+		Carrying(TEXT("Chest_Cuirass"), ShieldBenefit, DrawbackWithNoEffect)};
+
+	TMap<FName, TArray<FCataclysmStatModifier>> Totals;
+	TArray<FCataclysmPoolAction> Actions;
+	UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+		Totals, Worn, Effects, Positive, Negative, &Actions);
+
+	const FName Key(*FString::Printf(TEXT("%s:armor"), ShieldBenefit));
+	const TArray<FCataclysmStatModifier>* Armour = Totals.Find(FName(TEXT("armor")));
+	if (!TestNotNull(TEXT("it became armour modifiers"), Armour)
+		|| !TestEqual(TEXT("one for each copy"), Armour->Num(), 2)
+		|| !TestEqual(TEXT("and two stack grants"), Actions.Num(), 2))
+	{
+		return false;
+	}
+	for (int32 Copy = 0; Copy < 2; ++Copy)
+	{
+		const FCataclysmStatModifier& Per = (*Armour)[Copy];
+		TestEqual(TEXT("scaled by its own stacks"), static_cast<int32>(Per.Scale),
+			static_cast<int32>(ECataclysmStatScale::PerOwnStack));
+		TestEqual(TEXT("under the row's key"), Per.StackKey, Key);
+		TestEqual(TEXT("capped at five"), Per.ScaleMaxSteps, 5);
+		const FCataclysmPoolAction& Grant = Actions[Copy];
+		TestEqual(TEXT("granted on its event"), Grant.Event, FName(TEXT("critical_strike")));
+		TestEqual(TEXT("under the same key, so the copies share one count"), Grant.StackKey, Key);
+		TestEqual(TEXT("lasting its Stack Seconds"), Grant.StackSeconds, 5.0f, 0.001f);
+		TestEqual(TEXT("up to its cap"), Grant.StackCap, 5);
+		TestTrue(TEXT("and moving no pool"), Grant.Pool.IsNone());
+	}
 	return true;
 }
 

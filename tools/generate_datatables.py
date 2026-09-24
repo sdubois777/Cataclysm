@@ -1577,7 +1577,14 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: entry in the same change that adds the column. Empty when written, because
 #: every column the generator read was on its sheet (measured 2026-09-23 on
 #: `development` at baee8048).
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+#:
+#: ONE ENTRY SINCE 2026-09-23: Stack Seconds, read by this generator before
+#: the design workbook gains it for issue #1833. It leaves with the rows.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
+    "Enchantment Effects": {
+        "Stack Seconds": "issue #1833: the own-stack rows add this column",
+    },
+}
 
 
 class _Headers(dict):
@@ -4175,6 +4182,15 @@ SCALES = {
     "target_debuffs": (0.0, 10.0, "a number of debuffs"),
     "buffs_held": (0.0, 10.0, "a number of buffs"),
 
+    # "Critical strikes grant a stack of power increasing all damage by 3%-5%
+    # for 5 seconds, up to 5 stacks" is `own_stacks` with a step of 1: the
+    # row's OWN stacks, granted by its Action Event, lasting its Stack
+    # Seconds and capped by its Scale Max Steps. Issue #1833, ruled
+    # 2026-09-23 under the owner's delegation: each row is its own stack.
+    # A step of exactly one: a stack is a whole thing and the rows say "per
+    # stack".
+    "own_stacks": (1.0, 1.0, "one stack"),
+
     # "Your skills deal 10%-30% of your current mana as more damage" is
     # `mana_held_percent`, flat 10 to 30 with a step of 1: the value is a
     # PERCENTAGE of the mana held, the one scale that reads its value that way,
@@ -4188,6 +4204,11 @@ SCALES = {
 #: The largest the sentences state today is 10 ("up to 10 stacks"); 100 leaves
 #: room and still refuses a number typed into the wrong column.
 MAX_SCALE_STEPS = 100
+
+
+#: The longest a row's own stacks may last, in seconds. Issue #1833. The
+#: sentences state 2 to 5; the same 60 second sanity bound the clocks use.
+MAX_STACK_SECONDS = 60.0
 
 
 #: The value kinds a stat row may carry, on both sheets that write one.
@@ -4292,6 +4313,13 @@ def passive_effects(book) -> list[dict]:
         raise DataError(
             "the Passive Effects sheet has a 'Scale Max Steps' column, and the "
             "game reads a cap from the Enchantment Effects sheet only. Remove it.")
+
+    # NOR STACK SECONDS, FOR THE SAME REASON. Issue #1833.
+    if "Stack Seconds" in headers:
+        raise DataError(
+            "the Passive Effects sheet has a 'Stack Seconds' column, and the "
+            "game reads a row's own stacks from the Enchantment Effects sheet "
+            "only. Remove it.")
 
     out = []
     counts: dict[str, int] = {}
@@ -4506,6 +4534,11 @@ ACTION_ONLY_EVENTS = (
     "nearby_death",
     "skill_use",
     "hit_dealt",
+    # APPLYING A DAMAGE OVER TIME TO ANOTHER CHARACTER, a refresh included.
+    # Issue #1833, for "Applying a DoT to an enemy grants 5%-10% increased
+    # damage for 4 seconds, stacking up to 5 times". Raised in
+    # `UCataclysmSkillEffects::ApplyDamageOverTime` on the applier.
+    "dot_applied",
 )
 
 #: The events that carry an amount of their own, so a row may take a fraction
@@ -4824,6 +4857,48 @@ def enchantment_effects(book) -> list[dict]:
                     f"to {MAX_SCALE_STEPS}; leave the column empty for none.")
             scale_max_steps = int(cap)
 
+        # A ROW'S OWN STACKS. Issue #1833, ruled 2026-09-23: the row's Action
+        # Event grants a stack, Stack Seconds is how long they last and Scale
+        # Max Steps the cap. All three are required, and none of them means
+        # anything on any other stat row, so each is refused there rather than
+        # dropped.
+        stack_text = clean(_cell(raw, headers, "Stack Seconds"))
+        stack_seconds = 0.0
+        if not action and scale == "own_stacks":
+            known_events = action_events()
+            if action_event not in known_events:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts its own "
+                    f"stacks and names the event {action_event or '(none)'!r} "
+                    f"to grant them. Known: {', '.join(sorted(known_events))}.")
+            if not stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts its own "
+                    f"stacks and states no Stack Seconds for them to last.")
+            stack_seconds = number(stack_text, "Stack Seconds", index)
+            if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has stacks lasting "
+                    f"{stack_seconds:g} seconds. They last above 0 and up to "
+                    f"{MAX_STACK_SECONDS:g}.")
+            if scale_max_steps < 1:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts its own "
+                    f"stacks and states no cap in Scale Max Steps. \"Up to 5 "
+                    f"stacks\" is 5.")
+        elif not action:
+            if stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} states Stack "
+                    f"Seconds and is not scaled by own_stacks, so they would "
+                    f"be dropped.")
+            if action_event:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} changes a stat "
+                    f"and names the event {action_event!r}. A stat row reads "
+                    f"an event only to grant its own stacks, with the scale "
+                    f"own_stacks; here it would be dropped.")
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -4841,6 +4916,7 @@ def enchantment_effects(book) -> list[dict]:
             "ActionEvent": action_event,
             "FractionOf": fraction_of,
             "ScaleMaxSteps": scale_max_steps,
+            "StackSeconds": stack_seconds,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A

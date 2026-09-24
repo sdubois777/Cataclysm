@@ -1725,6 +1725,120 @@ bool FCataclysmCritPerTargetDebuffTest::RunTest(const FString&)
 	return true;
 }
 
+// --------------------------------------------------------------------------
+// A row's own stacks, granted by real blows. Issue #1833
+// --------------------------------------------------------------------------
+
+namespace CataclysmOwnStackBlowTest
+{
+	/** A row's own stack granted on the named event, 5 seconds, up to 5. */
+	FCataclysmPoolAction StackOn(const TCHAR* Event, FName Key)
+	{
+		FCataclysmPoolAction Stack;
+		Stack.Event = FName(Event);
+		Stack.StackKey = Key;
+		Stack.StackSeconds = 5.0f;
+		Stack.StackCap = 5;
+		return Stack;
+	}
+}
+
+CATACLYSM_TEST(FCataclysmOwnStackOnlyALandedHitTest,
+	"Cataclysm.Crit.AnEvadedMeleeBlowGrantsNoOwnStackAndALandedOneDoes")
+{
+	using namespace CataclysmCritTest;
+	using namespace CataclysmOwnStackBlowTest;
+
+	// "Melee attacks that hit you reduce your armor by 3%-5% for 3 seconds,
+	// stacking up to 5 times." Issue #1833: ONLY A LANDED EVENT GRANTS A STACK,
+	// ruled 2026-09-23, and an evaded blow is not a hit (2026-09-04). The
+	// melee-hit-taken event itself is raised for an evaded blow too, which is why
+	// the flag it now carries is what this test is about.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		const FScopedCombatant Attacker(World);
+		FScopedCombatant Defender(World);
+		Attacker.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+		Attacker.SetCritical(/*Chance=*/0.0f, /*Multiplier=*/150.0f);
+		const FName Row(TEXT("A_row:armor"));
+		Defender.AbilitySystem->SetPoolActions({StackOn(TEXT("melee_hit_taken"), Row)});
+
+		FGameplayTagContainer Melee;
+		Melee.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(TEXT("Type.Melee")), /*ErrorIfNotFound=*/false));
+
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+		FCataclysmDamageResult Evaded;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f, Melee,
+										 FCataclysmHitDelivery(), &Evaded);
+		if (TestTrue(TEXT("the first melee blow was evaded"), Evaded.bEvaded))
+		{
+			TestEqual(TEXT("and granted no stack"),
+				Defender.AbilitySystem->OwnStacksHeld(Row), 0);
+		}
+
+		Defender.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		FCataclysmDamageResult Landed;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Defender.Actor, 100.0f, Melee,
+										 FCataclysmHitDelivery(), &Landed);
+		if (TestFalse(TEXT("the second landed"), Landed.bEvaded))
+		{
+			TestEqual(TEXT("and granted one"),
+				Defender.AbilitySystem->OwnStacksHeld(Row), 1);
+		}
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
+CATACLYSM_TEST(FCataclysmOwnStackOnDotAppliedTest,
+	"Cataclysm.Crit.ApplyingADotToAnotherGrantsItsOwnStackAndToItselfDoesNot")
+{
+	using namespace CataclysmCritTest;
+	using namespace CataclysmOwnStackBlowTest;
+
+	// "Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds,
+	// stacking up to 5 times." Issue #1833: the new `dot_applied` event, raised on
+	// the applier by `UCataclysmSkillEffects::ApplyDamageOverTime` for a damage
+	// over time put on ANOTHER character. One put on itself is not applying one
+	// to an enemy.
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	{
+		const FScopedCombatant Applier(World);
+		const FScopedCombatant Struck(World);
+		const FName Row(TEXT("A_row:attack_damage"));
+		Applier.AbilitySystem->SetPoolActions({StackOn(TEXT("dot_applied"), Row)});
+
+		const bool bOnAnother = UCataclysmSkillEffects::ApplyDamageOverTime(
+			Applier.Actor, Struck.Actor, 10.0f, 4.0f, UCataclysmDebuffs::BleedTag(),
+			/*bScalesWithInstigator=*/false);
+		if (TestTrue(TEXT("a bleed was put on another character"), bOnAnother))
+		{
+			TestEqual(TEXT("and it granted the applier a stack"),
+				Applier.AbilitySystem->OwnStacksHeld(Row), 1);
+		}
+
+		UCataclysmSkillEffects::ApplyDamageOverTime(
+			Applier.Actor, Applier.Actor, 10.0f, 4.0f, UCataclysmDebuffs::BleedTag(),
+			/*bScalesWithInstigator=*/false);
+		TestEqual(TEXT("one put on itself grants none"),
+			Applier.AbilitySystem->OwnStacksHeld(Row), 1);
+	}
+	World->DestroyWorld(false);
+	return true;
+}
+
 #undef CATACLYSM_TEST
 
 #endif  // WITH_AUTOMATION_TESTS

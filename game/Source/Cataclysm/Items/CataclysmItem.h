@@ -7,6 +7,7 @@
 #include "CataclysmItem.generated.h"
 
 struct FCataclysmAffixRow;
+struct FCataclysmEnchantmentEffectRow;
 struct FCataclysmItemBaseRow;
 class UDataTable;
 
@@ -695,6 +696,13 @@ public:
 		const UDataTable* PositiveTable,
 		const UDataTable* NegativeTable,
 		TArray<FCataclysmPoolAction>* Actions = nullptr);
+
+	/**
+	 * The key a row's own stacks are counted under: its enchantment and its
+	 * stat, which the generator never lets two rows share. Issue #1833. Two
+	 * worn copies of one enchantment share it, and so share one count.
+	 */
+	static FName OwnStackKeyFor(const FCataclysmEnchantmentEffectRow& Effect);
 
 	/**
 	 * What a weapon of this TYPE supplies as attack damage.

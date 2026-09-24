@@ -1307,7 +1307,10 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 					Cataclysm->NoteEvaded();
 				}
 
-				Cataclysm->NoteHitTaken();
+				// AND WHETHER IT LANDED, which only a row's own stack asks. Issue
+				// #1833: an evaded blow is not a hit (2026-09-04), and the clocks
+				// and pool actions go on counting it as they always did.
+				Cataclysm->NoteHitTaken(!Outcome.bEvaded);
 
 				// AND WHOEVER DEALT IT IS IN COMBAT TOO. Issue #1815. The same
 				// blow and the same `AttackerOf` every other credit uses, so a
@@ -1329,7 +1332,7 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// resolved hit already calls melee.
 				if (Hit.bIsMelee)
 				{
-					Cataclysm->NoteMeleeHitTaken();
+					Cataclysm->NoteMeleeHitTaken(!Outcome.bEvaded);
 				}
 			}
 

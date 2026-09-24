@@ -69,7 +69,11 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: TWO JOINED ON 2026-09-23, the combat clocks for issue #1815, and LEFT with
 #: their rows in the same change. THREE MORE JOINED THE SAME DAY for issue
 #: #1815's section C, and left with theirs.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#:
+#: ONE JOINED ON 2026-09-23 for issue #1833, `own_stacks`, landed as an
+#: engine change ahead of its seven rows, which wait for the design workbook
+#: and take it off this list.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"own_stacks"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

@@ -5,6 +5,7 @@
 // #1515. The tag names live there beside the other debuff vocabulary rather
 // than being spelled again here; this is a .cpp include, so it adds no header
 // dependency and the pipeline's own header stays free of it.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "Cataclysm.h"
 
@@ -158,6 +159,7 @@ namespace
 		{ TEXT("seconds_out_of_combat"), ECataclysmStatScale::PerSecondOutOfCombat },
 		{ TEXT("target_debuffs"),      ECataclysmStatScale::PerTargetDebuff },
 		{ TEXT("buffs_held"),          ECataclysmStatScale::PerBuffHeld },
+		{ TEXT("own_stacks"),          ECataclysmStatScale::PerOwnStack },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
 	};
 
@@ -1439,6 +1441,18 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 	case ECataclysmStatScale::PerBuffHeld:
 		return StackedValue(Modifier, State.BuffsHeld);
 
+	// AND THE STACKS OF THE ROW'S OWN, read off the character asking. Issue
+	// #1833. A lookup with no character in hand -- the attribute fold -- counts
+	// none, which is what keeps a stack out of a written attribute.
+	case ECataclysmStatScale::PerOwnStack:
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		return Asking && !Modifier.StackKey.IsNone()
+			? StackedValue(Modifier, Asking->OwnStacksHeld(Modifier.StackKey))
+			: 0.0f;
+	}
+
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{
 		// THE REFUSALS OF THE MAXIMUM MANA SCALE, AND A PERCENTAGE. Issue #1815.
@@ -1714,6 +1728,13 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 			TEXT("a cap of %d steps on a value that does not scale. It caps "
 				 "nothing."),
 			Modifier.ScaleMaxSteps);
+	}
+
+	// A ROW'S OWN STACKS NEED THE ROW. Issue #1833. With no key the scale
+	// counts nothing, which would be a row granting nothing, silently.
+	if (Modifier.Scale == ECataclysmStatScale::PerOwnStack && Modifier.StackKey.IsNone())
+	{
+		return TEXT("own_stacks with no stack key. It would count nothing.");
 	}
 
 	return FString();

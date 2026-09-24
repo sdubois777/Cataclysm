@@ -2,6 +2,73 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Each enchantment row can count stacks of its own, granted by its event (engine only)
+
+**Affects:**
+- `CataclysmStatPipeline.h` and `.cpp`: the scale `own_stacks`, `FCataclysmStatModifier::StackKey`,
+  and a stack grant on `FCataclysmPoolAction`
+- `UCataclysmAbilitySystemComponent`: `OwnStacksHeld`, `GrantOwnStack`, a `bLanded` flag on
+  `ActOnEvent`, `NoteHitTaken` and `NoteMeleeHitTaken`, and death clearing a row's own stacks
+- `UCataclysmSkillEffects::ApplyDamageOverTime`, which raises the new event `dot_applied`
+- `FCataclysmEnchantmentEffectRow::StackSeconds`, and `UCataclysmItemModifiers`
+- `tools/generate_datatables.py`
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833)
+
+### THE RULING: EACH ROW IS ITS OWN STACK
+
+**Ruled by the coordinating session on 2026-09-23, under the owner's delegation.** This is the
+revisit that the 2026-09-14 ruling ("stack kinds stay a fixed C++ set for now; revisit after #1720")
+asked for.
+
+- A row scaled by `own_stacks` gains a stack when its `ActionEvent` happens.
+- Its new Stack Seconds column is how long the stacks last, and `ScaleMaxSteps` is the cap. A grant
+  restarts the window, and the whole count lapses together: the shape the five kinds already have.
+- **The five existing kinds stay in C++.**
+- **Rejected:** a "Stack Kinds" sheet, which builds a stack shared between rows that nothing needs;
+  and more fixed kinds, at about 11 edits each (#1720's count).
+
+**Only a landed event grants a stack.** An evaded blow is not a hit (2026-09-04). A pool action,
+and every clock, go on firing as before.
+
+### TWO WORN COPIES OF ONE ROW
+
+The coordinating session asked for this case to be decided and pinned, not left implicit.
+
+- **The copies share one count.** A row carries no name of its own, so the key is the enchantment
+  and the stat; the generator never lets two rows share that pair.
+- **Each copy's value is scaled by the shared count.** So two copies at two stacks of 10% are 40%
+  increased, double one copy's 20%, as two worn copies of any row give double.
+- **One event grants one stack, however many copies are worn.** Otherwise two copies would also
+  double the rate at which stacks come, which the sentence does not say.
+
+Tests pin all three.
+
+### THREE THINGS FOUND WHILE BUILDING IT
+
+- **`hit_taken` and `melee_hit_taken` fire on an evaded blow too.** `CataclysmVitalAttributeSet.cpp`
+  raises both before it asks whether the blow was evaded. They now carry `bLanded`, which only a
+  stack grant reads, so "Melee attacks that hit you reduce your armor ... stacking up to 5 times"
+  gains no stack from a blow its wearer evaded. A test drives both an evaded and a landed blow.
+- **A stat row's Action Event was read by nothing before this.** The generator now refuses one on
+  a row not scaled by `own_stacks`, rather than dropping it. No row on `development` had one.
+- **The event for applying a damage over time did not exist.** `dot_applied` is raised on the
+  applier's own ability system for a damage over time put on another character, a refresh
+  included. A minion's application is the minion's own. One the character puts on itself is not
+  "applying a DoT to an enemy".
+
+### NO ROWS YET
+
+This is the engine change alone, taking a build window of its own. Seven rows follow with the
+design workbook:
+- six on events already recorded: critical strike, skill use (twice), melee hit taken, kill and
+  spell;
+- one on `dot_applied`.
+
+Until then, Stack Seconds is in `OPTIONAL_COLUMNS`, and `own_stacks` is listed as built ahead of its
+rows. The tests use hand-made rows.
+
+---
+
 ## 2026-09-23 — Starvation Curse: each floor adds a 5% slow or 5% less maximum health, until a floor's boss or the player dies
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

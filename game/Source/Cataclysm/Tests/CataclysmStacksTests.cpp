@@ -919,4 +919,181 @@ bool FCataclysmSpendOneStackTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmOwnStackTest
+{
+	/** A row's own stack granted on a critical strike, 5 seconds, up to 5. */
+	FCataclysmPoolAction StackOnCrit(FName Key)
+	{
+		FCataclysmPoolAction Stack;
+		Stack.Event = FName(TEXT("critical_strike"));
+		Stack.StackKey = Key;
+		Stack.StackSeconds = 5.0f;
+		Stack.StackCap = 5;
+		return Stack;
+	}
+
+	/** A row's increase of 10 per stack of its own, on armour. */
+	FCataclysmStatModifier TenPerStack(FName Key)
+	{
+		FCataclysmStatModifier Per;
+		Per.Bucket = ECataclysmStatBucket::Increased;
+		Per.Source = ECataclysmModifierSource::Enchantment;
+		Per.Value = 10.0f;
+		Per.Scale = ECataclysmStatScale::PerOwnStack;
+		Per.ScaleStep = 1.0f;
+		Per.ScaleMaxSteps = 5;
+		Per.StackKey = Key;
+		return Per;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnStacksBuildAndLapseTest,
+	"Cataclysm.Stacks.ARowsOwnStacksBuildToTheCapAndLapseTogetherAfterTheWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A row's own stacks, issue #1833. The same shape as the five kinds: each grant
+ * restarts the window, the count stops at the cap, and the whole count lapses
+ * together once the window passes with no grant. Two rows keep separate counts.
+ */
+bool FCataclysmOwnStacksBuildAndLapseTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedHolder Holder(World);
+	UCataclysmAbilitySystemComponent* ASC = Holder.AbilitySystem;
+	const FName Row(TEXT("A_row:armor"));
+	const FName Other(TEXT("Another_row:armor"));
+
+	TestEqual(TEXT("nothing granted, nothing held"), ASC->OwnStacksHeld(Row), 0);
+	ASC->GrantOwnStack(Row, 5.0f, 2);
+	ASC->GrantOwnStack(Row, 5.0f, 2);
+	ASC->GrantOwnStack(Row, 5.0f, 2);
+	TestEqual(TEXT("three grants at a cap of two hold two"), ASC->OwnStacksHeld(Row), 2);
+	TestEqual(TEXT("and another row holds none of them"), ASC->OwnStacksHeld(Other), 0);
+
+	CataclysmTestWorld::RunClock(World, 3.0f);
+	ASC->GrantOwnStack(Row, 5.0f, 2);
+	CataclysmTestWorld::RunClock(World, 3.0f);
+	TestEqual(TEXT("a grant restarts the window: six seconds in, three since the last"),
+		ASC->OwnStacksHeld(Row), 2);
+	CataclysmTestWorld::RunClock(World, 3.0f);
+	TestEqual(TEXT("and once it passes with no grant, the whole count lapses"),
+		ASC->OwnStacksHeld(Row), 0);
+
+	ASC->GrantOwnStack(Other, 5.0f, 0);
+	TestEqual(TEXT("a cap of nothing grants nothing"), ASC->OwnStacksHeld(Other), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnStacksFromEventsTest,
+	"Cataclysm.Stacks.AnEventGrantsARowsOwnStackOncePerEventOnlyWhenItLanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The row's event grants its stack. Issue #1833, ruled 2026-09-23:
+ *   - only its own event grants one, not another;
+ *   - only an event that LANDED grants one;
+ *   - TWO WORN COPIES of the row grant ONE stack per event, because they share
+ *     the count and would otherwise double the rate the sentence states;
+ *   - a death ends them, as it ends the five kinds.
+ */
+bool FCataclysmOwnStacksFromEventsTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using namespace CataclysmOwnStackTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedHolder Holder(World);
+	UCataclysmAbilitySystemComponent* ASC = Holder.AbilitySystem;
+	const FName Row(TEXT("A_row:armor"));
+	ASC->SetPoolActions({StackOnCrit(Row), StackOnCrit(Row)});
+
+	ASC->ActOnEvent(FName(TEXT("critical_strike")));
+	TestEqual(TEXT("two copies, one critical strike: one stack"), ASC->OwnStacksHeld(Row), 1);
+	ASC->ActOnEvent(FName(TEXT("kill")));
+	TestEqual(TEXT("another event grants none"), ASC->OwnStacksHeld(Row), 1);
+	ASC->ActOnEvent(FName(TEXT("critical_strike")), nullptr, 0.0f, /*bLanded=*/false);
+	TestEqual(TEXT("an event that did not land grants none"), ASC->OwnStacksHeld(Row), 1);
+	ASC->ActOnEvent(FName(TEXT("critical_strike")));
+	TestEqual(TEXT("and the next that did grants the second"), ASC->OwnStacksHeld(Row), 2);
+
+	ASC->ClearWhatDeathEnds();
+	TestEqual(TEXT("a death ends them"), ASC->OwnStacksHeld(Row), 0);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnStacksScaleEachCopyTest,
+	"Cataclysm.Stacks.TwoCopiesOfAStackRowShareOneCountAndEachIsScaledByIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two worn copies of one stack row. Issue #1833, the case the coordinating
+ * session asked to be pinned: they SHARE ONE COUNT, keyed by the enchantment and
+ * the stat, and EACH COPY'S VALUE IS SCALED BY IT. So two copies at two stacks
+ * are 2 x 10 x 2 = 40% increased, double one copy's 20%, as two worn copies of
+ * any row give double.
+ */
+bool FCataclysmOwnStacksScaleEachCopyTest::RunTest(const FString&)
+{
+	using namespace CataclysmStackTest;
+	using namespace CataclysmOwnStackTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const FName Row(TEXT("A_row:armor"));
+	const FName Armour(TEXT("armor"));
+	const auto ArmourAtTwoStacks = [&](int32 Copies)
+	{
+		FScopedHolder Holder(World);
+		UCataclysmAbilitySystemComponent* ASC = Holder.AbilitySystem;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(Armour);
+		Line.Base = 100.0f;
+		TArray<FCataclysmPoolAction> Stacks;
+		for (int32 Copy = 0; Copy < Copies; ++Copy)
+		{
+			Line.Modifiers.Add(TenPerStack(Row));
+			Stacks.Add(StackOnCrit(Row));
+		}
+		ASC->SetStatInputs(MoveTemp(Inputs));
+		ASC->SetPoolActions(MoveTemp(Stacks));
+
+		const float None = ASC->StatForSkill(Armour, FGameplayTagContainer(), 0.0f);
+		ASC->ActOnEvent(FName(TEXT("critical_strike")));
+		ASC->ActOnEvent(FName(TEXT("critical_strike")));
+		TestEqual(FString::Printf(TEXT("%d copies: two strikes hold two stacks"), Copies),
+			ASC->OwnStacksHeld(Row), 2);
+		TestEqual(FString::Printf(TEXT("%d copies: no stacks, no increase"), Copies),
+			None, 100.0f, 0.01f);
+		return ASC->StatForSkill(Armour, FGameplayTagContainer(), 0.0f);
+	};
+
+	TestEqual(TEXT("one copy at two stacks: 20% increased"), ArmourAtTwoStacks(1), 120.0f, 0.01f);
+	TestEqual(TEXT("two copies at two stacks: 40%, double one copy"), ArmourAtTwoStacks(2), 140.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
