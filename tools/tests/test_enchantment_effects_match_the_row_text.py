@@ -413,8 +413,12 @@ JUDGED_NUMBERS = {
 #: row are one row each.
 #: AND 294 OVER 228 SINCE THE MINION DRAWBACK, issue #1815, from 293 over 227:
 #: "Each active minion reduces your maximum HP by 3%-6%", one row.
-AUTHORED_ROWS = 294
-AUTHORED_ENCHANTMENTS = 228
+#: AND 298 OVER 231 SINCE ISSUE #1686'S FIRST WINDOW, from 294 over 228: four
+#: rows on three enchantments that had none. "Point blank AOE skills deal
+#: 15%-25% less damage to a single target" is an attack damage row and a spell
+#: damage row; the aura and crowd control drawbacks are one row each.
+AUTHORED_ROWS = 298
+AUTHORED_ENCHANTMENTS = 231
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -678,8 +682,13 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
 #: is 35%). "Take 10%-40% more damage when on low mana" is 41 characters, so a
 #: clause stating the number could not be appended without renaming its row.
 #: `test_the_low_mana_row_is_refused_without_its_word` is the control.
+#:
+#: "SINGLE TARGET" IS 1 ON `enemies_hit_at_most`, ruled 2026-09-23 under the
+#: owner's delegation for "Point blank AOE skills deal 15%-25% less damage to a
+#: single target": exactly one enemy struck by the attack. Issue #1686.
 CONDITION_VALUE_STATED_BY_WORD: dict[str, dict[str, float]] = {
     "mana_below": {"low mana": 35.0},
+    "enemies_hit_at_most": {"single target": 1.0},
 }
 
 
@@ -711,6 +720,16 @@ def test_the_low_mana_row_is_refused_without_its_word(effects, enchantments):
     wrong = condition_values_not_stated(effects, enchantments, {})
     assert any(line.startswith("Negative_Take_10_40_more_damage_when_on_low_mana#1:")
                for line in wrong), wrong
+
+
+def test_the_single_target_rows_are_refused_without_their_words(effects, enchantments):
+    """The same control for "single target": with the map emptied, both point
+    blank rows are named, so the map is what lets them through. Issue #1686."""
+    wrong = condition_values_not_stated(effects, enchantments, {})
+    for suffix in ("#1:", "#2:"):
+        assert any(line.startswith(
+            "Negative_Point_blank_AOE_skills_deal_15_25_less_damage" + suffix)
+            for line in wrong), wrong
 
 
 def test_a_more_row_is_worded_as_a_multiplier(effects, enchantments):

@@ -64,6 +64,8 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: threshold, which never passed through this list because its rows landed in
 #: the same change as the condition.
 #: AND IT LEFT ON 2026-09-23, when its row landed with issue #1994.
+#: TWO JOINED AND LEFT THE SAME DAY in one change, `enemies_hit_at_most` and
+#: `opponent_is_crowd_controlled` for issue #1686, with their rows.
 BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the movement conditions for the dungeon-modifier work; the
     # enchantment rows that want it are among the 388 counted in issue #1815
@@ -72,12 +74,6 @@ BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the state conditions in pull request #1803 for the Demonic
     # trees; the row that reads it is in the same queue.
     "target_carries_void_splinter",
-    # Issue #1686's first window. Their rows wait for the design workbook and
-    # leave this list in the same change: "Point blank AOE skills deal
-    # 15%-25% less damage to a single target" and "You take 15%-25% more
-    # damage from enemies that are currently CC'd".
-    "enemies_hit_at_most",
-    "opponent_is_crowd_controlled",
 }
 
 #: A condition several enchantment effect rows name. The control.
