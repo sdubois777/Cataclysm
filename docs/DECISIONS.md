@@ -77,8 +77,6 @@ longer produced. A run without `--check`, which writes the files, was not measur
 
 ---
 
----
-
 ## 2026-09-23 — The separator check's list of old faults can only shrink, and a ceiling holds it where git history is missing
 
 **Affects:** `tools/tests/test_decisions_entries_are_separated.py`, the check that every entry in
