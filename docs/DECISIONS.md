@@ -141,7 +141,10 @@ sub-class after choosing it, at an NPC. Neither page states a cost, and none is 
 
 ### TESTS
 
-- `Cataclysm.Passives.OneClass.TheFirstPointChoosesTheDamageTypesClass`
+- `Cataclysm.Passives.OneClass.TheFirstPointChoosesTheDamageTypesClass`. **Its assertion "a
+  Masochist capstone option is refused as well" does not test the class rule**: a capstone below
+  its threshold of points in its own tree is refused by the tree's rules anyway. The assertion that
+  does is the next one, "for the same reason", which reads the refusal's sentence.
 - `Cataclysm.Passives.OneClass.TheRespecFreesTheChoice`
 - `Cataclysm.Passives.OneClass.AnotherDamageTypeChoosesItsOwnClass`
 - `Cataclysm.Passives.OneClass.TheScreenDimsTheClassesNotChosen`, on buttons the test made, as
@@ -149,6 +152,9 @@ sub-class after choosing it, at an NPC. Neither page states a cost, and none is 
 - `Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType`: most points wins in each
   damage type, a tie keeps the tree bought first, and a file with one tree per damage type is
   unchanged.
+- **A stated gap: nothing proves the node's tool tip.** The screen test asserts it, and none of the
+  three guard proofs removes it, so no run has shown that test failing without it. The proof on the
+  screen breaks whether the node can be taken, and the tool tip is set apart from that.
 - `tools/tests/test_passive_nodes_are_named_for_a_frozen_class.py`, two tests.
 
 ---
