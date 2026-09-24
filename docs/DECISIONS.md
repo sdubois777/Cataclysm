@@ -120,6 +120,29 @@ rows. The tests use hand-made rows.
 - **Found by the build and filed rather than fixed:** a C4996 warning, "Attempting to use Cast<>
   on types that are not related", at `CataclysmMinionAttackSpeedTests.cpp:240`, an assertion that
   cannot fail ([#2055](https://github.com/sdubois777/Cataclysm/issues/2055)).
+- **The test and log corrections built** on `4e9d6d90`: "Build: Succeeded - 28 actions, 25 files
+  compiled".
+- **The asset rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json`
+  and nothing else (`17f9ca8b`). The Python asset-freshness tests then passed, 18 of 18.
+- **The whole suite on `17f9ca8b`:** "2276 tests performed, 2276 succeeded, 0 failed", as registered
+  (2270 + the six named tests), with every declared test reported.
+- **Three guard proofs**, each failing exactly the registered tests with the break in and none
+  restored. Each broken run's log was copied before the restored run overwrote it, and its failure
+  text is quoted:
+  - **a stack granted by an event that did not land** (`bLanded &&` removed from the grant's test in
+    `CataclysmAbilitySystemComponent.cpp`) failed `AnEventGrantsARowsOwnStackOncePerEventOnlyWhenItLanded`
+    ("Expected 'an event that did not land grants none' to be 1, but it was 2") and
+    `AnEvadedMeleeBlowGrantsNoOwnStackAndALandedOneDoes` ("Expected 'and granted no stack' to be 0, but
+    it was 1"), 2 of 2, and 0 of 2 restored;
+  - **every copy granting on one event** (`StackedThisEvent.Add(Action.StackKey);` removed) failed
+    `AnEventGrantsARowsOwnStackOncePerEventOnlyWhenItLanded` ("Expected 'two copies, one critical
+    strike: one stack' to be 1, but it was 2") and `TwoCopiesOfAStackRowShareOneCountAndEachIsScaledByIt`
+    ("Expected 'two copies at two stacks: 40%, double one copy' to be 140.000000, but it was
+    180.000000"), 2 of 2, and 0 of 2 restored;
+  - **the scale reading no stacks** (`StackedValue(...)` replaced with `0.0f` in
+    `CataclysmStatPipeline.cpp`) failed `TwoCopiesOfAStackRowShareOneCountAndEachIsScaledByIt` ("Expected
+    'one copy at two stacks: 20% increased' to be 120.000000, but it was 100.000000"), 1 of 1, and 0 of
+    1 restored.
 
 ---
 
