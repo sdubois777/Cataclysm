@@ -517,10 +517,12 @@ public:
 	 * care what stood there; Martyr's Ember adds damage to the thing itself, so
 	 * it needs the actor. Issue #1162.
 	 *
-	 * CALLED FROM `HitTargets`, WHICH IS WHERE EVERY BLOW IN THE GAME IS DEALT,
-	 * so a fissure opens under a strike, a projectile, an aura pulse or a leap
-	 * alike -- which is what "every blow you land" says. It is the same argument
-	 * that put the knockback and the forced movement riders there.
+	 * CALLED FROM `HitTargets` AND FROM THE THREE ROUTES THAT DEAL A BLOW
+	 * WITHOUT IT: `ACataclysmProjectile::HitOne`, the rack's no-speed fallback in
+	 * `UCataclysmProjectileSkill::ThrowOne`, and `UCataclysmBuriedWeapon` tearing
+	 * free. So a fissure opens under a strike, a projectile, an aura pulse or a
+	 * leap alike -- which is what "every blow you land" says. Issue #1938: until
+	 * 2026-09-24 only `HitTargets` called it, and a projectile told nothing.
 	 *
 	 * ONLY FOR A BLOW THAT ACTUALLY DEALT DAMAGE. "Every blow you land" is not
 	 * every swing: one that was evaded, or that armour and resistance stopped

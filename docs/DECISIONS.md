@@ -2,6 +2,42 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — A projectile's landed contact, a rack's throw with no speed and a buried axe tearing free tell the character's running buffs
+
+**Affects:**
+- `ACataclysmProjectile::HitOne`, `UCataclysmProjectileSkill::ThrowOne` (its no-speed fallback) and `UCataclysmBuriedWeapon`: each now calls `UCataclysmSkillTemplate::NoteBlowLanded`.
+- The comments on `NoteBlowLanded`, `HitTargets` and `UCataclysmSelfBuffSkill::NoteBlowLanded`.
+- Four tests in `CataclysmSkillTemplateTests.cpp`.
+- Issue [#1938](https://github.com/sdubois777/Cataclysm/issues/1938).
+
+### WHAT WAS WRONG
+
+`NoteBlowLanded` tells the character's running self buffs that a blow landed:
+- Groundbreaker: "every blow you land cracks the ground beneath what it hits";
+- Martyr's Ember: "each hit you land spends part of the store";
+- Slipstream: "every enemy you strike from behind returns your movement skill".
+
+Its comment said it was called where "every blow in the game is dealt", but it was called only from `HitTargets`. Three routes deal the player's blows without passing through `HitTargets`, and they told the buffs nothing. #1515 had already made those same three routes pay Fervour.
+
+### WHAT CHANGED
+
+Each route now tells the buffs beside its Fervour pay, under the same test: the blow was sent with damage and was not evaded.
+
+### RULINGS, UNDER THE OWNER'S DELEGATION
+
+**Ruled by the coordinating session on 2026-09-24.**
+
+1. **A projectile contact is "from behind" by the same `UCataclysmSkillEffects::IsBehind` test** `HitTargets` makes, asked before the hit. "Every enemy you strike from behind" does not leave out a thrown blow. A test pins it: a shot into an enemy's back returns Slipstream's movement skill, and one into its face does not.
+2. **A buried weapon tells its thrower's buffs only while the thrower is still present**, the same condition as its Fervour.
+3. **A rack's throw with no speed behaves as a fired projectile.**
+
+### WHAT THIS DOES IN PLAY, STATED BECAUSE BOTH ARE INTENDED
+
+- **Martyr's Ember now spends its store once per landed projectile contact.** A piercing shot through five enemies spends it five times. That follows from "each hit you land", the same reading that already had one wide strike spend it once per enemy.
+- **Groundbreaker now opens a fissure beneath a distant target hit by a projectile.** "Every blow you land ... beneath what it hits" names no range.
+
+---
+
 ## 2026-09-24 — A negative crowd control resistance lengthens crowd control, to at most twice, and a held effect still stops at 3 seconds
 
 **Affects:**

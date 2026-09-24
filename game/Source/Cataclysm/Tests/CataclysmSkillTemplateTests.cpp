@@ -15940,4 +15940,271 @@ bool FCataclysmOverreachBasicAttackTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A landed blow that never passes through HitTargets still tells the running
+// buffs. Issue #1938.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmBlowLandedElsewhereTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** Groundbreaker's row, granted and running: every blow the caster lands
+	 *  opens a fissure beneath what it hits, and `TerrainLeft` counts them. */
+	UCataclysmSelfBuffSkill* RunGroundbreaker(FScopedFighter& Caster)
+	{
+		UCataclysmSelfBuffSkill* Groundbreaker = GrantSkill<UCataclysmSelfBuffSkill>(
+			Caster, ECataclysmAbilitySlot::Support,
+			TEXT("Duration=10; Terrain=Fissure; TerrainSize=2; TerrainDuration=6"),
+			TEXT("Groundbreaker"));
+		return Groundbreaker && Activate(Caster, Groundbreaker) ? Groundbreaker : nullptr;
+	}
+
+	/** Steps a shot until it finishes, bounded so one that never does cannot
+	 *  hang the run. The test world is never ticked. */
+	void FlyToTheEnd(ACataclysmProjectile* Shot)
+	{
+		for (int32 Steps = 0; Steps < 60 && Shot->Step(0.05f); ++Steps)
+		{
+		}
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileTellsABuffTest,
+	"Cataclysm.Skills.AProjectileContactTellsARunningBuffItLanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A fired projectile's contact is a blow the character landed, so Groundbreaker
+ * opens a fissure beneath it. Issue #1938.
+ *
+ * A PIERCING SHOT THROUGH TWO ENEMIES, ONE OF WHICH EVADES, opens one fissure:
+ * "every blow you land", and an evaded contact did not land. Both contacts are
+ * asserted, so the one fissure is known to come from the landed contact.
+ */
+bool FCataclysmProjectileTellsABuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlowLandedElsewhereTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(3 * M, 0, 0));
+	FScopedFighter Nimble(World, FVector(6 * M, 0, 0));
+	Nimble.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 500.0f);
+
+	UCataclysmSelfBuffSkill* Groundbreaker = RunGroundbreaker(Caster);
+	if (!TestNotNull(TEXT("Groundbreaker is running"), Groundbreaker))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and nothing has cracked yet"), Groundbreaker->TerrainLeft, 0);
+
+	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+		Caster.Actor, FVector::ZeroVector, FVector(10 * M, 0, 0),
+		/*InRadiusCm=*/100.0f, /*InSpeed=*/1000.0f, /*InPierce=*/5,
+		/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+	if (!Shot)
+	{
+		AddError(TEXT("The projectile was not fired."));
+		return false;
+	}
+
+	const float NearBefore = Near.Health();
+	const float NimbleBefore = Nimble.Health();
+	FlyToTheEnd(Shot);
+
+	if (!TestTrue(TEXT("the shot landed on the near enemy"),
+			NearBefore - Near.Health() > 0.0f)
+		|| !TestEqual(TEXT("and the nimble one evaded it"),
+			NimbleBefore - Nimble.Health(), 0.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("so the shot opened one fissure, for the contact that landed"),
+		Groundbreaker->TerrainLeft, 1);
+	TestEqual(TEXT("which stands in the world"),
+		CountTerrainOfKind(World, ECataclysmTerrainKind::Fissure), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRackFallbackTellsABuffTest,
+	"Cataclysm.Skills.ARackWithNoSpeedTellsARunningBuffItLanded",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A rack whose row states no speed throws nothing that flies: its throw strikes
+ * at once, in `UCataclysmProjectileSkill::ThrowOne`, and that blow tells the
+ * running buffs as a fired contact does. Issue #1938.
+ */
+bool FCataclysmRackFallbackTellsABuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlowLandedElsewhereTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(3 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Groundbreaker = RunGroundbreaker(Caster);
+	// BUTCHER'S BILL'S ROW WITH ITS SPEED LEFT OUT, and a rack of four.
+	UCataclysmProjectileSkill* Rack = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate,
+		TEXT("Range=10; Radius=1; Count=4; Duration=10; Interval=0.333; TargetMode=All"),
+		TEXT("A rack with no speed"),
+		TEXT("Item.Weapon.Axe, Element.Demonic, Type.Projectile"));
+	if (!TestNotNull(TEXT("Groundbreaker is running"), Groundbreaker)
+		|| !TestNotNull(TEXT("the rack is granted"), Rack))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it is a rack"), Rack->ThrowsRepeatedly());
+
+	// FREE, so the activation is not a test of the fighter's mana.
+	Rack->ManaCostOverride = 0.0f;
+	const float Before = Target.Health();
+	if (!TestTrue(TEXT("the rack activates"), Activate(Caster, Rack))
+		|| !TestEqual(TEXT("and throws one"), Rack->ThrowsMade, 1)
+		|| !TestTrue(TEXT("which, with no speed, struck at once"),
+			Target.Health() < Before))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and landing it opened one fissure"), Groundbreaker->TerrainLeft, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBuriedAxeTellsABuffTest,
+	"Cataclysm.Skills.ABuriedAxeTearingFreeTellsItsThrowersRunningBuff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Harrower's axe tearing free of a dead host and striking the next enemy is a
+ * blow its thrower landed, so the thrower's Groundbreaker opens a fissure.
+ * Issue #1938, ruled 2026-09-24: only while the thrower is still here, which it
+ * is throughout this test.
+ */
+bool FCataclysmBuriedAxeTellsABuffTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlowLandedElsewhereTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Host(World, FVector(4 * M, 0, 0));
+	FScopedFighter Next(World, FVector(6 * M, 0, 0));
+
+	UCataclysmSelfBuffSkill* Groundbreaker = RunGroundbreaker(Caster);
+	UCataclysmProjectileSkill* Harrower = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special,
+		TEXT("Range=10; Radius=1; Speed=2200; OnDeath=Leap; OnDeathRange=10"),
+		TEXT("Harrower"),
+		TEXT("Item.Weapon.Axe, Element.Demonic, Type.Projectile"));
+	if (!TestNotNull(TEXT("Groundbreaker is running"), Groundbreaker)
+		|| !TestNotNull(TEXT("Harrower is granted"), Harrower))
+	{
+		return false;
+	}
+
+	// DRIVEN DIRECTLY, as the test of the axe tearing free is: burying it deals
+	// no blow, so nothing has cracked until the host dies.
+	TestEqual(TEXT("the axe is buried in the host"), Harrower->BuryInStruck({Host.Actor}), 1);
+	TestEqual(TEXT("which cracks nothing"), Groundbreaker->TerrainLeft, 0);
+
+	const float NextBefore = Next.Health();
+	if (!TestTrue(TEXT("the host dies"), UCataclysmSkillEffects::MarkDead(Host.Actor))
+		|| !TestTrue(TEXT("and the axe struck the next enemy"), Next.Health() < NextBefore))
+	{
+		return false;
+	}
+	TestEqual(TEXT("so the thrower's buff opened one fissure"),
+		Groundbreaker->TerrainLeft, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmProjectileFromBehindTest,
+	"Cataclysm.Skills.AShotIntoAnEnemysBackReturnsSlipstreamsMoveAndOneIntoItsFaceDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A projectile's contact is from behind by the same test any blow's is. Issue
+ * #1938, ruled 2026-09-24: Slipstream's "every enemy you strike from behind"
+ * does not leave out a thrown blow, and "blows landed from the front do nothing
+ * for it" does not leave one out either.
+ *
+ * TWO SHOTS, THE FRONT ONE FIRST, so the rear one finds the movement slot still
+ * on cooldown and has something to return. A fighter spawns facing +X.
+ */
+bool FCataclysmProjectileFromBehindTest::RunTest(const FString&)
+{
+	using namespace CataclysmBlowLandedElsewhereTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	// IN FRONT OF THE CASTER AND FACING AWAY FROM IT: the caster is behind it.
+	FScopedFighter Unaware(World, FVector(3 * M, 0, 0));
+	// BEHIND THE CASTER AND FACING TOWARDS IT: the caster is in front of it.
+	FScopedFighter Watchful(World, FVector(-3 * M, 0, 0));
+
+	UCataclysmMovementSkill* Step = GrantSkill<UCataclysmMovementSkill>(
+		Caster, ECataclysmAbilitySlot::Movement,
+		TEXT("Mode=Blink; Range=0"), TEXT("A step"));
+	UCataclysmSelfBuffSkill* Slipstream = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=8; Requires=RearHit; RefundsCooldown=Movement"),
+		TEXT("Slipstream"));
+	if (!Step || !Slipstream)
+	{
+		AddError(TEXT("Could not grant the skills."));
+		return false;
+	}
+	TestTrue(TEXT("the movement skill fires"), Activate(Caster, Step));
+	TestTrue(TEXT("the buff goes up"), Activate(Caster, Slipstream));
+	TestTrue(TEXT("the movement slot is on cooldown"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+
+	const auto ShootTowards = [&Caster](float X)
+	{
+		ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+			Caster.Actor, FVector::ZeroVector, FVector(X, 0, 0),
+			/*InRadiusCm=*/100.0f, /*InSpeed=*/1000.0f, /*InPierce=*/0,
+			/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+			FGameplayTagContainer(), /*bInBurns=*/false);
+		if (Shot)
+		{
+			FlyToTheEnd(Shot);
+		}
+		return Shot != nullptr;
+	};
+
+	const float WatchfulBefore = Watchful.Health();
+	if (!TestTrue(TEXT("a shot is fired at the watchful enemy"), ShootTowards(-10 * M))
+		|| !TestTrue(TEXT("and lands in its face"), Watchful.Health() < WatchfulBefore))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a shot into an enemy's face returns nothing"),
+		Slipstream->CooldownsReturned, 0);
+	TestTrue(TEXT("so the movement slot is still on cooldown"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+
+	const float UnawareBefore = Unaware.Health();
+	if (!TestTrue(TEXT("a shot is fired at the unaware enemy"), ShootTowards(10 * M))
+		|| !TestTrue(TEXT("and lands in its back"), Unaware.Health() < UnawareBefore))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and a shot into an enemy's back returns it"),
+		Slipstream->CooldownsReturned, 1);
+	TestFalse(TEXT("so the movement slot is ready again"),
+		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
