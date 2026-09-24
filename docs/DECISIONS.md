@@ -13,8 +13,8 @@ when the player leaves the dungeon), the automation tests in
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -69,10 +69,29 @@ One Python check: the row still says "the player kills", "a portion", "their sta
 of the dungeon", and states no percentage. It was seen to fail, in a copy of the repository, with "the
 player kills" reworded, with "a portion" made "all", and with "a portion" made "5%".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (8c5f3ac1) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 14 actions, 11 files compiled" and "241 tests performed, 241 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on e60c4b2f:** "Build: Succeeded - 14 actions, 11 files compiled" and "2258 tests
+  performed, 2258 succeeded, 0 failed", as registered (2254 + the four named tests), with every declared
+  test reported. The group alone on the same head then printed "245 tests performed, 245 succeeded,
+  0 failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing 1 of 245 with the
+  break in and 0 of 245 restored, exactly as registered. Each broken run's log was copied before the
+  restored run overwrote it, and its failure text is quoted:
+  - **the damage cap raised to 1000%** (`NothingIsForgottenMostDamagePercent`, in
+    `CataclysmDungeonModifierEffects.h`) failed `TheFinalBossTakesAllTheHealthAndAtMostDoubleItsDamage`:
+    "Expected 'its damage stops at double its own' to be 20.000000, but it was 25.000000", and the panel
+    no longer said the damage was at its cap;
+  - **any killer accepted** (`Notice.Killer != Player` made `false`, in `CataclysmDungeonGameMode.cpp`)
+    failed `OnlyThePlayersKillsOfUnmarkedCreaturesFeedTheVoid`: "Expected 'the void holds 5% of the
+    player's two kills' maximum health' to be 10.000000, but it was 15.000000", the creature's kill
+    adding a third five per cent;
+  - **every floor's exit boss fed** (`IsTheFinalFloorForItsBoss()` removed from the feeding condition, in
+    `CataclysmDungeonGameMode.cpp`) failed `OnlyTheFinalFloorsBossIsFedEvenInAnEliteDungeon`: "Expected
+    'and it is not fed: floor 1 is not the last' to be null".
 
 ---
 
