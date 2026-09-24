@@ -26,7 +26,8 @@ cleansed." The row gives no figure.
 
 As each floor carrying the row begins, floor 1 included, one stack is added of one of two kinds, drawn
 at even odds: movement speed 5% less, or maximum health 5% less. Each kind holds at most ten stacks
-(50%); a draw for a kind already at ten adds nothing. The stacks belong to the dungeon: they stay on
+(50%); a draw for a kind already at ten goes to the other kind, and a floor adds nothing only
+when both kinds are at ten. The stacks belong to the dungeon: they stay on
 floors that do not carry the row and are put back on the player after every floor change. The death of
 a floor's boss clears both kinds, and so does the player's own death. Leaving the dungeon empties them.
 The floor panel shows each kind as a share and as "N of 10".
@@ -40,6 +41,9 @@ judgement, not something derived:**
   a wider list would be invented.
 - **5% per stack, at most ten stacks of each kind (50%).** **Play-test point.**
 - **Floor 1 counts**, as Starvation's floor 1 already takes its first share.
+- **A draw for a kind already at ten goes to the other kind**; a floor adds nothing only when both
+  are at ten. "Each new floor adds a starvation debuff" is broken by a floor that adds nothing while
+  the other kind has room.
 - **A floor's boss cleanses both kinds: the death of a Gatekeeper, or of any creature at the Boss
   rung** (`ACataclysmDungeonGameMode::DiedAsAFloorsBoss`). The reason is measured, not assumed. "Boss"
   in `ACataclysmEnemyCharacter::IsBoss()` is a rarity rung, and every creature draws its rung from
@@ -78,9 +82,10 @@ Fungal Overgrowth. `StarvationAndTheStarvationCurseMultiplyOnMaximumHealth` pins
 
 ### Also in this change
 
-The comment on `NothingIsForgottenKey` gave a reason for that rule's damage cap that no ruling gave
-("Uncapped damage over a long dungeon would make a fight no play could survive"). The sentence is
-removed; the cap and its play-test point stay.
+The comment on `NothingIsForgottenKey` now says who capped that rule's damage and why: the master
+session, under the owner's delegation, because uncapped damage over a long dungeon could make a fight
+the player cannot survive. That reason was given in the ruling; the comment had stated it without
+saying whose it was.
 
 ### Tests
 
@@ -90,7 +95,9 @@ Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
   health floor leave 10% less movement speed and 5% less maximum health; the panel line; and leaving the
   dungeon empties both.
 - `TheStarvationCurseStopsAtTenStacksOfEachKind`: the draw's boundary at 50, nine becoming ten and ten
-  staying ten, and twelve slowing floors leaving ten stacks and half the speed.
+  staying ten, a full kind's draw going to the other, and in play: twelve floors that all draw a slow
+  leave ten slow stacks and two health stacks, and ten more leave ten of each, the last two floors adding
+  nothing.
 - `AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse`: a Common's death leaves the stacks; a
   Gatekeeper held at the Common rung clears them; a creature at the Boss rung clears them; and the
   player's death clears them with no beat in between.

@@ -23167,7 +23167,9 @@ bool FCataclysmCurseEachFloorTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-// TEN STACKS OF EACH AT MOST: twelve floors that all slow leave ten, which is half the speed.
+// TEN STACKS OF EACH AT MOST, AND A DRAW FOR A FULL KIND GOES TO THE OTHER: twelve floors that
+// all draw a slow leave ten slow and two health stacks, and once both are full a floor adds
+// nothing.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCurseCapTest,
 	"Cataclysm.DungeonModifierEffects.TheStarvationCurseStopsAtTenStacksOfEachKind",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -23184,6 +23186,18 @@ bool FCataclysmCurseCapTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("nine becomes ten"), Effects::StarvationCurseStacksAfterAdding(9), 10);
 	TestEqual(TEXT("ten stays ten"), Effects::StarvationCurseStacksAfterAdding(10), 10);
 	TestEqual(TEXT("ten stacks take 50%"), Effects::StarvationCurseLessPercent(10), 50.0f, 0.001f);
+	TestEqual(TEXT("a slow drawn with room is a slow"),
+			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseSlowsMovement, 9, 0),
+			  Effects::StarvationCurseSlowsMovement);
+	TestEqual(TEXT("a slow drawn at the cap goes to health"),
+			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseSlowsMovement, 10, 3),
+			  Effects::StarvationCurseLowersHealth);
+	TestEqual(TEXT("a health curse drawn at the cap goes to movement"),
+			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseLowersHealth, 4, 10),
+			  Effects::StarvationCurseSlowsMovement);
+	TestEqual(TEXT("both full adds nothing"),
+			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseSlowsMovement, 10, 10),
+			  Effects::StarvationCurseAddsNothing);
 
 	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
 	if (!TestNotNull(TEXT("a test world was created"), World))
@@ -23199,7 +23213,7 @@ bool FCataclysmCurseCapTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Mode->DungeonModifiers = {StarvationCurse};
-	Mode->TotalFloors = 20;
+	Mode->TotalFloors = 30;
 	for (int32 Floor = 1; Floor <= 12; ++Floor)
 	{
 		if (!TheCurseFloor(*this, Mode, Floor, CurseSlowsMovement))
@@ -23207,8 +23221,24 @@ bool FCataclysmCurseCapTest::RunTest(const FString& Parameters)
 			return false;
 		}
 	}
-	TestEqual(TEXT("twelve floors hold ten stacks"), Mode->StarvationCurseMovementStacksHeld(), 10);
-	TestEqual(TEXT("and movement speed is half"), CurseLessOn(Player, TEXT("movement_speed")),
+	TestEqual(TEXT("twelve floors hold ten slow stacks"), Mode->StarvationCurseMovementStacksHeld(),
+			  10);
+	TestEqual(TEXT("and the two draws past the cap went to health"),
+			  Mode->StarvationCurseHealthStacksHeld(), 2);
+	TestEqual(TEXT("movement speed is half"), CurseLessOn(Player, TEXT("movement_speed")),
+			  50.0f, 0.01f);
+
+	// TEN MORE FLOORS: eight fill health to ten, and the last two add nothing.
+	for (int32 Floor = 13; Floor <= 22; ++Floor)
+	{
+		if (!TheCurseFloor(*this, Mode, Floor, CurseSlowsMovement))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("ten slow stacks still"), Mode->StarvationCurseMovementStacksHeld(), 10);
+	TestEqual(TEXT("and ten health stacks, no more"), Mode->StarvationCurseHealthStacksHeld(), 10);
+	TestEqual(TEXT("maximum health is half"), CurseLessOn(Player, TEXT("max_health")),
 			  50.0f, 0.01f);
 	return true;
 }

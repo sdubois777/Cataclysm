@@ -1579,7 +1579,9 @@ public:
 	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-23:
 	 * - FIVE PERCENT OF EACH, a judgement: no figure in the design settles it.
 	 * - THE HEALTH IS UNCAPPED; THE DAMAGE IS CAPPED at `NothingIsForgottenMostDamagePercent`
-	 *   of the boss's own, so it hits at most twice as hard. Both are play-test points.
+	 *   of the boss's own, so it hits at most twice as hard. Capped by the master session
+	 *   under the owner's delegation, because uncapped damage over a long dungeon could make
+	 *   a fight the player cannot survive; a play-test point. The uncapped health is one too.
 	 * - THE FINAL BOSS ONLY: the Gatekeeper the last floor places at its exit, even in an
 	 *   Elite dungeon where every floor ends with one. A dungeon of one floor has no final
 	 *   boss at its exit, so there the row feeds nothing.
@@ -1595,7 +1597,8 @@ public:
 	 * "Each new floor adds a starvation debuff, such as slower movement or reduced max
 	 * health. These debuffs persist unless cleansed." Each floor carrying the row adds one
 	 * stack of one of the row's two examples, drawn at random: movement speed or maximum
-	 * health, `StarvationCursePercentPerStack` less per stack. The stacks are the dungeon's
+	 * health, `StarvationCursePercentPerStack` less per stack. A draw for a kind already at
+	 * its cap goes to the other kind; a floor adds nothing only when both are at their cap. The stacks are the dungeon's
 	 * and stay on floors that do not carry the row.
 	 *
 	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-23:
@@ -3822,6 +3825,8 @@ public:
 	/** The two curses, as `StarvationCurseKindFor` answers them. */
 	static constexpr int32 StarvationCurseSlowsMovement = 0;
 	static constexpr int32 StarvationCurseLowersHealth = 1;
+	/** What `StarvationCurseKindToAdd` answers when both kinds are at their cap. */
+	static constexpr int32 StarvationCurseAddsNothing = -1;
 
 	static_assert(
 		StarvationCursePercentPerStack > 0.0f && StarvationCurseMostStacks > 0
@@ -4542,6 +4547,14 @@ public:
 
 	/** Which curse a floor adds for this draw, 0 to 100: movement below the even split. */
 	static int32 StarvationCurseKindFor(float Roll);
+
+	/**
+	 * The kind a floor actually adds: the drawn one, or the other when the drawn one is at
+	 * its cap, or `StarvationCurseAddsNothing` when both are. Ruled under the owner's
+	 * delegation, 2026-09-23: "each new floor adds a starvation debuff" is broken by a floor
+	 * that adds nothing while the other kind has room.
+	 */
+	static int32 StarvationCurseKindToAdd(int32 Drawn, int32 MovementStacks, int32 HealthStacks);
 
 	/** One more stack, up to `StarvationCurseMostStacks`. */
 	static int32 StarvationCurseStacksAfterAdding(int32 Held);

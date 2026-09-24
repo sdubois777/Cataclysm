@@ -1795,6 +1795,23 @@ int32 UCataclysmDungeonModifierEffects::StarvationCurseKindFor(float Roll)
 											   : StarvationCurseLowersHealth;
 }
 
+int32 UCataclysmDungeonModifierEffects::StarvationCurseKindToAdd(int32 Drawn,
+															  int32 MovementStacks,
+															  int32 HealthStacks)
+{
+	const bool bMovementFull = MovementStacks >= StarvationCurseMostStacks;
+	const bool bHealthFull = HealthStacks >= StarvationCurseMostStacks;
+	if (bMovementFull && bHealthFull)
+	{
+		return StarvationCurseAddsNothing;
+	}
+	if (Drawn == StarvationCurseSlowsMovement)
+	{
+		return bMovementFull ? StarvationCurseLowersHealth : StarvationCurseSlowsMovement;
+	}
+	return bHealthFull ? StarvationCurseSlowsMovement : StarvationCurseLowersHealth;
+}
+
 int32 UCataclysmDungeonModifierEffects::StarvationCurseStacksAfterAdding(int32 Held)
 {
 	return FMath::Min(FMath::Max(0, Held) + 1, StarvationCurseMostStacks);

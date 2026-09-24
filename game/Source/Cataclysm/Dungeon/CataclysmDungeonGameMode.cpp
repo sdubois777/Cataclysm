@@ -2084,9 +2084,18 @@ void ACataclysmDungeonGameMode::AddAStarvationCurse()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
 
-	// ONE KIND PER FLOOR, drawn evenly between the row's two examples. A kind already at
-	// its cap gains nothing; the draw is not moved to the other kind.
-	const int32 Kind = Effects::StarvationCurseKindFor(DungeonGameModeStarvationCurseRoll());
+	// ONE KIND PER FLOOR, drawn evenly between the row's two examples; a draw for a kind at
+	// its cap goes to the other, and a floor adds nothing only when both are full.
+	const int32 Kind = Effects::StarvationCurseKindToAdd(
+		Effects::StarvationCurseKindFor(DungeonGameModeStarvationCurseRoll()),
+		StarvationCurseMovementStacks, StarvationCurseHealthStacks);
+	if (Kind == Effects::StarvationCurseAddsNothing)
+	{
+		UE_LOG(LogCataclysm, Log,
+			   TEXT("Starvation Curse: floor %d adds nothing; both kinds are at their cap"),
+			   FloorNumber);
+		return;
+	}
 	int32& Stacks = Kind == Effects::StarvationCurseSlowsMovement
 		? StarvationCurseMovementStacks
 		: StarvationCurseHealthStacks;
