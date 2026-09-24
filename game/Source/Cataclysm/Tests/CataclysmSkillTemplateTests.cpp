@@ -61,7 +61,9 @@
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
+#include "AbilitySystemComponent.h"
 #include "EngineUtils.h"
+#include "GameplayEffect.h"
 #include "GameplayTagsManager.h"
 #include "GameFramework/Actor.h"
 // For the test that the bar, the check and the payment agree on a skill's cost.
@@ -17334,6 +17336,31 @@ namespace CataclysmNextUseTest
 	const FName SkillCharge(TEXT("Test:next_skill_damage"));
 	const FName AttackCharge(TEXT("Test:next_attack_damage"));
 
+	/**
+	 * What one tick of the burn running on Who deals, read off the running
+	 * effect's modifier, or -1 when none runs.
+	 */
+	float BurnPerTickOn(const FScopedFighter& Who)
+	{
+		const FGameplayEffectQuery Burning =
+			FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+				FGameplayTagContainer(UCataclysmSkillEffects::BurnTag()));
+		for (const FActiveGameplayEffectHandle& Handle :
+			 Who.AbilitySystem->GetActiveEffects(Burning))
+		{
+			const FActiveGameplayEffect* Running =
+				Who.AbilitySystem->GetActiveGameplayEffect(Handle);
+			float PerTick = -1.0f;
+			if (Running && Running->Spec.Def && Running->Spec.Def->Modifiers.Num() > 0
+				&& Running->Spec.Def->Modifiers[0].ModifierMagnitude
+					   .GetStaticMagnitudeIfPossible(1.0f, PerTick))
+			{
+				return PerTick;
+			}
+		}
+		return -1.0f;
+	}
+
 	/** One "next skill" charge worth 60% increased damage, held by Who. */
 	void HoldASkillCharge(FScopedFighter& Who)
 	{
@@ -17362,10 +17389,11 @@ bool FCataclysmNextUseEveryTargetTest::RunTest(const FString&)
 	FScopedFighter Caster(World, FVector::ZeroVector);
 	FScopedFighter Ahead(World, FVector(2 * M, 0, 0));
 	FScopedFighter Behind(World, FVector(-2 * M, 0, 0));
+	FScopedFighter OutOfReach(World, FVector(9 * M, 0, 0));
 	HoldASkillCharge(Caster);
 
 	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
-		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; Burn=1"));
 	if (!Strike)
 	{
 		AddError(TEXT("Could not grant the strike."));
@@ -17385,6 +17413,21 @@ bool FCataclysmNextUseEveryTargetTest::RunTest(const FString&)
 		Strike->LastNextUseIncreasePercent, 60.0f, 0.01f);
 	TestEqual(TEXT("and the charge is gone"),
 		Caster.AbilitySystem->NextUseChargesHeld(SkillCharge), 0);
+
+	// NOT ITS DAMAGE OVER TIME, the owner's decision of 2026-08-25:
+	// "increased damage" is attack and spell damage. The burn the charged
+	// strike left ticks for what a burn the same caster applies with nothing
+	// spent ticks for.
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, OutOfReach.Actor,
+		/*HitDamage=*/0.0f, /*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+	// ONE ASSERTION, AND IT CAN FAIL BOTH WAYS: a burn that is missing reads -1
+	// on both sides, which is refused here rather than read as equal.
+	const float Charged = BurnPerTickOn(Ahead);
+	const float Plain = BurnPerTickOn(OutOfReach);
+	TestTrue(FString::Printf(
+			TEXT("the burn the charged strike left ticks at the plain figure: "
+				 "%.3f against %.3f"), Charged, Plain),
+		Plain > 0.0f && FMath::IsNearlyEqual(Charged, Plain, 0.001f));
 	return true;
 }
 
