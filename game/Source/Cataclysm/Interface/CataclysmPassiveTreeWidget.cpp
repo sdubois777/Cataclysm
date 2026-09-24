@@ -98,7 +98,7 @@ bool UCataclysmPassiveTreeWidget::ShowTree(const FString& Tree)
 	LastTouched = NAME_None;
 
 	// A DIFFERENT TREE IS A DIFFERENT SET OF WIDGETS AND A DIFFERENT VIEW. The
-	// four trees are laid out on quite different parts of the authoring tool's
+	// trees are laid out on quite different parts of the authoring tool's
 	// canvas -- the Masochist tree runs from x -2000 to 1600 and the Berserker
 	// one from -909 to 712 -- so keeping the old focus would open the new tree
 	// looking at empty space.
@@ -495,16 +495,12 @@ void UCataclysmPassiveTreeWidget::FillPanel(UPanelWidget* Panel,
 					Allocation.ChosenOptionIn(ChoosingOptionFor);
 				Button->SetChoice(Value, FText::FromString(Label),
 								  Chosen == Option, !Name.IsEmpty());
+				Button->SetDimmed(false);
+				Button->SetToolTipText(FText::GetEmpty());
 				continue;
 			}
 
-			// A TREE THE CHARACTER CANNOT REACH IS STILL CLICKABLE, and shown
-			// dimmed. Reading what another tree offers is how a player decides
-			// which weapon to carry, so hiding them would make that choice
-			// blind. Only spending is refused.
-			Button->SetChoice(Value, FText::FromName(Value),
-							  ShownTree == Value.ToString(),
-							  /*bAvailable=*/true);
+			DescribeTreeButton(*Button, Value);
 			continue;
 		}
 
@@ -741,14 +737,62 @@ void UCataclysmPassiveTreeWidget::DescribeNodeButton(
 	// a capstone whose option is unchosen is refused, so the node the player had
 	// just earned was drawn exactly like one they had not reached. Clicking it
 	// now offers the three options, so it has to look like it can be clicked.
-	const bool bCanTake =
-		UCataclysmPassiveTree::RefusalForSpending(
-			NodeTable(), EdgeTable(), Allocation, Node, Points).IsEmpty()
-		|| UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable(), Allocation,
-													   Node);
+	// NOR A NODE IN A CLASS NOT CHOSEN FOR ITS DAMAGE TYPE. Issue #2064. The
+	// tree's own rules do not know the character, so this is asked beside them.
+	// The sentence goes on the node as its tool tip, since a node that cannot be
+	// clicked never shows the refusal under the tree.
+	const FString NotYourClass = ClassRefusalFor(Row->Tree);
+	const bool bCanTake = NotYourClass.IsEmpty()
+		&& (UCataclysmPassiveTree::RefusalForSpending(
+				NodeTable(), EdgeTable(), Allocation, Node, Points).IsEmpty()
+			|| UCataclysmPassiveTree::AwaitsAnOptionChoice(NodeTable(),
+														   Allocation, Node));
 
 	Button.SetChoice(Node, FText::FromString(Label),
 					 Allocation.PointsIn(Node) > 0, bCanTake);
+	Button.SetToolTipText(FText::FromString(NotYourClass));
+}
+
+void UCataclysmPassiveTreeWidget::DescribeTreeButton(
+	UCataclysmChoiceButton& Button, FName Tree)
+{
+	// A TREE THE CHARACTER CANNOT REACH IS STILL CLICKABLE, and shown
+	// dimmed. Reading what another tree offers is how a player decides
+	// which weapon to carry, so hiding them would make that choice
+	// blind. Only spending is refused.
+	Button.SetChoice(Tree, FText::FromName(Tree), ShownTree == Tree.ToString(),
+					 /*bAvailable=*/true);
+
+	// AND A CLASS NOT CHOSEN FOR ITS DAMAGE TYPE IS DIMMED, still clickable for
+	// the same reason, with the reason on hover. Issue #2064.
+	const FString NotYourClass = ClassRefusalFor(Tree.ToString());
+	Button.SetDimmed(!NotYourClass.IsEmpty());
+	Button.SetToolTipText(FText::FromString(NotYourClass));
+}
+
+void UCataclysmPassiveTreeWidget::DescribeButtonForTests(
+	UCataclysmChoiceButton& Button, FName Value, bool bIsTree)
+{
+	if (bIsTree)
+	{
+		DescribeTreeButton(Button, Value);
+	}
+	else
+	{
+		DescribeNodeButton(Button, Value);
+	}
+}
+
+FString UCataclysmPassiveTreeWidget::ClassRefusalFor(const FString& Tree) const
+{
+	const ACataclysmPlayerState* Player = State();
+	if (!Player)
+	{
+		return FString();
+	}
+	return UCataclysmPassiveTree::RefusalForClassChoice(
+		NodeTable(), Player->GetPassiveAllocation(), Tree,
+		{Player->GetChosenDamageType()});
 }
 
 void UCataclysmPassiveTreeWidget::BuildGraph()

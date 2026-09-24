@@ -742,7 +742,7 @@ Each class tree has approximately 74 nodes, 15 keystones, 4 capstone tiers (at 2
 
 **Every class shares one resource, called Fervour.** What differs by class is how it is filled and what it is spent on. Those are central to how a class plays — they are not optional stat bars, they are the engine of the build.
 
-**Why one bar rather than one per class.** A two-handed weapon can roll 8 damage types and each unlocks 3 classes, so one character can reach all 24 class trees. Twenty-four separately-generating bars is not readable. The pattern in shipped games is that per-class resources and multiclassing are alternatives rather than companions: Diablo 3 and Diablo 4 give each class exactly one unique resource and do not let a character be two classes, while Path of Exile lets one character reach almost any passive and gives every character the same resources. Decided 2026-08-25; `docs/DECISIONS.md` has the reasoning.
+**Why one bar rather than one per class.** A two-handed weapon can roll 8 damage types, and a character takes one class in each, so one character can be in 8 class trees at once. Eight separately-generating bars is not readable. The pattern in shipped games is that per-class resources and multiclassing are alternatives rather than companions: Diablo 3 and Diablo 4 give each class exactly one unique resource and do not let a character be two classes, while Path of Exile lets one character reach almost any passive and gives every character the same resources. Decided 2026-08-25; `docs/DECISIONS.md` has the reasoning.
 
 **Each tree grants generators and spenders, and a character in several trees has several of each.** That is what multiclassing buys here. A character in the Berserker and Masochist trees fills one bar from critical strikes and from health lost, and can spend it on either tree's abilities.
 
@@ -801,7 +801,9 @@ The node graphs are `docs/Masochist_Class_Tree_Final.json`, `docs/Ravager_Class_
 
 Players with multiple damage types on their weapon can invest in multiple class trees simultaneously. All trees draw from the same shared point pool, so multiclassing means spreading investment thinner. The deep nodes and capstones in any single tree require focused investment to reach, creating genuine build tradeoffs.
 
-**And all trees draw from the same Fervour pool.** A character in several trees has several ways to fill it and several things to spend it on, which is what multiclassing buys beyond the passive nodes themselves. It is also why there is one bar rather than one per class: a two-handed weapon can roll 8 damage types and each unlocks 3 classes, so a character can reach all 24 trees, and 24 separately-generating bars is not readable.
+**One class per damage type, chosen by the first point.** The first passive point spent in any of a damage type's three trees makes that tree the character's class for that damage type, and the other two refuse points. A respec that empties the tree frees the choice, and the next first point chooses again. A damage type gained later from a new weapon is chosen the same way. The passive tree screen shows the two classes not chosen dimmed, still open to be read, with the reason as a tool tip. Decided 2026-09-24; `docs/DECISIONS.md` has the rulings.
+
+**And all trees draw from the same Fervour pool.** A character in several trees has several ways to fill it and several things to spend it on, which is what multiclassing buys beyond the passive nodes themselves. It is also why there is one bar rather than one per class: a two-handed weapon can roll 8 damage types and a character takes one class in each, so a character can be in 8 trees at once, and 8 separately-generating bars is not readable.
 
 **Taking off the weapon that unlocked a tree does not refund the points spent in
 it.** The points stay spent and everything that tree grants stops applying, until

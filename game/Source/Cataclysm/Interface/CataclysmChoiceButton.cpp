@@ -64,13 +64,19 @@ void UCataclysmChoiceButton::NativeConstruct()
 	RefreshDisplay();
 }
 
+void UCataclysmChoiceButton::SetDimmed(bool bInDimmed)
+{
+	bDimmed = bInDimmed;
+	RefreshDisplay();
+}
+
 void UCataclysmChoiceButton::RefreshDisplay()
 {
 	if (ChoiceLabel)
 	{
 		ChoiceLabel->SetText(Label);
 		ChoiceLabel->SetColorAndOpacity(FSlateColor(
-			!bAvailable ? UnavailableColour
+			(!bAvailable || bDimmed) ? UnavailableColour
 						: (bChosen ? ChosenColour : PlainColour)));
 
 		FSlateFontInfo Font = ChoiceLabel->GetFont();

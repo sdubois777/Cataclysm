@@ -128,7 +128,7 @@ public:
 	/**
 	 * The capstone whose three options are being shown, or none.
 	 *
-	 * WHERE THEY ARE SHOWN. In the tree list, in place of the four tree names,
+	 * WHERE THEY ARE SHOWN. In the tree list, in place of the tree names,
 	 * because that is the only other list of buttons on this screen and building
 	 * a third would be more machinery than the decision needs. Clicking any node
 	 * on the graph puts the tree names back.
@@ -260,6 +260,18 @@ public:
 	 */
 	void SetPanelSizeForTests(FVector2D Size);
 
+	/**
+	 * Describe `Button` as this screen describes a tree's button (`bIsTree`) or
+	 * a node's, for the character shown. Issue #2064.
+	 *
+	 * WHY IT IS NEEDED. A headless test has no Widget Blueprint, so the panels
+	 * the buttons live in never exist and no button of this screen's can be
+	 * reached. This runs the same function the panels run, on a button the test
+	 * made, so what it decides is tested and where it is drawn is not.
+	 */
+	void DescribeButtonForTests(class UCataclysmChoiceButton& Button, FName Value,
+								bool bIsTree);
+
 	/** How big the tree's panel is right now, in pixels. For tests. */
 	FVector2D PanelSize() const { return CanvasSize(); }
 
@@ -384,6 +396,14 @@ private:
 
 	/** What one node's button should say and whether it can take a point. */
 	void DescribeNodeButton(class UCataclysmChoiceButton& Button, FName Node);
+
+	/** One tree's button in the tree list: its name, whether it is the one
+	 *  shown, and dimmed with the reason when it is a class not chosen. */
+	void DescribeTreeButton(class UCataclysmChoiceButton& Button, FName Tree);
+
+	/** Why this character may not spend in `Tree` because its damage type's
+	 *  class is another one, or empty. Issue #2064. */
+	FString ClassRefusalFor(const FString& Tree) const;
 
 	/** The canvas's size in pixels, or a sensible guess before it has one. */
 	FVector2D CanvasSize() const;

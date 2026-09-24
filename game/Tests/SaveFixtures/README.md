@@ -222,6 +222,16 @@ issue #50:
 1, which predates even the attribute allocation, and the completeness test does
 not walk it for that reason.
 
+`Character_v3.json` was added on 2026-09-24 for issue #2064, when a character
+became limited to one class tree per damage type and `Migrate_2_to_3` came to
+remove the others from an older file. **It is `Character_v2.json` with its
+version changed and nothing else**, because the v2 file spends only in the
+Masochist tree, so the step leaves it as it is. `Character_v2.json` is kept as
+the file the step runs against. What the step does to a file with two trees of
+one damage type is checked by
+`Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType`, which
+writes its cases out rather than committing a fixture for each.
+
 **Once the game can load a save, this exception is gone.** From then on a
 file here is a file a player might have, and changing one means changing what
 an old build wrote -- which is a lie about history and defeats the whole point
@@ -233,6 +243,8 @@ of committing them. Add a schema version and a migration step instead.
 | :-- | :-- |
 | `Account_v1.json` | An account record at schema version 1. An online Hardcore partition with two characters in it |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
+| `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
+| `Character_v3.json` | The same character at version 3, identical to version 2 apart from the version |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |
@@ -244,8 +256,9 @@ the chain runs the right steps in the right order rather than merely running
 something.
 
 `UCataclysmSaveExampleRecord` exists only for these, because all three real
-records are at version 1 and version 1 is the first, so none of them has a
-migration to run yet. Its header says more.
+records were at version 1 when it was written and version 1 is the first, so
+none of them had a migration to run. The character record has had two since
+(version 3 since 2026-09-24). Its header says more.
 
 ## Two things to keep in mind when editing one
 

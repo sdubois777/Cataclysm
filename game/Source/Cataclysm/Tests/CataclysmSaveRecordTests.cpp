@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Save/CataclysmSaveMigration.h"
@@ -121,13 +122,15 @@ namespace CataclysmSaveRecordTest
 	{
 		return {
 			{ UCataclysmAccountSave::StaticClass(),   TEXT("Account_v1.json") },
-			// CHARACTER IS AT v2 SINCE 2026-08-24, when the attribute
-			// allocation became a field on it. Character_v1.json is still
-			// committed and still read, by the migration test further down.
+			// CHARACTER IS AT v3 SINCE 2026-09-24, when a character became
+			// limited to one class tree per damage type (issue #2064), and was
+			// at v2 from 2026-08-24, when the attribute allocation became a
+			// field on it. Character_v1.json and Character_v2.json are still
+			// committed and still read, by the migration tests further down.
 			// THIS LIST IS THE CURRENT SHAPE OF EACH RECORD, and an out-of-date
 			// file here would leave the completeness check below comparing a
 			// record against a fixture that no longer describes it. Issue #50.
-			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v2.json") },
+			{ UCataclysmCharacterSave::StaticClass(), TEXT("Character_v3.json") },
 			{ UCataclysmRunSave::StaticClass(),       TEXT("Run_v1.json") },
 		};
 	}
@@ -571,7 +574,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 {
 	FString Text;
 	FString Reason;
-	if (!CataclysmSaveFixtures::Read(TEXT("Character_v2.json"), Text, Reason))
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v3.json"), Text, Reason))
 	{
 		AddError(Reason);
 		return false;
@@ -584,12 +587,12 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 
 	if (Read == nullptr)
 	{
-		AddError(FString::Printf(TEXT("Character_v2.json would not load: %s -- %s"),
+		AddError(FString::Printf(TEXT("Character_v3.json would not load: %s -- %s"),
 			FCataclysmSaveStorage::Describe(Result), *Message));
 		return false;
 	}
 
-	TestEqual(TEXT("it says it is version 2"), Read->SchemaVersion, 2);
+	TestEqual(TEXT("it says it is version 3"), Read->SchemaVersion, 3);
 	TestEqual(TEXT("the name in the file"), Read->CharacterName, FString(TEXT("Vesper")));
 	TestEqual(TEXT("the identifier in the file"),
 		Read->CharacterId.ToString(EGuidFormats::Digits),
@@ -695,6 +698,141 @@ bool FCataclysmSaveCharacterV1Migrates::RunTest(const FString&)
 	TestEqual(TEXT("the level still reads"), Read->Level, 42);
 	TestEqual(TEXT("the carried slots still read"), Read->CarriedSlots.Num(), 2);
 
+	return true;
+}
+
+namespace CataclysmOneClassMigrationTest
+{
+	/** One spent node as the file writes it. */
+	struct FNode
+	{
+		const TCHAR* Node;
+		int32 Points;
+	};
+
+	/**
+	 * Character_v2.json with its passive nodes replaced by `Nodes`, read the
+	 * way a save is read, which migrates it. Null if it would not load.
+	 */
+	UCataclysmCharacterSave* ReadV2With(FAutomationTestBase& Test,
+										const TArray<FNode>& Nodes)
+	{
+		FString Text;
+		FString Reason;
+		if (!CataclysmSaveFixtures::Read(TEXT("Character_v2.json"), Text, Reason))
+		{
+			Test.AddError(Reason);
+			return nullptr;
+		}
+
+		TSharedPtr<FJsonObject> Json;
+		if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Json)
+			|| !Json.IsValid())
+		{
+			Test.AddError(TEXT("Character_v2.json is not JSON"));
+			return nullptr;
+		}
+
+		TArray<TSharedPtr<FJsonValue>> Written;
+		for (const FNode& Node : Nodes)
+		{
+			const TSharedRef<FJsonObject> Spent = MakeShared<FJsonObject>();
+			Spent->SetStringField(TEXT("Node"), Node.Node);
+			Spent->SetNumberField(TEXT("Points"), Node.Points);
+			Spent->SetNumberField(TEXT("ChosenOption"), 0);
+			Written.Add(MakeShared<FJsonValueObject>(Spent));
+		}
+		Json->GetObjectField(TEXT("PassiveAllocation"))->SetArrayField(TEXT("Nodes"), Written);
+
+		FString Edited;
+		FJsonSerializer::Serialize(Json.ToSharedRef(), TJsonWriterFactory<>::Create(&Edited));
+
+		ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+		FString Message;
+		UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(
+			FCataclysmSaveStorage::FromJson(Edited, UCataclysmCharacterSave::StaticClass(),
+											GetTransientPackage(), Result, Message));
+		if (!Read)
+		{
+			Test.AddError(FString::Printf(TEXT("the edited file would not load: %s -- %s"),
+				FCataclysmSaveStorage::Describe(Result), *Message));
+		}
+		return Read;
+	}
+
+	/** The nodes a record kept, in the order it holds them, comma separated. */
+	FString KeptNodes(const UCataclysmCharacterSave& Read)
+	{
+		TArray<FString> Out;
+		for (const FCataclysmSpentNode& Spent : Read.PassiveAllocation.Nodes)
+		{
+			Out.Add(Spent.Node.ToString());
+		}
+		return FString::Join(Out, TEXT(", "));
+	}
+}
+
+/**
+ * A character written at version 2 keeps one class tree per damage type.
+ *
+ * ISSUE #2064. The step keeps the tree with the most points in each damage
+ * type, and on a tie the tree the first point went into, and leaves alone a
+ * damage type with only one tree spent in. The node names are real rows.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveMigratesToOneClassPerDamageType,
+	"Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveMigratesToOneClassPerDamageType::RunTest(const FString&)
+{
+	using namespace CataclysmOneClassMigrationTest;
+
+	// MOST POINTS WINS, in each damage type on its own. Demonic has three trees
+	// spent in, and Masochist holds the most; War has one, which stays.
+	const UCataclysmCharacterSave* Most = ReadV2With(*this, {
+		{ TEXT("Ravager_basic_spine_000"), 2 },
+		{ TEXT("Masochist_basic_spine_000"), 5 },
+		{ TEXT("Bulwark_basic_trunk_000"), 2 },
+		{ TEXT("Ravager_basic_spine_001"), 1 },
+		{ TEXT("Ritualist_basic_spine_000"), 1 },
+	});
+	if (!Most)
+	{
+		return false;
+	}
+	TestEqual(TEXT("it arrives at version 3"), Most->SchemaVersion, 3);
+	TestEqual(TEXT("the Demonic tree with the most points and the War tree are kept"),
+		KeptNodes(*Most),
+		FString(TEXT("Masochist_basic_spine_000, Bulwark_basic_trunk_000")));
+	TestEqual(TEXT("and the Ravager and Ritualist points are returned"),
+		Most->PassiveAllocation.Total(), 7);
+
+	// A TIE KEEPS THE TREE THE FIRST POINT WENT INTO. Ravager's node comes first
+	// in the file, so Ravager is kept though Masochist holds as many points.
+	const UCataclysmCharacterSave* Tie = ReadV2With(*this, {
+		{ TEXT("Ravager_basic_spine_000"), 3 },
+		{ TEXT("Masochist_basic_spine_000"), 3 },
+	});
+	if (!Tie)
+	{
+		return false;
+	}
+	TestEqual(TEXT("on a tie the tree bought into first is kept"),
+		KeptNodes(*Tie), FString(TEXT("Ravager_basic_spine_000")));
+
+	// ONE TREE PER DAMAGE TYPE ALREADY: nothing moves.
+	const UCataclysmCharacterSave* Alone = ReadV2With(*this, {
+		{ TEXT("Masochist_basic_spine_000"), 1 },
+		{ TEXT("Bulwark_basic_trunk_000"), 4 },
+	});
+	if (!Alone)
+	{
+		return false;
+	}
+	TestEqual(TEXT("a character with one tree per damage type is unchanged"),
+		KeptNodes(*Alone),
+		FString(TEXT("Masochist_basic_spine_000, Bulwark_basic_trunk_000")));
+	TestEqual(TEXT("and keeps every point"), Alone->PassiveAllocation.Total(), 5);
 	return true;
 }
 
