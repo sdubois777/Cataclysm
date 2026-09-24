@@ -1927,6 +1927,9 @@ public:
 	/** The Reaper on this floor, or null before it arrives. For the floor panel and tests. */
 	ACataclysmEnemyCharacter* TheReaperOnTheFloor() const { return TheReaper.Get(); }
 
+	/** The elite a Blood Bond holds on this floor, or null. For the floor panel and tests. */
+	ACataclysmEnemyCharacter* BloodBondedOnTheFloor() const { return BloodBonded.Get(); }
+
 	/** Chaos Touched's stacks of one kind, for the floor panel and tests. Issues #1820, #41. */
 	int32 ChaosTouchedStacksOf(int32 Kind) const
 	{
@@ -2000,6 +2003,12 @@ private:
 
 	/** The Reaper, on every blow: one of its that lands on the player kills them. */
 	void NoteHitForTheReaper(const struct FCataclysmHitNotice& Notice);
+
+	/** Blood Bond, on the beat: the first elite that notices the player takes the bond. */
+	void StepBloodBond(class ACataclysmPlayerCharacter* Player);
+
+	/** Blood Bond, on every death: the player's death kills the elite bonded on this floor. */
+	void NoteDeathForBloodBond(const struct FCataclysmDeathNotice& Notice);
 
 	/** Soul Harvest, on every death: a soul to the nearest living creature within reach. */
 	void NoteDeathForSoulHarvest(const struct FCataclysmDeathNotice& Notice);
@@ -2859,6 +2868,13 @@ private:
 	float TheReaperSecondsOnFloor = 0.0f;
 	bool bTheReaperRaised = false;
 	TWeakObjectPtr<ACataclysmEnemyCharacter> TheReaper;
+
+	/**
+	 * Blood Bond: the elite bonded on this floor, and whether this floor has bonded at all,
+	 * which a revival does not undo. The floor's: both go back when a floor begins.
+	 */
+	TWeakObjectPtr<ACataclysmEnemyCharacter> BloodBonded;
+	bool bBloodBondFormed = false;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

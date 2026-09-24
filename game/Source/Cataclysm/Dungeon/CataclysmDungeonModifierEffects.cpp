@@ -131,6 +131,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::ChaosTouchedKey =
 const TCHAR* UCataclysmDungeonModifierEffects::TheReaperKey =
 	TEXT("Death_The_Reaper");
 
+const TCHAR* UCataclysmDungeonModifierEffects::BloodBondKey =
+	TEXT("Demonic_Blood_Bond");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -409,7 +412,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(TrickOrTreatKey)
 		|| RowKey == FName(SoulHarvestKey)
 		|| RowKey == FName(ChaosTouchedKey)
-		|| RowKey == FName(TheReaperKey))
+		|| RowKey == FName(TheReaperKey)
+		|| RowKey == FName(BloodBondKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -592,6 +596,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(SoulHarvestKey),
 		FName(ChaosTouchedKey),
 		FName(TheReaperKey),
+		FName(BloodBondKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1910,6 +1915,16 @@ bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
 	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
 	// does not.
 	return SecondsOnFloor >= TheReaperDelaySeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::BloodBondMayBond(int32 Rung, bool bIsAFloorsBoss,
+														 float DistanceCm, float NoticesFromCm)
+{
+	// EXACTLY THE ELITE RUNG: the rungs above it have names of their own. AND NEVER A
+	// FLOOR'S BOSS, whose death is what ends the floor: a Gatekeeper at the Elite rung that
+	// could not die would leave the floor with no end.
+	return Rung == BloodBondRung && !bIsAFloorsBoss && NoticesFromCm > 0.0f
+		&& DistanceCm <= NoticesFromCm;
 }
 
 int32 UCataclysmDungeonModifierEffects::ChaosTouchedKindFor(float Roll)

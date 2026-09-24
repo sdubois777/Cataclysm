@@ -3889,3 +3889,24 @@ def test_the_reaper_row_still_stalks_slowly_and_kills_with_one_hit_of_the_scythe
     assert not any(character.isdigit() for character in words), (
         "Death_The_Reaper now states a figure. Ten seconds into a floor was a ruling because "
         "the row gave none; use the row's figure. " + words)
+
+def test_blood_bond_row_still_binds_the_first_elite_seen_until_the_player_dies():
+    """The phrases the rule's readings rest on.
+
+    "You are soul-linked to the first elite you see on each floor. This enemy cannot die unless
+    you do and is immune to your damage." THE FIRST ELITE is why exactly one creature at the
+    Elite rung is bound; YOU SEE is why it is the one that notices the player; EACH FLOOR is why
+    a bond is one a floor and a floor change releases it; CANNOT DIE UNLESS YOU DO is why the
+    player's death kills it; IMMUNE TO YOUR DAMAGE is why it cannot be hurt; and the row gives
+    no figure. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Demonic_Blood_Bond"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("the first elite you see", "on each floor", "cannot die unless you do",
+                   "immune to your damage"):
+        assert phrase in lower, (
+            f"Demonic_Blood_Bond no longer says {phrase.upper()!r}. A reading of the rule rests "
+            "on it; see BloodBondKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert not any(character.isdigit() for character in words), (
+        "Demonic_Blood_Bond now states a figure; the rule states none. " + words)
