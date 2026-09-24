@@ -2,6 +2,85 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Wasting Sickness's "floor boss" is a Gatekeeper or any creature at the Boss rung, the rule Starvation Curse uses
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (Wasting Sickness's cure
+asks `DiedAsAFloorsBoss`), the comment on `WastingSicknessKey` in
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`, and two automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issues
+[#1786](https://github.com/sdubois777/Cataclysm/issues/1786) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
+
+**This answers the entry of 2026-09-14, "Wasting Sickness stacks on a blow that lands, takes its own
+two fields rather than Starvation's, and has two cures where the row states one", which is left as it
+was written.** Its section '"A floor boss" is any boss on the floor' chose `IsBoss()`, rarity step 4 or
+above, over the creature at the floor's exit, because "nothing in the game marks it".
+
+### What changed, and why the old judgement no longer holds
+
+- **The fact it rested on stopped being true.** Since Nothing Is Forgotten, the game mode identifies
+  the Gatekeeper at a floor's exit, and `ACataclysmDungeonGameMode::DiedAsAFloorsBoss` (added by
+  Starvation Curse) answers "a Gatekeeper, or any creature at the Boss rung".
+- **What `IsBoss()` alone meant in play was measured while building Starvation Curse.** Every
+  creature draws its rung from `game/Data/EnemyRarities.csv`, where Boss has spawn weight 0.01 of a
+  total of 1.0, and the Gatekeeper draws too (`GatekeeperRarityStep=-1` in
+  `game/Config/DefaultGame.ini`). So the cure was a 1% draw per creature, and the Gatekeeper cured
+  only when it happened to draw the Boss rung.
+- **Ruled by the coordinating session under the owner's delegation, 2026-09-23, as a correction**:
+  Wasting Sickness's cure uses the same rule as Starvation Curse's cleanse, through the one shared
+  helper. Nothing else about the rule changes. The player's own death still cures it at once.
+
+In play the cure now comes where a Gatekeeper stands: the last floor of an ordinary or Volatile
+dungeon of more than one floor, every floor of an Elite dungeon, and the last wave of a Horde. A
+creature that draws the Boss rung still cures it anywhere.
+
+**The Nihil's Embrace's cleanse keeps asking `IsBoss()`, as ruled by the coordinating session the same
+day:** its row names a tier ("defeat a high tier enemy") and never "a floor's boss", and its recorded
+judgement (the Boss or Cataclysm Boss rung, the Herald excluded) rests on those words, which still
+stand. In play that cleanse needs a creature that drew the Boss rung, 1% of creatures. **Play-test
+point for the owner.**
+
+### Tests
+
+Two automation tests, both in `Cataclysm.DungeonModifierEffects.`:
+
+- `AFloorsBossIsAGatekeeperOrAnyCreatureAtTheBossRung`: the shared helper answers yes for a creature
+  at the Boss rung and for a Gatekeeper held at the Common rung, and no for a Common creature, the
+  player and nothing.
+- `AGatekeeperAtAnyRungCuresWastingSickness`: one stack from a blow, then a Gatekeeper held at the
+  Common rung dies and the debuff comes off maximum health.
+
+The existing `ABossCuresWastingSicknessAndTheStairsDoNot` still holds: a Common's death cures nothing
+and a creature at the Boss rung cures it.
+
+### Run
+
+- **The group on development (f285be3d) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "249 tests performed, 249 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on f22a699b:** "Build: Succeeded - 11 actions, 8 files compiled" and "2278 tests
+  performed, 2278 succeeded, 0 failed", as registered (2276 + the two named tests), with every declared
+  test reported. The group alone on the same head then printed "251 tests performed, 251 succeeded,
+  0 failed".
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing exactly the
+  registered tests with the break in and 0 of 251 restored, with each broken run's failure text quoted:
+  - **Wasting Sickness asking the rung alone again** failed `AGatekeeperAtAnyRungCuresWastingSickness`
+    alone: "Expected 'its death took the debuff off entirely' to be null";
+  - **the Gatekeeper left out of `DiedAsAFloorsBoss`** failed
+    `AFloorsBossIsAGatekeeperOrAnyCreatureAtTheBossRung` ("Expected 'and it is a floor's boss all the
+    same' to be true"), `AGatekeeperAtAnyRungCuresWastingSickness` and Starvation Curse's
+    `AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse` ("Expected 'its death cleansed both kinds'
+    to be 0, but it was 2");
+  - **the Boss rung left out of `DiedAsAFloorsBoss`** failed
+    `AFloorsBossIsAGatekeeperOrAnyCreatureAtTheBossRung` ("Expected 'a creature at the Boss rung is' to
+    be true"), `ABossCuresWastingSicknessAndTheStairsDoNot` ("Expected 'a boss's death takes the debuff
+    off entirely' to be null") and `AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse` ("Expected
+    'its death cleansed the curse' to be 0, but it was 1").
+
+---
+
 ## 2026-09-23 — Each enchantment row can count stacks of its own, granted by its event (engine only)
 
 **Affects:**
