@@ -40,6 +40,9 @@
 #include "AbilitySystem/CataclysmNova.h"
 // For the flag saying a character's skills cost no health. Issue #1051.
 #include "AbilitySystem/CataclysmSkillTemplate.h"
+// For Summon Imp and the two stats Press-Ganged and Rekindled are read by.
+// Issue #1515.
+#include "AbilitySystem/CataclysmSkillTemplates.h"
 // For the weapon skill table, which says which damage types a weapon type can
 // carry and so which creation choices are legal. Issue #1055.
 #include "AbilitySystem/CataclysmWeaponSkills.h"
