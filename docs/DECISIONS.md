@@ -2,6 +2,143 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Overlapping zones of one floor rule burn a target once a second, not once per zone
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h` and `.cpp` (the record of
+which floor rule last burned whom, and the question a zone asks it),
+`game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h` and `.cpp` (a zone's floor kind, asked
+before each burn), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` (the three rules mark
+their zones, and a floor change clears the record), and the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issue
+[#2074](https://github.com/sdubois777/Cataclysm/issues/2074). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
+
+### The ruling
+
+**By the coordinating session under the owner's delegation, 2026-09-24: overlapping zones of one kind
+do not stack.** A player standing in two Hallowed Groundfall craters, two Infernal Rain patches or two
+Singularity Wells is burned once per sweep, not once per zone. The reasons given:
+
+- **This project already ruled the same case for Necrotic Ground**: the entry "2026-09-17 — Necrotic
+  Ground spreads a fog that halves the healing of a player standing in it, heals the creatures in it,
+  and burns the player once a second however many patches cover them", which cites Diablo III's Plagued
+  affix. That entry is the precedent for the rule, not for the code (below).
+- **Path of Exile's ground effects of one type do not stack.** PoEDB's Ground effect page
+  (https://poedb.tw/us/Ground_effect, fetched again on 2026-09-24 before quoting): "Those of the same
+  type do not cumulatively stack their effects."
+
+### What was found
+
+Three floor rules place ground that burns by itself: Infernal Rain, Singularity Wells and Hallowed
+Groundfall. Nine others place zones that deal nothing and act through the game mode. Each of the three
+places zones 301 to 1,200 cm from where the player stands at that moment, with a 300 cm radius and up
+to three alight, and nothing kept them apart. Each zone swept on its own one-second timer and burned
+everyone inside it, so a player where two overlapped was burned by both.
+
+### What was built
+
+- **`ACataclysmGroundZone::BurnsOnceASecondAs`**, the floor rule a zone burns for, None by default. The
+  dungeon game mode sets it to the rule's key on Infernal Rain's patches, Singularity Wells and Hallowed
+  Groundfall's craters, and on nothing else.
+- **`ACataclysmFloorHazardSource::MayBurn(Kind, Target, Now)`**, on the one owner every floor rule's zones
+  share. It refuses a target that a zone of the same kind burned less than one sweep's interval ago
+  (`ACataclysmGroundZone::TickSeconds`, less 0.001 seconds of slack for floating point), and otherwise
+  records the burn and allows it. A kind of None is never refused.
+- **`ACataclysmGroundZone::Sweep`** asks it, when the zone has a kind and its owner is the floor's hazard
+  source, before dealing damage to each target. A refused target still counts in `LastSweepCount`.
+- **The record is cleared as a floor's rule zones are destroyed.** The hazard source outlives the floor
+  -- `ForFloor` answers the one already in the world -- so its record does not reset with the floor on
+  its own.
+
+### Judgements, ruled with the proposal
+
+- **A window of one interval rather than "one burn per sweep"**, because two zones' timers run at
+  independent phases. With one sweeping at 0.3, 1.3 and 2.3 seconds and the other at 0.8 and 1.8, the
+  first burns at 0.3, the second is refused at 0.8, the first burns at 1.3 (exactly one interval later,
+  which the slack admits) and the second is refused at 1.8: one burn a second.
+- **Every target, not only the player.** A minion standing in two craters is also burned once a second.
+- **Each rule is its own kind.** A crater and a patch on one spot both burn: the ruling is about zones of
+  one kind.
+- **The record lives on the floor hazard source**, not in a new world subsystem, because only floor
+  hazards set a kind. That makes `CataclysmGroundZone.cpp` the first file under `AbilitySystem/` to
+  include a `Dungeon/` header: none of the 12 headers in `Dungeon/` was included by any file there
+  before this change, searched both by the `Dungeon/` path and by each header's name. The include
+  carries a comment saying so.
+
+### A stated limit, not fixed
+
+A skill's zone may deal less on its first sweep ([#2079](https://github.com/sdubois777/Cataclysm/pull/2079),
+`FirstSweepDamage`), and that share is spent when `TicksElapsed` first moves. **A zone carrying both a
+first-sweep share and a burn kind would spend its share on a first sweep that `MayBurn` refused.** No
+zone carries both today: only skills set a first-sweep share (`DealsOnItsFirstSweep`, called from
+`CataclysmSkillTemplate.cpp`), and only the three floor rules set a kind. The two otherwise do not
+interact: `MayBurn` decides whether a target is burned, and the first-sweep share decides how much.
+
+### Why Necrotic Ground's mechanism was not reused
+
+Necrotic Ground's patches deal nothing; the game mode's beat asks whether any patch covers the player's
+feet and burns the player once per interval. Moving the three rules onto that would have changed who
+they burn (the zones burn everyone the hazard source is hostile to; that loop burns only the player),
+moved their damage from the zones' own timers to the quarter-second beat, and emptied their
+`DamagePerTick`, which the resistance tests read.
+
+### Tests
+
+Five automation tests, all in `Cataclysm.DungeonModifierEffects.`. Each places zones with the floor's
+own rule, keeps two, puts the second on the first's centre, stands the player there, and sweeps by hand
+while moving only the world's time, so no timer fires between readings:
+
+- `TwoOverlappingCratersBurnAPlayerOncePerSecond`, `TwoOverlappingInfernalRainPatchesBurnAPlayerOncePerSecond`
+  and `TwoOverlappingSingularityWellsBurnAPlayerOncePerSecond`: the zone is marked as its row's; one
+  zone's sweep costs health; the second zone found the player and burned nothing more in the same
+  second; a second later the first burns again and the second is refused that second too. The
+  crater test then runs the floor-change path (`ApplyFloorRulesToPlayer`) and asserts that the hazard
+  source, which remembered the burns, remembers none after it (`BurnsRemembered`, a count for tests).
+- `ACraterAndAPatchOnOneSpotBothBurn`: each kind measured alone, with the player's health put back after
+  each and five seconds between readings, then both in one second cost the sum.
+- `OverlappingZonesWithNoFloorKindStillEachBurn`: two patches with the kind taken off both burn the
+  player twice in one second, as every skill's and creature's ground does.
+
+**One existing helper changed, approved by the coordinating session under the owner's delegation**:
+`StandInAndSweep`, which the four resistance tests use, now moves the
+world's time on by one interval before each sweep. Those tests sweep the same zone twice to compare two
+resistances, and at one instant the second sweep would now be refused. Moving `TimeSeconds` runs no timer
+and ticks no actor. Those four tests measure resistances, not stacking, and a sweep one interval later
+keeps them measuring that.
+
+### Run
+
+One editor window on 2026-09-24, on f3528a2a (the melee-while-moving change's final head, since merged as
+development 31674a86 with the same whole tree, eccaf3b6). Every figure below is what
+`python tools/unreal_build.py tests` or `prove_cpp_guard` printed. The Python suite of record ran first:
+5,425 tests, 0 failed.
+
+- **The whole suite on the head**, ca64d67c: 2,364 tests performed, 2,364 succeeded, 0 failed. It ran
+  from 14:49:06 to 14:55:51 local time, and the Unreal CI compile for the merge of #2080 ran on the same
+  machine from 14:53:04 to 14:55:11, inside it. Nothing failed.
+- **The group on the head**: 280 tests performed, 280 succeeded, 0 failed.
+- **The group on the base**, f3528a2a: 275 tests performed, 275 succeeded, 0 failed. Run after the
+  others, once the Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **`MayBurn` never refusing** (`if (false && ...)`). With the break in: 280 performed, 277 succeeded, 3
+  failed, the three rule tests, each on "and burned nothing more in the same second", "a second later the
+  first zone burns again" and "and the second is refused that second too" -- the craters' reading 3,447.67,
+  5,171.51 and 6,895.34 where 1,723.84, 3,447.67 and 3,447.67 were expected. The crater-and-patch and
+  no-kind tests held. Restored: 280 performed, 280 succeeded, 0 failed.
+- **The floor change not forgetting** (`Source->ForgetBurns();` removed). With the break in: 280
+  performed, 279 succeeded, 1 failed, `TwoOverlappingCratersBurnAPlayerOncePerSecond`, on "Expected 'and a
+  floor change forgets them' to be 0, but it was 1". Restored: 280 performed, 280 succeeded, 0 failed.
+- **The window doubled** (`2.0 * ACataclysmGroundZone::TickSeconds`). With the break in: 280 performed,
+  273 succeeded, 7 failed: the three rule tests on "a second later the first zone burns again" and "and
+  the second is refused that second too" (one burn where two were expected), and the four resistance
+  tests, whose sweeps `StandInAndSweep` puts one second apart, on "took health with ... raised: 0.0".
+  Restored: 280 performed, 280 succeeded, 0 failed.
+
+---
+
 ## 2026-09-24 — Blood Bond: the first elite that notices the player on a floor cannot be hurt, and dies when the player does
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

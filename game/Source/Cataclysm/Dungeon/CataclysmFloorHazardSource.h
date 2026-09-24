@@ -102,6 +102,37 @@ public:
 	// `FCataclysmHitDelivery::DamageType` on a blow, and
 	// `ACataclysmGroundZone::DamageType` on a patch.
 
+	/**
+	 * Whether a floor zone of this kind may burn this target now, and if it may, a record
+	 * that it did. Issue #2074.
+	 *
+	 * ZONES OF ONE KIND DO NOT STACK, ruled by the coordinating session under the owner's
+	 * delegation on 2026-09-24: a target standing in two craters, two Infernal Rain patches
+	 * or two Singularity Wells is burned once a second, not once per zone. A target burned by
+	 * a zone of `Kind` less than a sweep's interval ago (`ACataclysmGroundZone::TickSeconds`,
+	 * less `BurnSlackSeconds`) is refused. A window and not "one per sweep" because two
+	 * zones' timers run at independent phases: with one sweeping at 0.3, 1.3, 2.3 and the
+	 * other at 0.8, 1.8, the first burns at 0.3, the second is refused at 0.8, the first
+	 * burns at 1.3 and the second is refused at 1.8 -- one burn a second.
+	 *
+	 * HERE, ON THE ONE OWNER EVERY FLOOR RULE'S ZONES SHARE. A kind of None is never
+	 * refused, so ground a skill or a creature leaves stacks as it always has.
+	 */
+	bool MayBurn(FName Kind, const AActor* Target, double NowSeconds);
+
+	/**
+	 * Forget every burn. Called as a floor's rule zones are destroyed: this actor outlives
+	 * the floor (`ForFloor` answers the one already in the world), so its record does not
+	 * reset with the floor unless it is told to.
+	 */
+	void ForgetBurns() { LastBurnedAt.Reset(); }
+
+	/** How many burns the record holds. For tests: a floor change must leave it empty. */
+	int32 BurnsRemembered() const { return LastBurnedAt.Num(); }
+
+	/** The slack under a full interval, so a sweep exactly one interval later is not refused. */
+	static constexpr double BurnSlackSeconds = 0.001;
+
 protected:
 	/**
 	 * An empty root so the actor has a position at all.
@@ -156,4 +187,7 @@ private:
 	 * against.
 	 */
 	FGenericTeamId TeamId;
+
+	/** When each target was last burned by a zone of each kind, in world seconds. */
+	TMap<TPair<FName, TWeakObjectPtr<const AActor>>, double> LastBurnedAt;
 };
