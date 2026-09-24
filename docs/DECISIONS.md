@@ -77,8 +77,8 @@ automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffects
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+automation tests and the three guard proofs have run; their printed figures are at the end of this
+entry.
 
 ### The row
 
@@ -136,10 +136,28 @@ and docs/Cataclysm_GDD_v2.md still says "The affix tier column IS still a hard c
 in a copy of the repository, with "dropped by enemies" removed from the row and with that design
 sentence changed.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+- **The group on development (57a05c64) first:** `Cataclysm.DungeonModifierEffects.` printed "Build:
+  Succeeded - 28 actions, 25 files compiled" and "231 tests performed, 231 succeeded, 0 failed", as
+  predicted.
+- **The whole suite on 9c4fe6d8:** "Build: Succeeded - 20 actions, 17 files compiled" and "2243 tests
+  performed, 2243 succeeded, 0 failed", as registered (2239 + the four named tests), with every declared
+  test reported. In that run's `game/Saved/Logs/Cataclysm.log` the group's 235 all succeeded, the four
+  named above among them.
+- **Three guard proofs** on the prefix `Cataclysm.DungeonModifierEffects.`, each failing 1 of 235 with the
+  break in and 0 of 235 restored, exactly as registered. Each broken run's log was copied before the
+  restored run overwrote it, and its failure text is quoted:
+  - an item never rolled chaotically (`bChaoticTiers ?` made `false ?`, in `CataclysmDropRoll.cpp`)
+    failed `AChaoticDropKeepsItsBaseRarityAffixesAndValues`: "Expected 'and some of their tiers moved:
+    0' to be true";
+  - the floor never answering true (the key replaced, in `CataclysmDungeonGameMode.cpp`) failed
+    `AFloorCarryingChaoticLootMakesItsDropsChaotic`: "Expected 'a floor carrying the row makes drops
+    chaotic' to be true";
+  - **the cap removed** (the draw made `RandRange(1, UCataclysmItemValues::MaxAffixTier)`) failed
+    `AChaoticAffixTierNeverPassesTheDifficultyCap`: "Expected 'at difficulty 1 nothing is drawn above T2'
+    to be 0, but it was 1381", and "at difficulty 3 nothing is drawn above T4" found 821. The even test
+    and the item test, both at difficulty 8 whose cap is T7 already, kept passing.
 
 ---
 
