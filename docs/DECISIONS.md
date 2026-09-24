@@ -2,6 +2,48 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — The README's sheet table lists every column of each sheet, and a test holds the list to the workbook
+
+**Affects:** `docs/README.md` (the table headed "Sheets in `All_Things_Cataclysm.xlsx`") and
+`tools/tests/test_docs_readme_sheet_table_is_true.py`. Issue
+[#1884](https://github.com/sdubois777/Cataclysm/issues/1884).
+
+### WHAT WAS WRONG
+
+The table gives each sheet's name, row count and columns. Its test checked the names and the counts
+against the workbook, and **nothing checked the columns**. Measured on 2026-09-23, from the workbook
+as committed on `development` at 57a05c64, **eleven of the table's rows differed from their
+sheets**. #1884 had counted ten on 2026-09-14; Minion Types gained a column since. The Affixes row
+listed 7 of 15 columns, and it left out Allowed Slots and Floor, the two that an affix's behaviour
+depends on.
+
+### THE CHOICE, A JUDGEMENT UNDER THE STANDING APPROVAL
+
+#1884 asked for a decision on three rows that abbreviated their columns: Gems, Enemy Modifiers and
+Enchantments. **They are written out in full, with no exception list.** Every headed row can then be
+checked the same way, and there is no allowance to keep in step. This is a documentation format
+choice, not a design one. The column heading changes from "First columns" to "Columns", because the
+cell now lists every column rather than the first few.
+
+**What the cell holds:** every cell of the sheet's first row, in order, with `(blank)` for an empty
+cell. Empty cells after the last heading are dropped, since a spreadsheet's used range often runs
+past them. Crafting has two blank heading cells, and Enchantments has one blank spacer and one cell
+headed `Column 4`. The three sheets with no heading row keep their descriptions of their layout and
+are not column-checked.
+
+### TEST AND PROOF
+
+`test_every_column_list_in_the_table_is_true` compares each headed sheet's cell with the workbook's
+first row. It requires at least 20 headed sheets to have been read. Two breaks with
+`tools/prove_guard.break_and_run`, in a `git archive` copy of b91adbf5, each asserted to match once:
+
+| Break | Printed | `named_failures` |
+|---|---|---|
+| the Affixes row put back to its old seven columns | `PROVED: 1 failed, 4 passed in 0.52s \| restored: 5 passed in 0.43s` | `test_every_column_list_in_the_table_is_true` |
+| Material Tiers' `Colour` and `Note` swapped, so every name is present but the order is wrong | `PROVED: 1 failed, 4 passed in 0.50s \| restored: 5 passed in 0.42s` | `test_every_column_list_in_the_table_is_true` |
+
+---
+
 ## 2026-09-23 — Every workbook column the generator reads is required, and one may be optional only by declaration
 
 **Affects:** `tools/generate_datatables.py` (how a workbook cell is read), four fixtures in
