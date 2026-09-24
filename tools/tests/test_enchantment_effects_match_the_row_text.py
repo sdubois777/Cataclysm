@@ -421,8 +421,10 @@ JUDGED_NUMBERS = {
 #: from 298 over 231: five rows on three enchantments that had none.
 #: The two damage sentences take an attack damage row and a spell damage
 #: row each; the maximum health drawback is one row.
-AUTHORED_ROWS = 303
-AUTHORED_ENCHANTMENTS = 234
+#: AND 304 OVER 235 SINCE THE NON-CRITICAL DRAWBACK,
+#: issue #1686, from 303 over 234: one row on one enchantment.
+AUTHORED_ROWS = 304
+AUTHORED_ENCHANTMENTS = 235
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
