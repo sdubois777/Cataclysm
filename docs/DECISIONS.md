@@ -1578,6 +1578,103 @@ floor.", and with "5%" added before "slower movement".
 
 ---
 
+## 2026-09-23 — A projectile's landed contacts after its first can deal less, and "Projectiles deal 20%-35% less damage on each subsequent hit after the first" does it
+
+**Affects:**
+- `UCataclysmDamageCalculation`: `ProjectileLaterHitDamageStat` (`projectile_later_hit_damage`)
+  and `NormalProjectileLaterHitDamage` (100)
+- `ACataclysmProjectile`: `LandedContacts`, `HitOne` and `Finish`
+- `UCataclysmPlayerClassStats`: the stat's base in `EngineSuppliedBases`, and its name in
+  `StatsWithNoAttribute`
+- `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`
+- issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686) (row N061)
+
+### WHAT EXISTED
+
+Projectiles do hit more than once:
+- `Pierce=99` passes through every enemy;
+- the Axe's Carom glances on through three more;
+- a returning throw hits on the way back.
+
+`ACataclysmProjectile::HitOne` deals each contact separately, and the projectile keeps its own count of
+what it struck. **No blow lookup carries a hit index.** Handing one through the seven stat lookups is
+the costly route #1515 warned about.
+
+So the share is a stat, the shape `non_critical_damage` uses. `HitOne` asks the firer for it, with the
+firing skill's tags, for every landed contact after the first. It multiplies that contact's whole
+damage percentage by the share. Its base is 100, supplied by `EngineSuppliedBases`.
+
+### THE READING, AND THE JUDGEMENTS
+
+**The research does not settle the reading.** poedb.tw's Pierce Support and Chain Support hold no line
+that scales damage by hit order; Chain Support has only a flat "Supported Skills deal (11-30)% less
+Damage with Hits". So the coordinating session ruled on 2026-09-23, under the owner's delegation:
+
+- **FLAT, not per contact.** The first landed contact deals 100%. Every one after it deals the row's
+  share: 65% at the top of the range, whether it is the second contact or the fifth. The sentence says
+  "on each subsequent hit" and not "for each". A per-contact reading would leave a `Pierce=99` bolt two
+  useful hits: 100, 65, 30, 1 and 1 percent across five enemies.
+- **An evaded contact is not a hit, and does not move the count.** An evaded shot never connected,
+  the ruling of 2026-09-04. `LandedContacts` counts a contact whose damage was sent and not evaded;
+  `EnemiesHit` counts evaded contacts too.
+- **One detonation is one landing.** Everything in the blast is struck at the count the projectile
+  arrived with, and the count then moves by one if anything was landed on.
+- **A return pass continues the same count.** It is the same projectile, and each contact is its own
+  landing (2026-09-16).
+
+**How it combines with Carom.** The row multiplies the contact's figure after Carom's glances have
+raised it. A Carom throw carrying the row deals 100, then 120 × 0.65 = 78, then 140 × 0.65 = 91. A test
+pins those figures.
+
+**A firer with no stat line keeps all of every contact.** That covers every creature, and a test checks
+it. Minions fire no projectiles: `CataclysmMinion.cpp` never calls `ACataclysmProjectile::Fire`.
+
+### THE ROW
+
+| Enchantment | Row |
+| :-- | :-- |
+| Projectiles deal 20%-35% less damage on each subsequent hit after the first | `projectile_later_hit_damage`, more -20 to -35, `Type.Projectile` |
+
+### Run
+
+The row was written into the design workbook in this window, at row 306 of the Enchantment Effects
+sheet, and every step matched its registration.
+
+- **The build**, on `83b7f4b4`: "Build: Succeeded - 29 actions, 26 files compiled".
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "84 tests
+  performed, 82 succeeded, 2 failed", the two registered:
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt`, with 1 row only in the CSV;
+  - `TheProjectileLaterHitRowLeavesALaterContact65PercentOfItself`: "Expected 'worn, a projectile's
+    later contact keeps 65%' to be 65.000000, but it was 100.000000".
+- **The Python run of record on `83b7f4b4`** was still going in this worktree when the machine was
+  granted. The build and the test run above went ahead beside it, because neither writes a file it
+  reads. The asset rebuild and the proofs waited for its final line, "1 failed, 5416 passed, 8
+  skipped", the stale hash as registered.
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`93f11964`, 304 rows to 305). The Python asset-freshness tests then passed, 18 of 18.
+- **No Second Wind merged during the window** (`development` `6c5d974f`). Its Unreal compile ran on
+  this machine from 19:30:16Z to 19:31:43Z, during the asset rebuild. The whole suite below ran from
+  19:33:50Z to 19:39:22Z, so the two did not overlap.
+- **The whole suite on `93f11964`:** "2354 tests performed, 2354 succeeded, 0 failed", as registered,
+  with every declared test reported. `EveryEngineSuppliedBaseReachesACharacter` passed its four steps
+  for `projectile_later_hit_damage`, the second stat with no attribute.
+- **Three guard proofs.** Each failed exactly the registered tests with the break in and none once
+  restored. Each broken run's log was copied before the restored run overwrote it:
+  - **the share never applied to a later contact** (`Percent *= ...` made `(void)LaterHitShare;`)
+    failed the piercing test, the Carom test and `EveryStatWithNoAttributeIsActuallyRead`, 3 of 5:
+    "Expected 'carrying the row: the second keeps the share' to be 65.000000, but it was 100.000000",
+    "Expected 'the second is 120 kept at 65%: 78' to be 78.000000, but it was 120.000000" and
+    "Expected 'the carrying caster's second contact is half' to be 50.000000, but it was 100.000000";
+  - **the first landed contact reduced too** (`LandedContacts > 0` made `>= 0`) failed the piercing
+    test, `ADetonationIsOneLandingForEverythingItCatches` and the Carom test, 3 of 3: "Expected 'the
+    enemy it stopped at takes the first-hit damage' to be 100.000000, but it was 65.000000" and
+    "Expected 'the first contact is the plain throw: 100' to be 100.000000, but it was 65.000000";
+  - **an evaded contact counted as landed** failed
+    `APiercingShotsLandedContactsAfterTheFirstKeepTheLaterHitShare` alone, 1 of 1: "Expected 'carrying
+    the row, first evades: two contacts landed' to be 2, but it was 3".
+
+---
+
 ## 2026-09-23 — A hit whose critical roll failed can be made smaller, and "Non-critical strikes deal 20%-35% less damage" does it
 
 **Affects:**

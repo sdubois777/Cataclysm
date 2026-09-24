@@ -7094,6 +7094,227 @@ bool FCataclysmGlanceAddsDamageTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmLaterHitTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** "Projectiles deal 35% less damage on each subsequent hit after the first"
+	 *  on a fighter: the base of 100 the stat fold supplies, and 35% less. */
+	void GiveTheLaterHitShare(FScopedFighter& Who)
+	{
+		FCataclysmStatModifier Less;
+		Less.Bucket = ECataclysmStatBucket::More;
+		Less.Source = ECataclysmModifierSource::Enchantment;
+		Less.Value = -35.0f;
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+			FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat));
+		Line.Base = UCataclysmDamageCalculation::NormalProjectileLaterHitDamage;
+		Line.Modifiers = {Less};
+		Who.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/** A piercing shot straight down the X axis, far enough to pass everyone. */
+	ACataclysmProjectile* PiercingShot(FScopedFighter& Caster)
+	{
+		return ACataclysmProjectile::Fire(
+			Caster.Actor, FVector::ZeroVector, FVector(9 * M, 0, 0),
+			/*InRadiusCm=*/100.0f, /*InSpeed=*/2000.0f, /*InPierce=*/99,
+			/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+			FGameplayTagContainer(), /*bInBurns=*/false);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLaterHitPierceTest,
+	"Cataclysm.Skills.APiercingShotsLandedContactsAfterTheFirstKeepTheLaterHitShare",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Projectiles deal 20%-35% less damage on each subsequent hit after the first",
+ * at 35% less. Issue #1686. FLAT, ruled under the owner's delegation on
+ * 2026-09-23: the first landed contact keeps all of itself, and every one after
+ * it keeps 65% -- the third is 65% too, not less again.
+ *
+ * AN EVADED CONTACT IS NOT A HIT, so a shot whose first target evades lands
+ * its first hit on the second. AND A FIRER WITH NO STAT LINE keeps all of
+ * every contact, which is every creature.
+ */
+bool FCataclysmLaterHitPierceTest::RunTest(const FString&)
+{
+	using namespace CataclysmLaterHitTest;
+	using namespace CataclysmProjectileTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	const auto Run = [this](bool bCarries, bool bFirstEvades, const TCHAR* What)
+	{
+		UWorld* World = MakeWorld();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedFighter Caster(World, FVector::ZeroVector);
+		FScopedFighter First(World, FVector(2 * M, 0, 0));
+		FScopedFighter Second(World, FVector(4 * M, 0, 0));
+		FScopedFighter Third(World, FVector(6 * M, 0, 0));
+		if (bCarries)
+		{
+			GiveTheLaterHitShare(Caster);
+		}
+		if (bFirstEvades)
+		{
+			First.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+		}
+
+		ACataclysmProjectile* Shot = PiercingShot(Caster);
+		if (!Shot)
+		{
+			AddError(TEXT("Could not fire the shot."));
+			return;
+		}
+		ON_SCOPE_EXIT { if (IsValid(Shot)) { Shot->Destroy(); } };
+
+		const float FirstBefore = First.Health();
+		const float SecondBefore = Second.Health();
+		const float ThirdBefore = Third.Health();
+		FlyToCompletion(Shot);
+
+		const float Later = bCarries ? 0.65f : 1.0f;
+		if (bFirstEvades)
+		{
+			TestEqual(FString::Printf(TEXT("%s: the first target evaded"), What),
+				FirstBefore - First.Health(), 0.0f, 0.01f);
+			TestEqual(FString::Printf(TEXT("%s: so the second is the first landing"), What),
+				SecondBefore - Second.Health(), WeaponDamage, 0.01f);
+			TestEqual(FString::Printf(TEXT("%s: and the third a later one"), What),
+				ThirdBefore - Third.Health(), WeaponDamage * Later, 0.01f);
+			TestEqual(FString::Printf(TEXT("%s: two contacts landed"), What),
+				Shot->LandedContacts, 2);
+			return;
+		}
+		TestEqual(FString::Printf(TEXT("%s: the first keeps all of itself"), What),
+			FirstBefore - First.Health(), WeaponDamage, 0.01f);
+		TestEqual(FString::Printf(TEXT("%s: the second keeps the share"), What),
+			SecondBefore - Second.Health(), WeaponDamage * Later, 0.01f);
+		TestEqual(FString::Printf(TEXT("%s: and so does the third, the same share"), What),
+			ThirdBefore - Third.Health(), WeaponDamage * Later, 0.01f);
+		TestEqual(FString::Printf(TEXT("%s: three contacts landed"), What),
+			Shot->LandedContacts, 3);
+	};
+
+	Run(/*bCarries=*/true, /*bFirstEvades=*/false, TEXT("carrying the row"));
+	Run(/*bCarries=*/true, /*bFirstEvades=*/true, TEXT("carrying the row, first evades"));
+	Run(/*bCarries=*/false, /*bFirstEvades=*/false, TEXT("with no stat line"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLaterHitDetonationTest,
+	"Cataclysm.Skills.ADetonationIsOneLandingForEverythingItCatches",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A projectile that does not pierce stops at the first enemy and detonates in a
+ * radius. Issue #1686: ONE DETONATION IS ONE LANDING, ruled under the owner's
+ * delegation on 2026-09-23, so both enemies it catches take its first-hit
+ * damage from a firer carrying the later-hit row, and the count moves by one.
+ */
+bool FCataclysmLaterHitDetonationTest::RunTest(const FString&)
+{
+	using namespace CataclysmLaterHitTest;
+	using namespace CataclysmProjectileTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Struck(World, FVector(3 * M, 0, 0));
+	FScopedFighter Beside(World, FVector(3 * M, 1 * M, 0));
+	GiveTheLaterHitShare(Caster);
+
+	ACataclysmProjectile* Bolt = ACataclysmProjectile::Fire(
+		Caster.Actor, FVector::ZeroVector, FVector(3 * M, 0, 0),
+		/*InRadiusCm=*/200.0f, /*InSpeed=*/2000.0f, /*InPierce=*/0,
+		/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+	if (!Bolt)
+	{
+		AddError(TEXT("Could not fire the bolt."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Bolt)) { Bolt->Destroy(); } };
+
+	const float StruckBefore = Struck.Health();
+	const float BesideBefore = Beside.Health();
+	FlyToCompletion(Bolt);
+
+	TestEqual(TEXT("the enemy it stopped at takes the first-hit damage"),
+		StruckBefore - Struck.Health(), WeaponDamage, 0.01f);
+	TestEqual(TEXT("and so does the one beside it, caught by the same blast"),
+		BesideBefore - Beside.Health(), WeaponDamage, 0.01f);
+	TestEqual(TEXT("and the blast is one landing"), Bolt->LandedContacts, 1);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLaterHitCaromTest,
+	"Cataclysm.Skills.ACaromThrowWearingTheLaterHitRowMultipliesWhatItsGlancesAdd",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Carom and the later-hit row on one throw. Issue #1686, pinned at the
+ * coordinating session's request because both touch the same contacts.
+ *
+ * THE ROW IS A `more` ON THE CONTACT'S WHOLE FIGURE, so it multiplies what the
+ * glances have already added: the first contact is 100, the second
+ * 120 x 0.65 = 78 and the third 140 x 0.65 = 91. Taking 35 points off the
+ * raised percentage instead would give 85 and 105.
+ */
+bool FCataclysmLaterHitCaromTest::RunTest(const FString&)
+{
+	using namespace CataclysmLaterHitTest;
+	using namespace CataclysmProjectileTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(4 * M, 0, 0));
+	FScopedFighter Second(World, FVector(7 * M, 0, 0));
+	FScopedFighter Third(World, FVector(10 * M, 0, 0));
+	GiveTheLaterHitShare(Caster);
+
+	ACataclysmProjectile* Axe = ACataclysmProjectile::Fire(
+		Caster.Actor, FVector::ZeroVector, FVector(4 * M, 0, 0),
+		/*InRadiusCm=*/120.0f, /*InSpeed=*/2000.0f, /*InPierce=*/0,
+		/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false);
+	if (!Axe)
+	{
+		AddError(TEXT("Could not fire the axe."));
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Axe)) { Axe->Destroy(); } };
+	Axe->GlancesOnward(/*InBounces=*/3, /*InReachCm=*/11 * M,
+					   /*InDamagePercentPer=*/20.0f);
+
+	const float FirstBefore = First.Health();
+	const float SecondBefore = Second.Health();
+	const float ThirdBefore = Third.Health();
+	FlyToCompletion(Axe);
+
+	TestEqual(TEXT("the first contact is the plain throw: 100"),
+		FirstBefore - First.Health(), WeaponDamage, 0.01f);
+	TestEqual(TEXT("the second is 120 kept at 65%: 78"),
+		SecondBefore - Second.Health(), WeaponDamage * 1.2f * 0.65f, 0.01f);
+	TestEqual(TEXT("the third is 140 kept at 65%: 91"),
+		ThirdBefore - Third.Health(), WeaponDamage * 1.4f * 0.65f, 0.01f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRackCountTest,
 	"Cataclysm.Skills.ARackThrowsItsStatedCountAndNoMore",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

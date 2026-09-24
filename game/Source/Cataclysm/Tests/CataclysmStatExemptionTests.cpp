@@ -39,6 +39,7 @@
 #include "GameplayTagsManager.h"
 #include "HAL/IConsoleManager.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmProjectile.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -2562,6 +2563,72 @@ namespace CataclysmStatExemptionTest
 			Cut.DealtToHealth, Clean.DealtToHealth * 0.5f, 0.01f);
 	}
 
+	/**
+	 * `projectile_later_hit_damage` is read by `ACataclysmProjectile::HitOne` for
+	 * every landed contact after the first. Issue #1686.
+	 *
+	 * TWO CASTERS each fire a piercing shot through two enemies, the roll pinned
+	 * so nothing critically strikes; one carries the stat at its base of 100 with
+	 * 50% less on it. Its second contact must be half the plain one's.
+	 */
+	void ProbeProjectileLaterHitDamage(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+		const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+		const auto SecondContact = [&](bool bCarries, float Y)
+		{
+			FScopedSwinger Caster(World, FVector(0, Y, 0));
+			FScopedSwinger Near(World, FVector(2 * M, Y, 0));
+			FScopedSwinger Far(World, FVector(4 * M, Y, 0));
+			if (bCarries)
+			{
+				FCataclysmStatModifier Half;
+				Half.Bucket = ECataclysmStatBucket::More;
+				Half.Source = ECataclysmModifierSource::Enchantment;
+				Half.Value = -50.0f;
+				TMap<FName, FCataclysmStatInputs> Inputs;
+				FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+					FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat));
+				Line.Base = UCataclysmDamageCalculation::NormalProjectileLaterHitDamage;
+				Line.Modifiers = {Half};
+				Caster.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+			}
+
+			ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+				Caster.Actor, FVector(0, Y, 0), FVector(6 * M, Y, 0),
+				/*InRadiusCm=*/100.0f, /*InSpeed=*/2000.0f, /*InPierce=*/99,
+				/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+				FGameplayTagContainer(), /*bInBurns=*/false);
+			if (!Shot)
+			{
+				return -1.0f;
+			}
+			const float Before = Far.Get(Vital::GetHealthAttribute());
+			for (int32 Steps = 0; Steps < 200 && !Shot->bFinished; ++Steps)
+			{
+				Shot->Step(1.0f / 60.0f);
+			}
+			const float Taken = Before - Far.Get(Vital::GetHealthAttribute());
+			Shot->Destroy();
+			return Taken;
+		};
+
+		const float Plain = SecondContact(false, 0.0f);
+		const float Cut = SecondContact(true, 50 * M);
+		if (!Test.TestTrue(TEXT("both second contacts landed"), Plain > 0.0f && Cut > 0.0f))
+		{
+			return;
+		}
+		Test.TestEqual(TEXT("the carrying caster's second contact is half"),
+			Cut, Plain * 0.5f, 0.01f);
+	}
+
 	const TMap<FString, FProbe>& ScaledProbes()
 	{
 		static const TMap<FString, FProbe> Made = {
@@ -2616,6 +2683,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minions_draw_nearby_enemies_minimum"),
 									&ProbeMinionsDrawNearbyEnemiesMinimum},
 			{TEXT("non_critical_damage"), &ProbeNonCriticalDamage},
+			{TEXT("projectile_later_hit_damage"), &ProbeProjectileLaterHitDamage},
 		};
 		return Made;
 	}

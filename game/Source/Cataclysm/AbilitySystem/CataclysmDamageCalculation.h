@@ -457,6 +457,20 @@ public:
 	static const TCHAR* NonCriticalDamageStat;
 
 	/**
+	 * What share of its damage a projectile's landed contact keeps after its
+	 * first, as a percentage. Issue #1686: "Projectiles deal 20%-35% less
+	 * damage on each subsequent hit after the first" is a `more` row on it.
+	 *
+	 * FLAT, NOT PER CONTACT, ruled under the owner's delegation on 2026-09-23:
+	 * the first landed contact keeps all of itself and every one after it
+	 * keeps this share. Asked for and applied by `ACataclysmProjectile`, which
+	 * is what counts its own contacts. No gameplay attribute: its base is
+	 * `NormalProjectileLaterHitDamage`, supplied by
+	 * `UCataclysmPlayerClassStats::EngineSuppliedBases`.
+	 */
+	static const TCHAR* ProjectileLaterHitDamageStat;
+
+	/**
 	 * Whether damage over time deals this character nothing at all.
 	 * Issue #1039. Zero for no, above zero for yes.
 	 *
@@ -530,6 +544,9 @@ public:
 
 	/** `NonCriticalDamageStat`'s base: a non-critical hit keeps all of itself. */
 	static constexpr float NormalNonCriticalDamage = 100.0f;
+
+	/** `ProjectileLaterHitDamageStat`'s base: a later contact keeps all of itself. */
+	static constexpr float NormalProjectileLaterHitDamage = 100.0f;
 
 	/** Negative resistance means taking extra damage. This bounds how bad. */
 	static constexpr float ResistanceFloor = -100.0f;

@@ -5,6 +5,7 @@
 #include "AbilitySystem/CataclysmProjectileEffect.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
+#include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For the Fervour each enemy a shot lands on earns. Issue #1515.
 #include "AbilitySystem/CataclysmFervour.h"
@@ -615,9 +616,34 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 	// "every enemy you strike from behind" does not leave out a thrown one.
 	const bool bFromBehind = UCataclysmSkillEffects::IsBehind(Firer, Target);
 
+	// AND EVERY LANDED CONTACT AFTER THE FIRST KEEPS THE FIRER'S LATER-HIT
+	// SHARE. Issue #1686: "Projectiles deal 20%-35% less damage on each
+	// subsequent hit after the first". Flat rather than per contact, ruled under
+	// the owner's delegation on 2026-09-23. A `more` on this contact's whole
+	// figure, so it multiplies whatever Carom's glances have already added to
+	// `DamagePercent`. A firer with no stat line -- a creature -- reads 100.
+	float Percent = DamagePercent;
+	if (LandedContacts > 0)
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Firer));
+		const float LaterHitShare = Asking
+			? Asking->StatForSkill(
+				FName(UCataclysmDamageCalculation::ProjectileLaterHitDamageStat),
+				SkillTags,
+				UCataclysmDamageCalculation::NormalProjectileLaterHitDamage)
+			: UCataclysmDamageCalculation::NormalProjectileLaterHitDamage;
+		Percent *= FMath::Max(0.0f, LaterHitShare) / 100.0f;
+	}
+
 	FCataclysmDamageResult Resolved;
 	const float Dealt = UCataclysmSkillEffects::ApplyHit(
-		Firer, Target, DamagePercent, SkillTags, Delivery, &Resolved);
+		Firer, Target, Percent, SkillTags, Delivery, &Resolved);
+	if (Dealt > 0.0f && !Resolved.bEvaded)
+	{
+		++LandedContacts;
+	}
 	if (Dealt > 0.0f)
 	{
 		++EnemiesHit;
@@ -748,11 +774,20 @@ void ACataclysmProjectile::Finish()
 	{
 		if (AActor* Firer = GetOwner())
 		{
+			// ONE DETONATION IS ONE LANDING, however many it catches. Issue #1686,
+			// ruled under the owner's delegation on 2026-09-23. Every enemy in
+			// the blast is struck at the count the projectile arrived with, and
+			// the count moves by one afterwards if any of them was landed on.
+			const int32 LandedBefore = LandedContacts;
+			bool bAnyLanded = false;
 			for (AActor* Target : UCataclysmTargeting::FindEnemiesInSphere(
 					GetWorld(), Firer, GetActorLocation(), RadiusCm))
 			{
+				LandedContacts = LandedBefore;
 				HitOne(Target);
+				bAnyLanded = bAnyLanded || LandedContacts > LandedBefore;
 			}
+			LandedContacts = LandedBefore + (bAnyLanded ? 1 : 0);
 		}
 	}
 

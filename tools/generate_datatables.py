@@ -5244,6 +5244,13 @@ ENGINE_SUPPLIED_BASES = {
         "UCataclysmDamageCalculation::NormalNonCriticalDamage, put on the "
         "character by UCataclysmPlayerClassStats::EngineSuppliedBases",
 
+    # AND WHAT SHARE A PROJECTILE'S LANDED CONTACTS AFTER ITS FIRST KEEP, at
+    # 100. Issue #1686: "Projectiles deal 20%-35% less damage on each
+    # subsequent hit after the first" is a `more` row on it.
+    "projectile_later_hit_damage":
+        "UCataclysmDamageCalculation::NormalProjectileLaterHitDamage, put on "
+        "the character by UCataclysmPlayerClassStats::EngineSuppliedBases",
+
     # AND HOW LARGE THE CRIPPLE AND WEAKEN THIS CHARACTER APPLIES ARE, at 100 for
     # normal. Issue #1767. The Ravager's Dragging Weight reads "+3% increased
     # magnitude of Cripple you apply per point" and its Sapped says the same of
