@@ -2111,6 +2111,83 @@ void ACataclysmDungeonGameMode::NoteDeathForNothingIsForgotten(
 	RefreshFloorModifierPanel();
 }
 
+void ACataclysmDungeonGameMode::StepTheReaper()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// THE FLOOR'S OWN SECONDS, counted on the beat as Death's Embrace counts them, so a
+	// floor change puts the clock back by putting the count back.
+	TheReaperSecondsOnFloor += SecondsBetweenWaveChecks;
+	if (!Effects::TheReaperIsDue(TheReaperSecondsOnFloor))
+	{
+		return;
+	}
+
+	// ONCE, WHETHER OR NOT THE SPAWN SUCCEEDS: a floor that could not hold it does not
+	// try again four times a second.
+	bTheReaperRaised = true;
+	RaiseTheReaper();
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::RaiseTheReaper()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// AN ABYSSAL WARDEN AT THE ENTRANCE, AT THE COMMON RUNG, the way Unstable Portal
+	// raises its Warden at the exit. The rung is set before its modifiers are drawn;
+	// see `SpawnPlacedCreature`.
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(CurrentFloor->EntranceWorld());
+	Placement.Creature = ECataclysmDungeonCreature::AbyssalWarden;
+	ACataclysmEnemyCharacter* Reaper = SpawnPlacedCreature(
+		Placement, Effects::TheReaperSightMultiplier, Effects::TheReaperRung);
+	if (!Reaper)
+	{
+		return;
+	}
+	Reaper->bCannotBeHurt = true;
+	FloorEnemies.Add(Reaper);
+	Reaper->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Reaper);
+	TheReaper = Reaper;
+	UE_LOG(LogCataclysm, Log, TEXT("The Reaper: %s arrives at floor %d's entrance"),
+		   *Reaper->GetName(), FloorNumber);
+}
+
+void ACataclysmDungeonGameMode::NoteHitForTheReaper(const FCataclysmHitNotice& Notice)
+{
+	// ITS OWN BLOW, AND ONE THAT LANDED: `Landed` is zero for a blow evaded or wholly
+	// stopped. A damage-over-time tick is not a blow of the scythe, so it does not kill.
+	ACataclysmEnemyCharacter* Reaper = TheReaper.Get();
+	if (!Reaper || Notice.Attacker != Reaper || Notice.Landed <= 0.0f
+		|| Notice.bDamageOverTime)
+	{
+		return;
+	}
+	ACataclysmPlayerCharacter* Player = Cast<ACataclysmPlayerCharacter>(Notice.Target);
+	if (!Player || UCataclysmSkillEffects::IsDead(Player))
+	{
+		return;
+	}
+
+	// STRAIGHT TO HEALTH, NOT AS A BLOW. Nothing Stops It saves only from a blow, so it
+	// cannot catch this: the row says "instantly die". The ordinary death follows from
+	// health reaching zero, revival and every death rule with it.
+	const UAbilitySystemComponent* Theirs = Player->GetAbilitySystemComponent();
+	const float Maximum = Theirs
+		? Theirs->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+		: 0.0f;
+	UCataclysmSkillEffects::ReduceHealthDirectly(Reaper, Player, FMath::Max(1.0f, Maximum));
+	UE_LOG(LogCataclysm, Log, TEXT("The Reaper: its blow landed and %s died"),
+		   *Player->GetName());
+}
+
 void ACataclysmDungeonGameMode::AddAChaosTouch()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -3311,6 +3388,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND CHAOS TOUCHED, ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON THE CHARACTER.
 	// Issues #1820 and #41.
 	const bool bChaosTouched = ChaosTouchedStacks != ChaosTouchedApplied;
+	// AND THE REAPER, UNTIL IT HAS COME, AND NEVER ON A HORDE WAVE. Issues #1820 and #41.
+	const bool bTheReaper = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::TheReaperKey))
+		&& !FloorBrief.bOneWave && !bTheReaperRaised;
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -3324,7 +3405,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bHolyRepercussions && !bLeechSpores && !bBloodAltar && !bNecroticGround
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
-		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched)
+		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
+		&& !bTheReaper)
 	{
 		return;
 	}
@@ -3472,6 +3554,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bChaosTouched)
 	{
 		StepChaosTouched(Player, AbilitySystem);
+	}
+
+	// AND THE REAPER, WHICH SPAWNS A CREATURE AND TOUCHES NO STAT. Issues #1820 and #41.
+	if (bTheReaper)
+	{
+		StepTheReaper();
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -5821,6 +5909,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	NoteHitForWastingSickness(Notice);
 	NoteHitForBrandOfTheAggressor(Notice);
 	NoteHitForHolyRepercussions(Notice);
+	NoteHitForTheReaper(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
@@ -6037,8 +6126,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			Effects::HolyRepercussionsJudgmentMostStacks));
 	}
 
-	// AND TRICK OR TREAT: the clicks, the creatures raised, and whether a treat is running.
-	// Issues #1820 and #41.
+	// AND THE REAPER: whether it has come, and what it does. Issues #1820 and #41.
+	const FName Reaper(Effects::TheReaperKey);
+	if (FloorBrief.Modifiers.Contains(Reaper))
+	{
+		Counting.Add(Reaper, FloorBrief.bOneWave
+			? FString(TEXT("the reaper: never on a horde wave"))
+			: TheReaper.IsValid()
+			? FString(TEXT("the reaper: here, and it cannot die; one landed blow kills"))
+			: FString::Printf(TEXT("the reaper: comes %.0f seconds into the floor"),
+							  Effects::TheReaperDelaySeconds));
+	}
+
+	// AND CHAOS TOUCHED: the stacks of all eight kinds. Issues #1820 and #41.
 	const FName Touched(Effects::ChaosTouchedKey);
 	if (FloorBrief.Modifiers.Contains(Touched))
 	{
@@ -6071,6 +6171,8 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			SoulHarvestGiven, Most, Effects::SoulHarvestMostSouls));
 	}
 
+	// AND TRICK OR TREAT: the clicks, the creatures raised, and whether a treat is running.
+	// Issues #1820 and #41.
 	const FName Treat(Effects::TrickOrTreatKey);
 	if (FloorBrief.Modifiers.Contains(Treat))
 	{
@@ -8117,6 +8219,12 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		UnstablePortalRolls = 0;
 		UnstablePortalLast = -1;
 		CreaturesRaisedByARule.Reset();
+
+		// AND THE REAPER'S CLOCK STARTS AGAIN: it went with the last floor's creatures, and
+		// a floor carrying the row raises a new one ten seconds in. Issues #1820 and #41.
+		TheReaperSecondsOnFloor = 0.0f;
+		bTheReaperRaised = false;
+		TheReaper.Reset();
 
 		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
 		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already

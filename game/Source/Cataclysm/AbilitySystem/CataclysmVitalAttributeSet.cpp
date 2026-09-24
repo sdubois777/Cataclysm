@@ -989,6 +989,17 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				}
 			}
 
+			// AND A CREATURE NO DAMAGE REACHES: The Reaper. Issues #1820 and #41. The blow
+			// has resolved -- evaded, blocked or not -- and deals nothing, the way the
+			// immunity above deals nothing. After the save, so nothing is ever saved from a
+			// blow this then empties.
+			if (AsEnemy && AsEnemy->bCannotBeHurt)
+			{
+				Resolved.DealtToHealth = 0.0f;
+				Resolved.AbsorbedByShield = 0.0f;
+				Resolved.AbsorbedByMana = 0.0f;
+			}
+
 			// EVERYTHING BELOW READS THIS, so the second check reaches the health
 			// write, the floating number, the leech and everything else that asks
 			// what the blow dealt.
@@ -1643,6 +1654,16 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 	}
 	else if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
+		// A WRITE STRAIGHT TO HEALTH CANNOT KILL THE REAPER EITHER. Issues #1820 and #41.
+		// `UCataclysmSkillEffects::ReduceHealthDirectly` takes health off through this
+		// branch and never through the damage branch above, so the check there does not
+		// reach it. Put back before the clamp and the death check below read it.
+		const ACataclysmEnemyCharacter* Unhurt =
+			Cast<ACataclysmEnemyCharacter>(GetOwningActor());
+		if (Unhurt && Unhurt->bCannotBeHurt)
+		{
+			SetHealth(GetMaxHealth());
+		}
 		SetHealth(FMath::Clamp(GetHealth(), 0.0f, GetMaxHealth()));
 		NotifyIfHealthReachedZero();
 		NotifyHealthChanged();

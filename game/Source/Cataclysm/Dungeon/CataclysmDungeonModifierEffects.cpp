@@ -128,6 +128,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::SoulHarvestKey =
 const TCHAR* UCataclysmDungeonModifierEffects::ChaosTouchedKey =
 	TEXT("Chaos_Chaos_Touched");
 
+const TCHAR* UCataclysmDungeonModifierEffects::TheReaperKey =
+	TEXT("Death_The_Reaper");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -405,7 +408,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(StarvationCurseKey)
 		|| RowKey == FName(TrickOrTreatKey)
 		|| RowKey == FName(SoulHarvestKey)
-		|| RowKey == FName(ChaosTouchedKey))
+		|| RowKey == FName(ChaosTouchedKey)
+		|| RowKey == FName(TheReaperKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -587,6 +591,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(TrickOrTreatKey),
 		FName(SoulHarvestKey),
 		FName(ChaosTouchedKey),
+		FName(TheReaperKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1898,6 +1903,13 @@ int32 UCataclysmDungeonModifierEffects::StarvationCurseKindToAdd(int32 Drawn,
 float UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(int32 Stacks)
 {
 	return static_cast<float>(FMath::Max(0, Stacks)) * StarvationCursePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
+{
+	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
+	// does not.
+	return SecondsOnFloor >= TheReaperDelaySeconds;
 }
 
 int32 UCataclysmDungeonModifierEffects::ChaosTouchedKindFor(float Roll)

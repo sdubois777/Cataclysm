@@ -3868,3 +3868,24 @@ def test_chaos_touched_row_still_adds_a_random_buff_or_debuff_each_floor_until_c
     assert "%" not in words, (
         "Chaos_Chaos_Touched now states a percentage. Ten per cent a stack was a ruling "
         "because the row gave none; use the row's figure. " + words)
+
+def test_the_reaper_row_still_stalks_slowly_and_kills_with_one_hit_of_the_scythe():
+    """The phrases the rule's readings rest on.
+
+    "The embodiment of death slowly stalks the player. If they are hit by his scythe, they
+    instantly die." SLOWLY is why the Reaper is a creature slower than every class; STALKS is
+    why it notices the player from anywhere on the floor; HIT BY HIS SCYTHE is why only its
+    own landed blow kills; INSTANTLY DIE is why the kill goes straight to health, past
+    Nothing Stops It; and the row gives no figure, which is why ten seconds is a ruling. If
+    any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Death_The_Reaper"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("slowly stalks the player", "hit by his scythe", "instantly die"):
+        assert phrase in lower, (
+            f"Death_The_Reaper no longer says {phrase.upper()!r}. A reading of the rule rests "
+            "on it; see TheReaperKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert not any(character.isdigit() for character in words), (
+        "Death_The_Reaper now states a figure. Ten seconds into a floor was a ruling because "
+        "the row gave none; use the row's figure. " + words)
