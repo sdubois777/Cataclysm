@@ -23909,10 +23909,10 @@ bool FCataclysmTreatMarkTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and raised nothing"), Mode->TrickOrTreatRaisedCount(), 0);
 
 	// AND THE DEATH PATH PASSES THE CREATURE'S MARK TO THE SPAWNER. The floor is cleared of
-	// drops first. This half's drop roll is the game's own and cannot be seeded, so it asserts
-	// only that every drop the kill left is marked; at the Cataclysm Boss rung the kill is
-	// expected to leave 24, and leaves none about once in 26 billion kills, which would make
-	// this half check nothing rather than fail.
+	// drops first. This half's drop roll is the game's own and cannot be seeded. At the
+	// Cataclysm Boss rung the kill is expected to leave 24 drops (12 gear, 12 materials), and
+	// a Poisson draw leaves none with probability e^-24, about once in 26 billion kills. That
+	// case FAILS the assertion that something fell, rather than passing while checking nothing.
 	DropsLying(Lying);
 	for (ACataclysmDroppedItem* Drop : Lying)
 	{
@@ -23930,7 +23930,12 @@ bool FCataclysmTreatMarkTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	DropsLying(Lying);
-	AddInfo(FString::Printf(TEXT("the raised creature's kill left %d drops"), Lying.Num()));
+	if (!TestTrue(FString::Printf(TEXT("the raised creature's kill left something: %d drops"),
+								  Lying.Num()),
+				  Lying.Num() > 0))
+	{
+		return false;
+	}
 	for (ACataclysmDroppedItem* Drop : Lying)
 	{
 		TestTrue(TEXT("every drop a raised creature's kill left is marked"),

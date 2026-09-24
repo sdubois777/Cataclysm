@@ -109,9 +109,10 @@ Six automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 - `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`: the drop spawner, told to mark and run on
   seeded streams (seeds 1 to 20 in order until one leaves gear, so the same drops every run), marks
   every drop, and a click on the gear with a trick pinned rolls nothing; then a raised creature at the
-  Cataclysm Boss rung is killed and every drop it leaves is marked. That second half uses the game's
-  own unseeded roll and asserts only that what fell is marked: it is expected to leave 24 drops and
-  leaves none about once in 26 billion kills, when it would check nothing rather than fail.
+  Cataclysm Boss rung is killed, something fell, and every drop it left is marked. That second half
+  uses the game's own unseeded roll: it is expected to leave 24 drops and leaves none with probability
+  e^-24, about once in 26 billion kills, when the test fails rather than passing while checking
+  nothing.
 - `ATreatHastesThePlayerForTenSecondsAndThenStops`: the roll's boundary at 50; a treat puts 20% more on
   movement speed and on attack speed; still on at nine and a half seconds, off at ten and a half.
 - `ASecondTreatRestartsTheClockAndDoesNotStack`: a second treat six seconds in keeps the haste at 20%
