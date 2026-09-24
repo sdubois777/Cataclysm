@@ -2,6 +2,43 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — A negative crowd control resistance lengthens crowd control, to at most twice, and a held effect still stops at 3 seconds
+
+**Affects:**
+- `UCataclysmSkillEffects::AfterCrowdControlResistance`: now floored at `MostCrowdControlLengthening`, -100, rather than at 0.
+- Two new functions: `HeldSecondsAfterCrowdControlResistance`, asked by `ApplyStun` and `ApplyKnockdown`, and `ShoveAfterCrowdControlResistance`, asked by the shared shove body.
+- `Cataclysm.CrowdControl.ResistanceShortensAnEffectRatherThanRollingAgainstIt`.
+- Issues [#1951](https://github.com/sdubois777/Cataclysm/issues/1951) and [#2055](https://github.com/sdubois777/Cataclysm/issues/2055).
+
+### WHAT WAS WRONG
+
+"CC effects applied to you last 40%-70% longer" is written as `crowd_control_resistance`, flat, -40 to -70 (ruled 2026-09-11). The only reader floored the stat at zero, so the row did nothing in play, and a test asserted the floor.
+
+### THREE RULINGS, UNDER THE OWNER'S DELEGATION
+
+**Ruled by the coordinating session on 2026-09-24.** These are judgements; the research settles the shape and not the bounds.
+
+1. **Below zero the effect lengthens, and the stat is floored at -100: at most twice as long.** -40 is 1.4 times, which is exactly "40% longer". The floor mirrors immunity at +100.
+   - A drawback counts on every worn piece. This one can roll on any of the 19 worn slots, once per item, so without a floor 19 pieces at -70 would give 14.3 times.
+   - One piece stays inside the floor at any roll. A second piece still counts at low rolls (-40 twice is 1.8 times).
+2. **A lengthened stun or knockdown still stops at `UCataclysmDamageCalculation::LongestStunSeconds`, 3.0 seconds.** That bound exists to stay below the 5 second window a stunned target cannot be stunned again in, and lengthening would otherwise break it: a 3 second stun at twice is 6 seconds.
+   - **So a stun or knockdown already at 3.0 seconds is not lengthened at all.**
+   - The bound never shortens a hold. One stated longer than 3 seconds, which none is, keeps its own length.
+3. **A shove is not lengthened.** "Last longer" does not describe a distance. A negative resistance leaves a knockback, pull, drag or launch at its own distance; a positive one still shortens it.
+
+### RESEARCH
+
+- **Path of Exile has the lengthening side, as a drawback on a benefit.** poedb.tw/us/Stun quotes weapon-tree modifiers such as "30% increased Stun Duration on Enemies / 15% increased Stun Duration on you", up to "50% increased Stun Duration on you". The page states no cap. This game uses the same shape: a negative stat is increased duration on you.
+- **Diablo IV has only the shortening side**, "Control Impaired Duration Reduction". Neither diablo4.wiki.fextralife.com nor Maxroll's stats page states a cap, a combining rule, or anything that lengthens. A search summary said sources combine multiplicatively, but no page this tool could read says so, and it is not relied on here.
+- **The shipped games state no cap on the lengthening side**, so all three bounds above are this game's own.
+
+### ALSO IN THIS CHANGE
+
+- **#2055: an assertion that could not fail.** In `Cataclysm.MinionAttackSpeed`, `TestNull(Cast<ACataclysmMinion>(Taken))` could never fail, because `ACataclysmMinion` and `ACataclysmEnemyCharacter` are unrelated classes, and it drew warning C4996. It is now a `static_assert` of the same fact.
+- **Found and filed rather than fixed: [#2057](https://github.com/sdubois777/Cataclysm/issues/2057).** The pipeline's `(Base + Flat) × (1 + increased)` makes "increased crowd control resistance" deepen a negative total, so five passive nodes lengthen crowd control for a character carrying this drawback.
+
+---
+
 ## 2026-09-23 — Trick or Treat: a clicked pickup raises two of the floor's creatures or hastes the player for ten seconds
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmCombatEvents.h` and `.cpp` (a new

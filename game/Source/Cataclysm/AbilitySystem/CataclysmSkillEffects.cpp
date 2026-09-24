@@ -2157,7 +2157,7 @@ namespace
 		// BEFORE THE DIMINISHING-RETURNS SHARE, so a fully resisted shove does
 		// not spend the target's window, which is what the immunity check
 		// above is placed early for.
-		const float Reach = UCataclysmSkillEffects::AfterCrowdControlResistance(
+		const float Reach = UCataclysmSkillEffects::ShoveAfterCrowdControlResistance(
 			Target, Offset.Size());
 		if (Reach <= 0.0f)
 		{
@@ -2625,16 +2625,36 @@ float UCataclysmSkillEffects::AfterCrowdControlResistance(const AActor* Target,
 									FGameplayTagContainer(), Stat);
 	}
 
-	// FLOORED AT ZERO AND NOT CAPPED ABOVE, which is the decision recorded in
-	// the header. A negative value would lengthen a stun rather than shorten
-	// one, and nothing in the design says a stat below zero does that.
-	const float Resisted = FMath::Max(0.0f, Stat);
+	// FLOORED AT -100 AND NOT CAPPED ABOVE, the decisions the header records.
+	// Below zero the effect lengthens, to at most twice its amount. Issue
+	// #1951: until then this floor was zero, and "CC effects applied to you
+	// last 40%-70% longer" did nothing.
+	const float Resisted = FMath::Max(MostCrowdControlLengthening, Stat);
 	if (Resisted >= 100.0f)
 	{
 		return 0.0f;
 	}
 
 	return Amount * (1.0f - Resisted / 100.0f);
+}
+
+float UCataclysmSkillEffects::HeldSecondsAfterCrowdControlResistance(
+	const AActor* Target, float Seconds)
+{
+	const float After = AfterCrowdControlResistance(Target, Seconds);
+
+	// A LENGTHENED HOLD STOPS AT THE ANTI-STUN-LOCK BOUND, and one already
+	// there is not lengthened. The header says why. Never shortened by it.
+	const float Bound =
+		FMath::Max(Seconds, UCataclysmDamageCalculation::LongestStunSeconds);
+	return FMath::Min(After, Bound);
+}
+
+float UCataclysmSkillEffects::ShoveAfterCrowdControlResistance(
+	const AActor* Target, float Distance)
+{
+	// SHORTENED BY RESISTANCE AND NEVER LENGTHENED, for the header's reason.
+	return FMath::Min(AfterCrowdControlResistance(Target, Distance), Distance);
 }
 
 bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
@@ -2655,7 +2675,7 @@ bool UCataclysmSkillEffects::ApplyStun(AActor* Instigator, AActor* Target,
 	// skips the damage threshold because an attack built to stun should not
 	// fail to when it lands; it does not skip the target's own resistance,
 	// any more than a designed blow skips armour.
-	DurationSeconds = AfterCrowdControlResistance(Target, DurationSeconds);
+	DurationSeconds = HeldSecondsAfterCrowdControlResistance(Target, DurationSeconds);
 	if (DurationSeconds <= 0.0f)
 	{
 		return false;
@@ -2776,7 +2796,7 @@ bool UCataclysmSkillEffects::ApplyKnockdown(AActor* Instigator, AActor* Target,
 	// FIRST, for the reasons `ApplyStun` gives: a designed knockdown skips the
 	// damage threshold and not the target's own resistance, and a knockdown the
 	// target resists entirely opens no immunity window and leaves no stagger.
-	DurationSeconds = AfterCrowdControlResistance(Target, DurationSeconds);
+	DurationSeconds = HeldSecondsAfterCrowdControlResistance(Target, DurationSeconds);
 	if (DurationSeconds <= 0.0f)
 	{
 		return false;

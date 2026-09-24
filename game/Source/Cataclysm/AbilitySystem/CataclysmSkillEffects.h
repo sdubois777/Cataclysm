@@ -1670,14 +1670,62 @@ public:
 	 * carry "while an enemy is within 4 metres", because the condition turning
 	 * true later would never arrive.
 	 *
+	 * **BELOW ZERO IT LENGTHENS, TO AT MOST TWICE.** Issue #1951. "CC effects
+	 * applied to you last 40%-70% longer" is written as -40 to -70, and -40 is
+	 * 1.4 times the amount: the shape of Path of Exile's "increased Stun
+	 * Duration on you". Until #1951 the stat was floored at zero, so that row did
+	 * nothing. It is floored at `MostCrowdControlLengthening` instead, which
+	 * mirrors the immunity end and keeps a drawback worn on every slot from
+	 * reaching fourteen times. Ruled 2026-09-24 under the owner's delegation.
+	 *
+	 * CALLERS DO NOT TAKE THIS AS IT IS: a stun or a knockdown asks
+	 * `HeldSecondsAfterCrowdControlResistance`, and a shove asks
+	 * `ShoveAfterCrowdControlResistance`. Each puts its own bound on the
+	 * lengthening.
+	 *
 	 * @param Amount  seconds, or centimetres, or whatever the effect is measured
 	 *                in. Zero or less answers zero
-	 * @return what is left, or zero when the target resists it entirely. A
-	 *         target with no such attribute gets the amount back unchanged,
-	 *         which is every creature nothing has given one to
+	 * @return what is left, or zero when the target resists it entirely, or up
+	 *         to twice the amount when the stat is below zero. A target with
+	 *         no such attribute gets the amount back unchanged, which is every
+	 *         creature nothing has given one to
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static float AfterCrowdControlResistance(const AActor* Target, float Amount);
+
+	/**
+	 * The lowest crowd control resistance counts as, so crowd control lasts at
+	 * most twice as long. Issue #1951. It mirrors immunity at 100: the stat
+	 * spans twice the amount at -100 to none at +100.
+	 */
+	static constexpr float MostCrowdControlLengthening = -100.0f;
+
+	/**
+	 * A stun's or a knockdown's seconds after the target's crowd control
+	 * resistance, which may lengthen them, but never past
+	 * `UCataclysmDamageCalculation::LongestStunSeconds`. Issue #1951.
+	 *
+	 * THE ANTI-STUN-LOCK BOUND HOLDS AFTER LENGTHENING. That bound is 3 seconds
+	 * so that no hold reaches the 5 second window a stunned target cannot be
+	 * stunned again in. A lengthened hold at the window's length would let the
+	 * next stun land as the window closed. So a lengthened hold stops at 3
+	 * seconds, and **a hold already at 3 seconds is not lengthened at all**. A
+	 * hold is never shortened by this bound: one stated longer than it, which
+	 * none is, keeps its own length. Ruled 2026-09-24.
+	 */
+	static float HeldSecondsAfterCrowdControlResistance(const AActor* Target,
+													float Seconds);
+
+	/**
+	 * A shove's distance after the target's crowd control resistance, which may
+	 * shorten it and never lengthens it. Issue #1951.
+	 *
+	 * "CC EFFECTS ... LAST LONGER" DOES NOT DESCRIBE A DISTANCE. A knockback's
+	 * distance does not last, so a negative resistance leaves a shove at its own
+	 * distance rather than throwing the target further. Ruled 2026-09-24.
+	 */
+	static float ShoveAfterCrowdControlResistance(const AActor* Target,
+												 float Distance);
 
 	/**
 	 * The stat name a crowd control resistance row is written against.
