@@ -47,14 +47,14 @@ are alive and how sick the player is.
 **By the coordinating session under the owner's delegation of unstated numbers, 2026-09-24. Every
 figure is a play-test value:**
 
-- **It begins 120 seconds into a floor** (`PlagueConvergenceBeginsAfterSeconds`,
-  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` line 4081). **The Reaper's figure
-  counts the same thing**: `TheReaperDelaySeconds` = 10 (the same file, line 4075) is also seconds since
-  the floor began, added a quarter-second beat at a time (`CataclysmDungeonGameMode.cpp` line 2123 for
-  the Reaper, line 2365 for this rule) and put back to 0 in the same per-floor reset (lines 8556 and
-  8572). So on a floor carrying both, the Reaper arrives 10 seconds in and the convergence begins 110
-  seconds after it. The Reaper's clock stops counting once it has arrived; neither counts on a Horde
-  wave.
+- **It begins 120 seconds into a floor** (`PlagueConvergenceBeginsAfterSeconds`, in
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`). **The Reaper's figure counts the
+  same thing**: `TheReaperDelaySeconds` = 10, in the same file, is also seconds since the floor began.
+  Both clocks -- `TheReaperSecondsOnFloor` and `PlagueConvergenceSecondsOnFloor`, in
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` -- are added to a quarter-second beat at a
+  time and put back to 0 in the same per-floor reset in `ApplyFloorRulesToPlayer`. So on a floor carrying
+  both, the Reaper arrives 10 seconds in and the convergence begins 110 seconds after it. The Reaper's
+  clock stops counting once it has arrived; neither counts on a Horde wave.
 - **A wave every 10 seconds of 3 creatures of the floor's own kinds**, at the edge cells farthest from
   the player; **at most 30 alive**, a wave at the cap bringing only what fits; **never on a Horde
   wave**.
