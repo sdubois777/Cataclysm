@@ -3939,6 +3939,14 @@ CONDITIONS = {
     # `Famine_Desperate_Measures` asks it from C++ at 10, and the enchantment
     # "Take 10%-40% more damage when on low mana" is to take a row on it.
     "mana_below": (0.0, 100.0, "a percentage of maximum mana"),
+
+    # "Two-handed weapons only" is `wielding_two_handed_weapon`. Issue #1515,
+    # the Ravager node Two Hands. TWO-HANDED IS THE ITEM BASES TABLE'S OWN
+    # `Hands` COLUMN, read off the equipped weapon's row; no weapon, or a weapon
+    # type with no row, refuses rather than being guessed.
+    #
+    # IT TAKES NO VALUE: it names a state rather than comparing a number.
+    "wielding_two_handed_weapon": None,
 }
 
 #: The states a passive bonus's SIZE may grow with. Issue #968.

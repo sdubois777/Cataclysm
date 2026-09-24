@@ -2271,6 +2271,107 @@ were as registered.
 
 ---
 
+## 2026-09-23 — Two Hands asks what weapon is in hand, through a new condition read off the item base table
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmStatPipeline.h` and `.cpp` (the
+condition `wielding_two_handed_weapon` and its reading), `CataclysmAbilitySystemComponent.cpp`
+(where the reading is filled), `game/Source/Cataclysm/Items/CataclysmWeaponSlotsComponent.h` and
+`.cpp` (how many hands the equipped weapon takes), `tools/generate_datatables.py`, the node's row in
+`docs/All_Things_Cataclysm.xlsx` and `game/Data/PassiveEffects.csv`, `docs/README.md`, four test
+files and three Python checks. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE NODE
+
+`Ravager_basic_b_b0` Two Hands: "Two-handed weapons only. +3% increased Attack Damage per point."
+Eight points, worth up to +24% attack damage. **Five of the Demonic weapon types take two hands**:
+Greataxe, Greatsword, Spear, Staff and Warhammer, five skills each in `WeaponSkills.csv`.
+
+### WHAT WAS MISSING
+
+**Nothing in the stat pipeline could see the weapon in hand.** No condition read it, and no skill
+carries a two-handed tag, so a row's required tags could not express it either. What the data
+already had was the answer: `game/Data/ItemBases.csv` gives each weapon base a `Hands` column.
+
+### THE CONDITION, AND THREE READINGS SETTLED WITHOUT A RULING
+
+**Recorded as settled; the coordinating session agreed on 2026-09-23.**
+
+| Question | Answer | Settled by |
+|---|---|---|
+| What counts as two-handed? | **`Hands` = 2 on the equipped weapon's base row** | The data's own column. That includes the Two-Handed Crossbow |
+| No weapon, no weapon slots (every enemy), no table, or **a weapon type with no base row**? | **The condition refuses: the reading is -1, not a guess** | Every condition in the pipeline refuses an unknown reading |
+| What does "two-handed weapons only" mean with two weapons in hand? | **Not decided: one weapon is held today** | The capstone option that allows two, Both Hands Full, brings the question when it is built |
+
+**The reading** is `UCataclysmWeaponSlotsComponent::GetEquippedWeaponHands`. It finds the base
+row by the same `WeaponType` match `GetEquippedSubType` makes, so the two can never read different
+rows for one weapon.
+
+**A judgement, classifying it for the cached movement-speed reader:** the weapon in hand is not an
+attribute, but the condition is classed with the attributes that change unannounced. A weapon swap
+rewrites the character's attributes, and that reader re-asks only when the speed attribute itself
+changes, which a swap that leaves speed alone does not do. So it re-asks as time passes instead.
+
+### TESTS
+
+- `Cataclysm.StatPipeline.WieldingTwoHandedHoldsOnlyForTwoHandsAndRefusesAnUnknownWeapon`: two hands
+  holds, one does not, -1 refuses, and it compares no value.
+- `Cataclysm.WeaponSlots.TheEquippedWeaponSaysHowManyHandsItTakes`: a Greatsword 2, a Sword 1,
+  nothing -1, and **with a table holding only a Sword, a Greatsword reads -1** rather than a guess.
+- `Cataclysm.Passives.TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon` reads the
+  node's row on a real Ravager, switching its own weapon slots between a Greatsword and a Sword,
+  and spends **two points, so a row paid once rather than per point reads differently**. It fails
+  while the row is missing. **This line was written with the engine half and the test was not**:
+  the engine commit added no such test, and it was written with the row.
+
+**Counts moved:** the conditions that compare nothing are 26 of 60, from 25 of 59, as the sentence
+in `CataclysmStatPipeline.h` states and
+`tools/tests/test_the_condition_count_sentences_agree_with_the_code.py` holds. **This line said
+"20 of 54, from 19 of 53" until the row was written**, which no version of the code has held since
+the base this branch was rebased onto.
+
+### THE ROW, AND WHAT IT MOVED
+
+Written into the Passive Effects sheet of `docs/All_Things_Cataclysm.xlsx` on top of Press-Ganged's
+and Rekindled's rows, by the same script the four passive changes' dry run used on a copy first. The
+generator then changed only `game/Data/PassiveEffects.csv`, adding the one row: `attack_damage`,
+`increased`, 3 per point, on `wielding_two_handed_weapon`. **The number is the node's own**, "+3%
+increased Attack Damage per point". Pins moved, each with a comment saying why:
+
+| Pin | From | To |
+|---|--:|--:|
+| `docs/README.md`, Passive Effects rows | 299 | 300 |
+| `AUTHORED_ROWS` in `test_passive_effects_match_the_node_text.py` | 299 | 300 |
+| `AUTHORED_NODES`, same file (the Ravager now 71 of its 74 nodes) | 220 | 221 |
+| `CHECK_TABLE` for `PassiveEffects.csv` in `CataclysmDataTableTests.cpp` | 299 | 300 |
+
+`wielding_two_handed_weapon` leaves the list of conditions built ahead of their rows in
+`test_every_condition_has_a_row_or_is_listed_as_built_ahead.py`. `DT_PassiveEffects` is rebuilt in
+this change's build window.
+
+### THE WINDOW, 2026-09-24, ON 6fd1b255
+
+**This change's C++ was compiled for the first time here**, and it built: its worktree before the
+rebase had no binaries.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 28 actions, 25 files compiled` |
+| Fail-before, `tests --prefix "Cataclysm.Passives."`, stale asset | `129 tests performed, 128 succeeded, 1 failed: TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon`, on "Expected 'Two Hands carries one row' to be 1, but it was 0" |
+| Rebuild, `generate_datatable_assets.py` | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` and nothing else |
+| Whole suite, `tests --no-build` | `2287 tests performed, 2287 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before. The broken run's log
+was copied before the restored run overwrote it, so each row names the assertions that failed.
+**Every one was registered before the window, test and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Restored | Assertions that failed |
+|---|---|---|---|---|
+| an unknown weapon counts as two-handed (`!= 1` for `== 2` in `CataclysmStatPipeline.cpp`) | `Cataclysm.StatPipeline.` | `46 tests performed, 45 succeeded, 1 failed: WieldingTwoHandedHoldsOnlyForTwoHandsAndRefusesAnUnknownWeapon` | `46 tests performed, 46 succeeded, 0 failed` | "and an unknown weapon refuses" |
+| the character's state is never told the weapon's hands (`CataclysmAbilitySystemComponent.cpp`) | `Cataclysm.Passives.` | `129 tests performed, 128 succeeded, 1 failed: TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon` | `129 tests performed, 129 succeeded, 0 failed` | "with a Greatsword two points add 6.0 percentage points", 0 where 6 |
+| every weapon with a base row reads as two-handed (`CataclysmWeaponSlotsComponent.cpp`) | `Cataclysm.WeaponSlots.` | `17 tests performed, 16 succeeded, 1 failed: TheEquippedWeaponSaysHowManyHandsItTakes` | `17 tests performed, 17 succeeded, 0 failed` | "a Sword takes one" and "with that table a Sword still takes one hand", each 2 where 1 |
+
+---
+
 ## 2026-09-23 — The floor's dead rise once, at half health, when half the floor has fallen
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the revival mark,

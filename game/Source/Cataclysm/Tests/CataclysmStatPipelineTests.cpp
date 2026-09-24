@@ -3972,4 +3972,45 @@ bool FCataclysmDebuffBuffManaScalesTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPipelineTwoHandedTest,
+	"Cataclysm.StatPipeline.WieldingTwoHandedHoldsOnlyForTwoHandsAndRefusesAnUnknownWeapon",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `wielding_two_handed_weapon`, for the Two Hands node. Issue #1515.
+ *
+ * THREE READINGS: a weapon of two hands holds; a weapon of one does not; and
+ * -1, what no weapon, no table and a weapon type with no base row all read,
+ * refuses rather than being guessed.
+ */
+bool FCataclysmPipelineTwoHandedTest::RunTest(const FString&)
+{
+	using FPipeline = UCataclysmStatPipeline;
+
+	const auto Hands = [](int32 Count)
+	{
+		FCataclysmStatConditions State;
+		State.WeaponHands = Count;
+		return State;
+	};
+
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("wielding_two_handed_weapon is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("wielding_two_handed_weapon"), Named));
+	TestEqual(TEXT("and it is the two-handed reading"), static_cast<int32>(Named),
+		static_cast<int32>(ECataclysmStatCondition::WieldingTwoHandedWeapon));
+
+	const ECataclysmStatCondition TwoHanded =
+		ECataclysmStatCondition::WieldingTwoHandedWeapon;
+	TestTrue(TEXT("a weapon of two hands holds"),
+		FPipeline::ConditionHolds(TwoHanded, 0.0f, Hands(2)));
+	TestFalse(TEXT("a weapon of one hand does not"),
+		FPipeline::ConditionHolds(TwoHanded, 0.0f, Hands(1)));
+	TestFalse(TEXT("and an unknown weapon refuses"),
+		FPipeline::ConditionHolds(TwoHanded, 0.0f, Hands(-1)));
+	TestFalse(TEXT("it compares no value"),
+		FPipeline::ConditionTakesAValue(TwoHanded));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

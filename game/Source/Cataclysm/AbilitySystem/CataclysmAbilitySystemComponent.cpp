@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "Items/CataclysmWeaponSlotsComponent.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For the class resource a scaling bonus counts points of. Issue #980.
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
@@ -972,6 +973,19 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.bIsMoving = IsMoving();
 	State.SecondsSinceMoved = SecondsSinceMoved();
 	State.SecondsSinceOwnAttack = SecondsSinceOwnAttack();
+
+	// AND HOW MANY HANDS THE EQUIPPED WEAPON TAKES. Issue #1515, for
+	// `wielding_two_handed_weapon` and the Two Hands node. Off the avatar's
+	// weapon slots, which read the item base table; an avatar with none -- every
+	// enemy -- leaves it at -1 and the condition refuses.
+	if (const AActor* Avatar = GetAvatarActor())
+	{
+		if (const UCataclysmWeaponSlotsComponent* Slots =
+				Avatar->FindComponentByClass<UCataclysmWeaponSlotsComponent>())
+		{
+			State.WeaponHands = Slots->GetEquippedWeaponHands();
+		}
+	}
 
 	// AND HOW FAR IT MOVED BEFORE THE BLOW IN HAND, which is the third reading
 	// here that is not a state of the character. Passed through unchanged,

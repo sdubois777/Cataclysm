@@ -93,6 +93,7 @@ namespace
 		{ TEXT("out_of_combat"),                ECataclysmStatCondition::OutOfCombat },
 		{ TEXT("target_carries_any_debuff"),    ECataclysmStatCondition::TargetCarriesAnyDebuff },
 		{ TEXT("target_carries_a_dot"),         ECataclysmStatCondition::TargetCarriesADot },
+		{ TEXT("wielding_two_handed_weapon"),   ECataclysmStatCondition::WieldingTwoHandedWeapon },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -268,8 +269,9 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::OutOfCombat:
 	case ECataclysmStatCondition::TargetCarriesAnyDebuff:
 	case ECataclysmStatCondition::TargetCarriesADot:
+	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the twenty-five says
+		// nothing for a number to be compared against. Each of the twenty-six says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -368,6 +370,12 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	// MANA IS AN ATTRIBUTE THAT MOVES WITH NO NOTICE THIS PIPELINE HEARS, as the
 	// energy shield does: casting, regeneration and leech all write it.
 	case C::ManaBelowPercent:
+	// THE WEAPON IN HAND IS NOT AN ATTRIBUTE, BUT IT IS CLASSED WITH THEM. Issue
+	// #1515. A weapon swap rewrites the character's attributes, and the speed
+	// reader re-asks only when the speed attribute itself changes, which a swap
+	// that leaves speed alone does not do. Classed here, the reader re-asks as
+	// time passes, which is the answer this category gives.
+	case C::WieldingTwoHandedWeapon:
 		return EOn::OtherAttributes;
 
 	// EVERY WINDOW AFTER AN EVENT, and the three that measure how long
@@ -815,6 +823,12 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 	case ECataclysmStatCondition::TargetNotYetCritByYou:
 		// Issue #1815. The same rule, counting critical strikes only.
 		return State.bTargetStrikeHistoryKnown && !State.bTargetCritByYou;
+
+	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
+		// TWO HANDS BY THE BASE ROW'S OWN COLUMN, and nothing else. Issue #1515.
+		// An unknown reading is -1, so a missing weapon, table or row refuses
+		// rather than being guessed either way.
+		return State.WeaponHands == 2;
 
 	case ECataclysmStatCondition::TargetCarriesCripple:
 		// THE EXPLICIT TAG AND NOT AN IMPLIED PARENT. Issue #1515.

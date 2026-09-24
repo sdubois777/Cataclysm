@@ -453,7 +453,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// metres further. Issue #1515.
 	// AND 299 SINCE THEN, for Press-Ganged and Rekindled: a lost minion is
 	// replaced, once every 10 seconds, or 5 for one that exploded. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        299)
+	// AND 300 SINCE 2026-09-24, for Two Hands: 3% increased attack damage per
+	// point while wielding a two-handed weapon. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        300)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

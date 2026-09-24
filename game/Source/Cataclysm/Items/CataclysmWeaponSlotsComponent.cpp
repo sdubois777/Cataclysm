@@ -67,6 +67,38 @@ FString UCataclysmWeaponSlotsComponent::GetEquippedSubType() const
 	return Found;
 }
 
+int32 UCataclysmWeaponSlotsComponent::GetEquippedWeaponHands() const
+{
+	if (EquippedWeaponType.IsEmpty())
+	{
+		return -1;
+	}
+
+	const UDataTable* Bases = ItemBaseTable
+		? ItemBaseTable.Get()
+		: UCataclysmItemModifiers::LoadBaseTable();
+	if (!Bases)
+	{
+		return -1;
+	}
+
+	// THE SAME MATCH `GetEquippedSubType` MAKES, so the two can never read
+	// different rows for one weapon.
+	int32 Found = -1;
+	Bases->ForeachRow<FCataclysmItemBaseRow>(
+		TEXT("UCataclysmWeaponSlotsComponent::GetEquippedWeaponHands"),
+		[&](const FName&, const FCataclysmItemBaseRow& Row)
+		{
+			if (Found < 0
+				&& Row.WeaponType.Equals(EquippedWeaponType, ESearchCase::IgnoreCase))
+			{
+				Found = Row.Hands;
+			}
+		});
+
+	return Found;
+}
+
 FString UCataclysmWeaponSlotsComponent::SubTypeOf(const AActor* Actor)
 {
 	if (!Actor)

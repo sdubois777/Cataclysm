@@ -298,3 +298,4 @@ Ravager_basic_c_stem2#1,Ravager_basic_c_stem2,cripple_and_weaken_duration,increa
 Ravager_keystone_b_kC#1,Ravager_keystone_b_kC,melee_reach_metres,flat,2.0,Type.Melee,,0.0,,0.0,0,-1.0
 Ritualist_keystone_a_kB#1,Ritualist_keystone_a_kB,minion_death_replaced_every_seconds,flat,10.0,,,0.0,,0.0,0,-1.0
 Ritualist_keystone_b_kC#1,Ritualist_keystone_b_kC,minion_explosion_replaced_every_seconds,flat,5.0,,,0.0,,0.0,0,-1.0
+Ravager_basic_b_b0#1,Ravager_basic_b_b0,attack_damage,increased,3.0,,wielding_two_handed_weapon,0.0,,0.0,0,-1.0

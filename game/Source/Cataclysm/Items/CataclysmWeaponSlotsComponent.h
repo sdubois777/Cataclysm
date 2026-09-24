@@ -146,6 +146,20 @@ public:
 	FString GetEquippedSubType() const;
 
 	/**
+	 * How many hands the equipped weapon takes, or -1 when that is not known.
+	 * Issue #1515, for the condition `wielding_two_handed_weapon`.
+	 *
+	 * READ OFF THE ITEM BASES TABLE the way `GetEquippedSubType` above reads the
+	 * sub-type, from the row whose `WeaponType` matches, and for its reason: the
+	 * design edits `Hands` there.
+	 *
+	 * -1 FOR NO WEAPON, NO TABLE, OR A WEAPON TYPE THE TABLE HAS NO ROW FOR. A
+	 * missing row is not guessed to be either, so the condition refuses it.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Weapon")
+	int32 GetEquippedWeaponHands() const;
+
+	/**
 	 * The sub-type an actor's hits carry, or empty if it has no weapon at all.
 	 *
 	 * A STATIC ON THIS COMPONENT so the attribute set that resolves a hit can
