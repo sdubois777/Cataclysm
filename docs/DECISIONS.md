@@ -7,6 +7,8 @@ Decisions made outside the Google Drive documents, newest first.
 **Affects:**
 - `UCataclysmSkillEffects::AfterCrowdControlResistance`: now floored at `MostCrowdControlLengthening`, -100, rather than at 0.
 - Two new functions: `HeldSecondsAfterCrowdControlResistance`, asked by `ApplyStun` and `ApplyKnockdown`, and `ShoveAfterCrowdControlResistance`, asked by the shared shove body.
+- `UCataclysmCombatAttributeSet::PreAttributeChange`: the attribute is floored at -100 in a clause
+  of its own, rather than at zero with every other unnamed combat attribute (see Run).
 - `Cataclysm.CrowdControl.ResistanceShortensAnEffectRatherThanRollingAgainstIt`.
 - Issues [#1951](https://github.com/sdubois777/Cataclysm/issues/1951) and [#2055](https://github.com/sdubois777/Cataclysm/issues/2055).
 
@@ -36,6 +38,49 @@ Decisions made outside the Google Drive documents, newest first.
 
 - **#2055: an assertion that could not fail.** In `Cataclysm.MinionAttackSpeed`, `TestNull(Cast<ACataclysmMinion>(Taken))` could never fail, because `ACataclysmMinion` and `ACataclysmEnemyCharacter` are unrelated classes, and it drew warning C4996. It is now a `static_assert` of the same fact.
 - **Found and filed rather than fixed: [#2057](https://github.com/sdubois777/Cataclysm/issues/2057).** The pipeline's `(Base + Flat) × (1 + increased)` makes "increased crowd control resistance" deepen a negative total, so five passive nodes lengthen crowd control for a character carrying this drawback.
+
+### Run
+
+- **The first build**, on `f5fd65ff`: "Build: Succeeded - 28 actions, 25 files compiled". It printed
+  no C4996 warning.
+- **The group run MISSED its registration of 0 failed.** `Cataclysm.CrowdControl.` and
+  `Cataclysm.MinionAttackSpeed.` printed "11 tests performed, 10 succeeded, 1 failed:
+  ResistanceShortensAnEffectRatherThanRollingAgainstIt". Every negative case read its input back:
+  - "-40 makes an effect last 1.4 times as long": expected 4.2, got 3.0;
+  - "a 1.5 second stun at -40 lasts 2.1 seconds": expected 2.1, got 1.5;
+  - "-150 is floored at -100 ...": expected 2.0, got 1.0.
+- **The cause was a false statement in the proposal behind this entry.** It said nothing clamped
+  this attribute. `UCataclysmCombatAttributeSet::PreAttributeChange` ends with
+  `NewValue = FMath::Max(NewValue, 0.0f)`, which floors every combat attribute its earlier clauses
+  do not name at zero. The function had been read only down to those named clauses. The test
+  creature writes the attribute, so -40 was stored as 0.
+  - A player's total is read through the stat pipeline, which floors nothing, so a player wearing
+    the drawback would probably have been lengthened anyway. That was not measured.
+  - A creature could never have been lengthened, and a player's character sheet would have read 0.
+- **Ruled by the coordinating session, under the owner's delegation: the attribute gets its own
+  clause, floored at `MostCrowdControlLengthening`**, so the attribute and the pipeline agree. Its
+  one reader is `AfterCrowdControlResistance`, which expects a negative value.
+  - The -40 cases stay on the attribute.
+  - The -150 case moved onto a stat line, the path a player's total takes, so that it measures the
+    function's floor.
+  - **The attribute's own clamp cannot be guard-proven from a test**:
+    `SetNumericAttributeBase` passes through `PreAttributeChange` before anything reads it (#1623).
+    So a plain assertion pins it: "an attribute written at -150 reads -100".
+  - Committed as `cd732c28`, before the whole suite ran, so the runs below cover it.
+- **The rebuild:** "Build: Succeeded - 5 actions, 2 files compiled", after one 60 second wait while
+  the continuous integration runner held the build lock.
+- **The group run again:** "11 tests performed, 11 succeeded, 0 failed".
+- **The whole suite on `cd732c28`:** "2293 tests performed, 2293 succeeded, 0 failed", as
+  registered, with every declared test reported.
+- **Three guard proofs** at `Cataclysm.CrowdControl.`. Each failed
+  `ResistanceShortensAnEffectRatherThanRollingAgainstIt` alone, 1 of 6, and 0 of 6 once restored.
+  Each broken run's log was copied before the restored run overwrote it:
+  - **the floor in `AfterCrowdControlResistance` removed**: "Expected '-150 is floored at -100: a
+    1 second effect lasts 2, not 2.5' to be 2.000000, but it was 2.500000";
+  - **the hold bound made 1000 seconds**: "Expected 'a 3 second stun at -40 stays at the 3 second
+    bound, not 4.2' to be 3.000000, but it was 4.200000";
+  - **the shove allowed to lengthen**: "Expected 'a 400 centimetre shove at -40 keeps its
+    distance' to be 400.000000, but it was 560.000000".
 
 ---
 
