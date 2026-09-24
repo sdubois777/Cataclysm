@@ -5512,12 +5512,12 @@ void ACataclysmDungeonGameMode::NoteDeathForWastingSickness(
 	// Nihil's Embrace's cleanse gives above: that fact says whether a boss DEALT
 	// the last blow, and this asks about who died.
 	//
-	// ANY BOSS ON THE FLOOR RATHER THAN THE ONE AT THE EXIT, a judgement recorded
-	// in `docs/DECISIONS.md`. Nothing marks the creature placed at a floor's exit
-	// as that floor's boss, and the row's article is indefinite.
-	const ACataclysmEnemyCharacter* Died =
-		Cast<ACataclysmEnemyCharacter>(Notice.Victim);
-	if (!Died || !Died->IsBoss())
+	// A FLOOR'S BOSS AS `DiedAsAFloorsBoss` ANSWERS IT: a Gatekeeper, or any creature at the
+	// Boss rung. Until 2026-09-23 this asked the rung alone, a judgement that rested on
+	// nothing marking the creature at a floor's exit; the Gatekeeper draws its rung like
+	// every creature, so that made the cure a 1% draw. Ruled by the coordinating session
+	// under the owner's delegation; `docs/DECISIONS.md` has both entries.
+	if (!DiedAsAFloorsBoss(Notice.Victim))
 	{
 		return;
 	}

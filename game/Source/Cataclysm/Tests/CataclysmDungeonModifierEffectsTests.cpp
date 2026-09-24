@@ -23407,4 +23407,146 @@ bool FCataclysmCurseWithStarvationTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// A floor's boss, for every rule that a boss's death cleanses. Issues #1786, #1820 and #41.
+//
+// `ACataclysmDungeonGameMode::DiedAsAFloorsBoss`: a Gatekeeper, which is the creature the
+// game places as a floor's boss, or any creature at the Boss rung. Wasting Sickness and the
+// starvation curse both ask it. Ruled by the coordinating session under the owner's
+// delegation, 2026-09-23.
+// ---------------------------------------------------------------------------
+
+// A GATEKEEPER AT ANY RUNG AND ANY CREATURE AT THE BOSS RUNG ARE A FLOOR'S BOSS; A COMMON
+// CREATURE, THE PLAYER AND NOTHING ARE NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorsBossTest,
+	"Cataclysm.DungeonModifierEffects.AFloorsBossIsAGatekeeperOrAnyCreatureAtTheBossRung",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorsBossTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Common = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(400.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	ACataclysmEnemyCharacter* AtTheBossRung = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmEnemyCharacter::StaticClass(), FVector(800.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	ACataclysmEnemyCharacter* Gatekeeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+		ACataclysmGatekeeperCharacter::StaticClass(), FVector(-800.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("a Common creature"), Common)
+		|| !TestNotNull(TEXT("a creature for the Boss rung"), AtTheBossRung)
+		|| !TestNotNull(TEXT("a Gatekeeper"), Gatekeeper)
+		|| !TestTrue(TEXT("a possessed player"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Common->SetRarityStep(0);
+	AtTheBossRung->SetRarityStep(ACataclysmEnemyCharacter::FirstBossRarityStep);
+	Gatekeeper->SetRarityStep(0);
+
+	TestFalse(TEXT("a Common creature is not"), ACataclysmDungeonGameMode::DiedAsAFloorsBoss(Common));
+	TestTrue(TEXT("a creature at the Boss rung is"),
+			 ACataclysmDungeonGameMode::DiedAsAFloorsBoss(AtTheBossRung));
+	TestFalse(TEXT("a Gatekeeper at the Common rung is not a boss by its rung"), Gatekeeper->IsBoss());
+	TestTrue(TEXT("and it is a floor's boss all the same"),
+			 ACataclysmDungeonGameMode::DiedAsAFloorsBoss(Gatekeeper));
+	TestFalse(TEXT("the player is not"), ACataclysmDungeonGameMode::DiedAsAFloorsBoss(Player.Character));
+	TestFalse(TEXT("nothing is not"), ACataclysmDungeonGameMode::DiedAsAFloorsBoss(nullptr));
+	return true;
+}
+
+// WASTING SICKNESS IS CURED BY A GATEKEEPER AT THE COMMON RUNG, which it was not while it asked
+// the rung alone.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWastingGatekeeperTest,
+	"Cataclysm.DungeonModifierEffects.AGatekeeperAtAnyRungCuresWastingSickness",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWastingGatekeeperTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	const FPossessedPlayer Player(World);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+		|| !TestTrue(TEXT("a possessed player with an ability system"), Player.IsUsable()))
+	{
+		return false;
+	}
+	Mode->StartPlay();
+	FScopedConsoleString Roll(TEXT("Cataclysm.WastingSicknessRoll"), TEXT("0"));
+	if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {WastingSickness};
+	Mode->FloorNumber = 1;
+	if (!TestNotNull(TEXT("the floor was built"), Mode->BuildFloor()))
+	{
+		return false;
+	}
+
+	// ONE BLOW, SO THE CURE HAS A STACK TO REMOVE. A small share, so the player survives it:
+	// their own death is the other cure.
+	ACataclysmEnemyCharacter* Enemy = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestNotNull(TEXT("a creature that can hit spawned"), Enemy)
+		|| !TestTrue(TEXT("its blow landed"),
+					 UCataclysmSkillEffects::ApplyHit(Enemy, Player.Character, 20.0f) > 0.0f)
+		|| !TestFalse(TEXT("and the player survived it"),
+					  UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	const FCataclysmStatModifier* Before = DungeonRuleOn(Player.AbilitySystem, TEXT("max_health"));
+	if (!TestNotNull(TEXT("the blow put the debuff on maximum health"), Before))
+	{
+		return false;
+	}
+	TestEqual(TEXT("worth one stack"), Before->Value, -Effects::WastingSicknessPercentPerStack, 0.01f);
+
+	// A GATEKEEPER HELD AT THE COMMON RUNG, so only its being the floor's boss can cure.
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride =
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Gatekeeper = World->SpawnActor<ACataclysmGatekeeperCharacter>(
+		ACataclysmGatekeeperCharacter::StaticClass(), FVector(-800.0f, 0.0f, 0.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a Gatekeeper"), Gatekeeper))
+	{
+		return false;
+	}
+	Gatekeeper->SetRarityStep(0);
+	TestFalse(TEXT("it is not at the Boss rung"), Gatekeeper->IsBoss());
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Gatekeeper, 1.0e9f);
+	if (!TestTrue(TEXT("the Gatekeeper died"), UCataclysmSkillEffects::IsDead(Gatekeeper)))
+	{
+		return false;
+	}
+	Mode->Tick(ACataclysmDungeonGameMode::SecondsBetweenWaveChecks);
+	TestNull(TEXT("its death took the debuff off entirely"),
+			 DungeonRuleOn(Player.AbilitySystem, TEXT("max_health")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

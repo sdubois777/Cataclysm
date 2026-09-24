@@ -573,12 +573,13 @@ public:
 	 * under its old name, `Famine_Withering_Touch`, which the dungeon side
 	 * stopped using on 2026-09-13.
 	 *
-	 * "A FLOOR BOSS" IS ANY BOSS ON THE FLOOR AND NOT THE ONE AT THE EXIT, which
-	 * is a judgement. The row's article is indefinite, the same line The Nihil's
-	 * Embrace's cleanse already draws, and nothing in the game marks the creature
-	 * placed at a floor's exit as that floor's boss: `FCataclysmFloorBrief::
-	 * bBossAtTheExit` is a fact about the FLOOR, and the Gatekeeper placed there
-	 * by `FCataclysmFloorPopulation` carries no mark saying so.
+	 * "A FLOOR BOSS" IS `ACataclysmDungeonGameMode::DiedAsAFloorsBoss`: a Gatekeeper,
+	 * the creature the game places as a floor's boss, or any creature at the Boss
+	 * rung. Ruled by the coordinating session under the owner's delegation,
+	 * 2026-09-23, replacing the judgement of 2026-09-14 that it was any creature at
+	 * the Boss rung alone. That judgement rested on nothing marking the creature at a
+	 * floor's exit; the Gatekeeper draws its rung like every creature, so it made the
+	 * cure a 1% draw per creature.
 	 */
 	static const TCHAR* WastingSicknessKey;
 
