@@ -193,6 +193,11 @@ def insert_first(data: bytes, entry: bytes) -> bytes:
         raise RefusedError(f"the preamble is {lines[:4]!r}, not {PREAMBLE!r}")
 
     entry_lines = entry.replace(CRLF, b"\n").rstrip(b"\n").split(b"\n")
+    # A RULE AT THE END OF THE ENTRY IS DROPPED, because the rule below is
+    # written here, and an entry file that ended with one gave the log two in a
+    # row. That happened three times on 2026-09-23 before a check saw it.
+    while entry_lines and entry_lines[-1].strip() in (b"", b"---"):
+        entry_lines.pop()
     if not HEADING.match(entry_lines[0]):
         raise RefusedError(
             f"the entry opens with {entry_lines[0]!r}, not a dated heading")

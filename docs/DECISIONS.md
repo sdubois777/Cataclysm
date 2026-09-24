@@ -2,6 +2,64 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — No rule in this log may be doubled, and the insert tool no longer writes a second one
+
+**Affects:** `tools/tests/test_decisions_entries_are_separated.py` (the check that every entry here
+has a rule and a blank line above it), `tools/resolve_decisions_log.py` (the tool that inserts a new
+first entry) and `tools/tests/test_resolve_decisions_log.py`.
+
+### WHAT WAS FOUND
+
+While rebasing four branches on 2026-09-23, one hand placement left a `---`, a blank line and a
+second `---` in a row, and the separator check passed it: the heading below still had its rule and
+blank line above it. **Measured on `development` at 14e637cc, three doubled rules were already in
+this log**, under the entries headed:
+
+- "The separator check's list of old faults can only shrink";
+- "Deeper Hurt lengthens a Cripple or a Weaken";
+- the 2026-09-13 "A modifier may ask how much health the character being hit has left".
+
+**At least two came from `resolve_decisions_log.py insert`.** It writes a rule below the entry it
+inserts, and the entry file it was given already ended with one. The same happened to three
+unmerged branches of this session: #1882, #1884 and #1438. Each has been corrected on its own
+branch.
+
+### THE RULING, UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto:**
+
+- merged text is not changed, so the three stay;
+- they are excused by the heading above each, in `DOUBLED_ALREADY`;
+- a literal `DOUBLED_CEILING = 3` is only ever lowered, the arrangement `ALREADY_WRONG` and
+  `ALLOWANCE_CEILING` use;
+- a new doubled rule fails, naming the heading above it.
+
+### WHAT CHANGED
+
+- **`test_no_rule_is_doubled`** names every doubled rule not excused.
+- `test_the_doubled_allowance_holds_nothing_that_is_now_correct` makes the list shrink, and
+  `test_the_doubled_allowance_is_never_longer_than_its_ceiling` holds the ceiling.
+- **`insert_first` drops a trailing rule, and any blank lines, from the entry it is given**, so an
+  entry file may end with a rule or not and the log gets one either way.
+
+### PROOF
+
+Two breaks with `tools/prove_guard.break_and_run`, in a `git archive` copy of 7dd9abe1, each
+asserted to match once:
+
+| Break | Printed | `named_failures` |
+|---|---|---|
+| a doubled rule below a new entry | `PROVED: 1 failed, 10 passed, 1 skipped in 0.13s \| restored: 11 passed, 1 skipped in 0.09s` | `test_no_rule_is_doubled` |
+| the insert tool keeps a trailing rule again | `PROVED: 1 failed, 22 passed in 0.39s \| restored: 23 passed in 0.33s` | `test_insert_writes_one_rule_when_the_entry_file_ends_with_one` |
+
+The one skipped test in the first row is the check that the allowance list has not grown since
+its branch began. It skips where there is no git history, which is the case in an archive copy.
+
+**The first draft of the allowance named two of the three headings wrongly.** They were written
+from memory, and the new shrink test failed on both. The headings are now copied from the log.
+
+---
+
 ## 2026-09-23 — The balance report prints no surge-size figures it did not measure, and the 2026-09-05 table is kept as a dated record
 
 **Affects:** `sim/experiments.py` (section 7 of the balance report, and two comments) and
