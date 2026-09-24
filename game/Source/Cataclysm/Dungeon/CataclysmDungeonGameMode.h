@@ -1918,6 +1918,13 @@ public:
 	bool TrickOrTreatIsHasting() const;
 
 	/**
+	 * Soul Harvest, for the floor panel and tests: the souls this creature holds, and the
+	 * souls given in this dungeon. Issues #1820 and #41.
+	 */
+	int32 SoulHarvestSoulsOn(const ACataclysmEnemyCharacter* Creature) const;
+	int32 SoulHarvestSoulsGiven() const { return SoulHarvestGiven; }
+
+	/**
 	 * Whether this death was a floor's boss: a Gatekeeper, the creature the game places as a
 	 * floor's boss, or any creature at the Boss rung. `IsBoss()` alone asks the rung, which
 	 * every creature draws, the Gatekeeper included, so on its own it is a 1% draw.
@@ -1966,6 +1973,16 @@ private:
 	void RaiseTheTrickOrTreatPair(const FVector& Where);
 
 	/** Trick or Treat, on the beat: the haste on while its clock runs and off after. */
+	/** Soul Harvest, on every death: a soul to the nearest living creature within reach. */
+	void NoteDeathForSoulHarvest(const struct FCataclysmDeathNotice& Notice);
+
+	/**
+	 * Soul Harvest's figures on one creature, written onto its bases. `bFreshBlock` is true
+	 * right after a rung change has written the creature's whole stat block over, so nothing
+	 * a soul added is still on it.
+	 */
+	void ApplySoulHarvestFigures(ACataclysmEnemyCharacter* Creature, bool bFreshBlock);
+
 	void StepTrickOrTreat(
 		class ACataclysmPlayerCharacter* Player,
 		class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -2783,6 +2800,21 @@ private:
 	int32 TrickOrTreatRaised = 0;
 	float TrickOrTreatHasteUntilSeconds = -1.0f;
 	float TrickOrTreatHasteApplied = 0.0f;
+
+	/**
+	 * Soul Harvest: each fed creature's souls and what they have added to it, and the souls
+	 * given in this dungeon. The additions are kept so a later soul can find the creature's
+	 * own figures under them.
+	 */
+	struct FSoulHarvestHeld
+	{
+		int32 Souls = 0;
+		float HealthAdded = 0.0f;
+		float DamageAdded = 0.0f;
+		float ResistanceAdded = 0.0f;
+	};
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, FSoulHarvestHeld> SoulHarvestHeld;
+	int32 SoulHarvestGiven = 0;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

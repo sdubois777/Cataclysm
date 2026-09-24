@@ -27,6 +27,7 @@
 #include "Character/CataclysmEnemyRarity.h"
 #include "Components/CapsuleComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -24001,6 +24002,345 @@ bool FCataclysmTreatControllerTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("the click counted"), Mode->TrickOrTreatPickupCount(), 1);
 	TestEqual(TEXT("and its trick raised two"), Mode->TrickOrTreatRaisedCount(), 2);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Demonic_Soul_Harvest. Issues #1820 and #41.
+//
+// "Defeated enemies release demonic souls that empower other enemies nearby. Souls float
+// toward the nearest demon, granting increased health, damage, and resistances." Each death
+// on a floor carrying the row gives the nearest living creature within 6 metres one soul:
+// 10% more maximum health, 10% more attack damage and +5 all-resistance, at most five.
+// Rulings under the owner's delegation, 2026-09-24.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	/** And the row where every death feeds the nearest creature. Issues #1820, #41. */
+	const FName SoulHarvest(UCataclysmDungeonModifierEffects::SoulHarvestKey);
+
+	/** A creature's maximum health, attack damage and all-resistance, as a soul moves them. */
+	struct FSoulFigures
+	{
+		float MaxHealth = 0.0f;
+		float Health = 0.0f;
+		float Damage = 0.0f;
+		float Resistance = 0.0f;
+	};
+
+	FSoulFigures SoulFiguresOf(ACataclysmEnemyCharacter* Creature)
+	{
+		FSoulFigures Out;
+		if (const UAbilitySystemComponent* System =
+				Creature ? Creature->GetAbilitySystemComponent() : nullptr)
+		{
+			Out.MaxHealth = System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+			Out.Health = System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetHealthAttribute());
+			Out.Damage = System->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute());
+			Out.Resistance = System->GetNumericAttribute(
+				UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute());
+		}
+		return Out;
+	}
+
+	/** A floor carrying these rows, reached with `GoToFloor` and emptied, every Imp a Common. */
+	ACataclysmDungeonGameMode* ASoulHarvestFloor(FAutomationTestBase& Test, UWorld* World,
+												 const FPossessedPlayer& Player,
+												 const TArray<FName>& Rows)
+	{
+		ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+		if (!Test.TestNotNull(TEXT("the dungeon game mode spawned"), Mode)
+			|| !Test.TestTrue(TEXT("a possessed player with an ability system"),
+							  Player.IsUsable()))
+		{
+			return nullptr;
+		}
+		Mode->StartPlay();
+		if (!Test.TestNotNull(TEXT("the world announces deaths"),
+							  UCataclysmCombatEvents::In(World)))
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		Mode->ImpRarityStep = 0;
+		if (!Test.TestTrue(TEXT("floor 1 was reached"), Mode->GoToFloor(1)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** A Common placed here and killed by the player, releasing a soul where it stood. */
+	bool ACommonDiesAt(FAutomationTestBase& Test, UWorld* World, ACataclysmDungeonGameMode* Mode,
+					   const FPossessedPlayer& Player, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Victim = PlaceCreatureAtRung(World, Mode, Where, 0);
+		return Test.TestNotNull(TEXT("a creature to die"), Victim)
+			&& ThePlayerKills(Test, Player, Victim);
+	}
+}
+
+// A DEATH FEEDS THE NEAREST LIVING CREATURE WITHIN SIX METRES, and nothing farther.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulsNearestTest,
+	"Cataclysm.DungeonModifierEffects.ADeathFeedsTheNearestLivingCreatureWithinSixMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulsNearestTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE NEAREST AT THREE METRES, ANOTHER AT FIVE: the nearer takes the soul.
+	ACataclysmEnemyCharacter* Nearer = PlaceCreatureAtRung(World, Mode, FVector(1300.0f, 0.0f, 0.0f), 0);
+	ACataclysmEnemyCharacter* Farther = PlaceCreatureAtRung(World, Mode, FVector(1500.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature three metres away"), Nearer)
+		|| !TestNotNull(TEXT("and one five metres away"), Farther))
+	{
+		return false;
+	}
+	const FSoulFigures Before = SoulFiguresOf(Nearer);
+	const FSoulFigures FartherBefore = SoulFiguresOf(Farther);
+	if (!TestTrue(FString::Printf(TEXT("the nearer hits for something: %.2f"), Before.Damage),
+				  Before.Damage > 0.0f)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+
+	const FSoulFigures After = SoulFiguresOf(Nearer);
+	TestEqual(TEXT("the nearer holds one soul"), Mode->SoulHarvestSoulsOn(Nearer), 1);
+	TestEqual(TEXT("its maximum health is 10% more"), After.MaxHealth, Before.MaxHealth * 1.1f, 0.01f);
+	TestEqual(TEXT("and its health rose by as much"), After.Health - Before.Health,
+			  After.MaxHealth - Before.MaxHealth, 0.01f);
+	TestEqual(TEXT("its attack damage is 10% more"), After.Damage, Before.Damage * 1.1f, 0.01f);
+	TestEqual(TEXT("its all-resistance is 5 more"), After.Resistance,
+			  Before.Resistance + Effects::SoulHarvestResistancePerSoul, 0.01f);
+	TestEqual(TEXT("the farther holds none"), Mode->SoulHarvestSoulsOn(Farther), 0);
+	TestEqual(TEXT("and is unchanged"), SoulFiguresOf(Farther).MaxHealth, FartherBefore.MaxHealth, 0.01f);
+
+	// A DEATH WITH NOBODY WITHIN SIX METRES RELEASES NOTHING: the only creature is eight away.
+	ACataclysmEnemyCharacter* Beyond = PlaceCreatureAtRung(World, Mode, FVector(5800.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature eight metres away"), Beyond)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(5000.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the creature eight metres away holds none"), Mode->SoulHarvestSoulsOn(Beyond), 0);
+	TestEqual(TEXT("one soul given in all"), Mode->SoulHarvestSoulsGiven(), 1);
+
+	const TMap<FName, FString> Counting = Mode->LiveCountsForTheFloor();
+	const FString* Line = Counting.Find(SoulHarvest);
+	TestEqual(TEXT("the panel says it"), Line ? *Line : FString(TEXT("no line")),
+			  FString(TEXT("soul harvest: 1 soul(s) taken, the most on one living creature 1 of 5")));
+	return true;
+}
+
+// FIVE SOULS AT MOST ON ONE CREATURE: seven deaths beside it leave it with five.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulsCapTest,
+	"Cataclysm.DungeonModifierEffects.ACreatureHoldsAtMostFiveSouls",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulsCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("four becomes five"), Effects::SoulHarvestSoulsAfterFeeding(4), 5);
+	TestEqual(TEXT("five stays five"), Effects::SoulHarvestSoulsAfterFeeding(5), 5);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Fed =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a creature to feed"), Fed))
+	{
+		return false;
+	}
+	const FSoulFigures Before = SoulFiguresOf(Fed);
+	for (int32 Death = 0; Death < 7; ++Death)
+	{
+		if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("seven deaths leave five souls"), Mode->SoulHarvestSoulsOn(Fed), 5);
+	TestEqual(TEXT("and five given"), Mode->SoulHarvestSoulsGiven(), 5);
+	const FSoulFigures After = SoulFiguresOf(Fed);
+	TestEqual(TEXT("maximum health is half again"), After.MaxHealth, Before.MaxHealth * 1.5f, 0.01f);
+	TestEqual(TEXT("attack damage is half again"), After.Damage, Before.Damage * 1.5f, 0.01f);
+	TestEqual(TEXT("all-resistance is 25 more"), After.Resistance, Before.Resistance + 25.0f, 0.01f);
+	return true;
+}
+
+// A SOUL-FED CREATURE TAKES LESS OF THE SAME BLOW, by its five points of resistance. An Imp's
+// figure is 0, so 5 is far inside the cap and the ratio is the soul's and not the cap's.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulsResistTest,
+	"Cataclysm.DungeonModifierEffects.ASoulFedCreatureTakesLessOfTheSameBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulsResistTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASoulHarvestFloor(*this, World, Player, {SoulHarvest});
+	ACataclysmEnemyCharacter* Target =
+		Mode ? PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), 0) : nullptr;
+	if (!TestNotNull(TEXT("a creature to strike"), Target))
+	{
+		return false;
+	}
+
+	const float Resistance = SoulFiguresOf(Target).Resistance;
+	if (!TestTrue(FString::Printf(TEXT("R + 5 is inside the cap: %.1f + %.1f < %.1f"), Resistance,
+								  Effects::SoulHarvestResistancePerSoul,
+								  UCataclysmDamageCalculation::ResistanceCap),
+				  Resistance + Effects::SoulHarvestResistancePerSoul
+					  < UCataclysmDamageCalculation::ResistanceCap))
+	{
+		return false;
+	}
+
+	// ONE NON-CRITICAL BLOW'S DAMAGE TO HEALTH, the creature put back to full health first. A
+	// critical blow is not compared: up to forty blows are tried, which is enough for any
+	// critical chance below about 90%.
+	const auto AnOrdinaryBlow = [&](float& OutDealt) -> bool
+	{
+		for (int32 Try = 0; Try < 40; ++Try)
+		{
+			const FSoulFigures Now = SoulFiguresOf(Target);
+			WoundCreatureTo(Target, Now.MaxHealth, 0.0f);
+			FCataclysmDamageResult Resolved;
+			UCataclysmSkillEffects::ApplyHit(Player.Character, Target, 10.0f,
+											 FGameplayTagContainer(), FCataclysmHitDelivery(),
+											 &Resolved);
+			if (!Resolved.bWasCritical && !Resolved.bEvaded && Resolved.DealtToHealth > 0.0f)
+			{
+				OutDealt = Resolved.DealtToHealth;
+				return true;
+			}
+		}
+		return false;
+	};
+
+	float Unfed = 0.0f;
+	if (!TestTrue(TEXT("an ordinary (non-critical, not evaded) blow was found among 40 before the soul"),
+						  AnOrdinaryBlow(Unfed))
+		|| !TestTrue(FString::Printf(TEXT("and it did not empty the creature: %.2f of %.2f"), Unfed,
+									 SoulFiguresOf(Target).MaxHealth),
+					 Unfed < SoulFiguresOf(Target).MaxHealth * 0.9f)
+		|| !ACommonDiesAt(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the creature holds a soul"), Mode->SoulHarvestSoulsOn(Target), 1);
+
+	float Fed = 0.0f;
+	if (!TestTrue(TEXT("an ordinary (non-critical, not evaded) blow was found among 40 after it"),
+						  AnOrdinaryBlow(Fed)))
+	{
+		return false;
+	}
+	const float Expected = (1.0f - (Resistance + Effects::SoulHarvestResistancePerSoul) / 100.0f)
+		/ (1.0f - Resistance / 100.0f);
+	TestEqual(FString::Printf(TEXT("the soul took its share: %.3f then %.3f"), Unfed, Fed),
+			  Fed / Unfed, Expected, 0.001f);
+	return true;
+}
+
+// ON A FLOOR CARRYING BLOOD-FORGED CHAMPIONS TOO, ONE ELITE IS FED BY BOTH: three deaths beside
+// it raise it a rung and give it three souls, and the rung change keeps the souls.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSoulsRungTest,
+	"Cataclysm.DungeonModifierEffects.SoulsSurviveTheRungABloodForgedChampionGains",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSoulsRungTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode =
+		ASoulHarvestFloor(*this, World, Player, {SoulHarvest, BloodForgedChampions});
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const int32 From = Effects::BloodForgedChampionsLowestRung;
+	const int32 To = Effects::BloodForgedChampionsRungAfter(From);
+	ACataclysmEnemyCharacter* Champion = PlaceCreatureAtRung(World, Mode, FVector(1000.0f, 0.0f, 0.0f), From);
+	if (!TestNotNull(TEXT("an Elite to feed"), Champion)
+		|| !TestTrue(FString::Printf(TEXT("the champion rises: %d to %d"), From, To), To > From))
+	{
+		return false;
+	}
+
+	for (int32 Death = 0; Death < Effects::BloodForgedChampionsDeathsPerRung; ++Death)
+	{
+		if (!ACommonDiesAt(*this, World, Mode, Player, FVector(1200.0f, 0.0f, 0.0f)))
+		{
+			return false;
+		}
+	}
+
+	const int32 Souls = Effects::BloodForgedChampionsDeathsPerRung;
+	TestEqual(TEXT("the champion rose a rung"), Champion->RarityStep, To);
+	TestEqual(TEXT("and holds a soul for every death"), Mode->SoulHarvestSoulsOn(Champion), Souls);
+	// ITS FIGURES AT THE NEW RUNG WITHOUT THE SOULS: its own rung set again, which writes its
+	// whole stat block from its rung and the modifiers it drew, and which the game mode does not
+	// hear. Not a twin creature: the rung-up drew modifiers at random, and a twin's draw could
+	// differ.
+	//
+	// READ IN THIS ORDER: the fed figures FIRST, then the rung set again for the base. Setting
+	// the rung wipes what the souls added, so reading the fed figures after it would compare the
+	// base with itself and nothing could make this test fail.
+	const FSoulFigures Fed = SoulFiguresOf(Champion);
+	Champion->SetRarityStep(To);
+	const FSoulFigures Bare = SoulFiguresOf(Champion);
+	TestEqual(TEXT("its attack damage is its new rung's plus a tenth a soul"), Fed.Damage,
+			  Bare.Damage * (1.0f + 0.1f * Souls), 0.01f);
+	TestEqual(TEXT("its all-resistance is its new rung's plus five a soul"), Fed.Resistance,
+			  Bare.Resistance + 5.0f * Souls, 0.01f);
 	return true;
 }
 

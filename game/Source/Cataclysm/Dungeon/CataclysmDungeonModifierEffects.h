@@ -1650,6 +1650,30 @@ public:
 	static const TCHAR* TrickOrTreatKey;
 
 	/**
+	 * The row where every death feeds the nearest creature. Issues #1820 and #41.
+	 *
+	 * "Defeated enemies release demonic souls that empower other enemies nearby. Souls float
+	 * toward the nearest demon, granting increased health, damage, and resistances." Each
+	 * creature that dies on a floor carrying the row gives one soul to the nearest living
+	 * creature within `SoulHarvestRadiusMetres`: more maximum health, more attack damage and
+	 * more of its one all-resistance figure, up to `SoulHarvestMostSouls`.
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24:
+	 * - EVERY DEATH, WHOEVER KILLED IT, but a risen creature's second death releases nothing.
+	 * - THE NEAREST LIVING CREATURE WITHIN 6 METRES, the Blood-Forged radius, at once. "The
+	 *   nearest demon" is any creature because every creature today is Demonic
+	 *   (docs/Cataclysm_GDD_v2.md, "Vertical Slice Enemies (Demonic Cataclysm)"); a
+	 *   non-Demonic creature would make that reading wrong.
+	 * - 10% MORE MAXIMUM HEALTH, 10% MORE ATTACK DAMAGE AND +5 ALL-RESISTANCE PER SOUL, at
+	 *   most five souls. A play-test point. A creature holds one resistance figure, not eight
+	 *   (the owner's ruling of 2026-08-12), so the +5 is to that figure.
+	 * - THE GAIN STAYS UNTIL THE CREATURE DIES and is written again after a rung change.
+	 * - THE FIGURES ARE WRITTEN ONTO THE ATTRIBUTE BASES, as Nothing Is Forgotten's are, so this
+	 *   adds no creature damage multiplier.
+	 */
+	static const TCHAR* SoulHarvestKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -3889,6 +3913,23 @@ public:
 		"A roll that is always one side is not the row's \"or\", and a trick of nothing or a "
 		"treat of no length is not a trick or a treat.");
 
+	/** How far a soul reaches: the Blood-Forged radius, so a floor rule means one distance. */
+	static constexpr float SoulHarvestRadiusMetres = BloodForgedChampionsRadiusMetres;
+
+	/**
+	 * What one soul gives, and how many a creature may hold. Ruled under the owner's
+	 * delegation, 2026-09-24; a play-test point.
+	 */
+	static constexpr float SoulHarvestHealthPercentPerSoul = 10.0f;
+	static constexpr float SoulHarvestDamagePercentPerSoul = 10.0f;
+	static constexpr float SoulHarvestResistancePerSoul = 5.0f;
+	static constexpr int32 SoulHarvestMostSouls = 5;
+
+	static_assert(
+		SoulHarvestMostSouls > 0 && SoulHarvestHealthPercentPerSoul > 0.0f
+			&& SoulHarvestDamagePercentPerSoul > 0.0f && SoulHarvestResistancePerSoul > 0.0f,
+		"A soul that gives nothing, or a cap of none, is not the row.");
+
 	static_assert(
 		DirgeResonanceHasteSeconds > 0.0f
 			&& DirgeResonanceHasteSeconds < DirgeResonanceEverySeconds,
@@ -4617,6 +4658,19 @@ public:
 
 	/** Whether this draw, 0 to 100, is a trick: creatures rather than a haste. */
 	static bool TrickOrTreatRaisesEnemies(float Roll);
+
+	/** How far a soul reaches, in centimetres. */
+	static float SoulHarvestRadiusCm();
+
+	/** One more soul, up to `SoulHarvestMostSouls`. The only cap on the souls. */
+	static int32 SoulHarvestSoulsAfterFeeding(int32 Held);
+
+	/** What this many souls add to a maximum health or an attack damage of `Base`. */
+	static float SoulHarvestHealthAdded(float Base, int32 Souls);
+	static float SoulHarvestDamageAdded(float Base, int32 Souls);
+
+	/** What this many souls add to a creature's all-resistance figure. */
+	static float SoulHarvestResistanceAdded(int32 Souls);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

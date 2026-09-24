@@ -6,6 +6,7 @@
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAilments.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
@@ -2092,6 +2093,152 @@ void ACataclysmDungeonGameMode::NoteDeathForNothingIsForgotten(
 	NothingIsForgottenDamage += Effects::NothingIsForgottenPortionOf(
 		Abilities->GetNumericAttribute(UCataclysmCombatAttributeSet::GetAttackDamageAttribute()));
 	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForSoulHarvest(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::SoulHarvestKey)))
+	{
+		return;
+	}
+
+	// EVERY DEATH, WHOEVER DEALT IT, but not a risen creature's second: its first death
+	// already released its soul. Ruled 2026-09-24.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Fallen || !Fallen->PaysForItsDeath())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+	ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!World || !Player)
+	{
+		return;
+	}
+
+	// THE NEAREST LIVING CREATURE WITHIN REACH, found the way Blood-Forged Champions finds
+	// its champion. The creature that died is still in the sphere and is skipped.
+	ACataclysmEnemyCharacter* Nearest = nullptr;
+	float NearestAway = TNumericLimits<float>::Max();
+	for (AActor* Found : UCataclysmTargeting::FindEnemiesInSphere(
+			 World, Player, Notice.Location, Effects::SoulHarvestRadiusCm()))
+	{
+		ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Found);
+		if (!IsValid(Creature) || Creature == Fallen || UCataclysmSkillEffects::IsDead(Creature))
+		{
+			continue;
+		}
+		const float Away = FVector::Dist(Creature->GetActorLocation(), Notice.Location);
+		if (Away < NearestAway)
+		{
+			NearestAway = Away;
+			Nearest = Creature;
+		}
+	}
+
+	for (auto Entry = SoulHarvestHeld.CreateIterator(); Entry; ++Entry)
+	{
+		if (Entry->Key.IsStale())
+		{
+			Entry.RemoveCurrent();
+		}
+	}
+
+	if (!Nearest)
+	{
+		return;
+	}
+
+	// A CREATURE AT THE CAP TAKES NOTHING MORE, and the soul is not passed on: it went to the
+	// nearest, and the nearest was full.
+	FSoulHarvestHeld& Held = SoulHarvestHeld.FindOrAdd(Nearest);
+	const int32 Souls = Effects::SoulHarvestSoulsAfterFeeding(Held.Souls);
+	if (Souls == Held.Souls)
+	{
+		return;
+	}
+	Held.Souls = Souls;
+	++SoulHarvestGiven;
+	ApplySoulHarvestFigures(Nearest, /*bFreshBlock=*/false);
+	UE_LOG(LogCataclysm, Log, TEXT("Soul Harvest: %s died and %s now holds %d soul(s)"),
+		   *Fallen->GetName(), *Nearest->GetName(), Souls);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::ApplySoulHarvestFigures(ACataclysmEnemyCharacter* Creature,
+														 bool bFreshBlock)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+	using Combat = UCataclysmCombatAttributeSet;
+	using Resist = UCataclysmAllResistanceAttributeSet;
+
+	FSoulHarvestHeld* Held = IsValid(Creature) ? SoulHarvestHeld.Find(Creature) : nullptr;
+	UAbilitySystemComponent* Abilities =
+		Held ? UCataclysmTargeting::AbilitySystemOf(Creature) : nullptr;
+	if (!Held || !Abilities)
+	{
+		return;
+	}
+
+	// AFTER A RUNG CHANGE NOTHING A SOUL ADDED IS STILL ON THE CREATURE, so there is nothing
+	// to take off before finding its own figures.
+	if (bFreshBlock)
+	{
+		Held->HealthAdded = 0.0f;
+		Held->DamageAdded = 0.0f;
+		Held->ResistanceAdded = 0.0f;
+	}
+
+	// ITS OWN FIGURES ARE WHAT IS THERE NOW LESS WHAT THE SOULS ADDED.
+	const float OwnMaximum =
+		Abilities->GetNumericAttribute(Vital::GetMaxHealthAttribute()) - Held->HealthAdded;
+	const float OwnDamage =
+		Abilities->GetNumericAttribute(Combat::GetAttackDamageAttribute()) - Held->DamageAdded;
+	const float OwnResistance =
+		Abilities->GetNumericAttribute(Resist::GetAllResistanceAttribute())
+		- Held->ResistanceAdded;
+
+	const float HealthAdded = Effects::SoulHarvestHealthAdded(OwnMaximum, Held->Souls);
+	const float DamageAdded = Effects::SoulHarvestDamageAdded(OwnDamage, Held->Souls);
+	const float ResistanceAdded = Effects::SoulHarvestResistanceAdded(Held->Souls);
+
+	// THE MAXIMUM FIRST, BECAUSE THE CLAMP ON HEALTH READS IT. A new soul raises health by
+	// what it raised the maximum by: it arrives as health, not as a wound. After a rung change
+	// health is left as the rung change left it, because the health the creature carried
+	// already held what its souls had given.
+	const float Health = Abilities->GetNumericAttribute(Vital::GetHealthAttribute());
+	Abilities->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(), OwnMaximum + HealthAdded);
+	if (!bFreshBlock)
+	{
+		Abilities->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+										   Health + (HealthAdded - Held->HealthAdded));
+	}
+	Abilities->SetNumericAttributeBase(Combat::GetAttackDamageAttribute(), OwnDamage + DamageAdded);
+	Abilities->SetNumericAttributeBase(Resist::GetAllResistanceAttribute(),
+									   OwnResistance + ResistanceAdded);
+
+	Held->HealthAdded = HealthAdded;
+	Held->DamageAdded = DamageAdded;
+	Held->ResistanceAdded = ResistanceAdded;
+}
+
+int32 ACataclysmDungeonGameMode::SoulHarvestSoulsOn(const ACataclysmEnemyCharacter* Creature) const
+{
+	for (const TPair<TWeakObjectPtr<ACataclysmEnemyCharacter>, FSoulHarvestHeld>& Entry :
+		 SoulHarvestHeld)
+	{
+		if (Entry.Key.Get() == Creature)
+		{
+			return Entry.Value.Souls;
+		}
+	}
+	return 0;
 }
 
 void ACataclysmDungeonGameMode::OnLootTaken(const FCataclysmLootTakenNotice& Notice)
@@ -4234,6 +4381,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForBloodGates(Notice);
 	NoteDeathForNothingIsForgotten(Notice);
 	NoteDeathForStarvationCurse(Notice);
+	NoteDeathForSoulHarvest(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -5448,6 +5596,7 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodForgedChampions(
 	// strip a wraith of everything but its name the first time it was fed.
 	ApplyVengefulWraithFigures(Champion);
 	ApplyNothingIsForgottenFigures(Champion);
+	ApplySoulHarvestFigures(Champion, /*bFreshBlock=*/true);
 
 	// AND ITS TALLY STARTS AGAIN, so the next rung costs the same as this one did.
 	BloodForgedChampionsFed[Champion] = 0;
@@ -5772,6 +5921,23 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 
 	// AND TRICK OR TREAT: the clicks, the creatures raised, and whether a treat is running.
 	// Issues #1820 and #41.
+	const FName Souls(Effects::SoulHarvestKey);
+	if (FloorBrief.Modifiers.Contains(Souls))
+	{
+		int32 Most = 0;
+		for (const TPair<TWeakObjectPtr<ACataclysmEnemyCharacter>, FSoulHarvestHeld>& Entry :
+			 SoulHarvestHeld)
+		{
+			if (Entry.Key.IsValid() && !UCataclysmSkillEffects::IsDead(Entry.Key.Get()))
+			{
+				Most = FMath::Max(Most, Entry.Value.Souls);
+			}
+		}
+		Counting.Add(Souls, FString::Printf(
+			TEXT("soul harvest: %d soul(s) taken, the most on one living creature %d of %d"),
+			SoulHarvestGiven, Most, Effects::SoulHarvestMostSouls));
+	}
+
 	const FName Treat(Effects::TrickOrTreatKey);
 	if (FloorBrief.Modifiers.Contains(Treat))
 	{
@@ -7313,6 +7479,7 @@ void ACataclysmDungeonGameMode::StepVolatileEvolution(ACataclysmPlayerCharacter*
 		// just written this creature's whole stat block over.
 		ApplyVengefulWraithFigures(Creature);
 		ApplyNothingIsForgottenFigures(Creature);
+		ApplySoulHarvestFigures(Creature, /*bFreshBlock=*/true);
 
 		VolatileEvolutionMutated.Add(Creature);
 		++VolatileEvolutionMutations;
@@ -8003,6 +8170,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 			TrickOrTreatPickups = 0;
 			TrickOrTreatRaised = 0;
 			TrickOrTreatHasteUntilSeconds = -1.0f;
+
+			// AND SOUL HARVEST'S RECORD: the souls went with the creatures that held them.
+			// Issues #1820 and #41.
+			SoulHarvestHeld.Reset();
+			SoulHarvestGiven = 0;
 
 			// AND LEAVING THE DUNGEON IS WHERE THE EDICT OF SILENCE'S CLOCK
 			// FINALLY STOPS. Issues #1786 and #41. This is the branch that runs

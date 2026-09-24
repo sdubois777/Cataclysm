@@ -3823,3 +3823,26 @@ def test_trick_or_treat_row_still_raises_enemies_or_buffs_on_picking_up_loot():
     assert "%" not in words, (
         "Chaos_Trick_or_Treat now states a percentage. The even odds and the haste were "
         "rulings because the row gave none; use the row's figure. " + words)
+
+def test_soul_harvest_row_still_feeds_the_nearest_demon_health_damage_and_resistances():
+    """The phrases the rule's readings rest on.
+
+    "Defeated enemies release demonic souls that empower other enemies nearby. Souls float
+    toward the nearest demon, granting increased health, damage, and resistances." DEFEATED
+    ENEMIES is why every death releases one, whoever killed it; NEARBY and THE NEAREST DEMON
+    are why it goes to the nearest living creature within a radius; HEALTH, DAMAGE, AND
+    RESISTANCES are the three things a soul raises; and the row gives no figure, which is why
+    ten per cent, five points and five souls are rulings. If any of them changes, the reading
+    must be revisited.
+    """
+    words = flat(rows()["Demonic_Soul_Harvest"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("defeated enemies", "nearby", "the nearest demon",
+                   "health, damage, and resistances"):
+        assert phrase in lower, (
+            f"Demonic_Soul_Harvest no longer says {phrase.upper()!r}. A reading of the rule "
+            "rests on it; see SoulHarvestKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert "%" not in words, (
+        "Demonic_Soul_Harvest now states a percentage. The figures a soul gives were rulings "
+        "because the row gave none; use the row's figure. " + words)
