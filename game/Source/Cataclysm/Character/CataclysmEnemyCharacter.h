@@ -1005,9 +1005,10 @@ public:
 	bool bCannotBeHurt = false;
 
 	/**
-	 * Whether this creature's death is to pay nothing and name no killer: a Blood Bond's
-	 * elite, which dies because the player did. Issues #1820 and #41. Set by the dungeon
-	 * game mode immediately before that death, and by nothing else.
+	 * Whether this creature's death is to pay nothing: a Blood Bond's elite, which dies because
+	 * the player did, and a Plague Convergence creature, which a clock sent. Issues #1820 and
+	 * #41. Set by the dungeon game mode -- on the elite immediately before its death, on a
+	 * convergence creature as it spawns -- and by nothing else.
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bDiesUnpaid = false;

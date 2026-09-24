@@ -1769,6 +1769,32 @@ public:
 	static const TCHAR* BloodBondKey;
 
 	/**
+	 * The row where a floor stood on too long sends hordes whose blows carry a disease.
+	 * Issues #1820 and #41.
+	 *
+	 * "If players spend too long on a floor, the dungeon begins to 'converge' on them. Hordes of
+	 * enemies will spawn continuously, all carrying highly contagious diseases that stack
+	 * exponentially with every hit. The only way to stop the convergence is to complete
+	 * objectives quickly and descend to the next floor."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24. Every figure
+	 * is a play-test value:
+	 * - IT BEGINS `PlagueConvergenceBeginsAfterSeconds` INTO A FLOOR, counted on the beat as
+	 *   the Reaper's arrival is (`TheReaperDelaySeconds`); never on a Horde wave.
+	 * - A WAVE EVERY `PlagueConvergenceSecondsBetweenWaves` OF `PlagueConvergenceCreaturesPerWave`
+	 *   of the floor's own kinds, at the floor's edge cells farthest from the player, with at
+	 *   most `PlagueConvergenceMostAlive` alive; a wave at the cap brings only as many as fit.
+	 * - A LANDED BLOW FROM ONE OF THEM ADDS A DISEASE STACK on the player: damage over time,
+	 *   typed as the row, `PlagueConvergenceDiseaseBasePercent` of maximum health a second at
+	 *   one stack and doubling with each further stack, up to `PlagueConvergenceMostStacks`.
+	 *   The player's death and a floor change clear it.
+	 * - ONLY DESCENDING STOPS IT: killing the creatures does not reset the clock.
+	 * - THE CREATURES PAY NOTHING (`bDiesUnpaid`) and are raised by the rule, so Blood Gates
+	 *   does not wait on them.
+	 */
+	static const TCHAR* PlagueConvergenceKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4051,6 +4077,23 @@ public:
 	/** The rung a Blood Bond takes: Elite. Ruled. */
 	static constexpr int32 BloodBondRung = 1;
 
+	/** Plague Convergence's figures. Ruled; every one a play-test value. See the key. */
+	static constexpr float PlagueConvergenceBeginsAfterSeconds = 120.0f;
+	static constexpr float PlagueConvergenceSecondsBetweenWaves = 10.0f;
+	static constexpr int32 PlagueConvergenceCreaturesPerWave = 3;
+	static constexpr int32 PlagueConvergenceMostAlive = 30;
+	static constexpr float PlagueConvergenceDiseaseBasePercent = 0.5f;
+	static constexpr int32 PlagueConvergenceMostStacks = 6;
+	static constexpr float PlagueConvergenceSecondsBetweenBurns = 1.0f;
+
+	static_assert(
+		PlagueConvergenceBeginsAfterSeconds > 0.0f && PlagueConvergenceSecondsBetweenWaves > 0.0f
+			&& PlagueConvergenceCreaturesPerWave > 0
+			&& PlagueConvergenceMostAlive >= PlagueConvergenceCreaturesPerWave
+			&& PlagueConvergenceMostStacks > 0,
+		"A convergence that begins at once, never sends a wave, or has no room for one is not "
+		"the row.");
+
 	/** The Reaper's rung: Common, the rung that adds nothing to the Warden. Ruled. */
 	static constexpr int32 TheReaperRung = 0;
 
@@ -4838,6 +4881,21 @@ public:
 	 */
 	static bool BloodBondMayBond(int32 Rung, bool bIsAFloorsBoss, float DistanceCm,
 								 float NoticesFromCm);
+
+	/** Whether Plague Convergence has begun after this long on a floor. */
+	static bool PlagueConvergenceHasBegun(float SecondsOnFloor);
+
+	/** How many creatures a wave brings with this many already alive: a full wave, or what fits. */
+	static int32 PlagueConvergenceWaveSize(int32 Alive);
+
+	/** The disease's stacks after one more landed blow, up to `PlagueConvergenceMostStacks`. */
+	static int32 PlagueConvergenceStacksAfterHit(int32 Held);
+
+	/**
+	 * What the disease takes a second, in percent of maximum health: nothing at no stacks, the
+	 * base at one, and twice the last for each further stack up to the cap.
+	 */
+	static float PlagueConvergenceDiseasePercentPerSecond(int32 Stacks);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

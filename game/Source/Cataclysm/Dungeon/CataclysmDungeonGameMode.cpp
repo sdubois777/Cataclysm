@@ -2264,6 +2264,197 @@ void ACataclysmDungeonGameMode::NoteDeathForBloodBond(const FCataclysmDeathNotic
 	RefreshFloorModifierPanel();
 }
 
+int32 ACataclysmDungeonGameMode::PlagueConvergenceCreaturesAlive() const
+{
+	int32 Alive = 0;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Creature : PlagueConvergenceCreatures)
+	{
+		if (Creature.IsValid() && !UCataclysmSkillEffects::IsDead(Creature.Get()))
+		{
+			++Alive;
+		}
+	}
+	return Alive;
+}
+
+bool ACataclysmDungeonGameMode::IsAPlagueConvergenceCreature(const AActor* Actor) const
+{
+	if (!Actor)
+	{
+		return false;
+	}
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Creature : PlagueConvergenceCreatures)
+	{
+		if (Creature.Get() == Actor)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::ConvergenceArrivalCells(
+	const FCataclysmFloorPlan& Plan, FIntPoint From, int32 Count)
+{
+	// AN EDGE CELL IS FLOOR WITH A SIDE ON ROCK OR OFF THE GRID: where a horde can come out
+	// of the walls rather than out of the middle of a room.
+	TArray<FIntPoint> Edge;
+	for (int32 Y = 0; Y < Plan.Height; ++Y)
+	{
+		for (int32 X = 0; X < Plan.Width; ++X)
+		{
+			const FIntPoint Cell(X, Y);
+			if (Plan.IsFloor(Cell)
+				&& (!Plan.IsFloor(Cell + FIntPoint(1, 0)) || !Plan.IsFloor(Cell + FIntPoint(-1, 0))
+					|| !Plan.IsFloor(Cell + FIntPoint(0, 1)) || !Plan.IsFloor(Cell + FIntPoint(0, -1))))
+			{
+				Edge.Add(Cell);
+			}
+		}
+	}
+
+	// THE FARTHEST FIRST, by distance in cells; ties keep the grid's order, so the answer is
+	// the same every time for one plan.
+	const auto Away = [From](const FIntPoint& Cell)
+	{
+		return (Cell - From).SizeSquared();
+	};
+	Edge.StableSort([&Away](const FIntPoint& A, const FIntPoint& B) { return Away(A) > Away(B); });
+	if (Edge.Num() > Count)
+	{
+		Edge.SetNum(FMath::Max(0, Count));
+	}
+	return Edge;
+}
+
+void ACataclysmDungeonGameMode::StepPlagueConvergence(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !Player || !AbilitySystem || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// THE DISEASE BURNS ONCE A SECOND WHILE IT IS HELD, typed as the row, from the floor's
+	// hazard source as Necrotic Ground's fog burns: damage over time, which pestilence
+	// resistance meets. Unlike Wasting Sickness, which weakens by a share per stack, this is
+	// damage.
+	PlagueConvergenceSecondsSinceBurn += SecondsBetweenWaveChecks;
+	if (PlagueConvergenceStacks > 0
+		&& PlagueConvergenceSecondsSinceBurn >= Effects::PlagueConvergenceSecondsBetweenBurns)
+	{
+		PlagueConvergenceSecondsSinceBurn = 0.0f;
+		const float Burn = AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute())
+			* Effects::PlagueConvergenceDiseasePercentPerSecond(PlagueConvergenceStacks) / 100.0f;
+		ACataclysmFloorHazardSource* Burning = ACataclysmFloorHazardSource::ForFloor(World);
+		if (Burning && Burn > 0.0f && !UCataclysmSkillEffects::IsDead(Player))
+		{
+			FCataclysmHitDelivery Delivery;
+			Delivery.bIsDamageOverTime = true;
+			Delivery.DamageType = DungeonGameModeTypeOfRow(Effects::PlagueConvergenceKey);
+			UCataclysmSkillEffects::ApplyDirectDamage(Burning, Player, Burn, Delivery);
+		}
+	}
+
+	// THE CLOCK, the Reaper's kind: the floor's seconds on the beat. Killing the creatures
+	// does not wind it back; only a new floor does.
+	PlagueConvergenceSecondsOnFloor += SecondsBetweenWaveChecks;
+	if (!Effects::PlagueConvergenceHasBegun(PlagueConvergenceSecondsOnFloor))
+	{
+		return;
+	}
+
+	// A WAVE AS IT BEGINS AND EVERY CADENCE AFTER. The first beat at or past the start finds
+	// the count at its cadence already, so the first wave comes on that beat.
+	PlagueConvergenceSecondsSinceWave += SecondsBetweenWaveChecks;
+	const bool bFirst = PlagueConvergenceCreatures.IsEmpty();
+	if (!bFirst
+		&& PlagueConvergenceSecondsSinceWave < Effects::PlagueConvergenceSecondsBetweenWaves)
+	{
+		return;
+	}
+	PlagueConvergenceSecondsSinceWave = 0.0f;
+
+	PlagueConvergenceCreatures.RemoveAll([](const TWeakObjectPtr<ACataclysmEnemyCharacter>& One)
+	{
+		return !One.IsValid() || UCataclysmSkillEffects::IsDead(One.Get());
+	});
+	const int32 Wanted = Effects::PlagueConvergenceWaveSize(PlagueConvergenceCreatures.Num());
+	if (Wanted <= 0)
+	{
+		return;
+	}
+
+	// THE FLOOR'S OWN KINDS, drawn from a fresh population as Grave Tide draws them.
+	const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
+		CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+	const TArray<FIntPoint> Cells = ConvergenceArrivalCells(
+		CurrentFloor->GetPlan(), CurrentFloor->CellOfWorld(Player->GetActorLocation()), Wanted);
+	if (Population.Enemies.IsEmpty() || Cells.IsEmpty())
+	{
+		return;
+	}
+
+	int32 Placed = 0;
+	for (int32 Which = 0; Which < Wanted; ++Which)
+	{
+		FCataclysmEnemyPlacement Placement =
+			Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+		Placement.Cell = Cells[Which % Cells.Num()];
+
+		// NOTICING FROM ANYWHERE ON THE FLOOR, the Reaper's figure: a horde that converges comes
+		// for the player rather than waiting at the wall to be found.
+		ACataclysmEnemyCharacter* Arrived =
+			SpawnPlacedCreature(Placement, Effects::TheReaperSightMultiplier);
+		if (!Arrived)
+		{
+			continue;
+		}
+		Arrived->bDiesUnpaid = true;
+		Arrived->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Arrived);
+		FloorEnemies.Add(Arrived);
+		PlagueConvergenceCreatures.Add(Arrived);
+		++Placed;
+	}
+	UE_LOG(LogCataclysm, Log,
+		   TEXT("Plague Convergence: %d creature(s) arrived on floor %d, %d alive of at most %d"),
+		   Placed, FloorNumber, PlagueConvergenceCreatures.Num(), Effects::PlagueConvergenceMostAlive);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteHitForPlagueConvergence(const FCataclysmHitNotice& Notice)
+{
+	// A LANDED BLOW FROM ONE OF ITS CREATURES ON THE PLAYER, and not a tick: a creature's
+	// damage over time is not a hit.
+	if (Notice.Landed <= 0.0f || Notice.bDamageOverTime
+		|| !Cast<ACataclysmPlayerCharacter>(Notice.Target)
+		|| !IsAPlagueConvergenceCreature(Notice.Attacker))
+	{
+		return;
+	}
+	PlagueConvergenceStacks =
+		UCataclysmDungeonModifierEffects::PlagueConvergenceStacksAfterHit(PlagueConvergenceStacks);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForPlagueConvergence(const FCataclysmDeathNotice& Notice)
+{
+	// THE PLAYER'S OWN DEATH CLEARS THE DISEASE, under the owner's ruling of 2026-09-10 that
+	// what lasts only for a dungeon ends at a death. The clock and the creatures stay: only
+	// descending stops the convergence.
+	if (PlagueConvergenceStacks > 0 && Cast<ACataclysmPlayerCharacter>(Notice.Victim))
+	{
+		PlagueConvergenceStacks = 0;
+		PlagueConvergenceSecondsSinceBurn = 0.0f;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::AddAChaosTouch()
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -3482,6 +3673,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bBloodBond = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::BloodBondKey))
 		&& !bBloodBondFormed;
+	// AND PLAGUE CONVERGENCE, NEVER ON A HORDE WAVE. Issues #1820 and #41.
+	const bool bPlagueConvergence = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::PlagueConvergenceKey))
+		&& !FloorBrief.bOneWave;
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -3496,7 +3691,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
-		&& !bTheReaper && !bBloodBond)
+		&& !bTheReaper && !bBloodBond && !bPlagueConvergence)
 	{
 		return;
 	}
@@ -3656,6 +3851,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bBloodBond)
 	{
 		StepBloodBond(Player);
+	}
+
+	// AND PLAGUE CONVERGENCE, WHICH SPAWNS CREATURES AND BURNS THE PLAYER. Issues #1820, #41.
+	if (bPlagueConvergence)
+	{
+		StepPlagueConvergence(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -4687,6 +4888,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForSoulHarvest(Notice);
 	NoteDeathForChaosTouched(Notice);
 	NoteDeathForBloodBond(Notice);
+	NoteDeathForPlagueConvergence(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -6009,6 +6211,7 @@ void ACataclysmDungeonGameMode::OnSomethingWasHit(
 	NoteHitForBrandOfTheAggressor(Notice);
 	NoteHitForHolyRepercussions(Notice);
 	NoteHitForTheReaper(Notice);
+	NoteHitForPlagueConvergence(Notice);
 }
 
 void ACataclysmDungeonGameMode::NoteHitForWastingSickness(
@@ -6223,6 +6426,23 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Holy, FString::Printf(
 			TEXT("%d of %d"), JudgmentStacks,
 			Effects::HolyRepercussionsJudgmentMostStacks));
+	}
+
+	// AND PLAGUE CONVERGENCE: when it begins, or how many have come and how sick the player is.
+	// Issues #1820 and #41.
+	const FName Plague(Effects::PlagueConvergenceKey);
+	if (FloorBrief.Modifiers.Contains(Plague))
+	{
+		Counting.Add(Plague, FloorBrief.bOneWave
+			? FString(TEXT("plague convergence: never on a horde wave"))
+			: !Effects::PlagueConvergenceHasBegun(PlagueConvergenceSecondsOnFloor)
+			? FString::Printf(TEXT("plague convergence: begins %.0f seconds into the floor"),
+							  Effects::PlagueConvergenceBeginsAfterSeconds)
+			: FString::Printf(TEXT("plague convergence: %d of %d alive; disease %d of %d, %.1f%% of "
+								   "maximum health a second; only descending stops it"),
+							  PlagueConvergenceCreaturesAlive(), Effects::PlagueConvergenceMostAlive,
+							  PlagueConvergenceStacks, Effects::PlagueConvergenceMostStacks,
+							  Effects::PlagueConvergenceDiseasePercentPerSecond(PlagueConvergenceStacks)));
 	}
 
 	// AND BLOOD BOND: whether this floor has bonded, and whether the bond still holds.
@@ -8346,6 +8566,14 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		}
 		BloodBonded.Reset();
 		bBloodBondFormed = false;
+
+		// AND PLAGUE CONVERGENCE STARTS AGAIN: descending is the one thing that stops it, so the
+		// clock, the creatures it counts and the disease all go back. Issues #1820 and #41.
+		PlagueConvergenceSecondsOnFloor = 0.0f;
+		PlagueConvergenceSecondsSinceWave = 0.0f;
+		PlagueConvergenceCreatures.Reset();
+		PlagueConvergenceStacks = 0;
+		PlagueConvergenceSecondsSinceBurn = 0.0f;
 
 		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
 		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already

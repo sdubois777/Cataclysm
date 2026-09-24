@@ -43,6 +43,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "Dungeon/CataclysmFloorBrief.h"
 #include "Dungeon/CataclysmFloorGenerator.h"
+#include "Dungeon/CataclysmFloorPlan.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Dungeon/CataclysmFloorHazardSource.h"
 #include "Engine/DataTable.h"
@@ -25791,6 +25792,362 @@ bool FCataclysmNoKindStacksTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the second patch found the player"), Patches[1]->LastSweepCount, 1);
 	TestEqual(TEXT("and burned them too, in the same second"), Start - Player.Read(Health),
 			  One * 2.0f, 0.02f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Plague_Convergence. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName PlagueConvergenceRow(UCataclysmDungeonModifierEffects::PlagueConvergenceKey);
+
+	/** A dungeon carrying only Plague Convergence, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* APlagueFloor(FAutomationTestBase& Test, UWorld* World,
+											const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {PlagueConvergenceRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The creatures Plague Convergence sent that are still standing. */
+	TArray<ACataclysmEnemyCharacter*> ConvergenceCreatures(ACataclysmDungeonGameMode* Mode)
+	{
+		TArray<ACataclysmEnemyCharacter*> Found;
+		for (const TObjectPtr<ACataclysmEnemyCharacter>& Enemy : Mode->FloorEnemies)
+		{
+			if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy)
+				&& Mode->IsAPlagueConvergenceCreature(Enemy))
+			{
+				Found.Add(Enemy);
+			}
+		}
+		return Found;
+	}
+
+	/** Beat until the convergence has begun: the beat that reaches its start brings a wave. */
+	void BeatToTheConvergence(ACataclysmDungeonGameMode* Mode)
+	{
+		Beat(Mode, BeatsFor(UCataclysmDungeonModifierEffects::PlagueConvergenceBeginsAfterSeconds));
+	}
+
+	FString PlaguePanelLine(ACataclysmDungeonGameMode* Mode)
+	{
+		return Mode->LiveCountsForTheFloor().FindRef(PlagueConvergenceRow);
+	}
+
+	/**
+	 * One landed blow from a convergence creature on the player, the creature given damage first.
+	 * Whether it landed.
+	 */
+	bool AConvergenceBlowLands(ACataclysmEnemyCharacter* Creature, const FPossessedPlayer& Player)
+	{
+		return GiveCreatureAttackDamage(Creature, 100.0f) > 0.0f
+			&& ABlowLands(Creature, Player.Character, 10.0f);
+	}
+}
+
+// TWO MINUTES INTO A FLOOR, A WAVE OF THREE AT THE EDGE FARTHEST FROM THE PLAYER, AND ANOTHER EVERY
+// TEN SECONDS; NEVER ON A HORDE WAVE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlagueBeginsTest,
+	"Cataclysm.DungeonModifierEffects.PlagueConvergenceBeginsAfterTwoMinutesWithWavesOfThreeAtTheFarEdge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlagueBeginsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestFalse(TEXT("119.75 seconds has not begun"), Effects::PlagueConvergenceHasBegun(119.75f));
+	TestTrue(TEXT("120 seconds has"), Effects::PlagueConvergenceHasBegun(120.0f));
+	TestEqual(TEXT("a wave with none alive is three"), Effects::PlagueConvergenceWaveSize(0), 3);
+	TestEqual(TEXT("with 28 alive it is the two that fit"), Effects::PlagueConvergenceWaveSize(28), 2);
+	TestEqual(TEXT("with 30 alive it is none"), Effects::PlagueConvergenceWaveSize(30), 0);
+
+	// THE EDGE, FARTHEST FIRST, on a plan small enough to read: a 5 by 5 room is all floor, so
+	// its edge is the 16 cells of its border and its middle cell is not one of them.
+	FCataclysmFloorPlan Room;
+	Room.Reset(5, 5);
+	for (int32 Y = 0; Y < 5; ++Y)
+	{
+		for (int32 X = 0; X < 5; ++X)
+		{
+			Room.Carve(FIntPoint(X, Y));
+		}
+	}
+	const TArray<FIntPoint> Edge = ACataclysmDungeonGameMode::ConvergenceArrivalCells(Room, FIntPoint(0, 0), 25);
+	TestEqual(TEXT("the room's edge is its 16 border cells"), Edge.Num(), 16);
+	TestFalse(TEXT("and not its middle"), Edge.Contains(FIntPoint(2, 2)));
+	TestTrue(TEXT("the farthest from a corner is the opposite corner"),
+			 !Edge.IsEmpty() && Edge[0] == FIntPoint(4, 4));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlagueFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	const int32 Beats = BeatsFor(Effects::PlagueConvergenceBeginsAfterSeconds);
+	Beat(Mode, Beats - 1);
+	if (!TestEqual(TEXT("nothing has come a beat before two minutes"), ConvergenceCreatures(Mode).Num(), 0))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the panel says when it begins"), PlaguePanelLine(Mode).Contains(TEXT("begins 120")));
+
+	Beat(Mode, 1);
+	const TArray<ACataclysmEnemyCharacter*> First = ConvergenceCreatures(Mode);
+	if (!TestEqual(TEXT("at two minutes a wave of three came"), First.Num(), 3))
+	{
+		return false;
+	}
+	const TArray<FIntPoint> Farthest = ACataclysmDungeonGameMode::ConvergenceArrivalCells(
+		Mode->CurrentFloor->GetPlan(), Mode->CurrentFloor->CellOfWorld(Player.Character->GetActorLocation()), 3);
+	for (const ACataclysmEnemyCharacter* Creature : First)
+	{
+		TestTrue(TEXT("each arrived on one of the edge cells farthest from the player"),
+				 Farthest.Contains(Mode->CurrentFloor->CellOfWorld(Creature->GetActorLocation())));
+		TestTrue(TEXT("pays nothing"), Creature->bDiesUnpaid);
+		TestTrue(TEXT("and was raised by a rule"), Creature->bRaisedByARule);
+	}
+
+	Beat(Mode, BeatsFor(Effects::PlagueConvergenceSecondsBetweenWaves));
+	TestEqual(TEXT("ten seconds later another three"), ConvergenceCreatures(Mode).Num(), 6);
+
+	// NEVER ON A HORDE WAVE.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, Beats + BeatsFor(30.0f));
+	TestEqual(TEXT("none came in two and a half minutes of a Horde wave"),
+			  Mode->PlagueConvergenceCreaturesAlive(), 0);
+	TestTrue(TEXT("and the panel says why"), PlaguePanelLine(Mode).Contains(TEXT("horde")));
+	return true;
+}
+
+// AT MOST THIRTY ALIVE; AT THE CAP A WAVE BRINGS ONLY WHAT FITS; KILLING THEM DOES NOT WIND THE CLOCK BACK.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlagueCapTest,
+	"Cataclysm.DungeonModifierEffects.APlagueConvergenceStopsAtThirtyAliveAndFillsOnlyWhatFits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlagueCapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlagueFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	BeatToTheConvergence(Mode);
+	const int32 Cadence = BeatsFor(Effects::PlagueConvergenceSecondsBetweenWaves);
+	Beat(Mode, Cadence * 9);
+	if (!TestEqual(TEXT("ten waves make thirty"), ConvergenceCreatures(Mode).Num(), 30))
+	{
+		return false;
+	}
+	Beat(Mode, Cadence);
+	TestEqual(TEXT("an eleventh wave brings none past the cap"), ConvergenceCreatures(Mode).Num(), 30);
+
+	// TWO KILLED, AND THE NEXT WAVE -- TEN SECONDS ON, NOT TWO MINUTES -- BRINGS TWO.
+	const TArray<ACataclysmEnemyCharacter*> Standing = ConvergenceCreatures(Mode);
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Standing[0], 1.0e9f);
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Standing[1], 1.0e9f);
+	if (!TestEqual(TEXT("two were killed"), ConvergenceCreatures(Mode).Num(), 28))
+	{
+		return false;
+	}
+	Beat(Mode, Cadence);
+	TestEqual(TEXT("the next wave brought the two that fit"), ConvergenceCreatures(Mode).Num(), 30);
+	return true;
+}
+
+// A LANDED BLOW FROM A CONVERGENCE CREATURE ADDS A STACK; ANOTHER CREATURE'S BLOW AND A TICK DO NOT;
+// THE DISEASE DOUBLES EACH STACK TO ITS CAP.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlagueStacksTest,
+	"Cataclysm.DungeonModifierEffects.ALandedConvergenceBlowAddsADiseaseStackThatDoubles",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlagueStacksTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("no stacks take nothing"), Effects::PlagueConvergenceDiseasePercentPerSecond(0), 0.0f, 0.0001f);
+	TestEqual(TEXT("one stack takes 0.5%"), Effects::PlagueConvergenceDiseasePercentPerSecond(1), 0.5f, 0.0001f);
+	TestEqual(TEXT("two take 1%"), Effects::PlagueConvergenceDiseasePercentPerSecond(2), 1.0f, 0.0001f);
+	TestEqual(TEXT("three take 2%"), Effects::PlagueConvergenceDiseasePercentPerSecond(3), 2.0f, 0.0001f);
+	TestEqual(TEXT("six take 16%"), Effects::PlagueConvergenceDiseasePercentPerSecond(6), 16.0f, 0.0001f);
+	TestEqual(TEXT("and seven are held at six"), Effects::PlagueConvergenceDiseasePercentPerSecond(7), 16.0f, 0.0001f);
+	TestEqual(TEXT("a blow at the cap adds none"), Effects::PlagueConvergenceStacksAfterHit(6), 6);
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlagueFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	BeatToTheConvergence(Mode);
+	const TArray<ACataclysmEnemyCharacter*> Converged = ConvergenceCreatures(Mode);
+	ACataclysmEnemyCharacter* Other = SpawnCreatureThatCanHit(World, 700.0f);
+	if (!TestTrue(TEXT("a convergence creature came"), !Converged.IsEmpty())
+		|| !TestNotNull(TEXT("and another creature"), Other))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the other creature's blow landed"), ABlowLands(Other, Player.Character, 10.0f));
+	TestEqual(TEXT("and added no stack"), Mode->PlagueConvergenceDiseaseStacks(), 0);
+	ATickOf(Converged[0], Player.Character, 1.0f);
+	TestEqual(TEXT("a convergence creature's tick adds none"), Mode->PlagueConvergenceDiseaseStacks(), 0);
+	TestTrue(TEXT("a convergence creature's blow landed"), AConvergenceBlowLands(Converged[0], Player));
+	TestEqual(TEXT("and added one stack"), Mode->PlagueConvergenceDiseaseStacks(), 1);
+	TestTrue(TEXT("the panel shows it"), PlaguePanelLine(Mode).Contains(TEXT("disease 1 of 6")));
+	return true;
+}
+
+// THE DISEASE BURNS A SHARE OF MAXIMUM HEALTH A SECOND AS PESTILENCE: PESTILENCE RESISTANCE MEETS IT
+// AND VOID RESISTANCE DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlagueBurnTest,
+	"Cataclysm.DungeonModifierEffects.ThePlagueDiseaseBurnsEachSecondAndMeetsPestilenceResistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlagueBurnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlagueFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	BeatToTheConvergence(Mode);
+	const TArray<ACataclysmEnemyCharacter*> Converged = ConvergenceCreatures(Mode);
+	if (!TestTrue(TEXT("a convergence creature came"), !Converged.IsEmpty())
+		|| !TestTrue(TEXT("its first blow landed"), AConvergenceBlowLands(Converged[0], Player))
+		|| !TestTrue(TEXT("and its second"), AConvergenceBlowLands(Converged[0], Player))
+		|| !TestEqual(TEXT("two stacks are held"), Mode->PlagueConvergenceDiseaseStacks(), 2))
+	{
+		return false;
+	}
+
+	// ONE SECOND OF BEATS IS ONE BURN.
+	const auto ASecond = [this, Mode]() -> bool
+	{
+		Beat(Mode, BeatsFor(UCataclysmDungeonModifierEffects::PlagueConvergenceSecondsBetweenBurns));
+		return true;
+	};
+	const TOptional<float> LostWithPestilence =
+		LostWithResistanceRaised(*this, Player, Resist::GetPestilenceResistanceAttribute(), ASecond);
+	const TOptional<float> LostWithVoid =
+		LostWithResistanceRaised(*this, Player, Resist::GetVoidResistanceAttribute(), ASecond);
+	if (!LostWithPestilence.IsSet() || !LostWithVoid.IsSet())
+	{
+		return false;
+	}
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("the plague's disease"),
+									Resist::GetPestilenceResistanceAttribute(), LostWithPestilence.GetValue(),
+									Resist::GetVoidResistanceAttribute(), LostWithVoid.GetValue());
+	return true;
+}
+
+// THE PLAYER'S DEATH CLEARS THE DISEASE AND LEAVES THE CONVERGENCE; A NEW FLOOR CLEARS BOTH AND STARTS
+// THE CLOCK AGAIN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlagueClearsTest,
+	"Cataclysm.DungeonModifierEffects.ThePlagueDiseaseClearsOnDeathAndAFloorChangeStopsTheConvergence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmPlagueClearsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = APlagueFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	BeatToTheConvergence(Mode);
+	const TArray<ACataclysmEnemyCharacter*> Converged = ConvergenceCreatures(Mode);
+	if (!TestTrue(TEXT("a convergence creature came"), !Converged.IsEmpty())
+		|| !TestTrue(TEXT("its blow landed"), AConvergenceBlowLands(Converged[0], Player))
+		|| !TestEqual(TEXT("one stack is held"), Mode->PlagueConvergenceDiseaseStacks(), 1))
+	{
+		return false;
+	}
+
+	UCataclysmSkillEffects::ReduceHealthDirectly(Player.Character, Player.Character, 1.0e9f);
+	if (!TestTrue(TEXT("the player died"), UCataclysmSkillEffects::IsDead(Player.Character)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the death cleared the disease"), Mode->PlagueConvergenceDiseaseStacks(), 0);
+	TestEqual(TEXT("and left the convergence"), Mode->PlagueConvergenceCreaturesAlive(), 3);
+
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a new floor counts none of the last floor's creatures"),
+			  Mode->PlagueConvergenceCreaturesAlive(), 0);
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(Effects::PlagueConvergenceBeginsAfterSeconds) - 1);
+	TestEqual(TEXT("and its clock starts again: nothing a beat before two minutes"),
+			  Mode->PlagueConvergenceCreaturesAlive(), 0);
 	return true;
 }
 

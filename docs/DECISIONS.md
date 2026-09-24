@@ -2,6 +2,156 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Plague Convergence: two minutes into a floor, waves of the floor's own creatures come from the far edge, and their blows carry a disease that doubles per stack
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its figures, and when it begins, how big a wave is, how a stack is added and what the disease
+takes), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the clock, the waves and
+where they arrive, the disease's stacks and its burn, the floor panel line and the resets),
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the comment on `bDiesUnpaid`), the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
+
+### The row, and why it is next
+
+`Pestilence_Plague_Convergence` in `game/Data/DungeonModifiers.csv`, weight 20: "If players spend too
+long on a floor, the dungeon begins to "converge" on them. Hordes of enemies will spawn continuously,
+all carrying highly contagious diseases that stack exponentially with every hit. The only way to stop
+the convergence is to complete objectives quickly and descend to the next floor." The row gives no
+figure. The design document does not mention it.
+
+**Why this row:** [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) puts first the two
+families whose mechanism already exists -- something placed on the floor on a clock, and a reaction to
+a death or a hit -- and this is the only unbuilt row in them with weight 20. **Choosing by weight is
+this change's own step, not #1820's**, which says it does not use weight.
+
+### What the rule does
+
+Two minutes into a floor carrying the row, and every ten seconds after, a wave of three creatures of
+the floor's own kinds arrives at the floor's edge cells farthest from the player -- floor cells with a
+side on rock -- noticing the player from anywhere on the floor. At most thirty are alive; a wave at the
+cap brings only as many as fit. They pay nothing when they die and are creatures a rule raised, so
+Blood Gates does not wait on them. A landed blow from one of them adds a disease stack on the player:
+damage over time, typed as the row (Pestilence), taking 0.5% of maximum health a second at one stack
+and doubling with each stack to 16% at the cap of six. The player's death clears the disease and
+leaves the convergence; a floor change clears everything and starts the clock again. Killing the
+creatures winds nothing back. Never on a Horde wave. The floor panel says when it begins, or how many
+are alive and how sick the player is.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation of unstated numbers, 2026-09-24. Every
+figure is a play-test value:**
+
+- **It begins 120 seconds into a floor** (`PlagueConvergenceBeginsAfterSeconds`, in
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`). **The Reaper's figure counts the
+  same thing**: `TheReaperDelaySeconds` = 10, in the same file, is also seconds since the floor began.
+  Both clocks -- `TheReaperSecondsOnFloor` and `PlagueConvergenceSecondsOnFloor`, in
+  `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.cpp` -- are added to a quarter-second beat at a
+  time and put back to 0 in the same per-floor reset in `ApplyFloorRulesToPlayer`. So on a floor carrying
+  both, the Reaper arrives 10 seconds in and the convergence begins 110 seconds after it. The Reaper's
+  clock stops counting once it has arrived; neither counts on a Horde wave.
+- **A wave every 10 seconds of 3 creatures of the floor's own kinds**, at the edge cells farthest from
+  the player; **at most 30 alive**, a wave at the cap bringing only what fits; **never on a Horde
+  wave**.
+- **The disease: a stack per landed blow from a convergence creature, 0.5% of maximum health a second at
+  one stack, doubling per stack, capped at 6 stacks (16%).** Pestilence-typed, so pestilence
+  resistance meets it. Cleared by the player's death and by a floor change.
+- **It differs from Wasting Sickness in kind.** Wasting Sickness weakens: each stack takes a share off
+  the player's maximums. This is damage over time.
+- **"Complete objectives quickly" is reaching the stairs**: the game has no floor objectives, so only
+  descending stops it, and killing the creatures does not reset the clock.
+- **The creatures pay nothing** (`bDiesUnpaid`, set as they spawn) **and join the raised set.**
+
+**Judgements proposed by this change and approved by the coordinating session under the same
+delegation:**
+
+- **They notice the player from anywhere on the floor**, at the Reaper's sight multiplier: a horde that
+  "converges" comes for the player rather than waiting at the wall.
+- **An edge cell is a floor cell with a side on rock or off the grid**, and the farthest are chosen by
+  distance in cells from the player's cell, ties kept in the grid's order.
+- **The disease is not a status effect.** `DoT_Disease` in `game/Data/StatusEffects.csv` is a
+  player-applied effect, so this is a count on the game mode burned once a second from the floor's
+  hazard source, the way Necrotic Ground's fog burns.
+
+### The research: how shipped games bound a stacking debuff
+
+Done before the build, as ruled; each page fetched on 2026-09-24 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Withered | https://poedb.tw/us/Withered | "6% increased chaos damage taken" a stack, which can "stack up to 15 times": linear, and capped |
+| Path of Exile, Poison | https://poedb.tw/us/Poison | "Multiple instances of Poison stack": each instance its own damage over time, so linear |
+| Risk of Rain 2, Shaped Glass | https://riskofrain2.wiki.gg/wiki/Item_Stacking | the page's example of exponential stacking, "their stacking effects compound each other" -- and an item the player chooses to take, not a debuff put on them |
+
+**What it settles and what it does not.** The debuffs these games put on a player stack linearly and
+are capped; the one exponential stack found is one the player chooses. So the research gives no
+better base or cap than the ruled one, and nothing in it is an exponential debuff to copy. **The row's
+own word, "exponentially", is why this debuff doubles**, when the games read here stack debuffs
+linearly. The rule follows the row and bounds it tightly: six stacks, the last 32 times the first.
+That bound is this game's own judgement.
+
+### Tests
+
+Five automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `PlagueConvergenceBeginsAfterTwoMinutesWithWavesOfThreeAtTheFarEdge`: 119.75 seconds has not begun and
+  120 has; a wave is 3 with none alive, 2 with 28 and none with 30; on a 5 by 5 room the edge is the 16
+  border cells, not the middle, and the farthest from a corner is the opposite corner. On a floor,
+  nothing a beat before two minutes and the panel says when; at two minutes three arrive, each on one
+  of the edge cells farthest from the player, paying nothing and raised by a rule; ten seconds later
+  six. Two and a half minutes of a Horde wave bring none, and the panel says why.
+- `APlagueConvergenceStopsAtThirtyAliveAndFillsOnlyWhatFits`: ten waves make thirty and an eleventh
+  brings none; two killed, and the next wave ten seconds on brings the two that fit.
+- `ALandedConvergenceBlowAddsADiseaseStackThatDoubles`: 0, 0.5, 1, 2 and 16% at 0, 1, 2, 3 and 6 stacks,
+  held at 16 for 7; another creature's landed blow and a convergence creature's tick add none; a
+  convergence creature's landed blow adds one, and the panel shows it.
+- `ThePlagueDiseaseBurnsEachSecondAndMeetsPestilenceResistance`: with two stacks, a second's burn is met
+  by pestilence resistance and not by void resistance.
+- `ThePlagueDiseaseClearsOnDeathAndAFloorChangeStopsTheConvergence`: the player's death clears the stack
+  and leaves the three creatures; a new floor counts none of them and nothing comes a beat before two
+  minutes.
+
+One Python check: the row still says "spend too long on a floor", "spawn continuously", "stack
+exponentially with every hit" and "descend to the next floor", and states no figure. It was seen to
+fail, in a copy of the repository, with "exponentially" made "linearly", with "descend to the next
+floor" removed, and with "more than 2 minutes" added.
+
+### Run
+
+One editor window on 2026-09-24, on development e7eb5d35 as the base. Every figure below is what
+`python tools/unreal_build.py tests` or `prove_cpp_guard` printed. The Python suite of record ran first
+on the head, c1979235: 5,428 tests, 0 failed.
+
+- **The whole suite on the head**, c1979235: 2,381 tests performed, 2,381 succeeded, 0 failed.
+- **The group on the head**: 285 tests performed, 285 succeeded, 0 failed.
+- **The group on the base**, e7eb5d35: 280 tests performed, 280 succeeded, 0 failed. Run after the
+  Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **The start a beat early** (`>= PlagueConvergenceBeginsAfterSeconds - 0.25f`). With the break in: 285
+  performed, 283 succeeded, 2 failed: `PlagueConvergenceBeginsAfterTwoMinutesWithWavesOfThreeAtTheFarEdge`
+  ("Expected '119.75 seconds has not begun' to be false", "Expected 'nothing has come a beat before two
+  minutes' to be 0, but it was 3") and `ThePlagueDiseaseClearsOnDeathAndAFloorChangeStopsTheConvergence`
+  ("... nothing a beat before two minutes' to be 0, but it was 3"). Restored: 285 performed, 285
+  succeeded, 0 failed.
+- **The cap ignored** (`PlagueConvergenceMostAlive + 0 * ...`). With the break in: 285 performed, 283
+  succeeded, 2 failed: `APlagueConvergenceStopsAtThirtyAliveAndFillsOnlyWhatFits` ("Expected 'an
+  eleventh wave brings none past the cap' to be 30, but it was 33", and "two were killed" reading 31
+  after it) and `PlagueConvergenceBeginsAfterTwoMinutesWithWavesOfThreeAtTheFarEdge` (the wave with 28 and
+  with 30 alive reading 3). Restored: 285 performed, 285 succeeded, 0 failed.
+- **No doubling** (`FMath::Pow(1.0f, ...)`). With the break in: 285 performed, 284 succeeded, 1 failed,
+  `ALandedConvergenceBlowAddsADiseaseStackThatDoubles`, on two, three, six and seven stacks each reading
+  0.5% where 1, 2, 16 and 16 were expected. The burn test held. Restored: 285 performed, 285 succeeded, 0
+  failed.
+
+---
+
 ## 2026-09-24 — One class tree per damage type is enforced: the first point chooses, a respec frees it, and older saves keep the tree with the most points
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmPassiveTree.h` and `.cpp` (the choice and

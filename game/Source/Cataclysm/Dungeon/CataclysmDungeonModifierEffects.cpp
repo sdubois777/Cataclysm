@@ -134,6 +134,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::TheReaperKey =
 const TCHAR* UCataclysmDungeonModifierEffects::BloodBondKey =
 	TEXT("Demonic_Blood_Bond");
 
+const TCHAR* UCataclysmDungeonModifierEffects::PlagueConvergenceKey =
+	TEXT("Pestilence_Plague_Convergence");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -413,7 +416,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(SoulHarvestKey)
 		|| RowKey == FName(ChaosTouchedKey)
 		|| RowKey == FName(TheReaperKey)
-		|| RowKey == FName(BloodBondKey))
+		|| RowKey == FName(BloodBondKey)
+		|| RowKey == FName(PlagueConvergenceKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -597,6 +601,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(ChaosTouchedKey),
 		FName(TheReaperKey),
 		FName(BloodBondKey),
+		FName(PlagueConvergenceKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1915,6 +1920,33 @@ bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
 	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
 	// does not.
 	return SecondsOnFloor >= TheReaperDelaySeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::PlagueConvergenceHasBegun(float SecondsOnFloor)
+{
+	return SecondsOnFloor >= PlagueConvergenceBeginsAfterSeconds;
+}
+
+int32 UCataclysmDungeonModifierEffects::PlagueConvergenceWaveSize(int32 Alive)
+{
+	return FMath::Clamp(PlagueConvergenceMostAlive - FMath::Max(0, Alive), 0,
+						PlagueConvergenceCreaturesPerWave);
+}
+
+int32 UCataclysmDungeonModifierEffects::PlagueConvergenceStacksAfterHit(int32 Held)
+{
+	return FMath::Min(FMath::Max(0, Held) + 1, PlagueConvergenceMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::PlagueConvergenceDiseasePercentPerSecond(int32 Stacks)
+{
+	if (Stacks <= 0)
+	{
+		return 0.0f;
+	}
+	// DOUBLING, which is the row's "exponentially": 0.5, 1, 2, 4, 8, 16 at the cap.
+	const int32 Held = FMath::Min(Stacks, PlagueConvergenceMostStacks);
+	return PlagueConvergenceDiseaseBasePercent * FMath::Pow(2.0f, static_cast<float>(Held - 1));
 }
 
 bool UCataclysmDungeonModifierEffects::BloodBondMayBond(int32 Rung, bool bIsAFloorsBoss,
