@@ -137,6 +137,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::BloodBondKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PlagueConvergenceKey =
 	TEXT("Pestilence_Plague_Convergence");
 
+const TCHAR* UCataclysmDungeonModifierEffects::DivineWrathKey =
+	TEXT("Celestial_Divine_Wrath");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -417,7 +420,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(ChaosTouchedKey)
 		|| RowKey == FName(TheReaperKey)
 		|| RowKey == FName(BloodBondKey)
-		|| RowKey == FName(PlagueConvergenceKey))
+		|| RowKey == FName(PlagueConvergenceKey)
+		|| RowKey == FName(DivineWrathKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -602,6 +606,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(TheReaperKey),
 		FName(BloodBondKey),
 		FName(PlagueConvergenceKey),
+		FName(DivineWrathKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1920,6 +1925,29 @@ bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
 	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
 	// does not.
 	return SecondsOnFloor >= TheReaperDelaySeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::DivineWrathIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= DivineWrathSecondsBetween;
+}
+
+FVector UCataclysmDungeonModifierEffects::DivineWrathVelocity(const FVector& From,
+															  const FVector& Toward)
+{
+	// LEVEL, so a beam follows the floor rather than climbing towards a head.
+	FVector Away = Toward - From;
+	Away.Z = 0.0f;
+	if (Away.SizeSquared() < 1.0f)
+	{
+		return FVector::ZeroVector;
+	}
+	return Away.GetSafeNormal() * DivineWrathSpeedCmPerSecond;
+}
+
+float UCataclysmDungeonModifierEffects::DivineWrathBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * DivineWrathMaxHealthPercent / 100.0f;
 }
 
 bool UCataclysmDungeonModifierEffects::PlagueConvergenceHasBegun(float SecondsOnFloor)

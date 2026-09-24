@@ -2,6 +2,112 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Divine Wrath: every thirty seconds a beam of light appears twelve metres away and chases the player, destroying the creatures it covers and burning the player for a fifth of maximum health a second
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its figures, when a beam is due, the velocity that aims it and what it burns),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing the beam, aiming it on
+the beat, destroying the creatures it covers, the floor panel line and the resets), the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
+automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
+when they have.
+
+### The row
+
+`Celestial_Divine_Wrath` in `game/Data/DungeonModifiers.csv`, weight 10: "Players are periodically
+targeted by massive beams of radiant light that chase them across the floor. These beams destroy
+enemies in their path but deal devastating damage to players if they fail to avoid them." The row
+gives no figure. Neither this log nor the design document mentions Divine Wrath, a beam or radiant
+light, so nothing earlier settles it.
+
+### What the rule does
+
+Every thirty seconds on a floor carrying the row, Horde waves included, one beam appears twelve metres
+from the player at a random angle and lasts ten seconds; there is never more than one. On every beat it
+is aimed again at where the player stands, travelling level at 3.0 metres a second. It is 300
+centimetres across the radius and burns the player for 20% of maximum health a sweep, once a second,
+typed as the row (Celestial); beams do not stack with each other, under the ruling of
+[#2074](https://github.com/sdubois777/Cataclysm/issues/2074). Every creature it covers is destroyed on
+the beat, except a floor's boss and a creature that cannot be hurt. The floor panel says whether a beam
+is chasing and how many creatures beams have destroyed.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24. Every figure is a play-test
+value:**
+
+- **It may destroy creatures, and it does so without the zone burning its own side.** The owner's rule
+  is recorded in `tools/tests/test_hellhound_matches_the_model.py::test_nothing_burns_its_own_side`: "A
+  creature does not burn itself or its own side", set on 2026-08-20. It is about a creature's fire.
+  This beam is the dungeon's, not a creature's, and this log already records a floor rule as one of the
+  ways a creature dies: the entry "2026-09-17 — Thirty-three enchantment rows are written, and ten
+  approved sentences are held for four different reasons" counts a creature killed "by burning ground or
+  by another floor rule".
+  So `ACataclysmGroundZone::bBurnsEveryone` stays unset, the Hellhound test is untouched, and the game
+  mode kills the creatures the beam covers on the beat, as Epidemic's chain does.
+- **An outright kill through the ordinary death path**, with the creature's last blow emptied so no
+  killer is named. **These deaths pay loot and experience** -- luring creatures into the beam is the
+  play the row invites -- and Blood Gates, which counts the player's kills, does not count them.
+- **Never a floor's boss** (a Gatekeeper, or anything at the Boss rung), as Blood Bond excluded them: a
+  beam that ended a floor's boss for nothing would skip the floor. A creature that cannot be hurt, the
+  Reaper or a bonded elite, is not destroyed either.
+- **One beam every 30 seconds, 12 metres from the player at a random angle, lasting 10 seconds.**
+- **Re-aimed at the player on every beat at 3.0 metres a second, slower than every class**: the
+  Ritualist moves at 3.5, the Ravager at 4.6, and the Masochist, which has no speed row of its own,
+  takes the Default line's 4.0 (`game/Data/ClassStats.csv`; `UCataclysmClassStats::BaseFor` falls back
+  to the Default line). A player who keeps moving escapes it; one who stops does not.
+- **300 centimetres, 20% of maximum health a sweep once a second, Celestial, with its own kind** for
+  the no-stacking rule; **no separate warning**, because the beam is visible as it travels.
+- **Allowed on Horde waves**: unlike the Reaper and Plague Convergence it adds no creature, and a Horde
+  arena is open ground.
+
+### The research: chasing hazards in shipped games
+
+Done before the build, as ruled; each page fetched on 2026-09-24 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Sirus's "Die" beam | https://maxroll.gg/poe/bosses/sirus-awakener-of-worlds-boss-guide | "Sirus fires 3 beams that deal a huge amount of damage which can be lethal to most common Builds"; "This spell is locked to your position, has a delay and can be sidestepped" |
+| Diablo IV, the Drifting Shade affix | https://diablo4.wiki.fextralife.com/Nightmare+Dungeons | "Drifting Shade chases players. Upon reaching them, it explodes for heavy damage" |
+
+**What it settles and what it does not.** Both shipped hazards chase the player, hit hard, and are
+beaten by moving: that is the shape ruled here. Neither page gives a speed, a duration or a damage
+figure, so the research offers nothing better than the ruled numbers, and every figure above is this
+game's own play-test value. A "Stormbane's Wrath" affix named by a search summary could not be found on
+the page fetched, so it is not cited.
+
+### Tests
+
+Three automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `DivineWrathSendsABeamEveryThirtySecondsThatChasesThePlayer`: 29.75 seconds is not due and 30 is; the
+  velocity is level, at the ruled speed and straight at the target, and nothing when already there; a
+  sweep burns a fifth of maximum health. On a floor, no beam a beat before thirty seconds; at thirty,
+  one twelve metres from the player, aimed at them at the ruled speed and marked as the row's; the
+  player moves and the next beat aims it at where they went; thirty more seconds with it alight bring
+  no second beam; a Horde wave has its beam at thirty seconds.
+- `ADivineWrathBeamDestroysTheCreaturesItCoversButNeverAFloorsBoss`: of a creature under the beam, a
+  Gatekeeper under it, a creature that cannot be hurt and one outside it, only the first dies, naming no
+  killer and paying as any death does, and the count is one.
+- `ADivineWrathBeamBurnsAFifthOfMaximumHealthAsCelestial`: a beam burns a fifth of the player's maximum
+  health a sweep, met by celestial resistance and not by void resistance.
+
+Two Python checks: the row still says "periodically targeted", "chase them across the floor", "destroy
+enemies in their path" and "fail to avoid them", and states no figure; and a beam is slower than every
+class, read from the header and from `ClassStats.csv`. Each was seen to fail, in a copy of the
+repository: with "chase them across the floor" made "follow them", with "destroy enemies in their path"
+removed, with the beam made 3.6 metres a second, and with the Ritualist made 2.9.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-24 — A dodge, a full resource, a movement ability or a block grants a charge the next skill or attack spends as increased damage
 
 **Affects:**
