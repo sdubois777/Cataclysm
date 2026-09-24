@@ -60,6 +60,11 @@ Ruled by the coordinating session:
 - **The display** is `UCataclysmCombatOverlay::ArmourRemovedTextFor`, which the heads-up display's
   new `DrawArmourRemoved` draws under the bar. **Only the text is tested**: the automation tests run
   with no renderer, so no test can see it drawn.
+- **It shows in normal play.** It is drawn when `Cataclysm.Overlay.OverheadBars` is on, and that
+  console variable defaults to 1, on (`CVarShowOverheadBars` in `CataclysmCombatOverlay.cpp`); no
+  configuration file or tool sets it. It does not wait for the health bar's own rule, which draws
+  only over a damaged creature, but an enemy whose armour is removed has been hit, so the two appear
+  together in practice.
 
 ### THE GENRE
 
