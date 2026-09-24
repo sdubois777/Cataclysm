@@ -127,6 +127,9 @@ public:
 	 */
 	void ForgetBurns() { LastBurnedAt.Reset(); }
 
+	/** How many burns the record holds. For tests: a floor change must leave it empty. */
+	int32 BurnsRemembered() const { return LastBurnedAt.Num(); }
+
 	/** The slack under a full interval, so a sweep exactly one interval later is not refused. */
 	static constexpr double BurnSlackSeconds = 0.001;
 

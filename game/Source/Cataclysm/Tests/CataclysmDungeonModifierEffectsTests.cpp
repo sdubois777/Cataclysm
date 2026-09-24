@@ -25596,6 +25596,19 @@ bool FCataclysmTwoCratersOnceTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	OncePerSecondBetweenTwoZones(*this, World, Player, Craters[0], Craters[1]);
+
+	// AND A FLOOR CHANGE FORGETS THE BURNS. The hazard source outlives the floor, so without
+	// the call in the floor-change path its record would refuse a burn on the next floor's
+	// first second. `ApplyFloorRulesToPlayer` is that path: it destroys the rules' zones.
+	const ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::Existing(World);
+	if (!TestNotNull(TEXT("the floor's hazard source"), Source)
+		|| !TestTrue(TEXT("it remembers the burns before the floor changes"),
+					 Source->BurnsRemembered() > 0))
+	{
+		return false;
+	}
+	Mode->ApplyFloorRulesToPlayer();
+	TestEqual(TEXT("and a floor change forgets them"), Source->BurnsRemembered(), 0);
 	return true;
 }
 

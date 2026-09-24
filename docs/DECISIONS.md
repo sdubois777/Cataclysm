@@ -83,16 +83,20 @@ while moving only the world's time, so no timer fires between readings:
 - `TwoOverlappingCratersBurnAPlayerOncePerSecond`, `TwoOverlappingInfernalRainPatchesBurnAPlayerOncePerSecond`
   and `TwoOverlappingSingularityWellsBurnAPlayerOncePerSecond`: the zone is marked as its row's; one
   zone's sweep costs health; the second zone found the player and burned nothing more in the same
-  second; a second later the first burns again and the second is refused that second too.
+  second; a second later the first burns again and the second is refused that second too. The
+  crater test then runs the floor-change path (`ApplyFloorRulesToPlayer`) and asserts that the hazard
+  source, which remembered the burns, remembers none after it (`BurnsRemembered`, a count for tests).
 - `ACraterAndAPatchOnOneSpotBothBurn`: each kind measured alone, with the player's health put back after
   each and five seconds between readings, then both in one second cost the sum.
 - `OverlappingZonesWithNoFloorKindStillEachBurn`: two patches with the kind taken off both burn the
   player twice in one second, as every skill's and creature's ground does.
 
-**One existing helper changed**: `StandInAndSweep`, which the four resistance tests use, now moves the
+**One existing helper changed, approved by the coordinating session under the owner's delegation**:
+`StandInAndSweep`, which the four resistance tests use, now moves the
 world's time on by one interval before each sweep. Those tests sweep the same zone twice to compare two
 resistances, and at one instant the second sweep would now be refused. Moving `TimeSeconds` runs no timer
-and ticks no actor.
+and ticks no actor. Those four tests measure resistances, not stacking, and a sweep one interval later
+keeps them measuring that.
 
 ### Not yet run
 
