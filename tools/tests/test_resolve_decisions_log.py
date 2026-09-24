@@ -417,3 +417,12 @@ def test_the_help_no_longer_says_the_word_is_from_your_heading():
     assert "--first" in finished.stdout
     assert "YOUR heading" not in finished.stdout
     assert "NEWER" in finished.stdout
+
+
+def test_insert_writes_one_rule_when_the_entry_file_ends_with_one():
+    """An entry file ending with its own `---` used to give the log two rules in
+    a row, because insert_first writes the rule below the entry as well."""
+    ending_with_a_rule = CRLF.join(MINE + [b"", b"---", b""])
+    out = resolver.insert_first(log(THEIRS, OLDER), ending_with_a_rule)
+    assert b"---\r\n\r\n---" not in out
+    assert out == resolver.insert_first(log(THEIRS, OLDER), CRLF.join(MINE))

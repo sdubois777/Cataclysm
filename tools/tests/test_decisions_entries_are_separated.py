@@ -478,3 +478,81 @@ def test_no_entry_is_dated_later_than_today(decisions_entries):
         + "\n".join(f"  {heading}" for heading in ahead)
         + "\n\nEntries are dated by the local date. A heading a day ahead is "
         "usually a change written in the evening and dated in UTC.")
+#: THE DOUBLED RULES ALREADY IN THE LOG, each keyed by the entry heading directly
+#: above it: a `---`, a blank line and a second `---` in a row. Merged text is not
+#: changed, so these three stay; ruled by the coordinating session on 2026-09-23
+#: under the owner's delegation. Measured on `development` at 14e637cc.
+#:
+#: HOW THEY CAME ABOUT, for two of them at least: `resolve_decisions_log.py
+#: insert` writes a rule after the entry it inserts, and the entry file it was
+#: given already ended with one. That tool now drops a trailing rule from the
+#: entry, and this check stops a doubled rule arriving any other way.
+DOUBLED_ALREADY = frozenset({
+    "## 2026-09-23 — The separator check's list of old faults can only shrink, "
+    "and a ceiling holds it where git history is missing",
+    "## 2026-09-23 — Deeper Hurt lengthens a Cripple or a Weaken where it is "
+    "applied, and a spread copy keeps the row's duration",
+    "## 2026-09-13 — A modifier may ask how much health the character being hit "
+    "has left, it is measured before the blow lands, and an unknown reading must "
+    "never make a row stronger than its own sentence",
+})
+
+#: THE MOST DOUBLED RULES `DOUBLED_ALREADY` MAY EXCUSE, AS A LITERAL, AND IT IS
+#: ONLY EVER LOWERED, the same arrangement as `ALLOWANCE_CEILING` above. When one
+#: of the three is repaired, delete its heading and lower this number in the same
+#: change.
+DOUBLED_CEILING = 3
+
+
+def doubled_rules(lines: list[str]) -> list[tuple[int, str]]:
+    """Every rule followed by a blank line and a second rule, as the line index
+    of the first and the dated entry heading directly above it."""
+    found = []
+    heading = ""
+    for index, line in enumerate(lines):
+        if line.startswith("## 20"):
+            heading = line
+        if (line == RULE and index + 2 < len(lines)
+                and lines[index + 1] == "" and lines[index + 2] == RULE):
+            found.append((index, heading))
+    return found
+
+
+def test_no_rule_is_doubled(decisions_lines):
+    """A second rule in a row separates nothing and reads as an empty entry.
+    `test_every_dated_entry_is_preceded_by_a_rule_and_a_blank_line` passes it,
+    because the heading below still has its rule and blank line above it."""
+    new = [(index, heading) for index, heading in doubled_rules(decisions_lines)
+           if heading not in DOUBLED_ALREADY]
+    assert not new, (
+        f"{len(new)} doubled rule(s) in {DECISIONS.name}, a --- followed by a "
+        f"blank line and another ---:\n"
+        + "\n".join(f"  line {index + 1}, below: {heading}" for index, heading in new)
+        + "\n\nDelete one of the two. If the entry went in through "
+        "`resolve_decisions_log.py insert`, the entry file ended with a rule the "
+        "tool also writes.")
+
+
+def test_the_doubled_allowance_holds_nothing_that_is_now_correct(decisions_lines):
+    """What makes DOUBLED_ALREADY shrink rather than rot."""
+    still = {heading for _, heading in doubled_rules(decisions_lines)}
+    stale = sorted(DOUBLED_ALREADY - still)
+    assert not stale, (
+        "these headings in DOUBLED_ALREADY no longer have a doubled rule below "
+        "them, or are no longer in the log:\n"
+        + "\n".join(f"  {heading}" for heading in stale)
+        + "\n\nDelete them, and lower DOUBLED_CEILING with them.")
+
+
+def test_the_doubled_allowance_is_never_longer_than_its_ceiling():
+    assert len(DOUBLED_ALREADY) <= DOUBLED_CEILING, (
+        f"DOUBLED_ALREADY holds {len(DOUBLED_ALREADY)} headings, more than its "
+        f"ceiling of {DOUBLED_CEILING}. A new doubled rule was excused instead "
+        f"of removed.")
+
+
+def test_the_doubled_rule_reader_names_the_heading_above():
+    lines = ["## 2026-09-02 — B", "", "Text.", "", RULE, "", RULE, "",
+             "## 2026-09-01 — A", "", "Text."]
+    assert doubled_rules(lines) == [(4, "## 2026-09-02 — B")]
+    assert doubled_rules(lines[:5] + lines[6:]) == []
