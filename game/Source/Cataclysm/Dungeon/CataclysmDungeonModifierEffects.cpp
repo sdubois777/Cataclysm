@@ -122,6 +122,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::StarvationCurseKey =
 const TCHAR* UCataclysmDungeonModifierEffects::TrickOrTreatKey =
 	TEXT("Chaos_Trick_or_Treat");
 
+const TCHAR* UCataclysmDungeonModifierEffects::SoulHarvestKey =
+	TEXT("Demonic_Soul_Harvest");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -397,7 +400,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(UnstablePortalKey)
 		|| RowKey == FName(NothingIsForgottenKey)
 		|| RowKey == FName(StarvationCurseKey)
-		|| RowKey == FName(TrickOrTreatKey))
+		|| RowKey == FName(TrickOrTreatKey)
+		|| RowKey == FName(SoulHarvestKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -577,6 +581,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(NothingIsForgottenKey),
 		FName(StarvationCurseKey),
 		FName(TrickOrTreatKey),
+		FName(SoulHarvestKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1838,6 +1843,33 @@ int32 UCataclysmDungeonModifierEffects::StarvationCurseKindToAdd(int32 Drawn,
 float UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(int32 Stacks)
 {
 	return static_cast<float>(FMath::Max(0, Stacks)) * StarvationCursePercentPerStack;
+}
+
+float UCataclysmDungeonModifierEffects::SoulHarvestRadiusCm()
+{
+	return SoulHarvestRadiusMetres * UCataclysmContagion::CentimetresPerMetre;
+}
+
+int32 UCataclysmDungeonModifierEffects::SoulHarvestSoulsAfterFeeding(int32 Held)
+{
+	return FMath::Min(FMath::Max(0, Held) + 1, SoulHarvestMostSouls);
+}
+
+float UCataclysmDungeonModifierEffects::SoulHarvestHealthAdded(float Base, int32 Souls)
+{
+	return FMath::Max(0.0f, Base) * SoulHarvestHealthPercentPerSoul
+		* static_cast<float>(FMath::Max(0, Souls)) / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::SoulHarvestDamageAdded(float Base, int32 Souls)
+{
+	return FMath::Max(0.0f, Base) * SoulHarvestDamagePercentPerSoul
+		* static_cast<float>(FMath::Max(0, Souls)) / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::SoulHarvestResistanceAdded(int32 Souls)
+{
+	return SoulHarvestResistancePerSoul * static_cast<float>(FMath::Max(0, Souls));
 }
 
 bool UCataclysmDungeonModifierEffects::TrickOrTreatRaisesEnemies(float Roll)
