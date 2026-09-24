@@ -398,6 +398,14 @@ INVENTORY = {
      'FName(TEXT("penetration")), AssetTags, Offence->GetPenetration()'):
         'a defender reading with no blow in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'SurvivedEveryStat, FGameplayTagContainer(), 0.0f'):
+        "Nothing Stops It's interval, a flag read off the defender when a hit "
+        'would kill, with no skill of its own in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
+     'ImmuneForStat, FGameplayTagContainer(), 0.0f'):
+        "Nothing Stops It's no-damage seconds, read off the defender once a "
+        'lethal hit is survived',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'FName(TEXT("armor_penetration")), AssetTags, Offence->GetArmorPenetration(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor(), EnemiesStruckTogether'):
         'armour penetration, handed the whole blow since issue #1992: '
         'the character struck, the distance to it, its stagger and '

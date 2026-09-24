@@ -938,6 +938,180 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * Grant several flat figures at once. `GrantFlat` above replaces the whole
+	 * stat line, so two stats that only work together must arrive together.
+	 */
+	void GrantFlats(AActor* Who, const TMap<FName, float>& Stats)
+	{
+		UCataclysmAbilitySystemComponent* System =
+			Cast<UCataclysmAbilitySystemComponent>(
+				UCataclysmTargeting::AbilitySystemOf(Who));
+		if (!System)
+		{
+			return;
+		}
+
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		for (const TPair<FName, float>& Stat : Stats)
+		{
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+			Flat.Value = Stat.Value;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(Stat.Key);
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+		}
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	/**
+	 * Shared Ruin's two stats, read by `ACataclysmMinion::DeathBlast`. Issue
+	 * #1515. Two summoners a hundred metres apart each lose an imp that does
+	 * not explode; a target two metres from each imp. Both hold `Held`, and
+	 * only the second holds `Probed` as well: the blast needs both figures, so
+	 * the first target must lose nothing and the second something.
+	 */
+	void ProbeDeathBlastStat(FAutomationTestBase& Test, const TCHAR* Probed,
+							 float ProbedValue, const TCHAR* Held, float HeldValue)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Without(World, FVector::ZeroVector);
+		FScopedSwinger WithoutTarget(World, FVector(3 * M, 0, 0));
+		FScopedSwinger With(World, FVector(0, 100 * M, 0));
+		FScopedSwinger WithTarget(World, FVector(3 * M, 100 * M, 0));
+		GrantFlats(Without.Actor, {{FName(Held), HeldValue}});
+		GrantFlats(With.Actor, {{FName(Held), HeldValue}, {FName(Probed), ProbedValue}});
+
+		ACataclysmMinion* WithoutImp =
+			ImpToldItsExplosion(Test, Without.Actor, FVector(1 * M, 0, 0));
+		ACataclysmMinion* WithImp =
+			ImpToldItsExplosion(Test, With.Actor, FVector(1 * M, 100 * M, 0));
+		if (!WithoutImp || !WithImp)
+		{
+			return;
+		}
+		ON_SCOPE_EXIT
+		{
+			for (ACataclysmMinion* Imp : {WithoutImp, WithImp})
+			{
+				if (IsValid(Imp))
+				{
+					Imp->Destroy();
+				}
+			}
+		};
+
+		KillMinion(WithoutImp);
+		KillMinion(WithImp);
+
+		const FGameplayAttribute Health = Vital::GetHealthAttribute();
+		Test.TestEqual(
+			FString::Printf(TEXT("with %s alone a dying imp hurts nobody"), Held),
+			TargetHealthPool - WithoutTarget.Get(Health), 0.0f, 0.001f);
+		Test.TestTrue(
+			FString::Printf(
+				TEXT("and with %s as well it does, so ACataclysmMinion::DeathBlast "
+					 "really reads it"),
+				Probed),
+			TargetHealthPool - WithTarget.Get(Health) > 0.001f);
+	}
+
+	void ProbeDeathBlastPercent(FAutomationTestBase& Test)
+	{
+		ProbeDeathBlastStat(Test,
+			ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat, 20.0f,
+			ACataclysmMinion::DeathBlastRadiusMetresStat, 4.0f);
+	}
+
+	void ProbeDeathBlastRadius(FAutomationTestBase& Test)
+	{
+		ProbeDeathBlastStat(Test,
+			ACataclysmMinion::DeathBlastRadiusMetresStat, 4.0f,
+			ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat, 20.0f);
+	}
+
+	/**
+	 * Nothing Stops It's two stats, read in
+	 * `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`. Issue #1515.
+	 * `Blows` are dealt in turn to a fighter holding `Stats`, and what it has
+	 * left after each is answered.
+	 */
+	TArray<float> HealthAfterBlows(UWorld* World, const TMap<FName, float>& Stats,
+								   const TArray<float>& Blows)
+	{
+		FScopedFighter Attacker(World, /*AttackDamage=*/0.0f);
+		FScopedFighter Defender(World, /*AttackDamage=*/0.0f);
+		GrantFlats(Defender.Actor, Stats);
+
+		TArray<float> Left;
+		for (const float Blow : Blows)
+		{
+			UCataclysmSkillEffects::ApplyDirectDamage(
+				Attacker.Actor, Defender.Actor, Blow);
+			Left.Add(Defender.Health());
+		}
+		return Left;
+	}
+
+	/** The interval: above zero, a blow worth twice the pool leaves one health. */
+	void ProbeLethalHitSurvived(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const float Lethal = TargetHealthPool * 2.0f;
+		const TArray<float> Plain = HealthAfterBlows(World, {}, {Lethal});
+		const TArray<float> Held = HealthAfterBlows(World,
+			{{FName(UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat),
+			  20.0f}},
+			{Lethal});
+		Test.TestEqual(TEXT("a plain fighter is killed by the blow"), Plain[0], 0.0f,
+					   0.001f);
+		Test.TestEqual(
+			TEXT("and one holding lethal_hit_survived_every_seconds is left at one, "
+				 "so PostGameplayEffectExecute really reads it"),
+			Held[0], 1.0f, 0.001f);
+	}
+
+	/**
+	 * The window: both fighters survive a lethal blow, and only the one holding
+	 * the seconds takes nothing from the blow after it.
+	 */
+	void ProbeImmuneAfterLethalHit(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const FName Every(UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat);
+		const FName Immune(UCataclysmAbilitySystemComponent::ImmuneAfterLethalHitSecondsStat);
+		const TArray<float> Blows = {TargetHealthPool * 2.0f, 0.5f};
+		const TArray<float> Plain = HealthAfterBlows(World, {{Every, 20.0f}}, Blows);
+		const TArray<float> Held =
+			HealthAfterBlows(World, {{Every, 20.0f}, {Immune, 2.0f}}, Blows);
+		Test.TestEqual(TEXT("without the window, the second blow hurts"), Plain[1],
+					   0.5f, 0.001f);
+		Test.TestEqual(
+			TEXT("and with damage_immunity_after_lethal_hit_seconds it does not, so "
+				 "PostGameplayEffectExecute really reads it"),
+			Held[1], 1.0f, 0.001f);
+	}
+
+	/**
 	 * One probe per exempt stat.
 	 *
 	 * A NAME WITH NO ENTRY HERE IS THE FAILURE THIS FILE EXISTS FOR. It is not a
@@ -2216,6 +2390,10 @@ namespace CataclysmStatExemptionTest
 			{TEXT("melee_reach_metres"),  &ProbeMeleeReach},
 			{TEXT("minion_death_replaced_every_seconds"), &ProbeReplacedOnDeath},
 			{TEXT("minion_explosion_replaced_every_seconds"), &ProbeReplacedOnExplosion},
+			{TEXT("minion_death_blast_percent_of_maximum_health"), &ProbeDeathBlastPercent},
+			{TEXT("minion_death_blast_radius_metres"), &ProbeDeathBlastRadius},
+			{TEXT("lethal_hit_survived_every_seconds"), &ProbeLethalHitSurvived},
+			{TEXT("damage_immunity_after_lethal_hit_seconds"), &ProbeImmuneAfterLethalHit},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},

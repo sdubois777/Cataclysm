@@ -3327,4 +3327,200 @@ bool FCataclysmDeadMinionFreesItsPlaceTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Shared Ruin, the Third Pact's option 2. Issue #1515.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmSharedRuinTest
+{
+	/** Give a summoner Shared Ruin's two figures, as its rows will. */
+	void HoldSharedRuin(CataclysmCommandTest::FScopedCaster& Who, bool bAndBursts)
+	{
+		using namespace CataclysmMinionDeathTest;
+		TArray<FStatLine> Lines = {
+			{ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat,
+			 ECataclysmStatBucket::Flat, 20.0f},
+			{ACataclysmMinion::DeathBlastRadiusMetresStat, ECataclysmStatBucket::Flat, 4.0f}};
+		if (bAndBursts)
+		{
+			Lines.Add({TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f});
+		}
+		GiveStats(Who, Lines);
+	}
+
+	/** What a creature's maximum health stands at. */
+	float MaximumHealthOf(const AActor* Who)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Who);
+		return System
+			? System->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+			: 0.0f;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedRuinBlastTest,
+	"Cataclysm.MinionDeath.SharedRuinDealsAFifthOfTheDyingImpsMaximumHealthWithinFourMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "When a minion of yours dies, everything within 4 metres takes damage equal
+ * to 20% of that minion's maximum health." A target three metres from the imp
+ * loses exactly that; one five metres away loses nothing; and the imp, which
+ * does not explode, leaves its body, so what hurt the first is not an explosion.
+ */
+bool FCataclysmSharedRuinBlastTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmSharedRuinTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	HoldSharedRuin(Summoner, /*bAndBursts=*/false);
+	FScopedCaster Inside(World, FVector(13 * M, 0, 0));
+	FScopedCaster Outside(World, FVector(15 * M, 0, 0));
+
+	ACataclysmMinion* Imp = SummonTold(Summoner, FVector(10 * M, 0, 0));
+	if (!TestNotNull(TEXT("an imp"), Imp))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	const float Maximum = MaximumHealthOf(Imp);
+	if (!TestTrue(FString::Printf(TEXT("the imp has a maximum health: %.2f"), Maximum),
+				  Maximum > 0.0f))
+	{
+		return false;
+	}
+	const float InsideBefore = HealthOf(Inside);
+	const float OutsideBefore = HealthOf(Outside);
+
+	Kill(Imp);
+
+	TestEqual(TEXT("a target three metres away loses a fifth of the imp's maximum health"),
+			  InsideBefore - HealthOf(Inside), Maximum * 0.2f, 0.01f);
+	TestEqual(TEXT("one five metres away loses nothing"),
+			  OutsideBefore - HealthOf(Outside), 0.0f, 0.01f);
+	TestTrue(TEXT("and the imp left its body, so that was not an explosion"),
+			 IsValid(Imp));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedRuinBesideBurstsTest,
+	"Cataclysm.MinionDeath.SharedRuinIsASecondBlastBesideEveryOneBursts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Ruled 2026-09-23 under the owner's delegation: with Every One Bursts held a
+ * death is both the explosion and Shared Ruin, each at its own figures. Two
+ * summoners fifty metres apart both hold the explosion flag and only the second
+ * holds Shared Ruin; a target one metre from each imp is inside both radii. The
+ * second loses exactly a fifth of the imp's maximum health more than the first.
+ */
+bool FCataclysmSharedRuinBesideBurstsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmMinionDeathTest;
+	using namespace CataclysmSharedRuinTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster BurstsOnly(World, FVector::ZeroVector);
+	GiveStats(BurstsOnly,
+		{{TEXT("minion_explodes_on_death"), ECataclysmStatBucket::Flat, 1.0f}});
+	FScopedCaster Both(World, FVector(0, 50 * M, 0));
+	HoldSharedRuin(Both, /*bAndBursts=*/true);
+	FScopedCaster BurstsOnlyTarget(World, FVector(11 * M, 0, 0));
+	FScopedCaster BothTarget(World, FVector(11 * M, 50 * M, 0));
+
+	ACataclysmMinion* BurstsOnlyImp = SummonTold(BurstsOnly, FVector(10 * M, 0, 0));
+	ACataclysmMinion* BothImp = SummonTold(Both, FVector(10 * M, 50 * M, 0));
+	if (!TestNotNull(TEXT("an imp"), BurstsOnlyImp)
+		|| !TestNotNull(TEXT("and another"), BothImp))
+	{
+		return false;
+	}
+	const float Maximum = MaximumHealthOf(BothImp);
+	const float BurstsOnlyBefore = HealthOf(BurstsOnlyTarget);
+	const float BothBefore = HealthOf(BothTarget);
+
+	Kill(BurstsOnlyImp);
+	Kill(BothImp);
+
+	const float BurstsOnlyLost = BurstsOnlyBefore - HealthOf(BurstsOnlyTarget);
+	const float BothLost = BothBefore - HealthOf(BothTarget);
+	if (!TestTrue(FString::Printf(TEXT("the explosion alone hurt: %.2f"), BurstsOnlyLost),
+				  BurstsOnlyLost > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and with Shared Ruin as well, a fifth of the imp's maximum more"),
+			  BothLost - BurstsOnlyLost, Maximum * 0.2f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedRuinThrallTest,
+	"Cataclysm.MinionDeath.ADyingThrallsSharedRuinIsDealtAtItsOwnMaximumHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A thrall is a minion for Shared Ruin: its death passes through the same site
+ * as an imp's. A monster two metres from a dying thrall of 1,000 health loses
+ * something and no more than 200 -- its own defences may take part, which is
+ * why this is a bound and the imp case above is the exact one -- and a monster
+ * five metres away loses nothing.
+ */
+bool FCataclysmSharedRuinThrallTest::RunTest(const FString&)
+{
+	using namespace CataclysmCommandTest;
+	using namespace CataclysmSharedRuinTest;
+
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FScopedCaster Summoner(World, FVector::ZeroVector);
+	HoldSharedRuin(Summoner, /*bAndBursts=*/false);
+	FScopedCreature Thrall(World, FVector(10 * M, 0, 0));
+	if (!TestTrue(TEXT("an enemy is taken as a thrall"),
+			UCataclysmCommand::Subjugate(Summoner.Actor, Thrall.Actor)))
+	{
+		return false;
+	}
+	FScopedCreature Near(World, FVector(12 * M, 0, 0));
+	FScopedCreature Far(World, FVector(15 * M, 0, 0));
+	const float Maximum = MaximumHealthOf(Thrall.Actor);
+	TestEqual(TEXT("the thrall's maximum health is the 1,000 it was made with"),
+			  Maximum, 1000.0f, 0.01f);
+	const float NearBefore = Near.Health();
+	const float FarBefore = Far.Health();
+
+	Thrall.SetHealthTo(0.0f);
+
+	const float NearLost = NearBefore - Near.Health();
+	TestTrue(FString::Printf(TEXT("a monster two metres away loses something: %.2f"),
+							 NearLost),
+			 NearLost > 0.0f);
+	TestTrue(FString::Printf(TEXT("and no more than a fifth of 1,000: %.2f"), NearLost),
+			 NearLost <= Maximum * 0.2f + 0.01f);
+	TestEqual(TEXT("one five metres away loses nothing"), FarBefore - Far.Health(), 0.0f,
+			  0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

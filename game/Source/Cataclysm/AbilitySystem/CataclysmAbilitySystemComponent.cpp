@@ -1621,6 +1621,45 @@ void UCataclysmAbilitySystemComponent::NoteMinionReplaced(bool bForExplosion,
 	NextAllowed = World->GetTimeSeconds() + IntervalSeconds;
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat =
+	TEXT("lethal_hit_survived_every_seconds");
+const TCHAR* UCataclysmAbilitySystemComponent::ImmuneAfterLethalHitSecondsStat =
+	TEXT("damage_immunity_after_lethal_hit_seconds");
+
+bool UCataclysmAbilitySystemComponent::MaySurviveLethalHit() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	return LethalHitSurvivalNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= LethalHitSurvivalNextAllowedSeconds;
+}
+
+void UCataclysmAbilitySystemComponent::NoteLethalHitSurvived(float IntervalSeconds,
+															 float ImmuneSeconds)
+{
+	const UWorld* World = GetWorld();
+	if (!World || IntervalSeconds <= 0.0f)
+	{
+		return;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	LethalHitSurvivalNextAllowedSeconds = Now + IntervalSeconds;
+	ImmuneAfterLethalHitUntilSeconds =
+		ImmuneSeconds > 0.0f ? Now + ImmuneSeconds : -1.0f;
+}
+
+bool UCataclysmAbilitySystemComponent::IsImmuneAfterLethalHit() const
+{
+	const UWorld* World = GetWorld();
+	return World && ImmuneAfterLethalHitUntilSeconds >= 0.0f
+		&& World->GetTimeSeconds() < ImmuneAfterLethalHitUntilSeconds;
+}
+
 void UCataclysmAbilitySystemComponent::NoteNovaReleased(float IntervalSeconds)
 {
 	const UWorld* World = GetWorld();
@@ -1999,6 +2038,8 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	AuraNextAllowedSeconds = -1.0f;
 	MinionDeathReplacementNextAllowedSeconds = -1.0f;
 	MinionExplosionReplacementNextAllowedSeconds = -1.0f;
+	LethalHitSurvivalNextAllowedSeconds = -1.0f;
+	ImmuneAfterLethalHitUntilSeconds = -1.0f;
 
 	// AND LEECH NOT YET PAID. `UCataclysmLeech::PayOutStep` skips a corpse, so a
 	// payment promised by a hit before the death would resume paying out after

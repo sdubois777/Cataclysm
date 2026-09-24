@@ -224,6 +224,17 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// that died, Rekindled one that exploded. Issue #1515.
 		TEXT("minion_death_replaced_every_seconds"),
 		TEXT("minion_explosion_replaced_every_seconds"),
+		// Shared Ruin's two figures, read by ACataclysmMinion::DeathBlast off
+		// the commander when a minion or thrall dies: the share of that
+		// creature's maximum health dealt, and the radius in metres. Issue #1515.
+		TEXT("minion_death_blast_percent_of_maximum_health"),
+		TEXT("minion_death_blast_radius_metres"),
+		// Nothing Stops It's two figures, read in
+		// UCataclysmVitalAttributeSet::PostGameplayEffectExecute when a hit
+		// would kill: the seconds between saves, above zero meaning the option
+		// is held, and the seconds of no damage after one. Issue #1515.
+		TEXT("lethal_hit_survived_every_seconds"),
+		TEXT("damage_immunity_after_lethal_hit_seconds"),
 		// Increases, read by UCataclysmAilments::Apply where a Cripple or a
 		// Weaken is created, and not where a spread copies one. Issue #1515,
 		// the Deeper Hurt node: "+3% increased duration of Cripple and Weaken

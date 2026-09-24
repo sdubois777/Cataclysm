@@ -237,6 +237,35 @@ public:
 	void Explode();
 
 	/**
+	 * The share of the dying creature's own maximum health its death deals,
+	 * and the radius in metres it reaches. Issue #1515, the Third Pact's option
+	 * Shared Ruin: "When a minion of yours dies, everything within 4 metres
+	 * takes damage equal to 20% of that minion's maximum health." Read off the
+	 * COMMANDER, since the node is the commander's; both must be above zero.
+	 */
+	static const TCHAR* DeathBlastPercentOfMaximumHealthStat;
+	static const TCHAR* DeathBlastRadiusMetresStat;
+
+	/**
+	 * Shared Ruin: `Lost`, a minion or thrall of `Commander` that has just died,
+	 * damages every enemy within the commander's stated radius by the stated
+	 * share of its own maximum health. Answers how many it struck.
+	 *
+	 * CALLED BEFORE THE DEATH IS HANDLED, because a minion whose death is an
+	 * explosion is destroyed inside `HandleDeath` and its body is what the
+	 * blast is measured from and dealt by.
+	 *
+	 * A SECOND BLAST, NOT A CHANGE TO THE FIRST. Ruled on 2026-09-23 under the
+	 * owner's delegation: with Every One Bursts held, a minion's death is both
+	 * its explosion and this, each at its own figures.
+	 *
+	 * THE DYING CREATURE DEALS IT, as a minion's explosion is its own: the
+	 * owner ruled on 2026-09-17 that a minion's hits are the minion's, and the
+	 * Conduit keystone is what makes them count as the summoner's.
+	 */
+	static int32 DeathBlast(AActor* Lost, const AActor* Commander);
+
+	/**
 	 * Remember what the skill that summoned this one states its explosion is,
 	 * so a death can use the figures the summon cap already uses.
 	 *

@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Shared Ruin and Nothing Stops It, engine only: a minion's death is a blast, and a lethal hit is survived once in twenty seconds
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmMinion.h` and `.cpp` (the death blast),
+`CataclysmVitalAttributeSet.cpp` (where both are read), `CataclysmAbilitySystemComponent.h` and
+`.cpp` (the two clocks), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (four
+stats with no attribute), three test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### ENGINE FIRST, ROWS LATER
+
+The design workbook is with the enchantment session for its row windows, so these two are built as
+own-stacks' first phase was: the engine, with tests on stats given by hand, and **no row**. The rows
+follow as one change when the workbook comes back. Until then neither option grants anything in play.
+
+### THE TWO OPTIONS
+
+| Option | Sentence | Stats, and the figure each row will carry |
+|---|---|---|
+| The Third Pact's option 2, Shared Ruin (`Ritualist_capstone_100`) | "When a minion of yours dies, everything within 4 metres takes damage equal to 20% of that minion's maximum health." | `minion_death_blast_percent_of_maximum_health` 20, `minion_death_blast_radius_metres` 4 |
+| The Final Onslaught's option 3, Nothing Stops It (`Ravager_capstone_200`) | "You cannot be brought below 1 health by a single hit. When a hit would have done so you take no damage for 2 seconds, no more than once every 20 seconds." | `lethal_hit_survived_every_seconds` 20, `damage_immunity_after_lethal_hit_seconds` 2 |
+
+**Two stats each, because each sentence states two figures.** A row carries one value, and the
+`Reach Metres` column is refused by `tools/generate_datatables.py` on any row that does not count
+enemies within a radius. The Masochist's First Vow option Reprisal Wave already states its radius as a stat of its own,
+`retaliation_radius_metres`, and these follow it.
+
+### RULINGS, 2026-09-23, UNDER THE OWNER'S DELEGATION
+
+Recommended in the survey of the unwritten Demonic nodes and approved by the coordinating session:
+
+- **Shared Ruin is a second, separate blast** beside Every One Bursts: with both held, a minion's
+  death is its explosion and this, each at its own figures.
+- **Nothing Stops It: a damage over time tick is not "a single hit"**, so only a hit is saved. **The
+  two seconds after a save stop all damage, ticks included**, because the sentence says "no damage".
+
+### HOW EACH IS BUILT, AND THE JUDGEMENTS IN IT
+
+**Shared Ruin** is `ACataclysmMinion::DeathBlast`, called from
+`UCataclysmVitalAttributeSet::NotifyIfHealthReachedZero` where every commanded death already passes,
+**thralls included**, and **before the death is handled**: a minion whose death is an explosion is
+destroyed inside `HandleDeath`, and its body is what the blast is measured from.
+
+- **The dying creature deals it**, as a minion's explosion is its own. This follows the owner's
+  ruling of 2026-09-17 that a minion's hits are the minion's, with the Conduit keystone making them
+  count as the summoner's. It uses the minion's own delivery: no critical strike, no penetration, no
+  leech, no ailment chance.
+- **JUDGEMENT: it cannot be retaliated against.** Area damage provokes retaliation, and
+  retaliation is paid back to whoever dealt the blow. Here that is a creature whose death is being
+  handled, so a reflected blow would write its health again and run its death a second time.
+
+**Nothing Stops It** is read in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`, on the
+resolved blow, beside the boss floor that is checked there for the same reason.
+
+- **In the two seconds the whole result is emptied**, not only the health, so nothing downstream
+  hears of a blow that did nothing: no shield drawn, no refill wait restarted, no leech for the
+  attacker.
+- **"Lethal" is the resolved figure reaching the health left.** The Masochist's The Breaking Point
+  turns some of a blow into bleeding after this point, and a Ravager holds none of it, so the order
+  is stated rather than felt.
+- **Both clocks go back to "never" on revival**, beside every other passive clock.
+
+### TESTS
+
+- `Cataclysm.MinionDeath.SharedRuinDealsAFifthOfTheDyingImpsMaximumHealthWithinFourMetres`: exact at
+  three metres, nothing at five, and the imp leaves its body.
+- `Cataclysm.MinionDeath.SharedRuinIsASecondBlastBesideEveryOneBursts`: exactly a fifth of the imp's
+  maximum more than the explosion alone.
+- `Cataclysm.MinionDeath.ADyingThrallsSharedRuinIsDealtAtItsOwnMaximumHealth`: a bound rather than an
+  exact figure, because a monster's own defences take part.
+- `Cataclysm.LethalHit.ALethalHitLeavesOneHealthAndTheNextTwoSecondsTakeNothing`
+- `Cataclysm.LethalHit.WithoutTheIntervalALethalHitKills`
+- `Cataclysm.LethalHit.ATickIsNotASingleHitButTheWindowStopsTicksToo`
+- `Cataclysm.LethalHit.TheSaveComesOnceInTwentySecondsAndOnlyForALethalHit`
+- Four probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, one per stat.
+  Each Shared Ruin probe holds the other figure, since the blast needs both.
+- `tools/tests/test_stat_lookups_hand_over_what_they_should.py` lists Nothing Stops It's two new
+  lookups. Shared Ruin reads through `SummonerStat`, a lookup already listed.
+
+### THE WINDOW, 2026-09-24, ON 24a9740c
+
+**This change's C++ was compiled for the first time here, and it built.** No data row changed, so
+there was no stale-asset step and no rebuild.
+
+| Step | Printed |
+|---|---|
+| Build | `Build: Succeeded - 28 actions, 25 files compiled` |
+| Whole suite, `tests` | `2308 tests performed, 2308 succeeded, 0 failed` |
+
+Three proofs with `prove_cpp_guard`, each anchor re-checked immediately before. The broken run's log
+was copied before the restored run overwrote it. **Every one was registered before the window, test
+and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Restored | Assertions that failed |
+|---|---|---|---|---|
+| Shared Ruin's radius read as tenths of a metre (`* 10.0f` for `* 100.0f` in `CataclysmMinion.cpp`) | `Cataclysm.MinionDeath.` | `13 tests performed, 10 succeeded, 3 failed` | `13 tests performed, 13 succeeded, 0 failed` | "a target three metres away loses a fifth of the imp's maximum health", 0 where 400; "and with Shared Ruin as well, a fifth of the imp's maximum more", 0 where 400; "a monster two metres away loses something: 0.00" |
+| a lethal damage over time tick saved too (the tick exclusion removed in `CataclysmVitalAttributeSet.cpp`) | `Cataclysm.LethalHit.` | `4 tests performed, 3 succeeded, 1 failed: ATickIsNotASingleHitButTheWindowStopsTicksToo` | `4 tests performed, 4 succeeded, 0 failed` | "a lethal tick is not a single hit, so it kills", 1 where 0 |
+| the twenty seconds between saves never kept (`CataclysmAbilitySystemComponent.cpp`) | `Cataclysm.LethalHit.` | `4 tests performed, 2 succeeded, 2 failed` | `4 tests performed, 4 succeeded, 0 failed` | "and the next save waits twenty seconds", 0 where 20; "ten seconds after a save, a lethal hit kills", 1 where 0 |
+
+---
+
 ## 2026-09-24 — Soul Harvest: each death gives the nearest creature within 6 metres a soul of health, damage and resistance, up to five
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
