@@ -5762,26 +5762,56 @@ bool FCataclysmGroundfallBurnTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// ONE CRATER AND NO OTHER. Issue #2072. A bombardment drops its craters at random,
+	// with nothing keeping them apart, so in about one run in seven another crater covers
+	// the spot this one's centre is -- a simulation's figure, from reading, not a
+	// measurement -- and the player standing there was burned by both. The others are
+	// taken away, and the count asserted, so the bound below is about one crater.
+	for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+	{
+		if (*It != Crater)
+		{
+			It->Destroy();
+		}
+	}
+	if (!TestEqual(TEXT("exactly one crater is left to burn the player"),
+				   ZonesOnTheFloor(World), 1))
+	{
+		return false;
+	}
+
 	const float Full = Player.Read(Vital::GetHealthAttribute());
 	Player.Character->SetActorLocation(Crater->GetActorLocation());
 
 	// THE CRATER BURNS ON ITS OWN CLOCK, not on the rule's beat, so the world
 	// clock is what has to move. A zone sweeps once a second.
+	const int32 SweepsBefore = Crater->TicksElapsed;
 	CataclysmTestWorld::RunClock(World, 2.0f);
 	Beat(Mode, 1);
+	const int32 Sweeps = Crater->TicksElapsed - SweepsBefore;
 
 	// A RANGE AND NOT A FIGURE, for the reason the Artillery Strike's test gives:
 	// what the constant states is what the ground DEALS, and the player's own
 	// armour and resistances take their cut before it reaches health. Both ends
 	// are real -- a crater that burned nobody fails the bottom, and one burning
 	// faster than it states fails the top.
+	//
+	// BOUNDED BY THE SWEEPS THE CRATER COUNTED, NOT BY THE CLOCK. Issue #2072. Two
+	// seconds of clock hold one sweep or two, by where float rounding puts the second,
+	// and the bound follows whichever it was.
 	const float Lost = Full - Player.Read(Vital::GetHealthAttribute());
-	const float StatedForTwoSeconds = Effects::HallowedGroundfallBurnPerSecond(
-		Player.Read(Vital::GetMaxHealthAttribute())) * 2.0f;
+	const float StatedForTheSweeps = Effects::HallowedGroundfallBurnPerSecond(
+		Player.Read(Vital::GetMaxHealthAttribute()))
+		* ACataclysmGroundZone::TickSeconds * static_cast<float>(Sweeps);
 
 	TestTrue(TEXT("standing in a crater costs health"), Lost > 0.0f);
-	TestTrue(TEXT("and never more than the share the constant states"),
-			 Lost <= StatedForTwoSeconds + 0.01f);
+	TestTrue(FString::Printf(TEXT("the crater swept in the two seconds: %d time(s)"), Sweeps),
+			 Sweeps >= 1);
+	TestTrue(FString::Printf(
+				 TEXT("and never more than the share the constant states for its %d sweep(s): "
+					  "%.2f lost against %.2f"),
+				 Sweeps, Lost, StatedForTheSweeps),
+			 Lost <= StatedForTheSweeps + 0.01f);
 
 	return true;
 }
