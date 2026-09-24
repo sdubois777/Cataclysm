@@ -4200,7 +4200,10 @@ bool FCataclysmClassPointScaleTest::RunTest(const FString&)
 	};
 
 	TestEqual(TEXT("159 points are 59 above 100: five whole steps"), At(159), -12.5f, 0.001f);
+	// THE BOUNDARY, BOTH SIDES. Exactly the offset is no steps; ten past it is
+	// one. An offset read as nought would make these ten steps and eleven.
 	TestEqual(TEXT("exactly 100 is nothing"), At(100), 0.0f, 0.001f);
+	TestEqual(TEXT("110 is one step of the per-10 row"), At(110), -2.5f, 0.001f);
 	TestEqual(TEXT("below 100 is nothing, not a negative number of steps"), At(40), 0.0f, 0.001f);
 	TestEqual(TEXT("an unknown count is nothing"), At(-1), 0.0f, 0.001f);
 	TestEqual(TEXT("and so is a state nobody filled in"),
