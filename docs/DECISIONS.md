@@ -13,9 +13,8 @@ player's death killing the bonded elite, the floor panel line and the per-floor 
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -98,10 +97,43 @@ One Python check: the row still says "the first elite you see", "on each floor",
 do" and "immune to your damage", and states no figure. It was seen to fail, in a copy of the repository,
 with "the first elite" made "an elite", with "unless you do" removed, and with "for 30 seconds" added.
 
-### Not yet run
+### Also in this change
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+**The crater test's bound, issue [#2072](https://github.com/sdubois777/Cataclysm/issues/2072)**, as its
+own commit. `ACraterBurnsThePlayerStandingInIt` now takes away every ground zone but the crater the
+player stands in, asserts that exactly one is left, and bounds the burn by the sweeps that crater counted
+rather than by two seconds of clock. A bombardment's craters can overlap under the player -- about one
+run in seven, from a simulation of the placement, not a measurement -- and the player was then burned by
+both. Whether that should happen in play is
+[#2074](https://github.com/sdubois777/Cataclysm/issues/2074), ruled separately.
+
+### Run
+
+One editor window on 2026-09-24, on development 52c80ea1 as the base. Every figure below is what
+`python tools/unreal_build.py tests` or `prove_cpp_guard` printed.
+
+- **The group on the base**, 52c80ea1: 270 tests performed, 270 succeeded, 0 failed.
+- **The whole suite on the head**, 9db055be: 2,348 tests performed, 2,348 succeeded, 0 failed,
+  `ACraterBurnsThePlayerStandingInIt` among them.
+- **The group on the head**: 275 tests performed, 275 succeeded, 0 failed.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **The rung test.** `Rung == BloodBondRung` made `<=`. With the break in: 275 performed, 274
+  succeeded, 1 failed, `BloodBondBindsTheFirstEliteThatNoticesThePlayerAndNeverABoss` ("Expected 'a
+  Common one may not' to be false", "Expected 'none of the three was bound' to be null", and the near
+  Elite then neither bound nor unhurtable, the floor's one bond having gone to the Common creature).
+  Restored: 275 performed, 275 succeeded, 0 failed.
+- **The death link.** The health write that kills the bonded elite removed. With the break in: 275
+  performed, 273 succeeded, 2 failed, `ThePlayersDeathKillsTheBloodBondedEliteAndItPaysNothing` ("Expected
+  'and the bonded elite died with them' to be true", "Expected 'its death was announced once' to be 1,
+  but it was 0") and `ABloodBondThatEndedIsNotFormedAgainOnTheSameFloor` ("Expected 'the bonded Elite
+  died with the player' to be true"). Restored: 275 performed, 275 succeeded, 0 failed.
+- **One bond a floor.** `&& !bBloodBondFormed` removed from the beat's gate. With the break in: 275
+  performed, 274 succeeded, 1 failed, `ABloodBondThatEndedIsNotFormedAgainOnTheSameFloor` ("Expected 'no
+  second bond on this floor' to be null", "Expected 'and the second Elite can be hurt' to be false").
+  Restored: 275 performed, 275 succeeded, 0 failed.
 
 ---
 
