@@ -2932,7 +2932,8 @@ struct CATACLYSM_API FCataclysmStatModifier
 	 * does not carry its own name, and the generator refuses the same
 	 * enchantment and stat twice. TWO WORN COPIES OF ONE ENCHANTMENT SHARE THE
 	 * KEY, so they share one count and each copy's value is scaled by it: two
-	 * copies give double, as two worn copies of any row do.
+	 * copies give double. Only a drawback is ever granted twice; a benefit on
+	 * several pieces is granted once, at the higher roll.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
 	FName StackKey;

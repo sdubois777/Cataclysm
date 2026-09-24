@@ -30,18 +30,34 @@ asked for.
 **Only a landed event grants a stack.** An evaded blow is not a hit (2026-09-04). A pool action,
 and every clock, go on firing as before.
 
-### TWO WORN COPIES OF ONE ROW
+### ONE ROW ON SEVERAL WORN PIECES
 
 The coordinating session asked for this case to be decided and pinned, not left implicit.
 
-- **The copies share one count.** A row carries no name of its own, so the key is the enchantment
+**Which rows can be worn more than once is not this change's rule.**
+`UCataclysmItemModifiers::AccumulateEnchantmentsInto` grants a benefit once however many pieces
+carry it, at the higher of their rolls, and a drawback for every piece at its own roll. So only a
+row on a drawback is ever granted twice. Of the seven rows waiting for the workbook, four are on
+drawbacks (a melee hit taken lowers armor, a kill lowers damage, a skill use lowers armor, a spell
+cast lowers armor) and three are on benefits (a critical strike raises all damage, applying a DoT
+raises damage, a skill use raises movement speed).
+
+**The coordinating session's first ruling said the opposite, and it was wrong.** It expected two
+copies to give double "as any two worn copies of a flat row do", and this entry repeated it as
+"two worn copies of any row give double". That is false for a benefit, by the rule above. The
+build window found it (see Run), and the coordinating session corrected its ruling in that window.
+
+For a drawback on several pieces:
+
+- **The pieces share one count.** A row carries no name of its own, so the key is the enchantment
   and the stat; the generator never lets two rows share that pair.
-- **Each copy's value is scaled by the shared count.** So two copies at two stacks of 10% are 40%
-  increased, double one copy's 20%, as two worn copies of any row give double.
-- **One event grants one stack, however many copies are worn.** Otherwise two copies would also
+- **Each piece's value is scaled by the shared count.** So two pieces at two stacks of 10% are 40%
+  increased, double one piece's 20%, as a drawback on two pieces gives double.
+- **One event grants one stack, however many pieces are worn.** Otherwise two pieces would also
   double the rate at which stacks come, which the sentence does not say.
 
-Tests pin all three.
+Tests pin all three, and one test also pins a benefit on two pieces giving one modifier and one
+grant.
 
 ### A STACK ROW'S TAGS AND CONDITION SCOPE ITS STAT, NOT ITS GRANT
 
@@ -78,6 +94,32 @@ design workbook:
 
 Until then, Stack Seconds is in `OPTIONAL_COLUMNS`, and `own_stacks` is listed as built ahead of its
 rows. The tests use hand-made rows.
+
+### Run
+
+- **The first build failed**, on `cb28421b`: "Build: Failed - 28 actions, 25 files compiled", two
+  C2440 errors in `CataclysmDeathTests.cpp` (lines 1443 and 1456). That file's table of event
+  windows stores `&NoteHitTaken` and `&NoteMeleeHitTaken` as pointers to members taking no
+  arguments. This change had given each a `bool bLanded = true`, and **a default argument does not
+  change a member function's type**. Each now has a form taking `bLanded` and a form with no
+  argument, for a landed blow (`1836b322`). The rebuild printed "Build: Succeeded - 26 actions, 23
+  files compiled".
+- **The stale-asset step missed its registration twice.** Registered: 87 performed, exactly 1
+  failed, `EveryGeneratedTableHasAnAssetThatMatchesIt`. Printed: "87 tests performed, 86 succeeded,
+  1 failed: AnOwnStackRowBecomesAScaledModifierAndAStackGrant".
+  - That test wore one benefit on two pieces and expected two modifiers: "Expected 'one for each
+    copy' to be 2, but it was 1". The game was right and the test was wrong, by the rule in the
+    section above. The test now has two halves, a drawback on two pieces (two of each) and a
+    benefit on two pieces (one of each).
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt` passed with the old asset. **The C++ stale-asset
+    check cannot see a new column whose every value equals the field's default.** It loads the old
+    asset into the current row struct, which fills the missing `StackSeconds` with 0, the value
+    every row of the CSV holds, so both sides export the same text. The Python hash test,
+    `test_every_csv_still_hashes_to_what_was_recorded`, is what caught it. That test already covers
+    the case, so no issue was filed. The step was not run again, since it could not fail.
+- **Found by the build and filed rather than fixed:** a C4996 warning, "Attempting to use Cast<>
+  on types that are not related", at `CataclysmMinionAttackSpeedTests.cpp:240`, an assertion that
+  cannot fail ([#2055](https://github.com/sdubois777/Cataclysm/issues/2055)).
 
 ---
 

@@ -1043,11 +1043,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnStacksScaleEachCopyTest,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
- * Two worn copies of one stack row. Issue #1833, the case the coordinating
- * session asked to be pinned: they SHARE ONE COUNT, keyed by the enchantment and
- * the stat, and EACH COPY'S VALUE IS SCALED BY IT. So two copies at two stacks
- * are 2 x 10 x 2 = 40% increased, double one copy's 20%, as two worn copies of
- * any row give double.
+ * Two copies of one stack row, as a drawback worn on two pieces makes. Issue
+ * #1833, the case the coordinating session asked to be pinned: they SHARE ONE
+ * COUNT, keyed by the enchantment and the stat, and EACH COPY'S VALUE IS SCALED
+ * BY IT. So two copies at two stacks are 2 x 10 x 2 = 40% increased, double one
+ * copy's 20%. A benefit on two pieces never makes two copies: it is granted
+ * once, at the higher roll (`UCataclysmItemModifiers::AccumulateEnchantmentsInto`).
  */
 bool FCataclysmOwnStacksScaleEachCopyTest::RunTest(const FString&)
 {
