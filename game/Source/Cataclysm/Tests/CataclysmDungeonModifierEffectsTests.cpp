@@ -23853,10 +23853,73 @@ bool FCataclysmTreatMarkTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// A RAISED CREATURE AT THE BOSS RUNG, which is expected to drop five pieces of gear, so
-	// the kill leaves drops to read.
+	const auto DropsLying = [World](TArray<ACataclysmDroppedItem*>& Out)
+	{
+		Out.Reset();
+		for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+		{
+			Out.Add(*It);
+		}
+	};
+
+	// THE SPAWNER MARKS WHAT IT IS TOLD TO, ON SEEDED STREAMS, so this half cannot pass or
+	// fail on a roll: a drop count is drawn from a Poisson distribution and can be zero for
+	// any rate, so seeds 1 to 20 are tried in order until one leaves a piece of gear. The
+	// same seeds give the same drops every run.
+	TArray<ACataclysmDroppedItem*> Lying;
+	ACataclysmDroppedItem* Gear = nullptr;
+	int32 SeedUsed = 0;
+	for (int32 Seed = 1; Seed <= 20 && !Gear; ++Seed)
+	{
+		FRandomStream Stream(Seed);
+		UCataclysmDropSpawner::SpawnDropsFor(
+			World, ACataclysmEnemyCharacter::FirstBossRarityStep, 0.0f,
+			UCataclysmDropRoll::BaselineLootQuantity, FVector(600.0f, 0.0f, 0.0f), Stream,
+			/*bMarked=*/true);
+		DropsLying(Lying);
+		for (ACataclysmDroppedItem* Drop : Lying)
+		{
+			if (!Gear && !Drop->IsMaterial())
+			{
+				Gear = Drop;
+				SeedUsed = Seed;
+			}
+		}
+	}
+	if (!TestNotNull(TEXT("a seeded Boss-rung roll left a piece of gear"), Gear))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("seed %d, %d drops lying"), SeedUsed, Lying.Num()));
+	for (ACataclysmDroppedItem* Drop : Lying)
+	{
+		TestTrue(TEXT("every drop the marked roll left is marked"), Drop->bDroppedByARaisedCreature);
+	}
+
+	// CLICKED WITH THE ROLL PINNED TO A TRICK: it is taken, and nothing rolls.
+	{
+		FScopedConsoleString Pinned(TEXT("Cataclysm.TrickOrTreatRoll"), ATrick);
+		if (!TestTrue(TEXT("the marked gear was taken"),
+					  UCataclysmDropPickup::TakeInto(Player.Character->GetInventory(), Gear, true)))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("the rule counted no pickup"), Mode->TrickOrTreatPickupCount(), 0);
+	TestEqual(TEXT("and raised nothing"), Mode->TrickOrTreatRaisedCount(), 0);
+
+	// AND THE DEATH PATH PASSES THE CREATURE'S MARK TO THE SPAWNER. The floor is cleared of
+	// drops first. This half's drop roll is the game's own and cannot be seeded, so it asserts
+	// only that every drop the kill left is marked; at the Cataclysm Boss rung the kill is
+	// expected to leave 24, and leaves none about once in 26 billion kills, which would make
+	// this half check nothing rather than fail.
+	DropsLying(Lying);
+	for (ACataclysmDroppedItem* Drop : Lying)
+	{
+		Drop->Destroy();
+	}
 	ACataclysmEnemyCharacter* Raised = PlaceCreatureAtRung(
-		World, Mode, FVector(600.0f, 0.0f, 0.0f), ACataclysmEnemyCharacter::FirstBossRarityStep);
+		World, Mode, FVector(900.0f, 0.0f, 0.0f), ACataclysmEnemyCharacter::FirstBossRarityStep + 1);
 	if (!TestNotNull(TEXT("a creature to raise"), Raised))
 	{
 		return false;
@@ -23866,37 +23929,13 @@ bool FCataclysmTreatMarkTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	int32 Drops = 0;
-	int32 Marked = 0;
-	ACataclysmDroppedItem* Gear = nullptr;
-	for (TActorIterator<ACataclysmDroppedItem> It(World); It; ++It)
+	DropsLying(Lying);
+	AddInfo(FString::Printf(TEXT("the raised creature's kill left %d drops"), Lying.Num()));
+	for (ACataclysmDroppedItem* Drop : Lying)
 	{
-		++Drops;
-		Marked += It->bDroppedByARaisedCreature ? 1 : 0;
-		if (!Gear && !It->IsMaterial())
-		{
-			Gear = *It;
-		}
+		TestTrue(TEXT("every drop a raised creature's kill left is marked"),
+				 Drop->bDroppedByARaisedCreature);
 	}
-	if (!TestTrue(FString::Printf(TEXT("the kill dropped something: %d"), Drops), Drops > 0))
-	{
-		return false;
-	}
-	TestEqual(TEXT("and every drop is marked"), Marked, Drops);
-	if (!TestNotNull(TEXT("a piece of gear among them"), Gear))
-	{
-		return false;
-	}
-
-	// CLICKED WITH THE ROLL PINNED TO A TRICK: it is taken, and nothing rolls.
-	FScopedConsoleString Pinned(TEXT("Cataclysm.TrickOrTreatRoll"), ATrick);
-	if (!TestTrue(TEXT("the marked gear was taken"),
-				  UCataclysmDropPickup::TakeInto(Player.Character->GetInventory(), Gear, true)))
-	{
-		return false;
-	}
-	TestEqual(TEXT("the rule counted no pickup"), Mode->TrickOrTreatPickupCount(), 0);
-	TestEqual(TEXT("and raised nothing"), Mode->TrickOrTreatRaisedCount(), 0);
 	return true;
 }
 

@@ -69,6 +69,8 @@ judgement, not something derived:**
   `ACataclysmEnemyCharacter::bRaisedByARule` is set on the Unstable Portal's Warden and on a trick's
   pair as they join `CreaturesRaisedByARule`, and the drop spawners copy it onto every drop, gear and
   material, as `ACataclysmDroppedItem::bDroppedByARaisedCreature`. The reason is the arithmetic below.
+  **So the Unstable Portal's Warden's loot is marked too, and on a floor carrying both rows, picking it
+  up rolls nothing**; that follows from the ruling and was accepted with it.
 
 ### The chain a trick could have started, worked out: the reason for the mark
 
@@ -104,8 +106,12 @@ Six automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 - `AClickThroughThePlayerControllerRollsAndItsSweepDoesNot`: through the game's own controller, the
   sweep takes a crafting material and the rule counts nothing, and a click on gear counts and raises
   two.
-- `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`: a raised creature at the Boss rung is
-  killed, every drop it leaves is marked, and a click on its gear with a trick pinned rolls nothing.
+- `ADropARaisedCreatureDroppedRollsNothingForTrickOrTreat`: the drop spawner, told to mark and run on
+  seeded streams (seeds 1 to 20 in order until one leaves gear, so the same drops every run), marks
+  every drop, and a click on the gear with a trick pinned rolls nothing; then a raised creature at the
+  Cataclysm Boss rung is killed and every drop it leaves is marked. That second half uses the game's
+  own unseeded roll and asserts only that what fell is marked: it is expected to leave 24 drops and
+  leaves none about once in 26 billion kills, when it would check nothing rather than fail.
 - `ATreatHastesThePlayerForTenSecondsAndThenStops`: the roll's boundary at 50; a treat puts 20% more on
   movement speed and on attack speed; still on at nine and a half seconds, off at ten and a half.
 - `ASecondTreatRestartsTheClockAndDoesNotStack`: a second treat six seconds in keeps the haste at 20%
