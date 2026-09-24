@@ -197,6 +197,183 @@ and the node's tool tip assertion held under the third.
 
 ---
 
+## 2026-09-24 — Seven enchantments count stacks of their own: a critical strike, a DoT applied, a skill use, a spell, a kill and a melee hit taken each grant one
+
+**Affects:**
+- the Enchantment Effects sheet: ten rows on seven enchantments, and the new Stack Seconds column
+- `tools/generate_datatables.py`: Stack Seconds leaves `OPTIONAL_COLUMNS`, and `movement_speed` joins
+  `STATS_WITH_AN_ASKER`
+- `BUILT_AHEAD_OF_THEIR_ROWS` in `test_every_scale_source_has_a_row_or_is_listed_as_built_ahead.py`,
+  which `own_stacks` leaves
+- `ProbeScaledMovementSpeed` in `CataclysmStatExemptionTests.cpp`
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 1's rows
+
+The engine for these rows merged on 2026-09-23 ("Each enchantment row can count stacks of its own,
+granted by its event"). This change adds the rows it was built for.
+
+### THE ROWS
+
+Every row is scaled by `own_stacks` with a step of 1. Its value is per stack, its Scale Max Steps is
+the cap, and its Stack Seconds is how long the stacks last after the last grant.
+
+| Enchantment | Stat | Per stack | Event | Seconds | Cap |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| Critical strikes grant a stack of power increasing all damage by 3%-5% for 5 seconds, up to 5 stacks | `attack_damage`, `spell_damage` | increased 3 to 5 | `critical_strike` | 5 | 5 |
+| Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds, stacking up to 5 times | `attack_damage`, `spell_damage` | increased 5 to 10 | `dot_applied` | 4 | 5 |
+| Each skill use increases your movement speed by 3%-5% for 2 seconds, stacking up to 5 times | `movement_speed` | increased 3 to 5 | `skill_use` | 2 | 5 |
+| Melee attacks that hit you reduce your armor by 3%-5% for 3 seconds, stacking up to 5 times | `armor` | increased -3 to -5 | `melee_hit_taken` | 3 | 5 |
+| Each kill reduces your damage by 2%-4% for 5 seconds, stacking up to 5 times | `attack_damage`, `spell_damage` | increased -2 to -4 | `kill` | 5 | 5 |
+| Each skill use reduces your armor by 1%-2% for 3 seconds stacking up to 10 times | `armor` | increased -1 to -2 | `skill_use` | 3 | 10 |
+| Each spell cast reduces your armor by 2%-4% for 3 seconds stacking up to 5 times | `armor` | increased -2 to -4 | `spell` | 3 | 5 |
+
+### WHICH WORD IS WHICH BUCKET
+
+**The seven sentences say "increasing", "increased", "increases", "reduce" and "reduces". None of
+them says "more" or "less".** All ten rows are therefore the increased bucket, positive for an
+increase and negative for a reduction. That is the sheet's precedent: "Your movement speed is reduced
+by 10%" and "Taking a hit reduces your damage by 5%-10% for 3 seconds" are both increased rows. The
+more bucket stays with sentences that say "more" or "less". Approved by the coordinating session on
+2026-09-24.
+
+### "ALL DAMAGE" AND "DAMAGE" ARE TWO ROWS EACH
+
+A damage sentence is a row on `attack_damage` and a row on `spell_damage`, as every damage sentence
+already in the sheet is. A stack's key is the enchantment and the stat, so each of the two rows keeps
+its own count. One event grants each of them one stack, so the two counts always move together.
+
+### MOVEMENT SPEED IS ASKED FOR, AND NOW THE GENERATOR KNOWS IT
+
+**The generator refused the speed row as first written:** "scales 'movement_speed' by 'own_stacks',
+and nothing asks for that stat through the stat pipeline". The stat was not in
+`STATS_WITH_AN_ASKER`. Something does ask for it:
+- `ACataclysmPlayerCharacter::RefreshMovementSpeed` asks `StatForSkill("movement_speed")`;
+- `MovementSpeedCanChangeUnannounced` asks again on the quarter-second step whenever a movement speed
+  row is scaled.
+
+`movement_speed` joins the list, and `ProbeScaledMovementSpeed` measures the ask. The probe gives a
+spawned player character a movement speed line scaled by debuffs carried, and reads the speed its
+movement component holds before and after two debuffs. The generator's own message names this as the
+remedy. **The coordinating session ruled on 2026-09-24 that it is inside this change.**
+
+### THE JUDGEMENTS, UNDER THE OWNER'S DELEGATION
+
+- **"For N seconds" is Stack Seconds, and "up to N stacks" or "stacking up to N times" is Scale Max
+  Steps.** A grant restarts the window, and the whole count lapses together, as the engine entry
+  ruled.
+- **"Melee attacks that hit you" is `melee_hit_taken`**, which grants a stack only for a blow that
+  landed (the engine entry's rule). **"Each spell cast" is `spell`, and "each skill use" is
+  `skill_use`.**
+
+### "INCREASING" AND "REDUCING" ARE INCREASE WORDS
+
+**The wording check refused the critical strike rows as first written.** Their sentence says
+"increasing all damage", and `test_an_increased_row_is_worded_as_an_increase` accepted "increase",
+"increases" and "increased" but not "increasing". The check now also accepts "increasing" and
+"reducing". **Ruled by the coordinating session on 2026-09-24, under the owner's delegation:** they are
+the same words in another form. This widens the check in the way the 2026-09-14 change did, which
+added "reduce" and "reduces", and it does not change what the check means.
+
+### THE TESTS
+
+One test per enchantment, `Cataclysm.Enchantments.The...StackRow...`. Each wears the real row on a
+helm and checks two things about each stat's line: it holds exactly one row scaled by its own
+stacks, and every other increase on it is unscaled and unconditioned. It then fires the row's event
+and reads the stat applied to 1,000, as a share of the same reading with no stacks:
+- after two events, two stacks;
+- after the cap's worth more, the cap and no more;
+- 0.1 seconds inside the window, still the cap;
+- 0.1 seconds after it, none.
+
+The share expected is (1 + (other + stacks × value) / 100) / (1 + other / 100), where "other" is
+the sum of the line's other increases, read from the line and printed in each assertion's label.
+
+**The registration missed this, and the first version of the tests assumed it away.** It assumed
+the increased bucket held the row alone. `game/Data/Attributes.csv` puts an agility increase on
+`movement_speed` and a constitution increase on `armor` (`agility_movement_speed` and
+`constitution_armor`, 2% per point). A real wearer has both, and an attribute increase and a row
+increase add in one bucket. The stale-asset run found it: "holds one increase, this row's" failed
+on the six damage lines, as registered, and not on the four armor and movement speed lines, which
+already held one. **The coordinating session ruled the correction on 2026-09-24, under the owner's
+delegation:** change the test's shared check and nothing else, and make the test cover the
+attribute increase rather than avoid it.
+
+**The corrected test then read the other increases as nought on all ten lines, armor and movement
+speed included.** The attribute path supplies nothing on this test's wearer: `RefreshAttributes`
+reads spent points from the pawn's player state, and the test wearer is a bare actor with none, so
+agility and constitution are nought and so are the increases they add. **Ruled by the coordinating
+session on 2026-09-24, under the owner's delegation:** each line gets one increase of 20 from the
+Attribute source, standing in for attribute points. An assertion requires the other increases to
+read 20.00, so a change that drops the stand-in fails.
+
+The attribute path, points to an increase on a stat line, is tested through vitality by
+`Cataclysm.Attributes.SpendingPointsRaisesTheStatsThoseAttributesScale` and
+`Cataclysm.Attributes.GearRaisesAnAttributeBeforeThatAttributeScalesAnything`. Neither names armor or
+movement_speed. The path is table-driven, so those rows go through the same function.
+
+### Run
+
+The rows were written into the design workbook in this window, at rows 309 to 318 of the Enchantment
+Effects sheet, with the Stack Seconds column at Q. Two steps missed their registration and one
+proof proved nothing; each is below.
+
+- **The Python run on the code head `4f5b8a6d`**, before the rows: "5419 passed, 8 skipped".
+- **The first build**, on the row commit `364f2569`, compiled this C++ for the first time: "Build:
+  Succeeded - 28 actions, 25 files compiled", from 21:38:20Z to 21:39:03Z. The continuous
+  integration Unreal compile for `development` had ended at 21:37:30Z.
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "93 tests
+  performed, 85 succeeded, 8 failed": `EveryGeneratedTableHasAnAssetThatMatchesIt` ("10 row(s) only
+  in the CSV, 0 only in the asset") and the seven row tests, as registered.
+  - **It MISSED at one assertion.** "holds one increase, this row's" was registered to fail on all
+    ten lines and failed on six, the damage lines. That is the miss described under THE TESTS.
+- **The Python run of record on `364f2569`**: "1 failed, 5418 passed, 8 skipped", the stale hash as
+  registered.
+- **The first correction** (`793a1b8c`) built: "Build: Succeeded - 4 actions, 1 file compiled:
+  Module.Cataclysm.15.cpp".
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`91e08ea4`, 307 rows to 317). The Python asset-freshness tests then passed, 18 of 18.
+- **The seven row tests** then printed "7 tests performed, 7 succeeded, 0 failed". A passing
+  assertion's label is never logged, so an info line printing each line's other increases was added
+  (`034eb2cc`). The build printed "Build: Succeeded - 5 actions, 2 files compiled:
+  CataclysmEnchantmentEffectTests.cpp, Module.Cataclysm.15.cpp". The seven passed again and printed
+  0.00 on all ten lines, which led to the second ruling under THE TESTS.
+- **The stand-in** (`d4478c93`) built: "Build: Succeeded - 4 actions, 1 file compiled:
+  Module.Cataclysm.15.cpp". The seven printed "7 tests performed, 7 succeeded, 0 failed", with the
+  other increases at 20.00 on all ten lines.
+- **The whole suite on `d4478c93`**, from 21:49:40Z to 21:55:11Z: "2376 tests performed, 2376
+  succeeded, 0 failed", as registered, with every declared test reported. No other run was in
+  progress.
+- **Three guard proofs**, each broken run's log copied before the restored run overwrote it:
+  - **`RefreshMovementSpeed` no longer asking** (`StatForSkill("movement_speed", ...)` made the
+    attribute) failed `EveryStatTheDataScalesIsAskedForThroughThePipeline`, 1 of 1, and 0 restored:
+    "Expected 'movement_speed is asked for, so two debuffs raise the speed run at: 500.00 against
+    500.00' to be true".
+  - **a worn row's stacks lasting no time** (`Stack.StackSeconds` made 0) failed all seven row tests,
+    and none restored. On every line, "two events hold two stacks", "more events than its cap hold
+    its cap" and "just inside its window, still its cap" read 1.000000 against the registered
+    figures, for example "Expected ''movement_speed', two events hold two stacks (other increases
+    20.00)' to be 1.083333, but it was 1.000000".
+  - **a worn row's grant cap one too high** (`Stack.StackCap` made `ScaleMaxSteps + 1`) printed
+    "NOT A PROOF: nothing failed with the break in", 7 of 7 passing both times. **This was not
+    predicted.** The grant cap and the modifier's cap (`Out.ScaleMaxSteps` in
+    `UCataclysmItemModifiers`, `CataclysmItem.cpp`) are the same number, and the pipeline applies
+    the modifier's cap to the scaled value, so no stat can see the grant cap.
+
+**STATED GAP: no break has been shown to fail "more events than its cap hold its cap".** The
+modifier's cap is the one a player sees, and it is unproven in this change. The break that would
+prove it: `Out.ScaleMaxSteps = Effect.ScaleMaxSteps;` in `CataclysmItem.cpp` made `+ 1`, predicted to
+fail all seven on the cap and just-inside assertions. It was not run: the owner's ruling of
+2026-09-14 allows three proofs per change, and the coordinating session ruled that the third had been
+spent.
+
+**Whether the grant cap is redundant**, from a search of `game/Source` outside the tests for
+`OwnStacksHeld` and `OwnStacks`: two things read the grant's count. The pipeline reads it and
+applies the modifier's cap first. The death clean-up in `CataclysmAbilitySystemComponent.cpp` adds
+it to the stacks counted into a log line (`CataclysmPlayerCharacter.cpp`). Nothing shows it on
+screen. So today the grant cap changes only that log count. No issue was filed, by ruling: a
+reader such as an on-screen stack counter would make it matter.
+
+---
+
 ## 2026-09-24 — Overlapping zones of one floor rule burn a target once a second, not once per zone
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmFloorHazardSource.h` and `.cpp` (the record of

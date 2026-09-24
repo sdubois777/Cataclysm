@@ -4870,4 +4870,333 @@ bool FCataclysmMeleeWhileMovingRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmOwnStackRowTest
+{
+	/** One of the seven own-stack enchantments, at the top of its range. */
+	struct FCase
+	{
+		const TCHAR* Enchantment = nullptr;
+		bool bBenefit = true;
+		const TCHAR* Event = nullptr;
+		TArray<FName> Stats;
+		float PerStack = 0.0f;
+		int32 Cap = 0;
+		float Seconds = 0.0f;
+	};
+
+	/**
+	 * Wear the row, fire its event, and read each stat it names as a share of
+	 * the same stat with no stacks: after two events, after enough to pass its
+	 * cap, just inside its window and just after it. Issue #1833.
+	 *
+	 * A SHARE OF THE STAT WITH NO STACKS, so a base, a flat addition or a more
+	 * multiplier cancels out. AN INCREASE DOES NOT: it sums with the row's. A
+	 * real wearer's attributes put one on some lines -- agility on
+	 * `movement_speed`, constitution on `armor`, from game/Data/Attributes.csv --
+	 * so every other increase on the line is read from it, checked to be
+	 * unscaled and unconditioned so it holds still, and the share expected is
+	 * (1 + (other + stacks x value) / 100) / (1 + other / 100). The first
+	 * version assumed the bucket held the row alone, and the stale-asset run
+	 * of 2026-09-24 showed that armor and movement speed do not.
+	 */
+	void Check(FAutomationTestBase& Test, const FCase& Case)
+	{
+		using namespace CataclysmEnchantmentEffectTest;
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FWearer Wearer(World);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(
+			Case.bBenefit
+				? Carrying(TEXT("Head_Helm"), Case.Enchantment, DrawbackWithNoEffect)
+				: Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, Case.Enchantment),
+			Removed, AlsoRemoved, Slot);
+		Wearer.Equipment->RefreshAttributes(ASC);
+
+		// A STAND-IN FOR ATTRIBUTE POINTS, because this wearer cannot have
+		// any. `RefreshAttributes` reads spent points from the pawn's player
+		// state, and FWearer is a bare actor, so agility and constitution are
+		// nought and the increases they put on `movement_speed` and `armor`
+		// are worth nought -- measured on 2026-09-24. One increase of 20 on
+		// each line, from the Attribute source, makes the row's increase sum
+		// with another, as it does on a real wearer.
+		//
+		// ONLY THE CASE'S OWN LINES ARE WRITTEN BACK, and they are all this
+		// test reads: `SetStatInputs` replaces the whole map.
+		constexpr float StandIn = 20.0f;
+		{
+			TMap<FName, FCataclysmStatInputs> Lines;
+			for (const FName& Stat : Case.Stats)
+			{
+				const FCataclysmStatInputs* Line = ASC->GetStatInputs(Stat);
+				if (!Test.TestNotNull(FString::Printf(
+						TEXT("'%s' has a line to add the stand-in to"), *Stat.ToString()),
+						Line))
+				{
+					return;
+				}
+				FCataclysmStatModifier FromAttributes;
+				FromAttributes.Bucket = ECataclysmStatBucket::Increased;
+				FromAttributes.Source = ECataclysmModifierSource::Attribute;
+				FromAttributes.Value = StandIn;
+				FromAttributes.Scale = ECataclysmStatScale::Fixed;
+				FromAttributes.Condition = ECataclysmStatCondition::Always;
+				Test.TestEqual(FString::Printf(
+					TEXT("the stand-in on '%s' passes the modifier validator"),
+					*Stat.ToString()),
+					UCataclysmStatPipeline::ValidateModifier(FromAttributes), FString());
+
+				FCataclysmStatInputs Copy = *Line;
+				Copy.Modifiers.Add(FromAttributes);
+				Lines.Add(Stat, MoveTemp(Copy));
+			}
+			ASC->SetStatInputs(MoveTemp(Lines));
+		}
+
+		TMap<FName, float> Plain;
+		TMap<FName, float> Other;
+		for (const FName& Stat : Case.Stats)
+		{
+			const FCataclysmStatInputs* Line = ASC->GetStatInputs(Stat);
+			int32 Stacked = 0;
+			int32 Moving = 0;
+			float OtherIncreases = 0.0f;
+			for (const FCataclysmStatModifier& Modifier :
+				 Line ? Line->Modifiers : TArray<FCataclysmStatModifier>())
+			{
+				if (Modifier.Scale == ECataclysmStatScale::PerOwnStack)
+				{
+					++Stacked;
+					continue;
+				}
+				if (Modifier.Bucket != ECataclysmStatBucket::Increased)
+				{
+					continue;
+				}
+				if (Modifier.Scale != ECataclysmStatScale::Fixed
+					|| Modifier.Condition != ECataclysmStatCondition::Always)
+				{
+					++Moving;
+				}
+				OtherIncreases += Modifier.Value;
+			}
+			Test.TestEqual(FString::Printf(
+				TEXT("'%s' holds one row scaled by its own stacks"), *Stat.ToString()),
+				Stacked, 1);
+			Test.TestEqual(FString::Printf(
+				TEXT("'%s': every other increase, %.2f in all, is unscaled and "
+					 "unconditioned"), *Stat.ToString(), OtherIncreases),
+				Moving, 0);
+			Test.TestEqual(FString::Printf(
+				TEXT("'%s': the line's other increases are the stand-in's %.2f"),
+				*Stat.ToString(), StandIn),
+				OtherIncreases, StandIn, 0.001f);
+			Other.Add(Stat, OtherIncreases);
+
+			// PRINTED WHETHER OR NOT ANYTHING FAILS, because a passing
+			// assertion's label never reaches the log, and the figure is the
+			// point of this test for armor and movement speed: nought there
+			// would mean the attribute increase was not covered after all.
+			Test.AddInfo(FString::Printf(
+				TEXT("'%s': the line's other increases total %.2f"),
+				*Stat.ToString(), OtherIncreases));
+
+			const float None = ASC->StatAppliedTo(Stat, FGameplayTagContainer(), 1000.0f);
+			if (!Test.TestTrue(FString::Printf(
+					TEXT("'%s' with no stacks is something"), *Stat.ToString()),
+					None > 0.0f))
+			{
+				return;
+			}
+			Plain.Add(Stat, None);
+		}
+
+		const FName Event(Case.Event);
+		const auto Expect = [&](const TCHAR* When, int32 Stacks)
+		{
+			for (const FName& Stat : Case.Stats)
+			{
+				const float Others = Other[Stat];
+				Test.TestEqual(FString::Printf(
+					TEXT("'%s', %s (other increases %.2f)"), *Stat.ToString(), When, Others),
+					ASC->StatAppliedTo(Stat, FGameplayTagContainer(), 1000.0f) / Plain[Stat],
+					(1.0f + (Others + Stacks * Case.PerStack) / 100.0f)
+						/ (1.0f + Others / 100.0f),
+					0.001f);
+			}
+		};
+
+		ASC->ActOnEvent(Event);
+		ASC->ActOnEvent(Event);
+		Expect(TEXT("two events hold two stacks"), 2);
+
+		for (int32 More = 0; More < Case.Cap; ++More)
+		{
+			ASC->ActOnEvent(Event);
+		}
+		Expect(TEXT("more events than its cap hold its cap"), Case.Cap);
+
+		World->TimeSeconds += Case.Seconds - 0.1f;
+		Expect(TEXT("just inside its window, still its cap"), Case.Cap);
+
+		World->TimeSeconds += 0.2f;
+		Expect(TEXT("and just after, none"), 0);
+	}
+
+	const FName AttackDamage(TEXT("attack_damage"));
+	const FName SpellDamage(TEXT("spell_damage"));
+	const FName MovementSpeed(TEXT("movement_speed"));
+	const FName Armour(TEXT("armor"));
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCritStackRowTest,
+	"Cataclysm.Enchantments.TheCriticalStrikeStackRowAdds5PercentDamagePerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Critical strikes grant a stack of power increasing all damage by 3%-5% for 5 seconds, up to 5 stacks", worn. Issue #1833. */
+bool FCataclysmCritStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Positive_Critical_strikes_grant_a_stack_of_power_increasi");
+	Case.bBenefit = true;
+	Case.Event = TEXT("critical_strike");
+	Case.Stats = {AttackDamage, SpellDamage};
+	Case.PerStack = 5.0f;
+	Case.Cap = 5;
+	Case.Seconds = 5.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDotStackRowTest,
+	"Cataclysm.Enchantments.TheDotStackRowAdds10PercentDamagePerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Applying a DoT to an enemy grants 5%-10% increased damage for 4 seconds, stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmDotStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Positive_Applying_a_DoT_to_an_enemy_grants_5_10_increas");
+	Case.bBenefit = true;
+	Case.Event = TEXT("dot_applied");
+	Case.Stats = {AttackDamage, SpellDamage};
+	Case.PerStack = 10.0f;
+	Case.Cap = 5;
+	Case.Seconds = 4.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillSpeedStackRowTest,
+	"Cataclysm.Enchantments.TheSkillUseSpeedStackRowAdds5PercentSpeedPerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each skill use increases your movement speed by 3%-5% for 2 seconds, stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmSkillSpeedStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Positive_Each_skill_use_increases_your_movement_speed_by");
+	Case.bBenefit = true;
+	Case.Event = TEXT("skill_use");
+	Case.Stats = {MovementSpeed};
+	Case.PerStack = 5.0f;
+	Case.Cap = 5;
+	Case.Seconds = 2.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMeleeArmourStackRowTest,
+	"Cataclysm.Enchantments.TheMeleeHitTakenStackRowTakes5PercentArmourPerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Melee attacks that hit you reduce your armor by 3%-5% for 3 seconds, stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmMeleeArmourStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Negative_Melee_attacks_that_hit_you_reduce_your_armor_by");
+	Case.bBenefit = false;
+	Case.Event = TEXT("melee_hit_taken");
+	Case.Stats = {Armour};
+	Case.PerStack = -5.0f;
+	Case.Cap = 5;
+	Case.Seconds = 3.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillStackRowTest,
+	"Cataclysm.Enchantments.TheKillStackRowTakes4PercentDamagePerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each kill reduces your damage by 2%-4% for 5 seconds, stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmKillStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Negative_Each_kill_reduces_your_damage_by_2_4_for_5_sec");
+	Case.bBenefit = false;
+	Case.Event = TEXT("kill");
+	Case.Stats = {AttackDamage, SpellDamage};
+	Case.PerStack = -4.0f;
+	Case.Cap = 5;
+	Case.Seconds = 5.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillArmourStackRowTest,
+	"Cataclysm.Enchantments.TheSkillUseArmourStackRowTakes2PercentArmourPerStackUpTo10",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each skill use reduces your armor by 1%-2% for 3 seconds stacking up to 10 times", worn. Issue #1833. */
+bool FCataclysmSkillArmourStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Negative_Each_skill_use_reduces_your_armor_by_1_2_for_3");
+	Case.bBenefit = false;
+	Case.Event = TEXT("skill_use");
+	Case.Stats = {Armour};
+	Case.PerStack = -2.0f;
+	Case.Cap = 10;
+	Case.Seconds = 3.0f;
+	Check(*this, Case);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpellArmourStackRowTest,
+	"Cataclysm.Enchantments.TheSpellStackRowTakes4PercentArmourPerStackUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each spell cast reduces your armor by 2%-4% for 3 seconds stacking up to 5 times", worn. Issue #1833. */
+bool FCataclysmSpellArmourStackRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmOwnStackRowTest;
+	FCase Case;
+	Case.Enchantment = TEXT("Negative_Each_spell_cast_reduces_your_armor_by_2_4_for");
+	Case.bBenefit = false;
+	Case.Event = TEXT("spell");
+	Case.Stats = {Armour};
+	Case.PerStack = -4.0f;
+	Case.Cap = 5;
+	Case.Seconds = 3.0f;
+	Check(*this, Case);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

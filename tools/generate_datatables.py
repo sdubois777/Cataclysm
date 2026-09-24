@@ -1581,12 +1581,10 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: TWO ENTRIES SINCE 2026-09-23, read by this generator before the design
 #: workbook gains them: Stack Seconds for issue #1833, and Scale Offset for
 #: issue #1686. Each leaves with the rows that need it. SCALE OFFSET LEFT with
-#: the class point rows, issue #1686's second window; Stack Seconds remains.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Enchantment Effects": {
-        "Stack Seconds": "issue #1833: the own-stack rows add this column",
-    },
-}
+#: the class point rows, issue #1686's second window. STACK SECONDS LEFT
+#: with the seven own-stack enchantments, issue #1833, and the table is
+#: empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):
@@ -5415,6 +5413,13 @@ STATS_WITH_AN_ASKER = frozenset({
     # the character's state and writes the attribute, from `ApplyTo` and from
     # each regeneration step; `ProbeScaledMaximumHealth` measures that.
     "max_health",
+    # ADDED 2026-09-24 FOR "Each skill use increases your movement speed by
+    # 3%-5% for 2 seconds, stacking up to 5 times", issue #1833.
+    # `ACataclysmPlayerCharacter::RefreshMovementSpeed` asks it through
+    # `StatForSkill`, and `MovementSpeedCanChangeUnannounced` asks again on
+    # the quarter-second step for any scaled row; `ProbeScaledMovementSpeed`
+    # measures that on a spawned player character.
+    "movement_speed",
 })
 
 

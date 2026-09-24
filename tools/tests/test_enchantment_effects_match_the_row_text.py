@@ -84,8 +84,13 @@ MULTIPLIER = re.compile(
 #: exposed it. THIS WIDENS THE TENSE AND NOT THE MEANING: a sentence admitted by
 #: one form is admitted by the others for exactly the same reason, so the check
 #: is no weaker than it was.
+#:
+#: AND THE PRESENT PARTICIPLE, for the same reason, on 2026-09-24. "Critical
+#: strikes grant a stack of power increasing all damage by 3%-5%" was the first
+#: increased row whose sentence says "increasing"; issue #1833.
 INCREASE = re.compile(
-    r"\b(increase|increases|increased|reduce|reduces|reduced|faster|slower|longer"
+    r"\b(increase|increases|increased|increasing|reduce|reduces|reduced|reducing"
+    r"|faster|slower|longer"
     r"|larger|gain|lose)\b"
     # AND "bonus", BUT NEVER THE SET LABEL. Measured 2026-09-18: 13
     # sentences use it as an effect word, 39 carry it ONLY inside
@@ -429,8 +434,10 @@ JUDGED_NUMBERS = {
 #: issue #1686, from 305 over 236: one row on one enchantment.
 #: AND 307 OVER 238 SINCE THE MELEE-WHILE-MOVING DRAWBACK,
 #: issue #1686, from 306 over 237: one row on one enchantment.
-AUTHORED_ROWS = 307
-AUTHORED_ENCHANTMENTS = 238
+#: AND 317 OVER 245 SINCE THE OWN-STACK ENCHANTMENTS,
+#: issue #1833, from 307 over 238: ten rows on seven enchantments.
+AUTHORED_ROWS = 317
+AUTHORED_ENCHANTMENTS = 245
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
