@@ -1307,6 +1307,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 
 				Cataclysm->NoteHitTaken();
 
+				// AND WHOEVER DEALT IT IS IN COMBAT TOO. Issue #1815. The same
+				// blow and the same `AttackerOf` every other credit uses, so a
+				// minion's blow puts the minion in combat, not its summoner,
+				// unless the summoner holds Conduit.
+				if (UCataclysmAbilitySystemComponent* Dealer =
+						Cast<UCataclysmAbilitySystemComponent>(
+							UCataclysmTargeting::AbilitySystemOf(
+								UCataclysmCombatEvents::AttackerOf(
+									Data.EffectSpec.GetContext()))))
+				{
+					Dealer->NoteHitDealt();
+				}
+
 				// AND A MELEE ONE OPENS ITS OWN WINDOW. Issue #1815: "After being
 				// hit by a melee attack you gain 10%-20% increased movement speed
 				// for 2 seconds". The same reading as `NoteHitTaken` beside it,

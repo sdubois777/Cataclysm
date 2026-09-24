@@ -38,6 +38,9 @@ the moment somebody lands a scale source ahead of its row they add a name, and
 that test is what makes them take it out again when the row arrives. The test
 that is doing work today is
 `test_every_scale_source_is_named_by_a_row_or_listed_as_built_ahead`.
+
+IT DID NOT STAY EMPTY FOR LONG. On 2026-09-23 the two combat clocks of issue
+#1815 were listed, and left it with their rows in the same change.
 """
 
 from __future__ import annotations
@@ -61,6 +64,9 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: 16 scale sources, 16 named by a row, none unnamed. The two that had no row
 #: earlier that day, `metres_to_target` and `seconds_stationary`, gained theirs
 #: with the thirteen enchantment rows.
+#:
+#: TWO JOINED ON 2026-09-23, the combat clocks for issue #1815, and LEFT with
+#: their rows in the same change.
 BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
 
 #: A scale source many effect rows name. The control.
@@ -74,7 +80,10 @@ KNOWN_USED = "debuffs_carried"
 #: `Ravager_keystone_a_kC` Weight Bearing -- "1 Armor for every 10 maximum
 #: health you have". It is named by that node's row in the same change that adds
 #: it, so it never needed a place on the built-ahead list.
-EXPECTED_NAMED_BY_A_ROW = 17
+#:
+#: AND 19 OF 19 ON 2026-09-23, when the two combat clocks of issue #1815 gained
+#: their rows: `seconds_in_combat` and `seconds_out_of_combat`.
+EXPECTED_NAMED_BY_A_ROW = 19
 
 
 def scales_named_by_a_row() -> set[str]:

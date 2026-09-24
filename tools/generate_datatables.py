@@ -3547,6 +3547,14 @@ CONDITIONS = {
     "target_not_yet_struck_by_you": None,
     "target_not_yet_crit_by_you": None,
 
+    # "HP regeneration is disabled during combat" is `in_combat`, and "HP
+    # regeneration is doubled while out of combat" is `out_of_combat`. Issue
+    # #1815. Neither takes a value: one meaning of "in combat" for the whole
+    # game, a hit dealt or taken within the engine's
+    # `CombatLapseSeconds` (3), ruled under the owner's delegation on 2026-09-23.
+    "in_combat": None,
+    "out_of_combat": None,
+
     # "While moving" is `while_moving` and "while stationary" is
     # `while_stationary`, and neither takes a value. Issue #41, slice 2.
     #
@@ -4093,7 +4101,24 @@ SCALES = {
     #
     # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
     "seconds_stationary": (0.0, 60.0, "a number of seconds"),
+
+    # "You take 10%-20% increased damage for each second you have been in
+    # combat, up to 10 stacks" is `seconds_in_combat` with a step of 1, and
+    # "Your damage is reduced by 3%-5% for every second you spend out of combat,
+    # up to 10 stacks" is `seconds_out_of_combat` with a step of 1. Issue #1815.
+    # Each grants nothing on the other side of the line, so neither needs a
+    # condition beside it.
+    #
+    # THE SAME 0 TO 60 SECOND BOUND the seconds conditions use.
+    "seconds_in_combat": (0.0, 60.0, "a number of seconds"),
+    "seconds_out_of_combat": (0.0, 60.0, "a number of seconds"),
 }
+
+
+#: The largest cap on a scale a row may state, in whole steps. Issue #1815.
+#: The largest the sentences state today is 10 ("up to 10 stacks"); 100 leaves
+#: room and still refuses a number typed into the wrong column.
+MAX_SCALE_STEPS = 100
 
 
 #: The value kinds a stat row may carry, on both sheets that write one.
@@ -4190,6 +4215,14 @@ def passive_effects(book) -> list[dict]:
     """
     rows = list(book["Passive Effects"].iter_rows(values_only=True))
     headers = _header_index(rows, "Passive Effects")
+
+    # NO CAP ON THIS SHEET. Issue #1815. `ScaleMaxSteps` is read from an
+    # enchantment's row only; a passive node's modifier never carries one, so a
+    # cap written here would be dropped with no error.
+    if "Scale Max Steps" in headers:
+        raise DataError(
+            "the Passive Effects sheet has a 'Scale Max Steps' column, and the "
+            "game reads a cap from the Enchantment Effects sheet only. Remove it.")
 
     out = []
     counts: dict[str, int] = {}
@@ -4701,6 +4734,27 @@ def enchantment_effects(book) -> list[dict]:
         condition, condition_value, scale, scale_step = _condition_and_scale(
             raw, headers, "Enchantment Effects", index, name)
 
+        # "UP TO 10 STACKS" IS A CAP OF 10 WHOLE STEPS. Issue #1815. This sheet
+        # alone carries the column, because only an enchantment's modifier reads
+        # it (`UCataclysmItemModifiers`); `passive_effects` refuses the column.
+        # Empty is no cap. A cap needs a scale to cap, and is a whole number of
+        # steps, from 1 up to the largest a sentence states.
+        cap_text = clean(_cell(raw, headers, "Scale Max Steps"))
+        scale_max_steps = 0
+        if cap_text:
+            cap = number(cap_text, "Scale Max Steps", index)
+            if not scale:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has a cap of "
+                    f"{cap:g} steps and no scale. A cap limits how many steps "
+                    f"a scale counts, so with no scale it caps nothing.")
+            if cap != int(cap) or not 1 <= cap <= MAX_SCALE_STEPS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} has a cap of "
+                    f"{cap:g} steps. A cap is a whole number of steps from 1 "
+                    f"to {MAX_SCALE_STEPS}; leave the column empty for none.")
+            scale_max_steps = int(cap)
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -4717,6 +4771,7 @@ def enchantment_effects(book) -> list[dict]:
             "Action": action,
             "ActionEvent": action_event,
             "FractionOf": fraction_of,
+            "ScaleMaxSteps": scale_max_steps,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
@@ -5077,6 +5132,11 @@ STATS_WITH_AN_ASKER = frozenset({
     "attack_speed",
     "armor",
     "damage_reduction",
+    # ADDED 2026-09-23 FOR THE TWO "IN COMBAT" DAMAGE TAKEN ROWS, issue #1815.
+    # `DefenderStat` in CataclysmDamageCalculation.cpp asks it through
+    # `StatForSkill` on every blow, which is how its conditioned rows already
+    # work; no scaled row had asked for it until now, so no probe did either.
+    "damage_taken",
     "retaliation",
     "health_regen",
     "mana_regen",

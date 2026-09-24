@@ -2233,4 +2233,11 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	FString FractionOf;
+
+	/**
+	 * The most whole steps the scale counts, or 0 for no cap. Issue #1815:
+	 * "up to 10 stacks" is 10. Copied onto the modifier's `ScaleMaxSteps`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	int32 ScaleMaxSteps = 0;
 };

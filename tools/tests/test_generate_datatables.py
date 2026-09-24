@@ -1461,6 +1461,17 @@ class TestAPassiveNodeCanGrantSeveralStats:
         with pytest.raises(gen.DataError, match="same stat twice"):
             gen.passive_effects(rows)
 
+    def test_a_cap_column_on_this_sheet_is_refused(self, tmp_path):
+        """Issue #1815. Only an enchantment's modifier reads a cap, so a cap
+        written on this sheet would be dropped with no error."""
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "effects.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Scale Max Steps"],
+                                 ["A_node", "armor", "increased", 3, None, None]]}))
+        with pytest.raises(gen.DataError, match="Scale Max Steps"):
+            gen.passive_effects(book)
+
     def test_a_node_name_containing_the_separator_is_refused(self, tmp_path):
         """Otherwise a row name would be ambiguous about where the node ends."""
         rows = self.book(tmp_path, [["A#node", "armor", "increased", 3, None]])
@@ -1788,7 +1799,8 @@ class TestEnchantmentEffects:
     ]
     HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
               "Value High", "Required Tags", "Condition", "Condition Value",
-              "Scale", "Scale Step", "Action", "Action Event", "Fraction Of"]
+              "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
+              "Scale Max Steps"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -1814,7 +1826,25 @@ class TestEnchantmentEffects:
             "ValueLow": 100.0, "ValueHigh": 100.0, "RequiredTags": "",
             "Condition": "", "ConditionValue": 0.0, "Scale": "",
             "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
-            "FractionOf": ""}]
+            "FractionOf": "", "ScaleMaxSteps": 0}]
+
+    # A CAP ON A SCALE. Issue #1815: "up to 10 stacks" is a cap of 10 steps.
+    def test_a_cap_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row({
+            "Scale": "debuffs_carried", "Scale Step": 1,
+            "Scale Max Steps": 5})]))
+        assert out[0]["ScaleMaxSteps"] == 5
+
+    def test_a_cap_with_no_scale_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="caps nothing"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale Max Steps": 5})]))
+
+    def test_a_cap_that_is_not_a_whole_number_of_steps_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="whole number of steps"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row({
+                "Scale": "debuffs_carried", "Scale Step": 1,
+                "Scale Max Steps": 2.5})]))
 
     # AN ACTION ROW MOVES A POOL WHEN AN EVENT HAPPENS, rather than changing a
     # stat. Issue #1815. Every refusal below is tested because a refusal that

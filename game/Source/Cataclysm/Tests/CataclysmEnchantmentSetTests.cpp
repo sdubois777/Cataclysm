@@ -100,16 +100,16 @@ namespace CataclysmEnchantmentSetTest
 	const TCHAR* EffectCsv =
 		TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,RequiredTags,")
 		TEXT("Condition,ConditionValue,Scale,ScaleStep,")
-		TEXT("Action,ActionEvent,FractionOf\n")
-		TEXT("Set_A_Two#1,Set_A_Two,armor,increased,10,10,,,0,,0,,,\n")
-		TEXT("Set_A_Six#1,Set_A_Six,crit_chance,increased,20,20,,,0,,0,,,\n")
-		TEXT("Set_A_Ten#1,Set_A_Ten,evasion,increased,30,30,,,0,,0,,,\n")
-		TEXT("Set_A_Drawback#1,Set_A_Drawback,movement_speed,increased,-10,-10,,,0,,0,,,\n")
-		TEXT("Set_B_Two#1,Set_B_Two,max_health,increased,10,10,,,0,,0,,,\n")
-		TEXT("Set_B_Drawback#1,Set_B_Drawback,max_mana,increased,-10,-10,,,0,,0,,,\n")
-		TEXT("Set_C_Two#1,Set_C_Two,block_chance,increased,10,10,,,0,,0,,,\n")
-		TEXT("Ordinary#1,Ordinary,max_energy_shield,more,100,100,,,0,,0,,,\n")
-		TEXT("Ordinary_Drawback#1,Ordinary_Drawback,attack_speed,increased,-5,-5,,,0,,0,,,\n");
+		TEXT("Action,ActionEvent,FractionOf,ScaleMaxSteps\n")
+		TEXT("Set_A_Two#1,Set_A_Two,armor,increased,10,10,,,0,,0,,,,0\n")
+		TEXT("Set_A_Six#1,Set_A_Six,crit_chance,increased,20,20,,,0,,0,,,,0\n")
+		TEXT("Set_A_Ten#1,Set_A_Ten,evasion,increased,30,30,,,0,,0,,,,0\n")
+		TEXT("Set_A_Drawback#1,Set_A_Drawback,movement_speed,increased,-10,-10,,,0,,0,,,,0\n")
+		TEXT("Set_B_Two#1,Set_B_Two,max_health,increased,10,10,,,0,,0,,,,0\n")
+		TEXT("Set_B_Drawback#1,Set_B_Drawback,max_mana,increased,-10,-10,,,0,,0,,,,0\n")
+		TEXT("Set_C_Two#1,Set_C_Two,block_chance,increased,10,10,,,0,,0,,,,0\n")
+		TEXT("Ordinary#1,Ordinary,max_energy_shield,more,100,100,,,0,,0,,,,0\n")
+		TEXT("Ordinary_Drawback#1,Ordinary_Drawback,attack_speed,increased,-5,-5,,,0,,0,,,,0\n");
 
 	struct FTables
 	{

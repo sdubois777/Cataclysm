@@ -1385,6 +1385,34 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	TargetNotYetCritByYou
 		UMETA(DisplayName = "Target Not Yet Crit By You"),
+
+	/**
+	 * The character is in combat: it dealt a hit, or took one, within the last
+	 * `UCataclysmAbilitySystemComponent::CombatLapseSeconds`. Issue #1815:
+	 * "HP regeneration is disabled during combat".
+	 *
+	 * NO THRESHOLD, SO `ConditionValue` IS NOT READ. One meaning of "in combat"
+	 * for the whole game, rather than a window each row chooses, ruled under
+	 * the owner's delegation on 2026-09-23.
+	 *
+	 * A HIT IS WHAT `NoteHitTaken` COUNTS, evaded and blocked blows included,
+	 * and both sides of one blow enter combat together. A damage over time tick
+	 * is not a hit.
+	 *
+	 * AN UNREAD CHARACTER REFUSES: `SecondsInCombat` is negative for it and for
+	 * a character out of combat alike.
+	 */
+	InCombat
+		UMETA(DisplayName = "In Combat"),
+
+	/**
+	 * The character is out of combat: the negation of `InCombat`, for a
+	 * character that can be read. Issue #1815: "HP regeneration is doubled while
+	 * out of combat". A character that has had no combat event since it spawned
+	 * is out of combat.
+	 */
+	OutOfCombat
+		UMETA(DisplayName = "Out Of Combat"),
 };
 
 /**
@@ -1802,6 +1830,31 @@ enum class ECataclysmStatScale : uint8
 	 */
 	PerSecondStationary
 		UMETA(DisplayName = "Per Second Stationary"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` seconds the current combat has
+	 * lasted. Issue #1815: "You take 10%-20% increased damage for each second
+	 * you have been in combat, up to 10 stacks".
+	 *
+	 * GRANTS NOTHING OUT OF COMBAT, so its rows need no `InCombat` condition.
+	 * The count restarts when a combat lapses and another begins.
+	 *
+	 * ITS SENTENCES STATE A CAP, AND `ScaleMaxSteps` CARRIES IT.
+	 */
+	PerSecondInCombat
+		UMETA(DisplayName = "Per Second In Combat"),
+
+	/**
+	 * Multiplied by how many whole `ScaleStep` seconds the character has been
+	 * out of combat. Issue #1815: "Your damage is reduced by 3%-5% for every
+	 * second you spend out of combat, up to 10 stacks".
+	 *
+	 * COUNTED FROM THE MOMENT COMBAT LAPSED, which is the last combat event plus
+	 * `CombatLapseSeconds`, or from the character's spawn or revival when it has
+	 * had none. Grants nothing in combat.
+	 */
+	PerSecondOutOfCombat
+		UMETA(DisplayName = "Per Second Out Of Combat"),
 };
 
 /**
@@ -2525,6 +2578,23 @@ struct CATACLYSM_API FCataclysmStatConditions
 	bool bTargetCritByYou = false;
 
 	/**
+	 * How long the character's current combat has lasted, in seconds. Negative
+	 * means it is not in combat, or cannot be read. Issue #1815.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsInCombat = -1.0f;
+
+	/**
+	 * How long the character has been out of combat, in seconds. Negative means
+	 * it is in combat, or cannot be read. Issue #1815.
+	 *
+	 * NEVER BOTH NON-NEGATIVE, and both negative only for a character that
+	 * cannot be read, which is why `InCombat` and `OutOfCombat` each refuse it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float SecondsOutOfCombat = -1.0f;
+
+	/**
 	 * How far away each hostile character near this one is, in metres. Empty
 	 * means either that nobody is near or that this lookup never asked. Issue
 	 * #1597.
@@ -2744,6 +2814,22 @@ struct CATACLYSM_API FCataclysmStatModifier
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
 	float ScaleStep = 0.0f;
+
+	/**
+	 * The most whole steps a scaled value counts. Zero means no cap. Issue
+	 * #1815.
+	 *
+	 * "UP TO 10 STACKS" IS 10, and "for every 10 seconds, up to 60 seconds" is
+	 * a step of 10 and a cap of 6. Counted in steps rather than in the state's
+	 * own units, because "up to N stacks" is how the sentences put it; ruled
+	 * under the owner's delegation on 2026-09-23.
+	 *
+	 * ONE PLACE, `ScaledValue`, applies it to every scale, so a scale written
+	 * later needs nothing of its own. A cap on a modifier that does not scale
+	 * caps nothing and `ValidateModifier` refuses it.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	int32 ScaleMaxSteps = 0;
 
 	/**
 	 * How far "in reach" is for this row, in metres. Negative means the row is
@@ -3165,7 +3251,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a fifty-sixth, which is the drift that put the passive tree eight
+	 * adds a fifty-eighth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -3174,7 +3260,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TWENTY-ONE OF THE FIFTY-FIVE COMPARE NOTHING. They are the case labels
+	 * TWENTY-THREE OF THE FIFTY-SEVEN COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by
@@ -3223,6 +3309,13 @@ public:
 	static bool ScaleNamed(const FString& Name, ECataclysmStatScale& OutScale);
 
 private:
+	/**
+	 * What `ScaledValue` answers before `ScaleMaxSteps` is applied. Issue
+	 * #1815. Private, so nothing can ask for a value the cap has not seen.
+	 */
+	static float UncappedScaledValue(const FCataclysmStatModifier& Modifier,
+									 const FCataclysmStatConditions& State);
+
 	/** The three buckets, before `Evaluate` combines them. */
 	static FCataclysmStatBreakdown Accumulate(float Base,
 											  const TArray<FCataclysmStatModifier>& Modifiers,

@@ -116,7 +116,7 @@ Negative_Take_5_15_more_damage_per_active_aura,Take 5%-15% more damage per activ
 Negative_Every_third_cast_of_your_spells_cost_20_80_of,Every third cast of your spells cost 20%-80% of your current mana,Generic,3.0,Stat.Resource.Mana,True
 Negative_You_take_10_30_more_damage_from_ranged_attacks,You take 10%-30% more damage from ranged attacks,Generic,3.0,,True
 Negative_Your_melee_attacks_deal_10_30_less_damage,Your melee attacks deal 10%-30% less damage,Generic,4.0,Type.Strike,True
-Negative_Your_damage_is_reduced_by_3_5_for_every_second,"Your damage is reduced by 3%-5% for every second you spend out of combat, up to 10 stacks",Generic,4.0,Stat.Offense.Global,True
+Negative_Your_damage_is_reduced_by_3_5_for_every_second,"Your damage is reduced by 3%-5% for every second you spend out of combat, up to 10 stacks, less damage the longer you are out of combat",Generic,4.0,Stat.Offense.Global,True
 Negative_You_take_10_20_increased_damage_from_all_sourc,You take 10%-20% increased damage from all sources while your shield is active,Generic,4.0,Stat.Defense.Global,True
 Negative_You_take_15_25_more_damage_from_melee_attacks,You take 15%-25% more damage from melee attacks while moving,Generic,4.0,"Stat.Defense.Melee, Stat.Utility.Movespeed",True
 Negative_Channel_skills_deal_30_50_less_damage_during_t,Channel skills deal 30%-50% less damage during the first 2 seconds of channeling,Generic,4.0,Type.Channel,True

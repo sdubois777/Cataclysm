@@ -3675,4 +3675,171 @@ bool FCataclysmFirstHitConditionsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCombatConditionsTest,
+	"Cataclysm.StatPipeline.TheCombatConditionsRefuseAnUnreadCharacterAndHoldOnOneSideEach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `in_combat` and `out_of_combat` each hold on their own side of the line, and
+ * neither holds for a character that cannot be read. Issue #1815.
+ *
+ * THE UNREAD CASE IS THE ONE A PLAIN NEGATION GETS WRONG. Were `out_of_combat`
+ * written as "not in combat", a character sheet with no character in hand would
+ * show the out-of-combat bonus permanently.
+ *
+ * AND THE TWO SCALES READ THE SAME TWO FIELDS, each granting nothing on the
+ * other side.
+ */
+bool FCataclysmCombatConditionsTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatCondition Named = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("in_combat is a name this build knows"),
+		FPipeline::ConditionNamed(TEXT("in_combat"), Named)
+			&& Named == ECataclysmStatCondition::InCombat);
+	TestTrue(TEXT("and so is out_of_combat"),
+		FPipeline::ConditionNamed(TEXT("out_of_combat"), Named)
+			&& Named == ECataclysmStatCondition::OutOfCombat);
+	TestFalse(TEXT("neither compares a value"),
+		FPipeline::ConditionTakesAValue(ECataclysmStatCondition::InCombat)
+			|| FPipeline::ConditionTakesAValue(ECataclysmStatCondition::OutOfCombat));
+
+	const ECataclysmStatCondition In = ECataclysmStatCondition::InCombat;
+	const ECataclysmStatCondition Out = ECataclysmStatCondition::OutOfCombat;
+
+	FCataclysmStatConditions Unread;
+	TestFalse(TEXT("an unread character is not in combat"),
+		FPipeline::ConditionHolds(In, 0.0f, Unread));
+	TestFalse(TEXT("nor out of it"), FPipeline::ConditionHolds(Out, 0.0f, Unread));
+
+	FCataclysmStatConditions Fighting;
+	Fighting.SecondsInCombat = 2.0f;
+	TestTrue(TEXT("two seconds into a combat is in combat"),
+		FPipeline::ConditionHolds(In, 0.0f, Fighting));
+	TestFalse(TEXT("and not out of it"), FPipeline::ConditionHolds(Out, 0.0f, Fighting));
+
+	FCataclysmStatConditions Resting;
+	Resting.SecondsOutOfCombat = 2.0f;
+	TestTrue(TEXT("two seconds after a combat lapsed is out of combat"),
+		FPipeline::ConditionHolds(Out, 0.0f, Resting));
+	TestFalse(TEXT("and not in it"), FPipeline::ConditionHolds(In, 0.0f, Resting));
+
+	ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("seconds_in_combat is a scale this build knows"),
+		FPipeline::ScaleNamed(TEXT("seconds_in_combat"), Scale)
+			&& Scale == ECataclysmStatScale::PerSecondInCombat);
+	TestTrue(TEXT("and so is seconds_out_of_combat"),
+		FPipeline::ScaleNamed(TEXT("seconds_out_of_combat"), Scale)
+			&& Scale == ECataclysmStatScale::PerSecondOutOfCombat);
+
+	FCataclysmStatModifier PerSecondIn;
+	PerSecondIn.Bucket = ECataclysmStatBucket::Increased;
+	PerSecondIn.Value = 10.0f;
+	PerSecondIn.Scale = ECataclysmStatScale::PerSecondInCombat;
+	PerSecondIn.ScaleStep = 1.0f;
+
+	FCataclysmStatModifier PerSecondOut = PerSecondIn;
+	PerSecondOut.Scale = ECataclysmStatScale::PerSecondOutOfCombat;
+
+	// 4.9 SECONDS, SO ROUNDING UP OR TO NEAREST WOULD GIVE 50 AND NOT 40.
+	FCataclysmStatConditions FourPointNineIn;
+	FourPointNineIn.SecondsInCombat = 4.9f;
+	TestEqual(TEXT("4.9 seconds in combat is four whole steps"),
+		FPipeline::ScaledValue(PerSecondIn, FourPointNineIn), 40.0f, 0.001f);
+	TestEqual(TEXT("and the out-of-combat scale grants nothing in combat"),
+		FPipeline::ScaledValue(PerSecondOut, FourPointNineIn), 0.0f, 0.001f);
+
+	FCataclysmStatConditions FourPointNineOut;
+	FourPointNineOut.SecondsOutOfCombat = 4.9f;
+	TestEqual(TEXT("4.9 seconds out of combat is four whole steps"),
+		FPipeline::ScaledValue(PerSecondOut, FourPointNineOut), 40.0f, 0.001f);
+	TestEqual(TEXT("and the in-combat scale grants nothing out of it"),
+		FPipeline::ScaledValue(PerSecondIn, FourPointNineOut), 0.0f, 0.001f);
+
+	TestEqual(TEXT("an unread character scales to nothing either way"),
+		FPipeline::ScaledValue(PerSecondIn, Unread)
+			+ FPipeline::ScaledValue(PerSecondOut, Unread), 0.0f, 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmScaleCapTest,
+	"Cataclysm.StatPipeline.AScaleCapStopsTheStepsAndZeroMeansNoCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `ScaleMaxSteps` stops a scaled value growing, counted in steps, and zero
+ * leaves it uncapped. Issue #1815: "up to 10 stacks", and "for every 10 seconds
+ * ..., up to 60 seconds", a step of 10 and a cap of 6.
+ *
+ * TWENTY-FIVE SECONDS, FAR ABOVE EVERY CAP HERE, so a build that ignored the cap
+ * answers 250 where the cap answers 100, and a reading BELOW the cap shows the
+ * cap does not flatten what it should leave alone.
+ */
+bool FCataclysmScaleCapTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	FCataclysmStatModifier PerSecond;
+	PerSecond.Bucket = ECataclysmStatBucket::Increased;
+	PerSecond.Value = 10.0f;
+	PerSecond.Scale = ECataclysmStatScale::PerSecondInCombat;
+	PerSecond.ScaleStep = 1.0f;
+
+	FCataclysmStatConditions Long;
+	Long.SecondsInCombat = 25.0f;
+	FCataclysmStatConditions Short;
+	Short.SecondsInCombat = 4.0f;
+
+	TestEqual(TEXT("with no cap, 25 seconds is 25 steps"),
+		FPipeline::ScaledValue(PerSecond, Long), 250.0f, 0.001f);
+
+	FCataclysmStatModifier UpToTen = PerSecond;
+	UpToTen.ScaleMaxSteps = 10;
+	TestEqual(TEXT("up to 10 stacks stops at 10 steps"),
+		FPipeline::ScaledValue(UpToTen, Long), 100.0f, 0.001f);
+	TestEqual(TEXT("and leaves 4 steps as 4"),
+		FPipeline::ScaledValue(UpToTen, Short), 40.0f, 0.001f);
+
+	// A NEGATIVE VALUE IS CAPPED BY SIZE, so a reduction stops too.
+	FCataclysmStatModifier Reduction = UpToTen;
+	Reduction.Value = -3.0f;
+	TestEqual(TEXT("a reduction up to 10 stacks stops at -30"),
+		FPipeline::ScaledValue(Reduction, Long), -30.0f, 0.001f);
+
+	// "FOR EVERY 10 SECONDS ..., UP TO 60 SECONDS" is a step of 10 and a cap of 6.
+	FCataclysmStatModifier PerTen = PerSecond;
+	PerTen.Value = 5.0f;
+	PerTen.ScaleStep = 10.0f;
+	PerTen.ScaleMaxSteps = 6;
+	FCataclysmStatConditions VeryLong;
+	VeryLong.SecondsInCombat = 95.0f;
+	TestEqual(TEXT("95 seconds at a step of 10 and a cap of 6 is 6 steps"),
+		FPipeline::ScaledValue(PerTen, VeryLong), 30.0f, 0.001f);
+
+	// AND THE CAP IS WHAT THE BUCKETS SEE, not only what this function answers.
+	const FCataclysmStatBreakdown Evaluated = FPipeline::Evaluate(
+		100.0f, {UpToTen}, FGameplayTagContainer(), Long);
+	TestEqual(TEXT("the evaluated stat carries the capped increase"),
+		Evaluated.Final, 200.0f, 0.001f);
+
+	FCataclysmStatModifier NegativeCap = UpToTen;
+	NegativeCap.ScaleMaxSteps = -1;
+	TestFalse(TEXT("a negative cap is refused"),
+		FPipeline::ValidateModifier(NegativeCap).IsEmpty());
+
+	FCataclysmStatModifier CapOnFixed;
+	CapOnFixed.Bucket = ECataclysmStatBucket::Increased;
+	CapOnFixed.Value = 10.0f;
+	CapOnFixed.ScaleMaxSteps = 5;
+	TestFalse(TEXT("a cap on a value that does not scale is refused"),
+		FPipeline::ValidateModifier(CapOnFixed).IsEmpty());
+
+	TestTrue(TEXT("and a cap on a scaled value is accepted"),
+		FPipeline::ValidateModifier(UpToTen).IsEmpty());
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

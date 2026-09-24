@@ -1627,7 +1627,11 @@ namespace CataclysmPassiveConditionTest
 			// ISSUE #1815, THE FIRST HIT AGAINST EACH ENEMY. "First" names the
 			// state of the target's record of who has struck it, not a number.
 			|| Name == TEXT("target_not_yet_struck_by_you")
-			|| Name == TEXT("target_not_yet_crit_by_you");
+			|| Name == TEXT("target_not_yet_crit_by_you")
+			// ISSUE #1815, THE COMBAT STATE. One meaning of "in combat" for the
+			// whole game, so no row states a window of its own.
+			|| Name == TEXT("in_combat")
+			|| Name == TEXT("out_of_combat");
 	}
 }
 

@@ -683,6 +683,8 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	State.SecondsSinceSpell = SecondsSinceSpellCast();
 	State.SecondsSinceMeleeHitTaken = SecondsSinceMeleeHitTaken();
 	State.SecondsSinceCrowdControl = SecondsSinceCrowdControlApplied();
+	State.SecondsInCombat = SecondsInCombat();
+	State.SecondsOutOfCombat = SecondsOutOfCombat();
 
 	// AND HOW MUCH OF THE CLASS RESOURCE IS IN HAND. Issue #980. The Masochist's
 	// Reciprocity keystone grows with it: "Your Retaliation damage is increased
@@ -1861,6 +1863,14 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	// everyone again. Issue #1815.
 	StruckBy.Reset();
 	CriticallyStruckBy.Reset();
+	// AND THE COMBAT CLOCK: a revived character starts out of combat, counted
+	// from its revival. Issue #1815.
+	LastCombatEventAtSeconds = -1.0f;
+	CombatStartedAtSeconds = -1.0f;
+	if (const UWorld* World = GetWorld())
+	{
+		RevivedAtSeconds = World->GetTimeSeconds();
+	}
 	LastSupportSkillAtSeconds = -1.0f;
 	LastMovementSkillAtSeconds = -1.0f;
 	LastSpellAtSeconds = -1.0f;
@@ -2064,6 +2074,9 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken()
 		LastHitTakenAtSeconds = World->GetTimeSeconds();
 	}
 
+	// AND A HIT TAKEN IS HALF OF WHAT "IN COMBAT" MEANS. Issue #1815.
+	NoteCombatEvent();
+
 	ActOnEvent(FName(TEXT("hit_taken")));
 }
 
@@ -2076,6 +2089,78 @@ float UCataclysmAbilitySystemComponent::SecondsSinceHitTaken() const
 	}
 
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastHitTakenAtSeconds);
+}
+
+void UCataclysmAbilitySystemComponent::NoteHitDealt()
+{
+	// THE OTHER HALF. Issue #1815.
+	NoteCombatEvent();
+}
+
+void UCataclysmAbilitySystemComponent::NoteCombatEvent()
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	// A NEW COMBAT BEGINS WHEN THE LAST ONE HAD LAPSED, or there was none. The
+	// same boundary `SecondsInCombat` draws: an event exactly the lapse after
+	// the one before is still the same combat.
+	const float Now = World->GetTimeSeconds();
+	if (LastCombatEventAtSeconds < 0.0f
+		|| Now - LastCombatEventAtSeconds > CombatLapseSeconds)
+	{
+		CombatStartedAtSeconds = Now;
+	}
+	LastCombatEventAtSeconds = Now;
+}
+
+float UCataclysmAbilitySystemComponent::SecondsInCombat() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || LastCombatEventAtSeconds < 0.0f)
+	{
+		return -1.0f;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	if (Now - LastCombatEventAtSeconds > CombatLapseSeconds)
+	{
+		return -1.0f;
+	}
+
+	return FMath::Max(0.0f, Now - CombatStartedAtSeconds);
+}
+
+float UCataclysmAbilitySystemComponent::SecondsOutOfCombat() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return -1.0f;
+	}
+
+	const float Now = World->GetTimeSeconds();
+	if (LastCombatEventAtSeconds >= 0.0f)
+	{
+		// FROM THE MOMENT THE LAST COMBAT LAPSED, not from its last hit.
+		const float SinceLapse =
+			Now - LastCombatEventAtSeconds - CombatLapseSeconds;
+		return SinceLapse > 0.0f ? SinceLapse : -1.0f;
+	}
+
+	// NO COMBAT SINCE A REVIVAL, OR SINCE THE CHARACTER SPAWNED. Out of combat
+	// for as long as it has existed, judged under the owner's delegation on
+	// 2026-09-23. No avatar is no character to read.
+	if (RevivedAtSeconds >= 0.0f)
+	{
+		return FMath::Max(0.0f, Now - RevivedAtSeconds);
+	}
+
+	const AActor* Avatar = GetAvatarActor_Direct();
+	return Avatar ? FMath::Max(0.0f, Avatar->GetGameTimeSinceCreation()) : -1.0f;
 }
 
 void UCataclysmAbilitySystemComponent::NoteClassResourceFull()

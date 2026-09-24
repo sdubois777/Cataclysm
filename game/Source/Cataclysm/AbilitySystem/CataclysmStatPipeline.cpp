@@ -88,6 +88,8 @@ namespace
 		{ TEXT("seconds_after_crowd_control"), ECataclysmStatCondition::WithinSecondsOfCrowdControl },
 		{ TEXT("target_not_yet_struck_by_you"), ECataclysmStatCondition::TargetNotYetStruckByYou },
 		{ TEXT("target_not_yet_crit_by_you"),   ECataclysmStatCondition::TargetNotYetCritByYou },
+		{ TEXT("in_combat"),                    ECataclysmStatCondition::InCombat },
+		{ TEXT("out_of_combat"),                ECataclysmStatCondition::OutOfCombat },
 		{ TEXT("skill_health_cost_above"),      ECataclysmStatCondition::SkillHealthCostAbovePercent },
 		{ TEXT("while_bleeding"),               ECataclysmStatCondition::WhileBleeding },
 		{ TEXT("class_resource_at_maximum"),    ECataclysmStatCondition::ClassResourceAtMaximum },
@@ -150,6 +152,8 @@ namespace
 		{ TEXT("max_health"),          ECataclysmStatScale::PerPointOfMaximumHealth },
 		{ TEXT("metres_to_target"),    ECataclysmStatScale::PerMetreToTarget },
 		{ TEXT("seconds_stationary"),  ECataclysmStatScale::PerSecondStationary },
+		{ TEXT("seconds_in_combat"),   ECataclysmStatScale::PerSecondInCombat },
+		{ TEXT("seconds_out_of_combat"), ECataclysmStatScale::PerSecondOutOfCombat },
 	};
 
 	/**
@@ -253,8 +257,10 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::EnergyShieldAboveZero:
 	case ECataclysmStatCondition::TargetNotYetStruckByYou:
 	case ECataclysmStatCondition::TargetNotYetCritByYou:
+	case ECataclysmStatCondition::InCombat:
+	case ECataclysmStatCondition::OutOfCombat:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the twenty-one says
+		// nothing for a number to be compared against. Each of the twenty-three says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -378,6 +384,8 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::NotAttackedForSeconds:
 	case C::MovedWithinSeconds:
 	case C::WhileBleeding:
+	case C::InCombat:
+	case C::OutOfCombat:
 		return EOn::Time;
 
 	case C::WhileMoving:
@@ -911,6 +919,16 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// character to read and refuses.
 		return State.SecondsSinceOwnAttack >= 0.0f
 			&& State.SecondsSinceOwnAttack >= Value;
+
+	case ECataclysmStatCondition::InCombat:
+		// Issue #1815. Negative is out of combat, or no character to read.
+		return State.SecondsInCombat >= 0.0f;
+
+	case ECataclysmStatCondition::OutOfCombat:
+		// Issue #1815. Its own reading rather than `!InCombat`, so a lookup with
+		// no character in hand refuses both rather than granting this one.
+		return State.SecondsOutOfCombat >= 0.0f;
+
 	case ECataclysmStatCondition::OpponentBeyondMetres:
 		// STRICTLY MORE THAN, BECAUSE THE NODE WRITES "more than". Standing
 		// Apart reads "You take 25% less damage from enemies more than 6 metres
@@ -1130,6 +1148,23 @@ namespace
 float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier,
 										  const FCataclysmStatConditions& State)
 {
+	const float Uncapped = UncappedScaledValue(Modifier, State);
+
+	// "UP TO 10 STACKS". Issue #1815. Every scale answers `Value` times a whole
+	// number of steps that is never negative, so capping the answer's size at
+	// `Value` times the cap is capping the steps, for every scale at once.
+	if (Modifier.Scale == ECataclysmStatScale::Fixed || Modifier.ScaleMaxSteps <= 0)
+	{
+		return Uncapped;
+	}
+
+	const float Cap = FMath::Abs(Modifier.Value) * static_cast<float>(Modifier.ScaleMaxSteps);
+	return FMath::Clamp(Uncapped, -Cap, Cap);
+}
+
+float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& Modifier,
+												  const FCataclysmStatConditions& State)
+{
 	switch (Modifier.Scale)
 	{
 	case ECataclysmStatScale::Fixed:
@@ -1310,6 +1345,24 @@ float UCataclysmStatPipeline::ScaledValue(const FCataclysmStatModifier& Modifier
 		// 2026-09-18; `docs/DECISIONS.md` carries both halves.
 		const float Steps =
 			FMath::FloorToFloat(State.SecondsSinceMoved / Modifier.ScaleStep);
+		return Modifier.Value * FMath::Max(0.0f, Steps);
+	}
+
+	case ECataclysmStatScale::PerSecondInCombat:
+	case ECataclysmStatScale::PerSecondOutOfCombat:
+	{
+		// THE SAME TWO REFUSALS. Issue #1815. Negative means the character is on
+		// the other side of the line, or cannot be read, and a step of nothing
+		// would divide by it. Whole steps, rounded down, as above.
+		const float Seconds = Modifier.Scale == ECataclysmStatScale::PerSecondInCombat
+			? State.SecondsInCombat
+			: State.SecondsOutOfCombat;
+		if (Seconds < 0.0f || Modifier.ScaleStep <= 0.0f)
+		{
+			return 0.0f;
+		}
+
+		const float Steps = FMath::FloorToFloat(Seconds / Modifier.ScaleStep);
 		return Modifier.Value * FMath::Max(0.0f, Steps);
 	}
 
@@ -1598,6 +1651,22 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 				 "needs a step larger than nothing, or it is worth nothing at "
 				 "every state."),
 			Modifier.ScaleStep);
+	}
+
+	// A CAP IS A NUMBER OF STEPS, AND ONLY A SCALE HAS STEPS. Issue #1815.
+	if (Modifier.ScaleMaxSteps < 0)
+	{
+		return FString::Printf(
+			TEXT("a cap of %d steps. A cap is a number of steps, and zero means "
+				 "no cap."),
+			Modifier.ScaleMaxSteps);
+	}
+	if (Modifier.Scale == ECataclysmStatScale::Fixed && Modifier.ScaleMaxSteps > 0)
+	{
+		return FString::Printf(
+			TEXT("a cap of %d steps on a value that does not scale. It caps "
+				 "nothing."),
+			Modifier.ScaleMaxSteps);
 	}
 
 	return FString();
