@@ -406,6 +406,12 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			Hit.bFromStaggered = UCataclysmSkillEffects::IsStaggered(
 				Data.EffectSpec.GetContext().GetEffectCauser());
 
+			// AND WHETHER IT IS UNDER CROWD CONTROL, for "You take 15%-25% more
+			// damage from enemies that are currently CC'd". Issue #1686. The same
+			// causer, outside the creature cast for the same reason.
+			Hit.bFromCrowdControlled = UCataclysmSkillEffects::IsCrowdControlled(
+				Data.EffectSpec.GetContext().GetEffectCauser());
+
 			// AND WHICH DEBUFFS IT IS CARRYING, for "+2% increased Damage
 			// Reduction per point against enemies you have Weakened". Issue
 			// #1515. The same causer the line above reads, and outside the

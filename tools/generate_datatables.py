@@ -3552,6 +3552,15 @@ CONDITIONS = {
     # moves, the player included.
     "opponent_is_staggered": None,
 
+    # "You take 15%-25% more damage from enemies that are currently CC'd" is
+    # `opponent_is_crowd_controlled`, and it takes no value. Issue #1686.
+    #
+    # CROWD CONTROL IS THE SIX EFFECTS OF DESIGN SECTION VI, ruled under the
+    # owner's delegation on 2026-09-23: stun, knockdown, slow, displacement,
+    # pin and madness. `UCataclysmSkillEffects::IsCrowdControlled` answers.
+    # Read off the attacker as an actor, beside `opponent_is_staggered`.
+    "opponent_is_crowd_controlled": None,
+
     # "Staggered enemies take 20%-35% increased damage from all sources" is
     # `target_is_staggered`, and it takes no value. Issue #45. It is the mirror
     # of `opponent_is_staggered` above: the same state, asked from the other end
@@ -3760,6 +3769,13 @@ CONDITIONS = {
     # nought is true of every blow, and a threshold past twenty is far likelier
     # to be a mistake than a node that means it.
     "enemies_hit_at_least": (1.0, 20.0, "a number of enemies"),
+
+    # "Point blank AOE skills deal 15%-25% less damage to a single target" is
+    # `enemies_hit_at_most` with 1. Issue #1686. The same count as the name
+    # above, compared the other way, because the pipeline has no negation.
+    # "A single target" is exactly one enemy struck, ruled under the owner's
+    # delegation on 2026-09-23. The same bounds, for the same reasons.
+    "enemies_hit_at_most": (1.0, 20.0, "a number of enemies"),
 
     # THE FOUR PREDICATES THAT READ AN AILMENT ON THE OTHER CHARACTER, and the
     # first that read one at all. Issues #1515 and #1642.
@@ -4204,6 +4220,11 @@ SCALES = {
     # A step of exactly one: a stack is a whole thing and the rows say "per
     # stack".
     "own_stacks": (1.0, 1.0, "one stack"),
+
+    # "Take 5%-15% more damage per active aura" is `auras_held`, with a step of
+    # 1. Issue #1686. Every aura skill running, however many can run at once;
+    # two can today. The same 0 to 10 bound as the buff count above.
+    "auras_held": (0.0, 10.0, "a number of auras"),
 
     # "Your skills deal 10%-30% of your current mana as more damage" is
     # `mana_held_percent`, flat 10 to 30 with a step of 1: the value is a

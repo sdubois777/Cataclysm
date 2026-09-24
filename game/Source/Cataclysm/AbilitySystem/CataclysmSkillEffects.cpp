@@ -31,6 +31,7 @@
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -2005,6 +2006,13 @@ bool UCataclysmSkillEffects::IsPinned(const AActor* Actor)
 bool UCataclysmSkillEffects::IsStaggered(const AActor* Actor)
 {
 	return HasTag(Actor, StaggeredTag());
+}
+
+bool UCataclysmSkillEffects::IsCrowdControlled(const AActor* Actor)
+{
+	return IsStunned(Actor) || IsKnockedDown(Actor) || IsPinned(Actor)
+		|| HasTag(Actor, UCataclysmDebuffs::CrippleTag())
+		|| UCataclysmTeams::IsMaddened(Actor);
 }
 
 FGameplayTag UCataclysmSkillEffects::UntargetableTag()

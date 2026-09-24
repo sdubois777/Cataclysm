@@ -14381,6 +14381,100 @@ bool FCataclysmArmourIgnoredByCountTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPointBlankSingleTargetTest,
+	"Cataclysm.Skills.APointBlankSwingOnOneEnemyTakesTheDrawbackAndOnTwoDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Point blank AOE skills deal 15%-25% less damage to a single target." Issue
+ * #1686, as a recorded modifier of 20% less, scoped `Type.AOE.PointBlank` on
+ * `enemies_hit_at_most` 1.
+ *
+ * THE SAME SWING, CAPPED AT ONE AND THEN AT TWO, so the count is the only thing
+ * that differs. One enemy struck takes 80% of the plain blow; two struck take
+ * the plain blow each. A swing without the tag striking one enemy is the third
+ * line, and it shows the scoping is what keeps the drawback off other skills.
+ */
+bool FCataclysmPointBlankSingleTargetTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnemiesStruckTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(1 * M, 0, 0));
+	FScopedFighter Second(World, FVector(2 * M, 0, 0));
+
+	const FGameplayTag PointBlank = UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Type.AOE.PointBlank")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("Type.AOE.PointBlank is in the vocabulary"), PointBlank.IsValid()))
+	{
+		return false;
+	}
+
+	UCataclysmStrikeSkill* Nova = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Nova"), TEXT("Type.AOE.PointBlank"));
+	UCataclysmStrikeSkill* Plain = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Swing"), TEXT("Type.Melee"));
+	if (!Nova || !Plain)
+	{
+		AddError(TEXT("Could not grant the two strikes."));
+		return false;
+	}
+
+	FCataclysmStatModifier Single;
+	Single.Bucket = ECataclysmStatBucket::More;
+	Single.Source = ECataclysmModifierSource::Enchantment;
+	Single.Value = -20.0f;
+	Single.RequiredTags.AddTag(PointBlank);
+	Single.Condition = ECataclysmStatCondition::EnemiesStruckTogetherAtMost;
+	Single.ConditionValue = 1.0f;
+	// THE UNTAGGED SWING'S BLOW ON ONE ENEMY, MEASURED BEFORE ANY MODIFIER, so the
+	// last line compares with a figure taken rather than one assumed.
+	Plain->Params.MaxTargets = 1;
+	float FirstBefore = First.Health();
+	float SecondBefore = Second.Health();
+	TestEqual(TEXT("before any modifier, the untagged swing strikes one"), Plain->SwingOnce(), 1);
+	const float UntaggedBaseline =
+		(FirstBefore - First.Health()) + (SecondBefore - Second.Health());
+
+	Give(Caster, TEXT("attack_damage"), Single);
+
+	// ONE ENEMY STRUCK. The nearer one, since the cap takes the nearest.
+	Nova->Params.MaxTargets = 1;
+	FirstBefore = First.Health();
+	SecondBefore = Second.Health();
+	TestEqual(TEXT("capped at one, the point blank swing strikes one"), Nova->SwingOnce(), 1);
+	const float OneStruck = (FirstBefore - First.Health()) + (SecondBefore - Second.Health());
+	TestEqual(TEXT("a single enemy struck takes 20% less than the plain blow"),
+		OneStruck, PlainBlow * 0.8f, 0.01f);
+
+	// TWO ENEMIES STRUCK BY THE SAME SWING.
+	Nova->Params.MaxTargets = 2;
+	FirstBefore = First.Health();
+	SecondBefore = Second.Health();
+	TestEqual(TEXT("capped at two, it strikes two"), Nova->SwingOnce(), 2);
+	TestEqual(TEXT("and the first takes the plain blow"),
+		FirstBefore - First.Health(), PlainBlow, 0.01f);
+	TestEqual(TEXT("and so does the second"),
+		SecondBefore - Second.Health(), PlainBlow, 0.01f);
+
+	// A SWING THAT IS NOT POINT BLANK, ON ONE ENEMY.
+	FirstBefore = First.Health();
+	SecondBefore = Second.Health();
+	TestEqual(TEXT("the untagged swing strikes one"), Plain->SwingOnce(), 1);
+	TestEqual(TEXT("and takes no drawback, because it is not point blank"),
+		(FirstBefore - First.Health()) + (SecondBefore - Second.Health()),
+		UntaggedBaseline, 0.01f);
+
+	return true;
+}
+
 // --------------------------------------------------------------------------
 // Fervour for each enemy an attack lands on: the Ravager's starting node, "1 for
 // each enemy your attacks hit". Issue #1515.
@@ -16204,6 +16298,90 @@ bool FCataclysmProjectileFromBehindTest::RunTest(const FString&)
 		Slipstream->CooldownsReturned, 1);
 	TestFalse(TEXT("so the movement slot is ready again"),
 		IsOnCooldown(Caster, ECataclysmAbilitySlot::Movement));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAurasHeldCountTest,
+	"Cataclysm.Skills.RunningAurasAreCountedAsHeldAndABuffIsNotAnAura",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `AurasHeld` counts the aura skills running on the character. Issue #1686:
+ * "Take 5%-15% more damage per active aura".
+ *
+ * TWO AURAS, BECAUSE TWO CAN RUN: Conflagration in the Aura slot and Living
+ * Pyre, the Fist's Ultimate, which is an aura skill too. Counted however many
+ * run, ruled under the owner's delegation on 2026-09-23.
+ *
+ * AND A SELF BUFF BESIDE THEM, which is the line that tells the two counts
+ * apart: `UCataclysmSelfBuffSkill` is not an aura and must not be counted as
+ * one, nor an aura as a buff. An ended aura is read at once, for the reason
+ * `FCataclysmBuffsHeldCountTest` above gives from the engine source.
+ */
+bool FCataclysmAurasHeldCountTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+
+	UCataclysmAuraSkill* Ring = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=10; Interval=1"),
+		TEXT("Conflagration"));
+	UCataclysmAuraSkill* Pyre = GrantSkill<UCataclysmAuraSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Radius=4; Interval=1; Duration=6"),
+		TEXT("Living Pyre"));
+	UCataclysmSelfBuffSkill* Buff = GrantSkill<UCataclysmSelfBuffSkill>(
+		Caster, ECataclysmAbilitySlot::Support,
+		TEXT("Duration=10; Radius=15; MoreDamagePer=4; ScalingSource=Burning"), TEXT("Burning Wrath"),
+		TEXT("Item.Weapon.Greataxe, Element.Demonic, Type.Buff"));
+	if (!Ring || !Pyre || !Buff)
+	{
+		AddError(TEXT("Could not grant the two auras and the buff."));
+		return false;
+	}
+
+	// FREE, so the three activations are not a test of the fighter's 50 mana.
+	// An Ultimate costs 150 at its slot's own figure.
+	for (UCataclysmGameplayAbility* Skill : { static_cast<UCataclysmGameplayAbility*>(Ring),
+			static_cast<UCataclysmGameplayAbility*>(Pyre),
+			static_cast<UCataclysmGameplayAbility*>(Buff) })
+	{
+		Skill->ManaCostOverride = 0.0f;
+	}
+
+	const auto Held = [&Caster]()
+	{
+		return Caster.AbilitySystem->CurrentConditions().AurasHeld;
+	};
+
+	TestEqual(TEXT("granted auras that have not been used are not held"), Held(), 0);
+
+	if (!TestTrue(TEXT("the buff activates"), Activate(Caster, Buff)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a running buff is not an aura"), Held(), 0);
+
+	if (!TestTrue(TEXT("the aura activates"), Activate(Caster, Ring)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a running aura is held"), Held(), 1);
+	TestEqual(TEXT("and it is not counted as a buff"),
+		Caster.AbilitySystem->CurrentConditions().BuffsHeld, 1);
+
+	if (!TestTrue(TEXT("the pyre activates"), Activate(Caster, Pyre)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two running auras are two"), Held(), 2);
+
+	Caster.AbilitySystem->CancelAbilityHandle(Ring->GetCurrentAbilitySpecHandle());
+	TestEqual(TEXT("and an ended one is no longer counted"), Held(), 1);
+
 	return true;
 }
 

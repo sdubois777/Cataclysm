@@ -73,7 +73,10 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: ONE JOINED ON 2026-09-23 for issue #1833, `own_stacks`, landed as an
 #: engine change ahead of its seven rows, which wait for the design workbook
 #: and take it off this list.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"own_stacks"}
+#: AND ONE ON 2026-09-23 for issue #1686, `auras_held`, whose row "Take
+#: 5%-15% more damage per active aura" waits for the design workbook and
+#: leaves this list in the same change.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"own_stacks", "auras_held"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

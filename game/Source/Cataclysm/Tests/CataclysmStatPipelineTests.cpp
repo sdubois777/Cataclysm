@@ -4075,4 +4075,93 @@ bool FCataclysmDamagedByYouConditionTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAuraSingleTargetCrowdControlTest,
+	"Cataclysm.StatPipeline.AurasRunningASingleTargetAndACrowdControlledAttackerAreRead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The three readings issue #1686's first window adds. `auras_held` multiplies
+ * by the auras running; `enemies_hit_at_most` holds at or below its count and
+ * refuses an unknown one; `opponent_is_crowd_controlled` reads the blow's own
+ * field and nothing else.
+ *
+ * AT MOST ONE IS TESTED AGAINST -1 ON PURPOSE. -1 is below one by arithmetic,
+ * so a predicate that forgot the "no attack in hand" refusal would pass every
+ * other line here and put the drawback on every creature's blow.
+ */
+bool FCataclysmAuraSingleTargetCrowdControlTest::RunTest(const FString&)
+{
+	using namespace CataclysmStatTest;
+
+	ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("auras_held is a scale this build knows"),
+		FPipeline::ScaleNamed(TEXT("auras_held"), Scale)
+			&& Scale == ECataclysmStatScale::PerAuraHeld);
+
+	ECataclysmStatCondition Condition = ECataclysmStatCondition::Always;
+	TestTrue(TEXT("enemies_hit_at_most is a condition this build knows"),
+		FPipeline::ConditionNamed(TEXT("enemies_hit_at_most"), Condition)
+			&& Condition == ECataclysmStatCondition::EnemiesStruckTogetherAtMost);
+	TestTrue(TEXT("and opponent_is_crowd_controlled"),
+		FPipeline::ConditionNamed(TEXT("opponent_is_crowd_controlled"), Condition)
+			&& Condition == ECataclysmStatCondition::OpponentIsCrowdControlled);
+
+	// THE AURAS. Two because two can run, and a self buff beside them does not
+	// count, which is the line that tells the two counts apart.
+	FCataclysmStatModifier PerAura;
+	PerAura.Bucket = ECataclysmStatBucket::More;
+	PerAura.Value = 10.0f;
+	PerAura.Scale = ECataclysmStatScale::PerAuraHeld;
+	PerAura.ScaleStep = 1.0f;
+
+	FCataclysmStatConditions Auras;
+	Auras.AurasHeld = 2;
+	Auras.BuffsHeld = 3;
+	TestEqual(TEXT("two auras running is two steps, and the buffs are not auras"),
+		FPipeline::ScaledValue(PerAura, Auras), 20.0f, 0.001f);
+	TestEqual(TEXT("no aura running is nothing"),
+		FPipeline::ScaledValue(PerAura, FCataclysmStatConditions()), 0.0f, 0.001f);
+
+	// A SINGLE TARGET.
+	FCataclysmStatModifier AtMostOne = MoreFromGem(-20.0f);
+	AtMostOne.Condition = ECataclysmStatCondition::EnemiesStruckTogetherAtMost;
+	AtMostOne.ConditionValue = 1.0f;
+	const TArray<FCataclysmStatModifier> Single = { AtMostOne };
+
+	TestEqual(TEXT("one enemy struck takes the drawback"),
+		FPipeline::Evaluate(100.0f, Single, NoTags, StruckTogether(1)).Final,
+		80.0f, 0.01f);
+	TestEqual(TEXT("two enemies struck do not"),
+		FPipeline::Evaluate(100.0f, Single, NoTags, StruckTogether(2)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("an unknown count refuses, though -1 is below one"),
+		FPipeline::Evaluate(100.0f, Single, NoTags, StruckTogether(-1)).Final,
+		100.0f, 0.01f);
+	TestEqual(TEXT("and so does a state nobody filled in"),
+		FPipeline::Evaluate(100.0f, Single, NoTags, FCataclysmStatConditions()).Final,
+		100.0f, 0.01f);
+
+	TestFalse(TEXT("a count of nothing refuses, since no blow comes from an attack on none"),
+		FPipeline::ConditionHolds(ECataclysmStatCondition::EnemiesStruckTogetherAtMost,
+			0.0f, StruckTogether(0)));
+
+	// THE CROWD CONTROLLED ATTACKER. The blow's field, and not the staggered one
+	// beside it.
+	FCataclysmStatConditions Held;
+	Held.Blow.bOpponentIsCrowdControlled = true;
+	FCataclysmStatConditions Staggered;
+	Staggered.Blow.bOpponentIsStaggered = true;
+	TestTrue(TEXT("a crowd controlled attacker answers yes"),
+		FPipeline::ConditionHolds(ECataclysmStatCondition::OpponentIsCrowdControlled,
+			0.0f, Held));
+	TestFalse(TEXT("a staggered one does not, for stagger is not crowd control"),
+		FPipeline::ConditionHolds(ECataclysmStatCondition::OpponentIsCrowdControlled,
+			0.0f, Staggered));
+	TestFalse(TEXT("and no blow in hand answers no"),
+		FPipeline::ConditionHolds(ECataclysmStatCondition::OpponentIsCrowdControlled,
+			0.0f, FCataclysmStatConditions()));
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
