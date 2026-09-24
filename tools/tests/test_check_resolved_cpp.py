@@ -108,8 +108,16 @@ def test_the_same_resolution_with_the_opening_restored_is_clean():
 
 
 def test_digit_separators_are_not_character_literals():
-    """#1610: 28 false complaints over 439 healthy files came from this alone."""
-    assert complaints("void F() { Set(10'000'000.0f); G(0xFF'FF); H(1'0); }\n") == []
+    """#1610: 28 false complaints over 439 healthy files came from this alone.
+
+    THE SECOND LINE HOLDS ONE SEPARATOR, AND THAT IS DELIBERATE. Read as a
+    character literal, an apostrophe pairs with the next one on its line, and
+    the first line's four happen to pair off and leave the brackets balanced, so
+    a reader that got separators wrong still passed on it. A lone one cannot
+    pair, which is what a proof breaking the separator rule showed.
+    """
+    assert complaints("void F() { Set(10'000'000.0f); G(0xFF'FF); }\n"
+                      "void G() { H(1'000); }\n") == []
 
 
 def test_quotes_and_brackets_written_as_character_literals_are_one_character():
