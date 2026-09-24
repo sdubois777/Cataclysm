@@ -31,6 +31,7 @@
 // For a swing drawn back, which a stagger and a death both lose. Issue #1141.
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystemComponent.h"
 #include "Cataclysm.h"
@@ -358,7 +359,8 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 										   float SkillHealthCostPercent,
 										   float TargetDistanceMetres,
 										   bool bTargetIsStaggered,
-										   const AActor* Target)
+										   const AActor* Target,
+										   int32 EnemiesStruckTogether)
 {
 	const FGameplayAttribute Spell =
 		UCataclysmCombatAttributeSet::GetSpellDamageAttribute();
@@ -384,12 +386,15 @@ float UCataclysmSkillEffects::SpellDamageOf(const UAbilitySystemComponent* Sourc
 		// the distance the character moved, so a spell damage row conditioned
 		// on either of those silently grants nothing. That gap is older than
 		// this line and is recorded as its own issue.
+		//
+		// AND HOW MANY ENEMIES THE ATTACK STRUCK, since issue #1686, which the
+		// point blank drawback's spell damage row asks about.
 		? Cataclysm->StatForSkill(FName(TEXT("spell_damage")), SkillTags,
 								  FromAttribute, SkillHealthCostPercent,
 								  FCataclysmBlowContext(),
 								  /*MetresMovedBeforeBlow=*/-1.0f,
 								  TargetDistanceMetres, bTargetIsStaggered,
-								  Target)
+								  Target, EnemiesStruckTogether)
 		: FromAttribute;
 
 	return FMath::Max(0.0f, Value);
@@ -806,7 +811,7 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	const float Flat = IsSpell(SkillTags)
 		? SpellDamageOf(Source, SkillTags, Delivery.SkillHealthCostPercent,
 						TargetDistanceMetres, bTargetIsStaggered,
-						AilmentTarget)
+						AilmentTarget, Delivery.EnemiesStruckTogether)
 		: 0.0f;
 
 	// THE SAME FOUR FACTS THE TWO CALLS ABOVE ALREADY USE. Issue #1729. They were
@@ -2005,6 +2010,13 @@ bool UCataclysmSkillEffects::IsPinned(const AActor* Actor)
 bool UCataclysmSkillEffects::IsStaggered(const AActor* Actor)
 {
 	return HasTag(Actor, StaggeredTag());
+}
+
+bool UCataclysmSkillEffects::IsCrowdControlled(const AActor* Actor)
+{
+	return IsStunned(Actor) || IsKnockedDown(Actor) || IsPinned(Actor)
+		|| HasTag(Actor, UCataclysmDebuffs::CrippleTag())
+		|| UCataclysmTeams::IsMaddened(Actor);
 }
 
 FGameplayTag UCataclysmSkillEffects::UntargetableTag()

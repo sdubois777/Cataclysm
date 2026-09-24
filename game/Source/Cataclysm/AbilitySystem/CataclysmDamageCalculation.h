@@ -252,6 +252,16 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	bool bFromStaggered = false;
 
 	/**
+	 * Whether whoever threw the blow is under crowd control. Issue #1686.
+	 *
+	 * READ OFF THE EFFECT'S CAUSER AS AN ACTOR, for the reason `bFromStaggered`
+	 * above gives: a pin, a slow or madness lands on anything, the player
+	 * included. `UCataclysmSkillEffects::IsCrowdControlled` says what counts.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	bool bFromCrowdControlled = false;
+
+	/**
 	 * Which debuffs whoever threw the blow is carrying. Issue #1515.
 	 *
 	 * READ OFF THE EFFECT'S CAUSER AS AN ACTOR, for the reason `bFromStaggered`

@@ -2186,4 +2186,62 @@ CATACLYSM_CONDITIONAL_TEST(FCataclysmCombatRestartsAfterALapseTest,
 	return true;
 }
 
+CATACLYSM_CONDITIONAL_TEST(FCataclysmSpellDamageHearsTheCountTest,
+	"Cataclysm.ConditionalDamage.SpellDamageIsToldHowManyEnemiesTheAttackStruck")
+{
+	using namespace CataclysmConditionalDamageTest;
+
+	// ISSUE #1686. `SpellDamageOf` was handed no enemy count, so a spell damage
+	// row asking `enemies_hit_at_most` refused on every blow: the spell half of
+	// "Point blank AOE skills deal 15%-25% less damage to a single target" did
+	// nothing on the one point blank spell. Recorded by hand, 20% less on a
+	// spell damage of 100, so the count is the only thing that differs.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	FCaster Caster(World);
+
+	FGameplayTagContainer PointBlank;
+	PointBlank.AddTag(UGameplayTagsManager::Get().RequestGameplayTag(
+		FName(TEXT("Type.AOE.PointBlank")), /*ErrorIfNotFound=*/false));
+	if (!TestEqual(TEXT("Type.AOE.PointBlank is in the vocabulary"), PointBlank.Num(), 1))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier Single;
+	Single.Bucket = ECataclysmStatBucket::More;
+	Single.Source = ECataclysmModifierSource::Enchantment;
+	Single.Value = -20.0f;
+	Single.RequiredTags = PointBlank;
+	Single.Condition = ECataclysmStatCondition::EnemiesStruckTogetherAtMost;
+	Single.ConditionValue = 1.0f;
+
+	FCataclysmStatInputs Spell;
+	Spell.Base = 100.0f;
+	Spell.Modifiers.Add(Single);
+	TMap<FName, FCataclysmStatInputs> Stats;
+	Stats.Add(FName(TEXT("spell_damage")), Spell);
+	Caster.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+
+	const auto SpellOn = [&](int32 Enemies)
+	{
+		return UCataclysmSkillEffects::SpellDamageOf(Caster.AbilitySystem, PointBlank,
+			-1.0f, -1.0f, false, nullptr, Enemies);
+	};
+
+	TestEqual(TEXT("one enemy struck: the spell damage takes the drawback"),
+		SpellOn(1), 80.0f, 0.01f);
+	TestEqual(TEXT("two struck: it does not"), SpellOn(2), 100.0f, 0.01f);
+	TestEqual(TEXT("and no count given refuses, as before"),
+		UCataclysmSkillEffects::SpellDamageOf(Caster.AbilitySystem, PointBlank),
+		100.0f, 0.01f);
+
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

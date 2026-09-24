@@ -103,6 +103,7 @@ namespace
 		{ TEXT("hit_is_spell"),                 ECataclysmStatCondition::HitIsSpell },
 		{ TEXT("opponent_is_boss"),             ECataclysmStatCondition::OpponentIsBoss },
 		{ TEXT("opponent_is_staggered"),        ECataclysmStatCondition::OpponentIsStaggered },
+		{ TEXT("opponent_is_crowd_controlled"), ECataclysmStatCondition::OpponentIsCrowdControlled },
 		{ TEXT("target_is_staggered"),          ECataclysmStatCondition::TargetIsStaggered },
 		{ TEXT("target_is_boss"),               ECataclysmStatCondition::TargetIsBoss },
 		{ TEXT("target_is_not_boss"),           ECataclysmStatCondition::TargetIsNotBoss },
@@ -124,6 +125,7 @@ namespace
 		{ TEXT("target_health_below"),          ECataclysmStatCondition::TargetHealthBelowPercent },
 		{ TEXT("energy_shield_at_maximum"),     ECataclysmStatCondition::EnergyShieldAtMaximum },
 		{ TEXT("enemies_hit_at_least"),         ECataclysmStatCondition::EnemiesStruckTogetherAtLeast },
+		{ TEXT("enemies_hit_at_most"),          ECataclysmStatCondition::EnemiesStruckTogetherAtMost },
 		{ TEXT("opponent_within_metres"),       ECataclysmStatCondition::OpponentWithinMetres },
 		{ TEXT("moved_within_seconds"),         ECataclysmStatCondition::MovedWithinSeconds },
 		{ TEXT("class_resource_above"),         ECataclysmStatCondition::ClassResourceAbovePercent },
@@ -162,6 +164,7 @@ namespace
 		{ TEXT("target_debuffs"),      ECataclysmStatScale::PerTargetDebuff },
 		{ TEXT("buffs_held"),          ECataclysmStatScale::PerBuffHeld },
 		{ TEXT("own_stacks"),          ECataclysmStatScale::PerOwnStack },
+		{ TEXT("auras_held"),          ECataclysmStatScale::PerAuraHeld },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
 	};
 
@@ -253,6 +256,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::HitIsSpell:
 	case ECataclysmStatCondition::OpponentIsBoss:
 	case ECataclysmStatCondition::OpponentIsStaggered:
+	case ECataclysmStatCondition::OpponentIsCrowdControlled:
 	case ECataclysmStatCondition::TargetIsStaggered:
 	case ECataclysmStatCondition::TargetIsBoss:
 	case ECataclysmStatCondition::TargetIsNotBoss:
@@ -272,7 +276,7 @@ bool UCataclysmStatPipeline::ConditionTakesAValue(
 	case ECataclysmStatCondition::TargetCarriesADot:
 	case ECataclysmStatCondition::WieldingTwoHandedWeapon:
 		// NAMES A STATE OR A KIND OF BLOW RATHER THAN A THRESHOLD, so there is
-		// nothing for a number to be compared against. Each of the twenty-six says
+		// nothing for a number to be compared against. Each of the twenty-seven says
 		// so in its own comment in the header, and
 		// `tools/tests/test_the_condition_count_sentences_agree_with_the_code.py`
 		// holds this count and the header's to the case labels (issue #1640).
@@ -422,6 +426,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::OpponentBeyondMetres:
 	case C::TargetWithinMetres:
 	case C::OpponentIsStaggered:
+	case C::OpponentIsCrowdControlled:
 	case C::TargetIsStaggered:
 	case C::TargetIsBoss:
 	case C::TargetIsNotBoss:
@@ -431,6 +436,7 @@ ECataclysmConditionDependsOn UCataclysmStatPipeline::WhatConditionDependsOn(
 	case C::OpponentCarriesWeaken:
 	case C::TargetHealthBelowPercent:
 	case C::EnemiesStruckTogetherAtLeast:
+	case C::EnemiesStruckTogetherAtMost:
 	case C::OpponentWithinMetres:
 	case C::TargetNotYetStruckByYou:
 	case C::TargetNotYetCritByYou:
@@ -776,6 +782,11 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// withheld from a character sheet that has no attacker at all.
 		return State.Blow.bOpponentIsStaggered;
 
+	case ECataclysmStatCondition::OpponentIsCrowdControlled:
+		// THE SAME TWO RULES AS THE CASE ABOVE. Issue #1686. A caller with no
+		// blow in hand, and a damage over time tick, leave this false.
+		return State.Blow.bOpponentIsCrowdControlled;
+
 	case ECataclysmStatCondition::TargetIsStaggered:
 		// THE MIRROR OF THE CASE ABOVE, READING A DIFFERENT FIELD, and that is the
 		// whole safeguard. `Blow` is filled only on the defender's damage taken
@@ -1047,6 +1058,17 @@ bool UCataclysmStatPipeline::ConditionHolds(ECataclysmStatCondition Condition,
 		// least nought enemies" would hold for every blow in the game.
 		return Value >= 1.0f && State.EnemiesStruckTogether >= 0
 			&& static_cast<float>(State.EnemiesStruckTogether) >= Value;
+
+	case ECataclysmStatCondition::EnemiesStruckTogetherAtMost:
+		// AT MOST `Value` ENEMIES STRUCK BY THE ATTACK IN HAND. Issue #1686.
+		// "To a single target" is this with one.
+		//
+		// THE SAME TWO REFUSALS AS THE CASE ABOVE, AND HERE THEY MATTER MORE.
+		// An unknown count is -1, which is "at most one" by arithmetic, so
+		// without the second test every creature's blow and every character
+		// sheet would carry the drawback.
+		return Value >= 1.0f && State.EnemiesStruckTogether >= 0
+			&& static_cast<float>(State.EnemiesStruckTogether) <= Value;
 
 	case ECataclysmStatCondition::OpponentWithinMetres:
 		// AT OR WITHIN, BECAUSE "WITHIN" IS INCLUSIVE. Issue #1981. "Nearby
@@ -1475,6 +1497,10 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			? StackedValue(Modifier, Asking->OwnStacksHeld(Modifier.StackKey))
 			: 0.0f;
 	}
+
+	// AND THE AURAS RUNNING, COUNTED THE SAME WAY. Issue #1686.
+	case ECataclysmStatScale::PerAuraHeld:
+		return StackedValue(Modifier, State.AurasHeld);
 
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{

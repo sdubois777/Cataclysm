@@ -17,6 +17,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "GameplayTagsManager.h"
 #include "Misc/ScopeExit.h"
 #include "Tests/CataclysmTestWorld.h"
 
@@ -160,7 +161,8 @@ namespace CataclysmDamageBySourceTest
 	/** A 400 point hit carrying these facts and nothing else. */
 	FCataclysmIncomingHit HitOf(bool bMelee, bool bRanged, bool bSpell,
 								bool bFromBoss = false,
-								bool bFromStaggered = false)
+								bool bFromStaggered = false,
+								bool bFromCrowdControlled = false)
 	{
 		FCataclysmIncomingHit Hit;
 		Hit.Damage = 400.0f;
@@ -169,6 +171,7 @@ namespace CataclysmDamageBySourceTest
 		Hit.bIsSpell = bSpell;
 		Hit.bFromBoss = bFromBoss;
 		Hit.bFromStaggered = bFromStaggered;
+		Hit.bFromCrowdControlled = bFromCrowdControlled;
 		return Hit;
 	}
 
@@ -214,6 +217,10 @@ bool FCataclysmDamageBySourceEachRowTest::RunTest(const FString& Parameters)
 		{ TEXT("bosses"), ECataclysmStatCondition::OpponentIsBoss },
 		{ TEXT("staggered attackers"),
 		  ECataclysmStatCondition::OpponentIsStaggered },
+		// ISSUE #1686. Beside the staggered pair on purpose: each hit meets only
+		// its own row, so reading the one field for the other fails here.
+		{ TEXT("crowd controlled attackers"),
+		  ECataclysmStatCondition::OpponentIsCrowdControlled },
 	};
 
 	struct FKind
@@ -234,6 +241,9 @@ bool FCataclysmDamageBySourceEachRowTest::RunTest(const FString& Parameters)
 		{ TEXT("a staggered attacker's hit"),
 		  HitOf(false, false, false, false, true),
 		  ECataclysmStatCondition::OpponentIsStaggered },
+		{ TEXT("a crowd controlled attacker's hit"),
+		  HitOf(false, false, false, false, false, true),
+		  ECataclysmStatCondition::OpponentIsCrowdControlled },
 		// `Always` is no row's condition, so this hit meets none of them.
 		{ TEXT("a hit that says nothing"), HitOf(false, false, false),
 		  ECataclysmStatCondition::Always },
@@ -722,6 +732,175 @@ bool FCataclysmDamageBySourceStaggeredTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("a staggered attacker that is no creature also meets the row"),
 		Struck(Outsider.Actor, Defender), OutsiderPlain * 0.5f, 0.01f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageBySourceCrowdControlledTest,
+	"Cataclysm.DamageBySource.AHitFromACrowdControlledAttackerSaysSoAndAFreeOneDoesNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmDamageBySourceCrowdControlledTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// REAL HITS, FOR THE REASON THE STAGGERED TEST ABOVE GIVES. Issue #1686,
+	// for "You take 15%-25% more damage from enemies that are currently CC'd".
+	// The table-driven test fills the hit by hand and would pass if nothing
+	// read the attacker at all.
+	//
+	// FOUR ATTACKERS. A pinned one, by the real pin, and a maddened one meet the
+	// row: two of the three crowd control states an attacker can still strike
+	// under. A free one does not. A staggered one does not either, because a
+	// stagger is not crowd control, and it is the line that fails if the new
+	// field were filled from the stagger beside it.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	const auto Spawn = [World](const FVector& Where)
+	{
+		return World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+	};
+	ACataclysmEnemyCharacter* Pinned = Spawn(FVector(0.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Maddened = Spawn(FVector(1000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Staggered = Spawn(FVector(2000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Free = Spawn(FVector(3000.0f, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Control = Spawn(FVector(0.0f, 1000.0f, 0.0f));
+	ACataclysmEnemyCharacter* Defender = Spawn(FVector(1000.0f, 1000.0f, 0.0f));
+	if (!TestNotNull(TEXT("an attacker to pin"), Pinned)
+		|| !TestNotNull(TEXT("one to madden"), Maddened)
+		|| !TestNotNull(TEXT("one to stagger"), Staggered)
+		|| !TestNotNull(TEXT("one to leave alone"), Free)
+		|| !TestNotNull(TEXT("a control"), Control)
+		|| !TestNotNull(TEXT("a defender"), Defender))
+	{
+		return false;
+	}
+
+	for (ACataclysmEnemyCharacter* Attacker : { Pinned, Maddened, Staggered, Free })
+	{
+		Attacker->SetAttackDamage(100.0f);
+	}
+	for (ACataclysmEnemyCharacter* Target : { Control, Defender })
+	{
+		Target->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Players));
+		Target->SetHealth(1'000'000.0f);
+	}
+	UCataclysmAbilitySystemComponent* Guarded =
+		Cast<UCataclysmAbilitySystemComponent>(Defender->GetAbilitySystemComponent());
+	if (!TestNotNull(TEXT("the defender's ability system"), Guarded))
+	{
+		return false;
+	}
+	TakeDamageThrough(Guarded,
+		{ Row(ECataclysmStatCondition::OpponentIsCrowdControlled, -50.0f) });
+
+	// EACH STATE APPLIED, AND CHECKED TO HAVE TAKEN, so no line below passes
+	// because two attackers were alike by accident.
+	if (!TestTrue(TEXT("the pin was applied"),
+				  UCataclysmSkillEffects::ApplyPin(Pinned, Pinned, 30.0f))
+		|| !TestTrue(TEXT("and the attacker is pinned"),
+					 UCataclysmSkillEffects::IsPinned(Pinned)))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyTagForDuration(
+		Maddened, Maddened, UCataclysmTeams::MadnessTag(), 30.0f);
+	if (!TestTrue(TEXT("the second attacker is maddened"),
+				  UCataclysmTeams::IsMaddened(Maddened))
+		|| !TestTrue(TEXT("the stagger was applied"),
+					 UCataclysmSkillEffects::ApplyStagger(Staggered, Staggered))
+		|| !TestFalse(TEXT("and a stagger is not crowd control"),
+					  UCataclysmSkillEffects::IsCrowdControlled(Staggered))
+		|| !TestFalse(TEXT("and the free attacker is under none of it"),
+					  UCataclysmSkillEffects::IsCrowdControlled(Free)))
+	{
+		return false;
+	}
+
+	const auto Struck = [](AActor* From, AActor* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(From, Target, 100.0f, FGameplayTagContainer(),
+										 NoCritical(), &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	for (ACataclysmEnemyCharacter* Attacker : { Pinned, Maddened, Staggered, Free })
+	{
+		const float Plain = Struck(Attacker, Control);
+		if (!TestTrue(TEXT("every attacker's plain hit lands for something"), Plain > 0.0f))
+		{
+			return false;
+		}
+		const bool bHeld = Attacker == Pinned || Attacker == Maddened;
+		TestEqual(bHeld
+				? TEXT("a pinned or maddened attacker's hit meets the row")
+				: TEXT("a staggered or free attacker's hit does not"),
+			Struck(Attacker, Defender), bHeld ? Plain * 0.5f : Plain, 0.01f);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCrowdControlIsTheSixEffectsTest,
+	"Cataclysm.DamageBySource.CrowdControlIsTheSixEffectsOfSectionVIAndNotAStagger",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FCataclysmCrowdControlIsTheSixEffectsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDamageBySourceTest;
+
+	// EVERY READABLE STATE OF THE SIX, ONE CHARACTER EACH. Issue #1686. The
+	// sixth, displacement, leaves no state to read. A stagger is the control:
+	// it is what a displacement leaves behind, and it is not a hold.
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	struct FState
+	{
+		const TCHAR* Tag;
+		bool bIsCrowdControl;
+	};
+	const FState States[] = {
+		{ TEXT("State.Stunned"), true },
+		{ TEXT("State.KnockedDown"), true },
+		{ TEXT("State.Pinned"), true },
+		{ TEXT("Status.Debuff.Cripple"), true },
+		{ TEXT("Status.Debuff.Madness"), true },
+		{ TEXT("State.Staggered"), false },
+	};
+
+	for (const FState& State : States)
+	{
+		const FGameplayTag Tag = UGameplayTagsManager::Get().RequestGameplayTag(
+			FName(State.Tag), /*ErrorIfNotFound=*/false);
+		if (!TestTrue(FString::Printf(TEXT("%s is in the vocabulary"), State.Tag),
+					  Tag.IsValid()))
+		{
+			continue;
+		}
+
+		const FScopedFighter Held(World);
+		TestFalse(FString::Printf(TEXT("before %s nothing holds it"), State.Tag),
+				  UCataclysmSkillEffects::IsCrowdControlled(Held.Actor));
+		UCataclysmSkillEffects::ApplyTagForDuration(Held.Actor, Held.Actor, Tag, 30.0f);
+		if (!TestTrue(FString::Printf(TEXT("%s took"), State.Tag),
+					  UCataclysmSkillEffects::HasTag(Held.Actor, Tag)))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("%s is crowd control: %s"), State.Tag,
+								  State.bIsCrowdControl ? TEXT("yes") : TEXT("no")),
+				  UCataclysmSkillEffects::IsCrowdControlled(Held.Actor),
+				  State.bIsCrowdControl);
+	}
 
 	return true;
 }

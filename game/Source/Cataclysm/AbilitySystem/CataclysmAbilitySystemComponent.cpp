@@ -964,12 +964,24 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 	// AND THE SELF-BUFF SKILLS RUNNING. Issue #1815. The same test
 	// `ClearWhatDeathEnds` uses to find the buffs a death ends, so "a buff"
 	// means one thing in both places.
+	//
+	// AND THE AURAS RUNNING, IN THE SAME WALK. Issue #1686. An aura is not a
+	// self buff, so each class is counted by its own name.
 	State.BuffsHeld = 0;
+	State.AurasHeld = 0;
 	for (const FGameplayAbilitySpec& Spec : GetActivatableAbilities())
 	{
-		if (Spec.IsActive() && Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
+		if (!Spec.IsActive())
+		{
+			continue;
+		}
+		if (Cast<UCataclysmSelfBuffSkill>(Spec.GetPrimaryInstance()))
 		{
 			++State.BuffsHeld;
+		}
+		else if (Cast<UCataclysmAuraSkill>(Spec.GetPrimaryInstance()))
+		{
+			++State.AurasHeld;
 		}
 	}
 

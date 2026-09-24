@@ -764,6 +764,30 @@ enum class ECataclysmStatCondition : uint8
 		UMETA(DisplayName = "Opponent Is Staggered"),
 
 	/**
+	 * Whoever is on the other side of the blow is under crowd control. Issue
+	 * #1686: "You take 15%-25% more damage from enemies that are currently
+	 * CC'd", so for the damage taken lookup the other side is the attacker.
+	 * `UCataclysmSkillEffects::IsCrowdControlled` is what answers.
+	 *
+	 * CROWD CONTROL IS THE SIX EFFECTS OF DESIGN SECTION VI, ruled under the
+	 * owner's delegation on 2026-09-23: stun, knockdown, slow, displacement,
+	 * pin and madness, the list `UCataclysmSkillTemplate::IsImmuneTo` names
+	 * "crowd control". Not the three `crowd_control_resistance` shortens,
+	 * which answers a different question. `docs/DECISIONS.md` has both.
+	 *
+	 * AN ATTACKER THAT CANNOT STRIKE RARELY MEETS THIS. A stunned or
+	 * knocked-down creature does not attack, and a displacement leaves no
+	 * state that lasts, so in play the row answers for a slowed (Crippled),
+	 * pinned or maddened attacker -- or for a blow already travelling when
+	 * the stun began.
+	 *
+	 * NOT LIMITED TO ENEMY CREATURES, for the reason `OpponentIsStaggered`
+	 * above gives, and read beside it.
+	 */
+	OpponentIsCrowdControlled
+		UMETA(DisplayName = "Opponent Is Crowd Controlled"),
+
+	/**
 	 * The character being HIT is staggered. Issue #45.
 	 *
 	 * "Staggered enemies take 20%-35% increased damage from all sources" is a
@@ -1130,6 +1154,28 @@ enum class ECataclysmStatCondition : uint8
 	 */
 	EnemiesStruckTogetherAtLeast
 		UMETA(DisplayName = "Enemies Struck Together At Least"),
+
+	/**
+	 * The attack this blow belongs to struck AT MOST THAT MANY enemies
+	 * together. Issue #1686: "Point blank AOE skills deal 15%-25% less damage
+	 * to a single target" is this with one, scoped `Type.AOE.PointBlank`.
+	 *
+	 * A SECOND NAME AND NOT A NEGATION, because the pipeline has none: the
+	 * reason `TargetIsNotBoss` is its own name. The same count
+	 * `EnemiesStruckTogetherAtLeast` above reads, under the same ruling on
+	 * what one attack is.
+	 *
+	 * "A SINGLE TARGET" IS EXACTLY ONE ENEMY STRUCK, ruled under the owner's
+	 * delegation on 2026-09-23. At most one is exactly one here, because an
+	 * attack that struck nobody deals no blow to ask on.
+	 *
+	 * NEGATIVE MEANS NO GROUP IS IN HAND, and refuses, exactly as above: a
+	 * creature's attack, a minion's blow, a tick and a character sheet carry
+	 * no count, and "at most one" must not hold for them. A value below one
+	 * refuses as well, since no blow is dealt by an attack that struck none.
+	 */
+	EnemiesStruckTogetherAtMost
+		UMETA(DisplayName = "Enemies Struck Together At Most"),
 
 	/**
 	 * The blow being taken came from AT OR WITHIN that many metres. Issue #1981.
@@ -1965,6 +2011,22 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Own Stack"),
 
 	/**
+	 * Multiplied by how many aura skills are running on the character. Issue
+	 * #1686: "Take 5%-15% more damage per active aura".
+	 *
+	 * EVERY RUNNING AURA, HOWEVER MANY THE GAME ALLOWS AT ONCE, ruled under the
+	 * owner's delegation on 2026-09-23. Two can run today: the skill in the
+	 * Aura slot, and Living Pyre, the Fist's Ultimate, which is an aura skill
+	 * too. An aura counts from its activation to its `EndAbility`.
+	 *
+	 * NOT `PerBuffHeld`, because an aura is not a self buff:
+	 * `UCataclysmAuraSkill` and `UCataclysmSelfBuffSkill` are separate classes,
+	 * and neither count sees the other's skills.
+	 */
+	PerAuraHeld
+		UMETA(DisplayName = "Per Aura Held"),
+
+	/**
 	 * `Value` PER CENT of the whole `ScaleStep` points of mana the character
 	 * holds now. Issue #1815: "Your skills deal 10%-30% of your current mana as
 	 * more damage" is a flat row of 10 to 30 with a step of 1.
@@ -2057,6 +2119,13 @@ struct CATACLYSM_API FCataclysmBlowContext
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bOpponentIsStaggered = false;
+
+	/**
+	 * The character on the other side of the blow is under crowd control.
+	 * Issue #1686. See `UCataclysmSkillEffects::IsCrowdControlled`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bOpponentIsCrowdControlled = false;
 
 	/**
 	 * The debuffs the character on the other side of the blow is carrying, as
@@ -2736,6 +2805,10 @@ struct CATACLYSM_API FCataclysmStatConditions
 	/** How many self-buff skills are running on the character. Issue #1815. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 BuffsHeld = 0;
+
+	/** How many aura skills are running on the character. Issue #1686. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 AurasHeld = 0;
 
 	/**
 	 * How much mana the character holds now. Negative means unknown: no vital
@@ -3441,7 +3514,7 @@ public:
 	 *
 	 * FOR A TEST THAT HAS TO COVER ALL OF THEM RATHER THAN A LIST WRITTEN OUT
 	 * TWICE. A test naming the conditions by hand passes for ever after somebody
-	 * adds a sixty-second, which is the drift that put the passive tree eight
+	 * adds a sixty-fourth, which is the drift that put the passive tree eight
 	 * names behind this table in the first place.
 	 */
 	static void AllConditionNames(TArray<FString>& OutNames);
@@ -3450,7 +3523,7 @@ public:
 	 * Whether a condition compares `ConditionValue` against anything.
 	 * Issue #1581.
 	 *
-	 * TWENTY-SIX OF THE SIXTY-ONE COMPARE NOTHING. They are the case labels
+	 * TWENTY-SEVEN OF THE SIXTY-THREE COMPARE NOTHING. They are the case labels
 	 * before the first `return false;` in `ConditionTakesAValue`, and this
 	 * sentence no longer lists them by hand: the hand list rotted with the
 	 * count. Both numbers are read out of the code by

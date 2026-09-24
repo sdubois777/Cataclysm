@@ -978,6 +978,128 @@ player kills" reworded, with "a portion" made "all", and with "a portion" made "
 
 ---
 
+## 2026-09-23 — Three enchantment drawbacks read the auras running, a single target struck, and a crowd-controlled attacker
+
+**Affects:**
+- `CataclysmStatPipeline.h` and `.cpp`: two new conditions, `enemies_hit_at_most` and
+  `opponent_is_crowd_controlled`, and one new scale, `auras_held`
+- `UCataclysmSkillEffects::IsCrowdControlled`
+- the incoming blow's record: `FCataclysmIncomingHit::bFromCrowdControlled`, copied to
+  `FCataclysmBlowContext::bOpponentIsCrowdControlled`
+- the aura count, `FCataclysmStatConditions::AurasHeld`, filled beside `BuffsHeld`
+- `UCataclysmSkillEffects::SpellDamageOf`, which now takes the attack's enemy count. Without it
+  the spell damage half of the point blank drawback never saw a count and refused on every blow of
+  the one point blank spell, the Demonic Wand's Ultimate (`Demonic_Wand_Ultimate`)
+- `tools/generate_datatables.py`
+- issue [#1686](https://github.com/sdubois777/Cataclysm/issues/1686)'s first window, three
+  enchantments
+
+### WHAT EACH SENTENCE NEEDED, AND WHAT IT GETS
+
+| Enchantment | Needed | Row |
+| :-- | :-- | :-- |
+| Take 5%-15% more damage per active aura | how many auras are running | `damage_taken` more 5 to 15, scale `auras_held`, step 1 |
+| Point blank AOE skills deal 15%-25% less damage to a single target | whether the attack struck one enemy | `attack_damage` and `spell_damage` more -15 to -25, `Type.AOE.PointBlank`, `enemies_hit_at_most` 1 |
+| You take 15%-25% more damage from enemies that are currently CC'd | whether the attacker is under crowd control | `damage_taken` more 15 to 25, `opponent_is_crowd_controlled` |
+
+**What each reads, and what happens when the reading is not known:**
+
+- **`auras_held`** counts the running `UCataclysmAuraSkill` specs. It is filled in the same walk as
+  `BuffsHeld` and is a separate count, because an aura is not a `UCataclysmSelfBuffSkill`. It does
+  not compare a value against a threshold; a character with no aura running gets no steps.
+- **`enemies_hit_at_most`** compares its value against `EnemiesStruckTogether`, the count
+  `enemies_hit_at_least` already reads. It is a second name because the pipeline has no negation.
+  - It refuses when the count is unknown (-1). This matters more here than for the "at least" name:
+    -1 is "at most one" by arithmetic, so without the refusal every creature's blow, every minion's
+    blow and every character sheet would carry the drawback.
+  - It also refuses a value below one.
+- **`opponent_is_crowd_controlled`** takes no value. It reads the blow's own field, filled at the
+  one place that builds an incoming hit, off the causer as a plain actor, beside
+  `opponent_is_staggered`. A damage over time tick and a lookup with no blow answer no.
+
+### THE THREE JUDGEMENTS, UNDER THE OWNER'S DELEGATION
+
+All three were ruled by the coordinating session on 2026-09-23.
+
+1. **"Per active aura" counts every aura skill running, however many the game allows at once.**
+   Two can run today: Conflagration in the Aura slot, and Living Pyre, the Fist's Ultimate. Both
+   have the `Aura` shape in `WeaponSkills.csv`, and those two are the only skills that do. So the
+   row gives nought, one or two steps. An aura counts from its activation to its `EndAbility`: a
+   toggle is switched off, the mana runs out, or Living Pyre's six seconds end.
+2. **"A single target" is exactly one enemy struck by the attack.** An attack that struck none
+   deals no blow to ask on, so at most one is exactly one.
+3. **"Crowd controlled" is the six effects of design section VI.** The code holds two definitions,
+   and they disagree:
+
+   | Where | What it says | What it answers |
+   | :-- | :-- | :-- |
+   | `CataclysmSkillEffects.cpp`, above `CataclysmSkillEffectsNoteCrowdControl` | "CROWD CONTROL IS WHAT `crowd_control_resistance` SHORTENS ... a stun, a knockdown and a displacement (knockback, pull, launch). Stagger, pin and the cripple slow are not." | what the resistance stat shortens, for the "applying a CC effect" clock |
+   | `CataclysmSkillShape.h` and `UCataclysmSkillTemplate::IsImmuneTo` | "`CrowdControl` names all six at once": Stun, Knockdown, Slow, Displacement, Pin and Madness, from section VI's table | the crowd-control states a character can be in |
+
+   **The six were chosen because the row asks about a state the attacker is in**, and section VI's
+   list is the design's own list of crowd-control states. The first definition answers a different
+   question. Under it, the row would almost never apply: a stunned or knocked-down enemy does not
+   strike, and a displacement lasts only a moment.
+
+### WHICH OF THE SIX CAN FIRE
+
+`UCataclysmSkillEffects::IsCrowdControlled` reads five of the six.
+
+- **Three can fire, because the attacker can still strike under them:**
+  - a slow: the Cripple debuff, `Status.Debuff.Cripple`
+  - a pin: `IsPinned`
+  - madness: `UCataclysmTeams::IsMaddened`
+- **Three do not fire in the ordinary course, because the enemy cannot strike:**
+  - a stun and a knockdown (`IsStunned`, `IsKnockedDown`). Both are read, so the definition is
+    whole. A creature under either one does not attack.
+  - **displacement**, which leaves no state of its own to read. The Staggered state it leaves
+    afterwards is not a hold, by the owner's answer of 2026-09-11, and is not read.
+
+**Not tested:** a blow that set off before a stun began and landed during it, such as a projectile
+in flight, would meet the row, because the causer is read when the blow lands. That is a reading of
+the code and was not run.
+
+### Run
+
+The rows were written into the design workbook in this window, at rows 296-299 of the Enchantment
+Effects sheet, and every step matched its registration.
+
+- **The build**, on `37e0a879`: "Build: Succeeded - 28 actions, 25 files compiled".
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "81 tests
+  performed, 77 succeeded, 4 failed", the four registered:
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt`: "Expected 'DT_EnchantmentEffects has every row
+    EnchantmentEffects.csv has' to be 0, but it was 4";
+  - the three tests that wear the new rows through the equipment component, which reads the built
+    asset: `TheAuraRowRaisesDamageTakenWhileAnAuraRuns` ("one aura running: the wearer takes 15%
+    more", 100 against 115), `TheCrowdControlRowRaisesOnlyAHitFromACrowdControlledAttacker` ("a crowd
+    controlled attacker's hit is 25% more", 1.0 against 1.25) and
+    `ThePointBlankRowReachesOnlyAPointBlankAttackOnOneEnemy` ("the worn drawback put a modifier on
+    attack damage").
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`6cb6e595`, 294 rows to 298). The Python asset-freshness tests then passed, 18 of 18.
+- **The whole suite on `6cb6e595`:** "2317 tests performed, 2317 succeeded, 0 failed", as registered,
+  with every declared test reported.
+- **Three guard proofs.** Each failed exactly the registered tests with the break in and none once
+  restored. Each broken run's log was copied before the restored run overwrote it:
+  - **the crowd control flag not copied onto the blow** (`Blow.bOpponentIsCrowdControlled =
+    Hit.bFromCrowdControlled;` made `(void)Hit.bFromCrowdControlled;`) failed
+    `EachSourceRowMeetsOnlyHitsFromItsSource` and `AHitFromACrowdControlledAttackerSaysSoAndAFreeOneDoesNot`,
+    2 of 13: "Expected '50% less from crowd controlled attackers, against a crowd controlled
+    attacker's hit' to be 200.000000, but it was 400.000000" and "Expected 'a pinned or maddened
+    attacker's hit meets the row' to be 50.000000, but it was 100.000000";
+  - **`enemies_hit_at_most` taking an unknown count** (`State.EnemiesStruckTogether >= 0` made `true`)
+    failed `AurasRunningASingleTargetAndACrowdControlledAttackerAreRead`, 1 of 48: "Expected 'an unknown
+    count refuses, though -1 is below one' to be 100.000000, but it was 80.000000" and "Expected 'and
+    so does a state nobody filled in' to be 100.000000, but it was 80.000000";
+  - **no running aura counted** (`++State.AurasHeld;` made `(void)0;`) failed
+    `RunningAurasAreCountedAsHeldAndABuffIsNotAnAura` and `TheAuraRowRaisesDamageTakenWhileAnAuraRuns`, 2
+    of 2: "Expected 'a running aura is held' to be 1, but it was 0", "Expected 'two running auras are
+    two' to be 2, but it was 0", "Expected 'and an ended one is no longer counted' to be 1, but it was
+    0" and "Expected 'one aura running: the wearer takes 15% more' to be 115.000000, but it was
+    100.000000".
+
+---
+
 ## 2026-09-23 — No rule in this log may be doubled, and the insert tool no longer writes a second one
 
 **Affects:** `tools/tests/test_decisions_entries_are_separated.py` (the check that every entry here

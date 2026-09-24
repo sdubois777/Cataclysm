@@ -293,3 +293,7 @@ Positive_Each_active_buff_on_you_increases_your_damage_by#1,Positive_Each_active
 Positive_Each_active_buff_on_you_increases_your_damage_by#2,Positive_Each_active_buff_on_you_increases_your_damage_by,spell_damage,increased,5.0,10.0,,,0.0,buffs_held,1.0,,,,0,0.0
 Positive_Spells_deal_10_20_bonus_damage_for_each_active#1,Positive_Spells_deal_10_20_bonus_damage_for_each_active,spell_damage,increased,10.0,20.0,Type.Spell,,0.0,buffs_held,1.0,,,,0,0.0
 Negative_Each_active_minion_reduces_your_maximum_HP_by_3#1,Negative_Each_active_minion_reduces_your_maximum_HP_by_3,max_health,increased,-3.0,-6.0,,,0.0,minions_held,1.0,,,,0,0.0
+Negative_Take_5_15_more_damage_per_active_aura#1,Negative_Take_5_15_more_damage_per_active_aura,damage_taken,more,5.0,15.0,,,0.0,auras_held,1.0,,,,0,0.0
+Negative_Point_blank_AOE_skills_deal_15_25_less_damage#1,Negative_Point_blank_AOE_skills_deal_15_25_less_damage,attack_damage,more,-15.0,-25.0,Type.AOE.PointBlank,enemies_hit_at_most,1.0,,0.0,,,,0,0.0
+Negative_Point_blank_AOE_skills_deal_15_25_less_damage#2,Negative_Point_blank_AOE_skills_deal_15_25_less_damage,spell_damage,more,-15.0,-25.0,Type.AOE.PointBlank,enemies_hit_at_most,1.0,,0.0,,,,0,0.0
+Negative_You_take_15_25_more_damage_from_enemies_that_a#1,Negative_You_take_15_25_more_damage_from_enemies_that_a,damage_taken,more,15.0,25.0,,opponent_is_crowd_controlled,0.0,,0.0,,,,0,0.0

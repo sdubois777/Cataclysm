@@ -1138,13 +1138,19 @@ public:
 	 * AND WITH WHAT THE SKILL COST, since issue #983, for the same reason:
 	 * a modifier conditioned on the skill's own health cost is another the
 	 * attribute could not carry. -1 means no skill in hand and refuses it.
+	 *
+	 * AND WITH HOW MANY ENEMIES THE ATTACK STRUCK, since issue #1686, for
+	 * "Point blank AOE skills deal 15%-25% less damage to a single target":
+	 * its spell damage row asks `enemies_hit_at_most`. -1 means no attack in
+	 * hand and refuses it.
 	 */
 	static float SpellDamageOf(const UAbilitySystemComponent* Source,
 							   const FGameplayTagContainer& SkillTags,
 							   float SkillHealthCostPercent = -1.0f,
 							   float TargetDistanceMetres = -1.0f,
 							   bool bTargetIsStaggered = false,
-							   const AActor* Target = nullptr);
+							   const AActor* Target = nullptr,
+							   int32 EnemiesStruckTogether = -1);
 
 	/**
 	 * The sum of increases already applied to this character's attack damage.
@@ -2202,6 +2208,24 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
 	static bool IsStaggered(const AActor* Actor);
+
+	/**
+	 * Whether this actor is under crowd control right now. Issue #1686.
+	 *
+	 * THE SIX EFFECTS DESIGN SECTION VI NAMES, ruled under the owner's
+	 * delegation on 2026-09-23: stun, knockdown, slow, displacement, pin and
+	 * madness -- the list `UCataclysmSkillTemplate::IsImmuneTo` calls "crowd
+	 * control". A slow is the Cripple debuff, and madness the Madness debuff.
+	 *
+	 * DISPLACEMENT HAS NOTHING TO READ. A knockback, pull or launch is a move
+	 * and leaves no state of its own; the Staggered state it leaves afterwards
+	 * is not a hold, by the owner's answer of 2026-09-11, and is not read here.
+	 *
+	 * NOT WHAT `crowd_control_resistance` SHORTENS, which is a narrower list for
+	 * a different question; `docs/DECISIONS.md` carries both.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Skill Effects")
+	static bool IsCrowdControlled(const AActor* Actor);
 
 private:
 	/** Where the imported status effect table lives. */

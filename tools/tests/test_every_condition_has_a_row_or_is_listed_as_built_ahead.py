@@ -64,6 +64,8 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: threshold, which never passed through this list because its rows landed in
 #: the same change as the condition.
 #: AND IT LEFT ON 2026-09-23, when its row landed with issue #1994.
+#: TWO JOINED AND LEFT THE SAME DAY in one change, `enemies_hit_at_most` and
+#: `opponent_is_crowd_controlled` for issue #1686, with their rows.
 BUILT_AHEAD_OF_THEIR_ROWS = {
     # Landed with the movement conditions for the dungeon-modifier work; the
     # enchantment rows that want it are among the 388 counted in issue #1815

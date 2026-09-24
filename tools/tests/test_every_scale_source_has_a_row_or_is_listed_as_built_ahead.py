@@ -73,6 +73,9 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: ONE JOINED ON 2026-09-23 for issue #1833, `own_stacks`, landed as an
 #: engine change ahead of its seven rows, which wait for the design workbook
 #: and take it off this list.
+#: AND ONE ON 2026-09-23 for issue #1686, `auras_held`, which LEFT with its
+#: row, "Take 5%-15% more damage per active aura", in issue #1686's first
+#: window.
 BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"own_stacks"}
 
 #: A scale source many effect rows name. The control.
@@ -92,7 +95,9 @@ KNOWN_USED = "debuffs_carried"
 #:
 #: AND 22 OF 22 THE SAME DAY, when section C's three gained their rows:
 #: `target_debuffs`, `buffs_held` and `mana_held_percent`.
-EXPECTED_NAMED_BY_A_ROW = 22
+#:
+#: AND 23 OF 23 THE SAME DAY, when `auras_held` gained its row for issue #1686.
+EXPECTED_NAMED_BY_A_ROW = 23
 
 
 def scales_named_by_a_row() -> set[str]:

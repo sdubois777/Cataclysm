@@ -336,7 +336,7 @@ INVENTORY = {
      'FName(Stat), FGameplayTagContainer(), Held'):
         "retaliation's own figures, read off the character that was hit",
     ('game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp',
-     'FName(TEXT("spell_damage")), SkillTags, FromAttribute, SkillHealthCostPercent, FCataclysmBlowContext(), -1.0f, TargetDistanceMetres, bTargetIsStaggered, Target'):
+     'FName(TEXT("spell_damage")), SkillTags, FromAttribute, SkillHealthCostPercent, FCataclysmBlowContext(), -1.0f, TargetDistanceMetres, bTargetIsStaggered, Target, EnemiesStruckTogether'):
         "the attacker's damage for one blow, and the only call that "
         'hands over the whole blow: distance, stagger, target and the '
         'group struck',
