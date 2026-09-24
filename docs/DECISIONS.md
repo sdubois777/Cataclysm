@@ -1021,7 +1021,7 @@ mana and refreshes before the pools fill), `game/Source/Cataclysm/AbilitySystem/
 -3 to -6, `minions_held`, step 1, in the design workbook's Enchantment Effects sheet and
 `game/Data/EnchantmentEffects.csv` (293 rows to 294, 227 enchantments with a row to 228). Dry-run first on a
 `git archive` copy against an unedited control: only that CSV changed, the tools tests failed exactly as the
-control's did, and the real run matched the dry run byte for byte. Nothing has been compiled.
+control's did, and the real run matched the dry run byte for byte. Compiled and tested in the machine window, below.
 
 **Increased, not more, which the plan had said.** Ruled under the owner's delegation on 2026-09-23: "reduces"
 is this project's word for the increased bucket, and the text check refuses a multiplying row on a sentence
@@ -1087,6 +1087,31 @@ because the refresh writes the base value and an effect modifies on top of it.
 current life at once. That was not confirmed from a source here (`poe2db.tw/us/Life` does not say). This game
 does not clamp today for any cause. If summoning at full health reads as costing nothing, one clamp rule
 should be made for every cause together, not for this row alone.
+
+### The machine window, 2026-09-24
+
+Every line below is what the run printed, and every step matched its registration.
+
+1. **Stale asset, on `900ff254`**: `Build: Succeeded - 28 actions, 25 files compiled`, then at
+   `Cataclysm.Enchantments.+Cataclysm.Data.+Cataclysm.EnchantmentSets.`: `Tests: 86 tests performed, 84
+   succeeded, 2 failed: EveryGeneratedTableHasAnAssetThatMatchesIt, TheMinionMaximumHealthRowLowersItForEachMinion`,
+   the first naming `DT_EnchantmentEffects is stale ... 1 row(s) only in the CSV, 0 only in the asset`. No
+   row struct gained a field in this change, so no hand-written CSV fixture needed a column.
+2. **Rebuild**: `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` changed and nothing else
+   (`20240116`); the asset-freshness test then passed, 18 of 18.
+3. **The whole suite, on `20240116`**: `Build: Succeeded - target already up to date, 0 actions, nothing
+   compiled`, then `Tests: 2248 tests performed, 2248 succeeded, 0 failed` (development's 2243 and this
+   change's 5).
+4. **Proofs**, at `Cataclysm.PlayerStats.`, the source's hash the same before and after each:
+   - **a**, the regeneration step no longer refreshing maximum health: `PROVED: with the break in: 14 tests
+     performed, 13 succeeded, 1 failed: TheRegenerationStepAppliesTheLiveMaximumHealth | restored: 14 tests
+     performed, 14 succeeded, 0 failed`.
+   - **b**, the stat refresh no longer refreshing it: `PROVED: with the break in: 14 tests performed, 13
+     succeeded, 1 failed: AStatRefreshWithMinionsOutKeepsTheLiveMaximumHealth | restored: 14 tests
+     performed, 14 succeeded, 0 failed`.
+   - **c**, the converted mana dropped from the refresh: `PROVED: with the break in: 14 tests performed, 13
+     succeeded, 1 failed: WaterToBloodSurvivesTheLiveMaximumHealthRefresh | restored: 14 tests performed, 14
+     succeeded, 0 failed`.
 
 ---
 
