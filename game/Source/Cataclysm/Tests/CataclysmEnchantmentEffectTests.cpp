@@ -4889,9 +4889,15 @@ namespace CataclysmOwnStackRowTest
 	 * the same stat with no stacks: after two events, after enough to pass its
 	 * cap, just inside its window and just after it. Issue #1833.
 	 *
-	 * A SHARE OF THE STAT WITH NO STACKS, and the line is first checked to hold
-	 * this row as its ONLY increase. Then the share is the row's own arithmetic,
-	 * 1 + stacks x its value, whatever base or flat addition the stat carries.
+	 * A SHARE OF THE STAT WITH NO STACKS, so a base, a flat addition or a more
+	 * multiplier cancels out. AN INCREASE DOES NOT: it sums with the row's. A
+	 * real wearer's attributes put one on some lines -- agility on
+	 * `movement_speed`, constitution on `armor`, from game/Data/Attributes.csv --
+	 * so every other increase on the line is read from it, checked to be
+	 * unscaled and unconditioned so it holds still, and the share expected is
+	 * (1 + (other + stacks x value) / 100) / (1 + other / 100). The first
+	 * version assumed the bucket held the row alone, and the stale-asset run
+	 * of 2026-09-24 showed that armor and movement speed do not.
 	 */
 	void Check(FAutomationTestBase& Test, const FCase& Case)
 	{
@@ -4918,23 +4924,40 @@ namespace CataclysmOwnStackRowTest
 		Wearer.Equipment->RefreshAttributes(ASC);
 
 		TMap<FName, float> Plain;
+		TMap<FName, float> Other;
 		for (const FName& Stat : Case.Stats)
 		{
 			const FCataclysmStatInputs* Line = ASC->GetStatInputs(Stat);
-			int32 Increases = 0;
 			int32 Stacked = 0;
+			int32 Moving = 0;
+			float OtherIncreases = 0.0f;
 			for (const FCataclysmStatModifier& Modifier :
 				 Line ? Line->Modifiers : TArray<FCataclysmStatModifier>())
 			{
-				Increases += Modifier.Bucket == ECataclysmStatBucket::Increased ? 1 : 0;
-				Stacked += Modifier.Scale == ECataclysmStatScale::PerOwnStack ? 1 : 0;
+				if (Modifier.Scale == ECataclysmStatScale::PerOwnStack)
+				{
+					++Stacked;
+					continue;
+				}
+				if (Modifier.Bucket != ECataclysmStatBucket::Increased)
+				{
+					continue;
+				}
+				if (Modifier.Scale != ECataclysmStatScale::Fixed
+					|| Modifier.Condition != ECataclysmStatCondition::Always)
+				{
+					++Moving;
+				}
+				OtherIncreases += Modifier.Value;
 			}
-			Test.TestEqual(FString::Printf(
-				TEXT("'%s' holds one increase, this row's"), *Stat.ToString()),
-				Increases, 1);
 			Test.TestEqual(FString::Printf(
 				TEXT("'%s' holds one row scaled by its own stacks"), *Stat.ToString()),
 				Stacked, 1);
+			Test.TestEqual(FString::Printf(
+				TEXT("'%s': every other increase, %.2f in all, is unscaled and "
+					 "unconditioned"), *Stat.ToString(), OtherIncreases),
+				Moving, 0);
+			Other.Add(Stat, OtherIncreases);
 
 			const float None = ASC->StatAppliedTo(Stat, FGameplayTagContainer(), 1000.0f);
 			if (!Test.TestTrue(FString::Printf(
@@ -4951,9 +4974,13 @@ namespace CataclysmOwnStackRowTest
 		{
 			for (const FName& Stat : Case.Stats)
 			{
-				Test.TestEqual(FString::Printf(TEXT("'%s', %s"), *Stat.ToString(), When),
+				const float Others = Other[Stat];
+				Test.TestEqual(FString::Printf(
+					TEXT("'%s', %s (other increases %.2f)"), *Stat.ToString(), When, Others),
 					ASC->StatAppliedTo(Stat, FGameplayTagContainer(), 1000.0f) / Plain[Stat],
-					1.0f + Stacks * Case.PerStack / 100.0f, 0.001f);
+					(1.0f + (Others + Stacks * Case.PerStack) / 100.0f)
+						/ (1.0f + Others / 100.0f),
+					0.001f);
 			}
 		};
 

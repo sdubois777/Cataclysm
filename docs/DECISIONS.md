@@ -276,12 +276,26 @@ added "reduce" and "reduces", and it does not change what the check means.
 ### THE TESTS
 
 One test per enchantment, `Cataclysm.Enchantments.The...StackRow...`. Each wears the real row on a
-helm, checks that the stat's line holds that row as its only increase, then fires the row's event
+helm and checks two things about each stat's line: it holds exactly one row scaled by its own
+stacks, and every other increase on it is unscaled and unconditioned. It then fires the row's event
 and reads the stat applied to 1,000, as a share of the same reading with no stacks:
 - after two events, two stacks;
 - after the cap's worth more, the cap and no more;
 - 0.1 seconds inside the window, still the cap;
 - 0.1 seconds after it, none.
+
+The share expected is (1 + (other + stacks × value) / 100) / (1 + other / 100), where "other" is
+the sum of the line's other increases, read from the line and printed in each assertion's label.
+
+**The registration missed this, and the first version of the tests assumed it away.** It assumed
+the increased bucket held the row alone. `game/Data/Attributes.csv` puts an agility increase on
+`movement_speed` and a constitution increase on `armor` (`agility_movement_speed` and
+`constitution_armor`, 2% per point). A real wearer has both, and an attribute increase and a row
+increase add in one bucket. The stale-asset run found it: "holds one increase, this row's" failed
+on the six damage lines, as registered, and not on the four armor and movement speed lines, which
+already held one. **The coordinating session ruled the correction on 2026-09-24, under the owner's
+delegation:** change the test's shared check and nothing else, and make the test cover the
+attribute increase rather than avoid it.
 
 ---
 
