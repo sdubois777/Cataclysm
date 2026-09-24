@@ -105,6 +105,33 @@ One Python check: the row still says "every floor", "a random buff or debuff", "
 
 ---
 
+## 2026-09-24 — One class tree per damage type: a two-handed weapon reaches 8 class trees, not 24
+
+**Affects:** nothing in code yet; issue [#2064](https://github.com/sdubois777/Cataclysm/issues/2064)
+enforces it. It answers a line in an earlier entry, which is not edited.
+
+**The project owner decided on 2026-09-24**, typed in the coordinating session: "ONE CLASS PER DAMAGE
+TYPE". A character may spend points in only one class tree for each damage type on their weapons.
+That is what `docs/Cataclysm_GDD_v2.md` already says in its passive-tree overview: "Players can spec
+into one class per damage type available on their weapon."
+
+**It supersedes one line of the earlier entry on dual wielding two two-handed weapons**, which said a
+two-handed weapon "can reach all 24 class trees": 8 damage types at 3 classes each. Under this
+decision a two-handed weapon's 8 damage types reach **8** class trees, and a one-handed weapon's 4
+reach 4. That entry is not edited; this one answers it.
+
+**Found while building Sacrificial Ward's engine half** (issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515)). The code lets one Demonic character spend
+in the Ravager, Ritualist and Masochist trees at once, so a Ritualist keystone and a Ravager option
+can be held together. The design document and that design-log line disagreed, so it went to the
+owner as a question rather than being filed as a bug.
+
+**What is not decided yet**, and is listed in #2064: how and when the class for a damage type is
+chosen; what happens to points already spent in a second tree; and whether the Trainer's respec
+also frees the choice.
+
+---
+
 ## 2026-09-24 — Sacrificial Ward, engine only: a blow that would break the energy shield is taken by the weakest minion instead
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp` (where the ward is
@@ -157,6 +184,12 @@ Ravager option, but the passive tree limits a character by damage type and not b
 character reaches all three Demonic trees. So the order is stated rather than assumed. **The ward
 runs first**, and a blow it takes whole never asks Nothing Stops It. A blow it does not take is asked
 as it would have been.
+
+**Once one class per damage type is enforced, the two can never meet.** The project owner decided on
+2026-09-24 that a character may spend points in only one class tree per damage type (the entry
+"One class tree per damage type" above records it, and issue
+[#2064](https://github.com/sdubois777/Cataclysm/issues/2064) enforces it). The order above holds until
+then.
 
 **THE MINION IS KILLED BY NOBODY.** A death written to health names as its killer whoever last struck
 the dying creature, however long ago (`UCataclysmCombatEvents::NoteDeath` reads the creature's own
