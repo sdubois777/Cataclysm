@@ -17,6 +17,10 @@ most. Measured 2026-09-05 at 150 campaigns per cell, moving only that number:
     tier 1, presets beating it    0     1     4     4
     tier 8, presets beating it    1     1     2     2
 
+Those are figures of 2026-09-05, kept as the record of why the size is swept.
+Issue #1438 found five of the six cells it re-checked had moved, and the report
+no longer prints them; see the comment on `PRESET_SECOND_SURGE_SIZE`.
+
 The ordering differed from the calibrated 5 at every other value, at both tiers.
 `TuningConfig.surge_dungeon_count` defaults to 4, which `exp_calibrate` never
 tries -- it sweeps 5, 6 and 7 -- so anyone calling `exp_presets` with a raw config
@@ -271,6 +275,18 @@ class TestSectionSevenPrintsThem:
         out = presets_output(tiers=(1,), trials=2)
         assert "USED TO BE ON THAT LIST AND IS NOW SWEPT" in out
         assert "dungeons per surge" in out
+
+    def test_it_prints_no_figures_it_did_not_measure(self):
+        """Issue #1438. Section 7 printed a table of 2026-09-05 figures as
+        literal strings inside every fresh report, and five of the six cells
+        later re-checked had moved: a reader cannot tell a printed literal from
+        a printed result. The dated record lives in the source comment."""
+        out = presets_output(tiers=(1,), trials=2)
+        for literal in ("tier 1, no tree win%", "presets beating it",
+                        "44    52    15    11"):
+            assert literal not in out, (
+                f"section 7 prints {literal!r}, a figure from 2026-09-05 "
+                f"that this run did not measure")
 
     def test_each_block_heading_names_its_surge_size(self):
         """Issue #1297. A second block that does not say which world it

@@ -75,6 +75,14 @@ PRESET_TIERS = (1, 8)
 #:      tier 1, presets beating it  0     1     4     4
 #:      tier 8, presets beating it  1     1     2     2
 #:
+#: THOSE FIGURES ARE A RECORD OF 2026-09-05, NOT A CURRENT MEASUREMENT. Issue
+#: #1438 re-measured the surge 5 and 7 columns on 998d758, at the same 150
+#: campaigns a cell, `triage` policy and calibrated settings: tier 1 no-tree win
+#: 19% and 8%, presets beating it at tier 1 3 and 4, and at tier 8 0 and 0. The
+#: 4 and 6 columns were not re-measured, so the table is kept whole as the
+#: record of why a second surge size was added, not refreshed by half. The
+#: report no longer prints it; it prints its own per-block figures instead.
+#:
 #: WHY 7 AND NOT 6 OR 4. Two reasons decide it and a third does not.
 #:
 #:   1. It is the far end of the range `exp_calibrate` sweeps, which is 5, 6, 7.
@@ -865,6 +873,11 @@ def inherited_settings(cfg: TuningConfig) -> list[tuple[str, str]]:
         Architect win%      45    52    53    48
         verdict vs no tree  tied  tied  BETTER  BETTER
 
+    A RECORD OF 2026-09-05, NOT A CURRENT MEASUREMENT: issue #1438 found five of
+    six cells it re-checked had moved (the no-tree win rate at 5 fell from 52% to
+    19% on 998d758). What the table still shows is that the ordering depended on
+    the surge size when it was taken, which is why the section sweeps it.
+
     Four surge sizes gave FOUR DIFFERENT ORDERINGS. At 4 no preset beat no tree;
     at 5 one did; at 6 and 7 four of five did and the no-tree row fell to second
     from last. `exp_calibrate` tries 5, 6 and 7 and picks 5, robustly -- its top
@@ -910,17 +923,15 @@ def print_inherited_settings(cfg: TuningConfig) -> None:
     print("  per preset. See inherited_settings.")
     print("\n  THE SURGE SIZE USED TO BE ON THAT LIST AND IS NOW SWEPT, "
           "because the ordering")
-    print("  moves more with it than with the tier. Measured 2026-09-05 at 150 "
-          "campaigns per")
-    print("  cell, moving only that number:")
-    print("    dungeons per surge            4     5     6     7")
-    print("    tier 1, no tree win%         44    52    15    11")
-    print("    tier 1, presets beating it    0     1     4     4")
-    print("    tier 8, presets beating it    1     1     2     2")
-    print("  The ordering differed from the calibrated 5 at every other value, "
-          "at both tiers,")
-    print("  so the section runs a second size rather than warning about it. "
-          "Issue #1297.")
+    print("  moved more with the number of dungeons per surge than with the "
+          "tier, when")
+    print("  that was measured on 2026-09-05, so the section runs a second size "
+          "rather than")
+    print("  warning about it. Issue #1297. The figures from that day are kept "
+          "in the")
+    print("  comment on PRESET_SECOND_SURGE_SIZE as a dated record; they are not "
+          "reprinted")
+    print("  here, because this report did not measure them. Issue #1438.")
 
 def compare_against_no_tree(wins: dict[str, float], losses: dict[str, float],
                             stale: dict[str, float], trials: int,
