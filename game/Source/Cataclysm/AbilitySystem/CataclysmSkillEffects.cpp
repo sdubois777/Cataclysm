@@ -1626,6 +1626,21 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// worth more each second. Not the total, because how long it runs is
 	// refreshed separately under the third ruling.
 	const float Stated = Numbers.DamagePerTick / Numbers.SecondsPerTick;
+
+	// AN APPLICATION TO ANOTHER CHARACTER IS AN EVENT FOR WHOEVER APPLIED IT,
+	// a refresh of one already running included. Issue #1833: "Applying a DoT
+	// to an enemy grants 5%-10% increased damage for 4 seconds". Raised on the
+	// instigator's own ability system, so a minion's is the minion's. One the
+	// character puts on itself is not applying one to an enemy.
+	if (Instigator != Target)
+	{
+		if (UCataclysmAbilitySystemComponent* Applier =
+				Cast<UCataclysmAbilitySystemComponent>(Source))
+		{
+			Applier->ActOnEvent(FName(TEXT("dot_applied")));
+		}
+	}
+
 	const FRunningApplication Running = RunningApplicationOf(Defender, EffectTag);
 	if (Running.bFound && Running.Stated >= Stated)
 	{

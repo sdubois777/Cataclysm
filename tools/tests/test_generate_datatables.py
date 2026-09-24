@@ -1473,6 +1473,16 @@ class TestAPassiveNodeCanGrantSeveralStats:
         with pytest.raises(gen.DataError, match="same stat twice"):
             gen.passive_effects(rows)
 
+    def test_a_stack_seconds_column_on_this_sheet_is_refused(self, tmp_path):
+        """Issue #1833. Only an enchantment's row counts stacks of its own."""
+        book = openpyxl.load_workbook(workbook_with(
+            tmp_path / "effects.xlsx",
+            {"Passive Effects": [["Node", "Stat", "Value Kind", "Value Per Point",
+                                  "Required Tags", "Stack Seconds"],
+                                 ["A_node", "armor", "increased", 3, None, None]]}))
+        with pytest.raises(gen.DataError, match="Stack Seconds"):
+            gen.passive_effects(book)
+
     def test_a_cap_column_on_this_sheet_is_refused(self, tmp_path):
         """Issue #1815. Only an enchantment's modifier reads a cap, so a cap
         written on this sheet would be dropped with no error."""
@@ -1815,7 +1825,7 @@ class TestEnchantmentEffects:
     HEADER = ["Enchantment", "Effect", "Stat", "Value Kind", "Value Low",
               "Value High", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
-              "Scale Max Steps"]
+              "Scale Max Steps", "Stack Seconds"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -1841,7 +1851,48 @@ class TestEnchantmentEffects:
             "ValueLow": 100.0, "ValueHigh": 100.0, "RequiredTags": "",
             "Condition": "", "ConditionValue": 0.0, "Scale": "",
             "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
-            "FractionOf": "", "ScaleMaxSteps": 0}]
+            "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0}]
+
+    # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
+    # Seconds is how long they last and Scale Max Steps the cap.
+    OWN = {"Scale": "own_stacks", "Scale Step": 1, "Action Event": "critical_strike",
+           "Stack Seconds": 5, "Scale Max Steps": 5}
+
+    def test_own_stacks_are_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.OWN)]))
+        assert (out[0]["Scale"], out[0]["ActionEvent"], out[0]["StackSeconds"],
+                out[0]["ScaleMaxSteps"]) == ("own_stacks", "critical_strike", 5.0, 5)
+
+    def test_own_stacks_with_no_event_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="to grant them"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.OWN, "Action Event": None})]))
+
+    def test_own_stacks_on_an_event_the_game_does_not_record_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="to grant them"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.OWN, "Action Event": "sneeze"})]))
+
+    def test_own_stacks_with_no_seconds_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.OWN, "Stack Seconds": None})]))
+
+    def test_own_stacks_with_no_cap_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no cap"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.OWN, "Scale Max Steps": None})]))
+
+    def test_stack_seconds_on_another_scale_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="would\\s+be dropped|would be dropped"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {"Scale": "debuffs_carried", "Scale Step": 1, "Stack Seconds": 5})]))
+
+    def test_an_event_on_a_stat_row_that_counts_no_stacks_is_refused(self, tmp_path):
+        """Before issue #1833 such an event was read by nothing and dropped."""
+        with pytest.raises(gen.DataError, match="own_stacks"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {"Action Event": "critical_strike"})]))
 
     # A CAP ON A SCALE. Issue #1815: "up to 10 stacks" is a cap of 10 steps.
     def test_a_cap_is_carried_through(self, tmp_path):

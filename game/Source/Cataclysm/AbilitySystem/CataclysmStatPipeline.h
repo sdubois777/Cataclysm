@@ -1907,6 +1907,18 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Buff Held"),
 
 	/**
+	 * Multiplied by how many stacks of ITS OWN ROW the character holds. Issue
+	 * #1833, ruled 2026-09-23 under the owner's delegation: each enchantment
+	 * row is its own stack. The row's `ActionEvent` grants a stack, its Stack
+	 * Seconds is the window and `ScaleMaxSteps` the cap.
+	 *
+	 * READ BY `StackKey` through the asking ability system. A row with no key,
+	 * or a lookup with no ability system in hand, counts none.
+	 */
+	PerOwnStack
+		UMETA(DisplayName = "Per Own Stack"),
+
+	/**
 	 * `Value` PER CENT of the whole `ScaleStep` points of mana the character
 	 * holds now. Issue #1815: "Your skills deal 10%-30% of your current mana as
 	 * more damage" is a flat row of 10 to 30 with a step of 1.
@@ -2913,6 +2925,20 @@ struct CATACLYSM_API FCataclysmStatModifier
 	int32 ScaleMaxSteps = 0;
 
 	/**
+	 * Whose stacks `PerOwnStack` counts: the enchantment and the stat of the
+	 * row that made this modifier. Issue #1833.
+	 *
+	 * THE ENCHANTMENT AND THE STAT, NOT THE TABLE ROW'S NAME, because a row
+	 * does not carry its own name, and the generator refuses the same
+	 * enchantment and stat twice. TWO WORN COPIES OF ONE ENCHANTMENT SHARE THE
+	 * KEY, so they share one count and each copy's value is scaled by it: two
+	 * copies give double. Only a drawback is ever granted twice; a benefit on
+	 * several pieces is granted once, at the higher roll.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Cataclysm|Stats")
+	FName StackKey;
+
+	/**
 	 * How far "in reach" is for this row, in metres. Negative means the row is
 	 * not about anything near the character. Issue #1597.
 	 *
@@ -3077,6 +3103,25 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** What that condition compares against. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	float ConditionValue = 0.0f;
+
+	/**
+	 * Set, this action GRANTS A STACK of the row it names instead of moving a
+	 * pool. Issue #1833: the event, the tag scope and the condition are judged
+	 * exactly as for a pool, and `Pool` is not read.
+	 *
+	 * ONLY AN EVENT THAT LANDED GRANTS ONE, ruled 2026-09-23: an evaded blow is
+	 * not a hit (the ruling of 2026-09-04). See `ActOnEvent`'s `bLanded`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName StackKey;
+
+	/** How long the row's stacks last after the last one was granted. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float StackSeconds = 0.0f;
+
+	/** The most stacks the row holds. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 StackCap = 0;
 };
 
 /**

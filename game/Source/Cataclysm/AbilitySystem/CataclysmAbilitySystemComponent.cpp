@@ -1882,6 +1882,13 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 		ClearStacks(Kind);
 	}
 
+	// AND EVERY ROW'S OWN STACKS, for the same reason. Issue #1833.
+	for (const TPair<FName, FOwnStack>& Held : OwnStacks)
+	{
+		Ended.Stacks += OwnStacksHeld(Held.Key);
+	}
+	OwnStacks.Empty();
+
 	// THE HEALTH DEBT, WHAT IS OWED AND WHEN IT FALLS DUE TOGETHER, the pair
 	// `UCataclysmHealthDebt::ClearOnKill` writes. Issue #1013, answered by the
 	// same ruling: every character, The Reckoning included. That keystone's debt
@@ -2125,7 +2132,7 @@ float UCataclysmAbilitySystemComponent::SecondsSinceEvaded() const
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastEvadeAtSeconds);
 }
 
-void UCataclysmAbilitySystemComponent::NoteHitTaken()
+void UCataclysmAbilitySystemComponent::NoteHitTaken(bool bLanded)
 {
 	if (const UWorld* World = GetWorld())
 	{
@@ -2135,7 +2142,7 @@ void UCataclysmAbilitySystemComponent::NoteHitTaken()
 	// AND A HIT TAKEN IS HALF OF WHAT "IN COMBAT" MEANS. Issue #1815.
 	NoteCombatEvent();
 
-	ActOnEvent(FName(TEXT("hit_taken")));
+	ActOnEvent(FName(TEXT("hit_taken")), nullptr, 0.0f, bLanded);
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceHitTaken() const
@@ -2423,14 +2430,14 @@ float UCataclysmAbilitySystemComponent::SecondsSinceSpellCast() const
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastSpellAtSeconds);
 }
 
-void UCataclysmAbilitySystemComponent::NoteMeleeHitTaken()
+void UCataclysmAbilitySystemComponent::NoteMeleeHitTaken(bool bLanded)
 {
 	if (const UWorld* World = GetWorld())
 	{
 		LastMeleeHitTakenAtSeconds = World->GetTimeSeconds();
 	}
 
-	ActOnEvent(FName(TEXT("melee_hit_taken")));
+	ActOnEvent(FName(TEXT("melee_hit_taken")), nullptr, 0.0f, bLanded);
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceMeleeHitTaken() const
@@ -2508,8 +2515,36 @@ bool UCataclysmAbilitySystemComponent::PoolAttributesFor(
 	return false;
 }
 
+int32 UCataclysmAbilitySystemComponent::OwnStacksHeld(FName StackKey) const
+{
+	const FOwnStack* Held = OwnStacks.Find(StackKey);
+	const UWorld* World = GetWorld();
+	if (!Held || Held->Count <= 0 || !World)
+	{
+		return 0;
+	}
+	const float Since = World->GetTimeSeconds() - Held->GrantedAtSeconds;
+	return Since > Held->WindowSeconds ? 0 : Held->Count;
+}
+
+void UCataclysmAbilitySystemComponent::GrantOwnStack(FName StackKey,
+													 float WindowSeconds, int32 Cap)
+{
+	const UWorld* World = GetWorld();
+	if (StackKey.IsNone() || WindowSeconds <= 0.0f || Cap <= 0 || !World)
+	{
+		return;
+	}
+	const int32 Standing = OwnStacksHeld(StackKey);
+	FOwnStack& Held = OwnStacks.FindOrAdd(StackKey);
+	Held.Count = FMath::Min(Standing + 1, Cap);
+	Held.GrantedAtSeconds = World->GetTimeSeconds();
+	Held.WindowSeconds = WindowSeconds;
+}
+
 void UCataclysmAbilitySystemComponent::ActOnEvent(
-	FName Event, const FGameplayTagContainer* EventTags, float EventAmount)
+	FName Event, const FGameplayTagContainer* EventTags, float EventAmount,
+	bool bLanded)
 {
 	// ANNOUNCED FIRST, before either early return below. Issue #1821: a
 	// listener asking again for a cached stat needs every event, and most
@@ -2527,12 +2562,28 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	// A COPY, because applying one writes an attribute, and an attribute write
 	// can reach the equipment refresh that replaces this very list.
 	const TArray<FCataclysmPoolAction> Firing = PoolActions;
+	// ONE STACK PER ROW PER EVENT, however many copies of the row are worn.
+	// Issue #1833: two copies share the row's count, and would otherwise each
+	// grant one and double the rate the sentence states.
+	TSet<FName> StackedThisEvent;
 	for (const FCataclysmPoolAction& Action : Firing)
 	{
-		if (Action.Event == Event && PoolActionAllowed(Action, EventTags))
+		if (Action.Event != Event || !PoolActionAllowed(Action, EventTags))
 		{
-			ApplyPoolAction(Action, EventTags, EventAmount);
+			continue;
 		}
+		if (!Action.StackKey.IsNone())
+		{
+			// ONLY A LANDED EVENT GRANTS A STACK, ruled 2026-09-23. A pool
+			// action keeps firing as it always did.
+			if (bLanded && !StackedThisEvent.Contains(Action.StackKey))
+			{
+				StackedThisEvent.Add(Action.StackKey);
+				GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+			}
+			continue;
+		}
+		ApplyPoolAction(Action, EventTags, EventAmount);
 	}
 }
 

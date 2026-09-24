@@ -2240,4 +2240,12 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	int32 ScaleMaxSteps = 0;
+
+	/**
+	 * How long a row's own stacks last after the last one was granted, for a
+	 * row scaled by `own_stacks`; 0 otherwise. Issue #1833: "for 5 seconds,
+	 * up to 5 stacks" is 5 here and 5 in `ScaleMaxSteps`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float StackSeconds = 0.0f;
 };

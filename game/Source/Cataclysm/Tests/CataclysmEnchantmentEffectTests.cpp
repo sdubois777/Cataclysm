@@ -2293,9 +2293,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4224,6 +4224,129 @@ bool FCataclysmMinionMaximumHealthRowTest::RunTest(const FString&)
 	TestTrue(FString::Printf(TEXT("and the maximum health attribute falls: %.2f against %.2f"),
 							 ASC->GetNumericAttribute(MaxHealth), AttributeAlone),
 		ASC->GetNumericAttribute(MaxHealth) < AttributeAlone - 0.001f);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnStackRowBuildsTest,
+	"Cataclysm.Enchantments.AnOwnStackRowBecomesAScaledModifierAndAStackGrant",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A hand-made row scaled by `own_stacks`, on an enchantment carried by two worn
+ * pieces. Issue #1833, engine-only: the seven real rows wait for the design
+ * workbook.
+ *
+ * ON A DRAWBACK, each piece becomes a stat modifier scaled by the row's own
+ * stacks and a grant on the row's event, and the two carry ONE key, so they
+ * share one count. ON A BENEFIT, the same two pieces give one of each, because
+ * a benefit counts once however many pieces carry it, at the higher of their
+ * rolls, while a drawback counts for every piece: the rule in
+ * `UCataclysmItemModifiers::AccumulateEnchantmentsInto`. This test first
+ * expected two from a benefit, and failed.
+ */
+bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+
+	UDataTable* Positive =
+		LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsPositive.csv"));
+	UDataTable* Negative =
+		LoadCsv<FCataclysmEnchantmentRow>(TEXT("EnchantmentsNegative.csv"));
+	if (!TestNotNull(TEXT("the positive enchantments"), Positive)
+		|| !TestNotNull(TEXT("the negative enchantments"), Negative))
+	{
+		return false;
+	}
+
+	// THE SAME ROW, WRITTEN ON WHICHEVER ENCHANTMENT A HALF NEEDS, and the same
+	// two pieces, each carrying the benefit and the drawback.
+	using FTotalsByStat = TMap<FName, TArray<FCataclysmStatModifier>>;
+	const auto Build = [&](const TCHAR* Enchantment, FTotalsByStat& Totals,
+						   TArray<FCataclysmPoolAction>& Actions)
+	{
+		UDataTable* Effects = EffectTableFrom(
+			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
+						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds\n"))
+			+ FString::Printf(
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5\n"),
+				Enchantment, Enchantment));
+		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
+		{
+			return false;
+		}
+		const TArray<FCataclysmItem> Worn = {
+			Carrying(TEXT("Head_Helm"), ShieldBenefit, DrawbackWithNoEffect),
+			Carrying(TEXT("Chest_Cuirass"), ShieldBenefit, DrawbackWithNoEffect)};
+		UCataclysmItemModifiers::AccumulateEnchantmentsInto(
+			Totals, Worn, Effects, Positive, Negative, &Actions);
+		return true;
+	};
+
+	// EVERY MODIFIER AND GRANT THE ROW MADE, checked the same way in both halves.
+	const auto CheckEach = [&](const TCHAR* Half, const TArray<FCataclysmStatModifier>& Armour,
+							   const TArray<FCataclysmPoolAction>& Actions, FName Key)
+	{
+		for (const FCataclysmStatModifier& Per : Armour)
+		{
+			TestEqual(*FString::Printf(TEXT("%s: scaled by its own stacks"), Half),
+				static_cast<int32>(Per.Scale),
+				static_cast<int32>(ECataclysmStatScale::PerOwnStack));
+			TestEqual(*FString::Printf(TEXT("%s: under the row's key"), Half),
+				Per.StackKey, Key);
+			TestEqual(*FString::Printf(TEXT("%s: capped at five"), Half), Per.ScaleMaxSteps, 5);
+		}
+		for (const FCataclysmPoolAction& Grant : Actions)
+		{
+			TestEqual(*FString::Printf(TEXT("%s: granted on its event"), Half),
+				Grant.Event, FName(TEXT("critical_strike")));
+			TestEqual(*FString::Printf(TEXT("%s: under the same key, so the pieces share one count"), Half),
+				Grant.StackKey, Key);
+			TestEqual(*FString::Printf(TEXT("%s: lasting its Stack Seconds"), Half),
+				Grant.StackSeconds, 5.0f, 0.001f);
+			TestEqual(*FString::Printf(TEXT("%s: up to its cap"), Half), Grant.StackCap, 5);
+			TestTrue(*FString::Printf(TEXT("%s: and moving no pool"), Half), Grant.Pool.IsNone());
+		}
+	};
+
+	// A DRAWBACK ON TWO PIECES: one modifier and one grant for each piece.
+	{
+		FTotalsByStat Totals;
+		TArray<FCataclysmPoolAction> Actions;
+		if (!Build(DrawbackWithNoEffect, Totals, Actions))
+		{
+			return false;
+		}
+		const TArray<FCataclysmStatModifier>* Armour = Totals.Find(FName(TEXT("armor")));
+		if (!TestNotNull(TEXT("a drawback: it became armour modifiers"), Armour)
+			|| !TestEqual(TEXT("a drawback on two pieces: a modifier for each"), Armour->Num(), 2)
+			|| !TestEqual(TEXT("a drawback on two pieces: a stack grant for each"), Actions.Num(), 2))
+		{
+			return false;
+		}
+		CheckEach(TEXT("a drawback"), *Armour, Actions,
+			FName(*FString::Printf(TEXT("%s:armor"), DrawbackWithNoEffect)));
+	}
+
+	// A BENEFIT ON THE SAME TWO PIECES: one of each, however many carry it.
+	{
+		FTotalsByStat Totals;
+		TArray<FCataclysmPoolAction> Actions;
+		if (!Build(ShieldBenefit, Totals, Actions))
+		{
+			return false;
+		}
+		const TArray<FCataclysmStatModifier>* Armour = Totals.Find(FName(TEXT("armor")));
+		if (!TestNotNull(TEXT("a benefit: it became an armour modifier"), Armour)
+			|| !TestEqual(TEXT("a benefit on two pieces: one modifier"), Armour->Num(), 1)
+			|| !TestEqual(TEXT("a benefit on two pieces: one stack grant"), Actions.Num(), 1))
+		{
+			return false;
+		}
+		CheckEach(TEXT("a benefit"), *Armour, Actions,
+			FName(*FString::Printf(TEXT("%s:armor"), ShieldBenefit)));
+	}
 
 	return true;
 }

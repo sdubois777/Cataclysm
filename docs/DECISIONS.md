@@ -2,6 +2,150 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — Each enchantment row can count stacks of its own, granted by its event (engine only)
+
+**Affects:**
+- `CataclysmStatPipeline.h` and `.cpp`: the scale `own_stacks`, `FCataclysmStatModifier::StackKey`,
+  and a stack grant on `FCataclysmPoolAction`
+- `UCataclysmAbilitySystemComponent`: `OwnStacksHeld`, `GrantOwnStack`, a `bLanded` flag on
+  `ActOnEvent`, `NoteHitTaken` and `NoteMeleeHitTaken`, and death clearing a row's own stacks
+- `UCataclysmSkillEffects::ApplyDamageOverTime`, which raises the new event `dot_applied`
+- `FCataclysmEnchantmentEffectRow::StackSeconds`, and `UCataclysmItemModifiers`
+- `tools/generate_datatables.py`
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833)
+
+### THE RULING: EACH ROW IS ITS OWN STACK
+
+**Ruled by the coordinating session on 2026-09-23, under the owner's delegation.** This is the
+revisit that the 2026-09-14 ruling ("stack kinds stay a fixed C++ set for now; revisit after #1720")
+asked for.
+
+- A row scaled by `own_stacks` gains a stack when its `ActionEvent` happens.
+- Its new Stack Seconds column is how long the stacks last, and `ScaleMaxSteps` is the cap. A grant
+  restarts the window, and the whole count lapses together: the shape the five kinds already have.
+- **The five existing kinds stay in C++.**
+- **Rejected:** a "Stack Kinds" sheet, which builds a stack shared between rows that nothing needs;
+  and more fixed kinds, at about 11 edits each (#1720's count).
+
+**Only a landed event grants a stack.** An evaded blow is not a hit (2026-09-04). A pool action,
+and every clock, go on firing as before.
+
+### ONE ROW ON SEVERAL WORN PIECES
+
+The coordinating session asked for this case to be decided and pinned, not left implicit.
+
+**Which rows can be worn more than once is not this change's rule.**
+`UCataclysmItemModifiers::AccumulateEnchantmentsInto` grants a benefit once however many pieces
+carry it, at the higher of their rolls, and a drawback for every piece at its own roll. So only a
+row on a drawback is ever granted twice. Of the seven rows waiting for the workbook, four are on
+drawbacks (a melee hit taken lowers armor, a kill lowers damage, a skill use lowers armor, a spell
+cast lowers armor) and three are on benefits (a critical strike raises all damage, applying a DoT
+raises damage, a skill use raises movement speed).
+
+**The coordinating session's first ruling said the opposite, and it was wrong.** It expected two
+copies to give double "as any two worn copies of a flat row do", and this entry repeated it as
+"two worn copies of any row give double". That is false for a benefit, by the rule above. The
+build window found it (see Run), and the coordinating session corrected its ruling in that window.
+
+For a drawback on several pieces:
+
+- **The pieces share one count.** A row carries no name of its own, so the key is the enchantment
+  and the stat; the generator never lets two rows share that pair.
+- **Each piece's value is scaled by the shared count.** So two pieces at two stacks of 10% are 40%
+  increased, double one piece's 20%, as a drawback on two pieces gives double.
+- **One event grants one stack, however many pieces are worn.** Otherwise two pieces would also
+  double the rate at which stacks come, which the sentence does not say.
+
+Tests pin all three, and one test also pins a benefit on two pieces giving one modifier and one
+grant.
+
+### A STACK ROW'S TAGS AND CONDITION SCOPE ITS STAT, NOT ITS GRANT
+
+**A judgement under the owner's delegation, approved by the coordinating session on 2026-09-23.**
+
+- A row's `RequiredTags` and `Condition` go onto its stat modifier, as on any stat row. They
+  decide when the stacks count.
+- They are not copied onto the action that grants the stack. The row's event grants a stack
+  whatever skill raised it and whatever state the wearer is in.
+- **No phase-1 row needs either.** None of the seven rows waiting for the workbook carries a tag or
+  a condition. A later row whose sentence scopes the grant itself ("critical strikes with spells
+  grant a stack") needs the grant filtered, which this change does not build.
+
+### THREE THINGS FOUND WHILE BUILDING IT
+
+- **`hit_taken` and `melee_hit_taken` fire on an evaded blow too.** `CataclysmVitalAttributeSet.cpp`
+  raises both before it asks whether the blow was evaded. They now carry `bLanded`, which only a
+  stack grant reads, so "Melee attacks that hit you reduce your armor ... stacking up to 5 times"
+  gains no stack from a blow its wearer evaded. A test drives both an evaded and a landed blow.
+- **A stat row's Action Event was read by nothing before this.** The generator now refuses one on
+  a row not scaled by `own_stacks`, rather than dropping it. No row on `development` had one.
+- **The event for applying a damage over time did not exist.** `dot_applied` is raised on the
+  applier's own ability system for a damage over time put on another character, a refresh
+  included. A minion's application is the minion's own. One the character puts on itself is not
+  "applying a DoT to an enemy".
+
+### NO ROWS YET
+
+This is the engine change alone, taking a build window of its own. Seven rows follow with the
+design workbook:
+- six on events already recorded: critical strike, skill use (twice), melee hit taken, kill and
+  spell;
+- one on `dot_applied`.
+
+Until then, Stack Seconds is in `OPTIONAL_COLUMNS`, and `own_stacks` is listed as built ahead of its
+rows. The tests use hand-made rows.
+
+### Run
+
+- **The first build failed**, on `cb28421b`: "Build: Failed - 28 actions, 25 files compiled", two
+  C2440 errors in `CataclysmDeathTests.cpp` (lines 1443 and 1456). That file's table of event
+  windows stores `&NoteHitTaken` and `&NoteMeleeHitTaken` as pointers to members taking no
+  arguments. This change had given each a `bool bLanded = true`, and **a default argument does not
+  change a member function's type**. Each now has a form taking `bLanded` and a form with no
+  argument, for a landed blow (`1836b322`). The rebuild printed "Build: Succeeded - 26 actions, 23
+  files compiled".
+- **The stale-asset step missed its registration twice.** Registered: 87 performed, exactly 1
+  failed, `EveryGeneratedTableHasAnAssetThatMatchesIt`. Printed: "87 tests performed, 86 succeeded,
+  1 failed: AnOwnStackRowBecomesAScaledModifierAndAStackGrant".
+  - That test wore one benefit on two pieces and expected two modifiers: "Expected 'one for each
+    copy' to be 2, but it was 1". The game was right and the test was wrong, by the rule in the
+    section above. The test now has two halves, a drawback on two pieces (two of each) and a
+    benefit on two pieces (one of each).
+  - `EveryGeneratedTableHasAnAssetThatMatchesIt` passed with the old asset. **The C++ stale-asset
+    check cannot see a new column whose every value equals the field's default.** It loads the old
+    asset into the current row struct, which fills the missing `StackSeconds` with 0, the value
+    every row of the CSV holds, so both sides export the same text. The Python hash test,
+    `test_every_csv_still_hashes_to_what_was_recorded`, is what caught it. That test already covers
+    the case, so no issue was filed. The step was not run again, since it could not fail.
+- **Found by the build and filed rather than fixed:** a C4996 warning, "Attempting to use Cast<>
+  on types that are not related", at `CataclysmMinionAttackSpeedTests.cpp:240`, an assertion that
+  cannot fail ([#2055](https://github.com/sdubois777/Cataclysm/issues/2055)).
+- **The test and log corrections built** on `4e9d6d90`: "Build: Succeeded - 28 actions, 25 files
+  compiled".
+- **The asset rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json`
+  and nothing else (`17f9ca8b`). The Python asset-freshness tests then passed, 18 of 18.
+- **The whole suite on `17f9ca8b`:** "2276 tests performed, 2276 succeeded, 0 failed", as registered
+  (2270 + the six named tests), with every declared test reported.
+- **Three guard proofs**, each failing exactly the registered tests with the break in and none
+  restored. Each broken run's log was copied before the restored run overwrote it, and its failure
+  text is quoted:
+  - **a stack granted by an event that did not land** (`bLanded &&` removed from the grant's test in
+    `CataclysmAbilitySystemComponent.cpp`) failed `AnEventGrantsARowsOwnStackOncePerEventOnlyWhenItLanded`
+    ("Expected 'an event that did not land grants none' to be 1, but it was 2") and
+    `AnEvadedMeleeBlowGrantsNoOwnStackAndALandedOneDoes` ("Expected 'and granted no stack' to be 0, but
+    it was 1"), 2 of 2, and 0 of 2 restored;
+  - **every copy granting on one event** (`StackedThisEvent.Add(Action.StackKey);` removed) failed
+    `AnEventGrantsARowsOwnStackOncePerEventOnlyWhenItLanded` ("Expected 'two copies, one critical
+    strike: one stack' to be 1, but it was 2") and `TwoCopiesOfAStackRowShareOneCountAndEachIsScaledByIt`
+    ("Expected 'two copies at two stacks: 40%, double one copy' to be 140.000000, but it was
+    180.000000"), 2 of 2, and 0 of 2 restored;
+  - **the scale reading no stacks** (`StackedValue(...)` replaced with `0.0f` in
+    `CataclysmStatPipeline.cpp`) failed `TwoCopiesOfAStackRowShareOneCountAndEachIsScaledByIt` ("Expected
+    'one copy at two stacks: 20% increased' to be 120.000000, but it was 100.000000"), 1 of 1, and 0 of
+    1 restored.
+
+---
+
 ## 2026-09-23 — Starvation Curse: each floor adds a 5% slow or 5% less maximum health, until a floor's boss or the player dies
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

@@ -447,7 +447,19 @@ public:
 	 *                   that rather than of a pool. Zero when it carried nothing.
 	 */
 	void ActOnEvent(FName Event, const FGameplayTagContainer* EventTags = nullptr,
-					float EventAmount = 0.0f);
+					float EventAmount = 0.0f, bool bLanded = true);
+
+	/**
+	 * How many stacks of one row's own this character holds now: nought once
+	 * the row's window has passed since the last grant. Issue #1833.
+	 */
+	int32 OwnStacksHeld(FName StackKey) const;
+
+	/**
+	 * Grant one stack of a row's own, up to its cap, and restart its window.
+	 * Issue #1833. A cap or window of nothing grants nothing.
+	 */
+	void GrantOwnStack(FName StackKey, float WindowSeconds, int32 Cap);
 
 	/**
 	 * Raised at the top of every `ActOnEvent`, whether or not any worn action
@@ -1484,7 +1496,15 @@ public:
 	 * hit is still a hit; an evaded hit is still a hit. So this opens together
 	 * with those and must not be described, or tested, as exclusive.
 	 */
-	void NoteHitTaken();
+	void NoteHitTaken(bool bLanded);
+
+	/**
+	 * The same, for a blow that landed. Kept as a form of its own rather than
+	 * a default argument, because a default does not change a function's type:
+	 * `CataclysmDeathTests.cpp` stores this one's address as a pointer to a
+	 * member taking no arguments, in its table of event windows. Issue #1833.
+	 */
+	void NoteHitTaken() { NoteHitTaken(true); }
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceHitTaken() const;
@@ -1681,7 +1701,15 @@ public:
 	 * condition `seconds_after_melee_hit_taken`, and which asks the player's movement speed again on
 	 * the frame of the event.
 	 */
-	void NoteMeleeHitTaken();
+	void NoteMeleeHitTaken(bool bLanded);
+
+	/**
+	 * The same, for a blow that landed. Kept as a form of its own rather than
+	 * a default argument, because a default does not change a function's type:
+	 * `CataclysmDeathTests.cpp` stores this one's address as a pointer to a
+	 * member taking no arguments, in its table of event windows. Issue #1833.
+	 */
+	void NoteMeleeHitTaken() { NoteMeleeHitTaken(true); }
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceMeleeHitTaken() const;
@@ -1846,6 +1874,21 @@ protected:
 
 	/** What the worn items do when an event happens. See `SetPoolActions`. */
 	TArray<FCataclysmPoolAction> PoolActions;
+
+	/** One row's own stacks: how many, and when the last was granted. */
+	struct FOwnStack
+	{
+		int32 Count = 0;
+		float GrantedAtSeconds = 0.0f;
+		float WindowSeconds = 0.0f;
+	};
+
+	/**
+	 * Every row's own stacks, by `FCataclysmStatModifier::StackKey`. Issue
+	 * #1833. THE SAME SHAPE AS `StackCounts`: one count and one timestamp, a
+	 * grant restarts the window, and the whole count lapses together.
+	 */
+	TMap<FName, FOwnStack> OwnStacks;
 
 	/**
 	 * How deep inside `ActOnEvent` this character currently is, which is never

@@ -945,10 +945,20 @@ namespace
 			Out.ScaleStep = Effect.ScaleStep;
 			// AND ITS CAP. Issue #1815.
 			Out.ScaleMaxSteps = Effect.ScaleMaxSteps;
+			// AND, FOR A ROW'S OWN STACKS, WHOSE THEY ARE. Issue #1833.
+			if (Out.Scale == ECataclysmStatScale::PerOwnStack)
+			{
+				Out.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(Effect);
+			}
 		}
 
 		return true;
 	}
+}
+
+FName UCataclysmItemModifiers::OwnStackKeyFor(const FCataclysmEnchantmentEffectRow& Effect)
+{
+	return FName(*FString::Printf(TEXT("%s:%s"), *Effect.Enchantment, *Effect.Stat));
 }
 
 int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
@@ -1003,6 +1013,20 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 
 		for (const FCataclysmEnchantmentEffectRow* Effect : *Effects)
 		{
+			// A ROW SCALED BY ITS OWN STACKS ALSO NEEDS SOMETHING TO GRANT THEM:
+			// an action on its event that gains a stack instead of moving a pool.
+			// Issue #1833. Its modifier is added below, like any stat row's.
+			if (Actions && Effect->Action.IsEmpty()
+				&& Effect->Scale.Equals(TEXT("own_stacks"), ESearchCase::IgnoreCase))
+			{
+				FCataclysmPoolAction Stack;
+				Stack.Event = FName(*Effect->ActionEvent);
+				Stack.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(*Effect);
+				Stack.StackSeconds = Effect->StackSeconds;
+				Stack.StackCap = Effect->ScaleMaxSteps;
+				Actions->Add(Stack);
+			}
+
 			// A ROW THAT MOVES A POOL LEAVES BY A DIFFERENT DOOR. It is not a stat
 			// modifier and cannot become one: the pipeline reads a modifier when
 			// something asks for a stat, and a pool moves at a moment instead.
