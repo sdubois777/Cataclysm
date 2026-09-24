@@ -2,6 +2,70 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-23 — The two lists of stats the engine gives a base value are held equal by a check
+
+**Affects:** the new `tools/tests/test_engine_supplied_bases_agree.py` only. Issue
+[#1674](https://github.com/sdubois777/Cataclysm/issues/1674).
+
+### WHAT WAS UNGUARDED
+
+The stats the engine supplies a base value for are written twice:
+
+- `ENGINE_SUPPLIED_BASES` in `tools/generate_datatables.py`, which exempts them from the generator's
+  refusal of an increase with no base under it;
+- `UCataclysmPlayerClassStats::EngineSuppliedBases()` in
+  `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp`, which puts the base on a real
+  character.
+
+**A stat in the Python list and not the C++ map generates cleanly and is zero for every player.**
+That happened for `damage_to_bleeding_window` (#1025) and for `stagger_duration` during #45. Each of
+the two existing guards reads one list only, so neither could see a stat that was on one side
+alone. The two lists agreed when this was measured on 2026-09-23, at 47a9a6c7: seven stats each.
+
+### THE RULING, UNDER THE OWNER'S DELEGATION
+
+**Made by the coordinating session on 2026-09-23, open to the owner's veto:** a Python check that
+reads the C++ map as text and compares it with the Python list. **No C++ changes.**
+
+**The C++ map is not a list of strings**, so the check reads it in two ways:
+
+- **Written entries.** The five written entries are keyed by named constants such as
+  `UCataclysmDebuffs::DurationStat`. Each is resolved to its string from its definition,
+  `const TCHAR* Class::Name = TEXT("...")`, anywhere under `game/Source/`.
+- **The ailment loop.** The two ailment magnitudes, `cripple_magnitude` and `weaken_magnitude`, are
+  added by a loop over `UCataclysmAilments::Kinds()`. They are read out of the kinds table in
+  `CataclysmAilments.cpp`, as field 6 of each nine-field entry. An entry of any other length fails
+  by name, so a field added to `FCataclysmAilmentKind` is noticed rather than misread.
+
+**Comments are stripped before anything is matched**, by a stripper that keeps string literals
+whole, so a commented-out entry is not an entry. **A key constant that cannot be resolved fails by
+name** rather than being dropped.
+
+The check asserts:
+
+- that both reading paths found what they should: at least five written entries, at least ten
+  ailment kinds and at least two magnitudes, measured at 5, 11 and 2;
+- that the two sets of stat names are equal;
+- that each Python entry's text names the value constant the C++ entry for the same stat uses. For
+  example, `damage_taken` names `UCataclysmDamageCalculation::NormalDamageTaken`, and the C++ entry
+  uses it. #1674 suggested this as the second assertion.
+
+A hand-made C++ sample shows the reader skipping a `//` entry and a `/* */` entry, reading a string
+holding `//` whole, and naming a key constant that has no definition.
+
+### PROOF
+
+Three breaks with `tools/prove_guard.break_and_run`, in a `git archive` copy of 4c5d03d2, each
+asserted to match once:
+
+| Break | Printed | `named_failures` |
+|---|---|---|
+| a stat `phantom_base` added to `ENGINE_SUPPLIED_BASES` only | `PROVED: 1 failed, 3 passed in 2.66s \| restored: 4 passed in 1.68s` | `test_the_python_and_engine_lists_name_the_same_stats` |
+| the written `stagger_duration` entry deleted from the C++ map | `PROVED: 2 failed, 2 passed in 1.69s \| restored: 4 passed in 1.66s` | `test_the_engine_side_is_read_whole`, `test_the_python_and_engine_lists_name_the_same_stats` |
+| Weaken's `MagnitudeStat` set to `nullptr` in the ailment table, removing a loop-added entry | `PROVED: 2 failed, 2 passed in 1.70s \| restored: 4 passed in 1.63s` | `test_the_engine_side_is_read_whole`, `test_the_python_and_engine_lists_name_the_same_stats` |
+
+---
+
 ## 2026-09-23 — Every ninety seconds the dirge hastes every creature on the floor for ten; its fear immunity and its music do nothing yet
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
