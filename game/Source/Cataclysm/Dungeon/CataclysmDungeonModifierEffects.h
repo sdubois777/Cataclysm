@@ -4550,16 +4550,14 @@ public:
 
 	/**
 	 * The kind a floor actually adds: the drawn one, or the other when the drawn one is at
-	 * its cap, or `StarvationCurseAddsNothing` when both are. Ruled under the owner's
+	 * its cap, or `StarvationCurseAddsNothing` when both are. THE ONLY CAP ON THE STACKS:
+	 * nothing else holds them at `StarvationCurseMostStacks`. Ruled under the owner's
 	 * delegation, 2026-09-23: "each new floor adds a starvation debuff" is broken by a floor
 	 * that adds nothing while the other kind has room.
 	 */
 	static int32 StarvationCurseKindToAdd(int32 Drawn, int32 MovementStacks, int32 HealthStacks);
 
-	/** One more stack, up to `StarvationCurseMostStacks`. */
-	static int32 StarvationCurseStacksAfterAdding(int32 Held);
-
-	/** What this many stacks take off their stat, in percent. */
+	/** What this many stacks take off their stat, in percent. Not capped here. */
 	static float StarvationCurseLessPercent(int32 Stacks);
 
 	/**

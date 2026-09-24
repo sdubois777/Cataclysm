@@ -27,7 +27,7 @@ cleansed." The row gives no figure.
 As each floor carrying the row begins, floor 1 included, one stack is added of one of two kinds, drawn
 at even odds: movement speed 5% less, or maximum health 5% less. Each kind holds at most ten stacks
 (50%); a draw for a kind already at ten goes to the other kind, and a floor adds nothing only
-when both kinds are at ten. The stacks belong to the dungeon: they stay on
+when both kinds are at ten. That check, `StarvationCurseKindToAdd`, is the only cap in the code. The stacks belong to the dungeon: they stay on
 floors that do not carry the row and are put back on the player after every floor change. The death of
 a floor's boss clears both kinds, and so does the player's own death. Leaving the dungeon empties them.
 The floor panel shows each kind as a share and as "N of 10".
@@ -94,8 +94,8 @@ Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 - `EachFloorCarryingTheStarvationCurseAddsOneStack`: floor 1 adds one; two slowing floors and one
   health floor leave 10% less movement speed and 5% less maximum health; the panel line; and leaving the
   dungeon empties both.
-- `TheStarvationCurseStopsAtTenStacksOfEachKind`: the draw's boundary at 50, nine becoming ten and ten
-  staying ten, a full kind's draw going to the other, and in play: twelve floors that all draw a slow
+- `TheStarvationCurseStopsAtTenStacksOfEachKind`: the draw's boundary at 50, a full kind's draw going
+  to the other, both full adding nothing, and in play: twelve floors that all draw a slow
   leave ten slow stacks and two health stacks, and ten more leave ten of each, the last two floors adding
   nothing.
 - `AFloorsBossOrThePlayersDeathCleansesTheStarvationCurse`: a Common's death leaves the stacks; a

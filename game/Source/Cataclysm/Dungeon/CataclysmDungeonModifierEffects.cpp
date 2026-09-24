@@ -1812,15 +1812,9 @@ int32 UCataclysmDungeonModifierEffects::StarvationCurseKindToAdd(int32 Drawn,
 	return bHealthFull ? StarvationCurseSlowsMovement : StarvationCurseLowersHealth;
 }
 
-int32 UCataclysmDungeonModifierEffects::StarvationCurseStacksAfterAdding(int32 Held)
-{
-	return FMath::Min(FMath::Max(0, Held) + 1, StarvationCurseMostStacks);
-}
-
 float UCataclysmDungeonModifierEffects::StarvationCurseLessPercent(int32 Stacks)
 {
-	return static_cast<float>(FMath::Clamp(Stacks, 0, StarvationCurseMostStacks))
-		* StarvationCursePercentPerStack;
+	return static_cast<float>(FMath::Max(0, Stacks)) * StarvationCursePercentPerStack;
 }
 
 int32 UCataclysmDungeonModifierEffects::UnstablePortalOutcomeFor(float Roll)

@@ -2099,7 +2099,8 @@ void ACataclysmDungeonGameMode::AddAStarvationCurse()
 	int32& Stacks = Kind == Effects::StarvationCurseSlowsMovement
 		? StarvationCurseMovementStacks
 		: StarvationCurseHealthStacks;
-	Stacks = Effects::StarvationCurseStacksAfterAdding(Stacks);
+	// ONE STACK. `StarvationCurseKindToAdd` above is what keeps each kind at its cap.
+	Stacks += 1;
 	UE_LOG(LogCataclysm, Log,
 		   TEXT("Starvation Curse: floor %d adds %s; %d movement and %d health stacks held"),
 		   FloorNumber,

@@ -23183,8 +23183,6 @@ bool FCataclysmCurseCapTest::RunTest(const FString& Parameters)
 			  Effects::StarvationCurseSlowsMovement);
 	TestEqual(TEXT("from 50 it lowers health"), Effects::StarvationCurseKindFor(50.0f),
 			  Effects::StarvationCurseLowersHealth);
-	TestEqual(TEXT("nine becomes ten"), Effects::StarvationCurseStacksAfterAdding(9), 10);
-	TestEqual(TEXT("ten stays ten"), Effects::StarvationCurseStacksAfterAdding(10), 10);
 	TestEqual(TEXT("ten stacks take 50%"), Effects::StarvationCurseLessPercent(10), 50.0f, 0.001f);
 	TestEqual(TEXT("a slow drawn with room is a slow"),
 			  Effects::StarvationCurseKindToAdd(Effects::StarvationCurseSlowsMovement, 9, 0),
