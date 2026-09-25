@@ -14,9 +14,8 @@ places that write it), the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmEnemyBehaviourTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -115,10 +114,36 @@ ordinary attack is recorded after it swings.
 One Python check: the row still says "spectral versions", "killed on the previous floor", "repeat
 their final attacks" and "before vanishing", and states no figure.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-24, on development e3724c72 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The Python suite of record**, on 918c594f, whose tree is the same as the head's: 5,439 passed and
+  8 skipped of 5,447, 0 failed.
+- **The whole suite on the head**, 3aeeda31: "Build: Succeeded - 29 actions, 26 files compiled"; 2,412
+  tests performed, 2,412 succeeded, 0 failed.
+- **The group `Cataclysm.DungeonModifierEffects.` on the head**: 292 tests performed, 292 succeeded, 0
+  failed.
+- **The group on the base**, e3724c72: 288 tests performed, 288 succeeded, 0 failed. Run after the
+  Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **The ordinary attack not recorded** (the controller's write of `OrdinaryAttackUsed` made
+  `(void)Recorded;`), on the prefix `Cataclysm.AI.ABruteInContactReach`. With the break in: 1
+  performed, 0 succeeded, 1 failed, `ABruteInContactReachStopsRoamingAndLandsAHit`, on "Expected 'and
+  recorded it as its ordinary attack' to be -1, but it was 0" -- 0 being the stomp it last used.
+  Restored: 1 performed, 1 succeeded, 0 failed.
+- **A death that pays nothing recorded** (`!Fallen->PaysForItsDeath()` removed from the recording
+  guard), on the prefix `Cataclysm.DungeonModifierEffects.EchoesOfThePast`. With the break in: 2
+  performed, 1 succeeded, 1 failed, `EchoesOfThePastRecordsTheLastSixPaidDeathsOfOneFloor`, on
+  "Expected 'and is not recorded' to be 2, but it was 3" and "Expected 'the last six are kept, the
+  first gone' to be true". Restored: 2 performed, 2 succeeded, 0 failed.
+- **An echo's ordinary attack not made** (`Echo->AttackTarget(Player);` made `(void)Echo;`), on the
+  same prefix. With the break in: 2 performed, 1 succeeded, 1 failed,
+  `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`, on "Expected 'the echoes struck
+  the player (100000.0 to 100000.0)' to be true". Restored: 2 performed, 2 succeeded, 0 failed.
 
 ---
 
