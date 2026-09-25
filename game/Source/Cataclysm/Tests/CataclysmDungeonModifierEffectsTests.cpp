@@ -27484,9 +27484,12 @@ bool FCataclysmChorusPlacedTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("the panel says they sing"), Mode->LiveCountsForTheFloor().FindRef(ChorusRow),
 			  FString(TEXT("eternal chorus: 2 sources singing")));
 
-	// A HORDE ARENA HAS ONE, AND ITS NEXT WAVE KEEPS IT AND DRAWS ITS EARSHOT AGAIN.
+	// A HORDE ARENA HAS ONE, AND ITS NEXT WAVE KEEPS IT AND DRAWS ITS EARSHOT AGAIN. FLOOR 1, because
+	// a Horde dungeon's floor 1 is its one new arena and every later floor is a wave in it
+	// (`FCataclysmDungeonFloorRules::SameArenaAsLastFloor`): going there clears floor 2's actors and
+	// places the arena's source; floor 2 then is its next wave.
 	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
-	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(3)))
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
 	{
 		return false;
 	}
@@ -27495,8 +27498,11 @@ bool FCataclysmChorusPlacedTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	TestFalse(TEXT("the floor's two are gone"), IsValid(Sources[0]) && !Sources[0]->IsActorBeingDestroyed());
-	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(4)))
+	for (ACataclysmEnemyCharacter* Gone : Sources)
+	{
+		TestFalse(TEXT("the floor's two are gone"), IsValid(Gone) && !Gone->IsActorBeingDestroyed());
+	}
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
 	{
 		return false;
 	}
