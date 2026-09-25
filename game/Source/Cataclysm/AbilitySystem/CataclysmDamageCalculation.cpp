@@ -384,6 +384,26 @@ float UCataclysmDamageCalculation::ArmorReduction(float Armor, int32 Tier)
 float UCataclysmDamageCalculation::EffectiveResistance(float Resistance,
 													   float Penetration)
 {
+	return EffectiveResistanceUnderCap(Resistance, Penetration, ResistanceCap);
+}
+
+const TCHAR* UCataclysmDamageCalculation::ResistanceCapStat = TEXT("resistance_cap");
+
+float UCataclysmDamageCalculation::ResistanceCapOf(const UAbilitySystemComponent* Defender)
+{
+	const UCataclysmAbilitySystemComponent* Asking =
+		Cast<const UCataclysmAbilitySystemComponent>(Defender);
+	const float Cap = Asking
+		? Asking->StatAppliedTo(FName(ResistanceCapStat), FGameplayTagContainer(),
+								ResistanceCap)
+		: ResistanceCap;
+	return FMath::Clamp(Cap, 0.0f, ResistanceCapCeiling);
+}
+
+float UCataclysmDamageCalculation::EffectiveResistanceUnderCap(float Resistance,
+															   float Penetration,
+															   float Cap)
+{
 	// Penetration stops at zero. Anything past the target's own resistance is
 	// wasted rather than pushing the figure negative, or over-stacking becomes a
 	// damage multiplier against the targets that resist least. A resistance that
@@ -394,7 +414,7 @@ float UCataclysmDamageCalculation::EffectiveResistance(float Resistance,
 	const float ReachableByPenetration = FMath::Min(Resistance, 0.0f);
 	const float Penetrated =
 		FMath::Max(Resistance - Penetration, ReachableByPenetration);
-	return FMath::Clamp(Penetrated, ResistanceFloor, ResistanceCap);
+	return FMath::Clamp(Penetrated, ResistanceFloor, Cap);
 }
 
 float UCataclysmDamageCalculation::ResistancePenaltyAt(int32 DifficultyTier)
@@ -681,9 +701,12 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	}
 
 	// 4. Resistance, penetrated first and capped second.
-	const float Resist = EffectiveResistance(
+	//
+	// UNDER THE DEFENDER'S OWN CAP, which is 70 unless a row moves it. Issue
+	// #1833.
+	const float Resist = EffectiveResistanceUnderCap(
 		ResistanceFor(Defender, Hit.DamageType, Tier),
-		Hit.ResistancePenetration);
+		Hit.ResistancePenetration, ResistanceCapOf(Defender));
 	Damage *= 1.0f - Resist / 100.0f;
 
 	// 5. Flat damage reduction, capped. Until issue #644 this was the one step

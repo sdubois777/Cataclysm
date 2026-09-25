@@ -167,6 +167,12 @@ bool UCataclysmSaveWriter::WriteTheRunRecord(ECataclysmSaveTrigger Trigger)
 	LastRun->Characters = { CharacterId };
 	LastRun->Floor = FCataclysmSaveGather::FloorFrom(*World, Dungeon, Floor, CharacterId);
 
+	// AND THIS RUN'S KILLS, off the character playing it. Issue #1833.
+	if (const ACataclysmPlayerCharacter* Playing = FCataclysmSaveGather::CharacterIn(*World))
+	{
+		FCataclysmSaveGather::RunKillsFrom(*Playing, *LastRun);
+	}
+
 	// AND THE EMPIRE'S CLOCK, WHEN THERE IS A RUN TO READ IT FROM. Both halves:
 	// the whole days and the time spent that has not yet added up to one. A save
 	// that kept only the first loses up to just under a day of empire progress

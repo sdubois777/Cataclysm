@@ -410,6 +410,17 @@ public:
 	int64 Experience = 0;
 
 	/**
+	 * Every kill the character has made, in every run. Issue #1833, the kill
+	 * counter. Written with the level, when this record is written: on an
+	 * inventory change or a death, not on every kill.
+	 *
+	 * NOT A SCHEMA VERSION BUMP, for `UCataclysmRunSave::PartialDay`'s reason:
+	 * a field with a sensible default. A record written before it reads nought.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 LifetimeKills = 0;
+
+	/**
 	 * How the character's attribute points are spread across the eight.
 	 *
 	 * A CHARACTER HAS ONE POINT FOR EVERY LEVEL, so the total here can never
@@ -795,6 +806,16 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	int32 RandomStreamSeed = 0;
+
+	/**
+	 * The kills made this run by the character playing it. Issue #1833, the
+	 * kill counter. One count: solo play. Co-operative play would need one per
+	 * character, beside `Characters`.
+	 *
+	 * NOT A SCHEMA VERSION BUMP, for `PartialDay`'s reason above.
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	int32 RunKills = 0;
 
 	/** The character records taking part: one in solo play, up to four in
 	 *  co-operative play. */
