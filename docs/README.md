@@ -85,7 +85,7 @@ heading row describe their layout instead. Issue #1884.
 | Affix Tiers | 7 | Tier, Drop Weight, Note |
 | Enemy Drops | 6 | Enemy Rarity, Step, Gear Drops, Magic Find, Material Drops, Note |
 | Material Tiers | 5 | Tier, Tier Name, Drop Weight, Materials, Colour, Note |
-| Passive Effects | 315 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres |
+| Passive Effects | 321 | Node, Stat, Value Kind, Value Per Point, Required Tags, Condition, Condition Value, Scale, Scale Step, Option, Node Name, Reach Metres |
 | Weapon Meshes | 14 | Base Name, Mesh, Scale |
 | Enchantment Effects | 347 | Enchantment, Effect, Stat, Value Kind, Value Low, Value High, Required Tags, Condition, Condition Value, Scale, Scale Step, Action, Action Event, Fraction Of, Scale Max Steps, Scale Offset, Stack Seconds, Every Seconds, Every Nth |
 

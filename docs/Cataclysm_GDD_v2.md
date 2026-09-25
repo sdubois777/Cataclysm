@@ -2289,9 +2289,10 @@ cooldown reduction, which raises how often minions are summoned, and minion dama
 would have been a second gain on the same build. Its area of effect is not a gain
 here: the paragraph opening "Everything else is blocked unless a modifier says
 "minion"" keeps it from reaching a minion, so an imp's death explosion keeps the
-radius its summoning skill states. Ferocity fails it too: critical strike chance and
-multiplier would compound the moment minions were ever allowed to critically
-strike.
+radius its summoning skill states, unless a modifier that names minions says
+otherwise, as A Second Self does for the minion it chooses. Ferocity fails it too:
+critical strike chance and multiplier would compound the moment minions were ever
+allowed to critically strike.
 
   
 
