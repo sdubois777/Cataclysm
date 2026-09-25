@@ -1945,6 +1945,15 @@ public:
 	/** How many creatures Divine Wrath's beams have destroyed on this floor. */
 	int32 DivineWrathDestroyedCount() const { return DivineWrathDestroyed; }
 
+	/** Echoes of the Past, for the panel and tests: the last attacks recorded on this floor. */
+	TArray<int32> EchoAttacksRecordedThisFloor() const;
+
+	/** How many of the last floor's dead come back as echoes on this one. */
+	int32 EchoesComingThisFloor() const { return EchoesFromLastFloor.Num(); }
+
+	/** The echoes standing now. */
+	TArray<ACataclysmEnemyCharacter*> EchoesStandingNow() const;
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2043,6 +2052,15 @@ private:
 	void NoteDeathForPlagueConvergence(const struct FCataclysmDeathNotice& Notice);
 
 	/** Divine Wrath, on the beat: a beam when one is due, aimed at the player, killing creatures. */
+	/** Echoes of the Past, on every death: a creature's kind, rung and last attack are kept. */
+	void NoteDeathForEchoesOfThePast(const struct FCataclysmDeathNotice& Notice);
+
+	/** Echoes of the Past, on the beat: the last floor's dead appear, strike once and go. */
+	void StepEchoesOfThePast(class ACataclysmPlayerCharacter* Player);
+
+	/** Every echo standing is destroyed and forgotten. */
+	void DismissTheEchoes();
+
 	void StepDivineWrath(class ACataclysmPlayerCharacter* Player,
 						 class UCataclysmAbilitySystemComponent* AbilitySystem);
 
@@ -2930,6 +2948,32 @@ private:
 	float DivineWrathSecondsSinceLast = 0.0f;
 	TWeakObjectPtr<class ACataclysmGroundZone> DivineWrathBeam;
 	int32 DivineWrathDestroyed = 0;
+
+	/** Echoes of the Past: one death that may come back, as recorded. */
+	struct FEchoOfTheDead
+	{
+		ECataclysmDungeonCreature Kind = ECataclysmDungeonCreature::Count;
+		int32 Rung = 0;
+		int32 Attack = -2; // ACataclysmEnemyCharacter::NoAttackYet; the class is only declared here
+	};
+
+	/** An echo standing, and the attack it will make. */
+	struct FEchoStanding
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Echo;
+		int32 Attack = -2; // ACataclysmEnemyCharacter::NoAttackYet; the class is only declared here
+	};
+
+	/**
+	 * Echoes of the Past: this floor's deaths, the last `EchoesMost`; the last floor's, handed
+	 * over as a floor begins; the echoes standing; the floor's seconds; and how far the echoes
+	 * have got -- 0 waiting, 1 appeared, 2 struck, 3 gone.
+	 */
+	TArray<FEchoOfTheDead> EchoesThisFloor;
+	TArray<FEchoOfTheDead> EchoesFromLastFloor;
+	TArray<FEchoStanding> EchoesStanding;
+	float EchoesSecondsOnFloor = 0.0f;
+	int32 EchoesStage = 0;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

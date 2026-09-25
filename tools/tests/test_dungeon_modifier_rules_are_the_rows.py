@@ -3985,3 +3985,25 @@ def test_a_divine_wrath_beam_is_slower_than_every_class():
             f"A Divine Wrath beam moves at {beam_metres} m/s and {name} at {speed} m/s, so a "
             f"{name} who keeps moving cannot escape it. The row says players take damage when they "
             "\"fail to avoid them\"; slow the beam or rule again.")
+
+
+def test_echoes_of_the_past_row_still_brings_back_the_previous_floors_dead_for_one_attack():
+    """The phrases the rule's readings rest on.
+
+    "Spectral versions of enemies killed on the previous floor appear and repeat their final
+    attacks before vanishing." SPECTRAL is why an echo cannot be hurt and pays nothing; KILLED ON
+    THE PREVIOUS FLOOR is why deaths are recorded on every floor and handed over one floor on;
+    REPEAT THEIR FINAL ATTACKS is why each creature's last attack is recorded and made once; BEFORE
+    VANISHING is why they go a second later; and the row gives no figure, which is why every number
+    is a ruling. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Death_Echoes_of_the_Past"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("spectral versions", "killed on the previous floor",
+                   "repeat their final attacks", "before vanishing"):
+        assert phrase in lower, (
+            f"Death_Echoes_of_the_Past no longer says {phrase.upper()!r}. A reading of the rule "
+            "rests on it; see EchoesOfThePastKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert not any(character.isdigit() for character in words), (
+        "Death_Echoes_of_the_Past now states a figure; the rule's figures are rulings. " + words)

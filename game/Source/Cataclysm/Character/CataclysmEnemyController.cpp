@@ -606,6 +606,11 @@ ECataclysmBrainAction ACataclysmEnemyController::Think()
 		LastAttackTime = Now;
 		bHasAttacked = true;
 		Driven->AttackTarget(Target);
+		// RECORDED FOR ECHOES OF THE PAST: its last attack was the ordinary one.
+		if (ACataclysmEnemyCharacter* Recorded = Cast<ACataclysmEnemyCharacter>(Driven))
+		{
+			Recorded->LastAttackUsed = ACataclysmEnemyCharacter::OrdinaryAttackUsed;
+		}
 		++AttacksOrdered;
 	}
 
@@ -986,6 +991,11 @@ bool ACataclysmEnemyController::ContinueWindUp(ACataclysmCharacterBase* Driven)
 	// Issue #41, slice 4. Here and in `UseAbilitiesOn`, the two places a
 	// creature's ability begins.
 	UCataclysmCombatEvents::NoteCreatureAbility(Driven, Landing);
+	// RECORDED FOR ECHOES OF THE PAST: its last attack was this ability.
+	if (ACataclysmEnemyCharacter* Recorded = Cast<ACataclysmEnemyCharacter>(Driven))
+	{
+		Recorded->LastAttackUsed = Landing;
+	}
 
 	// AN ABILITY THAT LANDS COUNTS AS AN ATTACK FOR THE ATTACK INTERVAL.
 	//
@@ -1217,6 +1227,11 @@ ECataclysmBrainAction ACataclysmEnemyController::UseAbilitiesOn(
 	++AbilitiesUsed;
 	// Announced as a skill used. See `ContinueWindUp`. Issue #41, slice 4.
 	UCataclysmCombatEvents::NoteCreatureAbility(Driven, Chosen);
+	// RECORDED FOR ECHOES OF THE PAST, as after a wind-up above.
+	if (ACataclysmEnemyCharacter* Recorded = Cast<ACataclysmEnemyCharacter>(Driven))
+	{
+		Recorded->LastAttackUsed = Chosen;
+	}
 
 	LastAction = ECataclysmBrainAction::Attacking;
 	return LastAction;

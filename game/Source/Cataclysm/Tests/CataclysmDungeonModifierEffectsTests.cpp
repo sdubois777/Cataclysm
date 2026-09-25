@@ -23,6 +23,7 @@
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
+#include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -26393,6 +26394,344 @@ bool FCataclysmWrathBurnsTest::RunTest(const FString& Parameters)
 	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a Divine Wrath beam"), Resist::GetCelestialResistanceAttribute(),
 									LostWithCelestial.GetValue(), Resist::GetVoidResistanceAttribute(),
 									LostWithVoid.GetValue());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Death_Echoes_of_the_Past. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName EchoesRow(UCataclysmDungeonModifierEffects::EchoesOfThePastKey);
+
+	/**
+	 * A dungeon on floor 2 carrying NO row, with its own creatures cleared, and two creatures the
+	 * player kills there: a Common that made its ordinary attack and then a Magic one that never
+	 * attacked. False, with a failure, when any of it did not happen.
+	 */
+	bool TwoDieOnFloorTwo(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+						  ACataclysmDungeonGameMode*& OutMode)
+	{
+		OutMode = ACurseDungeon(Test, World, Player);
+		if (!OutMode)
+		{
+			return false;
+		}
+		OutMode->DungeonModifiers = {};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), OutMode->GoToFloor(2)))
+		{
+			return false;
+		}
+		OutMode->ClearFloorEnemies();
+
+		ACataclysmEnemyCharacter* Swung = PlaceCreatureAtRung(World, OutMode, FVector(300.0f, 0.0f, 0.0f), 0);
+		ACataclysmEnemyCharacter* Idle = PlaceCreatureAtRung(World, OutMode, FVector(-300.0f, 0.0f, 0.0f), 1);
+		if (!Test.TestNotNull(TEXT("a Common creature"), Swung) || !Test.TestNotNull(TEXT("a Magic one"), Idle))
+		{
+			return false;
+		}
+		Swung->LastAttackUsed = ACataclysmEnemyCharacter::OrdinaryAttackUsed;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Swung, 100000.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Idle, 100000.0f);
+		return Test.TestTrue(TEXT("both died"),
+							 UCataclysmSkillEffects::IsDead(Swung) && UCataclysmSkillEffects::IsDead(Idle));
+	}
+}
+
+// AN ECHO STANDS AT ITS OWN ATTACK REACH, NEVER MORE THAN SIX METRES, AT EVEN ANGLES AROUND THE PLAYER.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesPlacedTest,
+	"Cataclysm.DungeonModifierEffects.EchoesStandAtTheirOwnReachAtEvenAnglesNeverBeyondSixMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesPlacedTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("an Imp's 132 cm reach is kept"), Effects::EchoesDistanceCm(132.0f), 132.0f, 0.01f);
+	TestEqual(TEXT("a Sentinel's 1400 cm is held to six metres"), Effects::EchoesDistanceCm(1400.0f),
+			  Effects::EchoesMostAwayCm, 0.01f);
+	TestTrue(TEXT("the first of four stands straight along X"),
+			 Effects::EchoesOffset(0, 4, 200.0f).Equals(FVector(200.0f, 0.0f, 0.0f), 0.01f));
+	TestTrue(TEXT("the second a quarter turn round"),
+			 Effects::EchoesOffset(1, 4, 200.0f).Equals(FVector(0.0f, 200.0f, 0.0f), 0.01f));
+	TestTrue(TEXT("the third opposite the first"),
+			 Effects::EchoesOffset(2, 4, 200.0f).Equals(FVector(-200.0f, 0.0f, 0.0f), 0.01f));
+	TestTrue(TEXT("and none at all is no offset"), Effects::EchoesOffset(0, 0, 200.0f).IsZero());
+	return true;
+}
+
+// THE LAST FLOOR'S DEAD, RECORDED ON A FLOOR WITHOUT THE ROW, APPEAR FIVE SECONDS INTO ONE WITH IT;
+// THEY CANNOT BE HURT, HAVE NO BRAIN AND ARE NOT THE FLOOR'S CREATURES; A SECOND LATER EACH STRIKES
+// THE PLAYER ONCE, AND A SECOND AFTER THAT THEY ARE GONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesStrikeTest,
+	"Cataclysm.DungeonModifierEffects.EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesStrikeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	if (!TwoDieOnFloorTwo(*this, World, Player, Mode) || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	TestTrue(TEXT("recorded on a floor without the row: the ordinary attack, then none"),
+			  Mode->EchoAttacksRecordedThisFloor()
+			  == TArray<int32>{ACataclysmEnemyCharacter::OrdinaryAttackUsed, ACataclysmEnemyCharacter::NoAttackYet});
+
+	Mode->DungeonModifiers = {EchoesRow};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	TestEqual(TEXT("two of the last floor's dead are coming"), Mode->EchoesComingThisFloor(), 2);
+	TestEqual(TEXT("and this floor has recorded none yet"), Mode->EchoAttacksRecordedThisFloor().Num(), 0);
+	TestTrue(TEXT("the panel says how many come"),
+			 Mode->LiveCountsForTheFloor().FindRef(EchoesRow).Contains(TEXT("2 of the last floor's dead")));
+
+	const int32 ToAppear = BeatsFor(Effects::EchoesAppearAfterSeconds);
+	Beat(Mode, ToAppear - 1);
+	if (!TestEqual(TEXT("none a beat before five seconds"), Mode->EchoesStandingNow().Num(), 0))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
+	if (!TestEqual(TEXT("two echoes at five seconds"), Echoes.Num(), 2))
+	{
+		return false;
+	}
+
+	int32 RungsSeen = 0;
+	for (ACataclysmEnemyCharacter* Echo : Echoes)
+	{
+		TestTrue(TEXT("an echo is the kind that died"), Echo->IsA<ACataclysmImpCharacter>());
+		RungsSeen += 1 << Echo->RarityStep;
+		TestNull(TEXT("with no brain"), Echo->GetController());
+		TestTrue(TEXT("that cannot be hurt"), Echo->bCannotBeHurt);
+		TestFalse(TEXT("pays nothing"), Echo->PaysForItsDeath());
+		TestTrue(TEXT("and was raised by the rule"), Echo->bRaisedByARule);
+		TestFalse(TEXT("and is not one of the floor's creatures"), Mode->FloorEnemies.Contains(Echo));
+		TestEqual(TEXT("standing at its own attack reach from the player"),
+				  static_cast<float>(FVector::Dist2D(Echo->GetActorLocation(), Player.Character->GetActorLocation())),
+				  Effects::EchoesDistanceCm(Echo->AttackReachCm()), 1.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Echo, 100000.0f);
+		TestFalse(TEXT("and a killing blow does not kill it"), UCataclysmSkillEffects::IsDead(Echo));
+		TestTrue(TEXT("given a blow to strike with"), GiveCreatureAttackDamage(Echo, 100.0f) > 0.0f);
+	}
+	TestEqual(TEXT("one echo at each rung that died, Common and Magic"), RungsSeen, (1 << 0) + (1 << 1));
+	TestTrue(TEXT("the panel says they stand"),
+			 Mode->LiveCountsForTheFloor().FindRef(EchoesRow).Contains(TEXT("2 echo(es) standing")));
+
+	// THEY STRIKE ONCE, A SECOND LATER. Evasion is taken away so neither blow can miss.
+	Player.AbilitySystem->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	const float Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(Effects::EchoesStrikeAfterSeconds) - 1);
+	// AT LEAST, NOT EQUAL: regeneration may only raise it, and a strike can only lower it.
+	TestTrue(TEXT("no strike a beat early"), HealthOf(Player.Character) >= Before - 0.01f);
+	Beat(Mode, 1);
+	const float AfterStrike = HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("the echoes struck the player (%.1f to %.1f)"), Before, AfterStrike),
+			 AfterStrike < Before);
+	TestEqual(TEXT("and are still standing"), Mode->EchoesStandingNow().Num(), 2);
+
+	// AND GO A SECOND AFTER THAT, HAVING STRUCK ONLY ONCE.
+	Beat(Mode, BeatsFor(Effects::EchoesVanishAfterSeconds) - 1);
+	TestTrue(TEXT("no second strike"), HealthOf(Player.Character) >= AfterStrike - 0.01f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("gone a second after striking"), Mode->EchoesStandingNow().Num(), 0);
+	TestTrue(TEXT("destroyed, not left in the world"), !IsValid(Echoes[0]) || Echoes[0]->IsActorBeingDestroyed());
+	return true;
+}
+
+// WHAT IS RECORDED: NOT A DEATH THAT PAYS NOTHING; ONLY THE LAST SIX; THE RECORD COVERS ONE FLOOR;
+// A FLOOR WITHOUT THE ROW BRINGS NONE; HORDE WAVES BRING THEM; LEAVING THE DUNGEON FORGETS THEM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesRecordTest,
+	"Cataclysm.DungeonModifierEffects.EchoesOfThePastRecordsTheLastSixPaidDeathsOfOneFloor",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	if (!TwoDieOnFloorTwo(*this, World, Player, Mode))
+	{
+		return false;
+	}
+
+	// A DEATH THAT PAYS NOTHING IS NOT RECORDED.
+	ACataclysmEnemyCharacter* Unpaid = PlaceCreatureAtRung(World, Mode, FVector(0.0f, 300.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature that dies unpaid"), Unpaid))
+	{
+		return false;
+	}
+	Unpaid->bDiesUnpaid = true;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Unpaid, 100000.0f);
+	TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Unpaid));
+	TestEqual(TEXT("and is not recorded"), Mode->EchoAttacksRecordedThisFloor().Num(), 2);
+
+	// ONLY THE LAST SIX. Five more, each recorded as having used ability 7, push the first out.
+	for (int32 Which = 0; Which < 5; ++Which)
+	{
+		ACataclysmEnemyCharacter* More =
+			PlaceCreatureAtRung(World, Mode, FVector(0.0f, -300.0f - 200.0f * Which, 0.0f), 0);
+		if (!TestNotNull(TEXT("another creature"), More))
+		{
+			return false;
+		}
+		More->LastAttackUsed = 7;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, More, 100000.0f);
+	}
+	TestTrue(TEXT("the last six are kept, the first gone"), Mode->EchoAttacksRecordedThisFloor()
+			  == TArray<int32>{ACataclysmEnemyCharacter::NoAttackYet, 7, 7, 7, 7, 7});
+
+	// A FLOOR WITHOUT THE ROW BRINGS NONE, AND THE RECORD STILL MOVES ON: floor 2's dead are not
+	// carried past floor 3.
+	if (!TestTrue(TEXT("floor 3, without the row, was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(Effects::EchoesAppearAfterSeconds));
+	TestEqual(TEXT("no echoes on a floor without the row"), Mode->EchoesStandingNow().Num(), 0);
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	Mode->DungeonModifiers = {EchoesRow};
+	if (!TestTrue(TEXT("a Horde wave with the row was reached"), Mode->GoToFloor(4)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("floor 2's dead are not carried past floor 3"), Mode->EchoesComingThisFloor(), 0);
+
+	// HORDE WAVES TOO: one dies on this wave and comes back on the next.
+	Mode->ClearFloorEnemies();
+	ACataclysmEnemyCharacter* OnTheWave = PlaceCreatureAtRung(World, Mode, FVector(300.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature on the wave"), OnTheWave))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, OnTheWave, 100000.0f);
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(5)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(Effects::EchoesAppearAfterSeconds));
+	TestEqual(TEXT("its echo appears on the next Horde wave"), Mode->EchoesStandingNow().Num(), 1);
+
+	// LEAVING THE DUNGEON FORGETS EVERY DEATH IN IT.
+	ACataclysmEnemyCharacter* Last = PlaceCreatureAtRung(World, Mode, FVector(-300.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("one more creature"), Last))
+	{
+		return false;
+	}
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Last, 100000.0f);
+	TestEqual(TEXT("recorded before leaving"), Mode->EchoAttacksRecordedThisFloor().Num(), 1);
+	Mode->LeaveEmpireDungeon();
+	TestEqual(TEXT("nothing recorded after leaving"), Mode->EchoAttacksRecordedThisFloor().Num(), 0);
+	TestEqual(TEXT("and nothing coming"), Mode->EchoesComingThisFloor(), 0);
+	return true;
+}
+
+// AN ECHO REPEATS THE ABILITY ITS CREATURE LAST USED, BY INDEX: a Brute that last stomped comes back
+// and stomps, which stuns the player where its ordinary attack would not.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEchoesAbilityTest,
+	"Cataclysm.DungeonModifierEffects.AnEchoRepeatsTheAbilityItsCreatureLastUsed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmEchoesAbilityTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	ACataclysmEnemyCharacter* Brute = World->SpawnActor<ACataclysmBruteCharacter>(
+		ACataclysmBruteCharacter::StaticClass(), FVector(400.0f, 0.0f, 0.0f), FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a Brute"), Brute))
+	{
+		return false;
+	}
+	Brute->SetRarityStep(0);
+	Brute->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	WoundCreatureTo(Brute, 100.0f, 0.0f);
+	Brute->LastAttackUsed = ACataclysmBruteCharacter::StompAbility;
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Brute, 100000.0f);
+	if (!TestTrue(TEXT("the Brute died"), UCataclysmSkillEffects::IsDead(Brute))
+		|| !TestTrue(TEXT("recorded as its stomp"), Mode->EchoAttacksRecordedThisFloor()
+					  == TArray<int32>{ACataclysmBruteCharacter::StompAbility}))
+	{
+		return false;
+	}
+
+	Mode->DungeonModifiers = {EchoesRow};
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, BeatsFor(Effects::EchoesAppearAfterSeconds));
+	const TArray<ACataclysmEnemyCharacter*> Echoes = Mode->EchoesStandingNow();
+	if (!TestEqual(TEXT("one echo"), Echoes.Num(), 1)
+		|| !TestTrue(TEXT("a Brute's"), Echoes[0]->IsA<ACataclysmBruteCharacter>()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("inside its stomp's ring of the player"),
+			 FVector::Dist2D(Echoes[0]->GetActorLocation(), Player.Character->GetActorLocation())
+				 < ACataclysmBruteCharacter::StompRadiusCm);
+	TestTrue(TEXT("given a blow to strike with"), GiveCreatureAttackDamage(Echoes[0], 100.0f) > 0.0f);
+	TestFalse(TEXT("the player is not stunned before it strikes"),
+			  UCataclysmSkillEffects::IsStunned(Player.Character));
+
+	const float Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(Effects::EchoesStrikeAfterSeconds));
+	TestTrue(FString::Printf(TEXT("the echo's stomp struck the player (%.1f to %.1f)"), Before,
+							 HealthOf(Player.Character)),
+			 HealthOf(Player.Character) < Before);
+	TestTrue(TEXT("and stunned them, which only the stomp does"), UCataclysmSkillEffects::IsStunned(Player.Character));
 	return true;
 }
 

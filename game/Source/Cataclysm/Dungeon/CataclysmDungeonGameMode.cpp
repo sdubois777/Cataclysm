@@ -2455,6 +2455,178 @@ void ACataclysmDungeonGameMode::NoteDeathForPlagueConvergence(const FCataclysmDe
 	}
 }
 
+TArray<int32> ACataclysmDungeonGameMode::EchoAttacksRecordedThisFloor() const
+{
+	TArray<int32> Attacks;
+	for (const FEchoOfTheDead& Dead : EchoesThisFloor)
+	{
+		Attacks.Add(Dead.Attack);
+	}
+	return Attacks;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::EchoesStandingNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const FEchoStanding& One : EchoesStanding)
+	{
+		if (ACataclysmEnemyCharacter* Echo = One.Echo.Get())
+		{
+			Standing.Add(Echo);
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForEchoesOfThePast(const FCataclysmDeathNotice& Notice)
+{
+	// EVERY FLOOR, WHETHER OR NOT IT CARRIES THE ROW: the next floor decides. Not a death that
+	// pays nothing, which covers the risen and the rules' own unpaid creatures, and not an
+	// echo, which cannot be hurt and never dies. A creature the floor cannot name a kind for
+	// cannot be brought back and is not kept.
+	const ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Fallen || !Fallen->PaysForItsDeath() || Fallen->bCannotBeHurt)
+	{
+		return;
+	}
+	const ECataclysmDungeonCreature Kind = DungeonGameModeKindOf(Fallen);
+	if (Kind == ECataclysmDungeonCreature::Count)
+	{
+		return;
+	}
+	FEchoOfTheDead Dead;
+	Dead.Kind = Kind;
+	Dead.Rung = Fallen->RarityStep;
+	Dead.Attack = Fallen->LastAttackUsed;
+	EchoesThisFloor.Add(Dead);
+	// THE LAST TO DIE ARE THE ONES KEPT.
+	while (EchoesThisFloor.Num() > UCataclysmDungeonModifierEffects::EchoesMost)
+	{
+		EchoesThisFloor.RemoveAt(0);
+	}
+}
+
+void ACataclysmDungeonGameMode::DismissTheEchoes()
+{
+	for (const FEchoStanding& One : EchoesStanding)
+	{
+		if (ACataclysmEnemyCharacter* Echo = One.Echo.Get())
+		{
+			Echo->Destroy();
+		}
+	}
+	EchoesStanding.Reset();
+}
+
+void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!Player || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+	EchoesSecondsOnFloor += SecondsBetweenWaveChecks;
+	const FVector Centre = Player->GetActorLocation();
+
+	if (EchoesStage == 0)
+	{
+		if (EchoesSecondsOnFloor < Effects::EchoesAppearAfterSeconds)
+		{
+			return;
+		}
+		// THE LAST FLOOR'S DEAD APPEAR, each at its own ordinary attack reach from the player,
+		// at even angles. SpawnPlacedCreature puts it on the right cell at the right height;
+		// it is then moved to the exact spot and turned to face the player.
+		const int32 Count = EchoesFromLastFloor.Num();
+		for (int32 Which = 0; Which < Count; ++Which)
+		{
+			const FEchoOfTheDead& Dead = EchoesFromLastFloor[Which];
+			FCataclysmEnemyPlacement Placement;
+			Placement.Creature = Dead.Kind;
+			Placement.Cell = CurrentFloor->CellOfWorld(Centre);
+			ACataclysmEnemyCharacter* Echo = SpawnPlacedCreature(Placement, 1.0f, Dead.Rung);
+			if (!Echo)
+			{
+				continue;
+			}
+
+			// ITS BRAIN GOES AT ONCE: with no controller nothing moves it, chooses for it or
+			// attacks with it. Unpossessing clears the controller's thinking timer.
+			if (AController* Brain = Echo->GetController())
+			{
+				Brain->UnPossess();
+				Brain->Destroy();
+			}
+
+			const FVector Offset = Effects::EchoesOffset(
+				Which, Count, Effects::EchoesDistanceCm(Echo->AttackReachCm()));
+			const FVector Where(Centre.X + Offset.X, Centre.Y + Offset.Y, Echo->GetActorLocation().Z);
+			Echo->SetActorLocation(Where);
+			FVector Toward = Centre - Where;
+			Toward.Z = 0.0f;
+			if (!Toward.IsNearlyZero())
+			{
+				Echo->SetActorRotation(Toward.Rotation());
+			}
+
+			// NOT ON THE FLOOR'S LIST OF CREATURES: an echo is gone two seconds later, and a rule
+			// that chose from that list -- Blood Bond's one bond, say -- must not spend itself on one.
+			Echo->bCannotBeHurt = true;
+			Echo->bDiesUnpaid = true;
+			Echo->bRaisedByARule = true;
+			CreaturesRaisedByARule.Add(Echo);
+			FEchoStanding Standing;
+			Standing.Echo = Echo;
+			Standing.Attack = Dead.Attack;
+			EchoesStanding.Add(Standing);
+		}
+		EchoesStage = 1;
+		UE_LOG(LogCataclysm, Log, TEXT("Echoes of the Past: %d echo(es) appeared on floor %d"),
+			   EchoesStanding.Num(), FloorNumber);
+		RefreshFloorModifierPanel();
+		return;
+	}
+
+	if (EchoesStage == 1)
+	{
+		if (EchoesSecondsOnFloor
+			< Effects::EchoesAppearAfterSeconds + Effects::EchoesStrikeAfterSeconds)
+		{
+			return;
+		}
+		// EACH STRIKES ONCE: its recorded ability if it has that ability, else its ordinary
+		// attack, which is also what a creature that never attacked repeats.
+		for (const FEchoStanding& One : EchoesStanding)
+		{
+			ACataclysmEnemyCharacter* Echo = One.Echo.Get();
+			if (!Echo)
+			{
+				continue;
+			}
+			if (One.Attack >= 0 && Echo->EnemyAbilities().IsValidIndex(One.Attack))
+			{
+				Echo->UseEnemyAbility(One.Attack, Player, Player->GetActorLocation());
+			}
+			else
+			{
+				Echo->AttackTarget(Player);
+			}
+		}
+		EchoesStage = 2;
+		return;
+	}
+
+	if (EchoesSecondsOnFloor < Effects::EchoesAppearAfterSeconds + Effects::EchoesStrikeAfterSeconds
+			+ Effects::EchoesVanishAfterSeconds)
+	{
+		return;
+	}
+	DismissTheEchoes();
+	EchoesStage = 3;
+	RefreshFloorModifierPanel();
+}
+
 void ACataclysmDungeonGameMode::StepDivineWrath(
 	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -3314,6 +3486,10 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// empty now, so the applier writes an armour modifier of nothing.
 	MarchOfProgressCommandersKilled = 0;
 
+	// AND NO DEATH OF THIS DUNGEON ECHOES INTO THE NEXT. Issues #1820 and #41.
+	EchoesThisFloor.Reset();
+	EchoesFromLastFloor.Reset();
+
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
 	// maximums, gives back the resistance The Nihil's Embrace had taken, stops
@@ -3761,6 +3937,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND DIVINE WRATH, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bDivineWrath = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::DivineWrathKey));
+	// AND ECHOES OF THE PAST, UNTIL THIS FLOOR'S ECHOES HAVE GONE, HORDE WAVES INCLUDED.
+	// Issues #1820 and #41.
+	const bool bEchoes = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::EchoesOfThePastKey))
+		&& EchoesStage < 3;
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -3775,7 +3956,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bRavenousHoard && !bGraveTide && !bVolatileEvolution && !bRoyalGuard
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
-		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath)
+		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
+		&& !bEchoes)
 	{
 		return;
 	}
@@ -3947,6 +4129,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bDivineWrath)
 	{
 		StepDivineWrath(Player, AbilitySystem);
+	}
+
+	// AND ECHOES OF THE PAST, WHICH SPAWNS CREATURES AND DRIVES THEIR ONE ATTACK. Issues #1820
+	// and #41.
+	if (bEchoes)
+	{
+		StepEchoesOfThePast(Player);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -4979,6 +5168,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForChaosTouched(Notice);
 	NoteDeathForBloodBond(Notice);
 	NoteDeathForPlagueConvergence(Notice);
+	NoteDeathForEchoesOfThePast(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -6516,6 +6706,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Holy, FString::Printf(
 			TEXT("%d of %d"), JudgmentStacks,
 			Effects::HolyRepercussionsJudgmentMostStacks));
+	}
+
+	// AND ECHOES OF THE PAST: how many of the last floor's dead come back. Issues #1820 and #41.
+	const FName Echoes(Effects::EchoesOfThePastKey);
+	if (FloorBrief.Modifiers.Contains(Echoes))
+	{
+		Counting.Add(Echoes, EchoesStage == 0
+			? FString::Printf(TEXT("echoes of the past: %d of the last floor's dead come %.0f seconds in"),
+							  EchoesFromLastFloor.Num(), Effects::EchoesAppearAfterSeconds)
+			: FString::Printf(TEXT("echoes of the past: %d echo(es) standing"),
+							  EchoesStandingNow().Num()));
 	}
 
 	// AND DIVINE WRATH: whether a beam is chasing, and how many creatures beams have destroyed.
@@ -8683,6 +8884,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		DivineWrathBeam.Reset();
 		DivineWrathDestroyed = 0;
 
+		// AND ECHOES OF THE PAST STARTS ITS CLOCK AGAIN, and any echo still standing goes: the
+		// records themselves are handed over where a floor begins, in `GoToFloor`, which runs
+		// once a floor where this runs twice for the first. Issues #1820 and #41.
+		DismissTheEchoes();
+		EchoesSecondsOnFloor = 0.0f;
+		EchoesStage = 0;
+
 		// AND DIRGE RESONANCE STARTS ITS NINETY SECONDS AGAIN: the first crescendo on a
 		// floor comes ninety seconds into it. Issues #1820 and #41. A haste already
 		// granted runs out on its own.
@@ -9123,6 +9331,12 @@ bool ACataclysmDungeonGameMode::GoToFloor(int32 NewFloorNumber, APawn* PawnToMov
 	{
 		AddAChaosTouch();
 	}
+
+	// ECHOES OF THE PAST HANDS THE LAST FLOOR'S DEAD TO THIS ONE, once a floor, here rather than
+	// in `ApplyFloorRulesToPlayer`, which `StartPlay` calls a second time for the first floor.
+	// Issues #1820 and #41.
+	EchoesFromLastFloor = MoveTemp(EchoesThisFloor);
+	EchoesThisFloor.Reset();
 
 	ApplyFloorRulesToPlayer();
 
