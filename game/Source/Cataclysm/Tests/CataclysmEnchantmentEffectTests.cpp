@@ -6489,4 +6489,69 @@ bool FCataclysmMinionCountRowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMaximumHealthShareRowTest,
+	"Cataclysm.Enchantments.TheMaximumHealthShareRowLeavesTheShareItsTextShows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your maximum HP cannot exceed 40%-60% of its normal value". Issue #1833, the
+ * rows-only batch.
+ *
+ * THE ROW IS THE COMPLEMENT OF ITS SENTENCE: max_health more, -60 to -40. The
+ * item text and the value are both taken by POSITION in the range, so at the
+ * lowest roll the text shows the sentence's first number, 40, and the value is
+ * the row's first, -60, which leaves 40% of the maximum. At the highest roll the
+ * text shows 60 and the value -40 leaves 60%. Read in play, off the maximum
+ * health a real refresh writes, against the same wearer with nothing on.
+ */
+bool FCataclysmMaximumHealthShareRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmEnchantmentEffectTest;
+	const TCHAR* Enchantment = TEXT("Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor");
+	const FString Sentence(TEXT("Your maximum HP cannot exceed 40%-60% of its normal value"));
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FWearer Wearer(World);
+	const FGameplayAttribute MaxHealth = UCataclysmVitalAttributeSet::GetMaxHealthAttribute();
+
+	Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+	const float Plain = Wearer.AbilitySystem->GetNumericAttribute(MaxHealth);
+	if (!TestTrue(TEXT("a bare wearer has a maximum health"), Plain > 1.0f))
+	{
+		return false;
+	}
+
+	const auto WornAt = [&](float Roll)
+	{
+		FCataclysmItem Item = Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, Enchantment);
+		Item.Enchantments[0].NegativeRoll = Roll;
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(Item, Removed, AlsoRemoved, Slot);
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+		const float Share = Wearer.AbilitySystem->GetNumericAttribute(MaxHealth) / Plain;
+		Wearer.Equipment->Unequip(Slot, Removed);
+		Wearer.Equipment->RefreshAttributes(Wearer.AbilitySystem);
+		return Share;
+	};
+
+	TestEqual(TEXT("at the lowest roll the text says 40%"),
+		UCataclysmItemValues::EnchantmentTextAtRoll(Sentence, 0.0f),
+		FString(TEXT("Your maximum HP cannot exceed 40% of its normal value")));
+	TestEqual(TEXT("and 40% of the maximum is what is left"), WornAt(0.0f), 0.4f, 0.0001f);
+	TestEqual(TEXT("at the highest roll the text says 60%"),
+		UCataclysmItemValues::EnchantmentTextAtRoll(Sentence, 1.0f),
+		FString(TEXT("Your maximum HP cannot exceed 60% of its normal value")));
+	TestEqual(TEXT("and 60% of the maximum is what is left"), WornAt(1.0f), 0.6f, 0.0001f);
+	TestEqual(TEXT("and with it off, the whole maximum again"),
+		Wearer.AbilitySystem->GetNumericAttribute(MaxHealth) / Plain, 1.0f, 0.0001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
