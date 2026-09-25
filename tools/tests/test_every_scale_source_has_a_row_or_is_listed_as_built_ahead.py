@@ -83,9 +83,9 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: `own_stacks` LEFT on 2026-09-24 with its seven enchantments, issue #1833.
 #:
 #: `consecutive_hits` JOINED on 2026-09-24 for issue #1833's phase 2, as an
-#: engine commit ahead of its rows' commit on the same branch, and leaves with
+#: engine commit ahead of its rows' commit on the same branch, and LEFT with
 #: those rows.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"consecutive_hits"}
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"
@@ -110,7 +110,9 @@ KNOWN_USED = "debuffs_carried"
 #: AND 24 OF 24 WHEN `class_points_spent` GAINED ITS ROWS, issue #1686.
 #:
 #: AND 25 OF 25 WHEN `own_stacks` GAINED ITS TEN ROWS, issue #1833.
-EXPECTED_NAMED_BY_A_ROW = 25
+#:
+#: AND 26 OF 26 WHEN `consecutive_hits` GAINED ITS FOUR ROWS, issue #1833.
+EXPECTED_NAMED_BY_A_ROW = 26
 
 
 def scales_named_by_a_row() -> set[str]:
