@@ -167,6 +167,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 const TCHAR* UCataclysmDungeonModifierEffects::TrialOfEnduranceKey =
 	TEXT("Celestial_Trial_of_Endurance");
 
+const TCHAR* UCataclysmDungeonModifierEffects::VoidParasiteKey =
+	TEXT("Void_Void_Parasite");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -222,6 +225,14 @@ namespace
 
 	/** Attack speed, which Trick or Treat's haste raises. Issues #1820 and #41. */
 	const TCHAR* const DungeonModifierEffectsAttackSpeedStat = TEXT("attack_speed");
+
+	/**
+	 * The two stats a hit's damage is read from, for Void Parasite. Issues #1820 and #41. The spellings
+	 * the enchantment "You deal 20%-35% less damage" writes in game/Data/EnchantmentEffects.csv, which are
+	 * keys of `UCataclysmPlayerClassStats::StatToAttribute`.
+	 */
+	const TCHAR* const DungeonModifierEffectsAttackDamageStat = TEXT("attack_damage");
+	const TCHAR* const DungeonModifierEffectsSpellDamageStat = TEXT("spell_damage");
 
 	/**
 	 * The four stats Withered Ground's row calls "Health and Mana recovery
@@ -461,7 +472,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(InfestedVeinsKey)
-		|| RowKey == FName(TrialOfEnduranceKey))
+		|| RowKey == FName(TrialOfEnduranceKey)
+		|| RowKey == FName(VoidParasiteKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -656,6 +668,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(PestilentEmpowermentKey),
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
+		FName(VoidParasiteKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -958,6 +971,19 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, Effects.TouchedResistanceMorePercent);
 		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.TouchedResistanceLessPercent);
+	}
+
+	// AND THE VOIDLINGS ATTACHED TO THE PLAYER, ONE FIGURE ON FOUR KINDS OF STAT. Issues #1820 and #41.
+	// Damage as the enchantment "You deal 20%-35% less damage" takes it, a Less on attack damage and on
+	// spell damage; the eight resistances as the two loops above take them, a multiplier of the
+	// resistance and not points off it; and movement speed.
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsAttackDamageStat, Effects.ParasiteLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsSpellDamageStat, Effects.ParasiteLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsMovementSpeedStat, Effects.ParasiteLessPercent);
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FName Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType);
+		DungeonModifierEffectsAddMultiplier(Modifiers, Stat, -Effects.ParasiteLessPercent);
 	}
 
 	// AND JUDGMENT, ON ONE RESISTANCE RATHER THAN ON ALL EIGHT. Issues #1820 and
@@ -1372,6 +1398,12 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 			}
 		}
 	}
+	if (Effects.ParasiteLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(
+			TEXT("damage, resistances and movement speed %.0f%% less from attached voidlings"),
+			Effects.ParasiteLessPercent));
+	}
 	if (Effects.TreatSpeedMorePercent > 0.0f || Effects.TreatAttackSpeedMorePercent > 0.0f)
 	{
 		Clauses.Add(FString::Printf(
@@ -1742,6 +1774,21 @@ bool UCataclysmDungeonModifierEffects::InfestedVeinsGuardiansAreDue(int32 VeinsD
 bool UCataclysmDungeonModifierEffects::TrialOfEnduranceHasRunOut(float SecondsSincePlaced)
 {
 	return SecondsSincePlaced >= TrialOfEnduranceSeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::VoidlingRises(float Roll)
+{
+	return Roll < VoidParasiteChancePercent;
+}
+
+int32 UCataclysmDungeonModifierEffects::VoidParasiteStacksAfterAttaching(int32 Stacks)
+{
+	return FMath::Clamp(Stacks + 1, 0, VoidParasiteMostStacks);
+}
+
+float UCataclysmDungeonModifierEffects::VoidParasiteLessPercent(int32 Stacks)
+{
+	return FMath::Clamp(Stacks, 0, VoidParasiteMostStacks) * VoidParasitePercentPerStack;
 }
 
 int32 UCataclysmDungeonModifierEffects::GraveTideCreaturesInWave(int32 WavesSoFar)

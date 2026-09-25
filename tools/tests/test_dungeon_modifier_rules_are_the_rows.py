@@ -4193,3 +4193,23 @@ def test_trial_of_endurance_row_still_doubles_enemies_when_the_floor_is_not_clea
         assert phrase in lower, (
             f"Celestial_Trial_of_Endurance no longer says {phrase.upper()!r}. A reading of the rule rests "
             "on it; see TrialOfEnduranceKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_void_parasite_row_still_leaves_voidlings_that_attach_and_light_that_clears_them():
+    """The phrases the rule's readings rest on.
+
+    "Every enemy you kill has a chance to spawn a parasitic voidling. If the voidling reaches you, it will attach
+    to you and siphon your power, reducing your damage, resistances, and movement speed. The voidling can be
+    removed by standing in a "light" zone, but these are rare." EVERY ENEMY YOU KILL is why only the player's kill
+    counts; A CHANCE is the roll; REACHES YOU and ATTACH are the distance at which it becomes a stack; DAMAGE,
+    RESISTANCES and MOVEMENT SPEED are the stats each stack takes from; STANDING IN and LIGHT are the zone that
+    clears them; RARE is why there is one a floor. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Void_Void_Parasite"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("every enemy you kill", "a chance", "reaches you", "attach", "your damage, resistances, and "
+                   "movement speed", "standing in", "light", "rare"):
+        assert phrase in lower, (
+            f"Void_Void_Parasite no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "VoidParasiteKey in CataclysmDungeonModifierEffects.h. " + words)

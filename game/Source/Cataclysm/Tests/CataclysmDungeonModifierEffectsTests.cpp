@@ -29363,4 +29363,490 @@ bool FCataclysmFloorClearTimeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Void_Void_Parasite. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ParasiteRow(UCataclysmDungeonModifierEffects::VoidParasiteKey);
+
+	/** A dungeon carrying only Void Parasite, on floor 2 with its own creatures cleared, the player on the entrance. */
+	ACataclysmDungeonGameMode* AParasiteFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {ParasiteRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+		Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.Character->GetActorLocation().Z));
+		return Mode;
+	}
+
+	/**
+	 * The player kills an Imp placed at `Where` with the roll pinned to leave a voidling; answers the voidling, and
+	 * where the Imp died in `DiedAt` when asked -- the spawn may move it clear of the player standing there.
+	 */
+	ACataclysmEnemyCharacter* KillForAVoidling(FAutomationTestBase& Test, UWorld* World, ACataclysmDungeonGameMode* Mode,
+											   const FPossessedPlayer& Player, const FVector& Where,
+											   FVector* DiedAt = nullptr)
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.VoidParasiteRoll"), TEXT("0"));
+		ACataclysmEnemyCharacter* Slain = SpawnImpWithHealth(World, Where, 100.0f);
+		if (!Test.TestNotNull(TEXT("the roll can be pinned"), Roll.Variable)
+			|| !Test.TestNotNull(TEXT("an Imp to kill"), Slain))
+		{
+			return nullptr;
+		}
+		const TArray<ACataclysmEnemyCharacter*> Before = Mode->VoidlingsNow();
+		if (DiedAt)
+		{
+			*DiedAt = Slain->GetActorLocation();
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+		if (!Test.TestTrue(TEXT("the player's blow killed it"), UCataclysmSkillEffects::IsDead(Slain)))
+		{
+			return nullptr;
+		}
+		for (ACataclysmEnemyCharacter* Voidling : Mode->VoidlingsNow())
+		{
+			if (!Before.Contains(Voidling))
+			{
+				return Voidling;
+			}
+		}
+		Test.AddError(TEXT("the kill left no voidling"));
+		return nullptr;
+	}
+
+	/** A voidling left by a kill on the entrance, walked onto by the player and attached on the next beat. */
+	bool AttachAVoidling(FAutomationTestBase& Test, UWorld* World, ACataclysmDungeonGameMode* Mode,
+						 const FPossessedPlayer& Player)
+	{
+		ACataclysmEnemyCharacter* Voidling =
+			KillForAVoidling(Test, World, Mode, Player, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f));
+		if (!Voidling)
+		{
+			return false;
+		}
+		const FVector At = Voidling->GetActorLocation();
+		Player.Character->SetActorLocation(FVector(At.X, At.Y, Player.Character->GetActorLocation().Z));
+		Beat(Mode, 1);
+		return Test.TestFalse(TEXT("the voidling attached and is gone"), IsValid(Voidling));
+	}
+
+	/** What the one dungeon rule on a stat takes, in percent, or 0 when none is there. */
+	float ParasiteRuleOn(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		const FCataclysmStatModifier* Modifier = DungeonRuleOn(Player.AbilitySystem, Stat);
+		return Modifier ? -Modifier->Value : 0.0f;
+	}
+}
+
+// THE FIGURES: TEN PER CENT A KILL, ATTACHED AT 150 CM, SIX PER CENT A STACK TO FIVE, ONE LIGHT OF 300 CM.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmParasiteFiguresTest,
+	"Cataclysm.DungeonModifierEffects.VoidParasiteTakesSixPercentAStackToFiveOnATenPercentRoll",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmParasiteFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("ten per cent a kill"), Effects::VoidParasiteChancePercent, 10.0f, 0.001f);
+	TestEqual(TEXT("attached within 150 cm"), Effects::VoidParasiteAttachCm, 150.0f, 0.001f);
+	TestEqual(TEXT("six per cent a stack"), Effects::VoidParasitePercentPerStack, 6.0f, 0.001f);
+	TestEqual(TEXT("at most five stacks"), Effects::VoidParasiteMostStacks, 5);
+	TestEqual(TEXT("one light zone a floor"), Effects::VoidParasiteLightZonesPerFloor, 1);
+	TestEqual(TEXT("300 cm across its radius"), Effects::VoidParasiteLightRadiusCm, 300.0f, 0.001f);
+
+	TestTrue(TEXT("a roll of 9.99 leaves a voidling"), Effects::VoidlingRises(9.99f));
+	TestFalse(TEXT("a roll of exactly 10 does not"), Effects::VoidlingRises(10.0f));
+	TestEqual(TEXT("the first attached is one stack"), Effects::VoidParasiteStacksAfterAttaching(0), 1);
+	TestEqual(TEXT("the fifth is five"), Effects::VoidParasiteStacksAfterAttaching(4), 5);
+	TestEqual(TEXT("a sixth is still five"), Effects::VoidParasiteStacksAfterAttaching(5), 5);
+	TestEqual(TEXT("none takes nothing"), Effects::VoidParasiteLessPercent(0), 0.0f, 0.001f);
+	TestEqual(TEXT("one takes 6%"), Effects::VoidParasiteLessPercent(1), 6.0f, 0.001f);
+	TestEqual(TEXT("five take 30%"), Effects::VoidParasiteLessPercent(5), 30.0f, 0.001f);
+	TestEqual(TEXT("seven take no more than five"), Effects::VoidParasiteLessPercent(7), 30.0f, 0.001f);
+	return true;
+}
+
+// A KILL OF THE PLAYER'S LEAVES A VOIDLING: AN IMP AT COMMON WHERE IT DIED, SAYING "VOIDLING", WITH A BRAIN, PAYING
+// NOTHING AND NOT ONE OF THE FLOOR'S CREATURES. A ROLL OF TEN, A CREATURE'S KILL AND A VOIDLING'S OWN DEATH LEAVE NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmParasiteRisesTest,
+	"Cataclysm.DungeonModifierEffects.AKillOfThePlayersLeavesAVoidlingAndNothingElseDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmParasiteRisesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AParasiteFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+	TestEqual(TEXT("the panel before any"), Mode->LiveCountsForTheFloor().FindRef(ParasiteRow),
+			  FString(TEXT("void parasite: none attached")));
+
+	const FVector Where = Floor.EntranceWorld() + FVector(0.0f, 0.0f, 100.0f);
+	FVector DiedAt = FVector::ZeroVector;
+	ACataclysmEnemyCharacter* Voidling = KillForAVoidling(*this, World, Mode, Player, Where, &DiedAt);
+	if (!Voidling)
+	{
+		return false;
+	}
+	TestTrue(TEXT("a voidling"), Voidling->bIsAVoidling);
+	TestTrue(TEXT("which is an Imp"), Voidling->IsA<ACataclysmImpCharacter>());
+	TestEqual(TEXT("at Common"), Voidling->RarityStep, 0);
+	TestNotNull(TEXT("with a brain"), Voidling->GetController());
+	TestFalse(TEXT("that pays nothing"), Voidling->PaysForItsDeath());
+	TestTrue(TEXT("raised by the rule"), Voidling->bRaisedByARule);
+	TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Voidling));
+	TestEqual(TEXT("\"Voidling\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Voidling),
+			  FString(TEXT("Voidling")));
+	TestTrue(TEXT("where the creature died"), Floor.CellOfWorld(Voidling->GetActorLocation()) == Floor.CellOfWorld(DiedAt));
+	TestEqual(TEXT("at full health"), HealthOf(Voidling), MaxHealthOf(Voidling), 0.5f);
+
+	// A ROLL OF EXACTLY TEN LEAVES NONE.
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.VoidParasiteRoll"), TEXT("10"));
+		ACataclysmEnemyCharacter* Slain = SpawnImpWithHealth(World, Where, 100.0f);
+		if (!TestNotNull(TEXT("a second Imp"), Slain))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Slain, 100000.0f);
+		TestTrue(TEXT("the second Imp was killed"), UCataclysmSkillEffects::IsDead(Slain));
+		TestEqual(TEXT("a roll of ten left no second voidling"), Mode->VoidlingsNow().Num(), 1);
+	}
+
+	// A CREATURE'S KILL LEAVES NONE, AND NOR DOES A VOIDLING'S OWN DEATH, WITH THE ROLL AT NOTHING.
+	{
+		FScopedConsoleString Roll(TEXT("Cataclysm.VoidParasiteRoll"), TEXT("0"));
+		ACataclysmEnemyCharacter* Killer = SpawnCreatureThatCanHit(World, Where.X + 300.0f);
+		ACataclysmEnemyCharacter* Slain = SpawnImpWithHealth(World, Where, 100.0f);
+		if (!TestNotNull(TEXT("a creature that can hit"), Killer) || !TestNotNull(TEXT("a third Imp"), Slain))
+		{
+			return false;
+		}
+		UCataclysmSkillEffects::ApplyHit(Killer, Slain, 100000.0f);
+		TestTrue(TEXT("the creature killed the third Imp"), UCataclysmSkillEffects::IsDead(Slain));
+		TestEqual(TEXT("a creature's kill left no voidling"), Mode->VoidlingsNow().Num(), 1);
+
+		// IT CANNOT DODGE, so the kill is certain: an Imp placed on the floor has the Imp's evasion.
+		Voidling->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Voidling, 100000.0f);
+		TestTrue(TEXT("the player killed the voidling"), UCataclysmSkillEffects::IsDead(Voidling));
+		TestEqual(TEXT("which left none, and is no longer standing"), Mode->VoidlingsNow().Num(), 0);
+	}
+	return true;
+}
+
+// A VOIDLING WITHIN 150 CM ATTACHES ON THE BEAT AND ONE FURTHER OUT DOES NOT; EACH STACK TAKES 6% OFF ATTACK DAMAGE,
+// SPELL DAMAGE, MOVEMENT SPEED AND ALL EIGHT RESISTANCES AS MULTIPLIERS; FIVE AT MOST.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmParasiteAttachesTest,
+	"Cataclysm.DungeonModifierEffects.AVoidlingWithinReachAttachesAndEachStackTakesSixPercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmParasiteAttachesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AParasiteFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const FVector Where = Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f);
+	ACataclysmEnemyCharacter* Voidling = KillForAVoidling(*this, World, Mode, Player, Where);
+	if (!Voidling)
+	{
+		return false;
+	}
+	TestEqual(TEXT("nothing on attack damage before it attaches"), ParasiteRuleOn(Player, TEXT("attack_damage")), 0.0f,
+			  0.001f);
+
+	// 200 CM AWAY: IT DOES NOT ATTACH.
+	const float Z = Player.Character->GetActorLocation().Z;
+	const FVector At = Voidling->GetActorLocation();
+	Player.Character->SetActorLocation(FVector(At.X + 200.0f, At.Y, Z));
+	Beat(Mode, 1);
+	TestTrue(TEXT("200 cm away, it is still standing"), IsValid(Voidling) && Mode->VoidlingsNow().Contains(Voidling));
+	TestEqual(TEXT("and nothing is attached"), Mode->VoidParasiteStacksHeld(), 0);
+
+	// 100 CM AWAY: IT ATTACHES, AND IS GONE.
+	Player.Character->SetActorLocation(FVector(At.X + 100.0f, At.Y, Z));
+	Beat(Mode, 1);
+	TestFalse(TEXT("100 cm away, it attached and is gone"), IsValid(Voidling));
+	TestEqual(TEXT("one attached"), Mode->VoidParasiteStacksHeld(), 1);
+	TestEqual(TEXT("6% off attack damage"), ParasiteRuleOn(Player, TEXT("attack_damage")), 6.0f, 0.001f);
+	TestEqual(TEXT("6% off spell damage"), ParasiteRuleOn(Player, TEXT("spell_damage")), 6.0f, 0.001f);
+	TestEqual(TEXT("6% off movement speed"), ParasiteRuleOn(Player, TEXT("movement_speed")), 6.0f, 0.001f);
+	int32 Resistances = 0;
+	for (const FName DamageType : UCataclysmItemModifiers::DamageTypeNames())
+	{
+		const FString Stat = UCataclysmItemModifiers::ResistanceStatFor(DamageType).ToString();
+		const FCataclysmStatModifier* Modifier = DungeonRuleOn(Player.AbilitySystem, *Stat);
+		if (TestNotNull(FString::Printf(TEXT("%s carries the rule"), *Stat), Modifier))
+		{
+			TestEqual(FString::Printf(TEXT("%s: 6%% off"), *Stat), Modifier->Value, -6.0f, 0.001f);
+			TestTrue(FString::Printf(TEXT("%s: a multiplier of the resistance, not points off it"), *Stat),
+					 Modifier->Bucket == ECataclysmStatBucket::More);
+			++Resistances;
+		}
+	}
+	TestEqual(TEXT("all eight resistances"), Resistances, 8);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(ParasiteRow),
+			  FString(TEXT("void parasite: 1 attached (each 6% less damage, resistances and movement speed); a light "
+						   "zone clears them")));
+
+	// SIX MORE: FIVE AT MOST, 30%.
+	for (int32 Which = 0; Which < 6; ++Which)
+	{
+		if (!AttachAVoidling(*this, World, Mode, Player))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("five at most"), Mode->VoidParasiteStacksHeld(), Effects::VoidParasiteMostStacks);
+	TestEqual(TEXT("30% off attack damage"), ParasiteRuleOn(Player, TEXT("attack_damage")), 30.0f, 0.001f);
+	return true;
+}
+
+// FIVE STACKS TAKE 30% OFF WHAT THE PLAYER'S BLOW DEALS: MEASURED ON A HIT, NOT ON A STAT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmParasiteDamageTest,
+	"Cataclysm.DungeonModifierEffects.FiveAttachedVoidlingsTakeThirtyPercentOffThePlayersBlow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmParasiteDamageTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AParasiteFloor(*this, World, Player);
+
+	// NO BLOW A CRITICAL STRIKE, and the roll put back as it was afterwards, as the critical strike tests put it:
+	// set at the console's own priority, which a write from code otherwise loses to.
+	IConsoleVariable* CritRoll = IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CritRoll"));
+	if (!Mode || !TestNotNull(TEXT("the critical roll can be pinned"), CritRoll))
+	{
+		return false;
+	}
+	const float CritRollBefore = CritRoll->GetFloat();
+	CritRoll->Set(100.0f, ECVF_SetByConsole);
+	ON_SCOPE_EXIT { CritRoll->Set(CritRollBefore, ECVF_SetByConsole); };
+	ACataclysmEnemyCharacter* Target =
+		SpawnImpWithHealth(World, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 300.0f, 100.0f), 1000000.0f);
+	if (!TestNotNull(TEXT("an Imp to strike"), Target))
+	{
+		return false;
+	}
+
+	// WHAT ONE BLOW BRINGS TO THE TARGET, BEFORE ITS ARMOUR AND REDUCTION TAKE THEIR SHARE. The Imp resists nothing.
+	const auto Blow = [&]()
+	{
+		FCataclysmDamageResult Result;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Target, 100.0f, FGameplayTagContainer(),
+										 FCataclysmHitDelivery(), &Result);
+		return Result;
+	};
+	const FCataclysmDamageResult Before = Blow();
+	const float BroughtBefore = Before.DealtToHealth + Before.RemovedByArmour + Before.RemovedByDamageReduction
+		+ Before.AbsorbedByShield + Before.AbsorbedByMana;
+	if (!TestTrue(FString::Printf(TEXT("the blow landed for something (%.2f)"), BroughtBefore), BroughtBefore > 0.0f))
+	{
+		return false;
+	}
+
+	for (int32 Which = 0; Which < 5; ++Which)
+	{
+		if (!AttachAVoidling(*this, World, Mode, Player))
+		{
+			return false;
+		}
+	}
+	const FCataclysmDamageResult After = Blow();
+	const float BroughtAfter = After.DealtToHealth + After.RemovedByArmour + After.RemovedByDamageReduction
+		+ After.AbsorbedByShield + After.AbsorbedByMana;
+	AddInfo(FString::Printf(TEXT("Void Parasite: a blow brought %.3f before and %.3f with five attached (%.3f); "
+								 "%.3f and %.3f reached health"),
+							BroughtBefore, BroughtAfter, BroughtAfter / BroughtBefore, Before.DealtToHealth,
+							After.DealtToHealth));
+	TestFalse(TEXT("neither blow was a critical strike"), Before.bWasCritical || After.bWasCritical);
+	TestEqual(TEXT("five attached: the blow brings 70% of what it did"), BroughtAfter / BroughtBefore, 0.70f, 0.005f);
+	TestTrue(TEXT("and less reaches the target's health"), After.DealtToHealth < Before.DealtToHealth);
+	return true;
+}
+
+// STANDING IN THE LIGHT CLEARS EVERY STACK AND THE LIGHT STAYS; IT STANDS FAR FROM THE ENTRANCE, 300 CM ACROSS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmParasiteLightTest,
+	"Cataclysm.DungeonModifierEffects.StandingInTheLightClearsEveryVoidlingAndTheLightStays",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmParasiteLightTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AParasiteFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Light = Mode->VoidParasiteLightNow();
+	if (!TestNotNull(TEXT("the floor has its light from the first beat"), Light))
+	{
+		return false;
+	}
+	const FVector Middle = Light->GetActorLocation();
+	TestEqual(TEXT("one zone on the floor"), ZonesOnTheFloor(World), 1);
+	TestTrue(TEXT("far enough from the entrance"),
+			 FVector::Dist2D(Middle, Mode->CurrentFloor->EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+	TestTrue(TEXT("it covers its middle"), Light->Covers(Middle));
+	TestFalse(TEXT("and not 350 cm out"), Light->Covers(Middle + FVector(Effects::VoidParasiteLightRadiusCm + 50.0f, 0.0f, 0.0f)));
+
+	for (int32 Which = 0; Which < 2; ++Which)
+	{
+		if (!AttachAVoidling(*this, World, Mode, Player))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("two attached"), Mode->VoidParasiteStacksHeld(), 2);
+	TestEqual(TEXT("12% off attack damage"), ParasiteRuleOn(Player, TEXT("attack_damage")), 12.0f, 0.001f);
+
+	// INTO THE LIGHT: EVERY STACK CLEARED, THE STATS PUT BACK, THE LIGHT STILL THERE.
+	const float Z = Player.Character->GetActorLocation().Z;
+	Player.Character->SetActorLocation(FVector(Middle.X, Middle.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("none attached"), Mode->VoidParasiteStacksHeld(), 0);
+	TestEqual(TEXT("nothing off attack damage"), ParasiteRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+	TestEqual(TEXT("nothing off movement speed"), ParasiteRuleOn(Player, TEXT("movement_speed")), 0.0f, 0.001f);
+	TestTrue(TEXT("the light stays"), IsValid(Light) && Mode->VoidParasiteLightNow() == Light);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(ParasiteRow),
+			  FString(TEXT("void parasite: none attached")));
+	return true;
+}
+
+// THE STACKS AND THE VOIDLINGS END WITH THE FLOOR; A HORDE ARENA'S NEXT WAVE KEEPS THE STACKS AND ITS ONE LIGHT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmParasiteFloorEndsTest,
+	"Cataclysm.DungeonModifierEffects.VoidlingsEndWithTheFloorAndAHordeArenaKeepsThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmParasiteFloorEndsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AParasiteFloor(*this, World, Player);
+	if (!Mode || !AttachAVoidling(*this, World, Mode, Player))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Left = KillForAVoidling(
+		*this, World, Mode, Player, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f));
+	if (!Left)
+	{
+		return false;
+	}
+	TestEqual(TEXT("one attached and one standing"), Mode->VoidParasiteStacksHeld(), 1);
+
+	// THE NEXT FLOOR: NONE ATTACHED, NONE STANDING, NOTHING ON THE PLAYER'S STATS.
+	if (!TestTrue(TEXT("floor 3 was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("none attached on the next floor"), Mode->VoidParasiteStacksHeld(), 0);
+	TestEqual(TEXT("no voidling standing"), Mode->VoidlingsNow().Num(), 0);
+	TestFalse(TEXT("the one left behind is gone"), IsValid(Left));
+	TestEqual(TEXT("nothing off attack damage"), ParasiteRuleOn(Player, TEXT("attack_damage")), 0.0f, 0.001f);
+
+	// A HORDE ARENA: ITS LIGHT AND ITS STACKS ARE KEPT FOR THE NEXT WAVE. Floor 1 is a Horde dungeon's one new arena.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	Beat(Mode, 1);
+	ACataclysmGroundZone* Light = Mode->VoidParasiteLightNow();
+	if (!TestNotNull(TEXT("a Horde arena has its light"), Light))
+	{
+		return false;
+	}
+	const FVector LightAt = Light->GetActorLocation();
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Player.Character->GetActorLocation().Z));
+	if (!AttachAVoidling(*this, World, Mode, Player))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("the next wave keeps the one attached"), Mode->VoidParasiteStacksHeld(), 1);
+	TestEqual(TEXT("and it is on the player's stats again"), ParasiteRuleOn(Player, TEXT("attack_damage")), 6.0f, 0.001f);
+	ACataclysmGroundZone* Again = Mode->VoidParasiteLightNow();
+	if (TestNotNull(TEXT("with its light drawn"), Again))
+	{
+		TestEqual(TEXT("in the same place"), static_cast<float>(FVector::Dist2D(Again->GetActorLocation(), LightAt)), 0.0f,
+				  1.0f);
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
