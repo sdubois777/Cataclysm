@@ -191,6 +191,32 @@ In the group `Cataclysm.BothHandsFull.`, the flag given by hand:
 **The flag is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
 change must add a test that wears the real `Ravager_capstone_200` option 2 row.
 
+### Run
+
+One editor window on 2026-09-25, ending at 09:02 UTC, on development 105fd1f5 as the base, at the head
+7db9765f. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on the same tree: 5,476 passed, 8 skipped, 0 failed (JUnit 5,484 tests).
+- **The whole suite**, started once no CI run was in progress: 2,466 tests performed, 2,466 succeeded,
+  0 failed; every declared test was reported. 39 skipped part of what they check for want of the
+  Paragon art, **five of them in `Cataclysm.WeaponMesh.`**, so how a second two-handed weapon looks in
+  the left hand is still unchecked and is left for the owner to look at in play.
+
+**Three guard proofs, each printing PROVED**, prefix `Cataclysm.BothHandsFull.`, restored: 7 of 7
+succeeded each time.
+
+- **A one-handed weapon beside a new two-handed one left on** (`CataclysmEquipmentComponent.cpp`): 1 of 7
+  failed, `NoLoadoutMixesATwoHandedWeaponWithAOneHandedOne`, on two assertions: the sword did not come
+  off, and the first hand was not left empty.
+- **Losing the option not returning the second weapon** (`CataclysmPlayerState.cpp`): 1 of 7 failed,
+  `LosingTheOptionReturnsTheSecondToTheBagOrTheFloor`, on two assertions: the second hand was not empty,
+  and the bag held no more items.
+- **The second hand marked taken whether or not the option is held** (`CataclysmEquipmentComponent.cpp`):
+  2 of 7 failed, `TheSecondHandIsMarkedTakenOnlyWithoutTheOption` and
+  `WithTheOptionASecondTwoHandedWeaponGoesInTheOtherHand`, on three assertions.
+
 ---
 
 ## 2026-09-24 — A passive node whose own text names minions may pass a summoner stat to them
