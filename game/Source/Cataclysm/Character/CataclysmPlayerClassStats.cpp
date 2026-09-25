@@ -254,6 +254,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Issue #1515.
 		TEXT("enemies_near_slowed_within_metres"),
 		TEXT("enemies_near_slowed_percent"),
+		// Nothing Wasted's cap, as a share of the melee hit the store is added
+		// to, read by UCataclysmAbilitySystemComponent::NoteMitigatedDamage and
+		// SpendStoredMitigatedDamage. Issue #1515.
+		TEXT("mitigated_damage_added_to_next_melee_cap_percent"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.

@@ -415,6 +415,10 @@ INVENTORY = {
         "Nothing Stops It's interval, a flag read off the defender when a hit "
         'would kill, with no skill of its own in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f'):
+        "Nothing Wasted's cap, asked of the holder as damage is stored and as "
+        'a melee hit spends it; a share of the hit, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(RendPercentStat), FGameplayTagContainer(), 0.0f'):
         "Rendering Blows' share, asked of the striker as a count of landed "
         'melee hits is kept; a flag-like value, not a blow modifier',

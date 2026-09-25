@@ -298,6 +298,16 @@ FString UCataclysmSkillBar::OwnStacksEntry(const TArray<FName>& Stats, int32 Hel
 	return FString::Printf(TEXT("%s %d/%d"), *Name, Held, Cap);
 }
 
+FString UCataclysmSkillBar::StoredDamageLine(float Stored)
+{
+	if (Stored <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Next melee +%d"),
+						   FMath::Max(1, FMath::RoundToInt(Stored)));
+}
+
 FString UCataclysmSkillBar::NextUseLine(float SkillPercent, int32 SkillCount,
 									   float AttackPercent, int32 AttackCount,
 									   float EffectivenessPercent,

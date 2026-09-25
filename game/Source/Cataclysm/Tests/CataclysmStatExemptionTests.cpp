@@ -1282,6 +1282,45 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `mitigated_damage_added_to_next_melee_cap_percent`, read by
+	 * `UCataclysmAbilitySystemComponent::NoteMitigatedDamage`. Issue #1515,
+	 * Nothing Wasted. Two defenders with 1,000 armour take the same blow; only
+	 * the one holding the stat stores what the armour removed.
+	 */
+	void ProbeMitigatedAdded(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Attacker(World, 1000.0f);
+		FScopedFighter Plain(World, 0.0f);
+		FScopedFighter Held(World, 0.0f);
+		for (const FScopedFighter* Defender : {&Plain, &Held})
+		{
+			Defender->AbilitySystem->SetNumericAttributeBase(
+				Combat::GetArmorAttribute(), 1000.0f);
+		}
+		GrantFlats(Held.Actor,
+			{{FName(UCataclysmAbilitySystemComponent::MitigatedAddedCapStat), 100.0f}});
+
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Plain.Actor, 100.0f,
+										 FGameplayTagContainer());
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Held.Actor, 100.0f,
+										 FGameplayTagContainer());
+
+		Test.TestEqual(TEXT("a defender without "
+							"mitigated_damage_added_to_next_melee_cap_percent stores nothing"),
+					   Plain.AbilitySystem->StoredMitigatedDamageNow(), 0.0f);
+		Test.TestTrue(TEXT("and one holding it stores what its armour removed, so "
+						   "NoteMitigatedDamage really reads it"),
+					  Held.AbilitySystem->StoredMitigatedDamageNow() > 0.0f);
+	}
+
+	/**
 	 * `applied_cripple_and_weaken_held_within_metres`, read by
 	 * `UCataclysmDebuffs::HoldAppliedNearbyStep`. Issue #1515, No Second Wind.
 	 * Two appliers a hundred metres apart each cripple an enemy two metres away
@@ -2957,6 +2996,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("shield_break_destroys_minion_every_seconds"), &ProbeShieldWard},
 			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
+			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},
 			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},

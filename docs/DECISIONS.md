@@ -2,6 +2,102 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Nothing Wasted, engine only: what armour and damage reduction remove is stored and added to the next melee hit, up to that hit's own damage
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (two new
+figures on a resolved hit), `CataclysmAbilitySystemComponent.h` and `.cpp` (the store),
+`CataclysmVitalAttributeSet.cpp` (where it fills), `CataclysmSkillEffects.cpp` (where it is spent),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one stat with no attribute),
+`game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` and `CataclysmHUD.cpp` (the display),
+two test files and one Python inventory. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ravager_capstone_50` option 2, Nothing Wasted: "Damage your Armor and Damage Reduction remove is added
+to your next melee attack, up to 100% of that attack's damage." One stat with no attribute, which its
+row will carry: `mitigated_damage_added_to_next_melee_cap_percent` (100). Above zero means the option is
+held, and the value is the cap as a share of the hit. **Engine only**, for the reason the Shared Ruin
+entry gives.
+
+**It is not retaliation, as the 2026-09-08 entry on the Ravager's gates decided**: "Converting the
+damage your armour **removed** is a different mechanic" from returning damage taken. So the store fills
+from what mitigation took away, never from what got through.
+
+### RULINGS, 2026-09-24, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **Spent once, on the first target, and anything above the cap is lost.**
+- **N1, both damage reduction lines count**: the capped pool and the multiplicative bucket. Block,
+  resistance, evasion, the energy shield and mana do not. **Resistance sits between armour and damage
+  reduction** in `UCataclysmDamageCalculation::Resolve`, so the store is two figures, each the damage
+  before its own step less the damage after it, and what resistance removes between them is excluded by
+  the sentence.
+- **N2, ticks count**, since armour and damage reduction reduce them here and the sentence does not
+  limit it to hits.
+- **N3, no time limit and no ceiling on the store.** The spend's cap is the only bound. Death clears
+  it, as it clears a next-use charge.
+- **N4, added to the finished hit**, after the attacker's own increases and multipliers, so "100% of
+  that attack's damage" is measured against the figure it is added to. The target's mitigation still
+  applies to the total.
+- **N5, spent when the blow is sent.** **A player will notice this: if the first blow of an attack is
+  evaded, the store is used up anyway**, because the amount is added before the target's evasion is
+  known -- the same as a next-use charge, which is spent per use whether it lands or not.
+- **The display** is approved, below.
+
+### "THE FIRST TARGET" IS THE NEAREST, AND ONLY ONE THING MAKES IT SO
+
+The store is emptied by the first melee blow that spends it, so the next target of the same use gets
+nothing, and no per-attack flag is kept. `UCataclysmSkillTemplate::HitTargets` hits its targets in the
+order `UCataclysmTargeting::Gather` sorts them, nearest first, so the first target is the nearest.
+**Nothing else enforces that.** A future change to that order would change which enemy receives the
+store.
+
+### THE GENRE
+
+Fetched on 2026-09-24: Path of Exile's Molten Shell stores damage and releases it later, with a cap
+tied to armour: "Buff can take Damage equal to 10% of your Armour", and it "Reflects ... Damage taken
+from Buff as Fire Damage when Buff expires or is depleted" ([poedb.tw, Molten Shell](https://poedb.tw/us/Molten_Shell)).
+So a store released later, with a cap, is an ordinary mechanic. **No shipped mechanic found stores
+exactly what armour removed and adds it to the next melee hit**. A web search the same day
+summarised Last Epoch's Vengeance as a counter-attack rather than a store; its page was not read. The shape here is the node's own sentence and
+the rulings above. Molten Shell's three-second release is noted and not adopted, by N3.
+
+### HOW IT IS BUILT
+
+- **`FCataclysmDamageResult` gains `RemovedByArmour` and `RemovedByDamageReduction`**, written by
+  `Resolve`. Nothing else reads them yet.
+- **The store** is `StoredMitigatedDamage` on the ability system. `NoteMitigatedDamage` adds the two
+  figures when a holder is struck, from `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`.
+- **The spend** is in `UCataclysmSkillEffects::ApplyHit`, after the hit's damage is finished: for a
+  melee blow that is not a tick, `SpendStoredMitigatedDamage` answers the store, up to the cap's share
+  of the hit, and empties it.
+- **The display.** `UCataclysmSkillBar::StoredDamageLine` answers "Next melee +340", or nothing, and
+  the heads-up display joins it to the next-use line above the skill bar with the same three spaces,
+  so the two never draw over each other. A store below one point reads "+1", since "+0" would read as
+  nothing held. **Only the text is tested**: the automation tests run with no renderer.
+
+### TESTS
+
+In `CataclysmSkillTemplateTests.cpp`, beside Rendering Blows', because the first-target test needs that
+file's strike and positioned fighters:
+
+- `Cataclysm.NothingWasted.ArmourAndReductionRemovedAreStoredAndAddedToTheNextMeleeHit`: a holder with
+  1,000 armour and 20 damage reduction is struck for 100. The store equals the blow less what reached
+  health. Its next melee hit on an unarmoured enemy deals the plain hit and the store, and the store is
+  then empty. A tick adds to it too. The line's exact words are asserted.
+- `Cataclysm.NothingWasted.TheAddedDamageIsCappedAtTheHitsOwnAndTheRestIsLost`: a store above the hit
+  makes the hit exactly twice its plain damage, and the store is then empty.
+- `Cataclysm.NothingWasted.OnlyTheFirstTargetOfAMeleeAttackGetsIt`: a 360 degree strike on two enemies
+  adds the store to the nearer and not the farther; a blow that is not melee leaves the store; a
+  character without the option stores nothing.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**The stat is given by hand**, so none of these can see a missing or wrong row. When the rows land,
+that change must add a test that wears the real `Ravager_capstone_50` option 2 row.
+
+---
+
 ## 2026-09-24 — Echoes of the Past: five seconds into a floor, the last six creatures killed on the floor before come back as echoes, each makes its last attack once, and they vanish
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

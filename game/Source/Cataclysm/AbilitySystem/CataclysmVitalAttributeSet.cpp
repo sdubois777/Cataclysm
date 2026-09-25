@@ -1495,6 +1495,13 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 								UCataclysmCombatEvents::AttackerOf(
 									Data.EffectSpec.GetContext()))));
 				}
+
+				// AND WHAT ARMOUR AND DAMAGE REDUCTION TOOK AWAY IS STORED, for
+				// Nothing Wasted. Issue #1515. Ticks too: both steps reduce them
+				// (ruled 2026-09-24). Resistance, block, evasion and the pools
+				// are not in either figure.
+				Cataclysm->NoteMitigatedDamage(
+					Outcome.RemovedByArmour + Outcome.RemovedByDamageReduction);
 			}
 
 			// AND ANY HIT THAT REACHED THE CHARACTER BUILDS A STACK. Issue
