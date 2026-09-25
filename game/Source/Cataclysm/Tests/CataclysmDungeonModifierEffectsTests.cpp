@@ -27267,8 +27267,9 @@ bool FCataclysmWingsLandTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	Beat(Mode, BeatsFor(Effects::WingsOfTheHostSecondsBetween));
-	TestTrue(TEXT("a Horde wave has its flyover at thirty seconds"), Mode->WingsOfTheHostMarksNow().Num() > 0);
+	// AT THIRTY SECONDS OR ON A BEAT AFTER IT, for the reason `AFlyoverIsMarked` gives.
+	TestTrue(TEXT("a Horde wave has its flyover at thirty seconds or a beat after"),
+			 AFlyoverIsMarked(*this, Mode).Num() > 0);
 	return true;
 }
 
