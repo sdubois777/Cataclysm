@@ -14649,12 +14649,18 @@ namespace CataclysmRenderingBlowsTest
 	}
 
 	/** One blow of `Blow` from `From` on `To`, with these tags; what it took. The
-	 *  pool is filled first, so every reading starts from the same number. */
+	 *  pool is filled first, so every reading starts from the same number.
+	 *
+	 *  A TICK IS SAID BY THE DELIVERY, NOT THE TAGS. `ApplyHit` marks a blow as
+	 *  damage over time only from `Delivery.bIsDamageOverTime`; a tick tag among
+	 *  the skill tags never reaches the struck side. Found by this file's first
+	 *  whole-suite run, 2026-09-24. */
 	float Hit(const FScopedFighter& From, FScopedFighter& To,
-			  const FGameplayTagContainer& Tags)
+			  const FGameplayTagContainer& Tags,
+			  const FCataclysmHitDelivery& Delivery = FCataclysmHitDelivery())
 	{
 		To.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
-		UCataclysmSkillEffects::ApplyHit(From.Actor, To.Actor, Blow, Tags);
+		UCataclysmSkillEffects::ApplyHit(From.Actor, To.Actor, Blow, Tags, Delivery);
 		return Pool - To.Health();
 	}
 
@@ -14874,10 +14880,10 @@ bool FCataclysmRenderingBlowsCountsApartTest::RunTest(const FString&)
 	// NOT MELEE, A TICK, AND AN EVADED SWING: none advance the count.
 	FScopedFighter D(World, FVector(3 * M, 20 * M, 0));
 	Armour(D, 1000.0f);
-	FGameplayTagContainer Tick = Melee();
-	Tick.AddTag(UCataclysmDamageCalculation::DamageOverTimeTag());
+	FCataclysmHitDelivery Tick;
+	Tick.bIsDamageOverTime = true;
 	Hit(Holder, D, FGameplayTagContainer());
-	Hit(Holder, D, Tick);
+	Hit(Holder, D, Melee(), Tick);
 	D.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
 	Hit(Holder, D, Melee());
 	D.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
