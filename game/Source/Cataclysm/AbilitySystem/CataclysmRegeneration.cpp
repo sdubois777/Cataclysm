@@ -107,6 +107,21 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	const float Current = AbilitySystem.GetNumericAttribute(Pool);
 	float Ceiling = AbilitySystem.GetNumericAttribute(Maximum);
 
+	// A SHIELD REFILLS TO THE MAXIMUM ITS CLAMP AND ITS BAR USE. Issue #1515,
+	// found while building Shared Blood: until 2026-09-25 this read the
+	// attribute, which holds the unscaled figure, so a shield a scaled row
+	// raised -- Hollow Crown's, issue #1973 -- showed a maximum refill could
+	// never reach. `MaximumEnergyShieldAsked` is the figure the clamp in
+	// `UCataclysmVitalAttributeSet::PreAttributeChange` and the bar both read.
+	if (Pool == UCataclysmVitalAttributeSet::GetEnergyShieldAttribute())
+	{
+		if (const UCataclysmVitalAttributeSet* Vitals =
+				AbilitySystem.GetSet<UCataclysmVitalAttributeSet>())
+		{
+			Ceiling = Vitals->MaximumEnergyShieldAsked();
+		}
+	}
+
 	// AND A CHARACTER MAY BE FORBIDDEN TO BE HEALED ALL THE WAY UP. Issue
 	// #988. The Masochist's Point of No Return keystone reads "You cannot be
 	// healed above 50% of your maximum health, but you deal 25% more damage."
