@@ -27085,8 +27085,16 @@ namespace CataclysmDungeonModifierEffectsTest
 	/** Beat until a flyover is marked; its marks, with a failure when none came. */
 	TArray<ACataclysmGroundZone*> AFlyoverIsMarked(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode)
 	{
+		// AT THIRTY SECONDS OR ON A BEAT AFTER IT: a line that crosses no floor marks nothing and
+		// is tried again on the next beat, the known limit the entry names. Forty beats is ten
+		// seconds of retries.
 		Beat(Mode, BeatsFor(UCataclysmDungeonModifierEffects::WingsOfTheHostSecondsBetween));
-		const TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
+		TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
+		for (int32 Extra = 0; Marks.IsEmpty() && Extra < 40; ++Extra)
+		{
+			Beat(Mode, 1);
+			Marks = Mode->WingsOfTheHostMarksNow();
+		}
 		Test.TestTrue(TEXT("a flyover was marked"), Marks.Num() > 0);
 		return Marks;
 	}
@@ -27211,18 +27219,27 @@ bool FCataclysmWingsLandTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("the panel says when the next comes"),
 			 Mode->LiveCountsForTheFloor().FindRef(WingsRow).StartsWith(TEXT("wings of the host: next flyover in")));
+	// AT THIRTY SECONDS OR ON A BEAT AFTER IT, for the reason `AFlyoverIsMarked` gives.
 	Beat(Mode, 1);
-	const TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
-	if (!TestTrue(TEXT("marks at thirty seconds, at least two"), Marks.Num() >= 2))
+	TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
+	for (int32 Extra = 0; Marks.IsEmpty() && Extra < 40; ++Extra)
+	{
+		Beat(Mode, 1);
+		Marks = Mode->WingsOfTheHostMarksNow();
+	}
+	if (!TestTrue(TEXT("marks at thirty seconds or a beat after"), Marks.Num() >= 1))
 	{
 		return false;
 	}
 	TestEqual(TEXT("the panel says the feathers are falling"), Mode->LiveCountsForTheFloor().FindRef(WingsRow),
 			  FString::Printf(TEXT("wings of the host: %d feathers falling"), Marks.Num()));
 
-	// THE PLAYER ON THE FIRST MARK, A CREATURE ON THE SECOND.
+	// THE PLAYER ON THE FIRST MARK, AND A CREATURE ON THE SAME MARK 120 CM ASIDE, inside its
+	// 150 cm and clear of the player. A line can mark a single feather, so no second mark is
+	// assumed; a creature is not struck wherever it stands, since the hazard source finds only
+	// the player's side.
 	StandOnTheFeather(Player, Marks[0]);
-	const FVector Second = Marks[1]->GetActorLocation();
+	const FVector Second = Marks[0]->GetActorLocation() + FVector(120.0f, 0.0f, 0.0f);
 	ACataclysmEnemyCharacter* Creature = PlaceCreatureAtRung(World, Mode, Second, 0);
 	if (!TestNotNull(TEXT("a creature on a mark"), Creature))
 	{
