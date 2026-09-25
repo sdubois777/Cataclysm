@@ -103,9 +103,9 @@ claims no archetype name); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. ONE
+TEST FAILED FIRST, on a Horde floor number the test chose wrongly; it is recorded there.
 
 ### The row
 
@@ -227,10 +227,47 @@ Three automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Catacl
 One Python check: the row still says "certain areas", "within earshot", "all cooldowns are increased",
 "resource regeneration is halved" and "destroy the source".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development d4c87126 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite FAILED ONE TEST**, on 8801f1a6: "Build: Succeeded - 29 actions, 26 files compiled";
+  "2452 tests performed, 2451 succeeded, 1 failed: EternalChorusPlacesTwoSourcesThatDoNothingButSing", every
+  declared test reported, on "Expected 'one source in a Horde arena' to be 1, but it was 2". The test went to
+  Horde floor 3 to reach a new arena, but a Horde dungeon's floor 1 is its one new arena and every later floor
+  is a wave in it (`FCataclysmDungeonFloorRules::SameArenaAsLastFloor`), so floor 3 kept floor 2's two
+  sources, as the rule should. **The rule was right and the test was wrong.** **Fixed in the test only**
+  (01553f52): it goes to floor 1 for the arena and floor 2 for its next wave, and checks that both of the
+  last floor's sources are gone rather than the first alone. **By the coordinating session's ruling the whole
+  suite was not run again** after that test-only edit.
+- **On the final head, 01553f52:** the Python suite of record, 5,463 passed and 8 skipped of 5,471, 0 failed;
+  the groups `Cataclysm.DungeonModifierEffects.`, which holds the failed test, 303 performed, 303 succeeded,
+  and `Cataclysm.SaveApply.` 10 performed, 10 succeeded -- each with every one of its declared tests
+  reported.
+- **The groups on the base**, d4c87126: `Cataclysm.DungeonModifierEffects.` 300 performed, 300 succeeded;
+  `Cataclysm.SaveApply.` 9 performed, 9 succeeded.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **No earshot ever covers the player** (`bWithinEarshot |= false && Earshot && ...`), on the prefix
+  `Cataclysm.DungeonModifierEffects.WithinAChorus`. With the break in: 1 performed, 1 failed, on "Expected
+  'cooldowns 50 longer within earshot' to be 50.000000, but it was 0.000000", "Expected 'mana regeneration
+  halved' to be 1.450000, but it was 2.900000" and "Expected 'the other's earshot still lengthens' to be
+  50.000000, but it was 0.000000". Restored: 1 performed, 1 succeeded.
+- **Health regeneration halved in place of mana** (`DungeonModifierEffectsHealthRegenStat` for
+  `DungeonModifierEffectsManaRegenStat`), on the prefix `Cataclysm.DungeonModifierEffects.EternalChorus`.
+  With the break in: 2 performed, 1 failed, on "Expected 'one modifier on mana_regen' to be 1, but it was 0"
+  and "Expected 'health_regen is not a resource, and is untouched' to be 0, but it was 1". Restored: 2
+  performed, 2 succeeded.
+- **A destroyed source keeps singing** (`if (!IsValid(Singer))` without the `IsDead` half), on the prefix
+  `Cataclysm.DungeonModifierEffects.WithinAChorus`. With the break in: 1 performed, 1 failed, on "Expected
+  'one earshot is left' to be 1, but it was 2", "Expected 'where its earshot was, cooldowns are back' to be
+  0.000000, but it was 50.000000" and "Expected 'and mana regeneration' to be 2.900000, but it was
+  1.450000". Restored: 1 performed, 1 succeeded.
+
+The save system's skip of this class (`CataclysmSaveApply.cpp`) was not given a guard proof; the
+coordinating session accepted that, within the limit of three proofs a change.
 
 
 ---
