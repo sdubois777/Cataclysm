@@ -328,3 +328,6 @@ Positive_Each_consecutive_melee_hit_on_the_same_enemy_inc#1,Positive_Each_consec
 Positive_Each_consecutive_melee_hit_on_the_same_enemy_inc#2,Positive_Each_consecutive_melee_hit_on_the_same_enemy_inc,spell_damage,increased,5.0,10.0,Type.Melee,,0.0,consecutive_hits,1.0,,hit_dealt,,8,0.0,0.0,0.0
 Negative_Each_consecutive_hit_against_the_same_enemy_deal#1,Negative_Each_consecutive_hit_against_the_same_enemy_deal,attack_damage,more,-5.0,-8.0,,,0.0,consecutive_hits,1.0,,hit_dealt,,10,0.0,0.0,0.0
 Negative_Each_consecutive_hit_against_the_same_enemy_deal#2,Negative_Each_consecutive_hit_against_the_same_enemy_deal,spell_damage,more,-5.0,-8.0,,,0.0,consecutive_hits,1.0,,hit_dealt,,10,0.0,0.0,0.0
+Positive_Strike_skills_reduce_enemy_armor_by_3_6_per_hi#1,Positive_Strike_skills_reduce_enemy_armor_by_3_6_per_hi,,,3.0,6.0,Type.Strike,,0.0,,0.0,enemy_armor_removed,hit_dealt,,6,5.0,0.0,0.0
+Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo#1,Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo,,,2.0,4.0,,,0.0,,0.0,enemy_armor_removed,hit_dealt,,0,5.0,0.0,0.0
+Positive_Each_melee_hit_you_take_reduces_the_attacker_s_d#1,Positive_Each_melee_hit_you_take_reduces_the_attacker_s_d,,,3.0,5.0,,,0.0,,0.0,attacker_damage_removed,melee_hit_taken,,5,3.0,0.0,0.0
