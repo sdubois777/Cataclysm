@@ -542,6 +542,36 @@ public:
 	//                           multiply the use's damage by; 1 for none.
 	float SpendNextUseCharges(bool bUseIsSpell, float* OutMoreMultiplier = nullptr);
 
+	/**
+	 * Nothing Wasted, the Ravager's `Ravager_capstone_50` option 2. Issue #1515:
+	 * "Damage your Armor and Damage Reduction remove is added to your next melee
+	 * attack, up to 100% of that attack's damage." The row will carry the 100
+	 * on this stat; above zero means the option is held.
+	 */
+	static const TCHAR* MitigatedAddedCapStat;
+
+	/**
+	 * Add what armour and damage reduction removed from a blow on THIS
+	 * character to its store, if it holds Nothing Wasted. Ticks count (ruled
+	 * 2026-09-24). No time limit and no ceiling on the store: the spend's cap
+	 * is the only bound. Death clears it.
+	 */
+	void NoteMitigatedDamage(float Removed);
+
+	/**
+	 * Spend the store on a melee blow about to be sent for `HitDamage`, and
+	 * answer what is added to it: the store, up to the stat's share of
+	 * `HitDamage`. The store is emptied either way, so anything above the cap is
+	 * lost and the next target of the same use gets nothing (ruled 2026-09-24).
+	 *
+	 * SPENT WHEN SENT, before the target's evasion is known, so an evaded first
+	 * blow uses it up, as a next-use charge is spent per use. Ruled 2026-09-24.
+	 */
+	float SpendStoredMitigatedDamage(float HitDamage);
+
+	/** What Nothing Wasted holds now, for the line above the skill bar. */
+	float StoredMitigatedDamageNow() const { return StoredMitigatedDamage; }
+
 	/** How many charges one row holds now. Issue #1833, phase 2. */
 	int32 NextUseChargesHeld(FName Key) const;
 
@@ -2136,6 +2166,9 @@ protected:
 	 * No timestamp, because a charge has no duration.
 	 */
 	TMap<FName, FNextUseCharge> NextUseCharges;
+
+	/** Nothing Wasted's store. Issue #1515. */
+	float StoredMitigatedDamage = 0.0f;
 
 	/**
 	 * How deep inside `ActOnEvent` this character currently is, which is never

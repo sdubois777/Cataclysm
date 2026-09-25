@@ -321,6 +321,14 @@ public:
 	static FString OwnStacksEntry(const TArray<FName>& Stats, int32 Held, int32 Cap);
 
 	/**
+	 * What Nothing Wasted holds for the next melee blow, such as "Next melee
+	 * +340", or empty while nothing is stored. Issue #1515. Joined to the line
+	 * above by the same three spaces, so the two never draw over each other.
+	 * A store below one point says 1, since "+0" would read as nothing held.
+	 */
+	static FString StoredDamageLine(float Stored);
+
+	/**
 	 * A key written short enough to fit in a box.
 	 *
 	 * `FKey` CARRIES TWO NAMES AND THIS TAKES THE SHORT ONE. The long name is

@@ -675,7 +675,9 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			DefenderStat(Defender, TEXT("armor"), Combat->GetArmor(), BlowOf(Hit))
 			* (1.0f - Ignored / 100.0f)
 			* (1.0f - Removed / 100.0f);
+		const float BeforeArmour = Damage;
 		Damage *= 1.0f - ArmorReduction(Armor, Tier) / 100.0f;
+		Result.RemovedByArmour = BeforeArmour - Damage;
 	}
 
 	// 4. Resistance, penetrated first and capped second.
@@ -689,6 +691,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 	// bounding it, so at 100 a character was exactly immune.
 	if (Combat)
 	{
+		// WHAT THE TWO DAMAGE REDUCTION LINES REMOVE, measured across both. Issue
+		// #1515, Nothing Wasted.
+		const float BeforeReduction = Damage;
+
 		// THE BLOW IS PASSED, AND UNTIL NOW IT WAS NOT. This comment used to read
 		// "NO BLOW HERE, AND NOTHING AUTHORED ASKS FOR ONE", and said that if a
 		// row were ever authored conditioning damage reduction on the hit
@@ -741,6 +747,7 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// it. Issue #665.
 		Damage *= 1.0f - FMath::Clamp(Combat->GetDamageReductionMore(),
 									  0.0f, MoreDamageReductionCap) / 100.0f;
+		Result.RemovedByDamageReduction = BeforeReduction - Damage;
 
 		// 6. HOW MUCH DAMAGE THIS CHARACTER TAKES, as a percentage where 100 is
 		// normal. Issue #1026. Three Masochist nodes move it and issue #964

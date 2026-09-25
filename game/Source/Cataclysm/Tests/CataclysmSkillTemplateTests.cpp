@@ -14901,6 +14901,245 @@ bool FCataclysmRenderingBlowsCountsApartTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmNothingWastedTest
+{
+	using namespace CataclysmSkillTest;
+
+	/** A pool small enough that a blow reads as a difference of two health
+	 *  readings to well inside the tolerance. Issue #1728. */
+	constexpr float Pool = 10'000.0f;
+
+	/** Nothing Wasted at its designed cap of 100%, as its row will give it. */
+	void HoldNothingWasted(FScopedFighter& Holder)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+		Flat.Value = 100.0f;
+		TMap<FName, FCataclysmStatInputs> Stats;
+		FCataclysmStatInputs& Line =
+			Stats.FindOrAdd(FName(UCataclysmAbilitySystemComponent::MitigatedAddedCapStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Holder.AbilitySystem->SetStatInputs(MoveTemp(Stats));
+	}
+
+	/** A small pool, and this much armour and damage reduction. */
+	void Defences(FScopedFighter& Who, float Armor, float Reduction)
+	{
+		Who.Set(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Pool);
+		Who.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+		Who.Set(UCataclysmCombatAttributeSet::GetArmorAttribute(), Armor);
+		Who.Set(UCataclysmCombatAttributeSet::GetDamageReductionAttribute(), Reduction);
+	}
+
+	FGameplayTagContainer Melee()
+	{
+		FGameplayTagContainer Tags;
+		Tags.AddTag(UCataclysmDamageCalculation::MeleeTag());
+		return Tags;
+	}
+
+	/** One blow of the weapon's damage from `From` on `To`; what reached health.
+	 *  The pool is filled first, so every reading starts from the same number. */
+	float Hit(const FScopedFighter& From, FScopedFighter& To,
+			  const FGameplayTagContainer& Tags,
+			  const FCataclysmHitDelivery& Delivery = FCataclysmHitDelivery())
+	{
+		To.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+		UCataclysmSkillEffects::ApplyHit(From.Actor, To.Actor, 100.0f, Tags, Delivery);
+		return Pool - To.Health();
+	}
+
+	float Stored(const FScopedFighter& Holder)
+	{
+		return Holder.AbilitySystem->StoredMitigatedDamageNow();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNothingWastedStoresAndAddsTest,
+	"Cataclysm.NothingWasted.ArmourAndReductionRemovedAreStoredAndAddedToTheNextMeleeHit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Nothing Wasted, `Ravager_capstone_50` option 2. Issue #1515: "Damage your
+ * Armor and Damage Reduction remove is added to your next melee attack, up to
+ * 100% of that attack's damage."
+ *
+ * THE STAT IS GIVEN BY HAND, as the row will give it: the option has no row
+ * yet, so this cannot see a missing or wrong one. The rows change has to add a
+ * test that wears the real row.
+ *
+ * NOTHING ELSE STANDS IN THE BLOW'S WAY: no block, no critical strike, no
+ * resistance and no shield, so everything the holder did not take is what its
+ * armour and damage reduction removed.
+ */
+bool FCataclysmNothingWastedStoresAndAddsTest::RunTest(const FString&)
+{
+	using namespace CataclysmNothingWastedTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(1 * M, 0, 0));
+	FScopedFighter Plain(World, FVector(0, 20 * M, 0));
+	FScopedFighter Target(World, FVector(1 * M, 20 * M, 0));
+	HoldNothingWasted(Holder);
+	Defences(Holder, 1000.0f, 20.0f);
+	Defences(Enemy, 0.0f, 0.0f);
+	Defences(Target, 0.0f, 0.0f);
+
+	TestEqual(TEXT("before anything, nothing is stored"), Stored(Holder), 0.0f);
+
+	const float Taken = Hit(Enemy, Holder, Melee());
+	const float Kept = Stored(Holder);
+	if (!TestTrue(TEXT("the holder's armour and damage reduction removed something, "
+					   "which every figure below depends on"),
+				  Kept > 1.0f && Taken > 1.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("what is stored is the blow less what reached health"),
+			  Kept, WeaponDamage - Taken, 0.01f);
+
+	const float PlainHit = Hit(Plain, Target, Melee());
+	if (!TestTrue(TEXT("the store is below one plain hit, so the cap does not bind "
+					   "here"),
+				  Kept < PlainHit))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the holder's next melee hit deals the plain hit and the store"),
+			  Hit(Holder, Target, Melee()), PlainHit + Kept, 0.01f);
+	TestEqual(TEXT("and the store is then empty"), Stored(Holder), 0.0f);
+
+	FCataclysmHitDelivery Tick;
+	Tick.bIsDamageOverTime = true;
+	Hit(Enemy, Holder, Melee(), Tick);
+	TestTrue(TEXT("a tick adds to it too, since armour and damage reduction reduce "
+				  "ticks"),
+			 Stored(Holder) > 0.01f);
+	Hit(Holder, Target, Melee());
+
+	TestEqual(TEXT("the line above the skill bar reads a store as a whole number"),
+			  UCataclysmSkillBar::StoredDamageLine(123.4f), FString(TEXT("Next melee +123")));
+	TestEqual(TEXT("reads less than one point as one, not as nothing"),
+			  UCataclysmSkillBar::StoredDamageLine(0.3f), FString(TEXT("Next melee +1")));
+	TestEqual(TEXT("and says nothing when nothing is stored"),
+			  UCataclysmSkillBar::StoredDamageLine(Stored(Holder)), FString());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNothingWastedCappedTest,
+	"Cataclysm.NothingWasted.TheAddedDamageIsCappedAtTheHitsOwnAndTheRestIsLost",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A store larger than the hit adds exactly the hit's own damage, so the hit
+ * deals twice its plain figure, and the rest is lost. Ruled 2026-09-24.
+ */
+bool FCataclysmNothingWastedCappedTest::RunTest(const FString&)
+{
+	using namespace CataclysmNothingWastedTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(1 * M, 0, 0));
+	FScopedFighter Target(World, FVector(0, 1 * M, 0));
+	HoldNothingWasted(Holder);
+	Defences(Holder, 1000.0f, 20.0f);
+	Defences(Enemy, 0.0f, 0.0f);
+	Defences(Target, 0.0f, 0.0f);
+
+	for (int32 Each = 0; Each < 20 && Stored(Holder) <= WeaponDamage * 2.0f; ++Each)
+	{
+		Hit(Enemy, Holder, Melee());
+	}
+	if (!TestTrue(TEXT("the store is well above one hit's damage"),
+				  Stored(Holder) > WeaponDamage * 2.0f))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the hit deals exactly twice its plain damage"),
+			  Hit(Holder, Target, Melee()), WeaponDamage * 2.0f, 0.01f);
+	TestEqual(TEXT("and what was above that is lost, not kept"), Stored(Holder), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNothingWastedFirstTargetTest,
+	"Cataclysm.NothingWasted.OnlyTheFirstTargetOfAMeleeAttackGetsIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A 360 degree strike on two enemies adds the store to the nearer and not the
+ * farther: the first blow empties it, and `HitTargets` hits nearest first. A
+ * blow that is not melee leaves the store alone, and a character without the
+ * option stores nothing. Ruled 2026-09-24.
+ */
+bool FCataclysmNothingWastedFirstTargetTest::RunTest(const FString&)
+{
+	using namespace CataclysmNothingWastedTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Holder(World, FVector::ZeroVector);
+	FScopedFighter Near(World, FVector(1 * M, 0, 0));
+	FScopedFighter Far(World, FVector(0, 3 * M, 0));
+	FScopedFighter Enemy(World, FVector(0, 30 * M, 0));
+	HoldNothingWasted(Holder);
+	Defences(Holder, 1000.0f, 20.0f);
+	Defences(Near, 0.0f, 0.0f);
+	Defences(Far, 0.0f, 0.0f);
+	Defences(Enemy, 0.0f, 0.0f);
+
+	Hit(Enemy, Holder, Melee());
+	const float Kept = Stored(Holder);
+	if (!TestTrue(TEXT("something is stored"), Kept > 1.0f))
+	{
+		return false;
+	}
+
+	// NOT MELEE: the store stays.
+	Hit(Holder, Far, FGameplayTagContainer());
+	TestEqual(TEXT("a blow that is not melee leaves the store as it was"),
+			  Stored(Holder), Kept, 0.01f);
+
+	UCataclysmStrikeSkill* Sweep = GrantSkill<UCataclysmStrikeSkill>(
+		Holder, ECataclysmAbilitySlot::Heavy, TEXT("Radius=6; Angle=360"),
+		TEXT("Test Sweep"), TEXT("Type.Melee"));
+	if (!Sweep)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+	Near.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+	Far.Set(UCataclysmVitalAttributeSet::GetHealthAttribute(), Pool);
+	TestEqual(TEXT("the swing strikes both"), Sweep->SwingOnce(), 2);
+
+	const float Swing = WeaponDamage * 250.0f / 100.0f;
+	TestEqual(TEXT("the nearer enemy takes the swing and the store"),
+			  Pool - Near.Health(), Swing + Kept, 0.01f);
+	TestEqual(TEXT("the farther takes the swing alone"),
+			  Pool - Far.Health(), Swing, 0.01f);
+	TestEqual(TEXT("and the store is empty"), Stored(Holder), 0.0f);
+
+	// WITHOUT THE OPTION: nothing is stored.
+	FScopedFighter Other(World, FVector(0, 60 * M, 0));
+	Defences(Other, 1000.0f, 20.0f);
+	Hit(Enemy, Other, Melee());
+	TestEqual(TEXT("a character without the option stores nothing"),
+			  Stored(Other), 0.0f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPointBlankSingleTargetTest,
 	"Cataclysm.Skills.APointBlankSwingOnOneEnemyTakesTheDrawbackAndOnTwoDoesNot",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

@@ -390,9 +390,20 @@ void ACataclysmHUD::DrawSkillBar()
 			OwnStacks.Add(UCataclysmSkillBar::OwnStacksEntry(
 				Held.Stats, Held.Held, Held.Cap));
 		}
-		const FString Line = UCataclysmSkillBar::NextUseLine(
-			SkillPercent, SkillCount, AttackPercent, AttackCount,
-			Cataclysm->NextUseEffectivenessHeld(), OwnStacks);
+		// AND NOTHING WASTED'S STORE ON THE SAME LINE. Issue #1515.
+		TArray<FString> Parts;
+		for (const FString& Part :
+			 {UCataclysmSkillBar::NextUseLine(
+				  SkillPercent, SkillCount, AttackPercent, AttackCount,
+				  Cataclysm->NextUseEffectivenessHeld(), OwnStacks),
+			  UCataclysmSkillBar::StoredDamageLine(Cataclysm->StoredMitigatedDamageNow())})
+		{
+			if (!Part.IsEmpty())
+			{
+				Parts.Add(Part);
+			}
+		}
+		const FString Line = FString::Join(Parts, TEXT("   "));
 		if (!Line.IsEmpty())
 		{
 			const FVector2D First = UCataclysmSkillBar::BoxOriginFor(

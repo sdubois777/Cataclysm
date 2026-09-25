@@ -334,6 +334,21 @@ struct CATACLYSM_API FCataclysmDamageResult
 
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
 	float DealtToHealth = 0.0f;
+
+	/**
+	 * How much of the hit the armour step took away, and how much the two
+	 * damage reduction lines took away between them: each is the damage before
+	 * its own step less the damage after it. Issue #1515, for Nothing Wasted,
+	 * which stores exactly these two.
+	 *
+	 * TWO FIGURES AND NOT ONE, because resistance sits between them. What
+	 * resistance removes is in neither.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float RemovedByArmour = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Damage")
+	float RemovedByDamageReduction = 0.0f;
 };
 
 /**

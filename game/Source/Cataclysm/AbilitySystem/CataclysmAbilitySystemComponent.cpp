@@ -2029,6 +2029,10 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	NextUseCharges.Empty();
 
+	// AND NOTHING WASTED'S STORE, which waits, like a charge, until a melee
+	// blow spends it or the character dies. Issue #1515.
+	StoredMitigatedDamage = 0.0f;
+
 	// THE HEALTH DEBT, WHAT IS OWED AND WHEN IT FALLS DUE TOGETHER, the pair
 	// `UCataclysmHealthDebt::ClearOnKill` writes. Issue #1013, answered by the
 	// same ruling: every character, The Reckoning included. That keystone's debt
@@ -2802,6 +2806,37 @@ void UCataclysmAbilitySystemComponent::GrantNextUseCharge(FName Key, bool bAttac
 	Held.Percent = Percent;
 	Held.bAttack = bAttack;
 	Held.bEffectiveness = bEffectiveness;
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::MitigatedAddedCapStat =
+	TEXT("mitigated_damage_added_to_next_melee_cap_percent");
+
+void UCataclysmAbilitySystemComponent::NoteMitigatedDamage(float Removed)
+{
+	if (Removed <= 0.0f
+		|| StatForSkill(FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f)
+			   <= 0.0f)
+	{
+		return;
+	}
+	StoredMitigatedDamage += Removed;
+}
+
+float UCataclysmAbilitySystemComponent::SpendStoredMitigatedDamage(float HitDamage)
+{
+	if (StoredMitigatedDamage <= 0.0f || HitDamage <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float CapPercent =
+		StatForSkill(FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f);
+	if (CapPercent <= 0.0f)
+	{
+		return 0.0f;
+	}
+	const float Added = FMath::Min(StoredMitigatedDamage, HitDamage * CapPercent / 100.0f);
+	StoredMitigatedDamage = 0.0f;
+	return Added;
 }
 
 float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell,

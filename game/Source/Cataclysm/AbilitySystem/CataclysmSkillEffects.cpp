@@ -910,8 +910,25 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// every caller uses it to scale a rider, and a rider scaled by what got
 	// through armour would shrink as the target's defences grew. What none of
 	// them could do before was ask whether the blow landed at all.
-	return ApplyDirectDamage(Instigator, Target, Damage, Arrived, OutResolved)
-		? Damage : 0.0f;
+	// AND WHAT NOTHING WASTED STORED, ON A MELEE BLOW THAT IS NOT A TICK. Issue
+	// #1515. Added to the finished figure, after the attacker's own increases and
+	// multipliers, so "up to 100% of that attack's damage" is measured against
+	// the figure it is added to; the target's mitigation still applies to the
+	// whole (ruled 2026-09-24). The store is emptied by this blow, so the next
+	// target of the same use gets nothing, and `HitTargets` hits nearest first:
+	// that order is the only thing making "the first target" the nearest one.
+	float Sent = Damage;
+	if (Arrived.bIsMelee && !Arrived.bIsDamageOverTime)
+	{
+		if (UCataclysmAbilitySystemComponent* Holder =
+				Cast<UCataclysmAbilitySystemComponent>(Source))
+		{
+			Sent += Holder->SpendStoredMitigatedDamage(Damage);
+		}
+	}
+
+	return ApplyDirectDamage(Instigator, Target, Sent, Arrived, OutResolved)
+		? Sent : 0.0f;
 }
 
 bool UCataclysmSkillEffects::ReduceHealthDirectly(AActor* Instigator,
