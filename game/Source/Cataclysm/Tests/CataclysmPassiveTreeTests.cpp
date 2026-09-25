@@ -80,6 +80,8 @@
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameplayEffect.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -15832,6 +15834,436 @@ bool FCataclysmDemonicRowsSharedRuinTest::RunTest(const FString&)
 		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_capstone_100")), 2,
 		{{ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat, 20.0f},
 		 {ACataclysmMinion::DeathBlastRadiusMetresStat, 4.0f}});
+}
+
+// ---------------------------------------------------------------------------
+// The clauses a real-row test left out. Issue #1755, its fifth batch.
+//
+// EACH NODE BELOW ALREADY HAS A TEST THROUGH ITS REAL ROW, AND EACH OF THOSE
+// SHOWS PART OF ITS SENTENCE. Unstoppable's shows the stun half and not the
+// slow; Never Lets Go's reads the Cripple chance off the attribute and never
+// lands a blow; Press-Ganged's and Rekindled's show a replacement and not "no
+// more than once every N seconds"; Hollow Crown's shows the shield and not the
+// 4% more damage. These show the rest, on a real character.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmPartialClauseTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmKeystoneRowTest;
+
+	bool Ready(FAutomationTestBase& Test, const FRealCharacter& Player)
+	{
+		if (!Test.TestTrue(TEXT("a possessed player with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+
+	/** A class's tree filled to a capstone and a point in it, no option chosen. */
+	bool FillTo(FAutomationTestBase& Test, const TCHAR* Tree, const FName& Capstone,
+				FCataclysmPassiveAllocation& Out)
+	{
+		const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+		int32 Filled = 0;
+		const int32 Threshold = NodeTable
+			? CataclysmDemonicRowsTest::FillClassTreeToOpen(NodeTable, Tree, Capstone,
+															Out, Filled)
+			: 0;
+		if (!Test.TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+			|| !Test.TestEqual(TEXT("and the tree holds it"), Filled, Threshold))
+		{
+			return false;
+		}
+		Out.Add(Capstone, 1);
+		return true;
+	}
+
+	void Hold(FRealCharacter& Player, const FCataclysmPassiveAllocation& Allocation)
+	{
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmUnstoppableSlowClauseTest,
+	"Cataclysm.PartialClauses.UnstoppableDropsARealRavagersWornSlowOnlyWithAnEnemyNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_spine_003` Unstoppable: "You cannot be ... slowed ... while an
+ * enemy is within 4 metres of you." The slow is a real one worn on a helm,
+ * "You are permanently slowed by 10%-20%" at a roll of 1, so 20% less. Read off
+ * the movement component, which is what the character walks at.
+ */
+bool FCataclysmUnstoppableSlowClauseTest::RunTest(const FString&)
+{
+	using namespace CataclysmPartialClauseTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(FName(TEXT("Ravager_keystone_spine_003")), 1);
+	Hold(Player, Allocation);
+
+	const auto Walk = [&Player]()
+	{
+		Player.Character->RefreshMovementSpeed();
+		return Player.Character->GetCharacterMovement()->MaxWalkSpeed;
+	};
+	const float Free = Walk();
+	if (!TestTrue(TEXT("the Ravager walks at a speed"), Free > 0.0f))
+	{
+		return false;
+	}
+
+	FCataclysmItem Helm;
+	Helm.Base = FName(TEXT("Head_Helm"));
+	FCataclysmRolledEnchantment Rolled;
+	Rolled.Positive = FName(TEXT("Positive_Ultimate_has_1_3_additional_charges"));
+	Rolled.Negative = FName(TEXT("Negative_You_are_permanently_slowed_by_10_20"));
+	Rolled.NegativeRoll = 1.0f;
+	Helm.Enchantments.Add(Rolled);
+	Helm.EnchantmentCount = 1;
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+	const ECataclysmEquipResult Result =
+		Player.Equipment->Equip(Helm, Removed, AlsoRemoved, Slot);
+	if (!TestTrue(TEXT("the slowing helm is worn"),
+				  Result == ECataclysmEquipResult::Equipped
+					  || Result == ECataclysmEquipResult::Swapped))
+	{
+		return false;
+	}
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	TestEqual(TEXT("alone, the worn slow stands: 20% less"), Walk(), Free * 0.8f, 0.5f);
+
+	SpawnHostile(World, Player.Character->GetActorLocation()
+							+ FVector(10.0f * M, 0.0f, 0.0f));
+	TestEqual(TEXT("an enemy ten metres off is not within four: still 20% less"),
+			  Walk(), Free * 0.8f, 0.5f);
+
+	if (!TestNotNull(TEXT("an enemy two metres off"),
+					 SpawnHostile(World, Player.Character->GetActorLocation()
+											 + FVector(0.0f, 2.0f * M, 0.0f))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with an enemy within four metres, the slow is dropped"), Walk(), Free,
+			  0.5f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNeverLetsGoRealHitTest,
+	"Cataclysm.PartialClauses.NeverLetsGoCripplesEveryEnemyARealRavagerHitsForAtLeastFourSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_capstone_25` option 2, Never Lets Go: "Enemies you hit are Crippled
+ * for 4 seconds". Real melee blows from a real Ravager, the tree filled to 25
+ * and the option chosen. Two enemies, so "every" is shown by more than one roll.
+ *
+ * "AT LEAST" FOUR SECONDS, AND WHY NOT EXACTLY. Cripple lasts four seconds in
+ * `game/Data/StatusEffects.csv` and its magnitude can only lengthen it; the
+ * filled tree may hold a node that raises the magnitude, so exactly four is not
+ * what this character's Cripple must last.
+ */
+bool FCataclysmNeverLetsGoRealHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmPartialClauseTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	FCataclysmPassiveAllocation Allocation;
+	if (!Ready(*this, Player)
+		|| !FillTo(*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_25")), Allocation))
+	{
+		return false;
+	}
+	Allocation.SetChosenOption(FName(TEXT("Ravager_capstone_25")), 2);
+	Hold(Player, Allocation);
+
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	FGameplayTagContainer Melee;
+	Melee.AddTag(FGameplayTag::RequestGameplayTag(
+		FName(UCataclysmDamageCalculation::MeleeTagName), /*ErrorIfNotFound=*/false));
+	FCataclysmHitDelivery Delivery;
+	Delivery.bIsMelee = true;
+	Delivery.bCannotCriticallyStrike = true;
+
+	const FVector Here = Player.Character->GetActorLocation();
+	for (const FVector& Offset : {FVector(2.0f * M, 0.0f, 0.0f), FVector(0.0f, 2.0f * M, 0.0f)})
+	{
+		ACataclysmEnemyCharacter* Enemy = SpawnHostile(World, Here + Offset);
+		if (!TestNotNull(TEXT("an enemy two metres off"), Enemy))
+		{
+			return false;
+		}
+		UAbilitySystemComponent* EnemySystem = UCataclysmTargeting::AbilitySystemOf(Enemy);
+		if (!TestNotNull(TEXT("with an ability system"), EnemySystem)
+			|| !TestFalse(TEXT("which is not Crippled before the blow"),
+						  EnemySystem->HasMatchingGameplayTag(Cripple)))
+		{
+			return false;
+		}
+
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Enemy, 100.0f, Melee, Delivery);
+
+		TestTrue(TEXT("the Ravager's blow Crippled it"),
+				 EnemySystem->HasMatchingGameplayTag(Cripple));
+		float Longest = 0.0f;
+		for (const float Seconds : EnemySystem->GetActiveEffectsTimeRemaining(
+				 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+					 FGameplayTagContainer(Cripple))))
+		{
+			Longest = FMath::Max(Longest, Seconds);
+		}
+		TestTrue(*FString::Printf(TEXT("for at least 4 seconds: %.2f"), Longest),
+				 Longest >= 4.0f - 0.01f);
+	}
+	return true;
+}
+
+namespace CataclysmPartialClauseTest
+{
+	/**
+	 * A real Ritualist holding Summon Imp and these nodes, and a way to lose an
+	 * imp: summon one, take it to nothing, and say how many the skill then holds.
+	 * The same steps `PressGangedAndRekindledRowsReplaceARealRitualistsLostImp`
+	 * takes.
+	 */
+	struct FReplacer
+	{
+		FRealCharacter Player;
+		UCataclysmSummonSkill* Skill = nullptr;
+
+		bool Start(FAutomationTestBase& Test, UWorld* World, const TArray<FName>& Nodes)
+		{
+			Player = Spawn(World);
+			if (!Ready(Test, Player))
+			{
+				return false;
+			}
+			FCataclysmPassiveAllocation Allocation;
+			for (const FName& Node : Nodes)
+			{
+				Allocation.Add(Node, 1);
+			}
+			Hold(Player, Allocation);
+
+			const FGameplayAbilitySpecHandle Handle =
+				Player.AbilitySystem->GiveAbilityInSlot(
+					UCataclysmSummonSkill::StaticClass(), ECataclysmAbilitySlot::Special,
+					/*Level=*/100, Player.Character);
+			FGameplayAbilitySpec* Spec = Player.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+			Skill = Spec ? Cast<UCataclysmSummonSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (!Test.TestNotNull(TEXT("Summon Imp is granted"), Skill))
+			{
+				return false;
+			}
+			Skill->Params = UCataclysmSkillShapes::ParseParams(
+				TEXT("Count=1; MaxActive=3; Duration=20; Radius=3; Minions=Imp:1"));
+			return true;
+		}
+
+		/** Lose one imp; how many are living after, with every one then cleared. */
+		int32 LivingAfterALoss(FAutomationTestBase& Test)
+		{
+			ACataclysmMinion* Imp = Skill->SummonOne();
+			UAbilitySystemComponent* ImpSystem = UCataclysmTargeting::AbilitySystemOf(Imp);
+			if (!ImpSystem)
+			{
+				Test.AddError(TEXT("The imp has no ability system."));
+				return -1;
+			}
+			ImpSystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+			const int32 Living = Skill->LivingMinionCount();
+			for (ACataclysmMinion* Left : Skill->Minions)
+			{
+				if (IsValid(Left))
+				{
+					Left->Destroy();
+				}
+			}
+			Skill->LivingMinionCount();
+			return Living;
+		}
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPressGangedLimitTest,
+	"Cataclysm.PartialClauses.PressGangedReplacesARealRitualistsLostImpNoMoreThanOnceEveryTenSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_a_kB` Press-Ganged: "... a new minion is summoned where it
+ * died at no cost, no more than once every 10 seconds." Replaced; a second loss
+ * at once, not; nine seconds on, still not; ten and a little, replaced again.
+ */
+bool FCataclysmPressGangedLimitTest::RunTest(const FString&)
+{
+	using namespace CataclysmPartialClauseTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FReplacer Ritualist;
+	if (!Ritualist.Start(*this, World, {FName(TEXT("Ritualist_keystone_a_kB"))}))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the first loss is replaced"), Ritualist.LivingAfterALoss(*this), 1);
+	TestEqual(TEXT("a second loss at once is not"), Ritualist.LivingAfterALoss(*this), 0);
+	CataclysmTestWorld::RunClock(World, 9.0f);
+	TestEqual(TEXT("nor nine seconds after the replacement"),
+			  Ritualist.LivingAfterALoss(*this), 0);
+	CataclysmTestWorld::RunClock(World, 1.1f);
+	TestEqual(TEXT("and ten seconds and a little after it, one is again"),
+			  Ritualist.LivingAfterALoss(*this), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRekindledLimitTest,
+	"Cataclysm.PartialClauses.RekindledReplacesARealRitualistsExplodedImpNoMoreThanOnceEveryFiveSeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_keystone_b_kC` Rekindled: "When a minion explodes a new minion is
+ * summoned where it stood, no more than once every 5 seconds." With Every One
+ * Bursts held, so an imp's death is an explosion. Replaced; at once, not; four
+ * seconds on, still not; five and a little, replaced again.
+ */
+bool FCataclysmRekindledLimitTest::RunTest(const FString&)
+{
+	using namespace CataclysmPartialClauseTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FReplacer Ritualist;
+	if (!Ritualist.Start(*this, World, {FName(TEXT("Ritualist_keystone_b_kC")),
+										FName(TEXT("Ritualist_keystone_b_kB"))}))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the first explosion is replaced"), Ritualist.LivingAfterALoss(*this), 1);
+	TestEqual(TEXT("a second at once is not"), Ritualist.LivingAfterALoss(*this), 0);
+	CataclysmTestWorld::RunClock(World, 4.0f);
+	TestEqual(TEXT("nor four seconds after the replacement"),
+			  Ritualist.LivingAfterALoss(*this), 0);
+	CataclysmTestWorld::RunClock(World, 1.1f);
+	TestEqual(TEXT("and five seconds and a little after it, one is again"),
+			  Ritualist.LivingAfterALoss(*this), 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHollowCrownDamageTest,
+	"Cataclysm.PartialClauses.HollowCrownMultipliesARealRitualistsDamageForEachMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_capstone_200` option 2, Hollow Crown: "Each minion you have grants
+ * you 4% more damage". The tree filled to 200, the option chosen against no
+ * option, with the same minions, so only the option's rows differ. More, so a
+ * multiplier: three minions, 1.12, on attack damage and on spell damage.
+ */
+bool FCataclysmHollowCrownDamageTest::RunTest(const FString&)
+{
+	using namespace CataclysmPartialClauseTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	FCataclysmPassiveAllocation Unchosen;
+	const FName Capstone(TEXT("Ritualist_capstone_200"));
+	if (!Ready(*this, Player) || !FillTo(*this, TEXT("Ritualist"), Capstone, Unchosen))
+	{
+		return false;
+	}
+	FCataclysmPassiveAllocation Chosen = Unchosen;
+	Chosen.SetChosenOption(Capstone, 2);
+
+	const auto Ratios = [&]()
+	{
+		Hold(Player, Unchosen);
+		const float AttackWithout =
+			Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer());
+		const float SpellWithout = UCataclysmSkillEffects::SpellDamageOf(
+			Player.AbilitySystem, FGameplayTagContainer());
+		Hold(Player, Chosen);
+		const float AttackWith =
+			Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer());
+		const float SpellWith = UCataclysmSkillEffects::SpellDamageOf(
+			Player.AbilitySystem, FGameplayTagContainer());
+		return TPair<float, float>(AttackWithout > 0.0f ? AttackWith / AttackWithout : -1.0f,
+								   SpellWithout > 0.0f ? SpellWith / SpellWithout : -1.0f);
+	};
+
+	const TPair<float, float> None = Ratios();
+	TestEqual(TEXT("with no minion, attack damage is unchanged"), None.Key, 1.0f, 0.0001f);
+	TestEqual(TEXT("and spell damage too"), None.Value, 1.0f, 0.0001f);
+
+	const FVector Here = Player.Character->GetActorLocation();
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		if (!TestNotNull(TEXT("a minion"),
+						 ACataclysmMinion::Spawn(Player.Character,
+												 Here + FVector((3.0f + Index) * M, 0.0f, 0.0f),
+												 60.0f, false)))
+		{
+			return false;
+		}
+	}
+	const TPair<float, float> Three = Ratios();
+	TestEqual(TEXT("three minions: attack damage 12% more"), Three.Key, 1.12f, 0.0001f);
+	TestEqual(TEXT("and spell damage 12% more"), Three.Value, 1.12f, 0.0001f);
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsNothingStopsItTest,
