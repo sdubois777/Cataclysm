@@ -47,6 +47,36 @@ built from it: one every-Nth action of the row's kind and N.
 - **The 10th attack:** eight attacks in the ninth is not the Nth, nine in the tenth is, and the line
   reads "Attack 9/10".
 
+### Run
+
+One editor window on 2026-09-25, local time (08:11 to 08:31 UTC), on development 2d01a3a4 as the
+base. Every figure below is what `python tools/unreal_build.py`, `pytest`, `prove_cpp_guard` or
+`prove_guard` printed. Each matched what was registered, except one unity file's name, noted.
+
+- **The first build, on ce515eb4** (the row tests and this entry): "Build: Succeeded - 4 actions, 1
+  file compiled". The Python suite of record: 5,476 passed, 8 skipped, 0 failed.
+- **The rows**, e25e79ac: three rows and the Every Nth column. The second build: "Build: Succeeded -
+  4 actions, 1 file compiled". **It named `Module.Cataclysm.12.cpp`, where `Module.Cataclysm.13.cpp`
+  was registered**, because the file whose row count changed sits in a different unity file on this
+  base. The count was as registered. The Python suite of record: 1 failed, 5,475 passed, 8 skipped,
+  the one failure the check that every CSV still hashes to what its asset was built from.
+  `Cataclysm.Data.` and `Cataclysm.Enchantments.` before the asset was rebuilt: 108 tests
+  performed, 104 succeeded, 4 failed, the asset check and the three row tests.
+- **The asset**, 24f69d3e: `DT_EnchantmentEffects` rebuilt from 335 rows, up from 332. The three row
+  tests: 3 performed, 3 succeeded.
+- **The whole suite**, on 24f69d3e: 2,459 tests performed, 2,459 succeeded, 0 failed; every declared
+  test was reported. No CI run was in progress.
+
+**One guard proof, printing PROVED**, with the source identical before and after: **the row's N not
+copied onto its action** (`Action.EveryNth = Effect->EveryNth;` made `= 0;` in `CataclysmItem.cpp`),
+on the three row tests. With the break in: 3 of 3 failed, on seven assertions. Each "every Nth"
+read 0; the fifth hit and the third spell read 0 due; the tenth attack was not the Nth; and the line
+read "Attack -1/10". Restored: 3 of 3 succeeded.
+
+**A Python control**, not a guard proof: the single-value check's key made the stat alone,
+`value_is_stated(row["Stat"], ...)`. It printed "PROVED: 1 failed, 28 passed in 0.24s | restored: 29
+passed in 0.20s", the one failure being `test_a_single_value_appears_in_its_words_outside_any_range`.
+
 ---
 
 ## 2026-09-24 — Every Nth, engine only: the Nth hit taken takes more, the Nth spell costs more, and the Nth attack deals no damage
