@@ -6927,10 +6927,29 @@ def validate_element_visuals(tables: dict[str, list[dict]],
     return problems
 
 
+#: The two tables whose ordinary rows may carry a weight of 0, meaning RETIRED:
+#: the row stays, with its name and its position, and never drops.
+#: `UCataclysmDropRoll::EnchantmentDrawWeight` already prices any weight below 1
+#: at nothing. Issue #1833, ruled 2026-09-25: the owner removed three
+#: enchantments, and deleting a row would shift the position code of every later
+#: row, which merged design-log entries quote. A set row is excluded, because its
+#: Weight column carries the set's identifier.
+RETIRABLE_WEIGHT_TABLES = ("EnchantmentsPositive", "EnchantmentsNegative")
+
+
+def is_retired(table: str, row: dict) -> bool:
+    """Whether this row is an ordinary enchantment retired with a weight of 0."""
+    return (table in RETIRABLE_WEIGHT_TABLES
+            and str(row.get("EnchantmentType", "")).casefold() != "set"
+            and float(row["Weight"]) == 0)
+
+
 def validate_weights(tables: dict[str, list[dict]]) -> list[str]:
     problems = []
     for table, rows in tables.items():
         for row in rows:
+            if "Weight" in row and is_retired(table, row):
+                continue
             if "Weight" in row and not 0 < float(row["Weight"]) <= 100:
                 problems.append(f"{table}/{row['Name']}: weight "
                                 f"{row['Weight']} is outside 0 to 100")

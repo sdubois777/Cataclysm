@@ -371,6 +371,26 @@ class TestValidation:
     def test_a_valid_weight_passes(self):
         assert gen.validate_weights({"T": [{"Name": "r", "Weight": 20}]}) == []
 
+    # A RETIRED ENCHANTMENT. Issue #1833, ruled 2026-09-25: weight 0 on an
+    # ordinary enchantment row means it never drops, and only there.
+    @pytest.mark.parametrize("table", ["EnchantmentsPositive", "EnchantmentsNegative"])
+    def test_weight_0_retires_an_ordinary_enchantment(self, table):
+        row = {"Name": "r", "Weight": 0, "EnchantmentType": "Generic"}
+        assert gen.validate_weights({table: [row]}) == []
+        assert gen.is_retired(table, row)
+
+    def test_weight_0_is_refused_on_a_set_row(self):
+        row = {"Name": "r", "Weight": 0, "EnchantmentType": "Set"}
+        assert len(gen.validate_weights({"EnchantmentsPositive": [row]})) == 1
+
+    def test_weight_0_is_refused_on_any_other_table(self):
+        row = {"Name": "r", "Weight": 0, "EnchantmentType": "Generic"}
+        assert len(gen.validate_weights({"Affixes": [row]})) == 1
+
+    def test_a_negative_weight_is_still_refused_on_an_enchantment(self):
+        row = {"Name": "r", "Weight": -1, "EnchantmentType": "Generic"}
+        assert len(gen.validate_weights({"EnchantmentsPositive": [row]})) == 1
+
 
 class TestAnEnchantmentRowMustStateAType:
     """ISSUE #1486. One negative row had an empty Type for as long as the sheet
