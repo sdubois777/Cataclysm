@@ -27092,7 +27092,7 @@ namespace CataclysmDungeonModifierEffectsTest
 	}
 
 	/** The player moved onto a mark, at the player's own height. */
-	void StandOn(const FPossessedPlayer& Player, const ACataclysmGroundZone* Mark)
+	void StandOnTheFeather(const FPossessedPlayer& Player, const ACataclysmGroundZone* Mark)
 	{
 		const FVector Where = Mark->GetActorLocation();
 		Player.Character->SetActorLocation(FVector(Where.X, Where.Y, Player.Character->GetActorLocation().Z));
@@ -27221,7 +27221,7 @@ bool FCataclysmWingsLandTest::RunTest(const FString& Parameters)
 			  FString::Printf(TEXT("wings of the host: %d feathers falling"), Marks.Num()));
 
 	// THE PLAYER ON THE FIRST MARK, A CREATURE ON THE SECOND.
-	StandOn(Player, Marks[0]);
+	StandOnTheFeather(Player, Marks[0]);
 	const FVector Second = Marks[1]->GetActorLocation();
 	ACataclysmEnemyCharacter* Creature = PlaceCreatureAtRung(World, Mode, Second, 0);
 	if (!TestNotNull(TEXT("a creature on a mark"), Creature))
@@ -27287,7 +27287,7 @@ bool FCataclysmWingsTypedTest::RunTest(const FString& Parameters)
 		{
 			return false;
 		}
-		StandOn(Player, Marks[0]);
+		StandOnTheFeather(Player, Marks[0]);
 		Beat(Mode, BeatsFor(Effects::WingsOfTheHostWarningSeconds));
 		return TestEqual(TEXT("the flyover landed"), Mode->WingsOfTheHostMarksNow().Num(), 0);
 	};
