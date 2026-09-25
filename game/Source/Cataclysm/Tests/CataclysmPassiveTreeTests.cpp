@@ -9420,6 +9420,200 @@ namespace CataclysmKeystoneRowTest
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Every plain row in the three Demonic trees, on a real player. Issue #1755's
+// closing count, ruled 2026-09-25.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmPlainRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	/**
+	 * The fewest plain rows each tree held when this was written, measured on
+	 * development b1e1e4b6 with the rule `IsPlain` states: Masochist 59, Ravager
+	 * 56, Ritualist 63. A row may be added; a filter that silently skipped rows
+	 * would read fewer, and that is what the floor is for.
+	 */
+	constexpr int32 FewestMasochist = 59;
+	constexpr int32 FewestRavager = 56;
+	constexpr int32 FewestRitualist = 63;
+
+	/** A row with no condition, no scale, no required tag and no capstone option. */
+	bool IsPlain(const FCataclysmPassiveEffectRow& Row)
+	{
+		return Row.Condition.IsEmpty() && Row.Scale.IsEmpty()
+			&& Row.RequiredTags.IsEmpty() && Row.Option == 0;
+	}
+
+	/** A stat's recorded line, through the pipeline with no state in hand. */
+	FCataclysmStatBreakdown LineOf(const FRealCharacter& Player, const FString& Stat)
+	{
+		const FCataclysmStatInputs* Inputs =
+			Player.AbilitySystem->GetStatInputs(FName(*Stat));
+		return Inputs
+			? UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers,
+											   FGameplayTagContainer(),
+											   FCataclysmStatConditions())
+			: FCataclysmStatBreakdown();
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryPlainDemonicRowTest,
+	"Cataclysm.PlainRows.EveryPlainDemonicRowReachesARealPlayerAtItsFigureTimesThePoints",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Every row in the Masochist, Ravager and Ritualist trees that carries no
+ * condition, scale, required tag or capstone option -- a plain "+2% increased
+ * Armor per point" -- spent in full on a real player of its tree.
+ *
+ * WHAT IT ASSERTS, AND IN WHICH BUCKET. The node's points are spent alone on a
+ * real player, the equipment refreshes its attributes the way the game does,
+ * and the stat's own recorded line is read through the pipeline. Against the
+ * same player with nothing spent, it must have moved by the row's figure times
+ * the points in the row's own bucket: the flat sum for `flat`, the sum of
+ * increases for `increased`, the multiplier by (1 + figure / 100) for `more`.
+ * So a row that is missing, misspelt, of the wrong figure or the wrong kind, or
+ * that does not reach a real player at all, fails here, named.
+ *
+ * ITS SCOPE IS PRINTED AND FLOORED. The number of rows checked per tree is
+ * logged, and must be at least the count measured when this was written.
+ */
+bool FCataclysmEveryPlainDemonicRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmPlainRowTest;
+
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable)
+		|| !TestNotNull(TEXT("the effect table loads"), EffectTable))
+	{
+		AddError(TEXT("Run  python tools/run_editor_python.py "
+					  "tools/generate_datatable_assets.py"));
+		return false;
+	}
+
+	// EACH TREE'S PLAIN ROWS, GROUPED BY NODE, so each node is spent once.
+	TMap<FString, TMap<FName, TArray<const FCataclysmPassiveEffectRow*>>> ByTree;
+	TMap<FName, int32> MaxPointsOf;
+	for (const TPair<FName, uint8*>& Pair : EffectTable->GetRowMap())
+	{
+		const auto* Row = reinterpret_cast<const FCataclysmPassiveEffectRow*>(Pair.Value);
+		if (!Row || !IsPlain(*Row))
+		{
+			continue;
+		}
+		const FName Node(*Row->Node);
+		const FCataclysmPassiveNodeRow* NodeRow =
+			NodeTable->FindRow<FCataclysmPassiveNodeRow>(Node, TEXT("plain rows"), false);
+		if (!NodeRow)
+		{
+			AddError(FString::Printf(TEXT("%s names the node %s, which the node table "
+										  "does not hold"),
+									 *Pair.Key.ToString(), *Row->Node));
+			continue;
+		}
+		if (NodeRow->Tree != TEXT("Masochist") && NodeRow->Tree != TEXT("Ravager")
+			&& NodeRow->Tree != TEXT("Ritualist"))
+		{
+			continue;
+		}
+		ByTree.FindOrAdd(NodeRow->Tree).FindOrAdd(Node).Add(Row);
+		MaxPointsOf.Add(Node, NodeRow->MaxPoints);
+	}
+
+	const TMap<FString, int32> Fewest = {{TEXT("Masochist"), FewestMasochist},
+										 {TEXT("Ravager"), FewestRavager},
+										 {TEXT("Ritualist"), FewestRitualist}};
+
+	for (const TPair<FString, int32>& Tree : Fewest)
+	{
+		FScopedPlayerClass AsClass(*Tree.Key);
+		if (!TestTrue(*FString::Printf(TEXT("the %s class console variable exists"),
+									   *Tree.Key),
+					  AsClass.IsUsable()))
+		{
+			continue;
+		}
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+		FRealCharacter Player = Spawn(World);
+		if (!TestTrue(*FString::Printf(TEXT("a possessed %s"), *Tree.Key),
+					  Player.IsComplete()))
+		{
+			continue;
+		}
+
+		const auto Take = [&Player](const FCataclysmPassiveAllocation& Allocation)
+		{
+			Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+			Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+		};
+
+		int32 Checked = 0;
+		const TMap<FName, TArray<const FCataclysmPassiveEffectRow*>>* Nodes =
+			ByTree.Find(Tree.Key);
+		if (Nodes)
+		{
+			for (const TPair<FName, TArray<const FCataclysmPassiveEffectRow*>>& Node : *Nodes)
+			{
+				const int32 Points = MaxPointsOf.FindRef(Node.Key);
+				Take(FCataclysmPassiveAllocation());
+				TMap<FString, FCataclysmStatBreakdown> Before;
+				for (const FCataclysmPassiveEffectRow* Row : Node.Value)
+				{
+					Before.Add(Row->Stat, LineOf(Player, Row->Stat));
+				}
+
+				FCataclysmPassiveAllocation Spent;
+				Spent.Add(Node.Key, Points);
+				Take(Spent);
+
+				for (const FCataclysmPassiveEffectRow* Row : Node.Value)
+				{
+					++Checked;
+					const FCataclysmStatBreakdown& Was = Before.FindChecked(Row->Stat);
+					const FCataclysmStatBreakdown Now = LineOf(Player, Row->Stat);
+					const float Figure = Row->ValuePerPoint * Points;
+					const FString Named = FString::Printf(
+						TEXT("%s (%s %s %g a point, %d points)"), *Node.Key.ToString(),
+						*Row->Stat, *Row->ValueKind, Row->ValuePerPoint, Points);
+
+					if (Row->ValueKind.Equals(TEXT("flat"), ESearchCase::IgnoreCase))
+					{
+						TestEqual(*FString::Printf(TEXT("%s adds %g flat"), *Named, Figure),
+								  Now.Flat - Was.Flat, Figure, 0.001f);
+					}
+					else if (Row->ValueKind.Equals(TEXT("more"), ESearchCase::IgnoreCase))
+					{
+						TestEqual(*FString::Printf(TEXT("%s multiplies by %g"), *Named,
+												   1.0f + Figure / 100.0f),
+								  Was.MoreMultiplier > 0.0f
+									  ? Now.MoreMultiplier / Was.MoreMultiplier
+									  : -1.0f,
+								  1.0f + Figure / 100.0f, 0.0001f);
+					}
+					else
+					{
+						TestEqual(*FString::Printf(TEXT("%s adds %g to the increases"),
+												   *Named, Figure),
+								  Now.SumOfIncreases - Was.SumOfIncreases, Figure, 0.001f);
+					}
+				}
+			}
+		}
+
+		AddInfo(FString::Printf(TEXT("%s: %d plain rows checked, at least %d expected"),
+								*Tree.Key, Checked, Tree.Value));
+		TestTrue(*FString::Printf(TEXT("the %s tree checked at least %d plain rows: %d"),
+								  *Tree.Key, Tree.Value, Checked),
+				 Checked >= Tree.Value);
+	}
+	return true;
+}
+
 // --- the three energy-shield keystones -------------------------------------
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWardedOnARealCharacterTest,
