@@ -4257,3 +4257,22 @@ def test_every_rule_writes_resistance_through_the_rule_resistance_record_under_i
         assert found, f"{key} is no longer declared in CataclysmDungeonGameMode.h."
         keys[key] = found.group(1)
     assert len(set(keys.values())) == len(keys), f"Two rules share a resistance key: {keys}"
+
+
+def test_portal_unleashing_row_still_has_portals_that_keep_sending_creatures_to_be_dispatched():
+    """The phrases the rule's readings rest on.
+
+    "The dungeon is riddled with unstable portals that periodically spawn twisted abominations from the void.
+    Players must swiftly dispatch these creatures before they overwhelm the party." UNSTABLE PORTALS is why a
+    portal cannot be destroyed; PERIODICALLY SPAWN is its clock; TWISTED ABOMINATIONS is the stand-in it sends;
+    SWIFTLY DISPATCH and BEFORE THEY OVERWHELM are why killing them is what holds it back, under a cap. If any of
+    them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Void_Portal_Unleashing"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("unstable portals", "periodically spawn", "twisted abominations", "swiftly dispatch",
+                   "before they overwhelm"):
+        assert phrase in lower, (
+            f"Void_Portal_Unleashing no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "PortalUnleashingKey in CataclysmDungeonModifierEffects.h. " + words)

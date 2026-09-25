@@ -36,6 +36,7 @@
 #include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmSarcophagusCharacter.h"
+#include "Character/CataclysmPortalCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -1511,6 +1512,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// `GoToFloor` before its creatures were cleared. Issues #1820 and #41.
 		ForgetTheBeacons();
 		PlaceTheBeacons();
+
+		// AND PORTAL UNLEASHING, FOR THE SAME REASON; a Horde arena's waves keep its portal and what it sent.
+		// Issues #1820 and #41.
+		ForgetThePortals();
+		PlaceThePortals();
 
 		// AND INFESTED VEINS, FOR THE SAME REASON; a new arena starts its destroyed count again, and a
 		// Horde arena's waves keep it. Issues #1820 and #41.
@@ -4202,6 +4208,207 @@ void ACataclysmDungeonGameMode::PlaceTheBeacons()
 	RefreshFloorModifierPanel();
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::VoidPortalsNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Now;
+	for (const FVoidPortal& One : VoidPortals)
+	{
+		if (ACataclysmEnemyCharacter* Portal = One.Portal.Get(); IsValid(Portal))
+		{
+			Now.Add(Portal);
+		}
+	}
+	return Now;
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::VoidPortalZoneOf(const ACataclysmEnemyCharacter* Portal) const
+{
+	for (const FVoidPortal& One : VoidPortals)
+	{
+		if (Portal && One.Portal.Get() == Portal)
+		{
+			return One.Zone.Get();
+		}
+	}
+	return nullptr;
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::AbominationsOf(const ACataclysmEnemyCharacter* Portal) const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const FVoidPortal& One : VoidPortals)
+	{
+		if (!Portal || One.Portal.Get() != Portal)
+		{
+			continue;
+		}
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Sent : One.Sent)
+		{
+			ACataclysmEnemyCharacter* Creature = Sent.Get();
+			if (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature))
+			{
+				Standing.Add(Creature);
+			}
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetThePortals()
+{
+	for (const FVoidPortal& One : VoidPortals)
+	{
+		if (ACataclysmEnemyCharacter* Portal = One.Portal.Get())
+		{
+			Portal->Destroy();
+		}
+		if (ACataclysmGroundZone* Zone = One.Zone.Get())
+		{
+			Zone->Destroy();
+		}
+		for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& Sent : One.Sent)
+		{
+			if (ACataclysmEnemyCharacter* Creature = Sent.Get())
+			{
+				Creature->Destroy();
+			}
+		}
+	}
+	VoidPortals.Reset();
+	VoidPortalsPanelStanding = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceThePortals()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::PortalUnleashingKey)))
+	{
+		return;
+	}
+
+	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, where Eternal Chorus's picker puts its sources.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::PortalUnleashingPerHordeArena
+											: Effects::PortalUnleashingPerFloor;
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmPortalCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Portal =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Portal)
+		{
+			continue;
+		}
+		// CANNOT BE HURT, the ruled reading of "unstable": The Reaper's flag, so a blow resolves and none of it
+		// reaches health. The Imp's health at Common, paying nothing and not one of the floor's creatures.
+		Portal->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Portal->SetHealth(VoidPortalHealth());
+		Portal->SetRarityStep(0);
+		Portal->bCannotBeHurt = true;
+		Portal->bDiesUnpaid = true;
+		Portal->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Portal);
+		FVoidPortal One;
+		One.Portal = Portal;
+		VoidPortals.Add(One);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Portal Unleashing: %d portal(s) placed on floor %d"), VoidPortals.Num(),
+		   FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepPortalUnleashing()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::PortalUnleashingKey);
+
+	TOptional<FCataclysmFloorPopulation> Population;
+	for (FVoidPortal& One : VoidPortals)
+	{
+		ACataclysmEnemyCharacter* Portal = One.Portal.Get();
+		if (!IsValid(Portal))
+		{
+			continue;
+		}
+		const FVector Where = Portal->GetActorLocation();
+
+		// ITS ZONE DRAWN AGAIN WHENEVER IT IS MISSING, which is after every floor or wave. It does no damage.
+		if (!One.Zone.Get() && Source)
+		{
+			One.Zone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, Where, Where, Effects::PortalUnleashingRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type);
+		}
+
+		// WHAT IT SENT THAT IS DEAD OR GONE IS FORGOTTEN, so only the standing count against the cap. In play a
+		// dead creature is destroyed on the next tick; a test world keeps it.
+		One.Sent.RemoveAll([](const TWeakObjectPtr<ACataclysmEnemyCharacter>& Sent)
+		{
+			return !Sent.IsValid() || UCataclysmSkillEffects::IsDead(Sent.Get());
+		});
+
+		// THE CLOCK RUNS WHILE THE CAP IS FULL, so a creature killed after ten seconds is replaced on the next beat.
+		One.SecondsSinceLastSent += SecondsBetweenWaveChecks;
+		if (!Effects::PortalUnleashingSendsNow(One.SecondsSinceLastSent, One.Sent.Num()))
+		{
+			continue;
+		}
+
+		// THE FLOOR'S OWN KINDS, as Necrotic Bloom draws them, asked once a beat and only when one is due.
+		if (!Population.IsSet())
+		{
+			Population = FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		}
+		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Where);
+		if (Population->Enemies.IsEmpty() || Cells.IsEmpty())
+		{
+			// NOTHING TO PLACE, and the clock is left alone so the next beat asks again.
+			continue;
+		}
+		FCataclysmEnemyPlacement Placement = Population->Enemies[FMath::RandRange(0, Population->Enemies.Num() - 1)];
+		Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+		ACataclysmEnemyCharacter* Sent = SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, /*FixedRung=*/0);
+		if (!Sent)
+		{
+			continue;
+		}
+		// IT PAYS NOTHING, IS RAISED BY THE RULE AND IS NOT ONE OF THE FLOOR'S CREATURES: a portal never stops, so
+		// a paid creature would be unlimited loot, and the floor's "cleared" counts the floor's creatures only.
+		Sent->bIsAnAbomination = true;
+		Sent->bDiesUnpaid = true;
+		Sent->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Sent);
+		One.Sent.Add(Sent);
+		One.SecondsSinceLastSent = 0.0f;
+		UE_LOG(LogCataclysm, Verbose, TEXT("Portal Unleashing: a portal sent a %s on floor %d; %d of its own stand"),
+			   CataclysmDungeonCreatureName(Placement.Creature), FloorNumber, One.Sent.Num());
+	}
+
+	int32 Standing = 0;
+	for (const FVoidPortal& One : VoidPortals)
+	{
+		Standing += One.Sent.Num();
+	}
+	if (Standing != VoidPortalsPanelStanding)
+	{
+		VoidPortalsPanelStanding = Standing;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -5459,6 +5666,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// no beacon of this dungeon strengthens the next one. Issues #1820 and #41.
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
+	ForgetThePortals();
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
 	ForgetTheSarcophagi();
@@ -5935,6 +6143,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PESTILENT EMPOWERMENT, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPestilentEmpowerment = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PestilentEmpowermentKey));
+	// AND PORTAL UNLEASHING, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bPortalUnleashing = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::PortalUnleashingKey));
 	// AND INFESTED VEINS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bInfestedVeins = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::InfestedVeinsKey));
@@ -5965,7 +6176,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
-		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires
+		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires && !bPortalUnleashing
 		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
 		&& !bObsidianSarcophagi)
 	{
@@ -6182,6 +6393,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPestilentEmpowerment)
 	{
 		StepPestilentEmpowerment(Player);
+	}
+
+	// AND PORTAL UNLEASHING, WHICH DRAWS ZONES AND SPAWNS CREATURES. Issues #1820 and #41.
+	if (bPortalUnleashing)
+	{
+		StepPortalUnleashing();
 	}
 
 	// AND INFESTED VEINS, WHICH PLACES ZONES, SPAWNS CREATURES AND HURTS THE PLAYER. Issues #1820 and #41.
@@ -8899,6 +9116,21 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 								   LivingFloorEnemies());
 		}
 		Counting.Add(Trial, Line);
+	}
+
+	// AND PORTAL UNLEASHING: how many portals, and how many of the creatures they sent stand against the cap
+	// summed over them. Issues #1820 and #41.
+	const FName Portals(Effects::PortalUnleashingKey);
+	if (FloorBrief.Modifiers.Contains(Portals))
+	{
+		int32 Standing = 0;
+		for (const FVoidPortal& One : VoidPortals)
+		{
+			Standing += AbominationsOf(One.Portal.Get()).Num();
+		}
+		Counting.Add(Portals, FString::Printf(TEXT("portal unleashing: %d portal%s; %d of %d abominations standing"),
+											  VoidPortals.Num(), VoidPortals.Num() == 1 ? TEXT("") : TEXT("s"), Standing,
+											  VoidPortals.Num() * Effects::PortalUnleashingMostAlivePerPortal));
 	}
 
 	// AND PESTILENT EMPOWERMENT: this floor's beacons standing, what earlier floors left, and what later

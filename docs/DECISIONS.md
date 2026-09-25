@@ -351,6 +351,118 @@ break on a value applied twice is invisible", which the break was chosen without
 
 ---
 
+## 2026-09-25 — Portal Unleashing: two portals that cannot be hurt each send a creature every ten seconds while fewer than four of theirs stand, for as long as the floor lasts
+
+**Affects:** a new portal class `game/Source/Cataclysm/Character/CataclysmPortalCharacter.h`;
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the flag that marks what a portal sent);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures and
+when a portal sends); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing and
+forgetting the portals, their zones, what they send, the panel line);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Portal" and "Abomination" under the
+health bars); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`
+and `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
+tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
+have.
+
+### The row
+
+`Void_Portal_Unleashing` in `game/Data/DungeonModifiers.csv`, weight 10: "The dungeon is riddled with unstable
+portals that periodically spawn twisted abominations from the void. Players must swiftly dispatch these
+creatures before they overwhelm the party." It states no figure. The design document and this log do not
+mention a portal of this kind, and **no abomination creature exists in this game**.
+
+### What the rule does
+
+When a floor carrying the row is placed, two portals stand where Eternal Chorus's picker puts its sources, at
+least twenty metres from the entrance and from each other; a Horde arena has one, kept for its waves. A portal
+is a creature that does nothing and cannot be hurt, with the Imp's health and "Portal" under its bar, paying
+nothing and not one of the floor's creatures, with a visible Void zone six metres across its radius that does
+no damage. From the moment the floor is placed, every ten seconds each portal sends one creature onto a floor
+cell within six metres of it -- a creature of the floor's own kinds at Common, "Abomination" under its bar --
+while fewer than four of its own stand. Its clock goes on running while four stand, so one killed after ten
+seconds is replaced on the next beat. Killing them is what holds a portal back; nothing stops it. What it sent
+goes with the floor; a Horde arena keeps its portal and what it sent for its waves. The panel reads "portal
+unleashing: 2 portals; 3 of 8 abominations standing", the second figure the cap summed over the portals.
+
+**The abomination stands in for one.** No such creature exists. What comes is a creature of the floor's own
+kinds at Common, marked `bIsAnAbomination` so "Abomination" is under its bar, with no other change, until the
+project owner names a creature for it.
+
+**It pays nothing, is raised by the rule and is not one of the floor's creatures, for two reasons.** A portal
+never stops, so a creature that paid would be unlimited loot and experience. And Trial of Endurance's "cleared"
+and every floor's clear-time log count the floor's creatures; were a portal's among them, a floor with a portal
+would never be cleared and its clear time never logged.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every
+figure is a play-test value:**
+
+- **Two indestructible portals a floor, placed by Eternal Chorus's picker; one on a Horde arena, kept.** The
+  Imp's health, "Portal", and a visible 600 cm Void zone with no damage.
+- **Every 10 s one creature within 600 cm, while fewer than 4 of that portal's creatures are alive.**
+- **The "Abomination" stand-in: a creature of the floor's own kinds at Common, labelled by a flag**, stated as a
+  stand-in.
+- **It pays nothing, is raised by the rule, and is not one of the floor's creatures**, both reasons stated.
+- **No quiet start; the first at 10 s.**
+- **The panel line as proposed.**
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The clock keeps running while the cap is full**, so a creature killed after ten seconds is replaced on the
+  next beat rather than ten seconds later.
+- **One portal on a Horde arena reads "1 portal"**, the singular.
+- **What a portal sent is destroyed with it** when a new arena is populated or the player leaves the dungeon.
+
+### The research: portals that keep sending monsters
+
+Done after the rulings and before the build; the page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Breach | https://maxroll.gg/poe/currency/breach-farming-guide | "While the breach is active monsters continue to spawn from it's edges" |
+
+**What it settles and what it does not.** Path of Exile ships an opening that goes on sending monsters for as
+long as it is active, which is the portal's shape. Its Breach closes on a timer the player extends by killing;
+this portal never closes, and a cap on its standing creatures does the holding back instead. So the ten
+seconds, the four and the portal's permanence are this game's own. poedb.tw's Breach page was read and holds
+no description of the mechanic.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `PortalUnleashingFiguresAndWhenAPortalSends`: the figures; a portal sends at ten seconds and not at 9.75,
+  with three of its own standing and not with four, nor a minute later with four.
+- `PortalUnleashingPlacesTwoPortalsThatCannotBeHurt`: two portals, each a portal with no brain, that cannot be
+  hurt, paying nothing, raised by the rule, not one of the floor's creatures, saying exactly "Portal", with the
+  Imp's health, far enough from the entrance and from each other; a killing blow takes nothing; each has its
+  zone, not reaching 650 cm; the panel; a Horde arena has one, with its panel, kept by its next wave with its
+  zone drawn again.
+- `APortalSendsOneAbominationEveryTenSecondsUpToFour`: nothing at 9.75 seconds; one each at ten, marked, of
+  the floor's kinds, at Common, with a brain, paying nothing, raised by the rule, not the floor's, saying
+  exactly "Abomination", beside its portal and not in its cell; four at forty seconds and still four at sixty,
+  with the panel; one killed leaves three, with the panel, and the next beat replaces it; a new floor takes them
+  away.
+- `AFloorIsClearedWithAPortalsCreaturesStanding`: with one creature of the floor's own standing the floor is
+  not cleared; killed, the next beat notes the floor cleared while the portal's creature stands, and that
+  creature pays nothing.
+- `Cataclysm.SaveApply.APortalDoesNotTakeTheTrainingDummysEmptyName`: the portal names no row, and the empty
+  name maps to the base enemy class.
+
+One Python check: the row still says "unstable portals", "periodically spawn", "twisted abominations",
+"swiftly dispatch" and "before they overwhelm".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Obsidian Sarcophagi: two coffins that cannot be hurt give the creatures within six metres 20% more damage and 15 more all-resistance, and the eighth paid death beside one lets its Vampire Lord out; every rule now writes resistance through one record
 
 **Affects:** a new coffin class `game/Source/Cataclysm/Character/CataclysmSarcophagusCharacter.h`;

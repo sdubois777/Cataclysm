@@ -1112,6 +1112,16 @@ public:
 	bool bIsAVampireLord = false;
 
 	/**
+	 * Whether a portal of the Portal Unleashing floor rule sent this creature. Issues #1820 and #41. It puts
+	 * "Abomination" under the health bar.
+	 *
+	 * A FLAG ON A CREATURE OF THE FLOOR'S OWN KINDS, BECAUSE NO ABOMINATION CREATURE EXISTS. It stands in for
+	 * one until the project owner names a creature for it. Permanent, for the reason `bIsVengefulWraith` gives.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsAnAbomination = false;
+
+	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.
 	 *

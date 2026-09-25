@@ -2111,6 +2111,18 @@ public:
 	/** Pestilent Empowerment, for the panel and tests: this floor's beacons still standing. */
 	TArray<ACataclysmEnemyCharacter*> PlagueBeaconsStanding() const;
 
+	/** Portal Unleashing, for the panel and tests: the portals on this floor or arena. */
+	TArray<ACataclysmEnemyCharacter*> VoidPortalsNow() const;
+
+	/** Portal Unleashing, for tests: the zone drawn around `Portal`, or null. */
+	class ACataclysmGroundZone* VoidPortalZoneOf(const ACataclysmEnemyCharacter* Portal) const;
+
+	/** Portal Unleashing, for the panel and tests: the creatures `Portal` sent that still stand. */
+	TArray<ACataclysmEnemyCharacter*> AbominationsOf(const ACataclysmEnemyCharacter* Portal) const;
+
+	/** The health a portal is given: the Imp's at Common, 87, as the other floor sources have. */
+	float VoidPortalHealth() const { return ImpHealth; }
+
 	/** Pestilent Empowerment, for the panel and tests: beacons left standing on this dungeon's earlier floors. */
 	int32 PlagueBeaconsLeftStanding() const { return PestilentBeaconsLeftStanding; }
 
@@ -2296,6 +2308,18 @@ private:
 
 	/** Pestilent Empowerment, on the beat: every creature's multiplier for the count carried to this floor. */
 	void StepPestilentEmpowerment(class ACataclysmPlayerCharacter* Player);
+
+	/** Portal Unleashing: this arena's portals, placed where a new arena is populated. */
+	void PlaceThePortals();
+
+	/** Every portal, its zone and every creature it sent destroyed and forgotten. */
+	void ForgetThePortals();
+
+	/**
+	 * Portal Unleashing, on the beat: each portal's zone kept drawn, and one creature sent by each portal whose
+	 * clock has run and whose own creatures standing are under the cap.
+	 */
+	void StepPortalUnleashing();
 
 	/**
 	 * The cells `EternalChorusCells` and `InfestedVeinsCells` share: every floor cell at least
@@ -3363,6 +3387,22 @@ private:
 	TArray<FPlagueBeacon> PlagueBeacons;
 	int32 PestilentBeaconsLeftStanding = 0;
 	int32 PestilentPanelStanding = -1;
+
+	/**
+	 * Portal Unleashing: one portal, the zone drawn around it, the seconds since it last sent a creature, and
+	 * the creatures it sent. Issues #1820 and #41.
+	 */
+	struct FVoidPortal
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Portal;
+		TWeakObjectPtr<class ACataclysmGroundZone> Zone;
+		float SecondsSinceLastSent = 0.0f;
+		TArray<TWeakObjectPtr<ACataclysmEnemyCharacter>> Sent;
+	};
+
+	/** Portal Unleashing: this arena's portals, and the creatures standing the panel last showed. */
+	TArray<FVoidPortal> VoidPortals;
+	int32 VoidPortalsPanelStanding = -1;
 
 	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
 	struct FInfestedVein
