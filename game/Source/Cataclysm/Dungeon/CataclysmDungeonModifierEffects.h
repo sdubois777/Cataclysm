@@ -2098,6 +2098,31 @@ public:
 	static const TCHAR* VoidParasiteKey;
 
 	/**
+	 * The row whose coffins strengthen the creatures near them and, fed enough deaths, let out a lord that
+	 * hunts the player. Issues #1820 and #41.
+	 *
+	 * "Indestructible coffins pulse with death magic, granting enemies in range bonus damage and resistance.
+	 * Once enough nearby enemies have been slain, a Vampire Lord erupts from the coffin to kill the player."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no figure;
+	 * every figure here is a play-test value:
+	 * - `ObsidianSarcophagiPerFloor` COFFINS A FLOOR, placed by Eternal Chorus's picker; ONE on a Horde arena,
+	 *   kept. Each is `ACataclysmSarcophagusCharacter`, a floor source that cannot be hurt, with the Imp's
+	 *   health and "Sarcophagus" under its bar, and a visible Death zone `ObsidianSarcophagiRadiusCm` across.
+	 * - EVERY CREATURE ON THE PLAYER'S OTHER SIDE BUT A FLOOR SOURCE, within `ObsidianSarcophagiRadiusCm` of a
+	 *   coffin, deals `ObsidianSarcophagiDamageMorePercent` more, once however many coffins are near, and
+	 *   holds `ObsidianSarcophagiResistancePoints` more all-resistance. With a Trial of Endurance run out as
+	 *   well that is (own + the points) x 2: the coffin's bonus is a resistance the creature holds.
+	 * - `ObsidianSarcophagiDeathsForTheLord` PAID DEATHS of the floor's creatures within the radius of a
+	 *   coffin, whoever killed them, let its Vampire Lord out, once a coffin, beside it. The coffin goes on
+	 *   granting.
+	 * - NO VAMPIRE LORD CREATURE EXISTS. What comes is Demon Prince's stand-in: a creature of the floor's own
+	 *   kinds at `DemonPrinceRung`, "Vampire Lord" under its bar, seeing across the floor, one of the floor's
+	 *   creatures and paying normally, until the project owner names a creature for it.
+	 */
+	static const TCHAR* ObsidianSarcophagiKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4542,6 +4567,24 @@ public:
 		"The row says doubled damage and resistances.");
 	static_assert(TrialOfEnduranceSeconds > 0.0f, "A trial that has run out before it starts is not the row.");
 
+	/**
+	 * Obsidian Sarcophagi's figures, every one a play-test value. See the key. The count, the radius and the
+	 * damage are Golden Spires'; the lord's rung is Demon Prince's.
+	 */
+	static constexpr int32 ObsidianSarcophagiPerFloor = GoldenSpiresPerFloor;
+	static constexpr int32 ObsidianSarcophagiPerHordeArena = GoldenSpiresPerHordeArena;
+	static constexpr float ObsidianSarcophagiRadiusCm = GoldenSpiresRadiusCm;
+	static constexpr float ObsidianSarcophagiDamageMorePercent = GoldenSpiresDamageMorePercent;
+	static constexpr float ObsidianSarcophagiResistancePoints = 15.0f;
+	static constexpr int32 ObsidianSarcophagiDeathsForTheLord = 8;
+	static constexpr int32 ObsidianSarcophagiLordRung = DemonPrinceRung;
+
+	static_assert(
+		ObsidianSarcophagiPerFloor > 0 && ObsidianSarcophagiPerHordeArena > 0 && ObsidianSarcophagiRadiusCm > 0.0f
+			&& ObsidianSarcophagiDamageMorePercent > 0.0f && ObsidianSarcophagiResistancePoints > 0.0f
+			&& ObsidianSarcophagiDeathsForTheLord > 1,
+		"A coffin that granted nothing, or a lord on the first death, is not the row.");
+
 	static_assert(
 		PestilentEmpowermentBeaconsPerFloor > 0 && PestilentEmpowermentBeaconsPerHordeArena > 0
 			&& PestilentEmpowermentPercentPerBeacon > 0.0f
@@ -5094,6 +5137,12 @@ public:
 
 	/** What this many stacks take, in percent, off each stat the row names; nothing for none. */
 	static float VoidParasiteLessPercent(int32 Stacks);
+
+	/**
+	 * Whether a coffin's Vampire Lord comes now: this many paid deaths within its radius, and its lord has not
+	 * come. THE COUNT FIRST, AND ONCE: a coffin's lord comes at the threshold and never again.
+	 */
+	static bool ObsidianSarcophagiLordIsDue(int32 DeathsNearby, bool bLordCame);
 
 	/**
 	 * What the creatures of the wave after this many waves are placed with, as a

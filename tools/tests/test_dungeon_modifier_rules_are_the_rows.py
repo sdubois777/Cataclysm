@@ -3036,7 +3036,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetFloorDepthDamageMultiplier", "FloorDepthDamageSource"),
                         ("SetSpireDamageMultiplier", "SpireDamageSource"),
                         ("SetPlagueBeaconsDamageMultiplier", "PlagueBeaconsDamageSource"),
-                        ("SetTrialOfEnduranceDamageMultiplier", "TrialOfEnduranceDamageSource")):
+                        ("SetTrialOfEnduranceDamageMultiplier", "TrialOfEnduranceDamageSource"),
+                        ("SetObsidianSarcophagiDamageMultiplier", "ObsidianSarcophagiDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4213,3 +4214,46 @@ def test_void_parasite_row_still_leaves_voidlings_that_attach_and_light_that_cle
         assert phrase in lower, (
             f"Void_Void_Parasite no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
             "VoidParasiteKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_obsidian_sarcophagi_row_still_grants_damage_and_resistance_and_lets_out_a_vampire_lord():
+    """The phrases the rule's readings rest on.
+
+    "Indestructible coffins pulse with death magic, granting enemies in range bonus damage and resistance. Once
+    enough nearby enemies have been slain, a Vampire Lord erupts from the coffin to kill the player."
+    INDESTRUCTIBLE is why a coffin cannot be hurt; IN RANGE is the radius; BONUS DAMAGE AND RESISTANCE are the
+    two bonuses; ENOUGH NEARBY ENEMIES HAVE BEEN SLAIN is the count of deaths beside it; VAMPIRE LORD and TO
+    KILL THE PLAYER are the creature it lets out and why it hunts. If any of them changes, the reading must be
+    revisited.
+    """
+    words = flat(rows()["Death_Obsidian_Sarcophagi"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("indestructible", "in range", "bonus damage and resistance", "enough nearby enemies have been slain",
+                   "vampire lord", "to kill the player"):
+        assert phrase in lower, (
+            f"Death_Obsidian_Sarcophagi no longer says {phrase.upper()!r}. A reading of the rule rests on it; see "
+            "ObsidianSarcophagiKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_every_rule_writes_resistance_through_the_rule_resistance_record_under_its_own_key():
+    """Trial of Endurance and Obsidian Sarcophagi each write a creature's all-resistance through
+    `SetRuleResistance`, under keys of their own.
+
+    A rule that wrote the base directly would be counted by the record as another writer's change and folded
+    into the creature's own figure, so the next rule would multiply it. Ruled 2026-09-25.
+    """
+    mode = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+            / "CataclysmDungeonGameMode.cpp").read_text(encoding="utf-8")
+    header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Dungeon"
+              / "CataclysmDungeonGameMode.h").read_text(encoding="utf-8")
+    keys = {}
+    for step, key in (("StepTrialOfEndurance", "TrialOfEnduranceResistanceSource"),
+                      ("StepObsidianSarcophagi", "ObsidianSarcophagiResistanceSource")):
+        body = body_of(mode, f"void ACataclysmDungeonGameMode::{step}(")
+        assert f"SetRuleResistance(Creature, {key}," in body, (
+            f"{step} no longer writes resistance through SetRuleResistance under its own key, {key}.")
+        found = re.search(rf'{key}\s*=\s*TEXT\("(\w+)"\)', header)
+        assert found, f"{key} is no longer declared in CataclysmDungeonGameMode.h."
+        keys[key] = found.group(1)
+    assert len(set(keys.values())) == len(keys), f"Two rules share a resistance key: {keys}"

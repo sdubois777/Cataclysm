@@ -33,6 +33,7 @@
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
+#include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -29845,6 +29846,460 @@ bool FCataclysmParasiteFloorEndsTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("in the same place"), static_cast<float>(FVector::Dist2D(Again->GetActorLocation(), LightAt)), 0.0f,
 				  1.0f);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Death_Obsidian_Sarcophagi, and the record every rule writes a creature's resistance through. Issues #1820
+// and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName CoffinsRow(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey);
+
+	/** A dungeon carrying `Rows`, on floor 2; its own creatures cleared when `bClear`. */
+	ACataclysmDungeonGameMode* ACoffinFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player,
+											const TArray<FName>& Rows, bool bClear)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = Rows;
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2))
+			|| !Test.TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+		{
+			return nullptr;
+		}
+		if (bClear)
+		{
+			Mode->ClearFloorEnemies();
+		}
+		return Mode;
+	}
+
+	/** An Imp at `Where` whose own all-resistance is `Own`, written through the field a recompute reads. */
+	ACataclysmEnemyCharacter* AnImpHolding(UWorld* World, const FVector& Where, float Own)
+	{
+		ACataclysmEnemyCharacter* Imp = SpawnImpWithHealth(World, Where, 100.0f);
+		if (Imp)
+		{
+			Imp->ResistancePercent = Own;
+			Imp->SetRarityStep(Imp->RarityStep);
+		}
+		return Imp;
+	}
+
+	/** The player kills `Victim`, which cannot dodge. */
+	bool KillIt(FAutomationTestBase& Test, const FPossessedPlayer& Player, ACataclysmEnemyCharacter* Victim)
+	{
+		Victim->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Victim, 100000.0f);
+		return Test.TestTrue(TEXT("the blow killed it"), UCataclysmSkillEffects::IsDead(Victim));
+	}
+}
+
+// THE FIGURES: TWO COFFINS, 600 CM, 20% MORE, 15 POINTS, THE LORD AT THE EIGHTH DEATH AND ONCE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCoffinsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.ObsidianSarcophagiFiguresAndTheLordOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCoffinsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two coffins a floor"), Effects::ObsidianSarcophagiPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::ObsidianSarcophagiPerHordeArena, 1);
+	TestEqual(TEXT("600 cm across the radius"), Effects::ObsidianSarcophagiRadiusCm, 600.0f, 0.001f);
+	TestEqual(TEXT("20% more damage"), Effects::ObsidianSarcophagiDamageMorePercent, 20.0f, 0.001f);
+	TestEqual(TEXT("15 points of all-resistance"), Effects::ObsidianSarcophagiResistancePoints, 15.0f, 0.001f);
+	TestEqual(TEXT("eight deaths for the lord"), Effects::ObsidianSarcophagiDeathsForTheLord, 8);
+	TestEqual(TEXT("at Demon Prince's rung"), Effects::ObsidianSarcophagiLordRung, Effects::DemonPrinceRung);
+
+	TestFalse(TEXT("seven deaths: no lord"), Effects::ObsidianSarcophagiLordIsDue(7, false));
+	TestTrue(TEXT("eight: the lord"), Effects::ObsidianSarcophagiLordIsDue(8, false));
+	TestFalse(TEXT("eight, once it has come: not again"), Effects::ObsidianSarcophagiLordIsDue(8, true));
+	TestFalse(TEXT("twenty, once it has come: not again"), Effects::ObsidianSarcophagiLordIsDue(20, true));
+	return true;
+}
+
+// THE CONTROL: EVERY RULE'S POINTS ARE ADDED TO THE CREATURE'S OWN FIGURE AND THEN EVERY RULE'S MULTIPLIER
+// APPLIED, WHATEVER ORDER THEY ARE WRITTEN IN; TRIAL OF ENDURANCE ALONE IS STILL TWICE THE CREATURE'S OWN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRuleResistanceTest,
+	"Cataclysm.DungeonModifierEffects.TheRuleResistancesAddPointsThenMultiplyWhateverWroteThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmRuleResistanceTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Mode_ = ACataclysmDungeonGameMode;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	ACataclysmDungeonGameMode* Mode = World->SpawnActor<ACataclysmDungeonGameMode>();
+	ACataclysmEnemyCharacter* Imp = AnImpHolding(World, FVector(600.0f, 0.0f, 0.0f), 23.0f);
+	ACataclysmEnemyCharacter* Bare = AnImpHolding(World, FVector(-600.0f, 0.0f, 0.0f), 0.0f);
+	if (!TestNotNull(TEXT("the dungeon game mode spawned"), Mode) || !TestNotNull(TEXT("an Imp"), Imp)
+		|| !TestNotNull(TEXT("a second Imp"), Bare)
+		|| !TestEqual(TEXT("its own resistance is 23"), AllResistanceBaseOf(Imp), 23.0f, 0.01f))
+	{
+		return false;
+	}
+	const TCHAR* Trial = Mode_::TrialOfEnduranceResistanceSource;
+	const TCHAR* Coffin = Mode_::ObsidianSarcophagiResistanceSource;
+
+	// TRIAL OF ENDURANCE ALONE: TWICE ITS OWN, THE FIGURE IT WROTE BEFORE THE RECORD BECAME A MAP.
+	Mode->SetRuleResistance(Imp, Trial, 0.0f, 2.0f);
+	TestEqual(TEXT("the trial alone: 23 doubled is 46"), AllResistanceBaseOf(Imp), 46.0f, 0.01f);
+	Mode->SetRuleResistance(Imp, Trial, 0.0f, 2.0f);
+	TestEqual(TEXT("written again: still 46, not 92"), AllResistanceBaseOf(Imp), 46.0f, 0.01f);
+	Mode->SetRuleResistance(Imp, Trial, 0.0f, 1.0f);
+	TestEqual(TEXT("the trial taken off: its own 23"), AllResistanceBaseOf(Imp), 23.0f, 0.01f);
+
+	// A COFFIN ALONE, THEN BOTH, IN EITHER ORDER.
+	Mode->SetRuleResistance(Imp, Coffin, 15.0f, 1.0f);
+	TestEqual(TEXT("the coffin alone: 23 and 15 is 38"), AllResistanceBaseOf(Imp), 38.0f, 0.01f);
+	Mode->SetRuleResistance(Imp, Trial, 0.0f, 2.0f);
+	TestEqual(TEXT("both: (23 + 15) x 2 is 76"), AllResistanceBaseOf(Imp), 76.0f, 0.01f);
+	Mode->SetRuleResistance(Imp, Coffin, 0.0f, 1.0f);
+	TestEqual(TEXT("the coffin taken off: 46"), AllResistanceBaseOf(Imp), 46.0f, 0.01f);
+	Mode->SetRuleResistance(Imp, Coffin, 15.0f, 1.0f);
+	TestEqual(TEXT("the coffin written after the trial: 76 all the same"), AllResistanceBaseOf(Imp), 76.0f, 0.01f);
+
+	// A RECOMPUTE PUTS ITS OWN FIGURE BACK; WRITTEN AGAIN, IT IS 76 AND NOT (76 + 15) x 2.
+	Imp->SetRarityStep(Imp->RarityStep);
+	TestEqual(TEXT("a recompute put its own 23 back"), AllResistanceBaseOf(Imp), 23.0f, 0.01f);
+	Mode->SetRuleResistance(Imp, Trial, 0.0f, 2.0f);
+	TestEqual(TEXT("written again after the recompute: 76"), AllResistanceBaseOf(Imp), 76.0f, 0.01f);
+
+	// ANOTHER WRITER'S TEN POINTS ARE KEPT AND COUNTED AS ITS OWN: (33 + 15) x 2.
+	Imp->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 86.0f);
+	Mode->SetRuleResistance(Imp, Coffin, 15.0f, 1.0f);
+	TestEqual(TEXT("another writer's ten kept: 96"), AllResistanceBaseOf(Imp), 96.0f, 0.01f);
+
+	// A CREATURE WITH NONE OF ITS OWN: THE TRIAL GIVES NOTHING, THE COFFIN 15, BOTH 30.
+	Mode->SetRuleResistance(Bare, Trial, 0.0f, 2.0f);
+	TestEqual(TEXT("none of its own, doubled: 0"), AllResistanceBaseOf(Bare), 0.0f, 0.01f);
+	Mode->SetRuleResistance(Bare, Coffin, 15.0f, 1.0f);
+	TestEqual(TEXT("none of its own, beside a coffin, doubled: 30"), AllResistanceBaseOf(Bare), 30.0f, 0.01f);
+	return true;
+}
+
+// TWO COFFINS ON A FLOOR THAT CANNOT BE HURT, EACH SAYING "SARCOPHAGUS" WITH ITS ZONE; ONE ON A HORDE ARENA, KEPT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCoffinsPlacedTest,
+	"Cataclysm.DungeonModifierEffects.ObsidianSarcophagiPlacesTwoCoffinsThatCannotBeHurt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCoffinsPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACoffinFloor(*this, World, Player, {CoffinsRow}, /*bClear=*/true);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+	const TArray<ACataclysmEnemyCharacter*> Coffins = Mode->SarcophagiNow();
+	if (!TestEqual(TEXT("two coffins on the floor"), Coffins.Num(), Effects::ObsidianSarcophagiPerFloor))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Coffin : Coffins)
+	{
+		TestTrue(TEXT("a sarcophagus"), Coffin->IsA<ACataclysmSarcophagusCharacter>());
+		TestNull(TEXT("with no brain"), Coffin->GetController());
+		TestTrue(TEXT("that cannot be hurt"), Coffin->bCannotBeHurt);
+		TestFalse(TEXT("that pays nothing"), Coffin->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Coffin->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Coffin));
+		TestEqual(TEXT("\"Sarcophagus\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Coffin),
+				  FString(TEXT("Sarcophagus")));
+		TestEqual(TEXT("with the Imp's health"), MaxHealthOf(Coffin), Mode->SarcophagusHealth(), 0.5f);
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Coffin->GetActorLocation(), Floor.EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+
+		// A BLOW THAT WOULD KILL ANYTHING ELSE TAKES NOTHING, with its evasion at nothing so the blow lands.
+		Coffin->GetAbilitySystemComponent()->SetNumericAttributeBase(
+			UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+		const float Before = HealthOf(Coffin);
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Coffin, 100000.0f);
+		TestFalse(TEXT("a killing blow does not kill it"), UCataclysmSkillEffects::IsDead(Coffin));
+		TestEqual(TEXT("and takes nothing off its health"), HealthOf(Coffin), Before, 0.01f);
+	}
+	TestTrue(TEXT("and from each other"), FVector::Dist2D(Coffins[0]->GetActorLocation(),
+		Coffins[1]->GetActorLocation()) >= Effects::EternalChorusApartCm - 1.0f);
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("two zones in the world"), ZonesOnTheFloor(World), 2);
+	for (ACataclysmEnemyCharacter* Coffin : Coffins)
+	{
+		ACataclysmGroundZone* Zone = Mode->SarcophagusZoneOf(Coffin);
+		if (TestNotNull(TEXT("a zone for each coffin"), Zone))
+		{
+			TestTrue(TEXT("around it"), Zone->Covers(Coffin->GetActorLocation()));
+			TestFalse(TEXT("and no further than 600 cm"), Zone->Covers(Coffin->GetActorLocation()
+				+ FVector(Effects::ObsidianSarcophagiRadiusCm + 50.0f, 0.0f, 0.0f)));
+		}
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(CoffinsRow),
+			  FString(TEXT("obsidian sarcophagi: 0 of 8 slain beside one, 0 of 8 beside the other")));
+
+	// A HORDE ARENA HAS ONE, AND ITS NEXT WAVE KEEPS IT AND DRAWS ITS ZONE AGAIN.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Horde = Mode->SarcophagiNow();
+	if (!TestEqual(TEXT("one coffin in a Horde arena"), Horde.Num(), Effects::ObsidianSarcophagiPerHordeArena))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the Horde panel"), Mode->LiveCountsForTheFloor().FindRef(CoffinsRow),
+			  FString(TEXT("obsidian sarcophagi: 0 of 8 slain beside it")));
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> NextWave = Mode->SarcophagiNow();
+	TestTrue(TEXT("the next wave keeps the same one coffin"), NextWave.Num() == 1 && NextWave[0] == Horde[0]);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("with its zone drawn again"), Mode->SarcophagusZoneOf(Horde[0]));
+	return true;
+}
+
+// WITHIN 600 CM OF A COFFIN A CREATURE DEALS 20% MORE AND HOLDS 15 MORE ALL-RESISTANCE, AND LOSES BOTH FARTHER OUT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCoffinsNearTest,
+	"Cataclysm.DungeonModifierEffects.BesideACoffinACreatureDealsTwentyPercentMoreAndHoldsFifteenMoreResistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCoffinsNearTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	const TCHAR* Key = ACataclysmEnemyCharacter::ObsidianSarcophagiDamageSource;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACoffinFloor(*this, World, Player, {CoffinsRow}, /*bClear=*/true);
+	if (!Mode || !TestEqual(TEXT("two coffins"), Mode->SarcophagiNow().Num(), 2))
+	{
+		return false;
+	}
+	const FVector CoffinAt = Mode->SarcophagiNow()[0]->GetActorLocation();
+	ACataclysmEnemyCharacter* Near = AnImpHolding(World, CoffinAt + FVector(300.0f, 0.0f, 0.0f), 23.0f);
+	ACataclysmEnemyCharacter* Far = AnImpHolding(World, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f),
+												 23.0f);
+	if (!TestNotNull(TEXT("an Imp beside a coffin"), Near) || !TestNotNull(TEXT("an Imp far from both"), Far))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("beside a coffin: 20% more damage"), Near->DamageMultiplierFrom(Key), 1.2f, 0.001f);
+	TestEqual(TEXT("and 15 more resistance: 38"), AllResistanceBaseOf(Near), 38.0f, 0.01f);
+	TestEqual(TEXT("far from both: its own damage"), Far->DamageMultiplierFrom(Key), 1.0f, 0.001f);
+	TestEqual(TEXT("and its own resistance"), AllResistanceBaseOf(Far), 23.0f, 0.01f);
+	Beat(Mode, 3);
+	TestEqual(TEXT("beats later, still 38, not more"), AllResistanceBaseOf(Near), 38.0f, 0.01f);
+
+	// WALKED OUT OF REACH: BOTH GONE.
+	Near->SetActorLocation(CoffinAt + FVector(Effects::ObsidianSarcophagiRadiusCm + 200.0f, 0.0f, 0.0f));
+	Beat(Mode, 1);
+	TestEqual(TEXT("out of reach: its own damage"), Near->DamageMultiplierFrom(Key), 1.0f, 0.001f);
+	TestEqual(TEXT("and its own resistance again"), AllResistanceBaseOf(Near), 23.0f, 0.01f);
+	return true;
+}
+
+// WITH A TRIAL OF ENDURANCE RUN OUT AS WELL, A CREATURE BESIDE A COFFIN HOLDS (OWN + 15) x 2.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCoffinsAndTrialTest,
+	"Cataclysm.DungeonModifierEffects.WithATrialRunOutACoffinsPointsAreDoubledWithTheCreaturesOwn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCoffinsAndTrialTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	// THE FLOOR'S OWN CREATURES ARE KEPT, so the trial is not cleared in time the moment it begins.
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACoffinFloor(
+		*this, World, Player, {CoffinsRow, FName(Effects::TrialOfEnduranceKey)}, /*bClear=*/false);
+	if (!Mode || !TestEqual(TEXT("two coffins"), Mode->SarcophagiNow().Num(), 2)
+		|| !TestTrue(TEXT("floor 2 has creatures of its own"), Mode->LivingFloorEnemies() > 0))
+	{
+		return false;
+	}
+	const FVector CoffinAt = Mode->SarcophagiNow()[0]->GetActorLocation();
+	ACataclysmEnemyCharacter* Near = AnImpHolding(World, CoffinAt + FVector(300.0f, 0.0f, 0.0f), 23.0f);
+	ACataclysmEnemyCharacter* Far = AnImpHolding(World, Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f),
+												 23.0f);
+	if (!TestNotNull(TEXT("an Imp beside a coffin"), Near) || !TestNotNull(TEXT("an Imp far from both"), Far))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("before the trial runs out: 23 and 15"), AllResistanceBaseOf(Near), 38.0f, 0.01f);
+	Beat(Mode, BeatsFor(Effects::TrialOfEnduranceSeconds) + 1);
+	TestTrue(TEXT("the trial has run out"),
+			 Mode->LiveCountsForTheFloor().FindRef(FName(Effects::TrialOfEnduranceKey)).Contains(TEXT("failed")));
+	TestEqual(TEXT("beside a coffin: (23 + 15) x 2 is 76"), AllResistanceBaseOf(Near), 76.0f, 0.01f);
+	TestEqual(TEXT("far from both: 23 doubled is 46"), AllResistanceBaseOf(Far), 46.0f, 0.01f);
+	Beat(Mode, 4);
+	TestEqual(TEXT("beats later, still 76"), AllResistanceBaseOf(Near), 76.0f, 0.01f);
+	return true;
+}
+
+// EIGHT PAID DEATHS OF THE FLOOR'S CREATURES BESIDE A COFFIN LET ITS VAMPIRE LORD OUT, ONCE; OTHER DEATHS DO NOT
+// COUNT; THE COFFIN GOES ON GRANTING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCoffinsLordTest,
+	"Cataclysm.DungeonModifierEffects.EightPaidDeathsBesideACoffinLetItsVampireLordOutOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmCoffinsLordTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACoffinFloor(*this, World, Player, {CoffinsRow}, /*bClear=*/true);
+	if (!Mode || !TestEqual(TEXT("two coffins"), Mode->SarcophagiNow().Num(), 2)
+		|| !TestEqual(TEXT("no creature on the floor"), Mode->FloorEnemies.Num(), 0))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Coffin = Mode->SarcophagiNow()[0];
+	const FVector CoffinAt = Coffin->GetActorLocation();
+	const FVector Beside = CoffinAt + FVector(300.0f, 0.0f, 0.0f);
+
+	// ONE OF THE FLOOR'S CREATURES BESIDE THE COFFIN, KILLED.
+	const auto KillOneOfTheFloors = [&](const FVector& Where, bool bPays)
+	{
+		ACataclysmEnemyCharacter* Victim = SpawnImpWithHealth(World, Where, 100.0f);
+		if (!TestNotNull(TEXT("an Imp to kill"), Victim))
+		{
+			return false;
+		}
+		Victim->bDiesUnpaid = !bPays;
+		Mode->FloorEnemies.Add(Victim);
+		return KillIt(*this, Player, Victim);
+	};
+
+	for (int32 Which = 0; Which < 7; ++Which)
+	{
+		if (!KillOneOfTheFloors(Beside, /*bPays=*/true))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("seven counted"), Mode->SarcophagusDeathsBeside(Coffin), 7);
+	TestFalse(TEXT("and no lord"), Mode->SarcophagusLordCame(Coffin));
+	TestEqual(TEXT("the panel at seven"), Mode->LiveCountsForTheFloor().FindRef(CoffinsRow),
+			  FString(TEXT("obsidian sarcophagi: 7 of 8 slain beside one, 0 of 8 beside the other")));
+
+	// NOT COUNTED: A DEATH THAT PAYS NOTHING, A CREATURE THAT IS NOT THE FLOOR'S, AND A DEATH OUT OF REACH.
+	if (!KillOneOfTheFloors(Beside, /*bPays=*/false))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Stranger = SpawnImpWithHealth(World, Beside, 100.0f);
+	if (!TestNotNull(TEXT("an Imp not of the floor"), Stranger) || !KillIt(*this, Player, Stranger)
+		|| !KillOneOfTheFloors(Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 100.0f), /*bPays=*/true))
+	{
+		return false;
+	}
+	TestEqual(TEXT("still seven: an unpaid death, a stranger and a far death do not count"),
+			  Mode->SarcophagusDeathsBeside(Coffin), 7);
+	const int32 FloorBefore = Mode->FloorEnemies.Num();
+
+	// THE EIGHTH: ITS VAMPIRE LORD.
+	if (!KillOneOfTheFloors(Beside, /*bPays=*/true))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the lord came"), Mode->SarcophagusLordCame(Coffin));
+	if (!TestEqual(TEXT("two more on the floor's list: the eighth creature and the lord"), Mode->FloorEnemies.Num(), FloorBefore + 2))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Lord = Mode->FloorEnemies.Last();
+	TestTrue(TEXT("marked a Vampire Lord"), Lord->bIsAVampireLord);
+	TestFalse(TEXT("a creature of the floor's kinds, not a floor source"), Lord->IsA<ACataclysmFloorSourceCharacter>());
+	TestEqual(TEXT("at Demon Prince's rung"), Lord->RarityStep, Effects::ObsidianSarcophagiLordRung);
+	TestTrue(TEXT("paying for its death"), Lord->PaysForItsDeath());
+	TestEqual(TEXT("seeing across the floor"), Lord->SightRadiusMultiplier, Effects::VengefulWraithsSightMultiplier,
+			  0.001f);
+	TestEqual(TEXT("\"Vampire Lord\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Lord),
+			  FString(TEXT("Vampire Lord")));
+	const FVector LordAt = Lord->GetActorLocation();
+	TestTrue(TEXT("beside the coffin and not in its cell"),
+			 FVector::Dist2D(LordAt, CoffinAt) <= Effects::NecroticBloomWaveWithinCm + 1.0f
+				 && Mode->CurrentFloor->CellOfWorld(LordAt) != Mode->CurrentFloor->CellOfWorld(CoffinAt));
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(CoffinsRow),
+			  FString(TEXT("obsidian sarcophagi: the Vampire Lord of one has come, 0 of 8 beside the other")));
+
+	// EIGHT MORE: NO SECOND LORD, AND THE COFFIN STILL GRANTS.
+	for (int32 Which = 0; Which < 8; ++Which)
+	{
+		if (!KillOneOfTheFloors(Beside, /*bPays=*/true))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("sixteen counted"), Mode->SarcophagusDeathsBeside(Coffin), 16);
+	int32 Lords = 0;
+	for (ACataclysmEnemyCharacter* One : Mode->FloorEnemies)
+	{
+		Lords += (IsValid(One) && One->bIsAVampireLord) ? 1 : 0;
+	}
+	TestEqual(TEXT("still only one lord"), Lords, 1);
+	ACataclysmEnemyCharacter* Still = AnImpHolding(World, Beside, 0.0f);
+	if (TestNotNull(TEXT("an Imp beside it afterwards"), Still))
+	{
+		Beat(Mode, 1);
+		TestEqual(TEXT("the coffin still grants: 20% more"),
+				  Still->DamageMultiplierFrom(ACataclysmEnemyCharacter::ObsidianSarcophagiDamageSource), 1.2f, 0.001f);
 	}
 	return true;
 }

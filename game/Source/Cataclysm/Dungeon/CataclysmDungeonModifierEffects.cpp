@@ -170,6 +170,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::TrialOfEnduranceKey =
 const TCHAR* UCataclysmDungeonModifierEffects::VoidParasiteKey =
 	TEXT("Void_Void_Parasite");
 
+const TCHAR* UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey =
+	TEXT("Death_Obsidian_Sarcophagi");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -473,7 +476,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(PestilentEmpowermentKey)
 		|| RowKey == FName(InfestedVeinsKey)
 		|| RowKey == FName(TrialOfEnduranceKey)
-		|| RowKey == FName(VoidParasiteKey))
+		|| RowKey == FName(VoidParasiteKey)
+		|| RowKey == FName(ObsidianSarcophagiKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -669,6 +673,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(InfestedVeinsKey),
 		FName(TrialOfEnduranceKey),
 		FName(VoidParasiteKey),
+		FName(ObsidianSarcophagiKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1789,6 +1794,11 @@ int32 UCataclysmDungeonModifierEffects::VoidParasiteStacksAfterAttaching(int32 S
 float UCataclysmDungeonModifierEffects::VoidParasiteLessPercent(int32 Stacks)
 {
 	return FMath::Clamp(Stacks, 0, VoidParasiteMostStacks) * VoidParasitePercentPerStack;
+}
+
+bool UCataclysmDungeonModifierEffects::ObsidianSarcophagiLordIsDue(int32 DeathsNearby, bool bLordCame)
+{
+	return DeathsNearby >= ObsidianSarcophagiDeathsForTheLord && !bLordCame;
 }
 
 int32 UCataclysmDungeonModifierEffects::GraveTideCreaturesInWave(int32 WavesSoFar)

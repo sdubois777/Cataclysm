@@ -537,6 +537,13 @@ public:
 	static FString VeinTextFor(const AActor* Actor);
 
 	/**
+	 * "Sarcophagus" under the health bar of an obsidian sarcophagus, and "Vampire Lord" under the bar of the
+	 * lord one let out, or empty. Issues #1820 and #41. Beside the floor sources' words, for their reason: it
+	 * says what the creature is.
+	 */
+	static FString SarcophagusTextFor(const AActor* Actor);
+
+	/**
 	 * "Second Self" under the health bar of the minion or thrall A Second Self
 	 * chose, or empty. Issue #1515. First on the line, for "Harbinger"'s reason:
 	 * it says what the creature is. Nothing else on screen marks a minion.
