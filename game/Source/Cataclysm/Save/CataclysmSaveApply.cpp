@@ -6,6 +6,7 @@
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
+#include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
@@ -45,6 +46,15 @@ namespace
 		{
 			UClass* Class = *It;
 			if (!Class || !Class->IsChildOf(ACataclysmEnemyCharacter::StaticClass()))
+			{
+				continue;
+			}
+
+			// NOT AN ETERNAL CHORUS'S SOURCE, which names no archetype row, as the base class -- the
+			// sandbox's training dummy -- names none. Without this the two would both claim that empty
+			// name and a saved dummy could come back as a source. A source is never saved anyway: it is
+			// raised by a rule, and `FCataclysmSaveGather::FloorFrom` skips those. Issues #1820 and #41.
+			if (Class->IsChildOf(ACataclysmChorusSourceCharacter::StaticClass()))
 			{
 				continue;
 			}

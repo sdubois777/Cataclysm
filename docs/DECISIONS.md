@@ -89,6 +89,189 @@ removes the other, and each is caught by a different set of the nine.
 
 ---
 
+## 2026-09-24 — Eternal Chorus: two sources on a floor each sing within ten metres, where cooldowns are half again as long and mana and fervour regeneration are halved, until the player destroys the source
+
+**Affects:** a new creature class, `game/Source/Cataclysm/Character/CataclysmChorusSourceCharacter.h` and
+`.cpp` (a source that does nothing); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h`
+and `.cpp` (the row's key, its figures, two new floor-effect fields and what they do to the player's
+stats and the panel's sentence); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp`
+(where choruses stand, placing and forgetting their sources, their earshots, the player's effects, the
+panel line and the resets); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp`
+("Chorus" under a source's health bar); `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp` (the source
+claims no archetype name); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. ONE
+TEST FAILED FIRST, on a Horde floor number the test chose wrongly; it is recorded there.
+
+### The row
+
+`Celestial_Eternal_Chorus` in `game/Data/DungeonModifiers.csv`, weight 15: "Certain areas resonate with a
+haunting celestial hymn. While within earshot of the chorus, all cooldowns are increased, and resource
+regeneration is halved. Players must destroy the source of the hymn to silence it." "Halved" is its only
+figure. The design document does not mention a chorus, a hymn or earshot. This log's 2026-09-23 entry
+"Below 10% mana a cast costs 5% of current health instead…" passed over this row because "nothing on a
+floor can be destroyed today: a player can only target something with pawn collision, an ability system,
+a hostile team and health, and no object other than a creature has all four."
+
+### What the rule does
+
+When a floor carrying the row is placed, two chorus sources stand on random floor cells at least twenty
+metres from the entrance and from each other; a Horde arena has one, placed with its first wave and kept
+for the waves after it. Each source is a creature that does nothing -- no brain, no attack, no ability --
+with the Imp's health, "Chorus" under its health bar, paying nothing when it is destroyed
+and not one of the floor's creatures. Around each, a visible Celestial zone ten metres across the radius
+is its earshot, drawn again after every floor or wave for as long as its source lives. While the player
+stands within any earshot, once however many: every cooldown is half again as long (`cooldown_lengthening`
++50), and mana and fervour regeneration are halved. Destroying a source removes its earshot at the next
+beat. The panel says how many sources are singing.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24. "Halved" is the row's; every other
+figure is a play-test value:**
+
+- **The source is a creature, because only a creature can be targeted today, and the least creature that
+  answers "destroy the source".** It is `ACataclysmChorusSourceCharacter`: no controller, the base enemy's
+  empty ability list, the base enemy's placeholder cylinder (engine content, not art). **Not a Corrupted
+  Sentinel**, which was proposed: a Sentinel shoots, and the row would become "a turret guards the hymn",
+  which it does not say. **A real destructible-object mechanism stays unbuilt**, and a later row may still
+  need one.
+- **It pays nothing (`bDiesUnpaid`), so it cannot be farmed, and Blood Gates does not wait on it**; it is
+  raised by the rule and is not one of the floor's creatures, so no rule that picks from those picks it.
+- **Its health is the Imp's at Common, 87, a play-test value**, so that a player destroys it in a few
+  seconds: the rule's challenge is finding and reaching the source, not a long fight with something that
+  does nothing. The Corrupted Sentinel's 324 was built first, and the table below showed it took 14 to 21
+  seconds with a one-handed weapon. At 87, from the code's own numbers -- a +0 weapon, no affixes,
+  attributes, passives, critical strikes or skills, so the slowest case:
+
+  | weapon (+0) | hit | swings/s | hits to 87 | seconds (hits ÷ swings/s) |
+  | :-- | --: | --: | --: | --: |
+  | Dagger | 10.4 | 1.5 | 9 | 6.0 |
+  | Fist | 12.0 | 1.45 | 8 | 5.5 |
+  | Whip | 12.8 | 1.4 | 7 | 5.0 |
+  | Sword | 16.0 | 1.3 | 6 | 4.6 |
+  | Wand, Crossbow | 15.2 | 1.35 | 6 | 4.4 |
+  | Axe | 18.4 | 1.25 | 5 | 4.0 |
+  | Warhammer | 67.2 | 1.2 | 2 | 1.7 |
+  | Greatsword | 62.4 | 1.25 | 2 | 1.6 |
+  | Greataxe | 57.6 | 1.28 | 2 | 1.6 |
+  | Staff, Two-Handed Crossbow | 52.8 | 1.3 | 2 | 1.5 |
+  | Spear | 51.2 | 1.35 | 2 | 1.5 |
+
+  A hit is the weapon's `attack_damage` implicit in `game/Data/ItemBases.csv`, which is written at upgrade
+  level +10, scaled to +0 by `UCataclysmItemValues::ImplicitValue` (1.0 / 2.5) and doubled for a two-handed
+  weapon; a basic attack is 100% of attack damage (the Basic row of `game/Data/SkillSlots.csv`); the
+  source has no armour and no evasion.
+
+  **A stated limit: the source's health is fixed and does not grow with floor depth**, so deeper floors,
+  where the player is stronger, destroy it faster. That is how every creature's health works today: a placed
+  creature's health is its kind's Common figure on `ACataclysmGameMode` (`ImpHealth` and its siblings),
+  multiplied by 1.85 for each rarity rung in `ACataclysmEnemyCharacter::ApplyStartingAttributes`. No code
+  was found that scales a creature's health with depth; the one floor-depth multiplier on creatures,
+  `SetFloorDepthDamageMultiplier`, changes damage and is set only by March of Progress.
+- **It names no archetype row.** A class that names one must name a row of
+  `game/Data/EnemyArchetypes.csv`, which is generated from the design workbook. So the save system's map of
+  archetype names skips this class, and the sandbox's training dummy keeps sole claim to the empty name. A
+  source is never saved: it is raised by a rule, and the change before this one leaves those out of a
+  saved floor.
+- **Two per floor, at least 2000 cm from the entrance and each other; one on a Horde arena, with the first
+  wave.** 2000 cm is twice the earshot, so two earshots never overlap.
+- **Earshot 1000 cm, a visible Celestial ground zone for as long as its source lives.**
+- **Within any earshot, once however many: +50 `cooldown_lengthening`** (cooldowns 1.5 times as long;
+  the negative enchantments run from 30 to 500 on the same stat) **and 50% less `mana_regen` and
+  `fervour_per_second`**, in two new floor-effect fields. **Health regeneration, both leeches and
+  `energy_shield_regen` are untouched**: the row says "resource", and health and a shield are not
+  resources. Withered Ground's `RecoveryLessPercent` was not reused because it cuts health too.
+- **Allowed on Horde waves**, and the panel line reads "eternal chorus: N sources singing".
+
+### The research: areas that deny recovery
+
+Done after the rulings and before the build; the page was fetched on 2026-09-24 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, map modifiers | https://maxroll.gg/poe/getting-started/how-to-roll-maps | "Cannot Leech AND Players cannot Regenerate Life, Mana or Energy Shield" |
+
+**What it settles and what it does not.** A shipped game does deny regeneration as an area rule, and names
+it one of the dangerous modifiers, which supports cutting regeneration here. It denies all of it, and life
+and energy shield with it, where this row halves resource regeneration only; the row's own figure governs.
+No readable source was found for lengthened cooldowns in an area, or for a destructible source of an area
+effect -- `poedb.tw` answered 404 and a search found nothing on the subject -- so the cooldown figure, the
+earshot, the count, the source's health and the source's form are this game's own.
+
+### Tests
+
+Three automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `EternalChorusLengthensCooldownsAndHalvesOnlyResourceRegeneration`: the two fields make a floor not
+  empty; they become one flat +50 on `cooldown_lengthening` and one 50% Less on each of `mana_regen` and
+  `fervour_per_second`, and nothing on `health_regen`, the leeches or `energy_shield_regen`; the panel's
+  sentence names both.
+- `EternalChorusPlacesTwoSourcesThatDoNothingButSing`: the cells are two floor cells far enough from the
+  entrance and from each other; the floor has two sources, each a chorus source with no controller and no
+  ability, paying nothing, raised by the rule, not one of the floor's creatures, saying exactly "Chorus",
+  at full health equal to the Imp's; after a beat each has an earshot that covers it and
+  not a point 1050 cm away, and the panel says two sing; a Horde arena has one, the floor's two are gone,
+  and the next wave keeps the same source and draws its earshot again.
+- `WithinAChorusEarshotCooldownsLengthenUntilItsSourceIsDestroyed`: out of earshot nothing; within the
+  first's earshot `cooldown_lengthening` is 50 and mana regeneration half what it was; destroying that
+  source pays nothing, leaves one source, one earshot and a panel saying one, and puts both stats back
+  where the player stands; the other source's earshot still lengthens cooldowns.
+- `Cataclysm.SaveApply.AChorusSourceDoesNotTakeTheTrainingDummysEmptyName`: the source names no row, and
+  the empty name maps to the base enemy class.
+
+One Python check: the row still says "certain areas", "within earshot", "all cooldowns are increased",
+"resource regeneration is halved" and "destroy the source".
+
+### Run
+
+One editor window on 2026-09-25, on development d4c87126 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite FAILED ONE TEST**, on 8801f1a6: "Build: Succeeded - 29 actions, 26 files compiled";
+  "2452 tests performed, 2451 succeeded, 1 failed: EternalChorusPlacesTwoSourcesThatDoNothingButSing", every
+  declared test reported, on "Expected 'one source in a Horde arena' to be 1, but it was 2". The test went to
+  Horde floor 3 to reach a new arena, but a Horde dungeon's floor 1 is its one new arena and every later floor
+  is a wave in it (`FCataclysmDungeonFloorRules::SameArenaAsLastFloor`), so floor 3 kept floor 2's two
+  sources, as the rule should. **The rule was right and the test was wrong.** **Fixed in the test only**
+  (01553f52): it goes to floor 1 for the arena and floor 2 for its next wave, and checks that both of the
+  last floor's sources are gone rather than the first alone. **By the coordinating session's ruling the whole
+  suite was not run again** after that test-only edit.
+- **On the final head, 01553f52:** the Python suite of record, 5,463 passed and 8 skipped of 5,471, 0 failed;
+  the groups `Cataclysm.DungeonModifierEffects.`, which holds the failed test, 303 performed, 303 succeeded,
+  and `Cataclysm.SaveApply.` 10 performed, 10 succeeded -- each with every one of its declared tests
+  reported.
+- **The groups on the base**, d4c87126: `Cataclysm.DungeonModifierEffects.` 300 performed, 300 succeeded;
+  `Cataclysm.SaveApply.` 9 performed, 9 succeeded.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **No earshot ever covers the player** (`bWithinEarshot |= false && Earshot && ...`), on the prefix
+  `Cataclysm.DungeonModifierEffects.WithinAChorus`. With the break in: 1 performed, 1 failed, on "Expected
+  'cooldowns 50 longer within earshot' to be 50.000000, but it was 0.000000", "Expected 'mana regeneration
+  halved' to be 1.450000, but it was 2.900000" and "Expected 'the other's earshot still lengthens' to be
+  50.000000, but it was 0.000000". Restored: 1 performed, 1 succeeded.
+- **Health regeneration halved in place of mana** (`DungeonModifierEffectsHealthRegenStat` for
+  `DungeonModifierEffectsManaRegenStat`), on the prefix `Cataclysm.DungeonModifierEffects.EternalChorus`.
+  With the break in: 2 performed, 1 failed, on "Expected 'one modifier on mana_regen' to be 1, but it was 0"
+  and "Expected 'health_regen is not a resource, and is untouched' to be 0, but it was 1". Restored: 2
+  performed, 2 succeeded.
+- **A destroyed source keeps singing** (`if (!IsValid(Singer))` without the `IsDead` half), on the prefix
+  `Cataclysm.DungeonModifierEffects.WithinAChorus`. With the break in: 1 performed, 1 failed, on "Expected
+  'one earshot is left' to be 1, but it was 2", "Expected 'where its earshot was, cooldowns are back' to be
+  0.000000, but it was 50.000000" and "Expected 'and mana regeneration' to be 2.900000, but it was
+  1.450000". Restored: 1 performed, 1 succeeded.
+
+The save system's skip of this class (`CataclysmSaveApply.cpp`) was not given a guard proof; the
+coordinating session accepted that, within the limit of three proofs a change.
+
+
+---
+
 ## 2026-09-24 — A saved floor leaves out every creature a floor rule made, and remembers which creatures a rule raised from the dead
 
 **Affects:** `game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` (what is written),

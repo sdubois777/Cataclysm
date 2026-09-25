@@ -149,6 +149,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PlagueHarbingersKey =
 const TCHAR* UCataclysmDungeonModifierEffects::WingsOfTheHostKey =
 	TEXT("Celestial_Wings_of_the_Host");
 
+const TCHAR* UCataclysmDungeonModifierEffects::EternalChorusKey =
+	TEXT("Celestial_Eternal_Chorus");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -221,6 +224,10 @@ namespace
 	const TCHAR* const DungeonModifierEffectsManaRegenStat = TEXT("mana_regen");
 	const TCHAR* const DungeonModifierEffectsLifeLeechStat = TEXT("life_leech");
 	const TCHAR* const DungeonModifierEffectsManaLeechStat = TEXT("mana_leech");
+
+	// Eternal Chorus's three. Issues #1820 and #41.
+	const TCHAR* const DungeonModifierEffectsCooldownLengtheningStat = TEXT("cooldown_lengthening");
+	const TCHAR* const DungeonModifierEffectsFervourPerSecondStat = TEXT("fervour_per_second");
 
 	/**
 	 * One multiplier from a dungeon rule, or nothing for a value of nothing.
@@ -433,7 +440,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(DivineWrathKey)
 		|| RowKey == FName(EchoesOfThePastKey)
 		|| RowKey == FName(PlagueHarbingersKey)
-		|| RowKey == FName(WingsOfTheHostKey))
+		|| RowKey == FName(WingsOfTheHostKey)
+		|| RowKey == FName(EternalChorusKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -622,6 +630,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(EchoesOfThePastKey),
 		FName(PlagueHarbingersKey),
 		FName(WingsOfTheHostKey),
+		FName(EternalChorusKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1117,6 +1126,17 @@ TMap<FName, TArray<FCataclysmStatModifier>> UCataclysmDungeonModifierEffects::St
 								  DungeonModifierEffectsManaLeechStat,
 								  Effects.RecoveryLessPercent);
 
+	// AND ETERNAL CHORUS, WITHIN EARSHOT. Issues #1820 and #41. A flat addition to
+	// `cooldown_lengthening`, whose unit is percent longer and which every skill asks with its own
+	// tags, so an unscoped addition lengthens them all; and a Less on the two resource
+	// regenerations, read unscoped as `mana_regen` and `fervour_per_second` both are.
+	DungeonModifierEffectsAddFlat(Modifiers, DungeonModifierEffectsCooldownLengtheningStat,
+								  Effects.ChorusCooldownLongerPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsManaRegenStat,
+								  Effects.ChorusRegenLessPercent);
+	DungeonModifierEffectsAddLess(Modifiers, DungeonModifierEffectsFervourPerSecondStat,
+								  Effects.ChorusRegenLessPercent);
+
 	// AND MARCH OF PROGRESS, WHICH IS THE ONLY ENTRY IN THIS FUNCTION THAT RAISES A STAT
 	// THE PLAYER EARNED RATHER THAN LOWERING ONE THE FLOOR TOOK. Issues #1820 and #41.
 	// The Nihil's Embrace's reward is the nearest thing to it and is still a floor giving
@@ -1251,6 +1271,17 @@ FString UCataclysmDungeonModifierEffects::Describe(const FCataclysmPlayerFloorEf
 	{
 		Clauses.Add(FString::Printf(TEXT("health and mana recovery %.0f%% less"),
 									Effects.RecoveryLessPercent));
+	}
+
+	// AND ETERNAL CHORUS, WITHIN EARSHOT. Issues #1820 and #41.
+	if (Effects.ChorusCooldownLongerPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("cooldowns %.0f%% longer"), Effects.ChorusCooldownLongerPercent));
+	}
+	if (Effects.ChorusRegenLessPercent > 0.0f)
+	{
+		Clauses.Add(FString::Printf(TEXT("mana and fervour regeneration %.0f%% less"),
+									Effects.ChorusRegenLessPercent));
 	}
 
 	// AND WASTING SICKNESS, AS ONE CLAUSE FOR ITS TWO FIELDS. Issues #1786 and

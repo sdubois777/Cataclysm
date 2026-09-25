@@ -4055,3 +4055,23 @@ def test_wings_of_the_host_row_still_carpet_bombs_with_feathers_that_pierce_terr
             "because the row named no creature. Rule again. " + words)
     assert not any(character.isdigit() for character in words), (
         "Celestial_Wings_of_the_Host now states a figure; the rule's figures are rulings. " + words)
+
+def test_eternal_chorus_row_still_halves_resource_regeneration_until_its_source_is_destroyed():
+    """The phrases the rule's readings rest on.
+
+    "Certain areas resonate with a haunting celestial hymn. While within earshot of the chorus, all
+    cooldowns are increased, and resource regeneration is halved. Players must destroy the source of
+    the hymn to silence it." CERTAIN AREAS is why choruses stand at places; WITHIN EARSHOT is why the
+    effects hold only inside a radius; ALL COOLDOWNS ARE INCREASED is the lengthening; RESOURCE
+    REGENERATION IS HALVED is the row's one figure and why health regeneration is untouched; DESTROY
+    THE SOURCE is why each chorus has a creature to kill. If any of them changes, the reading must be
+    revisited.
+    """
+    words = flat(rows()["Celestial_Eternal_Chorus"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("certain areas", "within earshot", "all cooldowns are increased",
+                   "resource regeneration is halved", "destroy the source"):
+        assert phrase in lower, (
+            f"Celestial_Eternal_Chorus no longer says {phrase.upper()!r}. A reading of the rule "
+            "rests on it; see EternalChorusKey in CataclysmDungeonModifierEffects.h. " + words)
