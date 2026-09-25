@@ -16311,9 +16311,30 @@ bool FCataclysmTormentAroundAPlayerTest::RunTest(const FString&)
 	FCataclysmHitDelivery AsATick;
 	AsATick.bIsDamageOverTime = true;
 	AsATick.bIsArea = true;
-	TestTrue(TEXT("a tick took health off the player"),
-			 UCataclysmSkillEffects::ApplyDirectDamage(Beside, Player.Character, 10.0f,
-													   AsATick));
+
+	// NO SHIELD, SO THE TICK REACHES HEALTH. Every tick but a bleed goes to
+	// the energy shield first (issue #2014), a Ritualist has one, and Torment
+	// spreads only on damage that reached health. Both are asserted as set-up,
+	// so an absorbed tick fails here, named, and not as a spread that did not
+	// happen.
+	using Vital = UCataclysmVitalAttributeSet;
+	Player.AbilitySystem->SetNumericAttributeBase(Vital::GetEnergyShieldAttribute(), 0.0f);
+	if (!TestEqual(TEXT("set-up: the player's energy shield is empty"),
+				   Player.AbilitySystem->GetNumericAttribute(
+					   Vital::GetEnergyShieldAttribute()),
+				   0.0f, 0.001f))
+	{
+		return false;
+	}
+	const float HealthBefore =
+		Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute());
+	UCataclysmSkillEffects::ApplyDirectDamage(Beside, Player.Character, 10.0f, AsATick);
+	if (!TestTrue(TEXT("set-up: the tick took health off the player"),
+				  Player.AbilitySystem->GetNumericAttribute(Vital::GetHealthAttribute())
+					  < HealthBefore))
+	{
+		return false;
+	}
 
 	TestTrue(TEXT("the enemy 2 metres from the player caught the bleed"),
 			 Carries(Beside));
