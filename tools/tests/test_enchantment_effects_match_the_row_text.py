@@ -224,6 +224,11 @@ COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction"}
 STATED_BY_WORD: dict[str, dict[str, float]] = {
     "crowd_control_resistance": {"immune": 100.0},
     "armor_penetration": {"all": 100.0},
+    # "NO" IS 100 ON `nth_attack_no_damage`: "Every 10th attack deals no
+    # damage" is all of the attack's damage, and the generator requires 100.
+    # Issue #1833, every Nth. An action row has no stat, so its ACTION is the
+    # key here, which the two readers below use in its place.
+    "nth_attack_no_damage": {"no": 100.0},
 }
 
 #: Enchantments whose sentence states no number, so the number was chosen under
@@ -444,8 +449,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 325 over 252: four rows on two enchantments.
 #: AND 332 OVER 257 SINCE THE PLACED STACKS,
 #: issue #1833, from 329 over 254: three rows on three enchantments.
-AUTHORED_ROWS = 332
-AUTHORED_ENCHANTMENTS = 257
+#: AND 335 OVER 260 SINCE THE EVERY-Nth ROWS,
+#: issue #1833, from 332 over 257: three rows on three enchantments.
+AUTHORED_ROWS = 335
+AUTHORED_ENCHANTMENTS = 260
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -689,7 +696,9 @@ def test_a_single_value_appears_in_its_words_outside_any_range(effects,
         if row["ValueKind"] == "removed":
             continue
         text = words_of(row, enchantments)
-        if not value_is_stated(row["Stat"], value, text):
+        # AN ACTION ROW HAS NO STAT, SO ITS ACTION STANDS IN FOR ONE as the
+        # key of a word that states a value. Issue #1833, every Nth.
+        if not value_is_stated(row["Stat"] or row["Action"], value, text):
             wrong.append(f"{row['Name']}: {value:g} against {text!r}")
     assert not wrong, (
         "these values appear nowhere in their enchantment's words outside a "
@@ -928,7 +937,7 @@ def test_every_word_stated_value_is_still_needed(effects, enchantments):
         for word, value in sorted(meanings.items()):
             needing = [
                 r["Name"] for r in effects
-                if r["Stat"] == stat
+                if (r["Stat"] or r["Action"]) == stat
                 and float(r["ValueLow"]) == value == float(r["ValueHigh"])
                 and word in {w.lower() for w in
                              re.findall(r"[A-Za-z]+", words_of(r, enchantments))}
