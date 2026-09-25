@@ -722,6 +722,29 @@ being repeated; both calls are the same one line as the tested ones. **The stat 
 none of these can see a missing or wrong row. When the row lands, that change must add a test that wears
 the real `Ritualist_capstone_200` option 3 row.
 
+### Run
+
+One editor window on 2026-09-25, ending at 13:59 UTC, on development 1a064654 as the base, at the head
+f7a1a7a4. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**, the first time this head was compiled: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on the same tree: 5,483 passed, 8 skipped, 0 failed (JUnit 5,491 tests).
+- **The whole suite**, started once no CI run was in progress: 2,507 tests performed, 2,507 succeeded, 0
+  failed; every declared test was reported. 40 skipped part of what they check for want of the Paragon
+  art, none of them a Chorus test.
+
+**Three guard proofs, each printing PROVED**, prefix `Cataclysm.Chorus.`, restored: 6 of 6 succeeded each
+time.
+
+- **The 30% shared rather than each** (`Each` divided by `Minions.Num()`): 3 of 6 failed, on eight
+  assertions. Two imps added 37.5 each, 325 in all where 400; three added 100 each, 300 where 900; the
+  projectile's two repeats made 130 where 160.
+- **`HitTargets` never repeats** (`&& Dealt < 0.0f` added to its Chorus condition): 1 of 6 failed, on two
+  assertions. The Heavy strike took 250 where 400, and no imp repeated it where two did.
+- **An aura's pulse not marked as after the cast** (its guard set to `false`): 1 of 6 failed, on one
+  assertion. Both imps repeated the pulse where none should.
+
 ---
 
 ## 2026-09-25 — Shoulder Through, engine only: walking into an enemy pushes it 1.5 metres aside and strikes it for the weapon's damage, once a second per enemy
