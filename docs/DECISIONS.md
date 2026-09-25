@@ -218,6 +218,14 @@ does not match "pieces".
   back field by field. **The second is in `Ring3`** so that a slot other than the first shows the name was
   kept rather than the position.
 - `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`, existing, now carries the field.
+
+**The fixture's items now carry an enchantment each, since 2026-09-25**, one on the worn greatsword and one
+on the carried Circlet, with `Positive`, `Negative` and both rolls away from their defaults and
+`EnchantmentCount` 1. Until then no item in the committed character file had one, so an enchantment's
+round trip was shown by nothing: a default is re-defaulted identically on both sides, which the
+completeness check cannot tell from being read. Ruled under the owner's delegation to go in this change,
+while the file is still edited under the fixtures' stated exception. The two fixture tests read each field
+back.
 - `test_every_count_of_worn_slots_in_the_save_documents_is_the_enums`, in the Python file above.
 
 ---

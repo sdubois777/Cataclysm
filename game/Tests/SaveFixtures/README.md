@@ -244,7 +244,7 @@ one damage type is checked by
 `Cataclysm.SaveRecords.MigratingTo3KeepsOneClassTreePerDamageType`, which
 writes its cases out rather than committing a fixture for each.
 
-`Character_v3.json` was edited once under the exception, on 2026-09-24, for the
+`Character_v3.json` was edited twice under the exception, on 2026-09-24 and 2026-09-25. The first was for the
 finding recorded on issue #753 that the character record did not write worn
 gear at all:
 
@@ -256,6 +256,13 @@ gear at all:
   none at its default, so each field shows it survived rather than being
   re-defaulted. `Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear`
   reads them back one at a time.
+- **One enchantment on the worn greatsword and one on the carried Circlet**,
+  added 2026-09-25. Until then no item in the file carried an enchantment, so
+  `EnchantmentCount` and `Enchantments` sat at their defaults, and a default
+  round-trips identically whether it was read or not. Each enchantment's
+  `Positive`, `Negative` and both rolls are away from their defaults, and
+  `EnchantmentCount` is 1 to match. The rolls are 0.75, 0.25, 0.5 and 0.125,
+  exact in binary.
 - **It is still version 3.** A field added with an empty list as its default
   is not a version bump, by section 5 of `docs/Save_System_Design.md`: a file
   without it reads as a character wearing nothing.
@@ -272,7 +279,7 @@ of committing them. Add a schema version and a migration step instead.
 | `Account_v1.json` | An account record at schema version 1. An online Hardcore partition with two characters in it |
 | `Character_v1.json` | A character record at version 1. Online Hardcore, not Solo Self-Found, carrying one piece of gear and one stack of material |
 | `Character_v2.json` | The same character at version 2, with its attribute points, its creation choices and two passive points in the Masochist tree |
-| `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3` |
+| `Character_v3.json` | The same character at version 3: version 2's contents, plus a greatsword worn in `Weapon1` and a ring in `Ring3`, and one enchantment each on the greatsword and the carried Circlet |
 | `Run_v1.json` | A run record at version 1, on floor 6 of a dungeon, with a boss at part health and a common creature beside it |
 | `Example_v1.json` | The example record at version 1 |
 | `Example_v2.json` | The same record at version 2, after `Title` was renamed to `Label` |

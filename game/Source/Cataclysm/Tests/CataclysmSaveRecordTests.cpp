@@ -629,6 +629,21 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 		Read->CarriedSlots[0].Item.Affixes[1].DamageTypes.Num(), 1);
 	TestEqual(TEXT("and that damage type is the one in the file"),
 		Read->CarriedSlots[0].Item.Affixes[1].DamageTypes[0], FName(TEXT("Fire")));
+
+	// THE CIRCLET'S ENCHANTMENT, added 2026-09-25 beside the worn gear so the
+	// committed file shows an enchantment surviving, carried as well as worn.
+	TestEqual(TEXT("the circlet states one enchantment"),
+		Read->CarriedSlots[0].Item.EnchantmentCount, 1);
+	if (TestEqual(TEXT("and carries it"), Read->CarriedSlots[0].Item.Enchantments.Num(), 1))
+	{
+		const FCataclysmRolledEnchantment& Enchantment = Read->CarriedSlots[0].Item.Enchantments[0];
+		TestEqual(TEXT("its positive half"), Enchantment.Positive,
+			FName(TEXT("Positive_Ultimate_has_1_3_additional_charges")));
+		TestEqual(TEXT("its negative half"), Enchantment.Negative,
+			FName(TEXT("Negative_Can_t_use_a_basic_attack")));
+		TestEqual(TEXT("the positive roll"), Enchantment.PositiveRoll, 0.5f);
+		TestEqual(TEXT("the negative roll"), Enchantment.NegativeRoll, 0.125f);
+	}
 	TestEqual(TEXT("the material stack"), Read->CarriedSlots[1].Quantity, 12);
 
 	// THE PRIVATE STASH IS EMPTY BECAUSE THIS CHARACTER IS NOT SOLO SELF-FOUND,
@@ -1255,6 +1270,20 @@ bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
 	}
 	TestEqual(TEXT("with 3 sockets"), Weapon.Item.Sockets, 3);
 	TestEqual(TEXT("and 2.5 residue"), Weapon.Item.Residue, 2.5f);
+
+	// AND ONE ENCHANTMENT, every field of it away from its default, so a worn
+	// item's enchantment is shown to survive rather than be re-defaulted.
+	TestEqual(TEXT("the greatsword states one enchantment"), Weapon.Item.EnchantmentCount, 1);
+	if (TestEqual(TEXT("and carries it"), Weapon.Item.Enchantments.Num(), 1))
+	{
+		const FCataclysmRolledEnchantment& Enchantment = Weapon.Item.Enchantments[0];
+		TestEqual(TEXT("its positive half"), Enchantment.Positive,
+			FName(TEXT("Positive_Additional_100_300_crit_multiplier")));
+		TestEqual(TEXT("its negative half"), Enchantment.Negative,
+			FName(TEXT("Negative_80_99_of_your_health_is_reserved")));
+		TestEqual(TEXT("the positive roll"), Enchantment.PositiveRoll, 0.75f);
+		TestEqual(TEXT("the negative roll"), Enchantment.NegativeRoll, 0.25f);
+	}
 
 	const FCataclysmWornItem& Ring = Read->WornGear[1];
 	TestEqual(TEXT("the second is worn in Ring3, by name"),
