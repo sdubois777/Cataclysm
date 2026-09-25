@@ -15976,7 +15976,7 @@ namespace CataclysmDefenderDistanceTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStandingApartDistanceTest,
-	"Cataclysm.DefenderDistance.StandingApartSoftensAHitFromAnAttackerMoreThanSixMetresFromTheRitualist",
+	"Cataclysm.DefenderBody.StandingApartSoftensAHitFromAnAttackerMoreThanSixMetresFromTheRitualist",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -16062,7 +16062,7 @@ bool FCataclysmStandingApartDistanceTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNearbyEnemiesDistanceTest,
-	"Cataclysm.DefenderDistance.NearbyEnemiesDealLessOnlyFromWithinFiveMetresOfThePlayer",
+	"Cataclysm.DefenderBody.NearbyEnemiesDealLessOnlyFromWithinFiveMetresOfThePlayer",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -16166,6 +16166,159 @@ bool FCataclysmNearbyEnemiesDistanceTest::RunTest(const FString&)
 	}
 	TestEqual(TEXT("B: struck from 8 metres, at the origin: not reduced"), Ratio(Far),
 			  1.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmOwnTypeOnAPlayerTest,
+	"Cataclysm.DefenderBody.AHitOfAPlayersOwnDamageTypeOpensNoForeignWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The foreign-damage window, which Cataclysmic Resonance (`Masochist_basic_
+ * spine_003`) reads, on a real player. The window opens on a hit of a Cataclysm
+ * type the character does not wield, and the character's own type is read off
+ * its weapon slots -- which are on the character, not on the player state the
+ * vital set lives on.
+ *
+ * `Cataclysm.ConditionalDamage.DamageOfTheCharactersOwnTypeOpensNoWindow` makes
+ * the same check on an actor that owns its own ability system, which is why it
+ * passed while a player read no type at all.
+ */
+bool FCataclysmOwnTypeOnAPlayerTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderDistanceTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+	UCataclysmWeaponSlotsComponent* Slots =
+		Player.Character->FindComponentByClass<UCataclysmWeaponSlotsComponent>();
+	if (!TestNotNull(TEXT("the player character carries weapon slots"), Slots))
+	{
+		return false;
+	}
+	Slots->SetDamageType(TEXT("Demonic"));
+	if (!TestEqual(TEXT("and wields Demonic damage"),
+				   UCataclysmWeaponSlotsComponent::DamageTypeOf(Player.Character),
+				   FString(TEXT("Demonic"))))
+	{
+		return false;
+	}
+
+	StandAt(Player, 20.0f);
+	ACataclysmEnemyCharacter* Kin = AttackerAt(World, Player, 22.0f);
+	ACataclysmEnemyCharacter* Stranger = AttackerAt(World, Player, 18.0f);
+	if (!TestNotNull(TEXT("a Demonic attacker"), Kin)
+		|| !TestNotNull(TEXT("and a War one"), Stranger))
+	{
+		return false;
+	}
+	Kin->DamageType = FName(TEXT("Demonic"));
+	Stranger->DamageType = FName(TEXT("War"));
+
+	TestTrue(TEXT("the Demonic hit landed"), Received(Player, Kin) > 0.0f);
+	TestEqual(TEXT("a Demonic hit on a Demonic player opens no window"),
+			  Player.AbilitySystem->SecondsSinceForeignDamageTaken(), -1.0f, 0.001f);
+
+	TestTrue(TEXT("the War hit landed"), Received(Player, Stranger) > 0.0f);
+	TestEqual(TEXT("and a War hit on the same player opens it, now"),
+			  Player.AbilitySystem->SecondsSinceForeignDamageTaken(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTormentAroundAPlayerTest,
+	"Cataclysm.DefenderBody.ADebuffTickOnAPlayerSpreadsToEnemiesNearThePlayer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Contagious Torment (`Masochist_basic_fl_b0`) on a real player: "When a debuff
+ * on you deals damage, enemies within 6 metres ... receive a random debuff you
+ * carry." Searched for around the defender, which for a player is the character
+ * and not the player state at the world's origin.
+ *
+ * THE CHANCE IS GIVEN AS 100, NOT THE ROW'S 1% A POINT, for the reason
+ * `Cataclysm.Contagion.ARealDamageOverTimeTickSpreadsWithoutAnybodyCallingIt`
+ * gives: nothing passes a pinned roll through a real tick. What is under test
+ * is where the search is made. TWO BYSTANDERS SAY WHERE: one 2 metres from the
+ * player, 22 from the origin, must catch it; one at the origin, 20 metres from
+ * the player, must not.
+ */
+bool FCataclysmTormentAroundAPlayerTest::RunTest(const FString&)
+{
+	using namespace CataclysmDefenderDistanceTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	FCataclysmStatModifier Chance;
+	Chance.Bucket = ECataclysmStatBucket::Flat;
+	Chance.Source = ECataclysmModifierSource::PassiveKeystone;
+	Chance.Value = 100.0f;
+	TMap<FName, FCataclysmStatInputs> Inputs;
+	Inputs.FindOrAdd(FName(UCataclysmContagion::TormentChanceStat)).Modifiers = {Chance};
+	Player.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+
+	const FGameplayTag Bleed = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
+	if (!TestTrue(TEXT("the bleed tag exists"), Bleed.IsValid())
+		|| !TestTrue(TEXT("the player is bleeding"),
+					 UCataclysmSkillEffects::ApplyTagForDuration(
+						 Player.Character, Player.Character, Bleed, 30.0f)))
+	{
+		return false;
+	}
+
+	StandAt(Player, 20.0f);
+	ACataclysmEnemyCharacter* Beside = AttackerAt(World, Player, 22.0f);
+	ACataclysmEnemyCharacter* AtOrigin = AttackerAt(World, Player, 0.0f);
+	if (!TestNotNull(TEXT("an enemy 2 metres from the player"), Beside)
+		|| !TestNotNull(TEXT("and one at the origin, 20 metres off"), AtOrigin))
+	{
+		return false;
+	}
+	const auto Carries = [&Bleed](AActor* Who)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Who);
+		return System && System->HasMatchingGameplayTag(Bleed);
+	};
+	if (!TestFalse(TEXT("neither enemy is bleeding to begin with"),
+				   Carries(Beside) || Carries(AtOrigin)))
+	{
+		return false;
+	}
+
+	FCataclysmHitDelivery AsATick;
+	AsATick.bIsDamageOverTime = true;
+	AsATick.bIsArea = true;
+	TestTrue(TEXT("a tick took health off the player"),
+			 UCataclysmSkillEffects::ApplyDirectDamage(Beside, Player.Character, 10.0f,
+													   AsATick));
+
+	TestTrue(TEXT("the enemy 2 metres from the player caught the bleed"),
+			 Carries(Beside));
+	TestFalse(TEXT("and the one at the origin, 20 metres off, did not"),
+			  Carries(AtOrigin));
 	return true;
 }
 
