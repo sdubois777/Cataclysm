@@ -533,7 +533,14 @@ void ACataclysmHUD::DrawOverheadBars()
 			continue;
 		}
 
-		if (!UCataclysmCombatOverlay::ShouldShowBarFor(Health, MaxHealth))
+		// AND ITS SHIELD, IF IT HAS ONE. Issue #1515: a Shared Blood minion's
+		// shield can be struck while its health is full.
+		float Shield = 0.0f;
+		float MaxShield = 0.0f;
+		UCataclysmCombatOverlay::ShieldOf(Character, Shield, MaxShield);
+
+		if (!UCataclysmCombatOverlay::ShouldShowBarFor(Health, MaxHealth,
+													  Shield, MaxShield))
 		{
 			continue;
 		}
@@ -561,6 +568,19 @@ void ACataclysmHUD::DrawOverheadBars()
 				UCataclysmCombatOverlay::ColourFromHex(
 					UCataclysmCombatOverlay::HealthFillHex),
 				1.0f);
+
+		// THE SHIELD ABOVE THE HEALTH, in the colour the player's own shield is
+		// drawn in, the way the player's pools stack. Issue #1515.
+		if (MaxShield > 0.0f)
+		{
+			DrawBar(Screen.X - OverheadBarWidthPx * 0.5f,
+					Screen.Y - OverheadBarHeightPx - BarBackingInsetPx,
+					OverheadBarWidthPx, OverheadBarHeightPx,
+					UCataclysmCombatOverlay::BarFractionFor(Shield, MaxShield),
+					UCataclysmCombatOverlay::ColourFromHex(
+						UCataclysmCombatOverlay::ShieldFillHex),
+					1.0f);
+		}
 	}
 }
 

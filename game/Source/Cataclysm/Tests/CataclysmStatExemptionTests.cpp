@@ -1282,6 +1282,50 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `minion_energy_shield_percent_of_yours`, read by
+	 * `UCataclysmRegeneration::SharedBloodStep`. Issue #1515, Shared Blood. An
+	 * imp summoned by a summoner holding it has a shield; one summoned by a
+	 * summoner without it has none.
+	 */
+	void ProbeSharedBlood(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, 0.0f);
+		FScopedFighter Held(World, 0.0f);
+		for (const FScopedFighter* Summoner : {&Plain, &Held})
+		{
+			Summoner->AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), 500.0f);
+		}
+		GrantFlats(Held.Actor, {{FName(UCataclysmRegeneration::SharedBloodStat), 20.0f}});
+
+		const auto ShieldOfImpFrom = [&Test, World](const FScopedFighter& Summoner)
+		{
+			ACataclysmMinion* Imp = SummonImp(Test, World, Summoner.Actor);
+			if (!Imp)
+			{
+				return -1.0f;
+			}
+			const float Maximum = UCataclysmTargeting::AbilitySystemOf(Imp)->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute());
+			Imp->Destroy();
+			return Maximum;
+		};
+		Test.TestEqual(TEXT("an imp of a summoner without "
+							"minion_energy_shield_percent_of_yours has no shield"),
+					   ShieldOfImpFrom(Plain), 0.0f);
+		Test.TestTrue(TEXT("and one of a summoner holding it has one, so "
+						   "SharedBloodStep really reads it"),
+					  ShieldOfImpFrom(Held) > 0.0f);
+	}
+
+	/**
 	 * `mitigated_damage_added_to_next_melee_cap_percent`, read by
 	 * `UCataclysmAbilitySystemComponent::NoteMitigatedDamage`. Issue #1515,
 	 * Nothing Wasted. Two defenders with 1,000 armour take the same blow; only
@@ -2997,6 +3041,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
+			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},
 			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},

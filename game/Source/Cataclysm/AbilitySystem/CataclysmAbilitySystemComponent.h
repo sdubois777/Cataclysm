@@ -591,6 +591,11 @@ public:
 	/** What Nothing Wasted holds now, for the line above the skill bar. */
 	float StoredMitigatedDamageNow() const { return StoredMitigatedDamage; }
 
+	/** The shield rate this character's last regeneration step gave it, per
+	 *  second, which Shared Blood's minions share. Issue #1515. */
+	void NoteShieldRechargeRate(float PerSecond) { LastShieldRate = PerSecond; }
+	float LastShieldRechargeRate() const { return LastShieldRate; }
+
 	/** How many charges one row holds now. Issue #1833, phase 2. */
 	int32 NextUseChargesHeld(FName Key) const;
 
@@ -2208,6 +2213,9 @@ protected:
 
 	/** Nothing Wasted's store. Issue #1515. */
 	float StoredMitigatedDamage = 0.0f;
+
+	/** See `LastShieldRechargeRate`. */
+	float LastShieldRate = 0.0f;
 
 	/**
 	 * How deep inside `ActOnEvent` this character currently is, which is never

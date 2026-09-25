@@ -258,6 +258,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// to, read by UCataclysmAbilitySystemComponent::NoteMitigatedDamage and
 		// SpendStoredMitigatedDamage. Issue #1515.
 		TEXT("mitigated_damage_added_to_next_melee_cap_percent"),
+		// Shared Blood's share of the summoner's maximum energy shield that each
+		// minion has, read from the summoner by
+		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.
+		TEXT("minion_energy_shield_percent_of_yours"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.
