@@ -81,7 +81,11 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #: window. Its three rows wait for the design workbook and it leaves with them.
 #:
 #: `own_stacks` LEFT on 2026-09-24 with its seven enchantments, issue #1833.
-BUILT_AHEAD_OF_THEIR_ROWS: set[str] = set()
+#:
+#: `consecutive_hits` JOINED on 2026-09-25 for issue #1833's phase 2, as an
+#: engine commit ahead of its rows' commit on the same branch, and leaves with
+#: those rows.
+BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"consecutive_hits"}
 
 #: A scale source many effect rows name. The control.
 KNOWN_USED = "debuffs_carried"

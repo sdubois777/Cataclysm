@@ -317,8 +317,13 @@ public:
 	 * granti") and not readable. Attack and spell damage together, which is
 	 * how every damage sentence is written, read "attack/spell damage"; any
 	 * other stats are joined with a slash, underscores read as spaces.
+	 *
+	 * A COUNT OF HITS IN A ROW ON ONE ENEMY says so after the count, "attack/
+	 * spell damage 3/8 (hits in a row)". Issue #1833, phase 2: without it the
+	 * entry would read exactly as a timed stack of the same stats does.
 	 */
-	static FString OwnStacksEntry(const TArray<FName>& Stats, int32 Held, int32 Cap);
+	static FString OwnStacksEntry(const TArray<FName>& Stats, int32 Held, int32 Cap,
+								  bool bConsecutiveHits = false);
 
 	/**
 	 * What Nothing Wasted holds for the next melee blow, such as "Next melee

@@ -4231,6 +4231,15 @@ SCALES = {
     # stack".
     "own_stacks": (1.0, 1.0, "one stack"),
 
+    # "Each consecutive melee hit on the same enemy increases damage by 5%-10%
+    # up to 8 stacks" is `consecutive_hits` with a step of 1: the row's own
+    # count of hits in a row on one enemy, granted by `hit_dealt` and capped by
+    # its Scale Max Steps. Issue #1833, phase 2, ruled 2026-09-25 under the
+    # owner's delegation. It reads nought on any other enemy, so hit N deals
+    # damage with N-1. No timer: a hit on another enemy, death and leaving
+    # combat end it, so it takes no Stack Seconds.
+    "consecutive_hits": (1.0, 1.0, "one hit"),
+
     # "Take 5%-15% more damage per active aura" is `auras_held`, with a step of
     # 1. Issue #1686. Every aura skill running, however many can run at once;
     # two can today. The same 0 to 10 bound as the buff count above.
@@ -4642,6 +4651,13 @@ ACTION_ONLY_EVENTS = (
     "dot_applied",
 )
 
+#: The events a `consecutive_hits` row may count: the ones that name who was
+#: struck. Issue #1833, phase 2. `hit_dealt` alone today, raised by the player
+#: character with the blow's target.
+CONSECUTIVE_HIT_EVENTS = (
+    "hit_dealt",
+)
+
 #: The events that carry an amount of their own, so a row may take a fraction
 #: OF THAT AMOUNT rather than of a pool.
 #:
@@ -5048,6 +5064,25 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} counts its own "
                     f"stacks and states no cap in Scale Max Steps. \"Up to 5 "
                     f"stacks\" is 5.")
+        elif not action and scale == "consecutive_hits":
+            # HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2. The event must
+            # name who was struck, the cap is required, and there is no window.
+            if action_event not in CONSECUTIVE_HIT_EVENTS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts hits in a "
+                    f"row and names the event {action_event or '(none)'!r} to "
+                    f"count them. Only an event naming who was struck can: "
+                    f"{', '.join(CONSECUTIVE_HIT_EVENTS)}.")
+            if stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts hits in a "
+                    f"row and states Stack Seconds. The count has no timer "
+                    f"(ruled 2026-09-25), so they would be dropped.")
+            if scale_max_steps < 1:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} counts hits in a "
+                    f"row and states no cap in Scale Max Steps. \"Up to 8 "
+                    f"stacks\" is 8.")
         elif not action:
             if stack_text:
                 raise DataError(

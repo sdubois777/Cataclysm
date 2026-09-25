@@ -6,6 +6,7 @@
 #include "GameplayTagContainer.h"
 #include "CataclysmStatPipeline.generated.h"
 
+class AActor;
 class UAbilitySystemComponent;
 
 /**
@@ -2025,6 +2026,21 @@ enum class ECataclysmStatScale : uint8
 		UMETA(DisplayName = "Per Own Stack"),
 
 	/**
+	 * Multiplied by how many hits in a row the character has landed ON THE
+	 * TARGET OF THIS LOOKUP, counted by ITS OWN ROW. Issue #1833, phase 2:
+	 * "Each consecutive melee hit on the same enemy increases damage by 5%-10%
+	 * up to 8 stacks". Ruled 2026-09-25 under the owner's delegation: a landed
+	 * hit within the row's scope counts, one on a different enemy starts the
+	 * count again, and death and leaving combat end it.
+	 *
+	 * NOUGHT ON ANY OTHER TARGET, so the first hit on a new enemy is plain: a
+	 * hit's damage is fixed before the hit is counted, so hit N reads N-1.
+	 * READ BY `StackKey` through the asking ability system, like `PerOwnStack`.
+	 */
+	PerConsecutiveHit
+		UMETA(DisplayName = "Per Consecutive Hit"),
+
+	/**
 	 * Multiplied by how many aura skills are running on the character. Issue
 	 * #1686: "Take 5%-15% more damage per active aura".
 	 *
@@ -2802,6 +2818,14 @@ struct CATACLYSM_API FCataclysmStatConditions
 	const UAbilitySystemComponent* AskingAbilitySystem = nullptr;
 
 	/**
+	 * The character or thing this lookup is about, or null for a lookup with
+	 * none. Issue #1833, phase 2: `PerConsecutiveHit` counts only the hits
+	 * landed on it. Filled by `WithTargetState`. Not a property, for the reason
+	 * `AskingAbilitySystem` gives.
+	 */
+	const AActor* LookupTarget = nullptr;
+
+	/**
 	 * Whether the target's record of who has struck it was read. Issue #1815.
 	 * The two first-hit conditions ask this first, so a lookup with no target in
 	 * hand refuses rather than calling every enemy unstruck.
@@ -3314,6 +3338,17 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** The most stacks the row holds. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 StackCap = 0;
+
+	/**
+	 * Set, the stack this action grants is a COUNT OF HITS IN A ROW ON ONE
+	 * ENEMY rather than a stack with a window. Issue #1833, phase 2. The event
+	 * must name the enemy struck; a landed hit on another one starts the count
+	 * again. `StackSeconds` is not read: the count has no timer (ruled
+	 * 2026-09-25). UNLIKE AN OWN STACK, `RequiredTags` SCOPE THE COUNT: "each
+	 * consecutive melee hit" counts melee hits only.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bConsecutiveHits = false;
 
 	/**
 	 * Set, this action GRANTS A CHARGE THE NEXT USE SPENDS instead of moving a

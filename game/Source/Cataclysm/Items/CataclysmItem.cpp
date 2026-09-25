@@ -946,8 +946,10 @@ namespace
 			Out.ScaleStep = Effect.ScaleStep;
 			// AND ITS CAP. Issue #1815.
 			Out.ScaleMaxSteps = Effect.ScaleMaxSteps;
-			// AND, FOR A ROW'S OWN STACKS, WHOSE THEY ARE. Issue #1833.
-			if (Out.Scale == ECataclysmStatScale::PerOwnStack)
+			// AND, FOR A ROW'S OWN STACKS, WHOSE THEY ARE. Issue #1833. The same
+			// key for a row's hits in a row, which are counted the same way.
+			if (Out.Scale == ECataclysmStatScale::PerOwnStack
+				|| Out.Scale == ECataclysmStatScale::PerConsecutiveHit)
 			{
 				Out.StackKey = UCataclysmItemModifiers::OwnStackKeyFor(Effect);
 			}
@@ -1019,8 +1021,15 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 			// A ROW SCALED BY ITS OWN STACKS ALSO NEEDS SOMETHING TO GRANT THEM:
 			// an action on its event that gains a stack instead of moving a pool.
 			// Issue #1833. Its modifier is added below, like any stat row's.
+			//
+			// AND SO DOES A ROW COUNTING HITS IN A ROW ON ONE ENEMY, through the
+			// same lines, so the two cannot be capped differently. Issue #1833,
+			// phase 2.
+			const bool bConsecutive = Effect->Scale.Equals(
+				TEXT("consecutive_hits"), ESearchCase::IgnoreCase);
 			if (Actions && Effect->Action.IsEmpty()
-				&& Effect->Scale.Equals(TEXT("own_stacks"), ESearchCase::IgnoreCase))
+				&& (bConsecutive
+					|| Effect->Scale.Equals(TEXT("own_stacks"), ESearchCase::IgnoreCase)))
 			{
 				FCataclysmPoolAction Stack;
 				Stack.Event = FName(*Effect->ActionEvent);
@@ -1029,6 +1038,27 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				Stack.StackCap = Effect->ScaleMaxSteps;
 				// AND ITS CLOCK, WHEN IT GRANTS ON ONE. Issue #1833, timed grants.
 				Stack.EverySeconds = Effect->EverySeconds;
+				// A COUNT OF HITS IN A ROW IS SCOPED BY THE ROW'S TAGS, ruled
+				// 2026-09-25: "each consecutive melee hit" counts melee hits
+				// only. An own stack's tags scope its stat and not its grant, the
+				// phase 1 judgement, which this leaves as it was.
+				Stack.bConsecutiveHits = bConsecutive;
+				if (bConsecutive)
+				{
+					TArray<FString> CountedTags;
+					Effect->RequiredTags.ParseIntoArray(
+						CountedTags, TEXT(","), /*InCullEmpty=*/true);
+					for (FString& Tag : CountedTags)
+					{
+						Tag.TrimStartAndEndInline();
+						if (!Tag.IsEmpty())
+						{
+							Stack.RequiredTags.AddTag(
+								FGameplayTag::RequestGameplayTag(
+									FName(*Tag), /*ErrorIfNotFound=*/false));
+						}
+					}
+				}
 				Actions->Add(Stack);
 			}
 

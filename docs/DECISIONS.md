@@ -2,6 +2,104 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Hits in a row on one enemy: a melee hit raises damage on it up to 8 times, and any hit lowers it up to 10
+
+**Affects:**
+- the Enchantment Effects sheet: four rows on two enchantments; no new column
+- `tools/generate_datatables.py`: the scale `consecutive_hits` and `CONSECUTIVE_HIT_EVENTS`
+- `ECataclysmStatScale::PerConsecutiveHit`, `FCataclysmPoolAction::bConsecutiveHits` and
+  `FCataclysmStatConditions::LookupTarget`, filled by `WithTargetState`
+- `UCataclysmAbilitySystemComponent`: `ConsecutiveHitsOn`, `GrantConsecutiveHit`, a new last
+  argument on `ActOnEvent` naming who the event was done to, and `OwnStacksByEnchantment`
+- `ACataclysmPlayerCharacter::OnSomethingWasHit`, which passes the blow's target with `hit_dealt`
+- `UCataclysmItemModifiers::AccumulateEnchantmentsInto` and `UCataclysmSkillBar::OwnStacksEntry`
+- a defect fix in `ActOnEvent`, below
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 2, "consecutive hits on one
+  target"
+
+### THE ROWS
+
+| Enchantment | Rows | Counts | Cap |
+| :-- | :-- | :-- | :-- |
+| Each consecutive melee hit on the same enemy increases damage by 5%-10% up to 8 stacks | `attack_damage` and `spell_damage`, increased 5 to 10, scoped `Type.Melee` | melee hits | 8 |
+| Each consecutive hit against the same enemy deals 5%-8% less damage, up to 10 stacks | `attack_damage` and `spell_damage`, more -5 to -8 | any hit | 10 |
+
+Both are `consecutive_hits` with a step of 1 on `hit_dealt`. **"Less" is a negative "more", summed
+within the row**, as the existing "Your skills deal 1.5%-2.5% less damage for every 10 class points
+spent above 100" is written: ten stacks at 8% are one multiplier of 0.2, not 0.92 multiplied ten
+times. That is the pipeline's existing arithmetic for every scaled row, not a new judgement.
+
+### WHAT THE GENRE SETTLES, AND WHAT IT DOES NOT
+
+- **No shipped game I could read has "consecutive hits on the same enemy".** Searches of Path of
+  Exile, Diablo IV, Last Epoch and Torchlight Infinite found none.
+- **Diablo III's Bane of the Stricken is the nearest shape**: stacks counted per enemy. From Maxroll's
+  Diablo III legendary gem page: "First enemy hit with a Skill that can proc Bane of the Stricken
+  receives a stack of debuff that increases all damage you do to that particular enemy." And: "Normal
+  enemies and Elites lose all Bane of the Stricken stacks when they leave combat." Those stacks stay
+  on each enemy, so they do not reset when the player turns to another enemy. That is the difference
+  "consecutive" makes.
+- **So the reset rules and the area-skill rule below are judgements**, not derived.
+
+### THE RULINGS, by the coordinating session on 2026-09-25, under the owner's delegation
+
+- **What counts: a landed hit within the row's own scope.** The melee row counts melee hits only; the
+  drawback counts any hit. A damage-over-time tick is not a hit, and an evaded blow did not land:
+  neither counts, and neither starts the count again. `OnSomethingWasHit` already refuses both before
+  `hit_dealt` is raised.
+- **What starts it again: a landed in-scope hit on a different enemy. Death and leaving combat end
+  it. There is no timer.** A count begun before the current combat is treated as ended, so a fight
+  begun by the enemy does not continue an old count.
+- **Area skills: every landed hit counts, in order**, so a skill striking several enemies mostly
+  starts the count again. **This makes the drawback easier to avoid with area skills, and that is
+  accepted for now.**
+- **Hit N deals damage with N-1 stacks, so the first hit on an enemy is plain.** A hit's damage is
+  fixed before the hit is announced and counted, and the count applies only on the enemy it is
+  counting. A player may read "each consecutive hit increases damage" as including the first; it
+  does not.
+- **UNLIKE AN OWN STACK, THE ROW'S TAGS SCOPE THE COUNT as well as the stat.** Phase 1 judged that a
+  stack row's tags scope its stat and not its grant, and that stays as it was for own stacks.
+
+### WHAT SHOWS IT
+
+The line above the skill bar lists the count on the enemy being counted, against the cap, marked
+as hits in a row so it does not read as a timed stack of the same stats: "attack/spell damage 3/8
+(hits in a row)". The words are a judgement.
+
+### A DEFECT FIXED IN THE SAME CHANGE
+
+**`ActOnEvent` granted a next-use charge without the effectiveness flag.** Only `StepTimedGrants`
+passed it. The generator accepts `next_skill_effectiveness` on any event, so a row such as "when you
+dodge, your next skill is cast at 200% effectiveness" would have been held as 200% increased damage,
+with no error anywhere. No worn row was affected: the one effectiveness row is timed. Found while
+sizing this change, and fixed here as ruled.
+
+### THE STACK CAP'S PROOF
+
+**The third proof of this change breaks both caps together.** Those are `Stack.StackCap` and
+`Out.ScaleMaxSteps` in `CataclysmItem.cpp`, which a consecutive-hits row now shares with an own-stack
+row. It answers the stated gap in the entry "Seven enchantments count stacks of their own" and the
+correction in the entry "A dodge, a full resource, a movement ability or a block grants a charge the
+next skill or attack spends as increased damage". Both entries recorded that breaking either cap
+alone changes nothing a stat can show.
+
+### THE TESTS
+
+- **The count, on the engine:** melee hits on one enemy count up to a cap of three. A spell, a blow
+  with no skill and an evaded blow on another enemy leave it. A landed melee hit on the other enemy
+  starts it again at one, and the first enemy then reads nought. Out of combat it reads nought; a
+  fight begun by the enemy starts it at one; death ends it. It shows as one entry.
+- **The melee row, worn by a real player character**, dealing real blows to two creatures: each
+  hit deals 10% more than the first for each one before it. A blow with no skill and an evaded swing
+  on the other creature change nothing. The tenth and eleventh hits deal 1.8 times. The first hit on
+  the other creature is plain, and afterwards so is the next hit back on the first.
+- **The drawback row**, the same way: 8% less for each hit before, a fifth from the eleventh on, and
+  the first hit on the other creature plain.
+- **An event-granted effectiveness charge** is held as effectiveness and not as increased damage.
+- **The display:** the exact words for hits in a row, and a timed stack of the same stats unchanged.
+
+---
+
 ## 2026-09-24 — Nothing Wasted, engine only: what armour and damage reduction remove is stored and added to the next melee hit, up to that hit's own damage
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (two new

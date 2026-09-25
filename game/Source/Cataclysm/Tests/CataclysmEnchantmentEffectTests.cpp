@@ -5458,4 +5458,267 @@ bool FCataclysmEvery30SecondsRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmConsecutiveRowTest
+{
+	/**
+	 * A real player character wearing one enchantment through its own
+	 * equipment, and two creatures with no armour, evasion or block to strike.
+	 * Issue #1833, phase 2. `Blow` deals one of the character's own blows
+	 * through `ApplyHit`, which the creature resolves and announces, which is
+	 * where `hit_dealt` comes from; it returns what the creature lost. Every
+	 * blow states a critical strike chance of 0, so no blow's size is a roll.
+	 * A worn item rolls the top of its range.
+	 */
+	struct FStriker
+	{
+		FStriker(const TCHAR* Positive, const TCHAR* Negative)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return;
+			}
+			ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+			ASC = PlayerState ? PlayerState->GetCataclysmAbilitySystemComponent() : nullptr;
+			Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+				FVector::ZeroVector, FRotator::ZeroRotator);
+			if (!ASC || !Character)
+			{
+				return;
+			}
+			Character->SetPlayerState(PlayerState);
+			Character->OnRep_PlayerState();
+			UCataclysmEquipmentComponent* Equipment = Character->GetEquipment();
+			if (!Equipment)
+			{
+				return;
+			}
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Equipment->Equip(Carrying(TEXT("Head_Helm"), Positive, Negative),
+							 Removed, AlsoRemoved, Slot);
+			Equipment->RefreshAttributes(ASC);
+			// AFTER THE REFRESH, which writes an attack damage of nothing for a
+			// character holding no weapon.
+			ASC->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetAttackDamageAttribute(), 100.0f);
+
+			Swing = NewObject<UCataclysmStrikeSkill>(Character);
+			Swing->SkillName = TEXT("Test Swing");
+			Swing->SkillTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee"))));
+			Swing->SkillTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Strike"))));
+
+			First = Creature(FVector(200.0f, 0.0f, 0.0f));
+			Second = Creature(FVector(-200.0f, 0.0f, 0.0f));
+
+			Events = UCataclysmCombatEvents::In(World);
+			if (Events)
+			{
+				Heard = Events->OnHit.AddLambda([this](const FCataclysmHitNotice& Notice)
+				{
+					if (Notice.Attacker == Character)
+					{
+						bLastBlowWasMelee = Notice.SkillTags && Notice.SkillTags->HasTag(
+							FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee"))));
+					}
+				});
+			}
+		}
+
+		~FStriker()
+		{
+			if (Events)
+			{
+				Events->OnHit.Remove(Heard);
+			}
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		bool Ready() const
+		{
+			return ASC && Character && Swing && First && Second && Events;
+		}
+
+		ACataclysmEnemyCharacter* Creature(const FVector& Where) const
+		{
+			ACataclysmEnemyCharacter* Made =
+				World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+			if (Made)
+			{
+				Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+				Made->SetHealth(1000000.0f);
+				Made->SetAttackDamage(0.0f);
+				Made->SetArmour(0.0f);
+				UAbilitySystemComponent* Its = Made->GetAbilitySystemComponent();
+				Its->SetNumericAttributeBase(
+					UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+				Its->SetNumericAttributeBase(
+					UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+				Its->SetNumericAttributeBase(
+					UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+			}
+			return Made;
+		}
+
+		/** One blow on Target: a melee swing, or a blow with no skill. */
+		float Blow(ACataclysmEnemyCharacter* Target, bool bMelee)
+		{
+			const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+			UAbilitySystemComponent* Its = Target->GetAbilitySystemComponent();
+			const float Before = Its->GetNumericAttribute(Health);
+			FCataclysmHitDelivery Delivery;
+			Delivery.CritChancePercent = 0.0f;
+			if (bMelee)
+			{
+				Delivery.Skill = Swing;
+			}
+			bLastBlowWasMelee = false;
+			UCataclysmSkillEffects::ApplyHit(Character, Target, /*DamagePercent=*/100.0f,
+				bMelee ? Swing->SkillTags : FGameplayTagContainer(), Delivery);
+			return Before - Its->GetNumericAttribute(Health);
+		}
+
+		UWorld* World = nullptr;
+		UCataclysmAbilitySystemComponent* ASC = nullptr;
+		ACataclysmPlayerCharacter* Character = nullptr;
+		UCataclysmStrikeSkill* Swing = nullptr;
+		ACataclysmEnemyCharacter* First = nullptr;
+		ACataclysmEnemyCharacter* Second = nullptr;
+		UCataclysmCombatEvents* Events = nullptr;
+		FDelegateHandle Heard;
+		bool bLastBlowWasMelee = false;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsecutiveMeleeRowTest,
+	"Cataclysm.Enchantments.TheConsecutiveMeleeRowRaisesDamageOnOneEnemyUpTo8",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each consecutive melee hit on the same enemy increases damage by 5%-10% up
+ * to 8 stacks", worn at 10. Issue #1833, phase 2, ruled 2026-09-25. Hit N on
+ * one enemy deals the first hit's damage with 10% increased for each of the
+ * N-1 before it, up to 8: the tenth deals 1.8 times, and so does the eleventh.
+ * The first melee hit on another enemy is plain, and starts the count there. A
+ * blow with no skill, which is no melee hit, and an evaded melee swing neither
+ * count nor start it again.
+ */
+bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
+{
+	const TCHAR* Row = TEXT("Positive_Each_consecutive_melee_hit_on_the_same_enemy_inc");
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		Row, CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a wearer, two creatures and the announcements"), Striker.Ready()))
+	{
+		return false;
+	}
+	int32 Counting = 0;
+	for (const FCataclysmPoolAction& Action : Striker.ASC->GetPoolActions())
+	{
+		Counting += Action.bConsecutiveHits ? 1 : 0;
+	}
+	if (!TestEqual(TEXT("the row's two stats each count hits in a row. If not, "
+						"DT_EnchantmentEffects may be older than the rows: run "
+						"tools/generate_datatable_assets.py"), Counting, 2))
+	{
+		return false;
+	}
+
+	const float Plain = Striker.Blow(Striker.First, /*bMelee=*/true);
+	if (!TestTrue(TEXT("the swing was announced as a melee hit"), Striker.bLastBlowWasMelee)
+		|| !TestTrue(TEXT("and dealt damage"), Plain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the second hit deals 10% more than the first"),
+		Striker.Blow(Striker.First, true), Plain * 1.1f, 0.01f);
+	TestEqual(TEXT("the third, 20% more"),
+		Striker.Blow(Striker.First, true), Plain * 1.2f, 0.01f);
+
+	// NEITHER COUNTS NOR STARTS THE COUNT AGAIN.
+	TestTrue(TEXT("a blow with no skill on the second enemy lands"),
+		Striker.Blow(Striker.Second, /*bMelee=*/false) > 0.0f);
+	UAbilitySystemComponent* SecondIts = Striker.Second->GetAbilitySystemComponent();
+	SecondIts->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	TestEqual(TEXT("an evaded melee swing on the second enemy deals nothing"),
+		Striker.Blow(Striker.Second, true), 0.0f, 0.01f);
+	SecondIts->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	TestEqual(TEXT("so the fourth on the first enemy deals 30% more"),
+		Striker.Blow(Striker.First, true), Plain * 1.3f, 0.01f);
+
+	for (int32 Fifth = 5; Fifth <= 9; ++Fifth)
+	{
+		Striker.Blow(Striker.First, true);
+	}
+	TestEqual(TEXT("nine hits hold a count of 8, the cap"),
+		Striker.ASC->ConsecutiveHitsOn(
+			FName(*FString::Printf(TEXT("%s:attack_damage"), Row)), Striker.First), 8);
+	TestEqual(TEXT("the tenth hit deals 1.8 times the first"),
+		Striker.Blow(Striker.First, true), Plain * 1.8f, 0.01f);
+	TestEqual(TEXT("and so does the eleventh"),
+		Striker.Blow(Striker.First, true), Plain * 1.8f, 0.01f);
+
+	const TArray<UCataclysmAbilitySystemComponent::FHeldOwnStacks> Shown =
+		Striker.ASC->OwnStacksByEnchantment();
+	TestTrue(TEXT("shown as one entry of hits in a row, 8 of 8, on two stats"),
+		Shown.Num() == 1 && Shown[0].bConsecutiveHits && Shown[0].Held == 8
+			&& Shown[0].Cap == 8 && Shown[0].Stats.Num() == 2);
+
+	TestEqual(TEXT("the first melee hit on the second enemy is plain"),
+		Striker.Blow(Striker.Second, true), Plain, 0.01f);
+	TestEqual(TEXT("and the second on it deals 10% more"),
+		Striker.Blow(Striker.Second, true), Plain * 1.1f, 0.01f);
+	TestEqual(TEXT("back on the first enemy, the count started again: plain"),
+		Striker.Blow(Striker.First, true), Plain, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsecutiveDrawbackRowTest,
+	"Cataclysm.Enchantments.TheConsecutiveHitDrawbackCutsDamageOnOneEnemyUpTo10",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each consecutive hit against the same enemy deals 5%-8% less damage, up to
+ * 10 stacks", worn at 8. Issue #1833, phase 2. Any hit counts, a blow with no
+ * skill included. Hit N on one enemy deals the first hit's damage less 8% for
+ * each of the N-1 before it, up to 10: the eleventh and twelfth deal a fifth.
+ * The first hit on another enemy is plain.
+ */
+bool FCataclysmConsecutiveDrawbackRowTest::RunTest(const FString&)
+{
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		CataclysmEnchantmentEffectTest::BenefitWithNoEffect,
+		TEXT("Negative_Each_consecutive_hit_against_the_same_enemy_deal"));
+	if (!TestTrue(TEXT("a wearer, two creatures and the announcements"), Striker.Ready()))
+	{
+		return false;
+	}
+
+	const float Plain = Striker.Blow(Striker.First, /*bMelee=*/false);
+	if (!TestTrue(TEXT("the blow dealt damage"), Plain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the second hit deals 8% less"),
+		Striker.Blow(Striker.First, false), Plain * 0.92f, 0.01f);
+	for (int32 Third = 3; Third <= 10; ++Third)
+	{
+		Striker.Blow(Striker.First, false);
+	}
+	TestEqual(TEXT("the eleventh deals a fifth"),
+		Striker.Blow(Striker.First, false), Plain * 0.2f, 0.01f);
+	TestEqual(TEXT("and so does the twelfth"),
+		Striker.Blow(Striker.First, false), Plain * 0.2f, 0.01f);
+	TestEqual(TEXT("the first hit on the second enemy is plain"),
+		Striker.Blow(Striker.Second, false), Plain, 0.01f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

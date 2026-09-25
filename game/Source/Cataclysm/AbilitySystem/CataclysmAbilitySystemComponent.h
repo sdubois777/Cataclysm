@@ -466,15 +466,34 @@ public:
 	 *                   right answer rather than a missing one.
 	 * @param EventAmount what the event carried, for a row taking a fraction of
 	 *                   that rather than of a pool. Zero when it carried nothing.
+	 * @param EventTarget whoever the event was done to, for a row counting hits
+	 *                   in a row on one enemy. Issue #1833, phase 2. Null when
+	 *                   the event names nobody, and such a row then counts
+	 *                   nothing.
 	 */
 	void ActOnEvent(FName Event, const FGameplayTagContainer* EventTags = nullptr,
-					float EventAmount = 0.0f, bool bLanded = true);
+					float EventAmount = 0.0f, bool bLanded = true,
+					const AActor* EventTarget = nullptr);
 
 	/**
 	 * How many stacks of one row's own this character holds now: nought once
 	 * the row's window has passed since the last grant. Issue #1833.
 	 */
 	int32 OwnStacksHeld(FName StackKey) const;
+
+	/**
+	 * How many hits in a row one row has counted on this target: nought for
+	 * any other target, out of combat, and for a count begun before the
+	 * current combat. Issue #1833, phase 2.
+	 */
+	int32 ConsecutiveHitsOn(FName StackKey, const AActor* Target) const;
+
+	/**
+	 * Count one landed hit on this target for one row, up to its cap. A hit on
+	 * a different target, or the first in a new combat, starts the count again
+	 * at one. Issue #1833, phase 2, ruled 2026-09-25.
+	 */
+	void GrantConsecutiveHit(FName StackKey, const AActor* Target, int32 Cap);
 
 	/**
 	 * Grant one stack of a row's own, up to its cap, and restart its window.
@@ -594,6 +613,8 @@ public:
 		TArray<FName> Stats;
 		int32 Held = 0;
 		int32 Cap = 0;
+		/** A count of hits in a row on one enemy, rather than stacks. */
+		bool bConsecutiveHits = false;
 	};
 
 	/**
@@ -2143,6 +2164,24 @@ protected:
 	 * grant restarts the window, and the whole count lapses together.
 	 */
 	TMap<FName, FOwnStack> OwnStacks;
+
+	/** One row's hits in a row: on whom, how many, and when the last landed. */
+	struct FConsecutiveHits
+	{
+		TWeakObjectPtr<const AActor> Target;
+		int32 Count = 0;
+		float LastAtSeconds = 0.0f;
+	};
+
+	/**
+	 * Every row's hits in a row, by `FCataclysmStatModifier::StackKey`. Issue
+	 * #1833, phase 2. Kept apart from `OwnStacks` because a count belongs to
+	 * one enemy and has no window.
+	 */
+	TMap<FName, FConsecutiveHits> ConsecutiveHits;
+
+	/** Whether a count is still standing: in combat, and begun in this one. */
+	bool ConsecutiveHitsStanding(const FConsecutiveHits& Held) const;
 
 	/** One row's held next-use charges. Issue #1833, phase 2. */
 	struct FNextUseCharge
