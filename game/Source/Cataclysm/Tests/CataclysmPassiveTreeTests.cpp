@@ -8595,7 +8595,7 @@ bool FCataclysmPassiveRefitOnResizeTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFinalPactPerMinionTest,
-	"Cataclysm.Passives.TheFinalPactsSecondOptionGrantsItsThreeRowsAndTheOthersGrantNothing",
+	"Cataclysm.Passives.TheFinalPactsSecondOptionGrantsItsThreeRowsAndTheOthersOnlyTheirOwn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -8676,13 +8676,30 @@ bool FCataclysmFinalPactPerMinionTest::RunTest(const FString&)
 		return false;
 	}
 
-	// AND THE OTHER TWO OPTIONS GRANT NOTHING. This is the half that catches a
-	// wrong option number: if these rows carried Option=1, this assertion would
-	// fail and the count-based checks would not.
-	TestEqual(TEXT("option 1 grants nothing, because it is unauthored"),
-			  ModifiersFor(1).Key, 0);
-	TestEqual(TEXT("option 3 grants nothing, because it is unauthored"),
-			  ModifiersFor(3).Key, 0);
+	// AND THE OTHER TWO OPTIONS GRANT ONLY THEIR OWN ROW. This is the half that
+	// catches a wrong option number: if these rows carried Option=1, option 1
+	// would grant four and this assertion would fail where the count-based
+	// checks would not. Options 1 and 3 granted nothing until 2026-09-25, when
+	// A Second Self and Chorus gained one flag row each. Issue #1515.
+	const auto GrantsOnly = [&](int32 Option, const TCHAR* OwnStat)
+	{
+		const auto Other = ModifiersFor(Option);
+		TestEqual(*FString::Printf(TEXT("option %d grants one modifier, its own"),
+								   Option),
+				  Other.Key, 1);
+		TestNotNull(*FString::Printf(TEXT("option %d's one modifier is %s"),
+									 Option, OwnStat),
+					Other.Value.Find(FName(OwnStat)));
+		for (const TCHAR* Stat : {TEXT("attack_damage"), TEXT("spell_damage"),
+								  TEXT("max_energy_shield")})
+		{
+			TestNull(*FString::Printf(TEXT("option %d grants none of option 2's %s"),
+									  Option, Stat),
+					 Other.Value.Find(FName(Stat)));
+		}
+	};
+	GrantsOnly(1, TEXT("minion_held_longest_becomes_your_equal"));
+	GrantsOnly(3, TEXT("minions_repeat_your_skills"));
 
 	// THE THREE STATS, AND THE BUCKET EACH LANDS IN.
 	const TMap<FName, TArray<FCataclysmStatModifier>>& Granted = Second.Value;
