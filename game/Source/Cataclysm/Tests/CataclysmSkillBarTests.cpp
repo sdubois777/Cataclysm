@@ -1095,4 +1095,29 @@ bool FCataclysmSkillBarNextUseLineTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarHeldStacksLineTest,
+	"Cataclysm.SkillBar.TheLineNamesEffectivenessAndEachEnchantmentsOwnStacks",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The line above the bar, with an effectiveness charge and two enchantments'
+ * own stacks. Issue #1833, timed grants: the own stacks of #2083 shipped with
+ * nothing on screen, which the owner's standing rule forbids. "Every 10 seconds
+ * gain a stack of momentum" is two rows, on attack and spell damage, granted
+ * together, and shows as ONE entry.
+ */
+bool FCataclysmSkillBarHeldStacksLineTest::RunTest(const FString&)
+{
+	const TArray<FString> Stacks = {
+		UCataclysmSkillBar::OwnStacksEntry(
+			{FName(TEXT("attack_damage")), FName(TEXT("spell_damage"))}, 3, 5),
+		UCataclysmSkillBar::OwnStacksEntry({FName(TEXT("armor"))}, 2, 10),
+	};
+	TestEqual(TEXT("a skill charge, an effectiveness charge and two enchantments' stacks"),
+		UCataclysmSkillBar::NextUseLine(60.0f, 1, 0.0f, 0, 300.0f, Stacks),
+		FString(TEXT("Next skill +60%   Next skill 300% effectiveness   "
+					 "attack/spell damage 3/5   armor 2/10")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

@@ -285,6 +285,7 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 			Cast<const UCataclysmSkillTemplate>(InFiringSkill))
 	{
 		Projectile->SpentIncreasePercent = Firing->LastNextUseIncreasePercent;
+		Projectile->SpentMoreMultiplier = Firing->LastNextUseMoreMultiplier;
 	}
 	Projectile->bBurns = bInBurns;
 
@@ -621,6 +622,7 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 
 	// AND WHAT ITS USE SPENT FROM NEXT-USE CHARGES. Issue #1833, phase 2.
 	Delivery.IncreasedDamageSpentPercent = SpentIncreasePercent;
+	Delivery.DamageMultiplierSpent = SpentMoreMultiplier;
 
 	// WHICH SIDE THE FIRER IS ON, asked before the hit for the reason
 	// `UCataclysmSkillTemplate::HitTargets` gives: the hit can move what it

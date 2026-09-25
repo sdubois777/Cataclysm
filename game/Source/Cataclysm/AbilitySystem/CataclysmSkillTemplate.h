@@ -230,6 +230,15 @@ public:
 	float LastNextUseIncreasePercent = 0.0f;
 
 	/**
+	 * What the effectiveness charges the last use spent multiply its damage by:
+	 * 3 for "your next skill is cast at 300% effectiveness", 1 for none. Issue
+	 * #1833, timed grants. A "more" on what the use deals itself, carried the
+	 * way `LastNextUseIncreasePercent` is, and not to its damage over time.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float LastNextUseMoreMultiplier = 1.0f;
+
+	/**
 	 * Whether a use of this skill delivers damage itself, through its own hits
 	 * or ground, and so spends next-use charges. Issue #1833, phase 2.
 	 *

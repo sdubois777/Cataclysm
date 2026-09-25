@@ -2256,4 +2256,13 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float ScaleOffset = 0.0f;
+
+	/**
+	 * The period of a row granting on a clock, in seconds, or 0 for a row that
+	 * grants on an event. Issue #1833: "Every 10 seconds gain a stack of
+	 * momentum" is 10, with `ActionEvent` `every_seconds`. Counted only while
+	 * the character is in combat, ruled 2026-09-24.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	float EverySeconds = 0.0f;
 };

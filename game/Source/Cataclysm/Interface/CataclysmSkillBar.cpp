@@ -276,8 +276,32 @@ bool UCataclysmSkillBar::EverySkillIsLocked(const TArray<FCataclysmSkillBarSlot>
 	return Holding > 0;
 }
 
+FString UCataclysmSkillBar::OwnStacksEntry(const TArray<FName>& Stats, int32 Held,
+										  int32 Cap)
+{
+	const FName Attack(TEXT("attack_damage"));
+	const FName Spell(TEXT("spell_damage"));
+	FString Name;
+	if (Stats.Num() == 2 && Stats.Contains(Attack) && Stats.Contains(Spell))
+	{
+		Name = TEXT("attack/spell damage");
+	}
+	else
+	{
+		TArray<FString> Words;
+		for (const FName& Stat : Stats)
+		{
+			Words.Add(Stat.ToString().Replace(TEXT("_"), TEXT(" ")));
+		}
+		Name = FString::Join(Words, TEXT("/"));
+	}
+	return FString::Printf(TEXT("%s %d/%d"), *Name, Held, Cap);
+}
+
 FString UCataclysmSkillBar::NextUseLine(float SkillPercent, int32 SkillCount,
-									   float AttackPercent, int32 AttackCount)
+									   float AttackPercent, int32 AttackCount,
+									   float EffectivenessPercent,
+									   const TArray<FString>& OwnStacks)
 {
 	const auto Entry = [](const TCHAR* Kind, float Percent, int32 Count)
 	{
@@ -299,6 +323,12 @@ FString UCataclysmSkillBar::NextUseLine(float SkillPercent, int32 SkillCount,
 	{
 		Entries.Add(Entry(TEXT("attack"), AttackPercent, AttackCount));
 	}
+	if (EffectivenessPercent > 0.0f)
+	{
+		Entries.Add(FString::Printf(TEXT("Next skill %d%% effectiveness"),
+									 FMath::RoundToInt(EffectivenessPercent)));
+	}
+	Entries.Append(OwnStacks);
 	return FString::Join(Entries, TEXT("   "));
 }
 

@@ -397,6 +397,13 @@ public:
 	float SpentIncreasePercent = 0.0f;
 
 	/**
+	 * What the firing use's spent effectiveness charges multiply this shot's
+	 * blows by, copied when it was fired; 1 for none. Issue #1833, timed
+	 * grants. Public beside `SpentIncreasePercent`, for the same reason.
+	 */
+	float SpentMoreMultiplier = 1.0f;
+
+	/**
 	 * Which enemies it struck, skipping any destroyed since.
 	 *
 	 * WHAT ASKS FOR IT. The Wand's Malefice, "copying every curse it already

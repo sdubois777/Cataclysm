@@ -2294,9 +2294,9 @@ bool FCataclysmAnActionRowIsNotAStatModifier::RunTest(const FString&)
 	UDataTable* Effects = EffectTableFrom(
 		FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 					 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset\n"))
+					 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds\n"))
 		+ FString::Printf(
-			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0\n"),
+			TEXT("%s#1,%s,,,4,4,,,0,,0,health,block,maximum,0,0,0,0\n"),
 			ShieldBenefit, ShieldBenefit));
 	if (!TestNotNull(TEXT("an effect table holding one action row"), Effects))
 	{
@@ -4269,9 +4269,9 @@ bool FCataclysmOwnStackRowBuildsTest::RunTest(const FString&)
 		UDataTable* Effects = EffectTableFrom(
 			FString(TEXT("Name,Enchantment,Stat,ValueKind,ValueLow,ValueHigh,"
 						 "RequiredTags,Condition,ConditionValue,Scale,ScaleStep,"
-						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset\n"))
+						 "Action,ActionEvent,FractionOf,ScaleMaxSteps,StackSeconds,ScaleOffset,EverySeconds\n"))
 			+ FString::Printf(
-				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0\n"),
+				TEXT("%s#1,%s,armor,increased,10,10,,,0,own_stacks,1,,critical_strike,,5,5,0,0\n"),
 				Enchantment, Enchantment));
 		if (!TestNotNull(TEXT("an effect table holding one stack row"), Effects))
 		{
@@ -5305,6 +5305,156 @@ bool FCataclysmBlockNextAttackRowTest::RunTest(const FString&)
 	CataclysmNextUseRowTest::Check(*this,
 		TEXT("Positive_Each_successful_block_increases_your_next_attack"),
 		TEXT("block"), 6, /*bAttack=*/true, 100.0f, 5);
+	return true;
+}
+
+namespace CataclysmTimedRowTest
+{
+	/**
+	 * Wear a timed enchantment on a helm and keep its wearer in combat, a blow a
+	 * second, up to `Seconds` into the fight; then hand back the ability system
+	 * for the caller to read. Issue #1833, timed grants. A worn item rolls the
+	 * top of its range.
+	 */
+	struct FFight
+	{
+		FFight(FAutomationTestBase& InTest, const TCHAR* Enchantment)
+			: Test(InTest)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return;
+			}
+			Wearer = MakeUnique<FWearer>(World);
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer->Equipment->Equip(
+				Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect),
+				Removed, AlsoRemoved, Slot);
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+			Began = World->TimeSeconds;
+			Wearer->AbilitySystem->NoteHitDealt();
+		}
+
+		~FFight()
+		{
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		void Until(float Seconds)
+		{
+			while (World && World->TimeSeconds < Began + Seconds - 0.001f)
+			{
+				World->TimeSeconds += 1.0f;
+				Wearer->AbilitySystem->NoteHitDealt();
+				Wearer->AbilitySystem->StepTimedGrants();
+			}
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		FAutomationTestBase& Test;
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+		float Began = 0.0f;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMomentumRowTest,
+	"Cataclysm.Enchantments.TheMomentumRowGainsAStackEvery10SecondsOfCombatUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Every 10 seconds gain a stack of momentum granting 5%-10% increased damage,
+ *  up to 5 stacks": one entry on two rows, one stack at 10 seconds of combat and
+ *  not at 9, five by 50, still five at 60. Issue #1833, timed grants. */
+bool FCataclysmMomentumRowTest::RunTest(const FString&)
+{
+	CataclysmTimedRowTest::FFight Fight(*this,
+		TEXT("Positive_Every_10_seconds_gain_a_stack_of_momentum_granti"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Fight.ASC()))
+	{
+		return false;
+	}
+	const auto Held = [&]()
+	{
+		const TArray<UCataclysmAbilitySystemComponent::FHeldOwnStacks> Shown =
+			Fight.ASC()->OwnStacksByEnchantment();
+		return Shown.Num() == 1 ? Shown[0] : UCataclysmAbilitySystemComponent::FHeldOwnStacks();
+	};
+
+	Fight.Until(9.0f);
+	TestEqual(TEXT("nine seconds in: no stack"), Held().Held, 0);
+	Fight.Until(10.0f);
+	TestEqual(TEXT("ten seconds in: one stack"), Held().Held, 1);
+	TestEqual(TEXT("shown as one entry on two stats"), Held().Stats.Num(), 2);
+	TestEqual(TEXT("with a cap of five"), Held().Cap, 5);
+	Fight.Until(50.0f);
+	TestEqual(TEXT("fifty seconds in: five"), Held().Held, 5);
+	Fight.Until(60.0f);
+	TestEqual(TEXT("sixty seconds in: still five"), Held().Held, 5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEvery8SecondsRowTest,
+	"Cataclysm.Enchantments.TheEvery8SecondsRowHoldsOneNextAttackChargeOf200",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Every 8 seconds your next attack deals 100%-200% increased damage": one
+ *  charge worth 200 at 8 seconds of combat and not at 7. Issue #1833. */
+bool FCataclysmEvery8SecondsRowTest::RunTest(const FString&)
+{
+	CataclysmTimedRowTest::FFight Fight(*this,
+		TEXT("Positive_Every_8_seconds_your_next_attack_deals_100_200"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Fight.ASC()))
+	{
+		return false;
+	}
+	float SkillPercent = 0.0f;
+	float AttackPercent = 0.0f;
+	int32 SkillCount = 0;
+	int32 AttackCount = 0;
+
+	Fight.Until(7.0f);
+	Fight.ASC()->NextUseChargesByKind(SkillPercent, SkillCount, AttackPercent, AttackCount);
+	TestEqual(TEXT("seven seconds in: no charge"), AttackCount, 0);
+	Fight.Until(8.0f);
+	Fight.ASC()->NextUseChargesByKind(SkillPercent, SkillCount, AttackPercent, AttackCount);
+	TestEqual(TEXT("eight seconds in: one next-attack charge"), AttackCount, 1);
+	TestEqual(TEXT("worth 200%"), AttackPercent, 200.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEvery30SecondsRowTest,
+	"Cataclysm.Enchantments.TheEvery30SecondsRowHoldsA500PercentEffectivenessCharge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Every 30 seconds your next skill is cast at 300%-500% effectiveness": a
+ *  charge of 500% effectiveness at 30 seconds of combat and not at 29. Issue
+ *  #1833, timed grants. */
+bool FCataclysmEvery30SecondsRowTest::RunTest(const FString&)
+{
+	CataclysmTimedRowTest::FFight Fight(*this,
+		TEXT("Positive_Every_30_seconds_your_next_skill_is_cast_at_300"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Fight.ASC()))
+	{
+		return false;
+	}
+	Fight.Until(29.0f);
+	TestEqual(TEXT("twenty-nine seconds in: no effectiveness charge"),
+		Fight.ASC()->NextUseEffectivenessHeld(), 0.0f, 0.01f);
+	Fight.Until(30.0f);
+	TestEqual(TEXT("thirty seconds in: 500% effectiveness held"),
+		Fight.ASC()->NextUseEffectivenessHeld(), 500.0f, 0.01f);
 	return true;
 }
 

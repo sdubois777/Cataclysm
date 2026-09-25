@@ -1584,7 +1584,14 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: the class point rows, issue #1686's second window. STACK SECONDS LEFT
 #: with the seven own-stack enchantments, issue #1833, and the table is
 #: empty again.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+#:
+#: EVERY SECONDS JOINED ON 2026-09-24 for issue #1833's timed grants, and
+#: leaves with their rows.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
+    "Enchantment Effects": {
+        "Every Seconds": "issue #1833: the timed-grant rows add this column",
+    },
+}
 
 
 class _Headers(dict):
@@ -4573,6 +4580,11 @@ POOL_ACTIONS = (
 NEXT_USE_ACTIONS = (
     "next_skill_damage",
     "next_attack_damage",
+    # "Every 30 seconds your next skill is cast at 300%-500% effectiveness".
+    # A skill charge whose value multiplies the spending use's damage: 300
+    # is three times. Ruled 2026-09-24: this project reads "effectiveness"
+    # as a skill's own coefficient.
+    "next_skill_effectiveness",
 )
 
 #: What a percentage on an action row is a percentage OF.
@@ -4595,6 +4607,21 @@ FRACTION_BASES = (
 #: the two cannot drift apart. Issue #1833 argued for one vocabulary serving
 #: both.
 ACTION_EVENT_PREFIX = "seconds_after_"
+
+#: The event of a row that grants on a clock rather than on something that
+#: happened: "Every 10 seconds gain a stack of momentum". Issue #1833, timed
+#: grants. The row's Every Seconds is the period, counted only while the
+#: character is in combat (ruled 2026-09-24).
+#:
+#: NOT ONE OF `ACTION_ONLY_EVENTS`, AND ON PURPOSE.
+#: `test_pool_action_names_match_the_engine.py` holds `action_events()` equal
+#: to the events the game fires BY NAME through `ActOnEvent`. A timed row is
+#: fired by the character's own step, each on its own period, so it has no
+#: named call to be matched against. `granting_events()` accepts it.
+TIMED_EVENT = "every_seconds"
+
+#: The longest period a timed row may state, in seconds.
+MAX_EVERY_SECONDS = 60.0
 
 #: Events an action may hang on that have NO clock of their own.
 #:
@@ -4640,6 +4667,12 @@ def action_events() -> set[str]:
     return {name[len(ACTION_EVENT_PREFIX):] for name in CONDITIONS
             if name.startswith(ACTION_EVENT_PREFIX)} | set(ACTION_ONLY_EVENTS)
 
+def granting_events() -> set[str]:
+    """Every event a row may grant or act on: the ones the game fires by
+    name, and the timed one. Issue #1833."""
+    return action_events() | {TIMED_EVENT}
+
+
 def _check_pool_action(index: int, who: str, action: str, event: str,
                        fraction_of: str, kind: str, raw,
                        headers: dict[str, int]) -> None:
@@ -4669,7 +4702,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(POOL_ACTIONS)}; or a next-use charge, "
             f"{', '.join(NEXT_USE_ACTIONS)}.")
 
-    known = action_events()
+    known = granting_events()
     if not event:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves a pool and names no "
@@ -4717,7 +4750,7 @@ def _check_next_use_action(index: int, who: str, action: str, event: str,
     a value kind and a scale each mean nothing here, so each is refused rather
     than dropped.
     """
-    known = action_events()
+    known = granting_events()
     if not event:
         raise DataError(
             f"Enchantment Effects row {index}: {who} grants a {action} "
@@ -4997,7 +5030,7 @@ def enchantment_effects(book) -> list[dict]:
         stack_text = clean(_cell(raw, headers, "Stack Seconds"))
         stack_seconds = 0.0
         if not action and scale == "own_stacks":
-            known_events = action_events()
+            known_events = granting_events()
             if action_event not in known_events:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} counts its own "
@@ -5051,6 +5084,30 @@ def enchantment_effects(book) -> list[dict]:
                     f"{MAX_SCALE_OFFSET}; leave the column empty for none.")
             scale_offset = offset
 
+        # A TIMED ROW STATES ITS PERIOD, AND ONLY A TIMED ROW DOES. Issue
+        # #1833: "Every 10 seconds" is 10. Refused either way round, so a
+        # period is never written where nothing reads it, nor a clock left
+        # with none.
+        every_text = clean(_cell(raw, headers, "Every Seconds"))
+        every_seconds = 0.0
+        if action_event == TIMED_EVENT:
+            if not every_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} grants on "
+                    f"{TIMED_EVENT} and states no Every Seconds, so it "
+                    f"would never grant.")
+            every_seconds = number(every_text, "Every Seconds", index)
+            if not 0.0 < every_seconds <= MAX_EVERY_SECONDS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} grants every "
+                    f"{every_seconds:g} seconds. A period is above 0 and up "
+                    f"to {MAX_EVERY_SECONDS:g}.")
+        elif every_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Every "
+                f"Seconds on the event {action_event or '(none)'!r}. Only "
+                f"{TIMED_EVENT} reads a period, so it would be dropped.")
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -5070,6 +5127,7 @@ def enchantment_effects(book) -> list[dict]:
             "ScaleMaxSteps": scale_max_steps,
             "StackSeconds": stack_seconds,
             "ScaleOffset": scale_offset,
+            "EverySeconds": every_seconds,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A

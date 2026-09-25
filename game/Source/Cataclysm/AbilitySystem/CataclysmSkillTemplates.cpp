@@ -1501,6 +1501,7 @@ bool UCataclysmProjectileSkill::ThrowOne()
 		// it. Issue #1833, phase 2.
 		FCataclysmHitDelivery Delivery;
 		Delivery.IncreasedDamageSpentPercent = LastNextUseIncreasePercent;
+		Delivery.DamageMultiplierSpent = LastNextUseMoreMultiplier;
 
 		FCataclysmDamageResult Resolved;
 		const float Dealt = UCataclysmSkillEffects::ApplyHit(

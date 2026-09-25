@@ -166,6 +166,17 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// ordinary answer for every character in the game.
 	if (!UCataclysmSkillEffects::IsDead(this))
 	{
+		// AND WORN ROWS THAT GRANT ON A CLOCK, while in combat. Issue #1833,
+		// timed grants. Here for the reason the Fervour step below gives: this
+		// already runs several times a second, and the grant counts periods of
+		// the combat rather than steps.
+		if (UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<UCataclysmAbilitySystemComponent>(
+					UCataclysmTargeting::AbilitySystemOf(this)))
+		{
+			Cataclysm->StepTimedGrants();
+		}
+
 		UCataclysmFervour::GainPerSecondStep(
 			UCataclysmTargeting::AbilitySystemOf(this),
 			UCataclysmRegeneration::StepSeconds);

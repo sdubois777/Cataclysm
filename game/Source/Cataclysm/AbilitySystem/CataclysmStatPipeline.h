@@ -3342,6 +3342,23 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bNextUseIsAttack = false;
+
+	/**
+	 * True for "your next skill is cast at 300%-500% effectiveness": the
+	 * charge multiplies the spending use's damage by `Percent` / 100, as a
+	 * "more", rather than adding increased damage. Issue #1833, ruled
+	 * 2026-09-24. A skill charge: any use that delivers damage spends it.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextUseIsEffectiveness = false;
+
+	/**
+	 * The period of an action whose `Event` is `every_seconds`, or 0. Issue
+	 * #1833: the character's own step grants it once for every whole period
+	 * of the current combat, and never out of combat.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	float EverySeconds = 0.0f;
 };
 
 /**

@@ -491,6 +491,32 @@ public:
 	static const TCHAR* NextAttackDamageAction;
 
 	/**
+	 * "Every 30 seconds your next skill is cast at 300%-500% effectiveness".
+	 * Issue #1833, timed grants: a skill charge that multiplies the spending
+	 * use's damage. In `NEXT_USE_ACTIONS` too.
+	 */
+	static const TCHAR* NextSkillEffectivenessAction;
+
+	/**
+	 * The event a row grants on when it grants on a clock. Issue #1833, timed
+	 * grants. `TIMED_EVENT` in `tools/generate_datatables.py`. Never raised
+	 * through `ActOnEvent`: `StepTimedGrants` fires each such action itself.
+	 */
+	static const TCHAR* TimedEvent;
+
+	/**
+	 * Grant every action on `TimedEvent` that is due. Issue #1833, timed
+	 * grants. Called from `ACataclysmCharacterBase::RegenerationStep`.
+	 *
+	 * ONLY WHILE IN COMBAT, ruled 2026-09-24: an action with a period of N is
+	 * granted once for every whole N seconds of the current combat, N seconds
+	 * in first. Out of combat, or in a new combat, the count starts again. It
+	 * counts periods of the combat rather than steps, so it does not depend on
+	 * how often the step runs.
+	 */
+	void StepTimedGrants();
+
+	/**
 	 * Grant one charge of a row's next-use bonus, up to its cap. Issue #1833,
 	 * phase 2. A cap of one is "your next skill deals ...": a second trigger
 	 * while one is unspent changes nothing. No duration, ruled 2026-09-24: an
@@ -499,7 +525,8 @@ public:
 	 * @param bAttack  true for "your next attack", which a spell does not spend
 	 * @param Percent  what one charge is worth, as increased damage
 	 */
-	void GrantNextUseCharge(FName Key, bool bAttack, float Percent, int32 Cap);
+	void GrantNextUseCharge(FName Key, bool bAttack, float Percent, int32 Cap,
+							bool bEffectiveness = false);
 
 	/**
 	 * Spend every charge this use takes, and answer what they were worth in
@@ -510,7 +537,10 @@ public:
 	 * Called by `UCataclysmSkillTemplate::SpendHeldNextUseCharges` for a use that
 	 * delivers damage itself, and by nothing else.
 	 */
-	float SpendNextUseCharges(bool bUseIsSpell);
+	//
+	// @param OutMoreMultiplier  if given, what the effectiveness charges spent
+	//                           multiply the use's damage by; 1 for none.
+	float SpendNextUseCharges(bool bUseIsSpell, float* OutMoreMultiplier = nullptr);
 
 	/** How many charges one row holds now. Issue #1833, phase 2. */
 	int32 NextUseChargesHeld(FName Key) const;
@@ -521,6 +551,30 @@ public:
 	 */
 	void NextUseChargesByKind(float& OutSkillPercent, int32& OutSkillCount,
 							  float& OutAttackPercent, int32& OutAttackCount) const;
+
+	/**
+	 * What held effectiveness charges multiply the next use by, as a
+	 * percentage (300 for three times), or 0 when none is held. Issue #1833.
+	 */
+	float NextUseEffectivenessHeld() const;
+
+	/** One enchantment's own stacks, as the line above the skill bar shows them. */
+	struct FHeldOwnStacks
+	{
+		TArray<FName> Stats;
+		int32 Held = 0;
+		int32 Cap = 0;
+	};
+
+	/**
+	 * Every enchantment holding own stacks now, ONE ENTRY PER ENCHANTMENT, with
+	 * the stats its stacks raise, how many are held and the cap. Issue #1833:
+	 * "Every 10 seconds gain a stack of momentum" is two rows, on attack and
+	 * spell damage, granted together, so it is one entry. The cap is the grant
+	 * action's. Ruled 2026-09-24: the owner's rule that every system has a
+	 * basic interface, which the own stacks of #2083 shipped without.
+	 */
+	TArray<FHeldOwnStacks> OwnStacksByEnchantment() const;
 
 	/**
 	 * Raised at the top of every `ActOnEvent`, whether or not any worn action
@@ -2067,7 +2121,15 @@ protected:
 		int32 Cap = 1;
 		float Percent = 0.0f;
 		bool bAttack = false;
+		bool bEffectiveness = false;
 	};
+
+	/**
+	 * How many times each timed action has been granted in the current combat,
+	 * by its stack or next-use key, and which combat that was. Issue #1833.
+	 */
+	TMap<FName, int32> TimedGrantsGiven;
+	float TimedGrantsCombatStartedAt = -1.0f;
 
 	/**
 	 * Every row's held next-use charges, by `FCataclysmPoolAction::NextUseKey`.

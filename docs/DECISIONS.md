@@ -2,6 +2,100 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — A row can grant on a clock while in combat: momentum every 10 seconds, a next attack every 8, a next skill at 300%-500% effectiveness every 30
+
+**Affects:**
+- the Enchantment Effects sheet: four rows on three enchantments, and the new Every Seconds column
+- `tools/generate_datatables.py`: `TIMED_EVENT`, `granting_events()`, the Every Seconds column and
+  `next_skill_effectiveness`
+- `FCataclysmEnchantmentEffectRow::EverySeconds` and `FCataclysmPoolAction::EverySeconds`, and the
+  four hand-written effect CSV fixtures, which gain the column
+- `UCataclysmAbilitySystemComponent::StepTimedGrants`, called from
+  `ACataclysmCharacterBase::RegenerationStep`
+- the effectiveness charge: `FCataclysmHitDelivery::DamageMultiplierSpent`,
+  `UCataclysmSkillTemplate::LastNextUseMoreMultiplier` and the projectile's copy
+- `UCataclysmSkillBar::NextUseLine` and `OwnStacksEntry`, and
+  `UCataclysmAbilitySystemComponent::OwnStacksByEnchantment`
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 2, "timed grants"
+
+### THE ROWS
+
+| Enchantment | Rows | Every | Grants |
+| :-- | :-- | :-- | :-- |
+| Every 10 seconds gain a stack of momentum granting 5%-10% increased damage, up to 5 stacks | `attack_damage` and `spell_damage`, increased 5 to 10, `own_stacks` | 10 s | a stack; Stack Seconds 20, cap 5 |
+| Every 8 seconds your next attack deals 100%-200% increased damage | `next_attack_damage`, 100 to 200 | 8 s | one charge |
+| Every 30 seconds your next skill is cast at 300%-500% effectiveness | `next_skill_effectiveness`, 300 to 500 | 30 s | one charge |
+
+**`every_seconds` is not one of the events the game fires by name.** The engine's named `ActOnEvent`
+calls are held equal to `action_events()` by `test_pool_action_names_match_the_engine.py`. A timed
+row is fired by the character's own step, each on its own period, so it has no named call to be
+held to. The generator accepts it beside those events through `granting_events()`. It refuses Every
+Seconds on any other event, and it refuses `every_seconds` without Every Seconds.
+
+### WHAT THE GENRE SETTLES, AND WHAT IT DOES NOT
+
+Each source below was fetched and read.
+- Maxroll's charges page for Path of Exile: "Charge base duration is 10 seconds, which can be
+  increased through various effects on the Passive Tree and items." "If they time out, all Charges
+  of the same type are lost."
+- Maxroll's damage page for Path of Exile: "Attacks add all Base and Added Damage together and then
+  multiply that by their damage effectiveness". It says nothing about effectiveness reaching
+  anything besides damage.
+- A Path of Exile forum thread on "Gain an Endurance, Frenzy or Power Charge every 6 seconds": only
+  players answered, and nothing in it says when the timer runs.
+- **No page I could read says whether an "every N seconds" timer runs out of combat, or when it
+  starts.**
+
+### THE RULINGS, by the coordinating session on 2026-09-24, under the owner's delegation
+
+- **The clock runs only while the character is in combat (a judgement with no genre source).** This
+  game's in-combat state is the one `CombatLapseSeconds` already defines. A row is granted once for
+  every whole period of the current combat, the first a whole period in. The count starts again when
+  combat lapses. **The reason:** a clock running all the time would hold "Every 10 seconds gain a
+  stack of momentum ... up to 5 stacks" at five stacks from 50 seconds after a floor begins, which
+  is a flat 25%-50% increased damage. "Momentum" builds during a fight.
+- **Momentum's stacks lapse.** They are own stacks with a Stack Seconds of 20, and each grant
+  restarts the window. That follows Path of Exile's charges, quoted above. **The 20 seconds is a
+  judgement:** twice the period, so the count does not lapse at the moment the next grant is due.
+  Out of combat, the grants stop and the stacks lapse one window later.
+- **"Effectiveness" is the skill's own coefficient, so 300% effectiveness is three times what the
+  use deals.** This project already reads the word that way. The entry deciding where a skill's
+  `IncreasedDamagePer` belongs says: "a skill's own coefficient is a separate quantity from the
+  character's increases pool. Path of Exile calls it damage effectiveness and states it per
+  skill". The charge is a "more" on every blow of the spending use. **It is spent and carried
+  exactly as `next_skill_damage` is:** by a use that delivers damage itself, to its hits,
+  projectiles and ground, and not by an aura, a summon or a deployable. **It does not reach damage
+  over time**, by the owner's decision of 2026-08-25: "It is an increase to every kind of damage the
+  character DEALS, which is attack damage and spell damage. It does not include damage over time."
+
+### THE OWN STACKS ARE NOW SHOWN
+
+**The seven own-stack enchantments of 2026-09-24 shipped with nothing on screen.** That broke the
+owner's standing rule that every system has a basic in-game interface. The coordinating session
+approved it without asking for one, and records the miss as its own as well. The line above the
+skill bar now lists each enchantment holding own stacks, with the count against its cap, for
+example "attack/spell damage 3/5   armor 2/10". It covers those seven and momentum.
+
+**ONE ENTRY PER ENCHANTMENT, named by its stats (ruled 2026-09-24).** A damage sentence is two rows,
+on attack and spell damage, granted together. One entry per row would show one set of stacks twice.
+The enchantment's row name is a key cut from its sentence and is not readable, so the entry is named
+by its stats: "attack/spell damage" for that pair, and otherwise the stat names joined with a slash.
+
+### THE TESTS
+
+- **The clock:** a row granting every 10 seconds grants nothing in fifty seconds out of combat.
+  Inside a fight it grants nothing at 9 seconds, one at 10 and two at 20, a next-use charge stops at
+  its cap, and two rows of one enchantment show as one entry. After combat lapses it grants nothing
+  at 9 seconds into the next fight and one more at 10.
+- **Effectiveness:** a Heavy strike that spends a 300% charge deals 750 to each of two enemies, and
+  the burn it leaves ticks at the plain figure.
+- **The display:** one exact-text assertion covering an effectiveness charge and two enchantments'
+  own stacks.
+- **One test per enchantment**, each wearing the real row: it is granted at its period and not one
+  second before; momentum reaches its cap of five.
+
+---
+
 ## 2026-09-24 — Ground Down, engine only: creatures within 4 metres of the holder lose 15% of both speeds, and a Brute's walk now honours every slow
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the new factor),
