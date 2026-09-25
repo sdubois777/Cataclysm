@@ -12,12 +12,14 @@ become one map keyed by source, with a fourth setter for the spires);
 spires, their zones, the damage multiplier on the beat, the panel line);
 `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Spire" under a spire's health
 bar); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
-`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
-`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one new check, and the damage multiplier check
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`;
+`game/Source/Cataclysm/Tests/CataclysmPlayerMovementTests.cpp` (one include it was missing, found by this
+change's build; see "Run"); and `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one new check, and the damage multiplier check
 rewritten for the map). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. THE
+FIRST BUILD FAILED, on an include missing from a test file this change does not otherwise touch; it is
+recorded there.
 
 ### The row
 
@@ -120,10 +122,54 @@ destroyed" and "progress effectively". The damage multiplier check now requires 
 `DamageMultiplierProduct()`, that product to multiply the map's entries, and each of the four setters to
 write its own distinct key.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development 14b8f3cd as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard`, `prove_guard` or `pytest` printed.
+
+- **THE FIRST BUILD FAILED**, on 886625fe: "Build: Failed - 29 actions, 26 files compiled", with
+  `CataclysmPlayerMovementTests.cpp(1527,3): error C2653: 'UCataclysmPlayerClassStats': is not a class or
+  namespace name` and `error C3861: 'StatToAttribute': identifier not found`. No test ran. That file has
+  called `UCataclysmPlayerClassStats::StatToAttribute` since #1839 (4a86e8f7) without including
+  `Character/CataclysmPlayerClassStats.h`, and had compiled because another file in the same unity blob
+  included it first. On this change's head it was the first file of `Module.Cataclysm.19.cpp`. **The
+  reading that this change's added test lines moved the unity boundaries is mine and was not measured.**
+  **Fixed** (c97bd690) by the one include, approved by the coordinating session under the owner's
+  delegation; it changes no behaviour. development itself compiled.
+- **The whole suite**, on c97bd690: "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.19.cpp";
+  "2486 tests performed, 2486 succeeded, 0 failed", every declared test reported (2486 declared, gap 0).
+  This was the window's only whole-suite run to reach the tests.
+- **On the head**, c97bd690: `Cataclysm.DungeonModifierEffects.` 313 performed, 313 succeeded;
+  `Cataclysm.SaveApply.` 12 performed, 12 succeeded.
+- **On the base**, 14b8f3cd: `Cataclysm.DungeonModifierEffects.` 308 performed, 308 succeeded;
+  `Cataclysm.SaveApply.` 11 performed, 11 succeeded -- each group with every one of its declared tests
+  reported.
+- **The Python suite of record**, on c97bd690: 5,479 passed and 8 skipped of 5,487, 0 failed.
+- **The heal with no brain, measured**: in `AGoldenSpireHealsAnAllyWithinSixMetresAndNotOneFarther` the ally
+  400 cm from a spire gained 5.00 of its 100 maximum in two seconds of the world's timers -- one pulse -- and
+  the ally 900 cm away gained 0.00.
+
+**Three Unreal guard proofs, each printing PROVED**, with the source identical before and after. Each
+assertion went the way it was registered before the window, the two registered as near-certain included;
+restored, each run was 1 performed, 1 succeeded.
+
+- **The map's product stops after its first entry** (`Product *= One.Value; break;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.TheCreatureDamageMultipliers`. With the break in, 1 failed, on "placed
+  and time alive" (150, not 180), "the three the fields held" (150, not 198), "and the spire's" (150, not
+  237.6), "the product the damage uses" (1.5, not 2.376), "placed back to its own" and "a recompute keeps the
+  other three" (120, not 158.4).
+- **No creature strengthened** (`SetSpireDamageMultiplier(1.0f)` whatever the distance), on the prefix
+  `Cataclysm.DungeonModifierEffects.WithinSixMetresOfAGoldenSpire`. With the break in, 1 failed, on "within
+  600 cm, 20% more", "under the spire's own key" and "moved back, 20% more and no more than that" (100, not
+  120).
+- **A spire never switched on as a medic** (`bHealsAlliesForTheFloorRule = false`), on the prefix
+  `Cataclysm.DungeonModifierEffects.AGoldenSpireHeals`. With the break in, 1 failed, on "the ally within 600
+  cm was healed by at least one pulse more than the one farther away": both allies gained 0.00.
+
+**One Python guard proof, PROVED** before the window, in a `git archive` copy of 685e2bcd: with
+`WriteAttackDamage` no longer multiplying by `DamageMultiplierProduct()`, "1 failed, 165 passed", naming
+`test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_inputs`; restored, "166
+passed".
 
 ---
 
