@@ -476,7 +476,108 @@ void ACataclysmEnemyCharacter::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	AdvanceCharge(DeltaSeconds);
+
+	// AFTER THE CHARGE MOVES, so a charge's step this frame is judged this frame.
+	// Walking moves in the movement component's own tick, and is judged here on
+	// the next frame. Issue #1515, Nowhere to Run.
+	HoldAgainstMovingAway();
 	RefreshWalkSpeed();
+}
+
+void ACataclysmEnemyCharacter::NoteHeldBy(const AActor* Holder, float UntilSeconds,
+										  float RadiusCm)
+{
+	if (!Holder)
+	{
+		return;
+	}
+
+	// A NEW HOLD MEASURES FROM WHERE THE CREATURE STANDS NOW. A renewed one keeps
+	// the place it measured last, so a creature cannot gain ground between steps.
+	if (!IsHeld() || HeldBy.Get() != Holder)
+	{
+		HeldLastLocation = GetActorLocation();
+		HeldChargeStartCm = -1.0f;
+	}
+	HeldBy = Holder;
+	HeldUntil = FMath::Max(HeldUntil, UntilSeconds);
+	HeldRadiusCm = RadiusCm;
+}
+
+bool ACataclysmEnemyCharacter::IsHeld() const
+{
+	const UWorld* World = GetWorld();
+	return World && HeldBy.IsValid() && World->GetTimeSeconds() < HeldUntil
+		&& !UCataclysmSkillEffects::IsDead(this);
+}
+
+void ACataclysmEnemyCharacter::NoteDisplaced()
+{
+	HeldLastLocation = GetActorLocation();
+	HeldChargeStartCm = -1.0f;
+}
+
+bool ACataclysmEnemyCharacter::MayMoveItselfTo(const FVector& Landing) const
+{
+	if (!IsHeld())
+	{
+		return true;
+	}
+	const FVector Holder = HeldBy->GetActorLocation();
+	return FVector::Dist2D(Landing, Holder) <= FVector::Dist2D(GetActorLocation(), Holder);
+}
+
+void ACataclysmEnemyCharacter::HoldAgainstMovingAway()
+{
+	if (!IsHeld())
+	{
+		HeldBy = nullptr;
+		HeldChargeStartCm = -1.0f;
+		return;
+	}
+
+	const FVector Holder = HeldBy->GetActorLocation();
+	const FVector Now = GetActorLocation();
+
+	// PUSHED OUT OF REACH IS RELEASED. Ruled 2026-09-25: a creature displaced
+	// beyond the radius is free at once, rather than held for the rest of the
+	// holder's step.
+	const float NowCm = FVector::Dist2D(Now, Holder);
+	if (NowCm > HeldRadiusCm)
+	{
+		HeldBy = nullptr;
+		HeldChargeStartCm = -1.0f;
+		return;
+	}
+
+	// HOW FAR IT MAY BE: where it stood last frame for walking, and where the
+	// charge began for a charge, which may pass through the holder to the far
+	// side at that distance or less. Ruled 2026-09-25.
+	float AllowedCm = FVector::Dist2D(HeldLastLocation, Holder);
+	if (IsCharging())
+	{
+		if (HeldChargeStartCm < 0.0f)
+		{
+			HeldChargeStartCm = AllowedCm;
+		}
+		AllowedCm = HeldChargeStartCm;
+	}
+	else
+	{
+		HeldChargeStartCm = -1.0f;
+	}
+
+	if (NowCm > AllowedCm)
+	{
+		// BACK TO THE ALLOWED DISTANCE ON THE SAME BEARING, so moving around the
+		// holder is kept and only the outward part is taken away.
+		FVector Bearing = Now - Holder;
+		Bearing.Z = 0.0f;
+		const FVector Placed = FVector(Holder.X, Holder.Y, Now.Z)
+			+ Bearing.GetSafeNormal() * AllowedCm;
+		SetActorLocation(Placed, /*bSweep=*/true);
+	}
+	HeldLastLocation = GetActorLocation();
 }
 
 void ACataclysmEnemyCharacter::HealthChanged()

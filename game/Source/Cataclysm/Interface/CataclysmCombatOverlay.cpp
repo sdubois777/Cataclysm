@@ -471,6 +471,12 @@ FString UCataclysmCombatOverlay::SlowedTextFor(const AActor* Actor)
 	return FString::Printf(TEXT("Slowed -%d%%"), FMath::RoundToInt(Slowed));
 }
 
+FString UCataclysmCombatOverlay::HeldTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Creature && Creature->IsHeld() ? FString(TEXT("Held")) : FString();
+}
+
 FString UCataclysmCombatOverlay::HarbingerTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -518,7 +524,8 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor), SpireTextFor(Actor),
-		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), DamageCutTextFor(Actor)})
+		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor),
+		  DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

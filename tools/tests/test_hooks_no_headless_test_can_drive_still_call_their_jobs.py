@@ -85,6 +85,9 @@ HOOKS = {
             "UCataclysmDebuffs::GroundDownStep":
                 "the creatures near a character being slowed, Ground Down, "
                 "issue #1515",
+            "UCataclysmDebuffs::NowhereToRunStep":
+                "the creatures near a character being held from moving away, "
+                "Nowhere to Run, issue #1515",
             "UCataclysmEnemyModifiers::AuraStep":
                 "the burning aura a creature carrying the Hellfire Aura "
                 "enemy modifier lays on whoever stands within six metres, "

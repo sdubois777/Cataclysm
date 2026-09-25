@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -464,8 +465,20 @@ float UCataclysmFervour::DecayStep(ACataclysmCharacterBase* Character,
 	// and `Ravager_keystone_d_kC` No Ground Given grants 4 more, so a character
 	// holding both is asking about 8 -- which is what that keystone's sentence
 	// names. See `DecayGraceMetresStat`.
-	const float Metres = Cataclysm->StatForSkill(
+	float Metres = Cataclysm->StatForSkill(
 		FName(DecayGraceMetresStat), FGameplayTagContainer(), 0.0f);
+
+	// AND NOWHERE TO RUN'S "Your Fervour does not decay while any enemy is held
+	// this way". Issue #1515. Every hostile within its radius is held, so the
+	// radius here is at least that wide: the larger of the two, not their sum,
+	// ruled 2026-09-25, because a grace row would add to No Ground Given's and
+	// the sentence states 8, not 12.
+	const float HoldMetres = Cataclysm->StatForSkill(
+		FName(UCataclysmDebuffs::NowhereToRunMetresStat), FGameplayTagContainer(), 0.0f);
+	if (HoldMetres > 0.0f)
+	{
+		Metres = FMath::Max(Metres, HoldMetres);
+	}
 
 	// A RADIUS OF NOTHING IS NOT A RADIUS OF EVERYTHING. A character with the
 	// decay rate and no radius -- which no authored data produces, because one

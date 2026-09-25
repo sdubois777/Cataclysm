@@ -493,6 +493,13 @@ public:
 	static FString SlowedTextFor(const AActor* Actor);
 
 	/**
+	 * "Held" under a creature's health bar while a holder of Nowhere to Run holds
+	 * it, or empty. Issue #1515, asked for 2026-09-25: a player cannot otherwise
+	 * tell a held creature from one that has simply stopped moving.
+	 */
+	static FString HeldTextFor(const AActor* Actor);
+
+	/**
 	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
 	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
 	 * and the others say what is being done to it.
@@ -531,8 +538,9 @@ public:
 	 * two never draw over each other. Issue #1515.
 	 *
 	 * IN THIS ORDER, which is not the order they are declared in: Harbinger,
-	 * the armour removed, the slow, the damage cut. What the creature is comes
-	 * first, and what is being done to it after (issues #41 and #1833).
+	 * Chorus, Bloom, Spire, the armour removed, the slow, Held, the damage cut.
+	 * What the creature is comes first, and what is being done to it after
+	 * (issues #41, #1515 and #1833).
 	 */
 	static FString StatusLineFor(const AActor* Actor);
 

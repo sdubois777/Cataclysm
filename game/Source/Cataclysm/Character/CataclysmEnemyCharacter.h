@@ -1003,6 +1003,36 @@ public:
 	float GroundDownPercentNow() const;
 
 	/**
+	 * Nowhere to Run, the Ravager's `Ravager_capstone_200` option 1. Issue
+	 * #1515: "Enemies within 8 metres of you cannot move away from you. They may
+	 * move toward you or around you, but not further away."
+	 *
+	 * Note that `Holder` holds this creature until the world's clock reaches
+	 * `UntilSeconds`, within `RadiusCm` of it. `UCataclysmDebuffs::
+	 * NowhereToRunStep` notes it on every creature in a holder's radius each
+	 * step. The place the hold measures from starts where the creature is now.
+	 */
+	void NoteHeldBy(const AActor* Holder, float UntilSeconds, float RadiusCm);
+
+	/** Whether a holder of Nowhere to Run holds this creature now. */
+	bool IsHeld() const;
+
+	/**
+	 * Displacement done TO this creature: a knockback, a pull, a tether's drag.
+	 * The hold measures from where it landed rather than undoing it. Ruled
+	 * 2026-09-25: the rule holds the creature's OWN movement, and the design
+	 * document separates displacement from what the target does.
+	 */
+	void NoteDisplaced();
+
+	/**
+	 * Whether this creature may move itself to `Landing`: always when it is not
+	 * held, and otherwise only when `Landing` is no farther from the holder than
+	 * where it stands. Asked by a Phasewalker's step before it is made.
+	 */
+	bool MayMoveItselfTo(const FVector& Landing) const;
+
+	/**
 	 * Whether this creature stood back up under the Vengeful Wraiths floor rule.
 	 *
 	 * A FLAG AND NOT A TAG, WHICH IS THE OPPOSITE OF `CrippleMultiplier` BESIDE IT.
@@ -1167,6 +1197,27 @@ public:
 	/** Ground Down's share and when it ends, in world seconds. Issue #1515. */
 	float GroundDownPercent = 0.0f;
 	float GroundDownUntil = -1.0f;
+
+	/**
+	 * Nowhere to Run's hold. Issue #1515. Who holds this creature, until when,
+	 * within what radius; where it stood when the hold last measured it; and,
+	 * during a charge, how far from the holder the charge began, -1 for none.
+	 */
+	TWeakObjectPtr<const AActor> HeldBy;
+	float HeldUntil = -1.0f;
+	float HeldRadiusCm = 0.0f;
+	FVector HeldLastLocation = FVector::ZeroVector;
+	float HeldChargeStartCm = -1.0f;
+
+	/**
+	 * Take back whatever this creature's own movement since the last frame
+	 * carried it farther from its holder. Run every frame after the charge
+	 * advances. Walking and roaming are put back to the distance they had; a
+	 * charge may pass through the holder but ends no farther than it began.
+	 * The distance before is measured from where the holder stands NOW, so a
+	 * holder walking away never drags a creature after it.
+	 */
+	void HoldAgainstMovingAway();
 
 	/**
 	 * Bring this creature's walk speed back into line with the buffs it holds.

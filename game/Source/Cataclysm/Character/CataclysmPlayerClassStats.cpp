@@ -268,6 +268,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Follow Through's seconds between repeats, read by
 		// UCataclysmFollowThrough::NoteMeleeKill. Issue #1515.
 		TEXT("melee_kill_repeats_attack_every_seconds"),
+		// Nowhere to Run's radius, read by UCataclysmDebuffs::NowhereToRunStep and,
+		// as a no-decay radius, by UCataclysmFervour::DecayStep. Issue #1515.
+		TEXT("enemies_cannot_move_away_within_metres"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.

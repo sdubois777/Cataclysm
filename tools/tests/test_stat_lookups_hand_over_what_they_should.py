@@ -426,6 +426,14 @@ INVENTORY = {
      'FName(UCataclysmFollowThrough::EverySecondsStat), FGameplayTagContainer(), 0.0f'):
         "Follow Through's interval, asked of the killer after a kill and before "
         'its repeat; a clock, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(NowhereToRunMetresStat), FGameplayTagContainer(), 0.0f'):
+        "Nowhere to Run's radius, asked of the holder in its step; a radius, "
+        'not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFervour.cpp',
+     'FName(UCataclysmDebuffs::NowhereToRunMetresStat), FGameplayTagContainer(), 0.0f'):
+        "Nowhere to Run's radius as a no-decay radius, asked in the decay step "
+        'with no blow in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f'):
         "Nothing Wasted's cap, asked of the holder as damage is stored and as "

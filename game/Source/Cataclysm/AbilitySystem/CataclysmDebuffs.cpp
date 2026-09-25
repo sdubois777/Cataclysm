@@ -353,6 +353,48 @@ int32 UCataclysmDebuffs::GroundDownStep(AActor* Character, float StepSeconds)
 	return Slowed;
 }
 
+const TCHAR* UCataclysmDebuffs::NowhereToRunMetresStat =
+	TEXT("enemies_cannot_move_away_within_metres");
+
+int32 UCataclysmDebuffs::NowhereToRunStep(AActor* Character, float StepSeconds)
+{
+	if (!Character || StepSeconds <= 0.0f || UCataclysmSkillEffects::IsDead(Character))
+	{
+		return 0;
+	}
+
+	const UCataclysmAbilitySystemComponent* Mine =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Character));
+	UWorld* World = Character->GetWorld();
+	if (!Mine || !World)
+	{
+		return 0;
+	}
+
+	const float Metres = Mine->StatForSkill(
+		FName(NowhereToRunMetresStat), FGameplayTagContainer(), 0.0f);
+	if (Metres <= 0.0f)
+	{
+		return 0;
+	}
+
+	// THE SAME THREE STEPS GROUND DOWN HOLDS FOR, so a creature at the edge of
+	// the radius is not let go and caught again between two steps.
+	const float Until = World->GetTimeSeconds() + GroundDownHeldSteps * StepSeconds;
+	int32 Held = 0;
+	for (AActor* Enemy : UCataclysmTargeting::FindEnemiesInSphere(
+			 World, Character, Character->GetActorLocation(), Metres * 100.0f))
+	{
+		if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Enemy))
+		{
+			Creature->NoteHeldBy(Character, Until, Metres * 100.0f);
+			++Held;
+		}
+	}
+	return Held;
+}
+
 const TCHAR* UCataclysmDebuffs::AppliedHeldWithinMetresStat =
 	TEXT("applied_cripple_and_weaken_held_within_metres");
 
