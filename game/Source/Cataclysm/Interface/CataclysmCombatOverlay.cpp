@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
+#include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -505,11 +506,18 @@ FString UCataclysmCombatOverlay::BloomTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::SpireTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmSpireCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Spire"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
+		 {HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor), SpireTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())

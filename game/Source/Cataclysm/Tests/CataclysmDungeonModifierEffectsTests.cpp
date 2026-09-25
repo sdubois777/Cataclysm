@@ -30,6 +30,7 @@
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
+#include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -27987,6 +27988,348 @@ bool FCataclysmBloomDestroyedTest::RunTest(const FString& Parameters)
 		Stayed += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature) && Mode->FloorEnemies.Contains(Creature)) ? 1 : 0;
 	}
 	TestEqual(TEXT("every creature of the first wave stayed"), Stayed, FirstWave.Num());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Celestial_Golden_Spires, and the creature damage-multiplier map it built. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName SpiresRow(UCataclysmDungeonModifierEffects::GoldenSpiresKey);
+
+	/** A dungeon carrying only Golden Spires, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* ASpiresFloor(FAutomationTestBase& Test, UWorld* World,
+											const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {SpiresRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/**
+	 * Where a test puts a creature `Away` cm from the first spire, on the far side from the second, at
+	 * the first spire's height: so its distance from the first is exactly `Away`, measured in the
+	 * sphere a heal searches as well as on the floor, and it is never near the second.
+	 */
+	FVector BesideTheFirstSpire(const TArray<ACataclysmEnemyCharacter*>& Spires, float Away)
+	{
+		const FVector First = Spires[0]->GetActorLocation();
+		FVector Out = First - Spires[1]->GetActorLocation();
+		Out.Z = 0.0f;
+		return First + Out.GetSafeNormal() * Away;
+	}
+}
+
+// THE FIGURES, AND THE RADIUS IS THE HEAL'S OWN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpiresFiguresTest,
+	"Cataclysm.DungeonModifierEffects.GoldenSpiresFiguresAndTheHealsOwnRadius",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSpiresFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("two spires a floor"), Effects::GoldenSpiresPerFloor, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::GoldenSpiresPerHordeArena, 1);
+	TestEqual(TEXT("twenty percent more damage"), Effects::GoldenSpiresDamageMorePercent, 20.0f, 0.001f);
+	TestEqual(TEXT("within six metres"), Effects::GoldenSpiresRadiusCm, 600.0f, 0.01f);
+	TestEqual(TEXT("which is the medic heal's own radius"), Effects::GoldenSpiresRadiusCm,
+			  UCataclysmEnemyModifiers::AuraRadiusCm, 0.01f);
+	return true;
+}
+
+// TWO SPIRES ON A FLOOR, EACH A CREATURE THAT DOES NOTHING BUT HEAL, SAYS "SPIRE", PAYS NOTHING AND HAS A
+// ZONE; ONE ON A HORDE ARENA, KEPT BY ITS NEXT WAVE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpiresPlacedTest,
+	"Cataclysm.DungeonModifierEffects.GoldenSpiresPlacesTwoSpiresThatDoNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSpiresPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASpiresFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+
+	const TArray<ACataclysmEnemyCharacter*> Spires = Mode->GoldenSpiresStanding();
+	if (!TestEqual(TEXT("two spires on the floor"), Spires.Num(), Effects::GoldenSpiresPerFloor))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Spire : Spires)
+	{
+		TestTrue(TEXT("a spire"), Spire->IsA<ACataclysmSpireCharacter>());
+		TestNull(TEXT("with no brain"), Spire->GetController());
+		TestTrue(TEXT("with no ability"), Spire->EnemyAbilities().IsEmpty());
+		TestTrue(TEXT("that heals as the medic does"), Spire->bHealsAlliesForTheFloorRule);
+		TestTrue(TEXT("that pays nothing"), !Spire->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Spire->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Spire));
+		TestEqual(TEXT("\"Spire\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Spire),
+				  FString(TEXT("Spire")));
+		TestEqual(TEXT("at full health"), HealthOf(Spire), MaxHealthOf(Spire), 0.5f);
+		TestEqual(TEXT("which is the Imp's"), MaxHealthOf(Spire), Mode->GoldenSpireHealth(), 0.5f);
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Spire->GetActorLocation(), Floor.EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+	}
+	TestEqual(TEXT("the panel says two stand"), Mode->LiveCountsForTheFloor().FindRef(SpiresRow),
+			  FString(TEXT("golden spires: 2 standing")));
+
+	// EACH HAS ITS ZONE FROM THE FIRST BEAT.
+	Beat(Mode, 1);
+	TestEqual(TEXT("two zones in the world"), ZonesOnTheFloor(World), 2);
+	for (ACataclysmEnemyCharacter* Spire : Spires)
+	{
+		ACataclysmGroundZone* Zone = Mode->GoldenSpireZoneOf(Spire);
+		if (TestNotNull(TEXT("a zone for each spire"), Zone))
+		{
+			TestTrue(TEXT("around it"), Zone->Covers(Spire->GetActorLocation()));
+			TestFalse(TEXT("and no further than 600 cm"),
+					  Zone->Covers(Spire->GetActorLocation() + FVector(Effects::GoldenSpiresRadiusCm + 50.0f, 0.0f, 0.0f)));
+		}
+	}
+
+	// A HORDE ARENA HAS ONE, AND ITS NEXT WAVE KEEPS IT. Floor 1 is a Horde dungeon's one new arena, as
+	// Eternal Chorus's test explains.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Horde = Mode->GoldenSpiresStanding();
+	if (!TestEqual(TEXT("one spire in a Horde arena"), Horde.Num(), Effects::GoldenSpiresPerHordeArena))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Gone : Spires)
+	{
+		TestFalse(TEXT("the floor's two are gone"), IsValid(Gone) && !Gone->IsActorBeingDestroyed());
+	}
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> NextWave = Mode->GoldenSpiresStanding();
+	TestTrue(TEXT("the next wave keeps the same one spire"), NextWave.Num() == 1 && NextWave[0] == Horde[0]);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("with its zone drawn again"), Mode->GoldenSpireZoneOf(Horde[0]));
+	return true;
+}
+
+// A SPIRE WITH NO BRAIN STILL PULSES FIELD MEDIC'S HEAL: AN ALLY 400 CM AWAY IS HEALED AND ONE 900 CM AWAY
+// IS NOT. The world's own timers are run, which is what drives a creature's aura in play.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpiresHealTest,
+	"Cataclysm.DungeonModifierEffects.AGoldenSpireHealsAnAllyWithinSixMetresAndNotOneFarther",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSpiresHealTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASpiresFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Spires = Mode->GoldenSpiresStanding();
+	if (!TestEqual(TEXT("two spires"), Spires.Num(), 2))
+	{
+		return false;
+	}
+	TestNull(TEXT("the spire has no brain"), Spires[0]->GetController());
+
+	ACataclysmEnemyCharacter* Near = PlaceCreatureAtRung(World, Mode, BesideTheFirstSpire(Spires, 400.0f), 0);
+	ACataclysmEnemyCharacter* Far = PlaceCreatureAtRung(World, Mode, BesideTheFirstSpire(Spires, 900.0f), 0);
+	if (!TestNotNull(TEXT("an ally near the spire"), Near) || !TestNotNull(TEXT("and one farther away"), Far))
+	{
+		return false;
+	}
+	const float Maximum = MaxHealthOf(Near);
+	WoundCreatureTo(Near, 0.5f * Maximum, 0.0f);
+	WoundCreatureTo(Far, 0.5f * Maximum, 0.0f);
+
+	// TWO SECONDS OF THE WORLD'S TIMERS: at least one of the spire's one-second pulses.
+	CataclysmTestWorld::RunClock(World, 2.0f);
+	const float NearGain = HealthOf(Near) - 0.5f * Maximum;
+	const float FarGain = HealthOf(Far) - 0.5f * Maximum;
+	const float Pulse = Maximum * UCataclysmEnemyModifiers::MedicHealPercentOfMaximumPerPulse / 100.0f;
+	AddInfo(FString::Printf(TEXT("maximum %.2f; near gained %.2f, far gained %.2f; one pulse is %.2f"),
+							Maximum, NearGain, FarGain, Pulse));
+	TestTrue(TEXT("the ally within 600 cm was healed by at least one pulse more than the one farther away"),
+			 NearGain - FarGain >= Pulse - 0.01f);
+	TestTrue(TEXT("and the one 900 cm away gained less than one pulse"), FarGain < Pulse - 0.01f);
+	return true;
+}
+
+// WITHIN 600 CM OF A LIVING SPIRE A CREATURE DEALS 20% MORE, ONCE HOWEVER MANY; FARTHER AWAY IT DOES NOT;
+// DESTROYING THE SPIRE ENDS IT AND ITS ZONE, AND PAYS NOTHING.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSpiresDamageTest,
+	"Cataclysm.DungeonModifierEffects.WithinSixMetresOfAGoldenSpireACreatureDealsTwentyPercentMoreUntilItIsDestroyed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSpiresDamageTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASpiresFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Spires = Mode->GoldenSpiresStanding();
+	if (!TestEqual(TEXT("two spires"), Spires.Num(), 2))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Near = PlaceCreatureAtRung(World, Mode, BesideTheFirstSpire(Spires, 400.0f), 0);
+	ACataclysmEnemyCharacter* Far = PlaceCreatureAtRung(World, Mode, BesideTheFirstSpire(Spires, 900.0f), 0);
+	if (!TestNotNull(TEXT("a creature near the spire"), Near) || !TestNotNull(TEXT("and one farther away"), Far))
+	{
+		return false;
+	}
+	const float Own = AttackDamageOf(Near);
+	if (!TestEqual(TEXT("both start at their own damage"), AttackDamageOf(Far), Own, 0.01f))
+	{
+		return false;
+	}
+
+	Beat(Mode, 1);
+	const float More = 1.0f + Effects::GoldenSpiresDamageMorePercent / 100.0f;
+	TestEqual(TEXT("within 600 cm, 20% more"), AttackDamageOf(Near), Own * More, 0.01f);
+	TestEqual(TEXT("under the spire's own key"),
+			  Near->DamageMultiplierFrom(ACataclysmEnemyCharacter::SpireDamageSource), More, 0.001f);
+	TestEqual(TEXT("900 cm away, its own"), AttackDamageOf(Far), Own, 0.01f);
+
+	// MOVED OUT OF REACH, ITS OWN AGAIN; MOVED BACK, MORE AGAIN, AND NOT TWICE.
+	Near->SetActorLocation(BesideTheFirstSpire(Spires, 900.0f) + FVector(0.0f, 100.0f, 0.0f));
+	Beat(Mode, 1);
+	TestEqual(TEXT("moved out of reach, its own again"), AttackDamageOf(Near), Own, 0.01f);
+	Near->SetActorLocation(BesideTheFirstSpire(Spires, 400.0f));
+	Beat(Mode, 2);
+	TestEqual(TEXT("moved back, 20% more and no more than that"), AttackDamageOf(Near), Own * More, 0.01f);
+
+	// DESTROYING THE SPIRE PAYS NOTHING AND ENDS BOTH ITS DAMAGE BUFF AND ITS ZONE.
+	ACataclysmEnemyCharacter* First = Spires[0];
+	WoundCreatureTo(First, 100.0f, 0.0f);
+	First->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, First, 100000.0f);
+	if (!TestTrue(TEXT("the spire was destroyed"), UCataclysmSkillEffects::IsDead(First)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and paid nothing"), First->PaysForItsDeath());
+	Beat(Mode, 1);
+	TestEqual(TEXT("its creature is back to its own damage"), AttackDamageOf(Near), Own, 0.01f);
+	TestEqual(TEXT("one spire stands"), Mode->GoldenSpiresStanding().Num(), 1);
+	TestEqual(TEXT("one zone is left"), ZonesOnTheFloor(World), 1);
+	TestEqual(TEXT("the panel says one"), Mode->LiveCountsForTheFloor().FindRef(SpiresRow),
+			  FString(TEXT("golden spires: 1 standing")));
+	return true;
+}
+
+// THE MAP GIVES THE SAME DAMAGE THE THREE NAMED FIELDS GAVE: EVERY SOURCE'S MULTIPLIER, MULTIPLIED
+// TOGETHER, WHATEVER ORDER THEY WERE WRITTEN IN, AND A SOURCE SET BACK TO 1.0 DROPS OUT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDamageMultiplierMapTest,
+	"Cataclysm.DungeonModifierEffects.TheCreatureDamageMultipliersMultiplyTogetherWhateverWroteThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDamageMultiplierMapTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Creature = ACataclysmEnemyCharacter;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ASpiresFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* One = PlaceCreatureAtRung(World, Mode, FVector(0.0f, 0.0f, 0.0f), 0);
+	if (!TestNotNull(TEXT("a creature"), One))
+	{
+		return false;
+	}
+	const float Own = AttackDamageOf(One);
+	if (!TestTrue(FString::Printf(TEXT("it has damage of its own (%.2f)"), Own), Own > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("no source multiplies it yet"), One->DamageMultiplierProduct(), 1.0f, 0.0001f);
+
+	// EACH SOURCE ALONE, THEN TOGETHER: the products the three fields gave, and the fourth.
+	One->SetPlacedDamageMultiplier(1.5f);
+	TestEqual(TEXT("placed alone"), AttackDamageOf(One), Own * 1.5f, 0.01f);
+	One->SetTimeAliveDamageMultiplier(1.2f);
+	TestEqual(TEXT("placed and time alive"), AttackDamageOf(One), Own * 1.5f * 1.2f, 0.01f);
+	One->SetFloorDepthDamageMultiplier(1.1f);
+	TestEqual(TEXT("the three the fields held"), AttackDamageOf(One), Own * 1.5f * 1.2f * 1.1f, 0.01f);
+	One->SetSpireDamageMultiplier(1.2f);
+	TestEqual(TEXT("and the spire's"), AttackDamageOf(One), Own * 1.5f * 1.2f * 1.1f * 1.2f, 0.01f);
+	TestEqual(TEXT("the product the damage uses"), One->DamageMultiplierProduct(), 1.5f * 1.2f * 1.1f * 1.2f, 0.0001f);
+	TestEqual(TEXT("each read back under its own key: placed"),
+			  One->DamageMultiplierFrom(Creature::PlacedDamageSource), 1.5f, 0.0001f);
+	TestEqual(TEXT("time alive"), One->DamageMultiplierFrom(Creature::TimeAliveDamageSource), 1.2f, 0.0001f);
+	TestEqual(TEXT("floor depth"), One->DamageMultiplierFrom(Creature::FloorDepthDamageSource), 1.1f, 0.0001f);
+	TestEqual(TEXT("spire"), One->DamageMultiplierFrom(Creature::SpireDamageSource), 1.2f, 0.0001f);
+
+	// ONE SET BACK TO 1.0 DROPS OUT AND THE OTHERS STAND; A RECOMPUTE KEEPS THEM.
+	One->SetPlacedDamageMultiplier(1.0f);
+	TestEqual(TEXT("placed back to its own"), AttackDamageOf(One), Own * 1.2f * 1.1f * 1.2f, 0.01f);
+	One->SetRarityStep(0);
+	TestEqual(TEXT("a recompute keeps the other three"), AttackDamageOf(One), Own * 1.2f * 1.1f * 1.2f, 0.01f);
+	One->SetTimeAliveDamageMultiplier(1.0f);
+	One->SetFloorDepthDamageMultiplier(1.0f);
+	One->SetSpireDamageMultiplier(1.0f);
+	TestEqual(TEXT("every source let go: its own damage"), AttackDamageOf(One), Own, 0.01f);
+	TestEqual(TEXT("and the product is one"), One->DamageMultiplierProduct(), 1.0f, 0.0001f);
 	return true;
 }
 

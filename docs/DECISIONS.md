@@ -2,6 +2,129 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Golden Spires: two spires on a floor heal the creatures within six metres as Field Medic's medic does and make them deal 20% more damage, until destroyed; a creature's damage multipliers become one map
+
+**Affects:** a new spire class `game/Source/Cataclysm/Character/CataclysmSpireCharacter.h`;
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a creature's damage multipliers
+become one map keyed by source, with a fourth setter for the spires);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key and figures);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing and forgetting the
+spires, their zones, the damage multiplier on the beat, the panel line);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Spire" under a spire's health
+bar); the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one new check, and the damage multiplier check
+rewritten for the map). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
+tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
+have.
+
+### The row
+
+`Celestial_Golden_Spires` in `game/Data/DungeonModifiers.csv`, weight 5: "Floors feature radiant towers
+that heal enemies and buff their damage. These spires must be destroyed to progress effectively." It states
+no figure. The design document does not mention a spire or a tower that strengthens creatures.
+
+### What the rule does
+
+When a floor carrying the row is placed, two spires stand where Eternal Chorus's sources would -- at least
+twenty metres from the entrance and from each other -- and a Horde arena has one, placed with its first
+wave and kept. Each spire is a creature that does nothing itself, with the Imp's health, "Spire" under its
+health bar, paying nothing when destroyed and not one of the floor's creatures. Every second it heals each
+living ally within six metres by 5% of that ally's maximum, which is Field Medic's heal unchanged. Every
+creature within six metres of any living spire deals 20% more damage, once however many spires are near,
+and its own damage again once it leaves or the spire is destroyed. A visible Celestial zone of six metres
+stands around each living spire. Nothing locks the way off the floor. The panel says how many stand.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every
+figure is a play-test value:**
+
+- **A spire is a floor source**, `ACataclysmSpireCharacter`, with "Spire" under its bar: it pays nothing,
+  is raised by the rule, is not one of the floor's creatures and is never saved.
+- **The Imp's health, 87**, the same as the other two floor sources.
+- **Two a floor on Eternal Chorus's rule for where things stand; one on a Horde arena**, placed with its
+  first wave and kept.
+- **Field Medic's heal, unchanged**: `bHealsAlliesForTheFloorRule`, 5% of maximum a second within 600 cm.
+  The ruling required a test showing that a creature with no brain pulses it, since that had been read in
+  the code and not measured.
+- **20% more damage within 600 cm of any living spire**, once however many, written every beat and gone on
+  leaving the radius or on the spire's death, with a visible 600 cm Celestial zone around each living
+  spire.
+- **The damage multipliers become one map, as ruled on 2026-09-17**, with the three existing setters kept
+  as thin writers and the Python check rewritten to require the map's product and the four keys. A control
+  test is required: the three existing multipliers give the same products before and after.
+- **No lock on the way out**: "progress effectively" is read as advice. The panel line is "golden spires: N
+  standing", and the rule is allowed on Horde waves.
+
+### The damage multiplier map
+
+The 2026-09-23 entry "Below 10% mana a cast costs 5% of current health instead…" recorded that a fourth
+creature damage multiplier "would start the refactor of the three multipliers into one map that was ruled
+on 2026-09-17". This is that fourth. `ACataclysmEnemyCharacter` held `PlacedDamageMultiplier`,
+`TimeAliveDamageMultiplier` and `FloorDepthDamageMultiplier`; it now holds `DamageMultipliersBySource`,
+keyed `Placed`, `TimeAlive`, `FloorDepth` and `GoldenSpires`, with no entry meaning 1.0. The three setters
+write their keys through one `SetDamageMultiplierFrom`, so no caller moved, and `WriteAttackDamage`
+multiplies by `DamageMultiplierProduct()`, the product of every entry.
+
+### The research: objects and auras that heal or strengthen monsters
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was
+quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Rejuvenation Totem | https://poedb.tw/us/Rejuvenation_Totem | "Summons a totem that has an aura which regenerates life for you and your nearby allies." |
+| Diablo II, Might | https://diablo2.io/skills/might-t4121.html | "When active, aura increases the damage done by you and your party." |
+
+**What it settles and what it does not.** A shipped game has a stationary thing whose aura heals the
+allies around it, and another has an aura that raises the damage of everything on its side nearby, which
+are the two halves of this row. Both pages describe the player's own skill, not a monster's. That monsters
+carry Might in Diablo II ("Aura Enchanted") appeared only in search summaries of pages that could not be
+fetched -- `diablo-archive.fandom.com` and `diablo.fandom.com` answer 402 and `theamazonbasin.com` answered
+500 -- so it is not quoted here as evidence. Diablo IV's dungeon affix lists that could be read
+(`diablo4.wiki.fextralife.com`) name no object that strengthens monsters; `icy-veins.com` and
+`mobalytics.gg` answered 403. The figures, the count and the radius are this game's own; the radius is the
+medic heal's.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `GoldenSpiresFiguresAndTheHealsOwnRadius`: the four figures, and the radius equals
+  `UCataclysmEnemyModifiers::AuraRadiusCm`.
+- `GoldenSpiresPlacesTwoSpiresThatDoNothing`: two spires, each a spire with no controller and no ability,
+  healing as the medic does, paying nothing, raised by the rule, not one of the floor's creatures, saying
+  exactly "Spire", at full health equal to the Imp's and far enough from the entrance; the panel says two
+  stand; after a beat each has a zone covering it and not a point 650 cm away; a Horde arena has one, the
+  floor's two are gone, and the next wave keeps it and draws its zone again.
+- `AGoldenSpireHealsAnAllyWithinSixMetresAndNotOneFarther`: with the world's own timers run for two
+  seconds, an ally 400 cm from a spire with no brain gains at least one pulse more than an ally 900 cm
+  away, and the one 900 cm away gains less than one pulse.
+- `WithinSixMetresOfAGoldenSpireACreatureDealsTwentyPercentMoreUntilItIsDestroyed`: a creature 400 cm away
+  deals 20% more, under the spire's key, and one 900 cm away its own; moved out of reach it is its own again
+  and moved back it is 20% more and no more; destroying the spire pays nothing, puts the creature back to
+  its own damage, and leaves one spire, one zone and a panel saying one.
+- `TheCreatureDamageMultipliersMultiplyTogetherWhateverWroteThem`, the control the ruling asked for: each
+  of the three sources the fields held, then all three and the spire's, give their products; each reads
+  back under its own key; one set back to 1.0 drops out, a recompute keeps the others, and with every source
+  let go the creature deals its own damage.
+- `Cataclysm.SaveApply.ASpireDoesNotTakeTheTrainingDummysEmptyName`: the spire names no row, and the empty
+  name maps to the base enemy class.
+
+One new Python check: the row still says "radiant towers", "heal enemies", "buff their damage", "must be
+destroyed" and "progress effectively". The damage multiplier check now requires `WriteAttackDamage` to use
+`DamageMultiplierProduct()`, that product to multiply the map's entries, and each of the four setters to
+write its own distinct key.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Every Nth, the rows: the 5th hit taken, the third spell and the 10th attack
 
 **Affects:**

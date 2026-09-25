@@ -3015,12 +3015,35 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
         / "CataclysmEnemyCharacter.cpp").read_text(encoding="utf-8")
     write = body_of(creature, "void ACataclysmEnemyCharacter::WriteAttackDamage(")
 
-    missing = [name for name in ("PlacedDamageMultiplier", "TimeAliveDamageMultiplier",
-                                 "FloorDepthDamageMultiplier") if name not in write]
-    assert not missing, (
-        f"WriteAttackDamage no longer multiplies by {', '.join(missing)}. Every floor "
-        "rule that changes a creature's damage owns one of these, and a rule whose "
-        "multiplier is dropped here does nothing at all, silently.")
+    # ONE MAP SINCE GOLDEN SPIRES, as ruled on 2026-09-17: the three named fields this
+    # checked became entries of `DamageMultipliersBySource`, and WriteAttackDamage
+    # multiplies by the product of every entry.
+    assert "DamageMultiplierProduct()" in write, (
+        "WriteAttackDamage no longer multiplies by DamageMultiplierProduct(). Every floor "
+        "rule that changes a creature's damage owns an entry of DamageMultipliersBySource, "
+        "and a rule whose multiplier is dropped here does nothing at all, silently.")
+    product = body_of(creature, "float ACataclysmEnemyCharacter::DamageMultiplierProduct(")
+    assert "DamageMultipliersBySource" in product and "*=" in product, (
+        "DamageMultiplierProduct no longer multiplies the entries of "
+        "DamageMultipliersBySource together.")
+
+    # AND EACH OF THE FOUR SOURCES WRITES ITS OWN KEY, so no two share an entry.
+    header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
+              / "CataclysmEnemyCharacter.h").read_text(encoding="utf-8")
+    keys = {}
+    for setter, key in (("SetPlacedDamageMultiplier", "PlacedDamageSource"),
+                        ("SetTimeAliveDamageMultiplier", "TimeAliveDamageSource"),
+                        ("SetFloorDepthDamageMultiplier", "FloorDepthDamageSource"),
+                        ("SetSpireDamageMultiplier", "SpireDamageSource")):
+        body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
+        assert f"SetDamageMultiplierFrom({key}," in body, (
+            f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
+            "shares an entry with another's or reaches none.")
+        found = re.search(rf'{key}\s*=\s*TEXT\("(\w+)"\)', header)
+        assert found, f"{key} is no longer declared in CataclysmEnemyCharacter.h."
+        keys[key] = found.group(1)
+    assert len(set(keys.values())) == len(keys), (
+        f"Two damage sources share a key, so one overwrites the other: {keys}")
 
 
 def test_march_of_progress_armour_is_one_modifier_and_not_one_per_commander():
@@ -4092,3 +4115,22 @@ def test_necrotic_bloom_row_still_sends_waves_every_twenty_seconds_until_its_flo
         assert phrase in lower, (
             f"Death_Necrotic_Bloom no longer says {phrase.upper()!r}. A reading of the rule rests on it; "
             "see NecroticBloomKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_golden_spires_row_still_heals_and_strengthens_enemies_until_its_spires_are_destroyed():
+    """The phrases the rule's readings rest on.
+
+    "Floors feature radiant towers that heal enemies and buff their damage. These spires must be
+    destroyed to progress effectively." RADIANT TOWERS is why spires stand at places; HEAL ENEMIES is
+    Field Medic's heal; BUFF THEIR DAMAGE is the damage multiplier; MUST BE DESTROYED is why each is a
+    creature to kill; PROGRESS EFFECTIVELY is why nothing locks the way out. If any of them changes,
+    the reading must be revisited.
+    """
+    words = flat(rows()["Celestial_Golden_Spires"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("radiant towers", "heal enemies", "buff their damage", "must be destroyed",
+                   "progress effectively"):
+        assert phrase in lower, (
+            f"Celestial_Golden_Spires no longer says {phrase.upper()!r}. A reading of the rule rests "
+            "on it; see GoldenSpiresKey in CataclysmDungeonModifierEffects.h. " + words)

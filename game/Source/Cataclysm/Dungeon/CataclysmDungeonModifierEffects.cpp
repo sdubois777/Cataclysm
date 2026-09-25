@@ -155,6 +155,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::EternalChorusKey =
 const TCHAR* UCataclysmDungeonModifierEffects::NecroticBloomKey =
 	TEXT("Death_Necrotic_Bloom");
 
+const TCHAR* UCataclysmDungeonModifierEffects::GoldenSpiresKey =
+	TEXT("Celestial_Golden_Spires");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -445,7 +448,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(PlagueHarbingersKey)
 		|| RowKey == FName(WingsOfTheHostKey)
 		|| RowKey == FName(EternalChorusKey)
-		|| RowKey == FName(NecroticBloomKey))
+		|| RowKey == FName(NecroticBloomKey)
+		|| RowKey == FName(GoldenSpiresKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -636,6 +640,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(WingsOfTheHostKey),
 		FName(EternalChorusKey),
 		FName(NecroticBloomKey),
+		FName(GoldenSpiresKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }

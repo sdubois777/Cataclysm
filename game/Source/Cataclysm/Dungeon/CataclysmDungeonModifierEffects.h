@@ -1963,6 +1963,30 @@ public:
 	static const TCHAR* NecroticBloomKey;
 
 	/**
+	 * The row where radiant spires heal the creatures near them and raise their damage until
+	 * destroyed. Issues #1820 and #41.
+	 *
+	 * "Floors feature radiant towers that heal enemies and buff their damage. These spires must be
+	 * destroyed to progress effectively."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - `GoldenSpiresPerFloor` SPIRES A FLOOR, placed once where the floor is placed, on Eternal
+	 *   Chorus's rule for where things stand; ONE on a Horde arena, placed with its first wave and kept.
+	 * - EACH IS A SPIRE THE PLAYER DESTROYS, `ACataclysmSpireCharacter`: a creature with no brain,
+	 *   attack or ability, with the Imp's health, saying "Spire" under its bar, paying nothing, raised
+	 *   by the rule and not one of the floor's creatures.
+	 * - IT HEALS AS FIELD MEDIC'S MEDIC DOES, unchanged: 5% of each ally's maximum a second within
+	 *   `GoldenSpiresRadiusCm`, which is that heal's own radius.
+	 * - CREATURES WITHIN `GoldenSpiresRadiusCm` OF ANY LIVING SPIRE deal
+	 *   `GoldenSpiresDamageMorePercent` more damage, once however many spires are near; written every
+	 *   beat and gone on leaving the radius or when the spire dies. A visible zone of that radius
+	 *   stands around each living spire.
+	 * - "MUST BE DESTROYED TO PROGRESS EFFECTIVELY" LOCKS NOTHING: "effectively" is read as advice.
+	 */
+	static const TCHAR* GoldenSpiresKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4333,6 +4357,22 @@ public:
 	static constexpr float NecroticBloomWaveWithinCm = 600.0f;
 
 	static_assert(NecroticBloomSecondsBetween == 20.0f, "The row says every 20s.");
+
+	/**
+	 * Golden Spires' figures, every one a play-test value. See the key. The radius is written here
+	 * and checked against `UCataclysmEnemyModifiers::AuraRadiusCm`, the heal's own radius, by an
+	 * automation test, for the reason `CommandersAuraRadiusCm` gives: this library does not include
+	 * the creature headers.
+	 */
+	static constexpr int32 GoldenSpiresPerFloor = 2;
+	static constexpr int32 GoldenSpiresPerHordeArena = 1;
+	static constexpr float GoldenSpiresRadiusCm = 600.0f;
+	static constexpr float GoldenSpiresDamageMorePercent = 20.0f;
+
+	static_assert(
+		GoldenSpiresPerFloor > 0 && GoldenSpiresPerHordeArena > 0 && GoldenSpiresRadiusCm > 0.0f
+			&& GoldenSpiresDamageMorePercent > 0.0f,
+		"A spire never placed, or one that strengthened nothing, is not the row.");
 	static_assert(
 		NecroticBloomFlowers > 0 && NecroticBloomHordeFlowers > 0 && NecroticBloomCreaturesPerWave > 0
 			&& NecroticBloomMostWaves > 0 && NecroticBloomWaveWithinCm > 0.0f,

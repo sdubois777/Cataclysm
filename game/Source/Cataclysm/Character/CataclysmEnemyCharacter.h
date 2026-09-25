@@ -555,6 +555,32 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetFloorDepthDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies this creature's attack damage while it stands near a living Golden Spire.
+	 * `Celestial_Golden_Spires`. Issues #1820 and #41.
+	 *
+	 * THE FOURTH SOURCE, AND THE ONE THAT BUILT THE MAP: every source's figure is an entry of
+	 * `DamageMultipliersBySource` under its own key, and `WriteAttackDamage` multiplies them
+	 * all, as ruled on 2026-09-17. Everything the three setters above say about the route,
+	 * the designed figure, the illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetSpireDamageMultiplier(float NewMultiplier);
+
+	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
+	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
+	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
+	static constexpr const TCHAR* FloorDepthDamageSource = TEXT("FloorDepth");
+	static constexpr const TCHAR* SpireDamageSource = TEXT("GoldenSpires");
+
+	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
+	float DamageMultiplierFrom(const TCHAR* Source) const;
+
+	/** Every source's multiplier multiplied together: what `WriteAttackDamage` applies. */
+	float DamageMultiplierProduct() const;
+
 	//~ Dying. Issue #522.
 
 	/**
@@ -1537,30 +1563,22 @@ protected:
 	bool bIsAnIllusion = false;
 
 	/**
-	 * What the rule that placed this creature multiplies its attack damage by, and what
-	 * a rule counting its time alive multiplies it by. 1.0 each is the creature's own
-	 * damage, and `WriteAttackDamage` multiplies by both. Issues #1820 and #41.
+	 * What each rule that changes this creature's attack damage multiplies it by, under that
+	 * rule's own key: `PlacedDamageSource` (a Grave Tide or Horde wave), `TimeAliveDamageSource`
+	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress) and `SpireDamageSource`
+	 * (Golden Spires). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
+	 * by every entry. Issues #1820 and #41.
 	 *
-	 * TWO FIELDS SO TWO RULES CANNOT OVERWRITE EACH OTHER: a wave writes the first as it
-	 * places a creature, and Ravenous Hoard writes the second on every beat. See
-	 * `SetPlacedDamageMultiplier` for why either multiplies the designed figure and why
-	 * setting one rewrites the attack damage and nothing else.
+	 * ONE MAP RATHER THAN A FIELD PER SOURCE, as ruled by the coordinating session on
+	 * 2026-09-17, so several rules can act on one creature and none may overwrite another,
+	 * and a new source is a key rather than a field. The three sources before Golden Spires
+	 * were three fields; their setters write their keys, so no caller moved.
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	float PlacedDamageMultiplier = 1.0f;
+	TMap<FName, float> DamageMultipliersBySource;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	float TimeAliveDamageMultiplier = 1.0f;
-
-	/**
-	 * What a rule reading the floor's depth multiplies this creature's attack damage by.
-	 * 1.0 is the creature's own damage. `War_March_of_Progress`. Issues #1820 and #41.
-	 *
-	 * A THIRD FIELD FOR A THIRD SOURCE, for the reason the pair above gives: three rules
-	 * can act on one creature and none may overwrite another.
-	 */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
-	float FloorDepthDamageMultiplier = 1.0f;
+	/** Writes one source's entry, dropping it at 1.0, and rewrites the damage when it changed. */
+	void SetDamageMultiplierFrom(const TCHAR* Source, float NewMultiplier);
 
 	/**
 	 * What SetArmour was last asked for. Zero means no armour.
