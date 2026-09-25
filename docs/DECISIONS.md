@@ -366,9 +366,8 @@ under the health bars); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks, and the damage multiplier check
 given the seventh key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -494,10 +493,33 @@ nearby enemies have been slain", "vampire lord" and "to kill the player"; and Tr
 Sarcophagi each write resistance through `SetRuleResistance` under keys of their own. The damage multiplier
 check now also requires the coffins' setter to write its own distinct key.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development b1e1e4b6 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on 789ce413: "Build: Succeeded - 30 actions, 27 files compiled"; "2557 tests performed,
+  2557 succeeded, 0 failed", every declared test reported (2557 declared, gap 0).
+- **The Python suite of record**, on 789ce413: 5,490 passed and 8 skipped of 5,498, 0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **A coffin's damage key written as 1** (`SetObsidianSarcophagiDamageMultiplier(1.0f)`), on the prefix
+  `Cataclysm.DungeonModifierEffects.BesideACoffin`. With the break in, 1 failed, on "beside a coffin: 20% more
+  damage" alone.
+- **A coffin's resistance points written as 0**, on the same prefix. With the break in, 1 failed, on "and 15
+  more resistance: 38" and "beats later, still 38, not more". "And its own resistance again" held, as
+  registered.
+- **The deaths beside a coffin never counted** (`One.Deaths += 0;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.EightPaidDeaths`. With the break in, 1 failed, on "seven counted", "the
+  panel at seven", "still seven: an unpaid death, a stranger and a far death do not count", "the lord came" and
+  "two more on the floor's list: the eighth creature and the lord", where the test returns.
+
+**The first start of the first proof ran nothing.** The proof script was generated with a real tab and line
+break inside the third proof's anchor text, so Python refused to parse it and stopped before breaking any file;
+the worktree was unchanged. The script was rewritten, parsed, and its three anchors counted once each before
+the proof above was run.
 
 ---
 
