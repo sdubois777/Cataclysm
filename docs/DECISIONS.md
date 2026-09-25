@@ -2,6 +2,117 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — The last six Demonic options built engine first now have their rows: six flat rows, from Nowhere to Run to Chorus
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv`
+and `game/Content/Data/DT_PassiveEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (six tests, and one existing test corrected),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_passive_effects_match_the_node_text.py`, and `docs/Cataclysm_GDD_v2.md` (one
+paragraph). Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### WHAT CHANGED
+
+Each of the six options below was built engine first, in its own change of 2026-09-24 or 2026-09-25,
+with its stat given by hand in its tests, and each of those entries said the option grants nothing in play
+until its row lands. **This change writes the rows**, with the figure each entry said its row would carry,
+and every row is `flat`.
+
+| Option | Node, and option | Stat | Figure |
+|---|---|---|---|
+| Nowhere to Run | `Ravager_capstone_200`, 1 | `enemies_cannot_move_away_within_metres` | 8 |
+| Both Hands Full | `Ravager_capstone_200`, 2 | `two_handed_weapon_in_each_hand` | 1 |
+| Shoulder Through | `Ravager_capstone_100`, 3 | `moving_into_enemy_pushes_aside` | 1 |
+| Follow Through | `Ravager_keystone_b_kB` | `melee_kill_repeats_attack_every_seconds` | 3 |
+| A Second Self | `Ritualist_capstone_200`, 1 | `minion_held_longest_becomes_your_equal` | 1 |
+| Chorus | `Ritualist_capstone_200`, 3 | `minions_repeat_your_skills` | 1 |
+
+The sheet goes from 315 rows to 321. One node had no row before, Follow Through's keystone, so 226 of the
+441 nodes now have one and the Ravager is 74 of its 74. Five capstone options become authored, so 36 of
+the 60 named options grant something. The Final Onslaught (`Ravager_capstone_200`) and the Final Pact
+(`Ritualist_capstone_200`) now have a row on all three of their options.
+
+**The node-text test's two tables gain six entries.** Nowhere to Run's "8 metres" and Follow Through's
+"3 seconds" get a form in `VALUE_FORMS`. The four flags of 1 have no digit in their sentences, so each is
+exempted in `VALUE_IN_WORDS` by the words that say what it does. Chorus's sentence does hold a digit,
+"30% of its damage", but that 30% is the engine constant `UCataclysmChorus::SharePercent` and not a row.
+
+**The design document's Efficacy paragraph is corrected.** Before this change it said Efficacy's area of
+effect "enlarges the imp's death explosion", which the rule that blocks everything unless a modifier says
+"minion" does not allow. As approved on 2026-09-25, the sentence now reads: "Its area of effect is not a
+gain here: the paragraph opening "Everything else is blocked unless a modifier says "minion"" keeps it from
+reaching a minion, so an imp's death explosion keeps the radius its summoning skill states, unless a
+modifier that names minions says otherwise, as A Second Self does for the minion it chooses." The last
+clause was added in this change so that the sentence does not contradict A Second Self, whose row this
+change writes.
+
+### TESTS
+
+Six, one per option, in the group `Cataclysm.DemonicRows.`, by the same helper and to the same standard as
+the nine of 2026-09-24: on a real player of the option's class spending real points, the option's rows are
+exactly the stat listed above, flat and of its figure, and each reads nothing before the points are spent,
+still nothing for a capstone with no option chosen, and the figure once it is chosen or once the
+keystone's point is spent.
+
+**One existing test was wrong after this change, and it was corrected.** It was named
+`Cataclysm.Passives.TheFinalPactsSecondOptionGrantsItsThreeRowsAndTheOthersGrantNothing`, and it asserted
+that the Final Pact's options 1 and 3 grant nothing "because it is unauthored". This change authors them.
+Its purpose, catching option 2's three rows carrying the wrong option number, is kept: options 1 and 3
+must now each grant exactly one modifier, their own stat, and none of option 2's three. It is renamed
+`...AndTheOthersOnlyTheirOwn`, because the old name was no longer true.
+
+### Run
+
+One window on 2026-09-25, ending at 16:53 UTC, on development fab87593, with the design workbook and the
+build machine held together. Every figure below is what `pytest`, `generate_datatables.py`,
+`run_editor_python.py`, `python tools/unreal_build.py` or `prove_cpp_guard` printed.
+
+**THREE PREDICTIONS WERE WRONG, and each is recorded here rather than left out.** Each had the same cause:
+I registered the tests my own change added, and did not search the existing tests for what the change
+touches.
+
+1. **The Python of record before the rows** printed `3 failed, 5484 passed, 8 skipped` (JUnit 5,495, 3
+   failures) where 2 failures were registered. The two registered were the node and option coverage pins,
+   226 and 36, already moved ahead of the rows. The third was
+   `tools/tests/test_unreal_pinned_row_counts.py::test_every_pinned_count_matches_the_csv`, which reads
+   the `CHECK_TABLE` pin in `CataclysmDataTableTests.cpp` (already 321) against the 315-row CSV. It has the
+   same cause, and all three clear once the rows exist.
+2. **The whole suite** printed `2538 tests performed, 2537 succeeded, 1 failed`, where 0 failures were
+   registered. The failure was the Final Pact test above, on its two "grants nothing" assertions, reading
+   1 where 0. After the test was corrected, the build printed `Build: Succeeded - 4 actions, 1 file
+   compiled` and a run of that one test printed `1 tests performed, 1 succeeded, 0 failed`. As with the
+   Scarcity window, a test-only correction made after the whole suite gets a run of that test and not a
+   second whole suite.
+3. **The three proofs** each performed 15 tests where 6 were registered. The group `Cataclysm.DemonicRows.`
+   already held nine tests from 2026-09-24, and I counted only the six this change adds. The failing test
+   and the failing assertion of each proof were as registered.
+
+| Step | Printed |
+|---|---|
+| The workbook | six rows appended at sheet rows 317 to 322, "315 rows before, 321 after" |
+| The CSVs | "Wrote 29 CSVs"; the diff is `PassiveEffects.csv`, six lines added, and nothing else |
+| The asset step | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` alone, whose record went from 315 rows to 321 |
+| Build | `Build: Succeeded - 30 actions, 27 files compiled` |
+| Whole suite, started with no CI run in progress | `2538 tests performed, 2537 succeeded, 1 failed`; 2538 declared, gap 0; the failure is prediction 2 above |
+
+Three proofs with `prove_cpp_guard` on the corrected head, prefix `Cataclysm.DemonicRows.`, each anchor
+re-checked immediately before its run. Each break changes the last letter of one engine constant, so the
+engine asks for a stat no row carries. Each restored run printed `15 tests performed, 15 succeeded, 0
+failed`.
+
+| Break | Printed with the break in | Assertion that failed |
+|---|---|---|
+| a. `UCataclysmShoulderThrough::Stat` becomes `moving_into_enemy_pushes_asidX` | `15 tests performed, 14 succeeded, 1 failed: ShoulderThroughReachesARealRavagerFromItsRow` | "a row grants moving_into_enemy_pushes_asidX, the stat the engine reads", null |
+| b. `UCataclysmFollowThrough::EverySecondsStat` becomes `melee_kill_repeats_attack_every_secondX` | `15 tests performed, 14 succeeded, 1 failed: FollowThroughReachesARealRavagerFromItsRow` | "a row grants melee_kill_repeats_attack_every_secondX, ...", null |
+| c. `UCataclysmChorus::Stat` becomes `minions_repeat_your_skillX` | `15 tests performed, 14 succeeded, 1 failed: ChorusReachesARealRitualistFromItsRow` | "a row grants minions_repeat_your_skillX, ...", null |
+
+The three cover a capstone option of each tree and the one keystone.
+
+**What no test here shows**: each option's behaviour in play. That is tested in each option's own change,
+on the stat these tests prove the row supplies, and the gaps each of those entries names still stand.
+
+---
+
 ## 2026-09-25 — Rows only: eleven enchantments on mechanisms that already exist
 
 **Affects:**
