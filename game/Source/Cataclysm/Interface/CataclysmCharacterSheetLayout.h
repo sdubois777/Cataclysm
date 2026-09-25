@@ -121,6 +121,13 @@ public:
 	/** How many stats the sheet holds. Forty-six. */
 	static int32 SheetStatCount();
 
+	/**
+	 * The kills, as the sheet's header line shows them: "Kills this run 12
+	 * Kills 340". Issue #1833, the kill counter. Counts rather than stats, so
+	 * not lines of the stat list, whose 46 the model pins.
+	 */
+	static FString KillsLine(int32 RunKills, int32 LifetimeKills);
+
 	/** The five groups, in the order they are shown. */
 	static const TArray<ECataclysmSheetGroup>& Groups();
 

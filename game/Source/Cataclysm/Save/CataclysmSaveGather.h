@@ -193,6 +193,16 @@ public:
 	 */
 	static ACataclysmPlayerCharacter* CharacterIn(const UWorld& World);
 
+	/**
+	 * This run's kill count, off the character's player state, into the run
+	 * record. Issue #1833, the kill counter.
+	 *
+	 * @return whether there was a player state to read; with none, the record
+	 *         keeps what it held
+	 */
+	static bool RunKillsFrom(const ACataclysmPlayerCharacter& Character,
+							 UCataclysmRunSave& Record);
+
 	/** Health, mana and energy shield off a character's attributes. */
 	static void VitalsOf(const AActor& Actor, float& OutHealth, float& OutMana,
 						 float& OutEnergyShield);

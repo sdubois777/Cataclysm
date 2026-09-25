@@ -146,6 +146,43 @@ public:
 	void SetLevelAndExperience(int32 NewLevel, int64 NewExperience);
 
 	// ----------------------------------------------------------------------
+	// Kills
+	// ----------------------------------------------------------------------
+
+	/**
+	 * One kill by this character: this run's count and the character's both
+	 * rise by one. Issue #1833, the kill counter.
+	 *
+	 * CALLED WHERE THE "kill" EVENT FIRES, `ACataclysmPlayerCharacter::
+	 * OnSomethingDied` when the death notice names this character as the
+	 * killer, so the count agrees with every kill-triggered enchantment: a
+	 * minion's kill is the minion's own unless the Conduit keystone is held.
+	 * Ruled 2026-09-25 under the owner's delegation.
+	 *
+	 * HERE FOR THE REASON THE LEVEL IS HERE: a pawn is destroyed on death and
+	 * the player state is not. "This run" is since the session began; nothing
+	 * resets the run count within one.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Kills")
+	void NoteKill();
+
+	/** Kills this run. Issue #1833. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Kills")
+	int32 GetRunKills() const { return RunKills; }
+
+	/** Kills across every run this character has played. Issue #1833. */
+	UFUNCTION(BlueprintPure, Category = "Cataclysm|Kills")
+	int32 GetLifetimeKills() const { return LifetimeKills; }
+
+	/**
+	 * Put a saved lifetime count back, a negative one as nought. Issue #1833.
+	 * Nothing loads a save yet (#753); this is here for when something does,
+	 * as `SetLevelAndExperience` is.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Kills")
+	void SetLifetimeKills(int32 Kills);
+
+	// ----------------------------------------------------------------------
 	// What was chosen when the character was created
 	// ----------------------------------------------------------------------
 
@@ -391,6 +428,13 @@ protected:
 
 	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Experience")
 	int64 ExperienceIntoLevel = 0;
+
+	/** See `NoteKill`. Replicated so a client's character sheet can show them. */
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Kills")
+	int32 RunKills = 0;
+
+	UPROPERTY(Replicated, VisibleAnywhere, Category = "Cataclysm|Kills")
+	int32 LifetimeKills = 0;
 
 	/**
 	 * REPLICATED, because a client draws its own character sheet from this and

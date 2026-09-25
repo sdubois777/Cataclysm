@@ -615,6 +615,7 @@ bool FCataclysmSaveCharacterFixtureReadsCorrectly::RunTest(const FString&)
 	TestEqual(TEXT("the level in the file"), Read->Level, 42);
 	TestEqual(TEXT("the experience in the file"), Read->Experience,
 		static_cast<int64>(12884901888));
+	TestEqual(TEXT("the kills in every run, issue #1833"), Read->LifetimeKills, 335500);
 	TestEqual(TEXT("the residue in the file"), Read->CataclysmicResidue, 13.5f);
 
 	if (Read->CarriedSlots.Num() != 2)
@@ -720,6 +721,11 @@ bool FCataclysmSaveCharacterV1Migrates::RunTest(const FString&)
 	TestEqual(TEXT("the name still reads"), Read->CharacterName, FString(TEXT("Vesper")));
 	TestEqual(TEXT("the level still reads"), Read->Level, 42);
 	TestEqual(TEXT("the carried slots still read"), Read->CarriedSlots.Num(), 2);
+
+	// AND A CHARACTER FROM BEFORE THE KILL COUNTER HAS KILLED NOTHING, which is
+	// why the field needed no version bump. Issue #1833.
+	TestEqual(TEXT("a character from before the kill counter reads nought kills"),
+		Read->LifetimeKills, 0);
 
 	return true;
 }
@@ -1091,6 +1097,9 @@ bool FCataclysmSaveRunFixtureKeepsTheSchedule::RunTest(const FString&)
 	// than a seed somebody chose; see `UCataclysmRunSave::RandomStreamSeed`.
 	TestEqual(TEXT("where the run's chance had got to"),
 			  Read->RandomStreamSeed, 1743984213);
+
+	// AND THE KILLS MADE THIS RUN. Issue #1833, the kill counter.
+	TestEqual(TEXT("the kills this run"), Read->RunKills, 1234);
 
 	return true;
 }

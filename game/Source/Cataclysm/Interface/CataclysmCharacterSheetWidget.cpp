@@ -196,9 +196,14 @@ void UCataclysmCharacterSheetWidget::WriteStatus()
 
 	if (StatusLabel)
 	{
+		// AND THE KILLS, which are counts rather than stats and so are not
+		// lines of the sheet's stat list. Issue #1833, the kill counter.
 		StatusLabel->SetText(FText::FromString(FString::Printf(
-			TEXT("Level %d   Difficulty tier %d"),
-			State ? State->GetCharacterLevel() : 0, ShownDifficultyTier())));
+			TEXT("Level %d   Difficulty tier %d   %s"),
+			State ? State->GetCharacterLevel() : 0, ShownDifficultyTier(),
+			*UCataclysmCharacterSheetLayout::KillsLine(
+				State ? State->GetRunKills() : 0,
+				State ? State->GetLifetimeKills() : 0))));
 	}
 
 	if (PointsLabel)

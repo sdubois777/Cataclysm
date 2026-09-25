@@ -987,6 +987,12 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		// than by how long ago it landed.
 		if (Notice.Killer == this)
 		{
+			// COUNTED BEFORE THE ROWS ACT, so the kill that reaches a thousand
+			// is one of the thousand. Issue #1833, the kill counter.
+			if (ACataclysmPlayerState* Mine = GetPlayerState<ACataclysmPlayerState>())
+			{
+				Mine->NoteKill();
+			}
 			Acting->ActOnEvent(FName(TEXT("kill")), Notice.KillingSkillTags);
 		}
 

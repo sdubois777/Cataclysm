@@ -324,6 +324,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// route that honours a row scoped to a slot (issue #1981), and three of
 		// the five sentences it serves are scoped.
 		TEXT("cooldown_lengthening"),
+		// How far a character's resistance cap moves from 70, read by
+		// UCataclysmDamageCalculation::ResistanceCapOf. Issue #1833, the kill
+		// counter.
+		TEXT("resistance_cap"),
 		// What share of current health a cast pays INSTEAD of its mana, read by
 		// UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent. Issues #1820
 		// and #41. Written by the dungeon floor rule `Famine_Desperate_Measures`

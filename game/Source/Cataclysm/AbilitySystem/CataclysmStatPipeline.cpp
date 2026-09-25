@@ -169,6 +169,8 @@ namespace
 		{ TEXT("auras_held"),          ECataclysmStatScale::PerAuraHeld },
 		{ TEXT("class_points_spent"),  ECataclysmStatScale::PerClassPointSpent },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
+		{ TEXT("run_kills"),           ECataclysmStatScale::PerKillThisRun },
+		{ TEXT("character_kills"),     ECataclysmStatScale::PerKillOfTheCharacter },
 	};
 
 	/**
@@ -1536,6 +1538,15 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 		}
 		return StackedValue(Modifier, State.ClassPointsSpent
 			- FMath::FloorToInt32(FMath::Max(0.0f, Modifier.ScaleOffset)));
+
+	// AND THE KILLS, THIS RUN'S OR THE CHARACTER'S. Issue #1833, the kill
+	// counter. Unknown (-1) is nothing, as for class points.
+	case ECataclysmStatScale::PerKillThisRun:
+		return State.RunKills < 0 ? 0.0f : StackedValue(Modifier, State.RunKills);
+
+	case ECataclysmStatScale::PerKillOfTheCharacter:
+		return State.CharacterKills < 0
+			? 0.0f : StackedValue(Modifier, State.CharacterKills);
 
 	case ECataclysmStatScale::PercentOfManaHeld:
 	{

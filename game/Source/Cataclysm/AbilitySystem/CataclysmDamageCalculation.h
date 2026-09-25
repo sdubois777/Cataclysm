@@ -961,6 +961,38 @@ public:
 	static float EffectiveResistance(float Resistance, float Penetration);
 
 	/**
+	 * `EffectiveResistance` under a cap other than `ResistanceCap`: the
+	 * defender's own, from `ResistanceCapOf`. Issue #1833.
+	 */
+	static float EffectiveResistanceUnderCap(float Resistance, float Penetration,
+											 float Cap);
+
+	/**
+	 * The stat that moves a character's resistance cap, in points. Issue
+	 * #1833: "You lose 1-4% max resistances for every 100,000 - 500,000 kills"
+	 * and "You have +10 maximum resists". No gameplay attribute: rows only.
+	 */
+	static const TCHAR* ResistanceCapStat;
+
+	/**
+	 * The hard ceiling on any resistance cap. The design caps the maximum at
+	 * 90%; `tools/tests/test_maximum_resistance.py` pins that sentence.
+	 */
+	static constexpr float ResistanceCapCeiling = 90.0f;
+
+	/**
+	 * The cap a character's resistance is held to: `ResistanceCap`, moved by
+	 * `ResistanceCapStat` rows, then held to 0 to `ResistanceCapCeiling`.
+	 * Issue #1833, ruled 2026-09-25 under the owner's delegation.
+	 *
+	 * ASKED WITH `StatAppliedTo` AND 70 AS THE BASE, not `StatForSkill` with 70
+	 * as a fallback: the second evaluates on a recorded base of nought once any
+	 * row exists, so a -1 row would leave a cap of -1. Anything with no stat
+	 * line, which is every creature, reads 70.
+	 */
+	static float ResistanceCapOf(const UAbilitySystemComponent* Defender);
+
+	/**
 	 * How much resistance this difficulty tier takes off a player.
 	 *
 	 * WHY A PENALTY EXISTS AT ALL. Issue #1229. The cap is 70 and a player

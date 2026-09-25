@@ -1923,6 +1923,51 @@ namespace CataclysmStatExemptionTest
 			8.0f, 0.001f);
 	}
 
+	/**
+	 * `resistance_cap` is read by `UCataclysmDamageCalculation::ResistanceCapOf`.
+	 * Issue #1833, the kill counter. Two characters, one carrying a flat row of
+	 * 10: the first's cap is 70 and the second's 80.
+	 */
+	void ProbeResistanceCap(FAutomationTestBase& Test)
+	{
+		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+										   /*bInformEngineOfWorld=*/false);
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto Make = [World]()
+		{
+			AActor* Actor = World->SpawnActor<AActor>();
+			check(Actor);
+			UCataclysmAbilitySystemComponent* System =
+				NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			System->RegisterComponent();
+			System->InitAbilityActorInfo(Actor, Actor);
+			return System;
+		};
+		UCataclysmAbilitySystemComponent* Plain = Make();
+		UCataclysmAbilitySystemComponent* Raised = Make();
+
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = 10.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+			FName(UCataclysmDamageCalculation::ResistanceCapStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Raised->SetStatInputs(MoveTemp(Inputs));
+
+		Test.TestEqual(TEXT("a character with no row is held to 70"),
+			UCataclysmDamageCalculation::ResistanceCapOf(Plain), 70.0f, 0.001f);
+		Test.TestEqual(TEXT("and one carrying a row of 10 to 80"),
+			UCataclysmDamageCalculation::ResistanceCapOf(Raised), 80.0f, 0.001f);
+	}
+
 	void ProbeHitsCountAsYours(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -3295,6 +3340,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},
+			{TEXT("resistance_cap"), &ProbeResistanceCap},
 			{TEXT("mana_cost_as_current_health_percent"),
 									&ProbeManaCostAsCurrentHealthPercent},
 			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},

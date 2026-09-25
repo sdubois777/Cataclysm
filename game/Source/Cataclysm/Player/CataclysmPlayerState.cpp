@@ -61,6 +61,8 @@ void ACataclysmPlayerState::GetLifetimeReplicatedProps(
 	DOREPLIFETIME(ACataclysmPlayerState, SpentAttributePoints);
 	DOREPLIFETIME(ACataclysmPlayerState, CharacterLevel);
 	DOREPLIFETIME(ACataclysmPlayerState, ExperienceIntoLevel);
+	DOREPLIFETIME(ACataclysmPlayerState, RunKills);
+	DOREPLIFETIME(ACataclysmPlayerState, LifetimeKills);
 	DOREPLIFETIME(ACataclysmPlayerState, CreationChoice);
 	DOREPLIFETIME(ACataclysmPlayerState, PassiveAllocation);
 	DOREPLIFETIME(ACataclysmPlayerState, DefeatedCataclysmBosses);
@@ -193,6 +195,19 @@ void ACataclysmPlayerState::SetLevelAndExperience(int32 NewLevel,
 	const int64 Ceiling = UCataclysmExperience::CostOfLevel(CharacterLevel + 1);
 	const int64 Most = FMath::Max<int64>(0, Ceiling - 1);
 	ExperienceIntoLevel = FMath::Clamp<int64>(NewExperience, 0, Most);
+}
+
+void ACataclysmPlayerState::NoteKill()
+{
+	// HELD AT THE LARGEST COUNT RATHER THAN WRAPPING, because a count that
+	// wrapped negative would read to every kill scale as "no player state".
+	RunKills = RunKills < MAX_int32 ? RunKills + 1 : RunKills;
+	LifetimeKills = LifetimeKills < MAX_int32 ? LifetimeKills + 1 : LifetimeKills;
+}
+
+void ACataclysmPlayerState::SetLifetimeKills(int32 Kills)
+{
+	LifetimeKills = FMath::Max(0, Kills);
 }
 
 int32 ACataclysmPlayerState::AttributePointsAvailable() const

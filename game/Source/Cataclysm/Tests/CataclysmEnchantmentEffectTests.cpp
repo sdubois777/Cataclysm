@@ -35,6 +35,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Interface/CataclysmCombatOverlay.h"
+#include "Interface/CataclysmCharacterSheetLayout.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "GameplayTagContainer.h"
 #include "Items/CataclysmEquipmentComponent.h"
@@ -42,7 +43,10 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
+#include "GameFramework/PlayerController.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveGather.h"
+#include "Save/CataclysmSaveRecords.h"
 #include "Tests/CataclysmTestWorld.h"
 
 /**
@@ -6880,6 +6884,351 @@ bool FCataclysmLessMinionHealthRowTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("the wearer's imp has half the health"), Worse / Usual, 0.5f, 0.0001f);
+	return true;
+}
+
+namespace CataclysmKillCounterTest
+{
+	/** A possessed player character in this world, or null. */
+	ACataclysmPlayerCharacter* SpawnPossessedPlayer(UWorld* World)
+	{
+		ACataclysmPlayerState* PlayerState = World->SpawnActor<ACataclysmPlayerState>();
+		APlayerController* Controller = World->SpawnActor<APlayerController>();
+		ACataclysmPlayerCharacter* Character = World->SpawnActor<ACataclysmPlayerCharacter>(
+			FVector::ZeroVector, FRotator::ZeroRotator);
+		if (!PlayerState || !Controller || !Character)
+		{
+			return nullptr;
+		}
+		Controller->SetPlayerState(PlayerState);
+		Controller->Possess(Character);
+		return Character;
+	}
+
+	/** A hostile body that can be killed. */
+	ACataclysmEnemyCharacter* SpawnEnemy(UWorld* World, const FVector& Where)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (Made)
+		{
+			Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Made->SetRarityStep(0);
+			Made->SetHealth(1000.0f);
+			Made->SetAttackDamage(0.0f);
+		}
+		return Made;
+	}
+
+	/** A world for one test, destroyed when the test ends. */
+	struct FWorld
+	{
+		FWorld() : World(CataclysmTestWorld::MakeWorldThatHasBegunPlay()) {}
+		~FWorld()
+		{
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+		UWorld* World = nullptr;
+	};
+
+	/** One flat resistance_cap modifier of `Points`, recorded on `System`. */
+	void GrantResistanceCap(UCataclysmAbilitySystemComponent* System, float Points)
+	{
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = Points;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line =
+			Inputs.FindOrAdd(FName(UCataclysmDamageCalculation::ResistanceCapStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		System->SetStatInputs(MoveTemp(Inputs));
+	}
+
+	const TCHAR* StaleAsset =
+		TEXT("the row adds its share. If not, DT_EnchantmentEffects may be "
+			 "older than the rows: run tools/generate_datatable_assets.py");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillCounterCountsAPlayersKillTest,
+	"Cataclysm.KillCounter.APlayersKillRaisesBothCountsAndTheConditionsReadThem",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the kill counter. A real blow from a possessed player, then the
+ * death announced the way play announces it: the notice names the player as
+ * the killer, and this run's count and the character's both read one. The
+ * player's ability system reads both counts into its stat conditions; one no
+ * player state owns reads -1 for both, which gives a kill row nothing.
+ */
+bool FCataclysmKillCounterCountsAPlayersKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCounterTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter* Player = SpawnPossessedPlayer(Scope.World);
+	ACataclysmPlayerState* State =
+		Player ? Player->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	UCataclysmAbilitySystemComponent* ASC =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	ACataclysmEnemyCharacter* Enemy = SpawnEnemy(Scope.World, FVector(150.0f, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a possessed player with an ability system"), ASC)
+		|| !TestNotNull(TEXT("an enemy"), Enemy))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("no kill yet this run"), State->GetRunKills(), 0);
+	TestEqual(TEXT("and none ever"), State->GetLifetimeKills(), 0);
+	TestEqual(TEXT("the conditions read nought this run"), ASC->CurrentConditions().RunKills, 0);
+
+	UCataclysmSkillEffects::ApplyHit(Player, Enemy, 100.0f, FGameplayTagContainer());
+	UCataclysmCombatEvents::NoteDeath(Enemy);
+	TestEqual(TEXT("the player's kill: one this run"), State->GetRunKills(), 1);
+	TestEqual(TEXT("and one ever"), State->GetLifetimeKills(), 1);
+	TestEqual(TEXT("the conditions read one this run"), ASC->CurrentConditions().RunKills, 1);
+	TestEqual(TEXT("and one ever"), ASC->CurrentConditions().CharacterKills, 1);
+
+	// A SAVED LIFETIME PUT BACK MOVES ONLY THAT COUNT, and a negative is nought.
+	State->SetLifetimeKills(100);
+	TestEqual(TEXT("a saved lifetime of 100 reads 100"), ASC->CurrentConditions().CharacterKills, 100);
+	TestEqual(TEXT("and leaves this run's one"), ASC->CurrentConditions().RunKills, 1);
+	State->SetLifetimeKills(-5);
+	TestEqual(TEXT("a negative saved count reads nought"), State->GetLifetimeKills(), 0);
+
+	AActor* Creature = Scope.World->SpawnActor<AActor>();
+	UCataclysmAbilitySystemComponent* Other =
+		Creature ? NewObject<UCataclysmAbilitySystemComponent>(Creature) : nullptr;
+	if (TestNotNull(TEXT("an ability system with no player state"), Other))
+	{
+		Other->RegisterComponent();
+		Other->InitAbilityActorInfo(Creature, Creature);
+		TestEqual(TEXT("no player state: this run reads -1"), Other->CurrentConditions().RunKills, -1);
+		TestEqual(TEXT("and ever reads -1"), Other->CurrentConditions().CharacterKills, -1);
+	}
+
+	// THE TWO SCALES BY NAME, AND WHOLE STEPS ONLY.
+	ECataclysmStatScale Scale = ECataclysmStatScale::Fixed;
+	TestTrue(TEXT("run_kills names the run count"),
+		UCataclysmStatPipeline::ScaleNamed(TEXT("run_kills"), Scale)
+		&& Scale == ECataclysmStatScale::PerKillThisRun);
+	TestTrue(TEXT("character_kills names the character's"),
+		UCataclysmStatPipeline::ScaleNamed(TEXT("character_kills"), Scale)
+		&& Scale == ECataclysmStatScale::PerKillOfTheCharacter);
+	FCataclysmStatModifier PerThousand;
+	PerThousand.Value = 0.05f;
+	PerThousand.Scale = ECataclysmStatScale::PerKillThisRun;
+	PerThousand.ScaleStep = 1000.0f;
+	FCataclysmStatConditions Conditions;
+	Conditions.RunKills = 2999;
+	TestEqual(TEXT("2999 kills are two whole steps"),
+		UCataclysmStatPipeline::ScaledValue(PerThousand, Conditions), 0.1f, 0.00001f);
+	Conditions.RunKills = -1;
+	TestEqual(TEXT("an unknown count is worth nothing"),
+		UCataclysmStatPipeline::ScaledValue(PerThousand, Conditions), 0.0f, 0.00001f);
+
+	TestEqual(TEXT("the sheet's header line"),
+		UCataclysmCharacterSheetLayout::KillsLine(12, 340),
+		FString(TEXT("Kills this run 12   Kills 340")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillCounterIsSavedTest,
+	"Cataclysm.KillCounter.TheSaveRecordsCarryBothCounts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the kill counter. The character record carries the character's
+ * count, gathered beside its level; the run record carries this run's. A saved
+ * lifetime of 1000 and five kills this run write 1005 and 5.
+ */
+bool FCataclysmKillCounterIsSavedTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCounterTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter* Player = SpawnPossessedPlayer(Scope.World);
+	ACataclysmPlayerState* State =
+		Player ? Player->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	UCataclysmCharacterSave* Character = NewObject<UCataclysmCharacterSave>();
+	UCataclysmRunSave* Run = NewObject<UCataclysmRunSave>();
+	if (!TestNotNull(TEXT("a possessed player with a player state"), State))
+	{
+		return false;
+	}
+	State->SetLifetimeKills(1000);
+	for (int32 Kill = 0; Kill < 5; ++Kill)
+	{
+		State->NoteKill();
+	}
+	TestTrue(TEXT("the character was gathered"),
+		FCataclysmSaveGather::CharacterFrom(*Player, *Character));
+	TestEqual(TEXT("the character record holds 1005"), Character->LifetimeKills, 1005);
+	TestTrue(TEXT("the run's kills were gathered"),
+		FCataclysmSaveGather::RunKillsFrom(*Player, *Run));
+	TestEqual(TEXT("the run record holds 5"), Run->RunKills, 5);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmResistanceCapStatTest,
+	"Cataclysm.KillCounter.TheResistanceCapMovesWithItsRowsBetweenNoughtAndNinety",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833: `resistance_cap` moves the 70 a resistance is held to. With no
+ * row, 70; +10, 80; +40, 90 and no further, the design's hard ceiling; -80,
+ * nought. A blow on a defender at 85 resistance meets 70 without the row and 80
+ * with +10, so it deals 0.2 / 0.3 of what it did.
+ */
+bool FCataclysmResistanceCapStatTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCounterTest;
+	using namespace CataclysmEnchantmentEffectTest;
+	using FCalc = UCataclysmDamageCalculation;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FWearer Wearer(Scope.World);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	TestEqual(TEXT("nothing to ask: 70"), FCalc::ResistanceCapOf(nullptr), 70.0f, 0.001f);
+	TestEqual(TEXT("no row: 70"), FCalc::ResistanceCapOf(ASC), 70.0f, 0.001f);
+
+	// THE BLOW WITHOUT THE ROW, which is the control: 85 held, 70 met.
+	const FName Void(TEXT("Void"));
+	ASC->SetNumericAttributeBase(FCalc::ResistanceAttributeFor(Void), 85.0f);
+	ASC->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+	FCataclysmIncomingHit Blow;
+	Blow.Damage = 1000.0f;
+	Blow.DamageType = Void;
+	const auto Taken = [ASC](const FCataclysmIncomingHit& Hit)
+	{
+		return FCalc::Resolve(Hit, ASC, /*Tier=*/1, /*EvasionRoll=*/100.0f,
+							  /*BlockRoll=*/100.0f).DealtToHealth;
+	};
+	const float AtSeventy = Taken(Blow);
+	TestTrue(TEXT("the blow lands at all"), AtSeventy > 0.0f);
+
+	GrantResistanceCap(ASC, 10.0f);
+	TestEqual(TEXT("+10: 80"), FCalc::ResistanceCapOf(ASC), 80.0f, 0.001f);
+	if (AtSeventy > 0.0f)
+	{
+		TestEqual(TEXT("and the blow meets 80, not 70: 0.2 / 0.3 of it"),
+			Taken(Blow) / AtSeventy, 0.2f / 0.3f, 0.001f);
+	}
+
+	GrantResistanceCap(ASC, 40.0f);
+	TestEqual(TEXT("+40: 90, the ceiling, not 110"), FCalc::ResistanceCapOf(ASC), 90.0f, 0.001f);
+	GrantResistanceCap(ASC, -80.0f);
+	TestEqual(TEXT("-80: nought, not -10"), FCalc::ResistanceCapOf(ASC), 0.0f, 0.001f);
+	TestEqual(TEXT("under a cap of 80, 85 held meets 80"),
+		FCalc::EffectiveResistanceUnderCap(85.0f, 0.0f, 80.0f), 80.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmKillsThisRunRowsTest,
+	"Cataclysm.Enchantments.TheKillsThisRunRowsGrowWithEachThousandKills",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, the kill counter. Worn at the top of their ranges:
+ * "Your damage is increased by 0.01%-0.05% permanently for every 1000 enemies
+ * killed this run" adds 0.05% to attack and spell damage for each whole 1000,
+ * and "Your maximum HP is increased by 0.01%-0.05% permanently for every 1000
+ * enemies killed this run" adds 0.05% to maximum health. 999 kills are
+ * nothing; 1000 are one step; 2999 are two.
+ */
+bool FCataclysmKillsThisRunRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmKillCounterTest;
+	using namespace CataclysmEnchantmentEffectTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	ACataclysmPlayerCharacter* Player = SpawnPossessedPlayer(Scope.World);
+	ACataclysmPlayerState* State =
+		Player ? Player->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+	UCataclysmAbilitySystemComponent* ASC =
+		State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+	UCataclysmEquipmentComponent* Equipment = Player ? Player->GetEquipment() : nullptr;
+	if (!TestNotNull(TEXT("a possessed player"), ASC) || !TestNotNull(TEXT("its equipment"), Equipment))
+	{
+		return false;
+	}
+	Equipment->UnequipEverything();
+
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		const TCHAR* Stats[2];
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Your_damage_is_increased_by_0_01_0_05_permanen"),
+		 {TEXT("attack_damage"), TEXT("spell_damage")}},
+		{TEXT("Positive_Your_maximum_HP_is_increased_by_0_01_0_05_perm"),
+		 {TEXT("max_health"), nullptr}},
+	};
+	const FGameplayTagContainer NoTags;
+	int32 Killed = 0;
+	const auto KillUpTo = [State, &Killed](int32 Count)
+	{
+		for (; Killed < Count; ++Killed)
+		{
+			State->NoteKill();
+		}
+	};
+	for (const FCase& Case : Cases)
+	{
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Equipment->Equip(Carrying(TEXT("Head_Helm"), Case.Enchantment, DrawbackWithNoEffect),
+						 Removed, AlsoRemoved, Slot);
+		Equipment->RefreshAttributes(ASC);
+
+		// EVERY STAT AT THE SAME COUNTS, from the kills already made, since a
+		// count only rises: one short of the next thousand, the thousand, and
+		// two thousand more less one.
+		const int32 Next = (State->GetRunKills() / 1000 + 1) * 1000;
+		TMap<FName, float> Before;
+		for (const TCHAR* Stat : Case.Stats)
+		{
+			if (Stat)
+			{
+				Before.Add(FName(Stat), ASC->IncreasesForStat(FName(Stat), NoTags));
+			}
+		}
+		const auto Check = [this, ASC, &NoTags, &Before](const TCHAR* When, float Added)
+		{
+			for (const TPair<FName, float>& Each : Before)
+			{
+				TestEqual(FString::Printf(TEXT("%s, %s: %.2f%% added. %s"), *Each.Key.ToString(),
+										  When, Added * 100.0f, StaleAsset),
+					ASC->IncreasesForStat(Each.Key, NoTags) - Each.Value, Added, 0.000001f);
+			}
+		};
+		KillUpTo(Next - 1);
+		Check(TEXT("one short of the next thousand"), 0.0f);
+		KillUpTo(Next);
+		Check(TEXT("the next thousand"), 0.0005f);
+		KillUpTo(Next + 2000 - 1);
+		Check(TEXT("two thousand more less one"), 0.0005f + 0.0005f);
+		Equipment->Unequip(Slot, Removed);
+	}
 	return true;
 }
 

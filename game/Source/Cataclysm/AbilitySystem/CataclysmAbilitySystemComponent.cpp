@@ -994,6 +994,10 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::CurrentConditions(
 			Cast<ACataclysmPlayerState>(GetOwnerActor()))
 	{
 		State.ClassPointsSpent = Player->GetPassiveAllocation().Total();
+
+		// AND THE KILLS, WHICH ONLY A PLAYER COUNTS. Issue #1833.
+		State.RunKills = Player->GetRunKills();
+		State.CharacterKills = Player->GetLifetimeKills();
 	}
 
 	// AND WHAT THE SKILL IN HAND COST, WHICH IS THE ONE READING HERE THAT IS NOT

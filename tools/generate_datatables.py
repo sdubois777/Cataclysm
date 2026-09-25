@@ -4261,6 +4261,16 @@ SCALES = {
     # so the row carries the sentence's own range. Issue #1815. The same 0 to
     # 1,000 bound as `max_mana`.
     "mana_held_percent": (0.0, 1000.0, "an amount of mana"),
+
+    # "... for every 1000 enemies killed this run" is `run_kills` with a step of
+    # 1000, and "You lose 1-4% max resistances for every 100,000 - 500,000
+    # kills" is `character_kills`. Issue #1833, the kill counter. A kill is the
+    # character's own "kill" event, and "this run" is since the session began.
+    # Bounded at a million: a campaign reaches about 335,500 creatures if every
+    # one dies (sim/analyse_experience_curve.py, 257.5 a floor, 50.1 floors,
+    # 26 dungeons), and the widest stated step is 500,000.
+    "run_kills": (0.0, 1_000_000.0, "a number of kills this run"),
+    "character_kills": (0.0, 1_000_000.0, "a number of kills in every run"),
 }
 
 
