@@ -15,7 +15,9 @@
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
+#include "AbilitySystem/CataclysmShoulderThrough.h"
 #include "AbilitySystem/CataclysmSkillTemplates.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Input/CataclysmInputComponent.h"
@@ -378,6 +380,20 @@ void ACataclysmPlayerController::PostProcessInput(const float DeltaTime, const b
 		if (!Carried.IsNearlyZero())
 		{
 			ControlledPawn->AddMovementInput(Carried, 1.0f, /*bForce=*/false);
+		}
+
+		// SHOULDER THROUGH ASKS ABOUT ORDINARY WALKING ONLY: not while a
+		// movement skill carries the character, and not while it walks to an
+		// enemy it clicked, which is an attack order. The acceleration and not
+		// the velocity, because pressing into an enemy's capsule covers no
+		// ground. Ruled 2026-09-25. Like the charge above, no automation test
+		// reaches this line; the library's `Step` is what they drive.
+		const ACharacter* Walker = Cast<ACharacter>(ControlledPawn);
+		if (Carried.IsNearlyZero() && !PendingAttack.IsValid() && Walker
+			&& Walker->GetCharacterMovement())
+		{
+			UCataclysmShoulderThrough::Step(
+				ControlledPawn, Walker->GetCharacterMovement()->GetCurrentAcceleration());
 		}
 	}
 

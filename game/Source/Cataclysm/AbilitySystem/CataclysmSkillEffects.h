@@ -1803,6 +1803,21 @@ public:
 	static bool ApplyKnockback(AActor* Instigator, AActor* Target,
 							   float DistanceCm);
 
+	/**
+	 * Shove `Target` along `Direction` rather than straight away from the
+	 * instigator. Issue #1515, Shoulder Through's "pushes it aside". The same
+	 * displacement as `ApplyKnockback` -- immunity, crowd control resistance and
+	 * the halving rule all apply -- and a push that landed staggers the same
+	 * way. Ruled 2026-09-25: the push is displacement.
+	 *
+	 * @param Direction   along the ground; its height and length are ignored
+	 * @param DistanceCm  how far to shove before the halving rule. Zero or less
+	 *                    does nothing.
+	 * @return whether the target was moved
+	 */
+	static bool ApplyPushAside(AActor* Instigator, AActor* Target,
+							   const FVector& Direction, float DistanceCm);
+
 	// --- Stagger ----------------------------------------------------------
 	//
 	// WHAT A STAGGER IS HERE, answered by the project owner on 2026-09-11: "A

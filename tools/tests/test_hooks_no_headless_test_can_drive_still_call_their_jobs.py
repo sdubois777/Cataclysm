@@ -271,6 +271,23 @@ HOOKS = {
             "UCataclysmCommand::AttackIntervalScaleFor",
         },
     },
+    # THE PLAYER CONTROLLER'S FRAME, WHICH NO AUTOMATION TEST HAS. Issue #1515,
+    # Shoulder Through. The tests run with no player controller, so they drive
+    # `UCataclysmShoulderThrough::Step` directly with the direction this hook
+    # would pass, and deleting the call here would leave every one of them
+    # passing while walking into an enemy did nothing.
+    "ACataclysmPlayerController::PostProcessInput": {
+        "file": (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Player"
+                 / "CataclysmPlayerController.cpp"),
+        "jobs": {
+            "UCataclysmShoulderThrough::Step":
+                "Shoulder Through: walking into an enemy pushes it aside and "
+                "strikes it, issue #1515",
+        },
+        "questions": {
+            "UCataclysmMovementSkill::AdvanceDirectionFor",
+        },
+    },
 }
 
 

@@ -1449,6 +1449,16 @@ public:
 	}
 
 	/**
+	 * Shoulder Through's once-a-second-per-enemy limit. Issue #1515, ruled
+	 * 2026-09-25: walking into a crowd must not push and strike on every frame.
+	 * Each enemy is kept by a weak pointer, so one that died leaves nothing
+	 * behind, and entries for enemies that are gone are dropped when a new one
+	 * is noted.
+	 */
+	bool MayShoulderThrough(const AActor* Enemy) const;
+	void NoteShoulderedThrough(const AActor* Enemy, float UntilSeconds);
+
+	/**
 	 * Sacrificial Ward's figure: the seconds between wards, above zero meaning
 	 * the keystone is held. Issue #1515, `Ritualist_keystone_c_kC`: "Damage that
 	 * would break your Energy Shield instead destroys the minion with the least
@@ -2711,6 +2721,9 @@ protected:
 	/** The skill a Follow Through repeat waits to make, and until when. */
 	FGameplayAbilitySpecHandle PendingFollowThroughHandle;
 	float PendingFollowThroughUntilSeconds = -1.0f;
+
+	/** When Shoulder Through may next push each enemy, in world seconds. */
+	TMap<TWeakObjectPtr<const AActor>, float> ShoulderedThroughUntil;
 
 	/** Until when, in world seconds, this character takes no damage. -1 is not. */
 	float ImmuneAfterLethalHitUntilSeconds = -1.0f;

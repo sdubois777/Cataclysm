@@ -1655,6 +1655,34 @@ const TCHAR* UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat
 const TCHAR* UCataclysmAbilitySystemComponent::ImmuneAfterLethalHitSecondsStat =
 	TEXT("damage_immunity_after_lethal_hit_seconds");
 
+bool UCataclysmAbilitySystemComponent::MayShoulderThrough(const AActor* Enemy) const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !Enemy)
+	{
+		return false;
+	}
+	const float* Until = ShoulderedThroughUntil.Find(Enemy);
+	return !Until || World->GetTimeSeconds() >= *Until;
+}
+
+void UCataclysmAbilitySystemComponent::NoteShoulderedThrough(const AActor* Enemy,
+															 float UntilSeconds)
+{
+	if (!Enemy)
+	{
+		return;
+	}
+	for (auto It = ShoulderedThroughUntil.CreateIterator(); It; ++It)
+	{
+		if (!It.Key().IsValid())
+		{
+			It.RemoveCurrent();
+		}
+	}
+	ShoulderedThroughUntil.Add(Enemy, UntilSeconds);
+}
+
 bool UCataclysmAbilitySystemComponent::MaySurviveLethalHit() const
 {
 	const UWorld* World = GetWorld();

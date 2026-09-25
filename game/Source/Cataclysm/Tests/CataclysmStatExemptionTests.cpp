@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
+#include "AbilitySystem/CataclysmShoulderThrough.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStacks.h"
 #include "Character/CataclysmPassiveTree.h"
@@ -1413,6 +1414,36 @@ namespace CataclysmStatExemptionTest
 		Test.TestTrue(TEXT("and one near a fighter holding it is, so "
 						   "NowhereToRunStep really reads it"),
 					  HoldsAnImp(Holder));
+	}
+
+	/**
+	 * `moving_into_enemy_pushes_aside`, read by `UCataclysmShoulderThrough::Step`.
+	 * Issue #1515, Shoulder Through. A walker holding it pushes the enemy it
+	 * walks into; one without it does not.
+	 */
+	void ProbeShoulderThrough(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		// 60 cm apart, inside the 34 + 34 + 10 that touches.
+		FScopedSwinger Plain(World, FVector(0, 100 * M, 0));
+		FScopedSwinger PlainsEnemy(World, FVector(0.6f * M, 100 * M, 0));
+		FScopedSwinger Held(World, FVector::ZeroVector);
+		FScopedSwinger HeldsEnemy(World, FVector(0.6f * M, 0, 0));
+		GrantFlats(Held.Actor, {{FName(UCataclysmShoulderThrough::Stat), 1.0f}});
+
+		Test.TestNull(TEXT("a walker without moving_into_enemy_pushes_aside pushes "
+						   "nothing"),
+					  UCataclysmShoulderThrough::Step(Plain.Actor, FVector::ForwardVector));
+		Test.TestTrue(TEXT("and one holding it pushes the enemy it walks into, so "
+						   "Step really reads it"),
+					  UCataclysmShoulderThrough::Step(Held.Actor, FVector::ForwardVector)
+						  == HeldsEnemy.Actor);
 	}
 
 	/**
@@ -3179,6 +3210,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("two_handed_weapon_in_each_hand"), &ProbeBothHandsFull},
 			{TEXT("melee_kill_repeats_attack_every_seconds"), &ProbeFollowThrough},
 			{TEXT("enemies_cannot_move_away_within_metres"), &ProbeNowhereToRun},
+			{TEXT("moving_into_enemy_pushes_aside"), &ProbeShoulderThrough},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},
 			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},

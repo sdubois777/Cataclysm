@@ -2447,6 +2447,32 @@ bool UCataclysmSkillEffects::ApplyKnockback(AActor* Instigator, AActor* Target,
 	return true;
 }
 
+bool UCataclysmSkillEffects::ApplyPushAside(AActor* Instigator, AActor* Target,
+											const FVector& Direction, float DistanceCm)
+{
+	if (DistanceCm <= 0.0f || !IsValid(Instigator) || !IsValid(Target))
+	{
+		return false;
+	}
+
+	FVector Along = Direction;
+	Along.Z = 0.0f;
+	if (Along.IsNearlyZero())
+	{
+		return false;
+	}
+
+	// THE SAME DISPLACEMENT AND THE SAME STAGGER AS A KNOCKBACK, which is what
+	// ruling it displacement means. Only the direction differs.
+	if (!CataclysmDisplace(Target, Along.GetSafeNormal() * DistanceCm))
+	{
+		return false;
+	}
+	ApplyStagger(Instigator, Target);
+	CataclysmSkillEffectsNoteCrowdControl(Instigator);
+	return true;
+}
+
 bool UCataclysmSkillEffects::ApplyPull(AActor* Instigator, AActor* Target,
 									   float DistanceCm)
 {

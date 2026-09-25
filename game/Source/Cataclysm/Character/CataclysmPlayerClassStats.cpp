@@ -271,6 +271,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Nowhere to Run's radius, read by UCataclysmDebuffs::NowhereToRunStep and,
 		// as a no-decay radius, by UCataclysmFervour::DecayStep. Issue #1515.
 		TEXT("enemies_cannot_move_away_within_metres"),
+		// Shoulder Through, above zero meaning held, read by
+		// UCataclysmShoulderThrough::Step. Issue #1515.
+		TEXT("moving_into_enemy_pushes_aside"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.
