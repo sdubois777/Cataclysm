@@ -260,6 +260,141 @@ break on a value applied twice is invisible", which the break was chosen without
 
 ---
 
+## 2026-09-25 — Void Parasite: a creature the player kills leaves a voidling one time in ten; a voidling that reaches the player attaches and takes 6% of their damage, resistances and movement speed, to five; standing in the floor's one light zone clears them all
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the flag that marks a voidling);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the roll, the stacks, and what the stacks take off the player's stats);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the roll's console variable, the
+voidling left by a kill, attaching, the light zone, clearing, forgetting at the floor's end, the panel
+line); `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Voidling" under a
+voidling's health bar); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
+tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
+have.
+
+### The row
+
+`Void_Void_Parasite` in `game/Data/DungeonModifiers.csv`, weight 10: "Every enemy you kill has a chance to
+spawn a parasitic voidling. If the voidling reaches you, it will attach to you and siphon your power,
+reducing your damage, resistances, and movement speed. The voidling can be removed by standing in a "light"
+zone, but these are rare." It states no figure. The design document and this log do not mention a voidling.
+
+### What the rule does
+
+When the player kills a creature on a floor carrying the row, one time in ten a voidling stands where the
+creature died: an Imp at Common, with the Imp's health, brain and attack, "Voidling" under its bar, paying
+nothing when killed and not one of the floor's creatures. It sees as far as a Vengeful Wraith, so it comes
+for the player from anywhere on the floor. A voidling the player kills first attaches nothing, and its own
+death leaves no voidling. On any beat that a living voidling stands within 150 cm of the player, it is gone
+and the player carries one more voidling, at most five. Each takes 6% off the player's attack damage, spell
+damage, movement speed and all eight resistances. The floor has one light zone, 300 cm across its radius, at
+least twenty metres from the entrance, visible and doing no damage; standing in it clears every voidling at
+once, and it stays. Everything attached ends with the floor; a Horde arena keeps its voidlings, its stacks
+and its light for its waves. The panel says how many are attached and what each takes, or that none is.
+
+**The resistance form, as the coordinating session asked this entry to state.** The eight resistances are
+lowered exactly as The Nihil's Embrace and Chaos Touched lower them: one More-bucket multiplier of -6 per
+stack on each resistance stat. So each voidling takes **6% of the resistance, not 6 percentage points of
+it**: a player holding 50% fire resistance holds 47% with one attached and 35% with five. A player holding
+no resistance loses nothing from this part of the rule.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every
+figure is a play-test value:**
+
+- **10% for each creature the player kills**, the kill read as Demon Prince reads it. Floor sources and
+  deaths that pay nothing leave none.
+- **An Imp-health "Voidling"** that pays nothing, is raised by the rule, is not one of the floor's creatures,
+  and stands where the creature died. Killed first, it attaches nothing.
+- **It attaches within 150 cm, on the beat.**
+- **6% a stack, at most 5 (30%)**, on attack damage and spell damage as "more" rows, as the enchantment "You
+  deal 20%-35% less damage" writes them; on all eight resistances in the form The Nihil's Embrace and Chaos
+  Touched already use, with this entry saying which that is; and on movement speed. A test must show the
+  player's actual damage falls, since no floor rule had written attack damage before.
+- **One light zone a floor**, at least 20 m from the entrance, 300 cm, visible, no damage; standing in it
+  clears every stack; it stays; a Horde arena has one, kept.
+- **Stacks clear when the floor ends.** On a Horde floor voidlings spawn as normal, and the stacks and the
+  light zone are kept for the arena.
+- **The panel lines as proposed.**
+- **It keeps the Imp's attack.** The row does not say it is harmless, and attaching at 150 cm on the beat
+  means it will usually attach within a quarter second of arriving.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **A voidling is an Imp carrying a flag, `bIsAVoidling`, and not a class of its own**, which the proposal
+  had suggested. A class deriving from the Imp would name the Imp's archetype row, and
+  `FCataclysmSaveApply::ClassForArchetype` gives a saved archetype to the first class that claims it, so a
+  saved Imp could have come back as a voidling. The flag keeps the Imp's brain, attack and figures from
+  `SpawnPlacedCreature` and leaves that map untouched, which answers the request to check the save mapping
+  for a new class: there is no new class. A voidling is raised by a rule, so the save gather skips it.
+- **It sees as far as a Vengeful Wraith** (`VengefulWraithsSightMultiplier`), whose figure is held by a
+  compile-time check to cover the largest floor this game builds, because the row has it reach the player.
+- **An Imp comes close enough to attach.** It walks to 80% of its 132 cm reach, 105.6 cm between centres
+  (`ApproachFractionOfReach` in `CataclysmEnemyController.h` and `MakeChaseMoveRequest` in
+  `CataclysmEnemyController.cpp`), which is inside 150 cm. That is read from the code and has not been
+  measured in play.
+- **The light zone is drawn in Celestial's colours**, because the row calls it light and the row's own Void
+  colours would draw it as more of the void. It stands on the cell Eternal Chorus's picker gives.
+- **A sixth voidling reaching a player carrying five is still gone**, and adds nothing.
+- **Stacks carried to a floor without the row still come off**: the rule's step runs on any floor where the
+  stacks and what is on the character differ, as Chaos Touched's does.
+
+### The research: creatures that chase the player, and light that clears a debuff
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was
+quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, Nightmare Dungeon affixes | https://maxroll.gg/d4/resources/nightmare-dungeons | "Drifting Shades chase players. On contact, they explode for heavy damage and create a Nightmare Field that Dazes victims." |
+| Diablo IV, Nightmare Dungeon affixes | the same page | "Killing a monster has a chance to spawn a Blood Blister." |
+| Path of Exile, Delve | https://poedb.tw/us/Darkness | "Stepping into a lit area clears the debuff." |
+
+**What it settles and what it does not.** Diablo IV ships both halves of the voidling: a thing spawned by a
+chance on a kill (Blood Blisters), and a thing that chases the player and acts on contact (Drifting Shades).
+Path of Exile's Delve ships the cure: a debuff that stepping into light clears. No page read joins them, and
+none has a chaser that stays on the player as a stack or takes a share of damage, resistance and speed; so
+the stacking, the 6%, the five and the one light zone a floor are this game's own. Icy Veins' Nightmare
+Dungeon guide answered 403 and was not read.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `VoidParasiteTakesSixPercentAStackToFiveOnATenPercentRoll`: the six figures; a roll of 9.99 leaves a
+  voidling and 10 does not; stacks go 0 to 1, 4 to 5 and stay 5; they take 0, 6, 30 and, past five, 30.
+- `AKillOfThePlayersLeavesAVoidlingAndNothingElseDoes`: the player's kill leaves a voidling, an Imp at
+  Common with a brain, paying nothing, raised by the rule, not one of the floor's creatures, saying exactly
+  "Voidling", in the cell where the creature died, at full health; a roll of 10 leaves none; a creature's kill
+  leaves none; killing the voidling leaves none and it is no longer standing; the panel before any.
+- `AVoidlingWithinReachAttachesAndEachStackTakesSixPercent`: 200 cm away it does not attach; 100 cm away it
+  attaches and is gone; one stack puts 6% on attack damage, spell damage and movement speed, and a -6
+  More-bucket multiplier on each of the eight resistances; the panel; six more leave five, and 30%.
+- `FiveAttachedVoidlingsTakeThirtyPercentOffThePlayersBlow`: with critical strikes pinned off, the same blow
+  on the same Imp brings 70% of what it brought before five voidlings attached, counted before the Imp's
+  armour and damage reduction, and less of it reaches the Imp's health.
+- `StandingInTheLightClearsEveryVoidlingAndTheLightStays`: the floor's one light from the first beat, far
+  enough from the entrance, covering its middle and not 350 cm out; two attached; standing in it clears
+  both, takes the figures off attack damage and movement speed, and leaves the light where it was; the panel.
+- `VoidlingsEndWithTheFloorAndAHordeArenaKeepsThem`: on the next floor none is attached, none stands, the one
+  left behind is gone and nothing is on attack damage; a Horde arena has its light, and its next wave keeps
+  the one attached, puts it back on the player's stats, and draws the light again in the same place.
+
+One Python check: the row still says "every enemy you kill", "a chance", "reaches you", "attach", "your
+damage, resistances, and movement speed", "standing in", "light" and "rare".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Trial of Endurance: a floor not cleared within 300 seconds of being placed doubles every creature's damage and all-resistance until it ends; every floor now logs when it is cleared
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a sixth key of the damage

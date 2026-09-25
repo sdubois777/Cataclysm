@@ -291,6 +291,16 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	float TouchedResistanceLessPercent = 0.0f;
 
 	/**
+	 * What the voidlings attached to the player take, in percent, off attack damage, spell damage, all
+	 * eight resistances and movement speed alike. Void Parasite. Issues #1820 and #41.
+	 *
+	 * ITS OWN FIELD, for the reason `SicknessMaxHealthLessPercent` gives: Chaos Touched, The Nihil's
+	 * Embrace and three slows already write these stats, and a floor can carry them with this row.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float ParasiteLessPercent = 0.0f;
+
+	/**
 	 * How much faster the player moves while standing on a mushroom that helps.
 	 * Fungal Overgrowth. Issues #1820 and #41.
 	 *
@@ -444,6 +454,7 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& TouchedSpeedMorePercent <= 0.0f && TouchedSpeedLessPercent <= 0.0f
 			&& TouchedAttackSpeedMorePercent <= 0.0f && TouchedAttackSpeedLessPercent <= 0.0f
 			&& TouchedResistanceMorePercent <= 0.0f && TouchedResistanceLessPercent <= 0.0f
+			&& ParasiteLessPercent <= 0.0f
 			&& MushroomSpeedMorePercent <= 0.0f
 			&& MushroomSpeedLessPercent <= 0.0f
 			&& JudgmentResistanceLessPercent <= 0.0f
@@ -2056,6 +2067,35 @@ public:
 	 * - NO TIMER ON A HORDE FLOOR, whose next wave walks in by design before the last is cleared.
 	 */
 	static const TCHAR* TrialOfEnduranceKey;
+
+	/**
+	 * The row where a kill of the player's may leave a voidling that comes for the player and, reaching
+	 * them, takes some of their power until they stand in light. Issues #1820 and #41.
+	 *
+	 * "Every enemy you kill has a chance to spawn a parasitic voidling. If the voidling reaches you, it
+	 * will attach to you and siphon your power, reducing your damage, resistances, and movement speed.
+	 * The voidling can be removed by standing in a "light" zone, but these are rare."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - A CREATURE THE PLAYER KILLS HAS `VoidParasiteChancePercent` OF LEAVING A VOIDLING where it died,
+	 *   the kill read as Demon Prince reads it. A floor source, and a death that pays nothing -- a
+	 *   voidling's own among them -- leaves none.
+	 * - A VOIDLING IS AN IMP AT COMMON, "Voidling" under its bar, keeping the Imp's attack. It pays
+	 *   nothing, is raised by the rule and is not one of the floor's creatures. Killed first, it
+	 *   attaches nothing.
+	 * - WITHIN `VoidParasiteAttachCm` OF THE PLAYER ON A BEAT IT ATTACHES: it is gone, and the player
+	 *   carries one more stack, at most `VoidParasiteMostStacks`.
+	 * - EACH STACK TAKES `VoidParasitePercentPerStack` OFF ATTACK DAMAGE AND SPELL DAMAGE, as "more"
+	 *   multipliers as the enchantment "You deal 20%-35% less damage" writes them; OFF ALL EIGHT
+	 *   RESISTANCES in the form The Nihil's Embrace and Chaos Touched use, a More-bucket multiplier, so
+	 *   six per cent OF the resistance and not six points of it; AND OFF MOVEMENT SPEED.
+	 * - ONE LIGHT ZONE A FLOOR, `VoidParasiteLightRadiusCm` across the radius, at least
+	 *   `EternalChorusApartCm` from the entrance, visible and doing no damage. Standing in it clears every
+	 *   stack. It stays. A Horde arena has one, kept for its waves.
+	 * - STACKS CLEAR WHEN THE FLOOR ENDS; a Horde arena keeps them for its waves.
+	 */
+	static const TCHAR* VoidParasiteKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -4464,6 +4504,25 @@ public:
 	static constexpr int32 InfestedVeinsGuardians = 2;
 	static constexpr int32 InfestedVeinsGuardianRung = RoyalGuardLowestRungThatSummons;
 
+	/**
+	 * Void Parasite's figures, every one a play-test value. See the key. The chance is Demon Prince's
+	 * ten per cent; five stacks of six take 30%, the bottom of the enchantment "You deal 20%-35% less
+	 * damage".
+	 */
+	static constexpr float VoidParasiteChancePercent = 10.0f;
+	static constexpr float VoidParasiteAttachCm = 150.0f;
+	static constexpr float VoidParasitePercentPerStack = 6.0f;
+	static constexpr int32 VoidParasiteMostStacks = 5;
+	static constexpr int32 VoidParasiteLightZonesPerFloor = 1;
+	static constexpr float VoidParasiteLightRadiusCm = 300.0f;
+
+	static_assert(
+		VoidParasiteChancePercent > 0.0f && VoidParasiteChancePercent < 100.0f && VoidParasiteAttachCm > 0.0f
+			&& VoidParasitePercentPerStack > 0.0f && VoidParasiteMostStacks > 0
+			&& VoidParasitePercentPerStack * VoidParasiteMostStacks < 100.0f
+			&& VoidParasiteLightZonesPerFloor > 0 && VoidParasiteLightRadiusCm > 0.0f,
+		"A voidling that never came, took nothing or took everything, or no light to clear it, is not the row.");
+
 	static_assert(
 		InfestedVeinsPerFloor > 0 && InfestedVeinsPerHordeArena > 0 && InfestedVeinsRadiusCm > 0.0f
 			&& InfestedVeinsPercentPerSecond > 0.0f && InfestedVeinsRegrowSeconds > 0.0f
@@ -5026,6 +5085,15 @@ public:
 
 	/** Whether a Trial of Endurance this many seconds old has run out. */
 	static bool TrialOfEnduranceHasRunOut(float SecondsSincePlaced);
+
+	/** Whether a kill of the player's leaves a voidling on this roll, 0 to 100: under the chance, not on it. */
+	static bool VoidlingRises(float Roll);
+
+	/** The player's stacks after one more voidling attaches: one more, never past the most. */
+	static int32 VoidParasiteStacksAfterAttaching(int32 Stacks);
+
+	/** What this many stacks take, in percent, off each stat the row names; nothing for none. */
+	static float VoidParasiteLessPercent(int32 Stacks);
 
 	/**
 	 * What the creatures of the wave after this many waves are placed with, as a

@@ -1075,6 +1075,19 @@ public:
 	bool bIsVengefulWraith = false;
 
 	/**
+	 * Whether this creature is a voidling of the Void Parasite floor rule: an Imp that comes for the player
+	 * and attaches on reaching them. Issues #1820 and #41. It puts "Voidling" under the health bar.
+	 *
+	 * A FLAG ON AN IMP AND NOT A CLASS OF ITS OWN. A class deriving from the Imp would name the Imp's
+	 * archetype row, and `FCataclysmSaveApply::ClassForArchetype` gives a saved archetype to the first
+	 * class that claims it, so a saved Imp could have come back as a voidling. The flag keeps the Imp's
+	 * brain, attack and figures from `SpawnPlacedCreature` and leaves that map alone. Permanent, for the
+	 * reason `bIsVengefulWraith` gives.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsAVoidling = false;
+
+	/**
 	 * Whether this creature is one that already died and was brought back. Issues
 	 * #1820 and #41.
 	 *

@@ -541,13 +541,21 @@ FString UCataclysmCombatOverlay::VeinTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::VoidlingTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsAVoidling && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Voidling"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
-		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), ArmourRemovedTextFor(Actor),
-		  SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
+		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
+		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

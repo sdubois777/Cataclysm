@@ -715,6 +715,17 @@ static TAutoConsoleVariable<float> CVarVengefulWraithRoll(
 	ECVF_Cheat);
 
 /**
+ * The roll Void Parasite offers a creature the player killed, pinned for tests. The same shape as
+ * the one above, for the same reason. Issues #1820 and #41.
+ */
+static TAutoConsoleVariable<float> CVarVoidParasiteRoll(
+	TEXT("Cataclysm.VoidParasiteRoll"),
+	-1.0f,
+	TEXT("Pin the roll Void Parasite offers a creature the player killed, 0 to 100. ")
+	TEXT("-1 rolls normally."),
+	ECVF_Cheat);
+
+/**
  * The roll Dead Rising offers every creature that dies, pinned for tests. The same shape
  * as the one above, for the same reason.
  */
@@ -850,6 +861,12 @@ namespace
 	float DungeonGameModeVengefulWraithRoll()
 	{
 		const float Pinned = CVarVengefulWraithRoll.GetValueOnAnyThread();
+		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	}
+
+	float DungeonGameModeVoidParasiteRoll()
+	{
+		const float Pinned = CVarVoidParasiteRoll.GetValueOnAnyThread();
 		return Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
 	}
 
@@ -1498,6 +1515,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// Horde arena's waves keep it. Issues #1820 and #41.
 		ForgetTheVeins();
 		PlaceTheVeins();
+
+		// AND VOID PARASITE: a new arena's voidlings, light and stacks start again, and a Horde arena's
+		// waves keep them. Issues #1820 and #41.
+		ForgetTheVoidParasite();
+		PlaceTheLight();
 	}
 	else
 	{
@@ -4139,6 +4161,143 @@ void ACataclysmDungeonGameMode::StepInfestedVeins(
 	}
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::VoidlingsNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Voidlings)
+	{
+		ACataclysmEnemyCharacter* Voidling = One.Get();
+		if (IsValid(Voidling) && !UCataclysmSkillEffects::IsDead(Voidling))
+		{
+			Standing.Add(Voidling);
+		}
+	}
+	return Standing;
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::VoidParasiteLightNow() const
+{
+	return VoidParasiteLight.Get();
+}
+
+void ACataclysmDungeonGameMode::ForgetTheVoidParasite()
+{
+	for (const TWeakObjectPtr<ACataclysmEnemyCharacter>& One : Voidlings)
+	{
+		if (ACataclysmEnemyCharacter* Voidling = One.Get())
+		{
+			Voidling->Destroy();
+		}
+	}
+	Voidlings.Reset();
+	if (ACataclysmGroundZone* Light = VoidParasiteLight.Get())
+	{
+		Light->Destroy();
+	}
+	VoidParasiteLight = nullptr;
+	VoidParasiteLightCell = FIntPoint(-1, -1);
+
+	// THE STACKS AND NOT WHAT WAS APPLIED: the next beat sees the two differ and takes the figure off the
+	// character, on a floor carrying the row or not.
+	VoidParasiteStacks = 0;
+	VoidParasitePanelStacks = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheLight()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::VoidParasiteKey)))
+	{
+		return;
+	}
+
+	// ONE A FLOOR, AND ONE ON A HORDE ARENA, KEPT, at least `EternalChorusApartCm` from the entrance by
+	// Eternal Chorus's picker, so a player does not start the floor standing in it.
+	const TArray<FIntPoint> Cells = EternalChorusCells(*CurrentFloor, Effects::VoidParasiteLightZonesPerFloor);
+	if (!Cells.IsEmpty())
+	{
+		VoidParasiteLightCell = Cells[0];
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Void Parasite: %d light zone(s) on floor %d"), Cells.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepVoidParasite(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+
+	if (FloorBrief.Modifiers.Contains(FName(Effects::VoidParasiteKey)) && CurrentFloor && CurrentFloor->IsBuilt())
+	{
+		const FVector Feet = Player->GetActorLocation();
+
+		// THE LIGHT ZONE DRAWN AGAIN whenever it is missing, which is after a Horde arena's every wave. It
+		// does no damage, and it is drawn in Celestial's colours because the row calls it light and the
+		// row's own Void colours would draw it as more of the void.
+		ACataclysmGroundZone* Light = VoidParasiteLight.Get();
+		if (!Light && VoidParasiteLightCell != FIntPoint(-1, -1))
+		{
+			if (ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World))
+			{
+				const FVector Where = CurrentFloor->WorldOfCell(VoidParasiteLightCell);
+				Light = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::VoidParasiteLightRadiusCm, 0.0f,
+					/*bAffectsEveryone=*/false, /*InDrawnAsType=*/FName(TEXT("Celestial")));
+				VoidParasiteLight = Light;
+			}
+		}
+
+		// EACH VOIDLING WITHIN REACH ATTACHES: it is gone, paying nothing because it did not die, and the
+		// player carries one more stack, never past the most. A killed voidling is forgotten; in play it
+		// is destroyed on the next tick, and a test world keeps it.
+		for (auto Entry = Voidlings.CreateIterator(); Entry; ++Entry)
+		{
+			ACataclysmEnemyCharacter* Voidling = Entry->Get();
+			if (!IsValid(Voidling) || UCataclysmSkillEffects::IsDead(Voidling))
+			{
+				Entry.RemoveCurrent();
+				continue;
+			}
+			if (FVector::Dist2D(Voidling->GetActorLocation(), Feet) <= Effects::VoidParasiteAttachCm)
+			{
+				VoidParasiteStacks = Effects::VoidParasiteStacksAfterAttaching(VoidParasiteStacks);
+				Entry.RemoveCurrent();
+				Voidling->Destroy();
+				UE_LOG(LogCataclysm, Log, TEXT("Void Parasite: a voidling attached on floor %d; %d attached"),
+					   FloorNumber, VoidParasiteStacks);
+			}
+		}
+
+		// STANDING IN THE LIGHT CLEARS EVERY STACK AT ONCE. The zone stays.
+		if (VoidParasiteStacks > 0 && Light && Light->Covers(Feet))
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("Void Parasite: the light cleared %d voidling(s) on floor %d"),
+				   VoidParasiteStacks, FloorNumber);
+			VoidParasiteStacks = 0;
+		}
+	}
+
+	// THE PLAYER'S STATS WRITTEN AGAIN WHEN THE STACKS CHANGED, on any floor, as Chaos Touched's are.
+	if (VoidParasiteStacks != VoidParasiteStacksApplied)
+	{
+		VoidParasiteStacksApplied = VoidParasiteStacks;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+	if (VoidParasiteStacks != VoidParasitePanelStacks)
+	{
+		VoidParasitePanelStacks = VoidParasiteStacks;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepDivineWrath(
 	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -5011,6 +5170,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
 	ForgetTheVeins();
+	ForgetTheVoidParasite();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -5490,6 +5650,11 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
 	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
+	// AND VOID PARASITE, ON EVERY FLOOR CARRYING IT, AND ON ANY FLOOR WHERE ITS STACKS ARE NOT WHAT IS ON
+	// THE CHARACTER, as Chaos Touched is stepped. Issues #1820 and #41.
+	const bool bVoidParasite = FloorBrief.Modifiers.Contains(
+			FName(UCataclysmDungeonModifierEffects::VoidParasiteKey))
+		|| VoidParasiteStacks != VoidParasiteStacksApplied;
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -5507,7 +5672,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires
-		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance)
+		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite)
 	{
 		return;
 	}
@@ -5734,6 +5899,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bTrialOfEndurance)
 	{
 		StepTrialOfEndurance(Player);
+	}
+
+	// AND VOID PARASITE, WHICH DRAWS A ZONE, REMOVES CREATURES AND MOVES THE PLAYER'S STATS. Issues #1820
+	// and #41.
+	if (bVoidParasite)
+	{
+		StepVoidParasite(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -6689,6 +6861,11 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 		Effects.TouchedResistanceLessPercent = Percent(Effects_::ChaosTouchedResistanceLess);
 	}
 
+	// AND WHAT THE ATTACHED VOIDLINGS TAKE, on its own field. Issues #1820 and #41. Read unconditionally like
+	// the rest: a player carrying none is owed nothing.
+	Effects.ParasiteLessPercent =
+		UCataclysmDungeonModifierEffects::VoidParasiteLessPercent(VoidParasiteStacksApplied);
+
 	// AND WHAT A MUSHROOM UNDERFOOT IS DOING, IN BOTH DIRECTIONS. Issues #1820
 	// and #41. Read unconditionally like the rest: a floor without that row
 	// places no mushroom, and nothing is what the effects already hold.
@@ -6759,6 +6936,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForEpidemic(Notice);
 	NoteDeathForBloodForgedChampions(Notice);
 	NoteDeathForVengefulWraiths(Notice);
+	NoteDeathForVoidParasite(Notice);
 	NoteDeathForMarchOfProgress(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
@@ -7376,6 +7554,67 @@ void ACataclysmDungeonGameMode::NoteDeathForVengefulWraiths(
 		   Effects::VengefulWraithsSightMultiplier);
 
 	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForVoidParasite(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::VoidParasiteKey)))
+	{
+		return;
+	}
+
+	// A DEATH THAT PAYS NOTHING LEAVES NOTHING: a floor source, a creature a rule brought back, and a
+	// voidling itself, so one voidling cannot leave another.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Fallen || !Fallen->PaysForItsDeath())
+	{
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// THE PLAYER'S KILL, READ AS DEMON PRINCE READS IT: a minion's kill is the minion's own unless its
+	// summoner holds the Conduit keystone, which `UCataclysmCombatEvents::NoteBlow` decides. Issue #1515.
+	APlayerController* Controller = World->GetFirstPlayerController();
+	const ACataclysmPlayerCharacter* Player =
+		Controller ? Cast<ACataclysmPlayerCharacter>(Controller->GetPawn()) : nullptr;
+	if (!Player || Notice.Killer != Player)
+	{
+		return;
+	}
+
+	if (!Effects::VoidlingRises(DungeonGameModeVoidParasiteRoll()))
+	{
+		return;
+	}
+
+	// AN IMP AT COMMON WHERE THE CREATURE DIED, with the Imp's brain, attack and health, seeing as far as a
+	// wraith does so that it comes for the player from anywhere on the floor.
+	FCataclysmEnemyPlacement Placement;
+	Placement.Cell = CurrentFloor->CellOfWorld(Notice.Location);
+	Placement.Creature = ECataclysmDungeonCreature::Imp;
+	ACataclysmEnemyCharacter* Voidling =
+		SpawnPlacedCreature(Placement, Effects::VengefulWraithsSightMultiplier, /*FixedRung=*/0);
+	if (!Voidling)
+	{
+		return;
+	}
+
+	// IT PAYS NOTHING, IS RAISED BY THE RULE AND IS NOT ONE OF THE FLOOR'S CREATURES, as ruled.
+	Voidling->bIsAVoidling = true;
+	Voidling->bDiesUnpaid = true;
+	Voidling->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Voidling);
+	Voidlings.Add(Voidling);
+
+	UE_LOG(LogCataclysm, Log, TEXT("Void Parasite: the player's kill of %s left a voidling on floor %d"),
+		   *Fallen->GetName(), FloorNumber);
 }
 
 void ACataclysmDungeonGameMode::NoteDeathForDeadRising(
@@ -8390,6 +8629,17 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 							  Standing, InfestedVeinsDestroyed)
 			: FString::Printf(TEXT("infested veins: %d standing; %d destroyed of %d before the guardians come"),
 							  Standing, InfestedVeinsDestroyed, Effects::InfestedVeinsDestroyedBeforeGuardians));
+	}
+
+	// AND VOID PARASITE: how many voidlings the player carries, and what clears them. Issues #1820 and #41.
+	const FName Parasite(Effects::VoidParasiteKey);
+	if (FloorBrief.Modifiers.Contains(Parasite))
+	{
+		Counting.Add(Parasite, VoidParasiteStacks > 0
+			? FString::Printf(TEXT("void parasite: %d attached (each %.0f%% less damage, resistances and movement "
+								   "speed); a light zone clears them"),
+							  VoidParasiteStacks, Effects::VoidParasitePercentPerStack)
+			: FString(TEXT("void parasite: none attached")));
 	}
 
 	// AND GOLDEN SPIRES: how many stand. Issues #1820 and #41.
@@ -10710,6 +10960,11 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// AND CHAOS TOUCHED THE SAME WAY: its stacks are the dungeon's and the call above took
 		// them off the character. Issues #1820 and #41.
 		ChaosTouchedApplied = {0, 0, 0, 0, 0, 0, 0, 0};
+
+		// AND VOID PARASITE THE SAME WAY: the call above took the voidlings' figure off the character,
+		// and a Horde arena's next wave keeps its stacks, so the next beat puts them back. Issues #1820
+		// and #41.
+		VoidParasiteStacksApplied = 0;
 
 		// AND GRASPING TENTACLES FORGETS ALL FOUR OF ITS THINGS. Issues #1786
 		// and #41. The list because those actors are already destroyed -- see the

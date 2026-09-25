@@ -1825,6 +1825,12 @@ private:
 	void NoteDeathForVengefulWraiths(const struct FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Void Parasite: a creature the player killed may leave a voidling where it died. Issues #1820 and #41.
+	 * The kill is read as Demon Prince reads it; a floor source and a death that pays nothing leave none.
+	 */
+	void NoteDeathForVoidParasite(const struct FCataclysmDeathNotice& Notice);
+
+	/**
 	 * Celestial Divine Resurgence, on every death. Issues #1820 and #41.
 	 *
 	 * RECORDS WHERE, WHAT AND AT WHICH RUNG the creature died, then asks whether enough
@@ -2034,6 +2040,15 @@ public:
 
 	/** The health a vein is given: the Imp's at Common, 87, as the other floor sources have. A play-test value. */
 	float InfestedVeinHealth() const { return ImpHealth; }
+
+	/** Void Parasite, for the panel and tests: the voidlings standing now, not yet attached or killed. */
+	TArray<ACataclysmEnemyCharacter*> VoidlingsNow() const;
+
+	/** Void Parasite, for the panel and tests: how many voidlings the player carries. */
+	int32 VoidParasiteStacksHeld() const { return VoidParasiteStacks; }
+
+	/** Void Parasite, for tests: this floor's light zone, or null before its first beat or on a floor without one. */
+	class ACataclysmGroundZone* VoidParasiteLightNow() const;
 
 	/** Necrotic Bloom, for the panel and tests: the flowers still standing. */
 	TArray<ACataclysmEnemyCharacter*> NecroticBloomFlowersNow() const;
@@ -2261,6 +2276,19 @@ private:
 
 	/** Every vein and its zone destroyed and forgotten. */
 	void ForgetTheVeins();
+
+	/** Void Parasite: this arena's light zone chosen, where a new arena is populated. Drawn on the next beat. */
+	void PlaceTheLight();
+
+	/** Every voidling, the light zone and the player's stacks forgotten: the floor has ended. */
+	void ForgetTheVoidParasite();
+
+	/**
+	 * Void Parasite, on the beat: the light zone kept drawn, each voidling within reach attached, every stack
+	 * cleared in the light, and the player's stats written again when the stacks changed.
+	 */
+	void StepVoidParasite(class ACataclysmPlayerCharacter* Player,
+						  class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/** One vein on `Cell`: a floor source raised by the rule. Null when it could not be spawned. */
 	ACataclysmEnemyCharacter* SpawnAVeinOn(FIntPoint Cell);
@@ -3312,6 +3340,17 @@ private:
 	bool bTrialRanOut = false;
 	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, FTrialResistance> TrialResistances;
 	int32 TrialPanelLiving = -1;
+
+	/**
+	 * Void Parasite: the voidlings standing, the stacks the player carries and what was last put on the
+	 * character, the light zone's cell and zone, and what the panel last showed. Issues #1820 and #41.
+	 */
+	TSet<TWeakObjectPtr<ACataclysmEnemyCharacter>> Voidlings;
+	int32 VoidParasiteStacks = 0;
+	int32 VoidParasiteStacksApplied = 0;
+	FIntPoint VoidParasiteLightCell = FIntPoint(-1, -1);
+	TWeakObjectPtr<class ACataclysmGroundZone> VoidParasiteLight;
+	int32 VoidParasitePanelStacks = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that
