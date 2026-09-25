@@ -176,9 +176,39 @@ public:
 	 * affixes twice, and a two-handed weapon already gets its own doubling from
 	 * `UCataclysmItemValues::TwoHandedMultiplier`. So the second slot is empty
 	 * and blocked rather than occupied, and this is how anything asks.
+	 *
+	 * NOT WHILE BOTH HANDS FULL IS HELD. Issue #1515. That option lets a second
+	 * two-handed weapon go in the other hand, so a single one leaves that hand
+	 * free for it, and two held are each in their own slot. The answer is then
+	 * false, and the gear panel stops marking the second hand as taken.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Equipment")
 	bool TwoHandedOccupiesBothWeaponSlots() const;
+
+	/**
+	 * The Ravager's Both Hands Full, `Ravager_capstone_200` option 2: "You may
+	 * hold a two-handed weapon in each hand." A flag with no attribute, read
+	 * off the owner's ability system. Issue #1515.
+	 */
+	static const TCHAR* BothHandsFullStat;
+
+	/**
+	 * Whether the owner holds Both Hands Full, read live each time it is asked.
+	 * False for a component with no owner or no ability system, which is every
+	 * component the older equipment tests build.
+	 */
+	bool MayHoldTwoTwoHanded() const;
+
+	/**
+	 * How many held weapons come off when `Equip` puts on a weapon of this
+	 * kind, as `EquipInto` will decide it. Two exactly when both hands are held
+	 * and the new weapon cannot stand beside either: a two-handed weapon
+	 * without Both Hands Full, or a weapon of the other kind from the pair
+	 * held, since no loadout mixes the two.
+	 * `UCataclysmWearing::WearFromCarried` asks it to know whether the bag has
+	 * room before anything moves.
+	 */
+	int32 WeaponsComingOffFor(bool bTwoHandedWeapon) const;
 
 	// -- changing what is worn ---------------------------------------------
 
@@ -220,6 +250,12 @@ public:
 	 * there is no primary hand and both slots mean the same thing. Whatever was
 	 * in either hand comes off; only the first of the two is reported in
 	 * OutRemoved, and OutAlsoRemoved carries the second.
+	 *
+	 * WITH BOTH HANDS FULL HELD, A TWO-HANDED WEAPON GOES WHERE IT WAS PUT.
+	 * Issue #1515. What was in that slot comes off, and so does a one-handed
+	 * weapon in the other hand, because no loadout mixes the two; a two-handed
+	 * weapon in the other hand stays. A one-handed weapon put beside a
+	 * two-handed one takes it off, whichever hand holds it.
 	 */
 	ECataclysmEquipResult EquipInto(const FCataclysmItem& Item,
 									ECataclysmGearSlot Slot,
