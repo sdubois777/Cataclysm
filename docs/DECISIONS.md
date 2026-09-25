@@ -162,6 +162,103 @@ the way it was registered before the window; restored, each run was 1 performed,
 
 ---
 
+## 2026-09-24 — The character record writes what the character is wearing, each item with its slot by name, and the save documents count 19 worn slots
+
+**Affects:** `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (the field and its type),
+`CataclysmSaveGather.h` and `.cpp` (writing it), `game/Tests/SaveFixtures/Character_v3.json` and its
+README, `docs/Save_System_Design.md`, `tools/tests/test_worn_gear_slots_are_nineteen.py` and
+`game/Source/Cataclysm/Tests/CataclysmSaveRecordTests.cpp`. The finding is recorded on issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) as a precondition for loading.
+
+### THE FINDING
+
+**A character's worn gear was not written to its save at all.** `FCataclysmSaveGather::CharacterFrom`
+wrote the carried bag, the attribute and passive allocations, the level and the creation choices, and
+`UCataclysmCharacterSave` had no field for what is worn. The design lists it: "Equipped items, all 19
+slots, with their rolled affixes". The record called the equipped slots "deliberately absent" because they
+"need a shape that does not exist in the game yet"; `UCataclysmEquipmentComponent` has held that shape
+since issue #828, so the reason no longer held.
+
+**It cost nobody anything yet**, because nothing in the game loads a save (#753). It would have been lost
+on the first load.
+
+### THE SHAPE, RULED 2026-09-24 UNDER THE OWNER'S DELEGATION
+
+**`WornGear`, one entry per occupied slot, each entry naming its slot.** The carried bag is saved as its
+whole array by position, because where an item sits in the bag is what a player arranged. A worn item's
+position in the equipment's array is only the order of `ECataclysmGearSlot`, so saving by position would
+tie the file to that order: a slot added or moved would put every saved item in the wrong slot on load,
+with no error. The JSON writes an enum by its name -- "Weapon1" -- so a named slot survives both.
+
+**Not a version bump.** An empty list is the field's default, so a file written before it reads as a
+character wearing nothing: section 5's "field added with a sensible default". The character record stays
+at version 3, and `Character_v3.json` was edited under the fixtures' stated exception that no save has ever
+been loaded.
+
+**Nothing restores it**, since nothing loads a save; that remains #753.
+
+### EIGHTEEN AND NINETEEN
+
+The equipment has 19 slots: seven armour pieces, a necklace, a relic, eight rings and two weapons. The
+save design said 19 in the sentence `tools/tests/test_worn_gear_slots_are_nineteen.py` reads and 18 in
+three other places, and the record's header and the gather comment said 18 too; the test read only the
+one sentence. All now say 19, and the test reads every "N equipped slots" and "N equipped items" in the
+save design and the record header, across line breaks.
+
+**Eighteen equipped PIECES is not wrong and is not changed.** The design counts what the hands hold as one
+piece, for Power Score and for what a Hardcore death drops, so 19 slots are 18 pieces. The new pattern
+does not match "pieces".
+
+### TESTS
+
+- `Cataclysm.SaveRecords.AWornItemIsWrittenWithItsSlotByName`: a real player wearing nothing writes
+  nothing; wearing a greatsword with an affix in `Weapon1` and a ring in `Ring3` writes exactly those two,
+  each against its slot.
+- `Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear`: the committed file's two entries read
+  back field by field. **The second is in `Ring3`** so that a slot other than the first shows the name was
+  kept rather than the position.
+- `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`, existing, now carries the field.
+
+**The fixture's items now carry an enchantment each, since 2026-09-25**, one on the worn greatsword and one
+on the carried Circlet, with `Positive`, `Negative` and both rolls away from their defaults and
+`EnchantmentCount` 1. Until then no item in the committed character file had one, so an enchantment's
+round trip was shown by nothing: a default is re-defaulted identically on both sides, which the
+completeness check cannot tell from being read. Ruled under the owner's delegation to go in this change,
+while the file is still edited under the fixtures' stated exception. The two fixture tests read each field
+back.
+- `test_every_count_of_worn_slots_in_the_save_documents_is_the_enums`, in the Python file above.
+
+### Run
+
+One editor window on 2026-09-25, ending at 10:08 UTC, on development 3dcbb8e9 as the base, at the head
+daa23369. Every figure below is what `python tools/unreal_build.py`, `pytest`, `prove_cpp_guard` or
+`prove_guard` printed.
+
+- **The build**: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on e713f73b, whose tree differs from the window's only by another entry in
+  this file: 5,477 passed, 8 skipped, 0 failed (JUnit 5,485 tests).
+- **The whole suite**, started once no CI run was in progress: 2,469 tests performed, 2,469 succeeded, 0
+  failed; every declared test was reported. 39 skipped part of what they check for want of the Paragon
+  art, none of them in `Cataclysm.SaveRecords.`.
+
+**Two C++ guard proofs, each printing PROVED**, prefix `Cataclysm.SaveRecords.`, restored: 14 of 14
+succeeded each time. Each failed exactly as registered.
+
+- **The worn gear not written** (`CharacterFrom`'s call to `WornGearFrom` made conditional on an owner that
+  is never missing, in `CataclysmSaveGather.cpp`): 1 of 14 failed, `AWornItemIsWrittenWithItsSlotByName`,
+  on "two worn items are written" reading 0 where 2.
+- **The slot not saved** (`SaveGame` removed from `FCataclysmWornItem::Slot`): 2 of 14 failed.
+  `EveryFixtureHoldsEveryFieldItsRecordWrites` found `Character_v3.json` and its record disagreeing at
+  `record.WornGear[0].Slot`, and `TheCommittedCharacterFileKeepsItsWornGear` read the two slots as 19 where
+  17 and 11.
+
+**One Python guard proof, printing PROVED**, run earlier in a copy of the repository: "18 equipped" put back
+into `docs/Save_System_Design.md`. "PROVED: 1 failed, 2 passed in 0.08s | restored: 3 passed in 0.04s",
+the one failure `test_every_count_of_worn_slots_in_the_save_documents_is_the_enums`. Its registration had
+said 4 would pass restored; the file holds 3 tests, and that was said when it ran.
+
+---
+
 ## 2026-09-24 — Both Hands Full, engine only: a second two-handed weapon goes in the other hand, and goes back when the option is lost
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (where a weapon

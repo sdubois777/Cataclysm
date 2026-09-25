@@ -9,6 +9,7 @@
 #include "DayClock/CataclysmDayClock.h"
 #include "Empire/CataclysmEmpireMap.h"
 #include "Empire/CataclysmSurge.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Save/CataclysmSavePartition.h"
@@ -23,10 +24,11 @@
  * describes, so that the storage layer, the migration chain and the fixture
  * tests have something real to write, read and migrate.
  *
- * MOST OF THE FIELDS THE DESIGN LISTS HAVE NO RUNTIME SOURCE. Nothing in the
- * game yet produces a character level, an attribute allocation, a passive tree
- * allocation, 18 equipped slots, a stash, an empire graph or a dungeon timer.
- * Those are issues #50, #38, #42 and others. The fields below that have no
+ * MOST OF THE FIELDS THE DESIGN LISTS HAD NO RUNTIME SOURCE when these classes
+ * were written. Nothing in the game then produced a character level, an
+ * attribute allocation, a passive tree allocation, the 19 equipped slots, a
+ * stash, an empire graph or a dungeon timer. Those are issues #50, #38, #42 and
+ * others, and each field below says whether it has a source now. The fields below that have no
  * source are still declared, because a field added later with a sensible default
  * is NOT a schema version bump -- section 5, "What a version bump means in
  * practice" -- so declaring them early costs nothing and leaves the file shape
@@ -307,6 +309,29 @@ public:
 };
 
 /**
+ * One worn item and the slot it is worn in.
+ *
+ * THE SLOT IS STORED BY NAME, NOT BY POSITION, which is the one way this differs
+ * from the carried bag. The bag's position is what a player arranged, so it is
+ * saved as the whole array. A worn item's position in the equipment's array is
+ * only `ECataclysmGearSlot`'s order, and a slot added to the enum or moved in it
+ * would put every saved item in the wrong slot on load with no error. The JSON
+ * writes an enum by its name -- "Weapon1" -- so a named slot survives both.
+ * Ruled 2026-09-24.
+ */
+USTRUCT(BlueprintType)
+struct CATACLYSM_API FCataclysmWornItem
+{
+	GENERATED_BODY()
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	FCataclysmItem Item;
+};
+
+/**
  * The character record: what belongs to one character and travels with it.
  *
  * IT SURVIVES A FAILED RUN. Issue #315 settled that nothing in the design
@@ -314,11 +339,14 @@ public:
  * play. Losing the capital, dying in the Last Stand and being killed by the
  * corrupted double all cost the run and not the character.
  *
- * WHAT IS DELIBERATELY ABSENT: the 18 equipped slots, and a Solo Self-Found
- * character's private empire tree allocation. Both need a shape that does not
- * exist in the game yet, and section 5 says adding a field later with a sensible
- * default is not a version bump, so waiting costs nothing and guessing costs a
- * migration.
+ * WHAT IS DELIBERATELY ABSENT: a Solo Self-Found character's private empire
+ * tree allocation. It needs a shape that does not exist in the game yet, and
+ * section 5 says adding a field later with a sensible default is not a version
+ * bump, so waiting costs nothing and guessing costs a migration.
+ *
+ * THE 19 EQUIPPED SLOTS LEFT THAT LIST ON 2026-09-24, as `WornGear`, once
+ * `UCataclysmEquipmentComponent` was a source for them. The list said 18; the
+ * enum has 19. Recorded on issue #753 as a precondition for loading.
  *
  * THREE THINGS LEFT THAT LIST IN TWO DAYS, each on the day the running game
  * first produced it: the attribute allocation on 2026-08-24, the two character
@@ -483,6 +511,19 @@ public:
 	 */
 	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
 	TArray<FCataclysmCarriedSlot> CarriedSlots;
+
+	/**
+	 * What the character is wearing: one entry per occupied slot, each naming
+	 * its slot. See `FCataclysmWornItem` for why by name. Since 2026-09-24.
+	 *
+	 * AN EMPTY LIST IS THE DEFAULT, AND IT IS NOT A VERSION BUMP: a file written
+	 * before this field existed reads as a character wearing nothing, which is
+	 * section 5's "field added with a sensible default".
+	 *
+	 * NOTHING RESTORES IT YET, because nothing loads a save at all (#753).
+	 */
+	UPROPERTY(SaveGame, BlueprintReadWrite, Category = "Cataclysm|Save")
+	TArray<FCataclysmWornItem> WornGear;
 
 	/**
 	 * A Solo Self-Found character's own empire upgrade points.

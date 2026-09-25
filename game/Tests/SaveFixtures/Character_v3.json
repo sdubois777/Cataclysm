@@ -61,8 +61,15 @@
 						]
 					}
 				],
-				"EnchantmentCount": 0,
-				"Enchantments": [],
+				"EnchantmentCount": 1,
+				"Enchantments": [
+					{
+						"Positive": "Positive_Ultimate_has_1_3_additional_charges",
+						"Negative": "Negative_Can_t_use_a_basic_attack",
+						"PositiveRoll": 0.5,
+						"NegativeRoll": 0.125
+					}
+				],
 				"Sockets": 2,
 				"Residue": 4.25
 			},
@@ -82,6 +89,50 @@
 			},
 			"Material": "Whispering_Ash",
 			"Quantity": 12
+		}
+	],
+	"WornGear": [
+		{
+			"Slot": "Weapon1",
+			"Item": {
+				"Base": "Weapon_Greatsword",
+				"GearLevel": 9,
+				"DamageTypes": [
+					"Void"
+				],
+				"Affixes": [
+					{
+						"Affix": "Stat_Flat_maximum_health",
+						"Tier": 4,
+						"Roll": 0.5,
+						"DamageTypes": []
+					}
+				],
+				"EnchantmentCount": 1,
+				"Enchantments": [
+					{
+						"Positive": "Positive_Additional_100_300_crit_multiplier",
+						"Negative": "Negative_80_99_of_your_health_is_reserved",
+						"PositiveRoll": 0.75,
+						"NegativeRoll": 0.25
+					}
+				],
+				"Sockets": 3,
+				"Residue": 2.5
+			}
+		},
+		{
+			"Slot": "Ring3",
+			"Item": {
+				"Base": "Ring_Band",
+				"GearLevel": 3,
+				"DamageTypes": [],
+				"Affixes": [],
+				"EnchantmentCount": 0,
+				"Enchantments": [],
+				"Sockets": 0,
+				"Residue": 0.25
+			}
 		}
 	],
 	"PrivateEmpireUpgradePoints": 0,

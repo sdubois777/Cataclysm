@@ -18,7 +18,7 @@ load.**
 
 | Section | Built? |
 | :-- | :-- |
-| 1 and 2, the three records | The record classes exist. **Most of the fields listed do not**, because nothing in the game produces a character level, an attribute allocation, a passive tree, 18 equipped slots, a stash, an empire graph or a dungeon timer yet. Each record says which of its fields are absent and why |
+| 1 and 2, the three records | The record classes exist. **Many of the fields listed had no source when they were written**, because nothing in the game then produced a character level, an attribute allocation, a passive tree, the 19 equipped slots, a stash, an empire graph or a dungeon timer. Several have one now -- the 19 equipped slots since 2026-09-24, as `WornGear` -- and each record says which of its fields are still absent and why |
 | 3, partitioning | Built. `UCataclysmSavePartition` |
 | 4, storage format | Built. `FCataclysmSaveStorage` |
 | 5, versioning and migration | Built. `FCataclysmSaveMigration`, and `game/Tests/SaveFixtures/` |
@@ -162,7 +162,7 @@ change that, because it lives in the character record beside the private empire
 tree rather than in an account record.
 
 **It does make that file much larger**, and anybody implementing this should
-expect it. An ordinary character record holds 48 inventory slots and 18 equipped
+expect it. An ordinary character record holds 48 inventory slots and 19 equipped
 items; a Solo Self-Found one holds those plus 600 stash slots, so the worst case
 is about ten times the item data. Every one of those items carries its rolled
 affixes.
@@ -197,7 +197,7 @@ across both populations and all three lethality modes, so the worst case is six
 account records and 24 character records, of which at most 24 are Solo
 Self-Found. That matters to the format because a Solo Self-Found character record
 is the largest object in it: it carries a private 600-slot stash and a private
-empire upgrade tree as well as the ordinary 48 inventory slots and 18 equipped
+empire upgrade tree as well as the ordinary 48 inventory slots and 19 equipped
 items.
 
 ---

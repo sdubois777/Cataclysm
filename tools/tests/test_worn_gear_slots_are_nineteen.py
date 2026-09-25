@@ -31,6 +31,18 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 SAVE_SYSTEM = REPO_ROOT / "docs" / "Save_System_Design.md"
 EQUIPMENT = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Items"
              / "CataclysmEquipmentComponent.h")
+SAVE_RECORDS = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Save"
+                / "CataclysmSaveRecords.h")
+
+#: Every other place the save documents count the worn slots. Issue #753's
+#: finding, 2026-09-24: four of them said 18 while the sentence the test above
+#: reads said 19, because that test read only the one sentence. "Equipped
+#: PIECES" is deliberately not matched: the design counts 18 pieces, the two
+#: weapon slots being one piece for Power Score and for a Hardcore death.
+#: ACROSS A LINE BREAK, and past the "*" a C++ comment continues with: two of the
+#: four read "19 equipped" at the end of one line and "items" on the next.
+COUNTED = re.compile(r"(\d+)\s+(?:\*\s+)?equipped\s+(?:\*\s+)?(?:slots|items)",
+                     re.IGNORECASE)
 
 #: The sentence the count is read from, in the Character record list.
 STATED = re.compile(r"Equipped items, all (\d+) slots")
@@ -94,3 +106,23 @@ def test_the_slots_are_the_ones_the_gear_panel_and_the_item_bases_expect(
         f"a character wears {len(rings)} ring slots: {rings}")
     assert len(weapons) == 2, (
         f"a character wears {len(weapons)} weapon slots: {weapons}")
+
+
+def test_every_count_of_worn_slots_in_the_save_documents_is_the_enums(
+        slots_in_the_enum) -> None:
+    """Every "<N> equipped slots" and "<N> equipped items" in the save design and
+    the save records, not only the one sentence above. A count that disagreed
+    went unnoticed four times before 2026-09-24."""
+    found = []
+    for path in (SAVE_SYSTEM, SAVE_RECORDS):
+        for number in COUNTED.findall(text(path)):
+            found.append((path.name, int(number)))
+    assert found, (
+        "no '<N> equipped slots' or '<N> equipped items' was found in "
+        f"{SAVE_SYSTEM.name} or {SAVE_RECORDS.name}, so this checked nothing. "
+        "If every such sentence was reworded, point this at the new wording.")
+    wrong = [(name, number) for name, number in found
+             if number != len(slots_in_the_enum)]
+    assert not wrong, (
+        f"ECataclysmGearSlot declares {len(slots_in_the_enum)} slots, and these "
+        f"counts disagree: {wrong}. Checked {len(found)} counts in all.")

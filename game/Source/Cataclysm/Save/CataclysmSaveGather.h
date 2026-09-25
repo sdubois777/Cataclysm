@@ -9,6 +9,7 @@ class ACataclysmDroppedItem;
 class ACataclysmEnemyCharacter;
 class ACataclysmPlayerCharacter;
 class UCataclysmEmpireRun;
+class UCataclysmEquipmentComponent;
 class UCataclysmInventoryComponent;
 class UWorld;
 
@@ -165,6 +166,11 @@ public:
 	/** The 48 carried slots, exactly as the component holds them. */
 	static void CarriedSlotsFrom(const UCataclysmInventoryComponent& Inventory,
 								 TArray<FCataclysmCarriedSlot>& OutSlots);
+
+	/** One entry per occupied worn slot, each naming its slot. See
+	 *  `FCataclysmWornItem` for why by name and not by position. */
+	static void WornGearFrom(const UCataclysmEquipmentComponent& Equipment,
+							 TArray<FCataclysmWornItem>& OutWorn);
 
 	/**
 	 * Fill in the part of a character record that the running game can answer.

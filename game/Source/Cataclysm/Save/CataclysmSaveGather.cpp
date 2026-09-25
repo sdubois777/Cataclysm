@@ -12,6 +12,7 @@
 #include "Empire/CataclysmEmpireRun.h"
 #include "EngineUtils.h"
 #include "Items/CataclysmDroppedItem.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Player/CataclysmPlayerState.h"
 
@@ -216,6 +217,24 @@ void FCataclysmSaveGather::CarriedSlotsFrom(
 	OutSlots = Inventory.GetSlots();
 }
 
+void FCataclysmSaveGather::WornGearFrom(const UCataclysmEquipmentComponent& Equipment,
+										TArray<FCataclysmWornItem>& OutWorn)
+{
+	// ONLY WHAT IS WORN, EACH WITH ITS SLOT'S NAME. An empty slot has nothing to
+	// say, and the slot is carried by name so the file does not depend on the
+	// enum's order. Issue #753.
+	OutWorn.Reset();
+	for (const ECataclysmGearSlot Slot : UCataclysmGearSlots::AllSlots())
+	{
+		if (const FCataclysmItem* Worn = Equipment.EquippedAt(Slot))
+		{
+			FCataclysmWornItem& Entry = OutWorn.AddDefaulted_GetRef();
+			Entry.Slot = Slot;
+			Entry.Item = *Worn;
+		}
+	}
+}
+
 bool FCataclysmSaveGather::RunClockFrom(const UCataclysmEmpireRun& Run,
 									   UCataclysmRunSave& Record)
 {
@@ -314,6 +333,17 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 
 	CarriedSlotsFrom(*Inventory, Record.CarriedSlots);
 
+	// AND WHAT IS WORN, since 2026-09-24. Recorded on issue #753 as a
+	// precondition for loading: the record had no field for it. WRITTEN ONLY
+	// WHEN THERE IS EQUIPMENT TO READ, for the reason the attribute allocation
+	// below gives: emptying the field for want of a source would throw away what
+	// a loaded record held.
+	if (const UCataclysmEquipmentComponent* Equipment =
+			Character.FindComponentByClass<UCataclysmEquipmentComponent>())
+	{
+		WornGearFrom(*Equipment, Record.WornGear);
+	}
+
 	// THE ATTRIBUTE ALLOCATION, SINCE 2026-08-24, and it is the second field
 	// here with a runtime source. Issue #50.
 	//
@@ -368,10 +398,11 @@ bool FCataclysmSaveGather::CharacterFrom(const ACataclysmPlayerCharacter& Charac
 		Record.DefeatedCataclysmBosses = State->GetDefeatedCataclysmBosses();
 	}
 
-	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. The passive tree, the
-	// 18 equipped slots, the residue and a Solo Self-Found character's private
-	// stash have no runtime source at all -- issues #50, #38 and #42 -- so
-	// writing a zero over each would turn a record loaded from disk into an
-	// empty one every time it was refreshed.
+	// EVERY OTHER FIELD IS LEFT ALONE RATHER THAN ZEROED. The residue and a Solo
+	// Self-Found character's private stash have no runtime source at all --
+	// issues #38 and #42 -- so writing a zero over each would turn a record
+	// loaded from disk into an empty one every time it was refreshed. This
+	// list named the passive tree and the equipped slots too until each gained a
+	// source: the passive allocation above, and the worn gear since 2026-09-24.
 	return true;
 }
