@@ -80,6 +80,7 @@
 #include "Save/CataclysmSaveGather.h"
 #include "Save/CataclysmSaveRecords.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -14893,6 +14894,334 @@ bool FCataclysmPassiveReplacementRowsTest::RunTest(const FString&)
 // ---------------------------------------------------------------------------
 // Two Hands, from its row. Issue #1515.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Five Masochist rows that turn on at a share of health, each on a real
+// Masochist through its real row. Issue #2119, first batch.
+//
+// EACH IS READ AT THE THRESHOLD AND ONE POINT ABOVE IT. "At or below" includes
+// the threshold, so the reading exactly on it is where a row written as "below"
+// would fail, and one point above is the control. The health is set on the real
+// character's attribute as a share of its real maximum, and each share is
+// asserted before anything is read.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmLowHealthRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	/** Points in one node, or none when `Points` is zero. */
+	void Take(FRealCharacter& Player, const TCHAR* Node, int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(FName(Node), Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	/**
+	 * Hold this share of maximum health, in percent; the share now held.
+	 *
+	 * A MAXIMUM OF 1000, SET HERE, so every share these tests use is a whole
+	 * number of health and the threshold is reached exactly rather than to within
+	 * the rounding of whatever the class line's maximum happens to be.
+	 */
+	float HoldHealth(const FRealCharacter& Player, float Percent)
+	{
+		using Vital = UCataclysmVitalAttributeSet;
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+													  1000.0f);
+		const float Maximum =
+			Player.AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute());
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+													  Maximum * Percent / 100.0f);
+		return Maximum > 0.0f
+			? 100.0f * Player.AbilitySystem->GetNumericAttribute(
+						   Vital::GetHealthAttribute()) / Maximum
+			: -1.0f;
+	}
+
+	/** The unconditioned, unscaled increases a stat carries, in percent. */
+	float PlainIncreases(const FRealCharacter& Player, const TCHAR* Stat)
+	{
+		float Sum = 0.0f;
+		if (const FCataclysmStatInputs* Inputs =
+				Player.AbilitySystem->GetStatInputs(FName(Stat)))
+		{
+			for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+			{
+				if (Modifier.Bucket == ECataclysmStatBucket::Increased
+					&& Modifier.Condition == ECataclysmStatCondition::Always
+					&& Modifier.Scale == ECataclysmStatScale::Fixed)
+				{
+					Sum += Modifier.Value;
+				}
+			}
+		}
+		return Sum;
+	}
+
+	/** What `Extra` percent more increased makes of a reading. */
+	float Ratio(float Others, float Extra)
+	{
+		return (1.0f + (Others + Extra) / 100.0f) / (1.0f + Others / 100.0f);
+	}
+
+	/** A real Masochist, ready, or false with the reason. */
+	bool Start(FAutomationTestBase& Test, UWorld* World, FRealCharacter& Player)
+	{
+		Player = Spawn(World);
+		if (!Test.TestTrue(TEXT("a possessed Masochist with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+}
+
+/** `Masochist_basic_ll_a0` Living on the Edge: "While at or below 35% health,
+ *  +2% increased damage per point." Ten points, 20%, on attack and on spell
+ *  damage (`StatAppliedTo` on a figure of 100, since the class holds no spell
+ *  damage of its own). */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLivingOnTheEdgeTest,
+	"Cataclysm.MasochistRows.LivingOnTheEdgeRaisesARealMasochistsDamageAtOrBelowThirtyFivePercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLivingOnTheEdgeTest::RunTest(const FString&)
+{
+	using namespace CataclysmLowHealthRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_ll_a0"), 10);
+	const float Spell = PlainIncreases(Player, TEXT("spell_damage"));
+	const auto Read = [&Player]()
+	{
+		return TPair<float, float>(
+			Player.AbilitySystem->AttackDamageIncreasesForSkill(FGameplayTagContainer()),
+			Player.AbilitySystem->StatAppliedTo(FName(TEXT("spell_damage")),
+												FGameplayTagContainer(), 100.0f));
+	};
+
+	if (!TestEqual(TEXT("health held at 36%"), HoldHealth(Player, 36.0f), 36.0f, 0.01f))
+	{
+		return false;
+	}
+	const TPair<float, float> Above = Read();
+	if (!TestEqual(TEXT("health held at exactly 35%"), HoldHealth(Player, 35.0f), 35.0f,
+				   0.01f))
+	{
+		return false;
+	}
+	const TPair<float, float> At = Read();
+	TestEqual(TEXT("at 35%: 20% more increased attack damage than at 36%"),
+			  At.Key - Above.Key, 0.20f, 0.0001f);
+	TestEqual(TEXT("and 20% more increased spell damage"), At.Value / Above.Value,
+			  Ratio(Spell, 20.0f), 0.0001f);
+	return true;
+}
+
+/** `Masochist_basic_ll_a1` Last Stand: "While at or below 20% health, +3%
+ *  increased Critical Strike Chance per point." Eight points, 24%, read on a
+ *  figure of 100 the way a hit asks for the stat. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLastStandTest,
+	"Cataclysm.MasochistRows.LastStandRaisesARealMasochistsCritChanceAtOrBelowTwentyPercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLastStandTest::RunTest(const FString&)
+{
+	using namespace CataclysmLowHealthRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_ll_a1"), 8);
+	const float Others = PlainIncreases(Player, TEXT("crit_chance"));
+	const auto Crit = [&Player]()
+	{
+		return Player.AbilitySystem->StatAppliedTo(FName(TEXT("crit_chance")),
+												   FGameplayTagContainer(), 100.0f);
+	};
+
+	if (!TestEqual(TEXT("health held at 21%"), HoldHealth(Player, 21.0f), 21.0f, 0.01f))
+	{
+		return false;
+	}
+	const float Above = Crit();
+	if (!TestEqual(TEXT("health held at exactly 20%"), HoldHealth(Player, 20.0f), 20.0f,
+				   0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 20%: 24% more increased critical strike chance than at 21%"),
+			  Crit() / Above, Ratio(Others, 24.0f), 0.0001f);
+	return true;
+}
+
+/** `Masochist_basic_ll_a2` The Catalyst: "While at or below 5% health, your
+ *  skills have a 5% chance per point not to go on cooldown." Eight points, 40,
+ *  read the way `CataclysmGameplayAbility.cpp` asks for it before a cooldown. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTheCatalystTest,
+	"Cataclysm.MasochistRows.TheCatalystGivesARealMasochistItsCooldownSkipChanceAtOrBelowFivePercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTheCatalystTest::RunTest(const FString&)
+{
+	using namespace CataclysmLowHealthRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_ll_a2"), 8);
+	const auto Chance = [&Player]()
+	{
+		return Player.AbilitySystem->StatForSkill(FName(TEXT("cooldown_skip_chance")),
+												  FGameplayTagContainer(), 0.0f);
+	};
+
+	if (!TestEqual(TEXT("health held at 6%"), HoldHealth(Player, 6.0f), 6.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 6%: no chance"), Chance(), 0.0f, 0.001f);
+	if (!TestEqual(TEXT("health held at exactly 5%"), HoldHealth(Player, 5.0f), 5.0f,
+				   0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 5%: a 40% chance"), Chance(), 40.0f, 0.001f);
+	return true;
+}
+
+/** `Masochist_basic_ll_b0` Desperate Measures: "While at or below 50% health, +1%
+ *  increased Movement Speed per point." Eight points, 8%, read off the movement
+ *  component the character walks at. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDesperateMeasuresTest,
+	"Cataclysm.MasochistRows.DesperateMeasuresQuickensARealMasochistAtOrBelowHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmDesperateMeasuresTest::RunTest(const FString&)
+{
+	using namespace CataclysmLowHealthRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_ll_b0"), 8);
+	const float Others = PlainIncreases(Player, TEXT("movement_speed"));
+	const auto Walk = [&Player]()
+	{
+		Player.Character->RefreshMovementSpeed();
+		return Player.Character->GetCharacterMovement()->MaxWalkSpeed;
+	};
+
+	if (!TestEqual(TEXT("health held at 51%"), HoldHealth(Player, 51.0f), 51.0f, 0.01f))
+	{
+		return false;
+	}
+	const float Above = Walk();
+	if (!TestTrue(TEXT("the Masochist walks at a speed"), Above > 0.0f)
+		|| !TestEqual(TEXT("health held at exactly 50%"), HoldHealth(Player, 50.0f), 50.0f,
+					  0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 50%: 8% more increased movement speed than at 51%"),
+			  Walk() / Above, Ratio(Others, 8.0f), 0.0001f);
+	return true;
+}
+
+/** `Masochist_keystone_ll_kC` Low Life: "While at or below 35% health you gain 10
+ *  Fervour per second." Through the Fervour step the character's job list runs,
+ *  on an empty bar. */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLowLifeTest,
+	"Cataclysm.MasochistRows.LowLifeGivesARealMasochistTenFervourASecondAtOrBelowThirtyFivePercent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmLowLifeTest::RunTest(const FString&)
+{
+	using namespace CataclysmLowHealthRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_keystone_ll_kC"), 1);
+	const FGameplayAttribute Pool = UCataclysmClassResourceAttributeSet::GetClassResourceAttribute();
+	const auto GainedInASecond = [&Player, &Pool]()
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(Pool, 0.0f);
+		UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, 1.0f);
+		return Player.AbilitySystem->GetNumericAttribute(Pool);
+	};
+
+	if (!TestEqual(TEXT("health held at 36%"), HoldHealth(Player, 36.0f), 36.0f, 0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 36%: no Fervour"), GainedInASecond(), 0.0f, 0.001f);
+	if (!TestEqual(TEXT("health held at exactly 35%"), HoldHealth(Player, 35.0f), 35.0f,
+				   0.01f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("at 35%: ten Fervour in a second"), GainedInASecond(), 10.0f, 0.001f);
+	return true;
+}
+
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveTwoHandsOnARealCharacterTest,
 	"Cataclysm.Passives.TwoHandsRaisesARealRavagersAttackDamageOnlyWithATwoHandedWeapon",
