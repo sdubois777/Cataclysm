@@ -118,6 +118,39 @@ The two failures were `test_the_engine_spells_each_name_as_this_file_does` and
   and its sixth and seventh deal 75%. Its line reads "Damage -25%". A blow that is not melee places
   nothing.
 
+### Run
+
+One editor window on 2026-09-24, local time (04:22 to 04:41 UTC on the 25th), on development
+8dcc7fbf as the base. Every figure below is what `python tools/unreal_build.py`, `pytest` or
+`prove_cpp_guard` printed, and each matched what was registered.
+
+- **The first build, on the code head 993e83a9**: "Build: Succeeded - 29 actions, 26 files compiled".
+  The Python suite on that tree: 5,461 passed, 8 skipped, 0 failed, of 5,469.
+- **The rows**, d1b10f57. The second build: "Build: Succeeded - 4 actions, 1 file compiled". The
+  Python suite of record: 1 failed, 5,460 passed, 8 skipped, the one failure the check that every
+  CSV still hashes to what its asset was built from. `Cataclysm.Data.` and `Cataclysm.Enchantments.`
+  before the asset was rebuilt: 105 tests performed, 101 succeeded, 4 failed, the asset check and the
+  three new row tests, each on "the row places a stack".
+- **The asset**, 8f000c4e: `DT_EnchantmentEffects` rebuilt from 332 rows, up from 329. The four new
+  tests: 4 performed, 4 succeeded.
+- **The whole suite**, on 8f000c4e: 2,432 tests performed, 2,432 succeeded, 0 failed; every declared
+  test was reported. It started after development's CI run for #2094 had finished.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **A placed row's tags not scoping its grant** (the event filter in `ActOnEvent` skipping the tag
+  check for a placed row), on the engine test and the strike row. With the break in: 2 of 2
+  failed. The engine test's "a spell, a strike that did not land and an event naming nobody place
+  nothing" read 5, and the strike row's "and takes none of its armour" read 6. Restored: 2 of 2
+  succeeded.
+- **Placed stacks never lapsing** (the window test in `PlacedPercentNow` made always true), on the
+  engine test and the any-hit row. With the break in: 2 of 2 failed. The engine test read 20 for the
+  cut 3.1 seconds on, and 35 against Rending's 20 at 5.1 seconds. The any-hit row read 100 at 5.1
+  seconds. Restored: 2 of 2 succeeded.
+- **The cut not read where a blow is priced** (`Kept` made 1 in `ApplyHit`), on the attacker's damage
+  row. With the break in: 1 of 1 failed. The second, sixth and seventh blows each read 79.09375,
+  the first blow's damage, against 75.14 and 59.32. Restored: 1 of 1 succeeded.
+
 ---
 
 ## 2026-09-24 — Shared Blood, engine only: each minion has a fifth of its summoner's energy shield and refills when the summoner's does, and a shield now refills to its scaled maximum
