@@ -1282,7 +1282,14 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 	// because the stomp reaches from its own feet and hits for 250% against the
 	// swing's 100%. This test is about the ordinary swing, which is what is left
 	// once the stomp is cooling down.
-	SpendAbilities(World, Brain, 80.0f);
+	// AND WHAT IT LAST USED IS RECORDED, FOR ECHOES OF THE PAST: nothing before it has attacked, an
+	// ability by its index after spending them. Issues #1820 and #41.
+	TestEqual(TEXT("a Brute that has not attacked records no attack"),
+		Brute.Actor->LastAttackUsed, static_cast<int32>(ACataclysmEnemyCharacter::NoAttackYet));
+	const int32 Spent = SpendAbilities(World, Brain, 80.0f);
+	TestTrue(TEXT("it spent at least one ability"), Spent > 0);
+	TestTrue(FString::Printf(TEXT("and recorded the last by its index (%d)"), Brute.Actor->LastAttackUsed),
+		Brute.Actor->EnemyAbilities().IsValidIndex(Brute.Actor->LastAttackUsed));
 
 	const float Before = Player.Health();
 
@@ -1292,6 +1299,8 @@ bool FCataclysmBruteActuallyHitsWhatItReachesTest::RunTest(const FString&)
 	TestEqual(TEXT("and the player is what it is hitting"),
 		Brain->CurrentTarget.Get(), static_cast<AActor*>(Player.Actor));
 	TestEqual(TEXT("and it counted the attack"), Brain->AttacksOrdered, 1);
+	TestEqual(TEXT("and recorded it as its ordinary attack"),
+		Brute.Actor->LastAttackUsed, static_cast<int32>(ACataclysmEnemyCharacter::OrdinaryAttackUsed));
 	TestTrue(FString::Printf(TEXT("and the player lost health (%.0f to %.0f)"),
 		Before, Player.Health()), Player.Health() < Before);
 

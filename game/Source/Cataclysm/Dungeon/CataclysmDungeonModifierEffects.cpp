@@ -140,6 +140,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PlagueConvergenceKey =
 const TCHAR* UCataclysmDungeonModifierEffects::DivineWrathKey =
 	TEXT("Celestial_Divine_Wrath");
 
+const TCHAR* UCataclysmDungeonModifierEffects::EchoesOfThePastKey =
+	TEXT("Death_Echoes_of_the_Past");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -421,7 +424,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(TheReaperKey)
 		|| RowKey == FName(BloodBondKey)
 		|| RowKey == FName(PlagueConvergenceKey)
-		|| RowKey == FName(DivineWrathKey))
+		|| RowKey == FName(DivineWrathKey)
+		|| RowKey == FName(EchoesOfThePastKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -607,6 +611,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(BloodBondKey),
 		FName(PlagueConvergenceKey),
 		FName(DivineWrathKey),
+		FName(EchoesOfThePastKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1925,6 +1930,21 @@ bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
 	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
 	// does not.
 	return SecondsOnFloor >= TheReaperDelaySeconds;
+}
+
+float UCataclysmDungeonModifierEffects::EchoesDistanceCm(float AttackReachCm)
+{
+	return FMath::Clamp(AttackReachCm, 0.0f, EchoesMostAwayCm);
+}
+
+FVector UCataclysmDungeonModifierEffects::EchoesOffset(int32 Which, int32 Count, float DistanceCm)
+{
+	if (Count <= 0)
+	{
+		return FVector::ZeroVector;
+	}
+	const float Angle = 2.0f * PI * static_cast<float>(Which) / static_cast<float>(Count);
+	return FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f) * DistanceCm;
 }
 
 bool UCataclysmDungeonModifierEffects::DivineWrathIsDue(float SecondsSinceLast)

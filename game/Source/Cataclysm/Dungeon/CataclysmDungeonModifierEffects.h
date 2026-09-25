@@ -1821,6 +1821,30 @@ public:
 	static const TCHAR* DivineWrathKey;
 
 	/**
+	 * The row where the last floor's dead come back for one attack. Issues #1820 and #41.
+	 *
+	 * "Spectral versions of enemies killed on the previous floor appear and repeat their
+	 * final attacks before vanishing."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24. Every figure
+	 * is a play-test value:
+	 * - DEATHS ARE RECORDED ON EVERY FLOOR, whether or not it carries the row: the row decides
+	 *   only whether echoes appear on the next. Each record is the creature's kind, rung and
+	 *   last attack (`ACataclysmEnemyCharacter::LastAttackUsed`); a creature that made no
+	 *   attack repeats its ordinary attack. Not echoes, and not deaths that pay nothing. A
+	 *   floor's boss is recorded: its echo is still one attack.
+	 * - `EchoesAppearAfterSeconds` INTO THE NEXT FLOOR, at most `EchoesMost` -- the last to
+	 *   die -- each at its own ordinary attack reach from the player, never more than
+	 *   `EchoesMostAwayCm`, at even angles around them. The record covers one floor.
+	 * - EACH ATTACKS THE PLAYER ONCE `EchoesStrikeAfterSeconds` after appearing and vanishes
+	 *   `EchoesVanishAfterSeconds` after that, dealing its attack's normal damage.
+	 * - AN ECHO CANNOT BE HURT, PAYS NOTHING, IS RAISED BY THE RULE AND DOES NOTHING ELSE: its
+	 *   controller is removed as it appears, and the game mode makes its one attack.
+	 * - HORDE WAVES TOO: the previous wave is the previous floor.
+	 */
+	static const TCHAR* EchoesOfThePastKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4120,6 +4144,18 @@ public:
 	static constexpr float DivineWrathRadiusCm = 300.0f;
 	static constexpr float DivineWrathMaxHealthPercent = 20.0f;
 
+	/** Echoes of the Past's figures. Ruled; every one a play-test value. See the key. */
+	static constexpr float EchoesAppearAfterSeconds = 5.0f;
+	static constexpr float EchoesStrikeAfterSeconds = 1.0f;
+	static constexpr float EchoesVanishAfterSeconds = 1.0f;
+	static constexpr int32 EchoesMost = 6;
+	static constexpr float EchoesMostAwayCm = 600.0f;
+
+	static_assert(
+		EchoesAppearAfterSeconds > 0.0f && EchoesStrikeAfterSeconds > 0.0f
+			&& EchoesVanishAfterSeconds > 0.0f && EchoesMost > 0 && EchoesMostAwayCm > 0.0f,
+		"An echo that came at once, struck at once, never went, or had no room is not the row.");
+
 	static_assert(
 		DivineWrathSecondsBetween > DivineWrathBeamSeconds && DivineWrathBeamSeconds > 0.0f
 			&& DivineWrathAppearsAwayCm > DivineWrathRadiusCm && DivineWrathSpeedCmPerSecond > 0.0f,
@@ -4948,6 +4984,12 @@ public:
 
 	/** What one sweep of a beam burns, from this maximum health. */
 	static float DivineWrathBurn(float MaximumHealth);
+
+	/** How far from the player an echo appears: its attack reach, at most `EchoesMostAwayCm`. */
+	static float EchoesDistanceCm(float AttackReachCm);
+
+	/** Where echo `Which` of `Count` stands from the player: at even angles, level. */
+	static FVector EchoesOffset(int32 Which, int32 Count, float DistanceCm);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

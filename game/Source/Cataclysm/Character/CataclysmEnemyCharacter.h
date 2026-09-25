@@ -1044,6 +1044,24 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bDiesUnpaid = false;
 
+	/** `LastAttackUsed` before the creature has attacked at all. */
+	static constexpr int32 NoAttackYet = -2;
+
+	/** `LastAttackUsed` when the last attack was the ordinary one, which is not an ability. */
+	static constexpr int32 OrdinaryAttackUsed = -1;
+
+	/**
+	 * The last attack this creature made: `NoAttackYet` (-2) before any, `OrdinaryAttackUsed`
+	 * (-1) for its ordinary attack, or an index into `EnemyAbilities()` (0 or more) for an
+	 * ability. Issues #1820 and #41, for Echoes of the Past.
+	 *
+	 * WRITTEN BY `ACataclysmEnemyController` AT THE THREE PLACES IT ATTACKS: the ordinary
+	 * attack, an ability that lands after its wind-up, and one that lands at once. Only
+	 * abilities are announced as skills used, so no listener could tell an ordinary attack
+	 * from an ability's blow; this field is where the difference is kept.
+	 */
+	int32 LastAttackUsed = NoAttackYet;
+
 	/**
 	 * Whether this creature's death pays the player loot and experience. False for a
 	 * creature `bRisenFromTheDead` marks, and for one `bDiesUnpaid` marks. Asked by

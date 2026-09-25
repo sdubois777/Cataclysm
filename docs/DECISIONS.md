@@ -2,6 +2,151 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Echoes of the Past: five seconds into a floor, the last six creatures killed on the floor before come back as echoes, each makes its last attack once, and they vanish
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its figures, and where an echo stands), `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h`
+and `.cpp` (recording deaths, handing them to the next floor, raising the echoes, their one attack,
+the floor panel line and the resets), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (a
+creature's last attack) and `game/Source/Cataclysm/Character/CataclysmEnemyController.cpp` (the three
+places that write it), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmEnemyBehaviourTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
+
+### The row
+
+`Death_Echoes_of_the_Past` in `game/Data/DungeonModifiers.csv`, weight 15: "Spectral versions of
+enemies killed on the previous floor appear and repeat their final attacks before vanishing." The row
+gives no figure. Neither this log nor the design document mentions echoes, spectral creatures or a
+repeated final attack, so nothing earlier settles it.
+
+### What the rule does
+
+The game mode records every creature death on every floor, whether or not that floor carries the row:
+the creature's kind, its rarity rung and the last attack it made. It keeps the last six. When a floor
+begins, that record becomes the previous floor's and a new one starts; leaving the dungeon empties
+both. On a floor carrying the row, Horde waves included, five seconds in, each recorded creature
+appears as an echo of the same kind and rung, standing at its own ordinary attack reach from the
+player (never more than six metres) at even angles around them and facing them. One second later
+each echo makes its recorded attack on the player once, at that attack's normal damage; one second
+after that every echo is destroyed. The floor panel says how many are coming, then how many stand.
+
+An echo cannot be hurt, pays nothing when it goes, and is marked as raised by a rule. Its controller
+is removed as it appears, so it neither moves nor chooses anything; the game mode makes its one
+attack. It is not added to the floor's list of creatures, so a rule that picks from that list, such
+as Blood Bond's one bond, cannot pick an echo that will be gone two seconds later.
+
+`ACataclysmEnemyCharacter::LastAttackUsed` holds a creature's last attack: -2 before it has attacked,
+-1 for its ordinary attack, or the index of an ability in `EnemyAbilities()`. The enemy controller
+writes it in the three places it attacks: the ordinary attack, an ability landing after its wind-up,
+and an ability with no wind-up. A creature killed before it attacked repeats its ordinary attack.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24. Every figure is a play-test
+value:**
+
+- **Deaths are recorded on every floor.** The row only decides whether echoes appear on the next one.
+  Echoes and deaths that pay nothing (`PaysForItsDeath` false) are not recorded. A floor's boss is
+  recorded, because its echo is still only one attack.
+- **At most six echoes, the last six to die.** They appear **five seconds** into the floor, strike
+  **one second** later, and vanish **one second** after that.
+- **"Their final attacks" is each creature's own last attack.** A creature that made no attack repeats
+  its ordinary attack; every creature has one.
+- **Each echo stands at its own ordinary attack reach from the player, never more than six metres, at
+  even angles.** Reach is `AttackReachCm()`, measured horizontally from centre to centre: the Imp
+  132 cm; the Brute, Hellhound and Abyssal Warden 90 cm; the Gatekeeper 200 cm; the Succubus 800 cm
+  and the Corrupted Sentinel 1400 cm, both held to 600. **A close-range ability that still misses from
+  that distance is accepted.** An echo's recorded ability is used aimed at where the player stands;
+  one whose own shape does not reach them from there misses, as the ruling allows.
+- **The echo's controller is destroyed rather than paused.** Before relying on that, every read of a
+  creature's controller on the paths an echo still takes was searched. The Brute's carried rock, rip
+  crater, ability clip and chasing check, and the Gatekeeper's and Succubus's wind-up clips, read it
+  only for animation and all check for none. `UCataclysmCommand::CommanderOf` answers none for a
+  creature with no controller. Nothing an echo does misbehaves without one.
+- **Horde waves too**: the previous wave counts as the previous floor.
+
+### The research: the dead replaying their last moments in shipped games
+
+Done before the build; each page fetched on 2026-09-24 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Dark Souls, bloodstains | https://darksouls.wiki.fextralife.com/Online | touching a bloodstain will "replay the last few seconds of another player's life at that location, ending with their death", showing "the slain player as a phantom" |
+| Diablo IV, Nightmare Dungeon affixes | https://diablo4.wiki.fextralife.com/Nightmare+Dungeons | no affix brings slain monsters back; the nearest, Drifting Shade, is a chasing hazard and not a returning creature |
+
+**What it settles and what it does not.** Dark Souls shows that a phantom replaying the last thing a
+dead character did reads clearly to players, but its phantoms are harmless and replay movement rather
+than attacks. No affix in the Diablo IV list fetched makes the dead attack again. The research
+therefore settles only that the idea reads well. That the echoes attack, that there are six of them,
+and every timing and distance above are this game's own play-test values.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `EchoesStandAtTheirOwnReachAtEvenAnglesNeverBeyondSixMetres`: an Imp's 132 cm reach is kept and a
+  Sentinel's 1400 cm becomes 600. Of four echoes, the first stands along X, the second a quarter turn
+  round and the third opposite the first. With none, there is no offset.
+- `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`: two creatures killed on a floor
+  without the row are recorded with their last attacks. The next floor, which carries the row, says
+  two are coming. There are none a beat before five seconds and two at five seconds. Each is an Imp at
+  the rung that died, has no controller, cannot be hurt (a killing blow does not kill it), pays
+  nothing, is marked as raised by the rule, is not on the floor's list and stands at its own reach.
+  There is no strike a beat early. The player loses health at six seconds, is not struck again, and
+  the echoes are gone and destroyed at seven.
+- `EchoesOfThePastRecordsTheLastSixPaidDeathsOfOneFloor`: a death that pays nothing is not recorded,
+  and a seventh death pushes the first out. A floor without the row brings no echoes, and its record
+  is not carried a floor further. A Horde wave's dead come back on the next wave. Leaving the dungeon
+  empties both records.
+- `AnEchoRepeatsTheAbilityItsCreatureLastUsed`: a Brute recorded as having last stomped comes back
+  inside its stomp's ring and stomps. That stuns the player, which the Brute's ordinary attack does
+  not.
+
+`Cataclysm.AI.ABruteInContactReachStopsRoamingAndLandsAHit` also checks the controller writes: no attack is recorded
+before the Brute has attacked, an ability index is recorded after it spends its abilities, and the
+ordinary attack is recorded after it swings.
+
+One Python check: the row still says "spectral versions", "killed on the previous floor", "repeat
+their final attacks" and "before vanishing", and states no figure.
+
+### Run
+
+One editor window on 2026-09-24, on development e3724c72 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The Python suite of record**, on 918c594f, whose tree is the same as the head's: 5,439 passed and
+  8 skipped of 5,447, 0 failed.
+- **The whole suite on the head**, 3aeeda31: "Build: Succeeded - 29 actions, 26 files compiled"; 2,412
+  tests performed, 2,412 succeeded, 0 failed.
+- **The group `Cataclysm.DungeonModifierEffects.` on the head**: 292 tests performed, 292 succeeded, 0
+  failed.
+- **The group on the base**, e3724c72: 288 tests performed, 288 succeeded, 0 failed. Run after the
+  Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **The ordinary attack not recorded** (the controller's write of `OrdinaryAttackUsed` made
+  `(void)Recorded;`), on the prefix `Cataclysm.AI.ABruteInContactReach`. With the break in: 1
+  performed, 0 succeeded, 1 failed, `ABruteInContactReachStopsRoamingAndLandsAHit`, on "Expected 'and
+  recorded it as its ordinary attack' to be -1, but it was 0" -- 0 being the stomp it last used.
+  Restored: 1 performed, 1 succeeded, 0 failed.
+- **A death that pays nothing recorded** (`!Fallen->PaysForItsDeath()` removed from the recording
+  guard), on the prefix `Cataclysm.DungeonModifierEffects.EchoesOfThePast`. With the break in: 2
+  performed, 1 succeeded, 1 failed, `EchoesOfThePastRecordsTheLastSixPaidDeathsOfOneFloor`, on
+  "Expected 'and is not recorded' to be 2, but it was 3" and "Expected 'the last six are kept, the
+  first gone' to be true". Restored: 2 performed, 2 succeeded, 0 failed.
+- **An echo's ordinary attack not made** (`Echo->AttackTarget(Player);` made `(void)Echo;`), on the
+  same prefix. With the break in: 2 performed, 1 succeeded, 1 failed,
+  `EchoesOfThePastBringsTheLastFloorsDeadBackToStrikeOnceAndVanish`, on "Expected 'the echoes struck
+  the player (100000.0 to 100000.0)' to be true". Restored: 2 performed, 2 succeeded, 0 failed.
+
+---
+
 ## 2026-09-24 — A row can grant on a clock while in combat: momentum every 10 seconds, a next attack every 8, a next skill at 300%-500% effectiveness every 30
 
 **Affects:**
