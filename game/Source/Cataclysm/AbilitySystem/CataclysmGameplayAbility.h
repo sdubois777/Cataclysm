@@ -322,6 +322,17 @@ public:
 	static const TCHAR* CostPaidFromEnergyShieldStat;
 
 	/**
+	 * THIS USE IS FOLLOW THROUGH'S FREE REPEAT, and not a use at all. Issue
+	 * #1515, ruled 2026-09-24: it pays no mana and no health, starts no cooldown
+	 * and waits for none, spends no next-use charge and raises no skill_use.
+	 * `CheckCost` and `CheckCooldown` answer yes for it, and
+	 * `UCataclysmSkillTemplate::CommitAndBegin` skips everything a use pays or
+	 * opens. Set by `UCataclysmFollowThrough` just before it activates the
+	 * repeat, and cleared when that use ends.
+	 */
+	bool bFreeRepeat = false;
+
+	/**
 	 * The pool that pays `Cost` for this character now, or an invalid attribute
 	 * if none can. Issue #1515.
 	 *

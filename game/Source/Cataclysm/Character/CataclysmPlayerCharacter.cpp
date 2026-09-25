@@ -4,6 +4,7 @@
 #include "Cataclysm.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmBasicAttack.h"
+#include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
@@ -761,6 +762,23 @@ void ACataclysmPlayerCharacter::Tick(float DeltaSeconds)
 		DeltaSeconds, CameraZoomInterpSpeed);
 }
 
+void ACataclysmPlayerCharacter::ContinueFollowThrough()
+{
+	UCataclysmFollowThrough::MakePendingRepeat(this);
+
+	// STILL WAITING MEANS THE KILLING USE HAS NOT ENDED YET. `MakePendingRepeat`
+	// clears the wait whenever it gives up or makes the repeat, and keeps it only
+	// for that one reason, and the wait gives up by itself after the keystone's
+	// interval.
+	const UCataclysmAbilitySystemComponent* Acting =
+		Cast<UCataclysmAbilitySystemComponent>(GetAbilitySystemComponent());
+	if (Acting && Acting->PendingFollowThrough().IsValid())
+	{
+		GetWorldTimerManager().SetTimerForNextTick(
+			FTimerDelegate::CreateWeakLambda(this, [this]() { ContinueFollowThrough(); }));
+	}
+}
+
 void ACataclysmPlayerCharacter::AddCameraZoom(float Notches)
 {
 	if (FMath::IsNearlyZero(Notches))
@@ -992,6 +1010,17 @@ void ACataclysmPlayerCharacter::OnSomethingDied(
 		if (Notice.Killer == this && Notice.Victim)
 		{
 			UCataclysmFervour::RestoreHealthOnKillAtNoCost(Acting);
+		}
+
+		// AND FOLLOW THROUGH. Issue #1515, `Ravager_keystone_b_kB`: "Killing an
+		// enemy with a melee attack immediately repeats that attack at no cost".
+		// The kill is announced while the killing use still runs, so the repeat
+		// is recorded here and made next frame, once that use has ended.
+		if (UCataclysmFollowThrough::IsOwnMeleeKill(Notice, this)
+			&& UCataclysmFollowThrough::NoteMeleeKill(this, Notice.KillingSkillName))
+		{
+			GetWorldTimerManager().SetTimerForNextTick(
+				FTimerDelegate::CreateWeakLambda(this, [this]() { ContinueFollowThrough(); }));
 		}
 
 		// AND A DEATH NEAR THIS CHARACTER IS AN ENEMY'S. The sentence says "when

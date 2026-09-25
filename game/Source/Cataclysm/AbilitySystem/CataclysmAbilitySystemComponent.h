@@ -1406,6 +1406,49 @@ public:
 	}
 
 	/**
+	 * Follow Through's clock, and the one repeat it is waiting to make. Issue
+	 * #1515, `Ravager_keystone_b_kB`: "Killing an enemy with a melee attack
+	 * immediately repeats that attack at no cost, no more than once every 3
+	 * seconds." `UCataclysmFollowThrough` is what reads and writes these.
+	 *
+	 * The clock's shape is `MaySurviveLethalHit`'s: never repeated is allowed,
+	 * and no world means no clock and so no repeat.
+	 */
+	bool MayFollowThrough() const;
+
+	/** Record a repeat about to be made, so the next waits `IntervalSeconds`.
+	 *  Answers what the clock held before, so a repeat that then fails to start
+	 *  can put it back: the clock is spent only by a repeat that happens. */
+	float NoteFollowedThrough(float IntervalSeconds);
+
+	/** Put the clock back to a value `NoteFollowedThrough` answered. */
+	void RestoreFollowThroughClock(float NextAllowedSeconds)
+	{
+		FollowThroughNextAllowedSeconds = NextAllowedSeconds;
+	}
+
+	/** Seconds until another repeat is allowed; 0 when one is allowed now. */
+	float FollowThroughSecondsLeft() const;
+
+	/** The killing skill a repeat waits to make, and the world time it gives up
+	 *  at. Set by a melee kill, taken when the killing use has ended. */
+	void NotePendingFollowThrough(FGameplayAbilitySpecHandle Handle, float UntilSeconds)
+	{
+		PendingFollowThroughHandle = Handle;
+		PendingFollowThroughUntilSeconds = UntilSeconds;
+	}
+	FGameplayAbilitySpecHandle PendingFollowThrough() const
+	{
+		return PendingFollowThroughHandle;
+	}
+	float PendingFollowThroughUntil() const { return PendingFollowThroughUntilSeconds; }
+	void ClearPendingFollowThrough()
+	{
+		PendingFollowThroughHandle = FGameplayAbilitySpecHandle();
+		PendingFollowThroughUntilSeconds = -1.0f;
+	}
+
+	/**
 	 * Sacrificial Ward's figure: the seconds between wards, above zero meaning
 	 * the keystone is held. Issue #1515, `Ritualist_keystone_c_kC`: "Damage that
 	 * would break your Energy Shield instead destroys the minion with the least
@@ -2661,6 +2704,13 @@ protected:
 
 	/** When Nothing Stops It may next save this character. -1 is never yet. */
 	float LethalHitSurvivalNextAllowedSeconds = -1.0f;
+
+	/** When Follow Through may next repeat an attack. -1 is never yet. */
+	float FollowThroughNextAllowedSeconds = -1.0f;
+
+	/** The skill a Follow Through repeat waits to make, and until when. */
+	FGameplayAbilitySpecHandle PendingFollowThroughHandle;
+	float PendingFollowThroughUntilSeconds = -1.0f;
 
 	/** Until when, in world seconds, this character takes no damage. -1 is not. */
 	float ImmuneAfterLethalHitUntilSeconds = -1.0f;

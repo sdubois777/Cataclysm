@@ -40,6 +40,14 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FString SkillName;
 
+	/**
+	 * Where Follow Through's free repeat is aimed: the nearest living enemy in
+	 * reach when it was made. Issue #1515. `AimPoint` answers this instead of
+	 * the cursor while `bFreeRepeat` is set, ruled 2026-09-24, so the repeat
+	 * never goes where the mouse happens to be.
+	 */
+	FVector FreeRepeatAim = FVector::ZeroVector;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	FString SkillDescription;
 

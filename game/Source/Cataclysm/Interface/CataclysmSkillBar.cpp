@@ -319,6 +319,16 @@ FString UCataclysmSkillBar::NthEntry(ECataclysmEveryNth Kind, int32 Count,
 	return Name ? FString::Printf(TEXT("%s %d/%d"), Name, Count, EveryNth) : FString();
 }
 
+FString UCataclysmSkillBar::FollowThroughLine(float SecondsLeft)
+{
+	if (SecondsLeft <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Follow Through %ds"),
+						   FMath::Max(1, FMath::CeilToInt(SecondsLeft)));
+}
+
 FString UCataclysmSkillBar::NextUseLine(float SkillPercent, int32 SkillCount,
 									   float AttackPercent, int32 AttackCount,
 									   float EffectivenessPercent,

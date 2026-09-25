@@ -157,7 +157,14 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// CommitAbility is what runs ApplyCost and ApplyCooldown. Issue #155 wrote
 	// both and nothing called them, because the only ability in the project was
 	// the placeholder, which ends immediately and commits nothing.
-	if (!CommitAbility(Handle, ActorInfo, ActivationInfo))
+	//
+	// NOT FOR FOLLOW THROUGH'S FREE REPEAT, which is not a use. Issue #1515,
+	// ruled 2026-09-24: it pays nothing, starts no cooldown, raises no skill_use,
+	// pays no health and spends no next-use charge, so it skips the commit, the
+	// two lines after it and the block below, whose `else` gives it the readings
+	// of a use nothing measured. It keeps the turn to face its target and the
+	// burst at the caster, which are what the player sees of it.
+	if (!bFreeRepeat && !CommitAbility(Handle, ActorInfo, ActivationInfo))
 	{
 		EndAbility(Handle, ActorInfo, ActivationInfo,
 				   /*bReplicateEndAbility=*/true, /*bWasCancelled=*/true);
@@ -168,9 +175,12 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// slice 4. Every one of the eight skill shapes and the basic attack pass
 	// through here, and a skill the cost or the cooldown refused has already
 	// returned, so a refused press announces nothing.
-	UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot);
+	if (!bFreeRepeat)
+	{
+		UCataclysmCombatEvents::NoteSkillUsed(Avatar(), SkillName, SkillTags, Slot);
 
-	PayHealthCost();
+		PayHealthCost();
+	}
 
 	// AND HOW FAR THE CHARACTER HAD MOVED BEFORE THIS USE, READ AND THEN CLEARED.
 	// Issue #41, slice 2. Headlong asks about "your first melee attack after
@@ -185,8 +195,8 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	// CLEARING IT HERE IS WHAT MAKES THE NEXT ATTACK THE FIRST ONE. The
 	// character's tally starts again from this moment, so a second attack reads
 	// about nothing unless the character walked again in between.
-	if (UCataclysmAbilitySystemComponent* Cataclysm =
-			Cast<UCataclysmAbilitySystemComponent>(
+	if (UCataclysmAbilitySystemComponent* Cataclysm = bFreeRepeat ? nullptr
+			: Cast<UCataclysmAbilitySystemComponent>(
 				GetAbilitySystemComponentFromActorInfo()))
 	{
 		LastMetresMovedBeforeUse = Cataclysm->MetresMovedSinceOwnAttack();
@@ -310,7 +320,9 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 	else
 	{
 		// NOTHING OF THIS PROJECT'S OWN MEASURED ANYTHING, and -1 is the reading
-		// the condition refuses on rather than treating as no distance.
+		// the condition refuses on rather than treating as no distance. A
+		// Follow Through repeat lands here too: it is not a use, so it has no
+		// distance moved before it and no next-use charge spent on it.
 		LastMetresMovedBeforeUse = -1.0f;
 		LastNextUseIncreasePercent = 0.0f;
 		LastNextUseMoreMultiplier = 1.0f;
@@ -504,6 +516,11 @@ void UCataclysmSkillTemplate::EndAbility(
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility,
 					  bWasCancelled);
+
+	// A FOLLOW THROUGH REPEAT IS ONE USE, so the flag goes with it. Issue #1515.
+	// Cleared here rather than when it began because the aim is read after the
+	// wind-up, and the cost and cooldown checks before the activation.
+	bFreeRepeat = false;
 }
 
 bool UCataclysmSkillTemplate::CanActivateAbility(
@@ -1851,6 +1868,13 @@ AActor* UCataclysmSkillTemplate::Avatar() const
 
 FVector UCataclysmSkillTemplate::AimPoint() const
 {
+	// FOLLOW THROUGH'S REPEAT IS AIMED AT THE ENEMY IT WAS MADE FOR, never at the
+	// cursor. Issue #1515, ruled 2026-09-24.
+	if (bFreeRepeat)
+	{
+		return FreeRepeatAim;
+	}
+
 	const AActor* Self = Avatar();
 	const FVector Fallback = Self ? Self->GetActorLocation() : FVector::ZeroVector;
 

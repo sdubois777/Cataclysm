@@ -306,6 +306,106 @@ the way it was registered before the window; restored, each run was 1 performed,
 
 ---
 
+## 2026-09-25 — Follow Through, engine only: a melee kill repeats that attack for free at the nearest enemy in reach, once every 3 seconds
+
+**Affects:** a new `game/Source/Cataclysm/AbilitySystem/CataclysmFollowThrough.h` and `.cpp`,
+`CataclysmAbilitySystemComponent.h` and `.cpp` (the clock and the waiting repeat),
+`CataclysmGameplayAbility.h` and `.cpp` (the one-use flag), `CataclysmSkillTemplate.h` and `.cpp` (what a
+repeat skips, and its aim), `game/Source/Cataclysm/Character/CataclysmPlayerCharacter.h` and `.cpp` (the
+kill hook), `game/Source/Cataclysm/Interface/CataclysmSkillBar.h` and `.cpp` and `CataclysmHUD.cpp` (the
+line), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one stat with no attribute), a
+new test file, the stat exemption test and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ravager_keystone_b_kB` Follow Through: "Killing an enemy with a melee attack immediately repeats that
+attack at no cost, no more than once every 3 seconds." One stat with no attribute, which its row will
+carry: `melee_kill_repeats_attack_every_seconds` (3). **Engine only**, for the reason the Shared Ruin
+entry gives.
+
+### THE GENRE
+
+Fetched on 2026-09-24. Path of Exile's Multistrike Support: "Supported Skills Repeat 2 additional
+times", "making them repeat twice when used, targeting a random enemy each time"
+([poedb, Multistrike Support](https://poedb.tw/us/Multistrike_Support)). So an attack that repeats
+itself and picks its own target is shipped. Diablo IV's Death Blow: "If this kills an enemy, its
+Cooldown is reset" ([Diablo 4 wiki, Death Blow](https://diablo4.wiki.fextralife.com/Death+Blow)). So a
+kill that makes a skill free again is shipped too, though there the player uses it again rather than it
+repeating. **Neither says what a repeat does with charges or stores, and those rulings are specific to
+this game.**
+
+### RULINGS, 2026-09-24, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **The aim: the same skill at the nearest living enemy within that skill's own reach, never the
+  cursor.** No enemy in reach means no repeat, and the clock is not spent. **Nearest rather than
+  Multistrike's random enemy is a judgement**: the nearest is predictable and the Ravager's design is to
+  stay in contact.
+- **The repeat is not a use.** It pays no mana and no health, starts no cooldown and waits for none,
+  spends no next-use charge and raises no skill_use. A charge banked for "your next attack" would
+  otherwise go on a swing the player did not choose, and every "when you use a skill" effect would fire
+  for free at the kill rate.
+- **Its hits are ordinary melee hits**, so Nothing Wasted's store is spent by it and Rendering Blows
+  counts it. **The consequence, stated**: a character holding both keystones usually has its stored
+  damage carried by the repeat after a kill. That is the store working as written.
+- **A repeated basic attack is one extra swing, started when the killing use ends, ignoring the swing
+  interval for that swing only.** The interval is the player controller's `LastSwingSeconds`, which the
+  repeat never touches, so the next ordinary swing's timing is unchanged with no code for it.
+- **A Movement-slot skill never repeats, and its kill spends nothing.** A judgement: the sentence says
+  "repeats that attack", and repeating a skill whose purpose is to move the player would move it
+  somewhere it did not choose.
+- **No chain**: the clock starts when the repeat is made, so a kill the repeat makes cannot earn another
+  within 3 seconds. **A tick does not count**, and **a minion's kill is the minion's own** (the owner's
+  decision of 2026-09-17).
+- **It is shown** by the skill's own swing at the new target, and by "Follow Through 2s" on the line
+  above the skill bar while the clock runs, whole seconds rounded up, and nothing when it is ready.
+
+### HOW IT IS BUILT
+
+- **Two steps, because a death is announced inside the blow that caused it**, while the killing use is
+  still active and cannot be activated again. `ACataclysmPlayerCharacter::OnSomethingDied` calls
+  `UCataclysmFollowThrough::NoteMeleeKill`, which records the killing skill as waiting on the ability
+  system. A next-frame timer then calls `MakePendingRepeat`, and sets itself again while that use is
+  still running. **A timer and not `Tick`**, because the player character's tick turns itself off once
+  the camera settles. A repeat not made within the keystone's own interval is dropped.
+- **The one-use flag `UCataclysmGameplayAbility::bFreeRepeat`**: `CheckCost` and `CheckCooldown` answer
+  yes for it; `CommitAndBegin` skips the commit, the skill_use notice, the health cost and the block that
+  spends charges and opens the "after using" windows; `AimPoint` answers `FreeRepeatAim`; `EndAbility`
+  clears it.
+- **The clock is spent before the activation**, so the repeat's own kill cannot earn another, and put back
+  if the activation is refused: only a repeat that happens spends it.
+- **Reach** is the basic attack's own when the killing skill is the basic attack, and otherwise the
+  skill's range, or its radius when it states no range (`RequirementReachCm`).
+- **A character that cannot act makes no repeat**, and it is not kept for after the stun.
+
+### TESTS
+
+In the group `Cataclysm.FollowThrough.`, the stat given by hand:
+
+- `AMeleeKillRepeatsTheAttackAtTheNearestEnemyAndPaysNothing`: a forward cleave kills the enemy in front;
+  the repeat strikes the nearest enemy to one side and not a farther one on the other; it pays no mana,
+  raises no skill_use and spends no next-use charge; it spends the clock and the line reads "Follow
+  Through 3s"; and the next ordinary use still waits for the first use's cooldown.
+- `NoEnemyInReachMeansNoRepeatAndTheClockIsUnspent`.
+- `OnlyYourOwnMeleeKillOutsideTheWaitAndOutsideAMovementSkillCounts`.
+- `ThePlayersKillHookRecordsTheRepeat`: a melee kill announced for a real player leaves a repeat waiting;
+  a tick does not.
+- `TheLineAboveTheSkillBarCountsTheWaitInWholeSeconds`.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**The killer in the first three is a plain actor, not the player.** A player that plays an attack
+animation waits for it before its blow lands, and a test world is never ticked, so with the Paragon art
+present a player's strike would never land in a test. `NoteMeleeKill` is called for the plain actor as
+the player's hook calls it, and the fourth test checks that hook on its own. **What no test here shows is
+the next-frame timer itself**, for the same reason.
+
+**The stat is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
+change must add a test that wears the real `Ravager_keystone_b_kB` row.
+
+---
+
 ## 2026-09-24 — The character record writes what the character is wearing, each item with its slot by name, and the save documents count 19 worn slots
 
 **Affects:** `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (the field and its type),

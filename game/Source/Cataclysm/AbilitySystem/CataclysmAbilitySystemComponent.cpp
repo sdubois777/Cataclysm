@@ -1682,6 +1682,39 @@ void UCataclysmAbilitySystemComponent::NoteLethalHitSurvived(float IntervalSecon
 		ImmuneSeconds > 0.0f ? Now + ImmuneSeconds : -1.0f;
 }
 
+bool UCataclysmAbilitySystemComponent::MayFollowThrough() const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	return FollowThroughNextAllowedSeconds < 0.0f
+		|| World->GetTimeSeconds() >= FollowThroughNextAllowedSeconds;
+}
+
+float UCataclysmAbilitySystemComponent::NoteFollowedThrough(float IntervalSeconds)
+{
+	const float Before = FollowThroughNextAllowedSeconds;
+	const UWorld* World = GetWorld();
+	if (World && IntervalSeconds > 0.0f)
+	{
+		FollowThroughNextAllowedSeconds = World->GetTimeSeconds() + IntervalSeconds;
+	}
+	return Before;
+}
+
+float UCataclysmAbilitySystemComponent::FollowThroughSecondsLeft() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || FollowThroughNextAllowedSeconds < 0.0f)
+	{
+		return 0.0f;
+	}
+	return FMath::Max(0.0f, FollowThroughNextAllowedSeconds - World->GetTimeSeconds());
+}
+
 const TCHAR* UCataclysmAbilitySystemComponent::ShieldBreakDestroysMinionEverySecondsStat =
 	TEXT("shield_break_destroys_minion_every_seconds");
 

@@ -213,6 +213,13 @@ public:
 	void OnSomethingDied(const FCataclysmDeathNotice& Notice);
 
 	/**
+	 * Make Follow Through's waiting repeat, or ask again next frame while the
+	 * killing use is still running. Issue #1515. A timer rather than `Tick`,
+	 * because this character's tick turns itself off once the camera settles.
+	 */
+	void ContinueFollowThrough();
+
+	/**
 	 * A blow this character dealt, for the worn rows that act on one.
 	 *
 	 * TWO EVENTS COME OUT OF ONE ANNOUNCEMENT: a hit dealt, and a critical

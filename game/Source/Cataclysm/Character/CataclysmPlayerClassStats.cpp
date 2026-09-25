@@ -265,6 +265,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Both Hands Full: a second two-handed weapon may go in the other hand,
 		// read by UCataclysmEquipmentComponent::MayHoldTwoTwoHanded. Issue #1515.
 		TEXT("two_handed_weapon_in_each_hand"),
+		// Follow Through's seconds between repeats, read by
+		// UCataclysmFollowThrough::NoteMeleeKill. Issue #1515.
+		TEXT("melee_kill_repeats_attack_every_seconds"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.
