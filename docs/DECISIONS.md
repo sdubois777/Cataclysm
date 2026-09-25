@@ -228,6 +228,35 @@ while the file is still edited under the fixtures' stated exception. The two fix
 back.
 - `test_every_count_of_worn_slots_in_the_save_documents_is_the_enums`, in the Python file above.
 
+### Run
+
+One editor window on 2026-09-25, ending at 10:08 UTC, on development 3dcbb8e9 as the base, at the head
+daa23369. Every figure below is what `python tools/unreal_build.py`, `pytest`, `prove_cpp_guard` or
+`prove_guard` printed.
+
+- **The build**: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on e713f73b, whose tree differs from the window's only by another entry in
+  this file: 5,477 passed, 8 skipped, 0 failed (JUnit 5,485 tests).
+- **The whole suite**, started once no CI run was in progress: 2,469 tests performed, 2,469 succeeded, 0
+  failed; every declared test was reported. 39 skipped part of what they check for want of the Paragon
+  art, none of them in `Cataclysm.SaveRecords.`.
+
+**Two C++ guard proofs, each printing PROVED**, prefix `Cataclysm.SaveRecords.`, restored: 14 of 14
+succeeded each time. Each failed exactly as registered.
+
+- **The worn gear not written** (`CharacterFrom`'s call to `WornGearFrom` made conditional on an owner that
+  is never missing, in `CataclysmSaveGather.cpp`): 1 of 14 failed, `AWornItemIsWrittenWithItsSlotByName`,
+  on "two worn items are written" reading 0 where 2.
+- **The slot not saved** (`SaveGame` removed from `FCataclysmWornItem::Slot`): 2 of 14 failed.
+  `EveryFixtureHoldsEveryFieldItsRecordWrites` found `Character_v3.json` and its record disagreeing at
+  `record.WornGear[0].Slot`, and `TheCommittedCharacterFileKeepsItsWornGear` read the two slots as 19 where
+  17 and 11.
+
+**One Python guard proof, printing PROVED**, run earlier in a copy of the repository: "18 equipped" put back
+into `docs/Save_System_Design.md`. "PROVED: 1 failed, 2 passed in 0.08s | restored: 3 passed in 0.04s",
+the one failure `test_every_count_of_worn_slots_in_the_save_documents_is_the_enums`. Its registration had
+said 4 would pass restored; the file holds 3 tests, and that was said when it ran.
+
 ---
 
 ## 2026-09-24 — Both Hands Full, engine only: a second two-handed weapon goes in the other hand, and goes back when the option is lost
