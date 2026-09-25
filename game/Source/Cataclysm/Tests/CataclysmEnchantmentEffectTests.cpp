@@ -6894,7 +6894,8 @@ namespace CataclysmDeployableTest
 	 */
 	struct FSummoner
 	{
-		explicit FSummoner(UWorld* InWorld, const TCHAR* Enchantment)
+		explicit FSummoner(UWorld* InWorld, const TCHAR* Enchantment,
+						   const TCHAR* Drawback = nullptr)
 			: World(InWorld)
 		{
 			using namespace CataclysmEnchantmentEffectTest;
@@ -6905,7 +6906,8 @@ namespace CataclysmDeployableTest
 				FCataclysmItem AlsoRemoved;
 				ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
 				Wearer->Equipment->Equip(
-					Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect),
+					Carrying(TEXT("Head_Helm"), Enchantment,
+							 Drawback ? Drawback : DrawbackWithNoEffect),
 					Removed, AlsoRemoved, Slot);
 			}
 			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
@@ -6994,7 +6996,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDamageRowsTest,
  *
  * "Gadgets deal 20%-40% increased damage", at 40: a ballista's blow is 1.4 times
  * a plain summoner's ballista, and an imp's is unchanged. The row is written on
- * attack_damage and on spell_damage; reading both would make it 1.8.
+ * attack_damage and on spell_damage; reading both would make it 1.8. The same
+ * summoner also wears "Your direct damage is reduced by 25%", an attack_damage
+ * row that names no gadget: it must not reach the machine, or the blow would be
+ * 1.15 times.
  * "While stationary, your gadgets deal 20%-40% increased damage", at 40: 1.4
  * times once the summoner is recorded as not moving.
  * "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit", at 6:
@@ -7017,7 +7022,8 @@ bool FCataclysmGadgetDamageRowsTest::RunTest(const FString&)
 		return false;
 	}
 
-	FSummoner Increased(Scope.World, TEXT("Positive_Gadgets_deal_20_40_increased_damage"));
+	FSummoner Increased(Scope.World, TEXT("Positive_Gadgets_deal_20_40_increased_damage"),
+		TEXT("Negative_Your_direct_damage_is_reduced_by_25"));
 	TestEqual(TEXT("increased: a ballista's blow is 1.4 times"),
 		Increased.Blow(TEXT("Ballista")) / PlainBallista, 1.4f, 0.001f);
 	TestEqual(TEXT("increased: an imp's blow is unchanged"),
