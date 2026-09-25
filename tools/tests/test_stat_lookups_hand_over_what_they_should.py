@@ -434,6 +434,10 @@ INVENTORY = {
      'FName(UCataclysmDebuffs::NowhereToRunMetresStat), FGameplayTagContainer(), 0.0f'):
         "Nowhere to Run's radius as a no-decay radius, asked in the decay step "
         'with no blow in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmShoulderThrough.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "Shoulder Through's switch, asked of the walker every frame it walks, "
+        'before any enemy is found; whether it is held, not a blow modifier',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f'):
         "Nothing Wasted's cap, asked of the holder as damage is stored and as "

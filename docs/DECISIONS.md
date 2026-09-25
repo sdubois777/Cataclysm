@@ -629,6 +629,118 @@ the way it was registered before the window; restored, each run was 1 performed,
 
 ---
 
+## 2026-09-25 — Shoulder Through, engine only: walking into an enemy pushes it 1.5 metres aside and strikes it for the weapon's damage, once a second per enemy
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmShoulderThrough.h` and `.cpp` (new),
+`CataclysmSkillEffects.h` and `.cpp` (`ApplyPushAside`), `CataclysmAbilitySystemComponent.h` and `.cpp`
+(the per-enemy limit), `game/Source/Cataclysm/Player/CataclysmPlayerController.cpp` (the call),
+`CataclysmPlayerClassStats.cpp` (one stat with no attribute), a new test file, a probe in the stat
+exemption test and two Python files. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ravager_capstone_100` option 3, Shoulder Through: "Moving into an enemy pushes it aside and deals your
+melee damage to it." One stat with no attribute, above zero meaning held, which its row will carry:
+`moving_into_enemy_pushes_aside` (1).
+
+**Engine only, and so it does nothing in play until its Passive Effects row lands.** The design workbook
+is held by the enchantment session. The row, and a test that wears it, go in one later rows change with
+the rows for Both Hands Full, Follow Through and Nowhere to Run. Ruled 2026-09-25.
+
+### THE GENRE
+
+Diablo IV's Barbarian skill Charge: "Rush forward and push enemies before swinging your weapon, dealing
+[180%] damage and Knocking Back enemies." It is a skill on a 17 second cooldown. Both the text and the
+cooldown are from `diablo4.wiki.fextralife.com/Charge`, fetched 2026-09-25. The research settles that a push
+and a strike on contact is a shipped shape. Doing it as a passive on ordinary walking is this game's own
+design, and the numbers below are judgements, not taken from another game.
+
+### RULINGS, 2026-09-25, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **"Moving into an enemy" is where the character is trying to go, not where it went.** That is the
+  movement component's acceleration. Two capsules block each other, so a character pushing into an
+  enemy covers no ground and its velocity says nothing. An enemy counts when the distance between the
+  two centres, measured flat, is at most the two collision radii plus 10 cm, and the enemy stands within
+  45 degrees of the direction. The nearest such enemy is the one pushed. The controller asks every frame.
+- **Ordinary walking only.** Nothing is asked while a movement skill carries the character. Nothing is
+  asked while the character walks toward an enemy it clicked, because that is an attack order, not a
+  walk. So clicking an enemy never triggers it.
+- **The push is displacement**, through the one displacement body, `CataclysmDisplace`. So immunity to
+  displacement, crowd control resistance, the halving rule and the stagger all apply, as they do to
+  every knockback. The enemy moves at right angles to the character's movement, toward the side it
+  already stands on. An enemy dead ahead goes to the right. The distance is 1.5 metres
+  (`UCataclysmShoulderThrough::PushCm`), which is a judgement. `ApplyPushAside` is a new sibling of
+  `ApplyKnockback`, since a knockback's direction is away from the instigator and this one's is not.
+- **The damage is one ordinary melee hit at 100% of the character's weapon damage**, through `ApplyHit`
+  with a melee delivery. **It is not a skill use.** It costs nothing, counts as no skill use, and
+  spends no next-use charge.
+- **Once per enemy per second** (`UCataclysmShoulderThrough::SecondsPerEnemy`), a judgement that
+  matches the one-second stagger. Without a limit, walking into a crowd would push and strike on every
+  frame. Each enemy is kept by a weak pointer, so an enemy that dies leaves nothing behind. Other enemies
+  are not kept waiting by the first one's second.
+
+**A CONSEQUENCE, STATED BECAUSE IT IS EASY TO MISS: a kill by Shoulder Through does not start Follow
+Through.** Follow Through repeats the skill that killed. This hit belongs to no skill, so there is
+nothing to repeat.
+
+**It does not conflict with Nowhere to Run.** That option holds an enemy's own movement. This push is
+displacement, which Nowhere to Run does not hold back.
+
+### TESTS
+
+In the group `Cataclysm.ShoulderThrough.`, the stat given by hand, bodies with a 34 cm collision sphere
+and a walker walking along +X:
+
+- `AnEnemyDeadAheadIsPushedToTheRightStaggeredAndStruck`: an enemy 60 cm ahead ends 150 cm to the
+  right, at the same distance along the walk. It is staggered and has lost health. The walker has not.
+- `AnEnemyToTheLeftIsPushedLeftAndOneBehindOrApartIsLeftAlone`: an enemy ahead and to the left goes
+  150 cm further left. An enemy behind, one 51 degrees off the walk, and one 90 cm ahead are not moved
+  and not harmed.
+- `EachEnemyIsPushedAtMostOnceASecondAndOthersAreNotKeptWaiting`: half a second after the first push,
+  the same enemy put back in front is not pushed or struck. A second enemy is pushed in that same half
+  second. A full second after the first push, the first enemy is pushed and struck again.
+- `StandingStillOrNotHoldingTheOptionPushesNothing`.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+- The controller's call is pinned in
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`, as a new hook entry for
+  `ACataclysmPlayerController::PostProcessInput`.
+
+**What no test here shows**: that the player controller's frame calls `Step`. The automation tests run
+with no player controller, so they call `Step` directly with the direction the controller would pass.
+The Python file above pins that the call is present. Whether the acceleration a real walk produces
+triggers it, and whether 1.5 metres looks right, have to be judged by walking into something.
+
+**The stat is given by hand**, so none of these tests can see a missing or wrong row. When the row
+lands, that change must add a test that wears the real `Ravager_capstone_100` option 3 row.
+
+
+### Run
+
+One editor window on 2026-09-25, ending at 13:30 UTC, on development df8017e7 as the base, at the head
+66db0fd3. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**, the first time this change was compiled: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on the same tree: 5,483 passed, 8 skipped, 0 failed (JUnit 5,491 tests).
+- **The whole suite**, started once no CI run was in progress: 2,501 tests performed, 2,501 succeeded, 0
+  failed; every declared test was reported. 40 skipped part of what they check for want of the Paragon
+  art, none of them a Shoulder Through test.
+
+**Three guard proofs, each printing PROVED**, prefix `Cataclysm.ShoulderThrough.`, restored: 4 of 4
+succeeded each time.
+
+- **No cone** (the cone test made `< -1.0f`): 1 of 4 failed, on six assertions. The enemy 60 cm behind and
+  the one 51 degrees off were each moved into, pushed (to Y 150 and Y 200) and struck (99,900).
+- **The once-a-second limit a second short** (`+ 1.0f` in `MayShoulderThrough`): 1 of 4 failed, on three
+  assertions. Half a second later the same enemy was pushed again, to Y 75, which is the second push
+  halved by the diminishing-returns rule, and struck again (99,800 where 99,900).
+- **No damage** (`ApplyHit`'s 100 made 0): 3 of 4 failed, one assertion each, the three "struck" checks.
+  The stagger held, since the push applies it. The registration cited two of those assertions one line
+  early (155 and 191 where the log printed 156 and 192); the assertions are the ones registered.
+---
+
 ## 2026-09-25 — Nowhere to Run, engine only: enemies within 8 metres cannot move themselves farther away, are marked "Held", and keep Fervour from decaying
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the hold),
