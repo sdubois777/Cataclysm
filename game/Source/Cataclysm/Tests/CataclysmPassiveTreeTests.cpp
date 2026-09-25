@@ -15946,6 +15946,414 @@ bool FCataclysmDemonicRowsSharedBloodTest::RunTest(const FString&)
 }
 
 // ---------------------------------------------------------------------------
+// Five Ravager rows that ask how many enemies stand within 4 metres, each
+// shown through its real row. Issue #1755.
+//
+// EACH OF THESE HAD A ROW AND NO TEST OF WHAT IT DOES. Weight of the Axe,
+// Onset, Unbreaking, In Among Them and Wade In were authored by rows whose
+// condition or scale counts enemies in reach, and the counting was tested only
+// with other nodes' rows or with the stat given by hand. A row with the wrong
+// condition value, the wrong reach or the wrong bucket passed everything.
+//
+// A BODY IS PLACED RATHER THAN A COUNT STATED, for the reason the Unstoppable
+// test gives: the game measures who is near, and a test that supplies the
+// count proves nothing about the measuring. Each reading goes through the
+// function a blow calls: `AttackDamageIncreasesForSkill` and
+// `AttackDamageMoreForSkill` for the attacker, `StatForSkill` for
+// `damage_taken` and `armor` as `DefenderStat` asks for them, and
+// `StatAppliedTo` for spell damage, which a Ravager holds none of by default.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmReachRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmKeystoneRowTest;
+
+	/** Where the Nth body within reach stands: two metres off, on its own axis
+	 *  or diagonal, so no two spawns overlap and none is refused. */
+	FVector NearSpot(const FRealCharacter& Player, int32 Index)
+	{
+		static const FVector Directions[] = {
+			FVector(1.0f, 0.0f, 0.0f), FVector(0.0f, 1.0f, 0.0f),
+			FVector(-1.0f, 0.0f, 0.0f), FVector(0.0f, -1.0f, 0.0f)};
+		return Player.Character->GetActorLocation()
+			+ Directions[Index % 4] * (2.0f * M);
+	}
+
+	/** A body ten metres off: in the world, and not within four. */
+	FVector FarSpot(const FRealCharacter& Player)
+	{
+		return Player.Character->GetActorLocation()
+			+ FVector(10.0f * M, 10.0f * M, 0.0f);
+	}
+
+	/** Spend points, or give them all back when `Points` is empty. */
+	void Take(FRealCharacter& Player, const FCataclysmPassiveAllocation& Points)
+	{
+		Player.State->SetPassiveAllocation(Points, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	/** The attack damage increases a blow sees, as a fraction. */
+	float Increases(const FRealCharacter& Player)
+	{
+		return Player.AbilitySystem->AttackDamageIncreasesForSkill(
+			FGameplayTagContainer());
+	}
+
+	/** A possessed Ravager with the effect table, or false with the reason. */
+	bool Ready(FAutomationTestBase& Test, const FRealCharacter& Player)
+	{
+		if (!Test.TestTrue(TEXT("a possessed Ravager with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * The shared shape of Weight of the Axe and Onset, whose sentences are the
+	 * same: "+2% increased Attack Damage per point while an enemy is within 4
+	 * metres." Full points; nothing near, a body ten metres off, a body two
+	 * metres off; then the points given back with the body still near.
+	 */
+	bool AnEnemyNearRaisesAttackDamage(FAutomationTestBase& Test,
+									   const TCHAR* NodeName, int32 Points,
+									   float ExpectedFraction)
+	{
+		FScopedPlayerClass AsRavager(TEXT("Ravager"));
+		if (!Test.TestTrue(TEXT("the class console variable exists"),
+						   AsRavager.IsUsable()))
+		{
+			return false;
+		}
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FRealCharacter Player = Spawn(World);
+		if (!Ready(Test, Player))
+		{
+			return false;
+		}
+
+		const FName Node(NodeName);
+		const TArray<const FCataclysmPassiveEffectRow*> Effects =
+			UCataclysmPassiveTree::EffectsFor(Player.EffectTable, Node);
+		if (!Test.TestEqual(TEXT("the node has one row"), Effects.Num(), 1))
+		{
+			return false;
+		}
+
+		const float Unspent = Increases(Player);
+		FCataclysmPassiveAllocation Allocation;
+		Allocation.Add(Node, Points);
+		Take(Player, Allocation);
+
+		Test.TestEqual(TEXT("with nothing near, the points grant nothing"),
+					   Increases(Player) - Unspent, 0.0f, 0.0001f);
+
+		SpawnHostile(World, FarSpot(Player));
+		Test.TestEqual(TEXT("a body ten metres off is not within four, so still "
+							"nothing"),
+					   Increases(Player) - Unspent, 0.0f, 0.0001f);
+
+		if (!Test.TestNotNull(TEXT("a body two metres off"),
+							  SpawnHostile(World, NearSpot(Player, 0))))
+		{
+			return false;
+		}
+		Test.TestEqual(*FString::Printf(TEXT("with an enemy two metres off, %d "
+											 "points add %.2f to attack damage"),
+										Points, ExpectedFraction),
+					   Increases(Player) - Unspent, ExpectedFraction, 0.0001f);
+
+		SpawnHostile(World, NearSpot(Player, 1));
+		Test.TestEqual(TEXT("and a second enemy adds nothing more: the sentence "
+							"asks for an enemy, not each one"),
+					   Increases(Player) - Unspent, ExpectedFraction, 0.0001f);
+
+		Take(Player, FCataclysmPassiveAllocation());
+		Test.TestEqual(TEXT("with the points given back, the enemies near are "
+							"worth nothing"),
+					   Increases(Player) - Unspent, 0.0f, 0.0001f);
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWeightOfTheAxeOnARealCharacterTest,
+	"Cataclysm.ReachRows.WeightOfTheAxeRaisesARealRavagersAttackDamageOnlyWithAnEnemyNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_basic_spine_003` Weight of the Axe: "+2% increased Attack Damage per
+ *  point while an enemy is within 4 metres." Twelve points, so 24%. */
+bool FCataclysmPassiveWeightOfTheAxeOnARealCharacterTest::RunTest(const FString&)
+{
+	return CataclysmReachRowTest::AnEnemyNearRaisesAttackDamage(
+		*this, TEXT("Ravager_basic_spine_003"), 12, 0.24f);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveOnsetOnARealCharacterTest,
+	"Cataclysm.ReachRows.OnsetRaisesARealRavagersAttackDamageOnlyWithAnEnemyNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_basic_d_a0` Onset: "+2% increased Attack Damage per point while an
+ *  enemy is within 4 metres." Ten points, so 20%. */
+bool FCataclysmPassiveOnsetOnARealCharacterTest::RunTest(const FString&)
+{
+	return CataclysmReachRowTest::AnEnemyNearRaisesAttackDamage(
+		*this, TEXT("Ravager_basic_d_a0"), 10, 0.20f);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnbreakingOnARealCharacterTest,
+	"Cataclysm.ReachRows.UnbreakingCutsTheDamageARealRavagerTakesOnlyWithThreeEnemiesNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_a_kA` Unbreaking: "You take 15% less damage while three or
+ * more enemies are within 4 metres of you."
+ *
+ * TWO NEAR IS THE CONTROL THAT MATTERS. A row asking for one enemy instead of
+ * three passes a test that only places three. `damage_taken` is read as
+ * `DefenderStat` reads it for every hit, from the attribute's own figure.
+ */
+bool FCataclysmPassiveUnbreakingOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmReachRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_a_kA"));
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Take(Player, Allocation);
+
+	const auto Taken = [&Player]()
+	{
+		return Player.AbilitySystem->StatForSkill(
+			FName(UCataclysmDamageCalculation::DamageTakenStat),
+			FGameplayTagContainer(),
+			Player.AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetDamageTakenAttribute()));
+	};
+
+	const float Alone = Taken();
+	if (!TestTrue(TEXT("damage taken reads a figure to cut"), Alone > 0.0f))
+	{
+		return false;
+	}
+
+	SpawnHostile(World, NearSpot(Player, 0));
+	SpawnHostile(World, NearSpot(Player, 1));
+	TestEqual(TEXT("two enemies near are not three, so nothing is cut"),
+			  Taken(), Alone, 0.001f);
+
+	if (!TestNotNull(TEXT("a third enemy two metres off"),
+					 SpawnHostile(World, NearSpot(Player, 2))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("with three near, a Ravager takes 15% less"),
+			  Taken(), Alone * 0.85f, 0.001f);
+
+	Take(Player, FCataclysmPassiveAllocation());
+	TestEqual(TEXT("and with the point given back, three near cut nothing"),
+			  Taken(), Alone, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveInAmongThemOnARealCharacterTest,
+	"Cataclysm.ReachRows.InAmongThemMultipliesARealRavagersDamageForEachEnemyNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_keystone_d_kB` In Among Them: "You deal 2% more damage for each
+ * enemy within 4 metres of you." Two rows, attack damage and spell damage,
+ * each "more", scaled by the enemies in reach.
+ *
+ * MORE, NOT INCREASED: each reading is a MULTIPLIER, and one enemy against
+ * three shows it counts bodies rather than asking for one.
+ */
+bool FCataclysmPassiveInAmongThemOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmReachRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	const FName Node(TEXT("Ravager_keystone_d_kB"));
+	FCataclysmPassiveAllocation Allocation;
+	Allocation.Add(Node, 1);
+	Take(Player, Allocation);
+
+	const auto AttackMore = [&Player]()
+	{
+		return Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer());
+	};
+	const auto Spell = [&Player]()
+	{
+		return Player.AbilitySystem->StatAppliedTo(
+			FName(TEXT("spell_damage")), FGameplayTagContainer(), 100.0f);
+	};
+
+	const float AttackAlone = AttackMore();
+	const float SpellAlone = Spell();
+	if (!TestTrue(TEXT("readings to compare"), AttackAlone > 0.0f && SpellAlone > 0.0f))
+	{
+		return false;
+	}
+
+	if (!TestNotNull(TEXT("one enemy two metres off"),
+					 SpawnHostile(World, NearSpot(Player, 0))))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one enemy near: attack damage is 2% more"),
+			  AttackMore() / AttackAlone, 1.02f, 0.0001f);
+	TestEqual(TEXT("and spell damage is 2% more"), Spell() / SpellAlone, 1.02f,
+			  0.0001f);
+
+	SpawnHostile(World, NearSpot(Player, 1));
+	SpawnHostile(World, NearSpot(Player, 2));
+	SpawnHostile(World, FarSpot(Player));
+	TestEqual(TEXT("three near and one ten metres off: 6% more, the far one not "
+				   "counted"),
+			  AttackMore() / AttackAlone, 1.06f, 0.0001f);
+	TestEqual(TEXT("and spell damage 6% more too"), Spell() / SpellAlone, 1.06f,
+			  0.0001f);
+
+	Take(Player, FCataclysmPassiveAllocation());
+	TestEqual(TEXT("with the point given back, the enemies near add nothing"),
+			  AttackMore() / AttackAlone, 1.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWadeInOnARealCharacterTest,
+	"Cataclysm.ReachRows.WadeInGrantsARealRavagerArmourAndAttackDamageForEachEnemyNear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_capstone_25` option 1, Wade In: "Each enemy within 4 metres of you
+ * grants 3% increased Armor and 3% increased Attack Damage."
+ *
+ * THE TREE IS FILLED TO THE CAPSTONE'S THRESHOLD, and whatever those 25 points
+ * grant is on both sides of every comparison: each reading here is the option
+ * CHOSEN against the same points with NO option chosen, at the same enemies.
+ * That leaves only the option's rows, even where a filled node also counts
+ * enemies near.
+ */
+bool FCataclysmPassiveWadeInOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmReachRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+	const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+	if (!TestNotNull(TEXT("the node table loads"), NodeTable))
+	{
+		return false;
+	}
+
+	const FName Capstone(TEXT("Ravager_capstone_25"));
+	FCataclysmPassiveAllocation Unchosen;
+	int32 Filled = 0;
+	const int32 Threshold = CataclysmDemonicRowsTest::FillClassTreeToOpen(
+		NodeTable, TEXT("Ravager"), Capstone, Unchosen, Filled);
+	if (!TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+		|| !TestEqual(TEXT("and the tree holds it"), Filled, Threshold))
+	{
+		return false;
+	}
+	Unchosen.Add(Capstone, 1);
+	FCataclysmPassiveAllocation Chosen = Unchosen;
+	Chosen.SetChosenOption(Capstone, 1);
+
+	const auto Armour = [&Player]()
+	{
+		return Player.AbilitySystem->StatAppliedTo(
+			FName(TEXT("armor")), FGameplayTagContainer(), 100.0f);
+	};
+
+	// WHAT OPTION 1 ADDS, AS THINGS STAND: to attack damage as a fraction, and
+	// to armour worked out on a figure of 100.
+	const auto OptionAdds = [&]()
+	{
+		Take(Player, Unchosen);
+		const float AttackWithout = Increases(Player);
+		const float ArmourWithout = Armour();
+		Take(Player, Chosen);
+		return TPair<float, float>(Increases(Player) - AttackWithout,
+								   Armour() - ArmourWithout);
+	};
+
+	const TPair<float, float> None = OptionAdds();
+	TestEqual(TEXT("with nothing near, Wade In adds no attack damage"),
+			  None.Key, 0.0f, 0.0001f);
+	TestEqual(TEXT("and no armour"), None.Value, 0.0f, 0.001f);
+
+	SpawnHostile(World, FarSpot(Player));
+	if (!TestNotNull(TEXT("one enemy two metres off"),
+					 SpawnHostile(World, NearSpot(Player, 0))))
+	{
+		return false;
+	}
+	const TPair<float, float> One = OptionAdds();
+	TestEqual(TEXT("one near, and one ten metres off: 3% more increased attack "
+				   "damage"),
+			  One.Key, 0.03f, 0.0001f);
+	if (!TestTrue(TEXT("and some armour"), One.Value > 0.0f))
+	{
+		return false;
+	}
+
+	SpawnHostile(World, NearSpot(Player, 1));
+	const TPair<float, float> Two = OptionAdds();
+	TestEqual(TEXT("two near: 6% increased attack damage, 3% for each"),
+			  Two.Key, 0.06f, 0.0001f);
+	TestEqual(TEXT("and twice the armour one enemy gave, since each grants 3%"),
+			  Two.Value, 2.0f * One.Value, 0.001f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // The last six Demonic options built engine first, issue #1515. Their engine
 // entries each said the rows change must add a test that wears the real row.
 // ---------------------------------------------------------------------------
