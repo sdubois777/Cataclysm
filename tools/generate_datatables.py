@@ -4673,6 +4673,24 @@ NTH_ACTIONS = (
 #: The largest N a row may state.
 MAX_EVERY_NTH = 100
 
+#: The actions that CLEAR SKILL COOLDOWNS, each naming which. Issue #1833, the
+#: cooldown reset action, ruled 2026-09-25. The value is the chance in percent,
+#: above 0 and up to 100, where 100 is always: "Blocking an attack has a
+#: 20%-40% chance to reset your heavy attack cooldown" is 20 to 40, "Your
+#: special ability cooldown is reset when you kill an enemy" is 100. `others`
+#: is every slot but the one the event's skill is in, and `event_skill` that
+#: one; both read the event's `Slot.*` tag.
+#: `UCataclysmAbilitySystemComponent::CooldownResetAllAction` and its five
+#: siblings hold the same six names.
+COOLDOWN_RESET_ACTIONS = (
+    "cooldown_reset_all",
+    "cooldown_reset_others",
+    "cooldown_reset_heavy",
+    "cooldown_reset_special",
+    "cooldown_reset_movement",
+    "cooldown_reset_event_skill",
+)
+
 #: What a percentage on an action row is a percentage OF.
 #:
 #: "Restore 5% of your maximum HP" and "drain 3% of your current HP" are both
@@ -4796,6 +4814,10 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_nth_action(index, who, action, event, fraction_of, kind,
                           raw, headers)
         return
+    if action in COOLDOWN_RESET_ACTIONS:
+        _check_cooldown_reset_action(index, who, action, event, fraction_of,
+                                     kind, raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
@@ -4803,7 +4825,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(POOL_ACTIONS)}; or a next-use charge, "
             f"{', '.join(NEXT_USE_ACTIONS)}; or a placed stack, "
             f"{', '.join(PLACED_ACTIONS)}; or an every-Nth action, "
-            f"{', '.join(NTH_ACTIONS)}.")
+            f"{', '.join(NTH_ACTIONS)}; or a cooldown reset, "
+            f"{', '.join(COOLDOWN_RESET_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -4890,6 +4913,37 @@ def _check_nth_action(index: int, who: str, action: str, event: str,
                 f"action {action} and states {column} {written!r}. The action "
                 f"names what it counts and what the Nth does, so the column "
                 f"must be empty.")
+
+
+def _check_cooldown_reset_action(index: int, who: str, action: str,
+                                 event: str, fraction_of: str, kind: str, raw,
+                                 headers: dict[str, int]) -> None:
+    """Everything a cooldown reset row must say, and everything it must not.
+
+    Issue #1833, the cooldown reset action. AN EVENT IS REQUIRED, because a
+    reset happens AT something; the chance is checked where the value is read.
+    A fraction, a value kind and a scale each mean nothing here, so each is
+    refused rather than dropped.
+    """
+    known = granting_events()
+    if not event:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} is the cooldown reset "
+            f"{action} and names no event to reset on. Known: "
+            f"{', '.join(sorted(known))}.")
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} resets cooldowns on the "
+            f"event {event!r}, which the game does not record. Known: "
+            f"{', '.join(sorted(known))}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} is the cooldown reset "
+                f"{action} and states {column} {written!r}. Its value is a "
+                f"chance and nothing else, so the column must be empty.")
 
 
 def _check_next_use_action(index: int, who: str, action: str, event: str,
@@ -5095,7 +5149,8 @@ def enchantment_effects(book) -> list[dict]:
             _check_pool_action(index, name, action, action_event, fraction_of,
                                kind, raw, headers)
             if action not in NEXT_USE_ACTIONS and action not in PLACED_ACTIONS \
-                    and action not in NTH_ACTIONS:
+                    and action not in NTH_ACTIONS \
+                    and action not in COOLDOWN_RESET_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5181,6 +5236,20 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} grants a "
                     f"{action} charge worth {low:g} to {high:g}. A charge is "
                     f"increased damage, so both ends are above nought.")
+
+        # A COOLDOWN RESET'S VALUE IS ITS CHANCE, above 0 and up to 100. Issue
+        # #1833, the cooldown reset action. 100 is always.
+        if action in COOLDOWN_RESET_ACTIONS:
+            if not (0 < low <= 100 and 0 < high <= 100):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} resets cooldowns "
+                    f"with a chance of {low:g} to {high:g}. A chance is above 0 "
+                    f"and up to 100, and 100 is always.")
+            if scale_max_steps:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} resets cooldowns "
+                    f"and states Scale Max Steps. A reset has no stacks, so it "
+                    f"would be dropped.")
 
         # A ROW'S OWN STACKS. Issue #1833, ruled 2026-09-23: the row's Action
         # Event grants a stack, Stack Seconds is how long they last and Scale

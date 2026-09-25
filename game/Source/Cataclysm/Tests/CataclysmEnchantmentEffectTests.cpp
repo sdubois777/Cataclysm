@@ -16,6 +16,9 @@
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "HAL/IConsoleManager.h"
+#include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
+#include "GameplayEffect.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
@@ -6928,6 +6931,354 @@ bool FCataclysmLessMinionHealthRowTest::RunTest(const FString&)
 		return false;
 	}
 	TestEqual(TEXT("the wearer's imp has half the health"), Worse / Usual, 0.5f, 0.0001f);
+	return true;
+}
+
+namespace CataclysmCooldownResetTest
+{
+	/**
+	 * A bare wearer in its own world, carrying one real cooldown reset
+	 * enchantment on a helm beside a drawback with no effect row, with every
+	 * slot on a thirty-second cooldown. Issue #1833, the cooldown reset action.
+	 * A worn item rolls the top of its range, which for a chance row is the top
+	 * chance.
+	 *
+	 * THE COOLDOWNS ARE BUILT AS `UCataclysmGameplayAbility::ApplyCooldown`
+	 * BUILDS THEM: a duration effect granting the slot's `Cooldown.*` tag. The
+	 * test world runs no timers, so none runs out by itself.
+	 */
+	struct FWorn
+	{
+		explicit FWorn(const TCHAR* Enchantment)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return;
+			}
+			Wearer = MakeUnique<FWearer>(World);
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer->Equipment->Equip(
+				Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect),
+				Removed, AlsoRemoved, Slot);
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+			for (const ECataclysmAbilitySlot Each : CataclysmAbilitySlots::All())
+			{
+				PutOnCooldown(Each);
+			}
+		}
+
+		~FWorn()
+		{
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		void PutOnCooldown(ECataclysmAbilitySlot Slot) const
+		{
+			const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
+			if (!Tag.IsValid() || ASC()->HasMatchingGameplayTag(Tag))
+			{
+				return;
+			}
+			UGameplayEffect* Effect = NewObject<UGameplayEffect>(
+				GetTransientPackage(),
+				MakeUniqueObjectName(GetTransientPackage(), UGameplayEffect::StaticClass(),
+									 FName(TEXT("TestCooldown"))));
+			Effect->DurationPolicy = EGameplayEffectDurationType::HasDuration;
+			Effect->DurationMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(30.0f));
+			FInheritedTagContainer Granted;
+			Granted.Added.AddTag(Tag);
+			Effect->FindOrAddComponent<UTargetTagsGameplayEffectComponent>()
+				.SetAndApplyTargetTagChanges(Granted);
+			ASC()->ApplyGameplayEffectToSelf(Effect, 1.0f, ASC()->MakeEffectContext());
+		}
+
+		bool Waiting(ECataclysmAbilitySlot Slot) const
+		{
+			return ASC()->HasMatchingGameplayTag(UCataclysmSkillSlots::CooldownTag(Slot));
+		}
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+	};
+
+	FGameplayTagContainer TagsOf(std::initializer_list<FGameplayTag> Tags)
+	{
+		FGameplayTagContainer Out;
+		for (const FGameplayTag& Tag : Tags)
+		{
+			Out.AddTag(Tag);
+		}
+		return Out;
+	}
+
+	/** Pins `Cataclysm.CooldownResetRoll` for the life of this object. */
+	struct FPinnedRoll
+	{
+		explicit FPinnedRoll(float Roll)
+		{
+			Variable = IConsoleManager::Get().FindConsoleVariable(
+				TEXT("Cataclysm.CooldownResetRoll"));
+			Set(Roll);
+		}
+		~FPinnedRoll()
+		{
+			Set(-1.0f);
+		}
+		void Set(float Roll) const
+		{
+			if (Variable)
+			{
+				Variable->Set(Roll, ECVF_SetByCode);
+			}
+		}
+		IConsoleVariable* Variable = nullptr;
+	};
+
+	using ESlot = ECataclysmAbilitySlot;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownResetOnKillAndUltimateTest,
+	"Cataclysm.Enchantments.TheKillAndUltimateResetRowsClearTheCooldownsTheyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your special ability cooldown is reset when you kill an enemy": a kill clears
+ * the special slot and no other. "Using your ultimate ability resets all other
+ * skill cooldowns": using the ultimate clears every slot but the ultimate, ruled
+ * 2026-09-25, and using the heavy attack clears nothing. Issue #1833, the
+ * cooldown reset action.
+ */
+bool FCataclysmCooldownResetOnKillAndUltimateTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownResetTest;
+	{
+		FWorn Worn(TEXT("Positive_Your_special_ability_cooldown_is_reset_when_you"));
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+			|| !TestTrue(TEXT("special starts waiting"), Worn.Waiting(ESlot::Special)))
+		{
+			return false;
+		}
+		Worn.ASC()->ActOnEvent(FName(TEXT("kill")));
+		TestFalse(TEXT("kill: special is ready"), Worn.Waiting(ESlot::Special));
+		TestTrue(TEXT("kill: heavy still waits"), Worn.Waiting(ESlot::Heavy));
+		TestTrue(TEXT("kill: the ultimate still waits"), Worn.Waiting(ESlot::Ultimate));
+	}
+	{
+		FWorn Worn(TEXT("Positive_Using_your_ultimate_ability_resets_all_other_ski"));
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const FGameplayTagContainer Heavy = TagsOf({CataclysmAbilitySlots::Tag(ESlot::Heavy)});
+		Worn.ASC()->ActOnEvent(FName(TEXT("skill_use")), &Heavy);
+		TestTrue(TEXT("a heavy attack used: heavy still waits"), Worn.Waiting(ESlot::Heavy));
+		TestTrue(TEXT("a heavy attack used: special still waits"), Worn.Waiting(ESlot::Special));
+
+		const FGameplayTagContainer Ultimate = TagsOf({CataclysmAbilitySlots::Tag(ESlot::Ultimate)});
+		Worn.ASC()->ActOnEvent(FName(TEXT("skill_use")), &Ultimate);
+		TestTrue(TEXT("the ultimate used: the ultimate still waits"), Worn.Waiting(ESlot::Ultimate));
+		for (const ESlot Slot : {ESlot::Heavy, ESlot::Special, ESlot::Support,
+								 ESlot::Aura, ESlot::Movement})
+		{
+			TestFalse(FString::Printf(TEXT("the ultimate used: slot %d is ready"),
+									  static_cast<int32>(Slot)),
+				Worn.Waiting(Slot));
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownResetEvery20SecondsTest,
+	"Cataclysm.Enchantments.TheEvery20SecondsResetRowClearsEverySlotAt20SecondsOfCombat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every 20 seconds all your skill cooldowns are instantly reset": nothing at 19
+ * seconds of combat, every slot at 20, the ultimate included, ruled 2026-09-25.
+ * The clock counts only in combat, ruled 2026-09-24. Issue #1833, the cooldown
+ * reset action.
+ */
+bool FCataclysmCooldownResetEvery20SecondsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownResetTest;
+	FWorn Worn(TEXT("Positive_Every_20_seconds_all_your_skill_cooldowns_are_in"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const float Began = Worn.World->TimeSeconds;
+	Worn.ASC()->NoteHitDealt();
+	const auto Until = [&](float Seconds)
+	{
+		while (Worn.World->TimeSeconds < Began + Seconds - 0.001f)
+		{
+			Worn.World->TimeSeconds += 1.0f;
+			Worn.ASC()->NoteHitDealt();
+			Worn.ASC()->StepTimedGrants();
+		}
+	};
+	Until(19.0f);
+	TestTrue(TEXT("nineteen seconds in: the ultimate still waits"), Worn.Waiting(ESlot::Ultimate));
+	TestTrue(TEXT("nineteen seconds in: heavy still waits"), Worn.Waiting(ESlot::Heavy));
+	Until(20.0f);
+	for (const ESlot Slot : CataclysmAbilitySlots::All())
+	{
+		TestFalse(FString::Printf(TEXT("twenty seconds in: slot %d is ready"),
+								  static_cast<int32>(Slot)),
+			Worn.Waiting(Slot));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownResetChanceRowsTest,
+	"Cataclysm.Enchantments.TheChanceResetRowsResetBelowTheirChanceAndNotAbove",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three chance rows, each at the top of its range, with the roll pinned. Issue
+ * #1833, the cooldown reset action.
+ *
+ * "Blocking an attack has a 20%-40% chance to reset your heavy attack cooldown"
+ * at 40, "Critical strikes have a 15%-30% chance to reset your movement ability
+ * cooldown" at 30 and "Dodging an attack has a 20%-40% chance to reset your
+ * movement ability cooldown" at 40. A roll of 41 is above all three and resets
+ * nothing; a roll of 19 is below all three and resets the slot each names, and
+ * only that slot.
+ */
+bool FCataclysmCooldownResetChanceRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownResetTest;
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		const TCHAR* Event;
+		ESlot Resets;
+		ESlot Other;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Blocking_an_attack_has_a_20_40_chance_to_reset"),
+		 TEXT("block"), ESlot::Heavy, ESlot::Movement},
+		{TEXT("Positive_Critical_strikes_have_a_15_30_chance_to_reset"),
+		 TEXT("critical_strike"), ESlot::Movement, ESlot::Heavy},
+		{TEXT("Positive_Dodging_an_attack_has_a_20_40_chance_to_reset"),
+		 TEXT("dodge"), ESlot::Movement, ESlot::Heavy},
+	};
+	for (const FCase& Case : Cases)
+	{
+		FWorn Worn(Case.Enchantment);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		FPinnedRoll Roll(41.0f);
+		if (!TestNotNull(TEXT("the roll can be pinned"), Roll.Variable))
+		{
+			return false;
+		}
+		Worn.ASC()->ActOnEvent(FName(Case.Event));
+		TestTrue(FString::Printf(TEXT("%s, rolled 41: still waiting"), Case.Event),
+			Worn.Waiting(Case.Resets));
+		Roll.Set(19.0f);
+		Worn.ASC()->ActOnEvent(FName(Case.Event));
+		TestFalse(FString::Printf(TEXT("%s, rolled 19: ready"), Case.Event),
+			Worn.Waiting(Case.Resets));
+		TestTrue(FString::Printf(TEXT("%s, rolled 19: the other slot still waits"), Case.Event),
+			Worn.Waiting(Case.Other));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownResetStaggeredHitTest,
+	"Cataclysm.Enchantments.TheStaggeredHitResetRowResetsHeavyOnlyOnAStaggeredEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Hitting a staggered enemy resets your heavy attack cooldown": a hit on an
+ * enemy that is not staggered clears nothing, and a hit on one that is clears
+ * heavy. The condition sees the enemy struck because a pool action's condition
+ * is now judged against the event's other character. Issue #1833, the cooldown
+ * reset action.
+ */
+bool FCataclysmCooldownResetStaggeredHitTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownResetTest;
+	FWorn Worn(TEXT("Positive_Hitting_a_staggered_enemy_resets_your_heavy_atta"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	CataclysmEnchantmentEffectTest::FWearer Enemy(Worn.World);
+	const FGameplayTag Staggered = UCataclysmSkillEffects::StaggeredTag();
+	if (!TestTrue(TEXT("the stagger tag is in the vocabulary"), Staggered.IsValid()))
+	{
+		return false;
+	}
+
+	Worn.ASC()->ActOnEvent(FName(TEXT("hit_dealt")), nullptr, 0.0f, true, Enemy.Actor);
+	TestTrue(TEXT("a hit on an enemy not staggered: heavy still waits"),
+		Worn.Waiting(ESlot::Heavy));
+
+	Enemy.AbilitySystem->AddLooseGameplayTag(Staggered);
+	if (!TestTrue(TEXT("the enemy reads as staggered"),
+			UCataclysmSkillEffects::IsStaggered(Enemy.Actor)))
+	{
+		return false;
+	}
+	Worn.ASC()->ActOnEvent(FName(TEXT("hit_dealt")), nullptr, 0.0f, true, Enemy.Actor);
+	TestFalse(TEXT("a hit on a staggered enemy: heavy is ready"), Worn.Waiting(ESlot::Heavy));
+	TestTrue(TEXT("and special still waits"), Worn.Waiting(ESlot::Special));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmCooldownResetRangedKillTest,
+	"Cataclysm.Enchantments.TheRangedKillResetRowRefundsTheKillingSkillsOwnSlot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Ranged kills have a 20%-40% chance to refund the skill cooldown", at 40, with
+ * the roll pinned at 19: a ranged kill by a skill in the special slot clears
+ * special and no other, and a kill by a skill that is not ranged clears nothing.
+ * "Refund" is a reset, ruled 2026-09-25. Issue #1833, the cooldown reset action.
+ */
+bool FCataclysmCooldownResetRangedKillTest::RunTest(const FString&)
+{
+	using namespace CataclysmCooldownResetTest;
+	FWorn Worn(TEXT("Positive_Ranged_kills_have_a_20_40_chance_to_refund_the"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	FPinnedRoll Roll(19.0f);
+	const FGameplayTag Ranged = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Type.Ranged")), /*ErrorIfNotFound=*/false);
+	const FGameplayTag Special = CataclysmAbilitySlots::Tag(ESlot::Special);
+	if (!TestTrue(TEXT("the tags are in the vocabulary"), Ranged.IsValid() && Special.IsValid()))
+	{
+		return false;
+	}
+
+	const FGameplayTagContainer NotRanged = TagsOf({Special});
+	Worn.ASC()->ActOnEvent(FName(TEXT("kill")), &NotRanged);
+	TestTrue(TEXT("a kill that is not ranged: special still waits"), Worn.Waiting(ESlot::Special));
+
+	const FGameplayTagContainer RangedSpecial = TagsOf({Ranged, Special});
+	Worn.ASC()->ActOnEvent(FName(TEXT("kill")), &RangedSpecial);
+	TestFalse(TEXT("a ranged kill by the special slot: special is ready"),
+		Worn.Waiting(ESlot::Special));
+	TestTrue(TEXT("and heavy still waits"), Worn.Waiting(ESlot::Heavy));
 	return true;
 }
 

@@ -3000,6 +3000,113 @@ const TCHAR* UCataclysmAbilitySystemComponent::NthSpellManaCostAction =
 	TEXT("nth_spell_mana_cost");
 const TCHAR* UCataclysmAbilitySystemComponent::NthAttackNoDamageAction =
 	TEXT("nth_attack_no_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetAllAction =
+	TEXT("cooldown_reset_all");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetOthersAction =
+	TEXT("cooldown_reset_others");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetHeavyAction =
+	TEXT("cooldown_reset_heavy");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetSpecialAction =
+	TEXT("cooldown_reset_special");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetMovementAction =
+	TEXT("cooldown_reset_movement");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetEventSkillAction =
+	TEXT("cooldown_reset_event_skill");
+
+/**
+ * Pins the roll a cooldown reset action makes, 0 to 100, for tests. Negative,
+ * the default, rolls for real. Issue #1833, the cooldown reset action; the same
+ * shape as `Cataclysm.CooldownSkipRoll`.
+ */
+static TAutoConsoleVariable<float> CVarCooldownResetRoll(
+	TEXT("Cataclysm.CooldownResetRoll"), -1.0f,
+	TEXT("Pins the 0-100 roll a cooldown reset enchantment makes. Negative rolls for real."),
+	ECVF_Default);
+
+int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
+	const FCataclysmPoolAction& Action, const FGameplayTagContainer* EventTags)
+{
+	using EReset = ECataclysmCooldownReset;
+	if (Action.CooldownReset == EReset::None || Action.Percent <= 0.0f)
+	{
+		return 0;
+	}
+	const float Pinned = CVarCooldownResetRoll.GetValueOnAnyThread();
+	const float Roll = Pinned >= 0.0f ? Pinned : FMath::FRandRange(0.0f, 100.0f);
+	if (Roll >= Action.Percent)
+	{
+		return 0;
+	}
+
+	// THE SLOT THE EVENT'S SKILL IS IN, read off its `Slot.*` tag, for the two
+	// kinds that ask. None when the event names no slot.
+	ECataclysmAbilitySlot EventSlot = ECataclysmAbilitySlot::None;
+	if (EventTags)
+	{
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			const FGameplayTag Named = CataclysmAbilitySlots::Tag(Slot);
+			if (Named.IsValid() && EventTags->HasTagExact(Named))
+			{
+				EventSlot = Slot;
+				break;
+			}
+		}
+	}
+
+	FGameplayTagContainer Clearing;
+	const auto Add = [&Clearing](ECataclysmAbilitySlot Slot)
+	{
+		const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
+		if (Cooldown.IsValid())
+		{
+			Clearing.AddTag(Cooldown);
+		}
+	};
+	switch (Action.CooldownReset)
+	{
+	case EReset::All:
+	case EReset::Others:
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			// "ALL OTHER" LEAVES OUT ONLY THE SLOT THAT FIRED, ruled 2026-09-25.
+			// With no slot named there is nothing to leave out, and nothing is
+			// cleared: an "other" with no "one" is not what the row says.
+			if (Action.CooldownReset == EReset::Others
+				&& (EventSlot == ECataclysmAbilitySlot::None || Slot == EventSlot))
+			{
+				continue;
+			}
+			Add(Slot);
+		}
+		break;
+	case EReset::Heavy:
+		Add(ECataclysmAbilitySlot::Heavy);
+		break;
+	case EReset::Special:
+		Add(ECataclysmAbilitySlot::Special);
+		break;
+	case EReset::Movement:
+		Add(ECataclysmAbilitySlot::Movement);
+		break;
+	case EReset::EventSkill:
+		if (EventSlot != ECataclysmAbilitySlot::None)
+		{
+			Add(EventSlot);
+		}
+		break;
+	default:
+		break;
+	}
+	if (Clearing.IsEmpty())
+	{
+		UE_LOG(LogCataclysm, Verbose,
+			TEXT("A cooldown reset from '%s' succeeded and named no slot to clear."),
+			*Action.ResetKey.ToString());
+		return 0;
+	}
+	return RemoveActiveEffectsWithGrantedTags(Clearing);
+}
 const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =
 	TEXT("every_seconds");
 
@@ -3049,6 +3156,12 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			else if (!Action.StackKey.IsNone())
 			{
 				GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
+			}
+			// A COOLDOWN RESET ON A CLOCK. Issue #1833: "Every 20 seconds all
+			// your skill cooldowns are instantly reset".
+			else if (Action.CooldownReset != ECataclysmCooldownReset::None)
+			{
+				RollAndResetCooldowns(Action, nullptr);
 			}
 			else
 			{
@@ -3355,8 +3468,19 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 	TSet<FName> StackedThisEvent;
 	for (const FCataclysmPoolAction& Action : Firing)
 	{
-		if (Action.Event != Event || !PoolActionAllowed(Action, EventTags))
+		if (Action.Event != Event || !PoolActionAllowed(Action, EventTags, EventTarget))
 		{
+			continue;
+		}
+		// A COOLDOWN RESET, rolled once per row per event, and only on an event
+		// that landed. Issue #1833, the cooldown reset action.
+		if (Action.CooldownReset != ECataclysmCooldownReset::None)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.ResetKey))
+			{
+				StackedThisEvent.Add(Action.ResetKey);
+				RollAndResetCooldowns(Action, EventTags);
+			}
 			continue;
 		}
 		// A CHARGE THE NEXT USE SPENDS. Issue #1833, phase 2. Landed only, and
@@ -3439,7 +3563,7 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 
 bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 	const FCataclysmPoolAction& Action,
-	const FGameplayTagContainer* EventTags) const
+	const FGameplayTagContainer* EventTags, const AActor* EventTarget) const
 {
 	// THE SAME TAG RULE THE STAT PIPELINE APPLIES, copied as a rule rather than
 	// re-derived: `HasTag` matches a held tag against the required tag's children
@@ -3467,11 +3591,31 @@ bool UCataclysmAbilitySystemComponent::PoolActionAllowed(
 	// AND THE CONDITION IS JUDGED NOW, which is the whole difference from a stat
 	// row: the pipeline asks a stat row's condition when something reads the
 	// stat, and a pool moves at a moment instead.
-	if (Action.Condition != ECataclysmStatCondition::Always
-		&& !UCataclysmStatPipeline::ConditionHolds(
-			Action.Condition, Action.ConditionValue, CurrentConditions()))
+	//
+	// AND AGAINST THE EVENT'S OTHER CHARACTER, since issue #1833's cooldown reset
+	// action: "Hitting a staggered enemy resets your heavy attack cooldown" asks
+	// whether the enemy struck is staggered. The state is built the way a stat
+	// row's is, through `WithTargetState` for whatever this condition asks of a
+	// target. With no target it refuses, as every target condition does.
+	// Measured 2026-09-25: the one action row with a condition before this asked
+	// `health_below`, which reads the wearer, so it judges as it did.
+	if (Action.Condition != ECataclysmStatCondition::Always)
 	{
-		return false;
+		FCataclysmStatModifier Asking;
+		Asking.Condition = Action.Condition;
+		Asking.ConditionValue = Action.ConditionValue;
+		const FCataclysmStatConditions State = WithTargetState(
+			{Asking}, EventTarget,
+			CurrentConditions(/*SkillHealthCostPercent=*/-1.0f,
+							  FCataclysmBlowContext(),
+							  /*MetresMovedBeforeBlow=*/-1.0f,
+							  /*TargetDistanceMetres=*/-1.0f,
+							  EventTarget && UCataclysmSkillEffects::IsStaggered(EventTarget)));
+		if (!UCataclysmStatPipeline::ConditionHolds(
+				Action.Condition, Action.ConditionValue, State))
+		{
+			return false;
+		}
 	}
 	return true;
 }

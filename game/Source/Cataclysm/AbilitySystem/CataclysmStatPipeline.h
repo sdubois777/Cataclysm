@@ -3225,6 +3225,42 @@ struct CATACLYSM_API FCataclysmStatInputs
  * would carry an unstated invariant that both must not be true at once.
  */
 /**
+ * Which skill cooldowns a reset action clears. Issue #1833, the cooldown reset
+ * action. `COOLDOWN_RESET_ACTIONS` in `tools/generate_datatables.py` holds the
+ * six action names, one per value below but None.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmCooldownReset : uint8
+{
+	/** Not a cooldown reset row. */
+	None UMETA(DisplayName = "None"),
+
+	/** Every slot's, the ultimate included: "all your skill cooldowns". */
+	All UMETA(DisplayName = "All"),
+
+	/**
+	 * Every slot's but the one the event's skill is in: "Using your ultimate
+	 * ability resets all other skill cooldowns". The event's tags name the slot.
+	 */
+	Others UMETA(DisplayName = "All but the event's own"),
+
+	/** The heavy attack's. */
+	Heavy UMETA(DisplayName = "Heavy"),
+
+	/** The special ability's. */
+	Special UMETA(DisplayName = "Special"),
+
+	/** The movement ability's. */
+	Movement UMETA(DisplayName = "Movement"),
+
+	/**
+	 * The slot of the skill the event names: "Ranged kills have a 20%-40%
+	 * chance to refund the skill cooldown".
+	 */
+	EventSkill UMETA(DisplayName = "The event's own"),
+};
+
+/**
  * What an "every Nth" row counts, and so what happens on the Nth. Issue #1833,
  * phase 2. Each kind implies its event, so the row names no Action Event.
  */
@@ -3409,6 +3445,18 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** Whose count an "every Nth" action advances. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FName NthKey;
+
+	/**
+	 * Set, this action CLEARS SKILL COOLDOWNS instead of moving a pool. Issue
+	 * #1833, the cooldown reset action. `Percent` is the chance, 100 for always,
+	 * and `ResetKey` the row's, so two worn copies roll once per event.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmCooldownReset CooldownReset = ECataclysmCooldownReset::None;
+
+	/** Whose roll a cooldown reset action makes: the enchantment and the action. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName ResetKey;
 
 	/**
 	 * Set, this action GRANTS A CHARGE THE NEXT USE SPENDS instead of moving a
