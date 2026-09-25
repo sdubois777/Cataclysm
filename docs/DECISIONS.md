@@ -145,7 +145,25 @@ Ruled by the coordinating session:
   on each; attack speed is already blended; Power Score is computed from the tier and a fixed count of
   gear pieces, not from what is worn, so "still one equipped piece" already holds; and the hand meshes
   already draw the second weapon slot in the left hand. **Not checked: how a two-handed weapon looks in
-  the left hand**, which only a person can see.
+  the left hand.** The automation tests run with no renderer, so only a person can see it; it is left for
+  the project owner to look at in play.
+
+### THE RISK THE SUITE COVERS: A CHANGE TO EXISTING EQUIPPING
+
+**The branch that put a one-handed weapon beside a two-handed one was removed, not only extended.** It
+asked whether the first hand held a two-handed weapon; the new branch asks whether the OTHER hand does,
+because with this option a two-handed weapon can be in either. Without the option the two read the same
+in every case the old branch handled, and that claim is what the whole suite has to show:
+
+- A one-handed weapon put in the SECOND hand beside a two-handed one in the first now goes through the
+  new branch. Four existing tests do exactly that: `Cataclysm.Equipment.AOneHandedWeaponTakesOffATwoHandedOne`,
+  `Cataclysm.Equipment.EveryChangeToWhatIsWornIsAnnounced`,
+  `Cataclysm.Equipment.EveryChangeToWhatIsWornRaisesTheChangeCount` and
+  `Cataclysm.Equipment.NoListenerSeesAHalfFinishedWeaponSwap`. `Equip` puts the one-handed weapon in the
+  free second hand, so each reaches the new branch.
+- A one-handed weapon put in the FIRST hand, over the two-handed weapon itself, now goes through the plain
+  placement. **No existing test did that**, so `NoLoadoutMixesATwoHandedWeaponWithAOneHandedOne` gains a
+  part without the option that does: a swap, the greatsword and nothing else coming off.
 
 ### A FINDING, NOT CHANGED HERE
 

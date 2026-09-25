@@ -317,6 +317,25 @@ bool FCataclysmBothHandsFullNoMixTest::RunTest(const FString&)
 			 CameOff.Contains(FName(Greataxe)));
 	TestTrue(TEXT("and the greatsword"), CameOff.Contains(FName(Greatsword)));
 	TestEqual(TEXT("and only the dagger is held"), Held.Equipment->NumEquipped(), 1);
+
+	// AND WITHOUT THE OPTION, A ONE-HANDED WEAPON PUT IN THE GREATSWORD'S OWN
+	// HAND. This change removed the branch that used to handle it, and the
+	// plain placement now does. No other test puts a one-handed weapon in the
+	// first hand over a two-handed one; the existing ones put it in the second.
+	FScopedWearer Plain(World, /*bHeld=*/false);
+	Plain.Equipment->EquipInto(Of(Greatsword), ECataclysmGearSlot::Weapon1,
+							   Removed, AlsoRemoved);
+	Removed = FCataclysmItem();
+	AlsoRemoved = FCataclysmItem();
+	const ECataclysmEquipResult Result = Plain.Equipment->EquipInto(
+		Of(Sword), ECataclysmGearSlot::Weapon1, Removed, AlsoRemoved);
+	TestTrue(TEXT("without the option, a sword put in the greatsword's hand is a swap"),
+			 Result == ECataclysmEquipResult::Swapped);
+	TestEqual(TEXT("the greatsword is what came off"), Removed.Base, FName(Greatsword));
+	TestTrue(TEXT("and nothing else"), AlsoRemoved.Base.IsNone());
+	TestEqual(TEXT("and the sword is in the first hand"),
+			  Plain.In(ECataclysmGearSlot::Weapon1), FName(Sword));
+	TestEqual(TEXT("with nothing in the second"), Plain.Equipment->NumEquipped(), 1);
 	return true;
 }
 
