@@ -108,7 +108,8 @@
 				"Health": 812.25,
 				"MaxHealth": 4000,
 				"EnergyShield": 0,
-				"MaxEnergyShield": 0
+				"MaxEnergyShield": 0,
+				"bRisenFromTheDead": true
 			},
 			{
 				"ArchetypeRow": "AbyssalWarden",
@@ -123,7 +124,8 @@
 				"Health": 240,
 				"MaxHealth": 600,
 				"EnergyShield": 60.5,
-				"MaxEnergyShield": 121
+				"MaxEnergyShield": 121,
+				"bRisenFromTheDead": false
 			}
 		],
 		"GroundItems": [

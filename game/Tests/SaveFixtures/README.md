@@ -208,6 +208,18 @@ both to add a field the record had gained:
   differ from each other, so one written into the other would be noticed, and
   both are exact in binary.
 
+`Run_v1.json` was edited a twelfth time on 2026-09-25, for issue #41:
+
+- `bRisenFromTheDead` on a creature, because a creature a floor rule raised from the
+  dead pays nothing when it dies again -- the owner's decision of 2026-09-17 -- and a
+  saved floor must bring it back still paying nothing. `docs/DECISIONS.md` has the
+  entry, "A saved floor leaves out every creature a floor rule made, and remembers
+  which creatures a rule raised from the dead".
+
+  **The first creature holds true and the second false**, for the reason `Bosses`
+  holds 4: false is the field's default, so a fixture holding only false could not
+  show that the value survives a round trip rather than being re-defaulted on load.
+
 `Character_v2.json` was edited twice under it, both on 2026-08-25 and both for
 issue #50:
 
