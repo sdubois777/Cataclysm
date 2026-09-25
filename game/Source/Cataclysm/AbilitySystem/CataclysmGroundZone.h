@@ -325,8 +325,9 @@ public:
 	 * The floor rule this zone burns for, or None. Issue #2074. Zones of one rule that
 	 * overlap burn a target once a second between them, not once each; see
 	 * `ACataclysmFloorHazardSource::MayBurn`. Set by the dungeon game mode on the zones that
-	 * damage by themselves: Infernal Rain's patches, Singularity Wells and Hallowed
-	 * Groundfall's craters. None, the default, changes nothing.
+	 * damage by themselves: Infernal Rain's patches, Singularity Wells, Hallowed
+	 * Groundfall's craters, Divine Wrath's beam and Plague Harbingers' trail patches.
+	 * None, the default, changes nothing.
 	 */
 	FName BurnsOnceASecondAs;
 

@@ -1441,6 +1441,12 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	MarchOfProgressCommander = nullptr;
 	bMarchOfProgressCommanderSlain = false;
 
+	// AND PLAGUE HARBINGERS FORGETS THE LAST FLOOR'S OR WAVE'S HARBINGERS, here for the
+	// Commander's reason: they are chosen at the bottom of this function, and
+	// `ApplyFloorRulesToPlayer` runs after it. A Horde wave's survivors stop being
+	// Harbingers; their trails go with the wave's other rule zones. Issues #1820 and #41.
+	ForgetThePlagueHarbingers();
+
 	if (!FloorBrief.bSameArenaAsLastFloor)
 	{
 		ClearFloorEnemies();
@@ -1518,6 +1524,9 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// may be the same creature, which nothing forbids -- neither rule reads what the
 		// other wrote.
 		ChooseTheFloorsCommander();
+
+		// AND THE FLOOR'S PLAGUE HARBINGERS, for the same reason. Issues #1820 and #41.
+		ChooseThePlagueHarbingers();
 	}
 
 	// AND WHICH WAVE OF THIS ARENA IT IS. Zero on a floor that is not a wave,
@@ -1858,6 +1867,9 @@ int32 ACataclysmDungeonGameMode::ContinueTheWaveArriving()
 		// AND THE COMMANDER WITH IT, for the same reason: a wave still arriving may yet
 		// bring a creature of a higher rung. Issues #1820 and #41.
 		ChooseTheFloorsCommander();
+
+		// AND THIS WAVE'S PLAGUE HARBINGERS, chosen per wave as ruled. Issues #1820 and #41.
+		ChooseThePlagueHarbingers();
 	}
 
 	return Arrived;
@@ -2624,6 +2636,249 @@ void ACataclysmDungeonGameMode::StepEchoesOfThePast(ACataclysmPlayerCharacter* P
 	}
 	DismissTheEchoes();
 	EchoesStage = 3;
+	RefreshFloorModifierPanel();
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::PlagueHarbingersAlive() const
+{
+	TArray<ACataclysmEnemyCharacter*> Alive;
+	for (const FPlagueHarbingerTrail& Trail : PlagueHarbingerTrails)
+	{
+		ACataclysmEnemyCharacter* Harbinger = Trail.Harbinger.Get();
+		if (IsValid(Harbinger) && !UCataclysmSkillEffects::IsDead(Harbinger))
+		{
+			Alive.Add(Harbinger);
+		}
+	}
+	return Alive;
+}
+
+int32 ACataclysmDungeonGameMode::PlagueHarbingerTrailPatches(
+	const ACataclysmEnemyCharacter* Harbinger) const
+{
+	int32 Standing = 0;
+	for (const FPlagueHarbingerTrail& Trail : PlagueHarbingerTrails)
+	{
+		if (Harbinger && Trail.Harbinger.Get() != Harbinger)
+		{
+			continue;
+		}
+		for (const TWeakObjectPtr<ACataclysmGroundZone>& Patch : Trail.Patches)
+		{
+			Standing += Patch.IsValid() ? 1 : 0;
+		}
+	}
+	return Standing;
+}
+
+void ACataclysmDungeonGameMode::ForgetThePlagueHarbingers()
+{
+	for (const FPlagueHarbingerTrail& Trail : PlagueHarbingerTrails)
+	{
+		if (ACataclysmEnemyCharacter* Harbinger = Trail.Harbinger.Get())
+		{
+			Harbinger->bPlagueHarbinger = false;
+		}
+	}
+	PlagueHarbingerTrails.Reset();
+	PlagueHarbingersPanelAlive = -1;
+	PlagueHarbingersPanelPatches = -1;
+}
+
+void ACataclysmDungeonGameMode::ChooseThePlagueHarbingers()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::PlagueHarbingersKey)))
+	{
+		return;
+	}
+
+	// ONE PER TEN PLACED, ROUNDED UP, FROM THIS FLOOR'S OR WAVE'S OWN CREATURES, never a
+	// floor's boss: a Gatekeeper, or a creature that drew the Boss rung. Fewer when fewer
+	// can be chosen.
+	TArray<ACataclysmEnemyCharacter*> Candidates;
+	for (ACataclysmEnemyCharacter* Enemy : CurrentWave)
+	{
+		if (IsValid(Enemy) && !UCataclysmSkillEffects::IsDead(Enemy) && !Enemy->bPlagueHarbinger
+			&& !DiedAsAFloorsBoss(Enemy))
+		{
+			Candidates.Add(Enemy);
+		}
+	}
+	const int32 Wanted = FMath::Min(Effects::PlagueHarbingersFor(CurrentWave.Num()), Candidates.Num());
+
+	// AT RANDOM: the first `Wanted` of an even shuffle.
+	for (int32 Index = 0; Index < Wanted; ++Index)
+	{
+		Candidates.Swap(Index, FMath::RandRange(Index, Candidates.Num() - 1));
+		ACataclysmEnemyCharacter* Chosen = Candidates[Index];
+		Chosen->bPlagueHarbinger = true;
+		FPlagueHarbingerTrail Trail;
+		Trail.Harbinger = Chosen;
+		PlagueHarbingerTrails.Add(Trail);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Plague Harbingers: %d of %d creature(s) chosen on floor %d"),
+		   Wanted, CurrentWave.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepPlagueHarbingers(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::PlagueHarbingersKey);
+	const float Burn = Effects::PlagueHarbingersBurn(
+		AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+
+	// EACH LIVING HARBINGER LAYS A PATCH WHERE IT STANDS once it has moved far enough from its
+	// last. THE PATCH BURNS BY ITSELF, marked as the row's so overlapping patches burn the
+	// player once a second between them (#2074), and it lasts the floor: the floor ending,
+	// or the Horde wave's rule-zone clearing, is what ends it. A dead Harbinger's trail is
+	// already gone; see `NoteDeathForPlagueHarbingers`.
+	for (FPlagueHarbingerTrail& Trail : PlagueHarbingerTrails)
+	{
+		Trail.Patches.RemoveAll([](const TWeakObjectPtr<ACataclysmGroundZone>& Patch)
+		{
+			return !Patch.IsValid();
+		});
+		ACataclysmEnemyCharacter* Harbinger = Trail.Harbinger.Get();
+		if (!IsValid(Harbinger) || UCataclysmSkillEffects::IsDead(Harbinger) || !Source || Burn <= 0.0f)
+		{
+			continue;
+		}
+		const FVector Feet = Harbinger->GetActorLocation();
+		if (Trail.bHasLaidAPatch
+			&& !Effects::PlagueHarbingersPatchIsDue(
+				static_cast<float>(FVector::Dist2D(Feet, Trail.LastPatchAt))))
+		{
+			continue;
+		}
+		ACataclysmGroundZone* Patch = ACataclysmGroundZone::SpawnForTheFloor(
+			Source, Feet, Feet, Effects::PlagueHarbingersPatchRadiusCm, Burn,
+			/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type, /*InDamageType=*/Type);
+		if (!Patch)
+		{
+			continue;
+		}
+		Patch->BurnsOnceASecondAs = FName(Effects::PlagueHarbingersKey);
+		Trail.Patches.Add(Patch);
+		Trail.LastPatchAt = Feet;
+		Trail.bHasLaidAPatch = true;
+
+		// ITS NEWEST TWENTY: the oldest goes when a twenty-first is laid.
+		while (Trail.Patches.Num() > Effects::PlagueHarbingersMostPatchesEach)
+		{
+			if (ACataclysmGroundZone* Oldest = Trail.Patches[0].Get())
+			{
+				Oldest->Destroy();
+			}
+			Trail.Patches.RemoveAt(0);
+		}
+	}
+
+	// EVERY CREATURE STANDING IN ANY PATCH IS EMPOWERED, Harbingers included, with the buff
+	// Hallowed Groundfall's craters grant and in the way they grant it: refreshed each beat
+	// rather than stacked, so it lapses a second after the creature steps out.
+	const FGameplayTag Empowered = UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+	if (Empowered.IsValid())
+	{
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			ACataclysmEnemyCharacter* Creature = *It;
+			if (!IsValid(Creature) || !UCataclysmTargeting::IsHostileTo(Creature, Player))
+			{
+				continue;
+			}
+			const FVector Feet = Creature->GetActorLocation();
+			bool bOnATrail = false;
+			for (const FPlagueHarbingerTrail& Trail : PlagueHarbingerTrails)
+			{
+				for (const TWeakObjectPtr<ACataclysmGroundZone>& Patch : Trail.Patches)
+				{
+					if (Patch.IsValid() && Patch->Covers(Feet))
+					{
+						bOnATrail = true;
+						break;
+					}
+				}
+				if (bOnATrail)
+				{
+					break;
+				}
+			}
+			if (bOnATrail)
+			{
+				UCataclysmSkillEffects::ApplyTagForDuration(
+					Creature, Creature, Empowered, Effects::PlagueHarbingersEmpowerSeconds);
+			}
+		}
+	}
+
+	const int32 Alive = PlagueHarbingersAlive().Num();
+	const int32 Patches = PlagueHarbingerTrailPatches();
+	if (Alive != PlagueHarbingersPanelAlive || Patches != PlagueHarbingersPanelPatches)
+	{
+		PlagueHarbingersPanelAlive = Alive;
+		PlagueHarbingersPanelPatches = Patches;
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForPlagueHarbingers(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// ANY DEATH OF A HARBINGER, whoever or whatever caused it.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	const int32 Which = PlagueHarbingerTrails.IndexOfByPredicate(
+		[Fallen](const FPlagueHarbingerTrail& Trail) { return Fallen && Trail.Harbinger.Get() == Fallen; });
+	if (Which == INDEX_NONE)
+	{
+		return;
+	}
+
+	// ITS TRAIL IS CLEANSED.
+	for (const TWeakObjectPtr<ACataclysmGroundZone>& Patch : PlagueHarbingerTrails[Which].Patches)
+	{
+		if (ACataclysmGroundZone* Standing = Patch.Get())
+		{
+			Standing->Destroy();
+		}
+	}
+	PlagueHarbingerTrails.RemoveAt(Which);
+	Fallen->bPlagueHarbinger = false;
+
+	// AND THE LIVING CREATURES NEAR IT ARE WEAKENED, by the Weaken row of
+	// `game/Data/StatusEffects.csv` at its own strength and duration, given in the name of
+	// the floor's hazard source as the floor rules' other ailments are.
+	UWorld* World = GetWorld();
+	ACataclysmFloorHazardSource* Source = World ? ACataclysmFloorHazardSource::ForFloor(World) : nullptr;
+	const FCataclysmAilmentKind* Weaken = UCataclysmAilments::KindNamed(TEXT("Weaken"));
+	if (Source && Weaken)
+	{
+		const FVector Where = Fallen->GetActorLocation();
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			ACataclysmEnemyCharacter* Near = *It;
+			// THE HARBINGER'S OWN SIDE ONLY: a creature the player has taken is not weakened.
+			if (!IsValid(Near) || Near == Fallen || UCataclysmSkillEffects::IsDead(Near)
+				|| !UCataclysmTargeting::IsFriendlyTo(Near, Source)
+				|| FVector::Dist2D(Near->GetActorLocation(), Where) > Effects::PlagueHarbingersWeakenRadiusCm)
+			{
+				continue;
+			}
+			UCataclysmAilments::Apply(Source, Near, *Weaken, /*Magnitude=*/1.0f);
+		}
+	}
 	RefreshFloorModifierPanel();
 }
 
@@ -3489,6 +3744,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// AND NO DEATH OF THIS DUNGEON ECHOES INTO THE NEXT. Issues #1820 and #41.
 	EchoesThisFloor.Reset();
 	EchoesFromLastFloor.Reset();
+	ForgetThePlagueHarbingers();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -3942,6 +4198,10 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bEchoes = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::EchoesOfThePastKey))
 		&& EchoesStage < 3;
+	// AND PLAGUE HARBINGERS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820
+	// and #41.
+	const bool bPlagueHarbingers = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::PlagueHarbingersKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -3957,7 +4217,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bJudgmentZones && !bMarchOfProgress && !bCommandersAura
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
-		&& !bEchoes)
+		&& !bEchoes && !bPlagueHarbingers)
 	{
 		return;
 	}
@@ -4136,6 +4396,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bEchoes)
 	{
 		StepEchoesOfThePast(Player);
+	}
+
+	// AND PLAGUE HARBINGERS, WHICH PLACES ZONES. Issues #1820 and #41.
+	if (bPlagueHarbingers)
+	{
+		StepPlagueHarbingers(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -5169,6 +5435,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForBloodBond(Notice);
 	NoteDeathForPlagueConvergence(Notice);
 	NoteDeathForEchoesOfThePast(Notice);
+	NoteDeathForPlagueHarbingers(Notice);
 	// LAST, so a wraith this same death raised is already standing and already marked
 	// when the floor's creatures are counted. Issues #1820 and #41.
 	NoteDeathForDivineResurgence(Notice);
@@ -6706,6 +6973,16 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Holy, FString::Printf(
 			TEXT("%d of %d"), JudgmentStacks,
 			Effects::HolyRepercussionsJudgmentMostStacks));
+	}
+
+	// AND PLAGUE HARBINGERS: how many are alive and how many trail patches stand. Issues #1820
+	// and #41.
+	const FName Harbingers(Effects::PlagueHarbingersKey);
+	if (FloorBrief.Modifiers.Contains(Harbingers))
+	{
+		Counting.Add(Harbingers, FString::Printf(
+			TEXT("plague harbingers: %d alive, %d trail patches"),
+			PlagueHarbingersAlive().Num(), PlagueHarbingerTrailPatches()));
 	}
 
 	// AND ECHOES OF THE PAST: how many of the last floor's dead come back. Issues #1820 and #41.

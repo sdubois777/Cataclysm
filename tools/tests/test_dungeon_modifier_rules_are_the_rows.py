@@ -4007,3 +4007,25 @@ def test_echoes_of_the_past_row_still_brings_back_the_previous_floors_dead_for_o
             "rests on it; see EchoesOfThePastKey in CataclysmDungeonModifierEffects.h. " + words)
     assert not any(character.isdigit() for character in words), (
         "Death_Echoes_of_the_Past now states a figure; the rule's figures are rulings. " + words)
+
+
+def test_plague_harbingers_row_still_has_harbingers_lay_trails_that_their_deaths_cleanse():
+    """The phrases the rule's readings rest on.
+
+    CERTAIN ENEMIES is why only some creatures are Harbingers; WHEREVER THEY WALK is why a patch is
+    laid as a Harbinger moves; LINGER is why a patch lasts the floor; DAMAGING PLAYERS and AMPLIFYING
+    NEARBY ENEMY STATS are the two things a patch does; CLEANSES THE TRAILS and WEAKENS NEARBY
+    ENEMIES are what a Harbinger's death does. The row gives no figure, which is why every number is
+    a ruling. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Plague_Harbingers"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("certain enemies", "wherever they walk", "trails linger",
+                   "damaging players who cross them", "amplifying nearby enemy stats",
+                   "cleanses the trails", "weakens nearby enemies"):
+        assert phrase in lower, (
+            f"Pestilence_Plague_Harbingers no longer says {phrase.upper()!r}. A reading of the rule "
+            "rests on it; see PlagueHarbingersKey in CataclysmDungeonModifierEffects.h. " + words)
+    assert not any(character.isdigit() for character in words), (
+        "Pestilence_Plague_Harbingers now states a figure; the rule's figures are rulings. " + words)

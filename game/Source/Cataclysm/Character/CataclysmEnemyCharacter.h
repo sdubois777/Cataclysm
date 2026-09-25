@@ -1063,6 +1063,16 @@ public:
 	int32 LastAttackUsed = NoAttackYet;
 
 	/**
+	 * Whether Plague Harbingers chose this creature: it lays a disease trail as it walks, and
+	 * killing it clears the trail and weakens the creatures near it. Issues #1820 and #41.
+	 *
+	 * WRITTEN BY `ACataclysmDungeonGameMode` AND READ UNDER THE HEALTH BAR, where
+	 * `UCataclysmCombatOverlay::StatusLineFor` says "Harbinger", so the player can tell which
+	 * creature to kill. Cleared when it dies and when the next floor or wave is placed.
+	 */
+	bool bPlagueHarbinger = false;
+
+	/**
 	 * Whether this creature's death pays the player loot and experience. False for a
 	 * creature `bRisenFromTheDead` marks, and for one `bDiesUnpaid` marks. Asked by
 	 * `HandleDeath`, and nothing else

@@ -660,6 +660,14 @@ public:
 	void ChooseTheFloorsCommander();
 
 	/**
+	 * Plague Harbingers chooses this floor's or wave's Harbingers, from `CurrentWave` once all
+	 * of it is placed, where `ChooseTheFloorsCommander` is called and for its reason: no
+	 * creature can be ruled out as the floor's boss until it has drawn its rung. Issues #1820
+	 * and #41.
+	 */
+	void ChooseThePlagueHarbingers();
+
+	/**
 	 * Which creature is this floor's Commander, or null when the floor has none.
 	 *
 	 * DEFINED IN THE CPP AND NOT HERE, because `ACataclysmEnemyCharacter` is only
@@ -1954,6 +1962,12 @@ public:
 	/** The echoes standing now. */
 	TArray<ACataclysmEnemyCharacter*> EchoesStandingNow() const;
 
+	/** Plague Harbingers, for the panel and tests: the Harbingers alive now. */
+	TArray<ACataclysmEnemyCharacter*> PlagueHarbingersAlive() const;
+
+	/** The trail patches standing now, of every Harbinger, or of `Harbinger` alone. */
+	int32 PlagueHarbingerTrailPatches(const ACataclysmEnemyCharacter* Harbinger = nullptr) const;
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2060,6 +2074,16 @@ private:
 
 	/** Every echo standing is destroyed and forgotten. */
 	void DismissTheEchoes();
+
+	/** Plague Harbingers, on the beat: trails laid, the player burned by them, creatures in them empowered. */
+	void StepPlagueHarbingers(class ACataclysmPlayerCharacter* Player,
+							  class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/** Plague Harbingers, on every death: a Harbinger's trail goes and those near it are weakened. */
+	void NoteDeathForPlagueHarbingers(const struct FCataclysmDeathNotice& Notice);
+
+	/** Every Harbinger unmarked and every trail forgotten; the zones go with the floor. */
+	void ForgetThePlagueHarbingers();
 
 	void StepDivineWrath(class ACataclysmPlayerCharacter* Player,
 						 class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -2974,6 +2998,22 @@ private:
 	TArray<FEchoStanding> EchoesStanding;
 	float EchoesSecondsOnFloor = 0.0f;
 	int32 EchoesStage = 0;
+
+	/** Plague Harbingers: one Harbinger, where it last laid a patch, and its patches, oldest first. */
+	struct FPlagueHarbingerTrail
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Harbinger;
+		FVector LastPatchAt = FVector::ZeroVector;
+		bool bHasLaidAPatch = false;
+		TArray<TWeakObjectPtr<class ACataclysmGroundZone>> Patches;
+	};
+
+	/** Plague Harbingers: this floor's or wave's Harbingers and their trails. */
+	TArray<FPlagueHarbingerTrail> PlagueHarbingerTrails;
+
+	/** What the panel last said, so it is refreshed only when a count changes. */
+	int32 PlagueHarbingersPanelAlive = -1;
+	int32 PlagueHarbingersPanelPatches = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

@@ -143,6 +143,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::DivineWrathKey =
 const TCHAR* UCataclysmDungeonModifierEffects::EchoesOfThePastKey =
 	TEXT("Death_Echoes_of_the_Past");
 
+const TCHAR* UCataclysmDungeonModifierEffects::PlagueHarbingersKey =
+	TEXT("Pestilence_Plague_Harbingers");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -425,7 +428,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(BloodBondKey)
 		|| RowKey == FName(PlagueConvergenceKey)
 		|| RowKey == FName(DivineWrathKey)
-		|| RowKey == FName(EchoesOfThePastKey))
+		|| RowKey == FName(EchoesOfThePastKey)
+		|| RowKey == FName(PlagueHarbingersKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -612,6 +616,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(PlagueConvergenceKey),
 		FName(DivineWrathKey),
 		FName(EchoesOfThePastKey),
+		FName(PlagueHarbingersKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1930,6 +1935,21 @@ bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
 	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
 	// does not.
 	return SecondsOnFloor >= TheReaperDelaySeconds;
+}
+
+int32 UCataclysmDungeonModifierEffects::PlagueHarbingersFor(int32 Placed)
+{
+	return Placed <= 0 ? 0 : (Placed + PlagueHarbingersCreaturesEach - 1) / PlagueHarbingersCreaturesEach;
+}
+
+float UCataclysmDungeonModifierEffects::PlagueHarbingersBurn(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * PlagueHarbingersMaxHealthPercentPerSecond / 100.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::PlagueHarbingersPatchIsDue(float MovedCm)
+{
+	return MovedCm >= PlagueHarbingersPatchEveryCm;
 }
 
 float UCataclysmDungeonModifierEffects::EchoesDistanceCm(float AttackReachCm)

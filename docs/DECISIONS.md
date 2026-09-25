@@ -2,6 +2,159 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Plague Harbingers: one creature in ten lays a disease trail as it walks that burns the player and speeds up creatures standing in it, and killing it clears the trail and weakens the creatures near it
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its figures, how many Harbingers a floor has, when a patch is laid and what it burns),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (choosing the Harbingers, laying
+their trails, empowering the creatures in them, what a Harbinger's death does, the floor panel line and
+the resets), `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (whether a creature is a
+Harbinger), `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Harbinger" under
+its health bar), a comment in `game/Source/Cataclysm/AbilitySystem/CataclysmGroundZone.h`, the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
+
+### The row
+
+`Pestilence_Plague_Harbingers` in `game/Data/DungeonModifiers.csv`, weight 10: "Certain enemies act as
+"Harbingers", spreading disease trails wherever they walk. These trails linger, damaging players who
+cross them and amplifying nearby enemy stats. Killing Harbingers cleanses the trails and weakens nearby
+enemies." The row gives no figure. This log's 2026-09-12 entry, "A patch of ground can last until the
+player leaves the floor…", names Plague Harbingers among the rows meant to last the floor and as a
+hazard that "damages the player and amplifies enemy stats"; nothing earlier settles more of it.
+
+### What the rule does
+
+When a floor carrying the row has placed its creatures -- or a Horde wave has all arrived -- one
+creature in ten, rounded up, is chosen at random as a Harbinger, never the floor's boss (a Gatekeeper, or
+a creature at the Boss rung). "Harbinger" is written under its health bar. At each beat a living
+Harbinger lays a patch where it stands if it has moved 200 cm from its last patch, 150 cm across the
+radius, lasting the floor; each keeps its newest 20. A patch burns the player standing in it for 1% of
+maximum health a second, typed as the row (Pestilence), once a second however many patches overlap
+(#2074). Every creature standing in a patch, Harbingers included, holds `Status.Buff.Commander` -- 20%
+more movement and attack speed -- refreshed each beat. When a Harbinger dies, by any cause, its patches
+are destroyed, and every living creature of its side within 800 cm gets the Weaken debuff of
+`game/Data/StatusEffects.csv`: 20% less damage for 5 seconds. The floor panel says how many Harbingers
+are alive and how many patches stand.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24. Every figure is a play-test
+value:**
+
+- **One Harbinger per ten placed creatures, rounded up, chosen at random after placement, never the
+  floor's boss.** "Certain enemies" does not say "elite", so Commander's Aura's reading (every creature
+  at Elite or above) was not used: a floor with no Elite would have none. A Horde wave chooses its own,
+  from the creatures it brings; the survivors of the wave before stop being Harbingers, and their
+  trails go with the wave's other rule zones.
+- **A patch per 200 cm moved, 150 cm across the radius, lasting the floor, the newest 20 per Harbinger
+  kept.** The floor hazards' usual 300 cm radius is too wide for something walked along, and without a
+  cap a Harbinger walking for ten minutes would cover the floor.
+- **1% of maximum health a second, Pestilence, burning once however many patches overlap.** The figure
+  Necrotic Ground's fog uses. No disease stacks: those are Plague Convergence's, and this row says only
+  "damaging".
+- **"Amplifying nearby enemy stats" is `Status.Buff.Commander` on every creature standing in a trail**,
+  the reading of "empower" Hallowed Groundfall and Commander's Aura already use, so no new buff was made.
+- **Any death of a Harbinger cleanses its trail, and creatures within 800 cm are weakened for 5
+  seconds.** 800 cm is Commander's Aura's "nearby allies" radius, the one such radius among the floor
+  rules. A Harbinger that cannot be hurt keeps its trail.
+- **The player must be able to tell which creature is a Harbinger**, because the row's play is to kill
+  it, and the owner's standing rule is that every system ships a basic UI a player can judge in play.
+  So "Harbinger" is the first part of the existing line under a creature's health bar, beside "Armor
+  -N%" and "Slowed -N%".
+
+One judgement was made in the build, and the coordinating session approved it under the owner's
+delegation: **only creatures on the Harbinger's own side are weakened** (`IsFriendlyTo` the floor's
+hazard source). A creature the player has taken is on the player's side, and "weakens nearby
+enemies" means the player's enemies.
+
+**A known limit: a patch's damage is fixed when it is laid**, at 1% of the player's maximum health at
+that moment, so a later change to maximum health reaches only the patches laid after it.
+
+### The research: monsters that leave damaging ground where they walk
+
+Done after the rulings and before the build; the page was fetched on 2026-09-24 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo III, the Molten elite affix | https://maxroll.gg/d3/resources/elite-affixes | "Molten elites (and minions) leave behind a trail of fire where they walk, which deals a medium amount of damage"; each patch is a "5 sec duration (ground effect)" |
+
+**What it settles and what it does not.** Molten is the same shape as this row's trail: chosen monsters
+lay damaging ground as they move, and the player is pushed to reposition. It settles the trail. It does
+not settle the rest: Molten's patches fade after five seconds where these last the floor (as the
+2026-09-12 entry intended, held in check by the cap of 20), and Molten neither strengthens monsters
+standing in its fire nor weakens them when it dies. Those halves, and every figure above, are this
+game's own. The Path of Exile map modifiers on the maxroll map-rolling guide describe patches placed
+across an area, not trails left by monsters, and the Diablo IV and poedb pages tried could not be read,
+so nothing else is cited.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `PlagueHarbingersAreOnePerTenAndLayAPatchEveryTwoMetres`: 0, 1, 10, 11 and 25 creatures give 0, 1, 1,
+  2 and 3 Harbingers; 199 cm moved lays nothing and 200 cm lays a patch; a patch burns 1% of maximum
+  health.
+- `PlagueHarbingersAreChosenOnePerTenAndSayWhatTheyAre`: a floor carrying the row has one Harbinger per
+  ten creatures it placed, none of them the floor's boss, each with the line "Harbinger" under its bar
+  and an ordinary creature with nothing; the panel counts them; a Horde wave has Harbingers of its own,
+  none of them the last floor's.
+- `APlagueHarbingerLaysATrailThatBurnsThePlayerAndEmpowersCreatures`: a patch under the Harbinger at the
+  first beat, marked as the row's and burning 1% of the player's maximum health; none 199 cm on and a
+  second 200 cm on, with the panel saying so; a creature standing on the trail is empowered, one off it
+  is not, and the Harbinger is; the player standing in a patch loses health; thirty more steps leave its
+  newest twenty, and no more in the world.
+- `KillingAPlagueHarbingerClearsItsTrailAndWeakensThoseNearIt`: its two patches are gone, a creature
+  400 cm away is weakened and one 1200 cm away is not, "Harbinger" no longer shows, and the panel says
+  none are alive.
+
+One Python check: the row still says "certain enemies", "wherever they walk", "trails linger", "damaging
+players who cross them", "amplifying nearby enemy stats", "cleanses the trails" and "weakens nearby
+enemies", and states no figure.
+
+### Run
+
+One editor window on 2026-09-24, on development bde35e64 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The first whole suite FAILED ONE ASSERTION, in this change's own test**, on 2fd5befb: "Build:
+  Succeeded - 29 actions, 26 files compiled"; "2424 tests performed, 2423 succeeded, 1 failed:
+  PlagueHarbingersAreChosenOnePerTenAndSayWhatTheyAre", on "Expected 'a Horde wave has Harbingers of its
+  own' to be true". **The cause was the test, not the rule.** A Horde wave arrives four creatures a tick
+  (`WaveCreaturesPerFrame`) and its Harbingers are chosen once all of it has arrived; the test ticked 20
+  times, which places at most 80 creatures, and the floor had placed 223 ("Plague Harbingers: 23 of 223
+  creature(s) chosen on floor 2", with no choice logged for the Horde floor). **Fixed** by ticking until
+  `CreaturesStillArriving()` is zero, up to 1,000 ticks, and asserting "the Horde wave finished arriving"
+  first -- the pattern the game mode's own Horde tests use. No game code changed. **By the coordinating
+  session's ruling, no second whole suite ran**: the whole suite had already run on this game code, and its
+  one failure was one assertion in this test.
+- **The Python suite of record on the fixed head**, db621eb6: 5,447 passed and 8 skipped of 5,455, 0
+  failed.
+- **The group `Cataclysm.DungeonModifierEffects.` on the fixed head**: 296 tests performed, 296
+  succeeded, 0 failed. Its Horde wave logged "Plague Harbingers: 24 of 232 creature(s) chosen on floor 3".
+- **The group on the base**, bde35e64: 292 tests performed, 292 succeeded, 0 failed. Run after the
+  Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **No cap on a Harbinger's patches** (the loop that removes the oldest made `while (false && ...)`), on
+  the prefix `Cataclysm.DungeonModifierEffects.APlagueHarbinger`. With the break in: 1 performed, 0
+  succeeded, 1 failed, `APlagueHarbingerLaysATrailThatBurnsThePlayerAndEmpowersCreatures`, on "Expected
+  'its newest twenty are kept' to be 20, but it was 32" and "Expected 'and no more stand in the world' to
+  be 20, but it was 32". Restored: 1 performed, 1 succeeded, 0 failed.
+- **No Weaken on a Harbinger's death** (the ailment's `Apply` made `(void)Near;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.KillingAPlagueHarbinger`. With the break in: 1 performed, 0
+  succeeded, 1 failed, `KillingAPlagueHarbingerClearsItsTrailAndWeakensThoseNearIt`, on "Expected 'a
+  creature within eight metres is weakened' to be true". Restored: 1 performed, 1 succeeded, 0 failed.
+- **The trail not cleansed on its death** (each patch's `Destroy` made `(void)Standing;`), on the same
+  prefix. With the break in: 1 performed, 0 succeeded, 1 failed, the same test, on "Expected 'its trail is
+  cleansed' to be 0, but it was 2". Restored: 1 performed, 1 succeeded, 0 failed.
+
+---
+
 ## 2026-09-24 — Hits in a row on one enemy: a melee hit raises damage on it up to 8 times, and any hit lowers it up to 10
 
 **Affects:**

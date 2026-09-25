@@ -1845,6 +1845,32 @@ public:
 	static const TCHAR* EchoesOfThePastKey;
 
 	/**
+	 * The row where some creatures lay disease trails. Issues #1820 and #41.
+	 *
+	 * "Certain enemies act as \"Harbingers\", spreading disease trails wherever they walk.
+	 * These trails linger, damaging players who cross them and amplifying nearby enemy stats.
+	 * Killing Harbingers cleanses the trails and weakens nearby enemies."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24. Every figure
+	 * is a play-test value:
+	 * - ONE HARBINGER PER `PlagueHarbingersCreaturesEach` CREATURES PLACED, rounded up, chosen at
+	 *   random once the floor's creatures -- or a Horde wave's -- are all placed. Never a
+	 *   floor's boss. "Harbinger" is said under its health bar.
+	 * - A HARBINGER LAYS A PATCH each time it has moved `PlagueHarbingersPatchEveryCm` from its
+	 *   last, `PlagueHarbingersPatchRadiusCm` across the radius, lasting the floor; each keeps
+	 *   its newest `PlagueHarbingersMostPatchesEach`.
+	 * - A PATCH BURNS THE PLAYER for `PlagueHarbingersMaxHealthPercentPerSecond` of maximum
+	 *   health a second, typed as the row, once however many patches overlap (#2074). No
+	 *   disease stacks: those are Plague Convergence's.
+	 * - A CREATURE STANDING IN ANY PATCH, Harbingers included, holds `Status.Buff.Commander`,
+	 *   the reading of "empower" Hallowed Groundfall and Commander's Aura already use.
+	 * - ANY DEATH OF A HARBINGER CLEARS ITS PATCHES and gives every living creature within
+	 *   `PlagueHarbingersWeakenRadiusCm` the Weaken debuff of `game/Data/StatusEffects.csv`.
+	 *   A Harbinger that cannot be hurt keeps its trail.
+	 */
+	static const TCHAR* PlagueHarbingersKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4156,6 +4182,27 @@ public:
 			&& EchoesVanishAfterSeconds > 0.0f && EchoesMost > 0 && EchoesMostAwayCm > 0.0f,
 		"An echo that came at once, struck at once, never went, or had no room is not the row.");
 
+	/** Plague Harbingers' figures. Ruled; every one a play-test value. See the key. */
+	static constexpr int32 PlagueHarbingersCreaturesEach = 10;
+	static constexpr float PlagueHarbingersPatchEveryCm = 200.0f;
+	static constexpr float PlagueHarbingersPatchRadiusCm = 150.0f;
+	static constexpr int32 PlagueHarbingersMostPatchesEach = 20;
+
+	/** Necrotic Ground's figure, which is Singularity Wells'. */
+	static constexpr float PlagueHarbingersMaxHealthPercentPerSecond = SingularityWellsPercentPerSecond;
+
+	/** Commander's Aura's "nearby allies", the one such radius the floor rules have. */
+	static constexpr float PlagueHarbingersWeakenRadiusCm = CommandersAuraRadiusCm;
+
+	/** Refreshed every beat, as Hallowed Groundfall's craters refresh theirs. */
+	static constexpr float PlagueHarbingersEmpowerSeconds = HallowedGroundfallEmpowerSeconds;
+
+	static_assert(
+		PlagueHarbingersCreaturesEach > 0 && PlagueHarbingersPatchRadiusCm > 0.0f
+			&& PlagueHarbingersPatchEveryCm > 0.0f && PlagueHarbingersMostPatchesEach > 0
+			&& PlagueHarbingersMaxHealthPercentPerSecond > 0.0f,
+		"A Harbinger that was never chosen, laid nothing, or laid a trail that did nothing is not the row.");
+
 	static_assert(
 		DivineWrathSecondsBetween > DivineWrathBeamSeconds && DivineWrathBeamSeconds > 0.0f
 			&& DivineWrathAppearsAwayCm > DivineWrathRadiusCm && DivineWrathSpeedCmPerSecond > 0.0f,
@@ -4990,6 +5037,15 @@ public:
 
 	/** Where echo `Which` of `Count` stands from the player: at even angles, level. */
 	static FVector EchoesOffset(int32 Which, int32 Count, float DistanceCm);
+
+	/** How many Harbingers a floor or wave of `Placed` creatures has: one per ten, rounded up. */
+	static int32 PlagueHarbingersFor(int32 Placed);
+
+	/** What one trail patch burns the player for, a second. */
+	static float PlagueHarbingersBurn(float MaximumHealth);
+
+	/** Whether a Harbinger that has moved `MovedCm` since its last patch lays another. */
+	static bool PlagueHarbingersPatchIsDue(float MovedCm);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in
