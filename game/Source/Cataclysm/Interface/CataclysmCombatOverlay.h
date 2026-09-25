@@ -537,6 +537,13 @@ public:
 	static FString VeinTextFor(const AActor* Actor);
 
 	/**
+	 * "Second Self" under the health bar of the minion or thrall A Second Self
+	 * chose, or empty. Issue #1515. First on the line, for "Harbinger"'s reason:
+	 * it says what the creature is. Nothing else on screen marks a minion.
+	 */
+	static FString SecondSelfTextFor(const AActor* Actor);
+
+	/**
 	 * What is said under a creature's health bar while stacks placed on it cut
 	 * its damage, such as "Damage -15%", or empty while nothing does. Issue
 	 * #1833, phase 2: "Each melee hit you take reduces the attacker's damage".
@@ -549,10 +556,10 @@ public:
 	 * above, joined by two spaces, or empty. One line rather than one each, so
 	 * two never draw over each other. Issue #1515.
 	 *
-	 * IN THIS ORDER, which is not the order they are declared in: Harbinger,
-	 * Chorus, Bloom, Spire, the armour removed, the slow, Held, the damage cut.
-	 * What the creature is comes first, and what is being done to it after
-	 * (issues #41, #1515 and #1833).
+	 * IN THIS ORDER, which is not the order they are declared in: Second Self,
+	 * Harbinger, Chorus, Bloom, Spire, Beacon, Vein, the armour removed, the
+	 * slow, Held, the damage cut. What the creature is comes first, and what
+	 * is being done to it after (issues #41, #1515 and #1833).
 	 */
 	static FString StatusLineFor(const AActor* Actor);
 

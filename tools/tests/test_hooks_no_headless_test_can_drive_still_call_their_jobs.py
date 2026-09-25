@@ -88,6 +88,10 @@ HOOKS = {
             "UCataclysmDebuffs::NowhereToRunStep":
                 "the creatures near a character being held from moving away, "
                 "Nowhere to Run, issue #1515",
+            "UCataclysmSecondSelf::Step":
+                "A Second Self choosing the character's longest-held minion "
+                "or thrall and giving it the character's maximum health and "
+                "spell damage, issue #1515",
             "UCataclysmEnemyModifiers::AuraStep":
                 "the burning aura a creature carrying the Hellfire Aura "
                 "enemy modifier lays on whoever stands within six metres, "

@@ -695,6 +695,128 @@ the way it was registered before the window; restored, each run was 1 performed,
 
 ---
 
+## 2026-09-25 — A Second Self, engine only: the minion or thrall held longest takes your maximum health and spell damage, explodes over your area of effect, and counts twice in the thrall limit
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSecondSelf.h` and `.cpp` (new),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.h` and `.cpp` (when a follower came under command,
+whether it is chosen, and the step's call), `CataclysmMinion.h` and `.cpp` (the stamp, whether it is a
+machine, and the two explosion radii), `CataclysmCommand.cpp` (the stamp at subjugation and the thrall
+limit), `CataclysmSkillTemplates.cpp` (a comment naming the exception),
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` and `CataclysmHUD.cpp` ("Second
+Self"), `CataclysmPlayerClassStats.cpp` (one stat with no attribute), a new test file, a probe in the stat
+exemption test and two Python files. Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ritualist_capstone_200`, The Final Pact, option 1, A Second Self: "The minion you have held longest
+becomes your equal: it has your Maximum Health, your Spell Damage and your Area of Effect, and reserves
+twice the Fervour it would. When it is gone, the next longest-held takes its place." One stat with no
+attribute, above zero meaning held, which its row will carry: `minion_held_longest_becomes_your_equal` (1).
+The entry "2026-09-16 — The ten Ritualist nodes that named an imp or a thrall say minion" chose "held
+longest", "twice its own" and "the next longest-held" as judgements.
+
+**Engine only, and so it does nothing in play until its Passive Effects row lands.** The row, and a test
+that wears it, go in the later rows change with the rows for Both Hands Full, Follow Through, Nowhere to
+Run, Shoulder Through and Chorus.
+
+**It rests on a standing ruling the owner has been told of and may overturn**: a passive whose own
+sentence names minions may pass a summoner stat to them. The design document's paragraph opening
+"Everything else is blocked unless a modifier says "minion"" names area of effect among what a minion does
+not take; this option says "minion", which is the way in that paragraph leaves.
+
+### THE GENRE
+
+No shipped mechanic was found that copies the player's own maximum life or spell damage onto one minion,
+as the Shared Blood entry found for shields. The shape below is this design's own; nothing in it is read
+off another game.
+
+### RULINGS, 2026-09-25, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **"Held" is a time stamped when a follower comes under command**:
+  `ACataclysmCharacterBase::CommandedSinceSeconds`, set when `ACataclysmMinion::Spawn` makes a minion and
+  when `UCataclysmCommand::Subjugate` takes an enemy. Nothing recorded it before. The chosen one is the
+  earliest stamp among the commander's living followers, ties to the nearest, and it stays chosen until
+  it is gone; the next is chosen on the commander's next regeneration step.
+- **Candidates are minions and thralls only.** `UCataclysmCommand::ThingsCommandedBy` returns every
+  `ACataclysmCharacterBase` that follows the commander: summoned `ACataclysmMinion`s, deployed
+  `ACataclysmMinion`s and subjugated `ACataclysmEnemyCharacter`s. **The deployed ones are filtered out**: a
+  minion whose type row's `Family` is `Machine` (`ACataclysmMinion::bIsMachine`), which is every row the
+  Deployable shape spawns. The sentence says "the minion you have held", and the earlier text said "one
+  thrall"; a deployable is neither.
+- **Maximum health follows the summoner's live**, as Shared Blood's shield does, and the chosen one keeps
+  the same fraction of its health, so a rise in the maximum is not a heal. It is written every step, so a
+  creature's own setters rewriting its maximum are overruled within one step.
+- **Spell damage is copied onto the chosen one's own `SpellDamage` attribute**, and stays a spell stat.
+  **So the clause does nothing for an imp**, which carries no combat attribute set and nothing it does is
+  a spell, and matters only for a thrall with `Type.Spell` abilities.
+- **Area of effect multiplies the chosen one's explosion radius and its Shared Ruin death blast** by the
+  summoner's area of effect multiplier, the one a `Type.AOE` skill uses. Those are the only areas a minion
+  has, and nothing reads area of effect in a thrall's own abilities. The comment on the evicted imp's
+  explosion in `UCataclysmSummonSkill` names this as the one exception.
+- **Twice the Fervour: a chosen thrall counts as two in the thrall limit**, so 150 Fervour at 30 a thrall
+  holds four rather than five. When no follower is chosen yet, the next one taken will be, so it is
+  counted twice as it is taken. **For an imp or a deployable the clause does nothing until #1934 is
+  fixed**, because nothing reads their reserve.
+- **"Second Self" is said under the chosen one's health bar.** Nothing else in the interface marks a
+  minion. The status line is now drawn for every character rather than only for creatures, so an imp can
+  carry the words; a minion shows the other status words (armour removed, slowed, damage cut) whenever
+  they apply to it, which none did before.
+
+**A consequence, stated because it is easy to miss:** Shared Ruin's death blast is a share of the dying
+minion's maximum health, so a chosen minion's death blast is a share of the summoner's maximum, over the
+summoner's area.
+
+### TESTS
+
+In the group `Cataclysm.SecondSelf.`, the stat given by hand:
+
+- `TheOlderThrallIsChosenAndGivenYourHealthAndSpellDamage`: of two thralls the farther, taken a second
+  earlier, is chosen. It goes from 400 of 1000 to 2000 of 5000 and takes 40 spell damage; when the
+  commander's maximum becomes 6000, it becomes 2400 of 6000. The nearer keeps 1000. The words are said
+  over the chosen one only.
+- `WhenItIsGoneTheNextLongestHeldTakesItsPlace`.
+- `ADeployableIsNeverChosenHoweverLongItIsHeld`: a Bolt Turret held five seconds longer than an imp.
+- `TheChosenImpExplodesOverYourAreaOfEffectAndAnotherDoesNot`: at 150% area, the chosen imp's 3 metre
+  explosion reaches an enemy 4 metres away and the other imp's does not.
+- `AChosenThrallCountsTwiceSoAHundredAndFiftyFervourHoldsFourNotFive`.
+- `WithoutTheOptionNothingIsChosenOrChanged`.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, and the step pinned in
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`.
+
+**What no test here shows**: the regeneration step calling `Step`, since a test world is never ticked;
+the Python file above pins the call. The death blast's area, which uses the same multiplier as the
+explosion that is tested. A thrall's spell ability dealing more for the copied spell damage.
+
+**The stat is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
+change must add a test that wears the real `Ritualist_capstone_200` option 1 row.
+
+### Run
+
+One editor window on 2026-09-25, ending at 15:08 UTC, on development ae1caf9e as the base, at the head
+3380f8af. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**, the first time this head was compiled: "Build: Succeeded - 30 actions, 27 files compiled".
+- **The Python suite of record**, on the same tree: 5,485 passed, 8 skipped, 0 failed (JUnit 5,493 tests).
+- **The whole suite**, started once no CI run was in progress: 2,519 tests performed, 2,519 succeeded, 0
+  failed; every declared test was reported. 40 skipped part of what they check for want of the Paragon
+  art, none of them an A Second Self test.
+
+**Three guard proofs, each printing PROVED**, prefix `Cataclysm.SecondSelf.`, restored: 6 of 6 succeeded
+each time.
+
+- **The maximum never copied** (`Yours > 0.0f` made `< 0.0f` in `Step`): 2 of 6 failed, on five
+  assertions. The chosen thrall kept 1000 where 5000 and then 6000, and 400 where 2000 and 2400; the next
+  one chosen kept 1000 where 5000.
+- **The explosion's area ignored** (the multiplier made `1.0f` in `Explode`): 1 of 6 failed, on one
+  assertion. The chosen imp's explosion did not reach the enemy 4 metres away.
+- **A chosen thrall counted once** (`ExtraThrallShares` made `0` in the thrall limit): 1 of 6 failed, on
+  two assertions. Five thralls were held where four should be, both times it was asked.
+
+---
+
 ## 2026-09-25 — Wings of the Host: a flyover's line passes through the middle of a floor cell near the player, so every flyover marks a feather at thirty seconds
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the cells a line may

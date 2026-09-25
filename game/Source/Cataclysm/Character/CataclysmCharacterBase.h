@@ -228,6 +228,18 @@ public:
 	float SightRadiusMultiplier = 1.0f;
 
 	/**
+	 * When this character came under a commander's command, in world seconds:
+	 * a minion when it was summoned, a thrall when it was subjugated. -1 for one
+	 * never commanded. What A Second Self asks for "the minion you have held
+	 * longest". Issue #1515.
+	 */
+	float CommandedSinceSeconds = -1.0f;
+
+	/** Whether this is its commander's Second Self. Set by
+	 *  `UCataclysmSecondSelf::Step`, and it stays set while it stands. */
+	bool bIsSecondSelf = false;
+
+	/**
 	 * How far it actually notices a target, once its floor's multiplier is
 	 * applied. This is what the controller asks, and `SightRadiusCm` is the
 	 * creature's own figure that it scales.

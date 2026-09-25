@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmCommand.h"
+#include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -574,7 +575,11 @@ bool UCataclysmCommand::HasRoomForAnotherThrall(const AActor* Commander,
 	const float Pool = AbilitySystem->GetNumericAttribute(
 		UCataclysmClassResourceAttributeSet::GetMaxClassResourceAttribute());
 
-	const float WouldBeClaimed = (ThrallCountOf(Commander) + 1) * PerThrall;
+	// A SECOND SELF THAT IS A THRALL CLAIMS TWO SHARES: "reserves twice the
+	// Fervour it would". Issue #1515.
+	const float WouldBeClaimed =
+		(ThrallCountOf(Commander) + 1 + UCataclysmSecondSelf::ExtraThrallShares(Commander))
+		* PerThrall;
 	return WouldBeClaimed <= Pool;
 }
 
@@ -641,6 +646,14 @@ bool UCataclysmCommand::Subjugate(AActor* Commander, AActor* Enemy)
 	// other is half taken.
 	Taken->SetOwner(Commander);
 	Taken->SetGenericTeamId(UCataclysmTeams::TeamOf(Commander));
+
+	// WHEN IT CAME UNDER COMMAND, for A Second Self's "held longest", and not
+	// anybody's Second Self yet. Issue #1515.
+	if (const UWorld* World = Taken->GetWorld())
+	{
+		Taken->CommandedSinceSeconds = World->GetTimeSeconds();
+	}
+	Taken->bIsSecondSelf = false;
 
 	// AND IT IS HEALED TO FULL, ONCE, AT THE MOMENT IT IS TAKEN. The project
 	// owner's ruling: "it should heal to full, and the enemy you take over should
