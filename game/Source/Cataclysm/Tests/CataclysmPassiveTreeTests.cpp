@@ -38,6 +38,8 @@
 #include "AbilitySystem/CataclysmFervour.h"
 // For putting a real bleed on a real character. Issue #962.
 #include "AbilitySystem/CataclysmSkillEffects.h"
+// For `StatusTagFor`, which names a Cripple or a Weaken as a skill does.
+#include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 // For asking the game's own reader how far a character's retaliation reaches
 // and whether it leeches. Issues #1047 and #1048.
@@ -15603,6 +15605,481 @@ bool FCataclysmOneClassScreenDimsTest::RunTest(const FString&)
 	TestTrue(TEXT("the next Ravager node can be taken"), RavagerNode->IsAvailable());
 	TestTrue(TEXT("and has no tool tip, on the node"),
 			 RavagerNode->GetToolTipText().IsEmpty());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Five rows that ask about the enemy on the other end of a blow, each shown
+// through its real row. Issue #1755.
+//
+// EACH OF THESE WAS TESTED WITH ITS STAT GIVEN BY HAND. The tests in
+// `CataclysmTargetAilmentTests.cpp` and `CataclysmTargetHealthTests.cpp` name
+// Run Them Ragged, Nothing Left In Them, Wearing Them Down, Cornered Quarry and
+// Broken Will, and build the modifier themselves, so a row with the wrong
+// condition, figure or stat passed them all. These spend real points on a real
+// player and read the node's own row out of the built table.
+//
+// A REAL AILMENT AND A REAL WOUND, NOT A STATED ONE. Cripple and Weaken are
+// applied by the player through `ApplyNamedEffect`, as a skill applies them, and
+// each target's state is asserted before anything is read. Each reading goes
+// through the function a blow calls: `AttackDamageIncreasesForSkill` with the
+// target, `SpellDamageOf` with the target, and `StatForSkill` for
+// `damage_reduction` with the blow `BlowContextFor` builds from the attacker's
+// own debuffs, as `CataclysmVitalAttributeSet.cpp` fills it for every hit.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmTargetRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	constexpr float M = 100.0f;
+
+	/** A creature's maximum health, so a share of it is a round number. */
+	constexpr float CreatureMax = 10'000.0f;
+
+	/**
+	 * A harmless creature on the monsters' side holding this share of its
+	 * maximum. THE MAXIMUM FIRST, because health is clamped to it and the
+	 * other order gives a creature at full health.
+	 */
+	ACataclysmEnemyCharacter* Creature(UWorld* World, const FVector& Where,
+									   float HealthShare = 1.0f)
+	{
+		ACataclysmEnemyCharacter* Made =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Where, FRotator::ZeroRotator);
+		if (!Made)
+		{
+			return nullptr;
+		}
+		Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Made->SetRarityStep(0);
+		Made->SetAttackDamage(0.0f);
+		Made->SetHealth(CreatureMax);
+		if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Made))
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), CreatureMax);
+			System->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(),
+				CreatureMax * HealthShare);
+		}
+		return Made;
+	}
+
+	/** The share of its maximum a creature holds, read off its ability system. */
+	float ShareOf(AActor* Made)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Made);
+		if (!System)
+		{
+			return -1.0f;
+		}
+		const float Max = System->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetMaxHealthAttribute());
+		return Max > 0.0f
+			? 100.0f * System->GetNumericAttribute(
+						   UCataclysmVitalAttributeSet::GetHealthAttribute()) / Max
+			: -1.0f;
+	}
+
+	/** Cripple or Weaken, applied as a skill applies it, for its own duration. */
+	bool Afflict(AActor* From, AActor* Target, const TCHAR* EffectName)
+	{
+		const FGameplayTag Tag = UCataclysmSkillShapes::StatusTagFor(EffectName);
+		return UCataclysmSkillEffects::ApplyNamedEffect(
+			From, Target, Tag,
+			UCataclysmSkillEffects::NumbersForEffectTag(Tag).DurationSeconds);
+	}
+
+	bool Carries(AActor* Target, const FGameplayTag& Tag)
+	{
+		return Tag.IsValid() && UCataclysmDebuffs::TagsOnActor(Target).HasTagExact(Tag);
+	}
+
+	FGameplayTagContainer Melee()
+	{
+		FGameplayTagContainer Tags;
+		Tags.AddTag(FGameplayTag::RequestGameplayTag(
+			FName(UCataclysmDamageCalculation::MeleeTagName), /*ErrorIfNotFound=*/false));
+		return Tags;
+	}
+
+	/** Points in one node, or none at all when `Points` is zero. */
+	void Take(FRealCharacter& Player, const TCHAR* Node, int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(FName(Node), Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	/** The attack damage increases a melee blow on this target sees, as a fraction. */
+	float AttackAgainst(const FRealCharacter& Player, const AActor* Target)
+	{
+		return Player.AbilitySystem->AttackDamageIncreasesForSkill(
+			Melee(), -1.0f, -1.0f, -1.0f, false, Target);
+	}
+
+	/**
+	 * The sum of increases a stat holds with no condition judged, in percent.
+	 * A conditioned row is refused by the default state, so this is what the
+	 * node's own row stands beside when its condition holds.
+	 */
+	float UnconditionedIncreases(const FRealCharacter& Player, const TCHAR* Stat,
+								 const FGameplayTagContainer& Tags)
+	{
+		const FCataclysmStatInputs* Inputs =
+			Player.AbilitySystem->GetStatInputs(FName(Stat));
+		return Inputs
+			? UCataclysmStatPipeline::Evaluate(Inputs->Base, Inputs->Modifiers, Tags)
+				  .SumOfIncreases
+			: 0.0f;
+	}
+
+	/** A real player of a class, or false with the reason. */
+	bool Ready(FAutomationTestBase& Test, const FRealCharacter& Player)
+	{
+		if (!Test.TestTrue(TEXT("a possessed player with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRunThemRaggedOnARealCharacterTest,
+	"Cataclysm.TargetRows.RunThemRaggedRaisesARealRavagersAttackDamageOnlyAgainstACrippledEnemy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_basic_c_a2` Run Them Ragged: "+2% increased Attack Damage per point
+ *  against Crippled enemies." Eight points, so 16%. */
+bool FCataclysmPassiveRunThemRaggedOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+	const FVector Here = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Crippled = Creature(World, Here + FVector(2.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Clean = Creature(World, Here + FVector(0.0f, 2.0f * M, 0.0f));
+	if (!TestNotNull(TEXT("a target to cripple"), Crippled)
+		|| !TestNotNull(TEXT("and one to leave alone"), Clean))
+	{
+		return false;
+	}
+
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	if (!TestTrue(TEXT("the player crippled the first"),
+				  Afflict(Player.Character, Crippled, TEXT("Cripple")))
+		|| !TestTrue(TEXT("which carries it"), Carries(Crippled, Cripple))
+		|| !TestFalse(TEXT("and the other does not"), Carries(Clean, Cripple)))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("with no points, a Crippled target is worth no more"),
+			  AttackAgainst(Player, Crippled) - AttackAgainst(Player, Clean), 0.0f,
+			  0.0001f);
+
+	Take(Player, TEXT("Ravager_basic_c_a2"), 8);
+	TestEqual(TEXT("with eight points, a blow on the Crippled target sees 16% more "
+				   "increased attack damage than one on the clean target"),
+			  AttackAgainst(Player, Crippled) - AttackAgainst(Player, Clean), 0.16f,
+			  0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveNothingLeftInThemOnARealCharacterTest,
+	"Cataclysm.TargetRows.NothingLeftInThemPaysOnlyAgainstAnEnemyBothCrippledAndWeakened",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_c_c1` Nothing Left In Them: "+2% increased Attack Damage per
+ * point against enemies that are both Crippled and Weakened." Six points, 12%.
+ *
+ * THE TWO TARGETS CARRYING ONE AILMENT EACH ARE THE POINT: a row written as
+ * either ailment, not both, pays on one of them.
+ */
+bool FCataclysmPassiveNothingLeftInThemOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+	const FVector Here = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Both = Creature(World, Here + FVector(2.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* OnlyCrippled = Creature(World, Here + FVector(0.0f, 2.0f * M, 0.0f));
+	ACataclysmEnemyCharacter* OnlyWeakened = Creature(World, Here + FVector(-2.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Neither = Creature(World, Here + FVector(0.0f, -2.0f * M, 0.0f));
+	for (ACataclysmEnemyCharacter* Who : {Both, OnlyCrippled, OnlyWeakened, Neither})
+	{
+		if (!TestNotNull(TEXT("every target spawned"), Who))
+		{
+			return false;
+		}
+	}
+
+	const FGameplayTag Cripple = UCataclysmDebuffs::CrippleTag();
+	const FGameplayTag Weaken = UCataclysmDebuffs::WeakenTag();
+	if (!TestTrue(TEXT("the first is Crippled"), Afflict(Player.Character, Both, TEXT("Cripple")))
+		|| !TestTrue(TEXT("and Weakened"), Afflict(Player.Character, Both, TEXT("Weaken")))
+		|| !TestTrue(TEXT("the second only Crippled"),
+					 Afflict(Player.Character, OnlyCrippled, TEXT("Cripple")))
+		|| !TestTrue(TEXT("the third only Weakened"),
+					 Afflict(Player.Character, OnlyWeakened, TEXT("Weaken"))))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the first carries both"),
+				  Carries(Both, Cripple) && Carries(Both, Weaken))
+		|| !TestTrue(TEXT("the second carries only Cripple"),
+					 Carries(OnlyCrippled, Cripple) && !Carries(OnlyCrippled, Weaken))
+		|| !TestTrue(TEXT("the third carries only Weaken"),
+					 Carries(OnlyWeakened, Weaken) && !Carries(OnlyWeakened, Cripple))
+		|| !TestTrue(TEXT("the fourth carries neither"),
+					 !Carries(Neither, Cripple) && !Carries(Neither, Weaken)))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Ravager_basic_c_c1"), 6);
+	const float Base = AttackAgainst(Player, Neither);
+	TestEqual(TEXT("against a target both Crippled and Weakened: 12% more"),
+			  AttackAgainst(Player, Both) - Base, 0.12f, 0.0001f);
+	TestEqual(TEXT("against one only Crippled: nothing"),
+			  AttackAgainst(Player, OnlyCrippled) - Base, 0.0f, 0.0001f);
+	TestEqual(TEXT("against one only Weakened: nothing"),
+			  AttackAgainst(Player, OnlyWeakened) - Base, 0.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveCorneredQuarryOnARealCharacterTest,
+	"Cataclysm.TargetRows.CorneredQuarryPaysOnlyAgainstAnEnemyBelowThirtyFivePercentHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_d_a2` Cornered Quarry: "+2% increased Attack Damage per point
+ * against enemies below 35% health." Six points, 12%.
+ *
+ * A TARGET EXACTLY AT 35% IS THE BOUNDARY, and "below" leaves it out. Its share
+ * is asserted before it is struck, so the boundary is really reached.
+ */
+bool FCataclysmPassiveCorneredQuarryOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+	const FVector Here = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Wounded =
+		Creature(World, Here + FVector(2.0f * M, 0.0f, 0.0f), 0.30f);
+	ACataclysmEnemyCharacter* OnTheLine =
+		Creature(World, Here + FVector(0.0f, 2.0f * M, 0.0f), 0.35f);
+	ACataclysmEnemyCharacter* Healthy =
+		Creature(World, Here + FVector(-2.0f * M, 0.0f, 0.0f), 0.40f);
+	if (!TestNotNull(TEXT("a wounded target"), Wounded)
+		|| !TestNotNull(TEXT("one on the line"), OnTheLine)
+		|| !TestNotNull(TEXT("and a healthier one"), Healthy)
+		|| !TestEqual(TEXT("the wounded one holds 30%"), ShareOf(Wounded), 30.0f, 0.01f)
+		|| !TestEqual(TEXT("the one on the line holds 35%"), ShareOf(OnTheLine), 35.0f, 0.01f)
+		|| !TestEqual(TEXT("the healthier one holds 40%"), ShareOf(Healthy), 40.0f, 0.01f))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Ravager_basic_d_a2"), 6);
+	const float Base = AttackAgainst(Player, Healthy);
+	TestEqual(TEXT("against a target at 30%: 12% more"),
+			  AttackAgainst(Player, Wounded) - Base, 0.12f, 0.0001f);
+	TestEqual(TEXT("against one at exactly 35%: nothing, since it is not below"),
+			  AttackAgainst(Player, OnTheLine) - Base, 0.0f, 0.0001f);
+
+	Take(Player, TEXT("Ravager_basic_d_a2"), 0);
+	TestEqual(TEXT("and with the points given back, the wounded target is worth no more"),
+			  AttackAgainst(Player, Wounded) - AttackAgainst(Player, Healthy), 0.0f,
+			  0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveWearingThemDownOnARealCharacterTest,
+	"Cataclysm.TargetRows.WearingThemDownRaisesARealRavagersDamageReductionOnlyAgainstAWeakenedAttacker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_c_b2` Wearing Them Down: "+2% increased Damage Reduction per
+ * point against enemies you have Weakened." Eight points, 16%.
+ *
+ * THE RAVAGER IS THE DEFENDER HERE. The attacker's debuffs reach the reading
+ * through the blow `BlowContextFor` builds from them, as every hit's is. The
+ * ruling in `CataclysmVitalAttributeSet.cpp` reads "enemies you have Weakened"
+ * as an enemy carrying Weaken, so the player applies it and it is not asked who
+ * did.
+ */
+bool FCataclysmPassiveWearingThemDownOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+	const FVector Here = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Weakened = Creature(World, Here + FVector(2.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Plain = Creature(World, Here + FVector(0.0f, 2.0f * M, 0.0f));
+	const FGameplayTag Weaken = UCataclysmDebuffs::WeakenTag();
+	if (!TestNotNull(TEXT("an attacker to weaken"), Weakened)
+		|| !TestNotNull(TEXT("and one to leave alone"), Plain)
+		|| !TestTrue(TEXT("the player weakened the first"),
+					 Afflict(Player.Character, Weakened, TEXT("Weaken")))
+		|| !TestTrue(TEXT("which carries it"), Carries(Weakened, Weaken))
+		|| !TestFalse(TEXT("and the other does not"), Carries(Plain, Weaken)))
+	{
+		return false;
+	}
+
+	const FName Reduction(TEXT("damage_reduction"));
+	const auto ReductionAgainst = [&](AActor* Attacker)
+	{
+		FCataclysmIncomingHit Hit;
+		Hit.bIsMelee = true;
+		Hit.AttackerDebuffs = UCataclysmDebuffs::TagsOnActor(Attacker);
+		return Player.AbilitySystem->StatForSkill(
+			Reduction, FGameplayTagContainer(),
+			Player.AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetDamageReductionAttribute()),
+			-1.0f, UCataclysmDamageCalculation::BlowContextFor(Hit));
+	};
+
+	Take(Player, TEXT("Ravager_basic_c_b2"), 8);
+	const float AgainstPlain = ReductionAgainst(Plain);
+	if (!TestTrue(TEXT("the Ravager has damage reduction to raise"), AgainstPlain > 0.0f))
+	{
+		return false;
+	}
+	const float Others = UnconditionedIncreases(Player, TEXT("damage_reduction"),
+												FGameplayTagContainer());
+	TestEqual(TEXT("against a Weakened attacker, damage reduction carries 16% more "
+				   "increased than against a plain one"),
+			  ReductionAgainst(Weakened) / AgainstPlain,
+			  (1.0f + (Others + 16.0f) / 100.0f) / (1.0f + Others / 100.0f), 0.0001f);
+
+	Take(Player, TEXT("Ravager_basic_c_b2"), 0);
+	TestEqual(TEXT("and with the points given back, the two attackers are alike"),
+			  ReductionAgainst(Weakened), ReductionAgainst(Plain), 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveBrokenWillOnARealCharacterTest,
+	"Cataclysm.TargetRows.BrokenWillRaisesARealRitualistsSpellDamageOnlyAgainstAnEnemyBelowHalfHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_a_stem1` Broken Will: "+2% increased Spell Damage per point
+ * against enemies below half health." Six points, 12%. Read through
+ * `SpellDamageOf`, which every spell's hit asks with its target.
+ */
+bool FCataclysmPassiveBrokenWillOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmTargetRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+	const FVector Here = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Wounded =
+		Creature(World, Here + FVector(2.0f * M, 0.0f, 0.0f), 0.40f);
+	ACataclysmEnemyCharacter* Healthy =
+		Creature(World, Here + FVector(0.0f, 2.0f * M, 0.0f), 0.60f);
+	if (!TestNotNull(TEXT("a wounded target"), Wounded)
+		|| !TestNotNull(TEXT("and a healthier one"), Healthy)
+		|| !TestEqual(TEXT("the wounded one holds 40%"), ShareOf(Wounded), 40.0f, 0.01f)
+		|| !TestEqual(TEXT("the healthier one holds 60%"), ShareOf(Healthy), 60.0f, 0.01f))
+	{
+		return false;
+	}
+
+	const auto SpellOn = [&Player](const AActor* Target)
+	{
+		return UCataclysmSkillEffects::SpellDamageOf(
+			Player.AbilitySystem, FGameplayTagContainer(), -1.0f, -1.0f, false, Target);
+	};
+
+	Take(Player, TEXT("Ritualist_basic_a_stem1"), 6);
+	const float OnHealthy = SpellOn(Healthy);
+	if (!TestTrue(TEXT("the Ritualist has spell damage to raise"), OnHealthy > 0.0f))
+	{
+		return false;
+	}
+	const float Others = UnconditionedIncreases(Player, TEXT("spell_damage"),
+												FGameplayTagContainer());
+	TestEqual(TEXT("against a target below half health, spell damage carries 12% "
+				   "more increased"),
+			  SpellOn(Wounded) / OnHealthy,
+			  (1.0f + (Others + 12.0f) / 100.0f) / (1.0f + Others / 100.0f), 0.0001f);
+
+	Take(Player, TEXT("Ritualist_basic_a_stem1"), 0);
+	TestEqual(TEXT("and with the points given back, the two targets are alike"),
+			  SpellOn(Wounded), SpellOn(Healthy), 0.001f);
 	return true;
 }
 
