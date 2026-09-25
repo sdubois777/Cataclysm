@@ -27,6 +27,7 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -27320,6 +27321,265 @@ bool FCataclysmWingsTypedTest::RunTest(const FString& Parameters)
 	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a Wings of the Host feather"), Resist::GetCelestialResistanceAttribute(),
 									LostWithCelestial.GetValue(), Resist::GetVoidResistanceAttribute(),
 									LostWithVoid.GetValue());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Celestial_Eternal_Chorus. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName ChorusRow(UCataclysmDungeonModifierEffects::EternalChorusKey);
+
+	/** A dungeon carrying only Eternal Chorus, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AChorusFloor(FAutomationTestBase& Test, UWorld* World,
+											const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {ChorusRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** The player's stat as a skill with no tags asks it. */
+	float PlayerStat(const FPossessedPlayer& Player, const TCHAR* Stat)
+	{
+		return Player.AbilitySystem->StatForSkill(FName(Stat), FGameplayTagContainer(), 0.0f);
+	}
+
+	/** The modifiers a floor effect records on one stat. */
+	TArray<FCataclysmStatModifier> ModifiersOn(const TMap<FName, TArray<FCataclysmStatModifier>>& All,
+											   const TCHAR* Stat)
+	{
+		const TArray<FCataclysmStatModifier>* Found = All.Find(FName(Stat));
+		return Found ? *Found : TArray<FCataclysmStatModifier>();
+	}
+}
+
+// WITHIN EARSHOT: COOLDOWNS 50 LONGER, FLAT; MANA AND FERVOUR REGENERATION 50% LESS; NOTHING ELSE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusEffectsTest,
+	"Cataclysm.DungeonModifierEffects.EternalChorusLengthensCooldownsAndHalvesOnlyResourceRegeneration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusEffectsTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	FCataclysmPlayerFloorEffects Within;
+	Within.ChorusCooldownLongerPercent = Effects::EternalChorusCooldownLongerPercent;
+	Within.ChorusRegenLessPercent = Effects::EternalChorusRegenLessPercent;
+	TestFalse(TEXT("a floor doing this is not empty"), Within.IsEmpty());
+
+	const TMap<FName, TArray<FCataclysmStatModifier>> All = Effects::StatModifiersFor(Within);
+	const TArray<FCataclysmStatModifier> Cooldown = ModifiersOn(All, TEXT("cooldown_lengthening"));
+	if (TestEqual(TEXT("one modifier on cooldown_lengthening"), Cooldown.Num(), 1))
+	{
+		TestTrue(TEXT("flat"), Cooldown[0].Bucket == ECataclysmStatBucket::Flat);
+		TestEqual(TEXT("fifty"), Cooldown[0].Value, 50.0f, 0.001f);
+	}
+	for (const TCHAR* Halved : {TEXT("mana_regen"), TEXT("fervour_per_second")})
+	{
+		const TArray<FCataclysmStatModifier> Less = ModifiersOn(All, Halved);
+		if (TestEqual(FString::Printf(TEXT("one modifier on %s"), Halved), Less.Num(), 1))
+		{
+			TestTrue(TEXT("a multiplier"), Less[0].Bucket == ECataclysmStatBucket::More);
+			TestEqual(TEXT("fifty less"), Less[0].Value, -50.0f, 0.001f);
+		}
+	}
+	for (const TCHAR* Untouched :
+		 {TEXT("health_regen"), TEXT("life_leech"), TEXT("mana_leech"), TEXT("energy_shield_regen")})
+	{
+		TestEqual(FString::Printf(TEXT("%s is not a resource, and is untouched"), Untouched),
+				  ModifiersOn(All, Untouched).Num(), 0);
+	}
+	const FString Said = Effects::Describe(Within);
+	TestTrue(TEXT("the panel says cooldowns are longer"), Said.Contains(TEXT("cooldowns 50% longer")));
+	TestTrue(TEXT("and regeneration is less"), Said.Contains(TEXT("mana and fervour regeneration 50% less")));
+	return true;
+}
+
+// TWO SOURCES A FLOOR, ON FLOOR CELLS FAR FROM THE ENTRANCE AND EACH OTHER; EACH DOES NOTHING, PAYS NOTHING,
+// IS NOT THE FLOOR'S CREATURE AND SAYS "Chorus"; EACH HAS ITS EARSHOT; A HORDE ARENA HAS ONE, KEPT ACROSS WAVES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusPlacedTest,
+	"Cataclysm.DungeonModifierEffects.EternalChorusPlacesTwoSourcesThatDoNothingButSing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AChorusFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+
+	// WHERE A FLOOR'S CHORUSES MAY STAND.
+	const TArray<FIntPoint> Cells = ACataclysmDungeonGameMode::EternalChorusCells(Floor, Effects::EternalChorusSources);
+	if (TestEqual(TEXT("two cells"), Cells.Num(), Effects::EternalChorusSources))
+	{
+		for (const FIntPoint& Cell : Cells)
+		{
+			TestTrue(TEXT("each on floor"), Floor.GetPlan().IsFloor(Cell));
+			TestTrue(TEXT("each far enough from the entrance"),
+					 FVector::Dist2D(Floor.WorldOfCell(Cell), Floor.EntranceWorld()) >= Effects::EternalChorusApartCm);
+		}
+		TestTrue(TEXT("and from each other"),
+				 FVector::Dist2D(Floor.WorldOfCell(Cells[0]), Floor.WorldOfCell(Cells[1])) >= Effects::EternalChorusApartCm);
+	}
+
+	// THE FLOOR'S OWN SOURCES.
+	const TArray<ACataclysmEnemyCharacter*> Sources = Mode->EternalChorusSourcesNow();
+	if (!TestEqual(TEXT("two sources on the floor"), Sources.Num(), Effects::EternalChorusSources))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Source : Sources)
+	{
+		TestTrue(TEXT("a chorus source"), Source->IsA<ACataclysmChorusSourceCharacter>());
+		TestNull(TEXT("with no brain"), Source->GetController());
+		TestTrue(TEXT("with no ability"), Source->EnemyAbilities().IsEmpty());
+		TestTrue(TEXT("that pays nothing"), !Source->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Source->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Source));
+		TestEqual(TEXT("\"Chorus\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Source),
+				  FString(TEXT("Chorus")));
+		TestEqual(TEXT("at full health"), HealthOf(Source), MaxHealthOf(Source), 0.5f);
+		TestEqual(TEXT("which is the Imp's"), MaxHealthOf(Source), Mode->EternalChorusSourceHealth(), 0.5f);
+	}
+
+	// EACH HAS ITS EARSHOT FROM THE FIRST BEAT.
+	Beat(Mode, 1);
+	TestEqual(TEXT("two earshots in the world"), ZonesOnTheFloor(World), 2);
+	for (ACataclysmEnemyCharacter* Source : Sources)
+	{
+		ACataclysmGroundZone* Earshot = Mode->EternalChorusEarshotOf(Source);
+		if (TestNotNull(TEXT("an earshot for each source"), Earshot))
+		{
+			TestTrue(TEXT("around it"), Earshot->Covers(Source->GetActorLocation()));
+			TestFalse(TEXT("and no further than 1000 cm"),
+					  Earshot->Covers(Source->GetActorLocation() + FVector(Effects::EternalChorusEarshotCm + 50.0f, 0.0f, 0.0f)));
+		}
+	}
+	TestEqual(TEXT("the panel says they sing"), Mode->LiveCountsForTheFloor().FindRef(ChorusRow),
+			  FString(TEXT("eternal chorus: 2 sources singing")));
+
+	// A HORDE ARENA HAS ONE, AND ITS NEXT WAVE KEEPS IT AND DRAWS ITS EARSHOT AGAIN.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Horde = Mode->EternalChorusSourcesNow();
+	if (!TestEqual(TEXT("one source in a Horde arena"), Horde.Num(), Effects::EternalChorusHordeSources))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the floor's two are gone"), IsValid(Sources[0]) && !Sources[0]->IsActorBeingDestroyed());
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(4)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> NextWave = Mode->EternalChorusSourcesNow();
+	TestTrue(TEXT("the next wave keeps the same one source"), NextWave.Num() == 1 && NextWave[0] == Horde[0]);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("with its earshot drawn again"), Mode->EternalChorusEarshotOf(Horde[0]));
+	return true;
+}
+
+// WITHIN EARSHOT THE PLAYER'S COOLDOWNS ARE 50 LONGER AND MANA REGENERATION HALF; OUT OF IT, NEITHER;
+// DESTROYING A SOURCE SILENCES ITS CHORUS AND PAYS NOTHING, AND THE OTHER SINGS ON.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusEarshotTest,
+	"Cataclysm.DungeonModifierEffects.WithinAChorusEarshotCooldownsLengthenUntilItsSourceIsDestroyed",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmChorusEarshotTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AChorusFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Sources = Mode->EternalChorusSourcesNow();
+	if (!TestEqual(TEXT("two sources"), Sources.Num(), 2))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = Sources[0];
+	ACataclysmEnemyCharacter* Second = Sources[1];
+	const float Z = Player.Character->GetActorLocation().Z;
+
+	// OUT OF EARSHOT: NOTHING. Far from both sources, on the entrance.
+	const FVector Entrance = Mode->CurrentFloor->EntranceWorld();
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("no lengthening out of earshot"), PlayerStat(Player, TEXT("cooldown_lengthening")), 0.0f, 0.01f);
+	const float ManaRegen = PlayerStat(Player, TEXT("mana_regen"));
+	if (!TestTrue(FString::Printf(TEXT("the player regenerates mana to halve (%.3f)"), ManaRegen), ManaRegen > 0.0f))
+	{
+		return false;
+	}
+
+	// WITHIN THE FIRST'S EARSHOT.
+	const FVector Near = First->GetActorLocation() + FVector(0.5f * Effects::EternalChorusEarshotCm, 0.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Near.X, Near.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("cooldowns 50 longer within earshot"), PlayerStat(Player, TEXT("cooldown_lengthening")), 50.0f, 0.01f);
+	TestEqual(TEXT("mana regeneration halved"), PlayerStat(Player, TEXT("mana_regen")), 0.5f * ManaRegen, 0.001f);
+
+	// DESTROYING THE FIRST SILENCES IT, AND PAYS NOTHING.
+	WoundCreatureTo(First, 100.0f, 0.0f);
+	First->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, First, 100000.0f);
+	if (!TestTrue(TEXT("the source was destroyed"), UCataclysmSkillEffects::IsDead(First)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and paid nothing"), First->PaysForItsDeath());
+	Beat(Mode, 1);
+	TestEqual(TEXT("one source sings"), Mode->EternalChorusSourcesNow().Num(), 1);
+	TestEqual(TEXT("one earshot is left"), ZonesOnTheFloor(World), 1);
+	TestEqual(TEXT("the panel says one"), Mode->LiveCountsForTheFloor().FindRef(ChorusRow),
+			  FString(TEXT("eternal chorus: 1 sources singing")));
+	TestEqual(TEXT("where its earshot was, cooldowns are back"), PlayerStat(Player, TEXT("cooldown_lengthening")), 0.0f, 0.01f);
+	TestEqual(TEXT("and mana regeneration"), PlayerStat(Player, TEXT("mana_regen")), ManaRegen, 0.001f);
+
+	// THE OTHER STILL SINGS.
+	const FVector NearSecond = Second->GetActorLocation() + FVector(0.5f * Effects::EternalChorusEarshotCm, 0.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(NearSecond.X, NearSecond.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("the other's earshot still lengthens"), PlayerStat(Player, TEXT("cooldown_lengthening")), 50.0f, 0.01f);
 	return true;
 }
 

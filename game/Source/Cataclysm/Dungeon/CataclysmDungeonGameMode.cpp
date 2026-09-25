@@ -15,6 +15,7 @@
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Cataclysm.h"
 #include "Character/CataclysmPlayerCharacter.h"
@@ -28,6 +29,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -1450,6 +1452,13 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	if (!FloorBrief.bSameArenaAsLastFloor)
 	{
 		ClearFloorEnemies();
+
+		// AND ETERNAL CHORUS'S SOURCES GO WITH THE ARENA AND A NEW ARENA GETS ITS OWN, here and
+		// not with the per-floor resets: a Horde dungeon's later waves keep the first wave's sources,
+		// as ruled, and `ApplyFloorRulesToPlayer` runs on every wave. The sources are not in
+		// `FloorEnemies`, so the call above does not take them. Issues #1820 and #41.
+		ForgetTheChoruses();
+		PlaceTheChoruses();
 	}
 	else
 	{
@@ -3030,6 +3039,207 @@ void ACataclysmDungeonGameMode::StepWingsOfTheHost(ACataclysmPlayerCharacter* Pl
 	RefreshFloorModifierPanel();
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::EternalChorusSourcesNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Singing;
+	for (const FEternalChorus& One : EternalChoruses)
+	{
+		ACataclysmEnemyCharacter* Source = One.Source.Get();
+		if (IsValid(Source) && !UCataclysmSkillEffects::IsDead(Source))
+		{
+			Singing.Add(Source);
+		}
+	}
+	return Singing;
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::EternalChorusEarshotOf(
+	const ACataclysmEnemyCharacter* Source) const
+{
+	for (const FEternalChorus& One : EternalChoruses)
+	{
+		if (Source && One.Source.Get() == Source)
+		{
+			return One.Earshot.Get();
+		}
+	}
+	return nullptr;
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::EternalChorusCells(const ACataclysmDungeonFloor& Floor,
+																 int32 Count)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// EVERY FLOOR CELL FAR ENOUGH FROM THE ENTRANCE, in an even shuffle, and then the first that are
+	// far enough from every one already taken.
+	const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+	const FVector Entrance = Floor.EntranceWorld();
+	TArray<FIntPoint> Candidates;
+	for (int32 Y = 0; Y < Plan.Height; ++Y)
+	{
+		for (int32 X = 0; X < Plan.Width; ++X)
+		{
+			const FIntPoint Cell(X, Y);
+			if (Plan.IsFloor(Cell)
+				&& FVector::Dist2D(Floor.WorldOfCell(Cell), Entrance) >= Effects::EternalChorusApartCm)
+			{
+				Candidates.Add(Cell);
+			}
+		}
+	}
+	for (int32 Index = Candidates.Num() - 1; Index > 0; --Index)
+	{
+		Candidates.Swap(Index, FMath::RandRange(0, Index));
+	}
+
+	TArray<FIntPoint> Chosen;
+	for (const FIntPoint& Cell : Candidates)
+	{
+		if (Chosen.Num() >= Count)
+		{
+			break;
+		}
+		const FVector Where = Floor.WorldOfCell(Cell);
+		const bool bApart = !Chosen.ContainsByPredicate([&Floor, &Where](const FIntPoint& Taken)
+		{
+			return FVector::Dist2D(Floor.WorldOfCell(Taken), Where) < Effects::EternalChorusApartCm;
+		});
+		if (bApart)
+		{
+			Chosen.Add(Cell);
+		}
+	}
+	return Chosen;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheChoruses()
+{
+	for (const FEternalChorus& One : EternalChoruses)
+	{
+		if (ACataclysmEnemyCharacter* Source = One.Source.Get())
+		{
+			Source->Destroy();
+		}
+		if (ACataclysmGroundZone* Earshot = One.Earshot.Get())
+		{
+			Earshot->Destroy();
+		}
+	}
+	EternalChoruses.Reset();
+	EternalChorusPanelSinging = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheChoruses()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::EternalChorusKey)))
+	{
+		return;
+	}
+
+	// TWO ON A FLOOR, ONE ON A HORDE ARENA, as ruled.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::EternalChorusHordeSources
+											: Effects::EternalChorusSources;
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmChorusSourceCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Source =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Source)
+		{
+			continue;
+		}
+		// THE IMP'S HEALTH AT COMMON, a play-test value; see `EternalChorusSourceHealth`. It pays
+		// nothing, so it cannot be farmed, and it is not one of the floor's
+		// creatures, so Blood Gates and every rule that picks from those leave it alone.
+		Source->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Source->SetHealth(EternalChorusSourceHealth());
+		Source->SetRarityStep(0);
+		Source->bDiesUnpaid = true;
+		Source->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Source);
+		FEternalChorus One;
+		One.Source = Source;
+		EternalChoruses.Add(One);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Eternal Chorus: %d source(s) placed on floor %d"),
+		   EternalChoruses.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepEternalChorus(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem)
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::EternalChorusKey);
+	const FVector Feet = Player->GetActorLocation();
+
+	// A SOURCE DESTROYED SILENCES ITS CHORUS: its earshot goes. A LIVING SOURCE'S EARSHOT IS DRAWN
+	// AGAIN whenever it is missing, which is after every floor or wave, when the rules' zones go.
+	bool bWithinEarshot = false;
+	for (FEternalChorus& One : EternalChoruses)
+	{
+		ACataclysmEnemyCharacter* Singer = One.Source.Get();
+		if (!IsValid(Singer) || UCataclysmSkillEffects::IsDead(Singer))
+		{
+			if (ACataclysmGroundZone* Earshot = One.Earshot.Get())
+			{
+				Earshot->Destroy();
+			}
+			One.Earshot = nullptr;
+			continue;
+		}
+		ACataclysmGroundZone* Earshot = One.Earshot.Get();
+		if (!Earshot && Source)
+		{
+			const FVector Where = Singer->GetActorLocation();
+			Earshot = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, Where, Where, Effects::EternalChorusEarshotCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type);
+			One.Earshot = Earshot;
+		}
+		bWithinEarshot |= Earshot && Earshot->Covers(Feet);
+	}
+	EternalChoruses.RemoveAll([](const FEternalChorus& One)
+	{
+		return !One.Source.IsValid() || UCataclysmSkillEffects::IsDead(One.Source.Get());
+	});
+
+	// WITHIN ANY EARSHOT, ONCE: the two figures, or nothing. Written only when they change, since
+	// the applier works the character's stats out again.
+	const float WantedCooldown = bWithinEarshot ? Effects::EternalChorusCooldownLongerPercent : 0.0f;
+	const float WantedRegen = bWithinEarshot ? Effects::EternalChorusRegenLessPercent : 0.0f;
+	if (!FMath::IsNearlyEqual(WantedCooldown, EternalChorusCooldownApplied)
+		|| !FMath::IsNearlyEqual(WantedRegen, EternalChorusRegenApplied))
+	{
+		EternalChorusCooldownApplied = WantedCooldown;
+		EternalChorusRegenApplied = WantedRegen;
+		ApplyChangingFloorEffects(Player, AbilitySystem);
+	}
+
+	const int32 Singing = EternalChoruses.Num();
+	if (Singing != EternalChorusPanelSinging)
+	{
+		EternalChorusPanelSinging = Singing;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepDivineWrath(
 	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -3893,6 +4103,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	EchoesThisFloor.Reset();
 	EchoesFromLastFloor.Reset();
 	ForgetThePlagueHarbingers();
+	ForgetTheChoruses();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -4354,6 +4565,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// and #41.
 	const bool bWingsOfTheHost = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::WingsOfTheHostKey));
+	// AND ETERNAL CHORUS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bEternalChorus = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::EternalChorusKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -4370,7 +4584,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
-		&& !bWingsOfTheHost)
+		&& !bWingsOfTheHost && !bEternalChorus)
 	{
 		return;
 	}
@@ -4561,6 +4775,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bWingsOfTheHost)
 	{
 		StepWingsOfTheHost(Player);
+	}
+
+	// AND ETERNAL CHORUS, WHICH PLACES ZONES AND CHANGES THE PLAYER'S STATS. Issues #1820 and #41.
+	if (bEternalChorus)
+	{
+		StepEternalChorus(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -5455,6 +5675,10 @@ void ACataclysmDungeonGameMode::ApplyChangingFloorEffects(
 	// on a floor that also carried the beat rule and not otherwise -- a fault
 	// that depends on which other modifier the floor rolled. Issue #1765.
 	Effects.RecoveryLessPercent = WitheredGroundRecoveryLessApplied;
+
+	// AND WHAT ETERNAL CHORUS DOES WITHIN EARSHOT, in two fields of its own. Issues #1820 and #41.
+	Effects.ChorusCooldownLongerPercent = EternalChorusCooldownApplied;
+	Effects.ChorusRegenLessPercent = EternalChorusRegenApplied;
 
 	// AND WHAT WASTING SICKNESS'S STACKS TAKE OFF BOTH MAXIMUMS. Issues #1786
 	// and #41. Read unconditionally like the rest: a floor without that row
@@ -7145,6 +7369,14 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 			: FString::Printf(TEXT("wings of the host: next flyover in %.0f seconds"),
 							  FMath::Max(0.0f, Effects::WingsOfTheHostSecondsBetween
 												- WingsOfTheHostSecondsSinceLast)));
+	}
+
+	// AND ETERNAL CHORUS: how many sources are still singing. Issues #1820 and #41.
+	const FName Chorus(Effects::EternalChorusKey);
+	if (FloorBrief.Modifiers.Contains(Chorus))
+	{
+		Counting.Add(Chorus, FString::Printf(TEXT("eternal chorus: %d sources singing"),
+											  EternalChorusSourcesNow().Num()));
 	}
 
 	// AND PLAGUE HARBINGERS: how many are alive and how many trail patches stand. Issues #1820
@@ -9185,6 +9417,13 @@ void ACataclysmDungeonGameMode::ApplyFloorRulesToPlayer()
 		// it back.
 		WitheredGroundPatches.Empty();
 		WitheredGroundRecoveryLessApplied = 0.0f;
+
+		// AND ETERNAL CHORUS'S EFFECTS ON THE PLAYER, for Withered Ground's reason: the call above has
+		// taken them off, and the next beat puts them back if the player is still within earshot. Its
+		// earshot zones went with the rules' other zones; the beat draws them again for every source
+		// still singing. Issues #1820 and #41.
+		EternalChorusCooldownApplied = 0.0f;
+		EternalChorusRegenApplied = 0.0f;
 
 		// AND JUDGMENT GOES ENTIRELY, BOTH NUMBERS. Issues #1820 and #41. This
 		// is the opposite of Wasting Sickness further below, which keeps

@@ -403,6 +403,27 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
 	float ManaCostAsCurrentHealthPercent = 0.0f;
 
+	/**
+	 * How much longer every cooldown is while the player is within earshot of an Eternal Chorus,
+	 * in percent: a flat addition to `cooldown_lengthening`, whose 50 makes a cooldown 1.5 times as
+	 * long. Issues #1820 and #41.
+	 *
+	 * ON AND OFF AS THE PLAYER WALKS IN AND OUT OF EARSHOT, like `RecoveryLessPercent`.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float ChorusCooldownLongerPercent = 0.0f;
+
+	/**
+	 * How much less resource the player regenerates within earshot of an Eternal Chorus, in
+	 * percent: a Less on `mana_regen` and on `fervour_per_second`. Issues #1820 and #41.
+	 *
+	 * ITS OWN FIELD AND NOT `RecoveryLessPercent`, which also cuts health regeneration and both
+	 * leeches. The row says "resource regeneration": health is not a resource, and neither is an
+	 * energy shield, so `health_regen`, the leeches and `energy_shield_regen` are untouched.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Dungeon")
+	float ChorusRegenLessPercent = 0.0f;
+
 	/** Whether this takes nothing from anything and adds nothing either. */
 	bool IsEmpty() const
 	{
@@ -429,6 +450,8 @@ struct CATACLYSM_API FCataclysmPlayerFloorEffects
 			&& SkillsLockedValue <= 0.0f
 			&& SpellsLockedValue <= 0.0f
 			&& ManaCostAsCurrentHealthPercent <= 0.0f
+			&& ChorusCooldownLongerPercent <= 0.0f
+			&& ChorusRegenLessPercent <= 0.0f
 			// AND THE ONE FIELD HERE THAT IS A REWARD RATHER THAN A LOSS. Issues #1820
 			// and #41. March of Progress' armour is still something the floor is doing
 			// to the player, so a floor carrying it is not empty.
@@ -1891,6 +1914,27 @@ public:
 	 *   so a wall between a player and a feather protects nothing.
 	 */
 	static const TCHAR* WingsOfTheHostKey;
+
+	/**
+	 * The row where a hymn lengthens cooldowns and halves resource regeneration. Issues #1820 and #41.
+	 *
+	 * "Certain areas resonate with a haunting celestial hymn. While within earshot of the chorus, all
+	 * cooldowns are increased, and resource regeneration is halved. Players must destroy the source of
+	 * the hymn to silence it."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24. "Halved" is the
+	 * row's; every other figure is a play-test value:
+	 * - `EternalChorusSources` CHORUSES A FLOOR, on random floor cells at least
+	 *   `EternalChorusApartCm` from the entrance and from each other; ONE on a Horde arena, placed with
+	 *   its first wave.
+	 * - EACH IS A SOURCE THE PLAYER DESTROYS, `ACataclysmChorusSourceCharacter`: a creature with no
+	 *   brain, attack or ability, saying "Chorus" under its bar, paying nothing and raised by the
+	 *   rule. Its earshot is a visible zone `EternalChorusEarshotCm` across the radius for as long as
+	 *   it lives.
+	 * - WITHIN ANY EARSHOT, once however many, cooldowns are `EternalChorusCooldownLongerPercent`
+	 *   longer and mana and fervour regeneration `EternalChorusRegenLessPercent` less.
+	 */
+	static const TCHAR* EternalChorusKey;
 
 	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
@@ -4241,6 +4285,18 @@ public:
 	static_assert(
 		WingsOfTheHostMaxHealthPercent > 0.0f && WingsOfTheHostMaxHealthPercent < ArtilleryStrikeMaxHealthPercent,
 		"A feather is ruled below Artillery Strike's single large circle.");
+
+	/** Eternal Chorus's figures. "Halved" is the row's; the rest are play-test values. See the key. */
+	static constexpr int32 EternalChorusSources = 2;
+	static constexpr int32 EternalChorusHordeSources = 1;
+	static constexpr float EternalChorusApartCm = 2000.0f;
+	static constexpr float EternalChorusEarshotCm = 1000.0f;
+	static constexpr float EternalChorusCooldownLongerPercent = 50.0f;
+	static constexpr float EternalChorusRegenLessPercent = 50.0f;
+
+	static_assert(EternalChorusRegenLessPercent == 50.0f, "The row says resource regeneration is halved.");
+	static_assert(EternalChorusApartCm >= 2.0f * EternalChorusEarshotCm,
+		"Two choruses far enough apart that their earshots do not overlap.");
 
 	static_assert(
 		DivineWrathSecondsBetween > DivineWrathBeamSeconds && DivineWrathBeamSeconds > 0.0f

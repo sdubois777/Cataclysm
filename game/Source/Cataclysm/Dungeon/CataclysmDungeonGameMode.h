@@ -1979,6 +1979,29 @@ public:
 	static TArray<FVector> WingsOfTheHostFeathers(const ACataclysmDungeonFloor& Floor,
 												  const FVector& Through, const FVector& Direction);
 
+	/** Eternal Chorus, for the panel and tests: the sources still singing. */
+	TArray<ACataclysmEnemyCharacter*> EternalChorusSourcesNow() const;
+
+	/** Eternal Chorus, for tests: the earshot zone of `Source`, or null. */
+	class ACataclysmGroundZone* EternalChorusEarshotOf(const ACataclysmEnemyCharacter* Source) const;
+
+	/**
+	 * The health a chorus source is given: the Imp's at Common, 87, as a play-test value. Issues
+	 * #1820 and #41.
+	 *
+	 * RULED SO A PLAYER DESTROYS IT IN A FEW SECONDS: four to six seconds of basic attacks with a +0
+	 * one-handed weapon and under two with a two-handed one. The rule's challenge is reaching the
+	 * source, not a long fight with something that does nothing. `docs/DECISIONS.md` has the table.
+	 */
+	float EternalChorusSourceHealth() const { return ImpHealth; }
+
+	/**
+	 * Where a floor's choruses stand: up to `Count` random floor cells, each at least
+	 * `EternalChorusApartCm` from the floor's entrance and from each other. Fewer when the floor
+	 * has no more room. Issues #1820 and #41.
+	 */
+	static TArray<FIntPoint> EternalChorusCells(const ACataclysmDungeonFloor& Floor, int32 Count);
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2098,6 +2121,16 @@ private:
 
 	/** Wings of the Host, on the beat: a flyover marked every thirty seconds, landing three later. */
 	void StepWingsOfTheHost(class ACataclysmPlayerCharacter* Player);
+
+	/** Eternal Chorus: this arena's sources, placed where a new arena is populated. */
+	void PlaceTheChoruses();
+
+	/** Every chorus source destroyed and forgotten. */
+	void ForgetTheChoruses();
+
+	/** Eternal Chorus, on the beat: earshots kept drawn for living sources, and the player's effects. */
+	void StepEternalChorus(class ACataclysmPlayerCharacter* Player,
+						   class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	void StepDivineWrath(class ACataclysmPlayerCharacter* Player,
 						 class UCataclysmAbilitySystemComponent* AbilitySystem);
@@ -3033,6 +3066,19 @@ private:
 	TArray<TWeakObjectPtr<class ACataclysmGroundZone>> WingsOfTheHostMarks;
 	float WingsOfTheHostWarningSoFar = 0.0f;
 	float WingsOfTheHostSecondsSinceLast = 0.0f;
+
+	/** Eternal Chorus: one source and its earshot zone. */
+	struct FEternalChorus
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Source;
+		TWeakObjectPtr<class ACataclysmGroundZone> Earshot;
+	};
+
+	/** Eternal Chorus: this arena's choruses, what is applied to the player, and what the panel said. */
+	TArray<FEternalChorus> EternalChoruses;
+	float EternalChorusCooldownApplied = 0.0f;
+	float EternalChorusRegenApplied = 0.0f;
+	int32 EternalChorusPanelSinging = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that
