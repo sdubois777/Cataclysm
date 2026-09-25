@@ -171,8 +171,13 @@ REMOVING = re.compile(r"\b(no|cannot|can't|zero|does not|disabled)\b", re.IGNORE
 #: "Energy shield can now be effected by bleed". Above zero it lets a bleed into
 #: the wearer's energy shield; the sentence says what happens and the 1 says
 #: that it happens.
+#:
+#: `shield_recharge_has_no_delay` JOINED ON 2026-09-25, issue #1833's small
+#: engine halves, with "Energy shield regeneration begins immediately after
+#: taking damage with no delay". Above zero the shield recharges at its whole
+#: rate inside the wait after being damaged.
 FLAG_STATS = {"skill_locked", "mana_pool_becomes_health",
-              "shield_absorbs_damage_over_time"}
+              "shield_absorbs_damage_over_time", "shield_recharge_has_no_delay"}
 
 #: Stats whose row carries 100 MINUS a number the sentence states, so the row
 #: and the words say the same thing two ways round. The ruling of 2026-09-14 on
@@ -228,6 +233,12 @@ COMPLEMENT_STATS: set[str] = {"healing_ceiling_reduction"}
 STATED_BY_WORD: dict[str, dict[str, float]] = {
     "crowd_control_resistance": {"immune": 100.0},
     "armor_penetration": {"all": 100.0},
+    # AND "ALL" IS 100 ON `penetration`, for "Your first hit against each enemy
+    # in a combat ignores all resistances", issue #1833's small engine halves.
+    # The same reasoning as armour: penetration stops at the target's own
+    # resistance (`UCataclysmDamageCalculation::EffectiveResistance`), so 100
+    # is all of it.
+    "penetration": {"all": 100.0},
     # "NO" IS 100 ON `nth_attack_no_damage`: "Every 10th attack deals no
     # damage" is all of the attack's damage, and the generator requires 100.
     # Issue #1833, every Nth. An action row has no stat, so its ACTION is the
@@ -457,8 +468,12 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 332 over 257: three rows on three enchantments.
 #: AND 347 OVER 271 SINCE THE ROWS-ONLY BATCH,
 #: issue #1833, from 335 over 260: twelve rows on eleven enchantments.
-AUTHORED_ROWS = 347
-AUTHORED_ENCHANTMENTS = 271
+#: AND 355 OVER 279 SINCE THE SMALL ENGINE HALVES,
+#: issue #1833, from 347 over 271: eight rows on eight enchantments.
+#: A minion row may be `more` from here on: minion health reads the More
+#: bucket through `MultiplierForStatAgainst` since this change.
+AUTHORED_ROWS = 355
+AUTHORED_ENCHANTMENTS = 279
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -551,10 +566,21 @@ def words_of(row: dict, enchantments: dict[str, dict]) -> str:
     return enchantments[row["Enchantment"]]["Effect"]
 
 
-def takes_something_away(stat: str, words: str) -> bool:
-    """Whether a negative value belongs on these words for this stat."""
+#: A HEALTH DRAIN WORDED AS DAMAGE TAKES HEALTH AWAY. Issue #1833's small engine
+#: halves, a labelled judgement recorded in docs/DECISIONS.md: "Every hit you
+#: take deals an additional 5%-10% of your maximum HP as bonus damage" is a
+#: negative action on the `health` pool, and damage to the wearer's health is
+#: what a negative value there means. Accepted on the health pool's action rows
+#: only; a stat row saying "damage" with a negative value is still refused.
+DAMAGE = re.compile(r"\bdamage\b", re.IGNORECASE)
+
+
+def takes_something_away(stat: str, words: str, action: str = "") -> bool:
+    """Whether a negative value belongs on these words for this stat, or for
+    this action when the row moves a pool."""
     return bool(TAKING.search(words)) or (
-        stat in LONGER_WHEN_NEGATIVE and bool(LONGER.search(words)))
+        stat in LONGER_WHEN_NEGATIVE and bool(LONGER.search(words))) or (
+        action == "health" and bool(DAMAGE.search(words)))
 
 
 def value_is_stated(stat: str, value: float, words: str,
@@ -883,7 +909,8 @@ def test_a_negative_value_is_on_words_that_take_something_away(effects,
              # "CANNOT EXCEED 40%" TAKES THE REST AWAY, for the reason the more
              # check above gives. Issue #1833.
              and r["Enchantment"] not in gen.COMPLEMENT_RANGE_ENCHANTMENTS
-             and not takes_something_away(r["Stat"], words_of(r, enchantments))]
+             and not takes_something_away(r["Stat"], words_of(r, enchantments),
+                                          r["Action"])]
     assert not wrong, "; ".join(wrong)
 
 

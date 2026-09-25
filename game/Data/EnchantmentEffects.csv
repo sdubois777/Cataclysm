@@ -346,3 +346,11 @@ Negative_Lose_10_20_armor_when_you_use_a_skill#1,Negative_Lose_10_20_armor_when_
 Negative_Minus_2_4_to_your_max_minion_count#1,Negative_Minus_2_4_to_your_max_minion_count,minion_cap_bonus,flat,-2.0,-4.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
 Negative_Your_class_resource_decays_twice_as_fast#1,Negative_Your_class_resource_decays_twice_as_fast,fervour_decay_per_second,more,100.0,100.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
 Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor#1,Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor,max_health,more,-60.0,-40.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Burn_effects_you_apply_deal_30_60_increased_da#1,Positive_Burn_effects_you_apply_deal_30_60_increased_da,dot_damage,increased,30.0,60.0,Keyword.DoT.Burn,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Poison_effects_you_apply_deal_30_60_increased#1,Positive_Poison_effects_you_apply_deal_30_60_increased,dot_damage,increased,30.0,60.0,Keyword.DoT.Poison,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Bleed_stacks_you_apply_deal_30_60_increased_da#1,Positive_Bleed_stacks_you_apply_deal_30_60_increased_da,dot_damage,increased,30.0,60.0,Keyword.DoT.Bleed,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Poison_stacks_you_apply_have_30_60_increased_d#1,Positive_Poison_stacks_you_apply_have_30_60_increased_d,dot_duration,increased,30.0,60.0,Keyword.DoT.Poison,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Positive_Your_first_hit_against_each_enemy_in_a_combat_ig#1,Positive_Your_first_hit_against_each_enemy_in_a_combat_ig,penetration,flat,100.0,100.0,,target_not_yet_struck_by_you,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Negative_Every_hit_you_take_deals_an_additional_5_10_of#1,Negative_Every_hit_you_take_deals_an_additional_5_10_of,,,-5.0,-10.0,,,0.0,,0.0,health,hit_taken,maximum,0,0.0,0.0,0.0,0
+Positive_Energy_shield_regeneration_begins_immediately_af#1,Positive_Energy_shield_regeneration_begins_immediately_af,shield_recharge_has_no_delay,flat,1.0,1.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Negative_Your_minions_have_20_50_less_hp#1,Negative_Your_minions_have_20_50_less_hp,minion_health,more,-20.0,-50.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
