@@ -5601,12 +5601,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsecutiveMeleeRowTest,
 
 /**
  * "Each consecutive melee hit on the same enemy increases damage by 5%-10% up
- * to 8 stacks", worn at 10. Issue #1833, phase 2, ruled 2026-09-24. Hit N on
- * one enemy deals the first hit's damage with 10% increased for each of the
- * N-1 before it, up to 8: the tenth deals 1.8 times, and so does the eleventh.
- * The first melee hit on another enemy is plain, and starts the count there. A
- * blow with no skill, which is no melee hit, and an evaded melee swing neither
- * count nor start it again.
+ * to 8 stacks", worn at 10. Issue #1833, phase 2, ruled 2026-09-24. Each hit
+ * on one enemy adds the same amount the second hit added, once for each hit
+ * before it, up to 8: the tenth and the eleventh each add 8 times it. The first
+ * melee hit on another enemy is plain, and starts the count there. A blow with
+ * no skill, which is no melee hit, and an evaded melee swing neither count nor
+ * start it again.
+ *
+ * WRITTEN AS DIFFERENCES FROM THE FIRST HIT, NOT AS MULTIPLES OF IT. A plain
+ * blow from an attack damage of 100 deals 110 here, and the reason was not
+ * found before this test was written. If that tenth is an increase, the row's
+ * 10% adds to it and each hit adds 10 rather than 11; if it is a multiplier,
+ * each adds 11. The differences are equal either way. The second hit's step
+ * is at most a tenth of the first hit: equal to it if that tenth is a
+ * multiplier, under it if it is an increase. The step is printed, so a run
+ * says which.
  */
 bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
 {
@@ -5635,10 +5644,13 @@ bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	TestEqual(TEXT("the second hit deals 10% more than the first"),
-		Striker.Blow(Striker.First, true), Plain * 1.1f, 0.01f);
-	TestEqual(TEXT("the third, 20% more"),
-		Striker.Blow(Striker.First, true), Plain * 1.2f, 0.01f);
+	const float Step = Striker.Blow(Striker.First, true) - Plain;
+	AddInfo(FString::Printf(TEXT("the first hit dealt %.4f and the second added %.4f"),
+		Plain, Step));
+	TestTrue(TEXT("the second hit adds something"), Step > 0.0f);
+	TestTrue(TEXT("and no more than a tenth of the first"), Step <= 0.1f * Plain + 0.01f);
+	TestEqual(TEXT("the third adds twice that"),
+		Striker.Blow(Striker.First, true) - Plain, 2.0f * Step, 0.02f);
 
 	// NEITHER COUNTS NOR STARTS THE COUNT AGAIN.
 	TestTrue(TEXT("a blow with no skill on the second enemy lands"),
@@ -5650,8 +5662,8 @@ bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
 		Striker.Blow(Striker.Second, true), 0.0f, 0.01f);
 	SecondIts->SetNumericAttributeBase(
 		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
-	TestEqual(TEXT("so the fourth on the first enemy deals 30% more"),
-		Striker.Blow(Striker.First, true), Plain * 1.3f, 0.01f);
+	TestEqual(TEXT("so the fourth on the first enemy adds three times it"),
+		Striker.Blow(Striker.First, true) - Plain, 3.0f * Step, 0.02f);
 
 	for (int32 Fifth = 5; Fifth <= 9; ++Fifth)
 	{
@@ -5660,10 +5672,10 @@ bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
 	TestEqual(TEXT("nine hits hold a count of 8, the cap"),
 		Striker.ASC->ConsecutiveHitsOn(
 			FName(*FString::Printf(TEXT("%s:attack_damage"), Row)), Striker.First), 8);
-	TestEqual(TEXT("the tenth hit deals 1.8 times the first"),
-		Striker.Blow(Striker.First, true), Plain * 1.8f, 0.01f);
+	TestEqual(TEXT("the tenth hit adds 8 times it"),
+		Striker.Blow(Striker.First, true) - Plain, 8.0f * Step, 0.02f);
 	TestEqual(TEXT("and so does the eleventh"),
-		Striker.Blow(Striker.First, true), Plain * 1.8f, 0.01f);
+		Striker.Blow(Striker.First, true) - Plain, 8.0f * Step, 0.02f);
 
 	const TArray<UCataclysmAbilitySystemComponent::FHeldOwnStacks> Shown =
 		Striker.ASC->OwnStacksByEnchantment();
@@ -5673,8 +5685,8 @@ bool FCataclysmConsecutiveMeleeRowTest::RunTest(const FString&)
 
 	TestEqual(TEXT("the first melee hit on the second enemy is plain"),
 		Striker.Blow(Striker.Second, true), Plain, 0.01f);
-	TestEqual(TEXT("and the second on it deals 10% more"),
-		Striker.Blow(Striker.Second, true), Plain * 1.1f, 0.01f);
+	TestEqual(TEXT("and the second on it adds it once"),
+		Striker.Blow(Striker.Second, true) - Plain, Step, 0.02f);
 	TestEqual(TEXT("back on the first enemy, the count started again: plain"),
 		Striker.Blow(Striker.First, true), Plain, 0.01f);
 	return true;

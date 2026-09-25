@@ -90,16 +90,34 @@ it checks: 20 assertions. **On the melee row the cap first shows at the tenth hi
 Hit N reads N-1, so the ninth hit reads 8 without any cap. The ruling said "the ninth consecutive
 hit reads 8", taken from my proposal, and was corrected before the run.
 
+### AN OPEN FINDING: A PLAIN TEST BLOW DEALS 110 FROM AN ATTACK DAMAGE OF 100
+
+**The melee row's test was first written as multiples of the first hit, and was changed before it
+ran.** The step before the asset was rebuilt printed, for the drawback's test with no rows in the
+asset yet: "Expected 'the second hit deals 8% less' to be 101.200005, but it was 110.000000". So a
+plain blow in this test deals 110 from an attack damage of 100 set by hand. If that tenth is an
+increase, the melee row's 10% adds to it and the second hit adds 10, not 11. The test as first
+written would then have failed on every ratio. It now asserts differences from the first hit, which
+are equal either way, and it prints the step, so the run shows which of the two it is. Ruled by the
+coordinating session under the owner's delegation. The drawback row is a "more", and its multiples
+hold either way.
+
+**The source was not found by reading.** It is not the attributes table (no damage stat), the class
+stats (the default class has none), the helm (flat armour only), the creature's damage taken
+(initialised to 100) or the starting Greataxe, which is a plain base with no affixes, and whose flat
+damage the test overwrites. It stays open.
+
 ### THE TESTS
 
 - **The count, on the engine:** melee hits on one enemy count up to a cap of three. A spell, a blow
   with no skill and an evaded blow on another enemy leave it. A landed melee hit on the other enemy
   starts it again at one, and the first enemy then reads nought. Out of combat it reads nought; a
   fight begun by the enemy starts it at one; death ends it. It shows as one entry.
-- **The melee row, worn by a real player character**, dealing real blows to two creatures: each
-  hit deals 10% more than the first for each one before it. A blow with no skill and an evaded swing
-  on the other creature change nothing. The tenth and eleventh hits deal 1.8 times. The first hit on
-  the other creature is plain, and afterwards so is the next hit back on the first.
+- **The melee row, worn by a real player character**, dealing real blows to two creatures. Each
+  hit adds the amount the second hit added, once for each hit before it; that amount is above
+  nought and at most a tenth of the first hit. A blow with no skill and an evaded swing on the other
+  creature change nothing. The tenth and eleventh hits each add 8 times it. The first hit on the
+  other creature is plain, and afterwards so is the next hit back on the first.
 - **The drawback row**, the same way: 8% less for each hit before, a fifth from the eleventh on, and
   the first hit on the other creature plain.
 - **An event-granted effectiveness charge** is held as effectiveness and not as increased damage.
