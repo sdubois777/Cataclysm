@@ -14752,6 +14752,386 @@ bool FCataclysmPassiveOverreachOnARealCharacterTest::RunTest(const FString&)
 // Press-Ganged and Rekindled, from their rows. Issue #1515.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Four Masochist rows about the debuffs on the Masochist, each through its real
+// row. Issue #2119, second batch.
+//
+// THE DEBUFFS ARE REAL AND THEIR COUNT IS ASSERTED AS SET-UP. Cripple and Weaken
+// are put on the real character as a skill puts them, and
+// `UCataclysmDebuffs::CountOnActor` -- what the pipeline's `debuffs_carried`
+// reads -- is asserted before each reading. "Unique" is shown by putting the
+// same debuff on twice and counting it once.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDebuffRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmKeystoneRowTest;
+
+	void Take(FRealCharacter& Player, const TCHAR* Node, int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(FName(Node), Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	float PlainIncreases(const FRealCharacter& Player, const TCHAR* Stat)
+	{
+		float Sum = 0.0f;
+		if (const FCataclysmStatInputs* Inputs =
+				Player.AbilitySystem->GetStatInputs(FName(Stat)))
+		{
+			for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+			{
+				if (Modifier.Bucket == ECataclysmStatBucket::Increased
+					&& Modifier.Condition == ECataclysmStatCondition::Always
+					&& Modifier.Scale == ECataclysmStatScale::Fixed)
+				{
+					Sum += Modifier.Value;
+				}
+			}
+		}
+		return Sum;
+	}
+
+	float Ratio(float Others, float Extra)
+	{
+		return (1.0f + (Others + Extra) / 100.0f) / (1.0f + Others / 100.0f);
+	}
+
+	/** Put a debuff on the character for half a minute, as a skill would. */
+	bool Carry(const FRealCharacter& Player, const FGameplayTag& Tag)
+	{
+		return UCataclysmSkillEffects::ApplyTagForDuration(Player.Character,
+														   Player.Character, Tag, 30.0f);
+	}
+
+	bool Start(FAutomationTestBase& Test, UWorld* World, FRealCharacter& Player)
+	{
+		Player = Spawn(World);
+		if (!Test.TestTrue(TEXT("a possessed Masochist with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+
+	/** SET-UP: the debuffs the pipeline will count are exactly this many. */
+	bool Counted(FAutomationTestBase& Test, const FRealCharacter& Player, int32 Expected)
+	{
+		return Test.TestEqual(
+			*FString::Printf(TEXT("set-up: the Masochist carries %d unique debuffs"),
+							 Expected),
+			UCataclysmDebuffs::CountOnActor(Player.Character), Expected);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBattleScarredTest,
+	"Cataclysm.MasochistRows.BattleScarredRaisesARealMasochistsArmourForEachUniqueDebuff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Masochist_basic_fc_b0` Battle-Scarred: "+2% increased Armor per point for each
+ *  unique debuff on you." Eight points, 16% a debuff. Armour read on a figure of
+ *  100 through `StatAppliedTo`, with the character's conditions in hand. */
+bool FCataclysmBattleScarredTest::RunTest(const FString&)
+{
+	using namespace CataclysmDebuffRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_fc_b0"), 8);
+	const float Others = PlainIncreases(Player, TEXT("armor"));
+	const auto Armour = [&Player]()
+	{
+		return Player.AbilitySystem->StatAppliedTo(FName(TEXT("armor")),
+												   FGameplayTagContainer(), 100.0f);
+	};
+
+	if (!Counted(*this, Player, 0))
+	{
+		return false;
+	}
+	const float Clean = Armour();
+
+	if (!TestTrue(TEXT("Crippled"), Carry(Player, UCataclysmDebuffs::CrippleTag()))
+		|| !TestTrue(TEXT("and Crippled again"), Carry(Player, UCataclysmDebuffs::CrippleTag()))
+		|| !Counted(*this, Player, 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one unique debuff, carried twice: 16% more increased armour"),
+			  Armour() / Clean, Ratio(Others, 16.0f), 0.0001f);
+
+	if (!TestTrue(TEXT("Weakened"), Carry(Player, UCataclysmDebuffs::WeakenTag()))
+		|| !Counted(*this, Player, 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("two unique debuffs: 32%"), Armour() / Clean, Ratio(Others, 32.0f),
+			  0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEnduranceInSufferingTest,
+	"Cataclysm.MasochistRows.EnduranceInSufferingRaisesARealMasochistsDamageAndReductionForEachDebuff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Masochist_basic_fl_a0` Endurance in Suffering: "For each unique debuff on you,
+ *  +1% increased damage and +0.5% increased Damage Reduction per point." Eight
+ *  points and two debuffs: 16% attack and spell damage, 8% damage reduction. */
+bool FCataclysmEnduranceInSufferingTest::RunTest(const FString&)
+{
+	using namespace CataclysmDebuffRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_basic_fl_a0"), 8);
+	const float SpellOthers = PlainIncreases(Player, TEXT("spell_damage"));
+	const float ReductionOthers = PlainIncreases(Player, TEXT("damage_reduction"));
+	struct FReading
+	{
+		float Attack;
+		float Spell;
+		float Reduction;
+	};
+	const auto Read = [&Player]()
+	{
+		return FReading{
+			Player.AbilitySystem->AttackDamageIncreasesForSkill(FGameplayTagContainer()),
+			Player.AbilitySystem->StatAppliedTo(FName(TEXT("spell_damage")),
+												FGameplayTagContainer(), 100.0f),
+			Player.AbilitySystem->StatAppliedTo(FName(TEXT("damage_reduction")),
+												FGameplayTagContainer(), 100.0f)};
+	};
+
+	if (!Counted(*this, Player, 0))
+	{
+		return false;
+	}
+	const FReading Clean = Read();
+	if (!TestTrue(TEXT("Crippled"), Carry(Player, UCataclysmDebuffs::CrippleTag()))
+		|| !TestTrue(TEXT("and Weakened"), Carry(Player, UCataclysmDebuffs::WeakenTag()))
+		|| !Counted(*this, Player, 2))
+	{
+		return false;
+	}
+	const FReading Two = Read();
+	TestEqual(TEXT("two debuffs: 16% more increased attack damage"),
+			  Two.Attack - Clean.Attack, 0.16f, 0.0001f);
+	TestEqual(TEXT("16% more increased spell damage"), Two.Spell / Clean.Spell,
+			  Ratio(SpellOthers, 16.0f), 0.0001f);
+	TestEqual(TEXT("and 8% more increased damage reduction"),
+			  Two.Reduction / Clean.Reduction, Ratio(ReductionOthers, 8.0f), 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDoctrineOfPainTest,
+	"Cataclysm.MasochistRows.DoctrineOfPainMultipliesARealMasochistsDamageForEachDebuff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Masochist_keystone_fl_kB` Doctrine of Pain: "You deal 4% more damage for each
+ *  unique debuff on you." Two debuffs: 8% more, a multiplier, on attack damage
+ *  (`AttackDamageMoreForSkill`) and on spell damage. */
+bool FCataclysmDoctrineOfPainTest::RunTest(const FString&)
+{
+	using namespace CataclysmDebuffRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Masochist_keystone_fl_kB"), 1);
+	const auto Read = [&Player]()
+	{
+		return TPair<float, float>(
+			Player.AbilitySystem->AttackDamageMoreForSkill(FGameplayTagContainer()),
+			Player.AbilitySystem->StatAppliedTo(FName(TEXT("spell_damage")),
+												FGameplayTagContainer(), 100.0f));
+	};
+
+	if (!Counted(*this, Player, 0))
+	{
+		return false;
+	}
+	const TPair<float, float> Clean = Read();
+	if (!TestTrue(TEXT("Crippled"), Carry(Player, UCataclysmDebuffs::CrippleTag()))
+		|| !TestTrue(TEXT("and Weakened"), Carry(Player, UCataclysmDebuffs::WeakenTag()))
+		|| !Counted(*this, Player, 2))
+	{
+		return false;
+	}
+	const TPair<float, float> Two = Read();
+	TestEqual(TEXT("two debuffs: attack damage 8% more"), Two.Key / Clean.Key, 1.08f,
+			  0.0001f);
+	TestEqual(TEXT("and spell damage 8% more"), Two.Value / Clean.Value, 1.08f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWoundChannelingTest,
+	"Cataclysm.MasochistRows.WoundChannelingRaisesTicksOnARealMasochistAndItsBlowsOnASharedDebuff",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Masochist_basic_fl_a1` Wound Channeling: "Damage from debuffs on you is
+ * increased by 1% per point, and you deal 1% increased damage per point to
+ * enemies carrying a debuff you also carry." Eight points, 8% each way.
+ *
+ * BOTH HALVES THROUGH REAL DAMAGE. A tick from a creature on the Masochist,
+ * with the points against without; and a real blow from a Bleeding Masochist on
+ * a Bleeding creature against the same blow on a clean one. The blow's share is
+ * read against the attack damage increases the blow already carries, since the
+ * shared-debuff bonus joins that same sum (`CataclysmSkillEffects.cpp`).
+ */
+bool FCataclysmWoundChannelingTest::RunTest(const FString&)
+{
+	using namespace CataclysmDebuffRowTest;
+	FScopedPlayerClass AsMasochist(TEXT("Masochist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsMasochist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	FRealCharacter Player;
+	if (!Start(*this, World, Player))
+	{
+		return false;
+	}
+	using Vital = UCataclysmVitalAttributeSet;
+	const auto MakeWhole = [&Player]()
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetMaxHealthAttribute(),
+													  1'000'000.0f);
+		Player.AbilitySystem->SetNumericAttributeBase(Vital::GetHealthAttribute(),
+													  1'000'000.0f);
+	};
+
+	const FVector Here = Player.Character->GetActorLocation();
+	ACataclysmEnemyCharacter* Ticker =
+		SpawnHostile(World, Here + FVector(6.0f * M, 0.0f, 0.0f));
+	if (!TestNotNull(TEXT("a creature to deliver the tick"), Ticker))
+	{
+		return false;
+	}
+	FCataclysmHitDelivery AsATick;
+	AsATick.bIsDamageOverTime = true;
+	AsATick.bIsArea = true;
+	const auto Tick = [&]()
+	{
+		MakeWhole();
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyDirectDamage(Ticker, Player.Character, 50.0f, AsATick,
+												  &Resolved);
+		return Resolved.DealtToHealth;
+	};
+
+	// THE FIRST HALF: A TICK ON THE MASOCHIST.
+	Take(Player, TEXT("Masochist_basic_fl_a1"), 0);
+	const float TickWithout = Tick();
+	Take(Player, TEXT("Masochist_basic_fl_a1"), 8);
+	const float TickOthers = PlainIncreases(Player, TEXT("damage_over_time_taken"));
+	const float TickWith = Tick();
+	if (!TestTrue(TEXT("set-up: the tick reached the Masochist's health"),
+				  TickWithout > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a tick on the Masochist is 8% more increased"), TickWith / TickWithout,
+			  Ratio(TickOthers, 8.0f), 0.001f);
+
+	// THE SECOND HALF: A BLOW ON A CREATURE SHARING A DEBUFF.
+	const FGameplayTag Bleed = FGameplayTag::RequestGameplayTag(
+		FName(TEXT("Keyword.DoT.Bleed")), /*ErrorIfNotFound=*/false);
+	ACataclysmEnemyCharacter* Sharing =
+		SpawnHostile(World, Here + FVector(2.0f * M, 0.0f, 0.0f));
+	ACataclysmEnemyCharacter* Clean =
+		SpawnHostile(World, Here + FVector(0.0f, 2.0f * M, 0.0f));
+	if (!TestTrue(TEXT("the bleed tag exists"), Bleed.IsValid())
+		|| !TestNotNull(TEXT("a creature to share it"), Sharing)
+		|| !TestNotNull(TEXT("and a clean one"), Clean)
+		|| !TestTrue(TEXT("the Masochist bleeds"), Carry(Player, Bleed))
+		|| !TestTrue(TEXT("and so does the first creature"),
+					 UCataclysmSkillEffects::ApplyTagForDuration(Sharing, Sharing, Bleed,
+																 30.0f))
+		|| !TestTrue(TEXT("set-up: they share a debuff"),
+					 UCataclysmDebuffs::ShareADebuff(Player.AbilitySystem, Sharing))
+		|| !TestFalse(TEXT("set-up: the clean creature shares none"),
+					  UCataclysmDebuffs::ShareADebuff(Player.AbilitySystem, Clean)))
+	{
+		return false;
+	}
+
+	// NOTHING OF THE CREATURES' OWN TURNS A BLOW AWAY, so both land every time.
+	for (ACataclysmEnemyCharacter* Creature : {Sharing, Clean})
+	{
+		if (UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature))
+		{
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			System->SetNumericAttributeBase(
+				UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+		}
+	}
+
+	FCataclysmHitDelivery Blow;
+	Blow.bCannotCriticallyStrike = true;
+	const auto Struck = [&](AActor* Target)
+	{
+		FCataclysmDamageResult Resolved;
+		UCataclysmSkillEffects::ApplyHit(Player.Character, Target, 100.0f,
+										 FGameplayTagContainer(), Blow, &Resolved);
+		return Resolved.DealtToHealth;
+	};
+	const float Increases =
+		Player.AbilitySystem->AttackDamageIncreasesForSkill(FGameplayTagContainer());
+	const float OnClean = Struck(Clean);
+	const float OnSharing = Struck(Sharing);
+	if (!TestTrue(TEXT("set-up: both blows landed"), OnClean > 0.0f && OnSharing > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a blow on a creature sharing a debuff is 8% more increased"),
+			  OnSharing / OnClean, (1.0f + Increases + 0.08f) / (1.0f + Increases), 0.001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveReplacementRowsTest,
 	"Cataclysm.Passives.PressGangedAndRekindledRowsReplaceARealRitualistsLostImp",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
