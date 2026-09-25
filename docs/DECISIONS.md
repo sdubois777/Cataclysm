@@ -101,6 +101,36 @@ in 0.26s | restored: 5 passed in 0.23s". The two failures were
   - The third, stating a burn, hurts and burns.
 - **The display:** "Hit taken 4/5   Spell 2/3   Attack 9/10", exactly.
 
+### Run
+
+One editor window on 2026-09-25, local time (07:44 to 07:57 UTC), on development 1560e03b as the
+base. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered.
+
+- **The first build, on the code head 39aa717e**: "Build: Succeeded - 29 actions, 26 files compiled".
+  The Python suite of record on that tree: 1 failed, 5,475 passed, 8 skipped, of 5,484. The one
+  failure was the check that every CSV still hashes to what its asset was built from, because the
+  table gained the EveryNth column.
+- **The asset**, 66d31d30: `DT_EnchantmentEffects` rebuilt with the column, still 332 rows. The four
+  new tests: 4 performed, 4 succeeded.
+- **The whole suite**, on 66d31d30: 2,456 tests performed, 2,456 succeeded, 0 failed; every declared
+  test was reported. It started after both of Eternal Chorus's CI runs had finished.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **A count started again one event late** (`NoteNthEvent`'s "Next >= N ? 0" made ">"), on the three
+  engine tests. With the break in: 3 of 3 failed. The hit test read 200 against 100 for "and the
+  fourth is plain again", and 100 against 200 for "and the sixth is the third since the last:
+  twice". The spell test read 1 against 0 for "and the count starts again". The attack test failed
+  "and hurts the enemy, the count having started again" and "and sets it alight". Restored: 3 of 3
+  succeeded.
+- **The Nth spell's share not added** (`ManaCostFor`'s return made "+ Extra * 0.0f"), on the spell
+  test. With the break in: 1 of 1 failed, "the second spell costs its own plus half the mana held"
+  and "and pays that" each reading 60 against 540. Restored: 1 of 1 succeeded.
+- **The Nth attack's multiplier left at one** (`LastNextUseMoreMultiplier = 1.0f`), on the attack
+  test. With the break in: 1 of 1 failed, "it deals no damage" reading 150. The flag still stopped
+  its burn. Restored: 1 of 1 succeeded.
+
 ---
 
 ## 2026-09-24 — The nine Demonic options built engine first now have their rows: thirteen flat rows, from Shared Ruin to Shared Blood
