@@ -29,6 +29,7 @@
 #include "Player/CataclysmPlayerController.h"
 #include "Character/CataclysmAbyssalWardenCharacter.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
@@ -1459,6 +1460,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// `FloorEnemies`, so the call above does not take them. Issues #1820 and #41.
 		ForgetTheChoruses();
 		PlaceTheChoruses();
+
+		// AND NECROTIC BLOOM'S FLOWERS, FOR THE SAME REASON: placed once where an arena is placed, and
+		// kept by a Horde dungeon's later waves. Issues #1820 and #41.
+		ForgetTheBlooms();
+		PlaceTheBlooms();
 	}
 	else
 	{
@@ -3273,6 +3279,193 @@ void ACataclysmDungeonGameMode::StepEternalChorus(
 	}
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::NecroticBloomFlowersNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const FNecroticBloom& One : NecroticBlooms)
+	{
+		ACataclysmEnemyCharacter* Flower = One.Flower.Get();
+		if (IsValid(Flower) && !UCataclysmSkillEffects::IsDead(Flower))
+		{
+			Standing.Add(Flower);
+		}
+	}
+	return Standing;
+}
+
+int32 ACataclysmDungeonGameMode::NecroticBloomWavesOf(const ACataclysmEnemyCharacter* Flower) const
+{
+	for (const FNecroticBloom& One : NecroticBlooms)
+	{
+		if (Flower && One.Flower.Get() == Flower)
+		{
+			return One.Waves;
+		}
+	}
+	return -1;
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::NecroticBloomWaveCells(const ACataclysmDungeonFloor& Floor,
+																	const FVector& Flower)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+	const FIntPoint Own = Floor.CellOfWorld(Flower);
+	TArray<FIntPoint> Cells;
+	for (int32 Y = 0; Y < Plan.Height; ++Y)
+	{
+		for (int32 X = 0; X < Plan.Width; ++X)
+		{
+			const FIntPoint Cell(X, Y);
+			if (Cell != Own && Plan.IsFloor(Cell)
+				&& FVector::Dist2D(Floor.WorldOfCell(Cell), Flower) <= Effects::NecroticBloomWaveWithinCm)
+			{
+				Cells.Add(Cell);
+			}
+		}
+	}
+	// A FLOWER WITH NO FLOOR BESIDE IT sends its wave onto its own cell rather than none.
+	if (Cells.IsEmpty() && Plan.IsFloor(Own))
+	{
+		Cells.Add(Own);
+	}
+	return Cells;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheBlooms()
+{
+	for (const FNecroticBloom& One : NecroticBlooms)
+	{
+		if (ACataclysmEnemyCharacter* Flower = One.Flower.Get())
+		{
+			Flower->Destroy();
+		}
+	}
+	NecroticBlooms.Reset();
+	NecroticBloomPanelFlowers = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheBlooms()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::NecroticBloomKey)))
+	{
+		return;
+	}
+
+	// TWO ON A FLOOR, ONE ON A HORDE ARENA, WHERE ETERNAL CHORUS'S SOURCES WOULD STAND, as ruled.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::NecroticBloomHordeFlowers
+											: Effects::NecroticBloomFlowers;
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmBloomCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Flower =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Flower)
+		{
+			continue;
+		}
+		// THE IMP'S HEALTH AT COMMON, a play-test value. It pays nothing and is not one of the floor's
+		// creatures, as a chorus source is not; its waves are, and they pay.
+		Flower->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Flower->SetHealth(NecroticBloomFlowerHealth());
+		Flower->SetRarityStep(0);
+		Flower->bDiesUnpaid = true;
+		Flower->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Flower);
+		FNecroticBloom One;
+		One.Flower = Flower;
+		NecroticBlooms.Add(One);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Necrotic Bloom: %d flower(s) placed on floor %d"),
+		   NecroticBlooms.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepNecroticBloom()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!GetWorld() || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// A DESTROYED FLOWER SENDS NOTHING MORE, and its waves' creatures stay: they are the floor's.
+	NecroticBlooms.RemoveAll([](const FNecroticBloom& One)
+	{
+		return !One.Flower.IsValid() || UCataclysmSkillEffects::IsDead(One.Flower.Get());
+	});
+
+	bool bSent = false;
+	TOptional<FCataclysmFloorPopulation> Population;
+	for (FNecroticBloom& One : NecroticBlooms)
+	{
+		One.SecondsSinceLastWave += SecondsBetweenWaveChecks;
+		if (!Effects::NecroticBloomWaveIsDue(One.SecondsSinceLastWave, One.Waves))
+		{
+			continue;
+		}
+
+		// THE FLOOR'S OWN KINDS, as Grave Tide draws them -- its reading of "undead" -- asked once a
+		// beat and only when a wave is due.
+		if (!Population.IsSet())
+		{
+			Population = FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		}
+		const TArray<FIntPoint> Cells =
+			NecroticBloomWaveCells(*CurrentFloor, One.Flower.Get()->GetActorLocation());
+		if (Population->Enemies.IsEmpty() || Cells.IsEmpty())
+		{
+			// NOTHING TO PLACE IS NOT A WAVE, and the clock is left alone so the next beat asks again.
+			continue;
+		}
+
+		int32 Placed = 0;
+		for (int32 Which = 0; Which < Effects::NecroticBloomCreaturesPerWave; ++Which)
+		{
+			FCataclysmEnemyPlacement Placement =
+				Population->Enemies[FMath::RandRange(0, Population->Enemies.Num() - 1)];
+			Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+			ACataclysmEnemyCharacter* Risen =
+				SpawnPlacedCreature(Placement, FloorBrief.SightRadiusMultiplier, /*FixedRung=*/0);
+			if (!Risen)
+			{
+				continue;
+			}
+			// THE FLOOR'S LIST, so a floor change disposes of them with the rest, and they pay and are
+			// saved like any creature, as Grave Tide's do.
+			FloorEnemies.Add(Risen);
+			++Placed;
+		}
+		if (Placed <= 0)
+		{
+			continue;
+		}
+		++One.Waves;
+		One.SecondsSinceLastWave = 0.0f;
+		bSent = true;
+		UE_LOG(LogCataclysm, Verbose, TEXT("Necrotic Bloom: a flower's wave %d of %d put %d creature%s on floor %d."),
+			   One.Waves, Effects::NecroticBloomMostWaves, Placed, Placed == 1 ? TEXT("") : TEXT("s"),
+			   FloorNumber);
+	}
+
+	const int32 Standing = NecroticBlooms.Num();
+	if (bSent || Standing != NecroticBloomPanelFlowers)
+	{
+		NecroticBloomPanelFlowers = Standing;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepDivineWrath(
 	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -4137,6 +4330,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	EchoesFromLastFloor.Reset();
 	ForgetThePlagueHarbingers();
 	ForgetTheChoruses();
+	ForgetTheBlooms();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -4601,6 +4795,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND ETERNAL CHORUS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bEternalChorus = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::EternalChorusKey));
+	// AND NECROTIC BLOOM, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bNecroticBloom = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::NecroticBloomKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -4617,7 +4814,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
-		&& !bWingsOfTheHost && !bEternalChorus)
+		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom)
 	{
 		return;
 	}
@@ -4814,6 +5011,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bEternalChorus)
 	{
 		StepEternalChorus(Player, AbilitySystem);
+	}
+
+	// AND NECROTIC BLOOM, WHICH SPAWNS CREATURES. Issues #1820 and #41.
+	if (bNecroticBloom)
+	{
+		StepNecroticBloom();
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -7410,6 +7613,28 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(Chorus, FString::Printf(TEXT("eternal chorus: %d sources singing"),
 											  EternalChorusSourcesNow().Num()));
+	}
+
+	// AND NECROTIC BLOOM: how many flowers stand, and when the soonest of them sends its next wave,
+	// while any has a wave left to send. Issues #1820 and #41.
+	const FName Bloom(Effects::NecroticBloomKey);
+	if (FloorBrief.Modifiers.Contains(Bloom))
+	{
+		const int32 Standing = NecroticBloomFlowersNow().Num();
+		float Soonest = -1.0f;
+		for (const FNecroticBloom& One : NecroticBlooms)
+		{
+			const ACataclysmEnemyCharacter* Flower = One.Flower.Get();
+			if (IsValid(Flower) && !UCataclysmSkillEffects::IsDead(Flower)
+				&& One.Waves < Effects::NecroticBloomMostWaves)
+			{
+				const float Left = FMath::Max(0.0f, Effects::NecroticBloomSecondsBetween - One.SecondsSinceLastWave);
+				Soonest = Soonest < 0.0f ? Left : FMath::Min(Soonest, Left);
+			}
+		}
+		Counting.Add(Bloom, Soonest >= 0.0f
+			? FString::Printf(TEXT("necrotic bloom: %d flowers, next wave in %.0f seconds"), Standing, Soonest)
+			: FString::Printf(TEXT("necrotic bloom: %d flowers"), Standing));
 	}
 
 	// AND PLAGUE HARBINGERS: how many are alive and how many trail patches stand. Issues #1820

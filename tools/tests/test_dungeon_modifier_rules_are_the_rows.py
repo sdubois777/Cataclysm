@@ -4075,3 +4075,20 @@ def test_eternal_chorus_row_still_halves_resource_regeneration_until_its_source_
         assert phrase in lower, (
             f"Celestial_Eternal_Chorus no longer says {phrase.upper()!r}. A reading of the rule "
             "rests on it; see EternalChorusKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_necrotic_bloom_row_still_sends_waves_every_twenty_seconds_until_its_flowers_are_destroyed():
+    """The phrases the rule's readings rest on.
+
+    "Cursed flowers sprout in random areas; if not destroyed, they spawn waves of undead every 20s."
+    FLOWERS SPROUT IN RANDOM AREAS is why flowers stand at random places; IF NOT DESTROYED is why each is a
+    creature to kill; WAVES OF UNDEAD is what they send, read as Grave Tide reads it; EVERY 20S is the
+    row's one figure. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Death_Necrotic_Bloom"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("flowers sprout in random areas", "if not destroyed", "waves of undead", "every 20s"):
+        assert phrase in lower, (
+            f"Death_Necrotic_Bloom no longer says {phrase.upper()!r}. A reading of the rule rests on it; "
+            "see NecroticBloomKey in CataclysmDungeonModifierEffects.h. " + words)

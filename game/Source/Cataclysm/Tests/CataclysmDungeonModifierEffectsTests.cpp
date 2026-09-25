@@ -27,7 +27,9 @@
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmEnemyModifiers.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
+#include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -27705,6 +27707,286 @@ bool FCataclysmChorusEarshotTest::RunTest(const FString& Parameters)
 	Player.Character->SetActorLocation(FVector(NearSecond.X, NearSecond.Y, Z));
 	Beat(Mode, 1);
 	TestEqual(TEXT("the other's earshot still lengthens"), PlayerStat(Player, TEXT("cooldown_lengthening")), 50.0f, 0.01f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Death_Necrotic_Bloom. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName BloomRow(UCataclysmDungeonModifierEffects::NecroticBloomKey);
+
+	/** A dungeon carrying only Necrotic Bloom, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* ABloomFloor(FAutomationTestBase& Test, UWorld* World,
+										   const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {BloomRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+}
+
+// A WAVE IS DUE TWENTY SECONDS AFTER THE LAST, AND NEVER AFTER THE SIXTH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloomFiguresTest,
+	"Cataclysm.DungeonModifierEffects.NecroticBloomSendsAWaveEveryTwentySecondsAndStopsAfterSix",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloomFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestFalse(TEXT("19.75 seconds is not due"), Effects::NecroticBloomWaveIsDue(19.75f, 0));
+	TestTrue(TEXT("20 seconds is"), Effects::NecroticBloomWaveIsDue(20.0f, 0));
+	TestTrue(TEXT("and the sixth wave is still due"), Effects::NecroticBloomWaveIsDue(20.0f, 5));
+	TestFalse(TEXT("after six waves nothing is due"), Effects::NecroticBloomWaveIsDue(20.0f, 6));
+	TestFalse(TEXT("however long it has been"), Effects::NecroticBloomWaveIsDue(1000.0f, 6));
+	TestEqual(TEXT("two flowers a floor"), Effects::NecroticBloomFlowers, 2);
+	TestEqual(TEXT("one on a Horde arena"), Effects::NecroticBloomHordeFlowers, 1);
+	TestEqual(TEXT("three creatures a wave"), Effects::NecroticBloomCreaturesPerWave, 3);
+	TestEqual(TEXT("six waves a flower"), Effects::NecroticBloomMostWaves, 6);
+	TestEqual(TEXT("within six metres of the flower"), Effects::NecroticBloomWaveWithinCm, 600.0f, 0.01f);
+	return true;
+}
+
+// TWO FLOWERS ON A FLOOR, EACH A CREATURE THAT DOES NOTHING, SAYS "BLOOM" AND PAYS NOTHING; ONE ON A
+// HORDE ARENA, KEPT BY ITS NEXT WAVE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloomPlacedTest,
+	"Cataclysm.DungeonModifierEffects.NecroticBloomPlacesTwoFlowersThatDoNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloomPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloomFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+
+	const TArray<ACataclysmEnemyCharacter*> Flowers = Mode->NecroticBloomFlowersNow();
+	if (!TestEqual(TEXT("two flowers on the floor"), Flowers.Num(), Effects::NecroticBloomFlowers))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Flower : Flowers)
+	{
+		TestTrue(TEXT("a flower"), Flower->IsA<ACataclysmBloomCharacter>());
+		TestFalse(TEXT("and not a chorus source"), Flower->IsA<ACataclysmChorusSourceCharacter>());
+		TestNull(TEXT("with no brain"), Flower->GetController());
+		TestTrue(TEXT("with no ability"), Flower->EnemyAbilities().IsEmpty());
+		TestTrue(TEXT("that pays nothing"), !Flower->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Flower->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Flower));
+		TestEqual(TEXT("\"Bloom\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Flower),
+				  FString(TEXT("Bloom")));
+		TestEqual(TEXT("at full health"), HealthOf(Flower), MaxHealthOf(Flower), 0.5f);
+		TestEqual(TEXT("which is the Imp's"), MaxHealthOf(Flower), Mode->NecroticBloomFlowerHealth(), 0.5f);
+		TestEqual(TEXT("no wave sent yet"), Mode->NecroticBloomWavesOf(Flower), 0);
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Flower->GetActorLocation(), Floor.EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+	}
+	TestTrue(TEXT("and from each other"),
+			 FVector::Dist2D(Flowers[0]->GetActorLocation(), Flowers[1]->GetActorLocation())
+				 >= Effects::EternalChorusApartCm - 1.0f);
+	TestEqual(TEXT("the panel says when the first wave comes"), Mode->LiveCountsForTheFloor().FindRef(BloomRow),
+			  FString(TEXT("necrotic bloom: 2 flowers, next wave in 20 seconds")));
+
+	// A HORDE ARENA HAS ONE, AND ITS NEXT WAVE KEEPS IT. Floor 1 is a Horde dungeon's one new arena, as
+	// Eternal Chorus's test explains.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Horde = Mode->NecroticBloomFlowersNow();
+	if (!TestEqual(TEXT("one flower in a Horde arena"), Horde.Num(), Effects::NecroticBloomHordeFlowers))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Gone : Flowers)
+	{
+		TestFalse(TEXT("the floor's two are gone"), IsValid(Gone) && !Gone->IsActorBeingDestroyed());
+	}
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> NextWave = Mode->NecroticBloomFlowersNow();
+	TestTrue(TEXT("the next wave keeps the same one flower"), NextWave.Num() == 1 && NextWave[0] == Horde[0]);
+	return true;
+}
+
+// EVERY TWENTY SECONDS EACH FLOWER SENDS THREE COMMON CREATURES OF THE FLOOR'S KINDS BESIDE IT, WHICH PAY
+// AND ARE THE FLOOR'S; SIX WAVES AND NO SEVENTH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloomWavesTest,
+	"Cataclysm.DungeonModifierEffects.EachNecroticBloomFlowerSendsThreeCommonCreaturesBesideItEveryTwentySeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloomWavesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloomFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+	const TArray<ACataclysmEnemyCharacter*> Flowers = Mode->NecroticBloomFlowersNow();
+	if (!TestEqual(TEXT("two flowers"), Flowers.Num(), 2)
+		|| !TestEqual(TEXT("and no creature on the floor"), Mode->FloorEnemies.Num(), 0))
+	{
+		return false;
+	}
+
+	// NOTHING A BEAT BEFORE TWENTY SECONDS; THREE FROM EACH FLOWER ON THE BEAT THAT REACHES IT.
+	Beat(Mode, BeatsFor(Effects::NecroticBloomSecondsBetween) - 1);
+	TestEqual(TEXT("no creature a beat before twenty seconds"), Mode->FloorEnemies.Num(), 0);
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("three from each flower at twenty seconds"), Mode->FloorEnemies.Num(),
+				   Effects::NecroticBloomFlowers * Effects::NecroticBloomCreaturesPerWave))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		TestFalse(TEXT("a creature of the floor's kinds, not a flower"), Creature->IsA<ACataclysmFloorSourceCharacter>());
+		TestEqual(TEXT("at the Common rung"), Creature->RarityStep, 0);
+		TestTrue(TEXT("paying for its death"), Creature->PaysForItsDeath());
+		TestFalse(TEXT("and not raised by a rule, so a saved floor keeps it"), Creature->bRaisedByARule);
+		const FVector At = Creature->GetActorLocation();
+		TestTrue(TEXT("on a floor cell"), Floor.GetPlan().IsFloor(Floor.CellOfWorld(At)));
+		bool bBesideAFlower = false;
+		for (const ACataclysmEnemyCharacter* Flower : Flowers)
+		{
+			const FVector Where = Flower->GetActorLocation();
+			bBesideAFlower |= FVector::Dist2D(At, Where) <= Effects::NecroticBloomWaveWithinCm + 1.0f
+				&& Floor.CellOfWorld(At) != Floor.CellOfWorld(Where);
+		}
+		TestTrue(TEXT("within six metres of a flower and not in its cell"), bBesideAFlower);
+	}
+	for (const ACataclysmEnemyCharacter* Flower : Flowers)
+	{
+		TestEqual(TEXT("each flower has sent one wave"), Mode->NecroticBloomWavesOf(Flower), 1);
+	}
+	TestEqual(TEXT("the panel says when the next comes"), Mode->LiveCountsForTheFloor().FindRef(BloomRow),
+			  FString(TEXT("necrotic bloom: 2 flowers, next wave in 20 seconds")));
+
+	// FIVE MORE WAVES, AND THEN NONE.
+	Beat(Mode, 5 * BeatsFor(Effects::NecroticBloomSecondsBetween));
+	const int32 All = Effects::NecroticBloomFlowers * Effects::NecroticBloomCreaturesPerWave * Effects::NecroticBloomMostWaves;
+	TestEqual(TEXT("six waves from each flower"), Mode->FloorEnemies.Num(), All);
+	for (const ACataclysmEnemyCharacter* Flower : Flowers)
+	{
+		TestEqual(TEXT("each has sent six"), Mode->NecroticBloomWavesOf(Flower), Effects::NecroticBloomMostWaves);
+	}
+	TestEqual(TEXT("the panel says no more is coming"), Mode->LiveCountsForTheFloor().FindRef(BloomRow),
+			  FString(TEXT("necrotic bloom: 2 flowers")));
+	Beat(Mode, 2 * BeatsFor(Effects::NecroticBloomSecondsBetween));
+	TestEqual(TEXT("and no seventh"), Mode->FloorEnemies.Num(), All);
+	return true;
+}
+
+// A DESTROYED FLOWER PAYS NOTHING AND SENDS NO MORE; ITS WAVE'S CREATURES STAY; THE OTHER GOES ON.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBloomDestroyedTest,
+	"Cataclysm.DungeonModifierEffects.ADestroyedNecroticBloomFlowerSendsNoMoreAndItsCreaturesStay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmBloomDestroyedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ABloomFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Flowers = Mode->NecroticBloomFlowersNow();
+	if (!TestEqual(TEXT("two flowers"), Flowers.Num(), 2))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = Flowers[0];
+	ACataclysmEnemyCharacter* Second = Flowers[1];
+
+	Beat(Mode, BeatsFor(Effects::NecroticBloomSecondsBetween));
+	TArray<ACataclysmEnemyCharacter*> FirstWave;
+	for (ACataclysmEnemyCharacter* Creature : Mode->FloorEnemies)
+	{
+		FirstWave.Add(Creature);
+	}
+	if (!TestEqual(TEXT("the first wave of both"), FirstWave.Num(), 2 * Effects::NecroticBloomCreaturesPerWave))
+	{
+		return false;
+	}
+
+	// DESTROYING THE FIRST PAYS NOTHING.
+	WoundCreatureTo(First, 100.0f, 0.0f);
+	First->GetAbilitySystemComponent()->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, First, 100000.0f);
+	if (!TestTrue(TEXT("the flower was destroyed"), UCataclysmSkillEffects::IsDead(First)))
+	{
+		return false;
+	}
+	TestFalse(TEXT("and paid nothing"), First->PaysForItsDeath());
+	Beat(Mode, 1);
+	TestEqual(TEXT("one flower stands"), Mode->NecroticBloomFlowersNow().Num(), 1);
+	TestEqual(TEXT("the panel says one"), Mode->LiveCountsForTheFloor().FindRef(BloomRow),
+			  FString::Printf(TEXT("necrotic bloom: 1 flowers, next wave in %.0f seconds"),
+							  Effects::NecroticBloomSecondsBetween - ACataclysmDungeonGameMode::SecondsBetweenWaveChecks));
+
+	// THE NEXT WAVE COMES FROM THE OTHER ALONE, AND THE FIRST WAVE'S CREATURES ARE ALL STILL THERE.
+	Beat(Mode, BeatsFor(Effects::NecroticBloomSecondsBetween) - 1);
+	TestEqual(TEXT("three more, from the other flower only"), Mode->FloorEnemies.Num(),
+			  3 * Effects::NecroticBloomCreaturesPerWave);
+	TestEqual(TEXT("the other has sent two waves"), Mode->NecroticBloomWavesOf(Second), 2);
+	TestEqual(TEXT("the destroyed one is no longer this floor's"), Mode->NecroticBloomWavesOf(First), -1);
+	int32 Stayed = 0;
+	for (ACataclysmEnemyCharacter* Creature : FirstWave)
+	{
+		Stayed += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature) && Mode->FloorEnemies.Contains(Creature)) ? 1 : 0;
+	}
+	TestEqual(TEXT("every creature of the first wave stayed"), Stayed, FirstWave.Num());
 	return true;
 }
 

@@ -1,8 +1,8 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
-#include "Character/CataclysmChorusSourceCharacter.h"
+#include "Character/CataclysmFloorSourceCharacter.h"
 
-ACataclysmChorusSourceCharacter::ACataclysmChorusSourceCharacter()
+ACataclysmFloorSourceCharacter::ACataclysmFloorSourceCharacter()
 {
 	// NO BRAIN. Without a controller nothing moves it, turns it or attacks with it; see the class
 	// comment.

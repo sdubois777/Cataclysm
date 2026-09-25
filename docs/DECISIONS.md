@@ -79,6 +79,127 @@ passed in 0.20s", the one failure being `test_a_single_value_appears_in_its_word
 
 ---
 
+## 2026-09-25 — Necrotic Bloom: two cursed flowers on a floor each send three creatures every twenty seconds, six waves at most, until the player destroys them
+
+**Affects:** a new shared class for a creature a rule places that does nothing,
+`game/Source/Cataclysm/Character/CataclysmFloorSourceCharacter.h` and `.cpp`; Eternal Chorus's source
+`game/Source/Cataclysm/Character/CataclysmChorusSourceCharacter.h` (now built on that class; its `.cpp`,
+which held only the constructor that moved, is deleted); a new flower class
+`game/Source/Cataclysm/Character/CataclysmBloomCharacter.h`;
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures
+and when a wave is due); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (placing
+and forgetting the flowers, where a wave stands, sending waves, the panel line);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Bloom" under a flower's health
+bar); `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp` (the archetype map skips every floor source,
+not only the Chorus's); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
+tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
+have.
+
+### The row
+
+`Death_Necrotic_Bloom` in `game/Data/DungeonModifiers.csv`, weight 10: "Cursed flowers sprout in random
+areas; if not destroyed, they spawn waves of undead every 20s." "Every 20s" is its only figure. The design
+document does not mention a flower, a bloom or this row; its one "undead" is the Necromancer's class line.
+This log settles "undead" in the Grave Tide entry: "'Waves of undead' in the Grave Tide row is the intended
+wording. Decided 2026-09-17", with the waves made of the floor's own kinds until an undead creature exists.
+
+### What the rule does
+
+When a floor carrying the row is placed, two flowers stand on random floor cells at least twenty metres from
+the entrance and from each other -- where Eternal Chorus's sources would stand -- and a Horde arena has one,
+placed with its first wave and kept for the waves after it. Each flower is a creature that does nothing, with
+the Imp's health, "Bloom" under its health bar, paying nothing when it is destroyed and not one of the
+floor's creatures. Twenty seconds after it is placed, and every twenty seconds after that, each living
+flower sends three creatures of the floor's own kinds, at the Common rung, onto floor cells within six
+metres of it. After six waves a flower sends no more. The creatures are the floor's like any other: they pay
+when killed, they are saved with the floor, and destroying their flower leaves them standing. The panel says
+how many flowers stand and when the soonest sends its next wave.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. "Every 20s" is the row's; every
+other figure is a play-test value:**
+
+- **A flower is a creature that does nothing, with the Imp's health, 87, and "Bloom" under its bar**: it
+  pays nothing, is raised by the rule, is not one of the floor's creatures and is never saved. **Built on a
+  shared class** with Eternal Chorus's source, because two more destructible sources are coming; the Chorus
+  class keeps its name and its tests pass unchanged. The archetype-map skip in `CataclysmSaveApply.cpp`
+  moves to the shared class, so it covers the flower too; the save skip itself already follows from
+  `bRaisedByARule`, since the change before Eternal Chorus.
+- **Two flowers a floor, on Eternal Chorus's rule for where things stand; one on a Horde arena**, placed
+  with its first wave and kept. Placed once a floor: "sprout" is read as their appearing.
+- **A wave is three creatures per living flower**, of the floor's own kinds, at the Common rung, on floor
+  cells within 600 cm of the flower; the first twenty seconds after it is placed, then every twenty.
+- **Six waves a flower at most, as Grave Tide has.** The coordinating session's reason: "the waves pay. A
+  cap on the number alive would let a player farm a flower without end; a total cap cannot be farmed." An
+  ignored floor still fills with up to 36 creatures, which is the row's "if not destroyed" pressure.
+- **The waves pay and are saved like any creature**, and destroying a flower leaves them alive.
+- **The panel line and the label as proposed**, and the rule is allowed on Horde waves.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **A wave is not put in the cell the flower stands in**, so no creature is placed inside it; a flower with
+  no floor cell beside it within 600 cm uses its own cell rather than send nothing.
+- **A flower's clock and its count of waves carry across a Horde arena's waves**, as the flower does.
+- **A due wave with nothing to place waits for the next beat** rather than being counted, as Grave Tide's
+  does.
+
+### The research: destructible monster spawners
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was
+quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Gauntlet (1985) | https://en.wikipedia.org/wiki/Gauntlet_(1985_video_game) | "Each enters the level through specific generators, which can be destroyed." |
+| Diablo II, Blood Hawk Nest | https://diablo2.io/monsters/blood-hawk-nest-t4218.html | "Generates Blood Hawk until destroyed." |
+
+**What it settles and what it does not.** Two shipped games have an object that keeps producing monsters
+until the player destroys it, which is the shape this row asks for. **Neither page that could be read gives
+a limit on how many a spawner produces.** Search summaries named one for Diablo II's Foul Crow Nest and a
+limit on how many of an Iron Maiden's zombies may stand in Diablo III, but the pages behind them could not
+be fetched -- `diablo.fandom.com` answered 402; `strategywiki.org`, `gamefaqs.gamespot.com`,
+`diablo2.diablowiki.net` and `en.namu.wiki` answered 403 -- so neither is quoted here as evidence. The cap,
+the counts, the spacing, the health and whether the waves pay are this game's own, and the cap rests on
+Grave Tide's precedent and the ruling's reason above.
+
+### Tests
+
+Four automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `NecroticBloomSendsAWaveEveryTwentySecondsAndStopsAfterSix`: a wave is not due at 19.75 seconds and is at
+  20, the sixth is still due and none after it however long it has been; the five figures.
+- `NecroticBloomPlacesTwoFlowersThatDoNothing`: the floor has two flowers, each a flower and not a chorus
+  source, with no controller and no ability, paying nothing, raised by the rule, not one of the floor's
+  creatures, saying exactly "Bloom", at full health equal to the Imp's, with no wave sent, and far enough
+  from the entrance and from each other; the panel says the first wave comes in 20 seconds; a Horde arena
+  has one, the floor's two are gone, and the next wave keeps the same flower.
+- `EachNecroticBloomFlowerSendsThreeCommonCreaturesBesideItEveryTwentySeconds`: no creature a beat before
+  twenty seconds and three from each flower on the beat that reaches it, each of the floor's kinds and not a
+  flower, Common, paying, not raised by a rule, on a floor cell within 600 cm of a flower and not in its
+  cell; each flower has sent one wave and the panel says when the next comes; five more waves make 36 and
+  the panel then says only how many flowers stand; forty seconds more add none.
+- `ADestroyedNecroticBloomFlowerSendsNoMoreAndItsCreaturesStay`: destroying a flower after the first wave
+  pays nothing and leaves one flower on the panel; the next wave is three, from the other alone; every
+  creature of the first wave is still alive and the floor's.
+- `Cataclysm.SaveApply.ABloomDoesNotTakeTheTrainingDummysEmptyName`: the flower names no row, and the
+  empty name maps to the base enemy class.
+
+One Python check: the row still says "flowers sprout in random areas", "if not destroyed", "waves of undead"
+and "every 20s".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Wings of the Host: a flyover's line passes through the middle of a floor cell near the player, so every flyover marks a feather at thirty seconds
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the cells a line may
