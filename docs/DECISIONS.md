@@ -96,9 +96,9 @@ removes the other, and each is caught by a different set of the nine.
 `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (one field on `FCataclysmSavedCreature`), and the
 automation tests in `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. ONE
+TEST FAILED FIRST, on a save fixture this change had not updated; it is recorded there.
 
 ### No path in play restores a floor today
 
@@ -158,10 +158,39 @@ Three automation tests:
 - `Cataclysm.SaveApply.AnOrdinaryCreatureIsStillWrittenAndComesBackPaying`: the control -- an ordinary
   creature is written, not as risen, and comes back paying.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the guard proofs. They run in one editor
-window when the build machine is granted.
+One editor window on 2026-09-25, on development 80cb9101 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite FAILED ONE TEST**, on 38cbfef4: "Build: Succeeded - 9 actions, 6 files compiled"; "2448
+  tests performed, 2447 succeeded, 1 failed: EveryFixtureHoldsEveryFieldItsRecordWrites", every declared test
+  reported, on "Run_v1.json and the record it loads into disagree at the
+  record.Floor.Creatures[0].bRisenFromTheDead is on the second side only". The test requires every committed
+  save fixture to hold every field its record writes, and this change had added the field to the record and
+  not to `game/Tests/SaveFixtures/Run_v1.json`. The `PartialDay` precedent this entry cites did both halves;
+  this change did one. **Fixed** (180fe177) under the exception in `game/Tests/SaveFixtures/README.md` --
+  nothing has ever loaded a save -- as the file's twelfth edit: the fixture's first creature holds true and
+  its second false, since false alone would not show the value surviving a round trip. **By the coordinating
+  session's ruling the whole suite was not run again** after that test-data-only edit.
+- **On the final head, 180fe177:** the Python suite of record, 5,462 passed and 8 skipped of 5,470, 0 failed;
+  the groups `Cataclysm.SaveGather.` 3 performed, 3 succeeded; `Cataclysm.SaveApply.` 9 performed, 9
+  succeeded; and `Cataclysm.SaveRecords.`, which holds the failed test, 12 performed, 12 succeeded -- each
+  with every one of its declared tests reported.
+- **The groups on the base**, 80cb9101: `Cataclysm.SaveGather.` 2 performed, 2 succeeded;
+  `Cataclysm.SaveApply.` 7 performed, 7 succeeded.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **A rule-made creature written after all** (`if (false && Creature->bRaisedByARule)`), on the prefix
+  `Cataclysm.SaveGather.ACreatureAFloorRule`. With the break in: 1 performed, 1 failed, on "Expected 'only one
+  reached the record' to be 1, but it was 2". Restored: 1 performed, 1 succeeded.
+- **The mark not put back on restore** (`(void)Saved.bRisenFromTheDead;` in `CreatureInto`), on the prefix
+  `Cataclysm.SaveApply.ARisenCreature`. With the break in: 1 failed, on "Expected 'still risen' to be true"
+  and "Expected 'so it still pays nothing' to be false". Restored: 1 performed, 1 succeeded.
+- **The mark not written** (`(void)Creature.bRisenFromTheDead;` in `CreatureFrom`), on the same prefix. With
+  the break in: 1 failed, on "Expected 'written as risen' to be true", "Expected 'still risen' to be true" and
+  "Expected 'so it still pays nothing' to be false". Restored: 1 performed, 1 succeeded.
 
 ---
 
