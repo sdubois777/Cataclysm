@@ -17,6 +17,7 @@
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Engine/World.h"
+#include "Components/SphereComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Misc/ScopeExit.h"
@@ -55,9 +56,16 @@ namespace CataclysmFollowThroughTest
 		{
 			Actor = World->SpawnActor<AActor>();
 			check(Actor);
-			USceneComponent* Root = NewObject<USceneComponent>(Actor);
-			Actor->SetRootComponent(Root);
-			Root->RegisterComponent();
+			// A SPHERE ON THE PAWN CHANNEL, SO A SKILL'S SEARCH FINDS IT. A plain
+			// scene component has no collision, and the strike's cone search is
+			// an overlap: the first run of these tests found nothing to hit.
+			USphereComponent* Sphere = NewObject<USphereComponent>(Actor);
+			Sphere->InitSphereRadius(34.0f);
+			Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			Sphere->SetCollisionObjectType(ECC_Pawn);
+			Sphere->SetCollisionResponseToAllChannels(ECR_Overlap);
+			Actor->SetRootComponent(Sphere);
+			Sphere->RegisterComponent();
 			Actor->SetActorLocation(Where);
 
 			AbilitySystem = NewObject<UCataclysmAbilitySystemComponent>(Actor);
@@ -185,12 +193,19 @@ bool FCataclysmFollowThroughRepeatsTest::RunTest(const FString&)
 	{
 		return false;
 	}
-	if (!TestTrue(TEXT("and kills the enemy in front, which every figure below "
-					   "depends on"),
-				  UCataclysmSkillEffects::IsDead(InFront.Actor)))
+	// A PLAIN ACTOR DOES NOT MARK ITSELF DEAD; only a character's own death
+	// handling does. So the test checks the blow took the enemy to no health,
+	// then marks it dead as that handling would, so the repeat's search for the
+	// nearest LIVING enemy passes over it. The real path -- a character's death
+	// reaching Follow Through's kill hook -- is covered by
+	// `Cataclysm.FollowThrough.ThePlayersKillHookRecordsTheRepeat`.
+	if (!TestTrue(TEXT("and takes the enemy in front to no health, which every "
+					   "figure below depends on"),
+				  InFront.Health() <= 0.0f))
 	{
 		return false;
 	}
+	UCataclysmSkillEffects::MarkDead(InFront.Actor);
 	const float ManaAfterTheUse = Killer.Mana();
 	TestTrue(TEXT("the use paid mana"), ManaAfterTheUse < ManaBefore);
 	TestEqual(TEXT("and raised skill_use once"), SkillUses, 1);
@@ -262,8 +277,12 @@ bool FCataclysmFollowThroughNoTargetTest::RunTest(const FString&)
 	HoldFollowThrough(Killer.AbilitySystem, 3.0f);
 
 	Killer.AbilitySystem->TryActivateAbility(Handle);
-	if (!TestTrue(TEXT("the enemy in front is killed"),
-				  UCataclysmSkillEffects::IsDead(InFront.Actor))
+	// No health left, then marked dead as a character's death would mark it:
+	// see the test above for why a plain actor needs that done for it. The real
+	// path is covered by `Cataclysm.FollowThrough.ThePlayersKillHookRecordsTheRepeat`.
+	const bool bNoHealthLeft = InFront.Health() <= 0.0f;
+	UCataclysmSkillEffects::MarkDead(InFront.Actor);
+	if (!TestTrue(TEXT("the enemy in front is taken to no health"), bNoHealthLeft)
 		|| !TestTrue(TEXT("and the kill earns a repeat"),
 					 UCataclysmFollowThrough::NoteMeleeKill(Killer.Actor, FName(CleaveName))))
 	{
