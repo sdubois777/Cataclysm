@@ -512,6 +512,12 @@ public:
 	static FString BloomTextFor(const AActor* Actor);
 
 	/**
+	 * "Spire" under the health bar of a living Golden Spire, or empty. Issues #1820 and #41. Beside
+	 * "Chorus" and "Bloom", for their reason: it says what the creature is.
+	 */
+	static FString SpireTextFor(const AActor* Actor);
+
+	/**
 	 * What is said under a creature's health bar while stacks placed on it cut
 	 * its damage, such as "Damage -15%", or empty while nothing does. Issue
 	 * #1833, phase 2: "Each melee hit you take reduces the attacker's damage".

@@ -23,6 +23,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
+#include "Character/CataclysmPlayerClassStats.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Misc/ScopeExit.h"

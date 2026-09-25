@@ -16,6 +16,7 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
+#include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/World.h"
@@ -1007,6 +1008,27 @@ bool FCataclysmSaveBloomClaimsNothing::RunTest(const FString&)
 {
 	const ACataclysmBloomCharacter* Default = GetDefault<ACataclysmBloomCharacter>();
 	if (!TestNotNull(TEXT("a flower class"), Default))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it names no archetype row, as the dummy names none"), Default->ArchetypeRow.IsNone());
+	TestTrue(TEXT("the empty name is the training dummy's"),
+		FCataclysmSaveApply::ClassForArchetype(NAME_None) == ACataclysmEnemyCharacter::StaticClass());
+	return true;
+}
+
+/**
+ * A Golden Spire names no archetype row and is not mapped to one either: the save system skips every
+ * floor source, so the empty name stays the sandbox training dummy's. Issues #1820 and #41.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveSpireClaimsNothing,
+	"Cataclysm.SaveApply.ASpireDoesNotTakeTheTrainingDummysEmptyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveSpireClaimsNothing::RunTest(const FString&)
+{
+	const ACataclysmSpireCharacter* Default = GetDefault<ACataclysmSpireCharacter>();
+	if (!TestNotNull(TEXT("a spire class"), Default))
 	{
 		return false;
 	}

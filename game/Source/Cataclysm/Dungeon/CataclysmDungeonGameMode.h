@@ -2025,6 +2025,15 @@ public:
 	 */
 	static TArray<FIntPoint> NecroticBloomWaveCells(const ACataclysmDungeonFloor& Floor, const FVector& Flower);
 
+	/** Golden Spires, for the panel and tests: the spires still standing. */
+	TArray<ACataclysmEnemyCharacter*> GoldenSpiresStanding() const;
+
+	/** Golden Spires, for tests: the zone drawn around `Spire`, or null. */
+	class ACataclysmGroundZone* GoldenSpireZoneOf(const ACataclysmEnemyCharacter* Spire) const;
+
+	/** The health a spire is given: the Imp's at Common, 87, as the other floor sources have. A play-test value. */
+	float GoldenSpireHealth() const { return ImpHealth; }
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2159,6 +2168,18 @@ private:
 
 	/** Necrotic Bloom, on the beat: each living flower's clock, and its wave when one is due. */
 	void StepNecroticBloom();
+
+	/** Golden Spires: this arena's spires, placed where a new arena is populated. */
+	void PlaceTheSpires();
+
+	/** Every spire and its zone destroyed and forgotten. */
+	void ForgetTheSpires();
+
+	/**
+	 * Golden Spires, on the beat: a zone kept drawn around each living spire, and every creature's
+	 * spire damage multiplier written for whether it stands near one.
+	 */
+	void StepGoldenSpires(class ACataclysmPlayerCharacter* Player);
 
 	/** Eternal Chorus, on the beat: earshots kept drawn for living sources, and the player's effects. */
 	void StepEternalChorus(class ACataclysmPlayerCharacter* Player,
@@ -3123,6 +3144,17 @@ private:
 	/** Necrotic Bloom: this arena's flowers, and how many the panel last said. */
 	TArray<FNecroticBloom> NecroticBlooms;
 	int32 NecroticBloomPanelFlowers = -1;
+
+	/** Golden Spires: one spire and the zone drawn around it. */
+	struct FGoldenSpire
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Spire;
+		TWeakObjectPtr<class ACataclysmGroundZone> Zone;
+	};
+
+	/** Golden Spires: this arena's spires, and how many the panel last said. */
+	TArray<FGoldenSpire> GoldenSpires;
+	int32 GoldenSpiresPanelStanding = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

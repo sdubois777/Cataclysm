@@ -1159,38 +1159,58 @@ void ACataclysmEnemyCharacter::SetIsAnIllusion(bool bNowAnIllusion)
 
 void ACataclysmEnemyCharacter::SetPlacedDamageMultiplier(float NewMultiplier)
 {
-	const float Wanted = FMath::Max(0.0f, NewMultiplier);
-	if (PlacedDamageMultiplier == Wanted)
-	{
-		return;
-	}
-
-	PlacedDamageMultiplier = Wanted;
-	RewriteAttackDamage();
+	SetDamageMultiplierFrom(PlacedDamageSource, NewMultiplier);
 }
 
 void ACataclysmEnemyCharacter::SetTimeAliveDamageMultiplier(float NewMultiplier)
 {
-	const float Wanted = FMath::Max(0.0f, NewMultiplier);
-	if (TimeAliveDamageMultiplier == Wanted)
-	{
-		return;
-	}
-
-	TimeAliveDamageMultiplier = Wanted;
-	RewriteAttackDamage();
+	SetDamageMultiplierFrom(TimeAliveDamageSource, NewMultiplier);
 }
 
 void ACataclysmEnemyCharacter::SetFloorDepthDamageMultiplier(float NewMultiplier)
 {
+	SetDamageMultiplierFrom(FloorDepthDamageSource, NewMultiplier);
+}
+
+void ACataclysmEnemyCharacter::SetSpireDamageMultiplier(float NewMultiplier)
+{
+	SetDamageMultiplierFrom(SpireDamageSource, NewMultiplier);
+}
+
+void ACataclysmEnemyCharacter::SetDamageMultiplierFrom(const TCHAR* Source, float NewMultiplier)
+{
 	const float Wanted = FMath::Max(0.0f, NewMultiplier);
-	if (FloorDepthDamageMultiplier == Wanted)
+	if (DamageMultiplierFrom(Source) == Wanted)
 	{
 		return;
 	}
 
-	FloorDepthDamageMultiplier = Wanted;
+	// 1.0 IS NO ENTRY, so a creature every rule has let go of carries an empty map.
+	if (Wanted == 1.0f)
+	{
+		DamageMultipliersBySource.Remove(FName(Source));
+	}
+	else
+	{
+		DamageMultipliersBySource.Add(FName(Source), Wanted);
+	}
 	RewriteAttackDamage();
+}
+
+float ACataclysmEnemyCharacter::DamageMultiplierFrom(const TCHAR* Source) const
+{
+	const float* Found = DamageMultipliersBySource.Find(FName(Source));
+	return Found ? *Found : 1.0f;
+}
+
+float ACataclysmEnemyCharacter::DamageMultiplierProduct() const
+{
+	float Product = 1.0f;
+	for (const TPair<FName, float>& One : DamageMultipliersBySource)
+	{
+		Product *= One.Value;
+	}
+	return Product;
 }
 
 void ACataclysmEnemyCharacter::RewriteAttackDamage()
@@ -1564,10 +1584,11 @@ void ACataclysmEnemyCharacter::WriteAttackDamage(float DamageScale)
 	// what uncovered it and because a public setter documented as working should
 	// work.
 	//
-	// AND A DUNGEON FLOOR'S RULES MULTIPLY THE SCALED FIGURE: `Famine_Ravenous_Hoard`
-	// for time alive, `Death_Grave_Tide` for the wave that placed the creature, and
-	// `War_March_of_Progress` for how deep the floor is. All three, so no rule's figure
-	// is lost when another writes. See `SetPlacedDamageMultiplier`.
+	// AND A DUNGEON FLOOR'S RULES MULTIPLY THE SCALED FIGURE: every entry of
+	// `DamageMultipliersBySource`, one per rule -- `Famine_Ravenous_Hoard` for time alive,
+	// `Death_Grave_Tide` for the wave that placed the creature, `War_March_of_Progress` for
+	// how deep the floor is and `Celestial_Golden_Spires` for standing near a spire -- so no
+	// rule's figure is lost when another writes. See `DamageMultipliersBySource`.
 	//
 	// COUNT THE FACTORS RATHER THAN READING A NUMBER HERE. This comment named two rules
 	// and said "both" until March of Progress made it three, which is the trap issue
@@ -1579,8 +1600,7 @@ void ACataclysmEnemyCharacter::WriteAttackDamage(float DamageScale)
 		AbilitySystemComponent->SetNumericAttributeBase(
 			Damage, bIsAnIllusion
 				? 0.0f
-				: StartingAttackDamage * DamageScale * PlacedDamageMultiplier
-					  * TimeAliveDamageMultiplier * FloorDepthDamageMultiplier);
+				: StartingAttackDamage * DamageScale * DamageMultiplierProduct());
 	}
 }
 

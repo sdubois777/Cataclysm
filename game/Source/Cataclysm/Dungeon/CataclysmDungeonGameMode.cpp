@@ -31,6 +31,8 @@
 #include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
+#include "Character/CataclysmFloorSourceCharacter.h"
+#include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -1465,6 +1467,10 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// kept by a Horde dungeon's later waves. Issues #1820 and #41.
 		ForgetTheBlooms();
 		PlaceTheBlooms();
+
+		// AND GOLDEN SPIRES, FOR THE SAME REASON. Issues #1820 and #41.
+		ForgetTheSpires();
+		PlaceTheSpires();
 	}
 	else
 	{
@@ -3466,6 +3472,165 @@ void ACataclysmDungeonGameMode::StepNecroticBloom()
 	}
 }
 
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::GoldenSpiresStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const FGoldenSpire& One : GoldenSpires)
+	{
+		ACataclysmEnemyCharacter* Spire = One.Spire.Get();
+		if (IsValid(Spire) && !UCataclysmSkillEffects::IsDead(Spire))
+		{
+			Standing.Add(Spire);
+		}
+	}
+	return Standing;
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::GoldenSpireZoneOf(const ACataclysmEnemyCharacter* Spire) const
+{
+	for (const FGoldenSpire& One : GoldenSpires)
+	{
+		if (Spire && One.Spire.Get() == Spire)
+		{
+			return One.Zone.Get();
+		}
+	}
+	return nullptr;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheSpires()
+{
+	for (const FGoldenSpire& One : GoldenSpires)
+	{
+		if (ACataclysmEnemyCharacter* Spire = One.Spire.Get())
+		{
+			Spire->Destroy();
+		}
+		if (ACataclysmGroundZone* Zone = One.Zone.Get())
+		{
+			Zone->Destroy();
+		}
+	}
+	GoldenSpires.Reset();
+	GoldenSpiresPanelStanding = -1;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheSpires()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::GoldenSpiresKey)))
+	{
+		return;
+	}
+
+	// TWO ON A FLOOR, ONE ON A HORDE ARENA, WHERE ETERNAL CHORUS'S SOURCES WOULD STAND, as ruled.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::GoldenSpiresPerHordeArena
+											: Effects::GoldenSpiresPerFloor;
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmSpireCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Spire =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Spire)
+		{
+			continue;
+		}
+		// THE IMP'S HEALTH AT COMMON, a play-test value. It pays nothing and is not one of the floor's
+		// creatures, as the other floor sources are not.
+		Spire->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Spire->SetHealth(GoldenSpireHealth());
+		Spire->SetRarityStep(0);
+		Spire->bDiesUnpaid = true;
+		Spire->bRaisedByARule = true;
+		// FIELD MEDIC'S HEAL, UNCHANGED, as ruled: the creature's own aura pulse heals its allies
+		// within that heal's radius while this is set, brain or none.
+		Spire->bHealsAlliesForTheFloorRule = true;
+		CreaturesRaisedByARule.Add(Spire);
+		FGoldenSpire One;
+		One.Spire = Spire;
+		GoldenSpires.Add(One);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Golden Spires: %d spire(s) placed on floor %d"),
+		   GoldenSpires.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepGoldenSpires(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::GoldenSpiresKey);
+
+	// A DESTROYED SPIRE'S ZONE GOES; A LIVING SPIRE'S ZONE IS DRAWN AGAIN whenever it is missing, which
+	// is after every floor or wave, when the rules' zones go.
+	TArray<FVector> Standing;
+	for (FGoldenSpire& One : GoldenSpires)
+	{
+		ACataclysmEnemyCharacter* Tower = One.Spire.Get();
+		if (!IsValid(Tower) || UCataclysmSkillEffects::IsDead(Tower))
+		{
+			if (ACataclysmGroundZone* Zone = One.Zone.Get())
+			{
+				Zone->Destroy();
+			}
+			One.Zone = nullptr;
+			continue;
+		}
+		const FVector Where = Tower->GetActorLocation();
+		Standing.Add(Where);
+		if (!One.Zone.Get() && Source)
+		{
+			One.Zone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, Where, Where, Effects::GoldenSpiresRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type);
+		}
+	}
+	GoldenSpires.RemoveAll([](const FGoldenSpire& One)
+	{
+		return !One.Spire.IsValid() || UCataclysmSkillEffects::IsDead(One.Spire.Get());
+	});
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE: MORE DAMAGE WITHIN REACH OF ANY LIVING SPIRE, once
+	// however many, and its own damage again elsewhere. The sweep Commander's Aura makes; the floor
+	// sources themselves are left alone, since they do nothing.
+	const float Near = 1.0f + Effects::GoldenSpiresDamageMorePercent / 100.0f;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| !UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			continue;
+		}
+		const FVector At = Creature->GetActorLocation();
+		const bool bNear = Standing.ContainsByPredicate([&At](const FVector& Where)
+		{
+			return FVector::Dist2D(At, Where) <= Effects::GoldenSpiresRadiusCm;
+		});
+		Creature->SetSpireDamageMultiplier(bNear ? Near : 1.0f);
+	}
+
+	const int32 Count = GoldenSpires.Num();
+	if (Count != GoldenSpiresPanelStanding)
+	{
+		GoldenSpiresPanelStanding = Count;
+		RefreshFloorModifierPanel();
+	}
+}
+
 void ACataclysmDungeonGameMode::StepDivineWrath(
 	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
 {
@@ -4331,6 +4496,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	ForgetThePlagueHarbingers();
 	ForgetTheChoruses();
 	ForgetTheBlooms();
+	ForgetTheSpires();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -4798,6 +4964,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND NECROTIC BLOOM, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bNecroticBloom = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::NecroticBloomKey));
+	// AND GOLDEN SPIRES, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bGoldenSpires = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::GoldenSpiresKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -4814,7 +4983,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bAntiMagicZones && !bStarvationCurse && !bTrickOrTreat && !bChaosTouched
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
-		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom)
+		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires)
 	{
 		return;
 	}
@@ -5017,6 +5186,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bNecroticBloom)
 	{
 		StepNecroticBloom();
+	}
+
+	// AND GOLDEN SPIRES, WHICH PLACES ZONES AND CHANGES CREATURES' DAMAGE. Issues #1820 and #41.
+	if (bGoldenSpires)
+	{
+		StepGoldenSpires(Player);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -7613,6 +7788,13 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(Chorus, FString::Printf(TEXT("eternal chorus: %d sources singing"),
 											  EternalChorusSourcesNow().Num()));
+	}
+
+	// AND GOLDEN SPIRES: how many stand. Issues #1820 and #41.
+	const FName Spires(Effects::GoldenSpiresKey);
+	if (FloorBrief.Modifiers.Contains(Spires))
+	{
+		Counting.Add(Spires, FString::Printf(TEXT("golden spires: %d standing"), GoldenSpiresStanding().Num()));
 	}
 
 	// AND NECROTIC BLOOM: how many flowers stand, and when the soonest of them sends its next wave,
