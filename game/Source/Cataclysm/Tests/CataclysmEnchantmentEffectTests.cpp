@@ -7548,4 +7548,209 @@ bool FCataclysmNextSpellCooldownRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmDeployableTest
+{
+	/**
+	 * A summoner and what its machines and imps do. Issue #1833, deployable Part
+	 * 1. The summoner is a bare wearer carrying one real enchantment, or nothing
+	 * that touches minions; `Blow` spawns one minion of a type and has it strike a
+	 * fresh creature with no armour, evasion, block or resistance, returning the
+	 * health it took. A worn item rolls the top of its range.
+	 */
+	struct FSummoner
+	{
+		explicit FSummoner(UWorld* InWorld, const TCHAR* Enchantment)
+			: World(InWorld)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			Wearer = MakeUnique<FWearer>(World);
+			if (Enchantment)
+			{
+				FCataclysmItem Removed;
+				FCataclysmItem AlsoRemoved;
+				ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+				Wearer->Equipment->Equip(
+					Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect),
+					Removed, AlsoRemoved, Slot);
+			}
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+		}
+
+		ACataclysmMinion* Make(const TCHAR* Type)
+		{
+			Along += 400.0f;
+			return ACataclysmMinion::Spawn(Wearer->Actor, FVector(Along, 0.0f, 0.0f),
+										   /*Lifetime=*/20.0f, /*bBurns=*/false, Type);
+		}
+
+		float Blow(const TCHAR* Type)
+		{
+			ACataclysmMinion* Minion = Make(Type);
+			ACataclysmEnemyCharacter* Victim = World->SpawnActor<ACataclysmEnemyCharacter>(
+				FVector(Along, 150.0f, 0.0f), FRotator::ZeroRotator);
+			if (!Minion || !Victim)
+			{
+				return -1.0f;
+			}
+			Victim->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+			Victim->SetHealth(10000.0f);
+			Victim->SetArmour(0.0f);
+			UAbilitySystemComponent* Its = Victim->GetAbilitySystemComponent();
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetArmorAttribute(), 0.0f);
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+			Its->SetNumericAttributeBase(UCataclysmCombatAttributeSet::GetBlockChanceAttribute(), 0.0f);
+			Its->SetNumericAttributeBase(
+				UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 0.0f);
+			const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+			const float Before = Its->GetNumericAttribute(Health);
+			Minion->AttackTarget(Victim);
+			return Before - Its->GetNumericAttribute(Health);
+		}
+
+		float MaxHealthOf(const TCHAR* Type)
+		{
+			ACataclysmMinion* Minion = Make(Type);
+			const UAbilitySystemComponent* Its = Minion ? Minion->GetAbilitySystemComponent() : nullptr;
+			return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+					   : -1.0f;
+		}
+
+		float LifeOf(const TCHAR* Type)
+		{
+			ACataclysmMinion* Minion = Make(Type);
+			return Minion ? Minion->GetLifeSpan() : -1.0f;
+		}
+
+		float IntervalScaleOf(const TCHAR* Type)
+		{
+			ACataclysmMinion* Minion = Make(Type);
+			return Minion ? UCataclysmCommand::AttackIntervalScaleFor(Minion, nullptr) : -1.0f;
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const { return Wearer->AbilitySystem; }
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+		float Along = 0.0f;
+	};
+
+	/** A world for one test, destroyed when the test ends. */
+	struct FWorld
+	{
+		FWorld() : World(CataclysmTestWorld::MakeWorldThatHasBegunPlay()) {}
+		~FWorld()
+		{
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+		UWorld* World = nullptr;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetDamageRowsTest,
+	"Cataclysm.Enchantments.TheGadgetDamageRowsReachAMachinesBlowAndNotAnImps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, deployable Part 1: a machine's blow reads its summoner's
+ * attack_damage rows that name `Type.Deployable`, and an imp's does not.
+ *
+ * "Gadgets deal 20%-40% increased damage", at 40: a ballista's blow is 1.4 times
+ * a plain summoner's ballista, and an imp's is unchanged. The row is written on
+ * attack_damage and on spell_damage; reading both would make it 1.8.
+ * "While stationary, your gadgets deal 20%-40% increased damage", at 40: 1.4
+ * times once the summoner is recorded as not moving.
+ * "Gadgets deal bonus damage equal to 3%-6% of your maximum HP per hit", at 6:
+ * with the summoner at 1000 maximum health, 60 added to the ballista's own
+ * figure before anything multiplies it.
+ */
+bool FCataclysmGadgetDamageRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FSummoner Plain(Scope.World, nullptr);
+	const float PlainBallista = Plain.Blow(TEXT("Ballista"));
+	const float PlainImp = Plain.Blow(TEXT("Imp"));
+	if (!TestTrue(TEXT("both plain blows landed"), PlainBallista > 0.0f && PlainImp > 0.0f))
+	{
+		return false;
+	}
+
+	FSummoner Increased(Scope.World, TEXT("Positive_Gadgets_deal_20_40_increased_damage"));
+	TestEqual(TEXT("increased: a ballista's blow is 1.4 times"),
+		Increased.Blow(TEXT("Ballista")) / PlainBallista, 1.4f, 0.001f);
+	TestEqual(TEXT("increased: an imp's blow is unchanged"),
+		Increased.Blow(TEXT("Imp")) / PlainImp, 1.0f, 0.001f);
+
+	FSummoner Stationary(Scope.World,
+		TEXT("Positive_While_stationary_your_gadgets_deal_20_40_incr"));
+	Stationary.ASC()->NoteDidNotMove();
+	TestEqual(TEXT("stationary: a ballista's blow is 1.4 times"),
+		Stationary.Blow(TEXT("Ballista")) / PlainBallista, 1.4f, 0.001f);
+
+	FSummoner Bonus(Scope.World,
+		TEXT("Positive_Gadgets_deal_bonus_damage_equal_to_3_6_of_your"));
+	Bonus.ASC()->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	// AS A RATIO AGAINST THE BALLISTA'S OWN FIGURE, so whatever else scales a
+	// blow the same way on both sides cancels: (own + 60) / own.
+	ACataclysmMinion* Measured = Plain.Make(TEXT("Ballista"));
+	const float Own = Measured ? Measured->OwnDamagePerHit : 0.0f;
+	if (TestTrue(TEXT("a ballista has a figure of its own"), Own > 0.0f))
+	{
+		TestEqual(TEXT("bonus: a ballista's blow carries 60 more at 1000 maximum health"),
+			Bonus.Blow(TEXT("Ballista")) / PlainBallista, (Own + 60.0f) / Own, 0.001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmGadgetBodyRowsTest,
+	"Cataclysm.Enchantments.TheGadgetHealthDurationAndSpeedRowsReachMachinesOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Issue #1833, deployable Part 1: three rows scoped to `Type.Deployable` on the
+ * summoner's minion stats reach a ballista and not an imp, because a minion is
+ * asked with its own type tags.
+ *
+ * "Gadgets have 40%-70% increased HP" at 70: 1.7 times the maximum health.
+ * "Gadgets last 30%-60% longer" at 60: 1.6 times the life span.
+ * "Gadgets fire 20%-40% faster" at 40: the attack interval scaled by 1 / 1.4.
+ */
+bool FCataclysmGadgetBodyRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmDeployableTest;
+	FWorld Scope;
+	if (!TestNotNull(TEXT("a world"), Scope.World))
+	{
+		return false;
+	}
+	FSummoner Plain(Scope.World, nullptr);
+
+	FSummoner Health(Scope.World, TEXT("Positive_Gadgets_have_40_70_increased_HP"));
+	TestEqual(TEXT("health: a ballista has 1.7 times"),
+		Health.MaxHealthOf(TEXT("Ballista")) / Plain.MaxHealthOf(TEXT("Ballista")), 1.7f, 0.001f);
+	TestEqual(TEXT("health: an imp is unchanged"),
+		Health.MaxHealthOf(TEXT("Imp")) / Plain.MaxHealthOf(TEXT("Imp")), 1.0f, 0.001f);
+
+	FSummoner Longer(Scope.World, TEXT("Positive_Gadgets_last_30_60_longer"));
+	TestEqual(TEXT("duration: a ballista lasts 1.6 times"),
+		Longer.LifeOf(TEXT("Ballista")) / Plain.LifeOf(TEXT("Ballista")), 1.6f, 0.001f);
+	TestEqual(TEXT("duration: an imp is unchanged"),
+		Longer.LifeOf(TEXT("Imp")) / Plain.LifeOf(TEXT("Imp")), 1.0f, 0.001f);
+
+	FSummoner Faster(Scope.World, TEXT("Positive_Gadgets_fire_20_40_faster"));
+	TestEqual(TEXT("speed: a ballista's interval is scaled by 1 / 1.4"),
+		Faster.IntervalScaleOf(TEXT("Ballista")), 1.0f / 1.4f, 0.001f);
+	TestEqual(TEXT("speed: an imp's is unchanged"),
+		Faster.IntervalScaleOf(TEXT("Imp")), 1.0f, 0.001f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

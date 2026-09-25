@@ -553,6 +553,33 @@ float UCataclysmAbilitySystemComponent::MultiplierForStatAgainst(
 		* Result.MoreMultiplier;
 }
 
+float UCataclysmAbilitySystemComponent::StatNamingTagAppliedTo(
+	FName Stat, const FGameplayTag& Named, float Figure,
+	const FGameplayTagContainer& Tags, const AActor* Target) const
+{
+	const FCataclysmStatInputs* Inputs = StatInputs.Find(Stat);
+	if (!Inputs || !Named.IsValid())
+	{
+		return Figure;
+	}
+	TArray<FCataclysmStatModifier> Naming;
+	for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+	{
+		if (Modifier.RequiredTags.HasTagExact(Named))
+		{
+			Naming.Add(Modifier);
+		}
+	}
+	if (Naming.IsEmpty())
+	{
+		return Figure;
+	}
+	return FMath::Max(0.0f, UCataclysmStatPipeline::Evaluate(
+		Figure, Naming, Tags,
+		WithEnemiesInReach(Naming, WithTargetState(Naming, Target, CurrentConditions())))
+		.Final);
+}
+
 float UCataclysmAbilitySystemComponent::AttackDamageMoreForSkill(
 	const FGameplayTagContainer& SkillTags,
 	float SkillHealthCostPercent, float MetresMovedBeforeBlow,

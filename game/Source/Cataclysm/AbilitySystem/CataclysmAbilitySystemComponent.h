@@ -352,6 +352,24 @@ public:
 								   const AActor* Target) const;
 
 	/**
+	 * A figure with only this character's modifiers on `Stat` that NAME
+	 * `Named` among their required tags applied to it, asked with `Tags` and
+	 * against `Target`. Issue #1833, deployable Part 1: a deployable's blow reads
+	 * its summoner's `attack_damage` rows scoped to `Type.Deployable`, and only
+	 * those, because a minion takes nothing else of its summoner's
+	 * ("everything else is blocked unless a modifier names minions", and the
+	 * coordinating session's ruling of 2026-09-25 that a modifier naming gadgets
+	 * reaches a gadget's blow).
+	 *
+	 * The figure is the base: the answer is (figure + flat) x (1 + increases) x
+	 * more, over the naming modifiers alone, floored at nothing. With none, the
+	 * figure comes back unchanged.
+	 */
+	float StatNamingTagAppliedTo(FName Stat, const FGameplayTag& Named, float Figure,
+								 const FGameplayTagContainer& Tags,
+								 const AActor* Target) const;
+
+	/**
 	 * Whether a removal reaches this stat, for these tags, right now. Issue #1791.
 	 *
 	 * FOR A CONSUMER THAT DOES NOT GET THE STAT'S VALUE FROM THE PIPELINE. A
