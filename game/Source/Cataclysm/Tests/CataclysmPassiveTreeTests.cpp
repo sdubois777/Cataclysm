@@ -9955,6 +9955,270 @@ bool FCataclysmPassiveRelentlessOnARealCharacterTest::RunTest(const FString&)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Three Ritualist spell damage rows, each shown through its real row.
+// Issue #1755.
+//
+// ATTENDANT AND UNBROKEN FOCUS HAD ROWS AND NO TEST; Cold Reading was tested
+// only with its modifier built by hand (`CataclysmEnergyShieldFullTests.cpp`).
+// Each of these spends real points on a real Ritualist, sets up the state the
+// row asks about the way the game does, and reads through `SpellDamageOf`,
+// which every spell's hit asks.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmRitualistRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+
+	constexpr float M = 100.0f;
+
+	/** Points in one node, or none when `Points` is zero. */
+	void Take(FRealCharacter& Player, const TCHAR* Node, int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(FName(Node), Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	/** Spell damage as a spell's hit asks for it, with no target in hand. */
+	float Spell(const FRealCharacter& Player)
+	{
+		return UCataclysmSkillEffects::SpellDamageOf(
+			Player.AbilitySystem, FGameplayTagContainer());
+	}
+
+	/** The unconditioned, unscaled increases spell damage carries, in percent. */
+	float PlainIncreases(const FRealCharacter& Player)
+	{
+		float Sum = 0.0f;
+		if (const FCataclysmStatInputs* Inputs =
+				Player.AbilitySystem->GetStatInputs(FName(TEXT("spell_damage"))))
+		{
+			for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+			{
+				if (Modifier.Bucket == ECataclysmStatBucket::Increased
+					&& Modifier.Condition == ECataclysmStatCondition::Always
+					&& Modifier.Scale == ECataclysmStatScale::Fixed)
+				{
+					Sum += Modifier.Value;
+				}
+			}
+		}
+		return Sum;
+	}
+
+	/** What `Extra` percent more increased spell damage makes of a reading. */
+	float Ratio(float Others, float Extra)
+	{
+		return (1.0f + (Others + Extra) / 100.0f) / (1.0f + Others / 100.0f);
+	}
+
+	bool Ready(FAutomationTestBase& Test, const FRealCharacter& Player)
+	{
+		if (!Test.TestTrue(TEXT("a possessed Ritualist with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveAttendantOnARealCharacterTest,
+	"Cataclysm.RitualistRows.AttendantRaisesARealRitualistsSpellDamageForEachMinion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_basic_spine_010` Attendant: "+1% increased Spell Damage per point
+ *  for each minion you have." Six points, 6% a minion. One minion against three
+ *  is what separates "for each" from "while you have one". */
+bool FCataclysmPassiveAttendantOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmRitualistRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Ritualist_basic_spine_010"), 6);
+	const float None = Spell(Player);
+	if (!TestTrue(TEXT("the Ritualist has spell damage to raise"), None > 0.0f))
+	{
+		return false;
+	}
+	const float Others = PlainIncreases(Player);
+
+	const FVector Here = Player.Character->GetActorLocation();
+	if (!TestNotNull(TEXT("a first minion"),
+					 ACataclysmMinion::Spawn(Player.Character,
+											 Here + FVector(3.0f * M, 0.0f, 0.0f), 60.0f,
+											 false)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("one minion: 6% more increased"), Spell(Player) / None,
+			  Ratio(Others, 6.0f), 0.0001f);
+
+	if (!TestNotNull(TEXT("a second minion"),
+					 ACataclysmMinion::Spawn(Player.Character,
+											 Here + FVector(4.0f * M, 0.0f, 0.0f), 60.0f,
+											 false))
+		|| !TestNotNull(TEXT("and a third"),
+						ACataclysmMinion::Spawn(Player.Character,
+												Here + FVector(5.0f * M, 0.0f, 0.0f),
+												60.0f, false)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("three minions: 18%"), Spell(Player) / None, Ratio(Others, 18.0f),
+			  0.0001f);
+
+	// NONE WAS READ WITH THE POINTS AND NO MINION, which is also what the
+	// points given back and three minions must read.
+	Take(Player, TEXT("Ritualist_basic_spine_010"), 0);
+	TestEqual(TEXT("and with the points given back, three minions add nothing"),
+			  Spell(Player), None, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnbrokenFocusOnARealCharacterTest,
+	"Cataclysm.RitualistRows.UnbrokenFocusRaisesARealRitualistsSpellDamageAfterTwoSecondsStill",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_d_b2` Unbroken Focus: "+2% increased Spell Damage per point
+ * while you have not moved for 2 seconds." Six points, 12%.
+ *
+ * A STEP IS TAKEN, THEN THE CLOCK RUNS, as `CataclysmMovement.cpp` records one:
+ * nothing at 1.5 seconds still, the bonus at 2.5, and a new step takes it away
+ * at once.
+ */
+bool FCataclysmPassiveUnbrokenFocusOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmRitualistRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Ritualist_basic_d_b2"), 6);
+	const float Others = PlainIncreases(Player);
+
+	Player.AbilitySystem->NoteMovedMetres(1.0f);
+	const float JustMoved = Spell(Player);
+	if (!TestTrue(TEXT("the Ritualist has spell damage to raise"), JustMoved > 0.0f))
+	{
+		return false;
+	}
+
+	CataclysmTestWorld::RunClock(World, 1.5f);
+	TestEqual(TEXT("1.5 seconds still is not 2: nothing"), Spell(Player) / JustMoved,
+			  1.0f, 0.0001f);
+
+	CataclysmTestWorld::RunClock(World, 1.0f);
+	TestTrue(TEXT("the clock says it has stood still for at least 2 seconds"),
+			 Player.AbilitySystem->SecondsSinceMoved() >= 2.0f);
+	TestEqual(TEXT("2.5 seconds still: 12% more increased"), Spell(Player) / JustMoved,
+			  Ratio(Others, 12.0f), 0.0001f);
+
+	Player.AbilitySystem->NoteMovedMetres(1.0f);
+	TestEqual(TEXT("and a step taken removes it at once"), Spell(Player) / JustMoved,
+			  1.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveColdReadingOnARealCharacterTest,
+	"Cataclysm.RitualistRows.ColdReadingRaisesARealRitualistsSpellDamageOnlyWithAFullShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_c_a2` Cold Reading: "+2% increased Spell Damage per point
+ * while your Energy Shield is full." Eight points, 16%.
+ *
+ * ONE SHORT OF THE TOP IS THE CONTROL, which is what a threshold read as
+ * "nearly full" gets wrong. The Ritualist's own maximum is read, not stated.
+ */
+bool FCataclysmPassiveColdReadingOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmRitualistRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Ritualist_basic_c_a2"), 8);
+	const float Others = PlainIncreases(Player);
+	const float Maximum = Player.AbilitySystem->GetNumericAttribute(
+		UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute());
+	if (!TestTrue(TEXT("a Ritualist has an energy shield bar"), Maximum > 1.0f))
+	{
+		return false;
+	}
+	const auto HoldShield = [&](float Held)
+	{
+		Player.AbilitySystem->SetNumericAttributeBase(
+			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(), Held);
+		return Player.AbilitySystem->GetNumericAttribute(
+			UCataclysmVitalAttributeSet::GetEnergyShieldAttribute());
+	};
+
+	if (!TestEqual(TEXT("the shield is one short of the top"), HoldShield(Maximum - 1.0f),
+				   Maximum - 1.0f, 0.001f))
+	{
+		return false;
+	}
+	const float Short = Spell(Player);
+
+	if (!TestEqual(TEXT("the shield is full"), HoldShield(Maximum), Maximum, 0.001f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a full shield: 16% more increased than one short"),
+			  Spell(Player) / Short, Ratio(Others, 16.0f), 0.0001f);
+
+	HoldShield(0.0f);
+	TestEqual(TEXT("and a broken shield grants nothing"), Spell(Player) / Short, 1.0f,
+			  0.0001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnstoppableOnARealCharacterTest,
 	"Cataclysm.Passives.UnstoppableGrantsARealRavagerBothStatsOnlyWhileCrowded",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
