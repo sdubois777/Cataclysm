@@ -11,9 +11,8 @@ the beat, destroying the creatures it covers, the floor panel line and the reset
 tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -101,10 +100,39 @@ class, read from the header and from `ClassStats.csv`. Each was seen to fail, in
 repository: with "chase them across the floor" made "follow them", with "destroy enemies in their path"
 removed, with the beam made 3.6 metres a second, and with the Ritualist made 2.9.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-24, on development 4ab35c20 as the base. Every figure below is what
+`python tools/unreal_build.py tests` or `prove_cpp_guard` printed.
+
+- **The first build FAILED**, at 3455949b: "Build: Failed - 29 actions, 26 files compiled", on one
+  error in this change's own test, `error C2666: 'FAutomationTestBase::TestEqual': overloaded functions
+  have similar conversions`. The "twelve metres from the player" assertion passed
+  `FVector::Dist2D(...)`, which is `double` in UE 5.8, with a `float` expected value and tolerance, so
+  the float and double overloads tied. Fixed, as ruled by the coordinating session with the lock kept,
+  by casting the distance to `float`; the Python run on the old head was stopped, since it could no
+  longer be the run of record.
+- **The Python suite of record on the fixed head**, 6e649f6d: 5,437 tests, 0 failed.
+- **The whole suite on the fixed head**: 2,398 tests performed, 2,398 succeeded, 0 failed.
+- **The group on that head**: 288 tests performed, 288 succeeded, 0 failed.
+- **The group on the base**, 4ab35c20: 285 tests performed, 285 succeeded, 0 failed. Run after the
+  Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each on the prefix `Cataclysm.DungeonModifierEffects.`, each printing PROVED**,
+with the source identical before and after:
+
+- **No chase** (the beat's `TravelAt` made `(void)(...)`). With the break in: 288 performed, 287
+  succeeded, 1 failed, `DivineWrathSendsABeamEveryThirtySecondsThatChasesThePlayer`, on "Expected
+  're-aimed at where the player moved to' to be true"; the beam's first aim still passed. Restored: 288
+  performed, 288 succeeded, 0 failed.
+- **A floor's boss not spared** (`!DiedAsAFloorsBoss(Enemy)` removed). With the break in: 288 performed,
+  287 succeeded, 1 failed, `ADivineWrathBeamDestroysTheCreaturesItCoversButNeverAFloorsBoss`, on "Expected
+  'the Gatekeeper, a floor's boss, lives' to be false" and "Expected 'one destroyed' to be 1, but it was
+  2". Restored: 288 performed, 288 succeeded, 0 failed.
+- **A beam a beat early** (`>= DivineWrathSecondsBetween - 0.25f`). With the break in: 288 performed, 287
+  succeeded, 1 failed, `DivineWrathSendsABeamEveryThirtySecondsThatChasesThePlayer`, on "Expected '29.75
+  seconds is not due' to be false" and "Expected 'no beam a beat before thirty seconds' to be null".
+  Restored: 288 performed, 288 succeeded, 0 failed.
 
 ---
 
