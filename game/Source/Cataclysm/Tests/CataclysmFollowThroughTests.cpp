@@ -5,6 +5,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+#include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
@@ -19,8 +20,11 @@
 #include "GameFramework/PlayerController.h"
 #include "Interface/CataclysmSkillBar.h"
 #include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayerController.h"
 #include "Player/CataclysmPlayerState.h"
+#include "Tests/CataclysmTestSkip.h"
 #include "Tests/CataclysmTestWorld.h"
+#include "TimerManager.h"
 
 /**
  * Follow Through, `Ravager_keystone_b_kB`: "Killing an enemy with a melee attack
@@ -396,6 +400,116 @@ bool FCataclysmFollowThroughHookTest::RunTest(const FString&)
 	Events->OnDeath.Broadcast(Notice);
 	TestTrue(TEXT("a melee kill announced for the player leaves a repeat waiting"),
 			 System->PendingFollowThrough().IsValid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFollowThroughTimerTest,
+	"Cataclysm.FollowThrough.ABasicAttackKillRepeatsOnTheNextFrameAndKeepsTheSwingInterval",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The whole path play takes, on a real player with the game's own controller:
+ * a basic attack swung through `TrySwingAt`, a melee kill announced for it, and
+ * the next-frame timer making the repeat. Ruled 2026-09-24: the repeat of a
+ * basic attack is one extra swing that ignores the swing interval, and the next
+ * ordinary swing keeps its timing -- so the controller's record of the last
+ * swing is unchanged, and an ordinary swing is still refused.
+ *
+ * ONE TIMER TICK, AND IT IS ALL A TEST GETS. `FTimerManager::Tick` runs once per
+ * engine frame (`LastTickedFrame == GFrameCounter`), and a test runs inside one.
+ * That is enough when the killing swing has already landed. With the Paragon art
+ * present the player's swing waits for its animation instead, which would need a
+ * second tick, so that half is reported as skipped rather than failed.
+ */
+bool FCataclysmFollowThroughTimerTest::RunTest(const FString&)
+{
+	using namespace CataclysmFollowThroughTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	ACataclysmPlayerController* Controller = World->SpawnActor<ACataclysmPlayerController>();
+	ACataclysmPlayerCharacter* Player = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!State || !Controller || !Player)
+	{
+		AddError(TEXT("A player with the game's own controller could not be built."));
+		return false;
+	}
+	Controller->SetPlayerState(State);
+	Controller->Possess(Player);
+	UCataclysmAbilitySystemComponent* System = State->GetCataclysmAbilitySystemComponent();
+	UCataclysmCombatEvents* Events = UCataclysmCombatEvents::In(World);
+	if (!TestNotNull(TEXT("the player's ability system"), System)
+		|| !TestNotNull(TEXT("the combat events"), Events))
+	{
+		return false;
+	}
+
+	// THE BASIC ATTACK ITS WEAPON GAVE IT, found by slot.
+	UCataclysmSkillTemplate* Basic = nullptr;
+	for (const FGameplayAbilitySpec& Spec : System->GetActivatableAbilities())
+	{
+		UCataclysmSkillTemplate* Skill = Cast<UCataclysmSkillTemplate>(Spec.GetPrimaryInstance());
+		if (Skill && Skill->Slot == ECataclysmAbilitySlot::BasicAttack)
+		{
+			Basic = Skill;
+		}
+	}
+	const float ReachCm = UCataclysmBasicAttack::ReachCmOf(System);
+	if (!TestNotNull(TEXT("the player has a basic attack"), Basic)
+		|| !TestTrue(TEXT("which reaches somewhere"), ReachCm > 0.0f))
+	{
+		return false;
+	}
+	HoldFollowThrough(System, 3.0f);
+
+	FScopedBody Enemy(World, FVector(ReachCm * 0.5f, 0, 0), 10000.0f);
+	if (!TestTrue(TEXT("an ordinary swing at the enemy starts"),
+				  Controller->TrySwingAtForTest(Enemy.Actor)))
+	{
+		return false;
+	}
+	if (Basic->IsWaitingForTheSwingToConnect())
+	{
+		CataclysmTestSkip::ReportSkippedHalf(*this,
+			TEXT("the player's swing waits for its animation, and a test world's "
+				 "timer manager ticks once, so the repeat after it cannot be seen here"));
+		return true;
+	}
+	const float SwungAt = Controller->LastSwingSecondsForTest();
+	const float HealthAfterTheSwing = Enemy.Health();
+	if (!TestTrue(TEXT("the swing struck the enemy"), HealthAfterTheSwing < 10000.0f))
+	{
+		return false;
+	}
+
+	FScopedBody Victim(World, FVector(0, 50 * M, 0), 1.0f);
+	FCataclysmDeathNotice Notice;
+	Notice.Victim = Victim.Actor;
+	Notice.Killer = Player;
+	Notice.KillingSkillName = FName(*Basic->SkillName);
+	Notice.bIsMelee = true;
+	Events->OnDeath.Broadcast(Notice);
+	if (!TestTrue(TEXT("the kill hook left a repeat waiting"),
+				  System->PendingFollowThrough().IsValid()))
+	{
+		return false;
+	}
+
+	World->GetTimerManager().Tick(0.1f);
+	TestTrue(TEXT("the next-frame timer made the repeat, which struck the enemy again"),
+			 Enemy.Health() < HealthAfterTheSwing);
+	TestTrue(TEXT("and spent the clock"), System->FollowThroughSecondsLeft() > 2.9f);
+	TestEqual(TEXT("the controller's last swing is still the ordinary one"),
+			  Controller->LastSwingSecondsForTest(), SwungAt);
+	TestFalse(TEXT("so an ordinary swing now is still refused by its interval"),
+			  Controller->TrySwingAtForTest(Enemy.Actor));
 	return true;
 }
 

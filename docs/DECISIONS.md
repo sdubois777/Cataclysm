@@ -392,14 +392,25 @@ In the group `Cataclysm.FollowThrough.`, the stat given by hand:
 - `OnlyYourOwnMeleeKillOutsideTheWaitAndOutsideAMovementSkillCounts`.
 - `ThePlayersKillHookRecordsTheRepeat`: a melee kill announced for a real player leaves a repeat waiting;
   a tick does not.
+- `ABasicAttackKillRepeatsOnTheNextFrameAndKeepsTheSwingInterval`: the whole path play takes, on a real
+  player with the game's own controller. A basic attack swung through the controller, a melee kill
+  announced for it, and one tick of the world's timer manager makes the repeat, which strikes again and
+  spends the clock. The controller's record of the last swing is unchanged and an ordinary swing is still
+  refused, which is the ruling that the next ordinary swing keeps its timing.
 - `TheLineAboveTheSkillBarCountsTheWaitInWholeSeconds`.
 - A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
 
 **The killer in the first three is a plain actor, not the player.** A player that plays an attack
 animation waits for it before its blow lands, and a test world is never ticked, so with the Paragon art
 present a player's strike would never land in a test. `NoteMeleeKill` is called for the plain actor as
-the player's hook calls it, and the fourth test checks that hook on its own. **What no test here shows is
-the next-frame timer itself**, for the same reason.
+the player's hook calls it, and the fourth test checks that hook on its own.
+
+**The fifth drives the next-frame timer, and gets one tick.** `FTimerManager::Tick` runs once per engine
+frame (`LastTickedFrame == GFrameCounter`) and a test runs inside one frame. One tick is enough when the
+killing swing has landed at once, as it does with no animation to wait for. With the Paragon art present
+the swing waits for its animation, which would need a second tick, so that test reports that half as
+skipped through `CataclysmTestSkip::ReportSkippedHalf` rather than failing. **So in the main checkout the
+timer is not shown by any test**, and in a worktree or on the continuous-integration runner it is.
 
 **The stat is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
 change must add a test that wears the real `Ravager_keystone_b_kB` row.
