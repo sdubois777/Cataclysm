@@ -331,3 +331,6 @@ Negative_Each_consecutive_hit_against_the_same_enemy_deal#2,Negative_Each_consec
 Positive_Strike_skills_reduce_enemy_armor_by_3_6_per_hi#1,Positive_Strike_skills_reduce_enemy_armor_by_3_6_per_hi,,,3.0,6.0,Type.Strike,,0.0,,0.0,enemy_armor_removed,hit_dealt,,6,5.0,0.0,0.0,0
 Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo#1,Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo,,,2.0,4.0,,,0.0,,0.0,enemy_armor_removed,hit_dealt,,0,5.0,0.0,0.0,0
 Positive_Each_melee_hit_you_take_reduces_the_attacker_s_d#1,Positive_Each_melee_hit_you_take_reduces_the_attacker_s_d,,,3.0,5.0,,,0.0,,0.0,attacker_damage_removed,melee_hit_taken,,5,3.0,0.0,0.0,0
+Negative_Every_5th_hit_you_take_deals_50_100_bonus_dama#1,Negative_Every_5th_hit_you_take_deals_50_100_bonus_dama,,,50.0,100.0,,,0.0,,0.0,nth_hit_taken_damage,,,0,0.0,0.0,0.0,5
+Negative_Every_third_cast_of_your_spells_cost_20_80_of#1,Negative_Every_third_cast_of_your_spells_cost_20_80_of,,,20.0,80.0,,,0.0,,0.0,nth_spell_mana_cost,,,0,0.0,0.0,0.0,3
+Negative_Every_10th_attack_deals_no_damage#1,Negative_Every_10th_attack_deals_no_damage,,,100.0,100.0,,,0.0,,0.0,nth_attack_no_damage,,,0,0.0,0.0,0.0,10

@@ -2,6 +2,83 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Every Nth, the rows: the 5th hit taken, the third spell and the 10th attack
+
+**Affects:**
+- the Enchantment Effects sheet: three rows on three enchantments, and the new Every Nth column
+- `tools/generate_datatables.py`, whose `OPTIONAL_COLUMNS` is empty again
+- `tools/tests/test_enchantment_effects_match_the_row_text.py`, which now covers action rows
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 2, "every Nth"; the
+  engine is the entry below, "Every Nth, engine only"
+
+### THE ROWS
+
+| Enchantment | Action | Value | Every Nth |
+| :-- | :-- | :-- | :-- |
+| Every 5th hit you take deals 50%-100% bonus damage | `nth_hit_taken_damage` | 50 to 100 | 5 |
+| Every third cast of your spells cost 20%-80% of your current mana | `nth_spell_mana_cost` | 20 to 80 | 3 |
+| Every 10th attack deals no damage | `nth_attack_no_damage` | 100 | 10 |
+
+All three are drawbacks. What each does is the engine entry's, ruled there.
+
+### THE ROW-TEXT CHECK NOW COVERS ACTION ROWS, WHICH IT COULD NOT BEFORE
+
+`test_a_single_value_appears_in_its_words_outside_any_range` needs each single value in its
+sentence, or stated by a word that `STATED_BY_WORD` gives for the row's stat. "Every 10th attack
+deals no damage" is 100, and no number in it says so.
+
+- **It could not go in `JUDGED_NUMBERS`.** That list is for sentences stating no number, and
+  `test_every_judged_number_is_still_needed` refused the row, because "10th" is a number. That
+  refusal is how the first dry run of this change failed.
+- **`STATED_BY_WORD` was keyed by stat, and an action row has none.** Its two readers now key a row by
+  its stat, or by its action when it has no stat: the single-value check and
+  `test_every_word_stated_value_is_still_needed`. "no" states 100 on `nth_attack_no_damage`.
+- **So a word can now state an action row's value**, where before an action row could only state a
+  number or be excused. The still-needed test passing shows the word is what admits the row.
+- Ruled by the coordinating session on 2026-09-24, under the owner's delegation.
+
+### THE TESTS
+
+Each wears the real row on a helm, beside a benefit with no effect row, and checks what the game
+built from it: one every-Nth action of the row's kind and N.
+- **The 5th hit taken:** nothing is due three hits in, 100 is due four hits in, and nothing is due
+  after the fifth.
+- **The third spell:** nothing is added one cast in, and 80 is added two casts in.
+- **The 10th attack:** eight attacks in the ninth is not the Nth, nine in the tenth is, and the line
+  reads "Attack 9/10".
+
+### Run
+
+One editor window on 2026-09-25, local time (08:11 to 08:31 UTC), on development 2d01a3a4 as the
+base. Every figure below is what `python tools/unreal_build.py`, `pytest`, `prove_cpp_guard` or
+`prove_guard` printed. Each matched what was registered, except one unity file's name, noted.
+
+- **The first build, on ce515eb4** (the row tests and this entry): "Build: Succeeded - 4 actions, 1
+  file compiled". The Python suite of record: 5,476 passed, 8 skipped, 0 failed.
+- **The rows**, e25e79ac: three rows and the Every Nth column. The second build: "Build: Succeeded -
+  4 actions, 1 file compiled". **It named `Module.Cataclysm.12.cpp`, where `Module.Cataclysm.13.cpp`
+  was registered**, because the file whose row count changed sits in a different unity file on this
+  base. The count was as registered. The Python suite of record: 1 failed, 5,475 passed, 8 skipped,
+  the one failure the check that every CSV still hashes to what its asset was built from.
+  `Cataclysm.Data.` and `Cataclysm.Enchantments.` before the asset was rebuilt: 108 tests
+  performed, 104 succeeded, 4 failed, the asset check and the three row tests.
+- **The asset**, 24f69d3e: `DT_EnchantmentEffects` rebuilt from 335 rows, up from 332. The three row
+  tests: 3 performed, 3 succeeded.
+- **The whole suite**, on 24f69d3e: 2,459 tests performed, 2,459 succeeded, 0 failed; every declared
+  test was reported. No CI run was in progress.
+
+**One guard proof, printing PROVED**, with the source identical before and after: **the row's N not
+copied onto its action** (`Action.EveryNth = Effect->EveryNth;` made `= 0;` in `CataclysmItem.cpp`),
+on the three row tests. With the break in: 3 of 3 failed, on seven assertions. Each "every Nth"
+read 0; the fifth hit and the third spell read 0 due; the tenth attack was not the Nth; and the line
+read "Attack -1/10". Restored: 3 of 3 succeeded.
+
+**A Python control**, not a guard proof: the single-value check's key made the stat alone,
+`value_is_stated(row["Stat"], ...)`. It printed "PROVED: 1 failed, 28 passed in 0.24s | restored: 29
+passed in 0.20s", the one failure being `test_a_single_value_appears_in_its_words_outside_any_range`.
+
+---
+
 ## 2026-09-24 — Every Nth, engine only: the Nth hit taken takes more, the Nth spell costs more, and the Nth attack deals no damage
 
 **Affects:**
