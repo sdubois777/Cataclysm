@@ -1658,6 +1658,46 @@ public:
 	/** Whether a blow of `Striker`'s has got through to this character. */
 	bool WasStruckBy(const UAbilitySystemComponent* Striker) const;
 
+	/**
+	 * Rendering Blows, the Ravager's `Ravager_capstone_50` option 1. Issue
+	 * #1515: "Every third melee attack against the same enemy removes 20% of its
+	 * Armor for 6 seconds." The row will carry the 20 and the 6 on these two
+	 * stats; the third is `RendEveryHits`.
+	 */
+	static const TCHAR* RendPercentStat;
+	static const TCHAR* RendSecondsStat;
+	static constexpr int32 RendEveryHits = 3;
+
+	/**
+	 * Count a landed melee hit of `Striker`'s on THIS character, and on every
+	 * third one remove the striker's share of this character's armour for the
+	 * striker's seconds.
+	 *
+	 * KEPT ON THE CHARACTER STRUCK and keyed by the striker, like `StruckBy`, so
+	 * each enemy counts each attacker apart and a sweep counts once on every
+	 * enemy it hits: a sweep is one blow per enemy. Only a striker holding the
+	 * stat is counted. The count has no time limit and outlives the removal.
+	 *
+	 * THE THIRD HIT IS NOT ITSELF REDUCED. This is called after the blow is
+	 * resolved, so the removal meets the fourth.
+	 *
+	 * IT REFRESHES AND DOES NOT STACK: a new removal starts the seconds again,
+	 * and the share is the larger of the running one and the new one, never the
+	 * two combined. Ruled 2026-09-24.
+	 *
+	 * CALLED FROM `UCataclysmVitalAttributeSet::PostGameplayEffectExecute` for a
+	 * melee blow that is not damage over time and was not evaded.
+	 */
+	void NoteLandedMeleeHitFrom(const UCataclysmAbilitySystemComponent* Striker);
+
+	/**
+	 * The share of this character's armour removed right now, 0 to 100, or 0
+	 * when none is. Read where armour reduces a blow, and by the heads-up
+	 * display. NOT A DEBUFF: no tag, so nothing that counts or copies debuffs
+	 * sees it.
+	 */
+	float ArmourRemovedPercentNow() const;
+
 	/** Whether a critical strike of `Striker`'s has got through to it. */
 	bool WasCriticallyStruckBy(const UAbilitySystemComponent* Striker) const;
 
@@ -2143,6 +2183,11 @@ protected:
 	 */
 	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, float> StruckBy;
 	TSet<TWeakObjectPtr<const UAbilitySystemComponent>> CriticallyStruckBy;
+
+	/** Rendering Blows: landed melee hits per striker, and the removal running. */
+	TMap<TWeakObjectPtr<const UAbilitySystemComponent>, int32> LandedMeleeHitsFrom;
+	float ArmourRemovedPercent = 0.0f;
+	float ArmourRemovedUntil = -1.0f;
 
 	/** When this character last used the skill in its Support slot, in world seconds; negative means never. */
 	float LastSupportSkillAtSeconds = -1.0f;

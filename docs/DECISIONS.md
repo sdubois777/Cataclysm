@@ -2,6 +2,151 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Rendering Blows, engine only: every third landed melee hit on one enemy removes a fifth of its armour for six seconds, shown under its bar
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.h` and `.cpp` (the
+count and the removal), `CataclysmVitalAttributeSet.cpp` (where a landed melee hit is counted),
+`CataclysmDamageCalculation.cpp` (where the removal is read),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (two stats with no attribute),
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` and `CataclysmHUD.h` and
+`.cpp` (the display), two test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ravager_capstone_50` option 1, Rendering Blows: "Every third melee attack against the same enemy
+removes 20% of its Armor for 6 seconds." Two stats with no attribute, which its row will carry:
+`third_melee_hit_armour_removed_percent` (20) and `third_melee_hit_armour_removed_seconds` (6). The
+third is a named constant, `RendEveryHits`. **Engine only**, for the reason the Shared Ruin entry
+gives: until the rows land, nothing grants it in play.
+
+### RULINGS, 2026-09-24, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **It refreshes and does not stack, and a sweep counts once per enemy.** A new removal starts its
+  six seconds again. The share is the larger of the running one and the new one, so two holders
+  leave an enemy at a fifth off, not more.
+- **R1, not a debuff.** The removal is state on the struck enemy, read where armour reduces a blow.
+  It carries no `Status.Debuff` tag and no `StatusEffects.csv` row. So **it does not count toward
+  any per-debuff total, such as the Masochist's, and `CopyDebuffsTo` does not copy it.** The
+  sentence does not call it a debuff, and the tagged route would have needed the design workbook,
+  which is with the enchantment session.
+- **It must be visible.** This is the owner's standing rule that every system ships with a basic
+  in-game display. While it lasts, the heads-up display writes "Armor -20%" under the enemy's
+  health bar, in the rarity name's ink and size. It needs no new widget: it is drawn on the same
+  canvas as the bars and names.
+- **R2, landed melee hits only.** An evaded swing, a tick of damage over time and a blow that is
+  not melee do not count, and an evaded swing neither advances the count nor resets it. A minion's
+  blow carries no melee tag, so it never counts, which is the owner's decision of 2026-09-17 that a
+  minion's hit is its own.
+- **R3, the third hit is not itself reduced.** The count is kept after the blow is resolved, so
+  the removal meets the fourth.
+- **R4, the count has no time limit** and outlives the removal. It is kept on the struck enemy, so
+  it goes when the enemy does.
+
+### HOW IT IS BUILT
+
+- **The count** is a map on the struck enemy's ability system, from the striker's ability system
+  to its landed melee hits. It is written in `UCataclysmVitalAttributeSet::PostGameplayEffectExecute`
+  beside `NoteMeleeHitTaken`, and only for a striker holding the share. A sweep is already one blow
+  per enemy (`UCataclysmSkillTemplate::HitTargets` calls `ApplyHit` for each), so counting on the
+  struck side is what makes it once per enemy.
+- **The removal** is a share and an end time on the same ability system,
+  `UCataclysmAbilitySystemComponent::ArmourRemovedPercentNow`. Step 3 of
+  `UCataclysmDamageCalculation::Resolve` multiplies the armour by what is left, beside the share
+  armour penetration ignores. Both multiply, so their order does not matter. **The Armor attribute
+  is never written**, so nothing has to be put back when the six seconds end.
+- **The display** is `UCataclysmCombatOverlay::ArmourRemovedTextFor`, which the heads-up display's
+  new `DrawArmourRemoved` draws under the bar. **Only the text is tested**: the automation tests run
+  with no renderer, so no test can see it drawn.
+- **It shows in normal play.** It is drawn when `Cataclysm.Overlay.OverheadBars` is on, and that
+  console variable defaults to 1, on (`CVarShowOverheadBars` in `CataclysmCombatOverlay.cpp`); no
+  configuration file or tool sets it. It does not wait for the health bar's own rule, which draws
+  only over a damaged creature, but an enemy whose armour is removed has been hit, so the two appear
+  together in practice.
+
+### THE GENRE
+
+Fetched on 2026-09-24:
+
+- **Path of Exile's Crushed** is a percentage of the damage REDUCTION: "Crushed lowers Physical
+  Damage Reduction by 15%" ([poedb.tw, Crushed](https://poedb.tw/us/Crushed)).
+- **Last Epoch's Armor Shred** is flat and stacks: it "Decreases the amount of Armor an enemy has
+  by 100, by default for each stack", "Each stack lasts 4 seconds", with "no cap on stacks"
+  ([maxroll.gg, damage explained](https://maxroll.gg/last-epoch/resources/damage-explained); the
+  Last Epoch wiki could not be fetched).
+
+**Neither is a percentage of armour.** The research settles only that a timed loss of armour on a
+struck enemy is an ordinary mechanic. The shape here, a fifth of the armour that refreshes and does
+not stack, is the node's own sentence and the ruling above, and is labelled as that.
+
+### TESTS
+
+- `Cataclysm.RenderingBlows.TheThirdMeleeHitRemovesAFifthOfTheArmour`: the first three blows take
+  what 1,000 armour lets through, and the fourth takes what a plain blow takes from an enemy with
+  800. The Armor attribute still reads 1,000, and the display reads "Armor -20%".
+- `Cataclysm.RenderingBlows.ItLastsSixSecondsRefreshesAndDoesNotStack`:
+  - Six seconds and a tenth after a removal, a blow meets the full 1,000 and the display is empty.
+  - A removal refreshed four seconds in still holds eight seconds after it began.
+  - A second holder's removal leaves the enemy at 800, not 640.
+- `Cataclysm.RenderingBlows.EachEnemyAndEachAttackerCountsApart`:
+  - A 360 degree strike on two enemies, three times, removes both enemies' armour.
+  - Two hits on one enemy and one on another remove nothing.
+  - A character without the option removes nothing.
+  - A blow that is not melee, a tick and an evaded swing do not count, and the evaded swing does
+    not reset the count.
+- Two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, one for each
+  stat.
+
+**The stats are given by hand**, so none of these can see a missing or wrong row. **When the rows
+land, that change must add a test that wears the real `Ravager_capstone_50` option 1 rows and sees
+armour fall.**
+
+### THE WINDOW, 2026-09-24, ON b902050c AND THEN 20e7464c
+
+**This change's C++ was compiled for the first time here, and it built. The whole suite failed one
+test, and the fault was in that test, not in the engine code.** No data row changed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on b902050c | `5420 passed, 8 skipped in 342.93s`; JUnit 5428 tests, 0 failures, 0 errors, 8 skipped |
+| Build, on b902050c | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2384 tests performed, 2383 succeeded, 1 failed: EachEnemyAndEachAttackerCountsApart` |
+| Build, on 20e7464c | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp` |
+| The group, `--prefix "Cataclysm.RenderingBlows."` | `3 tests performed, 3 succeeded, 0 failed` |
+
+- **The one failure** was "a blow that is not melee, a tick and an evaded swing do not count, so
+  two landed melee hits after them remove nothing", which read "Armor -20%". The test sent its tick
+  as a melee blow with the tick tag among the SKILL tags. `ApplyHit` marks a blow as damage over
+  time only from `Delivery.bIsDamageOverTime`, so that blow reached the struck side as an ordinary
+  landed melee hit, and the engine counted it, as ruled. Commit 20e7464c sends the tick through the
+  delivery, as `CataclysmAilmentTests.cpp` sends its own. Only the test file changed.
+- **The other two blows in that assertion were read in the code and already took the right
+  route**: a blow is melee only from the melee skill tag or the delivery, and an evade comes from
+  the defender's Evasion against a roll below 100. The failed run could not tell a counted tick
+  from a counted evade; the group run, which would fail again on a counted evade, passed.
+- **No second whole suite ran, by the coordinating session's ruling**: the whole suite had already
+  run on this engine code, and this test was its only failure.
+- **A continuous-integration compile overlapped the whole suite and was not its cause.** Plague
+  Convergence (#2084) merged during the window, and its Unreal run 36068773587 had its "Game
+  compiles" job from 22:40:49 to 22:42:34 UTC by GitHub's clock; the suite's tests ran from 22:37:40
+  to 22:43:30 by the engine log's. It had completed before the rebuild, and every proof began with
+  no Unreal run in progress.
+
+Three proofs with `prove_cpp_guard` on 20e7464c, prefix `Cataclysm.RenderingBlows.`, each anchor
+re-checked immediately before. Each restored run printed `3 tests performed, 3 succeeded, 0
+failed`. **Every one was registered before the window, test and assertion alike**, and the test fix
+did not change any of them.
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| the removal comes on every second hit (`RendEveryHits = 2`) | `3 tests performed, 0 succeeded, 3 failed` | "before anything is removed, a display says nothing"; "and so does the third, which is not itself reduced", 50.0 where 44.44; "and the display says nothing"; "two hits on one enemy and one on another remove nothing from the first"; "a blow that is not melee, a tick and an evaded swing do not count, so two landed melee hits after them remove nothing" |
+| a removal while one runs adds its share | `3 tests performed, 2 succeeded, 1 failed: ItLastsSixSecondsRefreshesAndDoesNotStack` | "eight seconds after it was removed, the refreshed removal still holds: a blow meets 800", 57.14 where 50.0; "a second holder's removal leaves it at 800, not 640", 66.67 where 50.0; "and the display still says a fifth", "Armor -60%" |
+| the armour step ignores the removal | `3 tests performed, 1 succeeded, 2 failed: ItLastsSixSecondsRefreshesAndDoesNotStack, TheThirdMeleeHitRemovesAFifthOfTheArmour` | "... a blow meets 800", 44.44 where 50.0; "a second holder's removal leaves it at 800, not 640", 44.44 where 50.0; "the fourth takes what 800 armour lets through", 44.44 where 50.0 |
+
+---
+
 ## 2026-09-24 — Plague Convergence: two minutes into a floor, waves of the floor's own creatures come from the far edge, and their blows carry a disease that doubles per stack
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

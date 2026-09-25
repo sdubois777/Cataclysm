@@ -1481,6 +1481,20 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				{
 					Cataclysm->NoteMeleeHitTaken(!Outcome.bEvaded);
 				}
+
+				// AND A LANDED MELEE HIT COUNTS TOWARD RENDING BLOWS. Issue
+				// #1515. Landed only: an evaded swing neither advances the count
+				// nor resets it, and a tick is not an attack. A minion's blow
+				// carries no melee tag, so it never counts. After the blow is
+				// resolved, so the third hit is not itself reduced.
+				if (Hit.bIsMelee && !Hit.bIsDamageOverTime && !Outcome.bEvaded)
+				{
+					Cataclysm->NoteLandedMeleeHitFrom(
+						Cast<UCataclysmAbilitySystemComponent>(
+							UCataclysmTargeting::AbilitySystemOf(
+								UCataclysmCombatEvents::AttackerOf(
+									Data.EffectSpec.GetContext()))));
+				}
 			}
 
 			// AND ANY HIT THAT REACHED THE CHARACTER BUILDS A STACK. Issue

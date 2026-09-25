@@ -2477,6 +2477,56 @@ float UCataclysmAbilitySystemComponent::SecondsSinceStruckABoss() const
 	return FMath::Max(0.0f, World->GetTimeSeconds() - LastStruckABossAtSeconds);
 }
 
+const TCHAR* UCataclysmAbilitySystemComponent::RendPercentStat =
+	TEXT("third_melee_hit_armour_removed_percent");
+const TCHAR* UCataclysmAbilitySystemComponent::RendSecondsStat =
+	TEXT("third_melee_hit_armour_removed_seconds");
+
+void UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom(
+	const UCataclysmAbilitySystemComponent* Striker)
+{
+	if (!Striker || Striker == this)
+	{
+		return;
+	}
+	const float Percent =
+		Striker->StatForSkill(FName(RendPercentStat), FGameplayTagContainer(), 0.0f);
+	if (Percent <= 0.0f)
+	{
+		return;
+	}
+
+	int32& Count = LandedMeleeHitsFrom.FindOrAdd(Striker);
+	++Count;
+	if (Count < RendEveryHits)
+	{
+		return;
+	}
+	Count = 0;
+
+	const float Seconds =
+		Striker->StatForSkill(FName(RendSecondsStat), FGameplayTagContainer(), 0.0f);
+	const UWorld* World = GetWorld();
+	if (Seconds <= 0.0f || !World)
+	{
+		return;
+	}
+	const float Now = World->GetTimeSeconds();
+	const bool bRunning = Now < ArmourRemovedUntil;
+	ArmourRemovedPercent = bRunning ? FMath::Max(ArmourRemovedPercent, Percent) : Percent;
+	ArmourRemovedUntil = Now + Seconds;
+}
+
+float UCataclysmAbilitySystemComponent::ArmourRemovedPercentNow() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || World->GetTimeSeconds() >= ArmourRemovedUntil)
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(ArmourRemovedPercent, 0.0f, 100.0f);
+}
+
 void UCataclysmAbilitySystemComponent::NoteStruckBy(
 	const UAbilitySystemComponent* Striker, bool bCritical)
 {

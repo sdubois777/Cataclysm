@@ -663,9 +663,18 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 		// THE ONE STEP THAT ASKS ABOUT THE HIT... Every other step passes
 		// nothing." That sentence is now out of date by one step, and its
 		// comment is corrected in this change rather than left to mislead.
+		// AND RENDING BLOWS' SHARE, WHILE IT RUNS. Issue #1515. Read here rather
+		// than written onto the attribute, so nothing has to be put back when it
+		// ends. Both it and the ignored share multiply, so their order does not
+		// matter.
+		const UCataclysmAbilitySystemComponent* Rended =
+			Cast<UCataclysmAbilitySystemComponent>(Defender);
+		const float Removed = Rended ? Rended->ArmourRemovedPercentNow() : 0.0f;
+
 		const float Armor =
 			DefenderStat(Defender, TEXT("armor"), Combat->GetArmor(), BlowOf(Hit))
-			* (1.0f - Ignored / 100.0f);
+			* (1.0f - Ignored / 100.0f)
+			* (1.0f - Removed / 100.0f);
 		Damage *= 1.0f - ArmorReduction(Armor, Tier) / 100.0f;
 	}
 
