@@ -13,9 +13,8 @@ bookkeeping, the panel line); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one new check, and the damage multiplier check given
 the sixth key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -122,10 +121,33 @@ One new Python check: the row still says "a divine timer per floor", "before the
 damage and resistances". The damage multiplier check now also requires the trial's setter to write its own
 distinct key.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development 25b5c35d as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on 17154569: "Build: Succeeded - 30 actions, 27 files compiled"; "2525 tests performed,
+  2525 succeeded, 0 failed", every declared test reported (2525 declared, gap 0).
+- **On the head**, 17154569: `Cataclysm.DungeonModifierEffects.` 329 performed, 329 succeeded.
+- **On the base**, 25b5c35d: `Cataclysm.DungeonModifierEffects.` 323 performed, 323 succeeded.
+- **The Python suite of record**, on 461c15fa, whose tree is the head's: 5,486 passed and 8 skipped of 5,494,
+  0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **The clock never runs out** (`if (false && Effects::TrialOfEnduranceHasRunOut(TrialSeconds))`), on the
+  prefix `Cataclysm.DungeonModifierEffects.TheTrialOfEndurancesClock`. With the break in, 1 failed, on "on the
+  beat that reaches three hundred seconds it has run out" alone.
+- **A creature's resistance written as it was, not doubled** (`Fresh.Applied = Base;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.WhenTheTrialOfEnduranceRunsOut`. Registered as exactly 1 + M + 3 failing
+  assertions, M read from the run's own line; that run printed "223 creatures, 94 with resistance of their
+  own", and 98 failed: "and holds twice its own all-resistance" 94 times, and "and holds twice its own
+  all-resistance, 50 for 25", "the creature given 23 holds 46 once the trial ran out", "after a recompute,
+  twice its own resistance again" and "and still twice, beats later" once each.
+- **The floor never found cleared** (`if (false && FloorIsCleared())` in the trial's step), on the prefix
+  `Cataclysm.DungeonModifierEffects.AFloorClearedInTime`. With the break in, 1 failed, on "cleared in time",
+  "the panel", "it never runs out" and "and the late arrival deals its own damage".
 
 ---
 
