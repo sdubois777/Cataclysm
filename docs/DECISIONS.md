@@ -138,8 +138,11 @@ value:**
   most once per flyover, and the row lands one every thirty seconds on top of the floor's own fights.
 - **The player only.** The row names no creature. The two rows that hit creatures say so: Artillery
   Strike's "Enemies and players can be hit", and Divine Wrath's "These beams destroy enemies in their
-  path". A line across the whole floor that struck creatures would clear packs for nothing. The player's
-  minions are on the player's side and are not struck either: only a player character is.
+  path". A line across the whole floor that struck creatures would clear packs for nothing.
+- **A judgement, confirmed by the coordinating session under the owner's delegation: "the player only"
+  excludes the player's minions too.** The ruling contrasted this row with rows that name creatures, and
+  a minion is a creature. The hazard source's enemies are the player's side, minions included, so only
+  a player character is struck.
 - **"Pierce terrain" needed nothing built.** No area damage in this game checks line of sight: neither
   `ACataclysmGroundZone`'s sweep nor `UCataclysmTargeting` traces against walls, so a wall between a
   player and a feather protects nothing. **These feathers are the stated exception** to the 2026-08-09
