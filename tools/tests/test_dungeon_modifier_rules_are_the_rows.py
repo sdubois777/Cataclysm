@@ -4154,3 +4154,23 @@ def test_pestilent_empowerment_row_still_strengthens_later_floors_until_its_beac
         assert phrase in lower, (
             f"Pestilence_Pestilent_Empowerment no longer says {phrase.upper()!r}. A reading of the rule "
             "rests on it; see PestilentEmpowermentKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_infested_veins_row_still_poisons_the_ground_grows_back_and_calls_guardians():
+    """The phrases the rule's readings rest on.
+
+    "Living tunnels and walls pulsate with veins of infectious growths that create a toxic environment.
+    Players can choose to destroy these veins to temporarily cleanse the area, but destroying too much
+    summons toxic "guardians" from the infection." TUNNELS AND WALLS is why veins stand beside walls;
+    TOXIC ENVIRONMENT is the zone that burns; DESTROY THESE VEINS is why each is a creature to kill;
+    TEMPORARILY CLEANSE is why a vein grows back; DESTROYING TOO MUCH and GUARDIANS are the threshold and
+    what it calls. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Infested_Veins"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("tunnels and walls", "toxic environment", "destroy these veins", "temporarily cleanse",
+                   "destroying too much", "guardians"):
+        assert phrase in lower, (
+            f"Pestilence_Infested_Veins no longer says {phrase.upper()!r}. A reading of the rule rests on "
+            "it; see InfestedVeinsKey in CataclysmDungeonModifierEffects.h. " + words)

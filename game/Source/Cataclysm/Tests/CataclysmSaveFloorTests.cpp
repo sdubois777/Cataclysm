@@ -18,6 +18,7 @@
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
+#include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
 #include "Engine/World.h"
@@ -1051,6 +1052,27 @@ bool FCataclysmSaveBeaconClaimsNothing::RunTest(const FString&)
 {
 	const ACataclysmBeaconCharacter* Default = GetDefault<ACataclysmBeaconCharacter>();
 	if (!TestNotNull(TEXT("a beacon class"), Default))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it names no archetype row, as the dummy names none"), Default->ArchetypeRow.IsNone());
+	TestTrue(TEXT("the empty name is the training dummy's"),
+		FCataclysmSaveApply::ClassForArchetype(NAME_None) == ACataclysmEnemyCharacter::StaticClass());
+	return true;
+}
+
+/**
+ * An infested vein names no archetype row and is not mapped to one either: the save system skips every
+ * floor source, so the empty name stays the sandbox training dummy's. Issues #1820 and #41.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveVeinClaimsNothing,
+	"Cataclysm.SaveApply.AVeinDoesNotTakeTheTrainingDummysEmptyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveVeinClaimsNothing::RunTest(const FString&)
+{
+	const ACataclysmVeinCharacter* Default = GetDefault<ACataclysmVeinCharacter>();
+	if (!TestNotNull(TEXT("a vein class"), Default))
 	{
 		return false;
 	}

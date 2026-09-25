@@ -531,6 +531,12 @@ public:
 	static FString BeaconTextFor(const AActor* Actor);
 
 	/**
+	 * "Vein" under the health bar of a living infested vein, or empty. Issues #1820 and #41. Beside the other
+	 * floor sources' words, for their reason: it says what the creature is.
+	 */
+	static FString VeinTextFor(const AActor* Actor);
+
+	/**
 	 * What is said under a creature's health bar while stacks placed on it cut
 	 * its damage, such as "Damage -15%", or empty while nothing does. Issue
 	 * #1833, phase 2: "Each melee hit you take reduces the attacker's damage".

@@ -2012,6 +2012,33 @@ public:
 	static const TCHAR* PestilentEmpowermentKey;
 
 	/**
+	 * The row where veins in the walls poison the ground around them, grow back when destroyed, and
+	 * summon guardians when too many are destroyed. Issues #1820 and #41.
+	 *
+	 * "Living tunnels and walls pulsate with veins of infectious growths that create a toxic
+	 * environment. Players can choose to destroy these veins to temporarily cleanse the area, but
+	 * destroying too much summons toxic "guardians" from the infection."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - `InfestedVeinsPerFloor` VEINS A FLOOR, on floor cells beside a wall -- at least one of the four
+	 *   neighbours not floor -- at least `EternalChorusApartCm` from the entrance and from each other;
+	 *   ONE on a Horde arena, kept. A floor with fewer such cells has fewer veins.
+	 * - EACH IS A VEIN THE PLAYER DESTROYS, `ACataclysmVeinCharacter`: a creature with no brain, attack or
+	 *   ability, with the Imp's health, saying "Vein" under its bar, paying nothing, raised by the rule
+	 *   and not one of the floor's creatures.
+	 * - AROUND EACH LIVING VEIN, a visible zone `InfestedVeinsRadiusCm` across the radius where the player
+	 *   loses `InfestedVeinsPercentPerSecond` of maximum health a second. The player only.
+	 * - "TEMPORARILY CLEANSE": destroying a vein takes its zone away, and a new vein grows on the same
+	 *   cell `InfestedVeinsRegrowSeconds` later, at full health and with its zone.
+	 * - "DESTROYING TOO MUCH": the `InfestedVeinsDestroyedBeforeGuardians`-th vein destroyed on a floor --
+	 *   regrown ones counted -- summons `InfestedVeinsGuardians` creatures of the floor's own kinds at the
+	 *   Elite rung beside it, ONCE a floor, or once an arena on a Horde floor. They pay and are the
+	 *   floor's creatures.
+	 */
+	static const TCHAR* InfestedVeinsKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4404,6 +4431,26 @@ public:
 	static constexpr float PestilentEmpowermentPercentPerBeacon = 10.0f;
 	static constexpr float PestilentEmpowermentMostPercent = 100.0f;
 
+	/**
+	 * Infested Veins' figures, every one a play-test value. See the key. The burn is Singularity Wells'
+	 * 1% a second, which Necrotic Ground and the Harbingers' trail share; the guardians' rung is the
+	 * Elite rung Royal Guard's constant names.
+	 */
+	static constexpr int32 InfestedVeinsPerFloor = 3;
+	static constexpr int32 InfestedVeinsPerHordeArena = 1;
+	static constexpr float InfestedVeinsRadiusCm = 600.0f;
+	static constexpr float InfestedVeinsPercentPerSecond = SingularityWellsPercentPerSecond;
+	static constexpr float InfestedVeinsRegrowSeconds = 60.0f;
+	static constexpr int32 InfestedVeinsDestroyedBeforeGuardians = 3;
+	static constexpr int32 InfestedVeinsGuardians = 2;
+	static constexpr int32 InfestedVeinsGuardianRung = RoyalGuardLowestRungThatSummons;
+
+	static_assert(
+		InfestedVeinsPerFloor > 0 && InfestedVeinsPerHordeArena > 0 && InfestedVeinsRadiusCm > 0.0f
+			&& InfestedVeinsPercentPerSecond > 0.0f && InfestedVeinsRegrowSeconds > 0.0f
+			&& InfestedVeinsDestroyedBeforeGuardians > 1 && InfestedVeinsGuardians > 0,
+		"A vein that hurt nothing or never grew back, or guardians on the first vein, is not the row.");
+
 	static_assert(
 		PestilentEmpowermentBeaconsPerFloor > 0 && PestilentEmpowermentBeaconsPerHordeArena > 0
 			&& PestilentEmpowermentPercentPerBeacon > 0.0f
@@ -4932,6 +4979,18 @@ public:
 	 * not compounded, capped at `PestilentEmpowermentMostPercent`. 1.0 for none.
 	 */
 	static float PestilentEmpowermentDamageMultiplier(int32 BeaconsLeftStanding);
+
+	/** What a second in a living vein's zone costs a player with this maximum health. */
+	static float InfestedVeinsBurn(float MaximumHealth);
+
+	/** Whether a destroyed vein has been gone long enough to grow back. */
+	static bool InfestedVeinRegrowIsDue(float SecondsSinceDestroyed);
+
+	/**
+	 * Whether the guardians come now: this many veins destroyed on the floor, and none have come yet.
+	 * THE COUNT FIRST, AND ONCE: the guardians come at the threshold and never again that floor.
+	 */
+	static bool InfestedVeinsGuardiansAreDue(int32 VeinsDestroyed, bool bGuardiansCame);
 
 	/**
 	 * What the creatures of the wave after this many waves are placed with, as a

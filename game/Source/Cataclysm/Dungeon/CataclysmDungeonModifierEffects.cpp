@@ -161,6 +161,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::GoldenSpiresKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 	TEXT("Pestilence_Pestilent_Empowerment");
 
+const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
+	TEXT("Pestilence_Infested_Veins");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -453,7 +456,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(EternalChorusKey)
 		|| RowKey == FName(NecroticBloomKey)
 		|| RowKey == FName(GoldenSpiresKey)
-		|| RowKey == FName(PestilentEmpowermentKey))
+		|| RowKey == FName(PestilentEmpowermentKey)
+		|| RowKey == FName(InfestedVeinsKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -646,6 +650,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(NecroticBloomKey),
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
+		FName(InfestedVeinsKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1712,6 +1717,21 @@ float UCataclysmDungeonModifierEffects::PestilentEmpowermentDamageMultiplier(int
 		static_cast<float>(FMath::Max(0, BeaconsLeftStanding)) * PestilentEmpowermentPercentPerBeacon;
 	const float Percent = FMath::Min(Summed, PestilentEmpowermentMostPercent);
 	return 1.0f + Percent / 100.0f;
+}
+
+float UCataclysmDungeonModifierEffects::InfestedVeinsBurn(float MaximumHealth)
+{
+	return MaximumHealth > 0.0f ? MaximumHealth * InfestedVeinsPercentPerSecond / 100.0f : 0.0f;
+}
+
+bool UCataclysmDungeonModifierEffects::InfestedVeinRegrowIsDue(float SecondsSinceDestroyed)
+{
+	return SecondsSinceDestroyed >= InfestedVeinsRegrowSeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::InfestedVeinsGuardiansAreDue(int32 VeinsDestroyed, bool bGuardiansCame)
+{
+	return VeinsDestroyed >= InfestedVeinsDestroyedBeforeGuardians && !bGuardiansCame;
 }
 
 int32 UCataclysmDungeonModifierEffects::GraveTideCreaturesInWave(int32 WavesSoFar)

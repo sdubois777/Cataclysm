@@ -2009,6 +2009,32 @@ public:
 	 */
 	static TArray<FIntPoint> EternalChorusCells(const ACataclysmDungeonFloor& Floor, int32 Count);
 
+	/**
+	 * Whether `Cell` is a floor cell beside a wall: at least one of its four neighbours is not floor,
+	 * a neighbour off the plan counting as not floor. Infested Veins' veins stand only on such cells.
+	 * Issues #1820 and #41.
+	 */
+	static bool InfestedVeinsCellIsBesideAWall(const FCataclysmFloorPlan& Plan, FIntPoint Cell);
+
+	/**
+	 * Where a floor's veins stand: `EternalChorusCells`' rule, among floor cells beside a wall only.
+	 * Fewer when the floor has no more room. Issues #1820 and #41.
+	 */
+	static TArray<FIntPoint> InfestedVeinsCells(const ACataclysmDungeonFloor& Floor, int32 Count);
+
+	/** Infested Veins, for the panel and tests: the veins standing now. */
+	TArray<ACataclysmEnemyCharacter*> InfestedVeinsStanding() const;
+
+	/** Infested Veins, for tests: the zone drawn around `Vein`, or null. */
+	class ACataclysmGroundZone* InfestedVeinZoneOf(const ACataclysmEnemyCharacter* Vein) const;
+
+	/** Infested Veins, for the panel and tests: veins destroyed on this floor, and whether the guardians came. */
+	int32 InfestedVeinsDestroyedHere() const { return InfestedVeinsDestroyed; }
+	bool InfestedVeinsGuardiansCame() const { return bInfestedVeinsGuardiansCame; }
+
+	/** The health a vein is given: the Imp's at Common, 87, as the other floor sources have. A play-test value. */
+	float InfestedVeinHealth() const { return ImpHealth; }
+
 	/** Necrotic Bloom, for the panel and tests: the flowers still standing. */
 	TArray<ACataclysmEnemyCharacter*> NecroticBloomFlowersNow() const;
 
@@ -2198,6 +2224,29 @@ private:
 
 	/** Pestilent Empowerment, on the beat: every creature's multiplier for the count carried to this floor. */
 	void StepPestilentEmpowerment(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * The cells `EternalChorusCells` and `InfestedVeinsCells` share: every floor cell at least
+	 * `EternalChorusApartCm` from the entrance -- beside a wall as well when asked -- in an even shuffle,
+	 * then the first that are that far from every one already taken.
+	 */
+	static TArray<FIntPoint> FloorSourceCells(const ACataclysmDungeonFloor& Floor, int32 Count, bool bBesideAWallOnly);
+
+	/** Infested Veins: this arena's veins, placed where a new arena is populated, and its count reset. */
+	void PlaceTheVeins();
+
+	/** Every vein and its zone destroyed and forgotten. */
+	void ForgetTheVeins();
+
+	/** One vein on `Cell`: a floor source raised by the rule. Null when it could not be spawned. */
+	ACataclysmEnemyCharacter* SpawnAVeinOn(FIntPoint Cell);
+
+	/**
+	 * Infested Veins, on the beat: each living vein's zone kept drawn, a destroyed vein counted and grown
+	 * back, the guardians once, and the burn once a second for a player in a living vein's zone.
+	 */
+	void StepInfestedVeins(class ACataclysmPlayerCharacter* Player,
+						   class UCataclysmAbilitySystemComponent* AbilitySystem);
 
 	/**
 	 * Golden Spires, on the beat: a zone kept drawn around each living spire, and every creature's
@@ -3191,6 +3240,23 @@ private:
 	TArray<FPlagueBeacon> PlagueBeacons;
 	int32 PestilentBeaconsLeftStanding = 0;
 	int32 PestilentPanelStanding = -1;
+
+	/** Infested Veins: one vein's cell, the vein, its zone, and the seconds since it was destroyed (-1 alive). */
+	struct FInfestedVein
+	{
+		FIntPoint Cell = FIntPoint(-1, -1);
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Vein;
+		TWeakObjectPtr<class ACataclysmGroundZone> Zone;
+		float SecondsSinceDestroyed = -1.0f;
+	};
+
+	/** Infested Veins: this arena's veins, its destroyed count, whether the guardians came, the burn clock. */
+	TArray<FInfestedVein> InfestedVeins;
+	int32 InfestedVeinsDestroyed = 0;
+	bool bInfestedVeinsGuardiansCame = false;
+	float InfestedVeinsSecondsSinceBurn = 0.0f;
+	int32 InfestedVeinsPanelStanding = -1;
+	int32 InfestedVeinsPanelDestroyed = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

@@ -32,6 +32,7 @@
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
+#include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmEnemyRarity.h"
@@ -28652,6 +28653,372 @@ bool FCataclysmBeaconsHordeTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("and not again at the next"), Mode->PlagueBeaconsLeftStanding(), Before + 1);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Infested_Veins. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName VeinsRow(UCataclysmDungeonModifierEffects::InfestedVeinsKey);
+
+	/** A dungeon carrying only Infested Veins, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AVeinFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {VeinsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+}
+
+// THE FIGURES: ONE PERCENT A SECOND, BACK AFTER SIXTY SECONDS, AND THE GUARDIANS AT THE THIRD, ONCE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeinsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.InfestedVeinsBurnOnePercentGrowBackAndCallGuardiansOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVeinsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("three veins a floor"), Effects::InfestedVeinsPerFloor, 3);
+	TestEqual(TEXT("one on a Horde arena"), Effects::InfestedVeinsPerHordeArena, 1);
+	TestEqual(TEXT("a zone six metres across the radius"), Effects::InfestedVeinsRadiusCm, 600.0f, 0.01f);
+	TestEqual(TEXT("sixty seconds to grow back"), Effects::InfestedVeinsRegrowSeconds, 60.0f, 0.01f);
+	TestEqual(TEXT("the third destroyed calls them"), Effects::InfestedVeinsDestroyedBeforeGuardians, 3);
+	TestEqual(TEXT("two guardians"), Effects::InfestedVeinsGuardians, 2);
+	TestEqual(TEXT("at the Elite rung"), Effects::InfestedVeinsGuardianRung, Effects::RoyalGuardLowestRungThatSummons);
+
+	TestEqual(TEXT("a second in the zone costs 1% of maximum health"), Effects::InfestedVeinsBurn(1000.0f), 10.0f, 0.001f);
+	TestEqual(TEXT("nothing with no maximum"), Effects::InfestedVeinsBurn(0.0f), 0.0f, 0.001f);
+	TestFalse(TEXT("59.75 seconds is not long enough to grow back"), Effects::InfestedVeinRegrowIsDue(59.75f));
+	TestTrue(TEXT("60 is"), Effects::InfestedVeinRegrowIsDue(60.0f));
+	TestFalse(TEXT("two destroyed: no guardians"), Effects::InfestedVeinsGuardiansAreDue(2, false));
+	TestTrue(TEXT("three: the guardians"), Effects::InfestedVeinsGuardiansAreDue(3, false));
+	TestFalse(TEXT("three, once they have come: not again"), Effects::InfestedVeinsGuardiansAreDue(3, true));
+	TestFalse(TEXT("five, once they have come: not again"), Effects::InfestedVeinsGuardiansAreDue(5, true));
+	return true;
+}
+
+// A FLOOR CELL IS BESIDE A WALL WHEN ANY OF ITS FOUR NEIGHBOURS IS NOT FLOOR, THE EDGE OF THE PLAN INCLUDED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeinsBesideAWallTest,
+	"Cataclysm.DungeonModifierEffects.AnInfestedVeinStandsOnlyOnAFloorCellBesideAWall",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVeinsBesideAWallTest::RunTest(const FString& Parameters)
+{
+	// A FIVE BY FIVE PLAN OF SOLID ROCK, WITH A THREE BY THREE ROOM IN THE MIDDLE AND ONE CELL CUT TO ITS EDGE:
+	//   . . . . .
+	//   . # # # .
+	//   # # # # .      (2 is the middle row; (0, 2) reaches the plan's left edge)
+	//   . # # # .
+	//   . . . . .
+	FCataclysmFloorPlan Plan;
+	Plan.Reset(5, 5);
+	for (int32 Y = 1; Y <= 3; ++Y)
+	{
+		for (int32 X = 1; X <= 3; ++X)
+		{
+			Plan.Carve(FIntPoint(X, Y));
+		}
+	}
+	Plan.Carve(FIntPoint(0, 2));
+	if (!TestFalse(TEXT("the corner is rock"), Plan.IsFloor(FIntPoint(4, 4))))
+	{
+		return false;
+	}
+
+	TestFalse(TEXT("the room's middle, floor on all four sides, is not beside a wall"),
+			  ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(Plan, FIntPoint(2, 2)));
+	TestFalse(TEXT("nor is the room's left middle, whose left neighbour was cut"),
+			  ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(Plan, FIntPoint(1, 2)));
+	TestTrue(TEXT("the room's corner is"), ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(Plan, FIntPoint(1, 1)));
+	TestTrue(TEXT("the room's right middle is"), ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(Plan, FIntPoint(3, 2)));
+	TestTrue(TEXT("the cut cell on the plan's edge is, the edge counting as wall"),
+			 ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(Plan, FIntPoint(0, 2)));
+	TestFalse(TEXT("rock is never a place for a vein"), ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(Plan, FIntPoint(4, 4)));
+	TestFalse(TEXT("nor is a cell off the plan"), ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(Plan, FIntPoint(7, 7)));
+	return true;
+}
+
+// THREE VEINS ON A FLOOR, BESIDE WALLS, EACH A CREATURE THAT DOES NOTHING, SAYS "VEIN", PAYS NOTHING AND HAS ITS
+// ZONE; ONE ON A HORDE ARENA, KEPT BY ITS NEXT WAVE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeinsPlacedTest,
+	"Cataclysm.DungeonModifierEffects.InfestedVeinsPlacesThreeVeinsBesideWalls",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVeinsPlacedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AVeinFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+
+	const TArray<ACataclysmEnemyCharacter*> Veins = Mode->InfestedVeinsStanding();
+	if (!TestEqual(TEXT("three veins on the floor"), Veins.Num(), Effects::InfestedVeinsPerFloor))
+	{
+		return false;
+	}
+	for (ACataclysmEnemyCharacter* Vein : Veins)
+	{
+		TestTrue(TEXT("a vein"), Vein->IsA<ACataclysmVeinCharacter>());
+		TestNull(TEXT("with no brain"), Vein->GetController());
+		TestTrue(TEXT("with no ability"), Vein->EnemyAbilities().IsEmpty());
+		TestTrue(TEXT("that pays nothing"), !Vein->PaysForItsDeath());
+		TestTrue(TEXT("raised by the rule"), Vein->bRaisedByARule);
+		TestFalse(TEXT("and not one of the floor's creatures"), Mode->FloorEnemies.Contains(Vein));
+		TestEqual(TEXT("\"Vein\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Vein), FString(TEXT("Vein")));
+		TestEqual(TEXT("at full health"), HealthOf(Vein), MaxHealthOf(Vein), 0.5f);
+		TestEqual(TEXT("which is the Imp's"), MaxHealthOf(Vein), Mode->InfestedVeinHealth(), 0.5f);
+		TestTrue(TEXT("on a floor cell beside a wall"), ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(
+			Floor.GetPlan(), Floor.CellOfWorld(Vein->GetActorLocation())));
+		TestTrue(TEXT("far enough from the entrance"),
+				 FVector::Dist2D(Vein->GetActorLocation(), Floor.EntranceWorld()) >= Effects::EternalChorusApartCm - 1.0f);
+	}
+	for (int32 First = 0; First < Veins.Num(); ++First)
+	{
+		for (int32 Second = First + 1; Second < Veins.Num(); ++Second)
+		{
+			TestTrue(TEXT("and from each other"), FVector::Dist2D(Veins[First]->GetActorLocation(),
+				Veins[Second]->GetActorLocation()) >= Effects::EternalChorusApartCm - 1.0f);
+		}
+	}
+
+	// EACH HAS ITS ZONE FROM THE FIRST BEAT.
+	Beat(Mode, 1);
+	TestEqual(TEXT("three zones in the world"), ZonesOnTheFloor(World), 3);
+	for (ACataclysmEnemyCharacter* Vein : Veins)
+	{
+		ACataclysmGroundZone* Zone = Mode->InfestedVeinZoneOf(Vein);
+		if (TestNotNull(TEXT("a zone for each vein"), Zone))
+		{
+			TestTrue(TEXT("around it"), Zone->Covers(Vein->GetActorLocation()));
+			TestFalse(TEXT("and no further than 600 cm"),
+					  Zone->Covers(Vein->GetActorLocation() + FVector(Effects::InfestedVeinsRadiusCm + 50.0f, 0.0f, 0.0f)));
+		}
+	}
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(VeinsRow),
+			  FString(TEXT("infested veins: 3 standing; 0 destroyed of 3 before the guardians come")));
+
+	// A HORDE ARENA HAS ONE, AND ITS NEXT WAVE KEEPS IT AND DRAWS ITS ZONE AGAIN. Floor 1 is a Horde dungeon's one
+	// new arena, as Eternal Chorus's test explains.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> Horde = Mode->InfestedVeinsStanding();
+	if (!TestEqual(TEXT("one vein in a Horde arena"), Horde.Num(), Effects::InfestedVeinsPerHordeArena))
+	{
+		return false;
+	}
+	if (!TestTrue(TEXT("the next wave was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const TArray<ACataclysmEnemyCharacter*> NextWave = Mode->InfestedVeinsStanding();
+	TestTrue(TEXT("the next wave keeps the same one vein"), NextWave.Num() == 1 && NextWave[0] == Horde[0]);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("with its zone drawn again"), Mode->InfestedVeinZoneOf(Horde[0]));
+	return true;
+}
+
+// A LIVING VEIN'S ZONE COSTS THE PLAYER 1% OF MAXIMUM HEALTH A SECOND; DESTROYING THE VEIN TAKES THE ZONE AWAY AND
+// PAYS NOTHING; SIXTY SECONDS LATER A NEW VEIN STANDS ON THE SAME CELL, AT FULL HEALTH, WITH ITS ZONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeinsBurnTest,
+	"Cataclysm.DungeonModifierEffects.AnInfestedVeinsGroundBurnsThePlayerAndItGrowsBackAfterSixtySeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVeinsBurnTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AVeinFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+	const TArray<ACataclysmEnemyCharacter*> Veins = Mode->InfestedVeinsStanding();
+	if (!TestEqual(TEXT("three veins"), Veins.Num(), 3))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* First = Veins[0];
+	const FIntPoint FirstCell = Floor.CellOfWorld(First->GetActorLocation());
+	const float Z = Player.Character->GetActorLocation().Z;
+
+	// OUT OF EVERY ZONE, ON THE ENTRANCE: NOTHING.
+	const FVector Entrance = Floor.EntranceWorld();
+	Player.Character->SetActorLocation(FVector(Entrance.X, Entrance.Y, Z));
+	const float Before = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	TestTrue(TEXT("nothing lost out of every zone"), HealthOf(Player.Character) >= Before - 0.01f);
+
+	// IN THE FIRST VEIN'S ZONE FOR TWO SECONDS: SOMETHING LOST, AND NO MORE THAN TWO SECONDS' WORTH.
+	const FVector Near = First->GetActorLocation() + FVector(0.5f * Effects::InfestedVeinsRadiusCm, 0.0f, 0.0f);
+	Player.Character->SetActorLocation(FVector(Near.X, Near.Y, Z));
+	const float InZone = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	const float Lost = InZone - HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("the zone burns the player (%.1f lost)"), Lost), Lost > 0.0f);
+	TestTrue(FString::Printf(TEXT("at 1%% of maximum a second, and no more (%.1f lost)"), Lost),
+			 Lost <= 2.0f * Effects::InfestedVeinsBurn(HealthForTypedDamage) + 0.5f);
+
+	// DESTROYING THE VEIN: ITS ZONE GOES, IT PAYS NOTHING, AND THE SAME PLACE NO LONGER BURNS.
+	if (!DestroyTheBeacon(*this, Player, First))
+	{
+		return false;
+	}
+	TestFalse(TEXT("the vein paid nothing"), First->PaysForItsDeath());
+	Beat(Mode, 1);
+	TestEqual(TEXT("two veins stand"), Mode->InfestedVeinsStanding().Num(), 2);
+	TestEqual(TEXT("two zones are left"), ZonesOnTheFloor(World), 2);
+	TestEqual(TEXT("one destroyed"), Mode->InfestedVeinsDestroyedHere(), 1);
+	const float Cleansed = HealthOf(Player.Character);
+	Beat(Mode, BeatsFor(2.0f));
+	TestTrue(TEXT("where its zone was, nothing is lost"), HealthOf(Player.Character) >= Cleansed - 0.01f);
+
+	// SIXTY SECONDS AFTER: A NEW VEIN ON THE SAME CELL, AT FULL HEALTH, AND ITS ZONE.
+	Beat(Mode, BeatsFor(Effects::InfestedVeinsRegrowSeconds));
+	const TArray<ACataclysmEnemyCharacter*> Regrown = Mode->InfestedVeinsStanding();
+	if (!TestEqual(TEXT("three veins stand again"), Regrown.Num(), 3))
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* Back = nullptr;
+	for (ACataclysmEnemyCharacter* Vein : Regrown)
+	{
+		if (Floor.CellOfWorld(Vein->GetActorLocation()) == FirstCell)
+		{
+			Back = Vein;
+		}
+	}
+	if (!TestNotNull(TEXT("one of them on the destroyed vein's cell"), Back))
+	{
+		return false;
+	}
+	TestTrue(TEXT("a new vein, not the destroyed one"), Back != First);
+	TestEqual(TEXT("at full health"), HealthOf(Back), MaxHealthOf(Back), 0.5f);
+	Beat(Mode, 1);
+	TestNotNull(TEXT("with its zone"), Mode->InfestedVeinZoneOf(Back));
+	TestEqual(TEXT("three zones again"), ZonesOnTheFloor(World), 3);
+	TestEqual(TEXT("the destroyed count stays"), Mode->InfestedVeinsDestroyedHere(), 1);
+	return true;
+}
+
+// THE THIRD VEIN DESTROYED ON A FLOOR CALLS TWO ELITE GUARDIANS OF THE FLOOR'S KINDS BESIDE IT, WHICH PAY AND ARE
+// THE FLOOR'S; THE FOURTH CALLS NONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmVeinsGuardiansTest,
+	"Cataclysm.DungeonModifierEffects.TheThirdInfestedVeinDestroyedCallsTwoEliteGuardiansOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmVeinsGuardiansTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AVeinFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+	const TArray<ACataclysmEnemyCharacter*> Veins = Mode->InfestedVeinsStanding();
+	if (!TestEqual(TEXT("three veins"), Veins.Num(), 3) || !TestEqual(TEXT("no creature on the floor"), Mode->FloorEnemies.Num(), 0))
+	{
+		return false;
+	}
+
+	// THE FIRST TWO: NO GUARDIANS.
+	for (int32 Which = 0; Which < 2; ++Which)
+	{
+		if (!DestroyTheBeacon(*this, Player, Veins[Which]))
+		{
+			return false;
+		}
+		Beat(Mode, 1);
+		TestEqual(FString::Printf(TEXT("after vein %d, no guardian"), Which + 1), Mode->FloorEnemies.Num(), 0);
+	}
+	TestEqual(TEXT("the panel before the third"), Mode->LiveCountsForTheFloor().FindRef(VeinsRow),
+			  FString(TEXT("infested veins: 1 standing; 2 destroyed of 3 before the guardians come")));
+
+	// THE THIRD: TWO ELITE GUARDIANS BESIDE IT.
+	const FVector ThirdAt = Veins[2]->GetActorLocation();
+	if (!DestroyTheBeacon(*this, Player, Veins[2]))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("two guardians came"), Mode->FloorEnemies.Num(), Effects::InfestedVeinsGuardians))
+	{
+		return false;
+	}
+	TestTrue(TEXT("and the rule says so"), Mode->InfestedVeinsGuardiansCame());
+	for (ACataclysmEnemyCharacter* Guardian : Mode->FloorEnemies)
+	{
+		TestFalse(TEXT("a creature of the floor's kinds, not a floor source"), Guardian->IsA<ACataclysmFloorSourceCharacter>());
+		TestEqual(TEXT("at the Elite rung"), Guardian->RarityStep, Effects::InfestedVeinsGuardianRung);
+		TestTrue(TEXT("paying for its death"), Guardian->PaysForItsDeath());
+		TestFalse(TEXT("and not raised by a rule"), Guardian->bRaisedByARule);
+		const FVector At = Guardian->GetActorLocation();
+		TestTrue(TEXT("beside the third vein and not in its cell"),
+				 FVector::Dist2D(At, ThirdAt) <= Effects::NecroticBloomWaveWithinCm + 1.0f
+					 && Floor.CellOfWorld(At) != Floor.CellOfWorld(ThirdAt));
+	}
+	TestEqual(TEXT("the panel after"), Mode->LiveCountsForTheFloor().FindRef(VeinsRow),
+			  FString(TEXT("infested veins: 0 standing; 3 destroyed; the guardians have come")));
+
+	// THE VEINS GROW BACK; A FOURTH DESTROYED CALLS NO MORE.
+	Beat(Mode, BeatsFor(Effects::InfestedVeinsRegrowSeconds));
+	const TArray<ACataclysmEnemyCharacter*> Regrown = Mode->InfestedVeinsStanding();
+	if (!TestEqual(TEXT("three veins stand again"), Regrown.Num(), 3) || !DestroyTheBeacon(*this, Player, Regrown[0]))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("four destroyed"), Mode->InfestedVeinsDestroyedHere(), 4);
+	TestEqual(TEXT("and still only the two guardians"), Mode->FloorEnemies.Num(), Effects::InfestedVeinsGuardians);
 	return true;
 }
 
