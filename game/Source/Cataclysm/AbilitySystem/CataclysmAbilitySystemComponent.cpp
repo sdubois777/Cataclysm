@@ -2035,6 +2035,14 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	ConsecutiveHits.Empty();
 
+	// AND EVERY STACK OTHERS PLACED ON IT, ruled 2026-09-24. Issue #1833,
+	// phase 2: an enemy's lost armour and cut damage end with it.
+	for (const TPair<FName, FPlacedStack>& Held : PlacedStacks)
+	{
+		Ended.Stacks += Held.Value.Count;
+	}
+	PlacedStacks.Empty();
+
 	// AND EVERY HELD NEXT-USE CHARGE, ruled 2026-09-24. Issue #1833, phase 2.
 	for (const TPair<FName, FNextUseCharge>& Held : NextUseCharges)
 	{
@@ -2544,11 +2552,64 @@ void UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom(
 float UCataclysmAbilitySystemComponent::ArmourRemovedPercentNow() const
 {
 	const UWorld* World = GetWorld();
-	if (!World || World->GetTimeSeconds() >= ArmourRemovedUntil)
+	if (!World)
 	{
 		return 0.0f;
 	}
-	return FMath::Clamp(ArmourRemovedPercent, 0.0f, 100.0f);
+	// RENDING BLOWS' SHARE, while it runs, AND THE STACKS PLACED ON THIS
+	// CHARACTER, SUMMED AND CLAMPED AT 100. Issue #1833, phase 2, ruled
+	// 2026-09-24: all armour removed, from every source, stops at all of it.
+	const float Rending = World->GetTimeSeconds() < ArmourRemovedUntil
+		? FMath::Max(0.0f, ArmourRemovedPercent) : 0.0f;
+	return FMath::Clamp(Rending + PlacedPercentNow(/*bCutsDamage=*/false), 0.0f, 100.0f);
+}
+
+float UCataclysmAbilitySystemComponent::DamageCutPercentNow() const
+{
+	return FMath::Clamp(PlacedPercentNow(/*bCutsDamage=*/true), 0.0f, 100.0f);
+}
+
+float UCataclysmAbilitySystemComponent::PlacedPercentNow(bool bCutsDamage) const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.0f;
+	}
+	float Total = 0.0f;
+	for (const TPair<FName, FPlacedStack>& Each : PlacedStacks)
+	{
+		const FPlacedStack& Held = Each.Value;
+		if (Held.bCutsDamage == bCutsDamage && Held.Count > 0
+			&& World->GetTimeSeconds() - Held.GrantedAtSeconds <= Held.WindowSeconds)
+		{
+			Total += Held.Count * Held.PercentPerStack;
+		}
+	}
+	return Total;
+}
+
+void UCataclysmAbilitySystemComponent::ReceivePlacedStack(FName Key,
+	float PercentPerStack, float WindowSeconds, int32 Cap, bool bCutsDamage)
+{
+	const UWorld* World = GetWorld();
+	if (Key.IsNone() || PercentPerStack <= 0.0f || WindowSeconds <= 0.0f || !World)
+	{
+		return;
+	}
+	// THE OWN-STACK RULE, ruled 2026-09-24: a grant restarts the window and the
+	// whole count lapses together, so a count whose window has passed starts
+	// again at one. A CAP OF NOUGHT IS NONE: "stacking indefinitely".
+	FPlacedStack& Held = PlacedStacks.FindOrAdd(Key);
+	const float Now = World->GetTimeSeconds();
+	const bool bStanding =
+		Held.Count > 0 && Now - Held.GrantedAtSeconds <= Held.WindowSeconds;
+	const int32 Next = bStanding ? Held.Count + 1 : 1;
+	Held.Count = Cap > 0 ? FMath::Min(Next, Cap) : Next;
+	Held.GrantedAtSeconds = Now;
+	Held.WindowSeconds = WindowSeconds;
+	Held.PercentPerStack = PercentPerStack;
+	Held.bCutsDamage = bCutsDamage;
 }
 
 void UCataclysmAbilitySystemComponent::NoteStruckBy(
@@ -2658,12 +2719,18 @@ float UCataclysmAbilitySystemComponent::SecondsSinceSpellCast() const
 
 void UCataclysmAbilitySystemComponent::NoteMeleeHitTaken(bool bLanded)
 {
+	NoteMeleeHitTaken(bLanded, nullptr);
+}
+
+void UCataclysmAbilitySystemComponent::NoteMeleeHitTaken(bool bLanded,
+														 const AActor* Attacker)
+{
 	if (const UWorld* World = GetWorld())
 	{
 		LastMeleeHitTakenAtSeconds = World->GetTimeSeconds();
 	}
 
-	ActOnEvent(FName(TEXT("melee_hit_taken")), nullptr, 0.0f, bLanded);
+	ActOnEvent(FName(TEXT("melee_hit_taken")), nullptr, 0.0f, bLanded, Attacker);
 }
 
 float UCataclysmAbilitySystemComponent::SecondsSinceMeleeHitTaken() const
@@ -2747,6 +2814,10 @@ const TCHAR* UCataclysmAbilitySystemComponent::NextAttackDamageAction =
 	TEXT("next_attack_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::NextSkillEffectivenessAction =
 	TEXT("next_skill_effectiveness");
+const TCHAR* UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction =
+	TEXT("enemy_armor_removed");
+const TCHAR* UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction =
+	TEXT("attacker_damage_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =
 	TEXT("every_seconds");
 
@@ -3121,6 +3192,25 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
 								   Action.Percent, Action.NextUseCap,
 								   Action.bNextUseIsEffectiveness);
+			}
+			continue;
+		}
+		// A STACK PLACED ON THE OTHER CHARACTER OF THE EVENT: the enemy
+		// struck, or the attacker that struck. Issue #1833, phase 2. Landed
+		// only, once per row per event, and only for an event naming that
+		// character. `PoolActionAllowed` above has judged the row's tags.
+		if (!Action.PlacedKey.IsNone())
+		{
+			if (bLanded && EventTarget && !StackedThisEvent.Contains(Action.PlacedKey))
+			{
+				if (UCataclysmAbilitySystemComponent* Other =
+						Cast<UCataclysmAbilitySystemComponent>(
+							UCataclysmTargeting::AbilitySystemOf(EventTarget)))
+				{
+					StackedThisEvent.Add(Action.PlacedKey);
+					Other->ReceivePlacedStack(Action.PlacedKey, Action.Percent,
+						Action.StackSeconds, Action.StackCap, Action.bPlacedCutsDamage);
+				}
 			}
 			continue;
 		}

@@ -597,7 +597,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 325 SINCE THE TIMED GRANTS, issue #1833, from 321.
 	//
 	// AND 329 SINCE THE CONSECUTIVE HITS, issue #1833, from 325.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    329)
+	//
+	// AND 332 SINCE THE PLACED STACKS, issue #1833, from 329.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    332)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them
