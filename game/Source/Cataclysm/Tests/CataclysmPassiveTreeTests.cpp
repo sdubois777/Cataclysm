@@ -14965,6 +14965,23 @@ namespace CataclysmLowHealthRowTest
 		return Sum;
 	}
 
+	/**
+	 * SET-UP, NOT BEHAVIOUR: the health share the pipeline is handed is at or
+	 * below the threshold EXACTLY, with no tolerance. A share that rounded a hair
+	 * above it would otherwise fail the behaviour assertion after it and read as
+	 * a node that does not work.
+	 */
+	bool AtOrBelowExactly(FAutomationTestBase& Test, const FRealCharacter& Player,
+						   float Threshold)
+	{
+		const float Reported = Player.AbilitySystem->CurrentConditions().HealthPercent;
+		return Test.TestTrue(
+			*FString::Printf(TEXT("set-up: the conditions report %.6f%% health, at or "
+								"below %.0f%% exactly"),
+							 Reported, Threshold),
+			Reported <= Threshold);
+	}
+
 	/** What `Extra` percent more increased makes of a reading. */
 	float Ratio(float Others, float Extra)
 	{
@@ -15031,6 +15048,10 @@ bool FCataclysmLivingOnTheEdgeTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	if (!AtOrBelowExactly(*this, Player, 35.0f))
+	{
+		return false;
+	}
 	const TPair<float, float> At = Read();
 	TestEqual(TEXT("at 35%: 20% more increased attack damage than at 36%"),
 			  At.Key - Above.Key, 0.20f, 0.0001f);
@@ -15080,6 +15101,10 @@ bool FCataclysmLastStandTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	if (!AtOrBelowExactly(*this, Player, 20.0f))
+	{
+		return false;
+	}
 	TestEqual(TEXT("at 20%: 24% more increased critical strike chance than at 21%"),
 			  Crit() / Above, Ratio(Others, 24.0f), 0.0001f);
 	return true;
@@ -15122,6 +15147,10 @@ bool FCataclysmTheCatalystTest::RunTest(const FString&)
 	TestEqual(TEXT("at 6%: no chance"), Chance(), 0.0f, 0.001f);
 	if (!TestEqual(TEXT("health held at exactly 5%"), HoldHealth(Player, 5.0f), 5.0f,
 				   0.01f))
+	{
+		return false;
+	}
+	if (!AtOrBelowExactly(*this, Player, 5.0f))
 	{
 		return false;
 	}
@@ -15171,6 +15200,10 @@ bool FCataclysmDesperateMeasuresTest::RunTest(const FString&)
 	{
 		return false;
 	}
+	if (!AtOrBelowExactly(*this, Player, 50.0f))
+	{
+		return false;
+	}
 	TestEqual(TEXT("at 50%: 8% more increased movement speed than at 51%"),
 			  Walk() / Above, Ratio(Others, 8.0f), 0.0001f);
 	return true;
@@ -15215,6 +15248,10 @@ bool FCataclysmLowLifeTest::RunTest(const FString&)
 	TestEqual(TEXT("at 36%: no Fervour"), GainedInASecond(), 0.0f, 0.001f);
 	if (!TestEqual(TEXT("health held at exactly 35%"), HoldHealth(Player, 35.0f), 35.0f,
 				   0.01f))
+	{
+		return false;
+	}
+	if (!AtOrBelowExactly(*this, Player, 35.0f))
 	{
 		return false;
 	}
