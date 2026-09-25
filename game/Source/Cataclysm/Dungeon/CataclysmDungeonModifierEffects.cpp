@@ -164,6 +164,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::PestilentEmpowermentKey =
 const TCHAR* UCataclysmDungeonModifierEffects::InfestedVeinsKey =
 	TEXT("Pestilence_Infested_Veins");
 
+const TCHAR* UCataclysmDungeonModifierEffects::TrialOfEnduranceKey =
+	TEXT("Celestial_Trial_of_Endurance");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -457,7 +460,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(NecroticBloomKey)
 		|| RowKey == FName(GoldenSpiresKey)
 		|| RowKey == FName(PestilentEmpowermentKey)
-		|| RowKey == FName(InfestedVeinsKey))
+		|| RowKey == FName(InfestedVeinsKey)
+		|| RowKey == FName(TrialOfEnduranceKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -651,6 +655,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(GoldenSpiresKey),
 		FName(PestilentEmpowermentKey),
 		FName(InfestedVeinsKey),
+		FName(TrialOfEnduranceKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1732,6 +1737,11 @@ bool UCataclysmDungeonModifierEffects::InfestedVeinRegrowIsDue(float SecondsSinc
 bool UCataclysmDungeonModifierEffects::InfestedVeinsGuardiansAreDue(int32 VeinsDestroyed, bool bGuardiansCame)
 {
 	return VeinsDestroyed >= InfestedVeinsDestroyedBeforeGuardians && !bGuardiansCame;
+}
+
+bool UCataclysmDungeonModifierEffects::TrialOfEnduranceHasRunOut(float SecondsSincePlaced)
+{
+	return SecondsSincePlaced >= TrialOfEnduranceSeconds;
 }
 
 int32 UCataclysmDungeonModifierEffects::GraveTideCreaturesInWave(int32 WavesSoFar)

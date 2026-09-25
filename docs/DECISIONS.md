@@ -2,6 +2,133 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Trial of Endurance: a floor not cleared within 300 seconds of being placed doubles every creature's damage and all-resistance until it ends; every floor now logs when it is cleared
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a sixth key of the damage
+multiplier map, and its setter); `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp`
+(the row's key, its figures and when the trial runs out);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the floor's living creatures, the
+seconds on a floor and the log line when it is cleared, the trial's clock, the doubling with its resistance
+bookkeeping, the panel line); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one new check, and the damage multiplier check given
+the sixth key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
+tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
+have.
+
+### The row
+
+`Celestial_Trial_of_Endurance` in `game/Data/DungeonModifiers.csv`, weight 10: "A divine timer per floor; if it
+expires before the floor is cleared, all enemies gain doubled damage and resistances." "Doubled" is its only
+figure. The design document and this log do not mention it.
+
+### What the rule does
+
+A floor carrying the row starts a 300-second clock when it is placed. If every one of the floor's creatures is
+dead before the clock reaches 300 seconds, the floor is cleared in time: the clock stops and nothing happens,
+and a creature arriving afterwards does not start it again. If the clock reaches 300 seconds first, every
+creature on the player's other side but a floor source deals double damage and holds twice its own
+all-resistance until the floor ends, and a creature arriving later is doubled on the next beat. A Horde floor
+has no timer. The panel shows the seconds and the creatures left, then either "cleared in time" or "failed".
+
+**300 seconds is unmeasured.** Nobody has timed how long a floor takes to clear. So every floor, whether or
+not it carries this row, now logs one line the first time none of its creatures is alive: "Floor N cleared: C
+floor cells, S seconds after it was placed", with " (a Horde wave)" on a Horde floor. That is what 300 should
+be tuned from.
+
+**A stated consequence, from the coordinating session.** If players rarely clear whole floors, this rule
+becomes "after 300 seconds, enemies double" on most floors. The clear-time log is what shows whether that is
+so.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. "Doubled" is the row's; the time is a
+play-test value:**
+
+- **300 seconds a floor, from placing, as a named constant** (`TrialOfEnduranceSeconds`), with the clear-time
+  log added so it can be tuned from play.
+- **"Cleared" is no living creature left in `FloorEnemies`**, the creatures other rules add included and the
+  floor sources, which are not in that list, not.
+- **Run out: every creature on the player's other side but a floor source deals double damage**, through the
+  damage multiplier map under the key `TrialOfEndurance`, **and holds twice its own all-resistance**, by Soul
+  Harvest's route of writing the base and keeping what was written; later arrivals on the next beat; until the
+  floor ends.
+- **Cleared in time: the clock stops and nothing happens**; a later arrival does not start it.
+- **No timer on a Horde floor**, whose next wave walks in before the last is cleared; the panel says so.
+- **The panel lines as proposed.**
+- **The resistance cap is read, not invented.** It is in the damage calculation:
+  `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` line 388 declares
+  `ResistanceCap = 70.0f`, and `CataclysmDamageCalculation.cpp` line 397 applies it with
+  `FMath::Clamp(Penetrated, ResistanceFloor, ResistanceCap)`. The attribute itself has only a floor of -100
+  (`game/Source/Cataclysm/AbilitySystem/CataclysmAllResistanceAttributeSet.cpp` line 32), and its comment says
+  "the 70% figure caps how much resistance reduces damage rather than how much of it a character may hold". So
+  the doubled figure is held in full and **its effect on damage stops at 70%**: the Abyssal Warden's 35 doubles
+  to 70, exactly the cap; the Gatekeeper's 30 to 60; the Imp's 0 stays 0.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **The doubling reads and writes the all-resistance BASE**, not the current value, so an effect lowering a
+  creature's resistance for a few seconds is not doubled into its base.
+- **A recompute that puts a creature's own resistance back is doubled again on the next beat; any other change
+  to the base is another writer's**, kept, and the creature's own figure moves by that much before it is
+  doubled, so a later addition is not doubled twice.
+- **The failed panel line reads "trial of endurance: failed; enemies deal double damage and have double
+  resistances"**, a semicolon where the proposal had a dash, keeping the source text to plain characters.
+- **The clear-time log belongs to every floor, so it is kept out of the rule**: it runs on the beat after the
+  rules, and a Horde wave is logged too, marked as one.
+
+### The research: timers that make the enemies stronger
+
+Done after the rulings and before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo III, enrage timers | https://www.purediablo.com/boss-enrage-timers-and-you | "Elite champ packs have a 4-minute enrage timer in INFERNO" |
+| Diablo III, Greater Rifts | https://maxroll.gg/d3/resources/greater-rift-explained | Greater Rifts are run in "a 15 minute time window" |
+
+**What it settles and what it does not.** Diablo III put a timer on an encounter after which its enemies turn
+more dangerous -- four minutes for an elite pack at its highest difficulty, three or four for its bosses on the
+same page -- and a fifteen-minute window on a whole Greater Rift. So a timer that strengthens enemies when it
+runs out is a shipped shape, and 300 seconds sits between an elite pack's four minutes and a rift's fifteen.
+Neither page times a floor of this size, and none doubles every enemy, so the figure and the doubling of
+resistance are this game's own; 300 remains a guess until the clear-time log says otherwise.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.`:
+
+- `TrialOfEnduranceRunsThreeHundredSecondsAndDoubles`: the three figures; not run out at 299.75 seconds, run out
+  at 300.
+- `TheTrialOfEndurancesClockRunsAndNothingChangesBeforeItRunsOut`: on floor 2 with its own creatures, a beat
+  counts a quarter second and the panel shows 300 seconds and the creatures left; a beat before 300 seconds it
+  has not run out and a creature deals its own damage; on the beat that reaches 300 it has run out.
+- `WhenTheTrialOfEnduranceRunsOutEveryCreatureButAFloorSourceIsDoubled`: every creature of floor 2 deals double
+  its own damage, under the trial's key, and holds twice its own all-resistance base; a floor source standing
+  there is not doubled; the panel says it failed; one creature given a designed resistance of 23 by hand -- a
+  figure no creature has, so the check tests something whatever floor 2 places -- holds 46 once it has run out,
+  46 again on the beat after its rung is set again, and 46 beats later, not 92; a creature arriving afterwards deals
+  double on the next beat and, given an all-resistance of 25 by hand, holds 50 -- set by hand because the kinds
+  floor 2 places may hold none of their own.
+- `AFloorClearedInTimeEndsItsTrialOfEndurance`: every creature killed ten seconds in, the next beat finds it
+  cleared in time, the floor's clear time is noted at 10.25 seconds and the panel says so; a creature arriving
+  afterwards, three hundred seconds later, is still its own.
+- `AHordeFloorHasNoTrialOfEndurance`: the panel says there is no timer, and past 300 seconds it has not run out
+  and its clock never moved.
+- `EveryFloorNotesWhenItIsClearedWhateverItsRules`: on a floor carrying no rule, two seconds on the floor with
+  one creature alive and nothing noted; killed, the next beat notes 2.25 seconds, and only once.
+
+One new Python check: the row still says "a divine timer per floor", "before the floor is cleared" and "doubled
+damage and resistances". The damage multiplier check now also requires the trial's setter to write its own
+distinct key.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Infested Veins: three veins beside the walls of a floor burn the player within six metres, grow back sixty seconds after they are destroyed, and the third destroyed calls two Elite guardians once
 
 **Affects:** a new vein class `game/Source/Cataclysm/Character/CataclysmVeinCharacter.h`;

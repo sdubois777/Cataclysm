@@ -39,6 +39,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
+#include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmResistanceAttributeSet.h"
@@ -29019,6 +29020,346 @@ bool FCataclysmVeinsGuardiansTest::RunTest(const FString& Parameters)
 	Beat(Mode, 1);
 	TestEqual(TEXT("four destroyed"), Mode->InfestedVeinsDestroyedHere(), 4);
 	TestEqual(TEXT("and still only the two guardians"), Mode->FloorEnemies.Num(), Effects::InfestedVeinsGuardians);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Celestial_Trial_of_Endurance, and every floor's clear time. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName TrialRow(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey);
+
+	/** A dungeon carrying only Trial of Endurance, on floor 2 WITH ITS OWN CREATURES, which the trial counts. */
+	ACataclysmDungeonGameMode* ATrialFloor(FAutomationTestBase& Test, UWorld* World, const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {TrialRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		if (!Test.TestTrue(TEXT("floor 2 has creatures of its own"), Mode->LivingFloorEnemies() > 0))
+		{
+			return nullptr;
+		}
+		return Mode;
+	}
+
+	/** A creature's all-resistance BASE, which the trial doubles. */
+	float AllResistanceBaseOf(const ACataclysmEnemyCharacter* Creature)
+	{
+		const UAbilitySystemComponent* Theirs = Creature ? Creature->GetAbilitySystemComponent() : nullptr;
+		return Theirs ? Theirs->GetNumericAttributeBase(UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute())
+					  : -1000.0f;
+	}
+}
+
+// THREE HUNDRED SECONDS, AND DOUBLED DAMAGE AND RESISTANCES.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrialFiguresTest,
+	"Cataclysm.DungeonModifierEffects.TrialOfEnduranceRunsThreeHundredSecondsAndDoubles",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTrialFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("three hundred seconds a floor"), Effects::TrialOfEnduranceSeconds, 300.0f, 0.001f);
+	TestEqual(TEXT("doubled damage"), Effects::TrialOfEnduranceDamageMultiplier, 2.0f, 0.0001f);
+	TestEqual(TEXT("doubled resistances"), Effects::TrialOfEnduranceResistanceMultiplier, 2.0f, 0.0001f);
+	TestFalse(TEXT("299.75 seconds has not run out"), Effects::TrialOfEnduranceHasRunOut(299.75f));
+	TestTrue(TEXT("300 has"), Effects::TrialOfEnduranceHasRunOut(300.0f));
+	return true;
+}
+
+// THE CLOCK RUNS FROM PLACING; A BEAT BEFORE THREE HUNDRED SECONDS NOTHING HAS CHANGED; ON THE BEAT THAT REACHES
+// IT, THE TRIAL HAS RUN OUT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrialClockTest,
+	"Cataclysm.DungeonModifierEffects.TheTrialOfEndurancesClockRunsAndNothingChangesBeforeItRunsOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTrialClockTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Creature = ACataclysmEnemyCharacter;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrialFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	ACataclysmEnemyCharacter* One = Mode->FloorEnemies[0];
+	const float Own = AttackDamageOf(One);
+	const int32 Living = Mode->LivingFloorEnemies();
+
+	Beat(Mode, 1);
+	TestEqual(TEXT("a quarter second counted"), Mode->TrialOfEnduranceSecondsSoFar(), 0.25f, 0.001f);
+	TestEqual(TEXT("the panel while it runs"), Mode->LiveCountsForTheFloor().FindRef(TrialRow),
+			  FString::Printf(TEXT("trial of endurance: 300 seconds left; %d creatures left"), Living));
+
+	Beat(Mode, BeatsFor(Effects::TrialOfEnduranceSeconds) - 2);
+	TestFalse(TEXT("a beat before three hundred seconds it has not run out"), Mode->TrialOfEnduranceRanOut());
+	TestEqual(TEXT("and a creature deals its own damage"), AttackDamageOf(One), Own, 0.01f);
+	TestEqual(TEXT("under no trial multiplier"), One->DamageMultiplierFrom(Creature::TrialOfEnduranceDamageSource), 1.0f, 0.0001f);
+
+	Beat(Mode, 1);
+	TestTrue(TEXT("on the beat that reaches three hundred seconds it has run out"), Mode->TrialOfEnduranceRanOut());
+	TestFalse(TEXT("and was not cleared in time"), Mode->TrialOfEnduranceClearedInTime());
+	return true;
+}
+
+// RUN OUT: EVERY CREATURE ON THE FLOOR DEALS DOUBLE DAMAGE AND HOLDS TWICE ITS OWN ALL-RESISTANCE; ONE ARRIVING
+// LATER IS DOUBLED ON THE NEXT BEAT; A RECOMPUTE IS DOUBLED AGAIN; A FLOOR SOURCE IS LEFT ALONE.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrialRanOutTest,
+	"Cataclysm.DungeonModifierEffects.WhenTheTrialOfEnduranceRunsOutEveryCreatureButAFloorSourceIsDoubled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTrialRanOutTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Creature = ACataclysmEnemyCharacter;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrialFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	// THE CREATURE THE RECOMPUTE CHECK USES IS GIVEN A DESIGNED RESISTANCE OF 23, a figure no creature has,
+	// through the field a recompute writes from, so its checks test something whatever kinds floor 2 placed.
+	ACataclysmEnemyCharacter* Recomputed = Mode->FloorEnemies[0];
+	Recomputed->ResistancePercent = 23.0f;
+	Recomputed->SetRarityStep(Recomputed->RarityStep);
+	if (!TestEqual(TEXT("the recomputed creature's own resistance is 23"), AllResistanceBaseOf(Recomputed), 23.0f, 0.01f))
+	{
+		return false;
+	}
+
+	// EVERY CREATURE'S OWN DAMAGE AND RESISTANCE BEFORE, AND A FLOOR SOURCE STANDING ON THE FLOOR. The creature
+	// given 23 is among them, and is counted as one with a resistance of its own.
+	TMap<ACataclysmEnemyCharacter*, TPair<float, float>> Before;
+	int32 WithResistance = 0;
+	for (ACataclysmEnemyCharacter* One : Mode->FloorEnemies)
+	{
+		Before.Add(One, TPair<float, float>(AttackDamageOf(One), AllResistanceBaseOf(One)));
+		WithResistance += AllResistanceBaseOf(One) > 0.0f ? 1 : 0;
+	}
+	AddInfo(FString::Printf(TEXT("%d creatures, %d with resistance of their own"), Before.Num(), WithResistance));
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ACataclysmEnemyCharacter* Source = World->SpawnActor<ACataclysmEnemyCharacter>(
+		ACataclysmBeaconCharacter::StaticClass(), Mode->CurrentFloor->EntranceWorld() + FVector(0.0f, 0.0f, 200.0f),
+		FRotator::ZeroRotator, Spawn);
+	if (!TestNotNull(TEXT("a floor source on the floor"), Source))
+	{
+		return false;
+	}
+	Source->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	const float SourceResistance = AllResistanceBaseOf(Source);
+
+	Beat(Mode, BeatsFor(Effects::TrialOfEnduranceSeconds));
+	if (!TestTrue(TEXT("the trial has run out"), Mode->TrialOfEnduranceRanOut()))
+	{
+		return false;
+	}
+	for (const TPair<ACataclysmEnemyCharacter*, TPair<float, float>>& Entry : Before)
+	{
+		TestEqual(TEXT("each creature deals double its own damage"), AttackDamageOf(Entry.Key), 2.0f * Entry.Value.Key, 0.01f);
+		TestEqual(TEXT("under the trial's own key"), Entry.Key->DamageMultiplierFrom(Creature::TrialOfEnduranceDamageSource),
+				  2.0f, 0.0001f);
+		TestEqual(TEXT("and holds twice its own all-resistance"), AllResistanceBaseOf(Entry.Key), 2.0f * Entry.Value.Value, 0.01f);
+	}
+	TestEqual(TEXT("the floor source is not doubled"), Source->DamageMultiplierFrom(Creature::TrialOfEnduranceDamageSource),
+			  1.0f, 0.0001f);
+	TestEqual(TEXT("nor its resistance"), AllResistanceBaseOf(Source), SourceResistance, 0.01f);
+	TestEqual(TEXT("the panel says it failed"), Mode->LiveCountsForTheFloor().FindRef(TrialRow),
+			  FString(TEXT("trial of endurance: failed; enemies deal double damage and have double resistances")));
+
+	// A RECOMPUTE PUTS THE CREATURE'S OWN 23 BACK; THE NEXT BEAT DOUBLES IT AGAIN TO 46, AND NOT TO 92.
+	TestEqual(TEXT("the creature given 23 holds 46 once the trial ran out"), AllResistanceBaseOf(Recomputed), 46.0f, 0.01f);
+	Recomputed->SetRarityStep(Recomputed->RarityStep);
+	Beat(Mode, 1);
+	TestEqual(TEXT("after a recompute, twice its own resistance again"), AllResistanceBaseOf(Recomputed), 46.0f, 0.01f);
+	Beat(Mode, 4);
+	TestEqual(TEXT("and still twice, beats later"), AllResistanceBaseOf(Recomputed), 46.0f, 0.01f);
+
+	// A CREATURE ARRIVING AFTER IT RAN OUT IS DOUBLED ON THE NEXT BEAT.
+	ACataclysmEnemyCharacter* Late = PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->EntranceWorld(), 0);
+	if (!TestNotNull(TEXT("a creature arriving late"), Late))
+	{
+		return false;
+	}
+	const float LateOwn = AttackDamageOf(Late);
+	// A RESISTANCE OF ITS OWN, SET HERE, so the doubling is seen whatever kinds floor 2 happened to place:
+	// an Imp holds none.
+	Late->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 25.0f);
+	Beat(Mode, 1);
+	TestEqual(TEXT("the late arrival deals double on the next beat"), AttackDamageOf(Late), 2.0f * LateOwn, 0.01f);
+	TestEqual(TEXT("and holds twice its own all-resistance, 50 for 25"), AllResistanceBaseOf(Late), 50.0f, 0.01f);
+	return true;
+}
+
+// EVERY CREATURE KILLED BEFORE THE TIME: CLEARED IN TIME, AND THE CLOCK STOPS FOR GOOD.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrialClearedTest,
+	"Cataclysm.DungeonModifierEffects.AFloorClearedInTimeEndsItsTrialOfEndurance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTrialClearedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Creature = ACataclysmEnemyCharacter;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrialFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(10.0f));
+	TArray<ACataclysmEnemyCharacter*> Everyone;
+	for (ACataclysmEnemyCharacter* One : Mode->FloorEnemies)
+	{
+		Everyone.Add(One);
+	}
+	for (ACataclysmEnemyCharacter* One : Everyone)
+	{
+		if (!DestroyTheBeacon(*this, Player, One))
+		{
+			return false;
+		}
+	}
+	TestEqual(TEXT("none of the floor's creatures is alive"), Mode->LivingFloorEnemies(), 0);
+	Beat(Mode, 1);
+	TestTrue(TEXT("cleared in time"), Mode->TrialOfEnduranceClearedInTime());
+	TestEqual(TEXT("and the floor's clear time is noted"), Mode->FloorClearedAfterSeconds(), 10.25f, 0.001f);
+	TestEqual(TEXT("the panel"), Mode->LiveCountsForTheFloor().FindRef(TrialRow), FString(TEXT("trial of endurance: cleared in time")));
+
+	// A CREATURE ARRIVING AFTERWARDS DOES NOT START IT AGAIN.
+	ACataclysmEnemyCharacter* Late = PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->EntranceWorld(), 0);
+	if (!TestNotNull(TEXT("a creature arriving late"), Late))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(Effects::TrialOfEnduranceSeconds) + 4);
+	TestFalse(TEXT("it never runs out"), Mode->TrialOfEnduranceRanOut());
+	TestEqual(TEXT("and the late arrival deals its own damage"), Late->DamageMultiplierFrom(Creature::TrialOfEnduranceDamageSource),
+			  1.0f, 0.0001f);
+	return true;
+}
+
+// A HORDE FLOOR HAS NO TRIAL.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTrialHordeTest,
+	"Cataclysm.DungeonModifierEffects.AHordeFloorHasNoTrialOfEndurance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmTrialHordeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ATrialFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(1)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel says so"), Mode->LiveCountsForTheFloor().FindRef(TrialRow),
+			  FString(TEXT("trial of endurance: no timer on a Horde floor")));
+	Beat(Mode, BeatsFor(Effects::TrialOfEnduranceSeconds) + 4);
+	TestFalse(TEXT("it never runs out"), Mode->TrialOfEnduranceRanOut());
+	TestEqual(TEXT("its clock never moved"), Mode->TrialOfEnduranceSecondsSoFar(), 0.0f, 0.0001f);
+	return true;
+}
+
+// EVERY FLOOR NOTES WHEN IT IS CLEARED, WHATEVER ITS RULES: THE SECONDS AFTER IT WAS PLACED.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFloorClearTimeTest,
+	"Cataclysm.DungeonModifierEffects.EveryFloorNotesWhenItIsClearedWhateverItsRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmFloorClearTimeTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	// A DUNGEON WITH NO RULE THAT TOUCHES CREATURES, SO THE NOTE IS SEEN WITHOUT TRIAL OF ENDURANCE.
+	Mode->DungeonModifiers = {};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	Mode->ClearFloorEnemies();
+	ACataclysmEnemyCharacter* One = PlaceCreatureAtRung(World, Mode, Mode->CurrentFloor->EntranceWorld(), 0);
+	if (!TestNotNull(TEXT("one creature on the floor"), One))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(2.0f));
+	TestEqual(TEXT("two seconds on the floor"), Mode->SecondsOnThisFloor(), 2.0f, 0.001f);
+	TestEqual(TEXT("not cleared yet"), Mode->FloorClearedAfterSeconds(), -1.0f, 0.0001f);
+	if (!DestroyTheBeacon(*this, Player, One))
+	{
+		return false;
+	}
+	Beat(Mode, 1);
+	TestEqual(TEXT("cleared, noted at the beat that found it"), Mode->FloorClearedAfterSeconds(), 2.25f, 0.001f);
+	Beat(Mode, 4);
+	TestEqual(TEXT("and noted once"), Mode->FloorClearedAfterSeconds(), 2.25f, 0.001f);
 	return true;
 }
 

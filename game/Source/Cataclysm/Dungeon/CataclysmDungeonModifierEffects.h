@@ -2039,6 +2039,25 @@ public:
 	static const TCHAR* InfestedVeinsKey;
 
 	/**
+	 * The row where a floor not cleared in time doubles its creatures. Issues #1820 and #41.
+	 *
+	 * "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled
+	 * damage and resistances."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. "Doubled" is the row's;
+	 * the time is a play-test value and UNMEASURED:
+	 * - `TrialOfEnduranceSeconds` A FLOOR, counted from when the floor is placed.
+	 * - "CLEARED" IS NO LIVING CREATURE LEFT IN THE FLOOR'S CREATURE LIST, the creatures other rules add
+	 *   included and the floor sources, which are not the floor's creatures, not.
+	 * - CLEARED IN TIME, the clock stops and nothing happens; a creature arriving later does not start it.
+	 * - RUN OUT, every creature on the player's other side but a floor source deals
+	 *   `TrialOfEnduranceDamageMultiplier` times its damage and holds `TrialOfEnduranceResistanceMultiplier`
+	 *   times its own all-resistance, until the floor ends; later arrivals on the next beat.
+	 * - NO TIMER ON A HORDE FLOOR, whose next wave walks in by design before the last is cleared.
+	 */
+	static const TCHAR* TrialOfEnduranceKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4451,6 +4470,19 @@ public:
 			&& InfestedVeinsDestroyedBeforeGuardians > 1 && InfestedVeinsGuardians > 0,
 		"A vein that hurt nothing or never grew back, or guardians on the first vein, is not the row.");
 
+	/**
+	 * Trial of Endurance's figures. The two multipliers are the row's "doubled"; the time is a play-test
+	 * value nobody has measured, which is why every floor's clear time is logged whether or not the row is
+	 * on. See the key.
+	 */
+	static constexpr float TrialOfEnduranceSeconds = 300.0f;
+	static constexpr float TrialOfEnduranceDamageMultiplier = 2.0f;
+	static constexpr float TrialOfEnduranceResistanceMultiplier = 2.0f;
+
+	static_assert(TrialOfEnduranceDamageMultiplier == 2.0f && TrialOfEnduranceResistanceMultiplier == 2.0f,
+		"The row says doubled damage and resistances.");
+	static_assert(TrialOfEnduranceSeconds > 0.0f, "A trial that has run out before it starts is not the row.");
+
 	static_assert(
 		PestilentEmpowermentBeaconsPerFloor > 0 && PestilentEmpowermentBeaconsPerHordeArena > 0
 			&& PestilentEmpowermentPercentPerBeacon > 0.0f
@@ -4991,6 +5023,9 @@ public:
 	 * THE COUNT FIRST, AND ONCE: the guardians come at the threshold and never again that floor.
 	 */
 	static bool InfestedVeinsGuardiansAreDue(int32 VeinsDestroyed, bool bGuardiansCame);
+
+	/** Whether a Trial of Endurance this many seconds old has run out. */
+	static bool TrialOfEnduranceHasRunOut(float SecondsSincePlaced);
 
 	/**
 	 * What the creatures of the wave after this many waves are placed with, as a
