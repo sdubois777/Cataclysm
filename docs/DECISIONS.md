@@ -2,6 +2,62 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — The nine Demonic options built engine first now have their rows: thirteen flat rows, from Shared Ruin to Shared Blood
+
+**Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv`
+and `game/Content/Data/DT_PassiveEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+`game/Source/Cataclysm/Tests/CataclysmPassiveTreeTests.cpp` (nine tests),
+`game/Source/Cataclysm/Tests/CataclysmDataTableTests.cpp` and `docs/README.md` (the row count),
+`tools/tests/test_passive_effects_match_the_node_text.py`. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### WHAT CHANGED
+
+Each of the nine options below was built engine first, in its own change, with its stat given by hand in
+its tests, and each of those entries said the option grants nothing in play until its row lands. **This
+change writes the rows**, with the figure each entry said its row would carry, and every row is `flat`.
+
+| Option | Node, and option | Stat | Figure |
+|---|---|---|---|
+| Shared Ruin | `Ritualist_capstone_100`, 2 | `minion_death_blast_percent_of_maximum_health` | 20 |
+| | | `minion_death_blast_radius_metres` | 4 |
+| Nothing Stops It | `Ravager_capstone_200`, 3 | `lethal_hit_survived_every_seconds` | 20 |
+| | | `damage_immunity_after_lethal_hit_seconds` | 2 |
+| Sacrificial Ward | `Ritualist_keystone_c_kC` | `shield_break_destroys_minion_every_seconds` | 3 |
+| Cast from Ward | `Ritualist_capstone_50`, 3 | `skill_cost_paid_from_energy_shield` | 1 |
+| No Second Wind | `Ravager_keystone_c_kB` | `applied_cripple_and_weaken_held_within_metres` | 4 |
+| Rendering Blows | `Ravager_capstone_50`, 1 | `third_melee_hit_armour_removed_percent` | 20 |
+| | | `third_melee_hit_armour_removed_seconds` | 6 |
+| Ground Down | `Ravager_capstone_100`, 1 | `enemies_near_slowed_within_metres` | 4 |
+| | | `enemies_near_slowed_percent` | 15 |
+| Nothing Wasted | `Ravager_capstone_50`, 2 | `mitigated_damage_added_to_next_melee_cap_percent` | 100 |
+| Shared Blood | `Ritualist_capstone_50`, 1 | `minion_energy_shield_percent_of_yours` | 20 |
+
+The sheet goes from 302 rows to 315. Three nodes had no row before, No Second Wind, Sacrificial Ward and
+the Final Onslaught, so 225 of the 441 nodes now have one; the Ravager is 73 of its 74 and the Ritualist
+74 of its 74. Seven capstone options become authored, so 31 of the 60 named options grant something.
+
+**The node-text test's two tables gain eight entries.** Seven stats are a distance or a time written with
+its unit, "4 metres" or "20 seconds", and not with a percent sign, so each gets a form in `VALUE_FORMS`.
+Cast from Ward's flag of 1 has no digit in its sentence, so it is exempted in `VALUE_IN_WORDS` by the
+words "may be paid for with energy shield".
+
+### TESTS
+
+Nine, one per option, in the group `Cataclysm.DemonicRows.`, each on a real player of the option's class
+spending real points: for a capstone, the class's tree is filled to the capstone's threshold and the
+option chosen. Each test checks that the option's rows are exactly the stats listed above, each flat and of
+its figure, and then reads each stat through the constant the engine reads it by: nothing before the
+points are spent, still nothing for a capstone whose points are spent and whose option is not yet chosen,
+and the figure once it is chosen or once the keystone's point is spent.
+
+**So a row that is missing, misspelt or of the wrong figure fails one of these**, which the tests in each
+option's own entry could not see, since they gave the stat by hand. What these do not show is each
+option's behaviour; that is tested in each option's own change, on the stat these tests prove the row
+supplies.
+
+---
+
 ## 2026-09-24 — Stacks placed on the enemy: strike hits and any hit take its armour, and a melee hit taken cuts the attacker's damage
 
 **Affects:**
