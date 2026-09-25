@@ -715,6 +715,30 @@ triggers it, and whether 1.5 metres looks right, have to be judged by walking in
 **The stat is given by hand**, so none of these tests can see a missing or wrong row. When the row
 lands, that change must add a test that wears the real `Ravager_capstone_100` option 3 row.
 
+
+### Run
+
+One editor window on 2026-09-25, ending at 13:30 UTC, on development df8017e7 as the base, at the head
+66db0fd3. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**, the first time this change was compiled: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on the same tree: 5,483 passed, 8 skipped, 0 failed (JUnit 5,491 tests).
+- **The whole suite**, started once no CI run was in progress: 2,501 tests performed, 2,501 succeeded, 0
+  failed; every declared test was reported. 40 skipped part of what they check for want of the Paragon
+  art, none of them a Shoulder Through test.
+
+**Three guard proofs, each printing PROVED**, prefix `Cataclysm.ShoulderThrough.`, restored: 4 of 4
+succeeded each time.
+
+- **No cone** (the cone test made `< -1.0f`): 1 of 4 failed, on six assertions. The enemy 60 cm behind and
+  the one 51 degrees off were each moved into, pushed (to Y 150 and Y 200) and struck (99,900).
+- **The once-a-second limit a second short** (`+ 1.0f` in `MayShoulderThrough`): 1 of 4 failed, on three
+  assertions. Half a second later the same enemy was pushed again, to Y 75, which is the second push
+  halved by the diminishing-returns rule, and struck again (99,800 where 99,900).
+- **No damage** (`ApplyHit`'s 100 made 0): 3 of 4 failed, one assertion each, the three "struck" checks.
+  The stagger held, since the push applies it. The registration cited two of those assertions one line
+  early (155 and 191 where the log printed 156 and 192); the assertions are the ones registered.
 ---
 
 ## 2026-09-25 — Nowhere to Run, engine only: enemies within 8 metres cannot move themselves farther away, are marked "Held", and keep Fervour from decaying
