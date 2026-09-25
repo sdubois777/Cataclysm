@@ -86,8 +86,8 @@ pass through, and the flyover drawing its line through one of them),
 `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` (the ruling's comment), and the automation
 tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the automation
+tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### What it lifts
 
@@ -134,10 +134,31 @@ point itself is always a feather. The angle, the spacing, the warning and the da
   `AWingsOfTheHostFeatherIsCelestial`, no longer allow up to forty beats past thirty seconds for a line that
   crossed no floor: each now requires marks at thirty seconds exactly.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the guard proofs. They run in one editor
-window when the build machine is granted.
+One editor window on 2026-09-25, on development 6fa2359e as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on f0401c35: "Build: Succeeded - 29 actions, 26 files compiled"; "2467 tests performed,
+  2467 succeeded, 0 failed", every declared test reported (2467 declared, gap 0).
+- **The group `Cataclysm.DungeonModifierEffects.`** on the head, f0401c35: 304 performed, 304 succeeded; on the
+  base, 6fa2359e: 303 performed, 303 succeeded -- each with every one of its declared tests reported.
+- **The Python suite of record**, on c874e275, whose game code is byte-identical to f0401c35's: 5,476 passed and
+  8 skipped of 5,484, 0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after, each on the prefix
+`Cataclysm.DungeonModifierEffects.EveryWingsOfTheHost`, which selects the new test alone. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **The old rule: a line through any point near the player** (`Through` drawn up to 848 cm either way of the
+  player on each axis). With the break in, 1 failed, on "seeds with no mark on a floor cell's middle within
+  reach", all 50 seeds. No seed marked nothing, as registered.
+- **No reach: any floor cell on the floor** (`<= WingsOfTheHostPassesWithinCm` made `>= 0.0`). With the break
+  in, 1 failed, on "seeds offering a cell off the floor or out of reach", all 50 seeds, and "seeds with no mark
+  on a floor cell's middle within reach", 49 of them.
+- **Rock cells offered too** (`Plan.IsFloor` made `Plan.Contains` in the cells a line may pass through). With the
+  break in, 1 failed, on "seeds offering a cell off the floor or out of reach", 34 seeds, and "seeds with no mark
+  on a floor cell's middle within reach", 8 seeds.
 
 ---
 
