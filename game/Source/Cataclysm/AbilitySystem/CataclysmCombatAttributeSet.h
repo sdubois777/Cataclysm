@@ -655,6 +655,21 @@ public:
 	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
 
 	/**
+	 * Whether this character's energy shield recharges at its FULL rate inside
+	 * the wait after being damaged, which is to say with no wait at all. Issue
+	 * #1833, the small engine halves.
+	 *
+	 * "Energy shield regeneration begins immediately after taking damage with
+	 * no delay" is the enchantment, and it is the stronger thing the Ablative
+	 * attribute above deliberately is not: that one supplies half the rate
+	 * inside the wait, this one the whole of it. A character holding both
+	 * recharges at the whole rate.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Defence", ReplicatedUsing = OnRep_ShieldRechargeHasNoDelay)
+	FGameplayAttributeData ShieldRechargeHasNoDelay;
+	ATTRIBUTE_ACCESSORS(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay)
+
+	/**
 	 * Whether this character's mana regeneration also restores its energy
 	 * shield. Issue #1515.
 	 *
@@ -1215,6 +1230,7 @@ protected:
 	UFUNCTION() void OnRep_MinionCapBonus(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldAbsorbsDamageOverTime(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ShieldRechargesWhileDamaged(const FGameplayAttributeData& OldValue);
+	UFUNCTION() void OnRep_ShieldRechargeHasNoDelay(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ManaRegenRestoresShield(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_ArmorPenetrationSuppressed(const FGameplayAttributeData& OldValue);
 	UFUNCTION() void OnRep_MeleeEvasionSuppressed(const FGameplayAttributeData& OldValue);

@@ -1032,6 +1032,10 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			 Combat::GetShieldAbsorbsDamageOverTimeAttribute()},
 			{UCataclysmRegeneration::ShieldRechargesWhileDamagedStat,
 			 Combat::GetShieldRechargesWhileDamagedAttribute()},
+			// AND ONE ENCHANTMENT'S FLAG BESIDE THEM, issue #1833: the shield
+			// recharges at its full rate inside the wait.
+			{UCataclysmRegeneration::ShieldRechargeHasNoDelayStat,
+			 Combat::GetShieldRechargeHasNoDelayAttribute()},
 			{UCataclysmRegeneration::ManaRegenRestoresShieldStat,
 			 Combat::GetManaRegenRestoresShieldAttribute()},
 			// AND THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE. Issue #1515.

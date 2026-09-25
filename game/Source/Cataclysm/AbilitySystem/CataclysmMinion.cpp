@@ -141,14 +141,24 @@ namespace
 	 * can have one -- a minion's damage and health come from its own row in
 	 * `game/Data/MinionTypes.csv`, raised by its summoner's level -- so asking
 	 * for the value would return zero however much gear was worn.
-	 * `UCataclysmAbilitySystemComponent::IncreasesForStat` exists for that.
+	 * `UCataclysmAbilitySystemComponent::MultiplierForStatAgainst` reads the
+	 * buckets without the base, which is what this needs.
 	 *
 	 * A SUM RATHER THAN A SEPARATE MULTIPLIER, AND THE DESIGN REQUIRES IT. The
 	 * same entry says "an attribute's contribution and an affix's contribution
 	 * add. They cannot multiply each other", and gives the reason: every
 	 * catastrophic minion scaling failure in the survey behind that decision was
-	 * multiplicative. `IncreasesForStat` returns the SUM of the increases, so
+	 * multiplicative. The increases are still SUMMED before they multiply, so
 	 * when the attribute channel is built it lands in the same bucket and adds.
+	 *
+	 * AND A "MORE" OR "LESS" ROW MULTIPLIES ON TOP, SINCE ISSUE #1833'S SMALL
+	 * ENGINE HALVES. "Your minions have 20%-50% less hp" is a More row, and
+	 * until then `IncreasesForStat` read the increases only, so it did nothing.
+	 * `minion_damage` already honoured the More bucket through
+	 * `SummonerMultiplierAgainst` below; this is the same reading with no
+	 * target. It reaches `minion_duration` and `minion_explosion_damage` too,
+	 * and on 2026-09-25 no row gave either a More, so nothing that existed
+	 * changed.
 	 *
 	 * A REDUCTION IS KEPT AND ONLY THE RESULT IS FLOORED. Ten rows of
 	 * `game/Data/PassiveEffects.csv` already carry a negative value, so a node
@@ -175,8 +185,12 @@ namespace
 			return 1.0f;
 		}
 
-		return FMath::Max(0.0f, 1.0f + Theirs->IncreasesForStat(
-			FName(Stat), FGameplayTagContainer()));
+		// THE INCREASES FLOORED AT ZERO, THEN THE MORE MULTIPLIER, which is
+		// what `MultiplierForStatAgainst` answers. No target: these figures
+		// are read when the minion is made or when it dies, not against
+		// anything it is striking.
+		return Theirs->MultiplierForStatAgainst(
+			FName(Stat), FGameplayTagContainer(), /*Target=*/nullptr);
 	}
 
 	/**

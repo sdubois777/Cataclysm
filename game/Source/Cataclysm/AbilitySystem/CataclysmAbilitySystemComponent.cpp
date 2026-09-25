@@ -3414,12 +3414,23 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		if (!Action.StackKey.IsNone())
 		{
 			// ONLY A LANDED EVENT GRANTS A STACK, ruled 2026-09-23. A pool
-			// action keeps firing as it always did.
+			// action refuses one too, since issue #1833's small engine halves:
+			// see below.
 			if (bLanded && !StackedThisEvent.Contains(Action.StackKey))
 			{
 				StackedThisEvent.Add(Action.StackKey);
 				GrantOwnStack(Action.StackKey, Action.StackSeconds, Action.StackCap);
 			}
+			continue;
+		}
+		// AND ONLY A LANDED EVENT MOVES A POOL, since issue #1833's small engine
+		// halves. "Every hit you take deals an additional 5%-10% of your maximum
+		// HP as bonus damage" is a pool action on `hit_taken`, and an evaded blow
+		// is not a hit: ruled 2026-09-23. Only `hit_taken` and `melee_hit_taken`
+		// pass an unlanded event, and no pool row named either before that row,
+		// measured 2026-09-25, so no row that existed changes.
+		if (!bLanded)
+		{
 			continue;
 		}
 		ApplyPoolAction(Action, EventTags, EventAmount);

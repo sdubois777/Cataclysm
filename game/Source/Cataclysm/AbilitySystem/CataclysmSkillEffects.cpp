@@ -1550,7 +1550,7 @@ float UCataclysmSkillEffects::AsMultiplierForSkill(
 
 FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 	const UAbilitySystemComponent* Source, float DamagePerTick,
-	float DurationSeconds)
+	float DurationSeconds, const FGameplayTagContainer& Tags)
 {
 	FCataclysmDamageOverTimeNumbers Numbers;
 	if (DamagePerTick <= 0.0f || DurationSeconds <= 0.0f)
@@ -1562,22 +1562,27 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 	// worked out with every condition refused, so "While moving, your DoTs deal
 	// 20%-40% increased damage" was dropped in silence.
 	//
-	// AN EMPTY TAG CONTAINER, BECAUSE THE ROW CARRIES A CONDITION AND NOT A TAG.
-	// `AsMultiplierForSkill` evaluates the character's own state whatever the
-	// tags are, so a condition works with none passed. A future row scoped to a
-	// skill would need the tags threaded in from this function's callers, which
-	// this does not do and does not pretend to.
+	// THE CALLER'S TAGS, SINCE ISSUE #1833'S SMALL ENGINE HALVES: the ailment's
+	// own `Keyword.DoT.*` tag and the applying skill's tags. Until then this
+	// passed an empty container, so "Burn effects you apply deal 30%-60%
+	// increased damage per second", scoped to `Keyword.DoT.Burn`, applied to
+	// nothing. A condition still works whatever the tags are, and an unscoped
+	// row applies with any tags. Measured 2026-09-25: no row in the enchantment
+	// or passive sheets scoped any of these three stats before this, so nothing
+	// that existed starts to apply. A skill-scoped row on them would from now.
 	//
-	// TWO OF THE THREE UNBLOCK NO ROW AND ARE CHANGED FOR CONSISTENCY. Only
-	// `dot_damage` is asked for by an authored enchantment. Leaving duration and
-	// frequency reading the attribute in a function whose third line asks would
-	// leave the next reader to work out whether the difference was deliberate.
-	// Because no row exercises those two, the unchanged-behaviour control in
-	// CataclysmPlayerClassStatsTests.cpp is the only thing standing behind them,
-	// and it lists all three.
+	// TWO OF THE THREE UNBLOCKED NO ROW WHEN ISSUE #947 CHANGED THEM, for
+	// consistency. Only `dot_damage` was asked for by an authored enchantment
+	// then; leaving duration and frequency reading the attribute in a function
+	// whose third line asks would have left the next reader to work out whether
+	// the difference was deliberate. `dot_duration` has a row of its own since
+	// issue #1833, "Poison stacks you apply have 30%-60% increased duration".
+	// No row exercises `dot_frequency`, so the unchanged-behaviour control in
+	// CataclysmPlayerClassStatsTests.cpp is still what stands behind it, and it
+	// lists all three.
 	const float FrequencyScale = AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(),
-		FName(TEXT("dot_frequency")), FGameplayTagContainer());
+		FName(TEXT("dot_frequency")), Tags);
 
 	// A FREQUENCY OF ZERO WOULD BE A DIVISION BY ZERO, and is refused rather
 	// than clamped to something invented. Nothing in the game can produce one:
@@ -1589,10 +1594,10 @@ FCataclysmDamageOverTimeNumbers UCataclysmSkillEffects::DamageOverTimeNumbers(
 
 	Numbers.DamagePerTick = DamagePerTick * AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotDamageAttribute(),
-		FName(TEXT("dot_damage")), FGameplayTagContainer());
+		FName(TEXT("dot_damage")), Tags);
 	Numbers.DurationSeconds = DurationSeconds * AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
-		FName(TEXT("dot_duration")), FGameplayTagContainer());
+		FName(TEXT("dot_duration")), Tags);
 
 	// FREQUENCY DIVIDES THE GAP BETWEEN TICKS. More of it is a shorter gap and
 	// so more ticks in the same time, which is what "More ticks in the same
@@ -1645,9 +1650,20 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 	// NULL FOR A BLOW DEALT IN SOMEONE ELSE'S NAME, which is how a minion's burn
 	// declines the summoner's three stats without this function needing to know
 	// what a minion is.
+	// ASKED WITH THE AILMENT'S OWN TAG AND THE SKILL'S, so a row scoped to one
+	// ailment reaches it. Issue #1833, the small engine halves.
+	FGameplayTagContainer AskedWith;
+	if (EffectTag.IsValid())
+	{
+		AskedWith.AddTag(EffectTag);
+	}
+	if (const UCataclysmSkillTemplate* Applying = Cast<UCataclysmSkillTemplate>(Skill))
+	{
+		AskedWith.AppendTags(Applying->SkillTags);
+	}
 	const FCataclysmDamageOverTimeNumbers Numbers = DamageOverTimeNumbers(
 		bScalesWithInstigator ? Source : nullptr, DamagePerTick,
-		DurationSeconds);
+		DurationSeconds, AskedWith);
 	if (!Numbers.bUsable)
 	{
 		return false;
@@ -1855,9 +1871,12 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	// attribute read to an ask; leaving these two reading the attribute would
 	// have made "read the way it reads them" false, and a reader checking that
 	// claim would have found the two functions disagreeing with no reason given.
+	// ASKED WITH THE AILMENT'S OWN TAG, as `ApplyDamageOverTime` asks. Issue
+	// #1833, the small engine halves.
+	const FGameplayTagContainer AskedWith(EffectTag);
 	const float FrequencyScale = AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotFrequencyAttribute(),
-		FName(TEXT("dot_frequency")), FGameplayTagContainer());
+		FName(TEXT("dot_frequency")), AskedWith);
 	if (FrequencyScale <= 0.0f)
 	{
 		return false;
@@ -1865,7 +1884,7 @@ bool UCataclysmSkillEffects::ApplyShareOfHealthOverTime(
 	const float SecondsPerTick = BaseSecondsPerTick / FrequencyScale;
 	const float Duration = DurationSeconds * AsMultiplierForSkill(
 		Source, UCataclysmCombatAttributeSet::GetDotDurationAttribute(),
-		FName(TEXT("dot_duration")), FGameplayTagContainer());
+		FName(TEXT("dot_duration")), AskedWith);
 
 	// AND THE TARGET'S OWN STAT DECIDES HOW LONG IT REALLY LASTS, as for every
 	// other lasting effect. Issue #1033. A duration taken to nothing applies

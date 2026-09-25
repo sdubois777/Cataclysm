@@ -16,6 +16,7 @@
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
@@ -6551,6 +6552,334 @@ bool FCataclysmMaximumHealthShareRowTest::RunTest(const FString&)
 	TestEqual(TEXT("and 60% of the maximum is what is left"), WornAt(1.0f), 0.6f, 0.0001f);
 	TestEqual(TEXT("and with it off, the whole maximum again"),
 		Wearer.AbilitySystem->GetNumericAttribute(MaxHealth) / Plain, 1.0f, 0.0001f);
+	return true;
+}
+
+namespace CataclysmSmallHalvesTest
+{
+	/**
+	 * A bare wearer in its own world, carrying one real enchantment on a helm
+	 * beside a partner with no effect row. Issue #1833, the small engine halves.
+	 * A worn item rolls the top of its range.
+	 */
+	struct FWorn
+	{
+		FWorn(const TCHAR* Enchantment, bool bBenefit)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return;
+			}
+			Wearer = MakeUnique<FWearer>(World);
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer->Equipment->Equip(
+				bBenefit
+					? Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect)
+					: Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, Enchantment),
+				Removed, AlsoRemoved, Slot);
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+		}
+
+		~FWorn()
+		{
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+	};
+
+	FGameplayTag Keyword(const TCHAR* Name)
+	{
+		return UGameplayTagsManager::Get().RequestGameplayTag(FName(Name),
+															  /*ErrorIfNotFound=*/false);
+	}
+
+	/**
+	 * What one tick of a damage over time effect the wearer applies takes from
+	 * a fresh creature, applied through `ApplyDamageOverTime` with this
+	 * ailment's tag, which is the route every ailment in the game takes.
+	 */
+	float OneTick(const FWorn& Worn, const FGameplayTag& Ailment, float Along)
+	{
+		ACataclysmEnemyCharacter* Victim = Worn.World->SpawnActor<ACataclysmEnemyCharacter>(
+			FVector(Along, 0.0f, 0.0f), FRotator::ZeroRotator);
+		if (!Victim)
+		{
+			return -1.0f;
+		}
+		Victim->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Victim->SetHealth(10000.0f);
+		UCataclysmAbilitySystemComponent* Its =
+			Cast<UCataclysmAbilitySystemComponent>(Victim->GetAbilitySystemComponent());
+		if (!Its)
+		{
+			return -1.0f;
+		}
+		const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+		const float Before = Its->GetNumericAttribute(Health);
+		if (!UCataclysmSkillEffects::ApplyDamageOverTime(
+				Worn.Wearer->Actor, Victim, /*DamagePerTick=*/100.0f,
+				/*DurationSeconds=*/6.0f, Ailment)
+			|| Its->ExecutePeriodicEffectsGrantingForTests(Ailment) != 1)
+		{
+			return -1.0f;
+		}
+		return Before - Its->GetNumericAttribute(Health);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAilmentScopedDotRowsTest,
+	"Cataclysm.Enchantments.TheAilmentScopedDotRowsReachOnlyTheirOwnAilment",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Four rows scoped to one ailment each, worn at 60. Issue #1833, the small
+ * engine halves: until the damage over time asks were handed the ailment's own
+ * tag, a row scoped to `Keyword.DoT.Burn` applied to nothing.
+ *
+ * "Burn effects you apply deal 30%-60% increased damage per second" and "Poison
+ * effects you apply deal 30%-60% increased damage per second": one tick applied
+ * through `ApplyDamageOverTime`, against a disease tick from the same wearer on
+ * a creature just like it, is 1.6 times as large. Disease ticks plainly, and the
+ * two creatures are alike, so everything but the row cancels.
+ *
+ * "Bleed stacks you apply deal 30%-60% increased damage" and "Poison stacks you
+ * apply have 30%-60% increased duration": read from `DamageOverTimeNumbers`
+ * asked with the ailment's tag and with another's, because a bleed ticks only
+ * while its target moves and a duration is not a tick.
+ */
+bool FCataclysmAilmentScopedDotRowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	const FGameplayTag Burn = Keyword(TEXT("Keyword.DoT.Burn"));
+	const FGameplayTag Poison = Keyword(TEXT("Keyword.DoT.Poison"));
+	const FGameplayTag Bleed = Keyword(TEXT("Keyword.DoT.Bleed"));
+	const FGameplayTag Disease = Keyword(TEXT("Keyword.DoT.Disease"));
+	if (!TestTrue(TEXT("the four ailment tags are in the vocabulary"),
+			Burn.IsValid() && Poison.IsValid() && Bleed.IsValid() && Disease.IsValid()))
+	{
+		return false;
+	}
+
+	struct FTickCase
+	{
+		const TCHAR* Enchantment;
+		FGameplayTag Ailment;
+	};
+	for (const FTickCase& Case : {
+			 FTickCase{TEXT("Positive_Burn_effects_you_apply_deal_30_60_increased_da"), Burn},
+			 FTickCase{TEXT("Positive_Poison_effects_you_apply_deal_30_60_increased"), Poison}})
+	{
+		FWorn Worn(Case.Enchantment, true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const float Own = OneTick(Worn, Case.Ailment, 300.0f);
+		const float Other = OneTick(Worn, Disease, -300.0f);
+		if (!TestTrue(FString::Printf(TEXT("%s: both ticks landed"), *Case.Ailment.ToString()),
+				Own > 0.0f && Other > 0.0f))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("%s: its own tick is 60%% larger than a disease tick"),
+				*Case.Ailment.ToString()),
+			Own / Other, 1.6f, 0.001f);
+	}
+
+	{
+		FWorn Worn(TEXT("Positive_Bleed_stacks_you_apply_deal_30_60_increased_da"), true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const float Own = UCataclysmSkillEffects::DamageOverTimeNumbers(
+			Worn.ASC(), 100.0f, 5.0f, FGameplayTagContainer(Bleed)).DamagePerTick;
+		const float Other = UCataclysmSkillEffects::DamageOverTimeNumbers(
+			Worn.ASC(), 100.0f, 5.0f, FGameplayTagContainer(Disease)).DamagePerTick;
+		if (TestTrue(TEXT("bleed: both ask something"), Own > 0.0f && Other > 0.0f))
+		{
+			TestEqual(TEXT("bleed: 60% more per tick, and only for a bleed"),
+				Own / Other, 1.6f, 0.001f);
+		}
+	}
+	{
+		FWorn Worn(TEXT("Positive_Poison_stacks_you_apply_have_30_60_increased_d"), true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const float Own = UCataclysmSkillEffects::DamageOverTimeNumbers(
+			Worn.ASC(), 100.0f, 8.0f, FGameplayTagContainer(Poison)).DurationSeconds;
+		const float Other = UCataclysmSkillEffects::DamageOverTimeNumbers(
+			Worn.ASC(), 100.0f, 8.0f, FGameplayTagContainer(Disease)).DurationSeconds;
+		if (TestTrue(TEXT("poison duration: both ask something"), Own > 0.0f && Other > 0.0f))
+		{
+			TestEqual(TEXT("poison duration: 60% longer, and only for a poison"),
+				Own / Other, 1.6f, 0.001f);
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFirstHitResistanceRowTest,
+	"Cataclysm.Enchantments.TheFirstHitResistanceRowIgnoresResistanceOnTheFirstBlowOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your first hit against each enemy in a combat ignores all resistances", worn,
+ * through real blows. Issue #1833, the small engine halves: the penetration ask
+ * was handed no target, so the first-hit condition refused every time.
+ *
+ * A CREATURE WITH 50 RESISTANCE, STRUCK THREE TIMES. The first blow ignores
+ * its resistance and the second does not, so the second is half the first; the
+ * third is the same as the second, because the enemy stays struck. "In a
+ * combat" is read as the existing first-hit rows read it, ruled 2026-09-25: the
+ * record is per enemy.
+ */
+bool FCataclysmFirstHitResistanceRowTest::RunTest(const FString&)
+{
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_Your_first_hit_against_each_enemy_in_a_combat_ig"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a wearer, two creatures and the announcements"), Striker.Ready()))
+	{
+		return false;
+	}
+	// FIFTY OF ALL RESISTANCE, which is the one resistance a creature holds
+	// whatever the blow's damage type. A creature takes no difficulty penalty
+	// (`ResistancePenaltyFor` applies it to players only), so fifty is fifty.
+	Striker.First->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmAllResistanceAttributeSet::GetAllResistanceAttribute(), 50.0f);
+
+	const float FirstBlow = Striker.Blow(Striker.First, /*bMelee=*/true);
+	const float SecondBlow = Striker.Blow(Striker.First, /*bMelee=*/true);
+	const float ThirdBlow = Striker.Blow(Striker.First, /*bMelee=*/true);
+	AddInfo(FString::Printf(TEXT("blows on the resisting creature: %.3f, %.3f, %.3f"),
+		FirstBlow, SecondBlow, ThirdBlow));
+	if (!TestTrue(TEXT("every blow landed"), FirstBlow > 0.0f && SecondBlow > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the first blow ignores the fifty, so the second is half of it"),
+		SecondBlow / FirstBlow, 0.5f, 0.001f);
+	TestEqual(TEXT("and the third meets resistance as the second did"),
+		ThirdBlow, SecondBlow, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryHitTakenDrainRowTest,
+	"Cataclysm.Enchantments.TheEveryHitTakenDrainRowTakes10PercentOnlyWhenTheBlowLands",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every hit you take deals an additional 5%-10% of your maximum HP as bonus
+ * damage", worn at 10. Issue #1833, the small engine halves: a pool action on
+ * `hit_taken` fired on an evaded blow too, and an evaded blow is not a hit,
+ * ruled 2026-09-23. At 1000 maximum health, an evaded blow takes nothing and a
+ * landed one takes 100. A drain cannot kill, ruled 2026-09-14.
+ */
+bool FCataclysmEveryHitTakenDrainRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	FWorn Worn(TEXT("Negative_Every_hit_you_take_deals_an_additional_5_10_of"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Worn.ASC()->SetNumericAttributeBase(UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 1000.0f);
+	Worn.ASC()->SetNumericAttributeBase(Health, 1000.0f);
+
+	Worn.ASC()->NoteHitTaken(/*bLanded=*/false);
+	TestEqual(TEXT("an evaded blow takes nothing"),
+		Worn.ASC()->GetNumericAttribute(Health), 1000.0f, 0.01f);
+	Worn.ASC()->NoteHitTaken(/*bLanded=*/true);
+	TestEqual(TEXT("a landed blow takes 10% of the maximum"),
+		Worn.ASC()->GetNumericAttribute(Health), 900.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoShieldDelayRowTest,
+	"Cataclysm.Enchantments.TheNoShieldDelayRowSetsItsFlag",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Energy shield regeneration begins immediately after taking damage with no
+ * delay", worn, sets the flag the regeneration step reads, as the attribute and
+ * as the stat. Issue #1833, the small engine halves. What the flag does to the
+ * recharge is `Cataclysm.ShieldKeystones.NoDelayRechargesAtTheFullRateInsideTheWait`.
+ */
+bool FCataclysmNoShieldDelayRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	FWorn Worn(TEXT("Positive_Energy_shield_regeneration_begins_immediately_af"), true);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the attribute holds the flag"),
+		Worn.ASC()->GetNumericAttribute(
+			UCataclysmCombatAttributeSet::GetShieldRechargeHasNoDelayAttribute()),
+		1.0f, 0.0001f);
+	TestEqual(TEXT("and so does the stat the regeneration step asks"),
+		Worn.ASC()->StatForSkill(FName(UCataclysmRegeneration::ShieldRechargeHasNoDelayStat),
+								 FGameplayTagContainer(), 0.0f),
+		1.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLessMinionHealthRowTest,
+	"Cataclysm.Enchantments.TheLessMinionHealthRowHalvesAnImpsHealth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your minions have 20%-50% less hp", worn at 50. Issue #1833, the small engine
+ * halves: minion health read the increased bucket only, so a "less" row did
+ * nothing. An imp summoned by the wearer has half the health of one summoned
+ * by the same kind of summoner wearing nothing that touches minions.
+ */
+bool FCataclysmLessMinionHealthRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSmallHalvesTest;
+	FWorn Worn(TEXT("Negative_Your_minions_have_20_50_less_hp"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	CataclysmEnchantmentEffectTest::FWearer Plain(Worn.World);
+	Plain.Equipment->RefreshAttributes(Plain.AbilitySystem);
+
+	const auto ImpHealth = [&](AActor* Summoner, float Along)
+	{
+		ACataclysmMinion* Imp = ACataclysmMinion::Spawn(
+			Summoner, FVector(Along, 0.0f, 0.0f), /*Lifetime=*/20.0f,
+			/*bBurns=*/false, /*TypeName=*/TEXT("Imp"));
+		const UAbilitySystemComponent* Its = Imp ? Imp->GetAbilitySystemComponent() : nullptr;
+		return Its ? Its->GetNumericAttribute(UCataclysmVitalAttributeSet::GetMaxHealthAttribute())
+				   : -1.0f;
+	};
+	const float Worse = ImpHealth(Worn.Wearer->Actor, 400.0f);
+	const float Usual = ImpHealth(Plain.Actor, -400.0f);
+	if (!TestTrue(TEXT("both imps have health"), Worse > 0.0f && Usual > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the wearer's imp has half the health"), Worse / Usual, 0.5f, 0.0001f);
 	return true;
 }
 

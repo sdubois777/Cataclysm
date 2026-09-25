@@ -26,6 +26,8 @@ const TCHAR* UCataclysmRegeneration::EnergyShieldRegenStat =
 	TEXT("energy_shield_regen");
 const TCHAR* UCataclysmRegeneration::ShieldRechargesWhileDamagedStat =
 	TEXT("shield_recharges_while_damaged");
+const TCHAR* UCataclysmRegeneration::ShieldRechargeHasNoDelayStat =
+	TEXT("shield_recharge_has_no_delay");
 const TCHAR* UCataclysmRegeneration::ManaRegenRestoresShieldStat =
 	TEXT("mana_regen_restores_shield");
 
@@ -349,8 +351,15 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 	//
 	// ZERO IN THE DEFAULT BRANCH IS EXACTLY TODAY'S BEHAVIOUR, so the old `if`
 	// is subsumed rather than removed.
+	//
+	// AND NO WAIT AT ALL IS THE FULL RATE INSIDE IT. Issue #1833, the small
+	// engine halves: "Energy shield regeneration begins immediately after
+	// taking damage with no delay" is the stronger thing Ablative is not, so it
+	// is asked first and wins over Ablative's half.
 	const float RechargeScale =
-		ShieldMayRefill(SecondsSinceLastDamage)
+		(ShieldMayRefill(SecondsSinceLastDamage)
+		 || HoldsFlag(ShieldRechargeHasNoDelayStat,
+					  UCataclysmCombatAttributeSet::GetShieldRechargeHasNoDelayAttribute()))
 			? 1.0f
 			: (HoldsFlag(ShieldRechargesWhileDamagedStat,
 						 UCataclysmCombatAttributeSet::GetShieldRechargesWhileDamagedAttribute())

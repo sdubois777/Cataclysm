@@ -408,8 +408,12 @@ INVENTORY = {
      'FName(UCataclysmDamageCalculation::MeleeEvasionSuppressedStat), AssetTags, Swinging->GetNumericAttribute(Suppressed)'):
         'a defender reading with no blow in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
-     'FName(TEXT("penetration")), AssetTags, Offence->GetPenetration()'):
-        'a defender reading with no blow in hand',
+     'FName(TEXT("penetration")), AssetTags, Offence->GetPenetration(), -1.0f, FCataclysmBlowContext(), -1.0f, Hit.OpponentDistanceMetres, UCataclysmSkillEffects::IsStaggered(GetOwningActor()), GetOwningActor()'):
+        'resistance penetration, handed the character struck, the distance '
+        'to it and its stagger since issue #1833, so a first-hit row can '
+        'ask whether the enemy has been struck. This entry said "a defender '
+        'reading with no blow in hand" until then, which was never so: it '
+        'is the attacker\'s reading, made while the blow resolves',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmVitalAttributeSet.cpp',
      'SurvivedEveryStat, FGameplayTagContainer(), 0.0f'):
         "Nothing Stops It's interval, a flag read off the defender when a hit "

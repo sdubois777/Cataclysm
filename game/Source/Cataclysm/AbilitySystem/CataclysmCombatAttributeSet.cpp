@@ -116,6 +116,7 @@ UCataclysmCombatAttributeSet::UCataclysmCombatAttributeSet()
 	// after damage before recharging, and mana regeneration feeds mana.
 	InitShieldAbsorbsDamageOverTime(0.0f);
 	InitShieldRechargesWhileDamaged(0.0f);
+	InitShieldRechargeHasNoDelay(0.0f);
 	InitManaRegenRestoresShield(0.0f);
 
 	// AND THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE. Issue #1515. Both
@@ -249,6 +250,7 @@ void UCataclysmCombatAttributeSet::GetLifetimeReplicatedProps(
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MinionCapBonus);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged);
+	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ManaRegenRestoresShield);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed);
 	CATACLYSM_REPLICATE(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed);
@@ -456,6 +458,7 @@ TArray<FGameplayAttribute> UCataclysmCombatAttributeSet::GetAllAttributes()
 		GetMinionReserveReductionAttribute(), GetMinionCapBonusAttribute(),
 		GetShieldAbsorbsDamageOverTimeAttribute(),
 		GetShieldRechargesWhileDamagedAttribute(),
+		GetShieldRechargeHasNoDelayAttribute(),
 		GetManaRegenRestoresShieldAttribute(),
 		GetArmorPenetrationSuppressedAttribute(),
 		GetMeleeEvasionSuppressedAttribute(),
@@ -525,6 +528,7 @@ CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MinionReserveReduction)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MinionCapBonus)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldAbsorbsDamageOverTime)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargesWhileDamaged)
+CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ShieldRechargeHasNoDelay)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ManaRegenRestoresShield)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, ArmorPenetrationSuppressed)
 CATACLYSM_ON_REP(UCataclysmCombatAttributeSet, MeleeEvasionSuppressed)
