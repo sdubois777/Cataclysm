@@ -587,10 +587,22 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 						const UCataclysmAbilitySystemComponent* AskingToPenetrate =
 							Cast<const UCataclysmAbilitySystemComponent>(Attacker);
 
+						// AND WITH THE CHARACTER STRUCK, SINCE ISSUE #1833'S SMALL
+						// ENGINE HALVES, as the armour penetration ask below
+						// already was. "Your first hit against each enemy in a
+						// combat ignores all resistances" asks whether this
+						// defender has been struck, and a target condition with
+						// no target in hand refuses.
 						Hit.ResistancePenetration = AskingToPenetrate
 							? AskingToPenetrate->StatForSkill(
 								  FName(TEXT("penetration")), AssetTags,
-								  Offence->GetPenetration())
+								  Offence->GetPenetration(),
+								  /*SkillHealthCostPercent=*/-1.0f,
+								  FCataclysmBlowContext(),
+								  /*MetresMovedBeforeBlow=*/-1.0f,
+								  Hit.OpponentDistanceMetres,
+								  UCataclysmSkillEffects::IsStaggered(GetOwningActor()),
+								  /*Target=*/GetOwningActor())
 							: Offence->GetPenetration();
 
 						// ARMOUR PENETRATION IS ASKED WITH THE ATTACK'S COUNT, so a row

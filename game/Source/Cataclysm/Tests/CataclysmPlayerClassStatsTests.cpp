@@ -595,6 +595,12 @@ CATACLYSM_TEST(FCataclysmEveryClassStatDrivesAnAttribute,
 		{TEXT("mana_regen_restores_shield"),
 		 TEXT("the Ritualist's The Long Game keystone, as a flat flag, read where "
 			  "the regeneration step adds a second source to the shield")},
+		// Issue #1833, the small engine halves. A flag for the same reason as
+		// the three above, from an enchantment rather than a node.
+		{TEXT("shield_recharge_has_no_delay"),
+		 TEXT("the enchantment \"Energy shield regeneration begins immediately "
+			  "after taking damage with no delay\", as a flat flag, read where "
+			  "the regeneration step scales the shield's recharge")},
 
 		// Issue #1515. Two Ravager keystones that forbid a defence working, and
 		// both are flags for the same reason as the three above: each node states

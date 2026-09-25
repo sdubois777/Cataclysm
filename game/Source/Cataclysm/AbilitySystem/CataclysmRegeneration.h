@@ -110,6 +110,17 @@ public:
 	static const TCHAR* ShieldRechargesWhileDamagedStat;
 
 	/**
+	 * The stat saying this character's energy shield recharges at its full
+	 * rate inside the wait after being damaged. Issue #1833, the small engine
+	 * halves.
+	 *
+	 * "Energy shield regeneration begins immediately after taking damage with
+	 * no delay" is the only source, and its row is a flag, like Ablative's
+	 * above. Ablative gives half the rate inside the wait; this gives the whole.
+	 */
+	static const TCHAR* ShieldRechargeHasNoDelayStat;
+
+	/**
 	 * The stat saying this character's mana regeneration also restores its
 	 * energy shield. Issue #1515.
 	 *

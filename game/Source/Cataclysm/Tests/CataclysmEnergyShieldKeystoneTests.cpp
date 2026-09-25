@@ -292,6 +292,57 @@ bool FCataclysmAblativeRechargesUnderFireTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNoDelayRechargesAtFullRateTest,
+	"Cataclysm.ShieldKeystones.NoDelayRechargesAtTheFullRateInsideTheWait",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The flag the enchantment "Energy shield regeneration begins immediately after
+ * taking damage with no delay" sets. Issue #1833, the small engine halves. That
+ * the worn row sets it is
+ * `Cataclysm.Enchantments.TheNoShieldDelayRowSetsItsFlag`.
+ *
+ * THE WHOLE RATE INSIDE THE WAIT, where Ablative supplies half of it: ten a
+ * second one second after being hurt. And with Ablative held as well, still
+ * ten and not five, because no wait at all is the stronger of the two.
+ */
+bool FCataclysmNoDelayRechargesAtFullRateTest::RunTest(const FString&)
+{
+	using namespace CataclysmShieldKeystoneTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to spawn in"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerCharacter* Player = SpawnPlayer(World);
+	if (!TestNotNull(TEXT("a player pawn"), Player))
+	{
+		return false;
+	}
+	MakeShieldedCharacter(Player);
+	Write(Player, Vital::GetManaRegenAttribute(), 0.0f);
+
+	RunOneSecond(Player, JustHurt);
+	TestEqual(TEXT("without the flag nothing recharges inside the wait"),
+			  Read(Player, Vital::GetEnergyShieldAttribute()), 0.0f, 0.001f);
+
+	Write(Player, Combat::GetShieldRechargeHasNoDelayAttribute(), 1.0f);
+	RunOneSecond(Player, JustHurt);
+	TestEqual(TEXT("with it the shield recharges at its whole rate inside the wait"),
+			  Read(Player, Vital::GetEnergyShieldAttribute()), ShieldRate, 0.001f);
+
+	EmptyTheShield(Player);
+	Write(Player, Combat::GetShieldRechargesWhileDamagedAttribute(), 1.0f);
+	RunOneSecond(Player, JustHurt);
+	TestEqual(TEXT("and with Ablative held as well, still the whole rate"),
+			  Read(Player, Vital::GetEnergyShieldAttribute()), ShieldRate, 0.001f);
+
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmLongGameFeedsTheShieldTest,
 	"Cataclysm.ShieldKeystones.TheLongGameFeedsTheShieldFromManaRegeneration",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

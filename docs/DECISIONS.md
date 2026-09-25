@@ -2,6 +2,97 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Small engine halves: five engine changes, and eight enchantments written as rows on them
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmSkillEffects.cpp` and `.h` (damage over
+time asked with the ailment's tag and the skill's tags), `CataclysmVitalAttributeSet.cpp` (penetration
+asked with the target), `CataclysmAbilitySystemComponent.cpp` (a pool action skips an event that did not
+land), `CataclysmCombatAttributeSet.cpp` and `.h`, `CataclysmRegeneration.cpp` and `.h` and
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (the new flag
+`shield_recharge_has_no_delay`), `CataclysmMinion.cpp` (a summoner's minion stats read the "more"
+bucket), `docs/All_Things_Cataclysm.xlsx` (the Enchantment Effects sheet), `game/Data/EnchantmentEffects.csv`
+and `game/Content/Data/DT_EnchantmentEffects.uasset` (regenerated), `game/Data/datatable_asset_sources.json`,
+`game/Source/Cataclysm/Tests/CataclysmEnchantmentEffectTests.cpp` (five tests),
+`CataclysmEnergyShieldKeystoneTests.cpp` (one test), `CataclysmPlayerClassStatsTests.cpp`,
+`CataclysmAttributeSetTests.cpp` (the off-sheet count), `CataclysmDataTableTests.cpp` and `docs/README.md`
+(the row count), `tools/tests/test_enchantment_effects_match_the_row_text.py`,
+`tools/tests/test_passive_effects_match_the_node_text.py` and
+`tools/tests/test_stat_lookups_hand_over_what_they_should.py`. Issue
+[#1833](https://github.com/sdubois777/Cataclysm/issues/1833).
+
+### WHAT CHANGED IN THE ENGINE
+
+1. **A damage-over-time stat is asked with the ailment's own tag and the applying skill's tags**, so a
+   row scoped to `Keyword.DoT.Burn` reaches burns and nothing else. The skill's tags are copied only
+   where `ApplyDamageOverTime` is given a skill. No existing row on `dot_damage`, `dot_duration` or
+   `dot_frequency` carries Required Tags (measured on `ae1caf9e`, every data file), so no existing row
+   changes.
+2. **Penetration is asked with the target**, so a row whose condition reads the target applies. No
+   existing penetration row has a condition or a scale.
+3. **A pool action skips an event that did not land**, so "every hit you take" takes nothing from a
+   blow that was evaded.
+4. **A new flag, `shield_recharge_has_no_delay`**: above zero, the energy shield regains at its whole
+   rate inside the wait after damage, and this wins over Ablative's half rate. A flag supplied by one
+   enchantment, so it is counted off the character sheet (`OffSheetCombatStats` 45).
+5. **A summoner's minion stats read the "more" bucket** (`SummonerMultiplierFor` asks
+   `MultiplierForStatAgainst`). Until now it read the increases only, so a "less" row did nothing. No
+   existing row is a "more" on `minion_health`, `minion_duration` or `minion_explosion_damage`.
+
+### THE ROWS
+
+| Enchantment | Row |
+| :-- | :-- |
+| Burn effects you apply deal 30%-60% increased damage per second | `dot_damage` increased 30 to 60, Required Tags `Keyword.DoT.Burn` |
+| Poison effects you apply deal 30%-60% increased damage per second | `dot_damage` increased 30 to 60, `Keyword.DoT.Poison` |
+| Bleed stacks you apply deal 30%-60% increased damage | `dot_damage` increased 30 to 60, `Keyword.DoT.Bleed` |
+| Poison stacks you apply have 30%-60% increased duration | `dot_duration` increased 30 to 60, `Keyword.DoT.Poison` |
+| Your first hit against each enemy in a combat ignores all resistances | `penetration` flat 100, condition `target_not_yet_struck_by_you` |
+| Every hit you take deals an additional 5%-10% of your maximum HP as bonus damage | action `health` -5 to -10 of the maximum, on `hit_taken` |
+| Energy shield regeneration begins immediately after taking damage with no delay | `shield_recharge_has_no_delay` flat 1 |
+| Your minions have 20%-50% less hp | `minion_health` more -20 to -50 |
+
+### TWO LABELLED JUDGEMENTS, UNDER THE OWNER'S DELEGATION
+
+- **"All" states 100 for penetration**, on the same reasoning as armour: penetration stops at the
+  target's resistance, so 100 is "all of it". Added to `STATED_BY_WORD`.
+- **"Damage" counts as taking something away only on a health-pool action row**, for "deals an
+  additional 5%-10% of your maximum HP as bonus damage". A stat row saying "damage" with a negative value
+  is still refused.
+
+### THE RUN
+
+On `68c679d6`, after moving the branch from `ae1caf9e`. The move had one conflict, in
+`CataclysmEnchantmentEffectTests.cpp`, where both sides had appended tests; the moved commit's added and
+removed lines match the original's exactly.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `cea613cc` | "5488 passed, 8 skipped in 379.13s"; JUnit tests 5496, failures 0 |
+| First build | "Build: Succeeded - 30 actions, 27 files compiled" |
+| Rows commit `748f1305` | "EnchantmentEffects.csv 355 rows", from 347 |
+| Python after the rows | "1 failed, 5487 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.12.cpp", the unity file holding `CataclysmDataTableTests.cpp` |
+| Stale-asset step | "125 tests performed, 119 succeeded, 6 failed": the asset-match guard and the five new Enchantments tests; "8 row(s) only in the CSV" |
+| Asset rebuild `b250454c` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` |
+| The six new tests | "6 tests performed, 6 succeeded, 0 failed" |
+| Whole suite, `b250454c` | "2550 tests performed, 2549 succeeded, 1 failed: CharacterSheetIsComplete"; 2550 declared, gap 0. See below |
+| Off-sheet count, `7310dfe2` | build "4 actions, 1 file compiled: Module.Cataclysm.10.cpp"; `Cataclysm.Attributes.` "20 tests performed, 20 succeeded, 0 failed" |
+| Proof A, a damage-over-time ask without the ailment's tag | PROVED: the burn and poison tick ratios read 1.000000 against 1.6, as registered; restored 1/1 |
+| Proof B, a pool action that does not skip an unlanded event | PROVED: "an evaded blow takes nothing" read 900 against 1000, and "a landed blow takes 10% of the maximum" 800 against 900, as registered; restored 1/1 |
+| Proof C, a summoner's minion multiplier without the "more" bucket | PROVED: "the wearer's imp has half the health" read 1.000000 against 0.5, as registered; restored 1/1 |
+| Python control, "damage" on a health action taken out of the taking words | PROVED: only `test_a_negative_value_is_on_words_that_take_something_away` failed, "1 failed, 49 passed"; restored "50 passed" |
+
+**A registration miss.** The whole suite was registered as 2550 of 2550 and printed 2549 and 1 failed.
+`Cataclysm.Attributes.CharacterSheetIsComplete` counts the fields of `UCataclysmCombatAttributeSet`,
+and a field that is not a stat on the sheet must be declared by raising `OffSheetCombatStats`. This
+change added `ShieldRechargeHasNoDelay` and did not raise it, so the test read 73 against 72 and 47
+against 46. **The cause was a C++ field count that the Python rehearsal cannot see.** The count was
+raised to 45 in `7310dfe2`. Under the precedent set for Scarcity, the coordinating session ruled that
+no second whole suite was needed: the change is one number in a test, and the whole suite showed that
+test failing only for this reason.
+
+---
+
 ## 2026-09-25 — The last six Demonic options built engine first now have their rows: six flat rows, from Nowhere to Run to Chorus
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv`

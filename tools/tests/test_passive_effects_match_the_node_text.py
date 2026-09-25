@@ -3067,8 +3067,10 @@ def test_no_node_is_worth_nothing_to_its_own_class(effects):
         # which is how the next reader misreads it, so: `ENGINE_SUPPLIED_BASES`
         # promises a base EXISTS and names the code that puts it on the
         # character. This one says NO BASE IS NEEDED, because nothing multiplies
-        # one. `IncreasesForStat` returns the sum of the increases and the engine
-        # applies that to the minion's own figure from `game/Data/
+        # one. The engine reads the summoner's summed increases -- times any
+        # "more" multiplier, for the stats read through
+        # `MultiplierForStatAgainst` -- and applies that to the minion's own
+        # figure from `game/Data/
         # MinionTypes.csv`, whose columns are BaseHealth, BaseDamage and
         # AttackIntervalSeconds. The base is on the minion and cannot be on the
         # character.

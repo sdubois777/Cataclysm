@@ -1002,10 +1002,15 @@ public:
 	 *
 	 * @param Source  the attacker, or null for a blow dealt in someone else's
 	 *                name, which takes none of these three
+	 * @param Tags    what the three stats are asked with: the ailment's own
+	 *                `Keyword.DoT.*` tag and the applying skill's tags, so a row
+	 *                scoped to one ailment applies to that ailment. Empty asks
+	 *                only unscoped rows. Issue #1833, the small engine halves
 	 */
 	static FCataclysmDamageOverTimeNumbers DamageOverTimeNumbers(
 		const UAbilitySystemComponent* Source, float DamagePerTick,
-		float DurationSeconds);
+		float DurationSeconds,
+		const FGameplayTagContainer& Tags = FGameplayTagContainer());
 
 	/** Burn's duration and damage share, or bUsable false if it has none. */
 	static FCataclysmStatusEffectNumbers BurnNumbers();
