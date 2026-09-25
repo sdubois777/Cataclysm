@@ -114,6 +114,38 @@ Ground Down would have missed it the same way.
 that change must add a test that wears the real `Ravager_capstone_100` option 1 rows and sees a creature
 slowed.
 
+### THE WINDOW, 2026-09-24, ON fe730b41
+
+**This change's C++ was compiled for the first time here, with the next-use change's heads-up display
+(#2086) beside it, and it built. Every registered figure matched, and all three proofs are proved.**
+No data row changed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on fe730b41 | `5430 passed, 8 skipped in 340.41s`; JUnit 5438 tests, 0 failures, 0 errors, 8 skipped |
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2402 tests performed, 2402 succeeded, 0 failed` |
+
+**A continuous-integration compile overlapped the middle of the whole suite and nothing failed.**
+Divine Wrath (#2087) merged during the window, and its Unreal run 36082063798 had its "Game compiles"
+job from 01:27:07 to 01:28:55 UTC on 2026-09-25 by GitHub's clock; the suite's tests ran from 01:24:42
+to 01:30:36 by the engine log's. The build had finished before it began, and it had completed before the
+first proof.
+
+Three proofs with `prove_cpp_guard` on fe730b41, each anchor re-checked immediately before and each
+begun with no Unreal run in progress. Each restored run printed every test succeeding. **Every one was
+registered before the window, test and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| `SpeedMultiplier` leaves Ground Down out | `Cataclysm.GroundDown.` | `3 tests performed, 0 succeeded, 3 failed` | "the Imp two metres away attacks 15% less often", 0.9 where 1.0588; "and walks 15% slower", 650 where 552.5; "half a second later, with no step, it is still slowed", 0.9 where 1.0588; "two holders together slow it by 15%, not by 15% twice", 0.9 where 1.0588; "crippled and near the holder, it attacks at its interval over the Cripple times 0.85", 1.2857 where 1.5126 |
+| a second holder's percent is added | `Cataclysm.GroundDown.` | `3 tests performed, 2 succeeded, 1 failed: ItEndsAfterTheEnemyLeavesAndDoesNotStack` | "two holders together slow it by 15%, not by 15% twice", 1.2857 where 1.0588; "and the line still says 15%", "Slowed -30%" |
+| the Brute's walk ignores `SpeedMultiplier` again | `Cataclysm.AI.ACrippledBrute` | `1 tests performed, 0 succeeded, 1 failed: ACrippledBruteWalksSlowerChasingAndNot` | "crippled and not chasing, it walks at its designed walk times the Cripple", 250 where 175; "crippled and chasing, it runs at its designed chase times the Cripple", 500 where 350 |
+
+The third proof's prefix has no trailing dot because the one test it selects continues the name. **No
+proof breaks the radius**; "the Imp six metres away ..." asserts it, and the gap was accepted to keep
+within three proofs.
+
 ---
 
 ## 2026-09-24 — Divine Wrath: every thirty seconds a beam of light appears twelve metres away and chases the player, destroying the creatures it covers and burning the player for a fifth of maximum health a second
