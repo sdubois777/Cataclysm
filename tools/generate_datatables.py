@@ -4234,7 +4234,7 @@ SCALES = {
     # "Each consecutive melee hit on the same enemy increases damage by 5%-10%
     # up to 8 stacks" is `consecutive_hits` with a step of 1: the row's own
     # count of hits in a row on one enemy, granted by `hit_dealt` and capped by
-    # its Scale Max Steps. Issue #1833, phase 2, ruled 2026-09-25 under the
+    # its Scale Max Steps. Issue #1833, phase 2, ruled 2026-09-24 under the
     # owner's delegation. It reads nought on any other enemy, so hit N deals
     # damage with N-1. No timer: a hit on another enemy, death and leaving
     # combat end it, so it takes no Stack Seconds.
@@ -5077,7 +5077,7 @@ def enchantment_effects(book) -> list[dict]:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} counts hits in a "
                     f"row and states Stack Seconds. The count has no timer "
-                    f"(ruled 2026-09-25), so they would be dropped.")
+                    f"(ruled 2026-09-24), so they would be dropped.")
             if scale_max_steps < 1:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} counts hits in a "

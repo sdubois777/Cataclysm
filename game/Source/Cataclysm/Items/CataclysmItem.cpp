@@ -1039,7 +1039,7 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 				// AND ITS CLOCK, WHEN IT GRANTS ON ONE. Issue #1833, timed grants.
 				Stack.EverySeconds = Effect->EverySeconds;
 				// A COUNT OF HITS IN A ROW IS SCOPED BY THE ROW'S TAGS, ruled
-				// 2026-09-25: "each consecutive melee hit" counts melee hits
+				// 2026-09-24: "each consecutive melee hit" counts melee hits
 				// only. An own stack's tags scope its stat and not its grant, the
 				// phase 1 judgement, which this leaves as it was.
 				Stack.bConsecutiveHits = bConsecutive;

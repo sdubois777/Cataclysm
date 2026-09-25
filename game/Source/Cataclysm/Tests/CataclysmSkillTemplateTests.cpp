@@ -18148,7 +18148,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsecutiveHitsTest,
 
 /**
  * A row counting melee hits in a row, capped at 3. Issue #1833, phase 2,
- * ruled 2026-09-25: a landed melee hit on the enemy counted counts, up to
+ * ruled 2026-09-24: a landed melee hit on the enemy counted counts, up to
  * the cap; a hit outside the row's scope, and one that did not land, neither
  * counts nor starts it again; a landed melee hit on another enemy starts it
  * again at one; leaving combat and death end it. The count reads nought on

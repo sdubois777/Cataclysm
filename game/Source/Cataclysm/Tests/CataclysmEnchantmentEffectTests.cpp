@@ -5601,7 +5601,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsecutiveMeleeRowTest,
 
 /**
  * "Each consecutive melee hit on the same enemy increases damage by 5%-10% up
- * to 8 stacks", worn at 10. Issue #1833, phase 2, ruled 2026-09-25. Hit N on
+ * to 8 stacks", worn at 10. Issue #1833, phase 2, ruled 2026-09-24. Hit N on
  * one enemy deals the first hit's damage with 10% increased for each of the
  * N-1 before it, up to 8: the tenth deals 1.8 times, and so does the eleventh.
  * The first melee hit on another enemy is plain, and starts the count there. A

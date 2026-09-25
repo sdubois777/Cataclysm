@@ -2029,7 +2029,7 @@ enum class ECataclysmStatScale : uint8
 	 * Multiplied by how many hits in a row the character has landed ON THE
 	 * TARGET OF THIS LOOKUP, counted by ITS OWN ROW. Issue #1833, phase 2:
 	 * "Each consecutive melee hit on the same enemy increases damage by 5%-10%
-	 * up to 8 stacks". Ruled 2026-09-25 under the owner's delegation: a landed
+	 * up to 8 stacks". Ruled 2026-09-24 under the owner's delegation: a landed
 	 * hit within the row's scope counts, one on a different enemy starts the
 	 * count again, and death and leaving combat end it.
 	 *
@@ -3344,7 +3344,7 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 * ENEMY rather than a stack with a window. Issue #1833, phase 2. The event
 	 * must name the enemy struck; a landed hit on another one starts the count
 	 * again. `StackSeconds` is not read: the count has no timer (ruled
-	 * 2026-09-25). UNLIKE AN OWN STACK, `RequiredTags` SCOPE THE COUNT: "each
+	 * 2026-09-24). UNLIKE AN OWN STACK, `RequiredTags` SCOPE THE COUNT: "each
 	 * consecutive melee hit" counts melee hits only.
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")

@@ -2,7 +2,7 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
-## 2026-09-25 — Hits in a row on one enemy: a melee hit raises damage on it up to 8 times, and any hit lowers it up to 10
+## 2026-09-24 — Hits in a row on one enemy: a melee hit raises damage on it up to 8 times, and any hit lowers it up to 10
 
 **Affects:**
 - the Enchantment Effects sheet: four rows on two enchantments; no new column
@@ -41,7 +41,7 @@ times. That is the pipeline's existing arithmetic for every scaled row, not a ne
   "consecutive" makes.
 - **So the reset rules and the area-skill rule below are judgements**, not derived.
 
-### THE RULINGS, by the coordinating session on 2026-09-25, under the owner's delegation
+### THE RULINGS, by the coordinating session on 2026-09-24, under the owner's delegation
 
 - **What counts: a landed hit within the row's own scope.** The melee row counts melee hits only; the
   drawback counts any hit. A damage-over-time tick is not a hit, and an evaded blow did not land:

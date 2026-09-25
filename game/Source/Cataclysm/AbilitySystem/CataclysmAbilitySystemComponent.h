@@ -491,7 +491,7 @@ public:
 	/**
 	 * Count one landed hit on this target for one row, up to its cap. A hit on
 	 * a different target, or the first in a new combat, starts the count again
-	 * at one. Issue #1833, phase 2, ruled 2026-09-25.
+	 * at one. Issue #1833, phase 2, ruled 2026-09-24.
 	 */
 	void GrantConsecutiveHit(FName StackKey, const AActor* Target, int32 Cap);
 

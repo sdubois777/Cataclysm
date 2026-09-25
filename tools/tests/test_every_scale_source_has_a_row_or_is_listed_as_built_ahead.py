@@ -82,7 +82,7 @@ EFFECT_TABLES = (REPO_ROOT / "game" / "Data" / "EnchantmentEffects.csv",
 #:
 #: `own_stacks` LEFT on 2026-09-24 with its seven enchantments, issue #1833.
 #:
-#: `consecutive_hits` JOINED on 2026-09-25 for issue #1833's phase 2, as an
+#: `consecutive_hits` JOINED on 2026-09-24 for issue #1833's phase 2, as an
 #: engine commit ahead of its rows' commit on the same branch, and leaves with
 #: those rows.
 BUILT_AHEAD_OF_THEIR_ROWS: set[str] = {"consecutive_hits"}

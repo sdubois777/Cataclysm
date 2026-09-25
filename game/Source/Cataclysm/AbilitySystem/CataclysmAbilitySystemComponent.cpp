@@ -2028,7 +2028,7 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	OwnStacks.Empty();
 
-	// AND EVERY ROW'S HITS IN A ROW, ruled 2026-09-25. Issue #1833, phase 2.
+	// AND EVERY ROW'S HITS IN A ROW, ruled 2026-09-24. Issue #1833, phase 2.
 	for (const TPair<FName, FConsecutiveHits>& Held : ConsecutiveHits)
 	{
 		Ended.Stacks += Held.Value.Count;
@@ -3016,7 +3016,7 @@ int32 UCataclysmAbilitySystemComponent::OwnStacksHeld(FName StackKey) const
 bool UCataclysmAbilitySystemComponent::ConsecutiveHitsStanding(
 	const FConsecutiveHits& Held) const
 {
-	// OUT OF COMBAT ENDS THE COUNT, ruled 2026-09-25, and so does a count begun
+	// OUT OF COMBAT ENDS THE COUNT, ruled 2026-09-24, and so does a count begun
 	// before this combat did. The second catches a count left from a fight
 	// that lapsed when the next fight was begun by the enemy: the character is
 	// in combat again, and the count is still not this combat's.
