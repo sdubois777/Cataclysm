@@ -687,7 +687,10 @@ projectile's contact, and a thrown axe's hit in `UCataclysmProjectileSkill::Thro
 buried axe leaping to a new host when the old one dies (`UCataclysmBuriedWeapon::LeapFromDying`), comes
 after the cast and is not. Two hits that pass through `HitTargets` also come after the cast and are not
 repeated: an aura's pulse and a rift's collapse, which set `bHitsAfterTheCast` around the call. The
-ruling's "no later pulses" is what excludes them.
+ruling's "no later pulses" is what excludes them. Confirmed by the coordinating session on 2026-09-25.
+
+**A consequence, stated because it is easy to miss: an aura skill gains nothing from Chorus.** All of an
+aura's damage comes from its pulses, and no pulse is repeated.
 
 ### DISPLAY
 
