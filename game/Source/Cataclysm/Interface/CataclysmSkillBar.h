@@ -342,6 +342,14 @@ public:
 	static FString StoredDamageLine(float Stored);
 
 	/**
+	 * How long until Follow Through can repeat an attack again, such as "Follow
+	 * Through 2s", or empty when it can now. Issue #1515, approved 2026-09-24.
+	 * Whole seconds rounded up, so the last fraction of a second still says 1
+	 * rather than 0. Joined to the line above by the same three spaces.
+	 */
+	static FString FollowThroughLine(float SecondsLeft);
+
+	/**
 	 * A key written short enough to fit in a box.
 	 *
 	 * `FKey` CARRIES TWO NAMES AND THIS TAKES THE SHORT ONE. The long name is

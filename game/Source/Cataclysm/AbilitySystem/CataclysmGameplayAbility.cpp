@@ -382,6 +382,12 @@ bool UCataclysmGameplayAbility::CheckCost(
 	const FGameplayAbilityActorInfo* ActorInfo,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
+	// FOLLOW THROUGH'S REPEAT IS "AT NO COST". See `bFreeRepeat`.
+	if (bFreeRepeat)
+	{
+		return true;
+	}
+
 	if (!Super::CheckCost(Handle, ActorInfo, OptionalRelevantTags))
 	{
 		return false;
@@ -485,6 +491,13 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 	const FGameplayAbilityActorInfo* ActorInfo,
 	FGameplayTagContainer* OptionalRelevantTags) const
 {
+	// NOR DOES IT WAIT FOR THE COOLDOWN THE KILLING USE STARTED, which is still
+	// running when the repeat is made. See `bFreeRepeat`.
+	if (bFreeRepeat)
+	{
+		return true;
+	}
+
 	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
 	if (!Tag.IsValid() || GetBaseCooldown() <= 0.0f)
 	{

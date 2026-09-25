@@ -11,6 +11,7 @@
 #include "AbilitySystem/CataclysmBasicAttack.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
@@ -1323,6 +1324,51 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and one holding it keeps both, so MayHoldTwoTwoHanded "
 							"really reads it"),
 					   WeaponsKept(Held), 2);
+	}
+
+	/**
+	 * `melee_kill_repeats_attack_every_seconds`, read by
+	 * `UCataclysmFollowThrough::NoteMeleeKill`. Issue #1515, Follow Through. A
+	 * melee kill by a fighter holding it waits to repeat its strike; one by a
+	 * fighter without it does not.
+	 */
+	void ProbeFollowThrough(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto WaitsToRepeat = [&Test](FScopedFighter& Fighter)
+		{
+			UCataclysmAbilitySystemComponent* System = Fighter.AbilitySystem;
+			const FGameplayAbilitySpecHandle Handle = System->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy,
+				/*Level=*/100, Fighter.Actor);
+			FGameplayAbilitySpec* Spec = System->FindAbilitySpecFromHandle(Handle);
+			UCataclysmSkillTemplate* Strike = Spec
+				? Cast<UCataclysmSkillTemplate>(Spec->GetPrimaryInstance())
+				: nullptr;
+			if (!Test.TestNotNull(TEXT("a strike"), Strike))
+			{
+				return false;
+			}
+			Strike->SkillName = TEXT("Probe Strike");
+			return UCataclysmFollowThrough::NoteMeleeKill(
+				Fighter.Actor, FName(TEXT("Probe Strike")));
+		};
+
+		FScopedFighter Plain(World, 0.0f);
+		FScopedFighter Held(World, 0.0f);
+		GrantFlats(Held.Actor, {{FName(UCataclysmFollowThrough::EverySecondsStat), 3.0f}});
+		Test.TestFalse(TEXT("a melee kill by a fighter without "
+							"melee_kill_repeats_attack_every_seconds earns no repeat"),
+					   WaitsToRepeat(Plain));
+		Test.TestTrue(TEXT("and one by a fighter holding it waits to repeat, so "
+						   "NoteMeleeKill really reads it"),
+					  WaitsToRepeat(Held));
 	}
 
 	/**
@@ -3087,6 +3133,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},
 			{TEXT("two_handed_weapon_in_each_hand"), &ProbeBothHandsFull},
+			{TEXT("melee_kill_repeats_attack_every_seconds"), &ProbeFollowThrough},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},
 			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},

@@ -396,13 +396,15 @@ void ACataclysmHUD::DrawSkillBar()
 		{
 			OwnStacks.Add(UCataclysmSkillBar::NthEntry(Held.Kind, Held.Count, Held.EveryNth));
 		}
-		// AND NOTHING WASTED'S STORE ON THE SAME LINE. Issue #1515.
+		// AND NOTHING WASTED'S STORE ON THE SAME LINE, AND FOLLOW THROUGH'S WAIT.
+		// Issue #1515.
 		TArray<FString> Parts;
 		for (const FString& Part :
 			 {UCataclysmSkillBar::NextUseLine(
 				  SkillPercent, SkillCount, AttackPercent, AttackCount,
 				  Cataclysm->NextUseEffectivenessHeld(), OwnStacks),
-			  UCataclysmSkillBar::StoredDamageLine(Cataclysm->StoredMitigatedDamageNow())})
+			  UCataclysmSkillBar::StoredDamageLine(Cataclysm->StoredMitigatedDamageNow()),
+			  UCataclysmSkillBar::FollowThroughLine(Cataclysm->FollowThroughSecondsLeft())})
 		{
 			if (!Part.IsEmpty())
 			{

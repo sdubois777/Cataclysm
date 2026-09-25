@@ -422,6 +422,10 @@ INVENTORY = {
      'FName(BothHandsFullStat), FGameplayTagContainer(), 0.0f'):
         "Both Hands Full's flag, asked of the wearer when a weapon is put on "
         'and after its passive allocation changes; no blow or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmFollowThrough.cpp',
+     'FName(UCataclysmFollowThrough::EverySecondsStat), FGameplayTagContainer(), 0.0f'):
+        "Follow Through's interval, asked of the killer after a kill and before "
+        'its repeat; a clock, not a blow modifier',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f'):
         "Nothing Wasted's cap, asked of the holder as damage is stored and as "

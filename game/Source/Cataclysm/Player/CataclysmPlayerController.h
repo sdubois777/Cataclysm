@@ -442,6 +442,16 @@ public:
 	bool TakeDropForTest(ACataclysmDroppedItem* Drop) { return TakeDrop(Drop); }
 	void CollectMaterialsNearbyForTest() { CollectMaterialsNearby(); }
 
+	/**
+	 * The basic attack's swing exactly as play runs it, and when the last one
+	 * started, for automation tests. Issue #1515: Follow Through's ruling that
+	 * its repeat of a basic attack leaves the swing interval alone is a claim
+	 * about `LastSwingSeconds`, which only this swing writes. Nothing in the game
+	 * calls these.
+	 */
+	bool TrySwingAtForTest(AActor* Target) { return TrySwingAt(Target); }
+	float LastSwingSecondsForTest() const { return LastSwingSeconds; }
+
 private:
 
 	/**
