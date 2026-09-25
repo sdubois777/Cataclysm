@@ -320,3 +320,7 @@ Positive_When_you_dodge_an_attack_your_next_skill_deals_3#1,Positive_When_you_do
 Positive_When_your_class_resource_is_full_your_next_skil#1,Positive_When_your_class_resource_is_full_your_next_skil,,,30.0,60.0,,,0.0,,0.0,next_skill_damage,resource_full,,1,0.0,0.0,0.0
 Positive_After_using_your_movement_ability_your_next_atta#1,Positive_After_using_your_movement_ability_your_next_atta,,,30.0,60.0,,,0.0,,0.0,next_attack_damage,movement_skill,,1,0.0,0.0,0.0
 Positive_Each_successful_block_increases_your_next_attack#1,Positive_Each_successful_block_increases_your_next_attack,,,10.0,20.0,,,0.0,,0.0,next_attack_damage,block,,5,0.0,0.0,0.0
+Positive_Every_10_seconds_gain_a_stack_of_momentum_granti#1,Positive_Every_10_seconds_gain_a_stack_of_momentum_granti,attack_damage,increased,5.0,10.0,,,0.0,own_stacks,1.0,,every_seconds,,5,20.0,0.0,10.0
+Positive_Every_10_seconds_gain_a_stack_of_momentum_granti#2,Positive_Every_10_seconds_gain_a_stack_of_momentum_granti,spell_damage,increased,5.0,10.0,,,0.0,own_stacks,1.0,,every_seconds,,5,20.0,0.0,10.0
+Positive_Every_8_seconds_your_next_attack_deals_100_200#1,Positive_Every_8_seconds_your_next_attack_deals_100_200,,,100.0,200.0,,,0.0,,0.0,next_attack_damage,every_seconds,,1,0.0,0.0,8.0
+Positive_Every_30_seconds_your_next_skill_is_cast_at_300#1,Positive_Every_30_seconds_your_next_skill_is_cast_at_300,,,300.0,500.0,,,0.0,,0.0,next_skill_effectiveness,every_seconds,,1,0.0,0.0,30.0

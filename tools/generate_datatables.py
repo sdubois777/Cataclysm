@@ -1587,11 +1587,8 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #:
 #: EVERY SECONDS JOINED ON 2026-09-24 for issue #1833's timed grants, and
 #: leaves with their rows.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
-    "Enchantment Effects": {
-        "Every Seconds": "issue #1833: the timed-grant rows add this column",
-    },
-}
+#: EVERY SECONDS LEFT with the timed-grant rows, and the table is empty again.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
 
 
 class _Headers(dict):
