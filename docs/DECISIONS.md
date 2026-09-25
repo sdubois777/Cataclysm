@@ -79,6 +79,141 @@ passed in 0.20s", the one failure being `test_a_single_value_appears_in_its_word
 
 ---
 
+## 2026-09-24 — Both Hands Full, engine only: a second two-handed weapon goes in the other hand, and goes back when the option is lost
+
+**Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (where a weapon
+goes), `CataclysmWearing.h` and `.cpp` (the bag's room, and returning the second weapon),
+`game/Source/Cataclysm/Player/CataclysmPlayerState.cpp` (after a passive change),
+`game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one stat with no attribute), a new test
+file, the stat exemption test and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ravager_capstone_200` option 2, Both Hands Full: "You may hold a two-handed weapon in each hand. Both
+contribute their damage, their affixes and their sockets." One flag with no attribute, which its row will
+carry: `two_handed_weapon_in_each_hand` (1). **Engine only**, for the reason the Shared Ruin entry gives.
+
+**The design was already settled, by the owner.** The 2026-09-08 entry's section "Dual wielding two
+two-handed weapons, and what it costs" gives the loadout (8 affix slots at x2, 16 effective affix value,
+12 sockets) and the owner's words: "a 200 point capstone should be rule breaking. Dual wielding two
+handers costs you 200 class points and the ability to really multiclass. That's enough." The design
+document's loadout paragraph says no further mechanical penalty applies.
+
+### THE GENRE
+
+Fetched on 2026-09-24: World of Warcraft's Titan's Grip "Allows you to dual-wield a pair of two-handed
+weapons" ([warcraft.wiki.gg, Titan's Grip](https://warcraft.wiki.gg/wiki/Titan%27s_Grip)), and the page's
+history records its damage penalty removed in patch 4.0.1. **That is the shipped precedent for the
+loadout and nothing more.** The page says nothing of what happens to the second weapon when the talent is
+unlearned, the fandom wikis answered HTTP 402, and no source found says. So the rule below for losing the
+option is a judgement.
+
+### RULINGS, 2026-09-24, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **The Two Hands condition holds while any held weapon is two-handed.** It was recorded as "Not decided:
+  one weapon is held today" in the 2026-09-23 entry on Two Hands, which said this option would bring the
+  question. Nothing changes to make it so: the condition reads the first held weapon, and in every legal
+  loadout with a two-handed weapon that first one is two-handed. A test holds it.
+- **The skills come from the weapon in the first hand** until the two-weapon skill pool (#837) exists, as
+  `UCataclysmEquipmentComponent::EquippedWeaponType` answers today. **A stated limit**: a player holding
+  a greatsword and a greataxe uses the greatsword's skills.
+- **Sockets are a stated limit.** "Their sockets" does nothing yet for any loadout: a socket is a count
+  and no gem reaches a stat (#46).
+- **When the option is lost, the weapon in the second hand goes to the bag, or on the floor in front of
+  the character when the bag is full. The respec is never refused.** A judgement, as above.
+
+### HOW IT IS BUILT
+
+- **`MayHoldTwoTwoHanded`** reads the flag live off the wearer's ability system. A component with no
+  owner reads false, so every older equipment test behaves as before.
+- **`EquipInto`**, with the flag, puts a two-handed weapon where it was put. What was in that hand comes
+  off, and so does a one-handed weapon in the other hand, because the design's four loadouts never mix the
+  two kinds; a two-handed weapon in the other hand stays. **A one-handed weapon put beside a two-handed
+  one takes it off, whichever hand holds it**, which reads the same as before when the only place a
+  two-handed weapon could be was the first hand.
+- **`TwoHandedOccupiesBothWeaponSlots`** is false while the flag is held, so the gear panel stops marking
+  the second hand as taken: one two-handed weapon leaves it free for another.
+- **`WeaponsComingOffFor`** counts what putting a weapon on will take off, and `WearFromCarried` asks it
+  before anything moves. A one-handed weapon over two two-handed ones takes two off and needs a free slot;
+  a second two-handed weapon beside a first takes none.
+- **`UCataclysmWearing::ReturnSecondTwoHandedWeapon`**, called by `ACataclysmPlayerState::
+  RefreshCharacterStats`, through which every change to the allocation passes, a respec among them.
+- **Nothing else needed changing.** The worn items' stats already sum over both weapon slots with the x2
+  on each; attack speed is already blended; Power Score is computed from the tier and a fixed count of
+  gear pieces, not from what is worn, so "still one equipped piece" already holds; and the hand meshes
+  already draw the second weapon slot in the left hand. **Not checked: how a two-handed weapon looks in
+  the left hand**, which only a person can see.
+
+### A FINDING, NOT CHANGED HERE
+
+**Worn gear is not in the save records.** The character record holds the carried slots and nothing for
+what is worn. So there is nothing for this option to migrate or check on load. What that means for a
+player is being read separately and is not changed here.
+
+### TESTS
+
+In the group `Cataclysm.BothHandsFull.`, the flag given by hand:
+
+- `WithTheOptionASecondTwoHandedWeaponGoesInTheOtherHand`: without it, a greataxe replaces a greatsword,
+  as before; with it, the greataxe goes in the second hand and nothing comes off.
+- `BothTwoHandedWeaponsAddTheirDamageAndTheirAffixes`: two greatswords give exactly twice one's attack
+  damage and twice its affix.
+- `NoLoadoutMixesATwoHandedWeaponWithAOneHandedOne`: a greatsword beside a sword takes the sword off; a
+  dagger over two two-handed weapons takes both off.
+- `TheWeaponTheSkillsComeFromIsTwoHandedWithTwoAndWithOneInTheSecondHand`.
+- `WearingFromAFullBagAsksRoomOnlyWhenTwoComeOff`.
+- `LosingTheOptionReturnsTheSecondToTheBagOrTheFloor`: a real player's respec puts it in the bag; with a
+  full bag it goes on the floor; with the option still held nothing moves.
+- `TheSecondHandIsMarkedTakenOnlyWithoutTheOption`.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**The flag is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
+change must add a test that wears the real `Ravager_capstone_200` option 2 row.
+
+---
+
+## 2026-09-24 — A passive node whose own text names minions may pass a summoner stat to them
+
+**Affects:** no code. The design documents' reading, for Shared Blood (built), and for A Second Self and
+Chorus (not built). Issue [#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE TWO SENTENCES
+
+`docs/Cataclysm_GDD_v2.md` says two things about what a minion takes from its summoner that cannot both
+hold for a passive node. Its general rule, under "A minion reaches its summoner through exactly three
+channels, and nothing else crosses":
+
+> **Everything else is blocked unless a modifier says "minion".** ... If a modifier does not name
+> minions, it does not reach one.
+
+And, a few paragraphs later:
+
+> Inheritance beyond the three channels above exists **only** where an enchantment says so by name.
+
+By the first, a passive whose text names minions may pass a stat. By the second, only an enchantment may.
+**Shared Blood, already built, is a passive that passes one**: "Your minions each have 20% of your Maximum
+Energy Shield as their own". The survey of the six options still without rows found this on 2026-09-24;
+nobody had read the second sentence against the first before.
+
+### THE RULING, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session: **a passive node whose own text names minions may pass a summoner stat
+to them.** Its reasons:
+
+- The second sentence sits in the passage about gear, affix against enchantment, where it names the one
+  enchantment and goes on to minion count on gear. There it separates enchantments from affixes.
+- The general rule, "unless a modifier says minion", includes a passive whose text says it.
+- The project owner wrote the capstone texts that name the stats they pass, and the owner's own node text
+  is the more specific design.
+
+So Shared Blood stands, and A Second Self and Chorus are not blocked by this; each still has questions of
+its own. **The owner is being told and may overturn it.**
+
+---
+
 ## 2026-09-24 — Every Nth, engine only: the Nth hit taken takes more, the Nth spell costs more, and the Nth attack deals no damage
 
 **Affects:**

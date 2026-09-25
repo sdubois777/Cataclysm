@@ -5,6 +5,7 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "Data/CataclysmDataRows.h"
 #include "Items/CataclysmDropRoll.h"
@@ -175,12 +176,53 @@ int32 UCataclysmEquipmentComponent::NumEquipped() const
 bool UCataclysmEquipmentComponent::TwoHandedOccupiesBothWeaponSlots() const
 {
 	const FCataclysmItem* First = EquippedAt(ECataclysmGearSlot::Weapon1);
-	if (!First)
+	if (!First || MayHoldTwoTwoHanded())
 	{
 		return false;
 	}
 	return UCataclysmItemModifiers::IsTwoHanded(
 		*First, UCataclysmItemModifiers::LoadBaseTable());
+}
+
+const TCHAR* UCataclysmEquipmentComponent::BothHandsFullStat =
+	TEXT("two_handed_weapon_in_each_hand");
+
+bool UCataclysmEquipmentComponent::MayHoldTwoTwoHanded() const
+{
+	const UCataclysmAbilitySystemComponent* Holder =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(GetOwner()));
+	return Holder
+		&& Holder->StatForSkill(FName(BothHandsFullStat), FGameplayTagContainer(),
+								0.0f) > 0.0f;
+}
+
+int32 UCataclysmEquipmentComponent::WeaponsComingOffFor(bool bTwoHandedWeapon) const
+{
+	const FCataclysmItem* First = EquippedAt(ECataclysmGearSlot::Weapon1);
+	const FCataclysmItem* Second = EquippedAt(ECataclysmGearSlot::Weapon2);
+	if (!First && !Second)
+	{
+		return 0;
+	}
+
+	// WHETHER THE NEW WEAPON MAY STAND BESIDE A HELD ONE. The same kind, and a
+	// two-handed pair only with the option. EVERY LEGAL LOADOUT HOLDS ONE KIND,
+	// so with both hands held the first one says what the pair is.
+	const FCataclysmItem* Held = First ? First : Second;
+	const bool bHeldIsTwoHanded = UCataclysmItemModifiers::IsTwoHanded(
+		*Held, UCataclysmItemModifiers::LoadBaseTable());
+	const bool bFitsBeside = bTwoHandedWeapon == bHeldIsTwoHanded
+		&& (!bTwoHandedWeapon || MayHoldTwoTwoHanded());
+
+	// ONE HAND FREE: `Equip` puts it there, and the held weapon comes off only
+	// when the two cannot stand together. BOTH HELD: `Equip` replaces the first,
+	// and the second comes off too when the two cannot stand together.
+	if (!First || !Second)
+	{
+		return bFitsBeside ? 0 : 1;
+	}
+	return bFitsBeside ? 1 : 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,11 +292,13 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::Equip(
 		EquipInto(Item, Chosen, OutRemoved, OutAlsoRemoved);
 
 	// EquipInto sends a two-handed weapon to Weapon1 whichever weapon slot it
-	// was given, so the slot reported back is read from the component rather
-	// than from what was asked for.
+	// was given, unless Both Hands Full is held, when it goes where it was put.
+	// So the slot reported back follows the same rule rather than the slot
+	// asked for.
 	OutSlot = Chosen;
 	if (UCataclysmGearSlots::IsWeaponSlot(Chosen)
-		&& TwoHandedOccupiesBothWeaponSlots())
+		&& UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable)
+		&& !MayHoldTwoTwoHanded())
 	{
 		OutSlot = ECataclysmGearSlot::Weapon1;
 	}
@@ -296,10 +340,50 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::EquipInto(const FCataclysmIt
 	}
 
 	const bool bWasEmpty = SlotIsEmpty(Slot);
+	const bool bTwoHandedWeapon = UCataclysmGearSlots::IsWeaponSlot(Slot)
+		&& UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable);
+	const ECataclysmGearSlot OtherHand = Slot == ECataclysmGearSlot::Weapon1
+		? ECataclysmGearSlot::Weapon2 : ECataclysmGearSlot::Weapon1;
+
+	// -- with Both Hands Full, a two-handed weapon takes one hand ---------
+	if (bTwoHandedWeapon && MayHoldTwoTwoHanded())
+	{
+		// WHERE IT WAS PUT, and a two-handed weapon in the other hand stays.
+		// Issue #1515. A ONE-HANDED WEAPON IN THE OTHER HAND COMES OFF, because
+		// the design's four loadouts never mix the two kinds.
+		FCataclysmItem FromThisHand;
+		FCataclysmItem FromOtherHand;
+		PlaceInto(Item, Slot, FromThisHand);
+		const FCataclysmItem* Beside = EquippedAt(OtherHand);
+		if (Beside && !UCataclysmItemModifiers::IsTwoHanded(*Beside, BaseTable))
+		{
+			TakeOutOf(OtherHand, FromOtherHand);
+		}
+
+		// THE FIRST THING THAT CAME OFF IS REPORTED FIRST, whichever hand it
+		// left, and the second is written only when there is one, as the
+		// header promises.
+		if (FromThisHand.Base.IsNone())
+		{
+			OutRemoved = FromOtherHand;
+		}
+		else
+		{
+			OutRemoved = FromThisHand;
+			if (!FromOtherHand.Base.IsNone())
+			{
+				OutAlsoRemoved = FromOtherHand;
+			}
+		}
+
+		AnnounceChange();
+		return (FromThisHand.Base.IsNone() && FromOtherHand.Base.IsNone())
+			? ECataclysmEquipResult::Equipped
+			: ECataclysmEquipResult::Swapped;
+	}
 
 	// -- a two-handed weapon takes both hands ------------------------------
-	if (UCataclysmGearSlots::IsWeaponSlot(Slot)
-		&& UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable))
+	if (bTwoHandedWeapon)
 	{
 		// IT LANDS IN Weapon1 WHICHEVER SLOT WAS ASKED FOR. The two weapon
 		// slots are interchangeable -- the design says there is no primary hand
@@ -324,25 +408,41 @@ ECataclysmEquipResult UCataclysmEquipmentComponent::EquipInto(const FCataclysmIt
 	}
 
 	// -- a one-handed weapon may not go beside a two-handed one -------------
-	if (UCataclysmGearSlots::IsWeaponSlot(Slot) && TwoHandedOccupiesBothWeaponSlots())
+	//
+	// ASKED OF THE OTHER HAND, NOT OF Weapon1. Issue #1515. Without Both Hands
+	// Full a two-handed weapon is only ever in Weapon1, and this reads the same
+	// as it always did. With it, one may be in Weapon2, and two may be held; a
+	// one-handed weapon put in either hand then takes off what is in that hand
+	// by being placed there, and the two-handed weapon in the other hand here.
+	// A one-handed weapon put in the two-handed weapon's own hand needs no
+	// branch: the placement below takes it off, as any swap in one slot does.
+	//
+	// THE TWO-HANDED WEAPON COMES OFF rather than refusing, which would leave
+	// the player unable to change weapon without an explicit unequip they have
+	// no reason to know about.
+	//
+	// TakeOutOf AND NOT Unequip, WHICH IS THE WHOLE OF ISSUE #1214. Unequip
+	// announces, so this branch used to raise the change twice for one player
+	// action -- and the first of the two fired between the two-handed weapon
+	// coming off and the new one going on, with the character holding nothing.
+	// ACataclysmPlayerCharacter::OnEquipmentChanged is the only listener and it
+	// takes back and regrants every ability from the worn weapon's type, so it
+	// did that once against an unarmed character and once against the real one.
+	const FCataclysmItem* InOtherHand = UCataclysmGearSlots::IsWeaponSlot(Slot)
+		? EquippedAt(OtherHand) : nullptr;
+	if (InOtherHand && UCataclysmItemModifiers::IsTwoHanded(*InOtherHand, BaseTable))
 	{
-		// THE TWO-HANDED WEAPON COMES OFF, whichever hand the new one was aimed
-		// at. It occupies both, so there is no free hand to put anything in and
-		// refusing would leave the player unable to change weapon without an
-		// explicit unequip they have no reason to know about.
-		//
-		// TakeOutOf AND NOT Unequip, WHICH IS THE WHOLE OF ISSUE #1214. Unequip
-		// announces, so this branch used to raise the change twice for one
-		// player action -- and the first of the two fired between the two-handed
-		// weapon coming off and the new one going on, with the character holding
-		// nothing. ACataclysmPlayerCharacter::OnEquipmentChanged is the only
-		// listener and it takes back and regrants every ability from the worn
-		// weapon's type, so it did that once against an unarmed character and
-		// once against the real one.
-		FCataclysmItem Displaced;
-		TakeOutOf(ECataclysmGearSlot::Weapon1, Displaced);
-		PlaceInto(Item, Slot, OutRemoved);
-		OutRemoved = Displaced;
+		FCataclysmItem Beside;
+		FCataclysmItem FromThisHand;
+		TakeOutOf(OtherHand, Beside);
+		PlaceInto(Item, Slot, FromThisHand);
+		OutRemoved = Beside;
+		// ONLY WHEN SOMETHING CAME OFF THIS HAND TOO, which is two two-handed
+		// weapons held. The header promises it untouched otherwise.
+		if (!FromThisHand.Base.IsNone())
+		{
+			OutAlsoRemoved = FromThisHand;
+		}
 
 		AnnounceChange();
 		return ECataclysmEquipResult::Swapped;

@@ -4,6 +4,8 @@
 
 #include "Cataclysm.h"
 
+#include "Data/CataclysmDataRows.h"
+#include "Engine/DataTable.h"
 #include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Items/CataclysmItem.h"
@@ -33,30 +35,32 @@ ECataclysmWearResult UCataclysmWearing::WearFromCarried(
 	const FCataclysmItem Item = *Carried;
 
 	// -- refuse before anything moves --------------------------------------
-	// A TWO-HANDED WEAPON IS THE ONLY THING THAT CAN TAKE TWO PIECES OFF for one
-	// going on, and the slot this item is vacating only makes room for one. So
-	// it needs a second free slot, and the check happens here rather than after
-	// the fact: a half-completed change would have to be rolled back, and a
-	// rollback has failure modes of its own.
+	// A WEAPON IS THE ONLY THING THAT CAN TAKE TWO PIECES OFF for one going on,
+	// and the slot this item is vacating only makes room for one. So it needs a
+	// second free slot, and the check happens here rather than after the fact:
+	// a half-completed change would have to be rolled back, and a rollback has
+	// failure modes of its own.
+	//
+	// ASKED OF THE EQUIPMENT, WHICH DECIDES IT. Issue #1515. Until Both Hands
+	// Full only a two-handed weapon over two held weapons took two off. Now a
+	// one-handed weapon over two two-handed ones does too, and a second
+	// two-handed weapon beside a first takes none.
 	//
 	// EVERYTHING ELSE IS A ONE-FOR-ONE SWAP AND ALWAYS FITS, including on a full
 	// bag, which is why this is not simply "refuse when the bag is full".
-	const bool bTwoHanded = UCataclysmItemModifiers::IsTwoHanded(
-		Item, UCataclysmItemModifiers::LoadBaseTable());
-	if (bTwoHanded && Inventory->NumFreeSlots() < 1)
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const FCataclysmItemBaseRow* Base = BaseTable
+		? BaseTable->FindRow<FCataclysmItemBaseRow>(
+			  Item.Base, TEXT("WearFromCarried"), /*bWarnIfMissing=*/false)
+		: nullptr;
+	const bool bWeapon = Base
+		&& UCataclysmGearSlots::CandidateSlotsFor(Base->Slot)
+			   .Contains(ECataclysmGearSlot::Weapon1);
+	const bool bTwoHanded = UCataclysmItemModifiers::IsTwoHanded(Item, BaseTable);
+	if (bWeapon && Inventory->NumFreeSlots() < 1
+		&& Equipment->WeaponsComingOffFor(bTwoHanded) > 1)
 	{
-		int32 WeaponsWorn = 0;
-		for (const ECataclysmGearSlot Weapon : UCataclysmGearSlots::WeaponSlots())
-		{
-			if (!Equipment->SlotIsEmpty(Weapon))
-			{
-				++WeaponsWorn;
-			}
-		}
-		if (WeaponsWorn > 1)
-		{
-			return ECataclysmWearResult::NoRoomInTheBag;
-		}
+		return ECataclysmWearResult::NoRoomInTheBag;
 	}
 
 	Inventory->RemoveItemAt(CarriedSlot);
@@ -326,6 +330,59 @@ ECataclysmWearResult UCataclysmWearing::DropCarried(
 		ReleaseHeld(Inventory);
 	}
 
+	return ECataclysmWearResult::Dropped;
+}
+
+// ---------------------------------------------------------------------------
+// Both Hands Full taken away. Issue #1515.
+// ---------------------------------------------------------------------------
+
+ECataclysmWearResult UCataclysmWearing::ReturnSecondTwoHandedWeapon(
+	UCataclysmInventoryComponent* Inventory, UCataclysmEquipmentComponent* Equipment,
+	UWorld* World, const FVector& At)
+{
+	if (!Inventory || !Equipment)
+	{
+		return ECataclysmWearResult::NothingToWorkWith;
+	}
+
+	// ONLY TWO TWO-HANDED WEAPONS HELD WITHOUT THE OPTION. Every other loadout
+	// is one the rules allow, so there is nothing to return.
+	const UDataTable* BaseTable = UCataclysmItemModifiers::LoadBaseTable();
+	const FCataclysmItem* First = Equipment->EquippedAt(ECataclysmGearSlot::Weapon1);
+	const FCataclysmItem* Second = Equipment->EquippedAt(ECataclysmGearSlot::Weapon2);
+	if (!First || !Second
+		|| !UCataclysmItemModifiers::IsTwoHanded(*First, BaseTable)
+		|| !UCataclysmItemModifiers::IsTwoHanded(*Second, BaseTable)
+		|| Equipment->MayHoldTwoTwoHanded())
+	{
+		return ECataclysmWearResult::NothingWorn;
+	}
+
+	// TO THE BAG WHEN IT HAS ROOM. The respec that took the option away is
+	// never refused for want of it: ruled 2026-09-24.
+	if (!Inventory->IsFull())
+	{
+		FCataclysmItem TakenOff;
+		Equipment->Unequip(ECataclysmGearSlot::Weapon2, TakenOff);
+		Inventory->AddItem(TakenOff);
+		return ECataclysmWearResult::TakenOff;
+	}
+
+	// AND ON THE FLOOR WHEN IT HAS NONE, asked first, as DropCarried asks it:
+	// a refused spawn leaves the weapon held rather than destroyed.
+	const FCataclysmItem Leaving = *Second;
+	if (!UCataclysmDropSpawner::PutOnTheFloor(World, At, Leaving, NAME_None, 0))
+	{
+		UE_LOG(LogCataclysm, Warning,
+			   TEXT("%s is a second two-handed weapon held without Both Hands "
+					"Full, the bag is full and the floor refused it, so it is "
+					"still held."),
+			   *Leaving.Base.ToString());
+		return ECataclysmWearResult::TheFloorRefusedIt;
+	}
+	FCataclysmItem Gone;
+	Equipment->Unequip(ECataclysmGearSlot::Weapon2, Gone);
 	return ECataclysmWearResult::Dropped;
 }
 

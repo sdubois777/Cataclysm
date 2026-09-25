@@ -279,6 +279,25 @@ public:
 		UCataclysmInventoryComponent* Inventory, int32 CarriedSlot,
 		UWorld* World, const FVector& At);
 
+	/**
+	 * Return the weapon in the second hand when two two-handed weapons are held
+	 * and Both Hands Full no longer is. Issue #1515.
+	 *
+	 * A RESPEC OR A CHANGED ALLOCATION CAN TAKE THE OPTION AWAY while both hands
+	 * hold one, and the rules then allow only one. The weapon in Weapon2 goes to
+	 * the bag, or on the floor at `At` when the bag is full. The respec is never
+	 * refused for it; ruled 2026-09-24 as a judgement, recorded in
+	 * docs/DECISIONS.md.
+	 *
+	 * @return TakenOff when it went to the bag, Dropped when it went on the
+	 *         floor, TheFloorRefusedIt when neither could take it and it is still
+	 *         held, NothingWorn when no second two-handed weapon is held without
+	 *         the option, or NothingToWorkWith without an inventory or equipment.
+	 */
+	static ECataclysmWearResult ReturnSecondTwoHandedWeapon(
+		UCataclysmInventoryComponent* Inventory,
+		UCataclysmEquipmentComponent* Equipment, UWorld* World, const FVector& At);
+
 	/** What a result should say to somebody, in one line. */
 	static FString Explain(ECataclysmWearResult Result);
 };

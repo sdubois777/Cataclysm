@@ -18,7 +18,9 @@
 // source of a stat, so a spent passive point is felt at once. Issue #1054.
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
+#include "Items/CataclysmDroppedItem.h"
 #include "Items/CataclysmEquipmentComponent.h"
+#include "Items/CataclysmWearing.h"
 #include "Net/UnrealNetwork.h"
 
 ACataclysmPlayerState::ACataclysmPlayerState()
@@ -462,4 +464,13 @@ void ACataclysmPlayerState::RefreshCharacterStats() const
 
 	Character->GetEquipment()->RefreshAttributes(
 		GetCataclysmAbilitySystemComponent());
+
+	// AND A SECOND TWO-HANDED WEAPON GOES BACK WHEN BOTH HANDS FULL HAS GONE.
+	// Issue #1515. Every change to the allocation arrives here, a respec among
+	// them, and the stat line just refreshed is what says whether the option is
+	// still held. It goes to the bag, or on the floor in front of the character
+	// when the bag is full; the respec is never refused. Ruled 2026-09-24.
+	UCataclysmWearing::ReturnSecondTwoHandedWeapon(
+		Character->GetInventory(), Character->GetEquipment(), Character->GetWorld(),
+		UCataclysmDropSpawner::DropSpotInFrontOf(*Character));
 }

@@ -262,6 +262,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// minion has, read from the summoner by
 		// UCataclysmRegeneration::SharedBloodStep. Issue #1515.
 		TEXT("minion_energy_shield_percent_of_yours"),
+		// Both Hands Full: a second two-handed weapon may go in the other hand,
+		// read by UCataclysmEquipmentComponent::MayHoldTwoTwoHanded. Issue #1515.
+		TEXT("two_handed_weapon_in_each_hand"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.

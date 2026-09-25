@@ -17,6 +17,7 @@
 #include "AbilitySystem/CataclysmStacks.h"
 #include "Character/CataclysmPassiveTree.h"
 #include "Data/CataclysmDataRows.h"
+#include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
@@ -1279,6 +1280,49 @@ namespace CataclysmStatExemptionTest
 	{
 		ProbeGroundDown(Test, UCataclysmDebuffs::GroundDownPercentStat,
 						UCataclysmDebuffs::GroundDownMetresStat);
+	}
+
+	/**
+	 * `two_handed_weapon_in_each_hand`, read by
+	 * `UCataclysmEquipmentComponent::MayHoldTwoTwoHanded`. Issue #1515, Both
+	 * Hands Full. A wearer holding it keeps a greatsword in each hand; one
+	 * without it keeps only the second put on.
+	 */
+	void ProbeBothHandsFull(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, 0.0f);
+		FScopedFighter Held(World, 0.0f);
+		GrantFlats(Held.Actor,
+				   {{FName(UCataclysmEquipmentComponent::BothHandsFullStat), 1.0f}});
+
+		const auto WeaponsKept = [](const FScopedFighter& Wearer)
+		{
+			UCataclysmEquipmentComponent* Equipment =
+				NewObject<UCataclysmEquipmentComponent>(Wearer.Actor);
+			Equipment->RegisterComponent();
+			FCataclysmItem Greatsword;
+			Greatsword.Base = FName(TEXT("Weapon_Greatsword"));
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			Equipment->EquipInto(Greatsword, ECataclysmGearSlot::Weapon1,
+								 Removed, AlsoRemoved);
+			Equipment->EquipInto(Greatsword, ECataclysmGearSlot::Weapon2,
+								 Removed, AlsoRemoved);
+			return Equipment->NumEquipped();
+		};
+		Test.TestEqual(TEXT("a wearer without two_handed_weapon_in_each_hand keeps "
+							"one greatsword"),
+					   WeaponsKept(Plain), 1);
+		Test.TestEqual(TEXT("and one holding it keeps both, so MayHoldTwoTwoHanded "
+							"really reads it"),
+					   WeaponsKept(Held), 2);
 	}
 
 	/**
@@ -3042,6 +3086,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},
+			{TEXT("two_handed_weapon_in_each_hand"), &ProbeBothHandsFull},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},
 			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},
