@@ -25,12 +25,14 @@
 /**
  * Chorus, the Ritualist's `Ritualist_capstone_200` option 3. Issue #1515.
  *
- * "Your minions repeat each skill you cast, dealing 30% of its damage." Ruled
- * 2026-09-25: the minions together deal 30%, split evenly among them.
+ * "Your minions repeat each skill you cast, dealing 30% of its damage." The
+ * owner's decision of 2026-09-25: "No it should be 30% each", so each minion's
+ * repeat is worth 30% of the hit and N minions add N x 30%.
  *
- * THE FIGURES ARE CHOSEN SO THE RULING CAN BE TOLD FROM ITS ALTERNATIVE. With
- * two minions a 250 hit gains 75 split, 37.5 each, where 30% each would gain
- * 150; with three a 1000 hit gains 300 where 30% each would gain 900.
+ * THE FIGURES ARE CHOSEN SO THE DECISION CAN BE TOLD FROM ITS ALTERNATIVE, 30%
+ * shared between them. With two minions a 250 hit gains 75 each, 150 in all,
+ * where shared it would gain 75; with three a 1000 hit gains 900 where shared
+ * it would gain 300.
  *
  * THE STAT IS GIVEN BY HAND, as the row will give it: the option has no row yet.
  * The minions stand more than ten metres behind the caster so no skill here
@@ -212,13 +214,13 @@ namespace CataclysmChorusTest
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusTwoMinionsTest,
-	"Cataclysm.Chorus.AStrikeWithTwoMinionsIsRepeatedForFifteenPercentEach",
+	"Cataclysm.Chorus.AStrikeWithTwoMinionsIsRepeatedForThirtyPercentEach",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
  * A real Heavy strike, 250% of a 100 weapon, by a caster holding Chorus with two
- * imps: the enemy loses 250 and then 37.5 from each imp, 325 in all. Without the
- * split it would be 400.
+ * imps: the enemy loses 250 and then 75 from each imp, 400 in all. Shared it
+ * would be 325.
  */
 bool FCataclysmChorusTwoMinionsTest::RunTest(const FString&)
 {
@@ -245,8 +247,8 @@ bool FCataclysmChorusTwoMinionsTest::RunTest(const FString&)
 	FHeardHits Heard(World);
 	TestTrue(TEXT("the strike activates"), Activate(Caster, Strike));
 
-	TestEqual(TEXT("the enemy lost the strike's 250 and the chorus's 75"),
-			  Pool - Enemy.Health(), 325.0f, 0.01f);
+	TestEqual(TEXT("the enemy lost the strike's 250 and the chorus's 150"),
+			  Pool - Enemy.Health(), 400.0f, 0.01f);
 	const TArray<FCataclysmHitNotice> Repeats = Heard.DealtByAnyOf(Imps);
 	if (!TestEqual(TEXT("each of the two imps repeated the hit once"), Repeats.Num(), 2))
 	{
@@ -254,7 +256,7 @@ bool FCataclysmChorusTwoMinionsTest::RunTest(const FString&)
 	}
 	for (const FCataclysmHitNotice& Repeat : Repeats)
 	{
-		TestEqual(TEXT("each repeat is half of 30% of 250"), Repeat.DealtToHealth, 37.5f, 0.01f);
+		TestEqual(TEXT("each repeat is 30% of 250"), Repeat.DealtToHealth, 75.0f, 0.01f);
 		TestTrue(TEXT("on the enemy the strike landed on"), Repeat.Target == Enemy.Actor);
 	}
 	TestTrue(TEXT("by different imps"), Repeats[0].DealtBy != Repeats[1].DealtBy);
@@ -262,10 +264,10 @@ bool FCataclysmChorusTwoMinionsTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusThreeMinionsTest,
-	"Cataclysm.Chorus.ThreeMinionsEachRepeatTenPercentOfTheHit",
+	"Cataclysm.Chorus.ThreeMinionsEachRepeatThirtyPercentOfTheHit",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-/** A hit that sent 1000, three imps: three repeats of 100, 300 in all, not 900. */
+/** A hit that sent 1000, three imps: three repeats of 300, 900 in all, not 300. */
 bool FCataclysmChorusThreeMinionsTest::RunTest(const FString&)
 {
 	using namespace CataclysmChorusTest;
@@ -291,10 +293,10 @@ bool FCataclysmChorusThreeMinionsTest::RunTest(const FString&)
 	FHeardHits Heard(World);
 	TestEqual(TEXT("three repeats"),
 			  UCataclysmChorus::Repeat(Caster.Actor, Enemy.Actor, 1000.0f, Strike), 3);
-	TestEqual(TEXT("worth 30% of 1000 together"), Pool - Enemy.Health(), 300.0f, 0.01f);
+	TestEqual(TEXT("worth 30% of 1000 three times"), Pool - Enemy.Health(), 900.0f, 0.01f);
 	for (const FCataclysmHitNotice& Repeat : Heard.DealtByAnyOf(Imps))
 	{
-		TestEqual(TEXT("each a third of that"), Repeat.DealtToHealth, 100.0f, 0.01f);
+		TestEqual(TEXT("each 30% of 1000"), Repeat.DealtToHealth, 300.0f, 0.01f);
 	}
 	return true;
 }
@@ -305,7 +307,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChorusProjectileTest,
 
 /**
  * A projectile a skill fired, 100% of a 100 weapon, reaching an enemy: two imps
- * add 15 each. A projectile no skill fired -- an enemy's thrown rock -- is
+ * add 30 each. A projectile no skill fired -- an enemy's thrown rock -- is
  * not repeated.
  */
 bool FCataclysmChorusProjectileTest::RunTest(const FString&)
@@ -345,8 +347,8 @@ bool FCataclysmChorusProjectileTest::RunTest(const FString&)
 	};
 
 	FireAtTheEnemy(Firing);
-	TestEqual(TEXT("a skill's projectile: 100 and 30 more from the imps"),
-			  Pool - Enemy.Health(), 130.0f, 0.01f);
+	TestEqual(TEXT("a skill's projectile: 100 and 60 more from the imps"),
+			  Pool - Enemy.Health(), 160.0f, 0.01f);
 	TestEqual(TEXT("two repeats"), Heard.DealtByAnyOf(Imps).Num(), 2);
 
 	const float Before = Enemy.Health();

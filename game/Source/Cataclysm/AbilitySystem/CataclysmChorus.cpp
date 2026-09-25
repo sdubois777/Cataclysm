@@ -37,9 +37,9 @@ int32 UCataclysmChorus::Repeat(AActor* Caster, AActor* Target, float Sent,
 		return 0;
 	}
 
-	// SPLIT, SO THE CHORUS AS A WHOLE IS WORTH THE SAME AT TWO MINIONS AS AT
-	// NINE. Ruled 2026-09-25; the header says why.
-	const float Each = Sent * SharePercent / 100.0f / Minions.Num();
+	// EACH MINION'S REPEAT IS WORTH THE WHOLE SHARE: N minions add N x 30%.
+	// The owner's decision of 2026-09-25; the header says so.
+	const float Each = Sent * SharePercent / 100.0f;
 
 	int32 Repeats = 0;
 	for (AActor* Minion : Minions)

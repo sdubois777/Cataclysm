@@ -629,7 +629,7 @@ the way it was registered before the window; restored, each run was 1 performed,
 
 ---
 
-## 2026-09-25 — Chorus, engine only: a caster's minions together repeat each landed skill hit for 30% of what it sent, split evenly among them
+## 2026-09-25 — Chorus, engine only: each of a caster's minions repeats each landed skill hit for 30% of what it sent
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmChorus.h` and `.cpp` (new),
 `CataclysmSkillTemplate.h` and `.cpp` (the repeat after each hit, and the marker for hits after the cast),
@@ -658,16 +658,19 @@ you", and "Supported Skills deal (50—55)% less Damage". Both from `poedb.tw`, 
 research settles that one helper using the player's skill for a reduced share is a shipped shape. How
 several helpers share it is this game's own, and is the judgement below.
 
-### RULINGS, 2026-09-25, UNDER THE OWNER'S DELEGATION
+### THE OWNER'S DECISION, 2026-09-25, AND THE RULINGS UNDER THE OWNER'S DELEGATION
 
-Ruled by the coordinating session. The design document and this log do not decide the first question; the
-owner is told and may overturn it.
+- **Each minion deals 30% of the skill's damage: the OWNER'S decision**, 2026-09-25, in the owner's words:
+  "No it should be 30% each". With N living minions a hit gains N x 30%. It overturned the coordinating
+  session's ruling of the same day that the minions share 30% between them, 30% / N each. Minions and
+  thralls both count, as `UCataclysmCommand::ThingsCommandedBy` lists them.
 
-- **The minions together deal 30% of the skill's damage, split evenly.** With N living minions each makes
-  its own repeat at 30% / N. The three Final Pact options are one choice and should be comparable: Hollow
-  Crown at 8 minions gives 32% more damage, where 30% for each minion would give 240% at 8 and about 450%
-  at 15. Splitting keeps what the sentence shows, "your minions repeat": every minion takes part.
-  Minions and thralls both count, as `UCataclysmCommand::ThingsCommandedBy` lists them.
+  **A consequence, stated because it is large:** the three Final Pact options are one choice, and at 8
+  minions Chorus adds 240% of every skill hit where Hollow Crown gives 32% more damage; at 15 minions it
+  is about 450%. `UCataclysmChorus::SharePercent` is the constant to tune if play shows it is too strong.
+
+The rest were ruled by the coordinating session under the owner's delegation:
+
 - **"Each skill you cast" is every skill but the basic attack**, which is what the `skill_use` event
   counts (`ACataclysmPlayerCharacter::OnSkillWasUsed`). The design document does not define "cast", and
   `Type.Spell` marks only nine Demonic skills.
@@ -702,10 +705,11 @@ own number over the enemy. Checked before building, as the ruling asked.
 
 In the group `Cataclysm.Chorus.`, the stat given by hand, imps standing 15 metres behind the caster:
 
-- `AStrikeWithTwoMinionsIsRepeatedForFifteenPercentEach`: a real Heavy strike, 250 against the enemy,
-  and two imps add 37.5 each, 325 in all. Thirty percent each would give 400.
-- `ThreeMinionsEachRepeatTenPercentOfTheHit`: a hit that sent 1000 gains three repeats of 100, not 900.
-- `AProjectilesContactIsRepeated`: a skill's projectile, 100 and two repeats of 15. A projectile no skill
+- `AStrikeWithTwoMinionsIsRepeatedForThirtyPercentEach`: a real Heavy strike, 250 against the enemy,
+  and two imps add 75 each, 400 in all. Shared, it would be 325.
+- `ThreeMinionsEachRepeatThirtyPercentOfTheHit`: a hit that sent 1000 gains three repeats of 300, 900 in
+  all, not 300.
+- `AProjectilesContactIsRepeated`: a skill's projectile, 100 and two repeats of 30. A projectile no skill
   fired is not repeated.
 - `NoRepeatWithoutTheOptionAMinionOrASkillOtherThanTheBasicAttack`.
 - `AnAurasPulseComesAfterTheCastAndIsNotRepeated`.
