@@ -621,7 +621,12 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: option of `Ritualist_capstone_100`, Set the Pack On: `minion_damage` 2%
 #: increased per point and 25% more, each while
 #: `target_damaged_by_you_within_seconds` 2.
-AUTHORED_ROWS = 302
+#:
+#: AND TO 315 ON 2026-09-24, for the nine Demonic options built engine first:
+#: two rows each for Shared Ruin, Nothing Stops It, Rendering Blows and Ground
+#: Down, and one each for Sacrificial Ward, Cast from Ward, No Second Wind,
+#: Nothing Wasted and Shared Blood, every one flat. Issue #1515.
+AUTHORED_ROWS = 315
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1021,7 +1026,15 @@ AUTHORED_ROWS = 302
 #: no row. Set the Pack On moves `AUTHORED_OPTIONS` and not this: its capstone
 #: already had a row for its third option. Measured then: the Ravager is 71 of
 #: its 74, the Ritualist 73 of its 74 and the Masochist 74 of its 74.
-AUTHORED_NODES = 222
+#:
+#: AND TO 225 ON 2026-09-24, for the three of the nine Demonic options built
+#: engine first whose nodes had no row: No Second Wind
+#: (`Ravager_keystone_c_kB`), Sacrificial Ward (`Ritualist_keystone_c_kC`) and
+#: the Final Onslaught (`Ravager_capstone_200`), for its third option. The other
+#: six are options on capstones that already had a row, and move
+#: `AUTHORED_OPTIONS` alone. Measured then: the Ravager is 73 of its 74, the
+#: Ritualist 74 of its 74 and the Masochist 74 of its 74. Issue #1515.
+AUTHORED_NODES = 225
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1104,7 +1117,11 @@ AUTHORED_NODES = 222
 #: AND TO 24 ON 2026-09-24: `Set the Pack On`, the Third Pact's first option.
 #: Its node already had a row for the third, so `AUTHORED_NODES` does not move
 #: for it. Issue #1515.
-AUTHORED_OPTIONS = 24
+#: AND TO 31 ON 2026-09-24: seven options built engine first. Shared Ruin,
+#: Nothing Stops It, Cast from Ward, Rendering Blows, Ground Down, Nothing
+#: Wasted and Shared Blood. Only the Final Onslaught's Nothing Stops It moves
+#: `AUTHORED_NODES` too; the other six capstones already had a row. Issue #1515.
+AUTHORED_OPTIONS = 31
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2224,6 +2241,20 @@ VALUE_FORMS = {
     # says "never less than 1".
     "minion_reserve_reduction": "{value:g} less Fervour",
     "minion_cap_bonus": "allows {value:g} more",
+
+    # THE DEMONIC OPTIONS BUILT ENGINE FIRST, 2026-09-24. Issue #1515. Each is a
+    # distance or a time written with its unit. "Everything within 4 metres"
+    # (Shared Ruin), "within 4 metres of you" (Ground Down, No Second Wind),
+    # "no damage for 2 seconds, no more than once every 20 seconds" (Nothing
+    # Stops It), "for 6 seconds" (Rendering Blows) and "once every 3 seconds"
+    # (Sacrificial Ward). The singular matches the plural, as above.
+    "minion_death_blast_radius_metres": "{value:g} metres",
+    "enemies_near_slowed_within_metres": "{value:g} metres",
+    "applied_cripple_and_weaken_held_within_metres": "{value:g} metres",
+    "lethal_hit_survived_every_seconds": "{value:g} second",
+    "damage_immunity_after_lethal_hit_seconds": "{value:g} second",
+    "third_melee_hit_armour_removed_seconds": "{value:g} second",
+    "shield_break_destroys_minion_every_seconds": "{value:g} second",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -2532,6 +2563,12 @@ VALUE_IN_WORDS = {
     # has no digit for it.
     ("Ravager_keystone_b_kA", "armor_penetration"):
         ("ignore enemy armor entirely", 100.0),
+
+    # AND CAST FROM WARD, A FLAG OF 1. Issue #1515. The Ritualist's 50-point
+    # capstone's third option reads "A skill may be paid for with Energy Shield
+    # when your mana is not enough", and the sentence has no digit.
+    ("Ritualist_capstone_50", "skill_cost_paid_from_energy_shield"):
+        ("may be paid for with energy shield", 1.0),
 }
 
 
