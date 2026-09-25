@@ -111,9 +111,13 @@ INCREASE = re.compile(
 #: never reaches this pattern and nothing could notice the word missing.
 #: "Dodging an attack drains 5%-10% of your class resource" is the first row
 #: that will be negative on a sentence using it.
+#:
+#: `minus` ADDED ON 2026-09-25, a labelled judgement recorded in
+#: docs/DECISIONS.md, for "Minus 2-4 to your max minion count", issue #1833.
+#: It widens the MEANING, as `drain` did: "minus 2" is 2 taken away.
 TAKING = re.compile(
     r"\b(less|reduce|reduces|reduced|lose|slower|shorter|halved|slowed"
-    r"|drain|drains|drained|ignore|ignores)\b",
+    r"|drain|drains|drained|ignore|ignores|minus)\b",
     re.IGNORECASE)
 
 #: WORDS ADDED ON 2026-09-11 FOR THE RANGED ROWS, a labelled judgement recorded
@@ -451,8 +455,10 @@ JUDGED_NUMBERS = {
 #: issue #1833, from 329 over 254: three rows on three enchantments.
 #: AND 335 OVER 260 SINCE THE EVERY-Nth ROWS,
 #: issue #1833, from 332 over 257: three rows on three enchantments.
-AUTHORED_ROWS = 335
-AUTHORED_ENCHANTMENTS = 260
+#: AND 347 OVER 271 SINCE THE ROWS-ONLY BATCH,
+#: issue #1833, from 335 over 260: twelve rows on eleven enchantments.
+AUTHORED_ROWS = 347
+AUTHORED_ENCHANTMENTS = 271
 
 #: How many rows remove their stat, measured with the 201 above. Issue #1791.
 #: Without it `test_a_removed_row_is_worded_as_a_removal` and
@@ -670,8 +676,14 @@ def test_a_range_is_one_the_words_state(effects, enchantments):
         if low == high:
             continue
         text = words_of(row, enchantments)
+        # OR ITS COMPLEMENT, FOR THE ENCHANTMENTS THE GENERATOR NAMES. Issue
+        # #1833: "Your maximum HP cannot exceed 40%-60% of its normal value" is
+        # -60 to -40, and each end leaves the share the sentence shows there.
+        shown = ((100.0 - abs(low), 100.0 - abs(high))
+                 if row["Enchantment"] in gen.COMPLEMENT_RANGE_ENCHANTMENTS
+                 and low < 0 else (abs(low), abs(high)))
         if ((low < 0) != (high < 0)
-                or (abs(low), abs(high)) not in gen.enchantment_ranges(text)):
+                or shown not in gen.enchantment_ranges(text)):
             wrong.append(f"{row['Name']}: {low:g} to {high:g} against {text!r}")
     assert not wrong, "; ".join(wrong)
 
@@ -797,6 +809,9 @@ def test_a_more_row_is_worded_as_a_multiplier(effects, enchantments):
     wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
              for r in effects
              if r["ValueKind"] == "more"
+             # A SHARE OF THE NORMAL VALUE IS THE MULTIPLIER ITSELF, stated as
+             # what is left rather than what is taken. Issue #1833.
+             and r["Enchantment"] not in gen.COMPLEMENT_RANGE_ENCHANTMENTS
              and not MULTIPLIER.search(words_of(r, enchantments))]
     assert not wrong, (
         "these rows are in the more bucket and their sentence does not say "
@@ -865,6 +880,9 @@ def test_a_negative_value_is_on_words_that_take_something_away(effects,
     wrong = [f"{r['Name']}: {words_of(r, enchantments)!r}"
              for r in effects
              if float(r["ValueLow"]) < 0
+             # "CANNOT EXCEED 40%" TAKES THE REST AWAY, for the reason the more
+             # check above gives. Issue #1833.
+             and r["Enchantment"] not in gen.COMPLEMENT_RANGE_ENCHANTMENTS
              and not takes_something_away(r["Stat"], words_of(r, enchantments))]
     assert not wrong, "; ".join(wrong)
 
@@ -957,6 +975,27 @@ def test_every_complement_stat_is_still_used(effects):
     assert not unused, (
         f"{unused} are excused the value-in-words check by way of their "
         f"complement and no row grants them")
+
+
+def test_every_complement_range_enchantment_is_still_needed(effects, enchantments):
+    """An exemption that outlives its reason hides a real mismatch, the argument
+    `test_every_complement_stat_is_still_used` makes. Each enchantment in the
+    generator's `COMPLEMENT_RANGE_ENCHANTMENTS` must still have a row whose range
+    its sentence states only as a complement. Issue #1833, the rows-only
+    batch."""
+    for name in sorted(gen.COMPLEMENT_RANGE_ENCHANTMENTS):
+        needing = []
+        for r in effects:
+            if r["Enchantment"] != name:
+                continue
+            low, high = float(r["ValueLow"]), float(r["ValueHigh"])
+            stated = gen.enchantment_ranges(words_of(r, enchantments))
+            if ((abs(low), abs(high)) not in stated
+                    and (100.0 - abs(low), 100.0 - abs(high)) in stated):
+                needing.append(r["Name"])
+        assert needing, (
+            f"no row of {name} states its range as a complement, so it should "
+            f"leave COMPLEMENT_RANGE_ENCHANTMENTS")
 
 
 def test_the_complement_list_holds_what_it_is_measured_to_hold():
