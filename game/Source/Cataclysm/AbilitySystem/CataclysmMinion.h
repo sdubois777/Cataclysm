@@ -194,6 +194,13 @@ public:
 	 */
 	static FCataclysmHitDelivery OwnBlowDelivery(AActor* Follower);
 
+	/**
+	 * Whether it is a deployable machine rather than a creature: its type row's
+	 * Family is Machine. A Second Self is never one (issue #1515): "the minion
+	 * you have held" is a creature summoned or an enemy taken.
+	 */
+	bool bIsMachine = false;
+
 	/** Whether what it hits is set alight. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
 	bool bBurnsWhatItHits = false;

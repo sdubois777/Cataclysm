@@ -682,9 +682,11 @@ void ACataclysmHUD::DrawStatusLines()
 	const FLinearColor Ink = UCataclysmCombatOverlay::ColourFromHex(
 		UCataclysmCombatOverlay::RarityNameHex);
 
-	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	// EVERY CHARACTER AND NOT ONLY A CREATURE, since issue #1515: an imp can be
+	// A Second Self's chosen minion, and its line is where that is said.
+	for (TActorIterator<ACataclysmCharacterBase> It(World); It; ++It)
 	{
-		const ACataclysmEnemyCharacter* Enemy = *It;
+		const ACataclysmCharacterBase* Enemy = *It;
 		if (!UCataclysmCombatOverlay::IsOverheadBarCandidate(Enemy, LocalPawn))
 		{
 			continue;

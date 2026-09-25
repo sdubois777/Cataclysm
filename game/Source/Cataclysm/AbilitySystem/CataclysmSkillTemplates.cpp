@@ -3569,6 +3569,12 @@ ACataclysmMinion* UCataclysmSummonSkill::SummonOne()
 			// from its summoner, and the only way in is a stat that says
 			// "minion".
 			//
+			// ONE EXCEPTION, A PASSIVE THAT SAYS "MINION": A Second Self's
+			// chosen minion explodes over its summoner's area of effect, which
+			// `Explode` asks `UCataclysmSecondSelf::AreaMultiplierFor`. Issue
+			// #1515, under the ruling that such a passive may pass a summoner
+			// stat to a minion.
+			//
 			// THAT STAT DOES NOT EXIST YET. The project owner asked for one on
 			// 2026-08-24 and it is #910, waiting on #340 alongside the four
 			// minion affixes: no minion stat has an attribute, and nothing

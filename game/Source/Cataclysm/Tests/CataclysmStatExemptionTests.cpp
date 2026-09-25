@@ -15,6 +15,7 @@
 #include "AbilitySystem/CataclysmFollowThrough.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmRetaliation.h"
+#include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmShoulderThrough.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmStacks.h"
@@ -1489,6 +1490,35 @@ namespace CataclysmStatExemptionTest
 		Test.TestEqual(TEXT("and one of a caster holding it repeats the hit, so "
 							"Repeat really reads it"),
 					   RepeatsFor(Held), 1);
+	}
+
+	/**
+	 * `minion_held_longest_becomes_your_equal`, read by
+	 * `UCataclysmSecondSelf::Step`. Issue #1515, A Second Self. A summoner
+	 * holding it has its imp chosen; one without it, with an imp too, does not.
+	 */
+	void ProbeSecondSelf(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Plain(World, 0.0f);
+		FScopedFighter Held(World, 0.0f);
+		GrantFlats(Held.Actor, {{FName(UCataclysmSecondSelf::Stat), 1.0f}});
+		if (!SummonImp(Test, World, Plain.Actor) || !SummonImp(Test, World, Held.Actor))
+		{
+			return;
+		}
+		Test.TestNull(TEXT("a summoner without minion_held_longest_becomes_your_equal "
+						   "chooses no Second Self"),
+					  UCataclysmSecondSelf::Step(Plain.Actor));
+		Test.TestNotNull(TEXT("and one holding it chooses its imp, so Step really "
+							  "reads it"),
+						 UCataclysmSecondSelf::Step(Held.Actor));
 	}
 
 	/**
@@ -3257,6 +3287,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("melee_kill_repeats_attack_every_seconds"), &ProbeFollowThrough},
 			{TEXT("enemies_cannot_move_away_within_metres"), &ProbeNowhereToRun},
 			{TEXT("moving_into_enemy_pushes_aside"), &ProbeShoulderThrough},
+			{TEXT("minion_held_longest_becomes_your_equal"), &ProbeSecondSelf},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},
 			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},

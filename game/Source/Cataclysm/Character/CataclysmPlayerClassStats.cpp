@@ -277,6 +277,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Chorus, above zero meaning held, read by UCataclysmChorus::Repeat.
 		// Issue #1515.
 		TEXT("minions_repeat_your_skills"),
+		// A Second Self, above zero meaning held, read by
+		// UCataclysmSecondSelf::Step. Issue #1515.
+		TEXT("minion_held_longest_becomes_your_equal"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.

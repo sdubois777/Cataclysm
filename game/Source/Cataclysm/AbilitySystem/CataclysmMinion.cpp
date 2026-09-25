@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmMinion.h"
+#include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
@@ -509,6 +510,9 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	Minion->Summoner = InSummoner;
 	Minion->bBurnsWhatItHits = bBurns;
 
+	// WHEN IT CAME UNDER COMMAND, for A Second Self's "held longest". Issue #1515.
+	Minion->CommandedSinceSeconds = World->GetTimeSeconds();
+
 	// ITS OWN NUMBERS, IF IT WAS TOLD WHAT IT IS. Before issue #622 every minion
 	// carried one set of compile-time constants, so a ballista and an imp were
 	// the same creature with a different name in the prose. A minion spawned
@@ -517,6 +521,7 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 	if (const FCataclysmMinionTypeRow* Type = FindType(LoadTypeTable(), InTypeName))
 	{
 		Minion->TypeName = InTypeName;
+		Minion->bIsMachine = Type->Family.Equals(TEXT("Machine"), ESearchCase::IgnoreCase);
 		Minion->ReachCm = Type->ReachCm;
 		Minion->NoticeRadiusCm = Type->NoticeRadiusCm;
 		Minion->AttackIntervalSeconds = Type->AttackIntervalSeconds;
@@ -892,7 +897,8 @@ void ACataclysmMinion::Explode()
 			* SummonerMultiplierFor(Summoner, TEXT("minion_explosion_damage"));
 
 		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
-			GetWorld(), this, GetActorLocation(), ExplosionRadiusCm);
+			GetWorld(), this, GetActorLocation(),
+			ExplosionRadiusCm * UCataclysmSecondSelf::AreaMultiplierFor(this));
 
 		for (AActor* Target : Caught)
 		{
@@ -969,7 +975,8 @@ int32 ACataclysmMinion::DeathBlast(AActor* Lost, const AActor* Commander)
 	}
 
 	const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
-		Lost->GetWorld(), Lost, Lost->GetActorLocation(), RadiusMetres * 100.0f);
+		Lost->GetWorld(), Lost, Lost->GetActorLocation(),
+		RadiusMetres * 100.0f * UCataclysmSecondSelf::AreaMultiplierFor(Lost));
 
 	// AREA DAMAGE WITH THE MINION'S OWN DELIVERY, as its explosion is, AND NOT
 	// RETALIATED AGAINST. Area damage provokes retaliation, and retaliation is

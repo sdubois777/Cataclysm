@@ -15,6 +15,7 @@
 #include "AbilitySystem/CataclysmHealthDebt.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "Character/CataclysmEnemyModifiers.h"
@@ -276,6 +277,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// and the same three-step hold as Ground Down; the creature enforces it every
 	// frame between steps.
 	UCataclysmDebuffs::NowhereToRunStep(this, UCataclysmRegeneration::StepSeconds);
+
+	// AND A SECOND SELF IS CHOSEN AND GIVEN THIS CHARACTER'S MAXIMUM HEALTH AND
+	// SPELL DAMAGE. Issue #1515. The same step, so the maximum follows live and
+	// the next longest-held is chosen within one step of the last one's end.
+	UCataclysmSecondSelf::Step(this);
 
 	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
 	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the

@@ -7,6 +7,7 @@
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 // For asking whether this character can move Fervour at all. Issue #954.
 #include "AbilitySystem/CataclysmFervour.h"
+#include "AbilitySystem/CataclysmSecondSelf.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmBeaconCharacter.h"
@@ -479,6 +480,11 @@ FString UCataclysmCombatOverlay::HeldTextFor(const AActor* Actor)
 	return Creature && Creature->IsHeld() ? FString(TEXT("Held")) : FString();
 }
 
+FString UCataclysmCombatOverlay::SecondSelfTextFor(const AActor* Actor)
+{
+	return UCataclysmSecondSelf::IsSecondSelf(Actor) ? FString(TEXT("Second Self")) : FString();
+}
+
 FString UCataclysmCombatOverlay::HarbingerTextFor(const AActor* Actor)
 {
 	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
@@ -539,9 +545,9 @@ FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor), SpireTextFor(Actor),
-		  BeaconTextFor(Actor), VeinTextFor(Actor), ArmourRemovedTextFor(Actor), SlowedTextFor(Actor),
-		  HeldTextFor(Actor), DamageCutTextFor(Actor)})
+		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
+		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), ArmourRemovedTextFor(Actor),
+		  SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{
