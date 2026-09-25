@@ -180,6 +180,16 @@ bool FCataclysmNowhereToRunWalkTest::RunTest(const FString&)
 			 UCataclysmCombatOverlay::StatusLineFor(Near).Contains(TEXT("Held")));
 	TestEqual(TEXT("and one that is not says nothing"),
 			  UCataclysmCombatOverlay::HeldTextFor(Far), FString());
+	TestFalse(TEXT("a creature never held has no \"Held\" on its status line"),
+			  UCataclysmCombatOverlay::StatusLineFor(Far).Contains(TEXT("Held")));
+
+	// RELEASED PAST 8 METRES, and the line says so at once.
+	Near->SetActorLocation(FVector(0, 12 * M, Near->GetActorLocation().Z));
+	Near->NoteDisplaced();
+	Near->HoldAgainstMovingAway();
+	TestFalse(TEXT("a creature displaced past 8 metres is released"), Near->IsHeld());
+	TestFalse(TEXT("and has no \"Held\" on its status line"),
+			  UCataclysmCombatOverlay::StatusLineFor(Near).Contains(TEXT("Held")));
 	return true;
 }
 
