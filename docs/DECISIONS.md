@@ -384,7 +384,8 @@ Ruled by the coordinating session:
 
 In the group `Cataclysm.FollowThrough.`, the stat given by hand:
 
-- `AMeleeKillRepeatsTheAttackAtTheNearestEnemyAndPaysNothing`: a forward cleave kills the enemy in front;
+- `AMeleeKillRepeatsTheAttackAtTheNearestEnemyAndPaysNothing`: a forward cleave takes the enemy in front to
+  no health;
   the repeat strikes the nearest enemy to one side and not a farther one on the other; it pays no mana,
   raises no skill_use and spends no next-use charge; it spends the clock and the line reads "Follow
   Through 3s"; and the next ordinary use still waits for the first use's cooldown.
@@ -403,17 +404,64 @@ In the group `Cataclysm.FollowThrough.`, the stat given by hand:
 **The killer in the first three is a plain actor, not the player.** A player that plays an attack
 animation waits for it before its blow lands, and a test world is never ticked, so with the Paragon art
 present a player's strike would never land in a test. `NoteMeleeKill` is called for the plain actor as
-the player's hook calls it, and the fourth test checks that hook on its own.
+the player's hook calls it, and the fourth test checks that hook on its own. **The enemies are plain
+actors too**, each with the pawn-channel sphere a skill's search finds, and a plain actor never marks
+itself dead: so the first two check the cleave took the enemy to no health and then mark it dead by hand,
+as a character's own death would, and the comment beside each says the real path is the fourth test.
 
 **The fifth drives the next-frame timer, and gets one tick.** `FTimerManager::Tick` runs once per engine
 frame (`LastTickedFrame == GFrameCounter`) and a test runs inside one frame. One tick is enough when the
 killing swing has landed at once, as it does with no animation to wait for. With the Paragon art present
 the swing waits for its animation, which would need a second tick, so that test reports that half as
-skipped through `CataclysmTestSkip::ReportSkippedHalf` rather than failing. **So in the main checkout the
-timer is not shown by any test**, and in a worktree or on the continuous-integration runner it is.
+skipped through `CataclysmTestSkip::ReportSkippedHalf` rather than failing. **The last sentence here said
+that in a worktree the timer is shown, and the window measured that as false**: in this change's worktree,
+which has no Paragon art, the player's swing still waited for its animation and the half was reported
+skipped. Why it waits without the art was not found. **So no test has measured the next-frame repeat
+after a basic attack, or that the next ordinary swing keeps its interval**; the owner is to see both in
+play. The controller's two test hooks added for it, `ACataclysmPlayerController::TrySwingAtForTest` and
+`LastSwingSecondsForTest`, are exercised only up to that skip.
 
 **The stat is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
 change must add a test that wears the real `Ravager_keystone_b_kB` row.
+
+### Run
+
+One editor window on 2026-09-25, ending at 11:19 UTC, on development a57a33de as the base. Every figure
+below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard` printed. **Three things did
+not go as registered, and each is set down here.**
+
+- **The first build failed**: "Result: Failed (OtherCompilationError)", on one error,
+  `CataclysmFollowThrough.cpp(133,12): error C2248: 'UCataclysmSkillTemplate::RequirementReachCm': cannot
+  access protected member`. It was already protected before this change; the branch had never been
+  compiled. `RequirementReachCm` moved, with its comment, to the public section of
+  `CataclysmSkillTemplate.h` (936721fb). The rebuild: "Build: Succeeded - 21 actions, 18 files compiled".
+- **The whole suite, on 936721fb**, started once no CI run was in progress: "2480 tests performed, 2478
+  succeeded, 2 failed: AMeleeKillRepeatsTheAttackAtTheNearestEnemyAndPaysNothing,
+  NoEnemyInReachMeansNoRepeatAndTheClockIsUnspent", every declared test reported, 40 skipping part of
+  what they check where 39 did before, the fortieth this change's timer test. Both failures were at the
+  first assertion, "kills the enemy in front", so neither measured Follow Through: the test fixture's
+  actors had no collision for the cleave's search to find. One whole suite is run per window, so it was
+  not run again.
+- **A run of `Cataclysm.FollowThrough.` was started before its result was registered**, which is this
+  session's error: "6 tests performed, 4 succeeded, 2 failed", the same two tests at the same assertion.
+  The sphere alone had not been enough: a plain actor never marks itself dead.
+- **The fixture fixed** (8bb20227, tests only, as described above), and the group run as registered:
+  "Build: Succeeded - 4 actions, 1 file compiled: CataclysmFollowThroughTests.cpp" and "6 tests performed,
+  6 succeeded, 0 failed. 1 skipped part of what they check:
+  Cataclysm.FollowThrough.ABasicAttackKillRepeatsOnTheNextFrameAndKeepsTheSwingInterval". A comment-only
+  change after it rebuilt as "Build: Succeeded - 4 actions, 1 file compiled".
+- **The Python suite of record, on 8bb20227**: 5,478 passed, 8 skipped, 0 failed (JUnit 5,486 tests).
+
+**Three guard proofs, each printing PROVED and each exactly as registered**, prefix
+`Cataclysm.FollowThrough.`, restored: 6 of 6 succeeded each time, the timer test skipping its part both
+times.
+
+- **The free repeat commits** (`CommitAndBegin`'s `!bFreeRepeat &&` removed): 1 of 6 failed, on "it paid no
+  mana" reading 170 where 185, the cleave's 15 mana.
+- **The free repeat's aim ignored** (`AimPoint`'s override made never true): 1 of 6 failed, on "it struck
+  the nearest living enemy".
+- **A Movement-slot kill counted** (the slot test in `NoteMeleeKill` made `None`): 1 of 6 failed, on "a kill
+  by a Movement-slot skill earns nothing".
 
 ---
 
