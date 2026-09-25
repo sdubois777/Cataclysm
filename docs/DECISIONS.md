@@ -14,9 +14,8 @@ its health bar), a comment in `game/Source/Cataclysm/AbilitySystem/CataclysmGrou
 tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -116,10 +115,43 @@ One Python check: the row still says "certain enemies", "wherever they walk", "t
 players who cross them", "amplifying nearby enemy stats", "cleanses the trails" and "weakens nearby
 enemies", and states no figure.
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-24, on development bde35e64 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The first whole suite FAILED ONE ASSERTION, in this change's own test**, on 2fd5befb: "Build:
+  Succeeded - 29 actions, 26 files compiled"; "2424 tests performed, 2423 succeeded, 1 failed:
+  PlagueHarbingersAreChosenOnePerTenAndSayWhatTheyAre", on "Expected 'a Horde wave has Harbingers of its
+  own' to be true". **The cause was the test, not the rule.** A Horde wave arrives four creatures a tick
+  (`WaveCreaturesPerFrame`) and its Harbingers are chosen once all of it has arrived; the test ticked 20
+  times, which places at most 80 creatures, and the floor had placed 223 ("Plague Harbingers: 23 of 223
+  creature(s) chosen on floor 2", with no choice logged for the Horde floor). **Fixed** by ticking until
+  `CreaturesStillArriving()` is zero, up to 1,000 ticks, and asserting "the Horde wave finished arriving"
+  first -- the pattern the game mode's own Horde tests use. No game code changed. **By the coordinating
+  session's ruling, no second whole suite ran**: the whole suite had already run on this game code, and its
+  one failure was one assertion in this test.
+- **The Python suite of record on the fixed head**, db621eb6: 5,447 passed and 8 skipped of 5,455, 0
+  failed.
+- **The group `Cataclysm.DungeonModifierEffects.` on the fixed head**: 296 tests performed, 296
+  succeeded, 0 failed. Its Horde wave logged "Plague Harbingers: 24 of 232 creature(s) chosen on floor 3".
+- **The group on the base**, bde35e64: 292 tests performed, 292 succeeded, 0 failed. Run after the
+  Python suite had finished, because it needs the base checked out.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **No cap on a Harbinger's patches** (the loop that removes the oldest made `while (false && ...)`), on
+  the prefix `Cataclysm.DungeonModifierEffects.APlagueHarbinger`. With the break in: 1 performed, 0
+  succeeded, 1 failed, `APlagueHarbingerLaysATrailThatBurnsThePlayerAndEmpowersCreatures`, on "Expected
+  'its newest twenty are kept' to be 20, but it was 32" and "Expected 'and no more stand in the world' to
+  be 20, but it was 32". Restored: 1 performed, 1 succeeded, 0 failed.
+- **No Weaken on a Harbinger's death** (the ailment's `Apply` made `(void)Near;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.KillingAPlagueHarbinger`. With the break in: 1 performed, 0
+  succeeded, 1 failed, `KillingAPlagueHarbingerClearsItsTrailAndWeakensThoseNearIt`, on "Expected 'a
+  creature within eight metres is weakened' to be true". Restored: 1 performed, 1 succeeded, 0 failed.
+- **The trail not cleansed on its death** (each patch's `Destroy` made `(void)Standing;`), on the same
+  prefix. With the break in: 1 performed, 0 succeeded, 1 failed, the same test, on "Expected 'its trail is
+  cleansed' to be 0, but it was 2". Restored: 1 performed, 1 succeeded, 0 failed.
 
 ---
 
