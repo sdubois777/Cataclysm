@@ -3027,14 +3027,15 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
         "DamageMultiplierProduct no longer multiplies the entries of "
         "DamageMultipliersBySource together.")
 
-    # AND EACH OF THE FOUR SOURCES WRITES ITS OWN KEY, so no two share an entry.
+    # AND EACH SOURCE WRITES ITS OWN KEY, so no two share an entry.
     header = (REPO_ROOT / "game" / "Source" / "Cataclysm" / "Character"
               / "CataclysmEnemyCharacter.h").read_text(encoding="utf-8")
     keys = {}
     for setter, key in (("SetPlacedDamageMultiplier", "PlacedDamageSource"),
                         ("SetTimeAliveDamageMultiplier", "TimeAliveDamageSource"),
                         ("SetFloorDepthDamageMultiplier", "FloorDepthDamageSource"),
-                        ("SetSpireDamageMultiplier", "SpireDamageSource")):
+                        ("SetSpireDamageMultiplier", "SpireDamageSource"),
+                        ("SetPlagueBeaconsDamageMultiplier", "PlagueBeaconsDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4134,3 +4135,22 @@ def test_golden_spires_row_still_heals_and_strengthens_enemies_until_its_spires_
         assert phrase in lower, (
             f"Celestial_Golden_Spires no longer says {phrase.upper()!r}. A reading of the rule rests "
             "on it; see GoldenSpiresKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_pestilent_empowerment_row_still_strengthens_later_floors_until_its_beacons_are_destroyed():
+    """The phrases the rule's readings rest on.
+
+    "Players must find and destroy the plague beacons on each floor if they want to lower the power of
+    enemies on later floors." DESTROY THE PLAGUE BEACONS is why each beacon is a creature to kill; ON
+    EACH FLOOR is why a floor has its own; LOWER THE POWER OF ENEMIES is read as keeping it lower than a
+    standing beacon would make it; ON LATER FLOORS is why the count is carried and never applies to the
+    floor a beacon stands on. If any of them changes, the reading must be revisited.
+    """
+    words = flat(rows()["Pestilence_Pestilent_Empowerment"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("destroy the plague beacons", "on each floor", "lower the power of enemies",
+                   "on later floors"):
+        assert phrase in lower, (
+            f"Pestilence_Pestilent_Empowerment no longer says {phrase.upper()!r}. A reading of the rule "
+            "rests on it; see PestilentEmpowermentKey in CataclysmDungeonModifierEffects.h. " + words)

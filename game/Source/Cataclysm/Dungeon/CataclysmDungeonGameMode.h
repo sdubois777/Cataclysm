@@ -2034,6 +2034,15 @@ public:
 	/** The health a spire is given: the Imp's at Common, 87, as the other floor sources have. A play-test value. */
 	float GoldenSpireHealth() const { return ImpHealth; }
 
+	/** Pestilent Empowerment, for the panel and tests: this floor's beacons still standing. */
+	TArray<ACataclysmEnemyCharacter*> PlagueBeaconsStanding() const;
+
+	/** Pestilent Empowerment, for the panel and tests: beacons left standing on this dungeon's earlier floors. */
+	int32 PlagueBeaconsLeftStanding() const { return PestilentBeaconsLeftStanding; }
+
+	/** The health a beacon is given: the Imp's at Common, 87, as the other floor sources have. A play-test value. */
+	float PlagueBeaconHealth() const { return ImpHealth; }
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2174,6 +2183,21 @@ private:
 
 	/** Every spire and its zone destroyed and forgotten. */
 	void ForgetTheSpires();
+
+	/** Pestilent Empowerment: this arena's beacons, placed where a new arena is populated. */
+	void PlaceTheBeacons();
+
+	/** Every beacon destroyed and forgotten. The count carried from earlier floors is not touched. */
+	void ForgetTheBeacons();
+
+	/**
+	 * Pestilent Empowerment: adds every beacon still standing and not yet counted to the count carried
+	 * to later floors, and marks it counted. Called as the player leaves a floor or a Horde wave.
+	 */
+	void CountThePlagueBeaconsLeftStanding();
+
+	/** Pestilent Empowerment, on the beat: every creature's multiplier for the count carried to this floor. */
+	void StepPestilentEmpowerment(class ACataclysmPlayerCharacter* Player);
 
 	/**
 	 * Golden Spires, on the beat: a zone kept drawn around each living spire, and every creature's
@@ -3155,6 +3179,18 @@ private:
 	/** Golden Spires: this arena's spires, and how many the panel last said. */
 	TArray<FGoldenSpire> GoldenSpires;
 	int32 GoldenSpiresPanelStanding = -1;
+
+	/** Pestilent Empowerment: one beacon, and whether it has been counted, so a Horde arena's counts once. */
+	struct FPlagueBeacon
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Beacon;
+		bool bCounted = false;
+	};
+
+	/** Pestilent Empowerment: this arena's beacons, the count carried from earlier floors, and the panel's last. */
+	TArray<FPlagueBeacon> PlagueBeacons;
+	int32 PestilentBeaconsLeftStanding = 0;
+	int32 PestilentPanelStanding = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

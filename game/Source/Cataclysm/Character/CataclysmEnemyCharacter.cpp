@@ -1278,6 +1278,11 @@ void ACataclysmEnemyCharacter::SetSpireDamageMultiplier(float NewMultiplier)
 	SetDamageMultiplierFrom(SpireDamageSource, NewMultiplier);
 }
 
+void ACataclysmEnemyCharacter::SetPlagueBeaconsDamageMultiplier(float NewMultiplier)
+{
+	SetDamageMultiplierFrom(PlagueBeaconsDamageSource, NewMultiplier);
+}
+
 void ACataclysmEnemyCharacter::SetDamageMultiplierFrom(const TCHAR* Source, float NewMultiplier)
 {
 	const float Wanted = FMath::Max(0.0f, NewMultiplier);

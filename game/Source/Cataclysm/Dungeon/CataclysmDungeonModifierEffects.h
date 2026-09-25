@@ -1987,6 +1987,31 @@ public:
 	static const TCHAR* GoldenSpiresKey;
 
 	/**
+	 * The row where plague beacons left standing strengthen the creatures of later floors. Issues
+	 * #1820 and #41.
+	 *
+	 * "Players must find and destroy the plague beacons on each floor if they want to lower the power
+	 * of enemies on later floors."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. The row states no
+	 * figure; every figure here is a play-test value:
+	 * - "LOWER" IS READ AS "KEEP LOWER THAN IT WOULD BE": every beacon still standing when the player
+	 *   leaves its floor adds `PestilentEmpowermentPercentPerBeacon` to the damage of the creatures on
+	 *   every later floor of that dungeon, summed and capped at `PestilentEmpowermentMostPercent`. A
+	 *   destroyed beacon adds nothing, so a dungeon whose beacons all fall plays as it would without
+	 *   the row. "Power" is damage only.
+	 * - `PestilentEmpowermentBeaconsPerFloor` BEACONS A FLOOR on Eternal Chorus's rule for where things
+	 *   stand; ONE on a Horde arena, placed with its first wave, kept, and counted once, at the first
+	 *   wave change after it is placed.
+	 * - EACH IS A BEACON THE PLAYER DESTROYS, `ACataclysmBeaconCharacter`: a creature with no brain,
+	 *   attack or ability, with the Imp's health, saying "Beacon" under its bar, paying nothing, raised
+	 *   by the rule and not one of the floor's creatures.
+	 * - THE COUNT CLEARS WHEN THE PLAYER LEAVES THE DUNGEON, and is not saved, as Echoes of the Past's
+	 *   carried dead are not: nothing loads a save in play.
+	 */
+	static const TCHAR* PestilentEmpowermentKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4369,6 +4394,22 @@ public:
 	static constexpr float GoldenSpiresRadiusCm = 600.0f;
 	static constexpr float GoldenSpiresDamageMorePercent = 20.0f;
 
+	/**
+	 * Pestilent Empowerment's figures, every one a play-test value. See the key. 10% a beacon is March
+	 * of Progress's 10% a floor; the cap is the whole point of `PestilentEmpowermentMostPercent`, since
+	 * a fifty-floor dungeon with two beacons a floor would otherwise reach +1000%.
+	 */
+	static constexpr int32 PestilentEmpowermentBeaconsPerFloor = 2;
+	static constexpr int32 PestilentEmpowermentBeaconsPerHordeArena = 1;
+	static constexpr float PestilentEmpowermentPercentPerBeacon = 10.0f;
+	static constexpr float PestilentEmpowermentMostPercent = 100.0f;
+
+	static_assert(
+		PestilentEmpowermentBeaconsPerFloor > 0 && PestilentEmpowermentBeaconsPerHordeArena > 0
+			&& PestilentEmpowermentPercentPerBeacon > 0.0f
+			&& PestilentEmpowermentMostPercent >= PestilentEmpowermentPercentPerBeacon,
+		"A beacon that added nothing, or a cap below one beacon, is not the row.");
+
 	static_assert(
 		GoldenSpiresPerFloor > 0 && GoldenSpiresPerHordeArena > 0 && GoldenSpiresRadiusCm > 0.0f
 			&& GoldenSpiresDamageMorePercent > 0.0f,
@@ -4884,6 +4925,13 @@ public:
 	 * placed or since its last wave, and fewer than `NecroticBloomMostWaves` waves so far.
 	 */
 	static bool NecroticBloomWaveIsDue(float SecondsSinceLastWave, int32 WavesSoFar);
+
+	/**
+	 * What the creatures of a floor multiply their damage by when this many plague beacons were left
+	 * standing on the dungeon's earlier floors: `PestilentEmpowermentPercentPerBeacon` each, SUMMED and
+	 * not compounded, capped at `PestilentEmpowermentMostPercent`. 1.0 for none.
+	 */
+	static float PestilentEmpowermentDamageMultiplier(int32 BeaconsLeftStanding);
 
 	/**
 	 * What the creatures of the wave after this many waves are placed with, as a

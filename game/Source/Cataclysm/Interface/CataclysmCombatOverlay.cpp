@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
+#include "Character/CataclysmBeaconCharacter.h"
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
@@ -519,12 +520,19 @@ FString UCataclysmCombatOverlay::SpireTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::BeaconTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmBeaconCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Beacon"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor), SpireTextFor(Actor),
-		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor),
+		  BeaconTextFor(Actor), ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor),
 		  DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
