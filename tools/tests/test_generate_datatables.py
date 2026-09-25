@@ -1900,6 +1900,38 @@ class TestEnchantmentEffects:
             gen.enchantment_effects(self.book(tmp_path, [self.row(
                 {"Scale": "debuffs_carried", "Scale Step": 1, "Stack Seconds": 5})]))
 
+    # HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2: counted on hit_dealt,
+    # capped by Scale Max Steps, and with no timer.
+    CONSECUTIVE = {"Scale": "consecutive_hits", "Scale Step": 1,
+                   "Action Event": "hit_dealt", "Scale Max Steps": 8}
+
+    def test_consecutive_hits_are_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.CONSECUTIVE)]))
+        assert (out[0]["Scale"], out[0]["ActionEvent"], out[0]["StackSeconds"],
+                out[0]["ScaleMaxSteps"]) == ("consecutive_hits", "hit_dealt", 0.0, 8)
+
+    @pytest.mark.parametrize("event", [None, "critical_strike", "hit_taken"])
+    def test_consecutive_hits_on_an_event_naming_nobody_struck_are_refused(
+            self, tmp_path, event):
+        with pytest.raises(gen.DataError, match="naming who was struck"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.CONSECUTIVE, "Action Event": event})]))
+
+    def test_consecutive_hits_with_stack_seconds_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="has no timer"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.CONSECUTIVE, "Stack Seconds": 5})]))
+
+    def test_consecutive_hits_with_no_cap_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no cap"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.CONSECUTIVE, "Scale Max Steps": None})]))
+
+    def test_consecutive_hits_counted_two_at_a_time_are_refused(self, tmp_path):
+        with pytest.raises(gen.DataError):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.CONSECUTIVE, "Scale Step": 2})]))
+
     # A CHARGE THE NEXT USE SPENDS. Issue #1833, phase 2: an action row whose
     # event grants a charge, worth its value as increased damage, capped by
     # Scale Max Steps.

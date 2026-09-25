@@ -18100,4 +18100,140 @@ bool FCataclysmNextUseEffectivenessTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEventEffectivenessTest,
+	"Cataclysm.Skills.AnEventGrantedEffectivenessChargeIsHeldAsEffectiveness",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A row granting "your next skill at 300% effectiveness" on an event, here a
+ * dodge, holds a 300% effectiveness charge and no increased damage. Until
+ * issue #1833's consecutive hits `ActOnEvent` dropped the flag, and the charge
+ * was held as +300% increased damage; only the timed grant passed it.
+ */
+bool FCataclysmEventEffectivenessTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	FCataclysmPoolAction OnDodge;
+	OnDodge.Event = FName(TEXT("dodge"));
+	OnDodge.Pool = FName(UCataclysmAbilitySystemComponent::NextSkillEffectivenessAction);
+	OnDodge.Percent = 300.0f;
+	OnDodge.NextUseKey = FName(TEXT("Test:next_skill_effectiveness"));
+	OnDodge.NextUseCap = 1;
+	OnDodge.bNextUseIsEffectiveness = true;
+	ASC->SetPoolActions({OnDodge});
+
+	ASC->ActOnEvent(OnDodge.Event);
+
+	float SkillPercent = 0.0f;
+	float AttackPercent = 0.0f;
+	int32 SkillCount = 0;
+	int32 AttackCount = 0;
+	ASC->NextUseChargesByKind(SkillPercent, SkillCount, AttackPercent, AttackCount);
+	TestEqual(TEXT("the dodge holds a 300% effectiveness charge"),
+		ASC->NextUseEffectivenessHeld(), 300.0f, 0.001f);
+	TestEqual(TEXT("and no increased damage on the next skill"), SkillPercent, 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmConsecutiveHitsTest,
+	"Cataclysm.Skills.HitsInARowCountOnOneEnemyAndStartAgainOnAnother",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A row counting melee hits in a row, capped at 3. Issue #1833, phase 2,
+ * ruled 2026-09-24: a landed melee hit on the enemy counted counts, up to
+ * the cap; a hit outside the row's scope, and one that did not land, neither
+ * counts nor starts it again; a landed melee hit on another enemy starts it
+ * again at one; leaving combat and death end it. The count reads nought on
+ * any enemy but the one counted. Each hit is followed by the combat stamp
+ * the blow makes, in the order the game makes them.
+ */
+bool FCataclysmConsecutiveHitsTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter First(World, FVector(2 * M, 0, 0));
+	FScopedFighter Second(World, FVector(-2 * M, 0, 0));
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+	const FName Key(TEXT("Consecutive:attack_damage"));
+	FCataclysmPoolAction Counting;
+	Counting.Event = FName(TEXT("hit_dealt"));
+	Counting.StackKey = Key;
+	Counting.StackCap = 3;
+	Counting.bConsecutiveHits = true;
+	Counting.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee"))));
+	ASC->SetPoolActions({Counting});
+
+	FGameplayTagContainer Melee;
+	Melee.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee"))));
+	FGameplayTagContainer Spell;
+	Spell.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Spell"))));
+
+	// ONE SECOND APART, the blow's own combat stamp after its count.
+	const auto Hit = [&](const FScopedFighter& Who, const FGameplayTagContainer* Tags,
+						 bool bLanded = true)
+	{
+		World->TimeSeconds += 1.0f;
+		ASC->ActOnEvent(Counting.Event, Tags, 0.0f, bLanded, Who.Actor);
+		ASC->NoteHitDealt();
+	};
+
+	Hit(First, &Melee);
+	TestEqual(TEXT("one melee hit on the first enemy: one"),
+		ASC->ConsecutiveHitsOn(Key, First.Actor), 1);
+	TestEqual(TEXT("and nought on the second"), ASC->ConsecutiveHitsOn(Key, Second.Actor), 0);
+	Hit(First, &Melee);
+	Hit(First, &Melee);
+	Hit(First, &Melee);
+	TestEqual(TEXT("four in a row hold the cap of three"),
+		ASC->ConsecutiveHitsOn(Key, First.Actor), 3);
+
+	Hit(Second, &Spell);
+	Hit(Second, nullptr);
+	Hit(Second, &Melee, /*bLanded=*/false);
+	TestEqual(TEXT("a spell, a blow with no skill and an evaded blow on the second "
+				   "enemy leave the first enemy's three"),
+		ASC->ConsecutiveHitsOn(Key, First.Actor), 3);
+
+	Hit(Second, &Melee);
+	TestEqual(TEXT("a landed melee hit on the second enemy: one"),
+		ASC->ConsecutiveHitsOn(Key, Second.Actor), 1);
+	TestEqual(TEXT("and the first enemy reads nought"),
+		ASC->ConsecutiveHitsOn(Key, First.Actor), 0);
+	Hit(Second, &Melee);
+	TestEqual(TEXT("a second on it: two"), ASC->ConsecutiveHitsOn(Key, Second.Actor), 2);
+
+	const TArray<UCataclysmAbilitySystemComponent::FHeldOwnStacks> Shown =
+		ASC->OwnStacksByEnchantment();
+	TestTrue(TEXT("shown as one entry of hits in a row, 2 of 3, on attack damage"),
+		Shown.Num() == 1 && Shown[0].bConsecutiveHits && Shown[0].Held == 2
+			&& Shown[0].Cap == 3 && Shown[0].Stats.Num() == 1);
+
+	// COMBAT LAPSES. The next fight is begun by the enemy, so the character is
+	// in combat again when its own first hit lands.
+	World->TimeSeconds += UCataclysmAbilitySystemComponent::CombatLapseSeconds + 1.0f;
+	TestEqual(TEXT("out of combat the count reads nought"),
+		ASC->ConsecutiveHitsOn(Key, Second.Actor), 0);
+	ASC->NoteHitTaken();
+	Hit(Second, &Melee);
+	TestEqual(TEXT("the first hit of the next fight is one, not three"),
+		ASC->ConsecutiveHitsOn(Key, Second.Actor), 1);
+
+	ASC->ClearWhatDeathEnds();
+	TestEqual(TEXT("death ends it"), ASC->ConsecutiveHitsOn(Key, Second.Actor), 0);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

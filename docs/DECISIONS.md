@@ -2,6 +2,190 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Hits in a row on one enemy: a melee hit raises damage on it up to 8 times, and any hit lowers it up to 10
+
+**Affects:**
+- the Enchantment Effects sheet: four rows on two enchantments; no new column
+- `tools/generate_datatables.py`: the scale `consecutive_hits` and `CONSECUTIVE_HIT_EVENTS`
+- `ECataclysmStatScale::PerConsecutiveHit`, `FCataclysmPoolAction::bConsecutiveHits` and
+  `FCataclysmStatConditions::LookupTarget`, filled by `WithTargetState`
+- `UCataclysmAbilitySystemComponent`: `ConsecutiveHitsOn`, `GrantConsecutiveHit`, a new last
+  argument on `ActOnEvent` naming who the event was done to, and `OwnStacksByEnchantment`
+- `ACataclysmPlayerCharacter::OnSomethingWasHit`, which passes the blow's target with `hit_dealt`
+- `UCataclysmItemModifiers::AccumulateEnchantmentsInto` and `UCataclysmSkillBar::OwnStacksEntry`
+- a defect fix in `ActOnEvent`, below
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 2, "consecutive hits on one
+  target"
+
+### THE ROWS
+
+| Enchantment | Rows | Counts | Cap |
+| :-- | :-- | :-- | :-- |
+| Each consecutive melee hit on the same enemy increases damage by 5%-10% up to 8 stacks | `attack_damage` and `spell_damage`, increased 5 to 10, scoped `Type.Melee` | melee hits | 8 |
+| Each consecutive hit against the same enemy deals 5%-8% less damage, up to 10 stacks | `attack_damage` and `spell_damage`, more -5 to -8 | any hit | 10 |
+
+Both are `consecutive_hits` with a step of 1 on `hit_dealt`. **"Less" is a negative "more", summed
+within the row**, as the existing "Your skills deal 1.5%-2.5% less damage for every 10 class points
+spent above 100" is written: ten stacks at 8% are one multiplier of 0.2, not 0.92 multiplied ten
+times. That is the pipeline's existing arithmetic for every scaled row, not a new judgement.
+
+### WHAT THE GENRE SETTLES, AND WHAT IT DOES NOT
+
+- **No shipped game I could read has "consecutive hits on the same enemy".** Searches of Path of
+  Exile, Diablo IV, Last Epoch and Torchlight Infinite found none.
+- **Diablo III's Bane of the Stricken is the nearest shape**: stacks counted per enemy. From Maxroll's
+  Diablo III legendary gem page: "First enemy hit with a Skill that can proc Bane of the Stricken
+  receives a stack of debuff that increases all damage you do to that particular enemy." And: "Normal
+  enemies and Elites lose all Bane of the Stricken stacks when they leave combat." Those stacks stay
+  on each enemy, so they do not reset when the player turns to another enemy. That is the difference
+  "consecutive" makes.
+- **So the reset rules and the area-skill rule below are judgements**, not derived.
+
+### THE RULINGS, by the coordinating session on 2026-09-24, under the owner's delegation
+
+- **What counts: a landed hit within the row's own scope.** The melee row counts melee hits only; the
+  drawback counts any hit. A damage-over-time tick is not a hit, and an evaded blow did not land:
+  neither counts, and neither starts the count again. `OnSomethingWasHit` already refuses both before
+  `hit_dealt` is raised.
+- **What starts it again: a landed in-scope hit on a different enemy. Death and leaving combat end
+  it. There is no timer.** A count begun before the current combat is treated as ended, so a fight
+  begun by the enemy does not continue an old count.
+- **Area skills: every landed hit counts, in order**, so a skill striking several enemies mostly
+  starts the count again. **This makes the drawback easier to avoid with area skills, and that is
+  accepted for now.**
+- **Hit N deals damage with N-1 stacks, so the first hit on an enemy is plain.** A hit's damage is
+  fixed before the hit is announced and counted, and the count applies only on the enemy it is
+  counting. A player may read "each consecutive hit increases damage" as including the first; it
+  does not.
+- **UNLIKE AN OWN STACK, THE ROW'S TAGS SCOPE THE COUNT as well as the stat.** Phase 1 judged that a
+  stack row's tags scope its stat and not its grant, and that stays as it was for own stacks.
+
+### WHAT SHOWS IT
+
+The line above the skill bar lists the count on the enemy being counted, against the cap, marked
+as hits in a row so it does not read as a timed stack of the same stats: "attack/spell damage 3/8
+(hits in a row)". The words are a judgement.
+
+### A DEFECT FIXED IN THE SAME CHANGE
+
+**`ActOnEvent` granted a next-use charge without the effectiveness flag.** Only `StepTimedGrants`
+passed it. The generator accepts `next_skill_effectiveness` on any event, so a row such as "when you
+dodge, your next skill is cast at 200% effectiveness" would have been held as 200% increased damage,
+with no error anywhere. No worn row was affected: the one effectiveness row is timed. Found while
+sizing this change, and fixed here as ruled.
+
+### THE STACK CAP'S PROOF
+
+**The third proof of this change breaks both caps together.** Those are `Stack.StackCap` and
+`Out.ScaleMaxSteps` in `CataclysmItem.cpp`, which a consecutive-hits row now shares with an own-stack
+row. It answers the stated gap in the entry "Seven enchantments count stacks of their own" and the
+correction in the entry "A dodge, a full resource, a movement ability or a block grants a charge the
+next skill or attack spends as increased damage". Both entries recorded that breaking either cap
+alone changes nothing a stat can show.
+
+**It runs on all seven own-stack row tests as well as the two new ones.** Both earlier proofs ran on
+the seven, each breaking one cap. With both caps broken, each of the seven is predicted to fail
+"more events than its cap hold its cap" and "just inside its window, still its cap", once per stat
+it checks: 20 assertions. **On the melee row the cap first shows at the tenth hit, not the ninth.**
+Hit N reads N-1, so the ninth hit reads 8 without any cap. The ruling said "the ninth consecutive
+hit reads 8", taken from my proposal, and was corrected before the run.
+
+### AN OPEN FINDING: A PLAIN TEST BLOW DEALS 110 FROM AN ATTACK DAMAGE OF 100
+
+**The melee row's test was first written as multiples of the first hit, and was changed before it
+ran.** The step before the asset was rebuilt printed, for the drawback's test with no rows in the
+asset yet: "Expected 'the second hit deals 8% less' to be 101.200005, but it was 110.000000". So a
+plain blow in this test deals 110 from an attack damage of 100 set by hand. If that tenth is an
+increase, the melee row's 10% adds to it and the second hit adds 10, not 11. The test as first
+written would then have failed on every ratio. It now asserts differences from the first hit, which
+are equal either way, and it prints the step, so the run shows which of the two it is. Ruled by the
+coordinating session under the owner's delegation. The drawback row is a "more", and its multiples
+hold either way.
+
+**The source was not found by reading.** It is not the attributes table (no damage stat), the class
+stats (the default class has none), the helm (flat armour only), the creature's damage taken
+(initialised to 100) or the starting Greataxe, which is a plain base with no affixes, and whose flat
+damage the test overwrites. It stays open.
+
+**The run narrowed it to a multiplier on the blow.** The melee test printed "the first hit dealt
+110.0000 and the second added 11.0000". The second hit added 10% of 110, not of 100, so the tenth is
+a multiplier and not an increase sharing the row's sum. The first form of the test would have
+passed.
+
+**A MISS OF MINE IN THE SAME TEST, found by the same run.** The drawback's test failed one line:
+"Expected 'the second hit deals 8% less' to be 101.200005, but it was 101.187500". The tests read a
+blow as the creature's health before less its health after, and the creatures had a million health.
+A float near a million holds steps of 0.0625, so no reading could meet a tolerance of 0.01. The
+other lines had passed only because their readings happened to round the right way. The creatures
+now have ten thousand, where the step is under 0.001, and no assertion changed. Ruled by the
+coordinating session under the owner's delegation. The rebuild that registration predicted as one
+file compiled four, and that miss is recorded too.
+
+### THE TESTS
+
+- **The count, on the engine:** melee hits on one enemy count up to a cap of three. A spell, a blow
+  with no skill and an evaded blow on another enemy leave it. A landed melee hit on the other enemy
+  starts it again at one, and the first enemy then reads nought. Out of combat it reads nought; a
+  fight begun by the enemy starts it at one; death ends it. It shows as one entry.
+- **The melee row, worn by a real player character**, dealing real blows to two creatures. Each
+  hit adds the amount the second hit added, once for each hit before it; that amount is above
+  nought and at most a tenth of the first hit. A blow with no skill and an evaded swing on the other
+  creature change nothing. The tenth and eleventh hits each add 8 times it. The first hit on the
+  other creature is plain, and afterwards so is the next hit back on the first.
+- **The drawback row**, the same way: 8% less for each hit before, a fifth from the eleventh on, and
+  the first hit on the other creature plain.
+- **An event-granted effectiveness charge** is held as effectiveness and not as increased damage.
+- **The display:** the exact words for hits in a row, and a timed stack of the same stats unchanged.
+
+### Run
+
+One editor window on 2026-09-24, local time (03:00 to 03:20 UTC on the 25th), on development
+b941da54 as the base. Every figure below is what `python tools/unreal_build.py`, `pytest` or
+`prove_cpp_guard` printed.
+
+- **The first build, on the code head 455c4f58**: "Build: Succeeded - 29 actions, 26 files compiled".
+  The Python suite on that tree: 5,446 passed, 8 skipped, 0 failed, of 5,454.
+- **The rows**, 95d40ab0. The second build: "Build: Succeeded - 4 actions, 1 file compiled". The
+  Python suite of record: 1 failed, 5,445 passed, 8 skipped, the one failure the check that every
+  CSV still hashes to what its asset was built from. `Cataclysm.Data.` and `Cataclysm.Enchantments.`
+  before the asset was rebuilt: 102 tests performed, 99 succeeded, 3 failed, the asset check and the
+  two new row tests.
+- **The melee test changed to differences**, 589cb1c5, as ruled after that step (the open finding
+  above). Rebuild: "Build: Succeeded - 7 actions, 4 files compiled". **One file was registered; that
+  miss is minor, and recorded.**
+- **The asset**, 7b3c566e: `DT_EnchantmentEffects` rebuilt from 329 rows, up from 325.
+- **The five new tests: 5 performed, 4 succeeded, 1 failed, not as registered.** The drawback test
+  failed on the creatures' health, as recorded above. After the change to ten thousand health,
+  f158d16f ("Build: Succeeded - 4 actions, 1 file compiled"): 5 performed, 5 succeeded, 0 failed,
+  and the melee test printed "the first hit dealt 110.0000 and the second added 11.0000".
+- **The whole suite**, on f158d16f: 2,420 tests performed, 2,420 succeeded, 0 failed; every
+  declared test was reported. No CI run was in progress.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **A hit on another enemy continues the count** (`&& Held.Target.Get() == Target` removed in
+  `GrantConsecutiveHit`), on `HitsInARow` and the two row tests. With the break in: 3 performed, 1
+  succeeded, 2 failed. `HitsInARowCountOnOneEnemyAndStartAgainOnAnother` read 3 for "a landed melee
+  hit on the second enemy: one" and for "a second on it: two", and its display check was false.
+  `TheConsecutiveMeleeRowRaisesDamageOnOneEnemyUpTo8` read 88 against 11 for "and the second on it
+  adds it once". Restored: 3 of 3 succeeded.
+- **The count read on any enemy** (`|| Held->Target.Get() != Target` removed in
+  `ConsecutiveHitsOn`), on the same tests. With the break in: 3 of 3 failed. The first hit on the
+  other enemy read 22 against 110 on the drawback, and 198 against 110 on the melee row. The melee
+  row's "back on the first enemy... plain" read 132. The engine test read 1 against 0 twice.
+  Restored: 3 of 3 succeeded.
+- **Both caps one higher** (`Out.ScaleMaxSteps` and `Stack.StackCap` in `CataclysmItem.cpp`, each
+  `+ 1`), on the two new row tests and the seven own-stack row tests. With the break in: 9 of 9
+  failed, on 25 assertions. The melee row read a count of 9, 99 against 88 for the tenth and the
+  eleventh hits, and its display check was false. The drawback's twelfth hit read 13.2 against 22.
+  **Each own-stack row test failed "more events than its cap hold its cap" and "just inside its
+  window, still its cap" for every stat it checks, 20 assertions**: for example "''attack_damage',
+  more events than its cap hold its cap (other increases 20.00)' to be 1.208333, but it was
+  1.250000". Restored: 9 of 9 succeeded. **That closes the own-stack cap gap the two earlier entries
+  named.**
+
+---
+
 ## 2026-09-24 — Nothing Wasted, engine only: what armour and damage reduction remove is stored and added to the next melee hit, up to that hit's own damage
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmDamageCalculation.h` and `.cpp` (two new

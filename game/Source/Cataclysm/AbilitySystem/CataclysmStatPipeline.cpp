@@ -165,6 +165,7 @@ namespace
 		{ TEXT("target_debuffs"),      ECataclysmStatScale::PerTargetDebuff },
 		{ TEXT("buffs_held"),          ECataclysmStatScale::PerBuffHeld },
 		{ TEXT("own_stacks"),          ECataclysmStatScale::PerOwnStack },
+		{ TEXT("consecutive_hits"),    ECataclysmStatScale::PerConsecutiveHit },
 		{ TEXT("auras_held"),          ECataclysmStatScale::PerAuraHeld },
 		{ TEXT("class_points_spent"),  ECataclysmStatScale::PerClassPointSpent },
 		{ TEXT("mana_held_percent"),   ECataclysmStatScale::PercentOfManaHeld },
@@ -1508,6 +1509,19 @@ float UCataclysmStatPipeline::UncappedScaledValue(const FCataclysmStatModifier& 
 			: 0.0f;
 	}
 
+	// AND THE HITS IN A ROW ON THE TARGET OF THIS LOOKUP, by the row's own
+	// count. Issue #1833, phase 2. A lookup with no target counts none, and so
+	// does one about any enemy but the one the row is counting.
+	case ECataclysmStatScale::PerConsecutiveHit:
+	{
+		const UCataclysmAbilitySystemComponent* Asking =
+			Cast<const UCataclysmAbilitySystemComponent>(State.AskingAbilitySystem);
+		return Asking && !Modifier.StackKey.IsNone()
+			? StackedValue(Modifier,
+						   Asking->ConsecutiveHitsOn(Modifier.StackKey, State.LookupTarget))
+			: 0.0f;
+	}
+
 	// AND THE AURAS RUNNING, COUNTED THE SAME WAY. Issue #1686.
 	case ECataclysmStatScale::PerAuraHeld:
 		return StackedValue(Modifier, State.AurasHeld);
@@ -1805,6 +1819,11 @@ FString UCataclysmStatPipeline::ValidateModifier(const FCataclysmStatModifier& M
 	if (Modifier.Scale == ECataclysmStatScale::PerOwnStack && Modifier.StackKey.IsNone())
 	{
 		return TEXT("own_stacks with no stack key. It would count nothing.");
+	}
+	if (Modifier.Scale == ECataclysmStatScale::PerConsecutiveHit
+		&& Modifier.StackKey.IsNone())
+	{
+		return TEXT("consecutive_hits with no stack key. It would count nothing.");
 	}
 
 	// AN OFFSET IS A NUMBER OF POINTS NOT COUNTED, AND ONE SCALE READS IT.

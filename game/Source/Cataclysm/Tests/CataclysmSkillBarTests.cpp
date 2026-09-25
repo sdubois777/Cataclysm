@@ -1120,4 +1120,25 @@ bool FCataclysmSkillBarHeldStacksLineTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarHitsInARowTest,
+	"Cataclysm.SkillBar.TheLineSaysWhenACountIsHitsInARow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A count of hits in a row on one enemy says so, and a timed stack of the same
+ * stats does not. Issue #1833, phase 2: without it the two entries would read
+ * the same.
+ */
+bool FCataclysmSkillBarHitsInARowTest::RunTest(const FString&)
+{
+	const TArray<FName> Damage = {FName(TEXT("attack_damage")), FName(TEXT("spell_damage"))};
+	TestEqual(TEXT("hits in a row"),
+		UCataclysmSkillBar::OwnStacksEntry(Damage, 3, 8, /*bConsecutiveHits=*/true),
+		FString(TEXT("attack/spell damage 3/8 (hits in a row)")));
+	TestEqual(TEXT("a timed stack of the same stats"),
+		UCataclysmSkillBar::OwnStacksEntry(Damage, 3, 5),
+		FString(TEXT("attack/spell damage 3/5")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

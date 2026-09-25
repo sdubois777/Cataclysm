@@ -1184,6 +1184,12 @@ FCataclysmStatConditions UCataclysmAbilitySystemComponent::WithTargetState(
 	const TArray<FCataclysmStatModifier>& Modifiers, const AActor* Target,
 	FCataclysmStatConditions State)
 {
+	// WHO THE LOOKUP IS ABOUT, ALWAYS, AND BEFORE THE EARLY RETURN BELOW. Issue
+	// #1833, phase 2. A pointer costs nothing to copy, which is why it is not
+	// held back until some row asks as the readings below are. Only
+	// `PerConsecutiveHit` reads it.
+	State.LookupTarget = Target;
+
 	// NOTHING UNLESS A ROW ACTUALLY ASKS, the shape `WithEnemiesInReach` above
 	// uses and for a cost this project has already measured and named. Issue
 	// #1515. `UCataclysmDebuffs::DamageAgainstSharedDebuff` reads its stat before
@@ -2021,6 +2027,13 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 		Ended.Stacks += OwnStacksHeld(Held.Key);
 	}
 	OwnStacks.Empty();
+
+	// AND EVERY ROW'S HITS IN A ROW, ruled 2026-09-24. Issue #1833, phase 2.
+	for (const TPair<FName, FConsecutiveHits>& Held : ConsecutiveHits)
+	{
+		Ended.Stacks += Held.Value.Count;
+	}
+	ConsecutiveHits.Empty();
 
 	// AND EVERY HELD NEXT-USE CHARGE, ruled 2026-09-24. Issue #1833, phase 2.
 	for (const TPair<FName, FNextUseCharge>& Held : NextUseCharges)
@@ -2918,6 +2931,34 @@ UCataclysmAbilitySystemComponent::OwnStacksByEnchantment() const
 		}
 	}
 
+	// AND EVERY ROW'S HITS IN A ROW, on whichever enemy it is counting. Issue
+	// #1833, phase 2: the owner's rule that every system has a basic interface.
+	// The count shown is what the next hit on that enemy reads.
+	for (const TPair<FName, FConsecutiveHits>& Each : ConsecutiveHits)
+	{
+		if (!ConsecutiveHitsStanding(Each.Value) || !Each.Value.Target.IsValid())
+		{
+			continue;
+		}
+		FString Enchantment;
+		FString Stat;
+		if (!Each.Key.ToString().Split(TEXT(":"), &Enchantment, &Stat))
+		{
+			Stat = Each.Key.ToString();
+		}
+		FHeldOwnStacks& Entry = ByEnchantment.FindOrAdd(Enchantment);
+		Entry.Stats.AddUnique(FName(*Stat));
+		Entry.Held = FMath::Max(Entry.Held, Each.Value.Count);
+		Entry.bConsecutiveHits = true;
+		for (const FCataclysmPoolAction& Action : PoolActions)
+		{
+			if (Action.StackKey == Each.Key)
+			{
+				Entry.Cap = FMath::Max(Entry.Cap, Action.StackCap);
+			}
+		}
+	}
+
 	// IN A FIXED ORDER, by enchantment name, so the line does not reorder
 	// itself from one frame to the next.
 	TArray<FString> Order;
@@ -2972,6 +3013,54 @@ int32 UCataclysmAbilitySystemComponent::OwnStacksHeld(FName StackKey) const
 	return Since > Held->WindowSeconds ? 0 : Held->Count;
 }
 
+bool UCataclysmAbilitySystemComponent::ConsecutiveHitsStanding(
+	const FConsecutiveHits& Held) const
+{
+	// OUT OF COMBAT ENDS THE COUNT, ruled 2026-09-24, and so does a count begun
+	// before this combat did. The second catches a count left from a fight
+	// that lapsed when the next fight was begun by the enemy: the character is
+	// in combat again, and the count is still not this combat's.
+	//
+	// "BEGUN BEFORE" IS STRICTLY BEFORE. A fight begun by this character's own
+	// hit is counted a moment before that hit puts it in combat, at the same
+	// world time, and that count is this combat's.
+	return Held.Count > 0 && SecondsInCombat() >= 0.0f
+		&& Held.LastAtSeconds >= CombatStartedAtSeconds;
+}
+
+int32 UCataclysmAbilitySystemComponent::ConsecutiveHitsOn(FName StackKey,
+														  const AActor* Target) const
+{
+	const FConsecutiveHits* Held = ConsecutiveHits.Find(StackKey);
+	if (!Held || !Target || Held->Target.Get() != Target
+		|| !ConsecutiveHitsStanding(*Held))
+	{
+		return 0;
+	}
+	return Held->Count;
+}
+
+void UCataclysmAbilitySystemComponent::GrantConsecutiveHit(FName StackKey,
+	const AActor* Target, int32 Cap)
+{
+	const UWorld* World = GetWorld();
+	if (StackKey.IsNone() || !Target || Cap <= 0 || !World)
+	{
+		return;
+	}
+
+	// THE SAME QUESTION `ConsecutiveHitsOn` ASKS, and it is asked of the count
+	// standing BEFORE this hit. The first hit of a fight is counted a moment
+	// before it puts this character in combat, so it always finds nothing
+	// standing and starts at one, which is right: it is the first.
+	FConsecutiveHits& Held = ConsecutiveHits.FindOrAdd(StackKey);
+	const bool bContinues =
+		ConsecutiveHitsStanding(Held) && Held.Target.Get() == Target;
+	Held.Count = bContinues ? FMath::Min(Held.Count + 1, Cap) : 1;
+	Held.Target = Target;
+	Held.LastAtSeconds = World->GetTimeSeconds();
+}
+
 void UCataclysmAbilitySystemComponent::GrantOwnStack(FName StackKey,
 													 float WindowSeconds, int32 Cap)
 {
@@ -2989,7 +3078,7 @@ void UCataclysmAbilitySystemComponent::GrantOwnStack(FName StackKey,
 
 void UCataclysmAbilitySystemComponent::ActOnEvent(
 	FName Event, const FGameplayTagContainer* EventTags, float EventAmount,
-	bool bLanded)
+	bool bLanded, const AActor* EventTarget)
 {
 	// ANNOUNCED FIRST, before either early return below. Issue #1821: a
 	// listener asking again for a cached stat needs every event, and most
@@ -3024,8 +3113,29 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 			if (bLanded && !StackedThisEvent.Contains(Action.NextUseKey))
 			{
 				StackedThisEvent.Add(Action.NextUseKey);
+				// AND WHETHER IT IS AN EFFECTIVENESS CHARGE, which this call
+				// dropped until issue #1833's consecutive hits: an event-granted
+				// "next skill at 300% effectiveness" was held as +300% increased
+				// damage. Only the timed grant passed it, and the one authored
+				// effectiveness row is timed, so no worn row was affected.
 				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
-								   Action.Percent, Action.NextUseCap);
+								   Action.Percent, Action.NextUseCap,
+								   Action.bNextUseIsEffectiveness);
+			}
+			continue;
+		}
+		// HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2. Before the own
+		// stacks below, because the row carries a stack key too. Landed only,
+		// once per row per event, and only for an event naming who was struck.
+		// `PoolActionAllowed` above has already judged the row's tags, so a
+		// hit outside its scope neither counts nor starts the count again.
+		if (Action.bConsecutiveHits)
+		{
+			if (bLanded && EventTarget && !Action.StackKey.IsNone()
+				&& !StackedThisEvent.Contains(Action.StackKey))
+			{
+				StackedThisEvent.Add(Action.StackKey);
+				GrantConsecutiveHit(Action.StackKey, EventTarget, Action.StackCap);
 			}
 			continue;
 		}

@@ -922,7 +922,11 @@ void ACataclysmPlayerCharacter::OnSomethingWasHit(
 	// THE SKILL'S OWN TAGS GO ACROSS, which is what a scoped row tests. One
 	// authored row is scoped this way: "strike skills generate ... on hit", and
 	// `Type.Strike` is on 31 of the 403 weapon skills.
-	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags);
+	//
+	// AND WHO WAS STRUCK, which only a row counting hits in a row on one enemy
+	// reads. Issue #1833, phase 2.
+	Acting->ActOnEvent(FName(TEXT("hit_dealt")), Notice.SkillTags,
+					   /*EventAmount=*/0.0f, /*bLanded=*/true, Notice.Target);
 
 	// A CRITICAL STRIKE IS A KIND OF HIT, so it is a second event rather than a
 	// different one, and a row may want either. Fired after the hit so that a

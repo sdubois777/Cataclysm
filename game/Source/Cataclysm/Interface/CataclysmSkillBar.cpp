@@ -277,7 +277,7 @@ bool UCataclysmSkillBar::EverySkillIsLocked(const TArray<FCataclysmSkillBarSlot>
 }
 
 FString UCataclysmSkillBar::OwnStacksEntry(const TArray<FName>& Stats, int32 Held,
-										  int32 Cap)
+										  int32 Cap, bool bConsecutiveHits)
 {
 	const FName Attack(TEXT("attack_damage"));
 	const FName Spell(TEXT("spell_damage"));
@@ -295,7 +295,8 @@ FString UCataclysmSkillBar::OwnStacksEntry(const TArray<FName>& Stats, int32 Hel
 		}
 		Name = FString::Join(Words, TEXT("/"));
 	}
-	return FString::Printf(TEXT("%s %d/%d"), *Name, Held, Cap);
+	return FString::Printf(TEXT("%s %d/%d%s"), *Name, Held, Cap,
+						   bConsecutiveHits ? TEXT(" (hits in a row)") : TEXT(""));
 }
 
 FString UCataclysmSkillBar::StoredDamageLine(float Stored)

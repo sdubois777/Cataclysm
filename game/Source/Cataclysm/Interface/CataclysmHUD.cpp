@@ -388,7 +388,7 @@ void ACataclysmHUD::DrawSkillBar()
 			 Cataclysm->OwnStacksByEnchantment())
 		{
 			OwnStacks.Add(UCataclysmSkillBar::OwnStacksEntry(
-				Held.Stats, Held.Held, Held.Cap));
+				Held.Stats, Held.Held, Held.Cap, Held.bConsecutiveHits));
 		}
 		// AND NOTHING WASTED'S STORE ON THE SAME LINE. Issue #1515.
 		TArray<FString> Parts;
