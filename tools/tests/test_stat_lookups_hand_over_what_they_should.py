@@ -423,6 +423,13 @@ INVENTORY = {
         "Rendering Blows' seconds, asked of the striker on the third landed "
         'melee hit; a duration, not a blow modifier',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(GroundDownMetresStat), FGameplayTagContainer(), 0.0f'):
+        "Ground Down's radius, read in a regeneration step with no blow, "
+        'target or skill in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
+     'FName(GroundDownPercentStat), FGameplayTagContainer(), 0.0f'):
+        "Ground Down's share of a creature's speeds, read in the same step",
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
      'FName(AppliedHeldWithinMetresStat), FGameplayTagContainer(), 0.0f'):
         "No Second Wind's radius, read in a regeneration step with no blow, "
         'target or skill in hand',

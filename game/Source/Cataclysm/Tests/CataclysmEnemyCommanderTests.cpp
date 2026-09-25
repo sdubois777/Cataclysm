@@ -13,6 +13,7 @@
 #include "AbilitySystemComponent.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmBruteCharacter.h"
 #include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmSuccubusCharacter.h"
 #include "Engine/World.h"
@@ -930,6 +931,11 @@ bool FCataclysmCommanderReachesEveryCreatureThatCanBeBuffed::RunTest(const FStri
 			 World, FVector(0.0f, 1000.0f, 0.0f))},
 		{TEXT("the Succubus"),
 		 Spawn<ACataclysmSuccubusCharacter>(World, FVector(0.0f, 2000.0f, 0.0f))},
+		// THE BRUTE, WHICH WRITES ITS OWN WALK. Issue #1515: until 2026-09-24 it
+		// wrote its designed figure over the buffed one every frame, so this
+		// case is what shows `RefreshWalkSpeed` reaches its code and scales it.
+		{TEXT("the Brute"),
+		 Spawn<ACataclysmBruteCharacter>(World, FVector(0.0f, 3000.0f, 0.0f))},
 	};
 
 	const float Expected =

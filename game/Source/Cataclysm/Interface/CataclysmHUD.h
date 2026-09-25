@@ -152,8 +152,9 @@ private:
 	 */
 	void DrawRarityNames();
 
-	/** "Armor -20%" under a creature's bar while Rendering Blows holds. Issue #1515. */
-	void DrawArmourRemoved();
+	/** The status line under a creature's bar -- "Armor -20%", "Slowed -15%"
+	 *  -- while either holds. Issue #1515. */
+	void DrawStatusLines();
 
 	/**
 	 * The panel at the top of the screen describing the creature under the

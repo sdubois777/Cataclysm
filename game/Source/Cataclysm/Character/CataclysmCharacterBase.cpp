@@ -256,6 +256,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// enemy is still within the radius is asked again each time.
 	UCataclysmDebuffs::HoldAppliedNearbyStep(this, UCataclysmRegeneration::StepSeconds);
 
+	// AND GROUND DOWN SLOWS THE CREATURES NEAR IT. Issue #1515. The same step,
+	// so a creature that leaves the radius stops being renewed and recovers
+	// three steps later.
+	UCataclysmDebuffs::GroundDownStep(this, UCataclysmRegeneration::StepSeconds);
+
 	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
 	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the
 	// first of them whose effect reaches out on its own. "Emits a burning aura

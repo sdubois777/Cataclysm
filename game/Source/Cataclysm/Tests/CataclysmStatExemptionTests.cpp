@@ -32,6 +32,7 @@
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "Character/CataclysmEnemyCharacter.h"
+#include "Character/CataclysmImpCharacter.h"
 #include "Character/CataclysmPlayerCharacter.h"
 #include "Character/CataclysmPlayerClassStats.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -1218,6 +1219,66 @@ namespace CataclysmStatExemptionTest
 		Test.TestTrue(TEXT("and with it the fourth takes more, so "
 						   "NoteLandedMeleeHitFrom really reads it"),
 					  RendingBlowsFourthOverThird(World, Held) > 0.01f);
+	}
+
+	/**
+	 * The speed multiplier of an Imp two metres from `Holder` after one Ground
+	 * Down step. Issue #1515: 1 when the step slows nothing.
+	 */
+	float GroundDownImpSpeed(UWorld* World, const FScopedSwinger& Holder)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		ACataclysmImpCharacter* Imp = World->SpawnActor<ACataclysmImpCharacter>(
+			ACataclysmImpCharacter::StaticClass(),
+			Holder.Actor->GetActorLocation() + FVector(2 * M, 0, 0),
+			FRotator::ZeroRotator, Params);
+		if (!Imp)
+		{
+			return -1.0f;
+		}
+		UCataclysmDebuffs::GroundDownStep(Holder.Actor, 0.25f);
+		const float Speed = Imp->SpeedMultiplier();
+		Imp->Destroy();
+		return Speed;
+	}
+
+	/** Ground Down with both of its stats, or with only `Stat`. */
+	void ProbeGroundDown(FAutomationTestBase& Test, const TCHAR* Stat, const TCHAR* Other)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedSwinger Held(World, FVector::ZeroVector);
+		GrantFlats(Held.Actor, {{FName(Stat), 15.0f}, {FName(Other), 15.0f}});
+		FScopedSwinger Without(World, FVector(0, 100 * M, 0));
+		GrantFlats(Without.Actor, {{FName(Other), 15.0f}});
+
+		Test.TestEqual(FString::Printf(TEXT("without %s a creature near the holder "
+											"is not slowed"), Stat),
+					   GroundDownImpSpeed(World, Without), 1.0f, 0.001f);
+		Test.TestTrue(FString::Printf(TEXT("and with it the creature is slowed, so "
+										   "GroundDownStep really reads %s"), Stat),
+					  GroundDownImpSpeed(World, Held) < 0.999f);
+	}
+
+	/** `enemies_near_slowed_within_metres`, read by `UCataclysmDebuffs::GroundDownStep`. */
+	void ProbeGroundDownMetres(FAutomationTestBase& Test)
+	{
+		ProbeGroundDown(Test, UCataclysmDebuffs::GroundDownMetresStat,
+						UCataclysmDebuffs::GroundDownPercentStat);
+	}
+
+	/** `enemies_near_slowed_percent`, read by the same function. */
+	void ProbeGroundDownPercent(FAutomationTestBase& Test)
+	{
+		ProbeGroundDown(Test, UCataclysmDebuffs::GroundDownPercentStat,
+						UCataclysmDebuffs::GroundDownMetresStat);
 	}
 
 	/**
@@ -2896,6 +2957,8 @@ namespace CataclysmStatExemptionTest
 			{TEXT("shield_break_destroys_minion_every_seconds"), &ProbeShieldWard},
 			{TEXT("skill_cost_paid_from_energy_shield"), &ProbeCostPaidFromShield},
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
+			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
+			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},
 			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},
 			{TEXT("third_melee_hit_armour_removed_seconds"), &ProbeRendSeconds},
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},

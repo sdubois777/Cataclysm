@@ -724,6 +724,32 @@ float ACataclysmEnemyCharacter::FeastingMultiplier() const
 	return 1.0f + Stacks * PerStack / 100.0f;
 }
 
+float ACataclysmEnemyCharacter::GroundDownPercentNow() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || World->GetTimeSeconds() >= GroundDownUntil)
+	{
+		return 0.0f;
+	}
+	return FMath::Clamp(GroundDownPercent, 0.0f, 100.0f);
+}
+
+float ACataclysmEnemyCharacter::GroundDownMultiplier() const
+{
+	return FMath::Max(1.0f - GroundDownPercentNow() / 100.0f, KINDA_SMALL_NUMBER);
+}
+
+void ACataclysmEnemyCharacter::NoteGroundDown(float Percent, float UntilSeconds)
+{
+	if (Percent <= 0.0f)
+	{
+		return;
+	}
+	const bool bRunning = GroundDownPercentNow() > 0.0f;
+	GroundDownPercent = bRunning ? FMath::Max(GroundDownPercent, Percent) : Percent;
+	GroundDownUntil = FMath::Max(GroundDownUntil, UntilSeconds);
+}
+
 void ACataclysmEnemyCharacter::RefreshWalkSpeed()
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();

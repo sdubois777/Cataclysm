@@ -2,6 +2,152 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Ground Down, engine only: creatures within 4 metres of the holder lose 15% of both speeds, and a Brute's walk now honours every slow
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the new factor),
+`CataclysmBruteCharacter.h` and `.cpp` (its walk), `game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h`
+and `.cpp` (the step), `CataclysmCharacterBase.cpp` (where it runs), `CataclysmPlayerClassStats.cpp` (two
+stats with no attribute), `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` and
+`CataclysmHUD.h` and `.cpp` (the display), four test files and two Python inventories. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ravager_capstone_100` option 1, Ground Down: "Enemies within 4 metres of you have 15% reduced Movement
+Speed and 15% reduced Attack Speed." Two stats with no attribute, which its row will carry:
+`enemies_near_slowed_within_metres` (4) and `enemies_near_slowed_percent` (15). **Engine only**, for the
+reason the Shared Ruin entry gives.
+
+**The node's text governs, not the summary.** The 2026-09-08 entry on the Ravager's Attrition branch
+says this option "slows and weakens everything within 4 metres". The node's sentence names movement and
+attack speed and no Weaken, and the coordinating session ruled on 2026-09-24 that the node text is the
+design data and the log line a summary of it. So there is no Weaken here.
+
+### ALREADY SETTLED, AND FOLLOWED
+
+- **A creature's two speeds come from one function.** Its attack interval and walk never read the
+  AttackSpeed or MovementSpeed attributes; both come from `ACataclysmEnemyCharacter::SpeedMultiplier()`,
+  whose comment rules that "A later effect naming both must go in this function rather than beside it."
+  Ground Down names both, so it is a fourth factor there, beside Commander, Cripple and a Wraith's.
+- **Slows are not resisted.** The 2026-09-05 decision leaves slows out of crowd-control resistance, and
+  nothing exempts a boss from one.
+
+### RULINGS, 2026-09-24, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **G1, it multiplies.** It is a separate slow from Cripple and Commander, so a crippled creature near
+  the holder is at 0.7 x 0.85 of its speed, not 0.55.
+- **G2, several holders do not stack.** While one runs, the larger percent holds.
+- **G3, it lasts three steps, 0.75 seconds, after the creature leaves the radius.** The holder's step
+  renews it every 0.25 seconds for three steps, so one missed step cannot make it flicker. That is the
+  Succubus's Dominion rule.
+- **G4, every rarity takes the full 15%**, bosses included, by the 2026-09-05 decision. Temporal Chains'
+  weaker figure on rarer enemies, below, is noted and not adopted.
+- **It is shown**, under the owner's standing rule that every system ships with a basic in-game display:
+  the line under a creature's health bar now joins every status it has, "Armor -20%  Slowed -15%".
+- **The Brute's walk is fixed in this change**, in its own commit before the Ground Down one.
+
+### THE GENRE
+
+Fetched on 2026-09-24 from poedb.tw:
+
+- **Different slows multiply.** Path of Exile's Hinder: "Since maim and hinder are different debuffs,
+  an enemy can be affected by both simultaneously." Temporal Chains' slow "applies multiplicatively
+  with Chill's slowing effect" ([Hinder](https://poedb.tw/us/Hinder),
+  [Temporal Chains](https://poedb.tw/us/Temporal_Chains)).
+- **The same slow from several sources does not stack**: "A creature can only be affected by one
+  Hinder at a time; if a creature is hindered by multiple sources only the strongest Hinder takes
+  effect."
+- **Some slows are weaker on stronger enemies**: Temporal Chains gives Normal and Magic enemies
+  "(15—29)% less Action Speed" and Rare and Unique ones "(9—18)%". Not adopted, by G4.
+
+The research settles G1 and G2. G3's three steps come from this project's own Succubus, and G4 from
+this project's own decision; both are judgements rather than derived.
+
+### HOW IT IS BUILT
+
+- **The step**, `UCataclysmDebuffs::GroundDownStep`, runs on the holder's regeneration step beside No
+  Second Wind's. It finds hostile actors within the radius and casts each to a creature, which excludes
+  the player's minions, thralls and a second player unless something has Maddened them. On each it calls
+  `ACataclysmEnemyCharacter::NoteGroundDown`, with the percent and an end three steps away.
+- **The factor**, `GroundDownMultiplier()`, is 1 minus the percent while the end has not come, and is
+  the fourth factor of `SpeedMultiplier()`. It is state on the creature, not a tag, so nothing that
+  counts debuffs sees it. The walk reaches the movement component through `RefreshWalkSpeed`, which
+  every creature runs each frame.
+- **The display** is `UCataclysmCombatOverlay::SlowedTextFor` ("Slowed -15%") and a new
+  `StatusLineFor`, which joins it with `ArmourRemovedTextFor` by two spaces. The heads-up display's
+  `DrawArmourRemoved` from the Rendering Blows entry is renamed `DrawStatusLines` and draws that one
+  line, so two statuses never draw over each other. `ArmourRemovedTextFor` is unchanged. **Only the text
+  is tested**: the automation tests run with no renderer.
+
+### A FAULT FIXED HERE: A BRUTE'S WALK IGNORED EVERY SLOW AND EVERY HASTE
+
+Found while reading how Ground Down would reach a creature's walk. `ACataclysmBruteCharacter::Tick` ran
+the base class's tick, which scales the walk by `SpeedMultiplier()`, and then `ApplyChaseSpeed` wrote
+the Brute's own designed walk or chase speed straight over it, every frame. **So until this change a
+Cripple, a Commander and a Vengeful Wraith's speed changed a Brute's attacks and never its walk**, and
+Ground Down would have missed it the same way.
+
+- `RefreshWalkSpeed` is now virtual. The Brute's version applies its own two speeds times
+  `SpeedMultiplier()`, so every caller -- each frame, the Vengeful Wraiths rule, a test -- reaches it.
+- `Cataclysm.Enemy.CommanderReachesEveryCreatureThatCanBeBuffed` now includes the Brute. Before the
+  override it could not have seen this: it calls `RefreshWalkSpeed`, which reached the base's code.
+- No test pinned the old figure. The Brute's walk tests read an unslowed Brute, whose multiplier is 1,
+  so 250 and 500 are unchanged.
+
+### TESTS
+
+- `Cataclysm.AI.ACrippledBruteWalksSlowerChasingAndNot`: a crippled Brute walks at 250 x Cripple's
+  multiplier, chases at 500 x it, and chases at 500 again once the Cripple is lifted.
+- `Cataclysm.Enemy.CommanderReachesEveryCreatureThatCanBeBuffed`: the Brute is a fourth case.
+- `Cataclysm.GroundDown.AnEnemyWithinFourMetresIsFifteenPercentSlowerAtBoth`: an Imp two metres away
+  attacks at its interval over 0.85 and walks at 0.85 of its speed; one six metres away is untouched;
+  the near Imp's line reads "Slowed -15%".
+- `Cataclysm.GroundDown.ItEndsAfterTheEnemyLeavesAndDoesNotStack`: half a second after the last step it
+  still holds, eight tenths after it has ended, and two holders slow by 15%, not twice.
+- `Cataclysm.GroundDown.ItMultipliesWithCrippleAndNeedsTheStat`: Cripple's multiplier times 0.85, and
+  a character without the option slows nothing.
+- Two probes in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**The stats are given by hand**, so none of these can see a missing or wrong row. When the rows land,
+that change must add a test that wears the real `Ravager_capstone_100` option 1 rows and sees a creature
+slowed.
+
+### THE WINDOW, 2026-09-24, ON fe730b41
+
+**This change's C++ was compiled for the first time here, with the next-use change's heads-up display
+(#2086) beside it, and it built. Every registered figure matched, and all three proofs are proved.**
+No data row changed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on fe730b41 | `5430 passed, 8 skipped in 340.41s`; JUnit 5438 tests, 0 failures, 0 errors, 8 skipped |
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2402 tests performed, 2402 succeeded, 0 failed` |
+
+**A continuous-integration compile overlapped the middle of the whole suite and nothing failed.**
+Divine Wrath (#2087) merged during the window, and its Unreal run 36082063798 had its "Game compiles"
+job from 01:27:07 to 01:28:55 UTC on 2026-09-25 by GitHub's clock; the suite's tests ran from 01:24:42
+to 01:30:36 by the engine log's. The build had finished before it began, and it had completed before the
+first proof.
+
+Three proofs with `prove_cpp_guard` on fe730b41, each anchor re-checked immediately before and each
+begun with no Unreal run in progress. Each restored run printed every test succeeding. **Every one was
+registered before the window, test and assertion alike.**
+
+| Break | Prefix | Printed with the break in | Assertions that failed |
+|---|---|---|---|
+| `SpeedMultiplier` leaves Ground Down out | `Cataclysm.GroundDown.` | `3 tests performed, 0 succeeded, 3 failed` | "the Imp two metres away attacks 15% less often", 0.9 where 1.0588; "and walks 15% slower", 650 where 552.5; "half a second later, with no step, it is still slowed", 0.9 where 1.0588; "two holders together slow it by 15%, not by 15% twice", 0.9 where 1.0588; "crippled and near the holder, it attacks at its interval over the Cripple times 0.85", 1.2857 where 1.5126 |
+| a second holder's percent is added | `Cataclysm.GroundDown.` | `3 tests performed, 2 succeeded, 1 failed: ItEndsAfterTheEnemyLeavesAndDoesNotStack` | "two holders together slow it by 15%, not by 15% twice", 1.2857 where 1.0588; "and the line still says 15%", "Slowed -30%" |
+| the Brute's walk ignores `SpeedMultiplier` again | `Cataclysm.AI.ACrippledBrute` | `1 tests performed, 0 succeeded, 1 failed: ACrippledBruteWalksSlowerChasingAndNot` | "crippled and not chasing, it walks at its designed walk times the Cripple", 250 where 175; "crippled and chasing, it runs at its designed chase times the Cripple", 500 where 350 |
+
+The third proof's prefix has no trailing dot because the one test it selects continues the name. **No
+proof breaks the radius**; "the Imp six metres away ..." asserts it, and the gap was accepted to keep
+within three proofs.
+
+---
+
 ## 2026-09-24 — Divine Wrath: every thirty seconds a beam of light appears twelve metres away and chases the player, destroying the creatures it covers and burning the player for a fifth of maximum health a second
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
