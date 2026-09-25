@@ -6,6 +6,14 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Character/CataclysmPlayerCharacter.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "Items/CataclysmEquipmentComponent.h"
+#include "Misc/ScopeExit.h"
+#include "Player/CataclysmPlayerState.h"
+#include "Save/CataclysmSaveGather.h"
+#include "Tests/CataclysmTestWorld.h"
 #include "Items/CataclysmItem.h"
 #include "Items/CataclysmInventoryComponent.h"
 #include "Save/CataclysmSaveMigration.h"
@@ -1187,5 +1195,160 @@ bool FCataclysmSaveRunFileWithoutTheSchedule::RunTest(const FString&)
 	return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// Worn gear in the character record. Recorded on issue #753 as a
+// precondition for loading: the record had no field for it.
+// ---------------------------------------------------------------------------
+
+/**
+ * The committed character file's worn gear reads back entry by entry.
+ *
+ * SEPARATE FROM THE COMPLETENESS CHECK, which a field re-defaulted identically on
+ * both sides would pass. THE SECOND ENTRY IS IN Ring3 ON PURPOSE: an entry read
+ * back by position would land in the first slot whatever the file said, so a
+ * slot other than the first is what shows the NAME was kept.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveCharacterFixtureKeepsWornGear,
+	"Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveCharacterFixtureKeepsWornGear::RunTest(const FString&)
+{
+	FString Text;
+	FString Reason;
+	if (!CataclysmSaveFixtures::Read(TEXT("Character_v3.json"), Text, Reason))
+	{
+		AddError(Reason);
+		return false;
+	}
+
+	ECataclysmSaveLoadResult Result = ECataclysmSaveLoadResult::NotValidJson;
+	FString Message;
+	UCataclysmCharacterSave* Read = Cast<UCataclysmCharacterSave>(FCataclysmSaveStorage::FromJson(
+		Text, UCataclysmCharacterSave::StaticClass(), GetTransientPackage(), Result, Message));
+	if (Read == nullptr)
+	{
+		AddError(FString::Printf(TEXT("Character_v3.json would not load: %s -- %s"),
+			FCataclysmSaveStorage::Describe(Result), *Message));
+		return false;
+	}
+
+	if (!TestEqual(TEXT("two worn items are read"), Read->WornGear.Num(), 2))
+	{
+		return false;
+	}
+
+	const FCataclysmWornItem& Weapon = Read->WornGear[0];
+	TestEqual(TEXT("the first is worn in Weapon1"),
+		static_cast<int32>(Weapon.Slot), static_cast<int32>(ECataclysmGearSlot::Weapon1));
+	TestEqual(TEXT("and is the greatsword"), Weapon.Item.Base, FName(TEXT("Weapon_Greatsword")));
+	TestEqual(TEXT("at gear level 9"), Weapon.Item.GearLevel, 9);
+	TestTrue(TEXT("carrying the damage type Void alone"),
+		Weapon.Item.DamageTypes.Num() == 1 && Weapon.Item.DamageTypes[0] == FName(TEXT("Void")));
+	if (TestEqual(TEXT("with one affix"), Weapon.Item.Affixes.Num(), 1))
+	{
+		TestEqual(TEXT("the affix in the file"), Weapon.Item.Affixes[0].Affix,
+			FName(TEXT("Stat_Flat_maximum_health")));
+		TestEqual(TEXT("at tier 4"), Weapon.Item.Affixes[0].Tier, 4);
+		TestEqual(TEXT("rolled at a half"), Weapon.Item.Affixes[0].Roll, 0.5f);
+	}
+	TestEqual(TEXT("with 3 sockets"), Weapon.Item.Sockets, 3);
+	TestEqual(TEXT("and 2.5 residue"), Weapon.Item.Residue, 2.5f);
+
+	const FCataclysmWornItem& Ring = Read->WornGear[1];
+	TestEqual(TEXT("the second is worn in Ring3, by name"),
+		static_cast<int32>(Ring.Slot), static_cast<int32>(ECataclysmGearSlot::Ring3));
+	TestEqual(TEXT("and is the ring"), Ring.Item.Base, FName(TEXT("Ring_Band")));
+	TestEqual(TEXT("at gear level 3"), Ring.Item.GearLevel, 3);
+	TestEqual(TEXT("with 0.25 residue"), Ring.Item.Residue, 0.25f);
+	return true;
+}
+
+/**
+ * A real player's worn gear is written into its record, each item with the
+ * slot it is worn in. Nothing worn writes nothing.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveWritesWornGear,
+	"Cataclysm.SaveRecords.AWornItemIsWrittenWithItsSlotByName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveWritesWornGear::RunTest(const FString&)
+{
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	ACataclysmPlayerState* State = World->SpawnActor<ACataclysmPlayerState>();
+	APlayerController* Controller = World->SpawnActor<APlayerController>();
+	ACataclysmPlayerCharacter* Player = World->SpawnActor<ACataclysmPlayerCharacter>(
+		FVector::ZeroVector, FRotator::ZeroRotator);
+	if (!State || !Controller || !Player)
+	{
+		AddError(TEXT("A possessed player could not be built."));
+		return false;
+	}
+	Controller->SetPlayerState(State);
+	Controller->Possess(Player);
+	UCataclysmEquipmentComponent* Equipment = Player->GetEquipment();
+	if (!TestNotNull(TEXT("the player has equipment"), Equipment))
+	{
+		return false;
+	}
+
+	// IT STARTS HOLDING A GREATAXE, so everything comes off first.
+	Equipment->UnequipEverything();
+	UCataclysmCharacterSave* Record = NewObject<UCataclysmCharacterSave>();
+	TestTrue(TEXT("a character's record is written"),
+		FCataclysmSaveGather::CharacterFrom(*Player, *Record));
+	TestEqual(TEXT("wearing nothing writes nothing"), Record->WornGear.Num(), 0);
+
+	FCataclysmItem Greatsword;
+	Greatsword.Base = FName(TEXT("Weapon_Greatsword"));
+	Greatsword.GearLevel = 9;
+	FCataclysmRolledAffix Rolled;
+	Rolled.Affix = FName(TEXT("Stat_Flat_maximum_health"));
+	Rolled.Tier = 4;
+	Rolled.Roll = 0.5f;
+	Greatsword.Affixes.Add(Rolled);
+	FCataclysmItem Ring;
+	Ring.Base = FName(TEXT("Ring_Band"));
+	Ring.GearLevel = 3;
+
+	FCataclysmItem Removed;
+	FCataclysmItem AlsoRemoved;
+	Equipment->EquipInto(Greatsword, ECataclysmGearSlot::Weapon1, Removed, AlsoRemoved);
+	Equipment->EquipInto(Ring, ECataclysmGearSlot::Ring3, Removed, AlsoRemoved);
+	if (!TestEqual(TEXT("both are worn"), Equipment->NumEquipped(), 2))
+	{
+		return false;
+	}
+
+	FCataclysmSaveGather::CharacterFrom(*Player, *Record);
+	if (!TestEqual(TEXT("two worn items are written"), Record->WornGear.Num(), 2))
+	{
+		return false;
+	}
+	const FCataclysmWornItem* InWeapon1 = Record->WornGear.FindByPredicate(
+		[](const FCataclysmWornItem& Entry) { return Entry.Slot == ECataclysmGearSlot::Weapon1; });
+	const FCataclysmWornItem* InRing3 = Record->WornGear.FindByPredicate(
+		[](const FCataclysmWornItem& Entry) { return Entry.Slot == ECataclysmGearSlot::Ring3; });
+	if (!TestNotNull(TEXT("an entry names Weapon1"), InWeapon1)
+		|| !TestNotNull(TEXT("and one names Ring3"), InRing3))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the greatsword is written against Weapon1"),
+		InWeapon1->Item.Base, FName(TEXT("Weapon_Greatsword")));
+	TestEqual(TEXT("with its gear level"), InWeapon1->Item.GearLevel, 9);
+	TestTrue(TEXT("and its affix"), InWeapon1->Item.Affixes.Num() == 1
+		&& InWeapon1->Item.Affixes[0].Affix == FName(TEXT("Stat_Flat_maximum_health")));
+	TestEqual(TEXT("the ring is written against Ring3"),
+		InRing3->Item.Base, FName(TEXT("Ring_Band")));
+	return true;
+}
 
 #endif // WITH_AUTOMATION_TESTS

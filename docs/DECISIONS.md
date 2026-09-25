@@ -162,6 +162,66 @@ the way it was registered before the window; restored, each run was 1 performed,
 
 ---
 
+## 2026-09-24 — The character record writes what the character is wearing, each item with its slot by name, and the save documents count 19 worn slots
+
+**Affects:** `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (the field and its type),
+`CataclysmSaveGather.h` and `.cpp` (writing it), `game/Tests/SaveFixtures/Character_v3.json` and its
+README, `docs/Save_System_Design.md`, `tools/tests/test_worn_gear_slots_are_nineteen.py` and
+`game/Source/Cataclysm/Tests/CataclysmSaveRecordTests.cpp`. The finding is recorded on issue
+[#753](https://github.com/sdubois777/Cataclysm/issues/753) as a precondition for loading.
+
+### THE FINDING
+
+**A character's worn gear was not written to its save at all.** `FCataclysmSaveGather::CharacterFrom`
+wrote the carried bag, the attribute and passive allocations, the level and the creation choices, and
+`UCataclysmCharacterSave` had no field for what is worn. The design lists it: "Equipped items, all 19
+slots, with their rolled affixes". The record called the equipped slots "deliberately absent" because they
+"need a shape that does not exist in the game yet"; `UCataclysmEquipmentComponent` has held that shape
+since issue #828, so the reason no longer held.
+
+**It cost nobody anything yet**, because nothing in the game loads a save (#753). It would have been lost
+on the first load.
+
+### THE SHAPE, RULED 2026-09-24 UNDER THE OWNER'S DELEGATION
+
+**`WornGear`, one entry per occupied slot, each entry naming its slot.** The carried bag is saved as its
+whole array by position, because where an item sits in the bag is what a player arranged. A worn item's
+position in the equipment's array is only the order of `ECataclysmGearSlot`, so saving by position would
+tie the file to that order: a slot added or moved would put every saved item in the wrong slot on load,
+with no error. The JSON writes an enum by its name -- "Weapon1" -- so a named slot survives both.
+
+**Not a version bump.** An empty list is the field's default, so a file written before it reads as a
+character wearing nothing: section 5's "field added with a sensible default". The character record stays
+at version 3, and `Character_v3.json` was edited under the fixtures' stated exception that no save has ever
+been loaded.
+
+**Nothing restores it**, since nothing loads a save; that remains #753.
+
+### EIGHTEEN AND NINETEEN
+
+The equipment has 19 slots: seven armour pieces, a necklace, a relic, eight rings and two weapons. The
+save design said 19 in the sentence `tools/tests/test_worn_gear_slots_are_nineteen.py` reads and 18 in
+three other places, and the record's header and the gather comment said 18 too; the test read only the
+one sentence. All now say 19, and the test reads every "N equipped slots" and "N equipped items" in the
+save design and the record header, across line breaks.
+
+**Eighteen equipped PIECES is not wrong and is not changed.** The design counts what the hands hold as one
+piece, for Power Score and for what a Hardcore death drops, so 19 slots are 18 pieces. The new pattern
+does not match "pieces".
+
+### TESTS
+
+- `Cataclysm.SaveRecords.AWornItemIsWrittenWithItsSlotByName`: a real player wearing nothing writes
+  nothing; wearing a greatsword with an affix in `Weapon1` and a ring in `Ring3` writes exactly those two,
+  each against its slot.
+- `Cataclysm.SaveRecords.TheCommittedCharacterFileKeepsItsWornGear`: the committed file's two entries read
+  back field by field. **The second is in `Ring3`** so that a slot other than the first shows the name was
+  kept rather than the position.
+- `Cataclysm.SaveRecords.EveryFixtureHoldsEveryFieldItsRecordWrites`, existing, now carries the field.
+- `test_every_count_of_worn_slots_in_the_save_documents_is_the_enums`, in the Python file above.
+
+---
+
 ## 2026-09-24 — Both Hands Full, engine only: a second two-handed weapon goes in the other hand, and goes back when the option is lost
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (where a weapon

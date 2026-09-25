@@ -84,6 +84,43 @@
 			"Quantity": 12
 		}
 	],
+	"WornGear": [
+		{
+			"Slot": "Weapon1",
+			"Item": {
+				"Base": "Weapon_Greatsword",
+				"GearLevel": 9,
+				"DamageTypes": [
+					"Void"
+				],
+				"Affixes": [
+					{
+						"Affix": "Stat_Flat_maximum_health",
+						"Tier": 4,
+						"Roll": 0.5,
+						"DamageTypes": []
+					}
+				],
+				"EnchantmentCount": 0,
+				"Enchantments": [],
+				"Sockets": 3,
+				"Residue": 2.5
+			}
+		},
+		{
+			"Slot": "Ring3",
+			"Item": {
+				"Base": "Ring_Band",
+				"GearLevel": 3,
+				"DamageTypes": [],
+				"Affixes": [],
+				"EnchantmentCount": 0,
+				"Enchantments": [],
+				"Sockets": 0,
+				"Residue": 0.25
+			}
+		}
+	],
 	"PrivateEmpireUpgradePoints": 0,
 	"PrivateStash": []
 }
