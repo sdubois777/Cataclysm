@@ -96,6 +96,38 @@ file's strike and positioned fighters:
 **The stat is given by hand**, so none of these can see a missing or wrong row. When the rows land,
 that change must add a test that wears the real `Ravager_capstone_50` option 2 row.
 
+### THE WINDOW, 2026-09-24 AND 25, ON 99ffe011
+
+**This change's C++ was compiled for the first time here, beside the timed grants' heads-up display and
+ability system changes (#2089), and it built. Every registered figure matched, and all three proofs are
+proved.** No data row changed, and no continuous-integration compile overlapped the window.
+
+| Step | Printed |
+|---|---|
+| Python of record, on tree 3bf22ae9 | `5439 passed, 8 skipped in 346.81s`; JUnit 5447 tests, 0 failures, 0 errors, 8 skipped |
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2415 tests performed, 2415 succeeded, 0 failed` |
+
+**The store is added after the timed grants' effectiveness.** #2089 multiplies a hit's finished damage
+by the effectiveness a use spent, inside the figure `ApplyHit` computes; this change's spend comes after
+that figure. So a hit carrying both is multiplied first and then has the store added, and "100% of that
+attack's damage" is measured against the multiplied hit. That is N4 as ruled.
+
+**The figures the proofs rest on**, from the code: a test world has no game mode, so the difficulty tier
+is 1 and the armour constant 800. Armour of 1,000 removes 55.56 of a blow of 100, damage reduction of 20
+removes 8.89 of the 44.44 left, and 35.56 reaches health, so one blow stores 64.44.
+
+Three proofs with `prove_cpp_guard` on 99ffe011, prefix `Cataclysm.NothingWasted.`, each anchor
+re-checked immediately before and each begun with no Unreal run in progress. Each restored run printed
+`3 tests performed, 3 succeeded, 0 failed`. **Every one was registered before the window, test and
+assertion alike.**
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| `Resolve` records nothing for the armour step | `3 tests performed, 1 succeeded, 2 failed` | "what is stored is the blow less what reached health", 8.89 where 64.44; "the store is well above one hit's damage", twenty blows storing 8.89 each |
+| the whole store is added, with no cap | `3 tests performed, 2 succeeded, 1 failed: TheAddedDamageIsCappedAtTheHitsOwnAndTheRestIsLost` | "the hit deals exactly twice its plain damage", 357.78 where 200 |
+| the store is not emptied when spent | `3 tests performed, 0 succeeded, 3 failed` | "and the store is then empty", 64.44; "and says nothing when nothing is stored", "Next melee +129"; "the farther takes the swing alone", 314.44 where 250; "and the store is empty", 64.44; "and what was above that is lost, not kept", 257.78 |
+
 ---
 
 ## 2026-09-24 — Echoes of the Past: five seconds into a floor, the last six creatures killed on the floor before come back as echoes, each makes its last attack once, and they vanish
