@@ -513,7 +513,16 @@ bool UCataclysmGameplayAbility::CheckCooldown(
 		return false;
 	}
 
-	if (AbilitySystem->HasMatchingGameplayTag(Tag))
+	// REFUSED ONLY WHEN NO CHARGE IS LEFT. Issue #1833, skill charges. A skill
+	// holds one use unless a row adds more, and a running cooldown with no
+	// charge recorded counts as that one spent, so a skill with no row is
+	// refused exactly while its cooldown tag is held, as it always was.
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+	const bool bRefused = Cataclysm
+		? Cataclysm->SkillChargesHeld(Slot, SkillTagsForStats()) <= 0
+		: AbilitySystem->HasMatchingGameplayTag(Tag);
+	if (bRefused)
 	{
 		if (OptionalRelevantTags)
 		{
@@ -686,6 +695,28 @@ void UCataclysmGameplayAbility::ApplyCooldown(
 		}
 	}
 	if (Seconds <= 0.0f)
+	{
+		return;
+	}
+
+	// ONE CHARGE SPENT, AND ITS RECHARGE STARTED ONLY IF NONE IS RUNNING.
+	// Issue #1833, skill charges: charges recover one at a time, ruled
+	// 2026-09-25 under the owner's delegation, so a second use while the first
+	// recharges joins the queue rather than starting a second clock. A skill
+	// with one charge spends it and starts its cooldown here, as before.
+	if (UCataclysmAbilitySystemComponent* Cataclysm =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Cataclysm->SpendSkillCharge(Slot, SkillTagsForStats(), Seconds);
+		return;
+	}
+	ApplyCooldownEffect(AbilitySystem, Tag, Seconds);
+}
+
+void UCataclysmGameplayAbility::ApplyCooldownEffect(
+	UAbilitySystemComponent* AbilitySystem, const FGameplayTag& Tag, float Seconds)
+{
+	if (!AbilitySystem || !Tag.IsValid() || Seconds <= 0.0f)
 	{
 		return;
 	}
