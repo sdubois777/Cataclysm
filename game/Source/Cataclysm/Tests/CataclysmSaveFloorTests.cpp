@@ -14,6 +14,7 @@
 #include "AbilitySystem/CataclysmTelegraphMarker.h"
 #include "AbilitySystem/CataclysmTerrain.h"
 #include "Character/CataclysmBruteCharacter.h"
+#include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Dungeon/CataclysmFloorContents.h"
@@ -985,6 +986,27 @@ bool FCataclysmSaveChorusSourceClaimsNothing::RunTest(const FString&)
 {
 	const ACataclysmChorusSourceCharacter* Default = GetDefault<ACataclysmChorusSourceCharacter>();
 	if (!TestNotNull(TEXT("a chorus source class"), Default))
+	{
+		return false;
+	}
+	TestTrue(TEXT("it names no archetype row, as the dummy names none"), Default->ArchetypeRow.IsNone());
+	TestTrue(TEXT("the empty name is the training dummy's"),
+		FCataclysmSaveApply::ClassForArchetype(NAME_None) == ACataclysmEnemyCharacter::StaticClass());
+	return true;
+}
+
+/**
+ * A Necrotic Bloom's flower names no archetype row and is not mapped to one either: the save system
+ * skips every floor source, so the empty name stays the sandbox training dummy's. Issues #1820 and #41.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveBloomClaimsNothing,
+	"Cataclysm.SaveApply.ABloomDoesNotTakeTheTrainingDummysEmptyName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveBloomClaimsNothing::RunTest(const FString&)
+{
+	const ACataclysmBloomCharacter* Default = GetDefault<ACataclysmBloomCharacter>();
+	if (!TestNotNull(TEXT("a flower class"), Default))
 	{
 		return false;
 	}

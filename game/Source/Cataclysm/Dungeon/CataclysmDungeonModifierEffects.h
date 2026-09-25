@@ -1940,6 +1940,29 @@ public:
 	static const TCHAR* EternalChorusKey;
 
 	/**
+	 * The row where cursed flowers send waves of creatures until destroyed. Issues #1820 and #41.
+	 *
+	 * "Cursed flowers sprout in random areas; if not destroyed, they spawn waves of undead every 20s."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-25. "Every 20s" is the
+	 * row's; every other figure is a play-test value:
+	 * - `NecroticBloomFlowers` FLOWERS A FLOOR, placed once where the floor is placed, on Eternal
+	 *   Chorus's rule for where things stand (`EternalChorusCells`); ONE on a Horde arena, placed with
+	 *   its first wave and kept for the waves after it.
+	 * - EACH IS A FLOWER THE PLAYER DESTROYS, `ACataclysmBloomCharacter`: a creature with no brain,
+	 *   attack or ability, with the Imp's health, saying "Bloom" under its bar, paying nothing, raised
+	 *   by the rule and not one of the floor's creatures.
+	 * - A WAVE EVERY `NecroticBloomSecondsBetween` FROM EACH LIVING FLOWER, the first that long after
+	 *   it is placed: `NecroticBloomCreaturesPerWave` creatures of the floor's own kinds -- Grave
+	 *   Tide's reading of "undead", which the owner kept -- at the Common rung, on floor cells within
+	 *   `NecroticBloomWaveWithinCm` of their flower.
+	 * - `NecroticBloomMostWaves` WAVES A FLOWER AT MOST, as Grave Tide has, because the waves pay: a
+	 *   total cannot be farmed, where a cap on how many are alive could be.
+	 * - THE WAVES PAY AND ARE SAVED like any creature, and destroying a flower leaves them standing.
+	 */
+	static const TCHAR* NecroticBloomKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4301,6 +4324,20 @@ public:
 	static_assert(EternalChorusApartCm >= 2.0f * EternalChorusEarshotCm,
 		"Two choruses far enough apart that their earshots do not overlap.");
 
+	/** Necrotic Bloom's figures. "Every 20s" is the row's; the rest are play-test values. See the key. */
+	static constexpr int32 NecroticBloomFlowers = 2;
+	static constexpr int32 NecroticBloomHordeFlowers = 1;
+	static constexpr float NecroticBloomSecondsBetween = 20.0f;
+	static constexpr int32 NecroticBloomCreaturesPerWave = GraveTideFirstWaveCreatures;
+	static constexpr int32 NecroticBloomMostWaves = GraveTideMostWaves;
+	static constexpr float NecroticBloomWaveWithinCm = 600.0f;
+
+	static_assert(NecroticBloomSecondsBetween == 20.0f, "The row says every 20s.");
+	static_assert(
+		NecroticBloomFlowers > 0 && NecroticBloomHordeFlowers > 0 && NecroticBloomCreaturesPerWave > 0
+			&& NecroticBloomMostWaves > 0 && NecroticBloomWaveWithinCm > 0.0f,
+		"A flower never placed, or one that sent nothing, is not the row.");
+
 	static_assert(
 		DivineWrathSecondsBetween > DivineWrathBeamSeconds && DivineWrathBeamSeconds > 0.0f
 			&& DivineWrathAppearsAwayCm > DivineWrathRadiusCm && DivineWrathSpeedCmPerSecond > 0.0f,
@@ -4801,6 +4838,12 @@ public:
 
 	/** How many creatures rise in the wave after this many waves. */
 	static int32 GraveTideCreaturesInWave(int32 WavesSoFar);
+
+	/**
+	 * Whether a Necrotic Bloom flower's next wave is due: `NecroticBloomSecondsBetween` since it was
+	 * placed or since its last wave, and fewer than `NecroticBloomMostWaves` waves so far.
+	 */
+	static bool NecroticBloomWaveIsDue(float SecondsSinceLastWave, int32 WavesSoFar);
 
 	/**
 	 * What the creatures of the wave after this many waves are placed with, as a

@@ -2009,6 +2009,22 @@ public:
 	 */
 	static TArray<FIntPoint> EternalChorusCells(const ACataclysmDungeonFloor& Floor, int32 Count);
 
+	/** Necrotic Bloom, for the panel and tests: the flowers still standing. */
+	TArray<ACataclysmEnemyCharacter*> NecroticBloomFlowersNow() const;
+
+	/** Necrotic Bloom, for tests: how many waves `Flower` has sent, or -1 when it is not this floor's. */
+	int32 NecroticBloomWavesOf(const ACataclysmEnemyCharacter* Flower) const;
+
+	/** The health a flower is given: the Imp's at Common, 87, as the Chorus source has. A play-test value. */
+	float NecroticBloomFlowerHealth() const { return ImpHealth; }
+
+	/**
+	 * Where a flower's wave stands: the floor cells whose middle is within `NecroticBloomWaveWithinCm`
+	 * of `Flower`, measured level, leaving out the cell the flower stands in so a creature is not put
+	 * inside it; that cell alone when there is no other. Issues #1820 and #41.
+	 */
+	static TArray<FIntPoint> NecroticBloomWaveCells(const ACataclysmDungeonFloor& Floor, const FVector& Flower);
+
 	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
@@ -2134,6 +2150,15 @@ private:
 
 	/** Every chorus source destroyed and forgotten. */
 	void ForgetTheChoruses();
+
+	/** Necrotic Bloom: this arena's flowers, placed where a new arena is populated. */
+	void PlaceTheBlooms();
+
+	/** Every flower destroyed and forgotten. Their waves' creatures are the floor's and go with it. */
+	void ForgetTheBlooms();
+
+	/** Necrotic Bloom, on the beat: each living flower's clock, and its wave when one is due. */
+	void StepNecroticBloom();
 
 	/** Eternal Chorus, on the beat: earshots kept drawn for living sources, and the player's effects. */
 	void StepEternalChorus(class ACataclysmPlayerCharacter* Player,
@@ -3086,6 +3111,18 @@ private:
 	float EternalChorusCooldownApplied = 0.0f;
 	float EternalChorusRegenApplied = 0.0f;
 	int32 EternalChorusPanelSinging = -1;
+
+	/** Necrotic Bloom: one flower, the time since it was placed or last sent a wave, and its waves. */
+	struct FNecroticBloom
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Flower;
+		float SecondsSinceLastWave = 0.0f;
+		int32 Waves = 0;
+	};
+
+	/** Necrotic Bloom: this arena's flowers, and how many the panel last said. */
+	TArray<FNecroticBloom> NecroticBlooms;
+	int32 NecroticBloomPanelFlowers = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that

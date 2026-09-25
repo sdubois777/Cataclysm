@@ -152,6 +152,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::WingsOfTheHostKey =
 const TCHAR* UCataclysmDungeonModifierEffects::EternalChorusKey =
 	TEXT("Celestial_Eternal_Chorus");
 
+const TCHAR* UCataclysmDungeonModifierEffects::NecroticBloomKey =
+	TEXT("Death_Necrotic_Bloom");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -441,7 +444,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(EchoesOfThePastKey)
 		|| RowKey == FName(PlagueHarbingersKey)
 		|| RowKey == FName(WingsOfTheHostKey)
-		|| RowKey == FName(EternalChorusKey))
+		|| RowKey == FName(EternalChorusKey)
+		|| RowKey == FName(NecroticBloomKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -631,6 +635,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(PlagueHarbingersKey),
 		FName(WingsOfTheHostKey),
 		FName(EternalChorusKey),
+		FName(NecroticBloomKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1679,6 +1684,16 @@ bool UCataclysmDungeonModifierEffects::GraveTideWaveIsDue(float SecondsSinceLast
 		return false;
 	}
 	return SecondsSinceLastWave >= GraveTideSecondsBetweenWaves;
+}
+
+bool UCataclysmDungeonModifierEffects::NecroticBloomWaveIsDue(float SecondsSinceLastWave,
+															int32 WavesSoFar)
+{
+	if (WavesSoFar >= NecroticBloomMostWaves)
+	{
+		return false;
+	}
+	return SecondsSinceLastWave >= NecroticBloomSecondsBetween;
 }
 
 int32 UCataclysmDungeonModifierEffects::GraveTideCreaturesInWave(int32 WavesSoFar)
