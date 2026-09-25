@@ -71,6 +71,13 @@ figure is a play-test value:**
   they do nothing, so a multiplier on them would change nothing a player can see.
 - **"Later floors" on the panel counts the beacons standing here that have not yet been counted**, so it
   says what leaving now would give.
+- **In play a killed beacon is destroyed on the next tick**: `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.cpp`
+  keeps a body only for its death clip (`CorpseSeconds = PlayDeathAnimation()`, line 389), a floor source has
+  none, and a creature with none is destroyed through `SetTimerForNextTick` (line 416). So the `IsDead` half of
+  the count's condition guards only a beacon killed on the same tick as the floor change. The test's "three
+  carried: the destroyed one added nothing" passes through that `IsDead` half, because the test world never
+  ticks the timer that destroys the beacon; for that reason the guard proof that stops the count reaching the
+  creatures was chosen instead of one that removes `IsDead`.
 
 ### The research: strengthening that carries forward
 
