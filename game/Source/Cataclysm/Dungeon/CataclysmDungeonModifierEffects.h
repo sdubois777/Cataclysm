@@ -1871,6 +1871,28 @@ public:
 	static const TCHAR* PlagueHarbingersKey;
 
 	/**
+	 * The row where a line of feathers falls across the floor. Issues #1820 and #41.
+	 *
+	 * "Angelic flyovers carpet-bomb the map with radiant feathers that pierce terrain and deal
+	 * % max HP damage."
+	 *
+	 * RULED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION, 2026-09-24. Every figure
+	 * is a play-test value:
+	 * - A FLYOVER EVERY `WingsOfTheHostSecondsBetween`, Artillery Strike's cadence, Horde waves
+	 *   included.
+	 * - IT IS A STRAIGHT LINE at a random angle through a point within
+	 *   `WingsOfTheHostPassesWithinCm` of the player, across the whole floor, with a mark every
+	 *   `WingsOfTheHostFeatherEveryCm`, `WingsOfTheHostFeatherRadiusCm` across the radius, on
+	 *   floor cells only. The marks never overlap, so a player is struck once at most.
+	 * - EVERY FEATHER LANDS TOGETHER after `WingsOfTheHostWarningSeconds`, Artillery Strike's
+	 *   warning, and strikes the PLAYER ONLY -- the row names no creature -- for
+	 *   `WingsOfTheHostMaxHealthPercent` of maximum health, typed as the row.
+	 * - "PIERCE TERRAIN" NEEDS NOTHING BUILT: no area damage in this game checks line of sight,
+	 *   so a wall between a player and a feather protects nothing.
+	 */
+	static const TCHAR* WingsOfTheHostKey;
+
+	/**
 	 * The row whose void orbs pull, damage and slow. Issues #1605, #41.
 	 *
 	 * `Partly` BUILT, AND THE MISSING HALF IS THE PULL. The orbs are placed, they
@@ -4203,6 +4225,23 @@ public:
 			&& PlagueHarbingersMaxHealthPercentPerSecond > 0.0f,
 		"A Harbinger that was never chosen, laid nothing, or laid a trail that did nothing is not the row.");
 
+	/** Wings of the Host's figures. Ruled; every one a play-test value. See the key. */
+	static constexpr float WingsOfTheHostSecondsBetween = ArtilleryStrikeSecondsBetween;
+	static constexpr float WingsOfTheHostWarningSeconds = ArtilleryStrikeWarningSeconds;
+	static constexpr float WingsOfTheHostPassesWithinCm = ArtilleryStrikeLandsWithinCm;
+	static constexpr float WingsOfTheHostFeatherEveryCm = 400.0f;
+	static constexpr float WingsOfTheHostFeatherRadiusCm = 150.0f;
+
+	/** Below Artillery Strike's 25%: a 150 cm mark is easier to step out of than a 600 cm one. */
+	static constexpr float WingsOfTheHostMaxHealthPercent = 15.0f;
+
+	static_assert(
+		WingsOfTheHostFeatherEveryCm > 2.0f * WingsOfTheHostFeatherRadiusCm,
+		"Feathers whose marks overlapped would strike a player standing between them twice.");
+	static_assert(
+		WingsOfTheHostMaxHealthPercent > 0.0f && WingsOfTheHostMaxHealthPercent < ArtilleryStrikeMaxHealthPercent,
+		"A feather is ruled below Artillery Strike's single large circle.");
+
 	static_assert(
 		DivineWrathSecondsBetween > DivineWrathBeamSeconds && DivineWrathBeamSeconds > 0.0f
 			&& DivineWrathAppearsAwayCm > DivineWrathRadiusCm && DivineWrathSpeedCmPerSecond > 0.0f,
@@ -5046,6 +5085,15 @@ public:
 
 	/** Whether a Harbinger that has moved `MovedCm` since its last patch lays another. */
 	static bool PlagueHarbingersPatchIsDue(float MovedCm);
+
+	/** Whether a flyover is due, `SecondsSinceLast` after the last one landed. */
+	static bool WingsOfTheHostIsDue(float SecondsSinceLast);
+
+	/** Whether the feathers have landed, `WarningSoFar` after their marks appeared. */
+	static bool WingsOfTheHostHasLanded(float WarningSoFar);
+
+	/** What one feather deals to a player of `MaximumHealth`. */
+	static float WingsOfTheHostDamage(float MaximumHealth);
 
 	/**
 	 * What `skill_locked` on the player's spells should be, given whether they stand in

@@ -146,6 +146,9 @@ const TCHAR* UCataclysmDungeonModifierEffects::EchoesOfThePastKey =
 const TCHAR* UCataclysmDungeonModifierEffects::PlagueHarbingersKey =
 	TEXT("Pestilence_Plague_Harbingers");
 
+const TCHAR* UCataclysmDungeonModifierEffects::WingsOfTheHostKey =
+	TEXT("Celestial_Wings_of_the_Host");
+
 // THE DAMAGE TYPE JUDGMENT LOWERS THE RESISTANCE TO, which is a row key of
 // game/Data/ElementVisuals.csv and a member of the shipping damage type list.
 // The header says why it is a type rather than the stat name it becomes.
@@ -429,7 +432,8 @@ ECataclysmModifierBuilt UCataclysmDungeonModifierEffects::BuiltStateOf(FName Row
 		|| RowKey == FName(PlagueConvergenceKey)
 		|| RowKey == FName(DivineWrathKey)
 		|| RowKey == FName(EchoesOfThePastKey)
-		|| RowKey == FName(PlagueHarbingersKey))
+		|| RowKey == FName(PlagueHarbingersKey)
+		|| RowKey == FName(WingsOfTheHostKey))
 	{
 		return ECataclysmModifierBuilt::Built;
 	}
@@ -617,6 +621,7 @@ TArray<FName> UCataclysmDungeonModifierEffects::KeysWithARule()
 		FName(DivineWrathKey),
 		FName(EchoesOfThePastKey),
 		FName(PlagueHarbingersKey),
+		FName(WingsOfTheHostKey),
 		FName(FCataclysmDungeonFloorRules::UnstableDimensionsKey),
 	};
 }
@@ -1935,6 +1940,21 @@ bool UCataclysmDungeonModifierEffects::TheReaperIsDue(float SecondsOnFloor)
 	// AT AND NOT PAST, so the fortieth quarter-second beat raises it and the thirty-ninth
 	// does not.
 	return SecondsOnFloor >= TheReaperDelaySeconds;
+}
+
+bool UCataclysmDungeonModifierEffects::WingsOfTheHostIsDue(float SecondsSinceLast)
+{
+	return SecondsSinceLast >= WingsOfTheHostSecondsBetween;
+}
+
+bool UCataclysmDungeonModifierEffects::WingsOfTheHostHasLanded(float WarningSoFar)
+{
+	return WarningSoFar >= WingsOfTheHostWarningSeconds;
+}
+
+float UCataclysmDungeonModifierEffects::WingsOfTheHostDamage(float MaximumHealth)
+{
+	return FMath::Max(0.0f, MaximumHealth) * WingsOfTheHostMaxHealthPercent / 100.0f;
 }
 
 int32 UCataclysmDungeonModifierEffects::PlagueHarbingersFor(int32 Placed)

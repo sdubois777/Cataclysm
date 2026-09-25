@@ -89,6 +89,163 @@ removes the other, and each is caught by a different set of the nine.
 
 ---
 
+## 2026-09-24 — Wings of the Host: every thirty seconds a line of feather marks crosses the whole floor near the player, and three seconds later each feather strikes a player standing in its mark for 15% of maximum health
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's
+key, its figures, when a flyover is due, when it lands and what a feather deals),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (where a flyover's feathers fall,
+marking them, landing them, the floor panel line and the reset), the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. ONE BUILD
+AND TWO TESTS FAILED FIRST, all faults in this change's own tests, and one guard proof's restored half is void;
+both are recorded there.
+
+### The row
+
+`Celestial_Wings_of_the_Host` in `game/Data/DungeonModifiers.csv`, weight 5: "Angelic flyovers
+carpet-bomb the map with radiant feathers that pierce terrain and deal % max HP damage." It states the
+damage's form and no figure. Neither this log nor the design document mentions Wings of the Host,
+flyovers, feathers or carpet bombing, so nothing earlier settles it.
+
+### What the rule does
+
+Every thirty seconds on a floor carrying the row, Horde waves included, a straight line is chosen at a
+random angle through a point within twelve metres of the player. Along it, every four metres across the
+whole floor, a harmless mark 150 cm across the radius is drawn in the row's type -- but only where the
+line crosses a floor cell; where it crosses rock, no mark is placed and the line goes on. Three seconds
+later every feather lands together: a player standing in a mark loses 15% of maximum health, typed as
+the row (Celestial), and the marks go. Marks are four metres apart and 1.5 metres across the radius, so
+they never overlap, and a player is struck once at most. No creature is struck. The floor panel says when
+the next flyover comes, or how many feathers are falling.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24. Every figure is a play-test
+value:**
+
+- **One flyover every 30 seconds**, the cadence Artillery Strike, Hallowed Groundfall and Divine Wrath
+  use; the row's lower weight (5) makes it rarer without asking for a different cadence.
+- **A straight line at a random angle through a point within 1200 cm of the player** (Artillery Strike's
+  landing distance), **across the whole floor, a mark every 400 cm, 150 cm across the radius, on floor
+  cells only.**
+- **All feathers land together after 3 seconds**, Artillery Strike's warning, as a harmless mark and then
+  a hit, the way `StepArtilleryStrike` does. **Landing in order along the line**, at a set speed, which
+  would read more like a flyover, **is recorded as the alternative and was not built.**
+- **15% of the struck player's maximum health, Celestial.** It is below Artillery Strike's 25% because a
+  150 cm mark is much easier to step out of than a 600 cm circle, a player standing still is struck at
+  most once per flyover, and the row lands one every thirty seconds on top of the floor's own fights.
+- **The player only.** The row names no creature. The two rows that hit creatures say so: Artillery
+  Strike's "Enemies and players can be hit", and Divine Wrath's "These beams destroy enemies in their
+  path". A line across the whole floor that struck creatures would clear packs for nothing.
+- **A judgement, confirmed by the coordinating session under the owner's delegation: "the player only"
+  excludes the player's minions too.** The ruling contrasted this row with rows that name creatures, and
+  a minion is a creature. The hazard source's enemies are the player's side, minions included, so only
+  a player character is struck.
+- **"Pierce terrain" needed nothing built.** No area damage in this game checks line of sight: neither
+  `ACataclysmGroundZone`'s sweep nor `UCataclysmTargeting` traces against walls, so a wall between a
+  player and a feather protects nothing. **These feathers are the stated exception** to the 2026-08-09
+  entry "The Corrupted Sentinel: a bolt down a marked lane, and a shell lobbed over cover", whose rule is
+  that "Geometry blocks the bolt, so cover works" -- that rule is about a creature's projectiles. The
+  marks themselves are placed on floor cells only.
+- **Allowed on Horde waves**, as Divine Wrath is: it adds no creature, and a Horde arena is open ground.
+  The marks are visible for the whole warning, and the panel line says what is coming.
+
+### The research: telegraphed barrages in shipped games
+
+Done after the rulings and before the build; the page was fetched on 2026-09-24 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Path of Exile, Sirus's Meteor Strike | https://maxroll.gg/poe/bosses/sirus-awakener-of-worlds-boss-guide | "He launches a barrage of small meteors that deal massive amounts of damage on impact. The ground flares up before impact, so make sure to move away immediately" |
+
+**What it settles and what it does not.** Sirus's barrage is many small impacts, each marked on the ground
+before it lands, beaten by moving out of the marks: the shape of these feathers, and the reason they are
+marked rather than sudden. The page does not say the meteors fall in a line, give their spacing, warning
+or damage, or say whether cover helps, so the line, every figure above and the cover exception are this
+game's own.
+
+### Tests
+
+Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
+
+- `WingsOfTheHostFliesEveryThirtySecondsAndLandsThreeLater`: 29.75 seconds is not due and 30 is; 2.75
+  seconds of warning has not landed and 3 has; a feather deals 15% of maximum health.
+- `WingsOfTheHostMarksEveryFourMetresOfFloorAcrossTheWholeLine`: for a level line and a diagonal one
+  through the entrance of a real floor, the feathers are exactly the points a walk of the line far past
+  the floor finds on floor cells, in order -- so none is left on rock, none is missed at either end, and
+  the spacing is 400 cm -- and the line does cross rock, so leaving rock out is tested.
+- `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`: no marks a beat before thirty seconds, and the
+  panel says when the next comes; at least two at thirty, and the panel counts them; with the player on
+  one mark and a creature on another, nothing lands a beat early, and at three seconds the player loses
+  health, no more than one feather's worth, the creature loses none, and the marks are gone from the
+  world; a Horde wave has its flyover at thirty seconds.
+- `AWingsOfTheHostFeatherIsCelestial`: a feather is met by celestial resistance and not by void
+  resistance.
+
+One Python check: the row still says "flyovers", "carpet-bomb the map", "radiant feathers", "pierce
+terrain" and "% max HP damage", names no enemy, monster or creature, and states no figure.
+
+### A known limit, and the change that will lift it
+
+**A flyover whose line crosses no floor marks nothing, and is tried again on the next beat**; one that crosses
+a single corridor marks a single feather. The line passes through a random point within 1200 cm of the
+player, and that point need not be floor. So a flyover can come later than thirty seconds, and a floor can be
+"carpet-bombed" with one feather -- neither of which the ruling meant. Found in this change's own window, where
+a flyover at thirty seconds marked nothing. **Ruled by the coordinating session under the owner's delegation,
+as a follow-up change after Eternal Chorus and not in this one**: the line passes through a random FLOOR cell
+within 1200 cm of the player, so its own point is always marked and every flyover marks at least one feather at
+thirty seconds, with a test that every flyover over 50 seeds marks at least one.
+
+### Run
+
+One editor window on 2026-09-25, on development d51cf7f3 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The first build FAILED, in this change's own test**, at 83c284e1: "Build: Failed - 29 actions, 26 files
+  compiled", on `error C2084: function 'void CataclysmDungeonModifierEffectsTest::StandOn(...)' already has a
+  body`. The Wings tests had added a helper `StandOn` whose name and parameters were already the Judgment Zones
+  tests' own. **Fixed by renaming it `StandOnTheFeather`**; no Python check reads C++ for a duplicate body, so
+  it had passed registration.
+- **On the fixed head, 13bd8a3d:** the Python suite of record, 5,462 passed and 8 skipped of 5,470, 0 failed;
+  the whole suite, "2445 tests performed, 2445 succeeded, 0 failed", every declared test reported.
+- **The group on that head then FAILED ONE TEST**, `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`, on
+  "Expected 'marks at thirty seconds, at least two' to be true": that run's flyover crossed no floor at thirty
+  seconds -- the known limit above -- and the test had assumed two marks at exactly that moment. **Fixed in the
+  test** (4555979a): the test and its helper `AFlyoverIsMarked` wait up to forty beats for a flyover that marked
+  something, and need only one mark. The group on the base, d51cf7f3, ran meanwhile: 296 performed, 296
+  succeeded, 0 failed.
+- **A third instance of the same assumption** was the last check of that test, on a Horde wave; it voided the
+  first guard proof's restored half (below). **Fixed** (b4f11dd2) by the same wait; every Wings test was then
+  read for any other assertion that needs marks at a fixed moment, and there was none.
+- **On the final head, b4f11dd2:** the Python suite of record, 5,462 passed and 8 skipped of 5,470, 0 failed;
+  the group, 300 performed, 300 succeeded, 0 failed, every one of its declared tests reported. **By the
+  coordinating session's ruling the whole suite was not run again** after the two test-only fixes: it had
+  passed on this game code.
+
+**Three guard proofs:**
+
+- **Marks on rock as well as floor** (`if (true || Plan.IsFloor(...))`), on the prefix
+  `Cataclysm.DungeonModifierEffects.WingsOfTheHost`. With the break in: 3 performed, 1 failed,
+  `WingsOfTheHostMarksEveryFourMetresOfFloorAcrossTheWholeLine`, on "Expected 'exactly the floor points of the
+  whole line' to be 26, but it was 101" and "… to be 36, but it was 101", exactly as registered. **Its own
+  restored half FAILED and is void**: `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature` failed on "Expected 'a
+  Horde wave has its flyover at thirty seconds' to be true", the random-line assumption and not the break, so
+  `prove_cpp_guard` printed "NOT A PROOF". **By the coordinating session's ruling it was not rerun** -- the
+  owner's limit is three proof runs a change -- and the group run on b4f11dd2 above, with the same file
+  restored, stands as its restored half.
+- **Feathers landing a beat early** (`>= WingsOfTheHostWarningSeconds - 0.25f`), on the same prefix. PROVED.
+  With the break in: 3 performed, 1 succeeded, 2 failed, on "Expected '2.75 seconds of warning has not landed'
+  to be false" and "Expected 'nothing lands a beat early' to be true". Restored: 3 performed, 3 succeeded.
+- **The feather untyped** (`Delivery.DamageType = NAME_None;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.AWingsOfTheHost`. PROVED. With the break in: 1 performed, 1 failed, on
+  "Expected 'a Wings of the Host feather is met by CelestialResistance and not by VoidResistance: 12928.8 against
+  12928.8, …' to be true". Restored: 1 performed, 1 succeeded.
+
+---
+
 ## 2026-09-24 — Stacks placed on the enemy: strike hits and any hit take its armour, and a melee hit taken cuts the attacker's damage
 
 **Affects:**

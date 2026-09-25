@@ -27056,4 +27056,271 @@ bool FCataclysmHarbingerDiesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// Celestial_Wings_of_the_Host. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName WingsRow(UCataclysmDungeonModifierEffects::WingsOfTheHostKey);
+
+	/** A dungeon carrying only Wings of the Host, on floor 2 with its own creatures cleared. */
+	ACataclysmDungeonGameMode* AWingsFloor(FAutomationTestBase& Test, UWorld* World,
+										   const FPossessedPlayer& Player)
+	{
+		ACataclysmDungeonGameMode* Mode = ACurseDungeon(Test, World, Player);
+		if (!Mode)
+		{
+			return nullptr;
+		}
+		Mode->DungeonModifiers = {WingsRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		Mode->ClearFloorEnemies();
+		return Mode;
+	}
+
+	/** Beat until a flyover is marked; its marks, with a failure when none came. */
+	TArray<ACataclysmGroundZone*> AFlyoverIsMarked(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode)
+	{
+		// AT THIRTY SECONDS OR ON A BEAT AFTER IT: a line that crosses no floor marks nothing and
+		// is tried again on the next beat, the known limit the entry names. Forty beats is ten
+		// seconds of retries.
+		Beat(Mode, BeatsFor(UCataclysmDungeonModifierEffects::WingsOfTheHostSecondsBetween));
+		TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
+		for (int32 Extra = 0; Marks.IsEmpty() && Extra < 40; ++Extra)
+		{
+			Beat(Mode, 1);
+			Marks = Mode->WingsOfTheHostMarksNow();
+		}
+		Test.TestTrue(TEXT("a flyover was marked"), Marks.Num() > 0);
+		return Marks;
+	}
+
+	/** The player moved onto a mark, at the player's own height. */
+	void StandOnTheFeather(const FPossessedPlayer& Player, const ACataclysmGroundZone* Mark)
+	{
+		const FVector Where = Mark->GetActorLocation();
+		Player.Character->SetActorLocation(FVector(Where.X, Where.Y, Player.Character->GetActorLocation().Z));
+	}
+}
+
+// A FLYOVER EVERY THIRTY SECONDS, LANDING THREE SECONDS AFTER ITS MARKS, FOR 15% OF MAXIMUM HEALTH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWingsFiguresTest,
+	"Cataclysm.DungeonModifierEffects.WingsOfTheHostFliesEveryThirtySecondsAndLandsThreeLater",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWingsFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestFalse(TEXT("29.75 seconds is not due"), Effects::WingsOfTheHostIsDue(29.75f));
+	TestTrue(TEXT("30 seconds is"), Effects::WingsOfTheHostIsDue(30.0f));
+	TestFalse(TEXT("2.75 seconds of warning has not landed"), Effects::WingsOfTheHostHasLanded(2.75f));
+	TestTrue(TEXT("3 seconds has"), Effects::WingsOfTheHostHasLanded(3.0f));
+	TestEqual(TEXT("a feather deals 15% of maximum health"), Effects::WingsOfTheHostDamage(1000.0f), 150.0f, 0.01f);
+	return true;
+}
+
+// THE FEATHERS OF A LINE ARE EVERY 400 CM ALONG IT, ON FLOOR CELLS ONLY, AS FAR AS THE FLOOR GOES
+// BOTH WAYS: exactly the points a walk of the whole line finds on the floor.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWingsLineTest,
+	"Cataclysm.DungeonModifierEffects.WingsOfTheHostMarksEveryFourMetresOfFloorAcrossTheWholeLine",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWingsLineTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWingsFloor(*this, World, Player);
+	if (!Mode || !TestNotNull(TEXT("the floor is built"), Mode->CurrentFloor.Get()))
+	{
+		return false;
+	}
+	const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+	const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+	const FVector Through = Floor.EntranceWorld();
+
+	for (const FVector& Direction : {FVector(1.0f, 0.0f, 0.0f), FVector(0.6f, 0.8f, 0.0f)})
+	{
+		const TArray<FVector> Feathers = ACataclysmDungeonGameMode::WingsOfTheHostFeathers(Floor, Through, Direction);
+
+		// A WALK OF THE LINE FAR PAST ANY FLOOR, keeping what stands on floor, is the answer expected.
+		TArray<FVector> Expected;
+		bool bCrossedRock = false;
+		for (int32 Step = -2000; Step <= 2000; ++Step)
+		{
+			const FVector Point = Through + Direction * (Effects::WingsOfTheHostFeatherEveryCm * Step);
+			const FIntPoint Cell = Floor.CellOfWorld(Point);
+			if (Plan.IsFloor(Cell))
+			{
+				Expected.Add(Point);
+			}
+			else if (Plan.Contains(Cell))
+			{
+				bCrossedRock = true;
+			}
+		}
+		TestTrue(TEXT("the line has feathers"), Feathers.Num() > 1);
+		TestTrue(TEXT("and the line crosses rock somewhere, so leaving it out is tested"), bCrossedRock);
+		if (!TestEqual(TEXT("exactly the floor points of the whole line"), Feathers.Num(), Expected.Num()))
+		{
+			continue;
+		}
+		for (int32 Index = 0; Index < Feathers.Num(); ++Index)
+		{
+			TestTrue(TEXT("each where the walk found it"), Feathers[Index].Equals(Expected[Index], 0.5f));
+			TestTrue(TEXT("each on a floor cell"), Plan.IsFloor(Floor.CellOfWorld(Feathers[Index])));
+		}
+	}
+	return true;
+}
+
+// ON A FLOOR CARRYING THE ROW: MARKS AT THIRTY SECONDS; THREE SECONDS LATER THE PLAYER ON A MARK IS STRUCK
+// ONCE AND A CREATURE ON ONE IS NOT; THE MARKS GO; HORDE WAVES TOO.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWingsLandTest,
+	"Cataclysm.DungeonModifierEffects.WingsOfTheHostFeathersStrikeThePlayerAndNoCreature",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWingsLandTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWingsFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	Beat(Mode, BeatsFor(Effects::WingsOfTheHostSecondsBetween) - 1);
+	if (!TestEqual(TEXT("no marks a beat before thirty seconds"), Mode->WingsOfTheHostMarksNow().Num(), 0))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the panel says when the next comes"),
+			 Mode->LiveCountsForTheFloor().FindRef(WingsRow).StartsWith(TEXT("wings of the host: next flyover in")));
+	// AT THIRTY SECONDS OR ON A BEAT AFTER IT, for the reason `AFlyoverIsMarked` gives.
+	Beat(Mode, 1);
+	TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
+	for (int32 Extra = 0; Marks.IsEmpty() && Extra < 40; ++Extra)
+	{
+		Beat(Mode, 1);
+		Marks = Mode->WingsOfTheHostMarksNow();
+	}
+	if (!TestTrue(TEXT("marks at thirty seconds or a beat after"), Marks.Num() >= 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the panel says the feathers are falling"), Mode->LiveCountsForTheFloor().FindRef(WingsRow),
+			  FString::Printf(TEXT("wings of the host: %d feathers falling"), Marks.Num()));
+
+	// THE PLAYER ON THE FIRST MARK, AND A CREATURE ON THE SAME MARK 120 CM ASIDE, inside its
+	// 150 cm and clear of the player. A line can mark a single feather, so no second mark is
+	// assumed; a creature is not struck wherever it stands, since the hazard source finds only
+	// the player's side.
+	StandOnTheFeather(Player, Marks[0]);
+	const FVector Second = Marks[0]->GetActorLocation() + FVector(120.0f, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* Creature = PlaceCreatureAtRung(World, Mode, Second, 0);
+	if (!TestNotNull(TEXT("a creature on a mark"), Creature))
+	{
+		return false;
+	}
+	Creature->SetActorLocation(FVector(Second.X, Second.Y, Creature->GetActorLocation().Z));
+	const float PlayerBefore = HealthOf(Player.Character);
+	const float CreatureBefore = HealthOf(Creature);
+
+	Beat(Mode, BeatsFor(Effects::WingsOfTheHostWarningSeconds) - 1);
+	// AT LEAST, NOT EQUAL: regeneration may only raise it, and a feather can only lower it.
+	TestTrue(TEXT("nothing lands a beat early"), HealthOf(Player.Character) >= PlayerBefore - 0.01f);
+	Beat(Mode, 1);
+	const float Lost = PlayerBefore - HealthOf(Player.Character);
+	TestTrue(FString::Printf(TEXT("the player on a mark was struck (%.1f lost)"), Lost), Lost > 0.0f);
+	TestTrue(FString::Printf(TEXT("once, for at most 15%% of maximum health (%.1f lost)"), Lost),
+			 Lost <= Effects::WingsOfTheHostDamage(HealthForTypedDamage) + 0.5f);
+	TestEqual(TEXT("the creature on a mark was not"), HealthOf(Creature), CreatureBefore, 0.01f);
+	TestEqual(TEXT("the marks are gone"), Mode->WingsOfTheHostMarksNow().Num(), 0);
+	TestEqual(TEXT("and none is left in the world"), ZonesOnTheFloor(World), 0);
+
+	// HORDE WAVES TOO.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	// AT THIRTY SECONDS OR ON A BEAT AFTER IT, for the reason `AFlyoverIsMarked` gives.
+	TestTrue(TEXT("a Horde wave has its flyover at thirty seconds or a beat after"),
+			 AFlyoverIsMarked(*this, Mode).Num() > 0);
+	return true;
+}
+
+// A FEATHER IS CELESTIAL: CELESTIAL RESISTANCE MEETS IT AND VOID RESISTANCE DOES NOT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWingsTypedTest,
+	"Cataclysm.DungeonModifierEffects.AWingsOfTheHostFeatherIsCelestial",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWingsTypedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmResistanceAttributeSet;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWingsFloor(*this, World, Player);
+	if (!Mode || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+
+	const auto AFeatherStrikes = [this, &Player, Mode]() -> bool
+	{
+		const TArray<ACataclysmGroundZone*> Marks = AFlyoverIsMarked(*this, Mode);
+		if (Marks.IsEmpty())
+		{
+			return false;
+		}
+		StandOnTheFeather(Player, Marks[0]);
+		Beat(Mode, BeatsFor(Effects::WingsOfTheHostWarningSeconds));
+		return TestEqual(TEXT("the flyover landed"), Mode->WingsOfTheHostMarksNow().Num(), 0);
+	};
+	const TOptional<float> LostWithCelestial =
+		LostWithResistanceRaised(*this, Player, Resist::GetCelestialResistanceAttribute(), AFeatherStrikes);
+	const TOptional<float> LostWithVoid =
+		LostWithResistanceRaised(*this, Player, Resist::GetVoidResistanceAttribute(), AFeatherStrikes);
+	if (!LostWithCelestial.IsSet() || !LostWithVoid.IsSet())
+	{
+		return false;
+	}
+	ExpectMetOnlyByItsOwnResistance(*this, TEXT("a Wings of the Host feather"), Resist::GetCelestialResistanceAttribute(),
+									LostWithCelestial.GetValue(), Resist::GetVoidResistanceAttribute(),
+									LostWithVoid.GetValue());
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS
