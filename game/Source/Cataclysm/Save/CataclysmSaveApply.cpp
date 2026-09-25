@@ -238,6 +238,8 @@ ACataclysmEnemyCharacter* FCataclysmSaveApply::CreatureInto(
 	// is for a reader rather than for the arithmetic.
 	Creature->SetRarityStep(Saved.RarityStep);
 	Creature->ModifierRows = Saved.ModifierRows;
+	// A RISEN CREATURE STILL PAYS NOTHING WHEN IT DIES AGAIN, the owner's decision of 2026-09-17.
+	Creature->bRisenFromTheDead = Saved.bRisenFromTheDead;
 
 	// AND THE VITALS LAST, AFTER THE CREATURE HAS APPLIED ITS OWN STAT BLOCK.
 	// `ApplyStartingAttributes` runs from BeginPlay and writes the archetype's

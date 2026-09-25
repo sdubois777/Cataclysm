@@ -832,4 +832,144 @@ bool FCataclysmSaveRestoredDropReadsTheSame::RunTest(const FString&)
 	return true;
 }
 
+/**
+ * A creature a floor rule made is not written into the record; the floor's own creature beside it
+ * is. Issues #1820 and #41.
+ *
+ * NO PATH IN PLAY RESTORES A FLOOR TODAY -- `FCataclysmSaveApply::FloorInto` has test callers only --
+ * so this guards the day one does: a Reaper or an echo written back would be an ordinary creature.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveGatherSkipsRuleMadeCreatures,
+	"Cataclysm.SaveGather.ACreatureAFloorRuleMadeIsNotWrittenIntoTheRecord",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveGatherSkipsRuleMadeCreatures::RunTest(const FString&)
+{
+	using namespace CataclysmSaveFloorTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to gather from"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Ordinary =
+		SpawnCreature(World, FVector(100.0f, 0.0f, 90.0f), 500.0f, 0);
+	ACataclysmEnemyCharacter* RuleMade =
+		SpawnCreature(World, FVector(200.0f, 0.0f, 90.0f), 500.0f, 0);
+	if (!Ordinary || !RuleMade)
+	{
+		AddError(TEXT("two creatures were needed and were not spawned"));
+		World->DestroyWorld(false);
+		return false;
+	}
+	RuleMade->bRaisedByARule = true;
+	TestEqual(TEXT("both creatures are actors in the world"), CountCreatures(World), 2);
+
+	const FCataclysmSavedFloor Floor = FCataclysmSaveGather::FloorFrom(
+		*World, FName(TEXT("Sandbox")), /*Floor=*/1, FGuid::NewGuid());
+
+	TestEqual(TEXT("only one reached the record"), Floor.Creatures.Num(), 1);
+	if (Floor.Creatures.Num() == 1)
+	{
+		TestEqual(TEXT("and it is the floor's own creature, not the rule's"),
+			Floor.Creatures[0].Location, Ordinary->GetActorLocation());
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * A creature a rule raised from the dead is written as risen and comes back risen, so it still pays
+ * nothing when it dies again -- the owner's decision of 2026-09-17. Issues #1820 and #41.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveRisenCreatureStaysRisen,
+	"Cataclysm.SaveApply.ARisenCreatureComesBackRisenAndPaysNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveRisenCreatureStaysRisen::RunTest(const FString&)
+{
+	using namespace CataclysmSaveFloorTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to gather from"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Risen = SpawnCreature(World, FVector(100.0f, 0.0f, 90.0f), 500.0f, 0);
+	if (!TestNotNull(TEXT("a creature to raise"), Risen))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	Risen->bRisenFromTheDead = true;
+	TestFalse(TEXT("a risen creature pays nothing before it is saved"), Risen->PaysForItsDeath());
+
+	const FCataclysmSavedFloor Floor = FCataclysmSaveGather::FloorFrom(
+		*World, FName(TEXT("Sandbox")), /*Floor=*/1, FGuid::NewGuid());
+	if (!TestEqual(TEXT("it is written, being the floor's own creature"), Floor.Creatures.Num(), 1))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	TestTrue(TEXT("written as risen"), Floor.Creatures[0].bRisenFromTheDead);
+
+	ACataclysmEnemyCharacter* Back = FCataclysmSaveApply::CreatureInto(*World, Floor.Creatures[0]);
+	if (TestNotNull(TEXT("it came back"), Back))
+	{
+		TestTrue(TEXT("still risen"), Back->bRisenFromTheDead);
+		TestFalse(TEXT("so it still pays nothing"), Back->PaysForItsDeath());
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
+/**
+ * An ordinary creature is still written, and comes back paying as any creature does. The control for
+ * the two tests above: neither guard may take the floor's own creatures with it. Issues #1820 and #41.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSaveOrdinaryCreatureStillSaved,
+	"Cataclysm.SaveApply.AnOrdinaryCreatureIsStillWrittenAndComesBackPaying",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmSaveOrdinaryCreatureStillSaved::RunTest(const FString&)
+{
+	using namespace CataclysmSaveFloorTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world to gather from"), World))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Ordinary = SpawnCreature(World, FVector(100.0f, 0.0f, 90.0f), 500.0f, 0);
+	if (!TestNotNull(TEXT("a creature"), Ordinary))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+
+	const FCataclysmSavedFloor Floor = FCataclysmSaveGather::FloorFrom(
+		*World, FName(TEXT("Sandbox")), /*Floor=*/1, FGuid::NewGuid());
+	if (!TestEqual(TEXT("it is written"), Floor.Creatures.Num(), 1))
+	{
+		World->DestroyWorld(false);
+		return false;
+	}
+	TestFalse(TEXT("not as risen"), Floor.Creatures[0].bRisenFromTheDead);
+
+	ACataclysmEnemyCharacter* Back = FCataclysmSaveApply::CreatureInto(*World, Floor.Creatures[0]);
+	if (TestNotNull(TEXT("it came back"), Back))
+	{
+		TestFalse(TEXT("not risen"), Back->bRisenFromTheDead);
+		TestTrue(TEXT("so it pays as any creature does"), Back->PaysForItsDeath());
+	}
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

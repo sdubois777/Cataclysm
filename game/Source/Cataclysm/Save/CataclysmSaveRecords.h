@@ -109,6 +109,23 @@ struct CATACLYSM_API FCataclysmSavedCreature
 	 *  Most creatures have none at all. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
 	float MaxEnergyShield = 0.0f;
+
+	/**
+	 * Whether a floor rule had raised it from the dead, as
+	 * `ACataclysmEnemyCharacter::bRisenFromTheDead` holds it, so that it still pays nothing when it
+	 * dies again. The owner's decision of 2026-09-17: a revived creature pays nothing twice. Dead
+	 * Rising, Divine Resurgence and Vengeful Wraiths raise such creatures.
+	 *
+	 * THE ONE RULE MARK THIS RECORD CARRIES. A risen creature is one of the floor's own enemies and
+	 * comes back; a creature a rule MADE is not written at all (see
+	 * `FCataclysmSaveGather::FloorFrom`), and every other rule mark -- a bond, a Harbinger's mark --
+	 * is rule state, which is not saved.
+	 *
+	 * ADDED WITHOUT A VERSION BUMP, as `UCataclysmRunSave::PartialDay` was: a `SaveGame` field
+	 * missing from a file keeps its default, and false is what every creature in an older file was.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, SaveGame, Category = "Cataclysm|Save")
+	bool bRisenFromTheDead = false;
 };
 
 /**
