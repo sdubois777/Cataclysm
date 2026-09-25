@@ -5551,7 +5551,11 @@ namespace CataclysmConsecutiveRowTest
 			if (Made)
 			{
 				Made->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
-				Made->SetHealth(1000000.0f);
+				// TEN THOUSAND, NOT A MILLION: a float near a million holds steps of
+				// 0.0625, so a blow read as health before less health after could
+				// not meet a tolerance of 0.01. Near ten thousand the step is under
+				// 0.001, and no test here deals more than about 2,500 to one creature.
+				Made->SetHealth(10000.0f);
 				Made->SetAttackDamage(0.0f);
 				Made->SetArmour(0.0f);
 				UAbilitySystemComponent* Its = Made->GetAbilitySystemComponent();

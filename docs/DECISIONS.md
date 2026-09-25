@@ -107,6 +107,20 @@ stats (the default class has none), the helm (flat armour only), the creature's 
 (initialised to 100) or the starting Greataxe, which is a plain base with no affixes, and whose flat
 damage the test overwrites. It stays open.
 
+**The run narrowed it to a multiplier on the blow.** The melee test printed "the first hit dealt
+110.0000 and the second added 11.0000". The second hit added 10% of 110, not of 100, so the tenth is
+a multiplier and not an increase sharing the row's sum. The first form of the test would have
+passed.
+
+**A MISS OF MINE IN THE SAME TEST, found by the same run.** The drawback's test failed one line:
+"Expected 'the second hit deals 8% less' to be 101.200005, but it was 101.187500". The tests read a
+blow as the creature's health before less its health after, and the creatures had a million health.
+A float near a million holds steps of 0.0625, so no reading could meet a tolerance of 0.01. The
+other lines had passed only because their readings happened to round the right way. The creatures
+now have ten thousand, where the step is under 0.001, and no assertion changed. Ruled by the
+coordinating session under the owner's delegation. The rebuild that registration predicted as one
+file compiled four, and that miss is recorded too.
+
 ### THE TESTS
 
 - **The count, on the engine:** melee hits on one enemy count up to a cap of three. A spell, a blow
