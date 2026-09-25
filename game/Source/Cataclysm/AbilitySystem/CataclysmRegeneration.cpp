@@ -10,6 +10,7 @@
 // For a patch of burning ground that heals whoever left it faster while they
 // stand in it. Blood Pyre. Issue #1162.
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 // For a swing drawn back whose row says its caster cannot be healed. The
 // Greatsword's The Whole Weight. Issue #1162.
@@ -108,7 +109,7 @@ void UCataclysmRegeneration::TopUp(UAbilitySystemComponent& AbilitySystem,
 	float Ceiling = AbilitySystem.GetNumericAttribute(Maximum);
 
 	// A SHIELD REFILLS TO THE MAXIMUM ITS CLAMP AND ITS BAR USE. Issue #1515,
-	// found while building Shared Blood: until 2026-09-25 this read the
+	// found while building Shared Blood: until 2026-09-24 this read the
 	// attribute, which holds the unscaled figure, so a shield a scaled row
 	// raised -- Hollow Crown's, issue #1973 -- showed a maximum refill could
 	// never reach. `MaximumEnergyShieldAsked` is the figure the clamp in
@@ -382,4 +383,62 @@ void UCataclysmRegeneration::ApplyStep(AActor* Character, float SecondsInStep,
 		  UCataclysmVitalAttributeSet::GetEnergyShieldAttribute(),
 		  UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
 		  GainPerStep(ShieldRate, SecondsInStep));
+
+	// AND THE RATE IS KEPT, for the minions sharing this shield. Issue #1515,
+	// Shared Blood: their shields refill at the same share of their maximum.
+	if (UCataclysmAbilitySystemComponent* Keeps =
+			Cast<UCataclysmAbilitySystemComponent>(AbilitySystem))
+	{
+		Keeps->NoteShieldRechargeRate(ShieldRate);
+	}
+
+	SharedBloodStep(Character, SecondsInStep, /*bFill=*/false);
+}
+
+const TCHAR* UCataclysmRegeneration::SharedBloodStat =
+	TEXT("minion_energy_shield_percent_of_yours");
+
+void UCataclysmRegeneration::SharedBloodStep(AActor* Character, float SecondsInStep,
+											  bool bFill)
+{
+	const ACataclysmMinion* Minion = Cast<ACataclysmMinion>(Character);
+	if (!Minion)
+	{
+		return;
+	}
+	const UCataclysmAbilitySystemComponent* Theirs =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UCataclysmTargeting::AbilitySystemOf(Minion->Summoner));
+	UAbilitySystemComponent* Mine = UCataclysmTargeting::AbilitySystemOf(Character);
+	if (!Theirs || !Mine || !Mine->GetSet<UCataclysmVitalAttributeSet>())
+	{
+		return;
+	}
+
+	const float Percent =
+		Theirs->StatForSkill(FName(SharedBloodStat), FGameplayTagContainer(), 0.0f);
+	if (Percent <= 0.0f)
+	{
+		return;
+	}
+
+	const float TheirMaximum = Theirs->MaximumEnergyShield();
+	const float Maximum = FMath::Max(0.0f, TheirMaximum * Percent / 100.0f);
+	Mine->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(), Maximum);
+
+	const FGameplayAttribute Shield = UCataclysmVitalAttributeSet::GetEnergyShieldAttribute();
+	if (bFill || Mine->GetNumericAttribute(Shield) > Maximum)
+	{
+		Mine->SetNumericAttributeBase(Shield, Maximum);
+		return;
+	}
+
+	const float TheirRate = Theirs->LastShieldRechargeRate();
+	if (TheirRate <= 0.0f || TheirMaximum <= 0.0f || SecondsInStep <= 0.0f)
+	{
+		return;
+	}
+	TopUp(*Mine, Shield, UCataclysmVitalAttributeSet::GetMaxEnergyShieldAttribute(),
+		  Maximum * (TheirRate / TheirMaximum) * SecondsInStep);
 }

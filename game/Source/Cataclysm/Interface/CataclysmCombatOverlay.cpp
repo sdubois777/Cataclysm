@@ -277,6 +277,16 @@ float UCataclysmCombatOverlay::ScaleFor(const FCataclysmIncomingHit& Hit,
 	return Scale;
 }
 
+bool UCataclysmCombatOverlay::ShouldShowBarFor(float Health, float MaxHealth,
+											   float Shield, float MaxShield)
+{
+	if (MaxHealth <= 0.0f || Health <= 0.0f)
+	{
+		return false;
+	}
+	return Health < MaxHealth || (MaxShield > 0.0f && Shield < MaxShield);
+}
+
 bool UCataclysmCombatOverlay::ShouldShowBarFor(float Health, float MaxHealth)
 {
 	if (MaxHealth <= 0.0f)

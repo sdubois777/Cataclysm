@@ -5,6 +5,7 @@
 // For what a blow resolved to, so a burn is refused on an evaded one.
 // Issue #1156.
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmTeams.h"
@@ -584,6 +585,10 @@ ACataclysmMinion* ACataclysmMinion::Spawn(AActor* InSummoner, const FVector& Loc
 			Minion->AbilitySystemComponent->SetNumericAttributeBase(
 				UCataclysmVitalAttributeSet::GetHealthAttribute(), OwnHealth);
 		}
+
+		// AND A SHARE OF ITS SUMMONER'S SHIELD, FULL, IF THE SUMMONER HOLDS
+		// SHARED BLOOD. Issue #1515. The step keeps it in line afterwards.
+		UCataclysmRegeneration::SharedBloodStep(Minion, 0.0f, /*bFill=*/true);
 	}
 	else if (!InTypeName.IsEmpty())
 	{

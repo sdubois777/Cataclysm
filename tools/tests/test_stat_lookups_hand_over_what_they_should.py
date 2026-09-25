@@ -414,6 +414,10 @@ INVENTORY = {
      'SurvivedEveryStat, FGameplayTagContainer(), 0.0f'):
         "Nothing Stops It's interval, a flag read off the defender when a hit "
         'would kill, with no skill of its own in hand',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.cpp',
+     'FName(SharedBloodStat), FGameplayTagContainer(), 0.0f'):
+        "Shared Blood's share, asked of a minion's summoner in the minion's "
+        'regeneration step with no blow, target or skill in hand',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f'):
         "Nothing Wasted's cap, asked of the holder as damage is stored and as "

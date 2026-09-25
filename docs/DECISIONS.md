@@ -2,6 +2,103 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Shared Blood, engine only: each minion has a fifth of its summoner's energy shield and refills when the summoner's does, and a shield now refills to its scaled maximum
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (the step, and the
+refill ceiling), `CataclysmAbilitySystemComponent.h` (the rate kept), `CataclysmMinion.cpp` (a summoning
+starts it full), `game/Source/Cataclysm/Character/CataclysmPlayerClassStats.cpp` (one stat with no
+attribute), `game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` and `CataclysmHUD.cpp`
+(the shield bar), two test files and one Python inventory. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ritualist_capstone_50` option 1, Shared Blood: "Your minions each have 20% of your Maximum Energy
+Shield as their own, and it recharges when yours does." One stat with no attribute, held by the
+summoner, which its row will carry: `minion_energy_shield_percent_of_yours` (20). **Engine only**, for
+the reason the Shared Ruin entry gives.
+
+It was chosen, by the entry recording the Ritualist's capstones, because it and Cast from Ward "pull
+opposite ways on one stat": one wants the shield kept for the army, the other spends it on skills.
+
+### RULINGS, 2026-09-24, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **A minion's shield recharges at the same share of its maximum per second as the summoner's.**
+- **B1, the maximum follows the summoner live**, re-read every step, and the current shield is clamped
+  down when it falls. The sentence says the minions HAVE a fifth of yours, in the present tense, and it
+  is the owner's own ruling of 2026-09-13, "Minions update live rather than snapshotting": minions
+  should be updated "anytime gear/passives/skills change" rather than locking their stats at summon.
+  A minion's health is still the snapshot that entry deferred; this shield is not.
+- **B2, "it recharges when yours does"** means while the summoner's shield refill rate is above zero.
+  So the summoner's three-second wait gates it, and Ablative's half rate inside the wait and The Long
+  Game's share of mana carry over, because the share is taken from the summoner's actual rate. **The
+  minion's own hits do not delay it**: the sentence ties it to yours.
+- **B3, the summoner's scaled maximum** (`MaximumEnergyShield`, which counts Hollow Crown) and its
+  actual rate.
+- **B4, minions only.** A thrall is not one.
+- **It is shown**: a shield bar over any character that has a shield, described below.
+- **The fault found beside it is fixed here**, in its own commit before this one.
+
+### THE GENRE
+
+Fetched on 2026-09-24: a minion with an energy shield of its own is ordinary -- Path of Exile 2's
+Necromantle gives "Minions gain (20—30)% of their maximum Life as Extra maximum Energy Shield"
+([poe2db, Energy Shield](https://poe2db.tw/us/Energy_Shield)) -- but that shield comes from the
+minion's own life. **No shipped mechanic found gives minions a share of the SUMMONER's shield.** The
+shape here is the node's sentence and the rulings above, and is labelled as that. The same page says
+only that a shield "Rapidly Recharges if you don't lose Energy Shield for a short time", with no
+figures.
+
+### HOW IT IS BUILT
+
+- **The rate is kept, not recomputed.** A player's shield refills at a flat amount per second
+  (`energy_shield_regen`), worked out inside `UCataclysmRegeneration::ApplyStep` with the wait, Ablative
+  and The Long Game. Each step now records that rate on the character's ability system
+  (`LastShieldRechargeRate`), and a minion's step reads its summoner's. **This differs from the
+  proposal**, which moved that arithmetic into a function of its own; recording what the step already
+  computed reads the same figure without restructuring the step. It lags by at most one step, 0.25
+  seconds.
+- **`UCataclysmRegeneration::SharedBloodStep`**, run at the end of every character's step and doing
+  nothing unless the character is a minion whose summoner holds the stat, sets the minion's maximum to
+  the share of the summoner's, clamps the shield down to it, and refills it by its maximum times the
+  summoner's rate over the summoner's maximum. A summoning runs it once to start the shield full.
+- **The shield bar.** `ACataclysmHUD::DrawOverheadBars` now draws a second bar above a character's
+  health bar when it has a shield, in `ShieldFillHex`, the colour of the player's own shield. The bar
+  shows once health OR the shield is below its maximum, by a new overload of
+  `UCataclysmCombatOverlay::ShouldShowBarFor`; a character with no shield answers exactly as before.
+  **Only that decision is tested**: the automation tests run with no renderer. The shield bar sits where
+  a rarer enemy's rarity name is drawn, which no enemy meets today, since none has a shield.
+
+### A FAULT FIXED HERE: A SHIELD'S REFILL STOPPED BELOW ITS OWN MAXIMUM
+
+Found while reading the refill for Shared Blood. `UCataclysmRegeneration::TopUp` capped a refill at the
+`MaxEnergyShield` attribute, which holds the unscaled figure, while the clamp in
+`UCataclysmVitalAttributeSet::PreAttributeChange` and the bar both use `MaximumEnergyShieldAsked()`,
+which adds scaled rows. **So with Hollow Crown's increase a player's bar showed a maximum the refill
+could never reach.** The refill now stops at `MaximumEnergyShieldAsked()`. No test pinned the old
+ceiling: the tests that read a scaled maximum do not refill it, and the refill tests use no scaled row,
+where the two figures are equal.
+
+### TESTS
+
+- `Cataclysm.EnergyShield.ARefillReachesAMaximumAScaledRowRaised`: with one minion held, a scaled row
+  raises a shield of 100 to 125, and two seconds of refill at 100 a second reach 125.
+- `Cataclysm.SharedBlood.EachMinionHasAFifthOfItsSummonersShield`: a summoner with 500 gives its imp
+  100, full; a summoner without the option gives none.
+- `Cataclysm.SharedBlood.ItFollowsTheSummonersMaximumAndRechargesWhenItsShieldDoes`: the imp's maximum
+  follows the summoner's up and down and the shield is clamped; with the summoner hurt a second ago it
+  does not refill; once the summoner's shield refills it gains the same share of its maximum, though the
+  imp itself was just hit.
+- `Cataclysm.SharedBlood.AMinionsShieldIsShownOverItsHead`: the bar's decision for each case.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**The stat is given by hand**, so none of these can see a missing or wrong row. When the rows land,
+that change must add a test that wears the real `Ritualist_capstone_50` option 1 row.
+
+---
+
 ## 2026-09-24 — Plague Harbingers: one creature in ten lays a disease trail as it walks that burns the player and speeds up creatures standing in it, and killing it clears the trail and weakens the creatures near it
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

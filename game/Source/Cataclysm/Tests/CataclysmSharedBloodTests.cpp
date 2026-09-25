@@ -9,10 +9,12 @@
 #include "AbilitySystem/CataclysmMinion.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
 #include "AbilitySystem/CataclysmStatPipeline.h"
+#include "AbilitySystem/CataclysmTargeting.h"
 #include "AbilitySystem/CataclysmVitalAttributeSet.h"
 #include "CataclysmTestWorld.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "Interface/CataclysmCombatOverlay.h"
 #include "Misc/ScopeExit.h"
 
 /**
@@ -128,7 +130,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmShieldRefillsToAScaledMaximumTest,
 /**
  * A shield whose maximum a scaled row raises above the attribute refills all
  * the way to that raised maximum. Issue #1515, found while building Shared
- * Blood: until 2026-09-25 the refill stopped at the attribute, 100, while the
+ * Blood: until 2026-09-24 the refill stopped at the attribute, 100, while the
  * clamp and the bar allowed 125, so a bar showed a maximum refill could never
  * reach.
  */
@@ -173,6 +175,172 @@ bool FCataclysmShieldRefillsToAScaledMaximumTest::RunTest(const FString&)
 	TestEqual(TEXT("two seconds of refill at 100 a second fill the shield to the "
 				   "raised 125, not the attribute's 100"),
 			  Summoner.Get(Vital::GetEnergyShieldAttribute()), Raised, 0.01f);
+	return true;
+}
+
+namespace CataclysmSharedBloodTest
+{
+	/** Shared Blood at its designed 20%, as its row will give it. */
+	void HoldSharedBlood(FScopedSummoner& Summoner)
+	{
+		TMap<FName, FCataclysmStatInputs> Lines;
+		FCataclysmStatInputs& Line = Lines.FindOrAdd(FName(UCataclysmRegeneration::SharedBloodStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Modifier(ECataclysmStatBucket::Flat, 20.0f)};
+		Summoner.AbilitySystem->SetStatInputs(MoveTemp(Lines));
+	}
+
+	float ImpMaximum(const ACataclysmMinion* Imp)
+	{
+		return UCataclysmTargeting::AbilitySystemOf(Imp)->GetNumericAttribute(
+			Vital::GetMaxEnergyShieldAttribute());
+	}
+
+	float ImpShield(const ACataclysmMinion* Imp)
+	{
+		return UCataclysmTargeting::AbilitySystemOf(Imp)->GetNumericAttribute(
+			Vital::GetEnergyShieldAttribute());
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedBloodFifthTest,
+	"Cataclysm.SharedBlood.EachMinionHasAFifthOfItsSummonersShield",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Shared Blood, the Ritualist's `Ritualist_capstone_50` option 1. Issue #1515:
+ * "Your minions each have 20% of your Maximum Energy Shield as their own, and
+ * it recharges when yours does."
+ *
+ * THE STAT IS GIVEN BY HAND, as the row will give it: the option has no row
+ * yet, so this cannot see a missing or wrong one. The rows change has to add a
+ * test that wears the real row.
+ */
+bool FCataclysmSharedBloodFifthTest::RunTest(const FString&)
+{
+	using namespace CataclysmSharedBloodTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedSummoner Summoner(World);
+	FScopedSummoner Plain(World);
+	for (const FScopedSummoner* Each : {&Summoner, &Plain})
+	{
+		Each->Set(Vital::GetMaxEnergyShieldAttribute(), 500.0f);
+	}
+	HoldSharedBlood(Summoner);
+
+	ACataclysmMinion* Imp = SummonImp(*this, Summoner.Actor, FVector(1 * M, 0, 0));
+	ACataclysmMinion* PlainsImp = SummonImp(*this, Plain.Actor, FVector(1 * M, 20 * M, 0));
+	if (!Imp || !PlainsImp)
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { for (ACataclysmMinion* Each : {Imp, PlainsImp}) { if (IsValid(Each)) { Each->Destroy(); } } };
+
+	TestEqual(TEXT("a summoner with a shield of 500 gives its imp a maximum of 100"),
+			  ImpMaximum(Imp), 100.0f, 0.01f);
+	TestEqual(TEXT("and the imp is summoned with it full"), ImpShield(Imp), 100.0f, 0.01f);
+	TestEqual(TEXT("a summoner without the option gives its imp no shield"),
+			  ImpMaximum(PlainsImp), 0.0f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedBloodFollowsTest,
+	"Cataclysm.SharedBlood.ItFollowsTheSummonersMaximumAndRechargesWhenItsShieldDoes",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The imp's maximum follows the summoner's live, and its shield is clamped when
+ * it falls. It refills only while the summoner's shield does, at the same share
+ * of its maximum per second, and the imp's own hits do not delay it. Ruled
+ * 2026-09-24.
+ */
+bool FCataclysmSharedBloodFollowsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSharedBloodTest;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedSummoner Summoner(World);
+	Summoner.Set(Vital::GetMaxEnergyShieldAttribute(), 500.0f);
+	Summoner.Set(Vital::GetEnergyShieldAttribute(), 500.0f);
+	Summoner.Set(Vital::GetEnergyShieldRegenAttribute(), 100.0f);
+	HoldSharedBlood(Summoner);
+
+	ACataclysmMinion* Imp = SummonImp(*this, Summoner.Actor, FVector(1 * M, 0, 0));
+	if (!Imp)
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Imp)) { Imp->Destroy(); } };
+
+	// THE MAXIMUM RISES WITH THE SUMMONER'S.
+	Summoner.Set(Vital::GetMaxEnergyShieldAttribute(), 1000.0f);
+	UCataclysmRegeneration::ApplyStep(Imp, Step, LongAgo);
+	TestEqual(TEXT("the summoner's maximum raised to 1000 gives the imp 200 after "
+				   "one step"),
+			  ImpMaximum(Imp), 200.0f, 0.01f);
+
+	// AND FALLS WITH IT, TAKING THE SHIELD DOWN.
+	Summoner.Set(Vital::GetMaxEnergyShieldAttribute(), 250.0f);
+	UCataclysmRegeneration::ApplyStep(Imp, Step, LongAgo);
+	TestEqual(TEXT("lowered to 250, the imp's maximum is 50"), ImpMaximum(Imp), 50.0f, 0.01f);
+	TestEqual(TEXT("and its shield is clamped down to it"), ImpShield(Imp), 50.0f, 0.01f);
+
+	// NO REFILL WHILE THE SUMMONER'S SHIELD WAITS.
+	Summoner.Set(Vital::GetMaxEnergyShieldAttribute(), 500.0f);
+	Summoner.Set(Vital::GetEnergyShieldAttribute(), 500.0f);
+	UCataclysmRegeneration::ApplyStep(Imp, Step, LongAgo);
+	UCataclysmTargeting::AbilitySystemOf(Imp)->SetNumericAttributeBase(
+		Vital::GetEnergyShieldAttribute(), 0.0f);
+	UCataclysmRegeneration::ApplyStep(Summoner.Actor, Step, /*SecondsSinceLastDamage=*/1.0f);
+	UCataclysmRegeneration::ApplyStep(Imp, Step, LongAgo);
+	TestEqual(TEXT("with the summoner hurt a second ago, the imp's shield does not "
+				   "refill"),
+			  ImpShield(Imp), 0.0f);
+
+	// AND THE SAME SHARE AS THE SUMMONER'S ONCE IT DOES, WHATEVER HIT THE IMP.
+	UCataclysmRegeneration::ApplyStep(Summoner.Actor, Step, LongAgo);
+	UCataclysmRegeneration::ApplyStep(Imp, Step, /*SecondsSinceLastDamage=*/0.0f);
+	TestEqual(TEXT("once the summoner's shield refills, the imp's gains the same "
+				   "share of its maximum: 100 x (100 / 500) x a quarter second, even "
+				   "though the imp itself was just hit"),
+			  ImpShield(Imp), 100.0f * (100.0f / 500.0f) * Step, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSharedBloodShownTest,
+	"Cataclysm.SharedBlood.AMinionsShieldIsShownOverItsHead",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A character with a shield gets its overhead bar once health OR the shield is
+ * below its maximum; one without a shield answers as before. Only the decision
+ * is tested: the automation tests run with no renderer.
+ */
+bool FCataclysmSharedBloodShownTest::RunTest(const FString&)
+{
+	TestTrue(TEXT("full health and a struck shield shows the bar"),
+			 UCataclysmCombatOverlay::ShouldShowBarFor(1000.0f, 1000.0f, 50.0f, 100.0f));
+	TestFalse(TEXT("full health and a full shield does not"),
+			  UCataclysmCombatOverlay::ShouldShowBarFor(1000.0f, 1000.0f, 100.0f, 100.0f));
+	TestTrue(TEXT("struck health shows it, shield or not"),
+			 UCataclysmCombatOverlay::ShouldShowBarFor(500.0f, 1000.0f, 100.0f, 100.0f));
+	TestFalse(TEXT("a corpse shows nothing"),
+			  UCataclysmCombatOverlay::ShouldShowBarFor(0.0f, 1000.0f, 50.0f, 100.0f));
+	TestFalse(TEXT("and with no shield, full health still shows nothing"),
+			  UCataclysmCombatOverlay::ShouldShowBarFor(1000.0f, 1000.0f, 0.0f, 0.0f));
 	return true;
 }
 

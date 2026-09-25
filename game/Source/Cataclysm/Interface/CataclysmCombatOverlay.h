@@ -358,6 +358,16 @@ public:
 	 */
 	static bool ShouldShowBarFor(float Health, float MaxHealth);
 
+	/**
+	 * The same question for a character with an energy shield: a bar shows
+	 * once health OR the shield is below its maximum. Issue #1515, for Shared
+	 * Blood's minions, whose shield can be struck while health is full. Nothing
+	 * over a corpse, as above. A character with no shield answers exactly as
+	 * the overload above.
+	 */
+	static bool ShouldShowBarFor(float Health, float MaxHealth, float Shield,
+								 float MaxShield);
+
 	/** How much of a bar is filled, 0 to 1. Zero when the maximum is not real. */
 	static float BarFractionFor(float Current, float Maximum);
 

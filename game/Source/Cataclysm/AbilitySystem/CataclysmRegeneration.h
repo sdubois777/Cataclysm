@@ -177,6 +177,35 @@ public:
 						  float SecondsSinceLastDamage);
 
 	/**
+	 * Shared Blood, the Ritualist's `Ritualist_capstone_50` option 1. Issue
+	 * #1515: "Your minions each have 20% of your Maximum Energy Shield as their
+	 * own, and it recharges when yours does." The row will carry the 20 on this
+	 * stat, held by the summoner.
+	 */
+	static const TCHAR* SharedBloodStat;
+
+	/**
+	 * Give `Character`, if it is a minion whose summoner holds Shared Blood, its
+	 * share of the summoner's maximum energy shield, and refill it. Does nothing
+	 * for anything else. Ruled 2026-09-24:
+	 *
+	 *   THE MAXIMUM FOLLOWS THE SUMMONER LIVE, re-read every step from the
+	 *   summoner's scaled maximum -- the figure its own bar shows -- and the
+	 *   current shield is clamped down when it falls. The owner's wish that
+	 *   "minions update live" is recorded in CataclysmMinion.h.
+	 *
+	 *   IT REFILLS WHEN THE SUMMONER'S DOES, at the same share of its maximum
+	 *   per second: the summoner's own rate as its last step computed it, over
+	 *   the summoner's maximum. So the summoner's wait, Ablative and The Long
+	 *   Game all carry over, and the minion's own hits do not delay it.
+	 *
+	 *   MINIONS ONLY. A thrall is not one.
+	 *
+	 * @param bFill  start the shield full, which a summoning does
+	 */
+	static void SharedBloodStep(AActor* Character, float SecondsInStep, bool bFill);
+
+	/**
 	 * Adds to one pool, stopping at its maximum.
 	 *
 	 * ASKED AND ANSWERED IN ONE PLACE because all three pools behave the same
