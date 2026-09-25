@@ -25,6 +25,10 @@
 // For putting health back the way the game itself does, rather than reading the
 // rate off a gameplay attribute a scaled bonus never reaches. Issue #1038.
 #include "AbilitySystem/CataclysmRegeneration.h"
+#include "AbilitySystem/CataclysmChorus.h"
+#include "AbilitySystem/CataclysmFollowThrough.h"
+#include "AbilitySystem/CataclysmSecondSelf.h"
+#include "AbilitySystem/CataclysmShoulderThrough.h"
 // For the conversion window The Breaking Point lengthens. Issue #1025.
 #include "AbilitySystem/CataclysmDamageConversion.h"
 // For the debuffs the five new nodes read. Issue #962.
@@ -8591,7 +8595,7 @@ bool FCataclysmPassiveRefitOnResizeTest::RunTest(const FString&)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFinalPactPerMinionTest,
-	"Cataclysm.Passives.TheFinalPactsSecondOptionGrantsItsThreeRowsAndTheOthersGrantNothing",
+	"Cataclysm.Passives.TheFinalPactsSecondOptionGrantsItsThreeRowsAndTheOthersOnlyTheirOwn",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 /**
@@ -8672,13 +8676,30 @@ bool FCataclysmFinalPactPerMinionTest::RunTest(const FString&)
 		return false;
 	}
 
-	// AND THE OTHER TWO OPTIONS GRANT NOTHING. This is the half that catches a
-	// wrong option number: if these rows carried Option=1, this assertion would
-	// fail and the count-based checks would not.
-	TestEqual(TEXT("option 1 grants nothing, because it is unauthored"),
-			  ModifiersFor(1).Key, 0);
-	TestEqual(TEXT("option 3 grants nothing, because it is unauthored"),
-			  ModifiersFor(3).Key, 0);
+	// AND THE OTHER TWO OPTIONS GRANT ONLY THEIR OWN ROW. This is the half that
+	// catches a wrong option number: if these rows carried Option=1, option 1
+	// would grant four and this assertion would fail where the count-based
+	// checks would not. Options 1 and 3 granted nothing until 2026-09-25, when
+	// A Second Self and Chorus gained one flag row each. Issue #1515.
+	const auto GrantsOnly = [&](int32 Option, const TCHAR* OwnStat)
+	{
+		const auto Other = ModifiersFor(Option);
+		TestEqual(*FString::Printf(TEXT("option %d grants one modifier, its own"),
+								   Option),
+				  Other.Key, 1);
+		TestNotNull(*FString::Printf(TEXT("option %d's one modifier is %s"),
+									 Option, OwnStat),
+					Other.Value.Find(FName(OwnStat)));
+		for (const TCHAR* Stat : {TEXT("attack_damage"), TEXT("spell_damage"),
+								  TEXT("max_energy_shield")})
+		{
+			TestNull(*FString::Printf(TEXT("option %d grants none of option 2's %s"),
+									  Option, Stat),
+					 Other.Value.Find(FName(Stat)));
+		}
+	};
+	GrantsOnly(1, TEXT("minion_held_longest_becomes_your_equal"));
+	GrantsOnly(3, TEXT("minions_repeat_your_skills"));
 
 	// THE THREE STATS, AND THE BUCKET EACH LANDS IN.
 	const TMap<FName, TArray<FCataclysmStatModifier>>& Granted = Second.Value;
@@ -15922,6 +15943,96 @@ bool FCataclysmDemonicRowsSharedBloodTest::RunTest(const FString&)
 	return CataclysmDemonicRowsTest::WearsTheRows(
 		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_capstone_50")), 1,
 		{{UCataclysmRegeneration::SharedBloodStat, 20.0f}});
+}
+
+// ---------------------------------------------------------------------------
+// The last six Demonic options built engine first, issue #1515. Their engine
+// entries each said the rows change must add a test that wears the real row.
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsNowhereToRunTest,
+	"Cataclysm.DemonicRows.NowhereToRunReachesARealRavagerFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_capstone_200` option 1, Nowhere to Run: "Enemies within 8 metres of
+ *  you cannot move away from you. They may move toward you or around you, but
+ *  not further away. Your Fervour does not decay while any enemy is held this
+ *  way." */
+bool FCataclysmDemonicRowsNowhereToRunTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_200")), 1,
+		{{UCataclysmDebuffs::NowhereToRunMetresStat, 8.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsBothHandsFullTest,
+	"Cataclysm.DemonicRows.BothHandsFullReachesARealRavagerFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_capstone_200` option 2, Both Hands Full: "You may hold a two-handed
+ *  weapon in each hand. Both contribute their damage, their affixes and their
+ *  sockets." A flag of 1. */
+bool FCataclysmDemonicRowsBothHandsFullTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_200")), 2,
+		{{UCataclysmEquipmentComponent::BothHandsFullStat, 1.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsShoulderThroughTest,
+	"Cataclysm.DemonicRows.ShoulderThroughReachesARealRavagerFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_capstone_100` option 3, Shoulder Through: "Moving into an enemy
+ *  pushes it aside and deals your melee damage to it." A flag of 1. */
+bool FCataclysmDemonicRowsShoulderThroughTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_100")), 3,
+		{{UCataclysmShoulderThrough::Stat, 1.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsFollowThroughTest,
+	"Cataclysm.DemonicRows.FollowThroughReachesARealRavagerFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_keystone_b_kB` Follow Through: "Killing an enemy with a melee attack
+ *  immediately repeats that attack at no cost, no more than once every 3
+ *  seconds." */
+bool FCataclysmDemonicRowsFollowThroughTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_keystone_b_kB")), 0,
+		{{UCataclysmFollowThrough::EverySecondsStat, 3.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsASecondSelfTest,
+	"Cataclysm.DemonicRows.ASecondSelfReachesARealRitualistFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_capstone_200` option 1, A Second Self: "The minion you have held
+ *  longest becomes your equal: it has your Maximum Health, your Spell Damage
+ *  and your Area of Effect, and reserves twice the Fervour it would. When it is
+ *  gone, the next longest-held takes its place." A flag of 1. */
+bool FCataclysmDemonicRowsASecondSelfTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_capstone_200")), 1,
+		{{UCataclysmSecondSelf::Stat, 1.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsChorusTest,
+	"Cataclysm.DemonicRows.ChorusReachesARealRitualistFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_capstone_200` option 3, Chorus: "Your minions repeat each skill you
+ *  cast, dealing 30% of its damage." A flag of 1; the 30% is
+ *  `UCataclysmChorus::SharePercent`, not a row. */
+bool FCataclysmDemonicRowsChorusTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_capstone_200")), 3,
+		{{UCataclysmChorus::Stat, 1.0f}});
 }
 
 #endif // WITH_AUTOMATION_TESTS

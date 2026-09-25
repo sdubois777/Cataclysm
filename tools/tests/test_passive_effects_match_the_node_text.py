@@ -626,7 +626,11 @@ MULTIPLIES = re.compile(r"multiplicative|\d+\s*%\s+(?:more|less)\b",
 #: two rows each for Shared Ruin, Nothing Stops It, Rendering Blows and Ground
 #: Down, and one each for Sacrificial Ward, Cast from Ward, No Second Wind,
 #: Nothing Wasted and Shared Blood, every one flat. Issue #1515.
-AUTHORED_ROWS = 315
+#:
+#: AND TO 321 ON 2026-09-25, for the last six Demonic options built engine
+#: first, one flat row each: Nowhere to Run, Both Hands Full, Shoulder Through,
+#: Follow Through, A Second Self and Chorus. Issue #1515.
+AUTHORED_ROWS = 321
 
 #: How many of the 441 nodes have an authored effect.
 #:
@@ -1034,7 +1038,12 @@ AUTHORED_ROWS = 315
 #: six are options on capstones that already had a row, and move
 #: `AUTHORED_OPTIONS` alone. Measured then: the Ravager is 73 of its 74, the
 #: Ritualist 74 of its 74 and the Masochist 74 of its 74. Issue #1515.
-AUTHORED_NODES = 225
+#:
+#: AND TO 226 ON 2026-09-25: Follow Through (`Ravager_keystone_b_kB`), the one
+#: of the last six Demonic options whose node had no row. The other five are
+#: options on capstones that already had one, and move `AUTHORED_OPTIONS` alone.
+#: Issue #1515.
+AUTHORED_NODES = 226
 
 #: How many of the capstone options that are NAMED actually grant something.
 #:
@@ -1121,7 +1130,10 @@ AUTHORED_NODES = 225
 #: Nothing Stops It, Cast from Ward, Rendering Blows, Ground Down, Nothing
 #: Wasted and Shared Blood. Only the Final Onslaught's Nothing Stops It moves
 #: `AUTHORED_NODES` too; the other six capstones already had a row. Issue #1515.
-AUTHORED_OPTIONS = 31
+#: AND TO 36 ON 2026-09-25: Nowhere to Run, Both Hands Full, Shoulder
+#: Through, A Second Self and Chorus. Follow Through is a keystone and moves
+#: `AUTHORED_NODES` instead. Issue #1515.
+AUTHORED_OPTIONS = 36
 
 #: How many capstone options are named at all, across every tree.
 #:
@@ -2255,6 +2267,13 @@ VALUE_FORMS = {
     "damage_immunity_after_lethal_hit_seconds": "{value:g} second",
     "third_melee_hit_armour_removed_seconds": "{value:g} second",
     "shield_break_destroys_minion_every_seconds": "{value:g} second",
+
+    # AND THE LAST TWO DEMONIC OPTIONS WHOSE FIGURE IS A NUMBER, 2026-09-25.
+    # Issue #1515. "Enemies within 8 metres of you cannot move away from you"
+    # (Nowhere to Run) and "no more than once every 3 seconds" (Follow
+    # Through).
+    "enemies_cannot_move_away_within_metres": "{value:g} metres",
+    "melee_kill_repeats_attack_every_seconds": "{value:g} second",
 }
 
 #: Rows whose value the node states in WORDS instead of digits.
@@ -2569,6 +2588,20 @@ VALUE_IN_WORDS = {
     # when your mana is not enough", and the sentence has no digit.
     ("Ritualist_capstone_50", "skill_cost_paid_from_energy_shield"):
         ("may be paid for with energy shield", 1.0),
+
+    # AND FOUR MORE DEMONIC FLAGS OF 1, 2026-09-25. Issue #1515. None of the
+    # four sentences states its option as a number. Chorus's does hold one --
+    # "dealing 30% of its damage" -- and that 30% is the engine's
+    # `UCataclysmChorus::SharePercent`, not a row, so its row is the flag and
+    # is checked against the words that say what the option does.
+    ("Ravager_capstone_200", "two_handed_weapon_in_each_hand"):
+        ("a two-handed weapon in each hand", 1.0),
+    ("Ravager_capstone_100", "moving_into_enemy_pushes_aside"):
+        ("moving into an enemy pushes it aside", 1.0),
+    ("Ritualist_capstone_200", "minion_held_longest_becomes_your_equal"):
+        ("the minion you have held longest becomes your equal", 1.0),
+    ("Ritualist_capstone_200", "minions_repeat_your_skills"):
+        ("your minions repeat each skill you cast", 1.0),
 }
 
 

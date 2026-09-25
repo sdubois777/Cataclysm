@@ -459,7 +459,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// against an enemy their summoner damaged in the last 2 seconds. Issue #1515.
 	// AND 315 SINCE THEN, for the nine Demonic options built engine first, from
 	// Shared Ruin to Shared Blood: thirteen flat rows. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        315)
+	// AND 321 SINCE 2026-09-25, for the last six Demonic options built engine
+	// first, one flat row each. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        321)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once
