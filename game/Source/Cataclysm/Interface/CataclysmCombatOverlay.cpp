@@ -458,10 +458,19 @@ FString UCataclysmCombatOverlay::SlowedTextFor(const AActor* Actor)
 	return FString::Printf(TEXT("Slowed -%d%%"), FMath::RoundToInt(Slowed));
 }
 
+FString UCataclysmCombatOverlay::HarbingerTextFor(const AActor* Actor)
+{
+	const ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Creature && Creature->bPlagueHarbinger && !UCataclysmSkillEffects::IsDead(Creature)
+		? FString(TEXT("Harbinger"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
-	for (const FString& Part : {ArmourRemovedTextFor(Actor), SlowedTextFor(Actor)})
+	for (const FString& Part :
+		 {HarbingerTextFor(Actor), ArmourRemovedTextFor(Actor), SlowedTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

@@ -8,11 +8,14 @@
 #include "AbilitySystem/CataclysmAilments.h"
 #include "AbilitySystem/CataclysmClassResourceAttributeSet.h"
 #include "AbilitySystem/CataclysmCombatEvents.h"
+#include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmCommand.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
 #include "AbilitySystem/CataclysmElementVisuals.h"
 #include "AbilitySystem/CataclysmGroundEffect.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
+#include "AbilitySystem/CataclysmSkillShape.h"
+#include "Interface/CataclysmCombatOverlay.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmMovement.h"
 #include "AbilitySystem/CataclysmMinion.h"
@@ -26735,6 +26738,309 @@ bool FCataclysmEchoesAbilityTest::RunTest(const FString& Parameters)
 							 HealthOf(Player.Character)),
 			 HealthOf(Player.Character) < Before);
 	TestTrue(TEXT("and stunned them, which only the stomp does"), UCataclysmSkillEffects::IsStunned(Player.Character));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pestilence_Plague_Harbingers. Issues #1820 and #41.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDungeonModifierEffectsTest
+{
+	const FName HarbingersRow(UCataclysmDungeonModifierEffects::PlagueHarbingersKey);
+
+	/** Whether a creature holds the Commander buff, which is how the floor rules empower. */
+	bool IsEmpowered(const AActor* Creature)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature);
+		const FGameplayTag Empowered = UCataclysmSkillShapes::StatusTagFor(TEXT("Commander"));
+		return System && Empowered.IsValid() && System->HasMatchingGameplayTag(Empowered);
+	}
+
+	/** Whether a creature holds the Weaken debuff. */
+	bool IsWeakened(const AActor* Creature)
+	{
+		const UAbilitySystemComponent* System = UCataclysmTargeting::AbilitySystemOf(Creature);
+		const FGameplayTag Weakened = UCataclysmDebuffs::WeakenTag();
+		return System && Weakened.IsValid() && System->HasMatchingGameplayTag(Weakened);
+	}
+
+	/**
+	 * A floor carrying only Plague Harbingers, on floor 2 with its own creatures placed, and one
+	 * of its Harbingers with every other creature destroyed (not killed, so nothing dies) and
+	 * moved to `Where` at its own height. Null, with a failure, when any of it did not happen.
+	 */
+	ACataclysmEnemyCharacter* OneHarbingerAlone(FAutomationTestBase& Test, UWorld* World,
+												const FPossessedPlayer& Player,
+												ACataclysmDungeonGameMode*& OutMode, const FVector& Where)
+	{
+		OutMode = ACurseDungeon(Test, World, Player);
+		if (!OutMode)
+		{
+			return nullptr;
+		}
+		OutMode->DungeonModifiers = {HarbingersRow};
+		if (!Test.TestTrue(TEXT("floor 2 was reached"), OutMode->GoToFloor(2)))
+		{
+			return nullptr;
+		}
+		const TArray<ACataclysmEnemyCharacter*> Chosen = OutMode->PlagueHarbingersAlive();
+		if (!Test.TestTrue(TEXT("the floor has a Harbinger"), Chosen.Num() > 0))
+		{
+			return nullptr;
+		}
+		ACataclysmEnemyCharacter* Harbinger = Chosen[0];
+		for (ACataclysmEnemyCharacter* Other : OutMode->FloorEnemies)
+		{
+			if (IsValid(Other) && Other != Harbinger)
+			{
+				Other->Destroy();
+			}
+		}
+		Harbinger->SetActorLocation(FVector(Where.X, Where.Y, Harbinger->GetActorLocation().Z));
+		return Harbinger;
+	}
+}
+
+// ONE PER TEN PLACED, ROUNDED UP; A PATCH PER 200 CM MOVED; A BURN OF 1% OF MAXIMUM HEALTH.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHarbingerFiguresTest,
+	"Cataclysm.DungeonModifierEffects.PlagueHarbingersAreOnePerTenAndLayAPatchEveryTwoMetres",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHarbingerFiguresTest::RunTest(const FString& Parameters)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	TestEqual(TEXT("no creatures, no Harbinger"), Effects::PlagueHarbingersFor(0), 0);
+	TestEqual(TEXT("one creature, one Harbinger"), Effects::PlagueHarbingersFor(1), 1);
+	TestEqual(TEXT("ten, one"), Effects::PlagueHarbingersFor(10), 1);
+	TestEqual(TEXT("eleven, two"), Effects::PlagueHarbingersFor(11), 2);
+	TestEqual(TEXT("twenty-five, three"), Effects::PlagueHarbingersFor(25), 3);
+	TestFalse(TEXT("199 cm moved lays nothing"), Effects::PlagueHarbingersPatchIsDue(199.0f));
+	TestTrue(TEXT("200 cm lays a patch"), Effects::PlagueHarbingersPatchIsDue(200.0f));
+	TestEqual(TEXT("a patch burns 1% of maximum health"), Effects::PlagueHarbingersBurn(1000.0f), 10.0f, 0.001f);
+	return true;
+}
+
+// A FLOOR CARRYING THE ROW HAS ITS HARBINGERS AS SOON AS ITS CREATURES ARE PLACED, NEVER THE FLOOR'S
+// BOSS, EACH SAYING "Harbinger" UNDER ITS BAR; A HORDE WAVE CHOOSES ITS OWN.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHarbingersChosenTest,
+	"Cataclysm.DungeonModifierEffects.PlagueHarbingersAreChosenOnePerTenAndSayWhatTheyAre",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHarbingersChosenTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = ACurseDungeon(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+	Mode->DungeonModifiers = {HarbingersRow};
+	if (!TestTrue(TEXT("floor 2 was reached"), Mode->GoToFloor(2)))
+	{
+		return false;
+	}
+	const int32 Placed = Mode->FloorEnemies.Num();
+	if (!TestTrue(FString::Printf(TEXT("the floor placed creatures (%d)"), Placed), Placed > 0))
+	{
+		return false;
+	}
+
+	const TArray<ACataclysmEnemyCharacter*> Harbingers = Mode->PlagueHarbingersAlive();
+	TestEqual(TEXT("one Harbinger per ten placed, rounded up"), Harbingers.Num(), Effects::PlagueHarbingersFor(Placed));
+	for (ACataclysmEnemyCharacter* Harbinger : Harbingers)
+	{
+		TestFalse(TEXT("never the floor's boss"),
+				  Harbinger->IsBoss() || Harbinger->IsA<ACataclysmGatekeeperCharacter>());
+		TestEqual(TEXT("\"Harbinger\" under its bar"), UCataclysmCombatOverlay::StatusLineFor(Harbinger),
+				  FString(TEXT("Harbinger")));
+	}
+	for (ACataclysmEnemyCharacter* Other : Mode->FloorEnemies)
+	{
+		if (IsValid(Other) && !Harbingers.Contains(Other))
+		{
+			TestEqual(TEXT("and nothing under an ordinary creature's"),
+					  UCataclysmCombatOverlay::StatusLineFor(Other), FString());
+			break;
+		}
+	}
+	TestEqual(TEXT("the panel counts them"), Mode->LiveCountsForTheFloor().FindRef(HarbingersRow),
+			  FString::Printf(TEXT("plague harbingers: %d alive, 0 trail patches"), Harbingers.Num()));
+
+	// A HORDE WAVE CHOOSES ITS OWN, from the creatures that arrive with it.
+	Mode->DungeonSubType = ECataclysmDungeonSubType::Horde;
+	if (!TestTrue(TEXT("a Horde floor was reached"), Mode->GoToFloor(3)))
+	{
+		return false;
+	}
+	Beat(Mode, BeatsFor(5.0f));
+	const TArray<ACataclysmEnemyCharacter*> WaveHarbingers = Mode->PlagueHarbingersAlive();
+	TestTrue(TEXT("a Horde wave has Harbingers of its own"), WaveHarbingers.Num() > 0);
+	for (ACataclysmEnemyCharacter* Harbinger : WaveHarbingers)
+	{
+		TestFalse(TEXT("none of them the last floor's"), Harbingers.Contains(Harbinger));
+	}
+	return true;
+}
+
+// A HARBINGER LAYS A PATCH WHERE IT STANDS AND ANOTHER EACH 200 CM, KEEPS ITS NEWEST TWENTY; A PATCH
+// BURNS THE PLAYER 1% OF MAXIMUM HEALTH, AS THE ROW, AND EMPOWERS A CREATURE STANDING IN IT.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHarbingerTrailTest,
+	"Cataclysm.DungeonModifierEffects.APlagueHarbingerLaysATrailThatBurnsThePlayerAndEmpowersCreatures",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHarbingerTrailTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	const FVector Start(2000.0f, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* Harbinger = OneHarbingerAlone(*this, World, Player, Mode, Start);
+	if (!Harbinger || !GiveThePlayerHealthForTypedDamage(*this, Player))
+	{
+		return false;
+	}
+	const float Z = Harbinger->GetActorLocation().Z;
+
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("a patch where it stands at the first beat"), Mode->PlagueHarbingerTrailPatches(Harbinger), 1))
+	{
+		return false;
+	}
+	ACataclysmGroundZone* First = AnyZone(World);
+	if (!TestNotNull(TEXT("the patch is in the world"), First))
+	{
+		return false;
+	}
+	TestEqual(TEXT("under the Harbinger"),
+			  static_cast<float>(FVector::Dist2D(First->GetActorLocation(), Harbinger->GetActorLocation())), 0.0f, 1.0f);
+	TestEqual(TEXT("marked as the row's, so patches do not stack"), First->BurnsOnceASecondAs, HarbingersRow);
+	TestEqual(TEXT("burning 1% of the player's maximum health"), First->DamagePerTick,
+			  Effects::PlagueHarbingersBurn(HealthForTypedDamage), 0.01f);
+
+	// 199 CM ON, NOTHING; 200 CM FROM THE LAST PATCH, A SECOND.
+	Harbinger->SetActorLocation(FVector(Start.X + 199.0f, Start.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("no patch 199 cm on"), Mode->PlagueHarbingerTrailPatches(Harbinger), 1);
+	Harbinger->SetActorLocation(FVector(Start.X + 200.0f, Start.Y, Z));
+	Beat(Mode, 1);
+	TestEqual(TEXT("a second 200 cm on"), Mode->PlagueHarbingerTrailPatches(Harbinger), 2);
+	TestEqual(TEXT("the panel counts them"), Mode->LiveCountsForTheFloor().FindRef(HarbingersRow),
+			  FString(TEXT("plague harbingers: 1 alive, 2 trail patches")));
+
+	// A CREATURE STANDING ON THE FIRST PATCH IS EMPOWERED AT THE NEXT BEAT; ONE OFF THE TRAIL IS NOT.
+	ACataclysmEnemyCharacter* OnIt = PlaceCreatureAtRung(World, Mode, FVector(Start.X, Start.Y, Z), 0);
+	ACataclysmEnemyCharacter* OffIt = PlaceCreatureAtRung(World, Mode, FVector(Start.X, Start.Y + 2000.0f, Z), 0);
+	if (!TestNotNull(TEXT("a creature on the trail"), OnIt) || !TestNotNull(TEXT("and one off it"), OffIt))
+	{
+		return false;
+	}
+	OnIt->SetActorLocation(FVector(Start.X, Start.Y, OnIt->GetActorLocation().Z));
+	TestTrue(TEXT("the first patch covers the creature on it"), First->Covers(OnIt->GetActorLocation()));
+	Beat(Mode, 1);
+	TestTrue(TEXT("a creature in the trail is empowered"), IsEmpowered(OnIt));
+	TestFalse(TEXT("one off it is not"), IsEmpowered(OffIt));
+	TestTrue(TEXT("and the Harbinger, standing in its own trail"), IsEmpowered(Harbinger));
+
+	// THE PATCH BURNS THE PLAYER STANDING IN IT.
+	const float Before = HealthOf(Player.Character);
+	if (StandInAndSweep(*this, Player, First))
+	{
+		TestTrue(FString::Printf(TEXT("the player standing in it lost health (%.1f to %.1f)"), Before,
+								 HealthOf(Player.Character)),
+				 HealthOf(Player.Character) < Before);
+	}
+
+	// ITS NEWEST TWENTY: thirty more steps of 250 cm leave twenty.
+	for (int32 Step = 1; Step <= 30; ++Step)
+	{
+		Harbinger->SetActorLocation(FVector(Start.X + 200.0f + 250.0f * Step, Start.Y, Z));
+		Beat(Mode, 1);
+	}
+	TestEqual(TEXT("its newest twenty are kept"), Mode->PlagueHarbingerTrailPatches(Harbinger),
+			  Effects::PlagueHarbingersMostPatchesEach);
+	TestEqual(TEXT("and no more stand in the world"), ZonesOnTheFloor(World), Effects::PlagueHarbingersMostPatchesEach);
+	return true;
+}
+
+// KILLING A HARBINGER CLEARS ITS TRAIL AND WEAKENS THE CREATURES WITHIN EIGHT METRES, AND NOT ONE
+// FURTHER AWAY; "Harbinger" NO LONGER SHOWS.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHarbingerDiesTest,
+	"Cataclysm.DungeonModifierEffects.KillingAPlagueHarbingerClearsItsTrailAndWeakensThoseNearIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmHarbingerDiesTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = nullptr;
+	const FVector Start(2000.0f, 0.0f, 0.0f);
+	ACataclysmEnemyCharacter* Harbinger = OneHarbingerAlone(*this, World, Player, Mode, Start);
+	if (!Harbinger)
+	{
+		return false;
+	}
+	const float Z = Harbinger->GetActorLocation().Z;
+	Beat(Mode, 1);
+	Harbinger->SetActorLocation(FVector(Start.X + 300.0f, Start.Y, Z));
+	Beat(Mode, 1);
+	if (!TestEqual(TEXT("a trail of two"), ZonesOnTheFloor(World), 2))
+	{
+		return false;
+	}
+
+	ACataclysmEnemyCharacter* Near = PlaceCreatureAtRung(
+		World, Mode, FVector(Start.X + 300.0f, Start.Y + 0.5f * Effects::PlagueHarbingersWeakenRadiusCm, Z), 0);
+	ACataclysmEnemyCharacter* Far = PlaceCreatureAtRung(
+		World, Mode, FVector(Start.X + 300.0f, Start.Y + 1.5f * Effects::PlagueHarbingersWeakenRadiusCm, Z), 0);
+	if (!TestNotNull(TEXT("a creature near it"), Near) || !TestNotNull(TEXT("and one further away"), Far))
+	{
+		return false;
+	}
+
+	WoundCreatureTo(Harbinger, 100.0f, 0.0f);
+	Harbinger->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	UCataclysmSkillEffects::ApplyHit(Player.Character, Harbinger, 100000.0f);
+	if (!TestTrue(TEXT("the Harbinger died"), UCataclysmSkillEffects::IsDead(Harbinger)))
+	{
+		return false;
+	}
+	TestEqual(TEXT("its trail is cleansed"), ZonesOnTheFloor(World), 0);
+	TestTrue(TEXT("a creature within eight metres is weakened"), IsWeakened(Near));
+	TestFalse(TEXT("one further away is not"), IsWeakened(Far));
+	TestEqual(TEXT("\"Harbinger\" no longer shows"), UCataclysmCombatOverlay::StatusLineFor(Harbinger), FString());
+	TestEqual(TEXT("the panel says none are alive"), Mode->LiveCountsForTheFloor().FindRef(HarbingersRow),
+			  FString(TEXT("plague harbingers: 0 alive, 0 trail patches")));
 	return true;
 }
 

@@ -483,6 +483,13 @@ public:
 	static FString SlowedTextFor(const AActor* Actor);
 
 	/**
+	 * "Harbinger" under the health bar of a living creature Plague Harbingers chose, or
+	 * empty. Issues #1820 and #41. First on the line, because it says what the creature is
+	 * and the others say what is being done to it.
+	 */
+	static FString HarbingerTextFor(const AActor* Actor);
+
+	/**
 	 * The one line drawn under a creature's health bar: every non-empty text
 	 * above, in that order, joined by two spaces, or empty. One line rather
 	 * than one each, so two never draw over each other. Issue #1515.
