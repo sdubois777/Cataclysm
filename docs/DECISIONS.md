@@ -96,9 +96,8 @@ not only the Chorus's); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the automation
+tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -193,10 +192,34 @@ Four automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Catacly
 One Python check: the row still says "flowers sprout in random areas", "if not destroyed", "waves of undead"
 and "every 20s".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development 3bea3700 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on b9a1d886: "Build: Succeeded - 26 actions, 23 files compiled"; "2474 tests performed,
+  2474 succeeded, 0 failed", every declared test reported (2474 declared, gap 0).
+- **On the head**, b9a1d886: `Cataclysm.DungeonModifierEffects.` 308 performed, 308 succeeded;
+  `Cataclysm.SaveApply.` 11 performed, 11 succeeded.
+- **On the base**, 3bea3700: `Cataclysm.DungeonModifierEffects.` 304 performed, 304 succeeded;
+  `Cataclysm.SaveApply.` 10 performed, 10 succeeded -- each group with every one of its declared tests
+  reported.
+- **The Python suite of record**, on 8dba7175, whose game code is byte-identical to b9a1d886's: 5,478 passed
+  and 8 skipped of 5,486, 0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **No cap** (`if (false && WavesSoFar >= NecroticBloomMostWaves)`), on the prefix
+  `Cataclysm.DungeonModifierEffects.EachNecroticBloom`. With the break in, 1 failed, on "Expected 'and no
+  seventh' to be 36, but it was 48" alone.
+- **A destroyed flower kept** (the dead no longer dropped from the list), on the prefix
+  `Cataclysm.DungeonModifierEffects.ADestroyedNecroticBloom`. With the break in, 1 failed, on "Expected 'three
+  more, from the other flower only' to be 9, but it was 12" and "Expected 'the destroyed one is no longer this
+  floor's' to be -1, but it was 2".
+- **A wave four times as far from its flower** (`<= 4.0f * NecroticBloomWaveWithinCm`), on the prefix
+  `Cataclysm.DungeonModifierEffects.EachNecroticBloom`. With the break in, 1 failed, on "within six metres of a
+  flower and not in its cell" for four of the six creatures of the first wave.
 
 ---
 
