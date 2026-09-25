@@ -1039,6 +1039,9 @@ UCataclysmPlayerClassStats::StatToAttribute()
 			// recharges at its full rate inside the wait.
 			{UCataclysmRegeneration::ShieldRechargeHasNoDelayStat,
 			 Combat::GetShieldRechargeHasNoDelayAttribute()},
+			// AND ONE DRAWBACK'S FLAG, issue #1833: death ends running auras too.
+			{UCataclysmAbilitySystemComponent::AurasEndAtDeathStat,
+			 Combat::GetAurasEndAtDeathAttribute()},
 			{UCataclysmRegeneration::ManaRegenRestoresShieldStat,
 			 Combat::GetManaRegenRestoresShieldAttribute()},
 			// AND THE TWO RAVAGER KEYSTONES THAT FORBID A DEFENCE. Issue #1515.
