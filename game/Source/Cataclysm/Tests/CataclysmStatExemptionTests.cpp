@@ -1952,6 +1952,52 @@ namespace CataclysmStatExemptionTest
 			8.0f, 0.001f);
 	}
 
+	/**
+	 * `skill_charges_bonus` is read by
+	 * `UCataclysmAbilitySystemComponent::SkillChargesMaximum`. Issue #1833,
+	 * skill charges. Two characters, one carrying a flat row of 2: a skill
+	 * holds one use on the first and three on the second.
+	 */
+	void ProbeSkillCharges(FAutomationTestBase& Test)
+	{
+		UWorld* World = UWorld::CreateWorld(EWorldType::Game,
+										   /*bInformEngineOfWorld=*/false);
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		const auto Make = [World]()
+		{
+			AActor* Actor = World->SpawnActor<AActor>();
+			check(Actor);
+			UCataclysmAbilitySystemComponent* System =
+				NewObject<UCataclysmAbilitySystemComponent>(Actor);
+			System->RegisterComponent();
+			System->InitAbilityActorInfo(Actor, Actor);
+			return System;
+		};
+		UCataclysmAbilitySystemComponent* Plain = Make();
+		UCataclysmAbilitySystemComponent* Charged = Make();
+
+		FCataclysmStatModifier Flat;
+		Flat.Bucket = ECataclysmStatBucket::Flat;
+		Flat.Source = ECataclysmModifierSource::Enchantment;
+		Flat.Value = 2.0f;
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		FCataclysmStatInputs& Line = Inputs.FindOrAdd(
+			FName(UCataclysmAbilitySystemComponent::SkillChargesBonusStat));
+		Line.Base = 0.0f;
+		Line.Modifiers = {Flat};
+		Charged->SetStatInputs(MoveTemp(Inputs));
+
+		Test.TestEqual(TEXT("a character with no row holds one use"),
+			Plain->SkillChargesMaximum(FGameplayTagContainer()), 1);
+		Test.TestEqual(TEXT("and one carrying a row of 2 holds three"),
+			Charged->SkillChargesMaximum(FGameplayTagContainer()), 3);
+	}
+
 	void ProbeHitsCountAsYours(FAutomationTestBase& Test)
 	{
 		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
@@ -3325,6 +3371,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("mana_on_hit"),         &ProbeManaOnHit},
 			{TEXT("mana_cost"),           &ProbeManaCost},
 			{TEXT("cooldown_lengthening"), &ProbeCooldownLengthening},
+			{TEXT("skill_charges_bonus"), &ProbeSkillCharges},
 			{TEXT("mana_cost_as_current_health_percent"),
 									&ProbeManaCostAsCurrentHealthPercent},
 			{TEXT("minion_explodes_on_death"), &ProbeExplodesOnDeath},

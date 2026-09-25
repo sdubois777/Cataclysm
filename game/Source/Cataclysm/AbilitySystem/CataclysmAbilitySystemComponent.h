@@ -650,6 +650,51 @@ public:
 	float NextSpellCooldownSecondsHeld() const;
 
 	/**
+	 * The stat that adds uses to a skill with a cooldown. Issue #1833, skill
+	 * charges: "Ultimate has 1-3 additional charges" and five more. Flat, and
+	 * scoped by the skill's own tags, so a row naming `Slot.Heavy` adds uses to
+	 * the heavy attack alone. It has no gameplay attribute: this class reads it.
+	 */
+	static const TCHAR* SkillChargesBonusStat;
+
+	/**
+	 * The most uses a skill with these tags holds: one, plus the stat above
+	 * rounded to a whole use, and never fewer than one.
+	 */
+	int32 SkillChargesMaximum(const FGameplayTagContainer& SkillTags) const;
+
+	/**
+	 * The uses a slot's skill holds now, out of `SkillChargesMaximum`. What
+	 * `UCataclysmGameplayAbility::CheckCooldown` refuses on, at nought.
+	 *
+	 * A MAXIMUM THAT FELL CLAMPS WHAT IS HELD: a row whose condition lapsed
+	 * takes its uses with it. A running cooldown with no charge recorded, which
+	 * something other than a cast applied, counts as one use spent.
+	 */
+	int32 SkillChargesHeld(ECataclysmAbilitySlot Slot,
+						   const FGameplayTagContainer& SkillTags) const;
+
+	/**
+	 * Spend one use of a slot's skill, and start its recharge of `Seconds` if
+	 * none is running. Called by `UCataclysmGameplayAbility::ApplyCooldown`.
+	 *
+	 * CHARGES RECOVER ONE AT A TIME, ruled 2026-09-25 under the owner's
+	 * delegation: each recharge that ends returns one use and, while any are
+	 * still spent, starts the next at the length the last use worked out. So
+	 * anything that shortens or ends the running cooldown -- a reduction, a
+	 * refund -- acts on the charge recharging now.
+	 */
+	void SpendSkillCharge(ECataclysmAbilitySlot Slot,
+						  const FGameplayTagContainer& SkillTags, float Seconds);
+
+	/**
+	 * Return every spent use of the slots whose cooldown tags are named, so
+	 * that removing their cooldown effects next starts no further recharge. A
+	 * reset and a death refill; a reduction and a refund return one use.
+	 */
+	void RefillSkillCharges(const FGameplayTagContainer& CooldownTags);
+
+	/**
 	 * The event a row grants on when it grants on a clock. Issue #1833, timed
 	 * grants. `TIMED_EVENT` in `tools/generate_datatables.py`. Never raised
 	 * through `ActOnEvent`: `StepTimedGrants` fires each such action itself.
@@ -2447,6 +2492,36 @@ protected:
 	 * No timestamp, because a charge has no duration.
 	 */
 	TMap<FName, FNextUseCharge> NextUseCharges;
+
+	/**
+	 * A slot's spent uses and what its next recharge needs. Issue #1833,
+	 * skill charges. See `SpendSkillCharge`.
+	 */
+	struct FSkillCharges
+	{
+		/** Uses spent and not yet recharged, the one recharging included. */
+		int32 Spent = 0;
+
+		/** The length the last use worked out, which the next recharge runs. */
+		float RechargeSeconds = 0.0f;
+
+		/** The skill's tags, which say its maximum when a recharge ends. */
+		FGameplayTagContainer SkillTags;
+
+		/** Whether the cooldown tag's removal is being listened for. */
+		bool bWatching = false;
+	};
+	TMap<ECataclysmAbilitySlot, FSkillCharges> SkillCharges;
+
+	/** Spent uses, at least one while the cooldown runs, at most `Maximum`. */
+	int32 SkillChargesSpent(ECataclysmAbilitySlot Slot, int32 Maximum) const;
+
+	/**
+	 * A slot's cooldown tag came or went. When it went, one use has recharged,
+	 * and the next recharge starts if any use is still spent.
+	 */
+	void OnSkillRechargeTagChanged(const FGameplayTag Tag, int32 NewCount,
+								   ECataclysmAbilitySlot Slot);
 
 	/** Nothing Wasted's store. Issue #1515. */
 	float StoredMitigatedDamage = 0.0f;

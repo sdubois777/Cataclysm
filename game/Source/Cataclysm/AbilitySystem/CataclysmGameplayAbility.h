@@ -188,6 +188,15 @@ public:
 		const UAbilitySystemComponent* AbilitySystem, float BaseCooldown,
 		const FGameplayTagContainer& SkillTags = FGameplayTagContainer());
 
+	/**
+	 * Apply one cooldown: a duration effect of `Seconds` granting `Tag` and
+	 * nothing else. What `ApplyCooldown` did inline until issue #1833's skill
+	 * charges, moved here so that a charge's recharge starting again, in
+	 * `UCataclysmAbilitySystemComponent`, builds exactly the same effect.
+	 */
+	static void ApplyCooldownEffect(UAbilitySystemComponent* AbilitySystem,
+									const FGameplayTag& Tag, float Seconds);
+
 	/** Mana one use costs for the character holding it, at their level. */
 	UFUNCTION(BlueprintPure, Category = "Cataclysm|Ability")
 	float GetManaCost() const;

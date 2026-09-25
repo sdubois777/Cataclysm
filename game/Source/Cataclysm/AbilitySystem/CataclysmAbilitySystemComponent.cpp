@@ -2041,6 +2041,10 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 		}
 	}
 
+	// EVERY SPENT CHARGE RETURNED FIRST, so that ending the cooldowns below
+	// starts no further recharge. Issue #1833, skill charges: a death refills.
+	RefillSkillCharges(CooldownTags);
+
 	FGameplayEffectQuery Timed;
 	Timed.CustomMatchDelegate.BindLambda(
 		[](const FActiveGameplayEffect& Effect)
@@ -3196,7 +3200,109 @@ int32 UCataclysmAbilitySystemComponent::RollAndResetCooldowns(
 			*Action.ResetKey.ToString());
 		return 0;
 	}
+	// EVERY CHARGE OF A CLEARED SLOT, ruled 2026-09-25 under the owner's
+	// delegation: a reset refills, rather than returning the one use recharging.
+	RefillSkillCharges(Clearing);
 	return RemoveActiveEffectsWithGrantedTags(Clearing);
+}
+
+const TCHAR* UCataclysmAbilitySystemComponent::SkillChargesBonusStat =
+	TEXT("skill_charges_bonus");
+
+int32 UCataclysmAbilitySystemComponent::SkillChargesMaximum(
+	const FGameplayTagContainer& SkillTags) const
+{
+	// ROUNDED, because every row states whole uses and a roll lands on one
+	// (`UCataclysmItemValues::EnchantmentValue`), so a sum is whole too and the
+	// rounding only keeps 2.9999 from reading as 2.
+	const float Bonus = StatForSkill(FName(SkillChargesBonusStat), SkillTags, 0.0f);
+	return 1 + FMath::Max(0, FMath::RoundToInt(Bonus));
+}
+
+int32 UCataclysmAbilitySystemComponent::SkillChargesSpent(
+	ECataclysmAbilitySlot Slot, int32 Maximum) const
+{
+	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
+	const bool bRecharging = Tag.IsValid() && HasMatchingGameplayTag(Tag);
+	const FSkillCharges* Charges = SkillCharges.Find(Slot);
+	const int32 Spent = FMath::Max(Charges ? Charges->Spent : 0, bRecharging ? 1 : 0);
+	return FMath::Clamp(Spent, 0, Maximum);
+}
+
+int32 UCataclysmAbilitySystemComponent::SkillChargesHeld(
+	ECataclysmAbilitySlot Slot, const FGameplayTagContainer& SkillTags) const
+{
+	const int32 Maximum = SkillChargesMaximum(SkillTags);
+	return Maximum - SkillChargesSpent(Slot, Maximum);
+}
+
+void UCataclysmAbilitySystemComponent::SpendSkillCharge(
+	ECataclysmAbilitySlot Slot, const FGameplayTagContainer& SkillTags, float Seconds)
+{
+	const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Slot);
+	if (!Tag.IsValid() || Seconds <= 0.0f)
+	{
+		return;
+	}
+	const int32 Maximum = SkillChargesMaximum(SkillTags);
+	const int32 Spent = FMath::Min(SkillChargesSpent(Slot, Maximum) + 1, Maximum);
+
+	FSkillCharges& Charges = SkillCharges.FindOrAdd(Slot);
+	Charges.Spent = Spent;
+	Charges.RechargeSeconds = Seconds;
+	Charges.SkillTags = SkillTags;
+	if (!Charges.bWatching)
+	{
+		RegisterGameplayTagEvent(Tag, EGameplayTagEventType::NewOrRemoved)
+			.AddUObject(this, &UCataclysmAbilitySystemComponent::OnSkillRechargeTagChanged,
+						Slot);
+		Charges.bWatching = true;
+	}
+	if (!HasMatchingGameplayTag(Tag))
+	{
+		UCataclysmGameplayAbility::ApplyCooldownEffect(this, Tag, Seconds);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::OnSkillRechargeTagChanged(
+	const FGameplayTag Tag, int32 NewCount, ECataclysmAbilitySlot Slot)
+{
+	if (NewCount > 0)
+	{
+		return;
+	}
+	FSkillCharges* Charges = SkillCharges.Find(Slot);
+	if (!Charges || Charges->Spent <= 0)
+	{
+		return;
+	}
+
+	// ONE USE BACK, out of what the maximum allows now, so uses a lapsed row
+	// took are not returned by the recharge that was running when it lapsed.
+	const int32 Maximum = SkillChargesMaximum(Charges->SkillTags);
+	Charges->Spent = FMath::Max(0, FMath::Min(Charges->Spent, Maximum) - 1);
+
+	// AND THE NEXT RECHARGE, STARTED FROM HERE, which is safe inside a removal:
+	// the ability system holds a new effect aside until the removal finishes,
+	// and `RemoveActiveEffects` walks only the effects there were when it began.
+	if (Charges->Spent > 0 && Charges->RechargeSeconds > 0.0f)
+	{
+		const float Seconds = Charges->RechargeSeconds;
+		UCataclysmGameplayAbility::ApplyCooldownEffect(this, Tag, Seconds);
+	}
+}
+
+void UCataclysmAbilitySystemComponent::RefillSkillCharges(
+	const FGameplayTagContainer& CooldownTags)
+{
+	for (TPair<ECataclysmAbilitySlot, FSkillCharges>& Held : SkillCharges)
+	{
+		const FGameplayTag Tag = UCataclysmSkillSlots::CooldownTag(Held.Key);
+		if (Tag.IsValid() && CooldownTags.HasTagExact(Tag))
+		{
+			Held.Value.Spent = 0;
+		}
+	}
 }
 const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =
 	TEXT("every_seconds");

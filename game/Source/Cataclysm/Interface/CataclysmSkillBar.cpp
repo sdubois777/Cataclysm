@@ -171,6 +171,15 @@ FString UCataclysmSkillBar::CooldownTextFor(float Remaining)
 	return FString::Printf(TEXT("%d"), FMath::CeilToInt(Remaining));
 }
 
+FString UCataclysmSkillBar::ChargesTextFor(int32 Held, int32 Maximum)
+{
+	if (Maximum <= 1)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("x%d"), FMath::Max(0, Held));
+}
+
 bool UCataclysmSkillBar::CanAfford(const UAbilitySystemComponent* AbilitySystem,
 								   const FGameplayAttribute& Pool, float ManaCost)
 {
@@ -508,6 +517,16 @@ TArray<FCataclysmSkillBarSlot> UCataclysmSkillBar::Read(const AActor* Player)
 				Box.bLocked = IsLocked(Cataclysm->StatForSkill(
 					FName(UCataclysmSkillSlots::LockedStat), Skill->SkillTags, 0.0f));
 			}
+		}
+
+		// THE USES HELD, ASKED THE WAY THE REFUSAL ASKS. Issue #1833, skill
+		// charges: `UCataclysmGameplayAbility::CheckCooldown` refuses at nought
+		// from `SkillChargesHeld` with the skill's own tags.
+		if (const UCataclysmAbilitySystemComponent* Cataclysm =
+				Cast<const UCataclysmAbilitySystemComponent>(Abilities))
+		{
+			Box.MaxCharges = Cataclysm->SkillChargesMaximum(Ability->SkillTagsForStats());
+			Box.Charges = Cataclysm->SkillChargesHeld(Slot, Ability->SkillTagsForStats());
 		}
 
 		const FGameplayTag CooldownTag = UCataclysmSkillSlots::CooldownTag(Slot);

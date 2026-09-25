@@ -77,8 +77,11 @@ namespace CataclysmEnchantmentEffectTest
 	const TCHAR* LowHealthBenefit =
 		TEXT("Positive_Your_retaliation_damage_is_tripled_while_below_3");
 	const TCHAR* HealthDrawback = TEXT("Negative_You_have_20_less_hp");
+	//
+	// NOT "Ultimate has 1-3 additional charges" ANY MORE, which this was until
+	// issue #1833's skill charges gave that benefit a row.
 	const TCHAR* BenefitWithNoEffect =
-		TEXT("Positive_Ultimate_has_1_3_additional_charges");
+		TEXT("Positive_Your_ultimate_ability_is_converted_into_a_placea");
 	const TCHAR* DrawbackWithNoEffect = TEXT("Negative_Can_t_use_a_basic_attack");
 
 	/**
@@ -7537,6 +7540,401 @@ bool FCataclysmNextSpellCooldownRowTest::RunTest(const FString&)
 	TestTrue(TEXT("the spell is used again"), Caster.Use(Caster.Spell));
 	TestEqual(TEXT("the next spell starts 8.5"),
 		SecondsLeft(ASC, ESlot::Special), 8.5f, 0.01f);
+	return true;
+}
+
+namespace CataclysmSkillChargesTest
+{
+	using ESlot = ECataclysmAbilitySlot;
+
+	/**
+	 * A bare wearer carrying one real charges enchantment, with two real strike
+	 * skills granted and tagged with their slots as the skill data tags them: a
+	 * heavy attack and a special, each with a stated ten-second cooldown. Issue
+	 * #1833, skill charges. A worn item rolls the top of its range.
+	 */
+	struct FCharger
+	{
+		explicit FCharger(const TCHAR* Enchantment)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return;
+			}
+			Wearer = MakeUnique<FWearer>(World);
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			Wearer->Equipment->Equip(
+				Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect),
+				Removed, AlsoRemoved, GearSlot);
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+			Wearer->AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 100000.0f);
+			Wearer->AbilitySystem->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetManaAttribute(), 100000.0f);
+			Heavy = Grant(ESlot::Heavy, TEXT("Slot.Heavy"));
+			Special = Grant(ESlot::Special, TEXT("Slot.Special"));
+		}
+
+		~FCharger()
+		{
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		UCataclysmStrikeSkill* Grant(ESlot Slot, const FString& Tags) const
+		{
+			const FGameplayAbilitySpecHandle Handle = Wearer->AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), Slot, /*Level=*/1, Wearer->Actor);
+			FGameplayAbilitySpec* Spec = Handle.IsValid()
+				? Wearer->AbilitySystem->FindAbilitySpecFromHandle(Handle) : nullptr;
+			UCataclysmStrikeSkill* Skill =
+				Spec ? Cast<UCataclysmStrikeSkill>(Spec->GetPrimaryInstance()) : nullptr;
+			if (Skill)
+			{
+				Skill->SkillName = TEXT("Test Strike");
+				Skill->Params = UCataclysmSkillShapes::ParseParams(TEXT("Radius=2"));
+				Skill->SkillTags = UCataclysmSkillShapes::TagsFromCell(Tags);
+				Skill->CooldownOverride = 10.0f;
+			}
+			return Skill;
+		}
+
+		bool Ready() const
+		{
+			return Wearer && Heavy && Special;
+		}
+
+		bool Use(UGameplayAbility* Skill) const
+		{
+			return Skill && Wearer->AbilitySystem->TryActivateAbility(
+				Skill->GetCurrentAbilitySpecHandle(), /*bAllowRemoteActivation=*/false);
+		}
+
+		/** Uses held by the heavy attack now. */
+		int32 HeavyHeld() const
+		{
+			return ASC()->SkillChargesHeld(ESlot::Heavy, Heavy->SkillTags);
+		}
+
+		/**
+		 * The heavy attack's running recharge ends, as it does when its time is
+		 * up: the effect goes, and nothing refilled the charges first.
+		 */
+		void RechargeHeavy() const
+		{
+			Wearer->AbilitySystem->RemoveActiveEffectsWithGrantedTags(
+				FGameplayTagContainer(UCataclysmSkillSlots::CooldownTag(ESlot::Heavy)));
+		}
+
+		/** Take the enchanted item off, and the rows with it. */
+		void TakeOff() const
+		{
+			FCataclysmItem Removed;
+			Wearer->Equipment->Unequip(GearSlot, Removed);
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		float HeavyLeft() const
+		{
+			return CataclysmCooldownReduceTest::SecondsLeft(ASC(), ESlot::Heavy);
+		}
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+		ECataclysmGearSlot GearSlot = ECataclysmGearSlot::Count;
+		UCataclysmStrikeSkill* Heavy = nullptr;
+		UCataclysmStrikeSkill* Special = nullptr;
+	};
+
+	const TCHAR* HeavyCharges =
+		TEXT("Positive_Your_heavy_attack_has_1_2_additional_charges");
+
+	const TCHAR* StaleAsset =
+		TEXT("the row adds its charges. If not, DT_EnchantmentEffects may be "
+			 "older than the rows: run tools/generate_datatable_assets.py");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmHeavyChargesRowTest,
+	"Cataclysm.Enchantments.TheHeavyChargesRowGivesThreeUsesThatRechargeOneAtATime",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your heavy attack has 1-2 additional charges", at 2: the heavy attack is used
+ * three times running and refused the fourth, while the special beside it holds
+ * its one. Issue #1833, skill charges.
+ *
+ * ONE RECHARGE RUNS AT A TIME, ruled 2026-09-25 under the owner's delegation.
+ * The second and third uses start no clock of their own, so ten seconds are
+ * left after all three; each recharge that ends returns one use and starts the
+ * next ten, and the last returns the third and starts nothing.
+ */
+bool FCataclysmHeavyChargesRowTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillChargesTest;
+	FCharger Charger(HeavyCharges);
+	if (!TestTrue(TEXT("a wearer with a heavy attack and a special"), Charger.Ready()))
+	{
+		return false;
+	}
+	if (!TestEqual(StaleAsset, Charger.HeavyHeld(), 3))
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the first use"), Charger.Use(Charger.Heavy));
+	TestEqual(TEXT("which starts ten seconds"), Charger.HeavyLeft(), 10.0f, 0.01f);
+	TestTrue(TEXT("the second use, while that runs"), Charger.Use(Charger.Heavy));
+	TestTrue(TEXT("the third"), Charger.Use(Charger.Heavy));
+	TestFalse(TEXT("and the fourth is refused"), Charger.Use(Charger.Heavy));
+	TestEqual(TEXT("nothing held"), Charger.HeavyHeld(), 0);
+	TestEqual(TEXT("and still one ten-second recharge, not restarted"),
+		Charger.HeavyLeft(), 10.0f, 0.01f);
+
+	TestTrue(TEXT("the special is used once"), Charger.Use(Charger.Special));
+	TestFalse(TEXT("and refused the second time: the row names the heavy slot"),
+		Charger.Use(Charger.Special));
+
+	Charger.RechargeHeavy();
+	TestEqual(TEXT("one recharge ends: one use back"), Charger.HeavyHeld(), 1);
+	TestEqual(TEXT("and the next ten seconds start"), Charger.HeavyLeft(), 10.0f, 0.01f);
+	Charger.RechargeHeavy();
+	TestEqual(TEXT("two back"), Charger.HeavyHeld(), 2);
+	TestEqual(TEXT("and the last ten start"), Charger.HeavyLeft(), 10.0f, 0.01f);
+	Charger.RechargeHeavy();
+	TestEqual(TEXT("all three back"), Charger.HeavyHeld(), 3);
+	TestEqual(TEXT("and no recharge runs"), Charger.HeavyLeft(), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeRowsReachTheirSlotsTest,
+	"Cataclysm.Enchantments.EachChargesRowAddsUsesToTheSkillsItNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The other five charges rows, each worn alone at the top of its range, asked
+ * for the most uses a skill of each slot holds. Issue #1833, skill charges.
+ *
+ * "Ultimate has 1-3 additional charges": the ultimate holds 4. "Gain 1-3
+ * additional charges for your cooldown abilities": every slot holds 4. "Your
+ * special ability ..." and "Your movement ability ... has 1-2 additional
+ * charges": 3 in that slot. Every other slot holds 1.
+ *
+ * "Skills have 1-2 additional charges when fighting Boss enemies": 1 everywhere
+ * until a Boss is struck, then 3 everywhere -- within four seconds of striking
+ * one, the owner's boss clock of 2026-09-18.
+ */
+bool FCataclysmChargeRowsReachTheirSlotsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillChargesTest;
+	const ESlot Slots[] = {ESlot::Heavy, ESlot::Special, ESlot::Support,
+						   ESlot::Ultimate, ESlot::Movement};
+	const auto TagsOf = [](ESlot Slot)
+	{
+		return FGameplayTagContainer(CataclysmAbilitySlots::Tag(Slot));
+	};
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		ESlot Named;
+		int32 InNamed;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Ultimate_has_1_3_additional_charges"), ESlot::Ultimate, 4},
+		{TEXT("Positive_Gain_1_3_additional_charges_for_your_cooldown_ab"), ESlot::None, 4},
+		{TEXT("Positive_Your_special_ability_has_1_2_additional_charges"), ESlot::Special, 3},
+		{TEXT("Positive_Your_movement_ability_has_1_2_additional_charges"), ESlot::Movement, 3},
+	};
+	for (const FCase& Case : Cases)
+	{
+		FCharger Charger(Case.Enchantment);
+		if (!TestNotNull(TEXT("a wearer in a world"), Charger.ASC()))
+		{
+			return false;
+		}
+		for (const ESlot Slot : Slots)
+		{
+			const int32 Expected =
+				(Case.Named == ESlot::None || Case.Named == Slot) ? Case.InNamed : 1;
+			TestEqual(FString::Printf(TEXT("%s: slot %d holds %d"), Case.Enchantment,
+									  static_cast<int32>(Slot), Expected),
+				Charger.ASC()->SkillChargesMaximum(TagsOf(Slot)), Expected);
+		}
+	}
+
+	FCharger Boss(TEXT("Positive_Skills_have_1_2_additional_charges_when_fighting"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Boss.ASC()))
+	{
+		return false;
+	}
+	for (const ESlot Slot : Slots)
+	{
+		TestEqual(FString::Printf(TEXT("no Boss struck: slot %d holds 1"),
+								  static_cast<int32>(Slot)),
+			Boss.ASC()->SkillChargesMaximum(TagsOf(Slot)), 1);
+	}
+	Boss.ASC()->NoteStruckABoss();
+	for (const ESlot Slot : Slots)
+	{
+		TestEqual(FString::Printf(TEXT("a Boss just struck: slot %d holds 3"),
+								  static_cast<int32>(Slot)),
+			Boss.ASC()->SkillChargesMaximum(TagsOf(Slot)), 3);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargeMaximumFallsTest,
+	"Cataclysm.Enchantments.AChargeMaximumThatFallsTakesTheUsesAboveIt",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * All three heavy uses spent, then the item giving two of them taken off: the
+ * heavy attack now holds at most one, and it is spent. When the recharge
+ * running ends it returns that one and starts nothing, because the two uses the
+ * row gave went with the row. Issue #1833, skill charges; the clamp ruled
+ * 2026-09-25 under the owner's delegation, for the Boss row's lapsing clock.
+ */
+bool FCataclysmChargeMaximumFallsTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillChargesTest;
+	FCharger Charger(HeavyCharges);
+	if (!TestTrue(TEXT("a wearer with a heavy attack"), Charger.Ready())
+		|| !TestEqual(StaleAsset, Charger.HeavyHeld(), 3))
+	{
+		return false;
+	}
+	for (int32 Time = 0; Time < 3; ++Time)
+	{
+		Charger.Use(Charger.Heavy);
+	}
+	TestEqual(TEXT("three spent"), Charger.HeavyHeld(), 0);
+
+	Charger.TakeOff();
+	TestEqual(TEXT("taken off: the most it holds is one"),
+		Charger.ASC()->SkillChargesMaximum(Charger.Heavy->SkillTags), 1);
+	TestEqual(TEXT("and none is held"), Charger.HeavyHeld(), 0);
+	TestFalse(TEXT("so it is refused"), Charger.Use(Charger.Heavy));
+
+	Charger.RechargeHeavy();
+	TestEqual(TEXT("the recharge ends: its one use is back"), Charger.HeavyHeld(), 1);
+	TestEqual(TEXT("and no further recharge starts"), Charger.HeavyLeft(), 0.0f, 0.01f);
+	TestTrue(TEXT("so it is used"), Charger.Use(Charger.Heavy));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmChargesResetDeathReductionTest,
+	"Cataclysm.Enchantments.AResetOrADeathRefillsChargesAndAReductionShortensOne",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * With the heavy charges row worn and two of its three uses spent: a cooldown
+ * reset refills all three, and so does a death; a reduction takes its seconds
+ * off the recharge running and returns nothing by itself. Issue #1833, skill
+ * charges, ruled 2026-09-25 under the owner's delegation.
+ */
+bool FCataclysmChargesResetDeathReductionTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillChargesTest;
+	FCharger Charger(HeavyCharges);
+	if (!TestTrue(TEXT("a wearer with a heavy attack"), Charger.Ready())
+		|| !TestEqual(StaleAsset, Charger.HeavyHeld(), 3))
+	{
+		return false;
+	}
+	UCataclysmAbilitySystemComponent* ASC = Charger.ASC();
+
+	Charger.Use(Charger.Heavy);
+	Charger.Use(Charger.Heavy);
+	TestEqual(TEXT("two spent"), Charger.HeavyHeld(), 1);
+
+	FCataclysmPoolAction Reduce;
+	Reduce.CooldownReduce = ECataclysmCooldownReset::Heavy;
+	Reduce.Percent = 4.0f;
+	ASC->ReduceCooldowns(Reduce);
+	TestEqual(TEXT("a reduction of four leaves six on the recharge"),
+		Charger.HeavyLeft(), 6.0f, 0.01f);
+	TestEqual(TEXT("and returns nothing by itself"), Charger.HeavyHeld(), 1);
+
+	IConsoleVariable* Roll =
+		IConsoleManager::Get().FindConsoleVariable(TEXT("Cataclysm.CooldownResetRoll"));
+	if (!TestNotNull(TEXT("the reset roll can be pinned"), Roll))
+	{
+		return false;
+	}
+	Roll->Set(0.0f, ECVF_SetByCode);
+	ON_SCOPE_EXIT { Roll->Set(-1.0f, ECVF_SetByCode); };
+	FCataclysmPoolAction Reset;
+	Reset.CooldownReset = ECataclysmCooldownReset::Heavy;
+	Reset.Percent = 100.0f;
+	ASC->RollAndResetCooldowns(Reset, nullptr);
+	TestEqual(TEXT("a reset refills all three"), Charger.HeavyHeld(), 3);
+	TestEqual(TEXT("and no recharge runs"), Charger.HeavyLeft(), 0.0f, 0.01f);
+
+	Charger.Use(Charger.Heavy);
+	Charger.Use(Charger.Heavy);
+	TestEqual(TEXT("two spent again"), Charger.HeavyHeld(), 1);
+	ASC->ClearWhatDeathEnds();
+	TestEqual(TEXT("a death refills all three"), Charger.HeavyHeld(), 3);
+	TestEqual(TEXT("and no recharge runs"), Charger.HeavyLeft(), 0.0f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarChargesTest,
+	"Cataclysm.Enchantments.TheSkillBarShowsTheChargesASkillHolds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The heavy attack's box says how many uses it holds, and the special's, which
+ * holds one, says nothing. Issue #1833, skill charges: with a second charge a
+ * skill can be used while its cooldown sweep runs, so the sweep alone would call
+ * a usable skill waiting.
+ */
+bool FCataclysmSkillBarChargesTest::RunTest(const FString&)
+{
+	using namespace CataclysmSkillChargesTest;
+	TestEqual(TEXT("one of one says nothing"), UCataclysmSkillBar::ChargesTextFor(1, 1), FString());
+	TestEqual(TEXT("two of three says x2"), UCataclysmSkillBar::ChargesTextFor(2, 3),
+		FString(TEXT("x2")));
+	TestEqual(TEXT("none of three says x0"), UCataclysmSkillBar::ChargesTextFor(0, 3),
+		FString(TEXT("x0")));
+
+	FCharger Charger(HeavyCharges);
+	if (!TestTrue(TEXT("a wearer with a heavy attack"), Charger.Ready())
+		|| !TestEqual(StaleAsset, Charger.HeavyHeld(), 3))
+	{
+		return false;
+	}
+	Charger.Use(Charger.Heavy);
+
+	bool bSawHeavy = false;
+	bool bSawSpecial = false;
+	for (const FCataclysmSkillBarSlot& Box : UCataclysmSkillBar::Read(Charger.Wearer->Actor))
+	{
+		if (Box.Slot == ESlot::Heavy)
+		{
+			bSawHeavy = true;
+			TestEqual(TEXT("the heavy box holds two"), Box.Charges, 2);
+			TestEqual(TEXT("of three"), Box.MaxCharges, 3);
+			TestTrue(TEXT("while its recharge runs"), Box.CooldownRemaining > 0.0f);
+		}
+		else if (Box.Slot == ESlot::Special)
+		{
+			bSawSpecial = true;
+			TestEqual(TEXT("the special box holds one of one"), Box.MaxCharges, 1);
+		}
+	}
+	TestTrue(TEXT("the bar has a heavy box"), bSawHeavy);
+	TestTrue(TEXT("and a special box"), bSawSpecial);
 	return true;
 }
 

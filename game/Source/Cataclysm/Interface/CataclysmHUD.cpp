@@ -336,6 +336,15 @@ void ACataclysmHUD::DrawSkillBar()
 							SkillBarWaitScale);
 		}
 
+		// THE USES HELD, IN THE BOTTOM OF THE BOX, for a skill that holds more
+		// than one. Issue #1833, skill charges.
+		const FString Held = UCataclysmSkillBar::ChargesTextFor(Box.Charges, Box.MaxCharges);
+		if (!Held.IsEmpty())
+		{
+			DrawTextCentred(Held, Ink, Centre,
+							At.Y + Size - SkillBarChargesInsetPx, SkillBarKeyScale);
+		}
+
 		const FString Name = UCataclysmSkillBar::ShortNameFor(Box.Name);
 		if (!Name.IsEmpty())
 		{

@@ -467,6 +467,12 @@ INVENTORY = {
      'FName(RendSecondsStat), FGameplayTagContainer(), 0.0f'):
         "Rendering Blows' seconds, asked of the striker on the third landed "
         'melee hit; a duration, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(SkillChargesBonusStat), SkillTags, 0.0f'):
+        "a skill's added charges (issue #1833), asked with the tags of the "
+        'skill so a row scoped to a slot reaches only that slot, before any '
+        'blow exists; the boss clock one row reads is kept on this ability '
+        'system and needs nothing handed over',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.cpp',
      'FName(GroundDownMetresStat), FGameplayTagContainer(), 0.0f'):
         "Ground Down's radius, read in a regeneration step with no blow, "

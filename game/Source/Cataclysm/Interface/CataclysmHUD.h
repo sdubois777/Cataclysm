@@ -348,6 +348,9 @@ private:
 	static constexpr float SkillBarWaitInsetPx = 9.0f;
 	static constexpr float SkillBarWaitScale = 1.7f;
 
+	/** How far above the bottom of a box the uses held sit. Issue #1833. */
+	static constexpr float SkillBarChargesInsetPx = 16.0f;
+
 	/** Clear space between the bottom of a box and the skill's name. */
 	static constexpr float SkillBarNameGapPx = 4.0f;
 	static constexpr float SkillBarNameScale = 1.0f;

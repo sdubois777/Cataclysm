@@ -327,6 +327,10 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// route that honours a row scoped to a slot (issue #1981), and three of
 		// the five sentences it serves are scoped.
 		TEXT("cooldown_lengthening"),
+		// Flat uses added to a skill with a cooldown, read by
+		// UCataclysmAbilitySystemComponent::SkillChargesMaximum. Issue #1833,
+		// skill charges: "Ultimate has 1-3 additional charges" and five more.
+		TEXT("skill_charges_bonus"),
 		// What share of current health a cast pays INSTEAD of its mana, read by
 		// UCataclysmGameplayAbility::ManaCostPaidAsHealthPercent. Issues #1820
 		// and #41. Written by the dungeon floor rule `Famine_Desperate_Measures`

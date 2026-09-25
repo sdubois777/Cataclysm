@@ -66,6 +66,17 @@ struct CATACLYSM_API FCataclysmSkillBarSlot
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	float CooldownDuration = 0.0f;
 
+	/**
+	 * Uses held now and the most it can hold. Issue #1833, skill charges. A
+	 * skill with a second charge can be used while its cooldown runs, so the
+	 * sweep alone would tell the player a usable skill was waiting.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	int32 Charges = 1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
+	int32 MaxCharges = 1;
+
 	/** Mana one use costs this character, at their level. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Interface")
 	float ManaCost = 0.0f;
@@ -213,6 +224,14 @@ public:
 	 * are noise and the extra character does not fit the box.
 	 */
 	static FString CooldownTextFor(float Remaining);
+
+	/**
+	 * The uses held, written for the corner of the box, or nothing for a skill
+	 * that can hold only one. Issue #1833, skill charges. "x2" rather than
+	 * "2/3", because the held count is what decides whether pressing the key
+	 * does anything, and the box is small.
+	 */
+	static FString ChargesTextFor(int32 Held, int32 Maximum);
 
 	/**
 	 * Whether this character can pay this cost from `Pool`, by the rule the cast
