@@ -15,9 +15,8 @@ the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEff
 `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -120,10 +119,35 @@ Five automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Catacly
 One Python check: the row still says "tunnels and walls", "toxic environment", "destroy these veins",
 "temporarily cleanse", "destroying too much" and "guardians".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development 817ac097 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on af85de75: "Build: Succeeded - 29 actions, 26 files compiled"; "2513 tests performed,
+  2513 succeeded, 0 failed", every declared test reported (2513 declared, gap 0).
+- **On the head**, af85de75: `Cataclysm.DungeonModifierEffects.` 323 performed, 323 succeeded;
+  `Cataclysm.SaveApply.` 14 performed, 14 succeeded.
+- **On the base**, 817ac097: `Cataclysm.DungeonModifierEffects.` 318 performed, 318 succeeded;
+  `Cataclysm.SaveApply.` 13 performed, 13 succeeded -- each group with every one of its declared tests
+  reported.
+- **The Python suite of record**, on ccc956e4, whose tree is the head's: 5,484 passed and 8 skipped of 5,492,
+  0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **A destroyed vein never grows back** (`if (false && Effects::InfestedVeinRegrowIsDue(...))`), on the prefix
+  `Cataclysm.DungeonModifierEffects.AnInfestedVeinsGround`. With the break in, 1 failed, on "three veins stand
+  again" (2, not 3) alone.
+- **The guardians at every vein past the threshold** (the `!bGuardiansCame` half removed), on the prefix
+  `Cataclysm.DungeonModifierEffects.TheThirdInfestedVein`. With the break in, 1 failed, on "and still only the
+  two guardians" (4, not 2) alone.
+- **Every floor cell beside a wall** (`return true || ...` in `InfestedVeinsCellIsBesideAWall`), on the prefix
+  `Cataclysm.DungeonModifierEffects.AnInfestedVeinStandsOnly`. With the break in, 1 failed, on "the room's
+  middle, floor on all four sides, is not beside a wall" and "nor is the room's left middle, whose left
+  neighbour was cut". Chosen over a break in the picker, which would miss whenever all three random veins
+  happened to land beside a wall anyway.
 
 ---
 
