@@ -83,6 +83,13 @@ correction in the entry "A dodge, a full resource, a movement ability or a block
 next skill or attack spends as increased damage". Both entries recorded that breaking either cap
 alone changes nothing a stat can show.
 
+**It runs on all seven own-stack row tests as well as the two new ones.** Both earlier proofs ran on
+the seven, each breaking one cap. With both caps broken, each of the seven is predicted to fail
+"more events than its cap hold its cap" and "just inside its window, still its cap", once per stat
+it checks: 20 assertions. **On the melee row the cap first shows at the tenth hit, not the ninth.**
+Hit N reads N-1, so the ninth hit reads 8 without any cap. The ruling said "the ninth consecutive
+hit reads 8", taken from my proposal, and was corrected before the run.
+
 ### THE TESTS
 
 - **The count, on the engine:** melee hits on one enemy count up to a cap of three. A spell, a blow
