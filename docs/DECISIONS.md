@@ -67,8 +67,13 @@ value:**
   So "Harbinger" is the first part of the existing line under a creature's health bar, beside "Armor
   -N%" and "Slowed -N%".
 
-One judgement was made in the build and is stated here: **only creatures on the Harbinger's own side are
-weakened**, so a creature the player has taken is not.
+One judgement was made in the build, and the coordinating session approved it under the owner's
+delegation: **only creatures on the Harbinger's own side are weakened** (`IsFriendlyTo` the floor's
+hazard source). A creature the player has taken is on the player's side, and "weakens nearby
+enemies" means the player's enemies.
+
+**A known limit: a patch's damage is fixed when it is laid**, at 1% of the player's maximum health at
+that moment, so a later change to maximum health reaches only the patches laid after it.
 
 ### The research: monsters that leave damaging ground where they walk
 
