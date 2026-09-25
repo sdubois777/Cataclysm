@@ -316,3 +316,7 @@ Negative_Each_kill_reduces_your_damage_by_2_4_for_5_sec#1,Negative_Each_kill_red
 Negative_Each_kill_reduces_your_damage_by_2_4_for_5_sec#2,Negative_Each_kill_reduces_your_damage_by_2_4_for_5_sec,spell_damage,increased,-2.0,-4.0,,,0.0,own_stacks,1.0,,kill,,5,5.0,0.0
 Negative_Each_skill_use_reduces_your_armor_by_1_2_for_3#1,Negative_Each_skill_use_reduces_your_armor_by_1_2_for_3,armor,increased,-1.0,-2.0,,,0.0,own_stacks,1.0,,skill_use,,10,3.0,0.0
 Negative_Each_spell_cast_reduces_your_armor_by_2_4_for#1,Negative_Each_spell_cast_reduces_your_armor_by_2_4_for,armor,increased,-2.0,-4.0,,,0.0,own_stacks,1.0,,spell,,5,3.0,0.0
+Positive_When_you_dodge_an_attack_your_next_skill_deals_3#1,Positive_When_you_dodge_an_attack_your_next_skill_deals_3,,,30.0,60.0,,,0.0,,0.0,next_skill_damage,dodge,,1,0.0,0.0
+Positive_When_your_class_resource_is_full_your_next_skil#1,Positive_When_your_class_resource_is_full_your_next_skil,,,30.0,60.0,,,0.0,,0.0,next_skill_damage,resource_full,,1,0.0,0.0
+Positive_After_using_your_movement_ability_your_next_atta#1,Positive_After_using_your_movement_ability_your_next_atta,,,30.0,60.0,,,0.0,,0.0,next_attack_damage,movement_skill,,1,0.0,0.0
+Positive_Each_successful_block_increases_your_next_attack#1,Positive_Each_successful_block_increases_your_next_attack,,,10.0,20.0,,,0.0,,0.0,next_attack_damage,block,,5,0.0,0.0

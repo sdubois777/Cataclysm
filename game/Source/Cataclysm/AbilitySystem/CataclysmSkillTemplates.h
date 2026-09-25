@@ -1357,6 +1357,17 @@ class CATACLYSM_API UCataclysmSummonSkill : public UCataclysmSkillTemplate
 public:
 	virtual ECataclysmSkillShape Shape() const override { return ECataclysmSkillShape::Summon; }
 
+	/**
+	 * GROUND ALONE, because this shape's damage figure is its creature's and
+	 * reaches a target through the creature's own blows, which do not carry
+	 * this use's delivery. A charge spent on it would be lost. Issue #1833,
+	 * phase 2, ruled 2026-09-24.
+	 */
+	virtual bool DeliversDamageItself() const override
+	{
+		return Params.GroundPercent > 0.0f;
+	}
+
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 								 const FGameplayAbilityActorInfo* ActorInfo,
 								 const FGameplayAbilityActivationInfo ActivationInfo,
@@ -1514,6 +1525,17 @@ public:
 		return ECataclysmSkillShape::Deployable;
 	}
 
+	/**
+	 * GROUND ALONE, because this shape's damage figure is its creature's and
+	 * reaches a target through the creature's own blows, which do not carry
+	 * this use's delivery. A charge spent on it would be lost. Issue #1833,
+	 * phase 2, ruled 2026-09-24.
+	 */
+	virtual bool DeliversDamageItself() const override
+	{
+		return Params.GroundPercent > 0.0f;
+	}
+
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 								 const FGameplayAbilityActorInfo* ActorInfo,
 								 const FGameplayAbilityActivationInfo ActivationInfo,
@@ -1559,6 +1581,15 @@ public:
 	UCataclysmAuraSkill();
 
 	virtual ECataclysmSkillShape Shape() const override { return ECataclysmSkillShape::Aura; }
+
+	/**
+	 * NEVER, ruled 2026-09-24 under the owner's delegation. An aura's damage
+	 * is a pulse repeated for as long as one activation runs: ongoing damage,
+	 * the kind the owner kept out of "increased damage" on 2026-08-25, with no
+	 * single "next" moment to spend a charge on. A judgement with no genre
+	 * source. Issue #1833, phase 2.
+	 */
+	virtual bool DeliversDamageItself() const override { return false; }
 
 	virtual void ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 								 const FGameplayAbilityActorInfo* ActorInfo,

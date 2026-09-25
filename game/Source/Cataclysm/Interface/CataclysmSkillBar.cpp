@@ -276,6 +276,32 @@ bool UCataclysmSkillBar::EverySkillIsLocked(const TArray<FCataclysmSkillBarSlot>
 	return Holding > 0;
 }
 
+FString UCataclysmSkillBar::NextUseLine(float SkillPercent, int32 SkillCount,
+									   float AttackPercent, int32 AttackCount)
+{
+	const auto Entry = [](const TCHAR* Kind, float Percent, int32 Count)
+	{
+		FString Text = FString::Printf(TEXT("Next %s +%d%%"), Kind,
+									   FMath::RoundToInt(Percent));
+		if (Count > 1)
+		{
+			Text += FString::Printf(TEXT(" (%d)"), Count);
+		}
+		return Text;
+	};
+
+	TArray<FString> Entries;
+	if (SkillCount > 0)
+	{
+		Entries.Add(Entry(TEXT("skill"), SkillPercent, SkillCount));
+	}
+	if (AttackCount > 0)
+	{
+		Entries.Add(Entry(TEXT("attack"), AttackPercent, AttackCount));
+	}
+	return FString::Join(Entries, TEXT("   "));
+}
+
 FString UCataclysmSkillBar::LockedNotice()
 {
 	// BASIC ATTACKS ARE NAMED BECAUSE THEY STILL WORK. The bar draws no box for

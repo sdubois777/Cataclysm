@@ -277,6 +277,15 @@ ACataclysmProjectile* ACataclysmProjectile::Fire(
 	Projectile->CritChancePercent = InCritChancePercent;
 	Projectile->SkillHealthCostPercent = InSkillHealthCostPercent;
 	Projectile->FiringSkill = InFiringSkill;
+
+	// AND WHAT THAT USE SPENT FROM NEXT-USE CHARGES, copied now for the reason
+	// the figures above are: the next use writes the skill's own copy before
+	// this one lands. Issue #1833, phase 2.
+	if (const UCataclysmSkillTemplate* Firing =
+			Cast<const UCataclysmSkillTemplate>(InFiringSkill))
+	{
+		Projectile->SpentIncreasePercent = Firing->LastNextUseIncreasePercent;
+	}
 	Projectile->bBurns = bInBurns;
 
 	// LAST, AND THE ORDER MATTERS. The effect reads BodyRadiusCm for its size
@@ -609,6 +618,9 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 
 	// AND THE SKILL THAT FIRED IT, kept since it was fired. Issue #41, slice 4.
 	Delivery.Skill = FiringSkill;
+
+	// AND WHAT ITS USE SPENT FROM NEXT-USE CHARGES. Issue #1833, phase 2.
+	Delivery.IncreasedDamageSpentPercent = SpentIncreasePercent;
 
 	// WHICH SIDE THE FIRER IS ON, asked before the hit for the reason
 	// `UCataclysmSkillTemplate::HitTargets` gives: the hit can move what it

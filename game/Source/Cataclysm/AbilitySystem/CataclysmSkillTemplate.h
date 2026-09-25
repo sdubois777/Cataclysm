@@ -7,6 +7,8 @@
 #include "AbilitySystem/CataclysmSkillShape.h"
 #include "CataclysmSkillTemplate.generated.h"
 
+class UCataclysmAbilitySystemComponent;
+
 class ACataclysmGroundZone;
 class ACataclysmTerrain;
 
@@ -210,6 +212,53 @@ public:
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
 	float LastMetresMovedBeforeUse = -1.0f;
+
+	/**
+	 * The next-use charges the last use spent, as increased damage. Issue #1833,
+	 * phase 2: "your next skill deals 30%-60% increased damage".
+	 *
+	 * SPENT WHEN THE USE IS PAID FOR, AND CARRIED BY EVERYTHING THAT USE DEALS
+	 * ITSELF: its hits, the projectiles it fires and the ground it leaves. Ruled
+	 * 2026-09-24, after this project's Headlong rule, which measures its attack
+	 * the same way. NOT ITS DAMAGE OVER TIME: "increased damage" in this game is
+	 * attack and spell damage, the owner's decision of 2026-08-25.
+	 *
+	 * IT OUTLIVES THE CAST, for the reason `LastMetresMovedBeforeUse` gives; each
+	 * use writes it, a use that spent nothing writing nought.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	float LastNextUseIncreasePercent = 0.0f;
+
+	/**
+	 * Whether a use of this skill delivers damage itself, through its own hits
+	 * or ground, and so spends next-use charges. Issue #1833, phase 2.
+	 *
+	 * A CHECK ON WHAT THE USE DOES, NOT A LIST OF NAMES, ruled 2026-09-24. Here:
+	 * a figure of damage or of ground above nought. Summons and deployables
+	 * count ground alone, because their damage figure is their creature's; an
+	 * aura never spends, because its damage is a pulse repeated for as long as
+	 * it runs.
+	 */
+	virtual bool DeliversDamageItself() const;
+
+	/**
+	 * Spend the charges this use takes from the character, record what they
+	 * were worth in `LastNextUseIncreasePercent`, and answer it. Nought, and
+	 * nothing spent, for a use that does not deliver damage itself. Issue #1833,
+	 * phase 2. `CommitAndBegin` calls it once per paid use.
+	 */
+	float SpendHeldNextUseCharges(UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * What a figure built on the weapon damage attribute is multiplied by to
+	 * carry `LastNextUseIncreasePercent`. Issue #1833, phase 2.
+	 *
+	 * ADDED TO THE INCREASES THE ATTRIBUTE ALREADY FOLDED, not multiplied on top:
+	 * (1 + folded + spent) / (1 + folded). Increases are a sum, the reason
+	 * Fervour's bought damage joins the sum in `ApplyHit`. One when nothing was
+	 * spent. The ground this use leaves is priced with it.
+	 */
+	float WithSpentIncrease(const UAbilitySystemComponent* AbilitySystem) const;
 
 	/**
 	 * The targets that evaded the last set of blows this skill sent.

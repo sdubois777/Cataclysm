@@ -4560,6 +4560,21 @@ POOL_ACTIONS = (
     "class_resource",
 )
 
+#: The actions that grant a charge the next use spends, rather than moving a
+#: pool. Issue #1833, phase 2: "When you dodge an attack your next skill
+#: deals 30%-60% increased damage". The row's value is what one charge is
+#: worth as increased damage, Scale Max Steps is how many it holds, and the
+#: Action Event grants one.
+#:
+#: "SKILL" AGAINST "ATTACK", ruled 2026-09-24: any use that delivers damage
+#: spends a skill charge, and a skill tagged `Type.Spell` does not spend an
+#: attack charge. `UCataclysmAbilitySystemComponent::NextSkillDamageAction`
+#: and `NextAttackDamageAction` hold the same two names.
+NEXT_USE_ACTIONS = (
+    "next_skill_damage",
+    "next_attack_damage",
+)
+
 #: What a percentage on an action row is a percentage OF.
 #:
 #: "Restore 5% of your maximum HP" and "drain 3% of your current HP" are both
@@ -4643,11 +4658,16 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
     moment an action fires; the change that added the five clockless events
     judges it there, so "killing an enemy while below 30% HP" can be written.
     """
+    if action in NEXT_USE_ACTIONS:
+        _check_next_use_action(index, who, action, event, fraction_of, kind,
+                               raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
             f"which is not one the game has. Known: "
-            f"{', '.join(POOL_ACTIONS)}.")
+            f"{', '.join(POOL_ACTIONS)}; or a next-use charge, "
+            f"{', '.join(NEXT_USE_ACTIONS)}.")
 
     known = action_events()
     if not event:
@@ -4686,6 +4706,38 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"the scale {written!r}. A scale sizes a stat's modifier and an "
             f"action has no stat, so it would be dropped without anything "
             f"saying so.")
+
+def _check_next_use_action(index: int, who: str, action: str, event: str,
+                           fraction_of: str, kind: str, raw,
+                           headers: dict[str, int]) -> None:
+    """Everything a next-use row must say, and everything it must not.
+
+    Issue #1833, phase 2. AN EVENT IS REQUIRED, because a charge is granted AT
+    something; the cap is checked where Scale Max Steps is read. A fraction,
+    a value kind and a scale each mean nothing here, so each is refused rather
+    than dropped.
+    """
+    known = action_events()
+    if not event:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} grants a {action} "
+            f"charge and names no event to grant it on. Known: "
+            f"{', '.join(sorted(known))}.")
+    if event not in known:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} grants a {action} "
+            f"charge on the event {event!r}, which the game does not "
+            f"record. Known: {', '.join(sorted(known))}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} grants a {action} "
+                f"charge and states {column} {written!r}. A charge is worth "
+                f"its value as increased damage and nothing else, so the "
+                f"column must be empty.")
+
 
 def _condition_and_scale(raw, headers: dict[str, int], sheet: str, index: int,
                          who: str) -> tuple[str, float, str, float]:
@@ -4857,7 +4909,8 @@ def enchantment_effects(book) -> list[dict]:
         if action:
             _check_pool_action(index, name, action, action_event, fraction_of,
                                kind, raw, headers)
-            fraction_of = fraction_of or FRACTION_BASES[0]
+            if action not in NEXT_USE_ACTIONS:
+                fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
 
@@ -4907,7 +4960,7 @@ def enchantment_effects(book) -> list[dict]:
         scale_max_steps = 0
         if cap_text:
             cap = number(cap_text, "Scale Max Steps", index)
-            if not scale:
+            if not scale and action not in NEXT_USE_ACTIONS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} has a cap of "
                     f"{cap:g} steps and no scale. A cap limits how many steps "
@@ -4918,6 +4971,23 @@ def enchantment_effects(book) -> list[dict]:
                     f"{cap:g} steps. A cap is a whole number of steps from 1 "
                     f"to {MAX_SCALE_STEPS}; leave the column empty for none.")
             scale_max_steps = int(cap)
+
+        # A NEXT-USE ROW STATES HOW MANY CHARGES IT HOLDS. Issue #1833, phase
+        # 2: one for a sentence stating no stacking, five for "stacking up to
+        # 5 times". Required rather than defaulted, so the one judgement a row
+        # makes is written in the sheet.
+        if action in NEXT_USE_ACTIONS:
+            if scale_max_steps < 1:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} grants a "
+                    f"{action} charge and states no Scale Max Steps. It is "
+                    f"how many charges the row holds: 1 when the sentence "
+                    f"states no stacking.")
+            if low <= 0 or high <= 0:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} grants a "
+                    f"{action} charge worth {low:g} to {high:g}. A charge is "
+                    f"increased damage, so both ends are above nought.")
 
         # A ROW'S OWN STACKS. Issue #1833, ruled 2026-09-23: the row's Action
         # Event grants a stack, Stack Seconds is how long they last and Scale
@@ -5005,6 +5075,21 @@ def enchantment_effects(book) -> list[dict]:
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A
     # DOUBLE HELPING, unless the two are conditioned or scaled differently. The
     # rule and its reasons are the ones `passive_effects` states for a node.
+    # ONE NEXT-USE ROW PER ENCHANTMENT AND ACTION, because the game keys a
+    # row's held charges by exactly that pair. Issue #1833, phase 2.
+    next_use: dict[tuple, int] = {}
+    for row in out:
+        if row["Action"] in NEXT_USE_ACTIONS:
+            pair = (row["Enchantment"], row["Action"])
+            next_use[pair] = next_use.get(pair, 0) + 1
+    doubled = sorted(pair for pair, count in next_use.items() if count > 1)
+    if doubled:
+        raise DataError(
+            f"the Enchantment Effects sheet gives one enchantment two rows of "
+            f"the same next-use action: "
+            f"{', '.join(f'{e} {a}' for e, a in doubled)}. The game keeps "
+            f"one count of charges per enchantment and action.")
+
     pairs: dict[tuple, int] = {}
     for row in out:
         # THE ACTION COLUMNS ARE PART OF THE KEY, so one enchantment may both

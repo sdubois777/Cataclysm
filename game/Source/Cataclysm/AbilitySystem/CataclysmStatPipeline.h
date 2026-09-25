@@ -3314,6 +3314,34 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** The most stacks the row holds. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	int32 StackCap = 0;
+
+	/**
+	 * Set, this action GRANTS A CHARGE THE NEXT USE SPENDS instead of moving a
+	 * pool. Issue #1833, phase 2: "When you dodge an attack your next skill deals
+	 * 30%-60% increased damage". `Percent` is what one charge is worth, as
+	 * increased damage, and `Pool` is not read.
+	 *
+	 * ONLY AN EVENT THAT LANDED GRANTS ONE, the rule a row's own stacks follow.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName NextUseKey;
+
+	/**
+	 * The most charges the row holds. One for a sentence stating no stacking,
+	 * so a second trigger while one is unspent changes nothing (ruled
+	 * 2026-09-24, a judgement with no genre source); five for "stacking up to 5
+	 * times".
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 NextUseCap = 0;
+
+	/**
+	 * True for "your next ATTACK", which a skill tagged `Type.Spell` does not
+	 * spend; false for "your next SKILL", which any use that delivers damage
+	 * spends. Ruled 2026-09-24.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextUseIsAttack = false;
 };
 
 /**

@@ -591,7 +591,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// AND 307 SINCE THE MELEE-WHILE-MOVING DRAWBACK, issue #1686, from 306.
 	//
 	// AND 317 SINCE THE OWN-STACK ENCHANTMENTS, issue #1833, from 307.
-	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    317)
+	//
+	// AND 321 SINCE THE NEXT-USE CHARGES, issue #1833, from 317.
+	CHECK_TABLE(FCataclysmEnchantmentEffectRow, "EnchantmentEffects.csv",    321)
 
 	// ONE ROW PER WEAPON BASE, AND THE COUNT IS THE POINT OF PINNING IT.
 	// Issue #1125. The design has fourteen weapon bases and every one of them

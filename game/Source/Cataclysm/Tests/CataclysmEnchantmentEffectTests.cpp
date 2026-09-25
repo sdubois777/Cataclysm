@@ -5199,4 +5199,113 @@ bool FCataclysmSpellArmourStackRowTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmNextUseRowTest
+{
+	/**
+	 * Wear one of the four next-use enchantments on a helm, fire its event
+	 * `Events` times, and read what the held charges are worth by kind. A worn
+	 * item rolls the top of its range. Issue #1833, phase 2.
+	 */
+	void Check(FAutomationTestBase& Test, const TCHAR* Enchantment,
+			   const TCHAR* Event, int32 Events, bool bAttack,
+			   float ExpectPercent, int32 ExpectCount)
+	{
+		using namespace CataclysmEnchantmentEffectTest;
+
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FWearer Wearer(World);
+		UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+
+		FCataclysmItem Removed;
+		FCataclysmItem AlsoRemoved;
+		ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+		Wearer.Equipment->Equip(
+			Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect),
+			Removed, AlsoRemoved, Slot);
+		Wearer.Equipment->RefreshAttributes(ASC);
+
+		for (int32 Fired = 0; Fired < Events; ++Fired)
+		{
+			ASC->ActOnEvent(FName(Event));
+		}
+
+		float SkillPercent = 0.0f;
+		float AttackPercent = 0.0f;
+		int32 SkillCount = 0;
+		int32 AttackCount = 0;
+		ASC->NextUseChargesByKind(SkillPercent, SkillCount, AttackPercent, AttackCount);
+
+		Test.TestEqual(FString::Printf(TEXT("%d '%s' events: the charges are worth %.0f%%"),
+								   Events, Event, ExpectPercent),
+			bAttack ? AttackPercent : SkillPercent, ExpectPercent, 0.01f);
+		Test.TestEqual(FString::Printf(TEXT("and %d are held"), ExpectCount),
+			bAttack ? AttackCount : SkillCount, ExpectCount);
+		Test.TestEqual(TEXT("and none of the other kind"),
+			bAttack ? SkillCount : AttackCount, 0);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDodgeNextSkillRowTest,
+	"Cataclysm.Enchantments.TheDodgeRowHoldsOneNextSkillChargeOf60",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "When you dodge an attack your next skill deals 30%-60% increased damage":
+ *  two dodges hold one charge, ruled 2026-09-24. Issue #1833, phase 2. */
+bool FCataclysmDodgeNextSkillRowTest::RunTest(const FString&)
+{
+	CataclysmNextUseRowTest::Check(*this,
+		TEXT("Positive_When_you_dodge_an_attack_your_next_skill_deals_3"),
+		TEXT("dodge"), 2, /*bAttack=*/false, 60.0f, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFullResourceNextSkillRowTest,
+	"Cataclysm.Enchantments.TheFullResourceRowHoldsOneNextSkillChargeOf60",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "When your class resource is full, your next skill deals 30%-60% increased
+ *  damage", on the moment it becomes full. Issue #1833, phase 2. */
+bool FCataclysmFullResourceNextSkillRowTest::RunTest(const FString&)
+{
+	CataclysmNextUseRowTest::Check(*this,
+		TEXT("Positive_When_your_class_resource_is_full_your_next_skil"),
+		TEXT("resource_full"), 1, /*bAttack=*/false, 60.0f, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMovementNextAttackRowTest,
+	"Cataclysm.Enchantments.TheMovementRowHoldsOneNextAttackChargeOf60",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "After using your movement ability your next attack deals 30%-60% increased
+ *  damage". Issue #1833, phase 2. */
+bool FCataclysmMovementNextAttackRowTest::RunTest(const FString&)
+{
+	CataclysmNextUseRowTest::Check(*this,
+		TEXT("Positive_After_using_your_movement_ability_your_next_atta"),
+		TEXT("movement_skill"), 1, /*bAttack=*/true, 60.0f, 1);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmBlockNextAttackRowTest,
+	"Cataclysm.Enchantments.TheBlockRowStacksNextAttackChargesOf20UpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Each successful block increases your next attack's damage by 10%-20%,
+ *  stacking up to 5 times": six blocks hold five, worth 100. Issue #1833,
+ *  phase 2. */
+bool FCataclysmBlockNextAttackRowTest::RunTest(const FString&)
+{
+	CataclysmNextUseRowTest::Check(*this,
+		TEXT("Positive_Each_successful_block_increases_your_next_attack"),
+		TEXT("block"), 6, /*bAttack=*/true, 100.0f, 5);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

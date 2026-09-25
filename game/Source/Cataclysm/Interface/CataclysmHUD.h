@@ -363,6 +363,12 @@ private:
 	static constexpr float SkillBarLockedNoticeGapPx = 22.0f;
 	static constexpr float SkillBarLockedNoticeScale = 1.4f;
 
+	/**
+	 * The next-use line, one notice's gap above the bar, or two when the
+	 * locked notice is drawn there too. Issue #1833, phase 2.
+	 */
+	static constexpr float SkillBarNextUseScale = 1.1f;
+
 public:
 	/**
 	 * What every piece of text this draws is scaled by, on top of its own size.

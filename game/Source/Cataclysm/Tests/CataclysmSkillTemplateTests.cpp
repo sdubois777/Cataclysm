@@ -61,7 +61,9 @@
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Engine/World.h"
+#include "AbilitySystemComponent.h"
 #include "EngineUtils.h"
+#include "GameplayEffect.h"
 #include "GameplayTagsManager.h"
 #include "GameFramework/Actor.h"
 // For the test that the bar, the check and the payment agree on a skill's cost.
@@ -17324,6 +17326,379 @@ bool FCataclysmZoneNoSkillFirstSweepTest::RunTest(const FString&)
 		TestEqual(TEXT("and the first deals the same as the second"),
 			FirstSweep, SecondSweep, 0.001f);
 	}
+	return true;
+}
+
+namespace CataclysmNextUseTest
+{
+	using namespace CataclysmSkillTest;
+
+	const FName SkillCharge(TEXT("Test:next_skill_damage"));
+	const FName AttackCharge(TEXT("Test:next_attack_damage"));
+
+	/**
+	 * What one tick of the burn running on Who deals, read off the running
+	 * effect's modifier, or -1 when none runs.
+	 */
+	float BurnPerTickOn(const FScopedFighter& Who)
+	{
+		const FGameplayEffectQuery Burning =
+			FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(
+				FGameplayTagContainer(UCataclysmSkillEffects::BurnTag()));
+		for (const FActiveGameplayEffectHandle& Handle :
+			 Who.AbilitySystem->GetActiveEffects(Burning))
+		{
+			const FActiveGameplayEffect* Running =
+				Who.AbilitySystem->GetActiveGameplayEffect(Handle);
+			float PerTick = -1.0f;
+			if (Running && Running->Spec.Def && Running->Spec.Def->Modifiers.Num() > 0
+				&& Running->Spec.Def->Modifiers[0].ModifierMagnitude
+					   .GetStaticMagnitudeIfPossible(1.0f, PerTick))
+			{
+				return PerTick;
+			}
+		}
+		return -1.0f;
+	}
+
+	/** One "next skill" charge worth 60% increased damage, held by Who. */
+	void HoldASkillCharge(FScopedFighter& Who)
+	{
+		Who.AbilitySystem->GrantNextUseCharge(SkillCharge, /*bAttack=*/false,
+											  60.0f, /*Cap=*/1);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseEveryTargetTest,
+	"Cataclysm.Skills.OneUseCarriesItsSpentChargeToEveryTargetItHits",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A held "next skill" charge of 60% is spent when the strike is paid for, and
+ * every enemy the strike hits takes the Heavy slot's 250 with 60% more added
+ * to its increases: 400. Issue #1833, phase 2, ruled 2026-09-24: spent per use,
+ * not per hit. The charge is gone afterwards.
+ */
+bool FCataclysmNextUseEveryTargetTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Ahead(World, FVector(2 * M, 0, 0));
+	FScopedFighter Behind(World, FVector(-2 * M, 0, 0));
+	FScopedFighter OutOfReach(World, FVector(9 * M, 0, 0));
+	HoldASkillCharge(Caster);
+
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360; Burn=1"));
+	if (!Strike)
+	{
+		AddError(TEXT("Could not grant the strike."));
+		return false;
+	}
+
+	const float AheadBefore = Ahead.Health();
+	const float BehindBefore = Behind.Health();
+	TestTrue(TEXT("it activates"), Activate(Caster, Strike));
+
+	const float Expected = WeaponDamage * 250.0f / 100.0f * 1.6f;
+	TestEqual(TEXT("the enemy ahead takes 250 with 60% added: 400"),
+		AheadBefore - Ahead.Health(), Expected, 0.01f);
+	TestEqual(TEXT("and so does the enemy behind: one use, one charge, both targets"),
+		BehindBefore - Behind.Health(), Expected, 0.01f);
+	TestEqual(TEXT("the strike recorded the 60% it spent"),
+		Strike->LastNextUseIncreasePercent, 60.0f, 0.01f);
+	TestEqual(TEXT("and the charge is gone"),
+		Caster.AbilitySystem->NextUseChargesHeld(SkillCharge), 0);
+
+	// NOT ITS DAMAGE OVER TIME, the owner's decision of 2026-08-25:
+	// "increased damage" is attack and spell damage. The burn the charged
+	// strike left ticks for what a burn the same caster applies with nothing
+	// spent ticks for.
+	UCataclysmSkillEffects::ApplyBurn(Caster.Actor, OutOfReach.Actor,
+		/*HitDamage=*/0.0f, /*bScalesWithInstigator=*/true, /*bBurnIsDesigned=*/true);
+	// ONE ASSERTION, AND IT CAN FAIL BOTH WAYS: a burn that is missing reads -1
+	// on both sides, which is refused here rather than read as equal.
+	const float Charged = BurnPerTickOn(Ahead);
+	const float Plain = BurnPerTickOn(OutOfReach);
+	TestTrue(FString::Printf(
+			TEXT("the burn the charged strike left ticks at the plain figure: "
+				 "%.3f against %.3f"), Charged, Plain),
+		Plain > 0.0f && FMath::IsNearlyEqual(Charged, Plain, 0.001f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseProjectileTest,
+	"Cataclysm.Skills.AProjectileCarriesTheChargeItsFiringUseSpent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A shot fired by a use that spent 60% deals its 100 with 60% added: 160. The
+ * figure is COPIED WHEN IT IS FIRED: the skill's own copy is set back to nought
+ * while the shot is in the air, as the next use would, and the shot still
+ * carries 60%. Issue #1833, phase 2.
+ */
+bool FCataclysmNextUseProjectileTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmProjectileTest;
+
+	const CataclysmTestWorld::FScopedCritRoll NeverCrits(100.0f);
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Target(World, FVector(4 * M, 0, 0));
+
+	UCataclysmProjectileSkill* Thrower = GrantSkill<UCataclysmProjectileSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Speed=2000; Radius=1"));
+	if (!Thrower)
+	{
+		AddError(TEXT("Could not grant the projectile skill."));
+		return false;
+	}
+	Thrower->LastNextUseIncreasePercent = 60.0f;
+
+	ACataclysmProjectile* Shot = ACataclysmProjectile::Fire(
+		Caster.Actor, FVector::ZeroVector, FVector(9 * M, 0, 0),
+		/*InRadiusCm=*/100.0f, /*InSpeed=*/2000.0f, /*InPierce=*/0,
+		/*bInReturns=*/false, /*InDamagePercent=*/100.0f,
+		FGameplayTagContainer(), /*bInBurns=*/false, /*InBodyMesh=*/nullptr,
+		/*InFlightSeconds=*/0.0f, /*InCritChancePercent=*/-1.0f,
+		/*InSkillHealthCostPercent=*/-1.0f, /*InFiringSkill=*/Thrower);
+	if (!TestNotNull(TEXT("the shot was fired"), Shot))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { if (IsValid(Shot)) { Shot->Destroy(); } };
+
+	TestEqual(TEXT("the shot copied the 60% its use spent"),
+		Shot->SpentIncreasePercent, 60.0f, 0.01f);
+	Thrower->LastNextUseIncreasePercent = 0.0f;
+
+	const float Before = Target.Health();
+	FlyToCompletion(Shot);
+	TestEqual(TEXT("and it lands 100 with 60% added: 160"),
+		Before - Target.Health(), WeaponDamage * 1.6f, 0.01f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseGroundTest,
+	"Cataclysm.Skills.TheGroundAUseLeavesCarriesTheChargeItSpent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A blink that leaves ground, used with a 60% charge held, leaves ground whose
+ * tick is 1.6 times the same blink's used with none. The fighter's weapon damage
+ * carries no folded increases, so (1 + 0 + 0.6) / (1 + 0) is 1.6. Issue #1833,
+ * phase 2.
+ */
+bool FCataclysmNextUseGroundTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	const auto TickOf = [this](bool bHolds) -> float
+	{
+		UWorld* World = MakeWorld();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		FScopedFighter Caster(World, FVector::ZeroVector);
+		if (bHolds)
+		{
+			HoldASkillCharge(Caster);
+		}
+
+		UCataclysmMovementSkill* Slip = GrantSkill<UCataclysmMovementSkill>(
+			Caster, ECataclysmAbilitySlot::Movement,
+			TEXT("Mode=Blink; Range=8; Radius=3.5; GroundRadius=3.5; "
+				 "GroundDuration=6; GroundPercent=16.7"),
+			TEXT("A blink leaving ground"),
+			TEXT("Item.Weapon.Wand, Element.Demonic, Type.AOE.Persistent"));
+		if (!Slip || !Activate(Caster, Slip))
+		{
+			return -1.0f;
+		}
+		for (TActorIterator<ACataclysmGroundZone> It(World); It; ++It)
+		{
+			return It->DamagePerTick;
+		}
+		return -1.0f;
+	};
+
+	const float Plain = TickOf(false);
+	const float Held = TickOf(true);
+	if (!TestTrue(TEXT("both blinks left ground that deals something"),
+				  Plain > 0.0f && Held > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the ground left by the use that spent 60% ticks 1.6 times as hard"),
+		Held / Plain, 1.6f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseNotSpentTest,
+	"Cataclysm.Skills.AnAuraASummonADeployableAndASupportUseLeaveAHeldChargeUnspent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Only a use that delivers damage itself spends a charge, ruled 2026-09-24.
+ * An aura never does (its damage is a pulse repeated for as long as it runs).
+ * A summon and a deployable leave no ground here, and their damage is their
+ * creature's. A Support-slot strike's figure is the slot's nought. Each leaves
+ * the charge where it was, and a Heavy strike then spends it. Issue #1833,
+ * phase 2.
+ */
+bool FCataclysmNextUseNotSpentTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	HoldASkillCharge(Caster);
+
+	const TArray<TPair<const TCHAR*, UCataclysmSkillTemplate*>> Unspending = {
+		{TEXT("an aura"), GrantSkill<UCataclysmAuraSkill>(
+			Caster, ECataclysmAbilitySlot::Aura, TEXT("Radius=4"))},
+		{TEXT("a summon"), GrantSkill<UCataclysmSummonSkill>(
+			Caster, ECataclysmAbilitySlot::Special, TEXT("Count=1"))},
+		{TEXT("a deployable"), GrantSkill<UCataclysmDeployableSkill>(
+			Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Count=1"))},
+		{TEXT("a Support-slot strike"), GrantSkill<UCataclysmStrikeSkill>(
+			Caster, ECataclysmAbilitySlot::Support, TEXT("Radius=4; Angle=360"))},
+	};
+	for (const TPair<const TCHAR*, UCataclysmSkillTemplate*>& Each : Unspending)
+	{
+		if (!TestNotNull(FString::Printf(TEXT("%s was granted"), Each.Key), Each.Value))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("%s spends nothing"), Each.Key),
+			Each.Value->SpendHeldNextUseCharges(Caster.AbilitySystem), 0.0f, 0.001f);
+		TestEqual(FString::Printf(TEXT("and after %s the charge is still held"), Each.Key),
+			Caster.AbilitySystem->NextUseChargesHeld(SkillCharge), 1);
+	}
+
+	UCataclysmStrikeSkill* Heavy = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"));
+	if (TestNotNull(TEXT("a Heavy strike was granted"), Heavy))
+	{
+		TestEqual(TEXT("and a Heavy strike spends it: 60"),
+			Heavy->SpendHeldNextUseCharges(Caster.AbilitySystem), 60.0f, 0.001f);
+		TestEqual(TEXT("so it is gone"),
+			Caster.AbilitySystem->NextUseChargesHeld(SkillCharge), 0);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseSpellTest,
+	"Cataclysm.Skills.ASpellSpendsASkillChargeAndLeavesAnAttackCharge",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your next attack" is not spent by a skill tagged `Type.Spell`, and "your next
+ * skill" is, ruled 2026-09-24. A spell holding both spends the skill charge's
+ * 60 and leaves the two attack charges of 20; a strike then spends those, 40.
+ * Issue #1833, phase 2.
+ */
+bool FCataclysmNextUseSpellTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	HoldASkillCharge(Caster);
+	Caster.AbilitySystem->GrantNextUseCharge(AttackCharge, /*bAttack=*/true, 20.0f, 5);
+	Caster.AbilitySystem->GrantNextUseCharge(AttackCharge, /*bAttack=*/true, 20.0f, 5);
+
+	UCataclysmStrikeSkill* Spell = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("A spell"), TEXT("Element.Demonic, Type.Spell"));
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"),
+		TEXT("A strike"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("the spell was granted"), Spell)
+		|| !TestNotNull(TEXT("the strike was granted"), Strike))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the spell spends the skill charge alone: 60"),
+		Spell->SpendHeldNextUseCharges(Caster.AbilitySystem), 60.0f, 0.001f);
+	TestEqual(TEXT("and leaves both attack charges"),
+		Caster.AbilitySystem->NextUseChargesHeld(AttackCharge), 2);
+	TestEqual(TEXT("the strike then spends them: 40"),
+		Strike->SpendHeldNextUseCharges(Caster.AbilitySystem), 40.0f, 0.001f);
+	TestEqual(TEXT("and none are left"),
+		Caster.AbilitySystem->NextUseChargesHeld(AttackCharge), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNextUseGrantTest,
+	"Cataclysm.Skills.ANextUseChargeIsGrantedOnItsLandedEventUpToItsCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * A worn action grants a charge on its event, only when the event landed, up
+ * to its cap: one for "your next skill" (a second dodge changes nothing, ruled
+ * 2026-09-24) and five for "stacking up to 5 times". Death clears them all.
+ * Issue #1833, phase 2.
+ */
+bool FCataclysmNextUseGrantTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+
+	FCataclysmPoolAction OnDodge;
+	OnDodge.Event = FName(TEXT("dodge"));
+	OnDodge.Pool = FName(UCataclysmAbilitySystemComponent::NextSkillDamageAction);
+	OnDodge.Percent = 60.0f;
+	OnDodge.NextUseKey = SkillCharge;
+	OnDodge.NextUseCap = 1;
+
+	FCataclysmPoolAction OnBlock;
+	OnBlock.Event = FName(TEXT("block"));
+	OnBlock.Pool = FName(UCataclysmAbilitySystemComponent::NextAttackDamageAction);
+	OnBlock.Percent = 20.0f;
+	OnBlock.NextUseKey = AttackCharge;
+	OnBlock.NextUseCap = 5;
+	OnBlock.bNextUseIsAttack = true;
+
+	Wearer.AbilitySystem->SetPoolActions({OnDodge, OnBlock});
+
+	Wearer.AbilitySystem->ActOnEvent(OnBlock.Event, nullptr, 0.0f, /*bLanded=*/false);
+	TestEqual(TEXT("a block that did not land grants nothing"),
+		Wearer.AbilitySystem->NextUseChargesHeld(AttackCharge), 0);
+
+	Wearer.AbilitySystem->ActOnEvent(OnDodge.Event);
+	Wearer.AbilitySystem->ActOnEvent(OnDodge.Event);
+	TestEqual(TEXT("two dodges hold the one charge a cap of one allows"),
+		Wearer.AbilitySystem->NextUseChargesHeld(SkillCharge), 1);
+
+	for (int32 Blocks = 0; Blocks < 6; ++Blocks)
+	{
+		Wearer.AbilitySystem->ActOnEvent(OnBlock.Event);
+	}
+	TestEqual(TEXT("six blocks hold five"),
+		Wearer.AbilitySystem->NextUseChargesHeld(AttackCharge), 5);
+
+	Wearer.AbilitySystem->ClearWhatDeathEnds();
+	TestEqual(TEXT("death clears the skill charge"),
+		Wearer.AbilitySystem->NextUseChargesHeld(SkillCharge), 0);
+	TestEqual(TEXT("and the attack charges"),
+		Wearer.AbilitySystem->NextUseChargesHeld(AttackCharge), 0);
 	return true;
 }
 

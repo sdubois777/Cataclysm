@@ -787,8 +787,12 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// costs 2 Fervour and deals +3% increased damage per point." Paid once for
 	// the whole attack before its first blow, so every blow of that attack
 	// carries the same figure; zero for every other blow in the game.
+	//
+	// AND WHAT THE USE SPENT FROM NEXT-USE CHARGES, into the same sum for the same
+	// reason. Issue #1833, phase 2.
 	const float Bought =
-		FMath::Max(0.0f, Delivery.IncreasedDamageBoughtPercent) / 100.0f;
+		(FMath::Max(0.0f, Delivery.IncreasedDamageBoughtPercent)
+		 + FMath::Max(0.0f, Delivery.IncreasedDamageSpentPercent)) / 100.0f;
 
 	// AND THE "MORE" MULTIPLIERS ARE WORKED OUT AGAIN AS THE INCREASES ARE.
 	// `MoreForSkill` is 1 for a character whose "more" modifiers on attack
