@@ -137,6 +137,53 @@ file compiled four, and that miss is recorded too.
 - **An event-granted effectiveness charge** is held as effectiveness and not as increased damage.
 - **The display:** the exact words for hits in a row, and a timed stack of the same stats unchanged.
 
+### Run
+
+One editor window on 2026-09-24, local time (03:00 to 03:20 UTC on the 25th), on development
+b941da54 as the base. Every figure below is what `python tools/unreal_build.py`, `pytest` or
+`prove_cpp_guard` printed.
+
+- **The first build, on the code head 455c4f58**: "Build: Succeeded - 29 actions, 26 files compiled".
+  The Python suite on that tree: 5,446 passed, 8 skipped, 0 failed, of 5,454.
+- **The rows**, 95d40ab0. The second build: "Build: Succeeded - 4 actions, 1 file compiled". The
+  Python suite of record: 1 failed, 5,445 passed, 8 skipped, the one failure the check that every
+  CSV still hashes to what its asset was built from. `Cataclysm.Data.` and `Cataclysm.Enchantments.`
+  before the asset was rebuilt: 102 tests performed, 99 succeeded, 3 failed, the asset check and the
+  two new row tests.
+- **The melee test changed to differences**, 589cb1c5, as ruled after that step (the open finding
+  above). Rebuild: "Build: Succeeded - 7 actions, 4 files compiled". **One file was registered; that
+  miss is minor, and recorded.**
+- **The asset**, 7b3c566e: `DT_EnchantmentEffects` rebuilt from 329 rows, up from 325.
+- **The five new tests: 5 performed, 4 succeeded, 1 failed, not as registered.** The drawback test
+  failed on the creatures' health, as recorded above. After the change to ten thousand health,
+  f158d16f ("Build: Succeeded - 4 actions, 1 file compiled"): 5 performed, 5 succeeded, 0 failed,
+  and the melee test printed "the first hit dealt 110.0000 and the second added 11.0000".
+- **The whole suite**, on f158d16f: 2,420 tests performed, 2,420 succeeded, 0 failed; every
+  declared test was reported. No CI run was in progress.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **A hit on another enemy continues the count** (`&& Held.Target.Get() == Target` removed in
+  `GrantConsecutiveHit`), on `HitsInARow` and the two row tests. With the break in: 3 performed, 1
+  succeeded, 2 failed. `HitsInARowCountOnOneEnemyAndStartAgainOnAnother` read 3 for "a landed melee
+  hit on the second enemy: one" and for "a second on it: two", and its display check was false.
+  `TheConsecutiveMeleeRowRaisesDamageOnOneEnemyUpTo8` read 88 against 11 for "and the second on it
+  adds it once". Restored: 3 of 3 succeeded.
+- **The count read on any enemy** (`|| Held->Target.Get() != Target` removed in
+  `ConsecutiveHitsOn`), on the same tests. With the break in: 3 of 3 failed. The first hit on the
+  other enemy read 22 against 110 on the drawback, and 198 against 110 on the melee row. The melee
+  row's "back on the first enemy... plain" read 132. The engine test read 1 against 0 twice.
+  Restored: 3 of 3 succeeded.
+- **Both caps one higher** (`Out.ScaleMaxSteps` and `Stack.StackCap` in `CataclysmItem.cpp`, each
+  `+ 1`), on the two new row tests and the seven own-stack row tests. With the break in: 9 of 9
+  failed, on 25 assertions. The melee row read a count of 9, 99 against 88 for the tenth and the
+  eleventh hits, and its display check was false. The drawback's twelfth hit read 13.2 against 22.
+  **Each own-stack row test failed "more events than its cap hold its cap" and "just inside its
+  window, still its cap" for every stat it checks, 20 assertions**: for example "''attack_damage',
+  more events than its cap hold its cap (other increases 20.00)' to be 1.208333, but it was
+  1.250000". Restored: 9 of 9 succeeded. **That closes the own-stack cap gap the two earlier entries
+  named.**
+
 ---
 
 ## 2026-09-24 — Nothing Wasted, engine only: what armour and damage reduction remove is stored and added to the next melee hit, up to that hit's own damage
