@@ -176,13 +176,14 @@ namespace
 			UCataclysmCombatAttributeSet::GetMinionCapBonusAttribute(),
 			SkillTags);
 
-		// AT LEAST ONE. Nothing can currently take this below the row's figure:
-		// the combat attribute set floors every one of its attributes at zero --
-		// `FervourReserveFor` above carries the measurement -- so this stat is
-		// zero or positive and the sum only ever rises. The floor is kept anyway,
-		// because a cap of zero is read as NO CAP at all by every read site, so
-		// if a future source ever does subtract here, the failure it would cause
-		// is an unlimited army rather than a smaller one.
+		// AT LEAST ONE, AND SOMETHING NOW SUBTRACTS. "Minus 2-4 to your max
+		// minion count" is a negative flat on this stat, issue #1833, and
+		// `StatForSkill` answers the pipeline's figure, which is not floored the
+		// way the combat attribute set floors the attribute -- `FervourReserveFor`
+		// above carries that measurement. So the sum can fall below the row's
+		// figure. A cap of zero is read as NO CAP at all by every read site, so
+		// without this floor a large enough subtraction would be an unlimited
+		// army rather than a smaller one.
 		return FMath::Max(1, Params.MaxActive + FMath::RoundToInt(Bonus));
 	}
 }

@@ -334,3 +334,15 @@ Positive_Each_melee_hit_you_take_reduces_the_attacker_s_d#1,Positive_Each_melee_
 Negative_Every_5th_hit_you_take_deals_50_100_bonus_dama#1,Negative_Every_5th_hit_you_take_deals_50_100_bonus_dama,,,50.0,100.0,,,0.0,,0.0,nth_hit_taken_damage,,,0,0.0,0.0,0.0,5
 Negative_Every_third_cast_of_your_spells_cost_20_80_of#1,Negative_Every_third_cast_of_your_spells_cost_20_80_of,,,20.0,80.0,,,0.0,,0.0,nth_spell_mana_cost,,,0,0.0,0.0,0.0,3
 Negative_Every_10th_attack_deals_no_damage#1,Negative_Every_10th_attack_deals_no_damage,,,100.0,100.0,,,0.0,,0.0,nth_attack_no_damage,,,0,0.0,0.0,0.0,10
+Positive_Regenerate_1_3_of_your_maximum_HP_per_second#1,Positive_Regenerate_1_3_of_your_maximum_HP_per_second,health_regen,flat,1.0,3.0,,,0.0,max_health,100.0,,,,0,0.0,0.0,0.0,0
+Positive_Regenerate_5_10_of_your_maximum_mana_per_secon#1,Positive_Regenerate_5_10_of_your_maximum_mana_per_secon,mana_regen,flat,5.0,10.0,,,0.0,max_mana,100.0,,,,0,0.0,0.0,0.0,0
+Positive_Every_15_seconds_regenerate_10_20_of_your_maxi#1,Positive_Every_15_seconds_regenerate_10_20_of_your_maxi,,,10.0,20.0,,,0.0,,0.0,health,every_seconds,maximum,0,0.0,0.0,15.0,0
+Negative_You_lose_15_of_your_max_hp_every_5_seconds#1,Negative_You_lose_15_of_your_max_hp_every_5_seconds,,,-15.0,-15.0,,,0.0,,0.0,health,every_seconds,maximum,0,0.0,0.0,5.0,0
+Negative_Every_10_seconds_you_lose_5_10_of_your_current#1,Negative_Every_10_seconds_you_lose_5_10_of_your_current,,,-5.0,-10.0,,,0.0,,0.0,health,every_seconds,current,0,0.0,0.0,10.0,0
+Positive_Every_10_seconds_your_movement_speed_is_increase#1,Positive_Every_10_seconds_your_movement_speed_is_increase,movement_speed,increased,30.0,50.0,,,0.0,own_stacks,1.0,,every_seconds,,1,3.0,0.0,10.0,0
+Negative_Every_20_seconds_your_damage_is_halved_for_5_sec#1,Negative_Every_20_seconds_your_damage_is_halved_for_5_sec,attack_damage,more,-50.0,-50.0,,,0.0,own_stacks,1.0,,every_seconds,,1,5.0,0.0,20.0,0
+Negative_Every_20_seconds_your_damage_is_halved_for_5_sec#2,Negative_Every_20_seconds_your_damage_is_halved_for_5_sec,spell_damage,more,-50.0,-50.0,,,0.0,own_stacks,1.0,,every_seconds,,1,5.0,0.0,20.0,0
+Negative_Lose_10_20_armor_when_you_use_a_skill#1,Negative_Lose_10_20_armor_when_you_use_a_skill,armor,increased,-10.0,-20.0,,,0.0,own_stacks,1.0,,skill_use,,1,3.0,0.0,0.0,0
+Negative_Minus_2_4_to_your_max_minion_count#1,Negative_Minus_2_4_to_your_max_minion_count,minion_cap_bonus,flat,-2.0,-4.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Negative_Your_class_resource_decays_twice_as_fast#1,Negative_Your_class_resource_decays_twice_as_fast,fervour_decay_per_second,more,100.0,100.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0
+Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor#1,Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor,max_health,more,-60.0,-40.0,,,0.0,,0.0,,,,0,0.0,0.0,0.0,0

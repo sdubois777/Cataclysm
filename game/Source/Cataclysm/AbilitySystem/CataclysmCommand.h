@@ -298,9 +298,11 @@ public:
 	 * The stat holding how many more minions a skill that states a cap may keep
 	 * active. Issue #1718.
 	 *
-	 * `Ritualist_keystone_b_kA` The Swarm is the only source: "Each skill that
+	 * `Ritualist_keystone_b_kA` The Swarm was the only source: "Each skill that
 	 * limits how many of its minions may be active allows 2 more." Its row is
-	 * flat 2.
+	 * flat 2. Two enchantments now write it too, "Add 2-4 to your maximum
+	 * minion count" and, since issue #1833's rows-only batch, "Minus 2-4 to
+	 * your max minion count", which is the first source to subtract.
 	 *
 	 * IT REACHES ONLY A SKILL WHOSE ROW STATES A CAP. A skill stating none has
 	 * no limit at all, and a bonus added to a cap of zero would give it one it

@@ -4274,6 +4274,27 @@ MAX_SCALE_STEPS = 100
 #: sentences state 2 to 5; the same 60 second sanity bound the clocks use.
 MAX_STACK_SECONDS = 60.0
 
+
+#: Enchantments whose row is the COMPLEMENT of the range their sentence states:
+#: each end of the row is 100 minus the sentence's number at the same place,
+#: with a minus sign. Issue #1833, the rows-only batch, ruled 2026-09-25 under
+#: the owner's delegation.
+#:
+#: "Your maximum HP cannot exceed 40%-60% of its normal value" is max_health
+#: more -60 to -40. The item text and the value are both taken by POSITION in
+#: the range (`UCataclysmItemValues::EnchantmentTextAtRoll` and
+#: `EnchantmentValue`), so at the lowest roll the text reads 40% and the value
+#: -60 leaves 40% of the maximum; at the highest, 60% and -40. The two agree at
+#: every roll.
+#:
+#: KEYED BY ENCHANTMENT AND NOT BY STAT, because "You have 20% less hp" is a
+#: more row on the same stat and its sentence states its own number.
+#: `tools/tests/test_enchantment_effects_match_the_row_text.py` reads this set
+#: and checks that every name in it is still needed.
+COMPLEMENT_RANGE_ENCHANTMENTS = frozenset({
+    "Negative_Your_maximum_HP_cannot_exceed_40_60_of_its_nor",
+})
+
 #: The scales that read a Scale Offset: how much of the reading is not counted.
 #: Issue #1686. Only the class point sentences state a threshold ("above 100",
 #: "above 50"), and the engine's `ValidateModifier` refuses an offset on any
@@ -5078,7 +5099,13 @@ def enchantment_effects(book) -> list[dict]:
             # player another. "Low" is the value at the lowest roll and "high"
             # at the highest, so "reduced by 30%-50%" is -30 and -50.
             stated = enchantment_ranges(words[name])
-            if (low < 0) != (high < 0) or (abs(low), abs(high)) not in stated:
+            # OR ITS COMPLEMENT, FOR THE FEW NAMED. See
+            # `COMPLEMENT_RANGE_ENCHANTMENTS`: both ends negative, each 100
+            # minus the sentence's number at the same place.
+            shown = ((100.0 - abs(low), 100.0 - abs(high))
+                     if name in COMPLEMENT_RANGE_ENCHANTMENTS and low < 0
+                     else (abs(low), abs(high)))
+            if (low < 0) != (high < 0) or shown not in stated:
                 written = ", ".join(f"{a:g} to {b:g}" for a, b in stated)
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} states the "
@@ -6022,8 +6049,14 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     if not effects:
         return []
 
+    # AND A FLAT ROW IN THE PASSIVE SHEET, since issue #1833's rows-only batch.
+    # "Your class resource decays twice as fast" doubles the Fervour decay, and
+    # the one thing that supplies a decay rate is a passive node's flat row,
+    # `Ravager_basic_spine_000` at 5 a second. A doubling is a multiplier on
+    # that base, which is the case this check exists to allow.
+    passives = tables.get("PassiveEffects") or []
     stats = _stats_with_a_base(tables) | {
-        row["Stat"] for row in effects
+        row["Stat"] for row in (*effects, *passives)
         if str(row["ValueKind"]).lower() == "flat"}
 
     problems = []
