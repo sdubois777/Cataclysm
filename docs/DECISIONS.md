@@ -2,6 +2,117 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Stacks placed on the enemy: strike hits and any hit take its armour, and a melee hit taken cuts the attacker's damage
+
+**Affects:**
+- the Enchantment Effects sheet: three rows on three enchantments; no new column
+- `tools/generate_datatables.py`: `PLACED_ACTIONS`, with the events that name the character a stack
+  is placed on
+- `FCataclysmPoolAction::PlacedKey` and `bPlacedCutsDamage`
+- `UCataclysmAbilitySystemComponent`: `ReceivePlacedStack`, `DamageCutPercentNow`,
+  `ArmourRemovedPercentNow` (now a sum), `NoteMeleeHitTaken` naming the attacker, `ActOnEvent` and
+  `ClearWhatDeathEnds`
+- `UCataclysmSkillEffects::ApplyHit`, which multiplies an attacker's blow by what the cut leaves
+- `UCataclysmCombatOverlay::DamageCutTextFor` and `StatusLineFor`
+- a new check, `tools/tests/test_charge_and_placed_action_names_match_the_engine.py`
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 2, "stacks placed on the
+  enemy"
+
+### THE ROWS
+
+| Enchantment | Action, on | Per stack | Seconds | Cap |
+| :-- | :-- | :-- | :-- | :-- |
+| Strike skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6 stacks | `enemy_armor_removed` on `hit_dealt`, scoped `Type.Strike` | 3 to 6 | 5 | 6 |
+| Hitting an enemy reduces their armor by 2%-4% for 5 seconds, stacking indefinitely | `enemy_armor_removed` on `hit_dealt` | 2 to 4 | 5 | none |
+| Each melee hit you take reduces the attacker's damage by 3%-5% for 3 seconds, stacking up to 5 times | `attacker_damage_removed` on `melee_hit_taken` | 3 to 5 | 3 | 5 |
+
+A stack is placed on the other character of the event: the enemy struck, or the attacker that
+struck. `hit_dealt` names the enemy since the consecutive hits. `melee_hit_taken` now names the
+attacker, except for a tick of damage over time, which is not a hit, so a tick places nothing. As
+with a count of hits in a row, the row's tags scope the grant.
+
+### WHAT THE GENRE SETTLES, AND WHAT IT DOES NOT
+
+- Maxroll's Last Epoch ailments page: "Shred Armour: Reduces Armour by 100. Can stack." It states no
+  cap on the stacks.
+- Maxroll's Diablo III legendary gem page, on Bane of the Stricken: "Normal enemies and Elites lose
+  all Bane of the Stricken stacks when they leave combat." It states no hard cap either.
+- **Whether each stack keeps its own timer or all share one: I could not read a source for it.**
+  Neither page says.
+
+### THE RULINGS, by the coordinating session on 2026-09-24, under the owner's delegation
+
+- **"Stacking indefinitely" has no cap on the count.** The total armour removed, from every source,
+  is clamped at 100%.
+- **The window follows the own-stack rule**: a grant refreshes it and the whole count lapses
+  together. Per-stack timing is not adopted.
+- **Rending Blows and placed stacks SUM, clamped at 100.** Rending Blows keeps its own rule against
+  itself: a new removal takes the larger share, never the sum.
+- **The damage cut applies to the attacker's blows against anyone**, not only the wearer.
+- **Death clears the stacks placed on a character.** It leaves Rending Blows' own share, which death
+  did not clear before this change either.
+
+### THE BLOWS THE CUT DOES NOT REACH
+
+The cut is read in `UCataclysmSkillEffects::ApplyHit`. These deal damage without it, through
+`ApplyDirectDamage` or the damage-over-time path, so a creature carrying the cut deals them in full:
+- damage over time ticks;
+- retaliation (`UCataclysmRetaliation::Pay`);
+- a ground zone's sweeps (`ACataclysmGroundZone::Sweep`);
+- a minion's attack, explosion and death blast (`ACataclysmMinion::AttackTarget`, `Explode`,
+  `DeathBlast`);
+- the Infernal Brand's damage on hit (`UCataclysmEnemyModifiers::BrandOnHit`);
+- the dungeon modifiers' own damage in `ACataclysmDungeonGameMode`: Plague Convergence, Artillery
+  Strike, Judgment Zones, Brand of the Aggressor, Holy Repercussions, Hellfire, the Blood Altar and
+  Necrotic Ground.
+
+### WHAT SHOWS IT
+
+The line under a creature's health bar gains "Damage -N%" after "Armor -N%" and "Slowed -N%", joined
+by two spaces. "Armor -N%" now shows the summed figure.
+
+### THE CONSECUTIVE-HITS ENTRY'S OPEN FINDING, ANSWERED
+
+That entry, merged and left as written, says: "**The source was not found by reading.**" and ends
+"It stays open." **The source is the Slashing sub-type bonus**, which the design states:
+"| Slashing | 10% more damage vs. HP |". It is applied as `SubtypeBonus = 10.0f`
+(`CataclysmDamageCalculation.h`), at the last step of `Resolve`, to the damage a slashing blow deals
+to health. The test player starts holding a Greataxe, which is Slashing. It is intended, and it
+applies in play to every player swinging only slashing weapons.
+
+**What that means for tests:** a test measuring a player's blow as an absolute figure carries the
+Greataxe's 10% unless it unequips the axe first.
+
+### A CHECK ADDED
+
+`test_charge_and_placed_action_names_match_the_engine.py` reads the engine's five action-name
+constants and holds the generator's `NEXT_USE_ACTIONS` and `PLACED_ACTIONS` equal to them. A name
+spelled differently on the two sides would validate, be written, and do nothing in the game with no
+error. The three next-use names had no such check before.
+
+### THE TESTS
+
+- **On the engine:**
+  - Four strike hits place three armour stacks, 15%. A spell, a strike that did not land and an
+    event naming nobody place none.
+  - Six melee hits taken place five damage cuts, 20%.
+  - Rending Blows' 20% sums with the 15% to 35%, and the enemy's line reads "Armor -35%  Damage
+    -20%".
+  - The damage cut lapses after its 3 seconds, and the armour stacks lapse together after their 5.
+    The next strike hit starts the count at one.
+  - An uncapped row clamps the total at 100.
+  - Death ends the placed stacks and leaves Rending Blows' 20%.
+- **The strike row, worn by a real player character:** seven strike hits take 36%, and the line
+  reads "Armor -36%". With 500 armour, the eighth hit deals more than the first. A blow with no skill
+  takes none.
+- **The any-hit row:** ten hits take 40, past any cap of six. Twenty-five take 100, and twenty-six
+  are clamped at 100. Everything has lapsed 5.1 seconds after the last hit.
+- **The attacker's damage row:** a creature's second melee blow on the wearer deals 95% of its first,
+  and its sixth and seventh deal 75%. Its line reads "Damage -25%". A blow that is not melee places
+  nothing.
+
+---
+
 ## 2026-09-24 — Shared Blood, engine only: each minion has a fifth of its summoner's energy shield and refills when the summoner's does, and a shield now refills to its scaled maximum
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmRegeneration.h` and `.cpp` (the step, and the

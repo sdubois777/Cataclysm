@@ -822,13 +822,23 @@ float UCataclysmSkillEffects::ApplyHit(AActor* Instigator, AActor* Target,
 	// computed for `MoreForSkill` and `SpellDamageOf` and then stopped here, so a
 	// runtime stat modifier conditioned on the blow was judged against no blow.
 	// This is the one call site in the project that has them.
+	// WHAT STACKS PLACED ON THE ATTACKER LEAVE OF ITS BLOW. Issue #1833, phase
+	// 2: "Each melee hit you take reduces the attacker's damage by 3%-5% for 3
+	// seconds, stacking up to 5 times". Against anyone it strikes (ruled
+	// 2026-09-24). Only blows through here are cut; the design log's entry
+	// names the ones that are not.
+	const UCataclysmAbilitySystemComponent* Striking =
+		Cast<const UCataclysmAbilitySystemComponent>(Source);
+	const float Kept = Striking ? 1.0f - Striking->DamageCutPercentNow() / 100.0f : 1.0f;
+
 	const float Damage = ModifiedDamage(
 		Source,
 		(BeforeIncreases * DamagePercent / 100.0f + Flat)
 			* (1.0f + Applying + Conditional + Bought)
 			// AND THE EFFECTIVENESS THE USE SPENT, a "more" on the whole blow.
 			// Issue #1833, timed grants. One for every other blow.
-			* FMath::Max(0.0f, Delivery.DamageMultiplierSpent),
+			* FMath::Max(0.0f, Delivery.DamageMultiplierSpent)
+			* Kept,
 		SkillTags,
 		Delivery.SkillHealthCostPercent,
 		Delivery.MetresMovedBeforeBlow,

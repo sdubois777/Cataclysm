@@ -1095,6 +1095,24 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 						ESearchCase::IgnoreCase);
 					// AND ITS CLOCK, WHEN IT GRANTS ON ONE. Issue #1833, timed grants.
 					Action.EverySeconds = Effect->EverySeconds;
+					// A STACK PLACED ON THE OTHER CHARACTER OF THE EVENT. Issue
+					// #1833, phase 2. Keyed by the enchantment and the action;
+					// Stack Seconds is the window and Scale Max Steps the cap,
+					// where nought is none ("stacking indefinitely").
+					const bool bArmourRemoved = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction,
+						ESearchCase::IgnoreCase);
+					const bool bDamageRemoved = Effect->Action.Equals(
+						UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction,
+						ESearchCase::IgnoreCase);
+					if (bArmourRemoved || bDamageRemoved)
+					{
+						Action.PlacedKey = FName(*FString::Printf(
+							TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
+						Action.StackSeconds = Effect->StackSeconds;
+						Action.StackCap = Effect->ScaleMaxSteps;
+						Action.bPlacedCutsDamage = bDamageRemoved;
+					}
 					if (bNextSkill || bNextAttack || bNextEffectiveness)
 					{
 						Action.NextUseKey = FName(*FString::Printf(

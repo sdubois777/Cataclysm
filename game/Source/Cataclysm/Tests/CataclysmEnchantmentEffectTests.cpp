@@ -32,6 +32,7 @@
 #include "Data/CataclysmDataRows.h"
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
+#include "Interface/CataclysmCombatOverlay.h"
 #include "GameplayTagContainer.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -5734,6 +5735,195 @@ bool FCataclysmConsecutiveDrawbackRowTest::RunTest(const FString&)
 		Striker.Blow(Striker.First, false), Plain * 0.2f, 0.01f);
 	TestEqual(TEXT("the first hit on the second enemy is plain"),
 		Striker.Blow(Striker.Second, false), Plain, 0.01f);
+	return true;
+}
+
+namespace CataclysmPlacedRowTest
+{
+	/** How many of the wearer's actions place a stack on another character. */
+	int32 PlacingActions(const UCataclysmAbilitySystemComponent* ASC)
+	{
+		int32 Placing = 0;
+		for (const FCataclysmPoolAction& Action : ASC->GetPoolActions())
+		{
+			Placing += Action.PlacedKey.IsNone() ? 0 : 1;
+		}
+		return Placing;
+	}
+
+	const TCHAR* StaleAsset =
+		TEXT("the row places a stack. If not, DT_EnchantmentEffects may be older "
+			 "than the rows: run tools/generate_datatable_assets.py");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmStrikeArmourRowTest,
+	"Cataclysm.Enchantments.TheStrikeArmourRowTakes6PercentPerHitUpTo6",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Strike skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6
+ * stacks", worn at 6, by a real player character striking real creatures.
+ * Issue #1833, phase 2. Seven strike hits take 36% of the creature's armour,
+ * and its line says "Armor -36%"; a blow with no skill, which is no strike,
+ * takes none. With 500 armour, the eighth hit deals more than the first.
+ */
+bool FCataclysmStrikeArmourRowTest::RunTest(const FString&)
+{
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_Strike_skills_reduce_enemy_armor_by_3_6_per_hi"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a wearer, two creatures and the announcements"), Striker.Ready())
+		|| !TestEqual(CataclysmPlacedRowTest::StaleAsset,
+			CataclysmPlacedRowTest::PlacingActions(Striker.ASC), 1))
+	{
+		return false;
+	}
+	Striker.First->GetAbilitySystemComponent()->SetNumericAttributeBase(
+		UCataclysmCombatAttributeSet::GetArmorAttribute(), 500.0f);
+	const UCataclysmAbilitySystemComponent* First =
+		Cast<UCataclysmAbilitySystemComponent>(Striker.First->GetAbilitySystemComponent());
+	const UCataclysmAbilitySystemComponent* Second =
+		Cast<UCataclysmAbilitySystemComponent>(Striker.Second->GetAbilitySystemComponent());
+
+	const float FirstHit = Striker.Blow(Striker.First, /*bMelee=*/true);
+	TestEqual(TEXT("one strike hit takes 6%"), First->ArmourRemovedPercentNow(), 6.0f, 0.001f);
+	for (int32 Hit = 2; Hit <= 7; ++Hit)
+	{
+		Striker.Blow(Striker.First, true);
+	}
+	TestEqual(TEXT("seven take 36%, the cap of six stacks"),
+		First->ArmourRemovedPercentNow(), 36.0f, 0.001f);
+	TestEqual(TEXT("and the creature's line says so"),
+		UCataclysmCombatOverlay::StatusLineFor(Striker.First), FString(TEXT("Armor -36%")));
+	const float EighthHit = Striker.Blow(Striker.First, true);
+	TestTrue(FString::Printf(TEXT("the eighth hit deals more than the first: %.3f against %.3f"),
+			EighthHit, FirstHit),
+		EighthHit > FirstHit);
+
+	TestTrue(TEXT("a blow with no skill lands"), Striker.Blow(Striker.Second, false) > 0.0f);
+	TestEqual(TEXT("and takes none of its armour"),
+		Second->ArmourRemovedPercentNow(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAnyHitArmourRowTest,
+	"Cataclysm.Enchantments.TheAnyHitArmourRowTakes4PercentPerHitWithNoCap",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Hitting an enemy reduces their armor by 2%-4% for 5 seconds, stacking
+ * indefinitely", worn at 4. Issue #1833, phase 2, ruled 2026-09-24: no cap on
+ * the count, and all armour removed clamped at 100. Ten hits take 40, twenty-
+ * five take 100, and twenty-six still take 100. Five seconds and a tenth after
+ * the last hit, the whole count has lapsed.
+ */
+bool FCataclysmAnyHitArmourRowTest::RunTest(const FString&)
+{
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_Hitting_an_enemy_reduces_their_armor_by_2_4_fo"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a wearer, two creatures and the announcements"), Striker.Ready())
+		|| !TestEqual(CataclysmPlacedRowTest::StaleAsset,
+			CataclysmPlacedRowTest::PlacingActions(Striker.ASC), 1))
+	{
+		return false;
+	}
+	const UCataclysmAbilitySystemComponent* First =
+		Cast<UCataclysmAbilitySystemComponent>(Striker.First->GetAbilitySystemComponent());
+
+	for (int32 Hit = 1; Hit <= 10; ++Hit)
+	{
+		Striker.Blow(Striker.First, /*bMelee=*/false);
+	}
+	TestEqual(TEXT("ten hits take 40, past any cap of six"),
+		First->ArmourRemovedPercentNow(), 40.0f, 0.001f);
+	for (int32 Hit = 11; Hit <= 25; ++Hit)
+	{
+		Striker.Blow(Striker.First, false);
+	}
+	TestEqual(TEXT("twenty-five take 100"), First->ArmourRemovedPercentNow(), 100.0f, 0.001f);
+	Striker.Blow(Striker.First, false);
+	TestEqual(TEXT("and twenty-six are clamped at 100"),
+		First->ArmourRemovedPercentNow(), 100.0f, 0.001f);
+	TestEqual(TEXT("the creature's line says so"),
+		UCataclysmCombatOverlay::StatusLineFor(Striker.First), FString(TEXT("Armor -100%")));
+
+	Striker.World->TimeSeconds += 5.1f;
+	TestEqual(TEXT("5.1 seconds after the last hit the whole count has lapsed"),
+		First->ArmourRemovedPercentNow(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmAttackerDamageRowTest,
+	"Cataclysm.Enchantments.TheMeleeHitTakenRowCutsTheAttackersDamage5PercentUpTo5",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Each melee hit you take reduces the attacker's damage by 3%-5% for 3
+ * seconds, stacking up to 5 times", worn at 5. Issue #1833, phase 2. A
+ * creature's melee blows on the wearer: the second deals 95% of the first, and
+ * the sixth and seventh deal 75%. The creature's line says "Damage -25%". A
+ * blow that is not melee places nothing on its attacker.
+ */
+bool FCataclysmAttackerDamageRowTest::RunTest(const FString&)
+{
+	CataclysmConsecutiveRowTest::FStriker Striker(
+		TEXT("Positive_Each_melee_hit_you_take_reduces_the_attacker_s_d"),
+		CataclysmEnchantmentEffectTest::DrawbackWithNoEffect);
+	if (!TestTrue(TEXT("a wearer, two creatures and the announcements"), Striker.Ready())
+		|| !TestEqual(CataclysmPlacedRowTest::StaleAsset,
+			CataclysmPlacedRowTest::PlacingActions(Striker.ASC), 1))
+	{
+		return false;
+	}
+
+	// TEN THOUSAND HEALTH ON THE WEARER, for the reason the creatures have it:
+	// a blow read as health before less health after, to better than 0.01.
+	const FGameplayAttribute Health = UCataclysmVitalAttributeSet::GetHealthAttribute();
+	Striker.ASC->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 10000.0f);
+	Striker.ASC->SetNumericAttributeBase(Health, 10000.0f);
+	Striker.First->SetAttackDamage(100.0f);
+	Striker.Second->SetAttackDamage(100.0f);
+	const UCataclysmAbilitySystemComponent* First =
+		Cast<UCataclysmAbilitySystemComponent>(Striker.First->GetAbilitySystemComponent());
+	const UCataclysmAbilitySystemComponent* Second =
+		Cast<UCataclysmAbilitySystemComponent>(Striker.Second->GetAbilitySystemComponent());
+
+	FGameplayTagContainer Melee;
+	Melee.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Melee"))));
+	const auto Struck = [&](ACataclysmEnemyCharacter* By, const FGameplayTagContainer& Tags)
+	{
+		const float Before = Striker.ASC->GetNumericAttribute(Health);
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = 0.0f;
+		UCataclysmSkillEffects::ApplyHit(By, Striker.Character, /*DamagePercent=*/100.0f,
+			Tags, Delivery);
+		return Before - Striker.ASC->GetNumericAttribute(Health);
+	};
+
+	const float FirstBlow = Struck(Striker.First, Melee);
+	if (!TestTrue(TEXT("the creature's melee blow lands"), FirstBlow > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("and places a 5% cut on it"), First->DamageCutPercentNow(), 5.0f, 0.001f);
+	TestEqual(TEXT("its second blow deals 95% of the first"),
+		Struck(Striker.First, Melee), FirstBlow * 0.95f, 0.01f);
+	for (int32 Blow = 3; Blow <= 5; ++Blow)
+	{
+		Struck(Striker.First, Melee);
+	}
+	TestEqual(TEXT("its sixth deals 75%"), Struck(Striker.First, Melee), FirstBlow * 0.75f, 0.01f);
+	TestEqual(TEXT("and its seventh, the cap of five stacks"),
+		Struck(Striker.First, Melee), FirstBlow * 0.75f, 0.01f);
+	TestEqual(TEXT("the creature's line says so"),
+		UCataclysmCombatOverlay::StatusLineFor(Striker.First), FString(TEXT("Damage -25%")));
+
+	TestTrue(TEXT("a blow that is not melee lands"),
+		Struck(Striker.Second, FGameplayTagContainer()) > 0.0f);
+	TestEqual(TEXT("and places nothing on its attacker"),
+		Second->DamageCutPercentNow(), 0.0f, 0.001f);
 	return true;
 }
 

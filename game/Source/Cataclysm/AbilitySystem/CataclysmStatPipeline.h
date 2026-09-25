@@ -3351,6 +3351,22 @@ struct CATACLYSM_API FCataclysmPoolAction
 	bool bConsecutiveHits = false;
 
 	/**
+	 * Set, this action PLACES A STACK ON THE OTHER CHARACTER of the event: the
+	 * enemy struck, or the attacker that struck. Issue #1833, phase 2: "Strike
+	 * skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6
+	 * stacks". `Percent` is what one stack removes, `StackSeconds` the window
+	 * (a grant refreshes it and the count lapses together, ruled 2026-09-24)
+	 * and `StackCap` the cap, where 0 is none ("stacking indefinitely"). As
+	 * with a count of hits in a row, `RequiredTags` scope the grant.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName PlacedKey;
+
+	/** Set, the placed stack cuts the other character's damage; clear, its armour. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bPlacedCutsDamage = false;
+
+	/**
 	 * Set, this action GRANTS A CHARGE THE NEXT USE SPENDS instead of moving a
 	 * pool. Issue #1833, phase 2: "When you dodge an attack your next skill deals
 	 * 30%-60% increased damage". `Percent` is what one charge is worth, as

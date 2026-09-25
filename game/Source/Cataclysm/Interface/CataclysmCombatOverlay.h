@@ -500,9 +500,21 @@ public:
 	static FString HarbingerTextFor(const AActor* Actor);
 
 	/**
+	 * What is said under a creature's health bar while stacks placed on it cut
+	 * its damage, such as "Damage -15%", or empty while nothing does. Issue
+	 * #1833, phase 2: "Each melee hit you take reduces the attacker's damage".
+	 * State on the creature, like the armour removed.
+	 */
+	static FString DamageCutTextFor(const AActor* Actor);
+
+	/**
 	 * The one line drawn under a creature's health bar: every non-empty text
-	 * above, in that order, joined by two spaces, or empty. One line rather
-	 * than one each, so two never draw over each other. Issue #1515.
+	 * above, joined by two spaces, or empty. One line rather than one each, so
+	 * two never draw over each other. Issue #1515.
+	 *
+	 * IN THIS ORDER, which is not the order they are declared in: Harbinger,
+	 * the armour removed, the slow, the damage cut. What the creature is comes
+	 * first, and what is being done to it after (issues #41 and #1833).
 	 */
 	static FString StatusLineFor(const AActor* Actor);
 

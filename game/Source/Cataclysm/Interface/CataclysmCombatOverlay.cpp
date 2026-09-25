@@ -476,11 +476,25 @@ FString UCataclysmCombatOverlay::HarbingerTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::DamageCutTextFor(const AActor* Actor)
+{
+	const UCataclysmAbilitySystemComponent* AbilitySystem =
+		Cast<UCataclysmAbilitySystemComponent>(
+			UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Actor));
+	const float Cut = AbilitySystem ? AbilitySystem->DamageCutPercentNow() : 0.0f;
+	if (Cut <= 0.0f)
+	{
+		return FString();
+	}
+	return FString::Printf(TEXT("Damage -%d%%"), FMath::RoundToInt(Cut));
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
-		 {HarbingerTextFor(Actor), ArmourRemovedTextFor(Actor), SlowedTextFor(Actor)})
+		 {HarbingerTextFor(Actor), ArmourRemovedTextFor(Actor), SlowedTextFor(Actor),
+		  DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

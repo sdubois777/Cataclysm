@@ -1932,6 +1932,48 @@ class TestEnchantmentEffects:
             gen.enchantment_effects(self.book(tmp_path, [self.row(
                 {**self.CONSECUTIVE, "Scale Step": 2})]))
 
+    # A STACK PLACED ON THE OTHER CHARACTER. Issue #1833, phase 2: an action
+    # row whose event names that character; Stack Seconds is required, the cap
+    # is not.
+    PLACED = {"Stat": None, "Value Kind": None, "Action": "enemy_armor_removed",
+              "Action Event": "hit_dealt", "Stack Seconds": 5, "Scale Max Steps": 6}
+
+    def test_a_placed_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.PLACED)]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["StackSeconds"],
+                out[0]["ScaleMaxSteps"], out[0]["FractionOf"]) == (
+                    "enemy_armor_removed", "hit_dealt", 5.0, 6, "")
+
+    def test_a_placed_row_with_no_cap_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.PLACED, "Scale Max Steps": None})]))
+        assert out[0]["ScaleMaxSteps"] == 0
+
+    @pytest.mark.parametrize("action, event", [
+        ("enemy_armor_removed", "melee_hit_taken"),
+        ("enemy_armor_removed", None),
+        ("attacker_damage_removed", "hit_dealt"),
+        ("attacker_damage_removed", "hit_taken")])
+    def test_a_placed_row_on_an_event_naming_nobody_it_places_on_is_refused(
+            self, tmp_path, action, event):
+        with pytest.raises(gen.DataError, match="naming the character"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.PLACED, "Action": action, "Action Event": event})]))
+
+    def test_a_placed_row_with_no_seconds_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no Stack Seconds"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.PLACED, "Stack Seconds": None})]))
+
+    @pytest.mark.parametrize("column, written", [
+        ("Scale", "debuffs_carried"), ("Fraction Of", "maximum"),
+        ("Value Kind", "increased")])
+    def test_a_placed_row_refuses_a_column_it_cannot_use(self, tmp_path,
+                                                         column, written):
+        with pytest.raises(gen.DataError, match="must be\\s+empty|must be empty"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.PLACED, column: written})]))
+
     # A CHARGE THE NEXT USE SPENDS. Issue #1833, phase 2: an action row whose
     # event grants a charge, worth its value as increased damage, capped by
     # Scale Max Steps.

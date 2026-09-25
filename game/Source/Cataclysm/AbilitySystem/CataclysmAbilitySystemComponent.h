@@ -496,6 +496,20 @@ public:
 	void GrantConsecutiveHit(FName StackKey, const AActor* Target, int32 Cap);
 
 	/**
+	 * Receive one stack another character's row places on this one, up to its
+	 * cap (0 is none), restarting its window. Issue #1833, phase 2. Keyed by
+	 * the row; each stack is worth `PercentPerStack`.
+	 */
+	void ReceivePlacedStack(FName Key, float PercentPerStack, float WindowSeconds,
+							int32 Cap, bool bCutsDamage);
+
+	/**
+	 * The share of this character's damage the stacks placed on it take away
+	 * now, 0 to 100. Issue #1833, phase 2. Read by `ApplyHit` on the attacker.
+	 */
+	float DamageCutPercentNow() const;
+
+	/**
 	 * Grant one stack of a row's own, up to its cap, and restart its window.
 	 * Issue #1833. A cap or window of nothing grants nothing.
 	 */
@@ -515,6 +529,15 @@ public:
 	 * use's damage. In `NEXT_USE_ACTIONS` too.
 	 */
 	static const TCHAR* NextSkillEffectivenessAction;
+
+	/**
+	 * The two action names a row uses to place stacks on the other character of
+	 * its event. Issue #1833, phase 2. `tools/generate_datatables.py` holds the
+	 * same two in `PLACED_ACTIONS`. The first takes a share of the enemy
+	 * struck's armour, the second a share of the attacker's damage.
+	 */
+	static const TCHAR* EnemyArmorRemovedAction;
+	static const TCHAR* AttackerDamageRemovedAction;
 
 	/**
 	 * The event a row grants on when it grants on a clock. Issue #1833, timed
@@ -1845,6 +1868,10 @@ public:
 	 * when none is. Read where armour reduces a blow, and by the heads-up
 	 * display. NOT A DEBUFF: no tag, so nothing that counts or copies debuffs
 	 * sees it.
+	 *
+	 * RENDING BLOWS AND THE STACKS PLACED ON IT SUM, clamped at 100. Issue
+	 * #1833, phase 2, ruled 2026-09-24. Rending Blows keeps its own rule
+	 * against itself: a new removal takes the larger share, never the sum.
 	 */
 	float ArmourRemovedPercentNow() const;
 
@@ -1990,6 +2017,14 @@ public:
 	 * member taking no arguments, in its table of event windows. Issue #1833.
 	 */
 	void NoteMeleeHitTaken() { NoteMeleeHitTaken(true); }
+
+	/**
+	 * The same, naming the attacker, for a row placing stacks on it. Issue
+	 * #1833, phase 2: "Each melee hit you take reduces the attacker's damage by
+	 * 3%-5% for 3 seconds". Null for a blow that is damage over time, which is
+	 * not a hit (ruled 2026-09-24), so a tick places nothing.
+	 */
+	void NoteMeleeHitTaken(bool bLanded, const AActor* Attacker);
 
 	/** How long ago that was, in seconds, or -1 if it has never happened. */
 	float SecondsSinceMeleeHitTaken() const;
@@ -2184,6 +2219,26 @@ protected:
 	 * one enemy and has no window.
 	 */
 	TMap<FName, FConsecutiveHits> ConsecutiveHits;
+
+	/** One row's stacks placed on this character by another. */
+	struct FPlacedStack
+	{
+		int32 Count = 0;
+		float GrantedAtSeconds = 0.0f;
+		float WindowSeconds = 0.0f;
+		float PercentPerStack = 0.0f;
+		bool bCutsDamage = false;
+	};
+
+	/**
+	 * Every row's stacks placed on this character, by the row. Issue #1833,
+	 * phase 2. The own-stack shape: a grant restarts the window and the whole
+	 * count lapses together.
+	 */
+	TMap<FName, FPlacedStack> PlacedStacks;
+
+	/** What the placed stacks of one kind take away now, summed, unclamped. */
+	float PlacedPercentNow(bool bCutsDamage) const;
 
 	/** Whether a count is still standing: in combat, and begun in this one. */
 	bool ConsecutiveHitsStanding(const FConsecutiveHits& Held) const;

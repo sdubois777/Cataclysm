@@ -35,6 +35,7 @@
 // For asking whether two actors are on the same side, which is what an aura's
 // ally half is about. Issue #1182.
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "Interface/CataclysmCombatOverlay.h"
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 #include "AbilitySystem/CataclysmStacks.h"
@@ -18233,6 +18234,139 @@ bool FCataclysmConsecutiveHitsTest::RunTest(const FString&)
 
 	ASC->ClearWhatDeathEnds();
 	TestEqual(TEXT("death ends it"), ASC->ConsecutiveHitsOn(Key, Second.Actor), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPlacedStacksTest,
+	"Cataclysm.Skills.StacksPlacedOnTheOtherCharacterSumLapseTogetherAndEndAtItsDeath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Stacks a row places on the other character of its event. Issue #1833, phase
+ * 2, ruled 2026-09-24. A strike hit places an armour stack on the enemy struck,
+ * 5% each up to 3; a spell, an event that did not land and one naming nobody
+ * place none. A melee hit taken places a damage cut on the attacker, 4% each up
+ * to 5. Rending Blows' 20% and the placed 15% sum to 35, and the enemy's line
+ * says "Armor -35%  Damage -20%". Each row's count lapses together when its
+ * window passes. A row with no cap is clamped with Rending Blows at 100. The
+ * enemy's death ends what was placed on it and leaves Rending Blows' own share.
+ */
+bool FCataclysmPlacedStacksTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	UCataclysmAbilitySystemComponent* ASC = Wearer.AbilitySystem;
+	UCataclysmAbilitySystemComponent* Struck = Enemy.AbilitySystem;
+
+	FCataclysmPoolAction Armour;
+	Armour.Event = FName(TEXT("hit_dealt"));
+	Armour.Pool = FName(UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction);
+	Armour.Percent = 5.0f;
+	Armour.PlacedKey = FName(TEXT("Test:enemy_armor_removed"));
+	Armour.StackSeconds = 5.0f;
+	Armour.StackCap = 3;
+	Armour.RequiredTags.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Strike"))));
+	FCataclysmPoolAction Cut;
+	Cut.Event = FName(TEXT("melee_hit_taken"));
+	Cut.Pool = FName(UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction);
+	Cut.Percent = 4.0f;
+	Cut.PlacedKey = FName(TEXT("Test:attacker_damage_removed"));
+	Cut.StackSeconds = 3.0f;
+	Cut.StackCap = 5;
+	Cut.bPlacedCutsDamage = true;
+	ASC->SetPoolActions({Armour, Cut});
+
+	FGameplayTagContainer Strike;
+	Strike.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Strike"))));
+	FGameplayTagContainer Spell;
+	Spell.AddTag(FGameplayTag::RequestGameplayTag(FName(TEXT("Type.Spell"))));
+
+	for (int32 Hit = 0; Hit < 4; ++Hit)
+	{
+		ASC->ActOnEvent(Armour.Event, &Strike, 0.0f, /*bLanded=*/true, Enemy.Actor);
+	}
+	TestEqual(TEXT("four strike hits place three armour stacks: 15"),
+		Struck->ArmourRemovedPercentNow(), 15.0f, 0.001f);
+	TestEqual(TEXT("and none on the wearer"), ASC->ArmourRemovedPercentNow(), 0.0f, 0.001f);
+
+	FScopedFighter Other(World, FVector(-2 * M, 0, 0));
+	ASC->ActOnEvent(Armour.Event, &Spell, 0.0f, true, Other.Actor);
+	ASC->ActOnEvent(Armour.Event, &Strike, 0.0f, /*bLanded=*/false, Other.Actor);
+	ASC->ActOnEvent(Armour.Event, &Strike, 0.0f, true, nullptr);
+	TestEqual(TEXT("a spell, a strike that did not land and an event naming nobody "
+				   "place nothing"),
+		Other.AbilitySystem->ArmourRemovedPercentNow(), 0.0f, 0.001f);
+
+	for (int32 Taken = 0; Taken < 6; ++Taken)
+	{
+		ASC->ActOnEvent(Cut.Event, nullptr, 0.0f, true, Enemy.Actor);
+	}
+	TestEqual(TEXT("six melee hits taken place five damage cuts on the attacker: 20"),
+		Struck->DamageCutPercentNow(), 20.0f, 0.001f);
+
+	// RENDING BLOWS' OWN SHARE, from a striker holding its two stats.
+	FScopedFighter Render(World, FVector(0, 2 * M, 0));
+	{
+		TMap<FName, FCataclysmStatInputs> Inputs;
+		for (const TPair<const TCHAR*, float>& Stat :
+			 {TPair<const TCHAR*, float>(UCataclysmAbilitySystemComponent::RendPercentStat, 20.0f),
+			  TPair<const TCHAR*, float>(UCataclysmAbilitySystemComponent::RendSecondsStat, 6.0f)})
+		{
+			FCataclysmStatModifier Flat;
+			Flat.Bucket = ECataclysmStatBucket::Flat;
+			Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+			Flat.Value = Stat.Value;
+			FCataclysmStatInputs& Line = Inputs.FindOrAdd(FName(Stat.Key));
+			Line.Base = 0.0f;
+			Line.Modifiers = {Flat};
+		}
+		Render.AbilitySystem->SetStatInputs(MoveTemp(Inputs));
+	}
+	for (int32 Landed = 0; Landed < UCataclysmAbilitySystemComponent::RendEveryHits; ++Landed)
+	{
+		Struck->NoteLandedMeleeHitFrom(Render.AbilitySystem);
+	}
+	TestEqual(TEXT("Rending Blows' 20 and the placed 15 sum: 35"),
+		Struck->ArmourRemovedPercentNow(), 35.0f, 0.001f);
+	TestEqual(TEXT("the enemy's line says both"),
+		UCataclysmCombatOverlay::StatusLineFor(Enemy.Actor),
+		FString(TEXT("Armor -35%  Damage -20%")));
+
+	// EACH ROW'S COUNT LAPSES TOGETHER WHEN ITS OWN WINDOW PASSES.
+	World->TimeSeconds += 3.1f;
+	TestEqual(TEXT("3.1 seconds on, the damage cut's 3-second window has passed"),
+		Struck->DamageCutPercentNow(), 0.0f, 0.001f);
+	TestEqual(TEXT("and the armour stacks' 5-second window has not: 35"),
+		Struck->ArmourRemovedPercentNow(), 35.0f, 0.001f);
+	World->TimeSeconds += 2.0f;
+	TestEqual(TEXT("5.1 seconds on, the armour stacks have lapsed together: Rending's 20"),
+		Struck->ArmourRemovedPercentNow(), 20.0f, 0.001f);
+	ASC->ActOnEvent(Armour.Event, &Strike, 0.0f, true, Enemy.Actor);
+	TestEqual(TEXT("and the next strike hit starts the count at one: 25"),
+		Struck->ArmourRemovedPercentNow(), 25.0f, 0.001f);
+
+	// A ROW WITH NO CAP, CLAMPED WITH RENDING BLOWS AT 100.
+	FCataclysmPoolAction Uncapped = Armour;
+	Uncapped.PlacedKey = FName(TEXT("Uncapped:enemy_armor_removed"));
+	Uncapped.Percent = 30.0f;
+	Uncapped.StackCap = 0;
+	Uncapped.RequiredTags = FGameplayTagContainer();
+	ASC->SetPoolActions({Uncapped});
+	for (int32 Hit = 0; Hit < 3; ++Hit)
+	{
+		ASC->ActOnEvent(Uncapped.Event, nullptr, 0.0f, true, Enemy.Actor);
+	}
+	TestEqual(TEXT("20 + 5 + 90 is clamped at 100"),
+		Struck->ArmourRemovedPercentNow(), 100.0f, 0.001f);
+
+	Struck->ClearWhatDeathEnds();
+	TestEqual(TEXT("the enemy's death ends what was placed on it, leaving Rending's 20"),
+		Struck->ArmourRemovedPercentNow(), 20.0f, 0.001f);
 	return true;
 }
 

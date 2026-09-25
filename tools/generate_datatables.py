@@ -4593,6 +4593,20 @@ NEXT_USE_ACTIONS = (
     "next_skill_effectiveness",
 )
 
+#: The actions that PLACE A STACK ON THE OTHER CHARACTER of their event,
+#: each with the events that name that character. Issue #1833, phase 2:
+#: "Strike skills reduce enemy armor by 3%-6% per hit for 5 seconds, up to 6
+#: stacks" and "Each melee hit you take reduces the attacker's damage by 3%-5%
+#: for 3 seconds, stacking up to 5 times". The value is what one stack takes
+#: away, Stack Seconds the window (a grant refreshes it, ruled 2026-09-24) and
+#: Scale Max Steps the cap, empty for none ("stacking indefinitely").
+#: `UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction` and
+#: `AttackerDamageRemovedAction` hold the same two names.
+PLACED_ACTIONS = {
+    "enemy_armor_removed": ("hit_dealt",),
+    "attacker_damage_removed": ("melee_hit_taken",),
+}
+
 #: What a percentage on an action row is a percentage OF.
 #:
 #: "Restore 5% of your maximum HP" and "drain 3% of your current HP" are both
@@ -4708,12 +4722,17 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_next_use_action(index, who, action, event, fraction_of, kind,
                                raw, headers)
         return
+    if action in PLACED_ACTIONS:
+        _check_placed_action(index, who, action, event, fraction_of, kind,
+                             raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
             f"which is not one the game has. Known: "
             f"{', '.join(POOL_ACTIONS)}; or a next-use charge, "
-            f"{', '.join(NEXT_USE_ACTIONS)}.")
+            f"{', '.join(NEXT_USE_ACTIONS)}; or a placed stack, "
+            f"{', '.join(PLACED_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -4752,6 +4771,34 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"the scale {written!r}. A scale sizes a stat's modifier and an "
             f"action has no stat, so it would be dropped without anything "
             f"saying so.")
+
+def _check_placed_action(index: int, who: str, action: str, event: str,
+                         fraction_of: str, kind: str, raw,
+                         headers: dict[str, int]) -> None:
+    """Everything a placed-stack row must say, and everything it must not.
+
+    Issue #1833, phase 2. THE EVENT MUST NAME THE OTHER CHARACTER, because
+    that is who the stack is placed on; the window and the cap are checked
+    where Stack Seconds and Scale Max Steps are read. A fraction, a value kind
+    and a scale each mean nothing here, so each is refused rather than
+    dropped.
+    """
+    events = PLACED_ACTIONS[action]
+    if event not in events:
+        raise DataError(
+            f"Enchantment Effects row {index}: {who} places {action} on the "
+            f"event {event or '(none)'!r}. Only an event naming the character "
+            f"it is placed on can: {', '.join(events)}.")
+    for column, written in (("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} places {action} and "
+                f"states {column} {written!r}. A placed stack takes away its "
+                f"value per stack and nothing else, so the column must be "
+                f"empty.")
+
 
 def _check_next_use_action(index: int, who: str, action: str, event: str,
                            fraction_of: str, kind: str, raw,
@@ -4955,7 +5002,7 @@ def enchantment_effects(book) -> list[dict]:
         if action:
             _check_pool_action(index, name, action, action_event, fraction_of,
                                kind, raw, headers)
-            if action not in NEXT_USE_ACTIONS:
+            if action not in NEXT_USE_ACTIONS and action not in PLACED_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5006,7 +5053,8 @@ def enchantment_effects(book) -> list[dict]:
         scale_max_steps = 0
         if cap_text:
             cap = number(cap_text, "Scale Max Steps", index)
-            if not scale and action not in NEXT_USE_ACTIONS:
+            if not scale and action not in NEXT_USE_ACTIONS \
+                    and action not in PLACED_ACTIONS:
                 raise DataError(
                     f"Enchantment Effects row {index}: {name} has a cap of "
                     f"{cap:g} steps and no scale. A cap limits how many steps "
@@ -5064,6 +5112,26 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} counts its own "
                     f"stacks and states no cap in Scale Max Steps. \"Up to 5 "
                     f"stacks\" is 5.")
+        elif action in PLACED_ACTIONS:
+            # A STACK PLACED ON THE OTHER CHARACTER. Issue #1833, phase 2. The
+            # window is required and the cap is not: "stacking indefinitely"
+            # states none. Each stack takes away a share, so both ends are
+            # above nought.
+            if not stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} places {action} "
+                    f"and states no Stack Seconds for the stacks to last.")
+            stack_seconds = number(stack_text, "Stack Seconds", index)
+            if not 0.0 < stack_seconds <= MAX_STACK_SECONDS:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} places stacks "
+                    f"lasting {stack_seconds:g} seconds. They last above 0 and "
+                    f"up to {MAX_STACK_SECONDS:g}.")
+            if low <= 0 or high <= 0:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} places {action} "
+                    f"worth {low:g} to {high:g} a stack. A stack takes away a "
+                    f"share, so both ends are above nought.")
         elif not action and scale == "consecutive_hits":
             # HITS IN A ROW ON ONE ENEMY. Issue #1833, phase 2. The event must
             # name who was struck, the cap is required, and there is no window.

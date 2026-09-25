@@ -1477,9 +1477,18 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// for 2 seconds". The same reading as `NoteHitTaken` beside it,
 				// evaded and blocked blows included, narrowed to the blows the
 				// resolved hit already calls melee.
+				//
+				// AND WHO STRUCK, for a row placing stacks on the attacker. Issue
+				// #1833, phase 2. Not for a tick, which is not a hit (ruled
+				// 2026-09-24): with no attacker named it places nothing, and every
+				// other row on this event reads it as it always did.
 				if (Hit.bIsMelee)
 				{
-					Cataclysm->NoteMeleeHitTaken(!Outcome.bEvaded);
+					Cataclysm->NoteMeleeHitTaken(!Outcome.bEvaded,
+						Hit.bIsDamageOverTime
+							? nullptr
+							: UCataclysmCombatEvents::AttackerOf(
+								  Data.EffectSpec.GetContext()));
 				}
 
 				// AND A LANDED MELEE HIT COUNTS TOWARD RENDING BLOWS. Issue
