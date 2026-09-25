@@ -457,7 +457,9 @@ bool FCataclysmDataTablesImportTest::RunTest(const FString& Parameters)
 	// point while wielding a two-handed weapon. Issue #1515.
 	// AND 302 SINCE THEN, for Set Upon and Set the Pack On: minions hit harder
 	// against an enemy their summoner damaged in the last 2 seconds. Issue #1515.
-	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        302)
+	// AND 315 SINCE THEN, for the nine Demonic options built engine first, from
+	// Shared Ruin to Shared Blood: thirteen flat rows. Issue #1515.
+	CHECK_TABLE(FCataclysmPassiveEffectRow,     "PassiveEffects.csv",        315)
 
 	// EIGHTY-ONE ROWS OVER SEVENTY-THREE ENCHANTMENTS. Issue #45. The first seven
 	// state one number each. The next fifty-seven, written on 2026-09-11 once

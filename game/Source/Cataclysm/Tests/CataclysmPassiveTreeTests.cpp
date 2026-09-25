@@ -10,6 +10,8 @@
 // For the map from a stat name to the attribute it drives. Issue #954.
 #include "Character/CataclysmPlayerClassStats.h"
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
+// For the stat Cast from Ward's row carries. Issue #1515.
+#include "AbilitySystem/CataclysmGameplayAbility.h"
 // For the swing time Thirst for Pain shortens. Issue #962.
 #include "AbilitySystem/CataclysmBasicAttack.h"
 // For resolving a real hit against a real character, and the two damage-taken
@@ -15499,6 +15501,345 @@ bool FCataclysmOneClassScreenDimsTest::RunTest(const FString&)
 	TestTrue(TEXT("and has no tool tip, on the node"),
 			 RavagerNode->GetToolTipText().IsEmpty());
 	return true;
+}
+
+// ---------------------------------------------------------------------------
+// The nine Demonic options built engine first, from their rows. Issue #1515.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmDemonicRowsTest
+{
+	using namespace CataclysmPassiveTest;
+
+	/** A stat an option's row carries, named by the constant the engine reads
+	 *  it through, and the figure the option's sentence states. */
+	struct FStatFigure
+	{
+		const TCHAR* Stat;
+		float Value;
+	};
+
+	/**
+	 * Fill one class's tree to a capstone's threshold, skipping the capstone.
+	 * `FillTreeToOpen` above does this for the Masochist's tree and
+	 * `FillRitualistTreeToOpen` for the Ritualist's; this one names the tree,
+	 * because the Ravager's options need it too.
+	 */
+	int32 FillClassTreeToOpen(const UDataTable* NodeTable, const TCHAR* Tree,
+							  const FName& Capstone,
+							  FCataclysmPassiveAllocation& Allocation,
+							  int32& OutFilled)
+	{
+		OutFilled = 0;
+		if (!NodeTable)
+		{
+			return 0;
+		}
+
+		int32 Threshold = 0;
+		for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+		{
+			if (Pair.Key == Capstone)
+			{
+				Threshold = reinterpret_cast<const FCataclysmPassiveNodeRow*>(
+					Pair.Value)->Threshold;
+			}
+		}
+		if (Threshold <= 0)
+		{
+			return 0;
+		}
+
+		for (const TPair<FName, uint8*>& Pair : NodeTable->GetRowMap())
+		{
+			if (OutFilled >= Threshold)
+			{
+				break;
+			}
+			const auto* Row =
+				reinterpret_cast<const FCataclysmPassiveNodeRow*>(Pair.Value);
+			if (Row->Tree != Tree || Pair.Key == Capstone || Row->MaxPoints <= 0)
+			{
+				continue;
+			}
+			const int32 Take = FMath::Min(Row->MaxPoints, Threshold - OutFilled);
+			Allocation.Add(Pair.Key, Take);
+			OutFilled += Take;
+		}
+		return Threshold;
+	}
+
+	/**
+	 * THE TEST EACH OF THE NINE RUNS, with its own node, option and figures.
+	 *
+	 * On a real player of the class, spending real points: the option's rows
+	 * are exactly the stats named, each flat and of the figure its sentence
+	 * states. Each stat, read through the constant the engine reads it by, is
+	 * nothing before the points are spent; for a capstone it is still nothing
+	 * with the points spent and no option chosen; and it is the figure once
+	 * the option is chosen, or once a keystone's point is spent.
+	 *
+	 * SO A ROW THAT IS MISSING, MISSPELT OR OF THE WRONG FIGURE FAILS HERE,
+	 * which the engine tests, granting each stat by hand, cannot see.
+	 *
+	 * Option 0 is a keystone: the node's own rows, one point, no choice.
+	 */
+	bool WearsTheRows(FAutomationTestBase& Test, const TCHAR* ClassName,
+					  const FName& Node, int32 Option,
+					  const TArray<FStatFigure>& Figures)
+	{
+		FScopedPlayerClass AsClass(ClassName);
+		if (!Test.TestTrue(TEXT("the class console variable exists"),
+						   AsClass.IsUsable()))
+		{
+			return false;
+		}
+
+		UWorld* World = MakeWorldThatHasBegunPlay();
+		ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+		ACataclysmPlayerCharacter* Character = SpawnPossessedPlayer(World);
+		ACataclysmPlayerState* State = Character
+			? Character->GetPlayerState<ACataclysmPlayerState>() : nullptr;
+		UCataclysmEquipmentComponent* Equipment =
+			Character ? Character->GetEquipment() : nullptr;
+		UCataclysmAbilitySystemComponent* AbilitySystem =
+			State ? State->GetCataclysmAbilitySystemComponent() : nullptr;
+		const UDataTable* EffectTable = UCataclysmPassiveTree::LoadEffectTable();
+		const UDataTable* NodeTable = UCataclysmPassiveTree::LoadNodeTable();
+		if (!State || !Equipment || !AbilitySystem
+			|| !Test.TestNotNull(TEXT("the effect table loads"), EffectTable)
+			|| !Test.TestNotNull(TEXT("the node table loads"), NodeTable))
+		{
+			Test.AddError(TEXT("A possessed player with both passive tables was "
+							   "not built. If a table is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+
+		const TArray<const FCataclysmPassiveEffectRow*> Rows =
+			CataclysmDamagedByYouRowTest::RowsOf(EffectTable, Node, Option);
+		if (!Test.TestEqual(*FString::Printf(TEXT("%s option %d carries %d rows"),
+											 *Node.ToString(), Option,
+											 Figures.Num()),
+							Rows.Num(), Figures.Num()))
+		{
+			Test.AddError(TEXT("The option's rows are missing from the data, so "
+							   "it grants nothing in play. Author them in the "
+							   "Passive Effects sheet of "
+							   "docs/All_Things_Cataclysm.xlsx and regenerate."));
+			return false;
+		}
+		for (const FStatFigure& Figure : Figures)
+		{
+			const FCataclysmPassiveEffectRow* const* Found = Rows.FindByPredicate(
+				[&Figure](const FCataclysmPassiveEffectRow* Row)
+				{
+					return Row->Stat == Figure.Stat;
+				});
+			if (!Test.TestNotNull(*FString::Printf(
+									  TEXT("a row grants %s, the stat the engine reads"),
+									  Figure.Stat),
+								  Found))
+			{
+				return false;
+			}
+			Test.TestEqual(*FString::Printf(TEXT("%s is stated flat"), Figure.Stat),
+						   (*Found)->ValueKind, FString(TEXT("flat")));
+			Test.TestEqual(*FString::Printf(TEXT("%s is %g, the figure its sentence states"),
+											Figure.Stat, Figure.Value),
+						   (*Found)->ValuePerPoint, Figure.Value, 0.001f);
+		}
+
+		const FGameplayTagContainer NoTags;
+		const auto Read = [AbilitySystem, &NoTags](const FStatFigure& Figure)
+		{
+			return AbilitySystem->StatForSkill(FName(Figure.Stat), NoTags, 0.0f);
+		};
+
+		for (const FStatFigure& Figure : Figures)
+		{
+			Test.TestEqual(*FString::Printf(TEXT("with nothing spent, %s is nothing"),
+											Figure.Stat),
+						   Read(Figure), 0.0f, 0.001f);
+		}
+
+		FCataclysmPassiveAllocation Allocation;
+		if (Option > 0)
+		{
+			int32 Filled = 0;
+			const int32 Threshold = FillClassTreeToOpen(
+				NodeTable, ClassName, Node, Allocation, Filled);
+			if (!Test.TestTrue(TEXT("the capstone states a threshold"), Threshold > 0)
+				|| !Test.TestEqual(*FString::Printf(
+									   TEXT("the tree can hold the %d points it opens at"),
+									   Threshold),
+								   Filled, Threshold))
+			{
+				return false;
+			}
+		}
+		Allocation.Add(Node, 1);
+		State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Equipment->RefreshAttributes(AbilitySystem);
+
+		if (Option > 0)
+		{
+			// THE CONTROL: the points in the capstone alone must not grant an
+			// option's rows.
+			for (const FStatFigure& Figure : Figures)
+			{
+				Test.TestEqual(*FString::Printf(
+								   TEXT("with the points spent and no option chosen, %s is nothing"),
+								   Figure.Stat),
+							   Read(Figure), 0.0f, 0.001f);
+			}
+
+			FString Refusal;
+			if (!Test.TestTrue(TEXT("the option can be chosen"),
+							   State->ChoosePassiveOption(Node, Option, Refusal)))
+			{
+				Test.AddError(FString::Printf(TEXT("Refused: %s"), *Refusal));
+				return false;
+			}
+			Equipment->RefreshAttributes(AbilitySystem);
+		}
+
+		for (const FStatFigure& Figure : Figures)
+		{
+			Test.TestEqual(*FString::Printf(TEXT("held, %s reads %g"),
+											Figure.Stat, Figure.Value),
+						   Read(Figure), Figure.Value, 0.001f);
+		}
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsSharedRuinTest,
+	"Cataclysm.DemonicRows.SharedRuinReachesARealRitualistFromItsRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_capstone_100` option 2, Shared Ruin: "When a minion of yours
+ *  dies, everything within 4 metres takes damage equal to 20% of that
+ *  minion's maximum health." */
+bool FCataclysmDemonicRowsSharedRuinTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_capstone_100")), 2,
+		{{ACataclysmMinion::DeathBlastPercentOfMaximumHealthStat, 20.0f},
+		 {ACataclysmMinion::DeathBlastRadiusMetresStat, 4.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsNothingStopsItTest,
+	"Cataclysm.DemonicRows.NothingStopsItReachesARealRavagerFromItsRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_capstone_200` option 3, Nothing Stops It: "You cannot be brought
+ *  below 1 health by a single hit. When a hit would have done so you take no
+ *  damage for 2 seconds, no more than once every 20 seconds." */
+bool FCataclysmDemonicRowsNothingStopsItTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_200")), 3,
+		{{UCataclysmAbilitySystemComponent::LethalHitSurvivedEverySecondsStat, 20.0f},
+		 {UCataclysmAbilitySystemComponent::ImmuneAfterLethalHitSecondsStat, 2.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsSacrificialWardTest,
+	"Cataclysm.DemonicRows.SacrificialWardReachesARealRitualistFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_keystone_c_kC` Sacrificial Ward: "Damage that would break your
+ *  Energy Shield instead destroys the minion with the least health remaining,
+ *  no more than once every 3 seconds." */
+bool FCataclysmDemonicRowsSacrificialWardTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_keystone_c_kC")), 0,
+		{{UCataclysmAbilitySystemComponent::ShieldBreakDestroysMinionEverySecondsStat, 3.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsCastFromWardTest,
+	"Cataclysm.DemonicRows.CastFromWardReachesARealRitualistFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_capstone_50` option 3, Cast from Ward: "A skill may be paid for
+ *  with Energy Shield when your mana is not enough." A flag of 1. */
+bool FCataclysmDemonicRowsCastFromWardTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_capstone_50")), 3,
+		{{UCataclysmGameplayAbility::CostPaidFromEnergyShieldStat, 1.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsNoSecondWindTest,
+	"Cataclysm.DemonicRows.NoSecondWindReachesARealRavagerFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_keystone_c_kB` No Second Wind: "Cripple and Weaken you applied do
+ *  not expire while that enemy is within 4 metres of you." */
+bool FCataclysmDemonicRowsNoSecondWindTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_keystone_c_kB")), 0,
+		{{UCataclysmDebuffs::AppliedHeldWithinMetresStat, 4.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsRenderingBlowsTest,
+	"Cataclysm.DemonicRows.RenderingBlowsReachesARealRavagerFromItsRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_capstone_50` option 1, Rendering Blows: "Every third melee attack
+ *  against the same enemy removes 20% of its Armor for 6 seconds." */
+bool FCataclysmDemonicRowsRenderingBlowsTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_50")), 1,
+		{{UCataclysmAbilitySystemComponent::RendPercentStat, 20.0f},
+		 {UCataclysmAbilitySystemComponent::RendSecondsStat, 6.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsGroundDownTest,
+	"Cataclysm.DemonicRows.GroundDownReachesARealRavagerFromItsRows",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_capstone_100` option 1, Ground Down: "Enemies within 4 metres of
+ *  you have 15% reduced Movement Speed and 15% reduced Attack Speed." */
+bool FCataclysmDemonicRowsGroundDownTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_100")), 1,
+		{{UCataclysmDebuffs::GroundDownMetresStat, 4.0f},
+		 {UCataclysmDebuffs::GroundDownPercentStat, 15.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsNothingWastedTest,
+	"Cataclysm.DemonicRows.NothingWastedReachesARealRavagerFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ravager_capstone_50` option 2, Nothing Wasted: "Damage your Armor and
+ *  Damage Reduction remove is added to your next melee attack, up to 100% of
+ *  that attack's damage." */
+bool FCataclysmDemonicRowsNothingWastedTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ravager"), FName(TEXT("Ravager_capstone_50")), 2,
+		{{UCataclysmAbilitySystemComponent::MitigatedAddedCapStat, 100.0f}});
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmDemonicRowsSharedBloodTest,
+	"Cataclysm.DemonicRows.SharedBloodReachesARealRitualistFromItsRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** `Ritualist_capstone_50` option 1, Shared Blood: "Your minions each have 20%
+ *  of your Maximum Energy Shield as their own, and it recharges when yours
+ *  does." */
+bool FCataclysmDemonicRowsSharedBloodTest::RunTest(const FString&)
+{
+	return CataclysmDemonicRowsTest::WearsTheRows(
+		*this, TEXT("Ritualist"), FName(TEXT("Ritualist_capstone_50")), 1,
+		{{UCataclysmRegeneration::SharedBloodStat, 20.0f}});
 }
 
 #endif // WITH_AUTOMATION_TESTS
