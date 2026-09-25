@@ -3224,6 +3224,32 @@ struct CATACLYSM_API FCataclysmStatInputs
  * AN ENUM RATHER THAN TWO BOOLS, because there are three answers and two bools
  * would carry an unstated invariant that both must not be true at once.
  */
+/**
+ * What an "every Nth" row counts, and so what happens on the Nth. Issue #1833,
+ * phase 2. Each kind implies its event, so the row names no Action Event.
+ */
+UENUM(BlueprintType)
+enum class ECataclysmEveryNth : uint8
+{
+	/** Not an "every Nth" row. */
+	None UMETA(DisplayName = "None"),
+
+	/**
+	 * "Every 5th hit you take deals 50%-100% bonus damage": the Nth landed hit
+	 * taken that is not damage over time takes `Percent` more.
+	 */
+	HitTaken UMETA(DisplayName = "Nth hit taken"),
+
+	/**
+	 * "Every third cast of your spells cost 20%-80% of your current mana": the
+	 * Nth spell cast costs its normal cost plus `Percent` of the mana held.
+	 */
+	SpellCast UMETA(DisplayName = "Nth spell cast"),
+
+	/** "Every 10th attack deals no damage": the Nth attack deals none. */
+	Attack UMETA(DisplayName = "Nth attack"),
+};
+
 UENUM(BlueprintType)
 enum class ECataclysmPoolActionBase : uint8
 {
@@ -3365,6 +3391,24 @@ struct CATACLYSM_API FCataclysmPoolAction
 	/** Set, the placed stack cuts the other character's damage; clear, its armour. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bPlacedCutsDamage = false;
+
+	/**
+	 * Set, this action COUNTS ITS KIND OF EVENT, and acts on every Nth. Issue
+	 * #1833, phase 2. `EveryNth` is N, `Percent` what the Nth is worth (unused
+	 * for an attack, which deals none) and `NthKey` whose count it is: the
+	 * enchantment and the action. Ruled 2026-09-24: a count ends at death and
+	 * on leaving combat, and has no timer.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmEveryNth NthKind = ECataclysmEveryNth::None;
+
+	/** N, for an "every Nth" action. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	int32 EveryNth = 0;
+
+	/** Whose count an "every Nth" action advances. */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	FName NthKey;
 
 	/**
 	 * Set, this action GRANTS A CHARGE THE NEXT USE SPENDS instead of moving a

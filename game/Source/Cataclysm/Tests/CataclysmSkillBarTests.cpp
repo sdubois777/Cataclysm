@@ -1141,4 +1141,25 @@ bool FCataclysmSkillBarHitsInARowTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillBarEveryNthTest,
+	"Cataclysm.SkillBar.TheLineCountsEachEveryNthRowAgainstItsN",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * The line above the bar with one count of each "every Nth" kind, so the player
+ * sees the Nth coming. Issue #1833, phase 2.
+ */
+bool FCataclysmSkillBarEveryNthTest::RunTest(const FString&)
+{
+	const TArray<FString> Counts = {
+		UCataclysmSkillBar::NthEntry(ECataclysmEveryNth::HitTaken, 4, 5),
+		UCataclysmSkillBar::NthEntry(ECataclysmEveryNth::SpellCast, 2, 3),
+		UCataclysmSkillBar::NthEntry(ECataclysmEveryNth::Attack, 9, 10),
+	};
+	TestEqual(TEXT("each count against its N"),
+		UCataclysmSkillBar::NextUseLine(0.0f, 0, 0.0f, 0, 0.0f, Counts),
+		FString(TEXT("Hit taken 4/5   Spell 2/3   Attack 9/10")));
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

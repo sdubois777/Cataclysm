@@ -239,6 +239,16 @@ public:
 	float LastNextUseMoreMultiplier = 1.0f;
 
 	/**
+	 * Set, the last use was the Nth of a worn "every Nth attack" row and deals
+	 * no damage. Issue #1833, phase 2, ruled 2026-09-24: none at all, its burn
+	 * included. Its hits carry a multiplier of nought, so none resolves and
+	 * nothing "on hit" fires; `UCataclysmSkillEffects::ApplyDamageOverTime`
+	 * reads this and applies nothing for the skill. Written by every use.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Skill")
+	bool bThisUseDealsNoDamage = false;
+
+	/**
 	 * Whether a use of this skill delivers damage itself, through its own hits
 	 * or ground, and so spends next-use charges. Issue #1833, phase 2.
 	 *
@@ -748,7 +758,8 @@ protected:
 	 * TRUE FOR A TARGET THAT WAS NEVER STRUCK AT ALL, which is deliberate and is
 	 * what keeps a Support skill working. A skill whose damage is zero by design
 	 * sends no blow, so nothing was evaded, so its curse and its shove still
-	 * land. Only an actual evasion answers false.
+	 * land. Only an actual evasion answers false -- and the Nth attack of a
+	 * worn "every Nth attack" row, which lands no hit (issue #1833, phase 2).
 	 */
 	bool BlowLandedOn(const AActor* Target) const;
 

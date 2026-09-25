@@ -5,6 +5,7 @@
 // rather than reading a gameplay attribute that is zero by design. Issue #973.
 #include "AbilitySystem/CataclysmAbilitySystemComponent.h"
 #include "AbilitySystem/CataclysmCombatAttributeSet.h"
+#include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmSkillSlots.h"
 // For the flag saying this character pays with health where others pay with
 // mana. Issue #1067.
@@ -218,16 +219,28 @@ float UCataclysmGameplayAbility::ManaCostFor(
 	const UAbilitySystemComponent* AbilitySystem) const
 {
 	const float Base = GetManaCost();
+	const UCataclysmAbilitySystemComponent* Cataclysm =
+		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
+
+	// THE Nth SPELL OF A WORN "EVERY Nth SPELL" ROW ADDS A SHARE OF THE MANA
+	// HELD, on top of whatever the cost comes to below. Issue #1833, phase 2,
+	// ruled 2026-09-24: PLUS rather than instead, because "instead" would make
+	// the Nth cast cheaper whenever that share is below the normal cost. Asked
+	// here, before the cast is paid for, because the count advances after. A
+	// free spell pays the share too.
+	const float Extra = Cataclysm && UCataclysmSkillEffects::IsSpell(SkillTagsForStats())
+		? Cataclysm->NthSpellExtraManaPercent() / 100.0f
+			* Cataclysm->GetNumericAttribute(UCataclysmVitalAttributeSet::GetManaAttribute())
+		: 0.0f;
+
 	if (Base <= 0.0f)
 	{
 		// NOTHING TO SCALE. The Basic Attack and the Aura's activation are free,
 		// and a stat cannot make a free skill cost something: every row in the
 		// data reduces a cost or takes it away.
-		return Base;
+		return Base + Extra;
 	}
 
-	const UCataclysmAbilitySystemComponent* Cataclysm =
-		Cast<const UCataclysmAbilitySystemComponent>(AbilitySystem);
 	if (!Cataclysm)
 	{
 		// An ability system this project did not make carries no stat line, so it
@@ -255,7 +268,7 @@ float UCataclysmGameplayAbility::ManaCostFor(
 	// NEVER BELOW ZERO. A Less multiplier stops at -99%, so it cannot get here,
 	// but a negative flat row could, and a cost below zero would pay a character
 	// for casting.
-	return FMath::Max(0.0f, Asked);
+	return FMath::Max(0.0f, Asked) + Extra;
 }
 
 const TCHAR* UCataclysmGameplayAbility::ManaCostAsCurrentHealthPercentStat =

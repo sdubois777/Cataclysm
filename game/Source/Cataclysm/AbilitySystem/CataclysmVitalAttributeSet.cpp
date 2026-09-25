@@ -889,6 +889,19 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// console variable, then the game mode, then tier 1 -- and a world
 			// with no game mode gets exactly the answer this line used to
 			// hard-code, so nothing that does not care is changed by it.
+			// WHETHER THIS IS THE Nth HIT OF A WORN "EVERY Nth HIT YOU TAKE" ROW,
+			// asked BEFORE it is resolved, because the count advances after.
+			// Issue #1833, phase 2. A tick is not a hit and is never the Nth.
+			if (!Hit.bIsDamageOverTime)
+			{
+				if (const UCataclysmAbilitySystemComponent* Taking =
+						Cast<UCataclysmAbilitySystemComponent>(
+							GetOwningAbilitySystemComponent()))
+				{
+					Hit.BonusDamagePercent = Taking->NthHitTakenBonusPercent();
+				}
+			}
+
 			FCataclysmDamageResult Resolved =
 				UCataclysmDamageCalculation::Resolve(
 					Hit, GetOwningAbilitySystemComponent(),
@@ -1458,6 +1471,15 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 				// #1833: an evaded blow is not a hit (2026-09-04), and the clocks
 				// and pool actions go on counting it as they always did.
 				Cataclysm->NoteHitTaken(!Outcome.bEvaded);
+
+				// AND AN "EVERY Nth HIT YOU TAKE" ROW COUNTS IT, ruled 2026-09-24:
+				// a landed hit, not a tick and not an evaded blow; a blocked blow
+				// landed. After `NoteHitTaken`, so the combat it opens is the one
+				// the count belongs to. Issue #1833, phase 2.
+				if (!Outcome.bEvaded && !Hit.bIsDamageOverTime)
+				{
+					Cataclysm->NoteNthEvent(ECataclysmEveryNth::HitTaken);
+				}
 
 				// AND WHOEVER DEALT IT IS IN COMBAT TOO. Issue #1815. The same
 				// blow and the same `AttackerOf` every other credit uses, so a

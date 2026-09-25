@@ -2,6 +2,106 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-24 — Every Nth, engine only: the Nth hit taken takes more, the Nth spell costs more, and the Nth attack deals no damage
+
+**Affects:**
+- `tools/generate_datatables.py`: `NTH_ACTIONS` and the Every Nth column, optional until the rows
+  arrive
+- `FCataclysmEnchantmentEffectRow::EveryNth`, and the four hand-written effect CSV fixtures, which
+  gain the column
+- `ECataclysmEveryNth`, and `FCataclysmPoolAction::NthKind`, `EveryNth` and `NthKey`
+- `UCataclysmAbilitySystemComponent`: `NoteNthEvent`, `NthHitTakenBonusPercent`,
+  `NthSpellExtraManaPercent`, `NextAttackIsNth` and `NthCountsForDisplay`
+- `FCataclysmIncomingHit::BonusDamagePercent`, applied in `UCataclysmDamageCalculation::Resolve`
+- `UCataclysmGameplayAbility::ManaCostFor`
+- `UCataclysmSkillTemplate::CommitAndBegin`, `bThisUseDealsNoDamage` and `BlowLandedOn`,
+  `UCataclysmSkillEffects::ApplyDamageOverTime` and `ACataclysmProjectile::HitOne`
+- `UCataclysmSkillBar::NthEntry` and the line above the skill bar
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 2, "every Nth"
+
+### WHAT IS BUILT, AND WHAT WAITS FOR THE WORKBOOK
+
+**Engine only.** The design workbook is with another session, so the three rows come in a later
+change. So does the Every Nth column, which the generator reads as optional until then. The
+generated table gains the column now, with nought on every row, so its asset is rebuilt in this
+change's window.
+
+| Action | Counts | The Nth | Row to come |
+| :-- | :-- | :-- | :-- |
+| `nth_hit_taken_damage` | landed hits taken, not ticks and not evaded blows | takes its value more, beside the damage-taken step | "Every 5th hit you take deals 50%-100% bonus damage": 50 to 100, N 5 |
+| `nth_spell_mana_cost` | spells cast (`Type.Spell`), after they are paid for | costs its normal cost plus its value of the mana held | "Every third cast of your spells cost 20%-80% of your current mana": 20 to 80, N 3 |
+| `nth_attack_no_damage` | attacks: uses that deliver damage themselves and are not spells, the basic attack included | deals no damage | "Every 10th attack deals no damage": 100, N 10 |
+
+Each action names what it counts, so the row states no Action Event. The count is one per row,
+however many copies are worn.
+
+**The timing, which is the reason each check is where it is.** `hit_taken` fires after a hit is
+resolved, and a spell's cost is paid before the spell event fires. So whether the next event is the
+Nth is asked BEFORE it happens, where it acts, and the count advances after.
+
+### WHAT THE GENRE SETTLES, AND WHAT IT DOES NOT
+
+- poe2db, Path of Exile 2's Tempest Flurry: "When used in quick succession, the third use Strikes
+  three times, and the fourth use performs a Final Strike". The count depends on uses coming
+  quickly. **It settles little**: the page states no reset rule.
+- Searches of Path of Exile, Diablo IV and Last Epoch for "every third" or "every 5th" counters
+  found no page I could read. **Every rule below is a judgement.**
+
+### THE RULINGS, by the coordinating session on 2026-09-24, under the owner's delegation
+
+- **"Deals no damage" is literal.** The Nth attack's hits, projectiles and ground carry a multiplier
+  of nought, so none resolves: it deals nothing, and it LANDS NO HIT, so nothing "on hit" fires. No
+  mana on hit, no Fervour, and none of its stated stuns, shoves or curses, because `BlowLandedOn`
+  answers no for that use. Its damage over time is stopped too. The owner's decision of 2026-08-25
+  keeps "increased damage" off damage over time, and it is about increases, not about a use that
+  deals none. One flag on the use, `bThisUseDealsNoDamage`, is read where every skill applies damage
+  over time. A projectile carries its own copy of the multiplier, so a slow shot's burn is stopped
+  even after the next use has cleared the flag.
+- **The Nth spell costs its normal cost PLUS the share.** "Instead" would make the Nth cast cheaper
+  whenever the share is below the normal cost, turning a drawback into a benefit. A free spell pays
+  the share.
+- **A count ends at death, and when the character leaves a combat it was counted in. No timer.** A
+  count taken out of combat is kept, so spells cast before a fight still count, and entering combat
+  does not end it.
+- **The hit-taken count takes landed hits only**: not a tick, not an evaded blow. A blocked blow
+  landed and counts.
+- **A judgement of mine, not ruled:** the Nth attack spends no next-use charge, since it could do
+  nothing with one. The charge waits for the next attack.
+
+### WHAT SHOWS IT
+
+The line above the skill bar lists each worn row's count against its N while the count is above
+nought: "Hit taken 4/5", "Spell 2/3", "Attack 9/10". So the player sees the Nth coming.
+
+### A PYTHON CONTROL
+
+`test_charge_and_placed_action_names_match_the_engine.py` now holds `NTH_ACTIONS` equal to the
+engine's three new constants too. `tools/prove_guard.py`'s `break_and_run`, spelling the engine's
+"nth_spell_mana_cost" as "nth_spell_cost", on that file alone, printed "PROVED: 2 failed, 3 passed
+in 0.26s | restored: 5 passed in 0.23s". The two failures were
+`test_the_engine_spells_each_name_as_this_file_does` and
+`test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has`.
+
+### THE TESTS
+
+- **The hit taken, every 3rd, 100%:**
+  - The third hit takes twice the first, and the fourth is plain.
+  - An evaded blow and a tick are not counted.
+  - After combat lapses, the count starts again.
+  - Death ends it.
+  - Two hits show as 2 of 3.
+- **The spell, every 2nd, 50%:**
+  - The first spell pays its own cost and shows as 1 of 2.
+  - The second pays its own plus half the mana held, and the count starts again.
+  - A strike is not a spell and pays its own.
+- **The attack, every 2nd:**
+  - The first strike hurts, and shows as 1 of 2.
+  - The second, stating a burn, hurts nothing and sets nothing alight.
+  - The third, stating a burn, hurts and burns.
+- **The display:** "Hit taken 4/5   Spell 2/3   Attack 9/10", exactly.
+
+---
+
 ## 2026-09-24 — The nine Demonic options built engine first now have their rows: thirteen flat rows, from Shared Ruin to Shared Blood
 
 **Affects:** `docs/All_Things_Cataclysm.xlsx` (the Passive Effects sheet), `game/Data/PassiveEffects.csv`

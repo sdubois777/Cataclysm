@@ -390,6 +390,12 @@ void ACataclysmHUD::DrawSkillBar()
 			OwnStacks.Add(UCataclysmSkillBar::OwnStacksEntry(
 				Held.Stats, Held.Held, Held.Cap, Held.bConsecutiveHits));
 		}
+		// AND EVERY "EVERY Nth" COUNT, after them. Issue #1833, phase 2.
+		for (const UCataclysmAbilitySystemComponent::FHeldNthCount& Held :
+			 Cataclysm->NthCountsForDisplay())
+		{
+			OwnStacks.Add(UCataclysmSkillBar::NthEntry(Held.Kind, Held.Count, Held.EveryNth));
+		}
 		// AND NOTHING WASTED'S STORE ON THE SAME LINE. Issue #1515.
 		TArray<FString> Parts;
 		for (const FString& Part :

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
+#include "AbilitySystem/CataclysmStatPipeline.h"
 #include "InputCoreTypes.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CataclysmSkillBar.generated.h"
@@ -324,6 +325,13 @@ public:
 	 */
 	static FString OwnStacksEntry(const TArray<FName>& Stats, int32 Held, int32 Cap,
 								  bool bConsecutiveHits = false);
+
+	/**
+	 * One worn "every Nth" row's count against N, as the line names it: "Hit
+	 * taken 4/5", "Spell 2/3" or "Attack 9/10". Issue #1833, phase 2: so the
+	 * player sees the Nth coming. Empty for a row of no kind.
+	 */
+	static FString NthEntry(ECataclysmEveryNth Kind, int32 Count, int32 EveryNth);
 
 	/**
 	 * What Nothing Wasted holds for the next melee blow, such as "Next melee

@@ -309,6 +309,16 @@ FString UCataclysmSkillBar::StoredDamageLine(float Stored)
 						   FMath::Max(1, FMath::RoundToInt(Stored)));
 }
 
+FString UCataclysmSkillBar::NthEntry(ECataclysmEveryNth Kind, int32 Count,
+									int32 EveryNth)
+{
+	const TCHAR* Name = Kind == ECataclysmEveryNth::HitTaken ? TEXT("Hit taken")
+		: Kind == ECataclysmEveryNth::SpellCast ? TEXT("Spell")
+		: Kind == ECataclysmEveryNth::Attack ? TEXT("Attack")
+		: nullptr;
+	return Name ? FString::Printf(TEXT("%s %d/%d"), Name, Count, EveryNth) : FString();
+}
+
 FString UCataclysmSkillBar::NextUseLine(float SkillPercent, int32 SkillCount,
 									   float AttackPercent, int32 AttackCount,
 									   float EffectivenessPercent,

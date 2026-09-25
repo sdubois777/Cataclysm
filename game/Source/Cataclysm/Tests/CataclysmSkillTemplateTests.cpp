@@ -18370,4 +18370,233 @@ bool FCataclysmPlacedStacksTest::RunTest(const FString&)
 	return true;
 }
 
+namespace CataclysmEveryNthTest
+{
+	/** One hand-built "every Nth" action, as a worn row would give. */
+	FCataclysmPoolAction Nth(ECataclysmEveryNth Kind, const TCHAR* Action, int32 N,
+							 float Percent)
+	{
+		FCataclysmPoolAction Made;
+		Made.Pool = FName(Action);
+		Made.Percent = Percent;
+		Made.NthKind = Kind;
+		Made.EveryNth = N;
+		Made.NthKey = FName(*FString::Printf(TEXT("Test:%s"), Action));
+		return Made;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryNthHitTakenTest,
+	"Cataclysm.Skills.EveryNthHitTakenTakesItsShareOnTopAndOnlyLandedHitsCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every 3rd hit you take deals 100% bonus damage", hand-built. Issue #1833,
+ * phase 2, ruled 2026-09-24. The third landed hit takes twice the first, and the
+ * fourth is plain again. An evaded blow and a tick of damage over time are not
+ * counted. Leaving combat and death end the count. The count shows as "Hit
+ * taken 2/3".
+ */
+bool FCataclysmEveryNthHitTakenTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmEveryNthTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Wearer(World, FVector::ZeroVector);
+	FScopedFighter Attacker(World, FVector(2 * M, 0, 0));
+	Wearer.AbilitySystem->SetPoolActions({Nth(ECataclysmEveryNth::HitTaken,
+		UCataclysmAbilitySystemComponent::NthHitTakenDamageAction, 3, 100.0f)});
+
+	const auto Blow = [&]()
+	{
+		const float Before = Wearer.Health();
+		FCataclysmHitDelivery Delivery;
+		Delivery.CritChancePercent = 0.0f;
+		UCataclysmSkillEffects::ApplyHit(Attacker.Actor, Wearer.Actor, 100.0f,
+			FGameplayTagContainer(), Delivery);
+		return Before - Wearer.Health();
+	};
+
+	const float Plain = Blow();
+	if (!TestTrue(TEXT("a blow lands"), Plain > 0.0f))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the second is plain"), Blow(), Plain, 0.01f);
+
+	const TArray<UCataclysmAbilitySystemComponent::FHeldNthCount> Shown =
+		Wearer.AbilitySystem->NthCountsForDisplay();
+	TestTrue(TEXT("two hits show as a count of 2 of 3"),
+		Shown.Num() == 1 && Shown[0].Kind == ECataclysmEveryNth::HitTaken
+			&& Shown[0].Count == 2 && Shown[0].EveryNth == 3);
+
+	TestEqual(TEXT("the third takes twice the first"), Blow(), 2.0f * Plain, 0.01f);
+	TestEqual(TEXT("and the fourth is plain again"), Blow(), Plain, 0.01f);
+
+	// NEITHER AN EVADED BLOW NOR A TICK IS COUNTED.
+	Wearer.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 100.0f);
+	TestEqual(TEXT("an evaded blow deals nothing"), Blow(), 0.0f, 0.01f);
+	Wearer.Set(UCataclysmCombatAttributeSet::GetEvasionAttribute(), 0.0f);
+	const FGameplayTag Burn = UCataclysmSkillEffects::BurnTag();
+	TestTrue(TEXT("a burn is set on the wearer"),
+		UCataclysmSkillEffects::ApplyDamageOverTime(Attacker.Actor, Wearer.Actor,
+			/*DamagePerTick=*/10.0f, /*DurationSeconds=*/4.0f, Burn,
+			/*bScalesWithInstigator=*/false));
+	TestEqual(TEXT("and one tick of it runs"),
+		Wearer.AbilitySystem->ExecutePeriodicEffectsGrantingForTests(Burn), 1);
+	TestEqual(TEXT("so the fifth hit is still plain"), Blow(), Plain, 0.01f);
+	TestEqual(TEXT("and the sixth is the third since the last: twice"),
+		Blow(), 2.0f * Plain, 0.01f);
+
+	// LEAVING COMBAT ENDS THE COUNT.
+	Blow();
+	World->TimeSeconds += UCataclysmAbilitySystemComponent::CombatLapseSeconds + 1.0f;
+	TestEqual(TEXT("after combat lapses, the first hit is plain"), Blow(), Plain, 0.01f);
+	TestEqual(TEXT("so is the second"), Blow(), Plain, 0.01f);
+	TestEqual(TEXT("and the third takes twice"), Blow(), 2.0f * Plain, 0.01f);
+
+	// DEATH ENDS IT.
+	Blow();
+	Blow();
+	Wearer.AbilitySystem->ClearWhatDeathEnds();
+	TestEqual(TEXT("death ends the count"),
+		Wearer.AbilitySystem->NthCountsForDisplay().Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryNthSpellTest,
+	"Cataclysm.Skills.EveryNthSpellCostsItsNormalCostPlusItsShareOfManaHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every 2nd cast of your spells costs 50% of your current mana", hand-built.
+ * Issue #1833, phase 2, ruled 2026-09-24: its normal cost PLUS the share. The
+ * first spell pays its cost; the second pays its cost and half the mana held;
+ * a strike is not a spell and pays its own. The count shows as "Spell 1/2" and
+ * the second cast starts it again.
+ */
+bool FCataclysmEveryNthSpellTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmEveryNthTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	Caster.AbilitySystem->SetPoolActions({Nth(ECataclysmEveryNth::SpellCast,
+		UCataclysmAbilitySystemComponent::NthSpellManaCostAction, 2, 50.0f)});
+
+	UCataclysmStrikeSkill* First = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("A spell"), TEXT("Element.Demonic, Type.Spell"));
+	UCataclysmStrikeSkill* Second = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360"),
+		TEXT("Another spell"), TEXT("Element.Demonic, Type.Spell"));
+	UCataclysmStrikeSkill* Strike = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Radius=4; Angle=360"),
+		TEXT("A strike"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("the first spell"), First) || !TestNotNull(TEXT("the second"), Second)
+		|| !TestNotNull(TEXT("the strike"), Strike))
+	{
+		return false;
+	}
+	First->ManaCostOverride = 40.0f;
+	Second->ManaCostOverride = 60.0f;
+	Strike->ManaCostOverride = 30.0f;
+
+	TestEqual(TEXT("the first spell costs its own"),
+		First->ManaCostFor(Caster.AbilitySystem), First->GetManaCost(), 0.001f);
+	float Before = Caster.Mana();
+	TestTrue(TEXT("it is cast"), Activate(Caster, First));
+	TestEqual(TEXT("and pays its own"), Before - Caster.Mana(), First->GetManaCost(), 0.01f);
+
+	const TArray<UCataclysmAbilitySystemComponent::FHeldNthCount> Shown =
+		Caster.AbilitySystem->NthCountsForDisplay();
+	TestTrue(TEXT("one spell shows as 1 of 2"),
+		Shown.Num() == 1 && Shown[0].Kind == ECataclysmEveryNth::SpellCast
+			&& Shown[0].Count == 1 && Shown[0].EveryNth == 2);
+
+	Before = Caster.Mana();
+	const float Expected = Second->GetManaCost() + 0.5f * Before;
+	TestEqual(TEXT("the second spell costs its own plus half the mana held"),
+		Second->ManaCostFor(Caster.AbilitySystem), Expected, 0.01f);
+	TestEqual(TEXT("a strike is not a spell and costs its own"),
+		Strike->ManaCostFor(Caster.AbilitySystem), Strike->GetManaCost(), 0.001f);
+	TestTrue(TEXT("the second spell is cast"), Activate(Caster, Second));
+	TestEqual(TEXT("and pays that"), Before - Caster.Mana(), Expected, 0.01f);
+	TestEqual(TEXT("and the count starts again"),
+		Caster.AbilitySystem->NthCountsForDisplay().Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryNthAttackTest,
+	"Cataclysm.Skills.EveryNthAttackDealsNoDamageAndSetsNothingAlight",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Every 2nd attack deals no damage", hand-built. Issue #1833, phase 2, ruled
+ * 2026-09-24: no damage at all, its burn included. (It lands no hit, which is
+ * `BlowLandedOn` and the zero multiplier, and not asserted here.) Three
+ * strikes in three slots: the first hurts; the second, stating a burn, hurts
+ * nothing and sets nothing alight; the third, stating a burn, hurts and burns,
+ * because the count started again. The count shows as "Attack 1/2".
+ */
+bool FCataclysmEveryNthAttackTest::RunTest(const FString&)
+{
+	using namespace CataclysmNextUseTest;
+	using namespace CataclysmEveryNthTest;
+
+	UWorld* World = MakeWorld();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FScopedFighter Caster(World, FVector::ZeroVector);
+	FScopedFighter Enemy(World, FVector(2 * M, 0, 0));
+	Caster.AbilitySystem->SetPoolActions({Nth(ECataclysmEveryNth::Attack,
+		UCataclysmAbilitySystemComponent::NthAttackNoDamageAction, 2, 100.0f)});
+
+	UCataclysmStrikeSkill* First = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Heavy, TEXT("Radius=4; Angle=360"),
+		TEXT("First"), TEXT("Type.Melee"));
+	UCataclysmStrikeSkill* Second = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Special, TEXT("Radius=4; Angle=360; Burn=1"),
+		TEXT("Second"), TEXT("Type.Melee"));
+	UCataclysmStrikeSkill* Third = GrantSkill<UCataclysmStrikeSkill>(
+		Caster, ECataclysmAbilitySlot::Ultimate, TEXT("Radius=4; Angle=360; Burn=1"),
+		TEXT("Third"), TEXT("Type.Melee"));
+	if (!TestNotNull(TEXT("the first strike"), First) || !TestNotNull(TEXT("the second"), Second)
+		|| !TestNotNull(TEXT("the third"), Third)
+		|| !TestTrue(TEXT("all three deliver damage themselves"),
+			First->DeliversDamageItself() && Second->DeliversDamageItself()
+				&& Third->DeliversDamageItself()))
+	{
+		return false;
+	}
+
+	float Before = Enemy.Health();
+	TestTrue(TEXT("the first strike is used"), Activate(Caster, First));
+	TestTrue(TEXT("and hurts the enemy"), Before - Enemy.Health() > 0.0f);
+	const TArray<UCataclysmAbilitySystemComponent::FHeldNthCount> Shown =
+		Caster.AbilitySystem->NthCountsForDisplay();
+	TestTrue(TEXT("one attack shows as 1 of 2"),
+		Shown.Num() == 1 && Shown[0].Kind == ECataclysmEveryNth::Attack
+			&& Shown[0].Count == 1 && Shown[0].EveryNth == 2);
+
+	Before = Enemy.Health();
+	TestTrue(TEXT("the second strike is used"), Activate(Caster, Second));
+	TestTrue(TEXT("and was the second attack"), Second->bThisUseDealsNoDamage);
+	TestEqual(TEXT("it deals no damage"), Before - Enemy.Health(), 0.0f, 0.01f);
+	TestEqual(TEXT("and sets nothing alight"), BurnPerTickOn(Enemy), -1.0f, 0.001f);
+
+	Before = Enemy.Health();
+	TestTrue(TEXT("the third strike is used"), Activate(Caster, Third));
+	TestTrue(TEXT("and hurts the enemy, the count having started again"),
+		Before - Enemy.Health() > 0.0f);
+	TestTrue(TEXT("and sets it alight"), BurnPerTickOn(Enemy) > 0.0f);
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

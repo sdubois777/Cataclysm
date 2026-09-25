@@ -789,6 +789,10 @@ FCataclysmDamageResult UCataclysmDamageCalculation::Resolve(
 			DefenderStat(Defender, DamageTakenStat,
 						 Combat->GetDamageTaken(), BlowOf(Hit))) / 100.0f;
 
+		// AND THE Nth HIT OF AN "EVERY Nth HIT YOU TAKE" ROW TAKES ITS SHARE ON
+		// TOP. Issue #1833, phase 2. Nought on every other hit.
+		Damage *= 1.0f + FMath::Max(0.0f, Hit.BonusDamagePercent) / 100.0f;
+
 		if (Hit.bIsDamageOverTime)
 		{
 			// NEITHER STAT IN THIS BRANCH TAKES A BLOW, BECAUSE A TICK IS NOT A

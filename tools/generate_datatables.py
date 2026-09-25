@@ -1588,7 +1588,15 @@ AFFIX_POSITIONS = ("prefix", "suffix")
 #: EVERY SECONDS JOINED ON 2026-09-24 for issue #1833's timed grants, and
 #: leaves with their rows.
 #: EVERY SECONDS LEFT with the timed-grant rows, and the table is empty again.
-OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {}
+#:
+#: EVERY NTH JOINED ON 2026-09-24 for issue #1833's "every Nth" rows, built
+#: ahead of them while the design workbook is with another session, and leaves
+#: with those rows.
+OPTIONAL_COLUMNS: dict[str, dict[str, str]] = {
+    "Enchantment Effects": {
+        "Every Nth": "issue #1833: the every-Nth rows add this column",
+    },
+}
 
 
 class _Headers(dict):
@@ -4607,6 +4615,22 @@ PLACED_ACTIONS = {
     "attacker_damage_removed": ("melee_hit_taken",),
 }
 
+#: The actions that COUNT A KIND OF EVENT AND ACT ON EVERY Nth, each naming
+#: what it counts, so the row states no Action Event. Issue #1833, phase 2,
+#: ruled 2026-09-24. Every Nth is N. The value is the Nth hit taken's share
+#: taken on top, or the share of the mana held the Nth spell adds to its cost;
+#: an attack deals no damage, which is written 100.
+#: `UCataclysmAbilitySystemComponent::NthHitTakenDamageAction` and its two
+#: siblings hold the same three names.
+NTH_ACTIONS = (
+    "nth_hit_taken_damage",
+    "nth_spell_mana_cost",
+    "nth_attack_no_damage",
+)
+
+#: The largest N a row may state.
+MAX_EVERY_NTH = 100
+
 #: What a percentage on an action row is a percentage OF.
 #:
 #: "Restore 5% of your maximum HP" and "drain 3% of your current HP" are both
@@ -4726,13 +4750,18 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_placed_action(index, who, action, event, fraction_of, kind,
                              raw, headers)
         return
+    if action in NTH_ACTIONS:
+        _check_nth_action(index, who, action, event, fraction_of, kind,
+                          raw, headers)
+        return
     if action not in POOL_ACTIONS:
         raise DataError(
             f"Enchantment Effects row {index}: {who} moves the pool {action!r}, "
             f"which is not one the game has. Known: "
             f"{', '.join(POOL_ACTIONS)}; or a next-use charge, "
             f"{', '.join(NEXT_USE_ACTIONS)}; or a placed stack, "
-            f"{', '.join(PLACED_ACTIONS)}.")
+            f"{', '.join(PLACED_ACTIONS)}; or an every-Nth action, "
+            f"{', '.join(NTH_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -4798,6 +4827,27 @@ def _check_placed_action(index: int, who: str, action: str, event: str,
                 f"states {column} {written!r}. A placed stack takes away its "
                 f"value per stack and nothing else, so the column must be "
                 f"empty.")
+
+
+def _check_nth_action(index: int, who: str, action: str, event: str,
+                      fraction_of: str, kind: str, raw,
+                      headers: dict[str, int]) -> None:
+    """Everything an every-Nth row must not say. Issue #1833, phase 2.
+
+    THE ACTION NAMES WHAT IS COUNTED, so an event is refused rather than
+    dropped; so are a fraction, a value kind and a scale. Every Nth itself is
+    checked where the column is read.
+    """
+    for column, written in (("Action Event", event),
+                            ("Fraction Of", fraction_of),
+                            ("Value Kind", kind),
+                            ("Scale", clean(_cell(raw, headers, "Scale")))):
+        if written:
+            raise DataError(
+                f"Enchantment Effects row {index}: {who} is the every-Nth "
+                f"action {action} and states {column} {written!r}. The action "
+                f"names what it counts and what the Nth does, so the column "
+                f"must be empty.")
 
 
 def _check_next_use_action(index: int, who: str, action: str, event: str,
@@ -5002,7 +5052,8 @@ def enchantment_effects(book) -> list[dict]:
         if action:
             _check_pool_action(index, name, action, action_event, fraction_of,
                                kind, raw, headers)
-            if action not in NEXT_USE_ACTIONS and action not in PLACED_ACTIONS:
+            if action not in NEXT_USE_ACTIONS and action not in PLACED_ACTIONS \
+                    and action not in NTH_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5208,6 +5259,47 @@ def enchantment_effects(book) -> list[dict]:
                 f"Seconds on the event {action_event or '(none)'!r}. Only "
                 f"{TIMED_EVENT} reads a period, so it would be dropped.")
 
+        # AN EVERY-Nth ROW STATES N, AND ONLY IT DOES. Issue #1833, phase 2:
+        # "Every third cast" is 3. A whole number from 2: "every 1st" is every
+        # time, which a row would say without counting. An attack's value is
+        # 100, "no damage"; the other two take something, so both ends are
+        # above nought. Neither a window nor a cap means anything here.
+        nth_text = clean(_cell(raw, headers, "Every Nth"))
+        every_nth = 0
+        if action in NTH_ACTIONS:
+            if not nth_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} is the every-Nth "
+                    f"action {action} and states no Every Nth, so it would "
+                    f"never act.")
+            nth = number(nth_text, "Every Nth", index)
+            if nth != int(nth) or not 2 <= nth <= MAX_EVERY_NTH:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} acts every "
+                    f"{nth:g}th. N is a whole number from 2 to {MAX_EVERY_NTH}.")
+            every_nth = int(nth)
+            if action == "nth_attack_no_damage":
+                if low != 100 or high != 100:
+                    raise DataError(
+                        f"Enchantment Effects row {index}: {name} is "
+                        f"{action} worth {low:g} to {high:g}. No damage is all "
+                        f"of it: 100.")
+            elif low <= 0 or high <= 0:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} is {action} "
+                    f"worth {low:g} to {high:g}. It takes something, so both "
+                    f"ends are above nought.")
+            if stack_text:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} is {action} and "
+                    f"states Stack Seconds. A count has no window (ruled "
+                    f"2026-09-24), so they would be dropped.")
+        elif nth_text:
+            raise DataError(
+                f"Enchantment Effects row {index}: {name} states Every Nth and "
+                f"is not an every-Nth action, so it would be dropped. Those "
+                f"actions: {', '.join(NTH_ACTIONS)}.")
+
         counts[name] = counts.get(name, 0) + 1
         out.append({
             "Name": f"{name}#{counts[name]}",
@@ -5228,6 +5320,7 @@ def enchantment_effects(book) -> list[dict]:
             "StackSeconds": stack_seconds,
             "ScaleOffset": scale_offset,
             "EverySeconds": every_seconds,
+            "EveryNth": every_nth,
         })
 
     # THE SAME ENCHANTMENT AND THE SAME STAT TWICE IS A MISTAKE RATHER THAN A

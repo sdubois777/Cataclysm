@@ -111,6 +111,15 @@ struct CATACLYSM_API FCataclysmIncomingHit
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	float NonCriticalDamagePercent = 100.0f;
 
+	/**
+	 * What this hit takes on top, as a percentage, because it is the Nth of the
+	 * defender's worn "every Nth hit you take" row. Issue #1833, phase 2. 0
+	 * changes nothing, which is every other hit. A multiplier of its own,
+	 * applied beside the damage-taken step.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
+	float BonusDamagePercent = 0.0f;
+
 	/** Area damage cannot be evaded. It can still be blocked. */
 	UPROPERTY(BlueprintReadWrite, Category = "Cataclysm|Damage")
 	bool bIsArea = false;
