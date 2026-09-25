@@ -458,8 +458,25 @@ void UCataclysmVitalAttributeSet::PostGameplayEffectExecute(
 			// so a passive row and the combat log cannot disagree about one
 			// strike. It answers -1 when either actor is missing, and every
 			// predicate reading a distance refuses a negative one.
+			//
+			// TO THE DEFENDER'S BODY, NOT TO THIS SET'S OWNER. Issue #1755. A
+			// player's vital set lives on its player state, which stands at the
+			// world's origin wherever the character goes, so measuring to
+			// `GetOwningActor()` gave a player's rows the attacker's distance from
+			// the origin: Standing Apart softened a blow from beside a player who
+			// stood far out and not one from across the room near the origin, and
+			// "Nearby enemies deal less" did the reverse. The same rule
+			// `UCataclysmAbilitySystemComponent::WithEnemiesInReach` states,
+			// "MEASURED FROM THE AVATAR AND NOT FROM THIS COMPONENT'S OWNER". The
+			// owner is kept only for a set with no avatar, and for an enemy or a
+			// minion the two are the same actor.
+			const UAbilitySystemComponent* DistanceFrom =
+				GetOwningAbilitySystemComponent();
+			AActor* DefendingBody = DistanceFrom && DistanceFrom->GetAvatarActor()
+				? DistanceFrom->GetAvatarActor()
+				: GetOwningActor();
 			Hit.OpponentDistanceMetres = UCataclysmTargeting::MetresBetween(
-				Data.EffectSpec.GetContext().GetEffectCauser(), GetOwningActor());
+				Data.EffectSpec.GetContext().GetEffectCauser(), DefendingBody);
 
 			// AND WHETHER IT WAS STRUCK IN MELEE, FROM RANGE, OR AS A SPELL.
 			// Issues #1032 and #666. Read here beside the other two because they
