@@ -26588,6 +26588,9 @@ bool FCataclysmEchoesRecordTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Unpaid->bDiesUnpaid = true;
+	// AN ATTACK NO OTHER DEATH HERE RECORDS, so a record of this death would show in the last six
+	// below as well as in the count here.
+	Unpaid->LastAttackUsed = 3;
 	UCataclysmSkillEffects::ApplyHit(Player.Character, Unpaid, 100000.0f);
 	TestTrue(TEXT("it died"), UCataclysmSkillEffects::IsDead(Unpaid));
 	TestEqual(TEXT("and is not recorded"), Mode->EchoAttacksRecordedThisFloor().Num(), 2);
