@@ -351,6 +351,178 @@ break on a value applied twice is invisible", which the break was chosen without
 
 ---
 
+## 2026-09-25 — Obsidian Sarcophagi: two coffins that cannot be hurt give the creatures within six metres 20% more damage and 15 more all-resistance, and the eighth paid death beside one lets its Vampire Lord out; every rule now writes resistance through one record
+
+**Affects:** a new coffin class `game/Source/Cataclysm/Character/CataclysmSarcophagusCharacter.h`;
+`game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a seventh key of the damage
+multiplier map with its setter, and the flag that marks a Vampire Lord);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+and when a lord comes); `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the record
+every rule writes a creature's all-resistance through, Trial of Endurance moved onto it, placing and
+forgetting the coffins, their zones, the bonuses, the deaths and the lord, the panel line);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Sarcophagus" and "Vampire Lord"
+under the health bars); the automation tests in
+`game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (two checks, and the damage multiplier check
+given the seventh key). Issues [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
+
+### The row
+
+`Death_Obsidian_Sarcophagi` in `game/Data/DungeonModifiers.csv`, weight 10: "Indestructible coffins pulse
+with death magic, granting enemies in range bonus damage and resistance. Once enough nearby enemies have been
+slain, a Vampire Lord erupts from the coffin to kill the player." It states no figure. The design document
+and this log do not mention a sarcophagus, and **no Vampire Lord creature exists in this game**.
+
+### What the rule does
+
+When a floor carrying the row is placed, two coffins stand where Eternal Chorus's picker puts its sources, at
+least twenty metres from the entrance and from each other; a Horde arena has one, kept for its waves. A
+coffin is a creature that does nothing and cannot be hurt, with the Imp's health and "Sarcophagus" under its
+bar, paying nothing and not one of the floor's creatures, with a visible Death zone six metres across its
+radius. Every creature on the player's other side but a floor source, while it stands within six metres of a
+coffin, deals 20% more damage -- once however many coffins are near -- and holds 15 more points of
+all-resistance; walking out of reach takes both away. With a Trial of Endurance run out on the same floor,
+such a creature holds (its own + 15) x 2. The eighth paid death of the floor's creatures within six metres of
+a coffin, whoever killed them, lets that coffin's Vampire Lord out onto a floor cell beside it, once a coffin;
+the coffin goes on granting. The panel reads "obsidian sarcophagi: 3 of 8 slain beside one, 0 of 8 beside the
+other", or "... beside it" on a Horde arena, and "the Vampire Lord of one has come" for a coffin whose lord
+has come.
+
+**The Vampire Lord stands in for one.** No such creature exists. What comes is Demon Prince's stand-in: a
+creature of the floor's own kinds at the rung below the first boss rung (`DemonPrinceRung`), marked
+`bIsAVampireLord` so "Vampire Lord" is under its bar, seeing across the floor (`VengefulWraithsSightMultiplier`)
+so it comes for the player, one of the floor's creatures and paying normally. It stands in until the project
+owner names a creature for it.
+
+### The resistance record
+
+**Trial of Endurance's resistance bookkeeping became a record every rule writes through**, keyed by rule, the
+same shape as the creature damage map, as ruled. `SetRuleResistance(Creature, Source, Added, Multiplier)`
+records one rule's points and multiplier and writes the creature's all-resistance base as its own figure,
+plus every rule's points, times every rule's multiplier; 0 and 1 take a rule off. Trial of Endurance writes
+0 and 2 under `TrialOfEndurance`; a coffin writes 15 and 1 under `ObsidianSarcophagi` while a creature is
+near it and 0 and 1 when it is not. The two things Trial's bookkeeping did are kept exactly: a recompute that
+puts a creature's own figure back is written over again, and any other change to the base is another
+writer's, kept, with the creature's own figure moved by that much. Trial alone therefore still writes twice
+the creature's own, which the control test below holds.
+
+**One thing is new: the record is given back as it is forgotten.** Once a floor or wave, every creature a
+rule wrote on has its own figure written back before the record is emptied. On an ordinary floor those
+creatures are already gone; on a Horde arena its survivors stand into the next wave, and without this a
+coffin's points would be read as part of their own figure and added again.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every
+figure is a play-test value:**
+
+- **Two coffins a floor, placed by Eternal Chorus's picker; one on a Horde arena, kept.**
+- **A floor source with `bCannotBeHurt` and the Imp's health, "Sarcophagus", with a visible 600 cm Death
+  zone.**
+- **20% more damage within 600 cm, once however many are near**, through a new damage-map key.
+- **15 points of all-resistance within range; with a Trial run out, (own + 15) x 2**: the row says "doubled
+  resistances", and the coffin's bonus is a resistance the creature holds. Resistance's effect on damage stays
+  capped at 70% by the damage calculation.
+- **Eight paid deaths of the floor's creatures within 600 cm of a coffin, whoever killed them.**
+- **Its Vampire Lord comes once a coffin, beside it; the coffin keeps granting.**
+- **The panel line as proposed.**
+- **Flag A: Trial's resistance bookkeeping becomes a map of resistance bonuses keyed by source**, with Trial and
+  the coffins as its two keys, Trial's own tests guarding the refactor and a control test showing Trial's
+  figures unchanged.
+- **Flag B: Demon Prince's approach for the Vampire Lord**, stated here as a stand-in.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **A lord's panel part reads "the Vampire Lord of one has come"** rather than the proposal's "its Vampire Lord
+  has come", because with two coffins "its" does not say which. "Slain" is written once, in the line's first
+  count, as the proposal wrote it; a Horde arena's one coffin is "it".
+- **The record gives every creature its own figure back as it is forgotten**, for the Horde reason above.
+- **The coffins' step runs after the trial's on the beat**, so a creature both first find on one beat is
+  written once by each.
+- **A death counts beside every coffin within reach of it**, not only the nearest.
+
+### The research: things that make the creatures near them stronger
+
+Done before the build; every page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, elite affixes | https://maxroll.gg/d4/resources/elites-affixes | Soul Drinker: "Feeds on nearby enemy deaths, becoming stronger." |
+| Path of Exile, totems | https://poedb.tw/us/Totem | Ancestral Warchief: "Being near it grants you more melee damage." |
+
+**What it settles and what it does not.** Diablo IV ships a monster that grows stronger from the deaths
+around it, which is the coffin's count. Path of Exile ships a fixed object that grants more damage to what
+stands near it -- to the player there, not to monsters. No page read describes an object that strengthens
+monsters near it, and none lets a greater monster out after a number of deaths; so the radius, the 20%, the
+15 points, the eight deaths and the lord are this game's own. Diablo IV's Suppressor page on the Fextralife
+wiki and Path of Exile's tormented spirits page on poedb answered 404 and were not read.
+
+### Tests
+
+Six automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `ObsidianSarcophagiFiguresAndTheLordOnce`: the figures; the lord is due at eight and not seven, and not again
+  once it has come.
+- `TheRuleResistancesAddPointsThenMultiplyWhateverWroteThem`, the control: on an Imp whose own resistance is 23,
+  the trial alone writes 46 and writing it again leaves 46; taken off, 23; a coffin alone 38; both 76, in either
+  order; the coffin off, 46; a recompute puts 23 back and the next write is 76; another writer's ten points
+  are kept, 96; an Imp with none of its own holds 0 doubled and 30 beside a coffin doubled.
+- `ObsidianSarcophagiPlacesTwoCoffinsThatCannotBeHurt`: two coffins, each a sarcophagus with no brain, that
+  cannot be hurt, paying nothing, raised by the rule, not one of the floor's creatures, saying exactly
+  "Sarcophagus", with the Imp's health, far enough from the entrance and from each other; a killing blow takes
+  nothing; each has its zone, not reaching 650 cm; the panel; a Horde arena has one, with its panel, kept by
+  its next wave with its zone drawn again.
+- `BesideACoffinACreatureDealsTwentyPercentMoreAndHoldsFifteenMoreResistance`: an Imp of 23 beside a coffin
+  deals 1.2 times and holds 38, and still 38 beats later; one far from both is its own; walked out of reach,
+  its own again.
+- `WithATrialRunOutACoffinsPointsAreDoubledWithTheCreaturesOwn`: on a floor carrying both rows, 38 before the
+  trial runs out; after, 76 beside a coffin and 46 far from both, and still 76 beats later.
+- `EightPaidDeathsBesideACoffinLetItsVampireLordOutOnce`: seven counted and no lord, with the panel; an unpaid
+  death, a creature not of the floor and a death out of reach not counted; the eighth brings the lord, marked,
+  of the floor's kinds, at Demon Prince's rung, paying, seeing across the floor, saying exactly "Vampire Lord",
+  beside the coffin and not in its cell, with the panel; eight more bring no second lord, and the coffin still
+  grants 20%.
+- `Cataclysm.SaveApply.ASarcophagusDoesNotTakeTheTrainingDummysEmptyName`: the coffin names no row, and the
+  empty name maps to the base enemy class.
+
+Two Python checks: the row still says "indestructible", "in range", "bonus damage and resistance", "enough
+nearby enemies have been slain", "vampire lord" and "to kill the player"; and Trial of Endurance and Obsidian
+Sarcophagi each write resistance through `SetRuleResistance` under keys of their own. The damage multiplier
+check now also requires the coffins' setter to write its own distinct key.
+
+### Run
+
+One editor window on 2026-09-25, on development b1e1e4b6 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on 789ce413: "Build: Succeeded - 30 actions, 27 files compiled"; "2557 tests performed,
+  2557 succeeded, 0 failed", every declared test reported (2557 declared, gap 0).
+- **The Python suite of record**, on 789ce413: 5,490 passed and 8 skipped of 5,498, 0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **A coffin's damage key written as 1** (`SetObsidianSarcophagiDamageMultiplier(1.0f)`), on the prefix
+  `Cataclysm.DungeonModifierEffects.BesideACoffin`. With the break in, 1 failed, on "beside a coffin: 20% more
+  damage" alone.
+- **A coffin's resistance points written as 0**, on the same prefix. With the break in, 1 failed, on "and 15
+  more resistance: 38" and "beats later, still 38, not more". "And its own resistance again" held, as
+  registered.
+- **The deaths beside a coffin never counted** (`One.Deaths += 0;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.EightPaidDeaths`. With the break in, 1 failed, on "seven counted", "the
+  panel at seven", "still seven: an unpaid death, a stranger and a far death do not count", "the lord came" and
+  "two more on the floor's list: the eighth creature and the lord", where the test returns.
+
+**The first start of the first proof ran nothing.** The proof script was generated with a real tab and line
+break inside the third proof's anchor text, so Python refused to parse it and stopped before breaking any file;
+the worktree was unchanged. The script was rewritten, parsed, and its three anchors counted once each before
+the proof above was run.
+
+---
+
 ## 2026-09-25 — Void Parasite: a creature the player kills leaves a voidling one time in ten; a voidling that reaches the player attaches and takes 6% of their damage, resistances and movement speed, to five; standing in the floor's one light zone clears them all
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` (the flag that marks a voidling);

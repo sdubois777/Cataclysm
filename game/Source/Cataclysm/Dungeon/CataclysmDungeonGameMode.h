@@ -2066,6 +2066,39 @@ public:
 	 */
 	static TArray<FIntPoint> NecroticBloomWaveCells(const ACataclysmDungeonFloor& Floor, const FVector& Flower);
 
+	/**
+	 * Sets what the rule `Source` does to `Creature`'s all-resistance -- `Added` points, then times
+	 * `Multiplier` -- and writes its base: its own, plus every rule's points, times every rule's multiplier.
+	 * 0 and 1 take the rule off. Issues #1820 and #41.
+	 *
+	 * ONE RECORD FOR EVERY RULE, THE SAME SHAPE AS THE CREATURE'S DAMAGE MAP, as ruled by the coordinating
+	 * session on 2026-09-25: Trial of Endurance's bookkeeping, turned into a map keyed by rule, with Obsidian
+	 * Sarcophagi its second key. POINTS BEFORE MULTIPLIERS, as ruled: a coffin's bonus under a trial run out
+	 * is (own + 15) x 2. The creature's own figure is its base the first time any rule writes it. A
+	 * recompute that puts its own figure back is written over again; any other change to the base is
+	 * another writer's, kept, and its own figure moves by that much, so it is not multiplied twice.
+	 *
+	 * PUBLIC FOR THE CONTROL TEST, which drives it directly.
+	 */
+	void SetRuleResistance(ACataclysmEnemyCharacter* Creature, const TCHAR* Source, float Added, float Multiplier);
+
+	/** The keys of the rule resistance record, one per rule that changes a creature's all-resistance. */
+	static constexpr const TCHAR* TrialOfEnduranceResistanceSource = TEXT("TrialOfEndurance");
+	static constexpr const TCHAR* ObsidianSarcophagiResistanceSource = TEXT("ObsidianSarcophagi");
+
+	/** Obsidian Sarcophagi, for the panel and tests: the coffins on this floor or arena. */
+	TArray<ACataclysmEnemyCharacter*> SarcophagiNow() const;
+
+	/** Obsidian Sarcophagi, for tests: the zone drawn around `Coffin`, or null. */
+	class ACataclysmGroundZone* SarcophagusZoneOf(const ACataclysmEnemyCharacter* Coffin) const;
+
+	/** Obsidian Sarcophagi, for tests: the paid deaths counted beside `Coffin`, and whether its lord came. */
+	int32 SarcophagusDeathsBeside(const ACataclysmEnemyCharacter* Coffin) const;
+	bool SarcophagusLordCame(const ACataclysmEnemyCharacter* Coffin) const;
+
+	/** The health a coffin is given: the Imp's at Common, 87, as the other floor sources have. */
+	float SarcophagusHealth() const { return ImpHealth; }
+
 	/** Golden Spires, for the panel and tests: the spires still standing. */
 	TArray<ACataclysmEnemyCharacter*> GoldenSpiresStanding() const;
 
@@ -2312,6 +2345,31 @@ private:
 	 * a floor source.
 	 */
 	void StepTrialOfEndurance(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * Every creature a rule wrote a resistance on given its own back, and the record emptied, once a floor or
+	 * wave. A Horde wave's survivors keep standing, so a bonus would otherwise be counted in their own figure
+	 * and added again.
+	 */
+	void ForgetRuleResistances();
+
+	/** Obsidian Sarcophagi: this arena's coffins, placed where a new arena is populated. */
+	void PlaceTheSarcophagi();
+
+	/** Every coffin and its zone destroyed and forgotten. */
+	void ForgetTheSarcophagi();
+
+	/**
+	 * Obsidian Sarcophagi, on the beat: a zone kept drawn around each coffin, and every creature's damage and
+	 * resistance written for whether it stands near one.
+	 */
+	void StepObsidianSarcophagi(class ACataclysmPlayerCharacter* Player);
+
+	/**
+	 * Obsidian Sarcophagi: a paid death of the floor's creatures counted beside every coffin within reach of
+	 * it, and a coffin's Vampire Lord let out at the threshold.
+	 */
+	void NoteDeathForObsidianSarcophagi(const struct FCataclysmDeathNotice& Notice);
 
 	/**
 	 * Golden Spires, on the beat: a zone kept drawn around each living spire, and every creature's
@@ -3327,19 +3385,38 @@ private:
 	float FloorSecondsSincePlaced = 0.0f;
 	float FloorClearedSeconds = -1.0f;
 
-	/** Trial of Endurance: a creature's own all-resistance base and what the rule wrote in its place. */
-	struct FTrialResistance
+	/**
+	 * What the rules have written on one creature's all-resistance: its own base, what was last written in its
+	 * place, and each rule's points and multiplier under the rule's own key. See `SetRuleResistance`.
+	 */
+	struct FRuleResistance
 	{
 		float Own = 0.0f;
 		float Applied = 0.0f;
+		TMap<FName, float> AddedBySource;
+		TMap<FName, float> MultipliedBySource;
 	};
 
-	/** Trial of Endurance: its clock, how it ended, the resistances it wrote, and what the panel last said. */
+	/** Every creature a rule has written a resistance on this floor or wave. */
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, FRuleResistance> RuleResistances;
+
+	/** Trial of Endurance: its clock, how it ended, and what the panel last said. */
 	float TrialSeconds = 0.0f;
 	bool bTrialClearedInTime = false;
 	bool bTrialRanOut = false;
-	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, FTrialResistance> TrialResistances;
 	int32 TrialPanelLiving = -1;
+
+	/** Obsidian Sarcophagi: one coffin, the zone drawn around it, the paid deaths beside it, and its lord. */
+	struct FSarcophagus
+	{
+		TWeakObjectPtr<ACataclysmEnemyCharacter> Coffin;
+		TWeakObjectPtr<class ACataclysmGroundZone> Zone;
+		int32 Deaths = 0;
+		bool bLordCame = false;
+	};
+
+	/** Obsidian Sarcophagi: this arena's coffins. */
+	TArray<FSarcophagus> Sarcophagi;
 
 	/**
 	 * Void Parasite: the voidlings standing, the stacks the player carries and what was last put on the

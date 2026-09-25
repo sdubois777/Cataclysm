@@ -35,6 +35,7 @@
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
+#include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -1477,7 +1478,7 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	TrialSeconds = 0.0f;
 	bTrialClearedInTime = false;
 	bTrialRanOut = false;
-	TrialResistances.Reset();
+	ForgetRuleResistances();
 	TrialPanelLiving = -1;
 
 	// AND PLAGUE HARBINGERS FORGETS THE LAST FLOOR'S OR WAVE'S HARBINGERS, here for the
@@ -1520,6 +1521,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// waves keep them. Issues #1820 and #41.
 		ForgetTheVoidParasite();
 		PlaceTheLight();
+
+		// AND OBSIDIAN SARCOPHAGI, FOR THE SAME REASON; a Horde arena's waves keep its coffin and its count.
+		// Issues #1820 and #41.
+		ForgetTheSarcophagi();
+		PlaceTheSarcophagi();
 	}
 	else
 	{
@@ -3733,7 +3739,6 @@ void ACataclysmDungeonGameMode::NoteTheFloorsClearTime()
 void ACataclysmDungeonGameMode::StepTrialOfEndurance(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
-	using Resist = UCataclysmAllResistanceAttributeSet;
 
 	UWorld* World = GetWorld();
 	if (!World || !IsValid(Player) || FloorBrief.bWaveWalksIn)
@@ -3768,7 +3773,7 @@ void ACataclysmDungeonGameMode::StepTrialOfEndurance(ACataclysmPlayerCharacter* 
 	{
 		// EVERY CREATURE ON THE PLAYER'S OTHER SIDE BUT A FLOOR SOURCE, later arrivals on the beat they are
 		// first found: double damage through the map, and twice its own all-resistance BASE, by Soul Harvest's
-		// route of writing the base and keeping what was written.
+		// route of writing the base and keeping what was written, which `SetRuleResistance` holds.
 		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
 		{
 			ACataclysmEnemyCharacter* Creature = *It;
@@ -3779,34 +3784,10 @@ void ACataclysmDungeonGameMode::StepTrialOfEndurance(ACataclysmPlayerCharacter* 
 			}
 			Creature->SetTrialOfEnduranceDamageMultiplier(Effects::TrialOfEnduranceDamageMultiplier);
 
-			UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Creature);
-			if (!Abilities || !Abilities->HasAttributeSetForAttribute(Resist::GetAllResistanceAttribute()))
-			{
-				continue;
-			}
-			const float Base = Abilities->GetNumericAttributeBase(Resist::GetAllResistanceAttribute());
-			FTrialResistance* Held = TrialResistances.Find(Creature);
-			if (!Held)
-			{
-				FTrialResistance Fresh;
-				Fresh.Own = Base;
-				Fresh.Applied = Base * Effects::TrialOfEnduranceResistanceMultiplier;
-				Abilities->SetNumericAttributeBase(Resist::GetAllResistanceAttribute(), Fresh.Applied);
-				TrialResistances.Add(Creature, Fresh);
-				continue;
-			}
-			if (FMath::IsNearlyEqual(Base, Held->Applied, 0.01f))
-			{
-				continue;
-			}
-			// A RECOMPUTE PUT ITS OWN FIGURE BACK, and the doubling is written again; ANY OTHER CHANGE is
-			// another writer's, kept, and its own figure moves by that much before it is doubled.
-			if (!FMath::IsNearlyEqual(Base, Held->Own, 0.01f))
-			{
-				Held->Own += Base - Held->Applied;
-			}
-			Held->Applied = Held->Own * Effects::TrialOfEnduranceResistanceMultiplier;
-			Abilities->SetNumericAttributeBase(Resist::GetAllResistanceAttribute(), Held->Applied);
+			// AND TWICE ITS OWN ALL-RESISTANCE, through the record every rule writes resistance through, so a coffin's
+			// points beside it are doubled with it and neither rule overwrites the other.
+			SetRuleResistance(Creature, TrialOfEnduranceResistanceSource, 0.0f,
+							  Effects::TrialOfEnduranceResistanceMultiplier);
 		}
 	}
 
@@ -3814,6 +3795,315 @@ void ACataclysmDungeonGameMode::StepTrialOfEndurance(ACataclysmPlayerCharacter* 
 	if (Living != TrialPanelLiving)
 	{
 		TrialPanelLiving = Living;
+		RefreshFloorModifierPanel();
+	}
+}
+
+void ACataclysmDungeonGameMode::SetRuleResistance(ACataclysmEnemyCharacter* Creature, const TCHAR* Source,
+												   float Added, float Multiplier)
+{
+	using Resist = UCataclysmAllResistanceAttributeSet;
+
+	UAbilitySystemComponent* Abilities = IsValid(Creature) ? UCataclysmTargeting::AbilitySystemOf(Creature) : nullptr;
+	if (!Abilities || !Abilities->HasAttributeSetForAttribute(Resist::GetAllResistanceAttribute()))
+	{
+		return;
+	}
+	const float Base = Abilities->GetNumericAttributeBase(Resist::GetAllResistanceAttribute());
+	const bool bNothing = FMath::IsNearlyZero(Added) && FMath::IsNearlyEqual(Multiplier, 1.0f);
+
+	FRuleResistance* Held = RuleResistances.Find(Creature);
+	if (!Held)
+	{
+		// A RULE THAT DOES NOTHING TO A CREATURE NO RULE HAS WRITTEN leaves no record and writes nothing.
+		if (bNothing)
+		{
+			return;
+		}
+		Held = &RuleResistances.Add(Creature);
+		Held->Own = Base;
+		Held->Applied = Base;
+	}
+	else if (!FMath::IsNearlyEqual(Base, Held->Applied, 0.01f) && !FMath::IsNearlyEqual(Base, Held->Own, 0.01f))
+	{
+		// ANOTHER WRITER'S CHANGE, kept: its own figure moves by that much before the rules are applied again.
+		// A base back at its own figure is a recompute, and the rules are simply written over it again.
+		Held->Own += Base - Held->Applied;
+	}
+
+	if (bNothing)
+	{
+		Held->AddedBySource.Remove(FName(Source));
+		Held->MultipliedBySource.Remove(FName(Source));
+	}
+	else
+	{
+		Held->AddedBySource.Add(FName(Source), Added);
+		Held->MultipliedBySource.Add(FName(Source), Multiplier);
+	}
+
+	// POINTS FIRST, THEN MULTIPLIERS, as ruled.
+	float Sum = Held->Own;
+	for (const TPair<FName, float>& Entry : Held->AddedBySource)
+	{
+		Sum += Entry.Value;
+	}
+	float Product = 1.0f;
+	for (const TPair<FName, float>& Entry : Held->MultipliedBySource)
+	{
+		Product *= Entry.Value;
+	}
+	const float Wanted = Sum * Product;
+	if (!FMath::IsNearlyEqual(Base, Wanted, 0.01f))
+	{
+		Abilities->SetNumericAttributeBase(Resist::GetAllResistanceAttribute(), Wanted);
+	}
+	Held->Applied = Wanted;
+}
+
+void ACataclysmDungeonGameMode::ForgetRuleResistances()
+{
+	using Resist = UCataclysmAllResistanceAttributeSet;
+
+	for (const TPair<TWeakObjectPtr<ACataclysmEnemyCharacter>, FRuleResistance>& Entry : RuleResistances)
+	{
+		ACataclysmEnemyCharacter* Creature = Entry.Key.Get();
+		UAbilitySystemComponent* Abilities = IsValid(Creature) ? UCataclysmTargeting::AbilitySystemOf(Creature) : nullptr;
+		if (!Abilities || !Abilities->HasAttributeSetForAttribute(Resist::GetAllResistanceAttribute()))
+		{
+			continue;
+		}
+		// ITS OWN FIGURE BACK, with any other writer's change to it kept.
+		const float Base = Abilities->GetNumericAttributeBase(Resist::GetAllResistanceAttribute());
+		Abilities->SetNumericAttributeBase(Resist::GetAllResistanceAttribute(),
+										   Entry.Value.Own + (Base - Entry.Value.Applied));
+	}
+	RuleResistances.Reset();
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::SarcophagiNow() const
+{
+	TArray<ACataclysmEnemyCharacter*> Now;
+	for (const FSarcophagus& One : Sarcophagi)
+	{
+		if (ACataclysmEnemyCharacter* Coffin = One.Coffin.Get(); IsValid(Coffin))
+		{
+			Now.Add(Coffin);
+		}
+	}
+	return Now;
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::SarcophagusZoneOf(const ACataclysmEnemyCharacter* Coffin) const
+{
+	for (const FSarcophagus& One : Sarcophagi)
+	{
+		if (Coffin && One.Coffin.Get() == Coffin)
+		{
+			return One.Zone.Get();
+		}
+	}
+	return nullptr;
+}
+
+int32 ACataclysmDungeonGameMode::SarcophagusDeathsBeside(const ACataclysmEnemyCharacter* Coffin) const
+{
+	for (const FSarcophagus& One : Sarcophagi)
+	{
+		if (Coffin && One.Coffin.Get() == Coffin)
+		{
+			return One.Deaths;
+		}
+	}
+	return 0;
+}
+
+bool ACataclysmDungeonGameMode::SarcophagusLordCame(const ACataclysmEnemyCharacter* Coffin) const
+{
+	for (const FSarcophagus& One : Sarcophagi)
+	{
+		if (Coffin && One.Coffin.Get() == Coffin)
+		{
+			return One.bLordCame;
+		}
+	}
+	return false;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheSarcophagi()
+{
+	for (const FSarcophagus& One : Sarcophagi)
+	{
+		if (ACataclysmEnemyCharacter* Coffin = One.Coffin.Get())
+		{
+			Coffin->Destroy();
+		}
+		if (ACataclysmGroundZone* Zone = One.Zone.Get())
+		{
+			Zone->Destroy();
+		}
+	}
+	Sarcophagi.Reset();
+}
+
+void ACataclysmDungeonGameMode::PlaceTheSarcophagi()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::ObsidianSarcophagiKey)))
+	{
+		return;
+	}
+
+	// TWO ON A FLOOR AND ONE ON A HORDE ARENA, KEPT, where Eternal Chorus's picker puts its sources.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::ObsidianSarcophagiPerHordeArena
+											: Effects::ObsidianSarcophagiPerFloor;
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmSarcophagusCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (const FIntPoint& Cell : EternalChorusCells(*CurrentFloor, Count))
+	{
+		const FVector Where = CurrentFloor->WorldOfCell(Cell)
+			+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+		ACataclysmEnemyCharacter* Coffin =
+			World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+		if (!Coffin)
+		{
+			continue;
+		}
+		// INDESTRUCTIBLE, AS THE ROW SAYS: The Reaper's flag, so a blow resolves and none of it reaches health.
+		// The Imp's health at Common, a play-test value, paying nothing and not one of the floor's creatures.
+		Coffin->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+		Coffin->SetHealth(SarcophagusHealth());
+		Coffin->SetRarityStep(0);
+		Coffin->bCannotBeHurt = true;
+		Coffin->bDiesUnpaid = true;
+		Coffin->bRaisedByARule = true;
+		CreaturesRaisedByARule.Add(Coffin);
+		FSarcophagus One;
+		One.Coffin = Coffin;
+		Sarcophagi.Add(One);
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Obsidian Sarcophagi: %d coffin(s) placed on floor %d"), Sarcophagi.Num(),
+		   FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepObsidianSarcophagi(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player))
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::ObsidianSarcophagiKey);
+
+	// EACH COFFIN'S ZONE DRAWN AGAIN WHENEVER IT IS MISSING, which is after every floor or wave. It does no damage.
+	TArray<FVector> Coffins;
+	for (FSarcophagus& One : Sarcophagi)
+	{
+		ACataclysmEnemyCharacter* Coffin = One.Coffin.Get();
+		if (!IsValid(Coffin))
+		{
+			continue;
+		}
+		const FVector Where = Coffin->GetActorLocation();
+		Coffins.Add(Where);
+		if (!One.Zone.Get() && Source)
+		{
+			One.Zone = ACataclysmGroundZone::SpawnForTheFloor(
+				Source, Where, Where, Effects::ObsidianSarcophagiRadiusCm, 0.0f,
+				/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type);
+		}
+	}
+
+	// EVERY CREATURE ON THE PLAYER'S OTHER SIDE BUT A FLOOR SOURCE, near a coffin or not, every beat, as Golden
+	// Spires writes its damage: once however many coffins are near.
+	const float Near = 1.0f + Effects::ObsidianSarcophagiDamageMorePercent / 100.0f;
+	for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+	{
+		ACataclysmEnemyCharacter* Creature = *It;
+		if (!IsValid(Creature) || Creature->IsA<ACataclysmFloorSourceCharacter>()
+			|| !UCataclysmTargeting::IsHostileTo(Creature, Player))
+		{
+			continue;
+		}
+		const FVector At = Creature->GetActorLocation();
+		const bool bNear = Coffins.ContainsByPredicate([&At](const FVector& Where)
+		{
+			return FVector::Dist2D(At, Where) <= Effects::ObsidianSarcophagiRadiusCm;
+		});
+		Creature->SetObsidianSarcophagiDamageMultiplier(bNear ? Near : 1.0f);
+		SetRuleResistance(Creature, ObsidianSarcophagiResistanceSource,
+						  bNear ? Effects::ObsidianSarcophagiResistancePoints : 0.0f, 1.0f);
+	}
+}
+
+void ACataclysmDungeonGameMode::NoteDeathForObsidianSarcophagi(const FCataclysmDeathNotice& Notice)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!FloorBrief.Modifiers.Contains(FName(Effects::ObsidianSarcophagiKey)) || !CurrentFloor
+		|| !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+
+	// A PAID DEATH OF ONE OF THE FLOOR'S CREATURES, WHOEVER KILLED IT, as ruled.
+	ACataclysmEnemyCharacter* Fallen = Cast<ACataclysmEnemyCharacter>(Notice.Victim);
+	if (!Fallen || !Fallen->PaysForItsDeath() || !FloorEnemies.Contains(Fallen))
+	{
+		return;
+	}
+
+	bool bChanged = false;
+	for (FSarcophagus& One : Sarcophagi)
+	{
+		ACataclysmEnemyCharacter* Coffin = One.Coffin.Get();
+		if (!IsValid(Coffin)
+			|| FVector::Dist2D(Coffin->GetActorLocation(), Notice.Location) > Effects::ObsidianSarcophagiRadiusCm)
+		{
+			continue;
+		}
+		++One.Deaths;
+		bChanged = true;
+		if (!Effects::ObsidianSarcophagiLordIsDue(One.Deaths, One.bLordCame))
+		{
+			continue;
+		}
+
+		// THE VAMPIRE LORD, ONCE A COFFIN: a creature of the floor's own kinds at Demon Prince's rung, as Grave
+		// Tide draws them, on a floor cell beside the coffin as Necrotic Bloom's waves stand beside their flower,
+		// seeing across the floor. It pays and is one of the floor's creatures.
+		One.bLordCame = true;
+		const FCataclysmFloorPopulation Population =
+			FCataclysmFloorPopulator::Populate(CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+		const TArray<FIntPoint> Cells = NecroticBloomWaveCells(*CurrentFloor, Coffin->GetActorLocation());
+		if (Population.Enemies.IsEmpty() || Cells.IsEmpty())
+		{
+			UE_LOG(LogCataclysm, Log, TEXT("Obsidian Sarcophagi: a coffin on floor %d had no room for its lord"),
+				   FloorNumber);
+			continue;
+		}
+		FCataclysmEnemyPlacement Placement =
+			Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+		Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+		if (ACataclysmEnemyCharacter* Lord = SpawnPlacedCreature(
+				Placement, Effects::VengefulWraithsSightMultiplier, Effects::ObsidianSarcophagiLordRung))
+		{
+			Lord->bIsAVampireLord = true;
+			FloorEnemies.Add(Lord);
+			UE_LOG(LogCataclysm, Log, TEXT("Obsidian Sarcophagi: a Vampire Lord (%s) came on floor %d"),
+				   CataclysmDungeonCreatureName(Placement.Creature), FloorNumber);
+		}
+	}
+	if (bChanged)
+	{
 		RefreshFloorModifierPanel();
 	}
 }
@@ -5171,6 +5461,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	PestilentBeaconsLeftStanding = 0;
 	ForgetTheVeins();
 	ForgetTheVoidParasite();
+	ForgetTheSarcophagi();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -5655,6 +5946,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	const bool bVoidParasite = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::VoidParasiteKey))
 		|| VoidParasiteStacks != VoidParasiteStacksApplied;
+	// AND OBSIDIAN SARCOPHAGI, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bObsidianSarcophagi = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::ObsidianSarcophagiKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -5672,7 +5966,8 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires
-		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite)
+		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance && !bVoidParasite
+		&& !bObsidianSarcophagi)
 	{
 		return;
 	}
@@ -5906,6 +6201,13 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bVoidParasite)
 	{
 		StepVoidParasite(Player, AbilitySystem);
+	}
+
+	// AND OBSIDIAN SARCOPHAGI, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE NEAR ITS COFFINS. After the trial,
+	// so a creature first found by both on one beat is written once for each. Issues #1820 and #41.
+	if (bObsidianSarcophagi)
+	{
+		StepObsidianSarcophagi(Player);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -6937,6 +7239,7 @@ void ACataclysmDungeonGameMode::OnSomethingDied(
 	NoteDeathForBloodForgedChampions(Notice);
 	NoteDeathForVengefulWraiths(Notice);
 	NoteDeathForVoidParasite(Notice);
+	NoteDeathForObsidianSarcophagi(Notice);
 	NoteDeathForMarchOfProgress(Notice);
 	// BEFORE DIVINE RESURGENCE, so a creature this same death got back up is already
 	// standing and marked when that rule counts the floor. Issues #1820 and #41.
@@ -8620,6 +8923,33 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 
 	// AND INFESTED VEINS: how many stand, and how many have been destroyed against the guardians'
 	// threshold, or that the guardians have come. Issues #1820 and #41.
+	// AND OBSIDIAN SARCOPHAGI: the paid deaths beside each coffin against its threshold, or that its Vampire
+	// Lord has come. Issues #1820 and #41.
+	const FName Coffins(Effects::ObsidianSarcophagiKey);
+	if (FloorBrief.Modifiers.Contains(Coffins))
+	{
+		// "ONE" AND "THE OTHER" FOR TWO COFFINS, AS PROPOSED; "IT" FOR A HORDE ARENA'S ONE. "Slain" once, in the
+		// line's first count, as proposed.
+		TArray<FString> Parts;
+		for (int32 Which = 0; Which < Sarcophagi.Num(); ++Which)
+		{
+			const FSarcophagus& One = Sarcophagi[Which];
+			const TCHAR* Name = Sarcophagi.Num() == 1 ? TEXT("it") : (Which == 0 ? TEXT("one") : TEXT("the other"));
+			if (One.bLordCame)
+			{
+				Parts.Add(FString::Printf(TEXT("the Vampire Lord of %s has come"), Name));
+			}
+			else
+			{
+				Parts.Add(FString::Printf(TEXT("%d of %d %sbeside %s"), One.Deaths,
+										  Effects::ObsidianSarcophagiDeathsForTheLord,
+										  Which == 0 ? TEXT("slain ") : TEXT(""), Name));
+			}
+		}
+		Counting.Add(Coffins, Parts.IsEmpty() ? FString(TEXT("obsidian sarcophagi: none on this floor"))
+											  : TEXT("obsidian sarcophagi: ") + FString::Join(Parts, TEXT(", ")));
+	}
+
 	const FName Veins(Effects::InfestedVeinsKey);
 	if (FloorBrief.Modifiers.Contains(Veins))
 	{

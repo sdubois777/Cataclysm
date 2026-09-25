@@ -593,6 +593,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetTrialOfEnduranceDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies this creature's attack damage while it stands within reach of an obsidian sarcophagus.
+	 * `Death_Obsidian_Sarcophagi`. Issues #1820 and #41.
+	 *
+	 * A SEVENTH KEY OF `DamageMultipliersBySource`. Everything the setters above say about the route,
+	 * the designed figure, the illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetObsidianSarcophagiDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
@@ -600,6 +612,7 @@ public:
 	static constexpr const TCHAR* SpireDamageSource = TEXT("GoldenSpires");
 	static constexpr const TCHAR* PlagueBeaconsDamageSource = TEXT("PlagueBeacons");
 	static constexpr const TCHAR* TrialOfEnduranceDamageSource = TEXT("TrialOfEndurance");
+	static constexpr const TCHAR* ObsidianSarcophagiDamageSource = TEXT("ObsidianSarcophagi");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -1086,6 +1099,17 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
 	bool bIsAVoidling = false;
+
+	/**
+	 * Whether this creature is the Vampire Lord an obsidian sarcophagus let out, under the Obsidian
+	 * Sarcophagi floor rule. Issues #1820 and #41. It puts "Vampire Lord" under the health bar.
+	 *
+	 * A FLAG ON A CREATURE OF THE FLOOR'S OWN KINDS, BECAUSE NO VAMPIRE LORD CREATURE EXISTS. It stands in for
+	 * one, as Demon Prince's creature does for its prince, until the project owner names a creature for it.
+	 * Permanent, for the reason `bIsVengefulWraith` gives.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Cataclysm|Enemy")
+	bool bIsAVampireLord = false;
 
 	/**
 	 * Whether this creature is one that already died and was brought back. Issues
@@ -1657,7 +1681,8 @@ protected:
 	 * rule's own key: `PlacedDamageSource` (a Grave Tide or Horde wave), `TimeAliveDamageSource`
 	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress), `SpireDamageSource`
 	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
-	 * `TrialOfEnduranceDamageSource` (Trial of Endurance). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
+	 * `TrialOfEnduranceDamageSource` (Trial of Endurance) and `ObsidianSarcophagiDamageSource` (Obsidian
+	 * Sarcophagi). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
 	 * by every entry. Issues #1820 and #41.
 	 *
 	 * ONE MAP RATHER THAN A FIELD PER SOURCE, as ruled by the coordinating session on

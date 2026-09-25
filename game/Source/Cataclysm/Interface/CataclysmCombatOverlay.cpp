@@ -15,6 +15,7 @@
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
 #include "Character/CataclysmVeinCharacter.h"
+#include "Character/CataclysmSarcophagusCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -549,12 +550,27 @@ FString UCataclysmCombatOverlay::VoidlingTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::SarcophagusTextFor(const AActor* Actor)
+{
+	if (!Actor || UCataclysmSkillEffects::IsDead(Actor))
+	{
+		return FString();
+	}
+	if (Actor->IsA<ACataclysmSarcophagusCharacter>())
+	{
+		return TEXT("Sarcophagus");
+	}
+	const ACataclysmEnemyCharacter* Enemy = Cast<ACataclysmEnemyCharacter>(Actor);
+	return Enemy && Enemy->bIsAVampireLord ? FString(TEXT("Vampire Lord")) : FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {SecondSelfTextFor(Actor), HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor),
 		  SpireTextFor(Actor), BeaconTextFor(Actor), VeinTextFor(Actor), VoidlingTextFor(Actor),
+		  SarcophagusTextFor(Actor),
 		  ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
