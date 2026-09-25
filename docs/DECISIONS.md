@@ -792,6 +792,29 @@ explosion that is tested. A thrall's spell ability dealing more for the copied s
 **The stat is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
 change must add a test that wears the real `Ritualist_capstone_200` option 1 row.
 
+### Run
+
+One editor window on 2026-09-25, ending at 15:08 UTC, on development ae1caf9e as the base, at the head
+3380f8af. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**, the first time this head was compiled: "Build: Succeeded - 30 actions, 27 files compiled".
+- **The Python suite of record**, on the same tree: 5,485 passed, 8 skipped, 0 failed (JUnit 5,493 tests).
+- **The whole suite**, started once no CI run was in progress: 2,519 tests performed, 2,519 succeeded, 0
+  failed; every declared test was reported. 40 skipped part of what they check for want of the Paragon
+  art, none of them an A Second Self test.
+
+**Three guard proofs, each printing PROVED**, prefix `Cataclysm.SecondSelf.`, restored: 6 of 6 succeeded
+each time.
+
+- **The maximum never copied** (`Yours > 0.0f` made `< 0.0f` in `Step`): 2 of 6 failed, on five
+  assertions. The chosen thrall kept 1000 where 5000 and then 6000, and 400 where 2000 and 2400; the next
+  one chosen kept 1000 where 5000.
+- **The explosion's area ignored** (the multiplier made `1.0f` in `Explode`): 1 of 6 failed, on one
+  assertion. The chosen imp's explosion did not reach the enemy 4 metres away.
+- **A chosen thrall counted once** (`ExtraThrallShares` made `0` in the thrall limit): 1 of 6 failed, on
+  two assertions. Five thralls were held where four should be, both times it was asked.
+
 ---
 
 ## 2026-09-25 — Wings of the Host: a flyover's line passes through the middle of a floor cell near the player, so every flyover marks a feather at thirty seconds
