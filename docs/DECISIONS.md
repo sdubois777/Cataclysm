@@ -94,6 +94,47 @@ by its stats: "attack/spell damage" for that pair, and otherwise the stat names 
 - **One test per enchantment**, each wearing the real row: it is granted at its period and not one
   second before; momentum reaches its cap of five.
 
+### Run
+
+One editor window on 2026-09-25 (UTC), on development 4a464ad9 as the base. Every figure below is
+what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard` printed.
+
+- **The first build, on the code head 4da57bc9**: "Build: Succeeded - 29 actions, 26 files
+  compiled". The Python suite on that head: 1 failed, 5,437 passed, 8 skipped, the one failure being
+  the check that every CSV still hashes to what its asset was built from.
+- **The rows**, 5fd66dc9: four rows and the Every Seconds column. The second build: "Build: Succeeded -
+  4 actions, 1 file compiled". The Python suite of record: 1 failed, 5,437 passed, 8 skipped (5,446
+  tests in its XML report), the same stale-hash failure. `Cataclysm.Data.` and `Cataclysm.Enchantments.`
+  before the asset was rebuilt: 100 tests performed, 96 succeeded, 4 failed, the asset check and the
+  three row tests.
+- **The asset**, 331df2c4: `DT_EnchantmentEffects` rebuilt from 325 rows, up from 321. The three row
+  tests: 3 performed, 3 succeeded, 0 failed.
+- **The whole suite**: 2,408 tests performed, 2,408 succeeded, 0 failed; every declared test was
+  reported.
+- **Overlap.** #2088 merged during the window. Its Unreal compile ran on this machine from 01:43:37
+  for 1m28s, between this window's two builds. Its Python CI job ran from 01:43:37 for 11m20s, beside
+  this window's Python suite of record and the step before the asset rebuild; both printed what was
+  registered. The whole suite started at 01:55:11, after that job had finished.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **The clock counts world time**, so it runs out of combat (`SecondsInCombat()` replaced by the
+  world's time), prefix `Cataclysm.Skills.ATimedRowGrants`. With the break in: 1 performed, 0
+  succeeded, 1 failed, `ATimedRowGrantsOncePerPeriodOfCombatAndNeverOutOfIt`, first on "Expected
+  'fifty seconds out of combat grant nothing' to be 0, but it was 6". Restored: 1 performed, 1
+  succeeded, 0 failed.
+- **The clock grants 0.15 of a period early** (`+ 0.15f` inside the floor), on the timer test and the
+  three row tests. With the break in: 4 performed, 0 succeeded, 4 failed, each on its check one second
+  before a grant: "seven seconds in: no charge" (0, read 1), "nine seconds in: no stack" (0, read 1),
+  "twenty-nine seconds in: no effectiveness charge" (0, read 500), and in the timer test both "nine
+  seconds into a fight: no stack yet" (0, read 1) and "nine seconds into the next fight: nothing more"
+  (2, read 3). Restored: 4 performed, 4 succeeded, 0 failed.
+- **Effectiveness not carried to the hit** (`Delivery.DamageMultiplierSpent = ...` made `(void)`),
+  prefix `Cataclysm.Skills.AnEffectivenessCharge`. With the break in: 1 performed, 0 succeeded, 1
+  failed, `AnEffectivenessChargeMultipliesTheUsesHitsAndNotItsBurn`, on "the enemy ahead takes three
+  times 250: 750" and "and so does the enemy behind", each reading 250. Restored: 1 performed, 1
+  succeeded, 0 failed.
+
 ---
 
 ## 2026-09-24 — Ground Down, engine only: creatures within 4 metres of the holder lose 15% of both speeds, and a Brute's walk now honours every slow
