@@ -98,9 +98,10 @@ marking them, landing them, the floor panel line and the reset), the automation 
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`, and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the
-automation tests and the guard proofs have NOT run yet; the figures are added at the end of this entry
-when they have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. ONE BUILD
+AND TWO TESTS FAILED FIRST, all faults in this change's own tests, and one guard proof's restored half is void;
+both are recorded there.
 
 ### The row
 
@@ -187,10 +188,61 @@ Four automation tests, all in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "flyovers", "carpet-bomb the map", "radiant feathers", "pierce
 terrain" and "% max HP damage", names no enemy, monster or creature, and states no figure.
 
-### Not yet run
+### A known limit, and the change that will lift it
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+**A flyover whose line crosses no floor marks nothing, and is tried again on the next beat**; one that crosses
+a single corridor marks a single feather. The line passes through a random point within 1200 cm of the
+player, and that point need not be floor. So a flyover can come later than thirty seconds, and a floor can be
+"carpet-bombed" with one feather -- neither of which the ruling meant. Found in this change's own window, where
+a flyover at thirty seconds marked nothing. **Ruled by the coordinating session under the owner's delegation,
+as a follow-up change after Eternal Chorus and not in this one**: the line passes through a random FLOOR cell
+within 1200 cm of the player, so its own point is always marked and every flyover marks at least one feather at
+thirty seconds, with a test that every flyover over 50 seeds marks at least one.
+
+### Run
+
+One editor window on 2026-09-25, on development d51cf7f3 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The first build FAILED, in this change's own test**, at 83c284e1: "Build: Failed - 29 actions, 26 files
+  compiled", on `error C2084: function 'void CataclysmDungeonModifierEffectsTest::StandOn(...)' already has a
+  body`. The Wings tests had added a helper `StandOn` whose name and parameters were already the Judgment Zones
+  tests' own. **Fixed by renaming it `StandOnTheFeather`**; no Python check reads C++ for a duplicate body, so
+  it had passed registration.
+- **On the fixed head, 13bd8a3d:** the Python suite of record, 5,462 passed and 8 skipped of 5,470, 0 failed;
+  the whole suite, "2445 tests performed, 2445 succeeded, 0 failed", every declared test reported.
+- **The group on that head then FAILED ONE TEST**, `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature`, on
+  "Expected 'marks at thirty seconds, at least two' to be true": that run's flyover crossed no floor at thirty
+  seconds -- the known limit above -- and the test had assumed two marks at exactly that moment. **Fixed in the
+  test** (4555979a): the test and its helper `AFlyoverIsMarked` wait up to forty beats for a flyover that marked
+  something, and need only one mark. The group on the base, d51cf7f3, ran meanwhile: 296 performed, 296
+  succeeded, 0 failed.
+- **A third instance of the same assumption** was the last check of that test, on a Horde wave; it voided the
+  first guard proof's restored half (below). **Fixed** (b4f11dd2) by the same wait; every Wings test was then
+  read for any other assertion that needs marks at a fixed moment, and there was none.
+- **On the final head, b4f11dd2:** the Python suite of record, 5,462 passed and 8 skipped of 5,470, 0 failed;
+  the group, 300 performed, 300 succeeded, 0 failed, every one of its declared tests reported. **By the
+  coordinating session's ruling the whole suite was not run again** after the two test-only fixes: it had
+  passed on this game code.
+
+**Three guard proofs:**
+
+- **Marks on rock as well as floor** (`if (true || Plan.IsFloor(...))`), on the prefix
+  `Cataclysm.DungeonModifierEffects.WingsOfTheHost`. With the break in: 3 performed, 1 failed,
+  `WingsOfTheHostMarksEveryFourMetresOfFloorAcrossTheWholeLine`, on "Expected 'exactly the floor points of the
+  whole line' to be 26, but it was 101" and "… to be 36, but it was 101", exactly as registered. **Its own
+  restored half FAILED and is void**: `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature` failed on "Expected 'a
+  Horde wave has its flyover at thirty seconds' to be true", the random-line assumption and not the break, so
+  `prove_cpp_guard` printed "NOT A PROOF". **By the coordinating session's ruling it was not rerun** -- the
+  owner's limit is three proof runs a change -- and the group run on b4f11dd2 above, with the same file
+  restored, stands as its restored half.
+- **Feathers landing a beat early** (`>= WingsOfTheHostWarningSeconds - 0.25f`), on the same prefix. PROVED.
+  With the break in: 3 performed, 1 succeeded, 2 failed, on "Expected '2.75 seconds of warning has not landed'
+  to be false" and "Expected 'nothing lands a beat early' to be true". Restored: 3 performed, 3 succeeded.
+- **The feather untyped** (`Delivery.DamageType = NAME_None;`), on the prefix
+  `Cataclysm.DungeonModifierEffects.AWingsOfTheHost`. PROVED. With the break in: 1 performed, 1 failed, on
+  "Expected 'a Wings of the Host feather is met by CelestialResistance and not by VoidResistance: 12928.8 against
+  12928.8, …' to be true". Restored: 1 performed, 1 succeeded.
 
 ---
 
