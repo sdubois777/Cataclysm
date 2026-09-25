@@ -272,9 +272,8 @@ voidling's health bar); the automation tests in
 `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`; and
 `tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
-[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
-tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
-have.
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry.
 
 ### The row
 
@@ -388,10 +387,35 @@ Six automation tests in `Cataclysm.DungeonModifierEffects.`:
 One Python check: the row still says "every enemy you kill", "a chance", "reaches you", "attach", "your
 damage, resistances, and movement speed", "standing in", "light" and "rare".
 
-### Not yet run
+### Run
 
-The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
-editor window when the build machine is granted.
+One editor window on 2026-09-25, on development 036b781f as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite**, on b88288cd: "Build: Succeeded - 30 actions, 27 files compiled"; "2544 tests performed,
+  2544 succeeded, 0 failed", every declared test reported (2544 declared, gap 0).
+- **The damage the player's blow brings, measured**: "a blow brought 63.360 before and 44.352 with five
+  attached (0.700)". The Less is applied once, as the enchantment's is; had it been applied twice the figure
+  would have been 0.49.
+- **On the head**, b88288cd: `Cataclysm.DungeonModifierEffects.` 335 performed, 335 succeeded.
+- **On the base**, 036b781f: `Cataclysm.DungeonModifierEffects.` 329 performed, 329 succeeded.
+- **The Python suite of record**, on b88288cd: 5,488 passed and 8 skipped of 5,496, 0 failed.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after. Each assertion went
+the way it was registered before the window; restored, each run was 1 performed, 1 succeeded.
+
+- **A voidling that reaches the player adds no stack** (`VoidParasiteStacksAfterAttaching(...) - 1`), on the
+  prefix `Cataclysm.DungeonModifierEffects.AVoidlingWithinReach`. With the break in, 1 failed, on exactly the 16
+  registered assertions: "one attached"; 6% off attack damage, spell damage and movement speed; each of the
+  eight resistances carrying the rule; "all eight resistances"; the panel; "five at most"; "30% off attack
+  damage". "The voidling attached and is gone" held, as registered.
+- **Standing in the light clears nothing** (`if (false && VoidParasiteStacks > 0 && ...)`), on the prefix
+  `Cataclysm.DungeonModifierEffects.StandingInTheLight`. With the break in, 1 failed, on "none attached",
+  "nothing off attack damage", "nothing off movement speed" and the panel.
+- **The stacks take nothing off attack damage** (the attack damage Less written as 0), on the prefix
+  `Cataclysm.DungeonModifierEffects.FiveAttachedVoidlings`. With the break in, 1 failed, on "five attached: the
+  blow brings 70% of what it did" -- the run printed "63.360 before and 63.360 with five attached (1.000)" --
+  and "and less reaches the target's health".
 
 ---
 
