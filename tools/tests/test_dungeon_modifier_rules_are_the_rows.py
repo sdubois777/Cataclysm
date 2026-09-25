@@ -3035,7 +3035,8 @@ def test_march_of_progress_uses_the_creatures_named_multiplier_and_not_its_stat_
                         ("SetTimeAliveDamageMultiplier", "TimeAliveDamageSource"),
                         ("SetFloorDepthDamageMultiplier", "FloorDepthDamageSource"),
                         ("SetSpireDamageMultiplier", "SpireDamageSource"),
-                        ("SetPlagueBeaconsDamageMultiplier", "PlagueBeaconsDamageSource")):
+                        ("SetPlagueBeaconsDamageMultiplier", "PlagueBeaconsDamageSource"),
+                        ("SetTrialOfEnduranceDamageMultiplier", "TrialOfEnduranceDamageSource")):
         body = body_of(creature, f"void ACataclysmEnemyCharacter::{setter}(")
         assert f"SetDamageMultiplierFrom({key}," in body, (
             f"{setter} no longer writes its own key, {key}, so its rule's multiplier "
@@ -4174,3 +4175,21 @@ def test_infested_veins_row_still_poisons_the_ground_grows_back_and_calls_guardi
         assert phrase in lower, (
             f"Pestilence_Infested_Veins no longer says {phrase.upper()!r}. A reading of the rule rests on "
             "it; see InfestedVeinsKey in CataclysmDungeonModifierEffects.h. " + words)
+
+
+def test_trial_of_endurance_row_still_doubles_enemies_when_the_floor_is_not_cleared_in_time():
+    """The phrases the rule's readings rest on.
+
+    "A divine timer per floor; if it expires before the floor is cleared, all enemies gain doubled damage
+    and resistances." A DIVINE TIMER PER FLOOR is the clock each floor starts; BEFORE THE FLOOR IS CLEARED
+    is why clearing stops it; DOUBLED DAMAGE AND RESISTANCES is the row's one figure. If any of them
+    changes, the reading must be revisited.
+    """
+    words = flat(rows()["Celestial_Trial_of_Endurance"]["Description"])
+    lower = words.lower()
+
+    for phrase in ("a divine timer per floor", "before the floor is cleared",
+                   "doubled damage and resistances"):
+        assert phrase in lower, (
+            f"Celestial_Trial_of_Endurance no longer says {phrase.upper()!r}. A reading of the rule rests "
+            "on it; see TrialOfEnduranceKey in CataclysmDungeonModifierEffects.h. " + words)

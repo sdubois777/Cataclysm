@@ -581,12 +581,25 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
 	void SetPlagueBeaconsDamageMultiplier(float NewMultiplier);
 
+	/**
+	 * Multiplies this creature's attack damage once its floor's Trial of Endurance has run out.
+	 * `Celestial_Trial_of_Endurance`. Issues #1820 and #41.
+	 *
+	 * A SIXTH KEY OF `DamageMultipliersBySource`. Everything the setters above say about the route,
+	 * the designed figure, the illusion and the save applies here too.
+	 *
+	 * @param NewMultiplier  1.0 for the creature's own damage; below zero is read as zero
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Cataclysm|Enemy")
+	void SetTrialOfEnduranceDamageMultiplier(float NewMultiplier);
+
 	/** The keys of `DamageMultipliersBySource`, one per rule that changes a creature's damage. */
 	static constexpr const TCHAR* PlacedDamageSource = TEXT("Placed");
 	static constexpr const TCHAR* TimeAliveDamageSource = TEXT("TimeAlive");
 	static constexpr const TCHAR* FloorDepthDamageSource = TEXT("FloorDepth");
 	static constexpr const TCHAR* SpireDamageSource = TEXT("GoldenSpires");
 	static constexpr const TCHAR* PlagueBeaconsDamageSource = TEXT("PlagueBeacons");
+	static constexpr const TCHAR* TrialOfEnduranceDamageSource = TEXT("TrialOfEndurance");
 
 	/** What the source named `Source` multiplies this creature's attack damage by; 1.0 when none. */
 	float DamageMultiplierFrom(const TCHAR* Source) const;
@@ -1630,7 +1643,8 @@ protected:
 	 * What each rule that changes this creature's attack damage multiplies it by, under that
 	 * rule's own key: `PlacedDamageSource` (a Grave Tide or Horde wave), `TimeAliveDamageSource`
 	 * (Ravenous Hoard), `FloorDepthDamageSource` (March of Progress), `SpireDamageSource`
-	 * (Golden Spires) and `PlagueBeaconsDamageSource` (Pestilent Empowerment). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
+	 * (Golden Spires), `PlagueBeaconsDamageSource` (Pestilent Empowerment) and
+	 * `TrialOfEnduranceDamageSource` (Trial of Endurance). A source with no entry multiplies by 1.0. `WriteAttackDamage` multiplies
 	 * by every entry. Issues #1820 and #41.
 	 *
 	 * ONE MAP RATHER THAN A FIELD PER SOURCE, as ruled by the coordinating session on

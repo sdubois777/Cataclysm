@@ -1018,6 +1018,10 @@ void ACataclysmDungeonGameMode::Tick(float DeltaSeconds)
 	// frame rate, and the fix belongs in the rules rather than here because the
 	// wave must keep the behaviour the comment above defends. Issue #1613.
 	StepFloorRulesThatChange();
+
+	// AND THE FLOOR'S CLEAR TIME, WHATEVER THE RULES, so Trial of Endurance's time can be tuned from play
+	// rather than from a guess. Issues #1820 and #41.
+	NoteTheFloorsClearTime();
 }
 
 void ACataclysmDungeonGameMode::StartPlay()
@@ -1447,6 +1451,17 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 	// nothing in the row takes it back; `LeaveEmpireDungeon` is where it ends.
 	MarchOfProgressCommander = nullptr;
 	bMarchOfProgressCommanderSlain = false;
+
+	// AND EVERY FLOOR OR WAVE STARTS ITS CLEAR CLOCK AND TRIAL OF ENDURANCE AGAIN, here for the
+	// Commander's reason: once a floor or wave, before the branch below. The last floor's creatures are
+	// gone, so what the trial wrote on them goes with them. Issues #1820 and #41.
+	FloorSecondsSincePlaced = 0.0f;
+	FloorClearedSeconds = -1.0f;
+	TrialSeconds = 0.0f;
+	bTrialClearedInTime = false;
+	bTrialRanOut = false;
+	TrialResistances.Reset();
+	TrialPanelLiving = -1;
 
 	// AND PLAGUE HARBINGERS FORGETS THE LAST FLOOR'S OR WAVE'S HARBINGERS, here for the
 	// Commander's reason: they are chosen at the bottom of this function, and
@@ -3665,6 +3680,122 @@ void ACataclysmDungeonGameMode::StepGoldenSpires(ACataclysmPlayerCharacter* Play
 	}
 }
 
+int32 ACataclysmDungeonGameMode::LivingFloorEnemies() const
+{
+	int32 Living = 0;
+	for (const TObjectPtr<ACataclysmEnemyCharacter>& Creature : FloorEnemies)
+	{
+		Living += (IsValid(Creature) && !UCataclysmSkillEffects::IsDead(Creature)) ? 1 : 0;
+	}
+	return Living;
+}
+
+void ACataclysmDungeonGameMode::NoteTheFloorsClearTime()
+{
+	if (!CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+	FloorSecondsSincePlaced += SecondsBetweenWaveChecks;
+	if (FloorClearedSeconds >= 0.0f || !FloorIsCleared())
+	{
+		return;
+	}
+	// ONCE A FLOOR OR WAVE, THE FIRST TIME NONE OF ITS CREATURES IS ALIVE.
+	FloorClearedSeconds = FloorSecondsSincePlaced;
+	UE_LOG(LogCataclysm, Log, TEXT("Floor %d cleared: %d floor cells, %.1f seconds after it was placed%s"),
+		   FloorNumber, CurrentFloor->GetPlan().FloorCount(), FloorClearedSeconds,
+		   FloorBrief.bWaveWalksIn ? TEXT(" (a Horde wave)") : TEXT(""));
+}
+
+void ACataclysmDungeonGameMode::StepTrialOfEndurance(ACataclysmPlayerCharacter* Player)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Resist = UCataclysmAllResistanceAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || FloorBrief.bWaveWalksIn)
+	{
+		// NO TIMER ON A HORDE FLOOR, as ruled: its next wave walks in before the last is cleared.
+		return;
+	}
+
+	// THE CLOCK, UNTIL THE FLOOR IS CLEARED OR IT RUNS OUT. Cleared is asked first, so a floor cleared on the
+	// beat it would have run out is cleared in time.
+	if (!bTrialClearedInTime && !bTrialRanOut)
+	{
+		if (FloorIsCleared())
+		{
+			bTrialClearedInTime = true;
+			UE_LOG(LogCataclysm, Log, TEXT("Trial of Endurance: floor %d cleared in time, %.1f seconds"),
+				   FloorNumber, TrialSeconds);
+			RefreshFloorModifierPanel();
+			return;
+		}
+		TrialSeconds += SecondsBetweenWaveChecks;
+		if (Effects::TrialOfEnduranceHasRunOut(TrialSeconds))
+		{
+			bTrialRanOut = true;
+			UE_LOG(LogCataclysm, Log, TEXT("Trial of Endurance: floor %d ran out with %d creatures alive"),
+				   FloorNumber, LivingFloorEnemies());
+			RefreshFloorModifierPanel();
+		}
+	}
+
+	if (bTrialRanOut)
+	{
+		// EVERY CREATURE ON THE PLAYER'S OTHER SIDE BUT A FLOOR SOURCE, later arrivals on the beat they are
+		// first found: double damage through the map, and twice its own all-resistance BASE, by Soul Harvest's
+		// route of writing the base and keeping what was written.
+		for (TActorIterator<ACataclysmEnemyCharacter> It(World); It; ++It)
+		{
+			ACataclysmEnemyCharacter* Creature = *It;
+			if (!IsValid(Creature) || Creature->IsA<ACataclysmFloorSourceCharacter>()
+				|| !UCataclysmTargeting::IsHostileTo(Creature, Player))
+			{
+				continue;
+			}
+			Creature->SetTrialOfEnduranceDamageMultiplier(Effects::TrialOfEnduranceDamageMultiplier);
+
+			UAbilitySystemComponent* Abilities = UCataclysmTargeting::AbilitySystemOf(Creature);
+			if (!Abilities || !Abilities->HasAttributeSetForAttribute(Resist::GetAllResistanceAttribute()))
+			{
+				continue;
+			}
+			const float Base = Abilities->GetNumericAttributeBase(Resist::GetAllResistanceAttribute());
+			FTrialResistance* Held = TrialResistances.Find(Creature);
+			if (!Held)
+			{
+				FTrialResistance Fresh;
+				Fresh.Own = Base;
+				Fresh.Applied = Base * Effects::TrialOfEnduranceResistanceMultiplier;
+				Abilities->SetNumericAttributeBase(Resist::GetAllResistanceAttribute(), Fresh.Applied);
+				TrialResistances.Add(Creature, Fresh);
+				continue;
+			}
+			if (FMath::IsNearlyEqual(Base, Held->Applied, 0.01f))
+			{
+				continue;
+			}
+			// A RECOMPUTE PUT ITS OWN FIGURE BACK, and the doubling is written again; ANY OTHER CHANGE is
+			// another writer's, kept, and its own figure moves by that much before it is doubled.
+			if (!FMath::IsNearlyEqual(Base, Held->Own, 0.01f))
+			{
+				Held->Own += Base - Held->Applied;
+			}
+			Held->Applied = Held->Own * Effects::TrialOfEnduranceResistanceMultiplier;
+			Abilities->SetNumericAttributeBase(Resist::GetAllResistanceAttribute(), Held->Applied);
+		}
+	}
+
+	const int32 Living = LivingFloorEnemies();
+	if (Living != TrialPanelLiving)
+	{
+		TrialPanelLiving = Living;
+		RefreshFloorModifierPanel();
+	}
+}
+
 TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::PlagueBeaconsStanding() const
 {
 	TArray<ACataclysmEnemyCharacter*> Standing;
@@ -5356,6 +5487,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND INFESTED VEINS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bInfestedVeins = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::InfestedVeinsKey));
+	// AND TRIAL OF ENDURANCE, ON EVERY FLOOR CARRYING IT; A HORDE FLOOR HAS NO TIMER. Issues #1820 and #41.
+	const bool bTrialOfEndurance = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::TrialOfEnduranceKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -5373,7 +5507,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires
-		&& !bPestilentEmpowerment && !bInfestedVeins)
+		&& !bPestilentEmpowerment && !bInfestedVeins && !bTrialOfEndurance)
 	{
 		return;
 	}
@@ -5594,6 +5728,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bInfestedVeins)
 	{
 		StepInfestedVeins(Player, AbilitySystem);
+	}
+
+	// AND TRIAL OF ENDURANCE, WHICH CHANGES CREATURES' DAMAGE AND RESISTANCE ONCE RUN OUT. Issues #1820 and #41.
+	if (bTrialOfEndurance)
+	{
+		StepTrialOfEndurance(Player);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -8190,6 +8330,33 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 	{
 		Counting.Add(Chorus, FString::Printf(TEXT("eternal chorus: %d sources singing"),
 											  EternalChorusSourcesNow().Num()));
+	}
+
+	// AND TRIAL OF ENDURANCE: its seconds and the creatures left while it runs, then how it ended; a Horde
+	// floor has no timer. Issues #1820 and #41.
+	const FName Trial(Effects::TrialOfEnduranceKey);
+	if (FloorBrief.Modifiers.Contains(Trial))
+	{
+		FString Line;
+		if (FloorBrief.bWaveWalksIn)
+		{
+			Line = TEXT("trial of endurance: no timer on a Horde floor");
+		}
+		else if (bTrialRanOut)
+		{
+			Line = TEXT("trial of endurance: failed; enemies deal double damage and have double resistances");
+		}
+		else if (bTrialClearedInTime)
+		{
+			Line = TEXT("trial of endurance: cleared in time");
+		}
+		else
+		{
+			Line = FString::Printf(TEXT("trial of endurance: %.0f seconds left; %d creatures left"),
+								   FMath::Max(0.0f, Effects::TrialOfEnduranceSeconds - TrialSeconds),
+								   LivingFloorEnemies());
+		}
+		Counting.Add(Trial, Line);
 	}
 
 	// AND PESTILENT EMPOWERMENT: this floor's beacons standing, what earlier floors left, and what later

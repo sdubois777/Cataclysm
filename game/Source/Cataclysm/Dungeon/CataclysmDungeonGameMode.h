@@ -2070,6 +2070,30 @@ public:
 	float PlagueBeaconHealth() const { return ImpHealth; }
 
 	/**
+	 * How many of the floor's creatures are alive: `FloorEnemies` entries still valid and not dead. The
+	 * floor sources are not in that list, so they are never counted. Issues #1820 and #41.
+	 */
+	int32 LivingFloorEnemies() const;
+
+	/** Whether the floor is cleared: none of its creatures alive. Trial of Endurance's reading of "cleared". */
+	bool FloorIsCleared() const { return LivingFloorEnemies() == 0; }
+
+	/** Seconds since this floor or wave was placed, on the beat. */
+	float SecondsOnThisFloor() const { return FloorSecondsSincePlaced; }
+
+	/**
+	 * The seconds after placing at which this floor or wave was first found cleared, or -1 while it has not
+	 * been. The same moment is logged, with the floor's number and cell count, whether or not any rule is
+	 * on, so the time Trial of Endurance allows can be tuned from play. Issues #1820 and #41.
+	 */
+	float FloorClearedAfterSeconds() const { return FloorClearedSeconds; }
+
+	/** Trial of Endurance, for the panel and tests: its clock, and whether it was cleared in time or ran out. */
+	float TrialOfEnduranceSecondsSoFar() const { return TrialSeconds; }
+	bool TrialOfEnduranceClearedInTime() const { return bTrialClearedInTime; }
+	bool TrialOfEnduranceRanOut() const { return bTrialRanOut; }
+
+	/**
 	 * The floor's edge cells farthest from `From`, at most `Count` of them, the farthest first: a
 	 * floor cell with a side on rock or off the grid. Where Plague Convergence's waves arrive.
 	 */
@@ -2247,6 +2271,19 @@ private:
 	 */
 	void StepInfestedVeins(class ACataclysmPlayerCharacter* Player,
 						   class UCataclysmAbilitySystemComponent* AbilitySystem);
+
+	/**
+	 * On every beat whatever the rules: the seconds on this floor, and the one log line the first time it
+	 * is found cleared. Issues #1820 and #41.
+	 */
+	void NoteTheFloorsClearTime();
+
+	/**
+	 * Trial of Endurance, on the beat: its clock until the floor is cleared or it runs out, and once run
+	 * out, double damage and twice its own all-resistance on every creature on the player's other side but
+	 * a floor source.
+	 */
+	void StepTrialOfEndurance(class ACataclysmPlayerCharacter* Player);
 
 	/**
 	 * Golden Spires, on the beat: a zone kept drawn around each living spire, and every creature's
@@ -3257,6 +3294,24 @@ private:
 	float InfestedVeinsSecondsSinceBurn = 0.0f;
 	int32 InfestedVeinsPanelStanding = -1;
 	int32 InfestedVeinsPanelDestroyed = -1;
+
+	/** Every floor: seconds since it was placed, and when it was first found cleared (-1 not yet). */
+	float FloorSecondsSincePlaced = 0.0f;
+	float FloorClearedSeconds = -1.0f;
+
+	/** Trial of Endurance: a creature's own all-resistance base and what the rule wrote in its place. */
+	struct FTrialResistance
+	{
+		float Own = 0.0f;
+		float Applied = 0.0f;
+	};
+
+	/** Trial of Endurance: its clock, how it ended, the resistances it wrote, and what the panel last said. */
+	float TrialSeconds = 0.0f;
+	bool bTrialClearedInTime = false;
+	bool bTrialRanOut = false;
+	TMap<TWeakObjectPtr<ACataclysmEnemyCharacter>, FTrialResistance> TrialResistances;
+	int32 TrialPanelLiving = -1;
 
 	/**
 	 * Nothing Is Forgotten: what the void holds, the boss it fed, and what it added to that
