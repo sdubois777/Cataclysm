@@ -26884,7 +26884,19 @@ bool FCataclysmHarbingersChosenTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	Beat(Mode, BeatsFor(5.0f));
+	// THE WHOLE WAVE FIRST: it arrives `WaveCreaturesPerFrame` creatures a tick, and its Harbingers
+	// are chosen only once all of it has. `LetTheWaveArrive` in the game mode's own tests waits the
+	// same way.
+	int32 Ticks = 0;
+	while (Mode->CreaturesStillArriving() > 0 && Ticks < 1000)
+	{
+		Mode->Tick(1.0f / 60.0f);
+		++Ticks;
+	}
+	if (!TestEqual(TEXT("the Horde wave finished arriving"), Mode->CreaturesStillArriving(), 0))
+	{
+		return false;
+	}
 	const TArray<ACataclysmEnemyCharacter*> WaveHarbingers = Mode->PlagueHarbingersAlive();
 	TestTrue(TEXT("a Horde wave has Harbingers of its own"), WaveHarbingers.Num() > 0);
 	for (ACataclysmEnemyCharacter* Harbinger : WaveHarbingers)
