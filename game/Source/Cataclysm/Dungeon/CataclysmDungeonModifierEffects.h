@@ -1903,10 +1903,13 @@ public:
 	 * is a play-test value:
 	 * - A FLYOVER EVERY `WingsOfTheHostSecondsBetween`, Artillery Strike's cadence, Horde waves
 	 *   included.
-	 * - IT IS A STRAIGHT LINE at a random angle through a point within
+	 * - IT IS A STRAIGHT LINE at a random angle through the middle of a random floor cell within
 	 *   `WingsOfTheHostPassesWithinCm` of the player, across the whole floor, with a mark every
 	 *   `WingsOfTheHostFeatherEveryCm`, `WingsOfTheHostFeatherRadiusCm` across the radius, on
-	 *   floor cells only. The marks never overlap, so a player is struck once at most.
+	 *   floor cells only. The marks never overlap, so a player is struck once at most. THROUGH A
+	 *   FLOOR CELL by a second ruling, 2026-09-25: a line through any point near the player could
+	 *   cross no floor, mark nothing and be tried again a beat later, which broke the thirty
+	 *   seconds; through a floor cell's middle it always marks that cell's feather.
 	 * - EVERY FEATHER LANDS TOGETHER after `WingsOfTheHostWarningSeconds`, Artillery Strike's
 	 *   warning, and strikes the PLAYER ONLY -- the row names no creature -- for
 	 *   `WingsOfTheHostMaxHealthPercent` of maximum health, typed as the row.

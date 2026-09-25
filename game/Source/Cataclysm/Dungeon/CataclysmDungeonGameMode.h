@@ -1979,6 +1979,13 @@ public:
 	static TArray<FVector> WingsOfTheHostFeathers(const ACataclysmDungeonFloor& Floor,
 												  const FVector& Through, const FVector& Direction);
 
+	/**
+	 * The floor cells a flyover may pass through: those whose middle is within
+	 * `WingsOfTheHostPassesWithinCm` of `Centre`, measured level. A line through a cell's middle
+	 * marks that cell's feather at least, so every flyover marks one. Issues #1820 and #41.
+	 */
+	static TArray<FIntPoint> WingsOfTheHostThroughCells(const ACataclysmDungeonFloor& Floor, const FVector& Centre);
+
 	/** Eternal Chorus, for the panel and tests: the sources still singing. */
 	TArray<ACataclysmEnemyCharacter*> EternalChorusSourcesNow() const;
 
