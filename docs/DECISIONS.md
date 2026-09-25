@@ -2,6 +2,153 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Rows only: eleven enchantments on mechanisms that already exist
+
+**Affects:**
+- the Enchantment Effects sheet: twelve rows on eleven enchantments, and no new column
+- `tools/generate_datatables.py`, whose enchantment validator now counts a flat Passive Effects row
+  as supplying a base, and `COMPLEMENT_RANGE_ENCHANTMENTS`, the enchantments whose row is the
+  complement of their sentence's range
+- `tools/tests/test_enchantment_effects_match_the_row_text.py`, which now reads "minus" as taking
+  something away, and reads the complement set above
+- `CataclysmSkillTemplates.cpp` and `CataclysmCommand.h`, two comments about the minion cap bonus
+  that these rows made false
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833); the batch came from the
+  survey of the 277 enchantments with no row, sent to the coordinating session on 2026-09-25
+
+### THE ROWS
+
+| Enchantment | Row |
+| :-- | :-- |
+| Regenerate 1%-3% of your maximum HP per second | `health_regen` flat 1 to 3, scale `max_health` step 100 |
+| Regenerate 5%-10% of your maximum mana per second | `mana_regen` flat 5 to 10, scale `max_mana` step 100 |
+| Every 15 seconds regenerate 10%-20% of your maximum HP instantly | action `health` 10 to 20 of the maximum, `every_seconds` 15 |
+| You lose 15% of your max hp every 5 seconds | action `health` -15 of the maximum, `every_seconds` 5 |
+| Every 10 seconds you lose 5%-10% of your current HP | action `health` -5 to -10 of the current, `every_seconds` 10 |
+| Every 10 seconds your movement speed is increased by 30%-50% for 3 seconds | `movement_speed` increased 30 to 50, own stacks on `every_seconds` 10, 3 seconds, cap 1 |
+| Every 20 seconds your damage is halved for 5 seconds | `attack_damage` and `spell_damage` more -50, own stacks on `every_seconds` 20, 5 seconds, cap 1 |
+| Lose 10%-20% armor when you use a skill | `armor` increased -10 to -20, own stacks on `skill_use`, 3 seconds, cap 1 |
+| Minus 2-4 to your max minion count | `minion_cap_bonus` flat -2 to -4 |
+| Your class resource decays twice as fast | `fervour_decay_per_second` more 100 |
+| Your maximum HP cannot exceed 40%-60% of its normal value | `max_health` more -60 to -40 |
+
+Every timed row counts only in combat, ruled 2026-09-24. A health drain cannot kill: health
+floors at 1, ruled 2026-09-14.
+
+### FIVE LABELLED JUDGEMENTS, ACCEPTED BY THE COORDINATING SESSION UNDER THE OWNER'S DELEGATION
+
+- **"Lose 10%-20% armor when you use a skill" lasts 3 seconds and does not stack.** The sentence
+  states neither. Three seconds is the sibling row's, "Each skill use reduces your armor by 1%-2%
+  for 3 seconds".
+- **A flat Passive Effects row now supplies a base to an enchantment.** The validator refused "Your
+  class resource decays twice as fast", because the only thing that supplies a decay rate is a
+  passive node's flat row, `Ravager_basic_spine_000` at 5 a second, and the validator counted only
+  class lines, attributes, item bases, the engine and this sheet's own flat rows. A doubling is a
+  multiplier on that base, which is the case the check exists to allow.
+- **"minus" is a word that takes something away**, for "Minus 2-4 to your max minion count". It
+  widens the meaning, as "drain" did on 2026-09-14.
+- **"Your maximum HP cannot exceed 40%-60% of its normal value" is the complement of its range.**
+  The row is -60 to -40. The item text (`UCataclysmItemValues::EnchantmentTextAtRoll`) and the value
+  (`EnchantmentValue`) are both taken by position in the range, so at the lowest roll the text says
+  40% and -60 leaves 40% of the maximum; at the highest, 60% and -40. The generator's range check
+  and the row-text check accept it through `COMPLEMENT_RANGE_ENCHANTMENTS`, keyed by enchantment so
+  that "You have 20% less hp" keeps its full checks, and
+  `test_every_complement_range_enchantment_is_still_needed` keeps the list honest. The sentence
+  states a share left rather than a word such as "less", so the multiplier-word and taking-word
+  checks excuse the enchantments in that list too.
+- **Two worn copies of one timed pool row share one count** and fire once a period, not twice. A
+  timed pool action is counted under its pool and its period, `health@5`
+  (`CataclysmAbilitySystemComponent.cpp`, `StepTimedGrants`). Stated here and not changed. No two
+  rows in this batch share a pool and a period.
+
+### WHAT THE SURVEY CALLED ROWS ONLY AND THE CODE DID NOT
+
+Thirteen of the survey's 24 rows-only enchantments are not here. The code check found that each
+needs an engine half, and the coordinating session ruled on each.
+- **The ailment-scoped damage over time rows**, four: burn and poison damage per second, bleed
+  damage, and poison duration. The damage over time asks pass no tags, so a row scoped to
+  `Keyword.DoT.Burn` never applies.
+- **"Your first hit against each enemy in a combat ignores all resistances".** The penetration ask
+  passes no target, so the first-hit condition refuses.
+- **"Every hit you take deals an additional 5%-10% of your maximum HP as bonus damage".** A pool
+  action on `hit_taken` also fires on an evaded blow, and a hit is a blow that got through.
+- **"Energy shield regeneration begins immediately after taking damage with no delay".** The flag
+  that exists gives half the rate inside the wait, not the full rate with no wait.
+- **"Your minions have 20%-50% less hp".** Minion health reads the increased bucket only. "Less" is
+  the more-or-less bucket, so it waits for that, and is not written as an increase.
+- **Three gadget rows.** A gadget's blow is its own and reads none of its summoner's stats. Ruled on
+  2026-09-25: a modifier that names gadgets reaches a gadget's blow. That fix is the first part of
+  the deployable work, and it also mends the existing "Gadgets deal 20%-40% increased damage" row,
+  which does nothing today.
+- **"Your melee skills have 20%-40% increased reach"** (reach is flat metres, so a percentage
+  multiplies nothing) and **"Can't use a basic attack"** (the basic attack is exempt from every lock).
+  Each needs a proposal of its own.
+
+### THE TESTS
+
+Seven tests. Each wears the real row on a helm beside a partner with no effect row. A worn item rolls the top
+of its range. Rows that share a mechanism share a test.
+- **The timed health rows**, three worn in turn at 1000 maximum health:
+  - the restore takes 500 to 700 at 15 seconds, and to 900 at 30;
+  - the maximum drain takes 1000 to 850 at 5 seconds, and to 700 at 10;
+  - the current drain takes 1000 to 900 at 10 seconds, and to 810 at 20, which is a share of what is
+    held.
+- **The two regeneration rows**, read as a ratio against a figure of 100:
+  - health: 1.3 at 1000 maximum health, 1.3 at 1099, 1.33 at 1100;
+  - mana: 2.0 at 1000, 2.0 at 1099, 2.1 at 1100.
+- **The two timed stack rows:**
+  - movement speed: 1.5 times at 10 seconds, still at 12.9, and gone at 13.1;
+  - attack and spell damage: halved at 20 seconds, still at 24.9, and whole at 25.1.
+- **The skill-use armour row:** 0.8 of the plain armour after one skill use, still 0.8 after a second,
+  and whole after 3 seconds.
+- **The decay row:** a node's 5 a second becomes 10, and no decay stays none.
+- **The maximum health share row**, at the lowest and highest roll: the text says 40% and 0.4 of
+  the plain maximum is left; the text says 60% and 0.6 is left; with the helm off, the whole
+  maximum.
+- **The minion count row:** the cap bonus reads -4. The floor of one minion in `MinionCapFor` is not
+  reached from a test: that function is file-local and runs only when a summoning skill is cast.
+
+### THE RUN
+
+On `feat/rows-only-enchantments`, based on development `0d212a82`. Every line below is what the run
+printed.
+
+| Step | Result |
+| :-- | :-- |
+| Python of record, `af621da1` | "5486 passed, 8 skipped in 337.31s"; JUnit tests 5494, failures 0 |
+| First build | "Build: Succeeded - 30 actions, 27 files compiled" |
+| Rows commit `a9110fc1` | "EnchantmentEffects.csv 347 rows", from 335 |
+| Python after the rows | "1 failed, 5486 passed, 8 skipped": the stale CSV hash, as predicted |
+| Second build | "Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.12.cpp" |
+| Stale-asset step | "115 tests performed, 107 succeeded, 8 failed": the asset-match guard and the seven new tests |
+| Asset rebuild `8b88fa6d` | only `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json`; rows 335 to 347 |
+| The seven new tests | "7 tests performed, 7 succeeded, 0 failed" |
+| Whole suite, `8b88fa6d` | "2532 tests performed, 2532 succeeded, 0 failed"; 2532 declared, gap 0 |
+| Proof A, the maximum-health scale not rounded to whole steps | PROVED: 1.262504, 1.291347 and 1.291638 against 1.3, 1.3 and 1.33, as registered; restored 1/1 |
+| Proof B, a current-health drain taken of the maximum | PROVED: "current drain: twenty seconds in" read 800 against 810, as registered; restored 1/1 |
+| Proof C, a stack's count not capped | NOT PROVED; see below |
+| Python control, "minus" taken out of the taking words | PROVED: only `test_a_negative_value_is_on_words_that_take_something_away` failed; restored 30/30 |
+
+**Proof C printed "NOT A PROOF: nothing failed with the break in, so no test here notices it."** The
+break was `CataclysmAbilitySystemComponent.cpp:3327`, `Held.Count = FMath::Min(Standing + 1, Cap)`
+made `Standing + 1`. The cap of one is enforced in two places: that line caps how many stacks are
+held, and `UCataclysmStatPipeline::ScaledValue` (`CataclysmStatPipeline.cpp:1237-1245`) caps the
+modifier's value at its Scale Max Steps. Both read the row's Scale Max Steps, which
+`CataclysmItem.cpp` copies into the stack's cap and into the modifier. With the first broken the
+second still held the armour at one step, so the test correctly passed. The test is sound: it checks
+that 20% is held at one stack, and that holds. What stays unproved is only that it would catch the
+loss of both caps. Ruled by the coordinating session: recorded rather than replaced, because a new
+break would be a fourth proof against the owner's limit of three. The lesson is the memory note "a
+break on a value applied twice is invisible", which the break was chosen without consulting.
+
+**Two registration misses.**
+- The Python after the rows was registered as "1 failed, 5485 passed, 8 skipped" and printed 5486
+  passed. The failure was the one predicted; the passed figure was an arithmetic error, 5495 less 1
+  less 8.
+- Proof C, above.
+
+---
+
 ## 2026-09-25 — Trial of Endurance: a floor not cleared within 300 seconds of being placed doubles every creature's damage and all-resistance until it ends; every floor now logs when it is cleared
 
 **Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (a sixth key of the damage
