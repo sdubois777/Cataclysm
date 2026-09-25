@@ -2,6 +2,128 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Infested Veins: three veins beside the walls of a floor burn the player within six metres, grow back sixty seconds after they are destroyed, and the third destroyed calls two Elite guardians once
+
+**Affects:** a new vein class `game/Source/Cataclysm/Character/CataclysmVeinCharacter.h`;
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's key, its figures,
+the burn, when a vein grows back and when the guardians come);
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the floor-source cell picker shared
+with Eternal Chorus and given a beside-a-wall filter, placing and forgetting the veins, their zones, the
+burn, regrowth, the guardians, the panel line);
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Vein" under a vein's health bar);
+the automation tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp` and
+`game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`; and
+`tools/tests/test_dungeon_modifier_rules_are_the_rows.py` (one check). Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
+tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they
+have.
+
+### The row
+
+`Pestilence_Infested_Veins` in `game/Data/DungeonModifiers.csv`, weight 10: "Living tunnels and walls pulsate
+with veins of infectious growths that create a toxic environment. Players can choose to destroy these veins to
+temporarily cleanse the area, but destroying too much summons toxic "guardians" from the infection." It states
+no figure. The design document and this log do not mention a vein.
+
+### What the rule does
+
+When a floor carrying the row is placed, three veins stand on floor cells beside a wall -- a cell at least
+one of whose four neighbours is not floor -- at least twenty metres from the entrance and from each other; a
+Horde arena has one, kept for its waves. A floor with fewer such cells far enough apart has fewer veins, and a
+floor with none has none. Each vein is a creature that does nothing itself, with the Imp's health, "Vein"
+under its health bar, paying nothing when destroyed and not one of the floor's creatures. Around each living
+vein a visible Pestilence zone six metres across the radius costs the player 1% of maximum health a second,
+once however many zones cover them. Destroying a vein takes its zone away; sixty seconds later a new vein
+stands on the same cell at full health, with its zone. The third vein destroyed on the floor -- regrown ones
+counted -- calls two creatures of the floor's own kinds at the Elite rung onto floor cells beside it; they pay
+and are the floor's creatures, and no later vein calls more. The count starts again on each new floor, and on
+a Horde floor it is kept for the arena. The panel says how many veins stand and how many have been destroyed
+against the threshold, or that the guardians have come.
+
+**A stated consequence, from the coordinating session.** With regrowth a player can clear an area only for
+sixty seconds at a time, and the guardians come once, so after the guardians the rule's pressure is the zones
+alone.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-25. The row states no figure; every
+figure is a play-test value:**
+
+- **A vein is a floor source**, `ACataclysmVeinCharacter`, with the Imp's health, 87, and "Vein" under its
+  bar: it pays nothing, is raised by the rule, is not one of the floor's creatures and is not saved.
+- **Three a floor on floor cells beside a wall**, at least `EternalChorusApartCm` apart and from the entrance;
+  one on a Horde arena, kept. The beside-a-wall filter is a pure function, tested; a floor with fewer such
+  cells places what fits.
+- **A visible 600 cm Pestilence zone around each living vein, 1% of the player's maximum health a second**,
+  hitting the player only.
+- **Destroying a vein removes its zone, and a new vein regrows on the same cell 60 s later**, at full health,
+  with its zone.
+- **The third vein destroyed on a floor, regrown ones included, calls two Elite guardians of the floor's own
+  kinds beside it, once a floor.** They pay and are the floor's creatures. No label for them.
+- **The panel line as proposed**; the count resets per floor, and per arena on a Horde floor.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **Eternal Chorus's cell picker became `FloorSourceCells`**, which both it and the veins' picker call, the
+  veins' asking for cells beside a wall; Eternal Chorus's answer is unchanged.
+- **The burn is dealt once a second by the rule's own step, not by the zones**, as Necrotic Ground's is, so a
+  player covered by two zones is burned once. The zones are drawn with no damage of their own.
+- **The guardians stand on Necrotic Bloom's wave cells** -- floor cells within 600 cm of the vein, not its own
+  cell -- and are drawn from the floor's population, as Grave Tide's and the Bloom's creatures are.
+- **Once the guardians have come the panel reads "N standing; M destroyed; the guardians have come"**, since
+  "of 3 before the guardians come" is no longer true.
+
+### The research: growths the player destroys
+
+Done after the rulings and before the build; the page quoted was fetched on 2026-09-25 before it was quoted.
+
+| Game | Source | What it says |
+| :-- | :-- | :-- |
+| Diablo IV, "The Path of Rage" | https://diablo4.wiki.fextralife.com/The+Path+of+Rage | "Destroy the Unnatural Growths sustaining the blockage at the Untamed Thicket (0/3)" |
+
+**What it settles and what it does not.** A shipped game asks the player to destroy three growths, guarded by
+enemies, to clear the way. No page that could be read describes a growth that poisons the ground around it,
+grows back, or calls guardians when too many are destroyed: search summaries named Path of Exile's Blight and
+Diablo III's corrupt growths, but the pages fetched (`poedb.tw/us/Blight`) did not say so, and one guide page
+answered 404. So the zone, the regrowth, the threshold and the guardians are this game's own.
+
+### Tests
+
+Five automation tests in `Cataclysm.DungeonModifierEffects.` and one in `Cataclysm.SaveApply.`:
+
+- `InfestedVeinsBurnOnePercentGrowBackAndCallGuardiansOnce`: the figures; the burn for 1000 maximum health is
+  10 and for none is 0; regrowth is not due at 59.75 s and is at 60; the guardians are due at three destroyed
+  and not at two, and not again once they have come.
+- `AnInfestedVeinStandsOnlyOnAFloorCellBesideAWall`: on a hand-built five by five plan with a three by three
+  room and one cell cut to the plan's edge, the room's middle and the cell whose only rock neighbour was cut
+  are not beside a wall, the room's corner and right middle are, the cut cell on the plan's edge is, and rock
+  and a cell off the plan are never places for a vein.
+- `InfestedVeinsPlacesThreeVeinsBesideWalls`: three veins, each a vein with no controller and no ability,
+  paying nothing, raised by the rule, not one of the floor's creatures, saying exactly "Vein", at full health
+  equal to the Imp's, on a cell beside a wall, far enough from the entrance and from each other; after a beat
+  each has a zone covering it and not a point 650 cm away; the panel; a Horde arena has one, kept by its next
+  wave with its zone drawn again.
+- `AnInfestedVeinsGroundBurnsThePlayerAndItGrowsBackAfterSixtySeconds`: nothing is lost on the entrance;
+  within a vein's zone the player loses something, and no more than two seconds' burn in two seconds;
+  destroying the vein pays nothing, leaves two veins and two zones, and the same place burns no more; sixty
+  seconds later a new vein stands on the same cell at full health, with its zone, and the count stays one.
+- `TheThirdInfestedVeinDestroyedCallsTwoEliteGuardiansOnce`: no guardian after the first two; the third calls
+  two, each of the floor's kinds, at the Elite rung, paying, not raised by a rule, beside the third vein and
+  not in its cell; the panel before and after; after the veins grow back a fourth destroyed calls none.
+- `Cataclysm.SaveApply.AVeinDoesNotTakeTheTrainingDummysEmptyName`: the vein names no row, and the empty name
+  maps to the base enemy class.
+
+One Python check: the row still says "tunnels and walls", "toxic environment", "destroy these veins",
+"temporarily cleanse", "destroying too much" and "guardians".
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the three guard proofs. They run in one
+editor window when the build machine is granted.
+
+---
+
 ## 2026-09-25 — Pestilent Empowerment: every plague beacon left standing when the player leaves its floor makes the creatures of every later floor of that dungeon deal 10% more, summed, at most double
 
 **Affects:** a new beacon class `game/Source/Cataclysm/Character/CataclysmBeaconCharacter.h`;

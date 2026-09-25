@@ -13,6 +13,7 @@
 #include "Character/CataclysmBloomCharacter.h"
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
+#include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
@@ -527,13 +528,20 @@ FString UCataclysmCombatOverlay::BeaconTextFor(const AActor* Actor)
 		: FString();
 }
 
+FString UCataclysmCombatOverlay::VeinTextFor(const AActor* Actor)
+{
+	return Actor && Actor->IsA<ACataclysmVeinCharacter>() && !UCataclysmSkillEffects::IsDead(Actor)
+		? FString(TEXT("Vein"))
+		: FString();
+}
+
 FString UCataclysmCombatOverlay::StatusLineFor(const AActor* Actor)
 {
 	TArray<FString> Parts;
 	for (const FString& Part :
 		 {HarbingerTextFor(Actor), ChorusTextFor(Actor), BloomTextFor(Actor), SpireTextFor(Actor),
-		  BeaconTextFor(Actor), ArmourRemovedTextFor(Actor), SlowedTextFor(Actor), HeldTextFor(Actor),
-		  DamageCutTextFor(Actor)})
+		  BeaconTextFor(Actor), VeinTextFor(Actor), ArmourRemovedTextFor(Actor), SlowedTextFor(Actor),
+		  HeldTextFor(Actor), DamageCutTextFor(Actor)})
 	{
 		if (!Part.IsEmpty())
 		{

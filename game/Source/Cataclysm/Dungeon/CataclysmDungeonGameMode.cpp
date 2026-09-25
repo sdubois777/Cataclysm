@@ -34,6 +34,7 @@
 #include "Character/CataclysmChorusSourceCharacter.h"
 #include "Character/CataclysmFloorSourceCharacter.h"
 #include "Character/CataclysmSpireCharacter.h"
+#include "Character/CataclysmVeinCharacter.h"
 #include "Character/CataclysmCorruptedSentinelCharacter.h"
 #include "Character/CataclysmEnemyCharacter.h"
 #include "Character/CataclysmGatekeeperCharacter.h"
@@ -1477,6 +1478,11 @@ int32 ACataclysmDungeonGameMode::PopulateFloor()
 		// `GoToFloor` before its creatures were cleared. Issues #1820 and #41.
 		ForgetTheBeacons();
 		PlaceTheBeacons();
+
+		// AND INFESTED VEINS, FOR THE SAME REASON; a new arena starts its destroyed count again, and a
+		// Horde arena's waves keep it. Issues #1820 and #41.
+		ForgetTheVeins();
+		PlaceTheVeins();
 	}
 	else
 	{
@@ -3120,6 +3126,28 @@ ACataclysmGroundZone* ACataclysmDungeonGameMode::EternalChorusEarshotOf(
 TArray<FIntPoint> ACataclysmDungeonGameMode::EternalChorusCells(const ACataclysmDungeonFloor& Floor,
 																 int32 Count)
 {
+	return FloorSourceCells(Floor, Count, /*bBesideAWallOnly=*/false);
+}
+
+bool ACataclysmDungeonGameMode::InfestedVeinsCellIsBesideAWall(const FCataclysmFloorPlan& Plan, FIntPoint Cell)
+{
+	if (!Plan.IsFloor(Cell))
+	{
+		return false;
+	}
+	// `IsFloor` answers false off the plan, so a floor cell on the plan's edge is beside a wall.
+	return !Plan.IsFloor(Cell + FIntPoint(1, 0)) || !Plan.IsFloor(Cell + FIntPoint(-1, 0))
+		|| !Plan.IsFloor(Cell + FIntPoint(0, 1)) || !Plan.IsFloor(Cell + FIntPoint(0, -1));
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::InfestedVeinsCells(const ACataclysmDungeonFloor& Floor, int32 Count)
+{
+	return FloorSourceCells(Floor, Count, /*bBesideAWallOnly=*/true);
+}
+
+TArray<FIntPoint> ACataclysmDungeonGameMode::FloorSourceCells(const ACataclysmDungeonFloor& Floor, int32 Count,
+															  bool bBesideAWallOnly)
+{
 	using Effects = UCataclysmDungeonModifierEffects;
 
 	// EVERY FLOOR CELL FAR ENOUGH FROM THE ENTRANCE, in an even shuffle, and then the first that are
@@ -3132,7 +3160,7 @@ TArray<FIntPoint> ACataclysmDungeonGameMode::EternalChorusCells(const ACataclysm
 		for (int32 X = 0; X < Plan.Width; ++X)
 		{
 			const FIntPoint Cell(X, Y);
-			if (Plan.IsFloor(Cell)
+			if (Plan.IsFloor(Cell) && (!bBesideAWallOnly || InfestedVeinsCellIsBesideAWall(Plan, Cell))
 				&& FVector::Dist2D(Floor.WorldOfCell(Cell), Entrance) >= Effects::EternalChorusApartCm)
 			{
 				Candidates.Add(Cell);
@@ -3759,6 +3787,223 @@ void ACataclysmDungeonGameMode::StepPestilentEmpowerment(ACataclysmPlayerCharact
 	if (Standing != PestilentPanelStanding)
 	{
 		PestilentPanelStanding = Standing;
+		RefreshFloorModifierPanel();
+	}
+}
+
+TArray<ACataclysmEnemyCharacter*> ACataclysmDungeonGameMode::InfestedVeinsStanding() const
+{
+	TArray<ACataclysmEnemyCharacter*> Standing;
+	for (const FInfestedVein& One : InfestedVeins)
+	{
+		ACataclysmEnemyCharacter* Vein = One.Vein.Get();
+		if (One.SecondsSinceDestroyed < 0.0f && IsValid(Vein) && !UCataclysmSkillEffects::IsDead(Vein))
+		{
+			Standing.Add(Vein);
+		}
+	}
+	return Standing;
+}
+
+ACataclysmGroundZone* ACataclysmDungeonGameMode::InfestedVeinZoneOf(const ACataclysmEnemyCharacter* Vein) const
+{
+	for (const FInfestedVein& One : InfestedVeins)
+	{
+		if (Vein && One.Vein.Get() == Vein)
+		{
+			return One.Zone.Get();
+		}
+	}
+	return nullptr;
+}
+
+void ACataclysmDungeonGameMode::ForgetTheVeins()
+{
+	for (const FInfestedVein& One : InfestedVeins)
+	{
+		if (ACataclysmEnemyCharacter* Vein = One.Vein.Get())
+		{
+			Vein->Destroy();
+		}
+		if (ACataclysmGroundZone* Zone = One.Zone.Get())
+		{
+			Zone->Destroy();
+		}
+	}
+	InfestedVeins.Reset();
+	InfestedVeinsDestroyed = 0;
+	bInfestedVeinsGuardiansCame = false;
+	InfestedVeinsSecondsSinceBurn = 0.0f;
+	InfestedVeinsPanelStanding = -1;
+	InfestedVeinsPanelDestroyed = -1;
+}
+
+ACataclysmEnemyCharacter* ACataclysmDungeonGameMode::SpawnAVeinOn(FIntPoint Cell)
+{
+	UWorld* World = GetWorld();
+	if (!World || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return nullptr;
+	}
+	const TSubclassOf<ACataclysmEnemyCharacter> Class = ACataclysmVeinCharacter::StaticClass();
+	FActorSpawnParameters Spawn;
+	Spawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	const FVector Where = CurrentFloor->WorldOfCell(Cell)
+		+ FVector(0.0f, 0.0f, DungeonGameModeStandingHeightOfClass(Class));
+	ACataclysmEnemyCharacter* Vein =
+		World->SpawnActor<ACataclysmEnemyCharacter>(Class, Where, FRotator::ZeroRotator, Spawn);
+	if (!Vein)
+	{
+		return nullptr;
+	}
+	// THE IMP'S HEALTH AT COMMON, a play-test value. It pays nothing and is not one of the floor's
+	// creatures, as the other floor sources are not.
+	Vein->SetGenericTeamId(UCataclysmTeams::IdFor(ECataclysmTeam::Monsters));
+	Vein->SetHealth(InfestedVeinHealth());
+	Vein->SetRarityStep(0);
+	Vein->bDiesUnpaid = true;
+	Vein->bRaisedByARule = true;
+	CreaturesRaisedByARule.Add(Vein);
+	return Vein;
+}
+
+void ACataclysmDungeonGameMode::PlaceTheVeins()
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	if (!CurrentFloor || !CurrentFloor->IsBuilt()
+		|| !FloorBrief.Modifiers.Contains(FName(Effects::InfestedVeinsKey)))
+	{
+		return;
+	}
+
+	// THREE ON A FLOOR, ONE ON A HORDE ARENA, ON FLOOR CELLS BESIDE A WALL, as ruled; fewer when the
+	// floor has fewer such cells far enough apart.
+	const int32 Count = FloorBrief.bWaveWalksIn ? Effects::InfestedVeinsPerHordeArena
+											: Effects::InfestedVeinsPerFloor;
+	for (const FIntPoint& Cell : InfestedVeinsCells(*CurrentFloor, Count))
+	{
+		FInfestedVein One;
+		One.Cell = Cell;
+		One.Vein = SpawnAVeinOn(Cell);
+		if (One.Vein.IsValid())
+		{
+			InfestedVeins.Add(One);
+		}
+	}
+	UE_LOG(LogCataclysm, Log, TEXT("Infested Veins: %d vein(s) placed on floor %d"), InfestedVeins.Num(), FloorNumber);
+	RefreshFloorModifierPanel();
+}
+
+void ACataclysmDungeonGameMode::StepInfestedVeins(
+	ACataclysmPlayerCharacter* Player, UCataclysmAbilitySystemComponent* AbilitySystem)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+	using Vital = UCataclysmVitalAttributeSet;
+
+	UWorld* World = GetWorld();
+	if (!World || !IsValid(Player) || !AbilitySystem || !CurrentFloor || !CurrentFloor->IsBuilt())
+	{
+		return;
+	}
+	ACataclysmFloorHazardSource* Source = ACataclysmFloorHazardSource::ForFloor(World);
+	const FName Type = DungeonGameModeTypeOfRow(Effects::InfestedVeinsKey);
+	const FVector Feet = Player->GetActorLocation();
+
+	bool bInTheToxicGround = false;
+	for (FInfestedVein& One : InfestedVeins)
+	{
+		ACataclysmEnemyCharacter* Vein = One.Vein.Get();
+
+		// A LIVING VEIN: ITS ZONE DRAWN AGAIN whenever it is missing, which is after every floor or wave.
+		if (One.SecondsSinceDestroyed < 0.0f && IsValid(Vein) && !UCataclysmSkillEffects::IsDead(Vein))
+		{
+			ACataclysmGroundZone* Zone = One.Zone.Get();
+			if (!Zone && Source)
+			{
+				const FVector Where = Vein->GetActorLocation();
+				Zone = ACataclysmGroundZone::SpawnForTheFloor(
+					Source, Where, Where, Effects::InfestedVeinsRadiusCm, 0.0f,
+					/*bAffectsEveryone=*/false, /*InDrawnAsType=*/Type);
+				One.Zone = Zone;
+			}
+			bInTheToxicGround |= Zone && Zone->Covers(Feet);
+			continue;
+		}
+
+		// A VEIN JUST DESTROYED: ITS ZONE GOES, IT IS COUNTED, and at the threshold the guardians come.
+		if (One.SecondsSinceDestroyed < 0.0f)
+		{
+			if (ACataclysmGroundZone* Zone = One.Zone.Get())
+			{
+				Zone->Destroy();
+			}
+			One.Zone = nullptr;
+			One.SecondsSinceDestroyed = 0.0f;
+			++InfestedVeinsDestroyed;
+			if (Effects::InfestedVeinsGuardiansAreDue(InfestedVeinsDestroyed, bInfestedVeinsGuardiansCame))
+			{
+				bInfestedVeinsGuardiansCame = true;
+				// THE FLOOR'S OWN KINDS, as Grave Tide draws them, at the Elite rung, on floor cells
+				// beside the vein as Necrotic Bloom's waves stand beside their flower.
+				const FCataclysmFloorPopulation Population = FCataclysmFloorPopulator::Populate(
+					CurrentFloor->GetPlan(), ChooseEnemyScale(), FloorBrief);
+				const TArray<FIntPoint> Cells =
+					NecroticBloomWaveCells(*CurrentFloor, CurrentFloor->WorldOfCell(One.Cell));
+				int32 Placed = 0;
+				for (int32 Which = 0; Which < Effects::InfestedVeinsGuardians
+									  && !Population.Enemies.IsEmpty() && !Cells.IsEmpty(); ++Which)
+				{
+					FCataclysmEnemyPlacement Placement =
+						Population.Enemies[FMath::RandRange(0, Population.Enemies.Num() - 1)];
+					Placement.Cell = Cells[FMath::RandRange(0, Cells.Num() - 1)];
+					if (ACataclysmEnemyCharacter* Guardian = SpawnPlacedCreature(
+							Placement, FloorBrief.SightRadiusMultiplier, Effects::InfestedVeinsGuardianRung))
+					{
+						// THE FLOOR'S LIST: they pay and are saved like any creature.
+						FloorEnemies.Add(Guardian);
+						++Placed;
+					}
+				}
+				UE_LOG(LogCataclysm, Log, TEXT("Infested Veins: %d guardian(s) came on floor %d"), Placed, FloorNumber);
+			}
+			continue;
+		}
+
+		// A DESTROYED VEIN GROWS BACK ON ITS CELL, at full health; its zone is drawn on the next beat.
+		One.SecondsSinceDestroyed += SecondsBetweenWaveChecks;
+		if (Effects::InfestedVeinRegrowIsDue(One.SecondsSinceDestroyed))
+		{
+			if (ACataclysmEnemyCharacter* Regrown = SpawnAVeinOn(One.Cell))
+			{
+				One.Vein = Regrown;
+				One.SecondsSinceDestroyed = -1.0f;
+			}
+		}
+	}
+
+	// THE BURN, ONCE A SECOND, FOR A PLAYER IN A LIVING VEIN'S ZONE AT THAT BEAT, once however many
+	// zones cover them, as Necrotic Ground burns. Typed by the row.
+	InfestedVeinsSecondsSinceBurn += SecondsBetweenWaveChecks;
+	if (InfestedVeinsSecondsSinceBurn >= 1.0f)
+	{
+		InfestedVeinsSecondsSinceBurn = 0.0f;
+		const float Burn = Effects::InfestedVeinsBurn(AbilitySystem->GetNumericAttribute(Vital::GetMaxHealthAttribute()));
+		if (bInTheToxicGround && Source && Burn > 0.0f)
+		{
+			FCataclysmHitDelivery Delivery;
+			Delivery.bIsArea = true;
+			Delivery.bIsDamageOverTime = true;
+			Delivery.DamageType = Type;
+			UCataclysmSkillEffects::ApplyDirectDamage(Source, Player, Burn, Delivery);
+		}
+	}
+
+	const int32 Standing = InfestedVeinsStanding().Num();
+	if (Standing != InfestedVeinsPanelStanding || InfestedVeinsDestroyed != InfestedVeinsPanelDestroyed)
+	{
+		InfestedVeinsPanelStanding = Standing;
+		InfestedVeinsPanelDestroyed = InfestedVeinsDestroyed;
 		RefreshFloorModifierPanel();
 	}
 }
@@ -4634,6 +4879,7 @@ void ACataclysmDungeonGameMode::LeaveEmpireDungeon()
 	// no beacon of this dungeon strengthens the next one. Issues #1820 and #41.
 	ForgetTheBeacons();
 	PestilentBeaconsLeftStanding = 0;
+	ForgetTheVeins();
 
 	// AND WHAT THEY WERE DOING TO THE PLAYER STOPS. The brief is empty now, so
 	// this takes Starvation's and Dehydration's share back off the player's
@@ -5107,6 +5353,9 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	// AND PESTILENT EMPOWERMENT, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
 	const bool bPestilentEmpowerment = FloorBrief.Modifiers.Contains(
 		FName(UCataclysmDungeonModifierEffects::PestilentEmpowermentKey));
+	// AND INFESTED VEINS, ON EVERY FLOOR CARRYING IT, HORDE WAVES INCLUDED. Issues #1820 and #41.
+	const bool bInfestedVeins = FloorBrief.Modifiers.Contains(
+		FName(UCataclysmDungeonModifierEffects::InfestedVeinsKey));
 	const bool bTrickOrTreat = FloorBrief.Modifiers.Contains(
 			FName(UCataclysmDungeonModifierEffects::TrickOrTreatKey))
 		|| TrickOrTreatHasteApplied > 0.0f || TrickOrTreatHasteUntilSeconds >= 0.0f;
@@ -5124,7 +5373,7 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 		&& !bTheReaper && !bBloodBond && !bPlagueConvergence && !bDivineWrath
 		&& !bEchoes && !bPlagueHarbingers
 		&& !bWingsOfTheHost && !bEternalChorus && !bNecroticBloom && !bGoldenSpires
-		&& !bPestilentEmpowerment)
+		&& !bPestilentEmpowerment && !bInfestedVeins)
 	{
 		return;
 	}
@@ -5339,6 +5588,12 @@ void ACataclysmDungeonGameMode::StepFloorRulesThatChange()
 	if (bPestilentEmpowerment)
 	{
 		StepPestilentEmpowerment(Player);
+	}
+
+	// AND INFESTED VEINS, WHICH PLACES ZONES, SPAWNS CREATURES AND HURTS THE PLAYER. Issues #1820 and #41.
+	if (bInfestedVeins)
+	{
+		StepInfestedVeins(Player, AbilitySystem);
 	}
 
 	// AND GRASPING TENTACLES, WHICH SPAWNS AN ACTOR, so it is late for the reason
@@ -7955,6 +8210,19 @@ TMap<FName, FString> ACataclysmDungeonGameMode::LiveCountsForTheFloor() const
 		Counting.Add(Beacons, FString::Printf(
 			TEXT("pestilent empowerment: %d beacons here; this floor +%.0f%%; later floors +%.0f%%"),
 			PlagueBeaconsStanding().Num(), ThisFloor, Later));
+	}
+
+	// AND INFESTED VEINS: how many stand, and how many have been destroyed against the guardians'
+	// threshold, or that the guardians have come. Issues #1820 and #41.
+	const FName Veins(Effects::InfestedVeinsKey);
+	if (FloorBrief.Modifiers.Contains(Veins))
+	{
+		const int32 Standing = InfestedVeinsStanding().Num();
+		Counting.Add(Veins, bInfestedVeinsGuardiansCame
+			? FString::Printf(TEXT("infested veins: %d standing; %d destroyed; the guardians have come"),
+							  Standing, InfestedVeinsDestroyed)
+			: FString::Printf(TEXT("infested veins: %d standing; %d destroyed of %d before the guardians come"),
+							  Standing, InfestedVeinsDestroyed, Effects::InfestedVeinsDestroyedBeforeGuardians));
 	}
 
 	// AND GOLDEN SPIRES: how many stand. Issues #1820 and #41.
