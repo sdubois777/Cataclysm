@@ -100,6 +100,65 @@ the skill template. Its use logs "has no behaviour yet" and ends, and never reac
 `CommitAndBegin`. No issue was filed: War skills are outside the current work, by the owner's
 instruction.
 
+### Run
+
+The four rows were written into the design workbook in this window, at rows 319 to 322 of the
+Enchantment Effects sheet. The first build failed, and one proof proved nothing. Both are below.
+
+- **The Python run on the code head `15743ec3`**: "5427 passed, 8 skipped".
+- **The first build FAILED**, on `15743ec3`: "Build: Failed - 29 actions, 26 files compiled", on one
+  error, "error C2248: 'ACataclysmProjectile::SpentIncreasePercent': cannot access private member".
+  The projectile's copy of the spent figure had been declared in the class's private section,
+  beside `FiringSkill`, and the projectile test reads it. No game code failed. **Ruled by the
+  coordinating session**: the field moved to the public section beside `LandedContacts`, which the
+  later-hit tests already read (`e4abf8d0`). The header was edited only after the Python run above
+  had finished, because `test_projectile_art.py` reads it.
+- **The second build**, on the row commit `f0747573`: "Build: Succeeded - 21 actions, 18 files
+  compiled". The continuous integration Unreal compile for `development` `c9e6f68d` had finished
+  before it began.
+- **Before the asset was rebuilt**, `Cataclysm.Data.` and `Cataclysm.Enchantments.` printed "97 tests
+  performed, 92 succeeded, 5 failed", as registered: `EveryGeneratedTableHasAnAssetThatMatchesIt`
+  ("4 row(s) only in the CSV, 0 only in the asset") and the four row tests, each reading 0.000000.
+- **The Python run of record on `f0747573`**: "1 failed, 5426 passed, 8 skipped", the stale hash as
+  registered.
+- **The rebuild** changed `DT_EnchantmentEffects.uasset` and `datatable_asset_sources.json` and nothing
+  else (`a24f550a`, 317 rows to 321). The Python asset-freshness tests then passed, 18 of 18. The four
+  row tests then printed "4 tests performed, 4 succeeded, 0 failed".
+- **The whole suite on `a24f550a`**, from 00:36:30Z to 00:42:11Z: "2395 tests performed, 2395
+  succeeded, 0 failed", as registered, with every declared test reported. No other run was in
+  progress.
+- **Three guard proofs**, each broken run's log copied before the restored run overwrote it:
+  - **the spent figure not carried to a hit's targets** failed
+    `OneUseCarriesItsSpentChargeToEveryTargetItHits`, 1 of 1, and passed restored: "Expected 'the
+    enemy ahead takes 250 with 60% added: 400' to be 400.000000, but it was 250.000000", and the
+    same for the enemy behind.
+  - **the spell check removed** failed `ASpellSpendsASkillChargeAndLeavesAnAttackCharge`, 1 of 1,
+    and passed restored. "the spell spends the skill charge alone: 60" read 100.000000, "and leaves
+    both attack charges" read 0, and "the strike then spends them: 40" read 0.000000.
+  - **the own-stack modifier's cap made one higher** (`Out.ScaleMaxSteps = Effect.ScaleMaxSteps;` made
+    `+ 1`) printed **"NOT A PROOF: nothing failed with the break in"**, the seven own-stack row tests
+    passing both times. **This was not predicted.**
+
+### THE STACK CAP IS ENFORCED TWICE, AND A PROOF MUST BREAK BOTH
+
+The grant's cap (`Stack.StackCap`) and the modifier's cap (`Out.ScaleMaxSteps`) are the same number,
+and **each one alone limits what the stat reads**. The grant cap stops the count at the cap, so the
+modifier's cap never has more stacks to limit, and the modifier's cap stops the value even if the
+count ran over. So breaking either one alone changes nothing a stat can show. **The stack cap is still
+unproven.** The break that would prove it is **both caps made one higher together, as one proof**.
+It is predicted to fail the seven own-stack row tests on "more events than its cap hold its cap"
+and "just inside its window, still its cap".
+
+**A CORRECTION TO THE OWN-STACK ENTRY ABOVE**, which is merged and is left as written. It says: "The
+break that would prove it: `Out.ScaleMaxSteps = Effect.ScaleMaxSteps;` in `CataclysmItem.cpp` made
+`+ 1`, predicted to fail all seven on the cap and just-inside assertions." **That was wrong**, for
+the reason just given. The coordinating session ruled that this change should carry that proof,
+from the same wrong reading. So the miss is both the building session's and the coordinating
+session's. It spent the third proof of this change.
+
+No issue was filed, by ruling. Two guards on one limit are not a fault in play, and nothing on screen
+reads the grant's count.
+
 ---
 
 ## 2026-09-24 — Rendering Blows, engine only: every third landed melee hit on one enemy removes a fifth of its armour for six seconds, shown under its bar
