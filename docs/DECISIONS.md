@@ -94,7 +94,8 @@ removes the other, and each is caught by a different set of the nine.
 **Affects:** `game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` (what is written),
 `game/Source/Cataclysm/Save/CataclysmSaveApply.cpp` (what is put back),
 `game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (one field on `FCataclysmSavedCreature`), and the
-automation tests in `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`. Issues
+automation tests in `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`, and the run save fixture
+`game/Tests/SaveFixtures/Run_v1.json` with its `README.md`. Issues
 [#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
 [#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
 automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. ONE
