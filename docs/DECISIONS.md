@@ -2,6 +2,53 @@
 
 Decisions made outside the Google Drive documents, newest first.
 
+## 2026-09-25 — Every Nth, the rows: the 5th hit taken, the third spell and the 10th attack
+
+**Affects:**
+- the Enchantment Effects sheet: three rows on three enchantments, and the new Every Nth column
+- `tools/generate_datatables.py`, whose `OPTIONAL_COLUMNS` is empty again
+- `tools/tests/test_enchantment_effects_match_the_row_text.py`, which now covers action rows
+- issue [#1833](https://github.com/sdubois777/Cataclysm/issues/1833), phase 2, "every Nth"; the
+  engine is the entry below, "Every Nth, engine only"
+
+### THE ROWS
+
+| Enchantment | Action | Value | Every Nth |
+| :-- | :-- | :-- | :-- |
+| Every 5th hit you take deals 50%-100% bonus damage | `nth_hit_taken_damage` | 50 to 100 | 5 |
+| Every third cast of your spells cost 20%-80% of your current mana | `nth_spell_mana_cost` | 20 to 80 | 3 |
+| Every 10th attack deals no damage | `nth_attack_no_damage` | 100 | 10 |
+
+All three are drawbacks. What each does is the engine entry's, ruled there.
+
+### THE ROW-TEXT CHECK NOW COVERS ACTION ROWS, WHICH IT COULD NOT BEFORE
+
+`test_a_single_value_appears_in_its_words_outside_any_range` needs each single value in its
+sentence, or stated by a word that `STATED_BY_WORD` gives for the row's stat. "Every 10th attack
+deals no damage" is 100, and no number in it says so.
+
+- **It could not go in `JUDGED_NUMBERS`.** That list is for sentences stating no number, and
+  `test_every_judged_number_is_still_needed` refused the row, because "10th" is a number. That
+  refusal is how the first dry run of this change failed.
+- **`STATED_BY_WORD` was keyed by stat, and an action row has none.** Its two readers now key a row by
+  its stat, or by its action when it has no stat: the single-value check and
+  `test_every_word_stated_value_is_still_needed`. "no" states 100 on `nth_attack_no_damage`.
+- **So a word can now state an action row's value**, where before an action row could only state a
+  number or be excused. The still-needed test passing shows the word is what admits the row.
+- Ruled by the coordinating session on 2026-09-24, under the owner's delegation.
+
+### THE TESTS
+
+Each wears the real row on a helm, beside a benefit with no effect row, and checks what the game
+built from it: one every-Nth action of the row's kind and N.
+- **The 5th hit taken:** nothing is due three hits in, 100 is due four hits in, and nothing is due
+  after the fifth.
+- **The third spell:** nothing is added one cast in, and 80 is added two casts in.
+- **The 10th attack:** eight attacks in the ninth is not the Nth, nine in the tenth is, and the line
+  reads "Attack 9/10".
+
+---
+
 ## 2026-09-24 — Every Nth, engine only: the Nth hit taken takes more, the Nth spell costs more, and the Nth attack deals no damage
 
 **Affects:**

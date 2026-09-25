@@ -33,6 +33,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/World.h"
 #include "Interface/CataclysmCombatOverlay.h"
+#include "Interface/CataclysmSkillBar.h"
 #include "GameplayTagContainer.h"
 #include "Items/CataclysmEquipmentComponent.h"
 #include "Items/CataclysmItem.h"
@@ -5924,6 +5925,174 @@ bool FCataclysmAttackerDamageRowTest::RunTest(const FString&)
 		Struck(Striker.Second, FGameplayTagContainer()) > 0.0f);
 	TestEqual(TEXT("and places nothing on its attacker"),
 		Second->DamageCutPercentNow(), 0.0f, 0.001f);
+	return true;
+}
+
+namespace CataclysmEveryNthRowTest
+{
+	/**
+	 * A bare wearer carrying one real every-Nth drawback on a helm, beside a
+	 * benefit with no effect row. Issue #1833, every Nth. A worn item rolls the
+	 * top of its range. Out of combat throughout, where a count is kept.
+	 */
+	struct FWorn
+	{
+		explicit FWorn(const TCHAR* Drawback)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return;
+			}
+			Wearer = MakeUnique<FWearer>(World);
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer->Equipment->Equip(
+				Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, Drawback),
+				Removed, AlsoRemoved, Slot);
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+		}
+
+		~FWorn()
+		{
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		/** The one every-Nth action the row gave, or null. */
+		const FCataclysmPoolAction* NthAction() const
+		{
+			const FCataclysmPoolAction* Found = nullptr;
+			int32 Count = 0;
+			for (const FCataclysmPoolAction& Action : ASC()->GetPoolActions())
+			{
+				if (Action.NthKind != ECataclysmEveryNth::None)
+				{
+					Found = &Action;
+					++Count;
+				}
+			}
+			return Count == 1 ? Found : nullptr;
+		}
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+	};
+
+	const TCHAR* StaleAsset =
+		TEXT("the row gives one every-Nth action. If not, DT_EnchantmentEffects may "
+			 "be older than the rows: run tools/generate_datatable_assets.py");
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEvery5thHitTakenRowTest,
+	"Cataclysm.Enchantments.TheEvery5thHitTakenRowAdds100PercentOnTheFifth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Every 5th hit you take deals 50%-100% bonus damage", worn at 100: nothing
+ *  due for four hits, 100 due on the fifth, and nothing on the sixth. Issue
+ *  #1833, every Nth. */
+bool FCataclysmEvery5thHitTakenRowTest::RunTest(const FString&)
+{
+	CataclysmEveryNthRowTest::FWorn Worn(
+		TEXT("Negative_Every_5th_hit_you_take_deals_50_100_bonus_dama"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(CataclysmEveryNthRowTest::StaleAsset, Worn.NthAction()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it counts hits taken"),
+		static_cast<int32>(Worn.NthAction()->NthKind),
+		static_cast<int32>(ECataclysmEveryNth::HitTaken));
+	TestEqual(TEXT("every 5th"), Worn.NthAction()->EveryNth, 5);
+
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	for (int32 Hit = 1; Hit <= 3; ++Hit)
+	{
+		ASC->NoteNthEvent(ECataclysmEveryNth::HitTaken);
+	}
+	TestEqual(TEXT("three hits in, the fourth is not due"),
+		ASC->NthHitTakenBonusPercent(), 0.0f, 0.001f);
+	ASC->NoteNthEvent(ECataclysmEveryNth::HitTaken);
+	TestEqual(TEXT("four hits in, the fifth takes 100% more"),
+		ASC->NthHitTakenBonusPercent(), 100.0f, 0.001f);
+	ASC->NoteNthEvent(ECataclysmEveryNth::HitTaken);
+	TestEqual(TEXT("and after the fifth, the sixth is not due"),
+		ASC->NthHitTakenBonusPercent(), 0.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEveryThirdSpellRowTest,
+	"Cataclysm.Enchantments.TheEveryThirdSpellRowAdds80PercentOfManaHeldToTheThird",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Every third cast of your spells cost 20%-80% of your current mana", worn at
+ *  80: nothing added for the second cast, 80 for the third. Issue #1833. */
+bool FCataclysmEveryThirdSpellRowTest::RunTest(const FString&)
+{
+	CataclysmEveryNthRowTest::FWorn Worn(
+		TEXT("Negative_Every_third_cast_of_your_spells_cost_20_80_of"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(CataclysmEveryNthRowTest::StaleAsset, Worn.NthAction()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it counts spells"),
+		static_cast<int32>(Worn.NthAction()->NthKind),
+		static_cast<int32>(ECataclysmEveryNth::SpellCast));
+	TestEqual(TEXT("every 3rd"), Worn.NthAction()->EveryNth, 3);
+
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	ASC->NoteNthEvent(ECataclysmEveryNth::SpellCast);
+	TestEqual(TEXT("one cast in, the second adds nothing"),
+		ASC->NthSpellExtraManaPercent(), 0.0f, 0.001f);
+	ASC->NoteNthEvent(ECataclysmEveryNth::SpellCast);
+	TestEqual(TEXT("two casts in, the third adds 80% of the mana held"),
+		ASC->NthSpellExtraManaPercent(), 80.0f, 0.001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmEvery10thAttackRowTest,
+	"Cataclysm.Enchantments.TheEvery10thAttackRowDealsNothingOnTheTenth",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/** "Every 10th attack deals no damage": the ninth attack is not the Nth and
+ *  the tenth is, shown as "Attack 9/10" before it. Issue #1833. */
+bool FCataclysmEvery10thAttackRowTest::RunTest(const FString&)
+{
+	CataclysmEveryNthRowTest::FWorn Worn(TEXT("Negative_Every_10th_attack_deals_no_damage"));
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC())
+		|| !TestNotNull(CataclysmEveryNthRowTest::StaleAsset, Worn.NthAction()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("it counts attacks"),
+		static_cast<int32>(Worn.NthAction()->NthKind),
+		static_cast<int32>(ECataclysmEveryNth::Attack));
+	TestEqual(TEXT("every 10th"), Worn.NthAction()->EveryNth, 10);
+
+	UCataclysmAbilitySystemComponent* ASC = Worn.ASC();
+	for (int32 Attack = 1; Attack <= 8; ++Attack)
+	{
+		ASC->NoteNthEvent(ECataclysmEveryNth::Attack);
+	}
+	TestFalse(TEXT("eight attacks in, the ninth is not the Nth"), ASC->NextAttackIsNth());
+	ASC->NoteNthEvent(ECataclysmEveryNth::Attack);
+	TestTrue(TEXT("nine attacks in, the tenth is"), ASC->NextAttackIsNth());
+	TestEqual(TEXT("and the line says so"),
+		UCataclysmSkillBar::NthEntry(ECataclysmEveryNth::Attack,
+			ASC->NthCountsForDisplay().Num() == 1 ? ASC->NthCountsForDisplay()[0].Count : -1,
+			10),
+		FString(TEXT("Attack 9/10")));
 	return true;
 }
 
