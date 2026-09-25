@@ -301,3 +301,16 @@ Ritualist_keystone_b_kC#1,Ritualist_keystone_b_kC,minion_explosion_replaced_ever
 Ravager_basic_b_b0#1,Ravager_basic_b_b0,attack_damage,increased,3.0,,wielding_two_handed_weapon,0.0,,0.0,0,-1.0
 Ritualist_basic_a_b0#1,Ritualist_basic_a_b0,minion_damage,increased,2.0,,target_damaged_by_you_within_seconds,2.0,,0.0,0,-1.0
 Ritualist_capstone_100#2,Ritualist_capstone_100,minion_damage,more,25.0,,target_damaged_by_you_within_seconds,2.0,,0.0,1,-1.0
+Ritualist_capstone_100#3,Ritualist_capstone_100,minion_death_blast_percent_of_maximum_health,flat,20.0,,,0.0,,0.0,2,-1.0
+Ritualist_capstone_100#4,Ritualist_capstone_100,minion_death_blast_radius_metres,flat,4.0,,,0.0,,0.0,2,-1.0
+Ravager_capstone_200#1,Ravager_capstone_200,lethal_hit_survived_every_seconds,flat,20.0,,,0.0,,0.0,3,-1.0
+Ravager_capstone_200#2,Ravager_capstone_200,damage_immunity_after_lethal_hit_seconds,flat,2.0,,,0.0,,0.0,3,-1.0
+Ritualist_keystone_c_kC#1,Ritualist_keystone_c_kC,shield_break_destroys_minion_every_seconds,flat,3.0,,,0.0,,0.0,0,-1.0
+Ritualist_capstone_50#2,Ritualist_capstone_50,skill_cost_paid_from_energy_shield,flat,1.0,,,0.0,,0.0,3,-1.0
+Ravager_keystone_c_kB#1,Ravager_keystone_c_kB,applied_cripple_and_weaken_held_within_metres,flat,4.0,,,0.0,,0.0,0,-1.0
+Ravager_capstone_50#2,Ravager_capstone_50,third_melee_hit_armour_removed_percent,flat,20.0,,,0.0,,0.0,1,-1.0
+Ravager_capstone_50#3,Ravager_capstone_50,third_melee_hit_armour_removed_seconds,flat,6.0,,,0.0,,0.0,1,-1.0
+Ravager_capstone_100#2,Ravager_capstone_100,enemies_near_slowed_within_metres,flat,4.0,,,0.0,,0.0,1,-1.0
+Ravager_capstone_100#3,Ravager_capstone_100,enemies_near_slowed_percent,flat,15.0,,,0.0,,0.0,1,-1.0
+Ravager_capstone_50#4,Ravager_capstone_50,mitigated_damage_added_to_next_melee_cap_percent,flat,100.0,,,0.0,,0.0,2,-1.0
+Ritualist_capstone_50#3,Ritualist_capstone_50,minion_energy_shield_percent_of_yours,flat,20.0,,,0.0,,0.0,1,-1.0
