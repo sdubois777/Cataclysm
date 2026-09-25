@@ -27083,20 +27083,14 @@ namespace CataclysmDungeonModifierEffectsTest
 		return Mode;
 	}
 
-	/** Beat until a flyover is marked; its marks, with a failure when none came. */
+	/** Thirty seconds of beats; the flyover's marks, with a failure when none came. */
 	TArray<ACataclysmGroundZone*> AFlyoverIsMarked(FAutomationTestBase& Test, ACataclysmDungeonGameMode* Mode)
 	{
-		// AT THIRTY SECONDS OR ON A BEAT AFTER IT: a line that crosses no floor marks nothing and
-		// is tried again on the next beat, the known limit the entry names. Forty beats is ten
-		// seconds of retries.
+		// AT THIRTY SECONDS EXACTLY, with no beat of grace: a line passes through a floor cell's
+		// middle, so it always marks that cell's feather.
 		Beat(Mode, BeatsFor(UCataclysmDungeonModifierEffects::WingsOfTheHostSecondsBetween));
-		TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
-		for (int32 Extra = 0; Marks.IsEmpty() && Extra < 40; ++Extra)
-		{
-			Beat(Mode, 1);
-			Marks = Mode->WingsOfTheHostMarksNow();
-		}
-		Test.TestTrue(TEXT("a flyover was marked"), Marks.Num() > 0);
+		const TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
+		Test.TestTrue(TEXT("a flyover was marked at thirty seconds"), Marks.Num() > 0);
 		return Marks;
 	}
 
@@ -27188,6 +27182,139 @@ bool FCataclysmWingsLineTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// OVER FIFTY SEEDS, EVERY FLYOVER PASSES THROUGH THE MIDDLE OF A FLOOR CELL WITHIN TWELVE METRES OF THE
+// PLAYER AND MARKS AT LEAST ONE FEATHER AT THIRTY SECONDS EXACTLY. Each seed builds its own floor, puts
+// the player on a floor cell drawn from it, and seeds the draw of the line.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWingsEverySeedTest,
+	"Cataclysm.DungeonModifierEffects.EveryWingsOfTheHostFlyoverOverFiftySeedsMarksAFeatherAtThirtySeconds",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FCataclysmWingsEverySeedTest::RunTest(const FString& Parameters)
+{
+	using namespace CataclysmDungeonModifierEffectsTest;
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	if (!TestNotNull(TEXT("a test world was created"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+	const FPossessedPlayer Player(World);
+	ACataclysmDungeonGameMode* Mode = AWingsFloor(*this, World, Player);
+	if (!Mode)
+	{
+		return false;
+	}
+
+	constexpr int32 Seeds = 50;
+	TArray<int32> Unmarked;
+	TArray<int32> MarkedEarly;
+	TArray<int32> NoMarkOnACellMiddleInReach;
+	TArray<int32> OwnCellNotInReach;
+	TArray<int32> ACellOutOfReachOrOffTheFloor;
+	for (int32 Seed = 1; Seed <= Seeds; ++Seed)
+	{
+		Mode->DungeonSeed = Seed;
+		if (!TestTrue(FString::Printf(TEXT("seed %d: floor 2 was reached"), Seed), Mode->GoToFloor(2)))
+		{
+			return false;
+		}
+		Mode->ClearFloorEnemies();
+		const ACataclysmDungeonFloor& Floor = *Mode->CurrentFloor;
+		const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+
+		// THE PLAYER ON A FLOOR CELL DRAWN FROM THIS SEED, a corridor's end as likely as a room's middle.
+		TArray<FIntPoint> FloorCells;
+		for (int32 Y = 0; Y < Plan.Height; ++Y)
+		{
+			for (int32 X = 0; X < Plan.Width; ++X)
+			{
+				if (Plan.IsFloor(FIntPoint(X, Y)))
+				{
+					FloorCells.Add(FIntPoint(X, Y));
+				}
+			}
+		}
+		if (!TestTrue(FString::Printf(TEXT("seed %d: the floor has floor cells"), Seed), FloorCells.Num() > 0))
+		{
+			return false;
+		}
+		FRandomStream Draw(Seed);
+		const FIntPoint Standing = FloorCells[Draw.RandRange(0, FloorCells.Num() - 1)];
+		const FVector Where = Floor.WorldOfCell(Standing);
+		Player.Character->SetActorLocation(FVector(Where.X, Where.Y, Player.Character->GetActorLocation().Z));
+		const FVector Centre = Player.Character->GetActorLocation();
+
+		// THE CELLS IT MAY PASS THROUGH: every one a floor cell within reach, the player's own among them.
+		const TArray<FIntPoint> Through = ACataclysmDungeonGameMode::WingsOfTheHostThroughCells(Floor, Centre);
+		if (!Through.Contains(Standing))
+		{
+			OwnCellNotInReach.Add(Seed);
+		}
+		for (const FIntPoint& Cell : Through)
+		{
+			if (!Plan.IsFloor(Cell)
+				|| FVector::Dist2D(Floor.WorldOfCell(Cell), Centre) > Effects::WingsOfTheHostPassesWithinCm)
+			{
+				ACellOutOfReachOrOffTheFloor.Add(Seed);
+				break;
+			}
+		}
+
+		// THE FLYOVER: none a beat before thirty seconds, and marks on the beat that reaches it.
+		FMath::RandInit(Seed);
+		Beat(Mode, BeatsFor(Effects::WingsOfTheHostSecondsBetween) - 1);
+		if (!Mode->WingsOfTheHostMarksNow().IsEmpty())
+		{
+			MarkedEarly.Add(Seed);
+		}
+		Beat(Mode, 1);
+		const TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
+		if (Marks.IsEmpty())
+		{
+			Unmarked.Add(Seed);
+			continue;
+		}
+
+		// ONE MARK STANDS ON THE MIDDLE OF A FLOOR CELL WITHIN REACH: the point the line passed through.
+		// A line through an arbitrary point would put its marks on a cell's middle only by chance.
+		bool bOnAMiddleInReach = false;
+		for (const ACataclysmGroundZone* Mark : Marks)
+		{
+			const FVector At = Mark->GetActorLocation();
+			const FIntPoint Cell = Floor.CellOfWorld(At);
+			bOnAMiddleInReach |= Plan.IsFloor(Cell)
+				&& FVector::Dist2D(At, Floor.WorldOfCell(Cell)) < 1.0f
+				&& FVector::Dist2D(At, Centre) <= Effects::WingsOfTheHostPassesWithinCm;
+		}
+		if (!bOnAMiddleInReach)
+		{
+			NoMarkOnACellMiddleInReach.Add(Seed);
+		}
+	}
+
+	const auto Named = [](const TArray<int32>& List)
+	{
+		return FString::JoinBy(List, TEXT(", "), [](int32 Seed) { return FString::FromInt(Seed); });
+	};
+	TestEqual(FString::Printf(TEXT("seeds whose flyover marked nothing at thirty seconds: [%s]"), *Named(Unmarked)),
+			  Unmarked.Num(), 0);
+	TestEqual(FString::Printf(TEXT("seeds marked before thirty seconds: [%s]"), *Named(MarkedEarly)),
+			  MarkedEarly.Num(), 0);
+	TestEqual(FString::Printf(TEXT("seeds with no mark on a floor cell's middle within reach: [%s]"),
+							  *Named(NoMarkOnACellMiddleInReach)),
+			  NoMarkOnACellMiddleInReach.Num(), 0);
+	TestEqual(FString::Printf(TEXT("seeds where the player's own cell was not a cell to pass through: [%s]"),
+							  *Named(OwnCellNotInReach)),
+			  OwnCellNotInReach.Num(), 0);
+	TestEqual(FString::Printf(TEXT("seeds offering a cell off the floor or out of reach: [%s]"),
+							  *Named(ACellOutOfReachOrOffTheFloor)),
+			  ACellOutOfReachOrOffTheFloor.Num(), 0);
+	return true;
+}
+
 // ON A FLOOR CARRYING THE ROW: MARKS AT THIRTY SECONDS; THREE SECONDS LATER THE PLAYER ON A MARK IS STRUCK
 // ONCE AND A CREATURE ON ONE IS NOT; THE MARKS GO; HORDE WAVES TOO.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmWingsLandTest,
@@ -27220,15 +27347,9 @@ bool FCataclysmWingsLandTest::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("the panel says when the next comes"),
 			 Mode->LiveCountsForTheFloor().FindRef(WingsRow).StartsWith(TEXT("wings of the host: next flyover in")));
-	// AT THIRTY SECONDS OR ON A BEAT AFTER IT, for the reason `AFlyoverIsMarked` gives.
 	Beat(Mode, 1);
-	TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
-	for (int32 Extra = 0; Marks.IsEmpty() && Extra < 40; ++Extra)
-	{
-		Beat(Mode, 1);
-		Marks = Mode->WingsOfTheHostMarksNow();
-	}
-	if (!TestTrue(TEXT("marks at thirty seconds or a beat after"), Marks.Num() >= 1))
+	const TArray<ACataclysmGroundZone*> Marks = Mode->WingsOfTheHostMarksNow();
+	if (!TestTrue(TEXT("marks at thirty seconds"), Marks.Num() >= 1))
 	{
 		return false;
 	}
@@ -27268,9 +27389,7 @@ bool FCataclysmWingsLandTest::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	// AT THIRTY SECONDS OR ON A BEAT AFTER IT, for the reason `AFlyoverIsMarked` gives.
-	TestTrue(TEXT("a Horde wave has its flyover at thirty seconds or a beat after"),
-			 AFlyoverIsMarked(*this, Mode).Num() > 0);
+	TestTrue(TEXT("a Horde wave has its flyover at thirty seconds"), AFlyoverIsMarked(*this, Mode).Num() > 0);
 	return true;
 }
 

@@ -2937,6 +2937,33 @@ TArray<FVector> ACataclysmDungeonGameMode::WingsOfTheHostFeathers(
 	return Feathers;
 }
 
+TArray<FIntPoint> ACataclysmDungeonGameMode::WingsOfTheHostThroughCells(
+	const ACataclysmDungeonFloor& Floor, const FVector& Centre)
+{
+	using Effects = UCataclysmDungeonModifierEffects;
+
+	// A PLAYER ON A FLOOR CELL ALWAYS HAS ONE: the middle of the cell they stand in is at most half
+	// a cell's diagonal away.
+	static_assert(0.5f * FCataclysmFloorGenerator::CellSizeCm * 1.41422f < Effects::WingsOfTheHostPassesWithinCm,
+				  "A player standing on a floor cell must be within reach of that cell's middle.");
+
+	TArray<FIntPoint> Cells;
+	const FCataclysmFloorPlan& Plan = Floor.GetPlan();
+	for (int32 Y = 0; Y < Plan.Height; ++Y)
+	{
+		for (int32 X = 0; X < Plan.Width; ++X)
+		{
+			const FIntPoint Cell(X, Y);
+			if (Plan.IsFloor(Cell)
+				&& FVector::Dist2D(Floor.WorldOfCell(Cell), Centre) <= Effects::WingsOfTheHostPassesWithinCm)
+			{
+				Cells.Add(Cell);
+			}
+		}
+	}
+	return Cells;
+}
+
 void ACataclysmDungeonGameMode::StepWingsOfTheHost(ACataclysmPlayerCharacter* Player)
 {
 	using Effects = UCataclysmDungeonModifierEffects;
@@ -3009,13 +3036,19 @@ void ACataclysmDungeonGameMode::StepWingsOfTheHost(ACataclysmPlayerCharacter* Pl
 		return;
 	}
 
-	// A STRAIGHT LINE AT A RANDOM ANGLE through a point within reach of the player, across the
-	// whole floor, marked with harmless circles drawn in the row's type, as Artillery Strike
-	// marks its one.
+	// A STRAIGHT LINE AT A RANDOM ANGLE through the middle of a random floor cell within reach of
+	// the player, across the whole floor, marked with harmless circles drawn in the row's type, as
+	// Artillery Strike marks its one. THROUGH A FLOOR CELL, so the line always marks that cell's
+	// feather and every flyover keeps to thirty seconds.
 	const FVector Centre = Player->GetActorLocation();
-	const float Aside = FMath::FRandRange(0.0f, 2.0f * PI);
-	const float Away = FMath::FRandRange(0.0f, Effects::WingsOfTheHostPassesWithinCm);
-	const FVector Through(Centre.X + Away * FMath::Cos(Aside), Centre.Y + Away * FMath::Sin(Aside), Centre.Z);
+	const TArray<FIntPoint> Cells = WingsOfTheHostThroughCells(*CurrentFloor, Centre);
+	if (Cells.IsEmpty())
+	{
+		// ONLY A PLAYER OFF THE FLOOR has no cell in reach; the next beat tries again.
+		return;
+	}
+	const FVector Middle = CurrentFloor->WorldOfCell(Cells[FMath::RandRange(0, Cells.Num() - 1)]);
+	const FVector Through(Middle.X, Middle.Y, Centre.Z);
 	const float Heading = FMath::FRandRange(0.0f, PI);
 	const FName Type = DungeonGameModeTypeOfRow(Effects::WingsOfTheHostKey);
 	for (const FVector& Where : WingsOfTheHostFeathers(
@@ -3031,7 +3064,7 @@ void ACataclysmDungeonGameMode::StepWingsOfTheHost(ACataclysmPlayerCharacter* Pl
 	WingsOfTheHostWarningSoFar = 0.0f;
 	if (WingsOfTheHostMarks.IsEmpty())
 	{
-		// A LINE THAT CROSSED NO FLOOR marks nothing; the next beat tries again.
+		// NO MARK COULD BE SPAWNED; the next beat tries again.
 		return;
 	}
 	UE_LOG(LogCataclysm, Log, TEXT("Wings of the Host: %d feathers marked on floor %d"),

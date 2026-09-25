@@ -79,6 +79,68 @@ passed in 0.20s", the one failure being `test_a_single_value_appears_in_its_word
 
 ---
 
+## 2026-09-25 — Wings of the Host: a flyover's line passes through the middle of a floor cell near the player, so every flyover marks a feather at thirty seconds
+
+**Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonGameMode.h` and `.cpp` (the cells a line may
+pass through, and the flyover drawing its line through one of them),
+`game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` (the ruling's comment), and the automation
+tests in `game/Source/Cataclysm/Tests/CataclysmDungeonModifierEffectsTests.cpp`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied.** The Unreal compile, the automation
+tests and the guard proofs have NOT run yet; the figures are added at the end of this entry when they have.
+
+### What it lifts
+
+The entry of 2026-09-24 "Wings of the Host: every thirty seconds a line of feather marks crosses the whole
+floor near the player…" names a known limit under "A known limit, and the change that will lift it": its line
+passed through a random point within 1200 cm of the player, that point need not be floor, and a line that
+crossed no floor marked nothing and was tried again on the next beat, so a flyover could come later than
+thirty seconds. That entry names this change as the follow-up.
+
+### The ruling
+
+**By the coordinating session under the owner's delegation:** "the line passes through a random FLOOR cell
+within 1200 cm of the player. Its 'through' point is then always a marked floor cell, so every flyover marks
+at least one feather and keeps to 30 s." With "a test that every flyover over 50 seeds marks at least one
+feather".
+
+### What the rule does now
+
+A flyover lists every floor cell whose middle is within 1200 cm (`WingsOfTheHostPassesWithinCm`) of the
+player, measured level, and draws its line at a random angle through the middle of one of them, chosen at
+random. The feathers still fall every 400 cm along the line from that point, on floor cells only, so the
+point itself is always a feather. The angle, the spacing, the warning and the damage are unchanged.
+
+**Judgements of this change, under the same delegation, not ruled separately:**
+
+- **"Within 1200 cm" is measured to a cell's middle.** A floor cell is 400 cm across, so the middle of the
+  cell a player stands in is at most about 283 cm away; a compile-time check says so, and a player on the
+  floor therefore always has a cell to pass through.
+- **A player standing off every floor cell, with no floor cell's middle within 1200 cm, still gets no
+  flyover that beat, and it is tried again on the next.** In play a player always stands on the floor, so
+  this is only a guard against an empty list.
+- **A line through one corridor still marks few feathers.** The ruling asked for at least one; a line whose
+  angle runs across a narrow corridor marks that corridor's feathers and no more.
+
+### Tests
+
+- `EveryWingsOfTheHostFlyoverOverFiftySeedsMarksAFeatherAtThirtySeconds`, new: for dungeon seeds 1 to 50,
+  each builds its floor 2, puts the player on a floor cell drawn from the seed, and seeds the line's draw.
+  For every seed: the cells it may pass through are all floor cells within reach and include the player's
+  own; nothing is marked a beat before thirty seconds; at least one feather is marked on the beat that reaches
+  thirty seconds; and one of the marks stands on the middle of a floor cell within reach of the player, which
+  a line through an arbitrary point would do only by chance. A failure names the seeds.
+- `WingsOfTheHostFeathersStrikeThePlayerAndNoCreature` and the helper `AFlyoverIsMarked`, used by it and by
+  `AWingsOfTheHostFeatherIsCelestial`, no longer allow up to forty beats past thirty seconds for a line that
+  crossed no floor: each now requires marks at thirty seconds exactly.
+
+### Not yet run
+
+The compile, the automation tests, the whole-suite figure and the guard proofs. They run in one editor
+window when the build machine is granted.
+
+---
+
 ## 2026-09-24 — Both Hands Full, engine only: a second two-handed weapon goes in the other hand, and goes back when the option is lost
 
 **Affects:** `game/Source/Cataclysm/Items/CataclysmEquipmentComponent.h` and `.cpp` (where a weapon
