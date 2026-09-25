@@ -56,6 +56,37 @@ option's own entry could not see, since they gave the stat by hand. What these d
 option's behaviour; that is tested in each option's own change, on the stat these tests prove the row
 supplies.
 
+### THE WINDOW, 2026-09-24, ON aa6c1487
+
+**The nine tests were compiled for the first time here, and they built. Every registered figure
+matched, including all three proofs at the level of each assertion.** No continuous-integration compile
+overlapped the window: the last Unreal job ended at 04:50:21 UTC, before the build began.
+
+| Step | Printed |
+|---|---|
+| Python on the rows commit, before the asset | `1 failed, 5460 passed, 8 skipped in 316.67s`; the failure is the asset hash check, naming `PassiveEffects.csv` alone; JUnit 5469 tests, 1 failure, 0 errors, 8 skipped |
+| Build | `Build: Succeeded - 29 actions, 26 files compiled` |
+| The nine tests on the asset built from 302 rows | `9 tests performed, 0 succeeded, 9 failed`, each on its first check, "carries N rows", reading 0 |
+| The asset step | changed `DT_PassiveEffects.uasset` and `datatable_asset_sources.json` alone, whose record went from 302 rows to 315 |
+| Whole suite, `tests` | `2441 tests performed, 2441 succeeded, 0 failed`; 2441 declared, gap 0 |
+
+**The run on the old asset is the evidence that the tests read the built asset**, which is what a
+packaged build loads, and not the CSV beside it.
+
+Three proofs with `prove_cpp_guard` on the asset commit, prefix `Cataclysm.DemonicRows.`, each anchor
+re-checked immediately before and each begun with no Unreal run in progress. Each restored run printed
+`9 tests performed, 9 succeeded, 0 failed`.
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| a. The Shared Blood code reads `minion_energy_shield_percent_of_your`, a name no row carries | `9 tests performed, 8 succeeded, 1 failed: SharedBloodReachesARealRitualistFromItsRow` | "a row grants minion_energy_shield_percent_of_your, the stat the engine reads", null |
+| b. An option's rows apply before any option is chosen | `9 tests performed, 2 succeeded, 7 failed`, every capstone test | eleven, each "with the points spent and no option chosen, X is nothing", reading its figure: 20 and 4, 20 and 2, 1, 20 and 6, 4 and 15, 100, 20 |
+| c. A row with no option never applies | `9 tests performed, 7 succeeded, 2 failed: NoSecondWindReachesARealRavagerFromItsRow, SacrificialWardReachesARealRitualistFromItsRow` | "held, applied_cripple_and_weaken_held_within_metres reads 4", 0; "held, shield_break_destroys_minion_every_seconds reads 3", 0 |
+
+**Proofs b and c are the two halves of one rule**: a capstone that has had no option chosen grants none
+of its options' rows, and a node's own rows apply with no choice at all. Each break keeps one half and
+removes the other, and each is caught by a different set of the nine.
+
 ---
 
 ## 2026-09-24 — Stacks placed on the enemy: strike hits and any hit take its armour, and a melee hit taken cuts the attacker's damage
