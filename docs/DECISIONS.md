@@ -65,8 +65,9 @@ Nth is asked BEFORE it happens, where it acts, and the count advances after.
   does not end it.
 - **The hit-taken count takes landed hits only**: not a tick, not an evaded blow. A blocked blow
   landed and counts.
-- **A judgement of mine, not ruled:** the Nth attack spends no next-use charge, since it could do
-  nothing with one. The charge waits for the next attack.
+- **The Nth attack spends no next-use charge**, since it could do nothing with one. The charge waits
+  for the next attack. Proposed as a judgement by the building session, and approved by the
+  coordinating session under the owner's delegation.
 
 ### WHAT SHOWS IT
 
