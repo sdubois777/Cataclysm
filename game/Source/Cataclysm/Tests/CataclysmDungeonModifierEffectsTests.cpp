@@ -26243,7 +26243,7 @@ bool FCataclysmWrathArrivesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	TestEqual(TEXT("twelve metres from the player"),
-			  FVector::Dist2D(Beam->GetActorLocation(), Player.Character->GetActorLocation()),
+			  static_cast<float>(FVector::Dist2D(Beam->GetActorLocation(), Player.Character->GetActorLocation())),
 			  Effects::DivineWrathAppearsAwayCm, 1.0f);
 	TestTrue(TEXT("aimed at the player at the ruled speed"), AimedAt(Beam, Player.Character->GetActorLocation()));
 	TestEqual(TEXT("marked as the row's, so beams do not stack"), Beam->BurnsOnceASecondAs, DivineWrathRow);
