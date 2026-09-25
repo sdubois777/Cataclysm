@@ -2285,9 +2285,11 @@ move at all. Neither pairing compounds, so a point spent buys one thing.
   
 
 **Efficacy was rejected for failing that test.** It already gives a summoner
-cooldown reduction, which raises how often minions are summoned, and area of
-effect, which enlarges the imp's death explosion. Minion damage would have been a
-third gain on the same build. Ferocity fails it too: critical strike chance and
+cooldown reduction, which raises how often minions are summoned, and minion damage
+would have been a second gain on the same build. Its area of effect is not a gain
+here: the paragraph opening "Everything else is blocked unless a modifier says
+"minion"" keeps it from reaching a minion, so an imp's death explosion keeps the
+radius its summoning skill states. Ferocity fails it too: critical strike chance and
 multiplier would compound the moment minions were ever allowed to critically
 strike.
 
