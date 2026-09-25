@@ -4641,6 +4641,11 @@ NEXT_USE_ACTIONS = (
     # is three times. Ruled 2026-09-24: this project reads "effectiveness"
     # as a skill's own coefficient.
     "next_skill_effectiveness",
+    # "Each spell cast reduces your next spell cooldown by 0.5-1.5 seconds".
+    # Issue #1833, the cooldown reduction action, ruled 2026-09-25. Its value is
+    # SECONDS taken off the next spell's cooldown when it is applied, not
+    # damage; cap 1, because "your next spell" is one.
+    "next_spell_cooldown_reduced",
 )
 
 #: The actions that PLACE A STACK ON THE OTHER CHARACTER of their event,
@@ -4690,6 +4695,20 @@ COOLDOWN_RESET_ACTIONS = (
     "cooldown_reset_movement",
     "cooldown_reset_event_skill",
 )
+
+#: The actions that TAKE SECONDS OFF RUNNING SKILL COOLDOWNS, each naming
+#: which. Issue #1833, the cooldown reduction action, ruled 2026-09-25. The value
+#: is seconds, above 0 and up to `MAX_COOLDOWN_REDUCE_SECONDS`. A cooldown with
+#: no more than that left ends, and nothing carries over. Only the two targets a
+#: row asks for. `UCataclysmAbilitySystemComponent::CooldownReduceAllAction` and
+#: `CooldownReduceHeavyAction` hold the same two names.
+COOLDOWN_REDUCE_ACTIONS = (
+    "cooldown_reduce_all",
+    "cooldown_reduce_heavy",
+)
+
+#: The most seconds a reduction may take off, the same sanity bound the clocks use.
+MAX_COOLDOWN_REDUCE_SECONDS = 60.0
 
 #: What a percentage on an action row is a percentage OF.
 #:
@@ -4814,7 +4833,7 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
         _check_nth_action(index, who, action, event, fraction_of, kind,
                           raw, headers)
         return
-    if action in COOLDOWN_RESET_ACTIONS:
+    if action in COOLDOWN_RESET_ACTIONS or action in COOLDOWN_REDUCE_ACTIONS:
         _check_cooldown_reset_action(index, who, action, event, fraction_of,
                                      kind, raw, headers)
         return
@@ -4826,7 +4845,8 @@ def _check_pool_action(index: int, who: str, action: str, event: str,
             f"{', '.join(NEXT_USE_ACTIONS)}; or a placed stack, "
             f"{', '.join(PLACED_ACTIONS)}; or an every-Nth action, "
             f"{', '.join(NTH_ACTIONS)}; or a cooldown reset, "
-            f"{', '.join(COOLDOWN_RESET_ACTIONS)}.")
+            f"{', '.join(COOLDOWN_RESET_ACTIONS)}; or a cooldown reduction, "
+            f"{', '.join(COOLDOWN_REDUCE_ACTIONS)}.")
 
     known = granting_events()
     if not event:
@@ -5150,7 +5170,8 @@ def enchantment_effects(book) -> list[dict]:
                                kind, raw, headers)
             if action not in NEXT_USE_ACTIONS and action not in PLACED_ACTIONS \
                     and action not in NTH_ACTIONS \
-                    and action not in COOLDOWN_RESET_ACTIONS:
+                    and action not in COOLDOWN_RESET_ACTIONS \
+                    and action not in COOLDOWN_REDUCE_ACTIONS:
                 fraction_of = fraction_of or FRACTION_BASES[0]
         else:
             _check_value_kind("Enchantment Effects", index, name, stat, kind)
@@ -5250,6 +5271,21 @@ def enchantment_effects(book) -> list[dict]:
                     f"Enchantment Effects row {index}: {name} resets cooldowns "
                     f"and states Scale Max Steps. A reset has no stacks, so it "
                     f"would be dropped.")
+
+        # A COOLDOWN REDUCTION'S VALUE IS SECONDS, above 0 and up to the bound.
+        # Issue #1833, the cooldown reduction action.
+        if action in COOLDOWN_REDUCE_ACTIONS:
+            if not (0 < low <= MAX_COOLDOWN_REDUCE_SECONDS
+                    and 0 < high <= MAX_COOLDOWN_REDUCE_SECONDS):
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} takes {low:g} to "
+                    f"{high:g} seconds off cooldowns. It takes above 0 and up "
+                    f"to {MAX_COOLDOWN_REDUCE_SECONDS:g} seconds.")
+            if scale_max_steps:
+                raise DataError(
+                    f"Enchantment Effects row {index}: {name} reduces cooldowns "
+                    f"and states Scale Max Steps. A reduction has no stacks, so "
+                    f"it would be dropped.")
 
         # A ROW'S OWN STACKS. Issue #1833, ruled 2026-09-23: the row's Action
         # Event grants a stack, Stack Seconds is how long they last and Scale

@@ -1982,6 +1982,39 @@ class TestEnchantmentEffects:
             gen.enchantment_effects(self.book(tmp_path, [self.row(
                 {**attack, "Value Low": 50})]))
 
+    # A COOLDOWN REDUCTION. Issue #1833, the cooldown reduction action: an
+    # action row whose value is seconds, above 0 and up to 60.
+    REDUCE = {"Stat": None, "Value Kind": None, "Action": "cooldown_reduce_all",
+              "Action Event": "resource_empty", "Value Low": 4}
+
+    def test_a_cooldown_reduction_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.REDUCE)]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["FractionOf"]) == ("cooldown_reduce_all", "resource_empty", 4.0, "")
+
+    @pytest.mark.parametrize("seconds", [0, -1, 61])
+    def test_a_cooldown_reduction_outside_its_bounds_is_refused(self, tmp_path, seconds):
+        with pytest.raises(gen.DataError, match="above 0 and up\\s+to 60|above 0 and up to 60"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.REDUCE, "Value Low": seconds})]))
+
+    def test_a_cooldown_reduction_of_exactly_60_seconds_is_accepted(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {**self.REDUCE, "Value Low": 60})]))
+        assert out[0]["ValueLow"] == 60.0
+
+    def test_a_cooldown_reduction_with_no_event_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="names no event"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.REDUCE, "Action Event": None})]))
+
+    def test_a_next_spell_cooldown_charge_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(
+            {"Stat": None, "Value Kind": None, "Action": "next_spell_cooldown_reduced",
+             "Action Event": "spell", "Value Low": 1.5, "Scale Max Steps": 1})]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["ValueLow"],
+                out[0]["ScaleMaxSteps"]) == ("next_spell_cooldown_reduced", "spell", 1.5, 1)
+
     # A STACK PLACED ON THE OTHER CHARACTER. Issue #1833, phase 2: an action
     # row whose event names that character; Stack Seconds is required, the cap
     # is not.

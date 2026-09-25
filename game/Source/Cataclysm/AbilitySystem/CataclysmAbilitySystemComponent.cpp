@@ -3012,6 +3012,97 @@ const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetMovementAction =
 	TEXT("cooldown_reset_movement");
 const TCHAR* UCataclysmAbilitySystemComponent::CooldownResetEventSkillAction =
 	TEXT("cooldown_reset_event_skill");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceAllAction =
+	TEXT("cooldown_reduce_all");
+const TCHAR* UCataclysmAbilitySystemComponent::CooldownReduceHeavyAction =
+	TEXT("cooldown_reduce_heavy");
+const TCHAR* UCataclysmAbilitySystemComponent::NextSpellCooldownReducedAction =
+	TEXT("next_spell_cooldown_reduced");
+
+int32 UCataclysmAbilitySystemComponent::ReduceCooldowns(const FCataclysmPoolAction& Action)
+{
+	const UWorld* World = GetWorld();
+	if (!World || Action.Percent <= 0.0f)
+	{
+		return 0;
+	}
+	FGameplayTagContainer Reducing;
+	if (Action.CooldownReduce == ECataclysmCooldownReset::All)
+	{
+		for (const ECataclysmAbilitySlot Slot : CataclysmAbilitySlots::All())
+		{
+			const FGameplayTag Cooldown = UCataclysmSkillSlots::CooldownTag(Slot);
+			if (Cooldown.IsValid())
+			{
+				Reducing.AddTag(Cooldown);
+			}
+		}
+	}
+	else if (Action.CooldownReduce == ECataclysmCooldownReset::Heavy)
+	{
+		const FGameplayTag Cooldown =
+			UCataclysmSkillSlots::CooldownTag(ECataclysmAbilitySlot::Heavy);
+		if (Cooldown.IsValid())
+		{
+			Reducing.AddTag(Cooldown);
+		}
+	}
+	if (Reducing.IsEmpty())
+	{
+		return 0;
+	}
+
+	// THE SAME QUERY `RemoveActiveEffectsWithGrantedTags` MAKES, so what is
+	// shortened here is exactly what a reset would remove.
+	const float Now = World->GetTimeSeconds();
+	int32 Changed = 0;
+	for (const FActiveGameplayEffectHandle& Handle : GetActiveEffects(
+			 FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(Reducing)))
+	{
+		const FActiveGameplayEffect* Running = GetActiveGameplayEffect(Handle);
+		if (!Running)
+		{
+			continue;
+		}
+		if (Running->GetTimeRemaining(Now) <= Action.Percent)
+		{
+			RemoveActiveGameplayEffect(Handle);
+		}
+		else
+		{
+			ModifyActiveEffectStartTime(Handle, -Action.Percent);
+		}
+		++Changed;
+	}
+	return Changed;
+}
+
+float UCataclysmAbilitySystemComponent::SpendNextSpellCooldownSeconds()
+{
+	float Seconds = 0.0f;
+	for (auto It = NextUseCharges.CreateIterator(); It; ++It)
+	{
+		if (It.Value().bSpellCooldown)
+		{
+			Seconds += It.Value().Count * It.Value().Percent;
+			It.RemoveCurrent();
+		}
+	}
+	return Seconds;
+}
+
+float UCataclysmAbilitySystemComponent::NextSpellCooldownSecondsHeld() const
+{
+	float Seconds = 0.0f;
+	for (const TPair<FName, FNextUseCharge>& Held : NextUseCharges)
+	{
+		if (Held.Value.bSpellCooldown)
+		{
+			Seconds += Held.Value.Count * Held.Value.Percent;
+		}
+	}
+	return Seconds;
+}
 
 /**
  * Pins the roll a cooldown reset action makes, 0 to 100, for tests. Negative,
@@ -3151,7 +3242,8 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			{
 				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
 								   Action.Percent, Action.NextUseCap,
-								   Action.bNextUseIsEffectiveness);
+								   Action.bNextUseIsEffectiveness,
+								   Action.bNextUseIsSpellCooldown);
 			}
 			else if (!Action.StackKey.IsNone())
 			{
@@ -3163,6 +3255,12 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 			{
 				RollAndResetCooldowns(Action, nullptr);
 			}
+			// AND A REDUCTION ON ONE, which no row asks for yet and which is
+			// handled rather than dropped. Issue #1833.
+			else if (Action.CooldownReduce != ECataclysmCooldownReset::None)
+			{
+				ReduceCooldowns(Action);
+			}
 			else
 			{
 				ApplyPoolAction(Action, nullptr, 0.0f);
@@ -3173,7 +3271,8 @@ void UCataclysmAbilitySystemComponent::StepTimedGrants()
 
 void UCataclysmAbilitySystemComponent::GrantNextUseCharge(FName Key, bool bAttack,
 													   float Percent, int32 Cap,
-													   bool bEffectiveness)
+													   bool bEffectiveness,
+													   bool bSpellCooldown)
 {
 	if (Key.IsNone() || Cap <= 0)
 	{
@@ -3185,6 +3284,7 @@ void UCataclysmAbilitySystemComponent::GrantNextUseCharge(FName Key, bool bAttac
 	Held.Percent = Percent;
 	Held.bAttack = bAttack;
 	Held.bEffectiveness = bEffectiveness;
+	Held.bSpellCooldown = bSpellCooldown;
 }
 
 const TCHAR* UCataclysmAbilitySystemComponent::MitigatedAddedCapStat =
@@ -3229,6 +3329,12 @@ float UCataclysmAbilitySystemComponent::SpendNextUseCharges(bool bUseIsSpell,
 		// A SPELL LEAVES A "NEXT ATTACK" CHARGE WHERE IT IS, for the next use
 		// that is an attack. Ruled 2026-09-24.
 		if (Held.bAttack && bUseIsSpell)
+		{
+			continue;
+		}
+		// A NEXT-SPELL COOLDOWN CHARGE IS NOT DAMAGE. `ApplyCooldown` spends it.
+		// Issue #1833, the cooldown reduction action.
+		if (Held.bSpellCooldown)
 		{
 			continue;
 		}
@@ -3356,7 +3462,7 @@ void UCataclysmAbilitySystemComponent::NextUseChargesByKind(
 	{
 		// AN EFFECTIVENESS CHARGE IS SHOWN ON ITS OWN, by
 		// `NextUseEffectivenessHeld`, not added into a damage percentage.
-		if (Held.Value.bEffectiveness)
+		if (Held.Value.bEffectiveness || Held.Value.bSpellCooldown)
 		{
 			continue;
 		}
@@ -3472,6 +3578,17 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 		{
 			continue;
 		}
+		// A COOLDOWN REDUCTION, once per row per event, on an event that landed.
+		// Issue #1833, the cooldown reduction action.
+		if (Action.CooldownReduce != ECataclysmCooldownReset::None)
+		{
+			if (bLanded && !StackedThisEvent.Contains(Action.ResetKey))
+			{
+				StackedThisEvent.Add(Action.ResetKey);
+				ReduceCooldowns(Action);
+			}
+			continue;
+		}
 		// A COOLDOWN RESET, rolled once per row per event, and only on an event
 		// that landed. Issue #1833, the cooldown reset action.
 		if (Action.CooldownReset != ECataclysmCooldownReset::None)
@@ -3497,7 +3614,8 @@ void UCataclysmAbilitySystemComponent::ActOnEvent(
 				// effectiveness row is timed, so no worn row was affected.
 				GrantNextUseCharge(Action.NextUseKey, Action.bNextUseIsAttack,
 								   Action.Percent, Action.NextUseCap,
-								   Action.bNextUseIsEffectiveness);
+								   Action.bNextUseIsEffectiveness,
+								   Action.bNextUseIsSpellCooldown);
 			}
 			continue;
 		}

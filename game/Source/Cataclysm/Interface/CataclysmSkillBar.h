@@ -342,6 +342,15 @@ public:
 	static FString StoredDamageLine(float Stored);
 
 	/**
+	 * What the held next-spell cooldown charges take off the next spell's
+	 * cooldown, such as "Next spell cooldown -1.5s", or empty while none is
+	 * held. Issue #1833, the cooldown reduction action. One decimal place,
+	 * because the rows roll in tenths of a second. Joined to the line above by
+	 * the same three spaces.
+	 */
+	static FString NextSpellCooldownLine(float Seconds);
+
+	/**
 	 * How long until Follow Through can repeat an attack again, such as "Follow
 	 * Through 2s", or empty when it can now. Issue #1515, approved 2026-09-24.
 	 * Whole seconds rounded up, so the last fraction of a second still says 1

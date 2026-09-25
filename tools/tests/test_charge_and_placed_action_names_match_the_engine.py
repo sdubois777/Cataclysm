@@ -39,6 +39,10 @@ CONSTANTS = {
     "CooldownResetSpecialAction": "cooldown_reset_special",
     "CooldownResetMovementAction": "cooldown_reset_movement",
     "CooldownResetEventSkillAction": "cooldown_reset_event_skill",
+    # AND THE COOLDOWN REDUCTION NAMES, since the cooldown reduction action.
+    "CooldownReduceAllAction": "cooldown_reduce_all",
+    "CooldownReduceHeavyAction": "cooldown_reduce_heavy",
+    "NextSpellCooldownReducedAction": "next_spell_cooldown_reduced",
 }
 
 
@@ -80,6 +84,12 @@ def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> N
     engine = {name for constant, name in engine_names().items()
               if constant.startswith("Nth")}
     assert set(gen.NTH_ACTIONS) == engine
+
+
+def test_the_generator_accepts_exactly_the_cooldown_reduce_names_the_engine_has() -> None:
+    engine = {name for constant, name in engine_names().items()
+              if constant.startswith("CooldownReduce")}
+    assert set(gen.COOLDOWN_REDUCE_ACTIONS) == engine
 
 
 def test_the_generator_accepts_exactly_the_cooldown_reset_names_the_engine_has() -> None:

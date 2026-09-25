@@ -404,6 +404,9 @@ void ACataclysmHUD::DrawSkillBar()
 				  SkillPercent, SkillCount, AttackPercent, AttackCount,
 				  Cataclysm->NextUseEffectivenessHeld(), OwnStacks),
 			  UCataclysmSkillBar::StoredDamageLine(Cataclysm->StoredMitigatedDamageNow()),
+			  // AND WHAT THE NEXT SPELL'S COOLDOWN WILL LOSE. Issue #1833.
+			  UCataclysmSkillBar::NextSpellCooldownLine(
+				  Cataclysm->NextSpellCooldownSecondsHeld()),
 			  UCataclysmSkillBar::FollowThroughLine(Cataclysm->FollowThroughSecondsLeft())})
 		{
 			if (!Part.IsEmpty())

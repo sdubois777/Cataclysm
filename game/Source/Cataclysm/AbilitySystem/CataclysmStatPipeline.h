@@ -3454,9 +3454,21 @@ struct CATACLYSM_API FCataclysmPoolAction
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	ECataclysmCooldownReset CooldownReset = ECataclysmCooldownReset::None;
 
-	/** Whose roll a cooldown reset action makes: the enchantment and the action. */
+	/**
+	 * The row's own key for a cooldown reset or reduction, the enchantment and
+	 * the action, so two worn copies act once per event.
+	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	FName ResetKey;
+
+	/**
+	 * Set, this action TAKES SECONDS OFF RUNNING SKILL COOLDOWNS instead of
+	 * moving a pool. Issue #1833, the cooldown reduction action. `Percent` is
+	 * the seconds, and only `All` and `Heavy` are used: the two targets a row
+	 * asks for.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	ECataclysmCooldownReset CooldownReduce = ECataclysmCooldownReset::None;
 
 	/**
 	 * Set, this action GRANTS A CHARGE THE NEXT USE SPENDS instead of moving a
@@ -3494,6 +3506,15 @@ struct CATACLYSM_API FCataclysmPoolAction
 	 */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
 	bool bNextUseIsEffectiveness = false;
+
+	/**
+	 * True for "Each spell cast reduces your next spell cooldown by 0.5-1.5
+	 * seconds": the charge takes `Percent` SECONDS off the next spell's
+	 * cooldown when it is applied, and deals no damage. Issue #1833, the
+	 * cooldown reduction action.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Stats")
+	bool bNextUseIsSpellCooldown = false;
 
 	/**
 	 * The period of an action whose `Event` is `every_seconds`, or 0. Issue
