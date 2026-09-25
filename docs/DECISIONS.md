@@ -89,6 +89,112 @@ removes the other, and each is caught by a different set of the nine.
 
 ---
 
+## 2026-09-24 — A saved floor leaves out every creature a floor rule made, and remembers which creatures a rule raised from the dead
+
+**Affects:** `game/Source/Cataclysm/Save/CataclysmSaveGather.cpp` (what is written),
+`game/Source/Cataclysm/Save/CataclysmSaveApply.cpp` (what is put back),
+`game/Source/Cataclysm/Save/CataclysmSaveRecords.h` (one field on `FCataclysmSavedCreature`), and the
+automation tests in `game/Source/Cataclysm/Tests/CataclysmSaveFloorTests.cpp`, and the run save fixture
+`game/Tests/SaveFixtures/Run_v1.json` with its `README.md`. Issues
+[#1820](https://github.com/sdubois777/Cataclysm/issues/1820) and
+[#41](https://github.com/sdubois777/Cataclysm/issues/41). **Applied**, and the Unreal compile, the
+automation tests and the guard proofs have run; their figures are in "Run" at the end of this entry. ONE
+TEST FAILED FIRST, on a save fixture this change had not updated; it is recorded there.
+
+### No path in play restores a floor today
+
+`FCataclysmSaveGather::FloorFrom` writes the floor into the run's record while the game is played
+(`UCataclysmSaveWriter`), but **`FCataclysmSaveApply::FloorInto` and `CreatureInto`, which put a saved
+floor back, have callers in the tests only.** Nothing a player does restores a floor. This change does
+not fix a fault a player meets; it decides now what a restore will do on the day one is wired, because
+the finding below would otherwise be wired in with it.
+
+### What a restore would have done
+
+The record of a creature carries its archetype, rung, modifier rows, place, facing, health and energy
+shield, and no flag a floor rule sets. `CreatureInto` spawns the archetype's class, which takes a brain
+as every spawned enemy does, with every flag at its default. So a floor saved while these stood would
+have come back with:
+
+| creature | what a rule had set | what it would have come back as |
+| :-- | :-- | :-- |
+| an echo of Echoes of the Past | cannot be hurt, pays nothing, raised by a rule | a permanent ordinary creature of its kind |
+| the Reaper | cannot be hurt, raised by a rule | an ordinary Abyssal Warden that can be killed and pays |
+| Blood Bond's bonded elite | cannot be hurt | an ordinary elite; the bond gone |
+| a creature Dead Rising, Divine Resurgence or Vengeful Wraiths raised | risen from the dead | a creature that pays again when it dies |
+| a Plague Harbinger | its mark | an ordinary creature, with no "Harbinger" and no trail |
+
+The fourth line breaks the owner's decision of 2026-09-17 that a revived creature pays nothing twice.
+
+### Rulings
+
+**By the coordinating session under the owner's delegation, 2026-09-24:**
+
+- **A creature a floor rule made is not written** (`FloorFrom` skips `bRaisedByARule`). It exists
+  because of a rule's own state -- a clock, a count, a pair -- and a rule's state is not saved, so the
+  creature is not either. That leaves out the Reaper, echoes, Plague Convergence's waves, the Trick or
+  Treat pair and an Unstable Portal's Warden.
+- **A risen creature is written as risen and comes back risen**, through one new field,
+  `FCataclysmSavedCreature::bRisenFromTheDead`. It is one of the floor's own enemies, so it comes back,
+  and the owner's decision is kept across the restore. **No schema version change**: a `SaveGame` field
+  missing from an older file keeps its default, which is how `UCataclysmRunSave::PartialDay` was added in
+  [#1305](https://github.com/sdubois777/Cataclysm/pull/1305), and false is what every creature in an older
+  file was.
+- **A stated limit: Blood Bond's bonded elite and a Plague Harbinger come back as ordinary creatures**,
+  the bond and the mark lost. Both are the floor's own creatures, and the bond and the mark are rule
+  state, like the zones and clocks that are not saved. Saving `bCannotBeHurt` or the mark alone would
+  restore half a rule.
+
+No genre research was done: this is how this game's own record treats this game's own rule state, not
+a formula or a mechanic.
+
+### Tests
+
+Three automation tests:
+
+- `Cataclysm.SaveGather.ACreatureAFloorRuleMadeIsNotWrittenIntoTheRecord`: of two creatures, the one
+  marked as made by a rule is not written and the other is.
+- `Cataclysm.SaveApply.ARisenCreatureComesBackRisenAndPaysNothing`: a risen creature is written as risen,
+  comes back risen, and pays nothing.
+- `Cataclysm.SaveApply.AnOrdinaryCreatureIsStillWrittenAndComesBackPaying`: the control -- an ordinary
+  creature is written, not as risen, and comes back paying.
+
+### Run
+
+One editor window on 2026-09-25, on development 80cb9101 as the base. Every figure below is what
+`python tools/unreal_build.py tests`, `prove_cpp_guard` or `pytest` printed.
+
+- **The whole suite FAILED ONE TEST**, on 38cbfef4: "Build: Succeeded - 9 actions, 6 files compiled"; "2448
+  tests performed, 2447 succeeded, 1 failed: EveryFixtureHoldsEveryFieldItsRecordWrites", every declared test
+  reported, on "Run_v1.json and the record it loads into disagree at the
+  record.Floor.Creatures[0].bRisenFromTheDead is on the second side only". The test requires every committed
+  save fixture to hold every field its record writes, and this change had added the field to the record and
+  not to `game/Tests/SaveFixtures/Run_v1.json`. The `PartialDay` precedent this entry cites did both halves;
+  this change did one. **Fixed** (180fe177) under the exception in `game/Tests/SaveFixtures/README.md` --
+  nothing has ever loaded a save -- as the file's twelfth edit: the fixture's first creature holds true and
+  its second false, since false alone would not show the value surviving a round trip. **By the coordinating
+  session's ruling the whole suite was not run again** after that test-data-only edit.
+- **On the final head, 180fe177:** the Python suite of record, 5,462 passed and 8 skipped of 5,470, 0 failed;
+  the groups `Cataclysm.SaveGather.` 3 performed, 3 succeeded; `Cataclysm.SaveApply.` 9 performed, 9
+  succeeded; and `Cataclysm.SaveRecords.`, which holds the failed test, 12 performed, 12 succeeded -- each
+  with every one of its declared tests reported.
+- **The groups on the base**, 80cb9101: `Cataclysm.SaveGather.` 2 performed, 2 succeeded;
+  `Cataclysm.SaveApply.` 7 performed, 7 succeeded.
+
+**Three guard proofs, each printing PROVED**, with the source identical before and after:
+
+- **A rule-made creature written after all** (`if (false && Creature->bRaisedByARule)`), on the prefix
+  `Cataclysm.SaveGather.ACreatureAFloorRule`. With the break in: 1 performed, 1 failed, on "Expected 'only one
+  reached the record' to be 1, but it was 2". Restored: 1 performed, 1 succeeded.
+- **The mark not put back on restore** (`(void)Saved.bRisenFromTheDead;` in `CreatureInto`), on the prefix
+  `Cataclysm.SaveApply.ARisenCreature`. With the break in: 1 failed, on "Expected 'still risen' to be true"
+  and "Expected 'so it still pays nothing' to be false". Restored: 1 performed, 1 succeeded.
+- **The mark not written** (`(void)Creature.bRisenFromTheDead;` in `CreatureFrom`), on the same prefix. With
+  the break in: 1 failed, on "Expected 'written as risen' to be true", "Expected 'still risen' to be true" and
+  "Expected 'so it still pays nothing' to be false". Restored: 1 performed, 1 succeeded.
+
+---
+
 ## 2026-09-24 — Wings of the Host: every thirty seconds a line of feather marks crosses the whole floor near the player, and three seconds later each feather strikes a player standing in its mark for 15% of maximum health
 
 **Affects:** `game/Source/Cataclysm/Dungeon/CataclysmDungeonModifierEffects.h` and `.cpp` (the row's

@@ -69,6 +69,7 @@ FCataclysmSavedCreature FCataclysmSaveGather::CreatureFrom(
 	Saved.ArchetypeRow = Creature.ArchetypeRow;
 	Saved.RarityStep = Creature.RarityStep;
 	Saved.ModifierRows = Creature.ModifierRows;
+	Saved.bRisenFromTheDead = Creature.bRisenFromTheDead;
 	Saved.Location = Creature.GetActorLocation();
 
 	// YAW ALONE. A creature does not pitch or roll, and the record says so.
@@ -154,6 +155,17 @@ FCataclysmSavedFloor FCataclysmSaveGather::FloorFrom(const UWorld& World,
 		// zero, so it would die again immediately. Either way the record would
 		// be describing a fight that is over.
 		if (UCataclysmSkillEffects::IsDead(Creature))
+		{
+			continue;
+		}
+
+		// NOR IS A CREATURE A FLOOR RULE MADE: the Reaper, an echo, a Plague Convergence wave, the
+		// Trick or Treat pair, an Unstable Portal's Warden. Each exists because of a rule's own state
+		// -- a clock, a count, a pair -- and that state is not saved, so the creature is not either.
+		// Written back it would be an ordinary creature of its kind, with a brain, that could be hurt
+		// and paid for. NO PATH IN PLAY RESTORES A FLOOR TODAY (`FCataclysmSaveApply::FloorInto` has
+		// test callers only); this guards the day one does. Issues #1820 and #41.
+		if (Creature->bRaisedByARule)
 		{
 			continue;
 		}
