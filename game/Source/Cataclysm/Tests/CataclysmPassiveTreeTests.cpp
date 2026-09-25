@@ -10627,6 +10627,286 @@ namespace CataclysmRavagerFervourTest
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Three rows that read Fervour or make it, each shown through its real row.
+// Issue #1755.
+//
+// UNSPENT RUIN AND BANKED RUIN HAD ROWS AND NO TEST AT ALL, and the Ritualist's
+// starting node was tested only with its two rates given by hand
+// (`GiveRitualistGenerator` in `CataclysmCommandTests.cpp`). These spend real
+// points on a real character, fill the bar the way the game fills it, and read
+// through the function the game calls.
+// ---------------------------------------------------------------------------
+
+namespace CataclysmFervourRowTest
+{
+	using namespace CataclysmPassiveTest;
+	using namespace CataclysmFourRowTest;
+	using namespace CataclysmRavagerFervourTest;
+
+	/** Empty the bar, then put exactly this much in it. */
+	void SetFervourTo(FRealCharacter& Player, float Amount)
+	{
+		GiveFervour(Player, -FervourOf(Player));
+		GiveFervour(Player, Amount);
+	}
+
+	/** Points in one node, or none when `Points` is zero. */
+	void Take(FRealCharacter& Player, const TCHAR* Node, int32 Points)
+	{
+		FCataclysmPassiveAllocation Allocation;
+		if (Points > 0)
+		{
+			Allocation.Add(FName(Node), Points);
+		}
+		Player.State->SetPassiveAllocation(Allocation, TArray<FName>());
+		Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+	}
+
+	/**
+	 * The unconditioned, unscaled increases a stat carries, in percent: the part
+	 * of its "increased" sum the node's own scaled row stands beside. Summed off
+	 * the recorded modifiers rather than asked of the pipeline, so no state the
+	 * scale reads can leak into it.
+	 */
+	float PlainIncreases(const FRealCharacter& Player, const TCHAR* Stat)
+	{
+		float Sum = 0.0f;
+		if (const FCataclysmStatInputs* Inputs =
+				Player.AbilitySystem->GetStatInputs(FName(Stat)))
+		{
+			for (const FCataclysmStatModifier& Modifier : Inputs->Modifiers)
+			{
+				if (Modifier.Bucket == ECataclysmStatBucket::Increased
+					&& Modifier.Condition == ECataclysmStatCondition::Always
+					&& Modifier.Scale == ECataclysmStatScale::Fixed)
+				{
+					Sum += Modifier.Value;
+				}
+			}
+		}
+		return Sum;
+	}
+
+	bool Ready(FAutomationTestBase& Test, const FRealCharacter& Player)
+	{
+		if (!Test.TestTrue(TEXT("a possessed player with an effect table"),
+						   Player.IsComplete()))
+		{
+			Test.AddError(TEXT("If the effect table is what is missing, run  python "
+							   "tools/run_editor_python.py "
+							   "tools/generate_datatable_assets.py"));
+			return false;
+		}
+		return true;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveUnspentRuinOnARealCharacterTest,
+	"Cataclysm.FervourRows.UnspentRuinRaisesARealRavagersAttackDamageForEachFullTwentyFervourHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_spine_010` Unspent Ruin: "+1% increased Attack Damage per point
+ * for every full 20 Fervour you currently hold." Six points, so 6% a step.
+ *
+ * "FULL" IS WHAT 19 AND 59 ARE FOR: one short of a step must not round up.
+ */
+bool FCataclysmPassiveUnspentRuinOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	const auto Increases = [&Player]()
+	{
+		return Player.AbilitySystem->AttackDamageIncreasesForSkill(FGameplayTagContainer());
+	};
+
+	Take(Player, TEXT("Ravager_basic_spine_010"), 6);
+	SetFervourTo(Player, 0.0f);
+	const float Empty = Increases();
+
+	const auto At = [&](float Fervour)
+	{
+		SetFervourTo(Player, Fervour);
+		if (!TestEqual(*FString::Printf(TEXT("the bar holds %.0f"), Fervour),
+					   FervourOf(Player), Fervour, 0.001f))
+		{
+			return -1.0f;
+		}
+		return Increases() - Empty;
+	};
+
+	TestEqual(TEXT("19 Fervour is not a full 20: nothing"), At(19.0f), 0.0f, 0.0001f);
+	TestEqual(TEXT("20 Fervour: 6%"), At(20.0f), 0.06f, 0.0001f);
+	TestEqual(TEXT("59 Fervour is two full 20s: 12%"), At(59.0f), 0.12f, 0.0001f);
+	TestEqual(TEXT("60 Fervour: 18%"), At(60.0f), 0.18f, 0.0001f);
+
+	Take(Player, TEXT("Ravager_basic_spine_010"), 0);
+	TestEqual(TEXT("with the points given back, 60 Fervour is worth nothing"),
+			  At(60.0f), 0.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveBankedRuinOnARealCharacterTest,
+	"Cataclysm.FervourRows.BankedRuinRaisesARealRavagersDamageReductionForEachFullTwentyFiveFervourHeld",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ravager_basic_d_b2` Banked Ruin: "+1% increased Damage Reduction per point
+ * for every full 25 Fervour you currently hold." Six points, so 6% a step.
+ * Read as `DefenderStat` reads it for every hit.
+ */
+bool FCataclysmPassiveBankedRuinOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourRowTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	const auto Reduction = [&Player]()
+	{
+		return Player.AbilitySystem->StatForSkill(
+			FName(TEXT("damage_reduction")), FGameplayTagContainer(),
+			Player.AbilitySystem->GetNumericAttribute(
+				UCataclysmCombatAttributeSet::GetDamageReductionAttribute()));
+	};
+
+	Take(Player, TEXT("Ravager_basic_d_b2"), 6);
+	SetFervourTo(Player, 0.0f);
+	const float Empty = Reduction();
+	if (!TestTrue(TEXT("the Ravager has damage reduction to raise"), Empty > 0.0f))
+	{
+		return false;
+	}
+	const float Others = PlainIncreases(Player, TEXT("damage_reduction"));
+	const auto Steps = [Others](int32 Count)
+	{
+		return (1.0f + (Others + 6.0f * Count) / 100.0f) / (1.0f + Others / 100.0f);
+	};
+
+	SetFervourTo(Player, 24.0f);
+	TestEqual(TEXT("24 Fervour is not a full 25: nothing"), Reduction() / Empty,
+			  Steps(0), 0.0001f);
+	SetFervourTo(Player, 25.0f);
+	TestEqual(TEXT("25 Fervour: 6% more increased"), Reduction() / Empty, Steps(1),
+			  0.0001f);
+	SetFervourTo(Player, 99.0f);
+	TestEqual(TEXT("99 Fervour is three full 25s: 18%"), Reduction() / Empty, Steps(3),
+			  0.0001f);
+	SetFervourTo(Player, 100.0f);
+	TestEqual(TEXT("100 Fervour: 24%"), Reduction() / Empty, Steps(4), 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmPassiveRitualistGeneratorOnARealCharacterTest,
+	"Cataclysm.FervourRows.TheRitualistsStartingNodeMakesARealRitualistFervourFromItsMinions",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * `Ritualist_basic_spine_000` Fervour: "Your minions generate Fervour: 1 per
+ * second for each minion you have, and 5 when one of them dies."
+ *
+ * THE SAME CHECKS `Cataclysm.Fervour.MinionsHeldGenerateFervourEverySecond` AND
+ * `AMinionDyingGrantsFervour` MAKE, ON THE REAL ROWS. Those give the two rates
+ * by hand, so a row with the wrong figure, the wrong stat or no scale passed
+ * them. One minion against three is what separates "per minion" from "while you
+ * have one", and the minion killed by its health reaching zero is the route the
+ * game really takes.
+ */
+bool FCataclysmPassiveRitualistGeneratorOnARealCharacterTest::RunTest(const FString&)
+{
+	using namespace CataclysmFervourRowTest;
+
+	FScopedPlayerClass AsRitualist(TEXT("Ritualist"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRitualist.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!Ready(*this, Player))
+	{
+		return false;
+	}
+
+	const FVector Here = Player.Character->GetActorLocation();
+	ACataclysmMinion* First = ACataclysmMinion::Spawn(
+		Player.Character, Here + FVector(3.0f * Metre, 0.0f, 0.0f), 60.0f, false);
+	if (!TestNotNull(TEXT("a first minion"), First))
+	{
+		return false;
+	}
+
+	Take(Player, TEXT("Ritualist_basic_spine_000"), 0);
+	SetFervourTo(Player, 0.0f);
+	TestEqual(TEXT("without the node, a minion makes nothing"),
+			  UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond), 0.0f,
+			  0.001f);
+
+	Take(Player, TEXT("Ritualist_basic_spine_000"), 1);
+	SetFervourTo(Player, 0.0f);
+	TestEqual(TEXT("with it, one minion makes one a second"),
+			  UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond), 1.0f,
+			  0.001f);
+
+	ACataclysmMinion* Second = ACataclysmMinion::Spawn(
+		Player.Character, Here + FVector(4.0f * Metre, 0.0f, 0.0f), 60.0f, false);
+	ACataclysmMinion* Third = ACataclysmMinion::Spawn(
+		Player.Character, Here + FVector(5.0f * Metre, 0.0f, 0.0f), 60.0f, false);
+	if (!TestNotNull(TEXT("a second minion"), Second)
+		|| !TestNotNull(TEXT("and a third"), Third))
+	{
+		return false;
+	}
+	SetFervourTo(Player, 0.0f);
+	TestEqual(TEXT("and three minions make three a second"),
+			  UCataclysmFervour::GainPerSecondStep(Player.AbilitySystem, OneSecond), 3.0f,
+			  0.001f);
+
+	// AND A DEATH, BY THE ROUTE THE GAME TAKES: the minion's health reaching zero
+	// pays its commander through `NotifyIfHealthReachedZero`.
+	UAbilitySystemComponent* ThirdSystem = UCataclysmTargeting::AbilitySystemOf(Third);
+	if (!TestNotNull(TEXT("the third minion has an ability system"), ThirdSystem))
+	{
+		return false;
+	}
+	SetFervourTo(Player, 0.0f);
+	ThirdSystem->SetNumericAttributeBase(
+		UCataclysmVitalAttributeSet::GetHealthAttribute(), 0.0f);
+	TestTrue(TEXT("the third minion is recorded as dead"),
+			 UCataclysmSkillEffects::IsDead(Third));
+	TestEqual(TEXT("and its death paid the Ritualist five"), FervourOf(Player), 5.0f,
+			  0.001f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRavagerFervourArrivesTest,
 	"Cataclysm.Passives.FervourArrivesForEnemiesStandingNearARealRavager",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
