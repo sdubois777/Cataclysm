@@ -103,6 +103,48 @@ not stack, is the node's own sentence and the ruling above, and is labelled as t
 land, that change must add a test that wears the real `Ravager_capstone_50` option 1 rows and sees
 armour fall.**
 
+### THE WINDOW, 2026-09-24, ON b902050c AND THEN 20e7464c
+
+**This change's C++ was compiled for the first time here, and it built. The whole suite failed one
+test, and the fault was in that test, not in the engine code.** No data row changed.
+
+| Step | Printed |
+|---|---|
+| Python of record, on b902050c | `5420 passed, 8 skipped in 342.93s`; JUnit 5428 tests, 0 failures, 0 errors, 8 skipped |
+| Build, on b902050c | `Build: Succeeded - 29 actions, 26 files compiled` |
+| Whole suite, `tests` | `2384 tests performed, 2383 succeeded, 1 failed: EachEnemyAndEachAttackerCountsApart` |
+| Build, on 20e7464c | `Build: Succeeded - 4 actions, 1 file compiled: Module.Cataclysm.26.cpp` |
+| The group, `--prefix "Cataclysm.RenderingBlows."` | `3 tests performed, 3 succeeded, 0 failed` |
+
+- **The one failure** was "a blow that is not melee, a tick and an evaded swing do not count, so
+  two landed melee hits after them remove nothing", which read "Armor -20%". The test sent its tick
+  as a melee blow with the tick tag among the SKILL tags. `ApplyHit` marks a blow as damage over
+  time only from `Delivery.bIsDamageOverTime`, so that blow reached the struck side as an ordinary
+  landed melee hit, and the engine counted it, as ruled. Commit 20e7464c sends the tick through the
+  delivery, as `CataclysmAilmentTests.cpp` sends its own. Only the test file changed.
+- **The other two blows in that assertion were read in the code and already took the right
+  route**: a blow is melee only from the melee skill tag or the delivery, and an evade comes from
+  the defender's Evasion against a roll below 100. The failed run could not tell a counted tick
+  from a counted evade; the group run, which would fail again on a counted evade, passed.
+- **No second whole suite ran, by the coordinating session's ruling**: the whole suite had already
+  run on this engine code, and this test was its only failure.
+- **A continuous-integration compile overlapped the whole suite and was not its cause.** Plague
+  Convergence (#2084) merged during the window, and its Unreal run 36068773587 had its "Game
+  compiles" job from 22:40:49 to 22:42:34 UTC by GitHub's clock; the suite's tests ran from 22:37:40
+  to 22:43:30 by the engine log's. It had completed before the rebuild, and every proof began with
+  no Unreal run in progress.
+
+Three proofs with `prove_cpp_guard` on 20e7464c, prefix `Cataclysm.RenderingBlows.`, each anchor
+re-checked immediately before. Each restored run printed `3 tests performed, 3 succeeded, 0
+failed`. **Every one was registered before the window, test and assertion alike**, and the test fix
+did not change any of them.
+
+| Break | Printed with the break in | Assertions that failed |
+|---|---|---|
+| the removal comes on every second hit (`RendEveryHits = 2`) | `3 tests performed, 0 succeeded, 3 failed` | "before anything is removed, a display says nothing"; "and so does the third, which is not itself reduced", 50.0 where 44.44; "and the display says nothing"; "two hits on one enemy and one on another remove nothing from the first"; "a blow that is not melee, a tick and an evaded swing do not count, so two landed melee hits after them remove nothing" |
+| a removal while one runs adds its share | `3 tests performed, 2 succeeded, 1 failed: ItLastsSixSecondsRefreshesAndDoesNotStack` | "eight seconds after it was removed, the refreshed removal still holds: a blow meets 800", 57.14 where 50.0; "a second holder's removal leaves it at 800, not 640", 66.67 where 50.0; "and the display still says a fifth", "Armor -60%" |
+| the armour step ignores the removal | `3 tests performed, 1 succeeded, 2 failed: ItLastsSixSecondsRefreshesAndDoesNotStack, TheThirdMeleeHitRemovesAFifthOfTheArmour` | "... a blow meets 800", 44.44 where 50.0; "a second holder's removal leaves it at 800, not 640", 44.44 where 50.0; "the fourth takes what 800 armour lets through", 44.44 where 50.0 |
+
 ---
 
 ## 2026-09-24 — Plague Convergence: two minutes into a floor, waves of the floor's own creatures come from the far edge, and their blows carry a disease that doubles per stack
