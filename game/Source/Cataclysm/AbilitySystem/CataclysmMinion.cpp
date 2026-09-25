@@ -393,6 +393,11 @@ const FCataclysmMinionTypeRow* ACataclysmMinion::FindType(
 	return Found;
 }
 
+FCataclysmHitDelivery ACataclysmMinion::OwnBlowDelivery(AActor* Follower)
+{
+	return MinionDelivery(Follower, /*bIsArea=*/false);
+}
+
 bool ACataclysmMinion::HitsCountAsTheSummoners(const ACataclysmMinion* Minion)
 {
 	// THE SUMMONER IS ASKED, NOT THE MINION, because the keystone is the

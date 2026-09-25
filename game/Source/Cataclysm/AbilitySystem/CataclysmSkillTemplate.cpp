@@ -6,6 +6,7 @@
 // knows nothing about it.
 #include "AbilitySystem/CataclysmSkillTemplates.h"
 #include "AbilitySystem/CataclysmCastEffect.h"
+#include "AbilitySystem/CataclysmChorus.h"
 // For announcing a skill once it has been paid for. Issue #41, slice 4.
 #include "AbilitySystem/CataclysmCombatEvents.h"
 // For the health cost a character adds to every skill. Issue #970.
@@ -2277,6 +2278,14 @@ float UCataclysmSkillTemplate::HitTargets(const TArray<AActor*>& Targets,
 						/*bKnockdownIsDesigned=*/true);
 				}
 			}
+		}
+
+		// AND THE CASTER'S MINIONS REPEAT THE HIT, when it holds Chorus. Last,
+		// after every rider, because a repeat carries none and may kill the
+		// target. Not for hits after the cast. Issue #1515.
+		if (bLanded && !bHitsAfterTheCast)
+		{
+			UCataclysmChorus::Repeat(Self, Target, Dealt, this);
 		}
 	}
 

@@ -5,6 +5,7 @@
 // For the axe a Harrower leaves in what it hits, which tears free when
 // that creature dies and buries itself in the next. Issue #37.
 #include "AbilitySystem/CataclysmBuriedWeapon.h"
+#include "AbilitySystem/CataclysmChorus.h"
 #include "AbilitySystem/CataclysmGroundZone.h"
 // For handing a lasting charge's movement to UCharacterMovementComponent, so
 // the character has a real velocity and the camera follows it every frame
@@ -1516,6 +1517,10 @@ bool UCataclysmProjectileSkill::ThrowOne()
 			// in `ACataclysmProjectile::HitOne`. Issue #1938, ruled 2026-09-24:
 			// this fallback does what a fired projectile does.
 			NoteBlowLanded(Self, Target, Target->GetActorLocation(), bFromBehind);
+
+			// AND THE CASTER'S MINIONS REPEAT IT, when it holds Chorus, as a
+			// fired axe's contact does. Issue #1515.
+			UCataclysmChorus::Repeat(Self, Target, Dealt, this);
 		}
 	}
 
@@ -3710,6 +3715,9 @@ void UCataclysmSummonSkill::Collapse()
 	{
 		const TArray<AActor*> Caught = UCataclysmTargeting::FindEnemiesInSphere(
 			GetWorld(), Self, RiftLocation, ScaledRadiusCm());
+
+		// THE COLLAPSE COMES AFTER THE CAST, so Chorus does not repeat it.
+		TGuardValue<bool> AfterTheCast(bHitsAfterTheCast, true);
 		HitTargets(Caught, Params.FinalHitPercent);
 	}
 
@@ -3924,7 +3932,11 @@ int32 UCataclysmAuraSkill::Pulse()
 	const float Period = Params.Interval > 0.0f ? Params.Interval : 1.0f;
 	const float Percent = ScaledDamagePercent(
 		ScalingUnits(/*ConsumedCount=*/0, /*bThisTargetConsumed=*/false));
-	HitTargets(Inside, Percent * Period);
+	{
+		// A PULSE COMES AFTER THE CAST, so Chorus does not repeat it.
+		TGuardValue<bool> AfterTheCast(bHitsAfterTheCast, true);
+		HitTargets(Inside, Percent * Period);
+	}
 
 	// AND THE EFFECT THE ROW NAMES GOES ON WHAT IS STANDING IN THE RING.
 	// Conflagration: "enemies within it are continuously set alight AND have

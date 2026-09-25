@@ -1,6 +1,7 @@
 // Copyright Stephen Dubois. All Rights Reserved.
 
 #include "AbilitySystem/CataclysmProjectile.h"
+#include "AbilitySystem/CataclysmChorus.h"
 #include "AbilitySystem/CataclysmMeshWidth.h"
 #include "AbilitySystem/CataclysmProjectileEffect.h"
 // For what a blow resolved to, so a burn is refused on an evaded one.
@@ -712,6 +713,11 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 			// enemies spends Martyr's Ember's store five times.
 			UCataclysmSkillTemplate::NoteBlowLanded(
 				Firer, Target, Target->GetActorLocation(), bFromBehind);
+
+			// AND THE FIRER'S MINIONS REPEAT THE CONTACT, when it holds Chorus
+			// and a skill fired this. Last, since a repeat carries nothing and
+			// may kill the target. Issue #1515.
+			UCataclysmChorus::Repeat(Firer, Target, Dealt, FiringSkill.Get());
 		}
 	}
 }

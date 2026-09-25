@@ -6,6 +6,8 @@
 #include "Character/CataclysmCharacterBase.h"
 #include "CataclysmMinion.generated.h"
 
+struct FCataclysmHitDelivery;
+
 class UCataclysmAbilitySystemComponent;
 class UCataclysmVitalAttributeSet;
 class UCataclysmSummonSkill;
@@ -181,6 +183,16 @@ public:
 	 * them where they are.
 	 */
 	static bool HitsCountAsTheSummoners(const ACataclysmMinion* Minion);
+
+	/**
+	 * How a blow dealt by `Follower` in its own name is delivered: a single-
+	 * target blow with every flag a minion's own swing carries -- no critical
+	 * strike, no penetration, no leech, no weapon sub-type, no ailment chance.
+	 * For a blow something other than the minion's own swing makes it deal,
+	 * which is Chorus's repeat (issue #1515), so it cannot drift from the swing.
+	 * A subjugated enemy is given the same, since it too is "your minion".
+	 */
+	static FCataclysmHitDelivery OwnBlowDelivery(AActor* Follower);
 
 	/** Whether what it hits is set alight. */
 	UPROPERTY(BlueprintReadOnly, Category = "Cataclysm|Minion")
