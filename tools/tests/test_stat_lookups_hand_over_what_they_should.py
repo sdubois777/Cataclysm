@@ -163,6 +163,10 @@ def call_sites() -> dict[tuple[str, str], list[str]]:
 
 INVENTORY = {
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
+     'FName(AurasEndAtDeathStat), FGameplayTagContainer(), GetNumericAttribute(Flag)'):
+        'a flag read on the character that died, when its death is cleared, '
+        'with no skill and no blow in hand; issue #1833',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'Stat, FGameplayTagContainer(), GetNumericAttributeBase(MaxHealth)'):
         "maximum health worked out again with the character's state now, so a "
         'row sized by the minions held reaches the attribute; no tags, because '
