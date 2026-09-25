@@ -90,6 +90,13 @@ constants and holds the generator's `NEXT_USE_ACTIONS` and `PLACED_ACTIONS` equa
 spelled differently on the two sides would validate, be written, and do nothing in the game with no
 error. The three next-use names had no such check before.
 
+**A Python control, beside the three proofs below**, and not one of them: the owner's limit of
+2026-09-14 is on prefixed Unreal proofs, which cost machine time (ruled by the coordinating session).
+`tools/prove_guard.py`'s `break_and_run`, spelling the engine's constant "enemy_armour_removed",
+on that file alone, printed "PROVED: 2 failed, 2 passed in 0.21s | restored: 4 passed in 0.17s".
+The two failures were `test_the_engine_spells_each_name_as_this_file_does` and
+`test_the_generator_accepts_exactly_the_placed_names_the_engine_has`.
+
 ### THE TESTS
 
 - **On the engine:**
