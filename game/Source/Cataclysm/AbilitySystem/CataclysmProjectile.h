@@ -386,6 +386,17 @@ public:
 	int32 LandedContacts = 0;
 
 	/**
+	 * Increased damage the firing use spent from next-use charges, copied when
+	 * it was fired. Issue #1833, phase 2. Nought for every projectile whose
+	 * use spent none, and for every creature's.
+	 *
+	 * PUBLIC, beside `LandedContacts`, as a per-shot figure a test reads. It was
+	 * declared beside `FiringSkill`, in the private section, and the first build
+	 * of this change failed on the test that reads it (C2248).
+	 */
+	float SpentIncreasePercent = 0.0f;
+
+	/**
 	 * Which enemies it struck, skipping any destroyed since.
 	 *
 	 * WHAT ASKS FOR IT. The Wand's Malefice, "copying every curse it already
@@ -625,13 +636,6 @@ private:
 	 * the skill. Issue #41, slice 4.
 	 */
 	TWeakObjectPtr<const UGameplayAbility> FiringSkill;
-
-	/**
-	 * Increased damage the firing use spent from next-use charges, copied when
-	 * it was fired. Issue #1833, phase 2. Nought for every projectile whose
-	 * use spent none, and for every creature's.
-	 */
-	float SpentIncreasePercent = 0.0f;
 
 	/** Whether it sets what it hits alight. */
 	bool bBurns = false;
