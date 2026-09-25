@@ -15068,8 +15068,8 @@ bool FCataclysmWoundChannelingTest::RunTest(const FString&)
 	Take(Player, TEXT("Masochist_basic_fl_a1"), 8);
 	const float TickOthers = PlainIncreases(Player, TEXT("damage_over_time_taken"));
 	const float TickWith = Tick();
-	if (!TestTrue(TEXT("set-up: the tick reached the Masochist's health"),
-				  TickWithout > 0.0f))
+	if (!TestTrue(TEXT("set-up: both ticks reached the Masochist's health"),
+				  TickWithout > 0.0f && TickWith > 0.0f))
 	{
 		return false;
 	}
