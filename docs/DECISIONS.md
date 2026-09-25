@@ -49,6 +49,8 @@ figure is a play-test value:**
 - **Field Medic's heal, unchanged**: `bHealsAlliesForTheFloorRule`, 5% of maximum a second within 600 cm.
   The ruling required a test showing that a creature with no brain pulses it, since that had been read in
   the code and not measured.
+- **A spire heals every living ally within 600 cm, a Necrotic Bloom flower or an Eternal Chorus source
+  standing near it included**: they are enemies, and the row says it heals enemies. Ruled allowed.
 - **20% more damage within 600 cm of any living spire**, once however many, written every beat and gone on
   leaving the radius or on the spire's death, with a visible 600 cm Celestial zone around each living
   spire.
