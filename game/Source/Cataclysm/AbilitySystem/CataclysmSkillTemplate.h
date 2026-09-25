@@ -726,6 +726,14 @@ protected:
 	float HitTargets(const TArray<AActor*>& Targets, float DamagePercent = -1.0f);
 
 	/**
+	 * True while this skill deals hits that come AFTER its cast rather than as
+	 * part of it -- an aura's pulses and a rift's collapse. `HitTargets` does not
+	 * let the caster's minions repeat those under Chorus, whose sentence is
+	 * "each skill you cast". Set around the call with `TGuardValue`. Issue #1515.
+	 */
+	bool bHitsAfterTheCast = false;
+
+	/**
 	 * How many enemies the attack whose blows are being dealt struck together,
 	 * or -1 while no attack is in progress. Issue #1515.
 	 *

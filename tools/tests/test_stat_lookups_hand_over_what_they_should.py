@@ -438,6 +438,10 @@ INVENTORY = {
      'FName(Stat), FGameplayTagContainer(), 0.0f'):
         "Shoulder Through's switch, asked of the walker every frame it walks, "
         'before any enemy is found; whether it is held, not a blow modifier',
+    ('game/Source/Cataclysm/AbilitySystem/CataclysmChorus.cpp',
+     'FName(Stat), FGameplayTagContainer(), 0.0f'):
+        "Chorus's switch, asked of the caster after each landed skill hit; "
+        'whether it is held, not a modifier of that hit',
     ('game/Source/Cataclysm/AbilitySystem/CataclysmAbilitySystemComponent.cpp',
      'FName(MitigatedAddedCapStat), FGameplayTagContainer(), 0.0f'):
         "Nothing Wasted's cap, asked of the holder as damage is stored and as "

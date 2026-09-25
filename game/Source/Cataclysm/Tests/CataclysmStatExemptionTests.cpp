@@ -9,6 +9,7 @@
 #include "AbilitySystem/CataclysmAllResistanceAttributeSet.h"
 // For the eleven probes that prove every scaled stat is asked for. #1973.
 #include "AbilitySystem/CataclysmBasicAttack.h"
+#include "AbilitySystem/CataclysmChorus.h"
 #include "AbilitySystem/CataclysmDebuffs.h"
 #include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmFollowThrough.h"
@@ -1444,6 +1445,50 @@ namespace CataclysmStatExemptionTest
 						   "Step really reads it"),
 					  UCataclysmShoulderThrough::Step(Held.Actor, FVector::ForwardVector)
 						  == HeldsEnemy.Actor);
+	}
+
+	/**
+	 * `minions_repeat_your_skills`, read by `UCataclysmChorus::Repeat`. Issue
+	 * #1515, Chorus. A caster holding it with an imp has the imp repeat a skill's
+	 * hit; one without it, with an imp too, does not.
+	 */
+	void ProbeChorus(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FScopedFighter Target(World, 0.0f);
+		const auto RepeatsFor = [&Test, World, &Target](FScopedFighter& Caster)
+		{
+			if (!SummonImp(Test, World, Caster.Actor))
+			{
+				return -1;
+			}
+			const FGameplayAbilitySpecHandle Handle = Caster.AbilitySystem->GiveAbilityInSlot(
+				UCataclysmStrikeSkill::StaticClass(), ECataclysmAbilitySlot::Heavy,
+				/*Level=*/100, Caster.Actor);
+			FGameplayAbilitySpec* Spec = Caster.AbilitySystem->FindAbilitySpecFromHandle(Handle);
+			const UGameplayAbility* Strike = Spec ? Spec->GetPrimaryInstance() : nullptr;
+			if (!Test.TestNotNull(TEXT("a strike"), Strike))
+			{
+				return -1;
+			}
+			return UCataclysmChorus::Repeat(Caster.Actor, Target.Actor, 1000.0f, Strike);
+		};
+
+		FScopedFighter Plain(World, 0.0f);
+		FScopedFighter Held(World, 0.0f);
+		GrantFlats(Held.Actor, {{FName(UCataclysmChorus::Stat), 1.0f}});
+		Test.TestEqual(TEXT("an imp of a caster without minions_repeat_your_skills "
+							"repeats nothing"),
+					   RepeatsFor(Plain), 0);
+		Test.TestEqual(TEXT("and one of a caster holding it repeats the hit, so "
+							"Repeat really reads it"),
+					   RepeatsFor(Held), 1);
 	}
 
 	/**
@@ -3207,6 +3252,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("applied_cripple_and_weaken_held_within_metres"), &ProbeAppliedHeldNearby},
 			{TEXT("mitigated_damage_added_to_next_melee_cap_percent"), &ProbeMitigatedAdded},
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},
+			{TEXT("minions_repeat_your_skills"), &ProbeChorus},
 			{TEXT("two_handed_weapon_in_each_hand"), &ProbeBothHandsFull},
 			{TEXT("melee_kill_repeats_attack_every_seconds"), &ProbeFollowThrough},
 			{TEXT("enemies_cannot_move_away_within_metres"), &ProbeNowhereToRun},

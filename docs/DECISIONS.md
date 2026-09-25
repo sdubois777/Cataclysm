@@ -629,6 +629,124 @@ the way it was registered before the window; restored, each run was 1 performed,
 
 ---
 
+## 2026-09-25 — Chorus, engine only: each of a caster's minions repeats each landed skill hit for 30% of what it sent
+
+**Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmChorus.h` and `.cpp` (new),
+`CataclysmSkillTemplate.h` and `.cpp` (the repeat after each hit, and the marker for hits after the cast),
+`CataclysmSkillTemplates.cpp` (a thrown axe's hit, an aura's pulse, a rift's collapse),
+`CataclysmProjectile.cpp` (a projectile's contact), `CataclysmMinion.h` and `.cpp` (a minion's own blow
+settings, made public), `CataclysmPlayerClassStats.cpp` (one stat with no attribute), a new test file, a
+probe in the stat exemption test and one Python file. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ritualist_capstone_200`, The Final Pact, option 3, Chorus: "Your minions repeat each skill you cast,
+dealing 30% of its damage." One stat with no attribute, above zero meaning held, which its row will
+carry: `minions_repeat_your_skills` (1). The 30% is `UCataclysmChorus::SharePercent`.
+
+**Engine only, and so it does nothing in play until its Passive Effects row lands.** The design workbook
+is held by the enchantment session. The row, and a test that wears it, go in the later rows change with
+the rows for Both Hands Full, Follow Through, Nowhere to Run and Shoulder Through.
+
+### THE GENRE
+
+Path of Exile's Mirage Archer support: "When you Hit an Enemy with an Arrow from a Supported Skill, Summon
+a Mirage Archer which uses that Skill", which "deals (31—40)% less Damage with Supported Skills", with a
+maximum of one. Path of Exile's Spell Totem support: "you will summon a totem that casts the spell for
+you", and "Supported Skills deal (50—55)% less Damage". Both from `poedb.tw`, fetched 2026-09-25. The
+research settles that one helper using the player's skill for a reduced share is a shipped shape. How
+several helpers share it is this game's own, and is the judgement below.
+
+### THE OWNER'S DECISION, 2026-09-25, AND THE RULINGS UNDER THE OWNER'S DELEGATION
+
+- **Each minion deals 30% of the skill's damage: the OWNER'S decision**, 2026-09-25, in the owner's words:
+  "No it should be 30% each". With N living minions a hit gains N x 30%. It overturned the coordinating
+  session's ruling of the same day that the minions share 30% between them, 30% / N each. Minions and
+  thralls both count, as `UCataclysmCommand::ThingsCommandedBy` lists them.
+
+  **A consequence, stated because it is large:** the three Final Pact options are one choice, and at 8
+  minions Chorus adds 240% of every skill hit where Hollow Crown gives 32% more damage; at 15 minions it
+  is about 450%. `UCataclysmChorus::SharePercent` is the constant to tune if play shows it is too strong.
+
+The rest were ruled by the coordinating session under the owner's delegation:
+
+- **"Each skill you cast" is every skill but the basic attack**, which is what the `skill_use` event
+  counts (`ACataclysmPlayerCharacter::OnSkillWasUsed`). The design document does not define "cast", and
+  `Type.Spell` marks only nine Demonic skills.
+- **Hits only**, on each enemy a hit of the cast landed on. No burn, rider, displacement, zone or
+  summoning is repeated, and no second shape is traced from the minion; there is no distance limit.
+- **Each repeat is the minion's own blow**, through `ApplyDirectDamage` with the minion as instigator and
+  the delivery the minion's own swing uses (no critical strike, penetration, leech, weapon sub-type or
+  ailment chance), worth its share of what the caster's hit SENT. The target mitigates it. The owner
+  ruled on 2026-09-17 that a minion's hits are its own; the Conduit keystone makes them count as the
+  caster's, and does so for these through `UCataclysmCombatEvents::AttackerOf` with no code of its own.
+- **A repeat is not a skill use.** Nothing repeats a repeat, and Follow Through does not act on a kill by
+  one.
+
+**One reading, stated because it narrows the proposal the ruling approved.** The proposal named four
+places a skill's hit is dealt. Three of the four are hits of the cast and are repeated: `HitTargets`, a
+projectile's contact, and a thrown axe's hit in `UCataclysmProjectileSkill::ThrowOne`. The fourth, a
+buried axe leaping to a new host when the old one dies (`UCataclysmBuriedWeapon::LeapFromDying`), comes
+after the cast and is not. Two hits that pass through `HitTargets` also come after the cast and are not
+repeated: an aura's pulse and a rift's collapse, which set `bHitsAfterTheCast` around the call. The
+ruling's "no later pulses" is what excludes them. Confirmed by the coordinating session on 2026-09-25.
+
+**A consequence, stated because it is easy to miss: an aura skill gains nothing from Chorus.** All of an
+aura's damage comes from its pulses, and no pulse is repeated.
+
+### DISPLAY
+
+Nothing new. A minion's blow applies a gameplay effect, and every such blow reaches
+`UCataclysmCombatOverlay::Record`, which draws a damage number whoever dealt it. So each repeat shows its
+own number over the enemy. Checked before building, as the ruling asked.
+
+### TESTS
+
+In the group `Cataclysm.Chorus.`, the stat given by hand, imps standing 15 metres behind the caster:
+
+- `AStrikeWithTwoMinionsIsRepeatedForThirtyPercentEach`: a real Heavy strike, 250 against the enemy,
+  and two imps add 75 each, 400 in all. Shared, it would be 325.
+- `ThreeMinionsEachRepeatThirtyPercentOfTheHit`: a hit that sent 1000 gains three repeats of 300, 900 in
+  all, not 300.
+- `AProjectilesContactIsRepeated`: a skill's projectile, 100 and two repeats of 30. A projectile no skill
+  fired is not repeated.
+- `NoRepeatWithoutTheOptionAMinionOrASkillOtherThanTheBasicAttack`.
+- `AnAurasPulseComesAfterTheCastAndIsNotRepeated`.
+- `ARepeatIsTheMinionsOwnBlowAndConduitMakesItYours`: credited to the imp without Conduit and to the
+  caster with it, dealt by the imp either way; the enemy is not moved or set alight.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`.
+
+**What no test here shows**: a thrown axe's hit (`ThrowOne`) being repeated, and a rift's collapse not
+being repeated; both calls are the same one line as the tested ones. **The stat is given by hand**, so
+none of these can see a missing or wrong row. When the row lands, that change must add a test that wears
+the real `Ritualist_capstone_200` option 3 row.
+
+### Run
+
+One editor window on 2026-09-25, ending at 13:59 UTC, on development 1a064654 as the base, at the head
+f7a1a7a4. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**, the first time this head was compiled: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on the same tree: 5,483 passed, 8 skipped, 0 failed (JUnit 5,491 tests).
+- **The whole suite**, started once no CI run was in progress: 2,507 tests performed, 2,507 succeeded, 0
+  failed; every declared test was reported. 40 skipped part of what they check for want of the Paragon
+  art, none of them a Chorus test.
+
+**Three guard proofs, each printing PROVED**, prefix `Cataclysm.Chorus.`, restored: 6 of 6 succeeded each
+time.
+
+- **The 30% shared rather than each** (`Each` divided by `Minions.Num()`): 3 of 6 failed, on eight
+  assertions. Two imps added 37.5 each, 325 in all where 400; three added 100 each, 300 where 900; the
+  projectile's two repeats made 130 where 160.
+- **`HitTargets` never repeats** (`&& Dealt < 0.0f` added to its Chorus condition): 1 of 6 failed, on two
+  assertions. The Heavy strike took 250 where 400, and no imp repeated it where two did.
+- **An aura's pulse not marked as after the cast** (its guard set to `false`): 1 of 6 failed, on one
+  assertion. Both imps repeated the pulse where none should.
+
+---
+
 ## 2026-09-25 — Shoulder Through, engine only: walking into an enemy pushes it 1.5 metres aside and strikes it for the weapon's damage, once a second per enemy
 
 **Affects:** `game/Source/Cataclysm/AbilitySystem/CataclysmShoulderThrough.h` and `.cpp` (new),

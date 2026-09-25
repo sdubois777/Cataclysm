@@ -274,6 +274,9 @@ const TArray<FString>& UCataclysmPlayerClassStats::StatsWithNoAttribute()
 		// Shoulder Through, above zero meaning held, read by
 		// UCataclysmShoulderThrough::Step. Issue #1515.
 		TEXT("moving_into_enemy_pushes_aside"),
+		// Chorus, above zero meaning held, read by UCataclysmChorus::Repeat.
+		// Issue #1515.
+		TEXT("minions_repeat_your_skills"),
 		// Rendering Blows' share of the struck enemy's armour and its seconds,
 		// read by UCataclysmAbilitySystemComponent::NoteLandedMeleeHitFrom on
 		// every third landed melee hit on one enemy. Issue #1515.
