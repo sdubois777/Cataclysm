@@ -477,6 +477,134 @@ the way it was registered before the window; restored, each run was 1 performed,
 
 ---
 
+## 2026-09-25 — Nowhere to Run, engine only: enemies within 8 metres cannot move themselves farther away, are marked "Held", and keep Fervour from decaying
+
+**Affects:** `game/Source/Cataclysm/Character/CataclysmEnemyCharacter.h` and `.cpp` (the hold),
+`game/Source/Cataclysm/AbilitySystem/CataclysmDebuffs.h` and `.cpp` (the holder's step),
+`game/Source/Cataclysm/Character/CataclysmCharacterBase.cpp` (the step's call), `CataclysmFervour.cpp`
+(the no-decay radius), `CataclysmSkillEffects.cpp` and `CataclysmTether.cpp` (displacement noted),
+`game/Source/Cataclysm/Character/CataclysmEnemyModifiers.cpp` (a Phasewalker's step),
+`game/Source/Cataclysm/Interface/CataclysmCombatOverlay.h` and `.cpp` ("Held"),
+`CataclysmPlayerClassStats.cpp` (one stat with no attribute), a new test file, a test beside the Fervour
+tests, the stat exemption test and two Python files. Issue
+[#1515](https://github.com/sdubois777/Cataclysm/issues/1515).
+
+### THE OPTION
+
+`Ravager_capstone_200` option 1, Nowhere to Run: "Enemies within 8 metres of you cannot move away from
+you. They may move toward you or around you, but not further away. Your Fervour does not decay while any
+enemy is held this way." One stat with no attribute carries both halves, which its row will carry:
+`enemies_cannot_move_away_within_metres` (8).
+
+**Engine only, and so it does nothing in play until its Passive Effects row lands.** The design workbook
+is held by the enchantment session. The row, and a test that wears it, go in one later rows change with
+Both Hands Full's and Follow Through's rows. Ruled 2026-09-25.
+
+**The design had placed it before it was built.** The 2026-09-08 entry on the Ravager's Attrition
+branch, in the paragraph opening "`Nowhere to Run` is the third 200 point option and it breaks a rule
+rather than adding a number": "It makes "always in contact" mechanical, and it repairs the Ravager's own
+generator as a side effect, because that generator empties when contact is lost."
+
+### THE GENRE
+
+Diablo IV has a crowd-control status called Tether that keeps a target within a radius. Search results
+say so; the pages that would state it (Icy Veins, Sportskeeda, the Fextralife Diablo 4 wiki) answered 403,
+405 and 404 on 2026-09-25, so it is not quoted and nothing here rests on it. The rulings below rest on
+this project's own design document.
+
+### RULINGS, 2026-09-25, UNDER THE OWNER'S DELEGATION
+
+Ruled by the coordinating session:
+
+- **It holds the enemy's OWN movement. Displacement done to the enemy is not held back.** The design
+  document settles this. Its crowd-control table has the row "Displacement, such as a 4 metre knockback |
+  No | The target can act on arrival", and the paragraph opening "Knocking a target back and knocking a
+  target down are two different effects" separates what is done to a target from what it does. The
+  option's verbs are the enemy's: "cannot move away", "may move toward you or around you". **The Whip's
+  Tether, which drags its ends back whatever moved them, is not copied**: undoing displacement would make
+  every knockback do nothing to anything within 8 metres. A pushed enemy that lands within 8 metres is held
+  from where it landed; one beyond is let go at once.
+- **Every way an enemy moves itself is held: none may end farther from the holder than where it began.**
+  Walking loses whatever carried it outward since the last frame. A charge may pass through the holder to
+  the far side and ends no farther than the charge began. A Phasewalker step that would land farther is
+  not made.
+- **The Fervour clause counts every hostile within 8 metres as held**, so the no-decay radius is at
+  least 8. **It is the larger of the existing grace and 8, not their sum**: a +4 grace row would add to
+  No Ground Given's to reach 12, which the sentence does not say. So for a character that already holds
+  No Ground Given, whose grace is 8, the clause adds nothing; for one without it, it widens 4 to 8.
+- **It does not conflict with Shoulder Through**, whose push is displacement.
+- **A held enemy is marked "Held"** on its status line, as Ground Down marks "Slowed". The standing rule
+  is that every system has a basic UI, and a player cannot otherwise tell a held enemy from one that is
+  standing still.
+
+### HOW IT IS BUILT
+
+- **`UCataclysmDebuffs::NowhereToRunStep`**, in the character's 0.25 second step beside Ground Down's,
+  marks every creature in the holder's radius as held for three steps, as Ground Down slows them.
+- **`ACataclysmEnemyCharacter::HoldAgainstMovingAway`**, every frame after the charge advances. It
+  compares how far the creature stands from the holder now with how far it stood last frame, **both
+  measured from where the holder stands now**, so a holder walking away drags nothing after it; if the
+  creature is farther, it is put back at the allowed distance on the same bearing, which keeps movement
+  around the holder and removes only the outward part. During a charge the allowed distance is where the
+  charge began.
+- **Displacement is marked where it happens**: `CataclysmDisplace`, through which every knockback, pull
+  and knock-up passes, and the Whip's Tether drag, call `NoteDisplaced`, so the hold measures from where
+  the creature landed.
+- **`MayMoveItselfTo`** is what a Phasewalker's step asks before it moves; a refused step waits its full
+  interval and draws a new direction next time.
+- **`UCataclysmFervour::DecayStep`** uses the larger of the grace radius and this stat.
+
+### TESTS
+
+In the group `Cataclysm.NowhereToRun.`, the stat given by hand:
+
+- `AHeldEnemyMayComeCloserOrGoAroundButNotWalkAway`: a creature at 5 metres is held and one at 9 is not;
+  walking out is taken back, coming in and going around are kept; the holder walking away drags nothing;
+  "Held" is shown on a held creature and not on the other.
+- `AKnockbackStillMovesAHeldEnemyAndPastEightMetresReleasesIt`.
+- `AChargeMayPassThroughButEndsNoFartherThanItBegan`.
+- `AHeldEnemyMayNotMoveItselfToSomewhereFarther`: the question a Phasewalker's step asks.
+- `Cataclysm.Passives.NowhereToRunKeepsFervourWithAnEnemyWithinEightMetresNotTwelve`, on a real Ravager
+  with its starting node: an enemy at 6 metres decays Fervour without the option and not with it, and at
+  10 metres it decays again.
+- A probe in `Cataclysm.StatExemption.EveryStatWithNoAttributeIsActuallyRead`, and the step pinned in
+  `tools/tests/test_hooks_no_headless_test_can_drive_still_call_their_jobs.py`.
+
+**What no test here shows**: that the creature's `Tick` calls the hold, since a test world is never
+ticked; the tests call the hold directly. The step's call in `RegenerationStep` is pinned by the Python
+file above. A Phasewalker's own step is not driven either: it draws a seeded random direction, so the test
+asks the question it asks.
+
+**The stat is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
+change must add a test that wears the real `Ravager_capstone_200` option 1 row.
+
+
+### Run
+
+One editor window on 2026-09-25, ending at 12:26 UTC, on development 5b8af475 as the base, at the head
+8b581f2a. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**, the first time this change was compiled: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on the same tree: 5,480 passed, 8 skipped, 0 failed (JUnit 5,488 tests).
+- **The whole suite**, started once no CI run was in progress: 2,491 tests performed, 2,491 succeeded, 0
+  failed; every declared test was reported. 40 skipped part of what they check for want of the Paragon
+  art, none of them a Nowhere to Run test.
+
+**Three guard proofs, each printing PROVED**, restored: every test succeeded each time.
+
+- **A held creature's own walk not held back, only its charge** (`if (NowCm > AllowedCm && IsCharging())`),
+  prefix `Cataclysm.NowhereToRun.`: 2 of 4 failed, on three assertions: walking out to 6 metres read 600
+  where 500, walking back out read 500 where 400, and walking away from where a knockback landed it read
+  600 where 500.
+- **A knockback not noted** (`(void)Creature;` in place of `NoteDisplaced()` in `CataclysmDisplace`): 1 of 4
+  failed, on two assertions, each reading 300 where 500: the hold took the creature back to where it
+  stood before the knockback.
+- **The no-decay radius the two added rather than the larger** (`Metres = Metres + HoldMetres;`), prefix
+  `Cataclysm.Passives.NowhereToRun`: 1 of 1 failed, on "and at 10 metres it decays again: the radius is 8,
+  not 4 and 8 added".
+---
+
 ## 2026-09-25 — Follow Through, engine only: a melee kill repeats that attack for free at the nearest enemy in reach, once every 3 seconds
 
 **Affects:** a new `game/Source/Cataclysm/AbilitySystem/CataclysmFollowThrough.h` and `.cpp`,

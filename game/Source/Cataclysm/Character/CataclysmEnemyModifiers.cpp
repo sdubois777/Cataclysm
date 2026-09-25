@@ -360,6 +360,15 @@ bool UCataclysmEnemyModifiers::PhaseStep(AActor* Character, float StepSeconds)
 	// SWEPT, so it cannot phase into a wall. A blocked teleport moves it as far
 	// as it can go, which reads as the creature reappearing against the wall
 	// rather than inside it.
+	//
+	// NOT WHEN IT WOULD LAND FARTHER FROM A HOLDER OF NOWHERE TO RUN. Issue #1515,
+	// ruled 2026-09-25: a phase is the creature moving itself, and a held
+	// creature may not move itself away. The step is simply not made; its
+	// interval has started again, so it tries a new direction next time.
+	if (!Enemy->MayMoveItselfTo(Enemy->GetActorLocation() + Step * PhasewalkerDistanceCm))
+	{
+		return false;
+	}
 	Enemy->AddActorWorldOffset(Step * PhasewalkerDistanceCm, /*bSweep=*/true);
 
 	return true;

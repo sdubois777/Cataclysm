@@ -10934,6 +10934,88 @@ bool FCataclysmRavagerFervourGraceResetsTest::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmNowhereToRunFervourTest,
+	"Cataclysm.Passives.NowhereToRunKeepsFervourWithAnEnemyWithinEightMetresNotTwelve",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Nowhere to Run's third sentence, `Ravager_capstone_200` option 1: "Your
+ * Fervour does not decay while any enemy is held this way." Issue #1515.
+ *
+ * A RAVAGER WITH ITS STARTING NODE, whose grace is 4 metres, and an enemy at 6.
+ * Without the option, Fervour decays once the grace seconds pass. With it, the
+ * enemy at 6 metres is within 8 and nothing decays. Moved to 10 metres, it
+ * decays again: the radius is the larger of 4 and 8, ruled 2026-09-25, not
+ * their sum, which would reach 12.
+ *
+ * THE OPTION IS GIVEN THROUGH THE DUNGEON STAT MODIFIERS, which the refresh
+ * keeps beside the character's real rows, so the starting node's grace stays
+ * what its row makes it. The option has no row yet.
+ */
+bool FCataclysmNowhereToRunFervourTest::RunTest(const FString&)
+{
+	using namespace CataclysmRavagerFervourTest;
+
+	FScopedPlayerClass AsRavager(TEXT("Ravager"));
+	if (!TestTrue(TEXT("the class console variable exists"), AsRavager.IsUsable()))
+	{
+		return false;
+	}
+	UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	FRealCharacter Player = Spawn(World);
+	if (!TestTrue(TEXT("a possessed Ravager with an effect table"), Player.IsComplete()))
+	{
+		return false;
+	}
+	Hold(Player, {{FName(StartingNode), 1}});
+	GiveFervour(Player, 50.0f);
+
+	ACataclysmEnemyCharacter* Enemy = EnemyAtMetres(World, 6.0f);
+	if (!TestNotNull(TEXT("an enemy at 6 metres"), Enemy))
+	{
+		return false;
+	}
+
+	// WITHOUT THE OPTION: THE CONTROL.
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	World->TimeSeconds += 4.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	const float AfterDecay = FervourOf(Player);
+	if (!TestTrue(TEXT("without the option, an enemy at 6 metres is outside the "
+					   "4 metre grace and Fervour decays"),
+				  AfterDecay < 50.0f))
+	{
+		return false;
+	}
+
+	// WITH IT.
+	FCataclysmStatModifier Flat;
+	Flat.Bucket = ECataclysmStatBucket::Flat;
+	Flat.Source = ECataclysmModifierSource::PassiveKeystone;
+	Flat.Value = 8.0f;
+	TMap<FName, TArray<FCataclysmStatModifier>> Option;
+	Option.Add(FName(UCataclysmDebuffs::NowhereToRunMetresStat), {Flat});
+	Player.AbilitySystem->SetDungeonStatModifiers(MoveTemp(Option));
+	Player.Equipment->RefreshAttributes(Player.AbilitySystem);
+
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	World->TimeSeconds += 4.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	TestEqual(TEXT("with Nowhere to Run, the enemy at 6 metres is held and nothing "
+				   "decays"),
+			  FervourOf(Player), AfterDecay, 0.001f);
+
+	Enemy->SetActorLocation(FVector(10.0f * Metre, 0.0f, 0.0f));
+	World->TimeSeconds += 4.0f;
+	UCataclysmFervour::DecayStep(Player.Character, OneSecond);
+	TestTrue(TEXT("and at 10 metres it decays again: the radius is 8, not 4 and 8 "
+				  "added"),
+			 FervourOf(Player) < AfterDecay);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourWithoutTheNodeNeverDecaysTest,
 	"Cataclysm.Passives.AMasochistWithoutTheRavagerNodeNeverDecays",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

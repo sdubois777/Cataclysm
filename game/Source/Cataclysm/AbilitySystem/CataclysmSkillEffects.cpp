@@ -2231,6 +2231,14 @@ namespace
 
 		Target->AddActorWorldOffset(Resisted * Share, /*bSweep=*/true);
 
+		// DISPLACEMENT DONE TO A CREATURE IS NOT ITS OWN MOVEMENT, so Nowhere to
+		// Run measures from where it landed rather than undoing it. Issue #1515,
+		// ruled 2026-09-25.
+		if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(Target))
+		{
+			Creature->NoteDisplaced();
+		}
+
 		// AND A SWING DRAWN BACK IS LOST, IF ITS ROW SAYS A STAGGER LOSES IT.
 		// The Greatsword's Backswing: "being staggered loses the swing
 		// entirely", written as `ChargeBreaksOn=Stagger`. Issue #1141.

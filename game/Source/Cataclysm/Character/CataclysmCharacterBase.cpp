@@ -272,6 +272,11 @@ void ACataclysmCharacterBase::RegenerationStep()
 	// three steps later.
 	UCataclysmDebuffs::GroundDownStep(this, UCataclysmRegeneration::StepSeconds);
 
+	// AND NOWHERE TO RUN HOLDS THE CREATURES NEAR IT. Issue #1515. The same step
+	// and the same three-step hold as Ground Down; the creature enforces it every
+	// frame between steps.
+	UCataclysmDebuffs::NowhereToRunStep(this, UCataclysmRegeneration::StepSeconds);
+
 	// AND A CREATURE MAY CARRY AN ENEMY MODIFIER THAT RADIATES AN AURA. Issue
 	// #742 gives a creature its modifiers; the Demonic Hellfire Aura is the
 	// first of them whose effect reaches out on its own. "Emits a burning aura

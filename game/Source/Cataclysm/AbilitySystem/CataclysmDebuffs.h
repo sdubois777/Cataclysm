@@ -430,4 +430,26 @@ public:
 	 *         the option
 	 */
 	static int32 GroundDownStep(AActor* Character, float StepSeconds);
+
+	/**
+	 * Nowhere to Run, `Ravager_capstone_200` option 1. Issue #1515: "Enemies
+	 * within 8 metres of you cannot move away from you." The radius in metres;
+	 * above zero means the option is held. Its row will carry the 8.
+	 *
+	 * THE SAME STAT GIVES THE FERVOUR CLAUSE, "Your Fervour does not decay while
+	 * any enemy is held this way": every hostile within the radius is held, so
+	 * `UCataclysmFervour::DecayStep` reads this as a no-decay radius at least
+	 * this wide. Ruled 2026-09-25.
+	 */
+	static const TCHAR* NowhereToRunMetresStat;
+
+	/**
+	 * Hold every creature within `Character`'s Nowhere to Run radius for
+	 * `GroundDownHeldSteps` steps, as Ground Down slows them. The creature keeps
+	 * its own movement from carrying it farther away; see
+	 * `ACataclysmEnemyCharacter::NoteHeldBy`.
+	 *
+	 * @return how many creatures it held this step
+	 */
+	static int32 NowhereToRunStep(AActor* Character, float StepSeconds);
 };

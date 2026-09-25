@@ -1372,6 +1372,50 @@ namespace CataclysmStatExemptionTest
 	}
 
 	/**
+	 * `enemies_cannot_move_away_within_metres`, read by
+	 * `UCataclysmDebuffs::NowhereToRunStep`. Issue #1515, Nowhere to Run. An
+	 * Imp near a holder is held; near a fighter without the stat it is not.
+	 */
+	void ProbeNowhereToRun(FAutomationTestBase& Test)
+	{
+		UWorld* World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+		if (!Test.TestNotNull(TEXT("a world"), World))
+		{
+			return;
+		}
+		ON_SCOPE_EXIT { World->DestroyWorld(/*bInformEngineOfWorld=*/false); };
+
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride =
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		const auto HoldsAnImp = [&](FScopedFighter& Fighter)
+		{
+			ACataclysmImpCharacter* Imp = World->SpawnActor<ACataclysmImpCharacter>(
+				ACataclysmImpCharacter::StaticClass(),
+				Fighter.Actor->GetActorLocation() + FVector(300.0f, 0.0f, 0.0f),
+				FRotator::ZeroRotator, Params);
+			if (!Test.TestNotNull(TEXT("an Imp"), Imp))
+			{
+				return false;
+			}
+			UCataclysmDebuffs::NowhereToRunStep(Fighter.Actor, 0.25f);
+			const bool bHeld = Imp->IsHeld();
+			Imp->Destroy();
+			return bHeld;
+		};
+
+		FScopedFighter Plain(World, 0.0f);
+		FScopedFighter Holder(World, 0.0f);
+		GrantFlats(Holder.Actor, {{FName(UCataclysmDebuffs::NowhereToRunMetresStat), 8.0f}});
+		Test.TestFalse(TEXT("an Imp near a fighter without "
+							"enemies_cannot_move_away_within_metres is not held"),
+					   HoldsAnImp(Plain));
+		Test.TestTrue(TEXT("and one near a fighter holding it is, so "
+						   "NowhereToRunStep really reads it"),
+					  HoldsAnImp(Holder));
+	}
+
+	/**
 	 * `minion_energy_shield_percent_of_yours`, read by
 	 * `UCataclysmRegeneration::SharedBloodStep`. Issue #1515, Shared Blood. An
 	 * imp summoned by a summoner holding it has a shield; one summoned by a
@@ -3134,6 +3178,7 @@ namespace CataclysmStatExemptionTest
 			{TEXT("minion_energy_shield_percent_of_yours"), &ProbeSharedBlood},
 			{TEXT("two_handed_weapon_in_each_hand"), &ProbeBothHandsFull},
 			{TEXT("melee_kill_repeats_attack_every_seconds"), &ProbeFollowThrough},
+			{TEXT("enemies_cannot_move_away_within_metres"), &ProbeNowhereToRun},
 			{TEXT("enemies_near_slowed_within_metres"), &ProbeGroundDownMetres},
 			{TEXT("enemies_near_slowed_percent"), &ProbeGroundDownPercent},
 			{TEXT("third_melee_hit_armour_removed_percent"), &ProbeRendPercent},

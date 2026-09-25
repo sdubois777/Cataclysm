@@ -3,6 +3,7 @@
 #include "AbilitySystem/CataclysmTether.h"
 #include "AbilitySystem/CataclysmSkillEffects.h"
 #include "AbilitySystem/CataclysmTargeting.h"
+#include "Character/CataclysmEnemyCharacter.h"
 #include "Cataclysm.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
@@ -176,6 +177,16 @@ void ACataclysmTether::Check()
 		// being put inside it.
 		A->SetActorLocation(A->GetActorLocation() + Half, /*bSweep=*/true);
 		B->SetActorLocation(B->GetActorLocation() - Half, /*bSweep=*/true);
+
+		// A DRAG IS DISPLACEMENT, NOT THE CREATURE'S OWN MOVEMENT, so Nowhere to
+		// Run measures from where each end landed. Issue #1515.
+		for (AActor* End : {A, B})
+		{
+			if (ACataclysmEnemyCharacter* Creature = Cast<ACataclysmEnemyCharacter>(End))
+			{
+				Creature->NoteDisplaced();
+			}
+		}
 
 		++TimesDragged;
 	}
