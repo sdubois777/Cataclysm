@@ -377,7 +377,13 @@ CATACLYSM_TEST(FCataclysmSheetIsCompleteTest,
 	// That is exactly what happened here: the attribute was added and this
 	// constant was not raised, so the combat count read 72 against an
 	// expected 28 + 43 = 71 until this line changed.
-	constexpr int32 OffSheetCombatStats = 44;
+	// AND FORTY-FIVE SINCE ENERGY SHIELD REGENERATION CAN BEGIN WITH NO DELAY,
+	// issue #1833, the small engine halves. The thirty-first time the rule is
+	// met: no affix grants it, nothing scales it, no class differs on it, and
+	// the enchantment "Energy shield regeneration begins immediately after
+	// taking damage with no delay" is its only source. A FLAG, like the six above. It was
+	// missed the same way as the one above: the whole suite read 73 against 72.
+	constexpr int32 OffSheetCombatStats = 45;
 
 	/**
 	 * How far healing may take the character, and how much of each amount
