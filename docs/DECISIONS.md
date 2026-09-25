@@ -578,6 +578,31 @@ asks the question it asks.
 **The stat is given by hand**, so none of these can see a missing or wrong row. When the row lands, that
 change must add a test that wears the real `Ravager_capstone_200` option 1 row.
 
+
+### Run
+
+One editor window on 2026-09-25, ending at 12:26 UTC, on development 5b8af475 as the base, at the head
+8b581f2a. Every figure below is what `python tools/unreal_build.py`, `pytest` or `prove_cpp_guard`
+printed, and each matched what was registered before it ran.
+
+- **The build**, the first time this change was compiled: "Build: Succeeded - 29 actions, 26 files compiled".
+- **The Python suite of record**, on the same tree: 5,480 passed, 8 skipped, 0 failed (JUnit 5,488 tests).
+- **The whole suite**, started once no CI run was in progress: 2,491 tests performed, 2,491 succeeded, 0
+  failed; every declared test was reported. 40 skipped part of what they check for want of the Paragon
+  art, none of them a Nowhere to Run test.
+
+**Three guard proofs, each printing PROVED**, restored: every test succeeded each time.
+
+- **A held creature's own walk not held back, only its charge** (`if (NowCm > AllowedCm && IsCharging())`),
+  prefix `Cataclysm.NowhereToRun.`: 2 of 4 failed, on three assertions: walking out to 6 metres read 600
+  where 500, walking back out read 500 where 400, and walking away from where a knockback landed it read
+  600 where 500.
+- **A knockback not noted** (`(void)Creature;` in place of `NoteDisplaced()` in `CataclysmDisplace`): 1 of 4
+  failed, on two assertions, each reading 300 where 500: the hold took the creature back to where it
+  stood before the knockback.
+- **The no-decay radius the two added rather than the larger** (`Metres = Metres + HoldMetres;`), prefix
+  `Cataclysm.Passives.NowhereToRun`: 1 of 1 failed, on "and at 10 metres it decays again: the radius is 8,
+  not 4 and 8 added".
 ---
 
 ## 2026-09-25 — Follow Through, engine only: a melee kill repeats that attack for free at the nearest enemy in reach, once every 3 seconds
