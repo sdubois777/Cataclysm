@@ -1836,7 +1836,7 @@ class TestEnchantmentEffects:
               "Value High", "Required Tags", "Condition", "Condition Value",
               "Scale", "Scale Step", "Action", "Action Event", "Fraction Of",
               "Scale Max Steps", "Stack Seconds", "Scale Offset",
-              "Every Seconds"]
+              "Every Seconds", "Every Nth"]
     SHIELD = "Positive_Double_your_energy_shield"
     SHIELD_WORDS = "Double your energy shield"
 
@@ -1863,7 +1863,7 @@ class TestEnchantmentEffects:
             "Condition": "", "ConditionValue": 0.0, "Scale": "",
             "ScaleStep": 0.0, "Action": "", "ActionEvent": "",
             "FractionOf": "", "ScaleMaxSteps": 0, "StackSeconds": 0.0, "ScaleOffset": 0.0,
-            "EverySeconds": 0.0}]
+            "EverySeconds": 0.0, "EveryNth": 0}]
 
     # A ROW'S OWN STACKS. Issue #1833: the Action Event grants one, Stack
     # Seconds is how long they last and Scale Max Steps the cap.
@@ -1931,6 +1931,56 @@ class TestEnchantmentEffects:
         with pytest.raises(gen.DataError):
             gen.enchantment_effects(self.book(tmp_path, [self.row(
                 {**self.CONSECUTIVE, "Scale Step": 2})]))
+
+    # AN EVERY-Nth ROW. Issue #1833, phase 2: the action names what it counts,
+    # and Every Nth is N.
+    NTH = {"Stat": None, "Value Kind": None, "Action": "nth_spell_mana_cost",
+           "Value Low": 50, "Every Nth": 3}
+
+    def test_an_every_nth_row_is_carried_through(self, tmp_path):
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(self.NTH)]))
+        assert (out[0]["Action"], out[0]["ActionEvent"], out[0]["EveryNth"],
+                out[0]["FractionOf"]) == ("nth_spell_mana_cost", "", 3, "")
+
+    def test_an_every_nth_row_with_no_n_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="states no Every Nth"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NTH, "Every Nth": None})]))
+
+    @pytest.mark.parametrize("n", [1, 2.5, 101])
+    def test_an_every_nth_row_with_an_n_outside_its_bounds_is_refused(
+            self, tmp_path, n):
+        with pytest.raises(gen.DataError, match="whole number from 2"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NTH, "Every Nth": n})]))
+
+    @pytest.mark.parametrize("column, written", [
+        ("Action Event", "spell"), ("Scale", "debuffs_carried"),
+        ("Fraction Of", "maximum"), ("Value Kind", "increased")])
+    def test_an_every_nth_row_refuses_a_column_it_cannot_use(self, tmp_path,
+                                                              column, written):
+        with pytest.raises(gen.DataError, match="must be\\s+empty|must be empty"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NTH, column: written})]))
+
+    def test_an_every_nth_row_with_stack_seconds_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="no window"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**self.NTH, "Stack Seconds": 5})]))
+
+    def test_every_nth_on_another_row_is_refused(self, tmp_path):
+        with pytest.raises(gen.DataError, match="not an every-Nth action"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {"Every Nth": 3})]))
+
+    def test_an_attack_that_deals_no_damage_is_written_100(self, tmp_path):
+        attack = {**self.NTH, "Action": "nth_attack_no_damage", "Value Low": 100,
+                  "Every Nth": 10}
+        out = gen.enchantment_effects(self.book(tmp_path, [self.row(attack)]))
+        assert (out[0]["ValueLow"], out[0]["EveryNth"]) == (100, 10)
+        with pytest.raises(gen.DataError, match="No damage is all"):
+            gen.enchantment_effects(self.book(tmp_path, [self.row(
+                {**attack, "Value Low": 50})]))
 
     # A STACK PLACED ON THE OTHER CHARACTER. Issue #1833, phase 2: an action
     # row whose event names that character; Stack Seconds is required, the cap

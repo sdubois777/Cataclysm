@@ -195,7 +195,26 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		// AND THE NEXT-USE CHARGES THIS USE SPENDS, here for the reason the
 		// tally above is: spent when the use is paid for, ruled 2026-09-24.
 		// Issue #1833, phase 2.
-		SpendHeldNextUseCharges(Cataclysm);
+		// THE Nth ATTACK OF A WORN "EVERY Nth ATTACK" ROW DEALS NO DAMAGE. Issue
+		// #1833, phase 2. An attack is a use that delivers damage itself and is
+		// not a spell, the test a "next attack" charge uses; the basic attack
+		// is one. Asked before it is counted. A judgement: the Nth attack
+		// spends no next-use charge, since it could do nothing with one.
+		bThisUseDealsNoDamage = false;
+		if (DeliversDamageItself() && !UCataclysmSkillEffects::IsSpell(SkillTags))
+		{
+			bThisUseDealsNoDamage = Cataclysm->NextAttackIsNth();
+			Cataclysm->NoteNthEvent(ECataclysmEveryNth::Attack);
+		}
+		if (bThisUseDealsNoDamage)
+		{
+			LastNextUseIncreasePercent = 0.0f;
+			LastNextUseMoreMultiplier = 0.0f;
+		}
+		else
+		{
+			SpendHeldNextUseCharges(Cataclysm);
+		}
 
 		// AND THE TWO WINDOWS A SKILL USE OPENS FOR AN ENCHANTMENT. Issue
 		// #1826. "After using a charge skill gain 20%-40% increased attack
@@ -283,6 +302,9 @@ bool UCataclysmSkillTemplate::CommitAndBegin(
 		if (SpellTag.IsValid() && SkillTags.HasTag(SpellTag))
 		{
 			Cataclysm->NoteSpellCast();
+			// AND AN "EVERY Nth SPELL" ROW COUNTS IT, after it was paid for.
+			// Issue #1833, phase 2.
+			Cataclysm->NoteNthEvent(ECataclysmEveryNth::SpellCast);
 		}
 	}
 	else
@@ -1197,7 +1219,13 @@ bool UCataclysmSkillTemplate::BlowLandedOn(const AActor* Target) const
 	// See the header: a target this skill never sent a blow at is not in the
 	// list either, and answers "landed" -- which is what keeps a Support skill
 	// dealing no damage able to curse and to shove.
-	return !EvadedLastBlow.Contains(Target);
+	//
+	// AND NO BLOW OF A USE THAT DEALS NO DAMAGE LANDED: the Nth attack of a worn
+	// "every Nth attack" row lands no hit, so its stated effects -- a stun, a
+	// shove, a curse -- reach nobody. Issue #1833, phase 2, ruled 2026-09-24.
+	// A Support skill dealing no damage is not an attack, so it is never that
+	// use and keeps cursing and shoving as above.
+	return !bThisUseDealsNoDamage && !EvadedLastBlow.Contains(Target);
 }
 
 int32 UCataclysmSkillTemplate::ApplyNamedEffectsTo(AActor* Target,

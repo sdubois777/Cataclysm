@@ -2043,6 +2043,9 @@ FCataclysmWhatDeathEnded UCataclysmAbilitySystemComponent::ClearWhatDeathEnds()
 	}
 	PlacedStacks.Empty();
 
+	// AND EVERY "EVERY Nth" COUNT, ruled 2026-09-24. Issue #1833, phase 2.
+	NthCounts.Empty();
+
 	// AND EVERY HELD NEXT-USE CHARGE, ruled 2026-09-24. Issue #1833, phase 2.
 	for (const TPair<FName, FNextUseCharge>& Held : NextUseCharges)
 	{
@@ -2564,6 +2567,118 @@ float UCataclysmAbilitySystemComponent::ArmourRemovedPercentNow() const
 	return FMath::Clamp(Rending + PlacedPercentNow(/*bCutsDamage=*/false), 0.0f, 100.0f);
 }
 
+int32 UCataclysmAbilitySystemComponent::StandingNthCount(FName Key) const
+{
+	const FNthCount* Held = NthCounts.Find(Key);
+	if (!Held)
+	{
+		return 0;
+	}
+	// LEAVING A COMBAT THE COUNT WAS TAKEN IN ENDS IT, ruled 2026-09-24. A count
+	// taken out of combat is kept, so spells cast before a fight still count,
+	// and entering combat does not end it.
+	if (Held->bInCombat
+		&& (SecondsInCombat() < 0.0f
+			|| CombatStartedAtSeconds != Held->CombatStartedAtSeconds))
+	{
+		return 0;
+	}
+	return Held->Count;
+}
+
+float UCataclysmAbilitySystemComponent::NthPercentDue(ECataclysmEveryNth Kind) const
+{
+	float Due = 0.0f;
+	TSet<FName> Asked;
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.NthKind != Kind || Action.EveryNth < 1 || Action.NthKey.IsNone()
+			|| Asked.Contains(Action.NthKey))
+		{
+			continue;
+		}
+		Asked.Add(Action.NthKey);
+		if (StandingNthCount(Action.NthKey) + 1 >= Action.EveryNth)
+		{
+			Due += FMath::Max(0.0f, Action.Percent);
+		}
+	}
+	return Due;
+}
+
+float UCataclysmAbilitySystemComponent::NthHitTakenBonusPercent() const
+{
+	return NthPercentDue(ECataclysmEveryNth::HitTaken);
+}
+
+float UCataclysmAbilitySystemComponent::NthSpellExtraManaPercent() const
+{
+	return NthPercentDue(ECataclysmEveryNth::SpellCast);
+}
+
+bool UCataclysmAbilitySystemComponent::NextAttackIsNth() const
+{
+	// AN ATTACK ROW'S PERCENT IS NOT READ, so it asks whether any is due rather
+	// than what they are worth.
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.NthKind == ECataclysmEveryNth::Attack && Action.EveryNth >= 1
+			&& !Action.NthKey.IsNone()
+			&& StandingNthCount(Action.NthKey) + 1 >= Action.EveryNth)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void UCataclysmAbilitySystemComponent::NoteNthEvent(ECataclysmEveryNth Kind)
+{
+	TSet<FName> Counted;
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.NthKind != Kind || Action.EveryNth < 1 || Action.NthKey.IsNone()
+			|| Counted.Contains(Action.NthKey))
+		{
+			continue;
+		}
+		// ONE COUNT PER ROW, however many copies are worn, for the reason the
+		// own stacks give.
+		Counted.Add(Action.NthKey);
+		const int32 Next = StandingNthCount(Action.NthKey) + 1;
+		FNthCount& Held = NthCounts.FindOrAdd(Action.NthKey);
+		Held.Count = Next >= Action.EveryNth ? 0 : Next;
+		Held.bInCombat = SecondsInCombat() >= 0.0f;
+		Held.CombatStartedAtSeconds = CombatStartedAtSeconds;
+	}
+}
+
+TArray<UCataclysmAbilitySystemComponent::FHeldNthCount>
+UCataclysmAbilitySystemComponent::NthCountsForDisplay() const
+{
+	TArray<FHeldNthCount> Out;
+	TSet<FName> Shown;
+	for (const FCataclysmPoolAction& Action : PoolActions)
+	{
+		if (Action.NthKind == ECataclysmEveryNth::None || Action.NthKey.IsNone()
+			|| Shown.Contains(Action.NthKey))
+		{
+			continue;
+		}
+		Shown.Add(Action.NthKey);
+		const int32 Count = StandingNthCount(Action.NthKey);
+		if (Count > 0)
+		{
+			FHeldNthCount Entry;
+			Entry.Kind = Action.NthKind;
+			Entry.Count = Count;
+			Entry.EveryNth = Action.EveryNth;
+			Out.Add(Entry);
+		}
+	}
+	return Out;
+}
+
 float UCataclysmAbilitySystemComponent::DamageCutPercentNow() const
 {
 	return FMath::Clamp(PlacedPercentNow(/*bCutsDamage=*/true), 0.0f, 100.0f);
@@ -2818,6 +2933,12 @@ const TCHAR* UCataclysmAbilitySystemComponent::EnemyArmorRemovedAction =
 	TEXT("enemy_armor_removed");
 const TCHAR* UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction =
 	TEXT("attacker_damage_removed");
+const TCHAR* UCataclysmAbilitySystemComponent::NthHitTakenDamageAction =
+	TEXT("nth_hit_taken_damage");
+const TCHAR* UCataclysmAbilitySystemComponent::NthSpellManaCostAction =
+	TEXT("nth_spell_mana_cost");
+const TCHAR* UCataclysmAbilitySystemComponent::NthAttackNoDamageAction =
+	TEXT("nth_attack_no_damage");
 const TCHAR* UCataclysmAbilitySystemComponent::TimedEvent =
 	TEXT("every_seconds");
 

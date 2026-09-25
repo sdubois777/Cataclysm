@@ -1620,6 +1620,16 @@ bool UCataclysmSkillEffects::ApplyDamageOverTime(
 		return false;
 	}
 
+	// NOTHING FROM A USE THAT DEALS NO DAMAGE: the Nth attack of a worn "every
+	// Nth attack" row. Issue #1833, phase 2, ruled 2026-09-24: its burn too.
+	if (const UCataclysmSkillTemplate* Using = Cast<UCataclysmSkillTemplate>(Skill))
+	{
+		if (Using->bThisUseDealsNoDamage)
+		{
+			return false;
+		}
+	}
+
 	UAbilitySystemComponent* Source = UCataclysmTargeting::AbilitySystemOf(Instigator);
 	UAbilitySystemComponent* Defender = UCataclysmTargeting::AbilitySystemOf(Target);
 	if (!Source || !Defender)

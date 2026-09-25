@@ -2265,4 +2265,12 @@ struct FCataclysmEnchantmentEffectRow : public FTableRowBase
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
 	float EverySeconds = 0.0f;
+
+	/**
+	 * N for an "every Nth" action row, or 0. Issue #1833, phase 2: "Every
+	 * third cast of your spells cost 20%-80% of your current mana" is 3, with
+	 * the action `nth_spell_mana_cost`.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enchantment Effect")
+	int32 EveryNth = 0;
 };

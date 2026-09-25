@@ -1105,6 +1105,27 @@ int32 UCataclysmItemModifiers::AccumulateEnchantmentsInto(
 					const bool bDamageRemoved = Effect->Action.Equals(
 						UCataclysmAbilitySystemComponent::AttackerDamageRemovedAction,
 						ESearchCase::IgnoreCase);
+					// AN "EVERY Nth" ROW, keyed by the enchantment and the action.
+					// Issue #1833, phase 2. The action names what is counted, so
+					// the row has no Action Event.
+					const TPair<const TCHAR*, ECataclysmEveryNth> NthActions[] = {
+						{UCataclysmAbilitySystemComponent::NthHitTakenDamageAction,
+						 ECataclysmEveryNth::HitTaken},
+						{UCataclysmAbilitySystemComponent::NthSpellManaCostAction,
+						 ECataclysmEveryNth::SpellCast},
+						{UCataclysmAbilitySystemComponent::NthAttackNoDamageAction,
+						 ECataclysmEveryNth::Attack},
+					};
+					for (const TPair<const TCHAR*, ECataclysmEveryNth>& Nth : NthActions)
+					{
+						if (Effect->Action.Equals(Nth.Key, ESearchCase::IgnoreCase))
+						{
+							Action.NthKind = Nth.Value;
+							Action.EveryNth = Effect->EveryNth;
+							Action.NthKey = FName(*FString::Printf(
+								TEXT("%s:%s"), *Effect->Enchantment, *Effect->Action));
+						}
+					}
 					if (bArmourRemoved || bDamageRemoved)
 					{
 						Action.PlacedKey = FName(*FString::Printf(

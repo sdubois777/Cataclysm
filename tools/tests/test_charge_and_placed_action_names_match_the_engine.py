@@ -28,6 +28,10 @@ CONSTANTS = {
     "NextSkillEffectivenessAction": "next_skill_effectiveness",
     "EnemyArmorRemovedAction": "enemy_armor_removed",
     "AttackerDamageRemovedAction": "attacker_damage_removed",
+    # AND THE THREE EVERY-Nth NAMES, since issue #1833's every Nth.
+    "NthHitTakenDamageAction": "nth_hit_taken_damage",
+    "NthSpellManaCostAction": "nth_spell_mana_cost",
+    "NthAttackNoDamageAction": "nth_attack_no_damage",
 }
 
 
@@ -61,5 +65,11 @@ def test_the_generator_accepts_exactly_the_next_use_names_the_engine_has() -> No
 
 def test_the_generator_accepts_exactly_the_placed_names_the_engine_has() -> None:
     engine = {name for constant, name in engine_names().items()
-              if not constant.startswith("Next")}
+              if constant.endswith("RemovedAction")}
     assert set(gen.PLACED_ACTIONS) == engine
+
+
+def test_the_generator_accepts_exactly_the_every_nth_names_the_engine_has() -> None:
+    engine = {name for constant, name in engine_names().items()
+              if constant.startswith("Nth")}
+    assert set(gen.NTH_ACTIONS) == engine

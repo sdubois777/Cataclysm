@@ -676,7 +676,12 @@ void ACataclysmProjectile::HitOne(AActor* Target)
 		// whether it landed. The `Dealt > 0.0f` test above cannot ask this --
 		// that figure is what was SENT and is positive for an evaded shot, which
 		// is also why EnemiesHit counts one here.
-		if (bBurns && !Resolved.bEvaded)
+		//
+		// AND NOT FROM A SHOT CARRYING NO DAMAGE: the Nth attack of a worn
+		// "every Nth attack" row. Issue #1833, phase 2. Its own copy, because
+		// the skill's flag belongs to the next use by the time a slow shot
+		// lands.
+		if (bBurns && !Resolved.bEvaded && SpentMoreMultiplier > 0.0f)
 		{
 			UCataclysmSkillEffects::ApplyBurn(Firer, Target, Dealt,
 											  /*bScalesWithInstigator=*/true,

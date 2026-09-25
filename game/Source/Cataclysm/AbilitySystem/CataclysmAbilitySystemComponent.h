@@ -510,6 +510,43 @@ public:
 	float DamageCutPercentNow() const;
 
 	/**
+	 * What the hit about to be resolved takes on top, as a percentage, when it
+	 * is the Nth of a worn "every Nth hit you take" row, or 0. Issue #1833,
+	 * phase 2. Asked BEFORE the hit is resolved, because the event that counts
+	 * it fires after.
+	 */
+	float NthHitTakenBonusPercent() const;
+
+	/**
+	 * The share of the mana held that the spell about to be paid for adds to
+	 * its cost, as a percentage, when it is the Nth of a worn "every Nth spell"
+	 * row, or 0. Issue #1833, phase 2: its normal cost PLUS this, ruled
+	 * 2026-09-24.
+	 */
+	float NthSpellExtraManaPercent() const;
+
+	/** Whether the attack about to be paid for is the Nth of a worn row. */
+	bool NextAttackIsNth() const;
+
+	/**
+	 * Count one event of this kind for every worn "every Nth" row of it. The
+	 * Nth starts the count again. Issue #1833, phase 2. A count ends at death,
+	 * and when the character leaves a combat it was counted in.
+	 */
+	void NoteNthEvent(ECataclysmEveryNth Kind);
+
+	/** One worn "every Nth" row's count, as the line above the skill bar shows it. */
+	struct FHeldNthCount
+	{
+		ECataclysmEveryNth Kind = ECataclysmEveryNth::None;
+		int32 Count = 0;
+		int32 EveryNth = 0;
+	};
+
+	/** Every worn "every Nth" row with a count above nought, in the order worn. */
+	TArray<FHeldNthCount> NthCountsForDisplay() const;
+
+	/**
 	 * Grant one stack of a row's own, up to its cap, and restart its window.
 	 * Issue #1833. A cap or window of nothing grants nothing.
 	 */
@@ -538,6 +575,14 @@ public:
 	 */
 	static const TCHAR* EnemyArmorRemovedAction;
 	static const TCHAR* AttackerDamageRemovedAction;
+
+	/**
+	 * The three "every Nth" action names. Issue #1833, phase 2.
+	 * `tools/generate_datatables.py` holds the same three in `NTH_ACTIONS`.
+	 */
+	static const TCHAR* NthHitTakenDamageAction;
+	static const TCHAR* NthSpellManaCostAction;
+	static const TCHAR* NthAttackNoDamageAction;
 
 	/**
 	 * The event a row grants on when it grants on a clock. Issue #1833, timed
@@ -2239,6 +2284,23 @@ protected:
 
 	/** What the placed stacks of one kind take away now, summed, unclamped. */
 	float PlacedPercentNow(bool bCutsDamage) const;
+
+	/** One "every Nth" row's count, and the combat it was counted in, if any. */
+	struct FNthCount
+	{
+		int32 Count = 0;
+		bool bInCombat = false;
+		float CombatStartedAtSeconds = -1.0f;
+	};
+
+	/** Every worn "every Nth" row's count, by `FCataclysmPoolAction::NthKey`. */
+	TMap<FName, FNthCount> NthCounts;
+
+	/** A row's count now: nought once the combat it was counted in has ended. */
+	int32 StandingNthCount(FName Key) const;
+
+	/** The Percent of every worn row of this kind whose next event is its Nth. */
+	float NthPercentDue(ECataclysmEveryNth Kind) const;
 
 	/** Whether a count is still standing: in combat, and begun in this one. */
 	bool ConsecutiveHitsStanding(const FConsecutiveHits& Held) const;
