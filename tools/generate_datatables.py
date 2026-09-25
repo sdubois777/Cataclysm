@@ -6022,8 +6022,14 @@ def validate_enchantment_effects(tables: dict[str, list[dict]],
     if not effects:
         return []
 
+    # AND A FLAT ROW IN THE PASSIVE SHEET, since issue #1833's rows-only batch.
+    # "Your class resource decays twice as fast" doubles the Fervour decay, and
+    # the one thing that supplies a decay rate is a passive node's flat row,
+    # `Ravager_basic_spine_000` at 5 a second. A doubling is a multiplier on
+    # that base, which is the case this check exists to allow.
+    passives = tables.get("PassiveEffects") or []
     stats = _stats_with_a_base(tables) | {
-        row["Stat"] for row in effects
+        row["Stat"] for row in (*effects, *passives)
         if str(row["ValueKind"]).lower() == "flat"}
 
     problems = []

@@ -16,6 +16,7 @@
 #include "GameplayTagsManager.h"
 #include "AbilitySystem/CataclysmTeams.h"
 #include "AbilitySystem/CataclysmDamageCalculation.h"
+#include "AbilitySystem/CataclysmFervour.h"
 #include "AbilitySystem/CataclysmGameplayAbility.h"
 #include "AbilitySystem/CataclysmPrimaryAttributeSet.h"
 #include "AbilitySystem/CataclysmRegeneration.h"
@@ -6093,6 +6094,398 @@ bool FCataclysmEvery10thAttackRowTest::RunTest(const FString&)
 			ASC->NthCountsForDisplay().Num() == 1 ? ASC->NthCountsForDisplay()[0].Count : -1,
 			10),
 		FString(TEXT("Attack 9/10")));
+	return true;
+}
+
+namespace CataclysmRowsOnlyTest
+{
+	/**
+	 * A bare wearer carrying one real enchantment on a helm, beside a partner
+	 * with no effect row, kept in combat a blow a second by `Until`. Issue
+	 * #1833, the rows-only batch. A worn item rolls the top of its range, which
+	 * for a drawback is its largest loss.
+	 *
+	 * THE MAXIMUMS ARE WRITTEN AFTER THE HELM GOES ON, for the reason the
+	 * ultimate-lock test gives: `RefreshAttributes` recomputes them from the
+	 * gear, and a figure written before it does not survive.
+	 */
+	struct FWorn
+	{
+		FWorn(const TCHAR* Enchantment, bool bBenefit)
+		{
+			using namespace CataclysmEnchantmentEffectTest;
+			World = CataclysmTestWorld::MakeWorldThatHasBegunPlay();
+			if (!World)
+			{
+				return;
+			}
+			Wearer = MakeUnique<FWearer>(World);
+			FCataclysmItem Removed;
+			FCataclysmItem AlsoRemoved;
+			ECataclysmGearSlot Slot = ECataclysmGearSlot::Count;
+			Wearer->Equipment->Equip(
+				bBenefit
+					? Carrying(TEXT("Head_Helm"), Enchantment, DrawbackWithNoEffect)
+					: Carrying(TEXT("Head_Helm"), BenefitWithNoEffect, Enchantment),
+				Removed, AlsoRemoved, Slot);
+			Wearer->Equipment->RefreshAttributes(Wearer->AbilitySystem);
+		}
+
+		~FWorn()
+		{
+			Wearer.Reset();
+			if (World)
+			{
+				World->DestroyWorld(false);
+			}
+		}
+
+		UCataclysmAbilitySystemComponent* ASC() const
+		{
+			return Wearer ? Wearer->AbilitySystem : nullptr;
+		}
+
+		/** Maximum first, then current: the vital set clamps health to it. */
+		void SetHealth(float Maximum, float Current)
+		{
+			ASC()->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), Maximum);
+			ASC()->SetNumericAttributeBase(
+				UCataclysmVitalAttributeSet::GetHealthAttribute(), Current);
+		}
+
+		float Health() const
+		{
+			return ASC()->GetNumericAttribute(
+				UCataclysmVitalAttributeSet::GetHealthAttribute());
+		}
+
+		/** Start a fight now: the combat clock runs from this blow. */
+		void BeginFight()
+		{
+			Began = World->TimeSeconds;
+			ASC()->NoteHitDealt();
+		}
+
+		/** A blow a second, with the timed grants stepped, to `Seconds` in. */
+		void Until(float Seconds)
+		{
+			while (World && World->TimeSeconds < Began + Seconds - 0.001f)
+			{
+				World->TimeSeconds += 1.0f;
+				ASC()->NoteHitDealt();
+				ASC()->StepTimedGrants();
+			}
+		}
+
+		/** A stat applied to a figure of 1000 with no skill in hand. */
+		float On1000(const TCHAR* Stat) const
+		{
+			return ASC()->StatAppliedTo(FName(Stat), FGameplayTagContainer(), 1000.0f);
+		}
+
+		UWorld* World = nullptr;
+		TUniquePtr<CataclysmEnchantmentEffectTest::FWearer> Wearer;
+		float Began = 0.0f;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTimedHealthRowsTest,
+	"Cataclysm.Enchantments.TheTimedHealthRowsRestoreAndDrainOnTheirPeriods",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Three timed pool rows, each worn alone, each at 1000 maximum health. Issue
+ * #1833, the rows-only batch. The clock counts only in combat, ruled
+ * 2026-09-24.
+ *
+ * "Every 15 seconds regenerate 10%-20% of your maximum HP instantly", at 20:
+ * from 500, nothing at 14 seconds, 700 at 15 and 900 at 30.
+ * "You lose 15% of your max hp every 5 seconds": from 1000, nothing at 4
+ * seconds, 850 at 5 and 700 at 10.
+ * "Every 10 seconds you lose 5%-10% of your current HP", at 10: from 1000,
+ * nothing at 9 seconds, 900 at 10 and 810 at 20 -- a share of what is held,
+ * not of the maximum, which would give 800.
+ */
+bool FCataclysmTimedHealthRowsTest::RunTest(const FString&)
+{
+	using CataclysmRowsOnlyTest::FWorn;
+	{
+		FWorn Worn(TEXT("Positive_Every_15_seconds_regenerate_10_20_of_your_maxi"), true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		Worn.SetHealth(1000.0f, 500.0f);
+		Worn.BeginFight();
+		Worn.Until(14.0f);
+		TestEqual(TEXT("restore: fourteen seconds in, still 500"), Worn.Health(), 500.0f, 0.01f);
+		Worn.Until(15.0f);
+		TestEqual(TEXT("restore: fifteen seconds in, 20% of 1000 restored"), Worn.Health(), 700.0f, 0.01f);
+		Worn.Until(30.0f);
+		TestEqual(TEXT("restore: thirty seconds in, twice"), Worn.Health(), 900.0f, 0.01f);
+	}
+	{
+		FWorn Worn(TEXT("Negative_You_lose_15_of_your_max_hp_every_5_seconds"), false);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		Worn.SetHealth(1000.0f, 1000.0f);
+		Worn.BeginFight();
+		Worn.Until(4.0f);
+		TestEqual(TEXT("maximum drain: four seconds in, still 1000"), Worn.Health(), 1000.0f, 0.01f);
+		Worn.Until(5.0f);
+		TestEqual(TEXT("maximum drain: five seconds in, 15% of 1000 lost"), Worn.Health(), 850.0f, 0.01f);
+		Worn.Until(10.0f);
+		TestEqual(TEXT("maximum drain: ten seconds in, twice"), Worn.Health(), 700.0f, 0.01f);
+	}
+	{
+		FWorn Worn(TEXT("Negative_Every_10_seconds_you_lose_5_10_of_your_current"), false);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		Worn.SetHealth(1000.0f, 1000.0f);
+		Worn.BeginFight();
+		Worn.Until(9.0f);
+		TestEqual(TEXT("current drain: nine seconds in, still 1000"), Worn.Health(), 1000.0f, 0.01f);
+		Worn.Until(10.0f);
+		TestEqual(TEXT("current drain: ten seconds in, 10% of 1000 lost"), Worn.Health(), 900.0f, 0.01f);
+		Worn.Until(20.0f);
+		TestEqual(TEXT("current drain: twenty seconds in, 10% of 900 lost"), Worn.Health(), 810.0f, 0.01f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmRegenerationShareRowsTest,
+	"Cataclysm.Enchantments.TheRegenerationRowsAddTheirShareOfEachWhole100OfTheMaximum",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Regenerate 1%-3% of your maximum HP per second" at 3 and "Regenerate 5%-10%
+ * of your maximum mana per second" at 10, each worn alone. Issue #1833, the
+ * rows-only batch.
+ *
+ * READ AS A RATIO AGAINST A FIGURE OF 100, so that neither the line's own base
+ * nor any increase on it decides the answer. Below 100 of the maximum the row
+ * adds nothing, so the figure reads 100 times the line's multiplier; at 1000 it
+ * reads 100 plus the row's flat, times the same multiplier. The ratio is the
+ * row's flat over 100, and whole steps only: 1099 reads as 1000 does.
+ */
+bool FCataclysmRegenerationShareRowsTest::RunTest(const FString&)
+{
+	using CataclysmRowsOnlyTest::FWorn;
+	struct FCase
+	{
+		const TCHAR* Enchantment;
+		const TCHAR* Stat;
+		FGameplayAttribute Maximum;
+		float PerHundred;
+	};
+	const FCase Cases[] = {
+		{TEXT("Positive_Regenerate_1_3_of_your_maximum_HP_per_second"),
+		 TEXT("health_regen"), UCataclysmVitalAttributeSet::GetMaxHealthAttribute(), 3.0f},
+		{TEXT("Positive_Regenerate_5_10_of_your_maximum_mana_per_secon"),
+		 TEXT("mana_regen"), UCataclysmVitalAttributeSet::GetMaxManaAttribute(), 10.0f},
+	};
+	for (const FCase& Case : Cases)
+	{
+		FWorn Worn(Case.Enchantment, true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		const auto At = [&](float Maximum)
+		{
+			Worn.ASC()->SetNumericAttributeBase(Case.Maximum, Maximum);
+			return Worn.ASC()->StatAppliedTo(FName(Case.Stat), FGameplayTagContainer(), 100.0f);
+		};
+		const float Below = At(99.0f);
+		if (!TestTrue(FString::Printf(TEXT("'%s' below one step reads something"), Case.Stat),
+				Below > 0.0f))
+		{
+			return false;
+		}
+		TestEqual(FString::Printf(TEXT("'%s' at 1000: ten steps"), Case.Stat),
+			At(1000.0f) / Below, 1.0f + 10.0f * Case.PerHundred / 100.0f, 0.0001f);
+		TestEqual(FString::Printf(TEXT("'%s' at 1099: still ten"), Case.Stat),
+			At(1099.0f) / Below, 1.0f + 10.0f * Case.PerHundred / 100.0f, 0.0001f);
+		TestEqual(FString::Printf(TEXT("'%s' at 1100: eleven"), Case.Stat),
+			At(1100.0f) / Below, 1.0f + 11.0f * Case.PerHundred / 100.0f, 0.0001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmTimedStackRowsTest,
+	"Cataclysm.Enchantments.TheTimedStackRowsHoldTheirEffectForTheirWindowOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * Two timed own-stack rows, each worn alone. Issue #1833, the rows-only batch.
+ *
+ * "Every 10 seconds your movement speed is increased by 30%-50% for 3 seconds",
+ * at 50: nothing at 9 seconds of combat, half as much again at 10, still at
+ * 12.9, and gone at 13.1.
+ * "Every 20 seconds your damage is halved for 5 seconds": nothing at 19, half
+ * of both attack and spell damage at 20, still at 24.9, and gone at 25.1.
+ *
+ * READ AS A RATIO against the same stat before the window, so a line's other
+ * increases cannot decide the answer. A "more" row multiplies whatever else is
+ * there; an increase adds to the others, and a bare wearer's movement line
+ * holds only an attribute increase of nought, so its ratio is 1.5 exactly.
+ */
+bool FCataclysmTimedStackRowsTest::RunTest(const FString&)
+{
+	using CataclysmRowsOnlyTest::FWorn;
+	{
+		FWorn Worn(TEXT("Positive_Every_10_seconds_your_movement_speed_is_increase"), true);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		Worn.BeginFight();
+		Worn.Until(9.0f);
+		const float Plain = Worn.On1000(TEXT("movement_speed"));
+		if (!TestTrue(TEXT("movement speed reads something"), Plain > 0.0f))
+		{
+			return false;
+		}
+		Worn.Until(10.0f);
+		TestEqual(TEXT("ten seconds in: 50% increased"),
+			Worn.On1000(TEXT("movement_speed")) / Plain, 1.5f, 0.0001f);
+		Worn.World->TimeSeconds += 2.9f;
+		TestEqual(TEXT("just inside its three seconds: still 50%"),
+			Worn.On1000(TEXT("movement_speed")) / Plain, 1.5f, 0.0001f);
+		Worn.World->TimeSeconds += 0.2f;
+		TestEqual(TEXT("just after: gone"),
+			Worn.On1000(TEXT("movement_speed")) / Plain, 1.0f, 0.0001f);
+	}
+	{
+		FWorn Worn(TEXT("Negative_Every_20_seconds_your_damage_is_halved_for_5_sec"), false);
+		if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+		{
+			return false;
+		}
+		Worn.BeginFight();
+		Worn.Until(19.0f);
+		const float Attack = Worn.On1000(TEXT("attack_damage"));
+		const float Spell = Worn.On1000(TEXT("spell_damage"));
+		if (!TestTrue(TEXT("both damage lines read something"), Attack > 0.0f && Spell > 0.0f))
+		{
+			return false;
+		}
+		Worn.Until(20.0f);
+		TestEqual(TEXT("twenty seconds in: attack damage halved"),
+			Worn.On1000(TEXT("attack_damage")) / Attack, 0.5f, 0.0001f);
+		TestEqual(TEXT("twenty seconds in: spell damage halved"),
+			Worn.On1000(TEXT("spell_damage")) / Spell, 0.5f, 0.0001f);
+		Worn.World->TimeSeconds += 4.9f;
+		TestEqual(TEXT("just inside its five seconds: still halved"),
+			Worn.On1000(TEXT("attack_damage")) / Attack, 0.5f, 0.0001f);
+		Worn.World->TimeSeconds += 0.2f;
+		TestEqual(TEXT("just after: attack damage whole again"),
+			Worn.On1000(TEXT("attack_damage")) / Attack, 1.0f, 0.0001f);
+		TestEqual(TEXT("just after: spell damage whole again"),
+			Worn.On1000(TEXT("spell_damage")) / Spell, 1.0f, 0.0001f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmSkillUseArmourOnceRowTest,
+	"Cataclysm.Enchantments.TheSkillUseArmourRowTakes20PercentFor3SecondsOnce",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Lose 10%-20% armor when you use a skill", at 20. Issue #1833, the rows-only
+ * batch. The sentence states no duration and no cap; 3 seconds and one stack
+ * are the labelled judgement recorded in docs/DECISIONS.md, from the sibling
+ * row "Each skill use reduces your armor by 1%-2% for 3 seconds".
+ *
+ * A bare wearer's armour line holds only an attribute increase of nought, so
+ * one stack reads 0.8 of the plain figure, and a second skill use does not
+ * take it to 0.6.
+ */
+bool FCataclysmSkillUseArmourOnceRowTest::RunTest(const FString&)
+{
+	using CataclysmRowsOnlyTest::FWorn;
+	FWorn Worn(TEXT("Negative_Lose_10_20_armor_when_you_use_a_skill"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const float Plain = Worn.On1000(TEXT("armor"));
+	if (!TestTrue(TEXT("armour reads something"), Plain > 0.0f))
+	{
+		return false;
+	}
+	Worn.ASC()->ActOnEvent(FName(TEXT("skill_use")));
+	TestEqual(TEXT("one skill use: 20% less armour"),
+		Worn.On1000(TEXT("armor")) / Plain, 0.8f, 0.0001f);
+	Worn.ASC()->ActOnEvent(FName(TEXT("skill_use")));
+	TestEqual(TEXT("a second: still 20%, one stack at most"),
+		Worn.On1000(TEXT("armor")) / Plain, 0.8f, 0.0001f);
+	Worn.World->TimeSeconds += 2.9f;
+	TestEqual(TEXT("just inside three seconds: still 20%"),
+		Worn.On1000(TEXT("armor")) / Plain, 0.8f, 0.0001f);
+	Worn.World->TimeSeconds += 0.2f;
+	TestEqual(TEXT("just after: whole again"),
+		Worn.On1000(TEXT("armor")) / Plain, 1.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmFervourDecayRowTest,
+	"Cataclysm.Enchantments.TheFervourDecayRowDoublesTheDecayANodeSupplies",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Your class resource decays twice as fast". Issue #1833, the rows-only batch.
+ *
+ * THE DECAY RATE COMES FROM A PASSIVE NODE, `Ravager_basic_spine_000` at 5 a
+ * second, and a bare wearer has none, so the row is applied to a figure of 5,
+ * which is the node's flat. `UCataclysmFervour` asks the stat with a fallback of
+ * nought, so a character with no decay keeps none: twice nothing.
+ */
+bool FCataclysmFervourDecayRowTest::RunTest(const FString&)
+{
+	using CataclysmRowsOnlyTest::FWorn;
+	FWorn Worn(TEXT("Negative_Your_class_resource_decays_twice_as_fast"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	const FName Decay(UCataclysmFervour::DecayPerSecondStat);
+	TestEqual(TEXT("a node's 5 a second decays at 10"),
+		Worn.ASC()->StatAppliedTo(Decay, FGameplayTagContainer(), 5.0f), 10.0f, 0.0001f);
+	TestEqual(TEXT("and no decay stays none"),
+		Worn.ASC()->StatForSkill(Decay, FGameplayTagContainer(), 0.0f), 0.0f, 0.0001f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCataclysmMinionCountRowTest,
+	"Cataclysm.Enchantments.TheMinionCountRowTakes4FromTheCapBonus",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+/**
+ * "Minus 2-4 to your max minion count", at 4. Issue #1833, the rows-only batch.
+ *
+ * READ THE WAY THE CAP READS IT, through `StatForSkill`, which is what
+ * `MinionCapFor` in CataclysmSkillTemplates.cpp asks. The floor of one minion
+ * that function applies is not reached from here: it is file-local and runs only
+ * when a summoning skill is cast.
+ */
+bool FCataclysmMinionCountRowTest::RunTest(const FString&)
+{
+	using CataclysmRowsOnlyTest::FWorn;
+	FWorn Worn(TEXT("Negative_Minus_2_4_to_your_max_minion_count"), false);
+	if (!TestNotNull(TEXT("a wearer in a world"), Worn.ASC()))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the cap bonus is minus four"),
+		Worn.ASC()->StatForSkill(FName(UCataclysmCommand::MinionCapBonusStat),
+								 FGameplayTagContainer(), 0.0f),
+		-4.0f, 0.0001f);
 	return true;
 }
 
